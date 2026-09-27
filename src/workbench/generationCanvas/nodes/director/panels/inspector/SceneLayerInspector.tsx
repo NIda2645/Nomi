@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../DirectorEditorContext、../../model/directorProject 的 DEFAULT_SCENE_CONFIG、../fields/*
  * [OUTPUT]: 对外提供 SceneLayerInspector：基础环境（天空色、角色标签）、地面与网格（显示/高度/透明度/吸附）、全局变换（缩放/平移）、

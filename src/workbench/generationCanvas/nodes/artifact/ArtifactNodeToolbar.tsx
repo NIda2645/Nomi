@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // agent-artifact 节点的选中浮条动作。复用系统 NodeFloatingToolbar 的容器与按钮原子（不新造样式）：
 //   · 下载：文件已落盘（meta.artifact.url 带真实扩展名）→ bridge.assets.download 按 url 补全文件名。
 //   · 复制：text/markdown/html 取文本进剪贴板（可复制的内容才给"复制"）。

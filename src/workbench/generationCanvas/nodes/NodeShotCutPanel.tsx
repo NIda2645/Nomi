@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { notify } from '../../../ui/notificationPolicy'
 /**
  * 「按镜头拆」面板：检测 → 预览 → 勾选 → 才落画布。

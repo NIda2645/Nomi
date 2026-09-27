@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { IconZoomIn } from '@tabler/icons-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'

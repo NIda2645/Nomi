@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSelect / WorkbenchButton / WorkbenchIconButton）、../../../../../../vendor/tablerIcons、../../../../../../utils/cn、
  *          ../../DirectorEditorContext、../../scene/pipCamera（PipRect / pipCameraIdOf）、../../model/cameraLens 的 exportAspectRatio
@@ -50,7 +51,7 @@ function writeLayout(layout: PipLayout): void {
   }
 }
 
-export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.MutableRefObject<PipRect>; canvasHostRef: React.RefObject<HTMLDivElement> }): JSX.Element | null {
+export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.MutableRefObject<PipRect>; canvasHostRef: React.RefObject<HTMLDivElement | null> }): JSX.Element | null {
   const { t } = useTranslation()
   const store = useDirectorStoreApi()
   const cameras = useDirectorStore((state) => state.activeScene().cameras)

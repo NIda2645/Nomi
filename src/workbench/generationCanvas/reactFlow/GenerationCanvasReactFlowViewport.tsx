@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM } from '../model/canvasFitBounds'
 import { CanvasBatchConnectionLine } from './CanvasBatchConnectionLine'
 import React from 'react'
@@ -54,7 +55,7 @@ type GenerationCanvasReactFlowViewportProps = {
   onConnectEnd: OnConnectEnd
   canvasPointerStartRef: React.MutableRefObject<{ x: number; y: number } | null>
   canvasPanMovedRef: React.MutableRefObject<boolean>
-  hostRef: React.RefObject<HTMLDivElement>
+  hostRef: React.RefObject<HTMLDivElement | null>
   setLiveViewport: React.Dispatch<React.SetStateAction<Viewport>>
   activeCategoryId: string
   rememberCategoryViewport: (categoryId: string, viewport: { zoom: number; offset: { x: number; y: number } }) => void

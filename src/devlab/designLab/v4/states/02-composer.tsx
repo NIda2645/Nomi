@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · **Composer 板**
 //
 // 这一组每一格只渲 **composer 本身**（或它的一个弹层），因为定稿 Composer 板画的就是它。

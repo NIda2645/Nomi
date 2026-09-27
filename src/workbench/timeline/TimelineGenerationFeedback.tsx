@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'

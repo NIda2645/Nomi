@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { useStore } from '@xyflow/react'
 import { selectFlowZoom, shotTableDensityForZoom } from '../../reactFlow/canvasViewportScale'

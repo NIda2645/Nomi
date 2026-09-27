@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 本地 ComfyUI「导入自定义工作流」面板（S4）。plan: docs/plan/2026-07-15-comfyui-custom-workflow.md
  *

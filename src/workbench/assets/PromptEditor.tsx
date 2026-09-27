@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { useEditor, EditorContent, type Editor, type JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'

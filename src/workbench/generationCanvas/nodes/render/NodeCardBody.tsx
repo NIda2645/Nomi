@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import type { GenerationCanvasNode } from '../../model/generationCanvasTypes'
 import CharacterCardNode from './CharacterCardNode'

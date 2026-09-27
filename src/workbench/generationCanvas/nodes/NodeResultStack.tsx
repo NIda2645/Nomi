@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { nodeHasResultStack, productionMetaOf } from './useNodeResultHistory'
 import { notify } from '../../../ui/notificationPolicy'
 import React from 'react'

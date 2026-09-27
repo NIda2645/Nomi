@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 NomiSegmented / WorkbenchIconButton、../../../../../../vendor/tablerIcons、../Popover、
  *          ../../DirectorEditorContext、../../model/directorTypes（导出画幅 / 分辨率枚举 / 显示模式）、../fields/FieldPrimitives 的 ToggleField

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // The real shell subscribes to the same lane client as the desktop app.
 import React from 'react'
 import type { LanePart, LaneQueuedMessage, LaneWorkspaceProjection } from '../../../../electron/shared/agentLane/laneContracts'

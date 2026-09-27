@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { V4Row } from './AgentPanelV4Row'
 // Agent 面板 v4 · 积木 ④ 任务卡 · ⑤ 介入槽 · ⑥ 队列行
 //

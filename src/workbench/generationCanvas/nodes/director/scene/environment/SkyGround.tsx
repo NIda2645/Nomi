@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useThree、@react-three/drei 的 Grid、../sceneTheme、../sceneRefs 的 tagEditorOnly、
  *          ../../DirectorEditorContext 的 useDirectorStore

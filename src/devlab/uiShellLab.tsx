@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { canvasToolbarNodeKinds, type CanvasToolbarNodeKind } from '../workbench/generationCanvas/components/canvasToolbarModel'

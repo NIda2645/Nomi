@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { ImageGeneration, type ImageGenerationHandle, type ImageGenerationCycleEvent, type ImageGenerationPreset } from 'img-fx'
 import { cn } from '../../../utils/cn'
@@ -21,7 +22,7 @@ function WaitingEffect({ source, final, paused, preset, onComplete }: {
   onComplete?: () => void
 }): JSX.Element {
   const handle = React.useRef<ImageGenerationHandle>(null)
-  const lastSource = React.useRef<string>()
+  const lastSource = React.useRef<string | undefined>(undefined)
   const [cycle, setCycle] = React.useState<ImageGenerationCycleEvent>({ phase: 'idle', src: null })
   const [palette, setPalette] = React.useState(readPalette)
   const images = React.useMemo(() => source ? [source] : [], [source])

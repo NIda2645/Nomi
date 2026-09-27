@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // agent-artifact 在通用节点壳里占的两个位置（正文 + 选中浮条），连同它们的取数一起收在这里。
 //
 // 为什么单独一个文件：BaseGenerationNode 是全 15 种 kind 共用的壳，每种 kind 往里塞自己的

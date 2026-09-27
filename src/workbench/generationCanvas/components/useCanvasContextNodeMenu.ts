@@ -53,7 +53,7 @@ type ActiveContextPointer = {
 
 type UseCanvasContextNodeMenuArgs = {
   readOnly: boolean
-  stageRef: React.RefObject<HTMLDivElement>
+  stageRef: React.RefObject<HTMLDivElement | null>
   offsetRef: React.MutableRefObject<Offset>
   zoomRef: React.MutableRefObject<number>
   pendingConnectionSourceId: string | null

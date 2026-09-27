@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { GenerationStatusBar } from './GenerationStatusBar'
 import { MODEL_ACCESS_ENTRY } from '../../../../electron/shared/contracts/modelAccessCapabilities'

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../../../../../utils/cn、./useNumberDraft
  * [OUTPUT]: 对外提供 SliderNumberField：标签 + 滑条 + 数字输入；滚轮按 step 微调（wheelAdjust）；onChangeStart 给撤销快照用

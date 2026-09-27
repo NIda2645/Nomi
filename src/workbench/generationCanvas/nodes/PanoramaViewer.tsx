@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 @photo-sphere-viewer/core 的 Viewer / EquirectangularAdapter、react-dom 的 createPortal、
  *          ../../../ui/app-shell/windowChrome 的 currentFullscreenOverlayTopOffset、../../../design 的 NomiImage / WorkbenchIconButton、
@@ -314,7 +315,7 @@ function PanoramaCaptureOverlay({
   captureRatio,
   frameSize,
 }: {
-  captureFrameRef: React.RefObject<HTMLDivElement>
+  captureFrameRef: React.RefObject<HTMLDivElement | null>
   captureRatio: PanoramaCaptureRatio
   frameSize: { width: number; height: number } | null
 }): JSX.Element {
@@ -351,7 +352,7 @@ function PanoramaDialogControls({
   onClose,
   onScreenshot,
 }: {
-  captureFrameRef: React.RefObject<HTMLDivElement>
+  captureFrameRef: React.RefObject<HTMLDivElement | null>
   captureRatioId: PanoramaCaptureRatioId
   onCaptureRatioChange: (ratioId: PanoramaCaptureRatioId) => void
   onClose: () => void

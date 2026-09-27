@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { IconPlugConnectedX, IconRefresh } from '../../../vendor/tablerIcons'
 import { useTranslation } from 'react-i18next'

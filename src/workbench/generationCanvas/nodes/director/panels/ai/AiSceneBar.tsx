@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSegmented / WorkbenchButton / WorkbenchIconButton）、../../../../../../vendor/tablerIcons、
  *          ../../../../../../ui/toast、../../useAiSceneBuilder、../../model/storeAiSceneActions 的 AiSceneTarget、../CanvasImagesContext、../imageFile 的 readFileAsDataUrl、../Popover

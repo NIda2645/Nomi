@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../utils/cn、./SceneObjectsTab、./AssetsTab、../inspector/ContextInspector、../EditorSplit、../topbar/topChrome
  * [OUTPUT]: 对外提供 SidePanels：视口右侧的浮起双卡 —— 上卡（场景对象 / 资产库 标签页）+ 下卡（属性检查器），中间可拖分栏，整列可拖宽

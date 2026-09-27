@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { ActionIcon, Button, type ActionIconProps, type ButtonProps } from '@mantine/core'
 import { forwardRef, type ButtonHTMLAttributes, type ComponentPropsWithoutRef, type ReactNode } from 'react'
 import { cn } from '../utils/cn'

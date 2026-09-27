@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 引导旅途的渲染器：纯订阅 journeyTourStore，渲染当前 beat（cinematic 气泡 / spotlight / finale）。
  *

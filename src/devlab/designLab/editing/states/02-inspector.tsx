@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 设计实验室 · 剪辑面 · 属性面板的四种对象态
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录（screens/editing/）里 `NN-*.tsx` 的文件名排序解析，

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 顶栏「任务」入口。住 NomiAppBar 右栏 —— 那是唯一跨创作/生成/预览三区常驻的 chrome，
 // 正是「切到创作页就看不见生成跑到哪了」的解药。
 // 方案：docs/plan/2026-08-02-task-center-queue.md，样张 2026-08-02 拍板。

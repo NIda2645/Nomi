@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../../../../../vendor/tablerIcons、../Popover 的 Popover / PopoverItem、
  *          ../../DirectorEditorContext、../CreationModeContext 的 useCreationMode、../../model/cameraPresets、../../model/directorIds、../../model/directorTypes、

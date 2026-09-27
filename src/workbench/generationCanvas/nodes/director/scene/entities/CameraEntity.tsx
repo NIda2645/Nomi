@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、../../model/directorTypes 的 DirectorCamera、../../model/vec3 的 DEG_TO_RAD、../cameraMath 的 cameraQuaternion、
  *          ../sceneRefs 的 tagEntityObject / tagEditorOnly、../SceneRegistryContext、../sceneTheme 的 CAMERA_STATE_COLORS / CAMERA_BODY_COLOR

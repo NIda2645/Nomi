@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { notify } from '../../../ui/notificationPolicy'
 import React from 'react'
 import { useTranslation } from 'react-i18next'

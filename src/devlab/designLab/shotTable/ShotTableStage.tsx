@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import ShotTableNode from '../../../workbench/generationCanvas/nodes/shotTable/ShotTableNode'
 import { useGenerationCanvasStore } from '../../../workbench/generationCanvas/store/generationCanvasStore'

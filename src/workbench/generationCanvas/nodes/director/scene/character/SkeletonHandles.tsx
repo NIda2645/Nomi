@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber（useFrame / useThree / createPortal）、@react-three/drei 的 TransformControls、
  *          ../../DirectorEditorContext、../ViewportApiContext 的 useViewportApi、../sceneRefs（isDirectorObjectVisible / tagEditorOnly / DIRECTOR_IK_HANDLE_KEY / IkHandleTag）、../sceneTheme 的 SKELETON_COLORS、

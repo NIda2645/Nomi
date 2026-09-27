@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../utils/cn
  * [OUTPUT]: 对外提供 EditorSplit（两栏可拖分栏，横/纵向，比例持久到 localStorage，键盘可调）

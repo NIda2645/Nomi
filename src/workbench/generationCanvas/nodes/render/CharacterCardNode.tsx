@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * CharacterCardNode body — 角色分类节点的渲染主体。
  *

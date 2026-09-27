@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // agent-artifact 节点的内容分发内核（v1）。壳统一（BaseGenerationNode 的 kind 专属分支），
 // 内层按 meta.artifact.fileType 挑子视图——浏览器按 MIME 挑应用的同款逻辑：
 //   svg        → <img> 图片管线（DeferredNodeImage 同源，可缩放、棋盘格、加载态）

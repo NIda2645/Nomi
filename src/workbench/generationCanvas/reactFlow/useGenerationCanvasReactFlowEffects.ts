@@ -21,7 +21,7 @@ type HostEffectsArgs = {
   cancelViewportAnimation: () => void
   activeCategoryId: string
   flow: ReactFlowInstance<GenerationFlowNode, GenerationFlowEdge>
-  hostRef: React.RefObject<HTMLDivElement>
+  hostRef: React.RefObject<HTMLDivElement | null>
   nodes: GenerationCanvasNode[]
   allNodes: GenerationCanvasNode[]
   setStageSize: React.Dispatch<React.SetStateAction<{ width: number; height: number }>>

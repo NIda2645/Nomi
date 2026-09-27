@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../scene/DirectorCanvas、../../scene/ViewCamera 的 DEFAULT_VIEW_SETTINGS / ViewSettings、
  *          ../../scene/sceneTheme、../../scene/creation/usePathDraw、../../scene/LabelProjector 类型、./ViewportOverlays、

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 折叠摘要卡外壳（模型接入面板方案 A）。
  *

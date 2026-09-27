@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import type { LabState } from '../../labScreen'
 import StoryboardAnchorZone from '../../../../workbench/creation/storyboard/anchorZone/StoryboardAnchorZone'

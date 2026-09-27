@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 首启开屏动画（spec §3A）。
  *

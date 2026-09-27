@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { IconAlertTriangle, IconCheck } from '@tabler/icons-react'
 import React from 'react'
 import type { TFunction } from 'i18next'

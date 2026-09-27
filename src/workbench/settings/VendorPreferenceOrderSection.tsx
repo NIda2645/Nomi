@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 「优先供应商」设置区（设置 → AI 策略）。
 //
 // 解决的摩擦：同一个模型常常好几家都能跑（Seedream 4.5 在火山方舟 / APIMart / Kie 各有一份）。

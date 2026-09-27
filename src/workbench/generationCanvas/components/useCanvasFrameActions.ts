@@ -49,7 +49,7 @@ export function useCanvasFrameActions({
   stageRef,
 }: {
   readOnly: boolean
-  stageRef: React.RefObject<HTMLDivElement>
+  stageRef: React.RefObject<HTMLDivElement | null>
 }): {
   frameMenu: CanvasFrameMenuState | null
   closeFrameMenu: () => void

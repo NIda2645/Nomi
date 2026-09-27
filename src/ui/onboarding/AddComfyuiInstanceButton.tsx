@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 「+ 再接一台 ComfyUI」（M 轨 · 2026-08-02 拍板四幕样张第④幕）。
  *

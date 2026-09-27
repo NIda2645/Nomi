@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { cloneElement, isValidElement, memo, useId, useMemo, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPhoto } from '@tabler/icons-react'

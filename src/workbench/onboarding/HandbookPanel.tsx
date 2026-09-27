@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 新手上手手册面板（App 内出口）。读唯一内容源 handbookContent，原生离线、跟随明暗 token。
  * 外壳对齐 SkillLibraryPanel：mantine Portal 居中模态 + 背板点击/ESC 关闭 + token-only，不另造弹层（P1）。

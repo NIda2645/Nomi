@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import NodeGenerationComposer from './LazyNodeGenerationComposer'
 import { StoryboardOverrideBadge } from './StoryboardOverrideBadge'
 import { notify } from '../../../ui/notificationPolicy'

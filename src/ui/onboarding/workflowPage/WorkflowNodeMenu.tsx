@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 点中节点后弹的「这个节点在画布上当什么」菜单 —— 这页存在的理由就是它。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md

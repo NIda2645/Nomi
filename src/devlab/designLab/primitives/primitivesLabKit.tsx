@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 设计实验室 · primitive 陈列三屏的共用取景台。
 //
 // 这三屏（primitives-actions / primitives-forms / primitives-surfaces）和别的屏不同：
@@ -117,7 +118,7 @@ export function OpenPopoverStage({
   /** 舞台高度：要装得下展开后的浮层，否则按元素截图会把它悄悄截掉半截。 */
   height: number
   triggerSelector?: string
-  children: (portalTarget: React.RefObject<HTMLDivElement>) => React.ReactNode
+  children: (portalTarget: React.RefObject<HTMLDivElement | null>) => React.ReactNode
   width?: number
 }): JSX.Element {
   const stageRef = React.useRef<HTMLDivElement>(null)

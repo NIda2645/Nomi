@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlayerPlay, IconPlayerStop } from '@tabler/icons-react'
@@ -23,7 +24,7 @@ export function AttentionSoundSection(): JSX.Element {
   const [busy, setBusy] = React.useState(false)
   const [playing, setPlaying] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const timer = React.useRef<ReturnType<typeof setTimeout>>()
+  const timer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const mounted = React.useRef(true)
   React.useEffect(() => {
     mounted.current = true

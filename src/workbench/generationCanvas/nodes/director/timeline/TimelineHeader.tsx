@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../design（WorkbenchButton / WorkbenchIconButton / NomiSelect）、../../../../../vendor/tablerIcons、
  *          ../DirectorEditorContext、../model/timeGrid 的 secondsToFrame、../model/hotkeys（DIRECTOR_HOTKEYS / formatHotkey）、../OutputsContext、./timelineCommands、./useTimelineViewport

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // r3f <Canvas> 在 GL/store 初始化完成前会自我 suspend（fiber 源码 `if (block) throw block`），
 // 这个 throw 落在 DOM 树里、无就地边界时冒泡到最近的 DOM Suspense。React 18 对「已提交内容再
 // suspend」的处理是给整棵已上屏子树打内联 display:none（hideInstance）——fallback 若为 null，

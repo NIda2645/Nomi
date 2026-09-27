@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 设置 · 通用 · 全局截图热键。
  *
