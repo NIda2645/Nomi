@@ -13,11 +13,7 @@
   "scope_paths": [
     "worker/",
     "wrangler.json",
-    "wrangler.toml",
-    "marketing/_headers",
-    "scripts/marketing/serving-contract.test.mjs",
-    "electron/catalog/siteWorkerByteRange.test.ts",
-    "electron/catalog/kieSunoAckWorker.test.ts"
+    "marketing/_headers"
   ],
   "entry_points": [
     "GET/HEAD https://nomiaqm.com/**/*.mp4 (browsers' media element, Range probes and seeks)",
@@ -68,6 +64,14 @@
     "Every file under marketing/ ends up with at most one Cache-Control value after _headers rules apply.",
     "The worker entry module exports only its default handler."
   ],
+  "invariant_owner_layer": {
+    "layer": "worker/byteRange.ts",
+    "tests": [
+      "electron/catalog/siteWorkerByteRange.test.ts",
+      "scripts/marketing/serving-contract.test.mjs"
+    ],
+    "why": "serveAssetWithRanges is the only producer of asset responses in the site worker; siteWorkerByteRange.test.ts drives the real worker entry with an ASSETS binding shaped like the runtime (no Content-Length header), and serving-contract.test.mjs checks wrangler.json routing and _headers against every file under marketing/."
+  },
   "doors": [
     {
       "kind": "read",

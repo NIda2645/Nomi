@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 
 // How nomiaqm.com serves marketing/ is decided by two files Cloudflare reads at deploy time:
 // wrangler.json (which requests reach the site worker first) and marketing/_headers.
-// Both are matched with Cloudflare's glob: `*` is `.*`, anchored at both ends
+// _headers patterns are Cloudflare globs: `*` is `.*`, anchored at both ends
 // (workers-shared asset-worker/src/utils/rules-engine.ts, generateGlobOnlyRuleRegExp).
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -28,13 +28,6 @@ function servedPaths(dir = siteDir) {
     if (entry.name.startsWith('_')) return [] // _headers / _redirects are config, not served
     return ['/' + path.relative(siteDir, full).split(path.sep).join('/')]
   })
-}
-
-function reachesWorkerFirst(pathname) {
-  const rules = config.assets.run_worker_first
-  if (!Array.isArray(rules)) return rules === true
-  if (rules.some((rule) => rule.startsWith('!/') && glob(rule.slice(1)).test(pathname))) return false
-  return rules.some((rule) => rule.startsWith('/') && glob(rule).test(pathname))
 }
 
 // Mirrors attachCustomHeaders: rules apply in file order; within a rule `! Name` unsets first,
@@ -84,15 +77,13 @@ describe('marketing site serving contract', () => {
     expect(config.assets.binding).toBe('ASSETS')
   })
 
-  it('sends every media file through the site worker so Range requests get 206', () => {
-    const media = paths.filter((pathname) => MEDIA_EXTENSIONS.has(path.extname(pathname).toLowerCase()))
-    expect(media).toContain('/assets/video/nomi-0.22-film.mp4')
-    expect(media.filter((pathname) => !reachesWorkerFirst(pathname))).toEqual([])
-  })
-
-  it('keeps pages and images on the direct asset path', () => {
-    expect(reachesWorkerFirst('/index.html')).toBe(false)
-    expect(reachesWorkerFirst('/assets/promo-0.22/cover-zh-light.jpg')).toBe(false)
+  it('sends every media type through the site worker so Range requests get 206, and nothing else', () => {
+    // Worker-first routes are only `/*.<ext>` for media extensions, so pages and images stay
+    // on the direct asset path, and a new media type fails here until it is routed.
+    const mediaExtensions = [...new Set(paths.map((pathname) => path.extname(pathname).toLowerCase()))]
+      .filter((extension) => MEDIA_EXTENSIONS.has(extension))
+    expect(mediaExtensions).toContain('.mp4')
+    expect([...config.assets.run_worker_first].sort()).toEqual(mediaExtensions.map((extension) => `/*${extension}`).sort())
   })
 
   it('gives every served file at most one Cache-Control value', () => {
