@@ -15,15 +15,57 @@ export function localeBootstrapJs() {
 })()`
 }
 
-export function homepageClientJs(downloadUrls, interactionData) {
-  const interactions = JSON.stringify(interactionData).replaceAll('<', '\\u003c')
+/**
+ * 页面脚本。home 为真时才带上首页独有的两段：功能段片段播放、「点一下打开弹窗」的触发器
+ * （快速上手没有这两样东西，带上就是死代码——评审指出）。
+ */
+export function homepageClientJs(downloadUrls, { segments: home = true } = {}) {
+  const homeOnly = home ? `  // 首屏片子是原生播放器（不用脚本也能播）；脚本在时再亮出样张里那颗「播放宣传片（有声音）」，开播后自己消失。
+  const film = document.querySelector('video[data-film]')
+  const filmPlay = document.querySelector('[data-film-play]')
+  if (film && filmPlay) {
+    filmPlay.hidden = false
+    filmPlay.addEventListener('click', () => { film.play().catch(() => {}) })
+    film.addEventListener('play', () => filmPlay.remove(), { once: true })
+  }
+
+  // 功能段：同一个片子文件，只在 [start, end] 这几秒里循环；滚到眼前才静音播放，减少动效偏好时不自动播。
+  const segments = Array.from(document.querySelectorAll('video[data-segment]'))
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  segments.forEach((video) => {
+    const start = Number(video.dataset.start)
+    const end = Number(video.dataset.end)
+    video.addEventListener('loadedmetadata', () => { video.currentTime = start })
+    video.addEventListener('timeupdate', () => {
+      if (video.currentTime >= end || video.currentTime < start - 0.5) video.currentTime = start
+    })
+    if (reduceMotion) { video.controls = true; video.preload = 'metadata' }
+  })
+  if (!reduceMotion && 'IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => {
+      const video = entry.target
+      if (entry.isIntersecting) {
+        if (video.preload === 'none') video.preload = 'auto'
+        video.play().catch(() => {})
+      } else {
+        video.pause()
+      }
+    }), { threshold: 0.35 })
+    segments.forEach((video) => observer.observe(video))
+  }
+  document.querySelectorAll('[data-open-dialog]').forEach((trigger) => trigger.addEventListener('click', (event) => {
+    const dialog = document.querySelector('#' + trigger.dataset.openDialog)
+    if (!dialog || typeof dialog.showModal !== 'function') return
+    event.preventDefault()
+    dialog.showModal()
+    document.body.classList.add('modal-open')
+  }))
+` : ''
   return `(() => {
   const downloadUrls = ${JSON.stringify(downloadUrls)}
-  const interactionData = ${interactions}
   const selectDownload = ${selectDownload.toString()}
   const resolveDownloadRequest = ${resolveDownloadRequest.toString()}
   const localeKey = 'nomi_locale'
-  const pageLocale = document.documentElement.lang
   document.querySelectorAll('[data-locale-choice]').forEach((link) => {
     if (location.hash) {
       const destination = new URL(link.href, location.href)
@@ -53,73 +95,11 @@ export function homepageClientJs(downloadUrls, interactionData) {
     }
   })
 
-  const activateCost = (tab) => {
-    const data = interactionData.cost.find((item) => item.id === tab.dataset.cost)
-    if (!data) return
-    document.querySelectorAll('[data-cost]').forEach((item) => {
-      const selected = item === tab
-      item.setAttribute('aria-selected', String(selected))
-      item.setAttribute('tabindex', selected ? '0' : '-1')
-    })
-    document.querySelector('#cost-panel')?.setAttribute('aria-labelledby', tab.id)
-    document.querySelector('#cost-index').textContent = data.index
-    document.querySelector('#cost-title').textContent = data.title
-    document.querySelector('#cost-copy').textContent = data.description
-    document.querySelector('#cost-proof').textContent = data.proof
-    const image = document.querySelector('#cost-image')
-    image.src = data.image
-    image.alt = data.imageAlt
-  }
-
-  const activateWorkflow = (tab) => {
-    const data = interactionData.workflow.find((item) => item.id === tab.dataset.step)
-    if (!data) return
-    document.querySelectorAll('[data-step]').forEach((item) => {
-      const selected = item === tab
-      item.setAttribute('aria-selected', String(selected))
-      item.setAttribute('tabindex', selected ? '0' : '-1')
-    })
-    document.querySelector('#workflow-panel')?.setAttribute('aria-labelledby', tab.id)
-    const image = document.querySelector('#workflow-image')
-    image.src = data.image
-    image.alt = data.imageAlt
-    document.querySelector('#workflow-caption').textContent = data.caption
-  }
-
-  const bindTabs = (selector, activate) => {
-    const tabs = Array.from(document.querySelectorAll(selector))
-    tabs.forEach((tab, index) => {
-      tab.addEventListener('click', () => activate(tab))
-      tab.addEventListener('keydown', (event) => {
-        const horizontal = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
-        const vertical = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
-        let nextIndex = index + horizontal + vertical
-        if (event.key === 'Home') nextIndex = 0
-        else if (event.key === 'End') nextIndex = tabs.length - 1
-        else if (!horizontal && !vertical) return
-        event.preventDefault()
-        const next = tabs[(nextIndex + tabs.length) % tabs.length]
-        activate(next)
-        next.focus()
-      })
-    })
-  }
-  bindTabs('[data-cost]', activateCost)
-  bindTabs('[data-step]', activateWorkflow)
-
-  document.querySelectorAll('[data-open-dialog]').forEach((trigger) => trigger.addEventListener('click', (event) => {
-    const dialog = document.querySelector('#' + trigger.dataset.openDialog)
-    if (!dialog || typeof dialog.showModal !== 'function') return
-    event.preventDefault()
-    dialog.showModal()
-    document.body.classList.add('modal-open')
-  }))
-  document.querySelectorAll('dialog').forEach((dialog) => {
+${homeOnly}  document.querySelectorAll('dialog').forEach((dialog) => {
     dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())
     dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })
     dialog.addEventListener('close', () => {
       if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open')
-      dialog.querySelector('video')?.pause()
     })
   })
 
@@ -163,7 +143,5 @@ export function homepageClientJs(downloadUrls, interactionData) {
     if (request.url) location.href = request.url
     else showDownloadOptions()
   })
-  document.documentElement.dataset.enhanced = 'true'
-  document.documentElement.dataset.locale = pageLocale
 })()`
 }
