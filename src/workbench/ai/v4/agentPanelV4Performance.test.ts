@@ -6,7 +6,7 @@ import { collapseV4Flow } from './agentPanelV4Collapse'
 import { laneViewModel, type LaneViewModelLabels } from '../lane/laneViewModel'
 import { shareFlowItems } from './useAgentPanelV4Data'
 import { createReactTestRenderer } from './testReactRenderer'
-import type { LanePart, LaneProjection } from '../../../../electron/shared/agentLane/laneContracts'
+import type { LanePart, LaneProjection, LaneUsage } from '../../../../electron/shared/agentLane/laneContracts'
 
 const runtime = vi.hoisted(() => {
   const i18n = { language: 'zh-CN', resolvedLanguage: 'zh-CN' }
@@ -53,15 +53,15 @@ const laneLabels: LaneViewModelLabels = {
   skillLabel: (key) => key,
 }
 
-const usage = {
+const usage: LaneUsage = {
   inputTokens: 0,
   outputTokens: 0,
   cacheReadTokens: 0,
   cacheWriteTokens: 0,
   totalTokens: 0,
-  cost: { state: 'unknown' as const, reason: 'test' },
-  contextTokens: { state: 'unknown' as const, reason: 'test' },
-  reasoningTokens: { state: 'unknown' as const, reason: 'test' },
+  cost: { state: 'unknown', reason: 'no-settled-turn' },
+  contextTokens: { state: 'unknown', reason: 'no-settled-turn' },
+  reasoningTokens: { state: 'unknown', reason: 'no-settled-turn' },
 }
 
 function projection(parts: LanePart[]): LaneProjection {
