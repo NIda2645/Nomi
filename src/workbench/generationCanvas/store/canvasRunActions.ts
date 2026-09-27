@@ -87,11 +87,11 @@ export const createCanvasRunActions: CanvasSliceCreator<CanvasRunActions> = (set
     })
     emitRunUpdated(nodeId)
   },
-  addNodeResult: (nodeId, result) => {
+  addNodeResult: (nodeId, result, mediaDimensions) => {
     set((state) => {
       const node = state.nodes.find((candidate) => candidate.id === nodeId)
       if (!node) return
-      Object.assign(node, nodeRunOutcomePatch(node, { kind: 'result', result }))
+      Object.assign(node, nodeRunOutcomePatch(node, { kind: 'result', result, mediaDimensions }))
       bumpPersistRevision(state)
     })
     emitRunUpdated(nodeId)

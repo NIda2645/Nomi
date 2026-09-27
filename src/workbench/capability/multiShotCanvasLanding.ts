@@ -32,6 +32,7 @@ import { CATEGORY_IDS, type BuiltinCanvasCategoryId, type GenerationNodeKind, ty
 import { persistActiveWorkbenchProjectNow } from '../project/workbenchProjectSession'
 import { createProductionShotTable, readShotTable } from '../../../electron/shared/canvas/shotTable'
 import { isProductionRunRecord } from '../../../electron/shared/productionShotPhase'
+import type { MediaDimensions } from '../generationCanvas/nodes/nodeSizing'
 
 /**
  * 这一镜候选的模型身份（主进程 MaterializeShotCandidateWire 的渲染半）。
@@ -70,6 +71,7 @@ export type MaterializeShotInput = {
   candidate?: MaterializeShotCandidate
   /** 已完成镜的结果（打开项目补齐时一并回填；确认即落时为空）。 */
   result?: GenerationNodeResult
+  mediaDimensions?: MediaDimensions
   /** 没有 result 时：这一镜在节点上的运行状态。 */
   generation?: MaterializeShotGeneration
 }
@@ -340,7 +342,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   for (const shot of ordered) {
     const nodeId = clientIdToNodeId[shot.shotId]
     if (!nodeId) continue
-    if (shot.result) inLandingTxn(() => attachShotResult({ nodeId, result: shot.result! }))
+    if (shot.result) inLandingTxn(() => attachShotResult({ nodeId, result: shot.result!, mediaDimensions: shot.mediaDimensions }))
     else if (shot.generation) inLandingTxn(() => applyShotGeneration(nodeId, shot.generation!))
   }
 
@@ -380,6 +382,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
 export type AttachShotResultPayload = {
   nodeId?: string
   result?: GenerationNodeResult
+  mediaDimensions?: MediaDimensions
 }
 
 export type AttachShotResultOutcome = { attached: true; nodeId: string } | { skipped: 'node-removed' | 'no-result' | 'already-attached' }
@@ -407,7 +410,7 @@ export function attachShotResult(payload: AttachShotResultPayload): AttachShotRe
   if (!node) return { skipped: 'node-removed' }
   const known = [node.result, ...(node.history ?? [])].some((entry) => entry?.id === result.id && entry.url === result.url)
   if (known) return { skipped: 'already-attached' }
-  useGenerationCanvasStore.getState().addNodeResult(nodeId, result)
+  useGenerationCanvasStore.getState().addNodeResult(nodeId, result, payload.mediaDimensions)
   return { attached: true, nodeId }
 }
 

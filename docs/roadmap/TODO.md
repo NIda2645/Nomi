@@ -99,6 +99,7 @@
 | T-CV-24 | ComfyUI 参数行换绑节点后仍留旧的自动名与旧键（hiresFix 开关显示成「随机种子」） | todo | 09-26 协调会话收口 · 卡 task_69303d48 | 自动派生的名与键跟着节点走，手改过的保留 |
 | T-CV-25 | ComfyUI 导入面板自动建议的参数名没走 i18n（英文界面显示「随机种子」）；「检测到视频工作流」一行被挤折行 | todo | 09-26 协调会话收口 · 卡 task_28e66834 | 标签进 i18n + 修折行 |
 | T-CV-26 | ComfyUI 导入 IPC 的 enumOptions 形状在渲染层手抄 5 份，两处消毒的失败策略相反 | todo | 09-26 协调会话收口 · 卡 task_e6f1844d | 契约类型放共享层，一个判据 |
+| T-CV-27 | 生成图在节点里留白边：落地丢了原始宽高 + 画布显示缩略图测量被丢弃 | done | 09-27 用户反馈截图 | 已在 `claude/canvas-media-aspect-from-landing` 收口：共享结果落地、制作/恢复/历史、存量 sidecar 回填；聚焦 Vitest 与 typecheck 通过，详见 `docs/plan/2026-09-27-canvas-media-aspect-from-landing.md` |
 
 ## D. 设计落地（界面大改）
 

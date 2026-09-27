@@ -70,6 +70,7 @@ export type MaterializeShotWire = {
   prompt?: string;
   candidate?: MaterializeShotCandidateWire;
   result?: { id: string; type: "image" | "video"; url: string; createdAt: number; thumbnailUrl?: string; providerUrl?: string; model?: string };
+  mediaDimensions?: { width: number; height: number };
   /** 没有 result 时，这一镜在节点上的运行状态（见 MaterializeShotGenerationWire）。 */
   generation?: MaterializeShotGenerationWire;
 };
@@ -118,6 +119,7 @@ export function materializeShotsSignature(payload: MaterializeShotsWirePayload):
   return JSON.stringify(payload.shots.map((shot) => [
     shot.shotId,
     shot.result?.id ?? null,
+    shot.mediaDimensions ? [shot.mediaDimensions.width, shot.mediaDimensions.height] : null,
     shot.generation ? [shot.generation.state, "runRecordId" in shot.generation ? shot.generation.runRecordId : null] : null,
     shot.candidate?.revision ?? null,
   ]));
@@ -216,6 +218,7 @@ export function buildMaterializeShotsPayload(
     if (resolvedShotId && (job.status === "ready" || job.status === "adopted")) jobByShot.set(resolvedShotId, job.jobId);
   }
   const resultByShot = new Map<string, MaterializeShotWire["result"]>();
+  const dimensionsByShot = new Map<string, { width: number; height: number }>();
   if (deps.projectRoot) {
     for (const [shotId, jobId] of jobByShot.entries()) {
       const artifact = run.artifacts.find((candidate) => candidate.jobId === jobId && (candidate.kind === "image" || candidate.kind === "video") && (candidate.status === "ready" || candidate.status === "adopted"));
@@ -237,6 +240,7 @@ export function buildMaterializeShotsPayload(
           // 用产物自己的时刻：同一份产物每次投影都是同一个结果（幂等），「已保存」回执也不会在重开项目时再冒一次。
           createdAt: Number.isFinite(createdAt) ? createdAt : 0,
         });
+        if (artifact.width && artifact.height) dimensionsByShot.set(shotId, { width: artifact.width, height: artifact.height });
       } catch {
         // 文件缺失/越界 → 跳过这镜的 result（占位仍落，只是没回填），不阻断整批。
       }
@@ -255,6 +259,7 @@ export function buildMaterializeShotsPayload(
       prompt: shot.candidate?.prompt ?? "",
       ...(shot.candidate ? { candidate: candidateWire(shot.candidate) } : {}),
       ...(result ? { result } : {}),
+      ...(result && dimensionsByShot.get(shot.shotId) ? { mediaDimensions: dimensionsByShot.get(shot.shotId) } : {}),
       ...(generation ? { generation } : {}),
     };
   });

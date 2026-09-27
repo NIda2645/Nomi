@@ -11,7 +11,7 @@ import type { GenerationProviderOutput } from "./generationRuntimeAdapter";
 
 type StoredAsset = {
   id?: unknown;
-  data?: { relativePath?: unknown; thumbnailRelativePath?: unknown; contentType?: unknown };
+  data?: { relativePath?: unknown; thumbnailRelativePath?: unknown; contentType?: unknown; width?: unknown; height?: unknown };
 };
 
 export type GenerationOutputMaterializerDependencies = {
@@ -38,6 +38,8 @@ export type GenerationOutputMaterializationReceipt = {
   contentHash: string;
   projectRelativePath: string;
   thumbnailRelativePath?: string;
+  width?: number;
+  height?: number;
 };
 
 function extensionFor(kind: GenerationProviderOutput["kind"]): string {
@@ -116,6 +118,8 @@ export function createGenerationOutputMaterializer(deps: GenerationOutputMateria
     const artifactId = typeof stored.id === "string" ? stored.id.trim() : "";
     const projectRelativePath = typeof stored.data?.relativePath === "string" ? stored.data.relativePath.trim() : "";
     const thumbnailRelativePath = typeof stored.data?.thumbnailRelativePath === "string" ? stored.data.thumbnailRelativePath.trim() : "";
+    const width = typeof stored.data?.width === "number" && Number.isFinite(stored.data.width) ? stored.data.width : undefined;
+    const height = typeof stored.data?.height === "number" && Number.isFinite(stored.data.height) ? stored.data.height : undefined;
     if (!artifactId || !projectRelativePath) throw new Error("Asset store returned an incomplete generation receipt");
     let posterPath = thumbnailRelativePath;
     if (!posterPath && input.output.kind === "video" && input.output.thumbnailUrl) {
@@ -134,6 +138,7 @@ export function createGenerationOutputMaterializer(deps: GenerationOutputMateria
       contentHash: contentHash(bytes),
       projectRelativePath,
       ...(posterPath ? { thumbnailRelativePath: posterPath } : {}),
+      ...(width && height ? { width, height } : {}),
     };
   }
 

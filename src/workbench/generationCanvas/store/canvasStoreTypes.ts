@@ -16,6 +16,7 @@ import type { CanvasWorkflowTemplate } from '../plugins/canvasWorkflowTemplates'
 import type { WorkbenchAiMessage } from '../../ai/workbenchAiTypes'
 import type { EdgeCapabilityResult } from '../agent/referenceEdgeCapability'
 import type { CanvasMutationOptions } from './canvasGuards'
+import type { MediaDimensions } from '../nodes/nodeSizing'
 import type { NodeProgressInput, NodeRunRecordInput, NodeRunRecordPatch } from './runRecordHelpers'
 
 export type ConnectionAnchorSide = 'left' | 'right'
@@ -128,7 +129,7 @@ export type CanvasRunActions = {
   setNodeProgress: (nodeId: string, progress?: NodeProgressInput) => void
   appendNodeRun: (nodeId: string, run: NodeRunRecordInput) => GenerationNodeRunRecord
   trackNodeRun: (nodeId: string, runId: string, patch: NodeRunRecordPatch) => void
-  addNodeResult: (nodeId: string, result: GenerationNodeResult) => void
+  addNodeResult: (nodeId: string, result: GenerationNodeResult, mediaDimensions?: MediaDimensions) => void
   rollbackHistory: (nodeId: string, resultId: string) => void
 }
 

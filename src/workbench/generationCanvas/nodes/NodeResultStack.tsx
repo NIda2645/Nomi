@@ -24,6 +24,9 @@ import { DeferredNodeVideo } from './DeferredNodeMedia'
 import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 import { useResultDownload } from './useResultDownload'
 import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
+import { getDesktopBridge } from '../../../desktop/bridge'
+import { computeMediaMetaPatch } from './nodeSizing'
+import { findCanvasResultMediaDimensions } from '../../project/projectMediaMigration'
 import { reworkProductionShot } from '../../production/productionShotActions'
 import { historyVideoTimeFromPointer, nudgeHistoryVideoTime } from './historyVideoScrub'
 import { resolveResultStackPlacement, type ResultStackPlacement } from './nodeResultStackPlacement'
@@ -321,9 +324,34 @@ export function NodeResultStack({
 
   if (!showStack) return null
 
-  const switchTo = (entry: GenerationNodeResult): void => {
+  const switchTo = async (entry: GenerationNodeResult): Promise<void> => {
     if (readOnly || resultIdentity(entry) === currentId) return
-    updateNode(node.id, { result: entry, status: 'success', error: undefined })
+    const project = withProjectAction((loaded) => loaded)
+    let meta: Record<string, unknown> | undefined
+    if (project) {
+      try {
+        const assets = [] as Array<{ id?: string; data?: Record<string, unknown> }>
+        let cursor: string | null = null
+        do {
+          const desktop = getDesktopBridge()
+          if (!desktop?.assets?.list) break
+          const page = await desktop.assets.list({ projectId: project.binding.projectId, cursor, limit: 500 })
+          if (!page) break
+          assets.push(...page.items)
+          cursor = page.cursor || null
+        } while (cursor)
+        if (isProjectExecutionContextCurrent(project)) {
+          const dimensions = findCanvasResultMediaDimensions(entry, assets)
+          const patch = dimensions
+            ? computeMediaMetaPatch({ resultType: entry.type, meta: node.meta || {}, ...dimensions, durationSeconds: entry.durationSeconds })
+            : null
+          if (patch) meta = patch.meta
+        }
+      } catch {
+        // Result switching remains usable when an old sidecar cannot be read.
+      }
+    }
+    updateNode(node.id, { result: entry, ...(meta ? { meta } : {}), status: 'success', error: undefined })
   }
 
   const remove = async (entry: GenerationNodeResult): Promise<void> => {

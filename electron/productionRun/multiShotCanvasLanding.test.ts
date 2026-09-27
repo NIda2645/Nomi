@@ -57,12 +57,13 @@ describe('buildMaterializeShotsPayload', () => {
     fs.mkdirSync(path.dirname(path.join(projectRoot, rel)), { recursive: true })
     fs.writeFileSync(path.join(projectRoot, rel), 'fake-mp4')
     const jobs: ProductionJob[] = [{ jobId: 'job-s1', stageId: 'generate', status: 'ready', attempt: 1, provider: 'apimart', model: 'video', idempotencyKey: 'k', metadata: { shotId: 's1' }, createdAt: NOW, updatedAt: NOW }]
-    const artifacts: ProductionArtifact[] = [{ artifactId: 'art-1', stageId: 'generate', jobId: 'job-s1', kind: 'video', status: 'ready', version: 1, projectRelativePath: rel, createdAt: NOW }]
+    const artifacts: ProductionArtifact[] = [{ artifactId: 'art-1', stageId: 'generate', jobId: 'job-s1', kind: 'video', status: 'ready', version: 1, projectRelativePath: rel, width: 1920, height: 1080, createdAt: NOW }]
     const r = run([shot('s1', { role: 'shot' })], jobs, artifacts)
     const payload = buildMaterializeShotsPayload(r, { projectRoot })
     const s1 = payload!.shots.find((s) => s.shotId === 's1')
     expect(s1?.result?.url.startsWith('nomi-local://')).toBe(true)
     expect(s1?.result?.type).toBe('video')
+    expect(s1?.mediaDimensions).toEqual({ width: 1920, height: 1080 })
     fs.rmSync(projectRoot, { recursive: true, force: true })
   })
 
@@ -150,7 +151,7 @@ describe('buildMaterializeShotsPayload projects each shot\'s run state onto its 
     fs.writeFileSync(path.join(projectRoot, rel), 'fake-mp4')
     fs.writeFileSync(path.join(projectRoot, poster), 'fake-png')
     try {
-      const artifacts: ProductionArtifact[] = [{ artifactId: 'art-1', stageId: 'generate', jobId: 'job-s1', kind: 'video', status: 'ready', version: 1, projectRelativePath: rel, thumbnailRelativePath: poster, createdAt: NOW }]
+      const artifacts: ProductionArtifact[] = [{ artifactId: 'art-1', stageId: 'generate', jobId: 'job-s1', kind: 'video', status: 'ready', version: 1, projectRelativePath: rel, thumbnailRelativePath: poster, width: 1600, height: 900, createdAt: NOW }]
       const payload = buildMaterializeShotsPayload(run([shot('s1')], [job('s1', 'ready')], artifacts), { projectRoot })
       const s1 = payload!.shots[0]
       expect(s1.generation).toBeUndefined()
@@ -161,6 +162,7 @@ describe('buildMaterializeShotsPayload projects each shot\'s run state onto its 
         thumbnailUrl: `nomi-local://asset/proj-1/${poster}`,
         createdAt: Date.parse(NOW),
       })
+      expect(s1.mediaDimensions).toEqual({ width: 1600, height: 900 })
     } finally {
       fs.rmSync(projectRoot, { recursive: true, force: true })
     }

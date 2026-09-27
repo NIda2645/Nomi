@@ -4,13 +4,13 @@
 // （runner/runProjectDelivery）共用这里：同一个结局，无论落进活的 store 还是关闭项目的盘上副本，
 // 节点长得一样，不存在第二份合并规则。
 import { textDocumentDigest } from '../runner/textGenerationDocument'
-import { resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { computeMediaMetaPatch, resolveNodeVisualSize, type MediaDimensions } from '../nodes/nodeSizing'
 import type { GenerationCanvasNode, GenerationNodeResult, GenerationNodeRunRecord, GenerationNodeStatus, TiptapDocJson } from '../model/generationCanvasTypes'
 import { createProgress, getResultTaskKind, mergeRunRecord, type NodeProgressInput } from './runRecordHelpers'
 import { describeOpaqueFailure } from '../../observability/opaqueFailure'
 
 export type NodeRunOutcome =
-  | Readonly<{ kind: 'result'; result: GenerationNodeResult }>
+  | Readonly<{ kind: 'result'; result: GenerationNodeResult; mediaDimensions?: MediaDimensions }>
   | Readonly<{ kind: 'status'; status: GenerationNodeStatus; error?: string }>
   /** 一次运行开始（记录已规范化：id/startedAt/updatedAt/durationSeconds 已定）。 */
   | Readonly<{ kind: 'run-started'; run: GenerationNodeRunRecord }>
@@ -41,7 +41,7 @@ function mergeResultHistory(
   return history
 }
 
-function resultPatch(node: GenerationCanvasNode, result: GenerationNodeResult): NodeRunOutcomePatch {
+function resultPatch(node: GenerationCanvasNode, result: GenerationNodeResult, mediaDimensions?: MediaDimensions): NodeRunOutcomePatch {
   const latestRun = node.runs?.[0]
   const patch: NodeRunOutcomePatch = {}
   // Freeze the existing visual footprint before switching from placeholder to result.
@@ -51,6 +51,10 @@ function resultPatch(node: GenerationCanvasNode, result: GenerationNodeResult): 
     patch.size = footprint
     patch.meta = { ...node.meta, previewHeight: footprint.height }
   }
+  const mediaMetaPatch = mediaDimensions
+    ? computeMediaMetaPatch({ resultType: result.type, meta: patch.meta ?? node.meta ?? {}, ...mediaDimensions, durationSeconds: result.durationSeconds })
+    : null
+  if (mediaMetaPatch) patch.meta = mediaMetaPatch.meta
   const completedAt = result.createdAt || Date.now()
   patch.runs = latestRun
     ? [
@@ -126,7 +130,7 @@ function progressPatch(node: GenerationCanvasNode, progress: NodeProgressInput |
 /** 这个结局落到节点上要改哪些字段（store 用 Object.assign 应用到草稿；盘上副本 spread 成新节点）。 */
 export function nodeRunOutcomePatch(node: GenerationCanvasNode, outcome: NodeRunOutcome): NodeRunOutcomePatch {
   switch (outcome.kind) {
-    case 'result': return resultPatch(node, outcome.result)
+    case 'result': return resultPatch(node, outcome.result, outcome.mediaDimensions)
     case 'status': return statusPatch(node, outcome.status, outcome.error)
     case 'run-started': return runStartedPatch(node, outcome.run)
     case 'progress': return progressPatch(node, outcome.progress)

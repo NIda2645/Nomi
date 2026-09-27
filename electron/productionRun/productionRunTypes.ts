@@ -352,6 +352,8 @@ export type ProductionArtifact = {
   skillEvidence?: Array<{ name: string; version: string; stageId: string }>;
   projectRelativePath?: string;
   thumbnailRelativePath?: string;
+  width?: number;
+  height?: number;
   createdAt: string;
   adoptedAt?: string;
 };

@@ -363,9 +363,10 @@ describe('materializeShots writes each shot\'s run state into the node itself', 
     expect(node(id).status).toBe('running')
     expect(node(id).runs?.[0]).toMatchObject({ id: 'production-job-1', status: 'running' })
 
-    await land({ result: { id: 'production-job-1', type: 'video', url: 'nomi-local://asset/p/v.mp4', createdAt: 2_000 } }, true)
+    await land({ result: { id: 'production-job-1', type: 'video', url: 'nomi-local://asset/p/v.mp4', createdAt: 2_000 }, mediaDimensions: { width: 1920, height: 1080 } }, true)
     expect(node(id).status).toBe('success')
     expect(node(id).result?.url).toBe('nomi-local://asset/p/v.mp4')
+    expect(node(id).meta).toMatchObject({ videoWidth: 1920, videoHeight: 1080, videoAspectRatio: 16 / 9 })
     expect(node(id).runs?.[0]).toMatchObject({ id: 'production-job-1', status: 'success' })
     expect(node(id).runs).toHaveLength(1)
   })

@@ -177,6 +177,9 @@ export function mediaNodeSize(
 
 export type MediaMetaPatch = { meta: Record<string, unknown> };
 
+/** Intrinsic dimensions supplied by an asset/result boundary. */
+export type MediaDimensions = { width: number; height: number };
+
 /** Decoded dimensions are derived state, not a user edit or a full-project save. */
 export const MEDIA_DIMENSION_UPDATE_OPTIONS = { persist: false, emit: false, history: false } as const;
 
@@ -201,6 +204,13 @@ export function computeMediaMetaPatch(params: {
     ? { videoWidth: width, videoHeight: height, videoAspectRatio: width / height,
         ...(nextDuration !== null ? { videoDuration: nextDuration } : {}) }
     : { imageWidth: width, imageHeight: height, imageAspectRatio: width / height }) } };
+}
+
+/** Validate an asset-side dimension pair without ever accepting preview geometry. */
+export function readMediaDimensions(width: unknown, height: unknown): MediaDimensions | null {
+    const parsedWidth = readFiniteNumber(width);
+    const parsedHeight = readFiniteNumber(height);
+    return parsedWidth && parsedHeight ? { width: parsedWidth, height: parsedHeight } : null;
 }
 
 /** Feasible ratio-locked bounds; extreme frames may have a short edge below the generic minimum. */

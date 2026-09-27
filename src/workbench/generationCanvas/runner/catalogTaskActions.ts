@@ -498,7 +498,7 @@ async function runCatalogGenerationTaskWithFeedback(
     report('requesting')
     const streamed = await runTextStream(vendor, request, projectId, { onDelta: options.onTextDelta })
     report('finalizing', streamed.id)
-    return normalizeCatalogTaskResult(streamed, executableNode)
+    return normalizeCatalogTaskResult(streamed, executableNode, options.onMediaDimensions)
   }
 
   const runTask = options.runTask || runWorkbenchTaskByVendor
@@ -554,8 +554,8 @@ async function runCatalogGenerationTaskWithFeedback(
     if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
   }
   report('finalizing', initialResult.id)
-  const normalized = normalizeCatalogTaskResult(finalResult, executableNode)
+  const normalized = normalizeCatalogTaskResult(finalResult, executableNode, options.onMediaDimensions)
   // 结构闸：主进程漏本地化时，按运行提交时固定的项目补一次本地化，绝不让厂商临时 URL 落进节点
   // → 隔天过期播不了。切项目后结果仍落原项目。主进程已落地时这里判为非 http，零开销 no-op。
-  return localizeRemoteResultUrl(normalized, projectId, executableNode.id)
+  return localizeRemoteResultUrl(normalized, projectId, executableNode.id, options.onMediaDimensions)
 }
