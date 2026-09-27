@@ -106,7 +106,7 @@ async function auditStandardCase(browser, testCase) {
     businessLink: Boolean(document.querySelector('a[href*="business_inquiry.yml"]')),
     discussionsLink: Boolean(document.querySelector('a[href*="/issues"]')),
     wechatText: (document.body.textContent || '').includes('TZ857886159'),
-    filmPlayer: Boolean(document.querySelector('.hero [data-film] [data-film-play]')),
+    filmPlayer: Boolean(document.querySelector('.hero video[data-film][controls][poster]')) && Boolean(document.querySelector('.hero [data-film-play]:not([hidden])')),
     segments: Array.from(document.querySelectorAll('video[data-segment]')).map((video) => ({
       start: Number(video.dataset.start),
       end: Number(video.dataset.end),
@@ -151,12 +151,10 @@ async function auditStandardCase(browser, testCase) {
       return Boolean(link && getComputedStyle(link).display !== 'none')
     })(),
     logoLoaded: (document.querySelector('.brand img')?.naturalWidth || 0) > 0,
-    posterLoaded: (document.querySelector('.film-poster')?.naturalWidth || 0) > 0,
     // 首屏片子窗口 + 六个功能段：都是 16:9 的有界画框，不让媒体霸占整屏。
-    mediaFrames: ['.film', ...Array.from(document.querySelectorAll('.node-frame')).map((_, index) => `.feature:nth-of-type(${index + 1}) .node-frame`)].map((selector) => {
-      const frame = document.querySelector(selector)
-      const rect = frame?.getBoundingClientRect()
-      return { selector, width: rect?.width || 0, height: rect?.height || 0 }
+    mediaFrames: Array.from(document.querySelectorAll('.film, .node-frame')).map((frame) => {
+      const rect = frame.getBoundingClientRect()
+      return { width: rect.width, height: rect.height }
     }),
   }))
   assert(facts.overflow <= 1, `${testCase.name}: no horizontal overflow`)
@@ -197,7 +195,7 @@ async function auditStandardCase(browser, testCase) {
   )
   assert(!facts.heroFilmTrigger, `${testCase.name}: retired launch-film dialog trigger stays removed`)
   assert(facts.macNoticeVisible, `${testCase.name}: macOS signing warning is visible before download`)
-  assert(facts.logoLoaded && facts.posterLoaded, `${testCase.name}: logo and film poster render`)
+  assert(facts.logoLoaded, `${testCase.name}: logo renders`)
   assert(
     facts.mediaFrames.length === 7 &&
       facts.mediaFrames.every((frame) => frame.width > frame.height && Math.abs(frame.width / frame.height - 16 / 9) < 0.02),
@@ -215,12 +213,14 @@ async function auditStandardCase(browser, testCase) {
 
   if (testCase.name === 'zh-desktop') {
     // 首屏整片：点了才出声播放；功能段：滚到眼前自己在对应秒数里循环。
+    // 点样张里那颗「播放宣传片（有声音）」：原生播放器开播，按钮自己消失。
     await page.locator('[data-film-play]').click()
     await page.waitForFunction(() => {
       const video = document.querySelector('.film-video')
       return Boolean(video && !video.paused && video.currentTime > 0.2)
     })
-    assert(await page.locator('.film-video').evaluate((video) => !video.muted && video.controls), 'hero film plays with sound and controls after the click')
+    assert(await page.locator('.film-video').evaluate((video) => !video.muted && video.controls), 'hero film plays with sound and controls once the user starts it')
+    assert((await page.locator('[data-film-play]').count()) === 0, 'the play pill steps aside once the film is playing')
     await page.locator('.film-video').evaluate((video) => video.pause())
     const storyboard = page.locator('[data-feature="storyboard"] video')
     await storyboard.scrollIntoViewIfNeeded()
@@ -303,7 +303,8 @@ async function auditNoJavaScript(browser, pathName, locale, claim) {
   const releasesListing = await page.locator('a[href="https://github.com/aqm857886159/Nomi/releases/latest"]').count()
   const heroGithub = await page.locator('[data-github-hero]').count()
   const heroFilm = await page.locator('.hero [data-open-dialog="launch-film"]').count()
-  const noScriptFilm = await page.locator('.hero noscript').count()
+  const noScriptFilm = await page.locator('.hero video[data-film][controls]').count()
+  const noScriptPill = await page.locator('.hero [data-film-play]').isVisible()
   const qr = await page.locator('#community-qr img').getAttribute('src')
   const business = await page.locator('a[href*="business_inquiry.yml"]').count()
   const installGuide = (await page.locator('.download-fallback [data-mac-install-guide]').textContent()) || ''
@@ -312,7 +313,7 @@ async function auditNoJavaScript(browser, pathName, locale, claim) {
     downloadTriggers === 2 && directDownloads >= 3 && releasesListing === 0,
     `${locale}: no-JS direct downloads remain without a Releases detour`,
   )
-  assert(heroGithub === 1 && heroFilm === 0 && noScriptFilm === 1, `${locale}: no-JS hero keeps the GitHub path and a plain film fallback`)
+  assert(heroGithub === 1 && heroFilm === 0 && noScriptFilm === 1 && !noScriptPill, `${locale}: no-JS hero keeps the GitHub path and a playable native film`)
   assert(qr === '/assets/group-wechat-2026-10-01.jpg' && business > 0, `${locale}: no-JS QR and project paths remain`)
   assert(
     installGuide.includes('xattr -dr com.apple.quarantine') && /official|官方/.test(installGuide),

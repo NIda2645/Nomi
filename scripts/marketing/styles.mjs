@@ -1,6 +1,7 @@
 // 官网样式：沿用 Nomi 软件本身的设计语言（纸色底、墨色字、Nomi 蓝做唯一强调色，
 // 英文 Fraunces、中文 Noto Sans SC；页面底是一张画布的点阵）。样张：https://claude.ai/artifact/UpqjKQGtiN9hMkrCpwqn6r
-export const homepageCss = `
+/** 两页共用：设计 token、排版、按钮、顶栏、页脚、下载选项、弹窗。 */
+const baseCss = `
 :root {
   --ground: #faf9f6;
   --paper: #ffffff;
@@ -68,7 +69,6 @@ img, video { max-width: 100%; display: block; }
 
 .eyebrow { margin: 0; font-family: var(--font-ui); font-size: 13px; font-weight: 500; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; }
 .display { margin: 14px 0 0; font-weight: 900; letter-spacing: -0.01em; text-wrap: balance; font-size: clamp(40px, 5.4vw, 68px); line-height: 1.12; }
-.display span, .display em { display: inline; }
 .display em { font-style: normal; color: var(--accent); }
 html[lang="en"] .display { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.02em; line-height: 1.04; }
 .lede { margin: 22px 0 0; font-size: 19px; line-height: 1.75; color: var(--ink-2); max-width: 30em; }
@@ -89,8 +89,6 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
 .button.quiet { background: var(--paper); color: var(--ink); border-color: var(--line); }
 .button.quiet:hover { border-color: var(--ink-4); }
 .button.small { padding: 9px 15px; font-size: 14px; }
-.button.on-dark { color: var(--ground); border-color: color-mix(in srgb, var(--ground) 30%, transparent); }
-.button.on-dark:hover { border-color: var(--ground); }
 
 .site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft); }
 .nav { display: flex; align-items: center; gap: 28px; height: 60px; }
@@ -113,6 +111,39 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
   .nav { gap: 12px; }
 }
 
+.block { padding-block: 72px; }
+@media (max-width: 760px) { .block { padding-block: 48px; } }
+.block-head { max-width: 44rem; }
+
+.footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+.footer a { text-decoration: none; }
+.footer a:hover { color: var(--ink); }
+
+.download-options { display: grid; gap: 8px; margin-top: 14px; }
+.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); text-decoration: none; font-family: var(--font-ui); }
+.download-option:hover { border-color: var(--ink-4); }
+.download-option strong { display: block; font-size: 15px; }
+.download-option small { display: block; color: var(--ink-3); font-size: 12px; }
+.download-option > span:last-child { color: var(--accent); font-weight: 600; font-size: 13px; white-space: nowrap; }
+.mac-install-guide { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius); background: var(--line-soft); font-size: 14px; color: var(--ink-2); }
+.mac-install-guide p, .mac-install-guide ol { margin: 8px 0 0; }
+.mac-install-guide ol { padding-left: 20px; }
+.mac-install-command { display: block; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--paper); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.download-fallback { padding-block: 40px; }
+
+dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 0; background: var(--ground); color: var(--ink); box-shadow: var(--shadow-window); }
+dialog::backdrop { background: rgb(20 18 16 / 0.45); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); font-family: var(--font-ui); }
+.dialog-close { background: none; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--ink-3); padding: 4px 8px; }
+.dialog-body { padding: 16px 18px 20px; overflow-y: auto; }
+.dialog-body > p { margin: 0; color: var(--ink-2); font-size: 14px; }
+`
+
+/** 只有首页用：首屏片子窗口、价差、功能段、文件夹、愿景与社区。 */
+const homeCss = `
+.button.on-dark { color: var(--ground); border-color: color-mix(in srgb, var(--ground) 30%, transparent); }
+.button.on-dark:hover { border-color: var(--ground); }
 .hero { padding-block: 72px 56px; }
 .hero-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; }
 @media (max-width: 960px) { .hero-grid { grid-template-columns: 1fr; gap: 40px; } .hero { padding-block: 44px 36px; } }
@@ -120,21 +151,16 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
 .hero-meta { margin: 18px 0 0; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
 .mac-download-note { margin: 6px 0 0; font-size: 13px; color: var(--ink-3); }
 .mac-download-note a { color: var(--accent); }
-
 .window { margin: 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-window); overflow: hidden; }
 .window-bar { display: flex; align-items: center; gap: 7px; height: 34px; padding-inline: 14px; border-bottom: 1px solid var(--line-soft); }
 .window-bar i { width: 10px; height: 10px; border-radius: 50%; background: var(--line); }
 .window-bar span { margin-left: 10px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); }
 .film { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: #111; }
-.film-poster, .film-video { width: 100%; height: 100%; object-fit: cover; }
-.film-play { position: absolute; inset: 0; display: flex; align-items: flex-end; justify-content: flex-end; background: none; border: 0; cursor: pointer; padding: clamp(10px, 2vw, 18px); }
-.film-play span { display: inline-flex; align-items: center; gap: 10px; background: var(--ink); color: var(--ground); font-family: var(--font-ui); font-weight: 600; font-size: 15px; padding: 12px 20px 12px 16px; border-radius: 999px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.25); }
-.film-play:hover span { background: var(--ink-2); }
-
-.block { padding-block: 72px; }
-@media (max-width: 760px) { .block { padding-block: 48px; } }
-.block-head { max-width: 44rem; }
-
+.film-video { width: 100%; height: 100%; object-fit: cover; }
+/* 样张里的「播放宣传片（有声音）」：放在右侧图片区上方，不压海报标题、不压原生控件条。脚本在才显示。 */
+.film-play { position: absolute; right: clamp(12px, 3%, 28px); top: 38%; display: inline-flex; align-items: center; gap: 10px; border: 0; cursor: pointer; background: var(--ink); color: var(--ground); font-family: var(--font-ui); font-weight: 600; font-size: 15px; padding: 12px 20px 12px 16px; border-radius: 999px; box-shadow: 0 10px 30px rgb(0 0 0 / 0.25); }
+.film-play:hover { background: var(--ink-2); }
+@media (max-width: 560px) { .film-play { font-size: 13px; padding: 8px 13px 8px 11px; top: 24%; } }
 .gap-card { margin-top: 36px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 32px clamp(20px, 4vw, 44px); }
 .bar-row + .bar-row { margin-top: 26px; }
 .bar-label { font-size: 15px; color: var(--ink-3); }
@@ -146,9 +172,7 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
 @media (max-width: 820px) { .facts { grid-template-columns: 1fr; } }
 .fact { padding: 18px 20px 4px; border-top: 2px solid var(--ink); }
 .fact h3 { margin: 0; font-size: 17px; font-weight: 700; }
-html[lang="en"] .fact h3 { font-family: var(--font-ui); }
 .fact p { margin: 6px 0 0; font-size: 15px; color: var(--ink-3); }
-
 .feature { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; padding-block: 44px; }
 .feature.flip .feature-text { order: 2; }
 @media (max-width: 960px) { .feature, .feature.flip { grid-template-columns: 1fr; gap: 20px; padding-block: 32px; } .feature.flip .feature-text { order: 0; } }
@@ -163,7 +187,6 @@ html[lang="en"] .feature h3 { font-family: var(--font-en); font-weight: 600; let
 .node-frame::before { left: 6px; }
 .node-frame::after { right: 6px; }
 .segment-time { position: absolute; right: 10px; bottom: 10px; z-index: 2; font-family: var(--font-ui); font-size: 11px; color: #fff; background: rgb(20 18 16 / 0.62); padding: 2px 7px; border-radius: 6px; font-variant-numeric: tabular-nums; }
-
 .open-grid { margin-top: 32px; display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 40px; align-items: start; }
 @media (max-width: 900px) { .open-grid { grid-template-columns: 1fr; } }
 .tree { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 24px 26px; font-family: var(--font-mono); font-size: 15px; line-height: 2; overflow-x: auto; }
@@ -175,7 +198,6 @@ html[lang="en"] .tree .note { font-family: var(--font-ui); }
 .checks li { padding-left: 26px; position: relative; color: var(--ink-2); }
 .checks li::before { content: ""; position: absolute; left: 0; top: 0.62em; width: 12px; height: 7px; border-left: 2px solid var(--accent); border-bottom: 2px solid var(--accent); transform: rotate(-45deg); }
 .open-actions { margin-top: 24px; display: flex; flex-wrap: wrap; gap: 12px; }
-
 .vision { background: var(--ink); color: var(--ground); border-radius: var(--radius-lg); padding: clamp(28px, 5vw, 56px); display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: 40px; align-items: center; }
 @media (max-width: 900px) { .vision { grid-template-columns: 1fr; } }
 .vision .eyebrow { color: color-mix(in srgb, var(--ground) 60%, transparent); }
@@ -189,12 +211,12 @@ html[lang="en"] .tree .note { font-family: var(--font-ui); }
 .teams h3 { margin: 0; font-size: 18px; }
 .teams p { margin: 4px 0 0; color: var(--ink-3); font-size: 15px; }
 .teams .hero-actions { margin-top: 0; }
+.qr-content { display: grid; justify-items: center; gap: 12px; text-align: center; }
+.qr-content img { width: min(240px, 70vw); height: auto; border-radius: var(--radius); background: #fff; padding: 8px; }
+`
 
-.footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
-.footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
-.footer a { text-decoration: none; }
-.footer a:hover { color: var(--ink); }
-
+/** 只有快速上手用：步骤、截图、常见问题。 */
+const quickstartCss = `
 .qs-hero { padding-block: 64px 8px; }
 .steps { list-style: none; margin: 0; padding: 0; }
 .step { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; padding-block: 40px; border-top: 1px solid var(--line); align-items: start; }
@@ -220,25 +242,9 @@ html[lang="en"] .tree .note { font-family: var(--font-ui); }
 .faq p { margin: 10px 0 0; color: var(--ink-2); max-width: 44em; }
 .more { margin: 28px 0 0; color: var(--ink-3); font-size: 15px; }
 .more a { color: var(--accent); }
-
-.download-options { display: grid; gap: 8px; margin-top: 14px; }
-.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); text-decoration: none; font-family: var(--font-ui); }
-.download-option:hover { border-color: var(--ink-4); }
-.download-option strong { display: block; font-size: 15px; }
-.download-option small { display: block; color: var(--ink-3); font-size: 12px; }
-.download-option > span:last-child { color: var(--accent); font-weight: 600; font-size: 13px; white-space: nowrap; }
-.mac-install-guide { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius); background: var(--line-soft); font-size: 14px; color: var(--ink-2); }
-.mac-install-guide p, .mac-install-guide ol { margin: 8px 0 0; }
-.mac-install-guide ol { padding-left: 20px; }
-.mac-install-command { display: block; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--paper); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.download-fallback { padding-block: 40px; }
-
-dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 0; background: var(--ground); color: var(--ink); box-shadow: var(--shadow-window); }
-dialog::backdrop { background: rgb(20 18 16 / 0.45); }
-.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); font-family: var(--font-ui); }
-.dialog-close { background: none; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--ink-3); padding: 4px 8px; }
-.dialog-body { padding: 16px 18px 20px; overflow-y: auto; }
-.dialog-body > p { margin: 0; color: var(--ink-2); font-size: 14px; }
-.qr-content { display: grid; justify-items: center; gap: 12px; text-align: center; }
-.qr-content img { width: min(240px, 70vw); height: auto; border-radius: var(--radius); background: #fff; padding: 8px; }
 `
+
+/** 每页只带自己用得到的样式（评审：快速上手曾把首页的样式整份带上）。 */
+export function pageCss(pageKey) {
+  return baseCss + (pageKey === 'home' ? homeCss : quickstartCss)
+}

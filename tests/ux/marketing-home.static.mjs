@@ -83,8 +83,9 @@ for (const html of [zh, en]) {
   expect(html.includes('target="_blank" rel="noreferrer"'), 'external links open safely')
 
   // 宣传片：首屏整片（点了才加载），功能段六段都指向同一个文件的不同秒数。
-  expect(html.includes(`data-film-src="${film}"`), 'hero film player points at the 0.22 film')
-  expect(html.includes('data-film-play'), 'hero film starts only on an explicit click')
+  // 原生播放器：preload=none 点了才加载，controls 自带播放与声音，不用 JS 也能看。
+  expect(new RegExp(`<video class="film-video" data-film src="${film.replaceAll('.', '\\.')}" poster="[^"]+" controls preload="none"`).test(html), 'hero film is a native player that loads only on play')
+  expect(html.includes('data-film-play hidden'), 'the approved play pill ships hidden and only appears when the script can drive it')
   expect(!html.includes('data-open-dialog="launch-film"'), 'retired launch-film dialog is not wired')
   const segments = [...html.matchAll(/<video class="segment" data-segment data-start="(\d+)" data-end="(\d+)" src="([^"]+)" poster="([^"]+)" muted playsinline preload="none"/g)]
   expect(segments.length === 6, 'six feature segments exist')
@@ -143,6 +144,7 @@ for (const html of [zhQuickstart, enQuickstart]) {
   expect(html.includes(`"softwareVersion":"${releaseVersion}"`), 'quickstart structured data matches the release version')
   expect(html.includes('macOS 12+'), 'quickstart states the macOS minimum version')
   expect(!html.includes("if (location.pathname !== '/') return"), 'quickstart does not redirect by browser language')
+  expect(!html.includes('data-segment') && !html.includes('author-dialog') && !html.includes('.feature {'), 'quickstart carries no homepage-only markup, script, or styles')
   expect(!/<a[^>]+href="https:\/\/github\.com\/aqm857886159\/Nomi\/releases\/latest"/.test(html), 'quickstart never links to the Releases listing for downloads')
 }
 
