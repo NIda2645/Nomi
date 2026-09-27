@@ -60,6 +60,14 @@
 | T-AG-30 | 「生成全部」仍把 Agent 在跑的镜头算进去 | todo（先核实，多半已被 #875 修掉） | 09-26 协调会话收口 · 卡 task_3c59a3c1 | 真机核一遍，已修就改 done #875 |
 | T-AG-31 | 让 Agent「加一个图片节点，先别生成」：节点当场建好了，它却说「现在画布上还没有节点」 | todo（下一版） | 09-26 协调会话 v0.22.1 RC 安装包验收（Agent 三回合真对话，截图 `02-turn-create`） | 与 T-ED-02 同一族：**回执写死**。`electron/agentLane/laneExtendedTools.ts:82` 的 `nextActionFor` 在 `draft_shots` 成功时无条件回「Saving does not imply canvas placement」；可画布 Agent 的草稿每次改动都经 `productionGenerationOperationStore` 的 `onPlanChanged` → `canvasLandingHost.landDraftOnCanvas` 当场落成节点（项目开着就落），只有文稿来源的草稿才要用户点「放入画布」。模型照着回执说反话。修法照 T-ED-02：回执从真实落地结果派生（落没落、落成哪几个节点），不改一句静态文案了事；回归要带真实模型的工具写对率 / 回合成功率（R13）。0.22.0 就有，不是 0.22.1 的回归 |
 | T-AG-32 | 让 Agent「生成一张 16:9 横构图」：它把 `parameters: {aspect_ratio:"16:9", style, quality}` 写进了 `draft_shots`，存下来的候选参数却是 `{}`，卡上显示 1:1，出图也是 1:1——**没有任何报错回给模型**，它以为自己设好了 | todo（下一版） | 09-26 协调会话 v0.22.1 RC 安装包付费矩阵 T3（`agent-spend-real-image.paid.mjs`，截图 `01-paid-01-zh-spend-card-before-confirm`；工具轨迹里两次 `draft_shots` 都带 16:9） | 静默丢参数正是 `generationPlanningParameters.ts` 头注释要消灭的形状（「卡上选 2K、供应商收到 1k」那一族）：`executionContract.ts:263` 本来有 `unknown_parameter` 拒绝并给 `closestKey`，这次却没走到它。丢在哪一层还没数门（`draftShotsProjection.semanticsOf` 原样透传了 parameters，所以在宿主建候选那一侧）。修法：先 `node scripts/door-map.mjs` 数清候选参数的写入口，让不认识的键回到 `unknown_parameter` + 建议键（z-image-turbo 的画幅在档案里叫什么由目录派生），不许静默丢；全自动档没有卡给用户兜底，所以这条比有卡时更要紧。回归带真实模型写对率（R13）。是否 0.22.0 就有：未核 |
+| T-AG-33 | 「对话出片」最后一步断在导出：Agent 在画布面调不了 `export_video`（要导出面权限），回复里让用户「切到导出面或手动导出」 | todo（下一版） | 09-27 协调会话「一句话出片」付费验收（`tests/ux/shots/_promo-oneline.paid.mjs`，全自动档，deepseek-v3.2 + NB2 + Seedance 2.0，19 分钟 75 轮，截图 `09-t1023s`） | 先核实面权限是设计还是遗漏；定下来是「画布面也能导出」还是「回复里给一键导出」，别让用户自己找 |
+| T-AG-34 | Agent 生产运行出的 Seedance **视频**结果落进了 **image 类型**节点（`gen-v2-image-*`，`kind=image`、`result.type=video`） | todo（下一版，先查根因） | 同上（项目 `.nomi/project.json` 4 个 Seedance 节点全是 image） | `node scripts/door-map.mjs` 数生产运行物化节点的写口；视频镜头必须建 video 节点，查画布/时间轴有没有因此显示或导出异常 |
+| T-AG-35 | 全自动长任务中途反复停下，要追「继续」5 次才走完 | todo（下一版） | 同上（运行日志 `D:\tmp\promo-oneline.log` 的 running=false 段） | 看每次停下的原因（回合预算 / 等确认 / 模型自己收尾），分清是预算设计还是提前收工 |
+| T-AG-36 | 同一次任务里画布上建了两个「分镜表」节点 | todo（下一版） | 同上 | 分镜表物化要幂等（同一次操作复用已有节点） |
+| T-AG-37 | Agent 建了人物卡却没让后续镜头引用它，长相漂移（人物卡短发小孩 → 后几镜长发大人） | todo（下一版） | 同上（产出 `D:\Nomi-film-stage\public\film\oneline`） | 让 Agent 走分镜表「参考卡锁定」那条路；与「短片导演」技能一起设计 |
+| T-AG-38 | Windows 上面板提示「命令需逐条确认：命令沙箱这次没能启动」 | todo（先核实） | 同上（截图 `09-t1023s` 面板底部） | 真机核实沙箱为什么起不来，是否影响全自动档 |
+| T-QA-40 | 走查拍不到安定截图：Agent 长任务后界面几何持续变化 30 秒以上（`screenshotSettled` 拒绝截图） | todo（先核实） | 同上（`FAIL.png`，报错「没有未结束的动画，几何一直在变」） | 找出反复重排的浮层（疑似画面校验卡或「N 个新节点在下方」提示） |
+| T-AG-39 | 「对话出大片」丝滑化：「短片导演」技能 + Agent 空态入口 | todo（下一版，方案待拍板） | 09-27 用户想法（「用户是不是可以和你一样在对话里直接做」）+ 上面这次验收 | 技能替用户补上做法（先定人物、先关键帧后首帧视频、排进时间轴、导出）；空态加一个入口；T-AG-33~37 是它的验收清单 |
 
 ## C. 画布与节点
 
