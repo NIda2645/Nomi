@@ -274,7 +274,7 @@
 | T-WB-03 | 产品发布会：PPT（对标 Apple）+ 逐字稿 + 图片/视频素材 + 特效 + 音乐 | hold | 09-08 用户加入，排最后 | **先写逐字稿**（逐字稿就是定位练习）；demo 段全部真机录屏，片子尽量用 Nomi 自己做 |
 | T-WB-04 | 每周 RC 的发版时钟；`docs-autosync` 从来没能开 PR（仓库设置禁止 Actions 建 PR），**债已经攒出来了**：09-14 实测 `origin/main` 上 `check:docs-index` 超基线 136 篇、`check:doc-status` 超基线 101 篇 | todo | 09-07 裁决 · 09-09 实核 · 09-14 实测 | 这两个门岗在 `gates:contracts` 里是 advisory 所以没人看见；**要么用户开「Actions 可建 PR」，要么手工 cherry-pick `docs/autosync-*` 分支补齐** |
 | T-WB-05 | 官网自动部署停了：Cloudflare 免费档每月 3000 构建分钟被**分支预览构建**烧光（9 月 624 个 PR，每推一次都装全套 Electron 依赖；官网构建本身零依赖），09-26 06:59 起所有构建失败，线上停在 0.22.0 | hold（等用户改后台） | 09-27 协调会话实查（Workers Builds 检查全红、`wrangler deploy --dry-run` 通过） | 用户在 Cloudflare 后台：分支控制关「Enable Preview Builds」、构建变量加 `SKIP_DEPENDENCY_INSTALL=1`；10 月额度重置前靠本机 `npx wrangler deploy`（09-27 已手动发布 #901） |
-| T-WB-06 | 官网视频不支持分段请求（Range 恒回 200 整份）：Safari / iPhone 播不了宣传片，Chrome 跳到第 58 秒要先下完前面 | doing #903 | 09-27 部署后线上实测 | worker 接管 `*.mp4` 按 ETag 数长度切片；合入后重新部署并在线上复核 |
+| T-WB-06 | 官网视频不支持分段请求（Range 恒回 200 整份）：Safari / iPhone 播不了宣传片，Chrome 跳到第 58 秒要先下完前面 | done #903 | 09-27 部署后线上实测 | 已合 #903 并部署；09-27 线上核对 Range 206 与原文件逐字节一致、越界 416、功能段循环正常 |
 | T-WB-07 | 官网没有 404 页：不存在的路径回空白 404（此前是 worker 的纯文本 `Not Found`） | todo | 09-27 修 T-WB-06 时发现 | 新画一页，按 R8 先出样张，放 `marketing/404.html`（`not_found_handling = "404-page"` 已配） |
 
 ---
