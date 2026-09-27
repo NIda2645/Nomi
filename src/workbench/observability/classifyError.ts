@@ -510,6 +510,9 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   }
   // 素材上传失败先于 category 判——失败在我们这侧，服务商根本没被请求到，不能借上游的状态码说话。
   // 太大（413）比「上传失败」更具体，先判——否则会被归成「稍等重试」，而重试永远不可能成。
+  // 素材本身不合格（读不到 / 认不出 / 不是真媒体）只认机器码：它来自我们自己的本机检查，
+  // 服务商没被请求到，不能落进 unknown 被说成「服务商临时故障或额度问题」（2026-09-27 用户截图）。
+  if (outboundCode === 'asset-invalid') return reportFor('asset-invalid', cleanRaw, undefined)
   if (detectAssetTooLarge(cleanRaw)) return reportFor('asset-too-large', cleanRaw, undefined)
   if (detectAssetUploadFailed(cleanRaw)) return reportFor('asset-upload-failed', cleanRaw, undefined)
   // 内容安全拦截先于 category 判——审核拒绝走 HTTP 400，会被派生成「参数不被接受·检查比例/尺寸」

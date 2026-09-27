@@ -345,6 +345,10 @@ export const zhGenerationCommon = {
         reason: '这个素材太大，传不上去',
         hint: '本机素材要先换成公网地址才能给服务商用，而这个文件超过了所有可用上传通道的大小上限（HTTP 413），Nomi 每条通道都试过了。重试没用——同一个文件每次都会被同一个上限挡回来。请把它压缩或裁短一点再放进来（视频尤其常见），或在「模型接入」接一个上传上限更高的通道。具体是哪个素材、多大，见下方技术详情。',
       },
+      assetInvalid: {
+        reason: '参考素材本身有问题',
+        hint: '这张参考素材没通过发送前的本机检查：文件读不到、认不出类型，或者内容不是真正的图片/视频（比如把网页存成了 .png）。请求还没发出去，不扣额度。同一个文件重试结果不会变——请在画布上换一张参考素材，或重新导入原文件，再点重试。具体是哪个文件，见下方技术详情。',
+      },
       outboundBlocked: {
         reason: '取片被 Nomi 自己的安全策略拦下了',
         hint: '这不是服务商的故障，也不是你的生成失败了——任务多半已经在服务商那边跑完了，钱已经付过，产物还在。是 Nomi 在下载产物时把目标地址判成了内网并拒绝下载。最常见的原因是你开着 Clash / Surge / sing-box 的 TUN（fake-ip）模式：所有域名都会被解析成 198.18.x 这类合成地址。请到「模型接入 → 网络」看那一行有没有写「检测到本地代理」；确认后回到这里用「重新拉取结果」免费取回，**不要重新生成**（那会再扣一次钱）。具体是哪个地址，见下方技术详情。',
@@ -1834,6 +1838,10 @@ export const enGenerationCommon = {
       assetTooLarge: {
         reason: 'This asset is too large to upload',
         hint: 'Local assets must first be turned into a publicly reachable URL, and this file exceeds the size limit of every available upload channel (HTTP 413) — Nomi tried them all. Retrying will not help: the same file hits the same ceiling every time. Compress or trim it (videos especially) and add it again, or connect a channel with a higher upload limit under Model Access. The technical details below name the asset and its size.',
+      },
+      assetInvalid: {
+        reason: 'The reference asset itself is invalid',
+        hint: 'This reference asset failed the local check before sending: the file could not be read, its type could not be identified, or its content is not a real image or video (for example, a web page saved as .png). Nothing was sent and nothing was charged. Retrying the same file will not change the result — replace the reference on the canvas or re-import the original file, then retry. The technical details below name the file.',
       },
       outboundBlocked: {
         reason: "Nomi's own network policy blocked the download",

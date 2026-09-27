@@ -20,6 +20,7 @@ import {
   type LocalAsset,
 } from "./assetLocalization";
 import type { AssetIngestion } from "./types";
+import { matchNomiErrorCode } from "../shared/nomiErrorCodes";
 
 const localUrl = (p: string) => `nomi-local://asset/proj/${p}`;
 // 内联素材（headless/MCP 直接给 data: URI，或落盘失败退回 base64 的兜底路径）。
@@ -1038,5 +1039,29 @@ describe("出站前拦截够不着的素材值（blob: / file:）", () => {
     const extras = { prompt: "别用 file:// 这种地址", notes: "/Users/me/a.png" };
     const out = await localizeAssetsForVendor(extras, resolver, read, vi.fn(), noMultipart);
     expect(out.value).toBe(extras);
+  });
+});
+
+describe("local raster metadata validation", () => {
+  it("accepts PNG metadata containing embedded SVG text", () => {
+    const payload = Buffer.from("image/svg+xml <svg width=\"716\" />");
+    const bytes = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from([0, 0, 0, 13]), Buffer.from("IHDR"), Buffer.alloc(13), Buffer.alloc(4),
+      Buffer.from([(payload.length >>> 24) & 0xff, (payload.length >>> 16) & 0xff, (payload.length >>> 8) & 0xff, payload.length & 0xff]),
+      Buffer.from("caBX"), payload, Buffer.alloc(4),
+    ]);
+    expect(() => assertLocalAssetMediaBytes({ bytes, contentType: "image/png", fileName: "generated.png" })).not.toThrow();
+  });
+
+  it("tags a png-named web page as asset-invalid so the error card does not blame the provider", () => {
+    let message = "";
+    try {
+      assertLocalAssetMediaBytes({ bytes: Buffer.from("<!doctype html><html></html>"), contentType: "image/png", fileName: "page.png" });
+    } catch (error) {
+      message = error instanceof Error ? error.message : String(error);
+    }
+    expect(matchNomiErrorCode(message)).toBe("asset-invalid");
+    expect(message).not.toMatch(/视频生成/);
   });
 });

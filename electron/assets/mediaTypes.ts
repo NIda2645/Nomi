@@ -17,6 +17,18 @@ export type MediaTypeEntry = {
   kind: MediaKind
 }
 
+/** Maximum prefix inspected for text masquerading as media. */
+const MARKUP_SCAN_BYTES = 4_096
+
+/** True when the file starts (after BOM/whitespace) with markup or a JSON error body.
+ *  TextDecoder drops a leading UTF-8 BOM by default (ignoreBOM=false). */
+export function isMarkupMasquerade(bytes: Uint8Array): boolean {
+  const prefix = new TextDecoder('utf-8')
+    .decode(bytes.subarray(0, MARKUP_SCAN_BYTES))
+    .trimStart()
+  return /^(?:<!doctype\s+html|<html\b|<\?xml\b|<svg\b|<(?:error|response|message)\b|\{\s*"(?:error|message)"\s*:)/i.test(prefix)
+}
+
 /** 唯一真相源。新增格式只改这里。 */
 export const MEDIA_TYPES: readonly MediaTypeEntry[] = [
   // text
