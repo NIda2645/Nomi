@@ -7,6 +7,13 @@
 - 本地素材读取失败、未知类型、伪装文本统一打 `asset-invalid`，渲染层按机器码归类并补 zh-CN/en 文案。
 - 补 C2PA `caBX`、PNG XMP、JPEG APP1 XMP 与文本反例测试。
 
+## 先查别人（R27；报告见 [`docs/research/2026-09-28-reference-image-markup/prior-art.md`](../research/2026-09-28-reference-image-markup/prior-art.md)）
+
+- **依赖里已有？** Node 的 `TextDecoder` 已是运行时能力，仓库现有 `electron/assets/mediaTypes.ts:25` 也已经拥有字节魔数判定；本次复用它们，不新增依赖或第二套解码器。结论：用已有。
+- **仓库里已有？** `contentTypeFromMagicBytes`（`electron/assets/mediaTypes.ts:25`）和认证/落盘边界（`electron/providerAdapter/certificationMedia.ts:218`、`electron/catalog/assetLocalization.ts:180`）已经消费同一媒体类型表；本次把伪装文本判断收进同一 owner，沿用这些边界而不是在调用方复制正则。结论：收敛到已有 owner。
+- **生态里已有？** C2PA 规范（https://c2pa.org/specifications/specifications/2.1/specs/C2PA_Specification.html）说明 PNG 的 `caBX` JUMBF 元数据可携带图标，W3C PNG 规范（https://www.w3.org/TR/png-3/#11iTXt）说明 iTXt 可承载 XMP，WHATWG MIME sniffing（https://mimesniff.spec.whatwg.org/#identifying-a-resource-with-an-unknown-mime-type）只从资源开头匹配标记。结论：按规范只查开头并让栅格魔数优先。
+- **TikHub 自媒体里怎么说？** 没找到能替代二进制格式规范、且可复核的同类实现；这不是产品教程问题，不把不可复核的帖子当判据。结论：不采用，保留官方规范出处。
+
 ## 不动项
 
 不改上传通道、付费守卫、声明与魔数一致性语义，不新增第二个图片判据，不改其它 UI。
