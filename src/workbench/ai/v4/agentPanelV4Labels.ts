@@ -3,7 +3,6 @@
 // 为什么集中：同一个词（「完成」「撤销」「不要」）会出现在收据、任务卡、介入槽三个积木上。
 // 每个组件各 `t()` 一次，改文案要改三处，漏一处就是两个说法——那正是 R14.1 要横扫的东西。
 import { useTranslation } from 'react-i18next'
-import { useMemo } from 'react'
 import type { TFunction } from 'i18next'
 import type { V4DockLabels } from './agentPanelV4DockStatus'
 import type { QueueRowData, V4TaskStatus, V4ToolStatus } from './agentPanelV4Types'
@@ -109,11 +108,10 @@ function buildV4Labels(t: TFunction) {
 export function useV4Labels() {
   const { t, i18n } = useTranslation()
   const language = i18n.resolvedLanguage ?? i18n.language ?? ''
-  return useMemo(() => {
-    const cached = labelsByLanguage.get(language)
-    if (cached) return cached
-    const labels = buildV4Labels(t)
-    labelsByLanguage.set(language, labels)
-    return labels
-  }, [language, t])
+  // 同一语言整个进程只建一次：每行每次渲染都会调这里，建一次要 64 次 t()。
+  const cached = labelsByLanguage.get(language)
+  if (cached) return cached
+  const labels = buildV4Labels(t)
+  labelsByLanguage.set(language, labels)
+  return labels
 }
