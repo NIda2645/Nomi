@@ -1,15 +1,12 @@
-import { createRequire } from 'node:module'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import ts from 'typescript'
 import React from 'react'
 import { describe, expect, it } from 'vitest'
+import { createReactTestRenderer } from './testReactRenderer'
 
 // Exercise the actual frozen hook bodies with React's installed renderer. No DOM/server,
 // timers, copied controller, or simulated effect ordering replaces the production hooks.
-const require = createRequire(import.meta.url)
-const fiberRequire = createRequire(require.resolve('@react-three/fiber'))
-const Reconciler = fiberRequire('react-reconciler')
 function evaluate(source: string, globals: Record<string, unknown>) {
   const context = vm.createContext({ React, ...globals })
   vm.runInContext(ts.transpileModule(source, { compilerOptions: { target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.None } }).outputText, context)
@@ -19,23 +16,15 @@ type ProbeProps = { historyError?: boolean; value?: { runs: Array<{ runId: strin
 type ScrollNode = { props: ProbeProps; scrollTop: number; scrollHeight: number; clientHeight: number;
   listeners: Set<() => void>; addEventListener(type: string, fn: () => void): void; removeEventListener(type: string, fn: () => void): void }
 function harness(Component: React.ComponentType<ProbeProps>) {
-  let node: ScrollNode
-  const renderer = Reconciler({
-    now: Date.now, supportsMutation: true, isPrimaryRenderer: true,
-    getRootHostContext: () => ({}), getChildHostContext: () => ({}), getPublicInstance: (i: ScrollNode) => i,
-    prepareForCommit: () => null, resetAfterCommit: () => {}, shouldSetTextContent: () => false,
-    createInstance: (_: unknown, props: ProbeProps) => node = { props, scrollTop: 0, scrollHeight: 1000, clientHeight: 300,
+  let node!: ScrollNode
+  const renderer = createReactTestRenderer<ScrollNode>({
+    createInstance: (_type, props) => node = { props: props as ProbeProps, scrollTop: 0, scrollHeight: 1000, clientHeight: 300,
       listeners: new Set<() => void>(), addEventListener(_type: string, fn: () => void) { this.listeners.add(fn) }, removeEventListener(_type: string, fn: () => void) { this.listeners.delete(fn) } },
-    createTextInstance: () => ({}), appendInitialChild: () => {}, appendChild: () => {}, appendChildToContainer: () => {},
-    removeChild: () => {}, removeChildFromContainer: () => {}, clearContainer: () => {}, detachDeletedInstance: () => {},
-    finalizeInitialChildren: () => false, prepareUpdate: () => true,
-    commitUpdate: (i: ScrollNode, _p: unknown, _t: unknown, _old: unknown, props: ProbeProps) => { i.props = props },
-    scheduleTimeout: setTimeout, cancelTimeout: clearTimeout, noTimeout: -1, getCurrentEventPriority: () => 16,
+    commitUpdate: (instance, props) => { instance.props = props as ProbeProps },
   })
-  const root = renderer.createContainer({}, 0, null, false, null, '', () => {}, null)
-  const render = (props: ProbeProps | null) => { renderer.flushSync(() => renderer.updateContainer(props ? React.createElement(Component, props) : null, root, null)); renderer.flushPassiveEffects() }
+  const render = (props: ProbeProps | null) => { renderer.render(props ? React.createElement(Component, props) : null); renderer.flushPassiveEffects() }
   return { render, node: () => node, scroll: () => { for (const fn of [...node.listeners] as (() => void)[]) fn() },
-    async settle() { for (let i = 0; i < 8; i++) await Promise.resolve(); renderer.flushPassiveEffects() }, close: () => render(null) }
+    async settle() { for (let i = 0; i < 8; i++) await Promise.resolve(); renderer.flushPassiveEffects() }, close: () => renderer.close() }
 }
 function deferred<T = unknown>() { let resolve!: (v: T) => void; let reject!: (e: Error) => void; const promise = new Promise<T>((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
 function panel() {
