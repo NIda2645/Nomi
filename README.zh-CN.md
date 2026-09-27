@@ -129,7 +129,7 @@ xattr -dr com.apple.quarantine "/Applications/Nomi.app"
 
 ## 让你自己的 Agent 来用 Nomi
 
-Nomi 自带 MCP 服务：Claude Code、Codex、Cursor 都能直接驱动它生成、编排、剪辑，顺便用上你会员套餐里送的额度。见《[让你的 AI 帮你接入 Nomi](docs/integrate-with-your-agent.md)》。
+Nomi 自带 MCP 服务（24 个 MCP 工具）：Claude Code、Codex、Cursor 都能直接驱动它生成、编排、剪辑，顺便用上你会员套餐里送的额度。见《[让你的 AI 帮你接入 Nomi](docs/integrate-with-your-agent.md)》。
 
 ## 社区
 
