@@ -1047,9 +1047,7 @@ describe("local raster metadata validation", () => {
     const payload = Buffer.from("image/svg+xml <svg width=\"716\" />");
     const bytes = Buffer.concat([
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-      Buffer.from([0, 0, 0, 13]), Buffer.from("IHDR"), Buffer.alloc(13), Buffer.alloc(4),
-      Buffer.from([(payload.length >>> 24) & 0xff, (payload.length >>> 16) & 0xff, (payload.length >>> 8) & 0xff, payload.length & 0xff]),
-      Buffer.from("caBX"), payload, Buffer.alloc(4),
+      Buffer.alloc(64), Buffer.from("caBX"), payload,
     ]);
     expect(() => assertLocalAssetMediaBytes({ bytes, contentType: "image/png", fileName: "generated.png" })).not.toThrow();
   });

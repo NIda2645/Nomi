@@ -218,8 +218,7 @@ describe("mediaKindFromContentType（contentType → kind 单源，认不出返�
 describe("markup masquerade boundary", () => {
   const pngChunk = (type: string, payload: string) => Uint8Array.from([
     ...Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    0, 0, 0, 13, ...Buffer.from("IHDR"), ...new Array(13).fill(0), 0, 0, 0, 0,
-    0, 0, 0, payload.length, ...Buffer.from(type), ...Buffer.from(payload), 0, 0, 0, 0,
+    ...new Array(64).fill(0), ...Buffer.from(type), ...Buffer.from(payload),
   ]);
 
   it("ignores SVG/XML embedded in raster metadata and rejects text at the start", () => {
