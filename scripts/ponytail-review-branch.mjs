@@ -600,13 +600,29 @@ export function runBranchReview({
  * pre-push 的全部判据：要推的每个 head 的**树**必须等于收据里的树。
  * 用树而不是提交：rebase / 改提交信息不改内容，不该逼人重审；内容一变树就变，必须重审。
  */
+/** 这个对象（提交或附注标签）是否已在某条远端跟踪分支的历史里。查不了一律当「不在」——只会少豁免。 */
+function alreadyOnRemote(git, repoRoot, sha) {
+  try {
+    return String(git(repoRoot, ['for-each-ref', '--contains', sha, '--format=%(refname)', 'refs/remotes/'])).trim().length > 0
+  } catch (_error) {
+    return false
+  }
+}
+
 export function verifyPushReceipt({ repoRoot, ranges = [], runGit: git = runGit } = {}) {
   const live = ranges.filter((range) => !/^0{40}$/.test(range.localSha))
   if (live.length === 0) return { ok: true, receipt: null, reason: 'only ref deletions' }
+  // 收据证明的是「从本机推出去的新内容」评审过。提交已在某条远端跟踪分支的历史里 = 推它不会让任何新内容
+  // 离开本机（典型：发布工作流给已合入 main 的 RC 提交打版本标签——v0.22.2 就被这里拦过）。判据是「内容在不在
+  // 远端」，不是「是不是 tag」：指向未评审新提交的 tag 照样要收据。远端跟踪 ref 没 fetch 时只会少豁免，方向保守。
+  const unpublished = live.filter((range) => !alreadyOnRemote(git, repoRoot, range.localSha))
+  if (unpublished.length === 0) {
+    return { ok: true, receipt: null, reason: `${live.map((range) => range.localRef).join(', ')} 已在远端历史中，没有新内容` }
+  }
   const receipt = readReceipt(repoRoot)
   if (!receipt) return { ok: false, reason: `没有可读的分支评审收据（${receiptPath(repoRoot)}）` }
 
-  for (const range of live) {
+  for (const range of unpublished) {
     const tree = tryRunGit(git, repoRoot, ['rev-parse', `${range.localSha}^{tree}`]).toLowerCase()
     if (!SHA.test(tree)) return { ok: false, reason: `无法解析 ${range.localRef} (${range.localSha}) 的树对象` }
     if (tree !== String(receipt.treeSha).toLowerCase()) {
