@@ -219,7 +219,7 @@ async function auditStandardCase(browser, testCase) {
     await page.waitForFunction(() => {
       const video = document.querySelector('.film-video')
       return Boolean(video && !video.paused && video.currentTime > 0.2)
-    }, null, { timeout: 15000 })
+    })
     assert(await page.locator('.film-video').evaluate((video) => !video.muted && video.controls), 'hero film plays with sound and controls after the click')
     await page.locator('.film-video').evaluate((video) => video.pause())
     const storyboard = page.locator('[data-feature="storyboard"] video')
@@ -227,7 +227,7 @@ async function auditStandardCase(browser, testCase) {
     await page.waitForFunction(() => {
       const video = document.querySelector('[data-feature="storyboard"] video')
       return Boolean(video && !video.paused && video.currentTime >= Number(video.dataset.start))
-    }, null, { timeout: 15000 })
+    })
     const segmentTime = await storyboard.evaluate((video) => ({ t: video.currentTime, start: Number(video.dataset.start), end: Number(video.dataset.end), muted: video.muted }))
     assert(
       segmentTime.muted && segmentTime.t >= segmentTime.start && segmentTime.t <= segmentTime.end + 0.5,
@@ -240,7 +240,11 @@ async function auditStandardCase(browser, testCase) {
     assert(!(await page.locator('#author-dialog').isVisible()), 'maintainer WeChat dialog closes')
 
     await page.locator('#nav-links a[href="#community"]').click()
-    await page.waitForTimeout(600)
+    // 平滑滚动：等二维码真的进了视口，而不是睡一段固定时间。
+    await page.waitForFunction(() => {
+      const rect = document.querySelector('#community-qr')?.getBoundingClientRect()
+      return Boolean(rect && rect.top < innerHeight && rect.bottom > 0)
+    })
     const qrInView = await page.locator('#community-qr').evaluate((element) => {
       const rect = element.getBoundingClientRect()
       return rect.top < innerHeight && rect.bottom > 0
@@ -325,8 +329,8 @@ async function auditReducedMotion(browser) {
   })
   const page = await context.newPage()
   await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' })
+  // 减少动效档下页面根本不挂自动播放的观察器（client.mjs），滚过去立刻就能断言，不用等。
   await page.locator('[data-feature="agent"] video').scrollIntoViewIfNeeded()
-  await page.waitForTimeout(1500)
   const facts = await page.evaluate(() => ({
     segments: Array.from(document.querySelectorAll('video[data-segment]')).map((video) => ({ paused: video.paused, controls: video.controls })),
     sectionHeights: Array.from(document.querySelectorAll('main section')).map(
