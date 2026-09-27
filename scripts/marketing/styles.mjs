@@ -218,12 +218,10 @@ html[lang="en"] .tree .note { font-family: var(--font-ui); }
 /** 只有快速上手用：步骤、截图、常见问题。 */
 const quickstartCss = `
 .qs-hero { padding-block: 64px 8px; }
-.steps { list-style: none; margin: 0; padding: 0; }
-.step { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; padding-block: 40px; border-top: 1px solid var(--line); align-items: start; }
+.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; }
+.step { counter-increment: step; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 48px; padding-block: 40px; border-top: 1px solid var(--line); align-items: start; }
 @media (max-width: 900px) { .step { grid-template-columns: 1fr; gap: 20px; } }
 .step-label { margin: 0; font-family: var(--font-ui); font-weight: 600; font-size: 13px; color: var(--accent); }
-.steps { counter-reset: step; }
-.step { counter-increment: step; }
 .step-label::before { content: counter(step, decimal-leading-zero) " · "; }
 .step h2 { margin-top: 6px; font-size: 24px; line-height: 1.3; }
 .step p { margin: 10px 0 0; color: var(--ink-2); }

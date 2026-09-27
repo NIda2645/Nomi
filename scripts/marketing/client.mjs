@@ -66,7 +66,6 @@ export function homepageClientJs(downloadUrls, { segments: home = true } = {}) {
   const selectDownload = ${selectDownload.toString()}
   const resolveDownloadRequest = ${resolveDownloadRequest.toString()}
   const localeKey = 'nomi_locale'
-  const pageLocale = document.documentElement.lang
   document.querySelectorAll('[data-locale-choice]').forEach((link) => {
     if (location.hash) {
       const destination = new URL(link.href, location.href)
@@ -101,7 +100,6 @@ ${homeOnly}  document.querySelectorAll('dialog').forEach((dialog) => {
     dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })
     dialog.addEventListener('close', () => {
       if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open')
-      dialog.querySelector('video')?.pause()
     })
   })
 
@@ -145,7 +143,5 @@ ${homeOnly}  document.querySelectorAll('dialog').forEach((dialog) => {
     if (request.url) location.href = request.url
     else showDownloadOptions()
   })
-  document.documentElement.dataset.enhanced = 'true'
-  document.documentElement.dataset.locale = pageLocale
 })()`
 }
