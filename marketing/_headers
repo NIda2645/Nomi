@@ -13,13 +13,17 @@
   Cache-Control: public, max-age=0, must-revalidate
 
 /assets/demo.mp4
+  ! Cache-Control
   Cache-Control: public, max-age=3600, must-revalidate
 
 /assets/video/*
+  ! Cache-Control
   Cache-Control: public, max-age=3600, must-revalidate
 
 /assets/social-preview-zh.jpg
+  ! Cache-Control
   Cache-Control: public, max-age=3600, must-revalidate
 
 /assets/social-preview-en.jpg
+  ! Cache-Control
   Cache-Control: public, max-age=3600, must-revalidate
