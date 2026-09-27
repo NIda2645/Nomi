@@ -25,6 +25,7 @@ import { isProjectExecutionContextCurrent, withProjectAction } from '../../proje
 import type { BrowserAssetCanvasImportItem } from '../../../ui/browser/overlay/globalAssetPopoverEvents'
 import type { TiptapDocJson } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
+import { computeMediaMetaPatch } from '../nodes/nodeSizing'
 
 export const BROWSER_ASSET_DRAG_MIME = 'application/x-nomi-assets'
 export const LEGACY_BROWSER_ASSET_DRAG_MIME = 'application/x-nomi-browser-assets'
@@ -261,11 +262,14 @@ function addAssetLibraryNodes(items: readonly AssetLibraryDragPayload[], basePos
       assetDrag.origin.source === 'project'
         ? { source: 'workspace-file', fileName: assetDrag.name, workspaceRelativePath: assetDrag.origin.relativePath }
         : { source: 'asset-library', fileName: assetDrag.name, referencedNodeId: assetDrag.origin.nodeId }
+    const mediaMeta = assetDrag.dimensions
+      ? computeMediaMetaPatch({ resultType: result.type, meta: node.meta || {}, ...assetDrag.dimensions })?.meta
+      : undefined
     store.updateNode(node.id, {
       result,
       history: [result],
       status: 'success',
-      meta: { ...(node.meta || {}), ...originMeta },
+      meta: { ...(node.meta || {}), ...originMeta, ...(mediaMeta || {}) },
     })
     return node.id
   })

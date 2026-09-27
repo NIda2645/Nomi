@@ -338,6 +338,8 @@ describe("Run-owned semantic generation submission", () => {
       kind: "image" as const,
       contentHash: "c".repeat(64),
       projectRelativePath: "assets/generated/2026-08-23/image.png",
+      width: 1600,
+      height: 900,
     }));
     const runner = createProductionGenerationSubmission({
       repository,
@@ -368,7 +370,7 @@ describe("Run-owned semantic generation submission", () => {
     expect(materializeOutput).toHaveBeenCalledTimes(1);
     expect(repository.read("project-1", "op-1")).toMatchObject({
       jobs: [{ status: "ready", providerTaskId: "provider-task-materialize" }],
-      artifacts: [{ artifactId: "asset-image-1", jobId: expect.stringContaining("generation-op-1-") , kind: "image", status: "ready", contentHash: "c".repeat(64) }],
+      artifacts: [{ artifactId: "asset-image-1", jobId: expect.stringContaining("generation-op-1-") , kind: "image", status: "ready", contentHash: "c".repeat(64), width: 1600, height: 900 }],
     });
     const jobId = repository.read("project-1", "op-1")!.jobs[0]!.jobId;
     expect(JSON.parse(fs.readFileSync(path.join(root, ".nomi", "runs", "op-1", "jobs", jobId, "runtime-envelope.json"), "utf8"))).toMatchObject({ state: "materialized" });

@@ -1,6 +1,7 @@
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { unwrapAssetImportResult } from '../../../../electron/shared/contracts/assetImportResult'
 import type { GenerationNodeResult } from '../model/generationCanvasTypes'
+import { readMediaDimensions, type MediaDimensions } from '../nodes/nodeSizing'
 
 // 「厂商临时 URL 绝不落进 result.url」的结构闸 + 存量抢救，共用的领域逻辑。
 //
@@ -26,6 +27,7 @@ export async function localizeRemoteResultUrl(
   result: GenerationNodeResult,
   projectId: string,
   nodeId: string,
+  onMediaDimensions?: (dimensions: MediaDimensions) => void,
 ): Promise<GenerationNodeResult> {
   if (!isRemoteHttpUrl(result.url)) return result
   const trimmedProjectId = String(projectId || '').trim()
@@ -41,6 +43,10 @@ export async function localizeRemoteResultUrl(
       ownerNodeId: nodeId,
     }))
     const localUrl = typeof asset?.data?.url === 'string' ? asset.data.url.trim() : ''
+    if (result.type === 'image' || result.type === 'video') {
+      const dimensions = readMediaDimensions(asset?.data?.width, asset?.data?.height)
+      if (dimensions) onMediaDimensions?.(dimensions)
+    }
     if (!localUrl || localUrl === remoteUrl) return result
     return {
       ...result,

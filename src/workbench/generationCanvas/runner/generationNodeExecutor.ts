@@ -9,6 +9,7 @@ import { resolveGenerationReferences } from './generationReferenceResolver'
 import { withConnectedTextPrompts } from './connectedTextPrompt'
 import { generateText } from './textActions'
 import { generateVideo } from './videoActions'
+import type { MediaDimensions } from '../nodes/nodeSizing'
 
 export type GenerationNodeExecutorContext = {
   /** 运行所属项目（提交那一刻签发）：任务 extras.projectId、结果本地化、接力抽帧都落进它。 */
@@ -25,6 +26,7 @@ export type GenerationNodeExecutorContext = {
   idempotencyKey?: string
   /** Renderer consent for a disclosed anonymous temporary-host fallback. */
   anonymousAssetHostingConsent?: 'allow'
+  onMediaDimensions?: (dimensions: MediaDimensions) => void
 }
 
 export type GenerationNodeExecutor = (
@@ -49,12 +51,12 @@ export const generationNodeExecutor: GenerationNodeExecutor = async (node, conte
   if (executionKind === 'image') {
     const references = resolveGenerationReferences(node, context)
     const promptNode = withConnectedTextPrompts(node, context)
-    return generateImage(promptNode, { references, ...gate, ...(onProgress ? { onProgress } : {}) })
+    return generateImage(promptNode, { references, ...gate, ...(onProgress ? { onProgress } : {}), ...(context.onMediaDimensions ? { onMediaDimensions: context.onMediaDimensions } : {}) })
   }
   if (executionKind === 'video') {
     const references = resolveGenerationReferences(node, context)
     const promptNode = withConnectedTextPrompts(node, context)
-    return generateVideo(promptNode, { references, ...gate, ...(onProgress ? { onProgress } : {}) })
+    return generateVideo(promptNode, { references, ...gate, ...(onProgress ? { onProgress } : {}), ...(context.onMediaDimensions ? { onMediaDimensions: context.onMediaDimensions } : {}) })
   }
   if (executionKind === 'text') {
     return generateText(node, { projectTarget, ...(onProgress ? { onProgress } : {}) })

@@ -22,6 +22,7 @@ import {
 } from '../../../../electron/shared/contracts/mediaImportPolicy'
 import { readStorageCapacitySnapshot } from '../../assets/storageCapacitySnapshot'
 import { ensureAssetImportProgressBridge, useAssetImportProgressStore } from '../store/assetImportProgressStore'
+import { computeMediaMetaPatch, readMediaDimensions } from '../nodes/nodeSizing'
 
 const DATA_URL_FALLBACK_MAX_BYTES = 512 * 1024
 
@@ -107,9 +108,7 @@ function nodeSizeForDimensions(dimensions: ImageDimensions | null): { width: num
 function imageMetaForDimensions(dimensions: ImageDimensions | null): Record<string, unknown> {
   if (!isValidImageDimensions(dimensions)) return {}
   return {
-    imageWidth: dimensions.width,
-    imageHeight: dimensions.height,
-    imageAspectRatio: dimensions.width / dimensions.height,
+    ...(computeMediaMetaPatch({ resultType: 'image', meta: {}, width: dimensions.width, height: dimensions.height })?.meta || {}),
     previewHeight: previewHeightForDimensions(dimensions),
   }
 }
@@ -290,13 +289,18 @@ async function uploadAndApplyAssetToNode(
     raw: { asset: hosted },
     createdAt: Date.now(),
   }
+  const currentMeta = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === nodeId)?.meta || {}
+  const hostedDimensions = readMediaDimensions(hosted?.data?.width, hosted?.data?.height)
+  const hostedMediaMeta = hostedDimensions
+    ? computeMediaMetaPatch({ resultType: kind, meta: currentMeta, ...hostedDimensions, durationSeconds: videoDuration || undefined })?.meta
+    : undefined
   pendingRetryImports.delete(nodeId)
   store.updateNode(nodeId, {
     result: hostedResult,
     history: [hostedResult],
     status: 'success',
     meta: {
-      ...(useGenerationCanvasStore.getState().nodes.find((c) => c.id === nodeId)?.meta || {}),
+      ...(hostedMediaMeta || currentMeta),
       source: 'asset-upload',
       uploadStatus: 'uploaded',
       localOnly: false,

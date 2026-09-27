@@ -33,7 +33,7 @@ import type { WhiteboardResultLibraryItem } from './whiteboardTypes'
 import type { WhiteboardInitialImage, WhiteboardState } from './whiteboardTypes'
 import { readWhiteboardState, serializeWhiteboardState } from './whiteboardState'
 import { getCanvasDimensions } from './lib/canvas'
-import { mediaNodeSize } from '../nodeSizing'
+import { computeMediaMetaPatch, mediaNodeSize } from '../nodeSizing'
 import i18n from '../../../../i18n'
 
 type WhiteboardModalProps = {
@@ -170,6 +170,9 @@ export default function WhiteboardModal({
 
       const dimensions = dimensionsForWhiteboardState(serializedState)
       const snapshotResult = makeWhiteboardSnapshotResult(nodeId, snapshotUrl)
+      const mediaMeta = dimensions
+        ? computeMediaMetaPatch({ resultType: snapshotResult.type, meta: latestSource.meta || {}, width: dimensions.width, height: dimensions.height })?.meta
+        : undefined
       const snapshotSize = dimensions
         ? mediaNodeSize(dimensions.width, dimensions.height, latestSource.size?.width)
         : null
@@ -188,14 +191,8 @@ export default function WhiteboardModal({
           localOnly: false,
           uploadStatus: 'uploaded',
           ...(serializedState ? { whiteboardState: serializedState } : {}),
-          ...(dimensions
-            ? {
-                imageWidth: dimensions.width,
-                imageHeight: dimensions.height,
-                imageAspectRatio: dimensions.width / Math.max(1, dimensions.height),
-                previewHeight: snapshotSize?.previewHeight ?? latestSource.meta?.previewHeight,
-              }
-            : {}),
+          ...(mediaMeta || {}),
+          ...(dimensions ? { previewHeight: snapshotSize?.previewHeight ?? latestSource.meta?.previewHeight } : {}),
         },
       })
       return true
@@ -269,6 +266,9 @@ export default function WhiteboardModal({
         const latestState = useGenerationCanvasStore.getState()
         const latestSource = latestState.nodes.find((node) => node.id === nodeId)
         const dimensions = dimensionsForWhiteboardState(currentWhiteboardState)
+        const screenshotMeta = dimensions
+          ? computeMediaMetaPatch({ resultType: 'image', meta: {}, width: dimensions.width, height: dimensions.height })?.meta
+          : undefined
 
         const created = addNode({
           kind: 'image',
@@ -285,7 +285,7 @@ export default function WhiteboardModal({
           meta: {
             source: 'whiteboard-screenshot',
             sourceNodeId: nodeId,
-            ...(dimensions ? { imageWidth: dimensions.width, imageHeight: dimensions.height } : {}),
+            ...(screenshotMeta || {}),
           },
         })
         const snapshotResult = makeWhiteboardSnapshotResult(created.id, snapshotUrl)
@@ -297,11 +297,14 @@ export default function WhiteboardModal({
             ...(created.meta || {}),
             source: 'whiteboard-screenshot',
             sourceNodeId: nodeId,
-            ...(dimensions ? { imageWidth: dimensions.width, imageHeight: dimensions.height } : {}),
+            ...(screenshotMeta || {}),
           },
         })
         if (sourceKind === 'whiteboard') {
           const latestSourceAfterCreate = useGenerationCanvasStore.getState().nodes.find((node) => node.id === nodeId)
+          const sourceMeta = dimensions
+            ? computeMediaMetaPatch({ resultType: snapshotResult.type, meta: latestSourceAfterCreate?.meta || {}, width: dimensions.width, height: dimensions.height })?.meta
+            : undefined
           updateNode(nodeId, {
             result: snapshotResult,
             history: [
@@ -309,6 +312,7 @@ export default function WhiteboardModal({
               ...(latestSourceAfterCreate?.history || []).filter((entry) => entry.id !== snapshotResult.id),
             ],
             status: 'success',
+            ...(sourceMeta ? { meta: sourceMeta } : {}),
           })
         }
         connectNodes(nodeId, created.id, 'reference')

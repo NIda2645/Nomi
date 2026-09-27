@@ -1,5 +1,5 @@
 import { readLocalProjectAsync, saveLocalProject, type LocalProjectSummary } from '../library/localProjectStore'
-import { upgradeWorkbenchProjectMediaUrls, normalizeLegacyImageAssetKinds } from './projectMediaMigration'
+import { backfillCanvasMediaDimensions, upgradeWorkbenchProjectMediaUrls, normalizeLegacyImageAssetKinds } from './projectMediaMigration'
 import {
   clearActiveWorkbenchProjectSaveTarget,
   replayCanvasEventTailAndSealGenesis,
@@ -165,21 +165,22 @@ export function createWorkbenchProjectPersistenceService(deps: Dependencies): Wo
     const { record: v60Upgraded } = migrateProjectV51ToV60(catUpgraded)
     // A1.5：历史导入/切图/裁剪/截图的 image 节点改判为 asset（素材卡）。
     const assetUpgraded = normalizeLegacyImageAssetKinds(v60Upgraded)
+    const mediaDimensionsUpgraded = await backfillCanvasMediaDimensions(assetUpgraded)
     // 镜头编号存储身份化（审计 A2）：存量项目缺 shotIndex 的镜头节点按
     // (y, x, id) 确定性回填一次；此后编号不再随布局/添加节点漂移。
-    const shotBackfill = backfillShotIndexes(assetUpgraded.payload.generationCanvas.nodes)
+    const shotBackfill = backfillShotIndexes(mediaDimensionsUpgraded.payload.generationCanvas.nodes)
     const upgraded = shotBackfill.changed
       ? {
-          ...assetUpgraded,
+          ...mediaDimensionsUpgraded,
           payload: {
-            ...assetUpgraded.payload,
+            ...mediaDimensionsUpgraded.payload,
             generationCanvas: {
-              ...assetUpgraded.payload.generationCanvas,
+              ...mediaDimensionsUpgraded.payload.generationCanvas,
               nodes: shotBackfill.nodes,
             },
           },
         }
-      : assetUpgraded
+      : mediaDimensionsUpgraded
     // 语义相等判定（不再用引用相等）：多道迁移即便换了顶层引用，只要落盘内容没变就
     // 不写盘、不 ++revision、不弹「已升级」toast。修 revision 单调漂移根因。
     const changed = migratedRecordNeedsPersist(project, upgraded)

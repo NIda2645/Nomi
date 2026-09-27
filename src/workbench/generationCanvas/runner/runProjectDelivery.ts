@@ -40,7 +40,10 @@ function applyToStore(nodeId: string, outcome: NodeRunOutcome): boolean {
   const store = useGenerationCanvasStore.getState()
   const node = store.nodes.find(candidate => candidate.id === nodeId)
   if (!node) return false
-  if (outcome.kind === 'result') store.addNodeResult(nodeId, outcome.result)
+  if (outcome.kind === 'result') {
+    if (outcome.mediaDimensions) store.addNodeResult(nodeId, outcome.result, outcome.mediaDimensions)
+    else store.addNodeResult(nodeId, outcome.result)
+  }
   else if (outcome.kind === 'status') store.setNodeStatus(nodeId, outcome.status, outcome.error)
   else if (outcome.kind === 'run-started') store.appendNodeRun(nodeId, outcome.run)
   else if (outcome.kind === 'content') store.updateNode(nodeId, nodeRunOutcomePatch(node, outcome))

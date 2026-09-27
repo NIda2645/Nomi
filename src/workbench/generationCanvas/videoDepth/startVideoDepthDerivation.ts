@@ -26,7 +26,7 @@ import { deliverRunOutcome, whenRunTargetLoaded, type RunProjectTarget } from '.
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useNodeLivePreviewStore } from '../store/nodeLivePreviewStore'
 import { clearTaskCancel, isTaskCancelRequested } from '../runner/localTaskControl'
-import { resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { readMediaDimensions, resolveNodeVisualSize, type MediaDimensions } from '../nodes/nodeSizing'
 import i18n from '../../../i18n'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { createVideoDepthWorkerChannel, runVideoDepth } from './videoDepthClient'
@@ -94,7 +94,8 @@ export function startVideoDepthDerivation(
     updatedAt: Date.now(),
   })
 
-  const done = runDerivation({ bridge, target, nodeId, source })
+  const sourceDimensions = readMediaDimensions(sourceNode.meta?.videoWidth, sourceNode.meta?.videoHeight)
+  const done = runDerivation({ bridge, target, nodeId, source, mediaDimensions: sourceDimensions || undefined })
   return { derivedNodeId: nodeId, done }
 }
 
@@ -103,8 +104,9 @@ async function runDerivation(input: {
   target: RunProjectTarget
   nodeId: string
   source: { sourceUrl: string }
+  mediaDimensions?: MediaDimensions
 }): Promise<void> {
-  const { bridge, target, nodeId, source } = input
+  const { bridge, target, nodeId, source, mediaDimensions } = input
   const projectId = target.projectId
   // 进度、活预览都是给前台看的瞬态：原项目不在画布上时不写（那是别的项目的 store）。
   const whenVisible = (apply: () => void): void => { whenRunTargetLoaded(target, apply) }
@@ -175,7 +177,7 @@ async function runDerivation(input: {
         url: finalState.result.url,
         ...(finalState.result.assetId ? { assetId: finalState.result.assetId } : {}),
         createdAt: Date.now(),
-      } })
+      }, ...(mediaDimensions ? { mediaDimensions } : {}) })
       return
     }
     if (finalState.phase === 'cancelled') {
