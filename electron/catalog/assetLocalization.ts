@@ -22,7 +22,7 @@ import {
   parseInlineDataAsset,
   unreachableAssetValueError,
 } from "./assetValueScheme";
-import { contentTypeFromMagicBytes, mediaKindFromContentType } from "../assets/mediaTypes";
+import { contentTypeFromMagicBytes, isMarkupMasquerade, mediaKindFromContentType } from "../assets/mediaTypes";
 import { tagNomiError } from "../shared/nomiErrorCodes";
 import { desktopT } from "../desktopStrings";
 import {
@@ -177,9 +177,8 @@ export function assertLocalAssetMediaBytes(asset: LocalAsset, mediaKind = assetU
       throw new Error(`图片素材「${asset.fileName}」声明为 SVG，但内容不是完整且安全的 SVG 文档。`);
     }
   }
-  const prefix = asset.bytes.subarray(0, 2048).toString("utf8");
-  if (/<!doctype\s+html|<html\b|<\?xml\b|<svg\b/i.test(prefix)) {
-    throw new Error(`图片素材「${asset.fileName}」的内容实际是 HTML/XML/SVG 文本，不是可用于视频生成的栅格图片。请重新导入原图。`);
+  if (!sniffed && isMarkupMasquerade(asset.bytes)) {
+    throw new Error(tagNomiError("asset-invalid", `图片素材「${asset.fileName}」的内容实际是 HTML/XML/SVG 文本，不是可用的图片素材。请换一张或重新导入原图。`));
   }
   const knownRasterTypes = new Set([
     "image/png", "image/jpeg", "image/webp", "image/gif", "image/avif",
@@ -219,9 +218,9 @@ export function assertLocalAssetTransportReady(
   assertNoUnreachableAssetValues(effectiveValue);
   for (const url of collectLocalAssetUrls(effectiveValue)) {
     const asset = readLocalizableAsset(url, read);
-    if (!asset) throw new Error(`参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${describeAssetValue(url)}。请重新生成该节点或重新导入这张素材。`);
+    if (!asset) throw new Error(tagNomiError("asset-invalid", `参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${describeAssetValue(url)}。请换一张或重新导入这张素材。`));
     if (!asset.contentType || asset.contentType.toLowerCase().split(";")[0].trim() === "application/octet-stream") {
-      throw new Error(`无法识别本地素材「${asset.fileName || describeAssetValue(url)}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`);
+      throw new Error(tagNomiError("asset-invalid", `无法识别本地素材「${asset.fileName || describeAssetValue(url)}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`));
     }
     assertLocalAssetMediaBytes(asset);
     if (trustedOriginalUrl(asset)) continue;
@@ -307,7 +306,7 @@ export async function resolveLocalAsset(
     throw new Error(`所有免配置上传 host 都失败：${errors.join("；") || "(链为空)"}`);
   }
   const asset = readLocalizableAsset(localUrl, read);
-  if (!asset) throw new Error(`参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${describeAssetValue(localUrl)}。请重新生成该节点或重新导入这张素材。`);
+  if (!asset) throw new Error(tagNomiError("asset-invalid", `参考素材的本地文件读取失败（可能已被删除或随项目迁移）：${describeAssetValue(localUrl)}。请换一张或重新导入这张素材。`));
   assertLocalAssetMediaBytes(asset);
   // 本地 ComfyUI：LoadImage 只认上传回的 input 目录文件名（非公网 URL），故**跳过下面的 trustedOriginalUrl
   // 公网 URL 快路**，恒把本地字节 POST 到 /upload/image 换文件名（field 名 "image"、type=input、overwrite 避重名堆积）。
@@ -605,7 +604,7 @@ export async function localizeAssetsForVendor(
   for (const url of urls) {
     const asset = readLocalizableAsset(url, read);
     if (asset && (!asset.contentType || asset.contentType.toLowerCase().split(";")[0].trim() === "application/octet-stream")) {
-      throw new Error(`无法识别本地素材「${asset.fileName || describeAssetValue(url)}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`);
+      throw new Error(tagNomiError("asset-invalid", `无法识别本地素材「${asset.fileName || describeAssetValue(url)}」的类型，不能安全判断它是图片、视频还是音频。请重新导入并保留正确的文件扩展名。`));
     }
     const mediaKind = assetUploadChannelKind(asset?.contentType);
     if (asset) assertLocalAssetMediaBytes(asset, mediaKind);

@@ -286,6 +286,22 @@ describe('classifyGenerationError — 已知分类', () => {
     expect(translated.raw).not.toMatch(/NOMI_ERR/)
   })
 
+  // 2026-09-27 用户截图：参考图没过本机检查（我们自己的判断，请求没发出），错误卡却写「可能是服务商
+  // 临时故障或额度问题」。按码归到 asset-invalid：不甩锅服务商、标明未计费、提示换素材。
+  it('参考素材本身不合格:带 asset-invalid 码的错误不落 unknown，标明未计费，英文人话不影响分类', () => {
+    const coded = classifyGenerationError(
+      `Error invoking remote method 'nomi:tasks:run': Error: ${tagNomiError('asset-invalid', '图片素材「ref.png」的内容实际是 HTML/XML/SVG 文本，不是可用的图片素材。')}`,
+    )
+    expect(coded.kind).toBe('asset-invalid')
+    expect(coded.reason).toMatch(/未计费/)
+    expect(coded.hint).toMatch(/换一张|重新导入/)
+    expect(coded.hint).not.toMatch(/服务商临时故障/)
+    expect(coded.raw).not.toMatch(/NOMI_ERR/)
+    expect(coded.raw).toMatch(/ref\.png/)
+    const translated = classifyGenerationError(tagNomiError('asset-invalid', 'The reference file could not be read.'))
+    expect(translated.kind).toBe('asset-invalid')
+  })
+
   it('stripNomiErrorCode:剥掉码标记后只留人话（展示端不泄露机器信号）', () => {
     expect(stripNomiErrorCode(tagNomiError('asset-too-large', '文件太大了'))).toBe('文件太大了')
     expect(stripNomiErrorCode('没有标记的普通错误')).toBe('没有标记的普通错误')

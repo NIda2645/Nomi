@@ -33,7 +33,7 @@ import {
   sanitizeAssetMetaForKind,
   stableAssetId,
 } from "./assetPaths";
-import { contentTypeFromMagicBytes, isCertifiableMediaContentType, resolveContentType } from "./mediaTypes";
+import { contentTypeFromMagicBytes, isCertifiableMediaContentType, isMarkupMasquerade, resolveContentType } from "./mediaTypes";
 import { validateGlbStructure } from "./model3dValidation";
 import { resolveFfmpegPath } from "../export/ffmpegRunner";
 import { MEDIA_DECODER_PROTOCOL_WHITELIST } from "../export/mediaProbe";
@@ -112,8 +112,7 @@ function generatedMediaKind(contentType: string): "image" | "video" | "audio" | 
 /** Generated outputs are executable evidence, not ordinary user imports: fail closed before disk. */
 function validatedGeneratedMeta(meta: JsonRecord, declaredRaw: string, bytes: Uint8Array, sourcePath?: string): JsonRecord {
   if (String(meta.kind || "").toLowerCase() !== "generated") return meta;
-  const prefix = Buffer.from(bytes.subarray(0, 4096)).toString("utf8").trimStart();
-  if (/^(?:<!doctype\s+html|<html\b|<\?xml\b|<svg\b|<(?:error|response|message)\b)/i.test(prefix)) {
+  if (isMarkupMasquerade(bytes)) {
     throw new Error("Generated media validation failed (markup_masquerade)");
   }
   const detected = bytes.byteLength >= 12 && Buffer.from(bytes.subarray(0, 4)).toString("ascii") === "glTF"

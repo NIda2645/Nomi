@@ -7,6 +7,7 @@ import {
   extensionFromContentType,
   extensionsForKind,
   isCertifiableMediaContentType,
+  isMarkupMasquerade,
   mediaKindFromContentType,
   mediaKindFromExtension,
   normalizeExtension,
@@ -211,5 +212,23 @@ describe("mediaKindFromContentType（contentType → kind 单源，认不出返�
     expect(mediaKindFromContentType("application/octet-stream")).toBeNull();
     expect(mediaKindFromContentType("application/x-unknown")).toBeNull();
     expect(mediaKindFromContentType("")).toBeNull();
+  });
+});
+
+describe("markup masquerade boundary", () => {
+  const pngChunk = (type: string, payload: string) => Uint8Array.from([
+    ...Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    ...new Array(64).fill(0), ...Buffer.from(type), ...Buffer.from(payload),
+  ]);
+
+  it("ignores SVG/XML embedded in raster metadata and rejects text at the start", () => {
+    const c2paPng = pngChunk("caBX", "image/svg+xml <svg width=\"716\" />");
+    const xmpPng = pngChunk("iTXt", "<?xml version=\"1.0\"?><x:xmpmeta>");
+    const xmpJpeg = Uint8Array.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x24, ...Buffer.from("http://ns.adobe.com/xap/1.0/ <?xml><x:xmpmeta>"), 0xff, 0xd9]);
+    expect(isMarkupMasquerade(c2paPng)).toBe(false);
+    expect(isMarkupMasquerade(xmpPng)).toBe(false);
+    expect(isMarkupMasquerade(xmpJpeg)).toBe(false);
+    expect(isMarkupMasquerade(Buffer.from("  <?xml version=\"1.0\"?>"))).toBe(true);
+    expect(isMarkupMasquerade(Buffer.from("<!doctype html><html>"))).toBe(true);
   });
 });

@@ -1,0 +1,214 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-27-reference-image-markup-false-positive",
+  "problem_type": "valid raster reference images rejected as markup before upload",
+  "symptom": "On 0.22.1, using an existing or freshly generated image as a reference for image or video generation failed with 'the content is actually HTML/XML/SVG text, not a raster image usable for video generation. Re-import the original'; the error card blamed a provider outage or quota. In-app feedback NF-0927-0001 (apimart gpt-image-2) carried the same message.",
+  "direct_cause": "assertLocalAssetMediaBytes searched the first 2048 bytes for <svg / <?xml / <html anywhere instead of at the start of the file. GPT Image and other generators embed a C2PA manifest (PNG caBX chunk) whose c2pa.icon is an SVG, and XMP metadata begins with <?xml, so a PNG whose magic bytes were valid was classified as markup. The thrown error carried no machine code, so the renderer fell back to the unknown/provider category.",
+  "class_root": "The judgment 'these bytes are text or markup pretending to be media' had three independent definitions (generated landing, certification, reference upload); two were anchored at the file start and one drifted to an unanchored search. Local, pre-request asset failures were also untagged, so the renderer could not tell them apart from provider failures.",
+  "affected_population": [
+    "Anyone using a GPT Image (or other C2PA-signing model) output as a reference on 0.22.0 or 0.22.1",
+    "Imported PNG/JPEG/WebP images whose first 2 KB contain XMP or other XML metadata (for example images saved by chat apps or editors)",
+    "All vendors and both image-to-image and image-to-video paths, because the check runs before channel selection"
+  ],
+  "scope_paths": [
+    "electron/assets/mediaTypes.ts",
+    "electron/catalog/assetLocalization.ts",
+    "electron/assets/projectAssetStore.ts",
+    "electron/providerAdapter/certificationMedia.ts",
+    "electron/shared/nomiErrorCodes.ts",
+    "src/workbench/observability/classifyError.ts",
+    "src/workbench/observability/narrate.ts",
+    "src/i18n/locales/generationCommon.ts"
+  ],
+  "entry_points": [
+    "assertLocalAssetTransportReady (pre-spend preflight) and localizeAssetsForVendor / resolveLocalAsset (upload) via assertLocalAssetMediaBytes",
+    "validatedGeneratedMeta when a generated result lands in the project asset store",
+    "certifyMediaArtifact markup check during provider certification",
+    "classifyGenerationError for the error card shown on the generation node"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/assets/mediaTypes.ts",
+    "tests": [
+      "electron/assets/mediaTypes.test.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts"
+    ],
+    "why": "mediaTypes already owns bytes-to-media-type (contentTypeFromMagicBytes); the markup-masquerade judgment is the same kind of byte classification, so it lives beside it and every validation boundary consumes it."
+  },
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://c2pa.org/specifications/specifications/2.1/specs/C2PA_Specification.html",
+      "checked_at": "2026-09-27",
+      "purpose": "Confirm C2PA manifests are embedded in PNG as a caBX chunk (JUMBF) and may carry a thumbnail/icon assertion such as an SVG."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://www.w3.org/TR/png-3/#11iTXt",
+      "checked_at": "2026-09-27",
+      "purpose": "Confirm XMP is stored in PNG iTXt chunks after the signature and IHDR, so XML text can legitimately appear early in a valid PNG."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://mimesniff.spec.whatwg.org/#identifying-a-resource-with-an-unknown-mime-type",
+      "checked_at": "2026-09-27",
+      "purpose": "Prior art: the WHATWG sniffing algorithm matches markup patterns only at the start of the resource after skipping leading whitespace, never anywhere in a prefix window."
+    }
+  ],
+  "invariants": [
+    "There is exactly one definition of 'bytes are markup or an error body masquerading as media', and it inspects only the start of the file after a BOM and leading whitespace.",
+    "A file whose magic bytes identify a raster image is never rejected because its metadata chunks contain markup text.",
+    "Every local reference-asset failure raised before a request leaves the machine carries the asset-invalid machine code, and the renderer classifies it by code as uncharged and not a provider failure."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "isMarkupMasquerade"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "validatedGeneratedMeta"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/assetLocalization.ts",
+      "symbol": "isMarkupMasquerade"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/assetLocalization.ts",
+      "symbol": "assertLocalAssetMediaBytes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/certificationMedia.ts",
+      "symbol": "isMarkupMasquerade"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/mediaTypes.ts",
+      "symbol": "isMarkupMasquerade"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/nomiErrorCodes.ts",
+      "symbol": "asset-invalid"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/assetLocalization.ts",
+      "symbol": "asset-invalid"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "asset-invalid"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/narrate.ts",
+      "symbol": "asset-invalid"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/locales/generationCommon.ts",
+      "symbol": "assetInvalid"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 11,
+    "why_not": "before = the three private definitions of the markup judgment. After the fix there is one definition (mediaTypes.isMarkupMasquerade, listed as its owner door) and its three call sites plus the two enclosing validators from node scripts/door-map.mjs isMarkupMasquerade assertLocalAssetMediaBytes validatedGeneratedMeta; each call site is a distinct validation boundary on its own bytes, none defines the rule. The remaining doors are the asset-invalid machine code: its owner (nomiErrorCodes), the one throwing boundary (assetLocalization), and the renderer classifier, narrator and zh/en copy that read it. door-map scans identifiers, not string literals, so these code doors were added by rg over 'asset-invalid' / 'assetInvalid' in src and electron (no other hits)."
+  },
+  "generality_proof": "The fix does not special-case C2PA, XMP, PNG, or any vendor: it restores the start-of-file rule for all bytes and lets magic bytes win for every raster format, so any future metadata that embeds markup is also accepted, while text files named as images are still rejected at every boundary.",
+  "shared_boundaries": [
+    {
+      "path": "electron/assets/mediaTypes.ts",
+      "symbol": "isMarkupMasquerade",
+      "responsibility": "Single definition of markup/error-body masquerade, anchored at the file start after BOM and whitespace."
+    },
+    {
+      "path": "electron/shared/nomiErrorCodes.ts",
+      "symbol": "NomiErrorCode",
+      "responsibility": "Owns the asset-invalid machine code that crosses IPC so the renderer classifies by code, not by Chinese text."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/assets/projectAssetStore.ts",
+      "entry_point": "validatedGeneratedMeta",
+      "disposition": "enforced",
+      "evidence": "Private regex removed; calls mediaTypes.isMarkupMasquerade with the same anchored semantics, so generated-result validation is unchanged in behavior."
+    },
+    {
+      "path": "electron/providerAdapter/certificationMedia.ts",
+      "entry_point": "certifyMediaArtifact",
+      "disposition": "enforced",
+      "evidence": "Private isMarkupMasquerade and scan window removed; imports the owner, whose definition is the one certification already used."
+    },
+    {
+      "path": "electron/catalog/assetLocalization.ts",
+      "entry_point": "assertLocalAssetMediaBytes and the two read/type failures in the same boundary",
+      "disposition": "enforced",
+      "evidence": "Uses the owner only when magic bytes do not identify the file; all three local failures are tagged asset-invalid."
+    },
+    {
+      "path": "electron/browser/media/browserMediaValidation.ts",
+      "entry_point": "SVG detection for browser captures",
+      "disposition": "not-affected",
+      "evidence": "It detects a genuine SVG document to assign image/svg+xml (anchored at the start); it does not reject media and is not the masquerade judgment."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same semantic was copied three times and one copy drifted; any new validation boundary that copied a regex again, or any new pre-request asset failure thrown without a code, would reproduce either the false rejection or the provider-blaming error card.",
+    "same_class_scan": [
+      "rg for doctype/html/xml/svg regexes across electron and src found four sites; three were the masquerade judgment and one (browserMediaValidation) is SVG identification, recorded as not-applicable.",
+      "Ran node scripts/door-map.mjs isMarkupMasquerade assertLocalAssetMediaBytes validatedGeneratedMeta; it returned the five doors above.",
+      "Scanned 296 real images in local Nomi projects and film assets with the old rule: 2 false positives, both GPT-generated PNGs with a caBX chunk containing <svg at offset 305; both pass the new check."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/assets/mediaTypes.ts",
+    "invariant": "Masquerade detection is defined once and anchored at the file start; raster magic bytes take precedence over any text found in metadata.",
+    "failure_mode": "Removing the start anchor makes mediaTypes.test.ts fail on the C2PA and XMP fixtures (verified by mutation); a new untagged local asset error would fall back to unknown and fail the classifier expectation pattern.",
+    "exception_policy": "none",
+    "strategy": "Collapse the three definitions into the mediaTypes owner, consume it at each validation boundary, and tag every pre-request asset failure with a machine code the renderer reads.",
+    "artifacts": [
+      "electron/assets/mediaTypes.ts",
+      "electron/assets/mediaTypes.test.ts",
+      "electron/catalog/assetLocalization.test.ts",
+      "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/assets/mediaTypes.test.ts",
+    "electron/catalog/assetLocalization.test.ts",
+    "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/assets/mediaTypes.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/assets/projectAssetStore.ts",
+      "electron/providerAdapter/certificationMedia.ts",
+      "electron/catalog/assetLocalization.ts"
+    ],
+    "rationale": "The three private markup definitions (projectAssetStore inline regex, certificationMedia isMarkupMasquerade + MARKUP_SCAN_BYTES, assetLocalization unanchored 2048-byte regex) are deleted in these files in the same change; only the mediaTypes owner remains."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency is added or changed; the fix uses Node TextDecoder and existing modules.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data changes. Existing node errors saved before the fix keep their old text until the user retries, and the retry now succeeds for valid images.",
+  "residual_risks": [
+    "Errors persisted on nodes before this fix have no machine code and still read as the generic category until retried.",
+    "The PNG-named-JPEG case (declared type differs from magic bytes) is still rejected by the existing declared-vs-magic check; it was not reported and is out of scope for this hotfix."
+  ]
+}
