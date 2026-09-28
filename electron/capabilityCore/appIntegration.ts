@@ -143,6 +143,7 @@ export async function startCapabilityCore(
     proposalReceiptFor?: import('./rpcServer').RpcServerOptions['proposalReceiptFor']
     openCredentialsInNomi?: import('./rpcServer').RpcServerOptions['openCredentialsInNomi']
     canvasReadExecutionRuntime?: CanvasReadExecutionRuntime
+    onRpcActivity?: () => void
   } = {},
 ): Promise<void> {
   // 常驻生成面的相从这里起算：重启能力核时先回到 starting，上一轮的 install-failed 不许残留。
@@ -616,6 +617,7 @@ export async function startCapabilityCore(
         return { opened: true }
       }),
       generationPlanning,
+      onRpcActivity: authorities.onRpcActivity,
     })
     const location = getProjectLocationState()
     advertisedLibrary = { projectsRoot: location.path, isDefault: location.source === 'default' }

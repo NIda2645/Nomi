@@ -190,6 +190,7 @@
 | T-MO-27 | 自定义中转的「测试连接」/协议自动探测同样静默发真实 `POST /chat/completions` | todo | 09-22 T-MO-10 数门时发现 | 本概念（凭据验证/自检的付费边界）的第 5 扇门：`electron/ai/onboarding/onboardingIpc.ts` 的 `probeOneProtocol`。它要判的是「这个中转说哪套协议」，模型列表答不了这个问题，所以不能简单改免费。没随 T-MO-10 一起改的理由：在发版前阻断 lane 里给每一次「测试连接」加一张确认卡，而那张卡在渲染层不可达时 fail-closed，会把自定义供应商向导变成死路。做法待定：或者先探 `GET /models` 再只对真需要协议判别的那一步问、或者把这一下的费用如实写在按钮上并接进同一份探测策略。**09-22 用户拍板：发后修，本批已加提示**（`src/ui/onboarding/OnboardingWizard.tsx` 的 `modelSetup.testConnectionSpendHint`，中英两语，只加文案不改行为；接进 `credentialProbePolicy` 仍是 T-MO-27 本体）。 |
 | T-MO-26 | 跨字段约束没有家：散在档案注释、手写 `request_transform`、供应商报错三处；UI 仍把非法组合摆成可选 | todo | 09-18 批次 3 收尾 | 最早能拦住的那层是 UI 置灰（R17），那要给档案体系加「跨字段约束」这个声明位；今天只能在发请求前拦。与 `vendorParams` / `paramMap` 两套机制解决同一类问题、可合并那条一起做 |
 | T-MO-28 | 模型雷达 09-24 发现 13 个新模型待分诊；论文雷达 09-07 起静默停跑（本机没装 `nomi-model-radar` / `nomi-research-radar` 技能） | todo（发版后） | 09-26 协调会话收口 · 卡 task_56ac7b30 · 用户 09-26 拍板 | 先装回雷达技能；分诊挑 2–3 个出接入方案；节奏：每版最多接 1–2 个新模型 |
+| T-MO-31 | MCP 被动发现不应冷启动 Nomi；真实工具调用后台启动，窗口可手动拉回，未显示且无在途任务闲置 10 分钟退出 | doing | 09-27 用户群反馈 + 09-28 四条拍板 | 根因合同 `docs/fixes/2026-09-28-mcp-passive-request-cold-launch.root-cause.json`；计划 `docs/plan/2026-09-28-mcp-background-launch.md`；Windows 真机走查待主会话执行 |
 | T-MO-29 | KIE/Suno 回调地址 `https://nomiaqm.com/api/vendor-callbacks/kie/suno/ack` 一个语义多份定义：`electron/catalog/kieSunoAudio.ts`、`electron/shared/modelArchetypes/sunoAudio.ts`（3 处）、生成文件 `archetypeWireDefaults.audio.generated.ts`，站点侧在 `worker/kieSunoAck.ts` | todo | 09-27 修 T-WB-06 时发现（R14.1 同一语义几份定义） | 定一个 owner（档案侧常量），其余引用它；worker 侧路径与之对等棘轮 |
 
 ## G. 生态与插件

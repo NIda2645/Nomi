@@ -24,7 +24,8 @@ import { collectAssetUrls, firstMappedString, providerMetaFromResponse, resolveT
 import { extractAssetUrl } from "./tasks/assetUrlExtract";
 import { applyResponseTransform } from "./tasks/responseTransforms";
 import { applyRequestTransform } from "./tasks/requestTransforms";
-import { TtlLruCache } from "./tasks/taskCache";
+import { taskCache } from "./tasks/taskCache";
+export { taskCache, hasInFlightTasks } from "./tasks/taskCache";
 import { markTaskAdmitted } from "./tasks/taskAdmission";
 import { readCachedTaskResult, recipeFingerprint, rememberTaskResult } from "./vendor/fingerprintCache";
 import {
@@ -155,7 +156,6 @@ export type TaskResult = {
   };
 };
 // TTL(1h) + LRU(200) 上限，防异步任务条目无界驻留（P0-7）。不再缓存明文 apiKey。
-export const taskCache = new TtlLruCache<CachedTask>({ maxEntries: 200, ttlMs: 60 * 60 * 1000 });
 
 /** 受理一个异步任务：写工作缓存 + 记账本（单一入口，所有 admit 点同源，防漏记）。 */
 export function admitTask(id: string, entry: CachedTask): void {

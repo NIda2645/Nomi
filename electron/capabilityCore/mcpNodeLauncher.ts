@@ -40,6 +40,7 @@ const CLIENT_ENV = 'NOMI_MCP_CLIENT'
 const CLIENT_PROOF_ENV = 'NOMI_MCP_CLIENT_PROOF'
 const APP_COMMAND_ENV = 'NOMI_MCP_APP_COMMAND'
 const APP_ARGS_ENV = 'NOMI_MCP_APP_ARGS'
+const BACKGROUND_LAUNCH_ENV = 'NOMI_LAUNCH_BACKGROUND'
 const BOOT_TIMEOUT_MS = 60_000
 // 快速失败预算（§P3-F 承诺）：库不匹配/陈旧/旧版这类「已知连不上」必须在此预算内报人话，绝不拖到 60s 盲等。
 // 实现上在**冷启前**同步命中即抛（毫秒级 ≪ 预算），远快于它；此常量既是文档也是并发用例断言的上界。
@@ -159,6 +160,7 @@ function startNomi(): void {
   delete env[APP_ARGS_ENV]
   delete env[CLIENT_ENV]
   delete env[CLIENT_PROOF_ENV]
+  env[BACKGROUND_LAUNCH_ENV] = '1'
   bootFailure = ''
   bootExitDetail = ''
   bootedApp = spawn(command, appArgs(), { env, stdio: 'ignore' })
@@ -292,13 +294,28 @@ function launcherConnection(): McpConnectionContext {
   return connection
 }
 
+async function invokeLiveRpc(
+  instance: InstanceAdvertisement,
+  method: string,
+  params: Record<string, unknown>,
+  options?: McpInvokeOptions,
+): Promise<unknown> {
+  const requestSignal = (params as Record<PropertyKey, unknown>)[MCP_REQUEST_SIGNAL] as AbortSignal | undefined
+  return callViaRpc(instance, method, params, requestSignal ? { ...options, signal: requestSignal } : options)
+}
+
 const protocol = createMcpProtocol({
   send: (message) => process.stdout.write(`${JSON.stringify(message)}\n`),
   invoke: async (method, params, options) => {
     const requestSignal = (params as Record<PropertyKey, unknown>)[MCP_REQUEST_SIGNAL] as AbortSignal | undefined
     const instance = await ensureLiveInstance(requestSignal)
     await refreshLauncherLocale(instance)
-    return callViaRpc(instance, method, params, requestSignal ? { ...options, signal: requestSignal } : options)
+    return invokeLiveRpc(instance, method, params, options)
+  },
+  invokeIfOpen: async (method, params, options) => {
+    const instance = readLiveInstance()
+    if (!instance) return undefined
+    return invokeLiveRpc(instance, method, params, options)
   },
   isAppOpen: () => Boolean(readLiveInstance()),
   getAuthenticatedClient: () => launcherConnection().authenticatedClient,

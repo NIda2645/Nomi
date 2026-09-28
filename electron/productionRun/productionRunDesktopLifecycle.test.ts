@@ -20,6 +20,7 @@ vi.mock("electron", () => ({
     quit: () => quit(),
     isReady: () => true,
     getPath: () => "/tmp/nomi-lifecycle-test",
+    dock: { show: vi.fn() },
   },
   BrowserWindow: { getAllWindows: () => windows },
 }));
