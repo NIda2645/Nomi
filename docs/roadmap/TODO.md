@@ -27,7 +27,6 @@
 | T-RL-13 | RC 从 main 触发、却把 release 分支填进 `ref` 输入：构建、验收全过，`Desktop Release` 到最后一步才报 `RC commit mismatch` 拒发 | todo（下一版） | 09-26 协调会话 v0.22.1 晋级被拦（Desktop Release run 36248271714；RC 36235580649 只能从同一提交重打成 36248506177） | 防线放在最早那一层（R17）：`.github/workflows/desktop-rc.yml` 的 validate 第一步比较 `github.sha` 与解析出来的 `inputs.ref`，不等就直接红（加规则先验它会红），`docs/release-process.md` §4 写明「Use workflow from 选 release 分支 / `--ref`」。另外 §5 的顺序要写清：release→main 的 PR 合并会触发 `delete_branch_on_merge` 删掉 release 分支，晋级前如果还要重打 RC，得先把分支推回原提交。教训见 `docs/lessons/rc-must-be-dispatched-on-the-release-branch.md` |
 | T-RL-14 | `Desktop Release` 在「Create immutable tag」失败：CI 上 `pnpm install` 的 postinstall（`scripts/install-git-hooks.cjs`）把开发者用的 pre-push 钩子也装上了，钩子要 Ponytail 收据，于是工作流自己往远端写版本标签被拦 | in-progress | 09-26 v0.22.1 晋级（run 36251951690 失败，本机先打同名标签后 run 36252239904 复用标签成功）；09-27 v0.22.2 同样被拦（run 36325671938，同法绕过后 run 36326044349 成功） | 改为在 `verifyPushReceipt` 判「内容在不在远端」：对象已在某条远端跟踪分支历史里＝推它没有新内容离开本机，不要收据；其余 ref 照旧校验。没采用原先「CI / GITHUB_ACTIONS 环境下不装钩子」：那是一个任何进程都能设的环境变量开关，本机设一下就绕过全部钩子；按内容判没有这个口子，还顺带放行开发者推已发布提交。node-test 覆盖已发布标签 / 新提交标签 / 混合推送 |
 | T-RL-15 | Agent 在跑时界面卡几分钟（渲染进程，行级 labels 每行每次重建 + 行未 memo） | done #904 | 09-27 用户反馈 + 主管 Windows 实测 | 已合 #904，随 v0.22.2 发布；修复前后同一 21 回合探针：最长连续卡顿 93s → 1.7s、>1s 卡顿 59 → 2 |
-| T-RL-17 | 官方额度：用户登录即可用内置模型、按次扣 Nomi 余额，不用自己配一堆服务 | hold（先稳生产与花钱边界，再上收费） | 用户 09-24 / 09-28 拍板 | 服务端方案与实现只在私有服务端仓库推进；公开仓库只做客户端接入（登录、官方渠道、兑换码入口），先出样张 |
 ## B. Agent 质量
 
 > 用户 09-14 的验收句：「明显有问题的功能优化到可用 **+ Agent 优化到可用**」。
