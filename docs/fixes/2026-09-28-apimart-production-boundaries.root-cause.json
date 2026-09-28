@@ -1,0 +1,241 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-apimart-production-boundaries",
+  "problem_type": "Shared provider result normalization and safe connection failure classification",
+  "symptom": "APIMart image/video tasks can produce media but fail result extraction; a pre-TLS ECONNRESET prevents submitting to APIMart even when an allowlisted alternate is reachable.",
+  "direct_cause": "The shared query recipes only matched url[0] and omitted scalar url; the shared connect-phase classifier discarded the TLS-stage message and rejected all ECONNRESET.",
+  "class_root": "Transport stage and response shape were narrowed beyond the supported inputs at shared provider boundaries.",
+  "affected_population": [
+    "APIMart image and video models using shared query recipes",
+    "Requests and asset transfers using the vendor base resolver when a TLS connection is reset before establishment"
+  ],
+  "scope_paths": [
+    "electron/catalog/apimartVendor.ts",
+    "electron/vendor/vendorBaseFallback.ts"
+  ],
+  "entry_points": [
+    "electron/catalog/apimartImages.ts / APIMART_IMAGE_QUERY_OP",
+    "electron/catalog/apimartVideos.ts / APIMART_VIDEO_QUERY_OP",
+    "electron/vendor/vendorHttp.ts / fetchVendorWithBaseFallback",
+    "electron/assets/localAssetFile.ts / maybeResolveVendorBase"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "This record documents repository enforcement boundaries and the exact reported pre-TLS error. Query-shape fixtures exercise the real response mapper; transport fixtures exercise the real retry wrapper. It does not claim fresh provider availability or paid end-to-end certification.",
+  "invariants": [
+    "Shared image/video query recipes extract the first nonempty URL from supported scalar and array shapes.",
+    "ECONNRESET permits a retry only when its same error detail explicitly identifies failure before secure TLS establishment; generic resets and response-stage errors remain non-retryable."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationQuery.ts",
+      "symbol": "APIMART_IMAGE_QUERY_OP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartImages.ts",
+      "symbol": "APIMART_CREATE_TASK_ID_PATH"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartImages.ts",
+      "symbol": "APIMART_IMAGE_QUERY_OP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartImages.ts",
+      "symbol": "APIMART_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartTexts.ts",
+      "symbol": "APIMART_CREATE_TASK_ID_PATH"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartTexts.ts",
+      "symbol": "APIMART_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartVideos.ts",
+      "symbol": "APIMART_CREATE_TASK_ID_PATH"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartVideos.ts",
+      "symbol": "APIMART_VIDEO_QUERY_OP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartVideos.ts",
+      "symbol": "APIMART_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/builtinVendorSeeds.ts",
+      "symbol": "APIMART_VENDOR_SEED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "APIMART_VENDOR_SEED"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localAssetFile.ts",
+      "symbol": "rewriteVendorUrl"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localAssetFile.ts",
+      "symbol": "maybeResolveVendorBase"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorBaseFallback.ts",
+      "symbol": "restorePrimaryIfHealthy"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorBaseFallback.ts",
+      "symbol": "isConnectPhaseError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorBaseFallback.ts",
+      "symbol": "rewriteVendorUrl"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorBaseFallback.ts",
+      "symbol": "maybeResolveVendorBase"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorBaseFallbackBoot.ts",
+      "symbol": "configureVendorBaseFallback"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorHttp.ts",
+      "symbol": "fetchVendorWithBaseFallback"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorOutboundGuard.ts",
+      "symbol": "codeDeclaredFallbackOrigins"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartVendor.ts",
+      "symbol": "APIMART_IMAGE_QUERY_OP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartVendor.ts",
+      "symbol": "APIMART_VIDEO_QUERY_OP"
+    }
+  ],
+  "door_reduction": {
+    "before": 22,
+    "after": 22,
+    "why_not": "Catalog image/video/text consumers and seeding retain their distinct responsibilities. HTTP submission, asset transfer, startup restoration and outbound allowlisting also retain their existing entry points, with result mapping and retry classification owned centrally."
+  },
+  "generality_proof": "The image/video factories reuse the corrected query recipes. vendorHttp and asset transfers converge on maybeResolveVendorBase and its isConnectPhaseError predicate. No model-specific UI or per-caller retry is added.",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/apimartVendor.ts",
+      "symbol": "APIMART_IMAGE_QUERY_OP",
+      "responsibility": "Declare image result URL shape alternatives at the shared query recipe."
+    },
+    {
+      "path": "electron/catalog/apimartVendor.ts",
+      "symbol": "APIMART_VIDEO_QUERY_OP",
+      "responsibility": "Declare video result URL shape alternatives at the shared query recipe."
+    },
+    {
+      "path": "electron/vendor/vendorBaseFallback.ts",
+      "symbol": "isConnectPhaseError",
+      "responsibility": "Classify failures before the existing allowlisted alternate-origin retry path."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/catalog/apimartImages.ts",
+      "entry_point": "APIMART_IMAGE_QUERY_OP",
+      "disposition": "enforced",
+      "evidence": "Image model factory consumes the shared query operation for all image mappings."
+    },
+    {
+      "path": "electron/catalog/apimartVideos.ts",
+      "entry_point": "APIMART_VIDEO_QUERY_OP",
+      "disposition": "enforced",
+      "evidence": "Video model factory consumes the shared query operation for all video mappings."
+    },
+    {
+      "path": "electron/vendor/vendorHttp.ts",
+      "entry_point": "fetchVendorWithBaseFallback",
+      "disposition": "enforced",
+      "evidence": "requestJson uses the shared vendor fetch wrapper for paid submissions and query requests."
+    },
+    {
+      "path": "electron/assets/localAssetFile.ts",
+      "entry_point": "maybeResolveVendorBase",
+      "disposition": "enforced",
+      "evidence": "Asset HTTP transfers use the same connect-phase classification before selecting another allowlisted vendor origin."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every image/video model using these shared recipes and every future connection reset can reach the same failure mechanisms.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs electron/catalog/apimartVendor.ts: 11 distinct consumers; examined image/video factories and capability query path.",
+      "node scripts/door-map.mjs electron/vendor/vendorBaseFallback.ts: 9 distinct consumers; examined vendorHttp and localAssetFile transfer entry points.",
+      "vendorBaseFallback.test.ts covers DNS, aggregate errors, pre-TLS resets, ordinary resets, HTTP errors and response-stage timeouts."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/vendor/vendorBaseFallback.ts",
+    "invariant": "Only classified connection-establishment failures enter alternate-origin resolution; result shape alternatives remain owned by shared catalog operations.",
+    "failure_mode": "Unclassified reset errors propagate without automatically resubmitting paid requests; absent result URLs remain absent rather than fabricating an asset.",
+    "exception_policy": "none",
+    "strategy": "Extend existing shared operation declarations and connection-stage predicate, without adding per-model handling or another retry loop.",
+    "artifacts": [
+      "electron/vendor/vendorBaseFallback.ts",
+      "electron/catalog/apimartVendor.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/apimartModelIds.test.ts",
+    "electron/vendor/vendorBaseFallback.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/apimartModelIds.test.ts",
+    "electron/vendor/vendorBaseFallback.test.ts"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron",
+    "tests": [
+      "electron/catalog/apimartModelIds.test.ts",
+      "electron/vendor/vendorBaseFallback.test.ts"
+    ]
+  },
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The existing shared recipe and predicate are modified in place; no parallel transport or parsing implementation is introduced."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency is changed. This correction classifies the observed error and declares shapes in existing application mappings; it does not attempt to repair the TLS runtime or proxy.",
+    "exit_criteria": []
+  },
+  "migration": "Shared built-in recipe changes follow the existing catalog seeding path. No project IDs, credentials, task IDs or result files are rewritten by this patch.",
+  "residual_risks": [
+    "No paid generation was performed for this patch; actual provider service availability remains unproven.",
+    "Alternate-origin recovery is possible only for configured official families with a reachable candidate. A proxy or network failure affecting all candidates still propagates.",
+    "The pre-TLS classifier relies on the runtime's explicit error message; unknown message forms fail closed."
+  ]
+}
