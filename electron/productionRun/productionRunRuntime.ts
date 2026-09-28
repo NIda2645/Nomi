@@ -6,6 +6,7 @@ import { createProductionRunService, type ProductionRunService } from './product
 import {
   createProductionRunE2eRenderer,
   isProductionRunE2eFixtureEnabled,
+  PRODUCTION_E2E_FIXTURE_MAX_SPEND,
   PRODUCTION_E2E_FIXTURE_MODEL,
   PRODUCTION_E2E_FIXTURE_PROVIDER,
 } from './productionRunE2eFixture'
@@ -50,7 +51,15 @@ export function getProductionRunService(): ProductionRunService {
           trustedHosts: ['nomi'],
           allowedProviders: [PRODUCTION_E2E_FIXTURE_PROVIDER],
           allowedModels: [PRODUCTION_E2E_FIXTURE_MODEL],
-          maxSpend: 0,
+          // 2026-09-21 用户拍板：「改掉这个规则，规则哪里来的去哪里改，最小必要生成是允许的。」
+          //
+          // 这里曾经钉着 `maxSpend: 0`。夹具模式下**真正的**保险是「出站只认回环」
+          // （`generationProviderBootstrap.safeFixtureBaseUrl` 只接受 127.0.0.1 / localhost / ::1，
+          // 且要 `NOMI_E2E_PRODUCTION_FIXTURE=1`）——钱本来就花不出去。钉 0 是第二道重复保险，
+          // 代价却是**有价确认在真机走查里永远走不通**：带价格的付款卡一律撞 policy-budget-exceeded，
+          // 于是「卡上显示价 → 确认 → 账本记同一价」这条链从来没被真机验过。
+          // 改成一个小的正数上限：既让有价确认走得通，又保住「夹具不许出现大额」的那层体检。
+          maxSpend: PRODUCTION_E2E_FIXTURE_MAX_SPEND,
           maxAttemptsPerJob: 1,
           minimizeUploads: true,
         }),

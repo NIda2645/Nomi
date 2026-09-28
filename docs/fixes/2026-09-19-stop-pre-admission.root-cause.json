@@ -1,0 +1,198 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-19-stop-pre-admission",
+  "problem_type": "Stopped asynchronous input preparation can admit work after cancellation",
+  "symptom": "After Stop, a waiting composer input starts a new model request or enters an idle follow-up queue.",
+  "direct_cause": "Stop aborts only the accepted pi operation and queues; catalog/configure/readiness/input preparation has no cancellation inherited by the final admission.",
+  "class_root": "All inputs originating before a conversation Stop must either already belong to pi cancellation or fail before admission, regardless of which asynchronous preparation stage they occupy.",
+  "affected_population": [
+    "Renderer catalog waits",
+    "IPC configuration and queued configuration",
+    "Same-session model reopen readiness",
+    "Native prompt/steer/follow-up skill and attachment preparation"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+    "electron/agentLane/laneIpc.ts",
+    "electron/agentLane/laneWorkspace.mts",
+    "electron/agentLane/laneHost.mts",
+    "electron/agentLane/laneInputAdmission.mts",
+    "electron/shared/agentLane/laneContracts.ts",
+    "electron/shared/agentLane/laneErrorCodes.ts",
+    "src/workbench/ai/lane/laneCommandFailure.ts",
+    "src/i18n/locales/agentLaneError.ts"
+  ],
+  "entry_points": [
+    "Resident composer send/Stop",
+    "IPC prompt/steer/follow-up and abort",
+    "Workspace direct execute during configureModel",
+    "Native direct execute during input preparation"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The stop contract is application-specific; implementation uses the installed fixed pi 0.85.1 public context declarations and source (harness/context exports withCancel/withAbortSignal/awaitWithContext, chord/dist/context/index). No dependency behavior is inferred from memory.",
+  "invariants": [
+    "Stop retires only pending admissions of the addressed conversation before awaiting anything.",
+    "The original cancellation signal reaches pi accept/steer/followUp; already accepted work remains owned by pi.abort.",
+    "New inputs after Stop use a fresh cancellation scope; ordinary opening/model waits continue to work.",
+    "Cancelled unaccepted input preserves its composer draft; a stale Stop/finally cannot clear a newer token.",
+    "After IPC dispatch, draft exchange remains locked until the exact send ACK settles; Stop only releases inputs that have not crossed IPC."
+  ],
+  "doors": [
+    {"kind":"read","path":"electron/agentLane/laneCommandCodec.ts","symbol":"LaneCommand"},
+    {"kind":"read","path":"electron/agentLane/laneDesktopRuntime.ts","symbol":"LaneIpcDependencies"},
+    {"kind":"read","path":"electron/agentLane/laneHost.mts","symbol":"LaneCommand"},
+    {"kind":"read","path":"electron/agentLane/laneIpc.ts","symbol":"LaneIpcDependencies"},
+    {"kind":"read","path":"electron/agentLane/laneWorkspace.mts","symbol":"LaneCommand"},
+    {"kind":"read","path":"electron/shared/agentLane/laneComposerIntent.ts","symbol":"LaneCommand"},
+    {"kind":"read","path":"electron/shared/agentLane/laneContracts.ts","symbol":"LaneCommand"},
+    {"kind":"read","path":"electron/shared/agentLane/laneDesktopContracts.ts","symbol":"LaneCommand"},
+    {"kind":"read","path":"electron/shared/agentLane/laneDesktopContracts.ts","symbol":"LaneErrorCode"},
+    {"kind":"read","path":"electron/shared/agentLane/laneErrorCodes.ts","symbol":"LaneErrorCode"},
+    {"kind":"read","path":"src/i18n/locales/agentLaneError.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/agentResident.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/agentToolFailure.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/assetLibrary.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/browserAssets.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/comfyuiWorkflowPage.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/creationAi.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/generationCommon.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/libraries.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/modelSetup.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/onboardingProviders.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/previewSource.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/runtime.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/storyboardEditor.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/timelineEditor.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/locales/timelinePreview.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/i18n/resources.ts","symbol":"TranslationShape"},
+    {"kind":"read","path":"src/workbench/ai/lane/laneCommandFailure.ts","symbol":"LaneErrorCode"},
+    {"kind":"read","path":"src/workbench/ai/projectAgentDraftRecovery.ts","symbol":"projectAgentAdmissionId"},
+    {"kind":"read","path":"src/workbench/ai/ProjectAgentResidentShell.tsx","symbol":"projectAgentAdmissionId"},
+    {"kind":"read","path":"src/workbench/ai/v4/useAgentPanelV4Actions.ts","symbol":"projectAgentAdmissionId"},
+    {"kind":"write","path":"electron/agentLane/laneInputAdmission.mts","symbol":"withCancel"},
+    {"kind":"write","path":"electron/agentLane/laneInputAdmission.mts","symbol":"withAbortSignal"},
+    {"kind":"write","path":"electron/agentLane/laneWorkspace.mts","symbol":"openLane"}
+  ],
+  "door_reduction": {
+    "before": 9,
+    "after": 34,
+    "why_not": "The renderer owns unsent draft admission, IPC captures the main workspace scope before configuration, workspace owns same-session readiness, and the native host supports direct callers. Read-only projection/lifecycle type consumers remain separate; all mutating input paths inherit the same cancellation primitive instead of defining execution queues."
+  },
+  "generality_proof": "One SDK cancellation scope per resource owner spans all pending inputs. IPC captures workspace cancellation before its existing configuration serialization; workspace and native host inherit that signal through readiness, preparation and pi admission. Renderer token retirement prevents requests that have not yet crossed IPC. No model/vendor or queue-kind special exemption is used.",
+  "shared_boundaries": [
+    {
+      "path": "electron/agentLane/laneInputAdmission.mts",
+      "symbol": "createLaneInputAdmission",
+      "responsibility": "Reuse SDK contexts to capture, combine and rotate pre-admission cancellation without storing inputs."
+    },
+    {
+      "path": "electron/agentLane/laneWorkspace.mts",
+      "symbol": "openLaneWorkspace",
+      "responsibility": "Own cancellation across configuration/model replacement and direct workspace execute."
+    },
+    {
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "openLane",
+      "responsibility": "Enforce cancellation at final public pi admission and cover standalone native callers."
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "useAgentPanelV4Actions",
+      "responsibility": "Bind the existing renderer admission token to the issuing visible conversation."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "entry_point": "send/stop",
+      "disposition": "enforced",
+      "evidence": "Independent live hook catalog race failed before correction."
+    },
+    {
+      "path": "electron/agentLane/laneIpc.ts",
+      "entry_point": "registerAgentLaneIpc",
+      "disposition": "enforced",
+      "evidence": "Configuration serialization precedes workspace.execute and must retain the original signal."
+    },
+    {
+      "path": "electron/agentLane/laneWorkspace.mts",
+      "entry_point": "execute",
+      "disposition": "enforced",
+      "evidence": "awaitReady crosses same-session model replacement; native fixture controls real opener completion."
+    },
+    {
+      "path": "electron/agentLane/laneHost.mts",
+      "entry_point": "execute",
+      "disposition": "enforced",
+      "evidence": "Two real pi/local HTTP probes show prompt requests and follow-up queues admitted after Stop."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "All asynchronous preparations can cross an explicit Stop, independent of provider and source.",
+    "same_class_scan": [
+      "door-map projectAgentAdmissionId and laneHost/laneWorkspace/laneIpc exports",
+      "Trace prompt/steer/follow-up through inputPreparation/configure/awaitReady/inputMessage/skill refresh/unlockCoding",
+      "Inspect pi 0.85.1 public accept/steer/followUp context parameters and chord cancellation implementation"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneInputAdmission.mts",
+    "invariant": "A cancelled pre-admission context never reaches a new pi command commit.",
+    "failure_mode": "Typed agent_lane_input_cancelled; renderer keeps the unaccepted draft.",
+    "exception_policy": "none",
+    "strategy": "Retire SDK cancellation scope synchronously at Stop, pass captured signal through all async boundaries, reuse pi Context for final admission. Keep the composer admission record through dispatched ACK settlement so recovery cannot relabel accepted input as unsent.",
+    "artifacts": [
+      "electron/agentLane/laneInputAdmission.mts",
+      "electron/agentLane/laneIpc.ts",
+      "electron/agentLane/laneWorkspace.mts",
+      "electron/agentLane/laneHost.mts",
+      "src/workbench/ai/v4/useAgentPanelV4Actions.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+    "electron/agentLane/laneIpc.test.ts",
+    "tests/agent-runtime/lane-input-stop.test.mts",
+    "tests/agent-runtime/lane-input-stop-workspace.test.mts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+    "electron/agentLane/laneIpc.test.ts",
+    "tests/agent-runtime/lane-input-stop.test.mts",
+    "tests/agent-runtime/lane-input-stop-workspace.test.mts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneHost.mts",
+      "electron/agentLane/laneIpc.ts",
+      "electron/agentLane/laneWorkspace.mts",
+      "src/workbench/ai/v4/useAgentPanelV4Actions.ts"
+    ],
+    "rationale": "Replace uncancellable preparation/admission paths in place; no fallback or second execution queue remains."
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "current": "@earendil-works/pi-agent-core 0.85.1",
+    "target": "Keep pinned 0.85.1 public Context cancellation until the project approves a framework upgrade.",
+    "rationale": "The SDK already accepts cancellation contexts. Missing ownership belongs to Nomi pre-admission preparation, not an SDK defect.",
+    "exit_criteria": [
+      "Before any pi upgrade, rerun native prompt/follow-up Stop tests and same-session readiness tests against the new public context and admission APIs."
+    ]
+  },
+  "migration": "No persisted schema changes. Cancellation signals and renderer admission tokens are transient; existing pi transcript and queue ownership remains unchanged.",
+  "residual_risks": [
+    "Controlled local HTTP exercises actual SDK; packaged Electron journey is validated separately."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/laneInputAdmission.mts",
+    "tests": [
+      "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+      "electron/agentLane/laneIpc.test.ts",
+      "tests/agent-runtime/lane-input-stop.test.mts",
+      "tests/agent-runtime/lane-input-stop-workspace.test.mts"
+    ]
+  }
+}

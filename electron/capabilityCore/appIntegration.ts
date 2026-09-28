@@ -1,3 +1,5 @@
+import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings'
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 // 能力核 · app 集成（见 docs/plan/2026-06-20-capability-core-headless-exposure.md §S4）。
 //
 // 把 RPC server + token + 实例广告接到运行中的 Nomi app：启动时拉起 RPC（127.0.0.1）、ensureToken、
@@ -12,41 +14,42 @@
 // 这里只做接线，不碰 main.ts 的其它职责（保持 main.ts 精简、单一关注点）。
 import { app } from 'electron'
 import { getMainWindow } from '../appWindowRegistry'
-import { notifyHostConfigRepaired } from './hostConfigRepairNotice'
 import { startRpcServer, type RpcServerHandle } from './rpcServer'
 import { ensureCapabilitySigningKey, ensureToken } from './security'
 import { clearInstanceAdvertisement, writeInstanceAdvertisement } from './lockfile'
 import { HEARTBEAT_INTERVAL_MS, type InstanceAdvertisement } from './instanceAdvert'
 import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import type { FetchTaskResultFn, RunTaskFn } from './core'
-import { getProductionRunService } from '../productionRun/productionRunRuntime'
+import { getProductionRunService, subscribeProductionRunChanges } from '../productionRun/productionRunRuntime'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
-import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
-import { requestRenderer, rendererTargetIdentity } from './rendererBridge'
+import { requestRenderer, requestRendererDecision, rendererTargetIdentity } from './rendererBridge'
+import { resolveIndexedReferencePreview } from './pendingSpendReferences'
+import { resolveProjectAssetReferenceIdentity } from '../assets/projectAssetStore'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { installGuiResolveNarrowIpc } from './generationResolveIpc'
 import { planStoryboardFromScript } from './mcpStoryboardPlanner'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
+import { withdrawStalePresentations } from '../productionRun/stalePresentationSweep'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import {
-  prepareProductionGenerationAuthorization,
+  prepareProductionGenerationAuthorizationWithReferences,
 } from '../productionRun/prepareProductionGenerationAuthorization'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
 import { registerBatchSchedulerKicker } from '../productionRun/batchSchedulerKick'
 import type { ProductionActionResult } from '../productionRun/productionRunTypes'
 import { createCanvasLandingHost } from '../productionRun/canvasLandingHost'
-import { createArtifactProjection, getArtifactPreviewSecret } from '../productionRun/artifactProjection'
 import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
 import { createGenerationOutputMaterializer } from './generationOutputMaterializer'
-import { hardenedFetch } from '../hardenedFetch'
 import { createRunObservationDrivers } from './appIntegrationRunObservation'
+import { isProductionJobInFlight } from '../shared/productionShotPhase'
 import { readGenerationDefaultModelResolver } from './generationDefaultModelResolver'
 import { readCatalog } from '../catalog/catalogStore'
 import { recommendVideoGeneration } from '../shared/videoCapabilities'
 import { deriveUsableVideoModelCandidates } from './usableVideoModelCandidates'
+import { installCatalogRowLookup } from './modelSpecRead'
 import { canvasReadSurfaceRuntime } from './canvasReadSurfaceRuntime'
 import type { CanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
 import {
@@ -73,6 +76,7 @@ let handle: RpcServerHandle | null = null
 // 幂等补落缺失节点/组、回填已完成 result，并恢复未完批次调度（resumeUnfinishedRuns）。模块级 hoist 是因为
 let reconcileOpenProjectHook: ((projectId: string) => void) | null = null
 let unsubscribeCommittedSurface: (() => void) | null = null
+let unsubscribeRunChanges: (() => void) | null = null
 // P4 S6：返工/续拍编排钩子（start 闭包装配后设进来）——住在 start 闭包里因为它们要用 scheduler builder +
 // 单镜 gate 确认（confirmGenerationInNomi + 收据机构）+ 提交门面，这些都在闭包内。main.ts 的 IPC 转调这两个导出。
 let reworkProductionShotHook: ((input: { projectId: string; runId: string; shotId?: string }) => Promise<ProductionActionResult>) | null = null
@@ -84,6 +88,9 @@ let heartbeatTimer: ReturnType<typeof setInterval> | null = null
 let advertisedLibrary: { projectsRoot: string; isDefault: boolean } | null = null
 
 /** 当前进程 RPC 端口（未启动=null）。「接入助手卡」据此显示能力核就绪态。 */
+// 档案解析要目录行里的 meta（fal/* 这类带斜杠的键靠 meta.archetypeId 钉档案）。装配期接一次。
+installCatalogRowLookup()
+
 export function getCapabilityPort(): number | null {
   return handle?.port ?? null
 }
@@ -129,7 +136,6 @@ export async function startCapabilityCore(
     requestGenerationGate?: DispatchContext['requestGenerationGate']
     authorizeGeneration?: DispatchContext['authorizeGeneration']
     confirmGenerationInNomi?: import('./rpcServer').RpcServerOptions['confirmGenerationInNomi']
-    generationPolicy?: McpGenerationPolicy
     generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
     generationPlanning?: DispatchContext['generationPlanning']
     generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
@@ -137,6 +143,7 @@ export async function startCapabilityCore(
     proposalReceiptFor?: import('./rpcServer').RpcServerOptions['proposalReceiptFor']
     openCredentialsInNomi?: import('./rpcServer').RpcServerOptions['openCredentialsInNomi']
     canvasReadExecutionRuntime?: CanvasReadExecutionRuntime
+    onRpcActivity?: () => void
   } = {},
 ): Promise<void> {
   // 常驻生成面的相从这里起算：重启能力核时先回到 starting，上一轮的 install-failed 不许残留。
@@ -156,12 +163,8 @@ export async function startCapabilityCore(
     // 已接入的编程助手若还指着 Nomi 旧入口，宿主侧只显示一句 CONNECTION_CLOSED——里面一个字都没提 Nomi，
     // 用户没有理由想到「去开 Nomi 的模型接入面板」。这个修复原本只作为渲染那块面板的副作用发生，等于没有。
     // 能力核起来 = 这些配置指向的服务端就绪，正是把它们修回来的时刻（只动 Nomi 自己写过的条目，见 mcpConfig）。
-    // 修好了还得说一声：宿主进程启动时已经读过那份旧配置，不重启就一直用着旧入口。
-    // 「有没有真的改文件」只有这一层知道（repair.changed），所以通知的闸也建在这里，
-    // 而不是让每个接线方各自去猜要不要弹（R28：防线建在最早能拦住的那层）。
     try {
-      const repair = repairStaleMcpConfigs()
-      if (repair.changed) await notifyHostConfigRepaired({ clientLabels: repair.repaired.map((item) => item.label) })
+      repairStaleMcpConfigs()
     } catch { /* 宿主配置不可读不是 Nomi 的故障，不能反向拖垮能力核 */ }
     const token = ensureToken()
     const generationService = getProductionRunService()
@@ -172,9 +175,8 @@ export async function startCapabilityCore(
     const operationStore = createProductionGenerationOperationStore(generationService, {
       onPlanChanged: (projectId, operationId) => landDraftOnCanvas?.(projectId, operationId),
     })
-    const generationPolicy = authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy()
     // P4 S4: trialFirst narrows the durable plan to shot 1 and re-seals it.
-    const defaults = createDefaultAuthorities(generationPolicy, {
+    const defaults = createDefaultAuthorities({
       onTrialFirst: async ({ projectId, operationId }) => {
         if (!operationStore.trialNarrow) return
         await operationStore.trialNarrow(projectId, operationId, new Date().toISOString())
@@ -182,32 +184,23 @@ export async function startCapabilityCore(
     })
     const projectRevisionResolver = authorities.projectRevisionResolver ?? defaults.projectRevisionResolver!
     const fixtureBaseUrlOverride = process.env.NOMI_E2E_PRODUCTION_FIXTURE === '1'
-      ? process.env.NOMI_E2E_APIMART_BASE_URL
+      ? process.env.NOMI_E2E_FIXTURE_BASE_URL
       : undefined
-    const fixtureReferenceUrl = fixtureBaseUrlOverride && process.env.NOMI_E2E_APIMART_REFERENCE_URL
-      ? process.env.NOMI_E2E_APIMART_REFERENCE_URL
+    const fixtureReferenceUrl = fixtureBaseUrlOverride && process.env.NOMI_E2E_FIXTURE_REFERENCE_URL
+      ? process.env.NOMI_E2E_FIXTURE_REFERENCE_URL
       : undefined
     const liveGenerationRuntime = createLiveGenerationRuntime({
       bootstrap: (state, options) => createGenerationProviderBootstrap(state, {
         ...options,
         ...(fixtureBaseUrlOverride ? { fixtureBaseUrlOverride } : {}),
-        ...(fixtureReferenceUrl ? {
-          resolveReferenceUrls: (input) => ({
-            imageUrls: input.references.filter((reference) => reference.kind === 'image').map(() => fixtureReferenceUrl),
-          }),
-        } : {}),
       }),
     })
     const readProviderBootstrap = liveGenerationRuntime.readBootstrap
-    const outputMaterializer = createGenerationOutputMaterializer(fixtureBaseUrlOverride ? {
-      // The loopback vendor is a test-only trusted local service. Keep the
-      // private-origin exception at this fixture wiring boundary; ordinary
-      // provider output downloads retain hardenedFetch's SSRF guard.
-      fetchOutput: (url, options) => hardenedFetch(url, {
-        ...options,
-        allowedPrivateOrigins: [fixtureBaseUrlOverride],
-      }),
-    } : {})
+    // The loopback vendor is a test-only trusted local service. Keep the
+    // private-origin exception at this fixture wiring boundary; ordinary
+    // provider output downloads retain hardenedFetch's SSRF guard. The fetch
+    // policy itself (timeout / size / provider route) is the shared owner's.
+    const outputMaterializer = createGenerationOutputMaterializer(fixtureBaseUrlOverride ? { trustedPrivateOrigin: fixtureBaseUrlOverride } : {})
     const generationRegistry = authorities.generationModuleRegistry ?? liveGenerationRuntime.registry
     // P4 S2: real per-shot pricing from the live catalog (resolve lazily so pricing edits apply).
     const resolveModelPricing = (providerId: string, modelId: string) => createCatalogModelPricingResolver(readCatalog().models)(providerId, modelId)
@@ -221,46 +214,15 @@ export async function startCapabilityCore(
       command: (projectId, runId, command) => generationService.command(projectId, runId, command as never),
       requestRenderer,
       resolveProjectRoot: (projectId) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()),
-      previewSecret: getArtifactPreviewSecret,
       isProjectOpen,
     })
     const landCanvasBestEffort = canvasLanding.landCanvasBestEffort
     landDraftOnCanvas = canvasLanding.landDraftOnCanvas
-    // P4 S5：一镜落地 → 把它的 result 推给渲染层回填占位节点（逐个冒）。best-effort：项目没开/渲染层不可用/
-    // 该镜没绑 nodeId → 静默跳过。渲染层 attach 会断言 result.url 为 nomi-local://（我们这里就用 preview.nomiUrl）。
-    const pushShotResultToRenderer = async (projectId: string, runId: string, shotId: string): Promise<void> => {
-      if (!isProjectOpen(projectId)) return
-      let run
-      try {
-        run = generationService.repository.read(projectId, runId)
-      } catch {
-        return
-      }
-      if (!run) return
-      const shot = (run.generationPlan?.shots ?? []).find((candidate) => candidate.shotId === shotId)
-      const nodeId = shot?.nodeId
-      if (!nodeId) return // 该镜没绑画布节点（确认时项目没开等）→ 打开项目时由 materialize-shots 一并回填
-      const job = run.jobs.find((candidate) => typeof candidate.metadata?.shotId === 'string' && candidate.metadata.shotId === shotId && (candidate.status === 'ready' || candidate.status === 'adopted'))
-      if (!job) return
-      const artifact = run.artifacts.find((candidate) => candidate.jobId === job.jobId && (candidate.kind === 'image' || candidate.kind === 'video') && (candidate.status === 'ready' || candidate.status === 'adopted'))
-      if (!artifact || !(artifact.projectRelativePath || artifact.thumbnailRelativePath)) return
-      const projectRoot = resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps())
-      if (!projectRoot) return
-      try {
-        const projected = createArtifactProjection({ projectRoot, run, artifact, secret: getArtifactPreviewSecret() })
-        const url = projected.preview?.nomiUrl
-        if (!url) return
-        await requestRenderer('production.attach-shot-result', {
-          projectId,
-          runId,
-          nodeId,
-          shotId,
-          result: { id: `production-${job.jobId}`, type: artifact.kind === 'image' ? 'image' : 'video', url, createdAt: Date.now() },
-        }, 15_000)
-      } catch (error) {
-        logWarn('production-run', 'push-shot-result-failed', undefined, error)
-      }
-    }
+    // 画布节点跟着 Run 走：每一次耐久变化（派发 / 受理 / 出片落盘 / 失败 / 停）都经过仓库 execute 的事件旁路，
+    // 跟随者据此把「生成中 / 结果 / 失败」写进节点自己的运行记录——与普通生成同一份状态、同一套画法。
+    // 它取代了以前只在「出片」那一下投递结果的专用通道（一件事一个 owner：Run → 画布只有落地这一条路）。
+    unsubscribeRunChanges?.()
+    unsubscribeRunChanges = subscribeProductionRunChanges((run) => canvasLanding.followRunChange(run))
     // P4 S4/S5：构造一个 Run 的提交门面（submission）。lease 身份（immutableProjectUuid/projectGeneration）
     // 从工作区记录读——**耐久 binding 已冻住这些值**，恢复时无需新 lease。provider 集合按所有镜头合同和已有 job 推导。
     // 返回 null = provider 未配置 / 工程根不可达（调用方跳过，不驱动）。start 与恢复调度共用同一门槛（P1）。
@@ -292,7 +254,7 @@ export async function startCapabilityCore(
         projectRevision: record.revision,
         intentMacKey: ensureCapabilitySigningKey('generation-intent'),
         providers: providerBootstrap.providers,
-        materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+        materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
       })
     }
     // P4 S5：re-kick 一个未完多镜批次的调度器（打开项目恢复用）。best-effort、不阻塞、异常只记 warn。
@@ -312,7 +274,6 @@ export async function startCapabilityCore(
         projectId,
         runId,
         perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
-        onShotMaterialized: (shotId) => pushShotResultToRenderer(projectId, runId, shotId),
         onBatchComplete: () => generationService.advanceSemanticProduction(projectId, runId),
       })
     }
@@ -320,7 +281,6 @@ export async function startCapabilityCore(
     // 它们共享同一批 per-instance 状态（在飞的 drive / 重踢定时器 / 单镜 epoch），核重启时一起作废。
     const runObservation = createRunObservationDrivers({
       repository: generationService.repository,
-      landCanvasBestEffort,
       buildSchedulerForRun,
     })
     disposeSingleShotObservationLifecycle = runObservation.stop
@@ -331,6 +291,16 @@ export async function startCapabilityCore(
       ?? createGenerationPlanningHandler({
         registry: generationRegistry,
         operations: operationStore,
+        requestRendererDecision,
+        requestRenderer,
+        resolveStoryboardReferenceUrl: resolveIndexedReferencePreview,
+        // 2026-09-22：**这一行以前不在**，而 `mcpStdioServer` 那个宿主一直有它。
+        // 后果：App 内的 Agent 面板（真实用户唯一走的那条路）上，`draft_shots` 的 `references`
+        // **必定**被拒——`resolve?.(assetId)` 恒 undefined ⇒「参考素材 … 不在这个项目的素材库里」。
+        // run2 的 A1 里，`look_at_media` 刚给出 `asset-c7ce…`，下一句 `draft_shots` 就说不认识它：
+        // 两个工具对「素材身份」的答案不一样，而不一样的原因是**其中一个宿主没把解析器递下去**
+        // （与 report-B 项 4 同一形状：判据写对了，没人把状态交给它，而且没有任何东西会红）。
+        resolveAssetReferenceIdentity: (projectId, assetId) => resolveProjectAssetReferenceIdentity(projectId, assetId),
         get videoModelCandidates() { return deriveUsableVideoModelCandidates() },
         // ScriptText uses the Workbench defaults lazily (single preference source).
         defaultModelForTaskKind: (taskKind) => readGenerationDefaultModelResolver()(taskKind),
@@ -350,8 +320,19 @@ export async function startCapabilityCore(
           const projectRecord = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
           if (!projectRecord || !Number.isInteger(projectRecord.revision)) throw new Error('Generation authorization requires the current project revision')
           const authorizationRun = generationService.repository.read(lease.projectId, operation.operationId)
-          return prepareProductionGenerationAuthorization({
+          // attempt 谱系、负债合计和硬上限全部从这份快照里算。读不到就停在这里——
+          // 以前的 `run?` 会让它按「这一镜没有任何 attempt」继续，算出来的 attempt 在校验侧对不上。
+          if (!authorizationRun) throw new Error('Generation authorization requires the current Run snapshot')
+          return prepareProductionGenerationAuthorizationWithReferences({
             lease,
+            assertCurrent: () => {
+              const currentProject = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
+              const currentRun = generationService.repository.read(lease.projectId, operation.operationId)
+              if (!currentProject || currentProject.revision !== projectRecord.revision
+                || currentProject.immutableProjectUuid !== lease.immutableProjectUuid
+                || currentProject.projectGeneration !== lease.projectGeneration
+                || currentRun?.revision !== authorizationRun?.revision) throw new Error('generation_reference_scope_changed')
+            },
             projectRevision: projectRecord.revision,
             operation,
             contract,
@@ -359,8 +340,9 @@ export async function startCapabilityCore(
             providers: providerBootstrap.providers,
             resolveShotPrice,
             maximumSpend: authorizationRun?.policy.maxSpend,
+            run: authorizationRun,
             now: new Date().toISOString(),
-          })
+          }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
         },
         start: async (operation, lease) => {
           // Settings can save APIMart while this process is already running.
@@ -385,7 +367,7 @@ export async function startCapabilityCore(
             projectRevision: projectRecord.revision,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             providers: providerBootstrap.providers,
-            materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+            materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
           })
           // P4 S4: a multi-shot operation is driven by the durable batch scheduler (anchor → checkpoint →
           // shot batch, with budget halt + stop). A single-shot operation keeps the flat one-call start.
@@ -418,7 +400,6 @@ export async function startCapabilityCore(
               projectId: lease.projectId,
               runId: operation.operationId,
               perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
-              onShotMaterialized: (shotId) => pushShotResultToRenderer(lease.projectId, operation.operationId, shotId),
               onBatchComplete: () => generationService.advanceSemanticProduction(lease.projectId, operation.operationId),
             })
             // Durable, restart-safe kick; slow providers are re-kicked until quiescent.
@@ -455,7 +436,7 @@ export async function startCapabilityCore(
             projectRevision: projectRecord.revision,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             providers: providerBootstrap.providers,
-            materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+            materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
           })
           try {
             const polled = await submission.poll({ projectId: lease.projectId, operationId: operation.operationId })
@@ -509,6 +490,20 @@ export async function startCapabilityCore(
     // 恢复，不重新 start；③ resumeUnfinishedRuns 恢复 legacy/多镜调度。best-effort：异步、逐 run try/catch，不阻塞项目打开。
     reconcileOpenProjectHook = (projectId: string) => {
       void (async () => {
+        // 裁决 C：上一个进程摆出去、还没人答的那几次出价先撤回（回 draft / 未 present，计划留着）。
+        // 排在补落画布之前：占位节点照旧补，但那张「没人在等」的卡不该再闪出来一次。
+        try {
+          const runs = (typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : [])
+            .flatMap((summary) => { try { const run = generationService.repository.read(projectId, summary.runId); return run ? [run] : [] } catch { return [] } })
+          const withdrawn = await withdrawStalePresentations({
+            listRuns: () => runs,
+            withdraw: (owner, operationId, now) => operationStore.withdraw(owner, operationId, now),
+            onError: (operationId, error) => logWarn('production-run', 'withdraw-stale-presentation-failed', { operationId }, error),
+          }, projectId)
+          if (withdrawn.length > 0) logInfo('production-run', 'withdrew-stale-presentations', { projectId, operationIds: withdrawn.join(',') })
+        } catch (error) {
+          logWarn('production-run', 'stale-presentation-sweep-failed', undefined, error)
+        }
         try {
           const summaries = typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : []
           for (const summary of summaries) {
@@ -546,9 +541,8 @@ export async function startCapabilityCore(
                 settleSingleShotAttention(projectId, run.runId, attentionJob?.jobId)
                 continue
               }
-              const observable = refreshed.jobs.some((job) =>
-                ['provider_accepted', 'polling'].includes(job.status) && Boolean(job.providerTaskId),
-              )
+              // 与观察者「歇一歇再问」用同一个判据（isProductionJobInFlight），重开项目与观察窗到期不会各判各的。
+              const observable = refreshed.jobs.some(isProductionJobInFlight)
               if (observable) {
                 const submission = buildSubmissionForRun(refreshed)
                 if (submission) observeSingleShotRun(submission, projectId, run.runId)
@@ -604,6 +598,8 @@ export async function startCapabilityCore(
       authorizeGeneration: authorities.authorizeGeneration ?? runOwnedGenerationAuthority.authorizeGeneration,
       ...authorities,
       projectRevisionResolver,
+      // 同 mcpStdioServer：档位来自设置里持久化的那一份，宿主只负责递，不自己编。
+      approvalPolicy: readAgentApprovalPolicy,
       proposalReceiptFor: authorities.proposalReceiptFor,
       openCredentialsInNomi: authorities.openCredentialsInNomi ?? (async ({ sessionId }: { sessionId: string; vendorName: string }) => {
         const win = getMainWindow()
@@ -620,8 +616,8 @@ export async function startCapabilityCore(
         await requestRenderer('integration.open-credentials', { sessionId }, 30_000)
         return { opened: true }
       }),
-      generationPolicy,
       generationPlanning,
+      onRpcActivity: authorities.onRpcActivity,
     })
     const location = getProjectLocationState()
     advertisedLibrary = { projectsRoot: location.path, isDefault: location.source === 'default' }
@@ -664,6 +660,8 @@ export function stopCapabilityCore(): void {
   reconcileOpenProjectHook = null
   unsubscribeCommittedSurface?.()
   unsubscribeCommittedSurface = null
+  unsubscribeRunChanges?.()
+  unsubscribeRunChanges = null
   reworkProductionShotHook = null
   resumeProductionBatchHook = null
   disposeSingleShotObservationLifecycle?.(); disposeSingleShotObservationLifecycle = null

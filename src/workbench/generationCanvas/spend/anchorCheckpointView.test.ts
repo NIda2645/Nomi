@@ -29,7 +29,7 @@ function run(overrides: Partial<ProductionRun> = {}): ProductionRun {
     status: 'running', stageId: 'generate',
     playbook: { name: 'brand.promo', version: '1.0.0' }, origin: { host: 'nomi' },
     policy: { trustedHosts: ['nomi'], allowedProviders: ['apimart'], allowedModels: ['image-model', 'video-model'], maxSpend: 30, maxAttemptsPerJob: 2, minimizeUploads: true },
-    budget: { currency: 'CNY', authorized: 18, reserved: 0, actual: 0, unsettled: 0 },
+    budget: { currency: 'CNY', authorized: 18, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     planVersion: 1, snapshotCursor: 3, stages: [], gates: [],
     jobs: [
       anchorJob('job-anchor-1', 'anchor-1'),
@@ -173,7 +173,7 @@ describe('buildAnchorCheckpointCard', () => {
   })
 
   it('approvedBudget null when the ledger authorized nothing (does not fabricate a money figure)', () => {
-    const model = buildAnchorCheckpointCard(run({ budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0 } }), gate)!
+    const model = buildAnchorCheckpointCard(run({ budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 } }), gate)!
     expect(model.approvedBudget).toBeNull()
   })
 })

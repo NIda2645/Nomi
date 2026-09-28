@@ -111,7 +111,7 @@ describe('project-scoped export Agent tools', () => {
 
     const deps = runtime()
     await expect(applyExportToolCall('cancel_export_job', { jobId: 'job-1', projectId: 'project-1' }, deps)).resolves.toEqual({
-      operation: 'cancel_export_job', jobId: 'job-1', cancelled: true, status: 'cancelled',
+      operation: 'cancel_export_job', jobId: 'job-1', taskRef: { domain: 'export', jobId: 'job-1' }, cancelled: true, status: 'cancelled',
     })
     expect(deps.cancelJob).toHaveBeenCalledWith('job-1')
   })

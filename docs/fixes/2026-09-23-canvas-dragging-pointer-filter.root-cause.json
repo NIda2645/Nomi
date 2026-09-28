@@ -1,0 +1,213 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-23-canvas-dragging-pointer-filter",
+  "problem_type": "Canvas drag end guard cancels a different pointer on the same stage",
+  "symptom": "A pointercancel from another pointer or another stage can clear data-dragging before the active pointerup, causing an active canvas gesture to lose its lease.",
+  "direct_cause": "The shared stage-level gesture end guard treated an untracked lease as a match for every pointer event, so a tracked pointer on one stage could schedule fallback cancellation on another stage.",
+  "class_root": "The global fallback guard must correlate pointer events with tracked lease identities and must not manufacture a match for untracked leases on an unrelated stage.",
+  "affected_population": [
+    "Canvas pointer and resize gesture cleanup in reduced or headless window hosts",
+    "Vitest and future non-browser consumers of the shared drag lease"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts",
+    "tests/ux/composerLifecycle.test.mjs"
+  ],
+  "entry_points": [
+    "beginCanvasDragging lease registration",
+    "stage-level pointerup/pointercancel fallback guard"
+  ],
+  "internal_only_reason": "The scheduler fallback is an application-owned host boundary; browser requestAnimationFrame semantics are used when available and the deferred timer is only a compatibility path for reduced hosts.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "tests": [
+      "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"
+    ],
+    "why": "The canvasDraggingFlag module owns the lease lifecycle and is the only place that schedules the deferred end guard; its focused test covers the lease ordering and cancellation contract."
+  },
+  "invariants": [
+    "A stage-level pointer end event only arms fallback cleanup when a lease on that stage has the same tracked pointer identity.",
+    "A different pointer cancellation leaves every unrelated stage and untracked lease intact until its own targeted interruption or release."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "symbol": "CANVAS_DRAGGING_OWNER"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "symbol": "CANVAS_DRAGGING_ATTRIBUTE"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "symbol": "CanvasDraggingOwner"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "symbol": "CanvasDragLease"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "symbol": "CanvasDragLease"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "symbol": "CANVAS_DRAGGING_OWNER"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useComposerViewportPlacement.ts",
+      "symbol": "CANVAS_DRAGGING_ATTRIBUTE"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
+      "symbol": "CanvasDragLease"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
+      "symbol": "CANVAS_DRAGGING_OWNER"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "CanvasDragLease"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "CANVAS_DRAGGING_OWNER"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "symbol": "CanvasDragLease"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "symbol": "CANVAS_DRAGGING_OWNER"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
+      "symbol": "CanvasDragLease"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
+      "symbol": "CANVAS_DRAGGING_OWNER"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "symbol": "beginCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
+      "symbol": "beginCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "beginCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "symbol": "beginCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
+      "symbol": "beginCanvasDragging"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/WorkbenchShell.tsx",
+      "symbol": "cancelCanvasDraggingWithin"
+    }
+  ],
+  "door_reduction": {
+    "before": 21,
+    "after": 21,
+    "why_not": "The lease lifecycle has six write callers and fifteen read callers by design; this fix changes only the shared deferred scheduling boundary and does not merge independent gesture owners or host consumers."
+  },
+  "generality_proof": "All canvas gesture owners converge on beginCanvasDragging and the stage guard; pointer identity is checked once at that shared boundary.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "symbol": "beginCanvasDragging",
+      "responsibility": "Register pointer identity with the shared lease and filter stage-level gesture end events before fallback cleanup."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "entry_point": "selection drag",
+      "disposition": "enforced",
+      "evidence": "Uses beginCanvasDragging and receives the shared pointer filter."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
+      "entry_point": "node resize drag",
+      "disposition": "enforced",
+      "evidence": "Uses beginCanvasDragging and receives the shared pointer filter."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
+      "entry_point": "React Flow canvas gesture",
+      "disposition": "enforced",
+      "evidence": "Uses beginCanvasDragging and receives the shared pointer filter."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any multi-pointer stage can deliver an unrelated pointercancel while the shared fallback guard is armed.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "Checked all listed drag lease readers and writers."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+    "invariant": "The shared stage fallback filters pointer end events against the live lease pointer identity before disarming or cancelling.",
+    "failure_mode": "Unrelated pointer events are ignored; the active gesture remains visible and is cleaned up by its matching end event.",
+    "exception_policy": "none",
+    "strategy": "Keep host capability detection in the shared lease module so gesture callers do not grow per-host fallbacks.",
+    "artifacts": [
+      "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+      "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/components/canvasDraggingFlag.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The shared CanvasDragLease remains the only drag lifecycle path; only its scheduler capability branch was hardened."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency is added or upgraded; the fallback uses the host timer already available to the runtime.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data or public caller contract changes.",
+  "residual_risks": [
+    "Callers that omit pointerId rely on their own targeted interruption listeners; a global pointer event cannot prove their identity and therefore does not arm another stage's fallback."
+  ]
+}

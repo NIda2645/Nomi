@@ -1,8 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { generationNodeRunRecordSchema } from '../generationCanvas/model/generationCanvasSchema'
+import { textDocumentDigest } from '../generationCanvas/runner/textGenerationDocument'
+import { describe, expect, it, vi } from 'vitest'
 import { normalizePayload, normalizeRecord } from './projectNormalize'
 import { createDefaultWorkbenchProjectPayload } from './projectRecordSchema'
 import type { StoryboardPlan } from '../generationCanvas/agent/storyboardPlan'
-import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
+import type { GenerationCanvasNode, TiptapDocJson } from '../generationCanvas/model/generationCanvasTypes'
 
 function node(overrides: Partial<GenerationCanvasNode> & { id: string }): GenerationCanvasNode {
   return {
@@ -47,6 +49,45 @@ describe('normalizePayload — storyboard design owner', () => {
   it('returns an empty owner when no storyboard exists', () => {
     const out = normalizePayload(createDefaultWorkbenchProjectPayload())
     expect(out.storyboardDesignsByDocumentId).toBeUndefined()
+  })
+  // 旧项目按定义带着历史字段。一份方案多一个键，不该让这个项目的分镜消失，更不该让
+  // `normalizePayload` 抛 corruptPayload 把**整个项目**变成打不开。
+  it('opens a stored record whose plans carry unknown historical keys, with every plan intact', () => {
+    const base = createDefaultWorkbenchProjectPayload(); const documentId = base.activeDocumentId!
+    const withUnknown = {
+      ...plan, retiredTopLevelField: 'from an older build',
+      anchors: [{ ...plan.anchors[0], retiredAnchorField: 1 }],
+      shots: [{ ...plan.shots[0], retiredShotField: true, keyframe: { enabled: true, retiredKeyframeField: 'x' },
+        referenceBindings: { character: [{ url: 'https://example/a.png', retiredBindingField: 'x' }] } }],
+    }
+    const stored = { ...design(documentId), plan: withUnknown }
+    const out = normalizePayload({ ...base, storyboardDesignsByDocumentId: { [documentId]: [stored] } })
+    const designs = out.storyboardDesignsByDocumentId?.[documentId]
+    expect(designs).toHaveLength(1)
+    expect(designs?.[0].plan.shots).toHaveLength(1)
+    expect(designs?.[0].plan.shots[0].prompt).toBe(plan.shots[0].prompt)
+    expect(designs?.[0].plan.anchors[0].name).toBe(plan.anchors[0].name)
+    expect(designs?.[0].plan.shots[0].keyframe?.enabled).toBe(true)
+    expect(designs?.[0].plan.shots[0].referenceBindings?.character?.[0].url).toBe('https://example/a.png')
+  })
+  it('migrates a retired map whose plan carries unknown historical keys', () => {
+    const base = createDefaultWorkbenchProjectPayload(); const documentId = base.activeDocumentId!
+    const legacyKey = ['storyboard', 'Plans'].join('')
+    const out = normalizePayload({ ...base,
+      [legacyKey]: { [documentId]: { plan: { ...plan, retiredTopLevelField: 'x' }, committed: true } } })
+    expect(out.storyboardDesignsByDocumentId?.[documentId]?.[0].plan.shots).toHaveLength(1)
+  })
+  it('says which document and which field when a legacy plan is genuinely unreadable', () => {
+    const base = createDefaultWorkbenchProjectPayload(); const documentId = base.activeDocumentId!
+    const legacyKey = ['storyboard', 'Plans'].join('')
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      const out = normalizePayload({ ...base, [legacyKey]: { [documentId]: { plan: { title: 'broken', anchors: [], shots: [{ index: 1 }] }, committed: true } } })
+      expect(out.storyboardDesignsByDocumentId).toBeUndefined()
+      expect(warn).toHaveBeenCalledTimes(1)
+      expect(String(JSON.stringify(warn.mock.calls[0]))).toContain(documentId)
+      expect(String(JSON.stringify(warn.mock.calls[0]))).toContain('shots')
+    } finally { warn.mockRestore() }
   })
   it('retains canvas event cursor', () => {
     const out = normalizePayload({ ...createDefaultWorkbenchProjectPayload(), generationCanvasLastSeq: 37 })
@@ -165,4 +206,30 @@ it('rejects malformed persisted layouts before they reach workspace sizing', asy
   for (const assistantWidth of [NaN, Infinity, '310']) {
     expect(() => normalizePayload({ ...createDefaultWorkbenchProjectPayload(), editingPanelLayout: { ...EDITING_PANEL_DEFAULTS, assistantWidth } })).toThrow()
   }
+})
+
+
+it('keeps the existing immutable workspace identity through the original record normalizer', () => {
+  const summary = { id: 'original-project', name: 'Original', createdAt: 1, updatedAt: 1 }
+  const identity = { immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 4 }
+  const normalized = normalizeRecord(summary, { ...summary, ...identity, version: 2, payload: createDefaultWorkbenchProjectPayload() })
+  expect(normalized).toMatchObject({ ...identity, id: summary.id, version: 1 })
+})
+
+
+it('round-trips a generated text body with its exact run/result identity and single run digest through the original project reader', () => {
+  const contentJson: TiptapDocJson = { type: 'doc', content: [{ type: 'paragraph', content: [{ type: 'text', text: 'generated body' }] }] }
+  const result = { id: 'text-result', type: 'text', text: 'generated body', createdAt: 1 }
+  const run = { id: 'text-run', status: 'success', projectId: 'project-text', resultId: result.id, textDocumentDigest: textDocumentDigest(contentJson), startedAt: 1, updatedAt: 2 }
+  const input = { id: 'project-text', name: 'text', version: 1, createdAt: 1, updatedAt: 2,
+    payload: { ...createDefaultWorkbenchProjectPayload(), generationCanvas: { nodes: [{
+      id: 'text-node', kind: 'text', title: '', position: { x: 0, y: 0 }, contentJson, result, history: [result], runs: [run],
+    }], edges: [], groups: [], selectedNodeIds: [] } } }
+  expect(generationNodeRunRecordSchema.parse(run).projectId).toBe(run.projectId)
+  const reopened = normalizeRecord(input, JSON.parse(JSON.stringify(input))).payload.generationCanvas.nodes[0]
+  expect(reopened.contentJson).toEqual(contentJson)
+  expect(reopened.runs?.[0].textDocumentDigest).toBe(run.textDocumentDigest)
+  expect(reopened.runs?.[0].projectId).toBe(run.projectId)
+  expect(reopened.runs?.[0].resultId).toBe(reopened.result?.id)
+  expect(reopened.history?.[0].id).toBe(result.id)
 })

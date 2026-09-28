@@ -77,6 +77,12 @@ export type CapabilityApprovalSubject = Readonly<{
   effectClass: CapabilityEffectClass | undefined;
   /** 契约自己说「这份载荷是一份用户必须先读的计划」。 */
   requiresPlanReview: boolean;
+  /**
+   * 契约自己说「这个能力的全部内容就是问用户一句话」（`CapabilityContract.alwaysAsksUser`）。
+   * 缺省 `undefined` = 不是。它只抬不降，且**没有任何档位或会话级授权能降**——见
+   * `capabilityIsHardGated` 的第 ⑥ 条。
+   */
+  alwaysAsksUser?: true;
   /** False means this specific plan must be reviewed each time, even with a session grant. */
   planReviewAllowsReuse?: boolean;
   /**
@@ -147,6 +153,9 @@ export function spendDecidedByPolicy(policy: ProjectAgentApprovalPolicy | undefi
 
 export function capabilityIsHardGated(subject: CapabilityApprovalSubject): boolean {
   if (subject.destructiveHint) return true;
+  // ⑥ 「这个能力就是问用户一句」（`CapabilityContract.alwaysAsksUser`）。它是**唯一**一条
+  //    不是因为后果严重而硬闸的：不问就没有答案，自动放行等于替用户编一句他没说过的话。
+  if (subject.alwaysAsksUser) return true;
   if (subject.requiresPlanReview && subject.planReviewAllowsReuse === false) return true;
   return subject.effectClass !== "reversible_local";
 }

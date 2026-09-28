@@ -1,0 +1,116 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-legacy-storyboard-placement",
+  "problem_type": "Placement coupled to paid execution and omitted from original editor",
+  "symptom": "Original storyboard editor has no Place/View action after discard/resplit removal",
+  "direct_cause": "Existing batch materialization always continues into confirmation and execution",
+  "class_root": "Placement and execution lack a shared explicit intent boundary",
+  "affected_population": [
+    "Legacy storyboard plans placed from their existing editor"
+  ],
+  "scope_paths": [
+    "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+    "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx"
+  ],
+  "entry_points": [
+    "Original storyboard editor header",
+    "Existing batch generation"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Existing storyboard materializer and original editor define placement; no external API changes",
+  "invariants": [
+    "Explicit placement never calls paid confirmation or generation",
+    "Repeated placement preserves existing node edits, results and grouping",
+    "Async placement remains bound to captured project and canvas lifetime"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "materializeShotRow"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "runStoryboardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "runStoryboardBatch"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "Editor selects placement versus generation; the shared row owner performs node materialization."
+  },
+  "generality_proof": "Both batch intents reuse the same materializer while placement bypasses authorization and preserves bound nodes.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "runStoryboardBatch",
+      "responsibility": "Separate explicit placement from execution with shared materialization and grouping"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "entry_point": "onPlaceOnCanvas",
+      "disposition": "enforced",
+      "evidence": "Original editor invokes explicit placement and derives View from actual nodes"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "entry_point": "runStoryboardBatch",
+      "disposition": "enforced",
+      "evidence": "Existing batch generation retains its confirmation path; explicit placement has zero confirmation"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any existing plan can reach the missing action or accidental paid coupling",
+    "same_class_scan": [
+      "door-map materializeShotRow",
+      "Inspected batch generator, row generator, anchor generator and original editor header"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+    "invariant": "Placement reuses materialization without executing or rewriting bound nodes",
+    "failure_mode": "Captured canvas/project mismatch rejects writes",
+    "exception_policy": "none",
+    "strategy": "Explicit intent at existing shared batch boundary, preserve bound nodes for navigation/repeated placement",
+    "artifacts": [
+      "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/creation/storyboard/exec/storyboardBatchLanding.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/creation/storyboard/exec/storyboardBatchLanding.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Existing editor and canvas materializer retained"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency behavior involved",
+    "exit_criteria": []
+  },
+  "migration": "No data migration or new owner",
+  "residual_risks": [
+    "Controlled regressions do not prove Electron package UI acceptance"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+    "tests": [
+      "src/workbench/creation/storyboard/exec/storyboardBatchLanding.test.ts"
+    ]
+  }
+}

@@ -18,8 +18,9 @@ import { orderByVendorPreference } from "../../../../electron/shared/contracts/v
 // （resolveArchetypeForModel 内部已按 vendor 特化）。agent 必须同时选 modelKey + modeId。
 import type { ModelOption } from "../../../config/models";
 import { parseModelParameterControls } from "../../../config/modelCatalogMeta";
-import { resolveArchetypeForModel } from "../../../config/modelArchetypes";
+import { resolveArchetypeForModel } from "../../../../electron/shared/modelArchetypes";
 import { preloadModelOptions } from "../../../config/modelCatalogCache";
+import { pickImplicitVendorMatch } from "../../../config/modelIdentity";
 import i18n from "../../../i18n";
 
 import type { AgentModelEntry } from "../../../../electron/shared/agentCapabilities/availableModels";
@@ -80,7 +81,9 @@ export function buildAgentModelEntries(options: readonly ModelOption[]): AgentMo
         }];
     seen.add(identity);
     entries.push({
-      modelKey,
+      // 目录状态里这个字段叫 `modelKey`（宿主/持久化的名字）；`AgentModelEntry` 是**模型看的那一面**，
+      // 那边它叫 `modelId`——与 `draft_shots` 收的字段同名。投影就发生在这一行。
+      modelId: modelKey,
       modelAlias: option.modelAlias ?? null,
       vendor: option.vendor ?? null,
       label: option.label,
@@ -88,6 +91,17 @@ export function buildAgentModelEntries(options: readonly ModelOption[]): AgentMo
       ...(archetype ? { archetypeId: archetype.id } : {}),
       defaultModeId: archetype?.defaultModeId ?? "chat",
       modes,
+      // 变体随档案一起投出去：准入层会拒未知 variantId，不投就是「可被拒、不可发现」。
+      ...(archetype?.variants?.length
+        ? {
+            variants: archetype.variants.map((variant) => ({
+              id: variant.id,
+              label: variant.label,
+              ...(variant.modelKey ? { modelKey: variant.modelKey } : {}),
+            })),
+            ...(archetype.defaultVariantId ? { defaultVariantId: archetype.defaultVariantId } : {}),
+          }
+        : {}),
     });
   }
   return entries;
@@ -133,7 +147,7 @@ export function pickSavedDefaultModel(
     const preferred = defaults[taskKind]
     if (!preferred) continue
     const match = candidates.find(
-      (entry) => entry.vendor === preferred.vendorKey && entry.modelKey === preferred.modelKey,
+      (entry) => entry.vendor === preferred.vendorKey && entry.modelId === preferred.modelKey,
     )
     if (match) return match
   }
@@ -147,12 +161,16 @@ export function pickSavedDefaultModel(
  * 生成钮直接是灰的——「什么都不给」比「给一个通用的好模型」更伤。它**不是权威**：
  * 权威是用户保存的默认（`pickSavedDefaultModel`），这条阶梯只在权威缺席时补位。
  */
-export function pickStoryboardDefaultModel(entries: readonly AgentModelEntry[], kind: 'image' | 'video'): AgentModelEntry | undefined {
+export function pickStoryboardDefaultModel(entries: readonly AgentModelEntry[], kind: 'image' | 'video', orderedVendorKeys: readonly string[] = []): AgentModelEntry | undefined {
   const candidates = entries.filter(entry => entry.kind === kind)
-  const byName = (re: RegExp) => candidates.find(entry => re.test(`${entry.modelKey} ${entry.modelAlias ?? ''} ${entry.label}`))
-  return kind === 'image'
+  const byName = (re: RegExp) => candidates.find(entry => re.test(`${entry.modelId} ${entry.modelAlias ?? ''} ${entry.label}`))
+  const model = kind === 'image'
     ? byName(/gpt[\s-]?image/i) ?? byName(/nano[\s-]?banana/i) ?? candidates[0]
     : byName(/seedance/i) ?? candidates[0]
+  if (!model) return undefined
+  // 阶梯只决定「哪个模型」；同名多家时「哪一家」走全仓同一把尺（pickImplicitVendorMatch），
+  // 不是列表里第一个同名的——目录新接入的在前，自定义同名中转会悄悄变成默认（2026-09-21 同类扫描）。
+  return pickImplicitVendorMatch(candidates.filter(entry => entry.modelId === model.modelId), entry => entry.vendor, orderedVendorKeys) ?? model
 }
 
 /**
@@ -170,7 +188,7 @@ async function preferredDefaultModel(
   } catch {
     defaults = {}
   }
-  return pickSavedDefaultModel(entries, kind, defaults) ?? pickStoryboardDefaultModel(entries, kind)
+  return pickSavedDefaultModel(entries, kind, defaults) ?? pickStoryboardDefaultModel(entries, kind, (await getVendorPreference()).orderedVendorKeys)
 }
 
 /**
@@ -197,7 +215,7 @@ export async function resolveStoryboardImageDefault(): Promise<{ modelKey?: stri
   const plainMode = prefer.modes.find((m) => m.modeId === prefer.defaultModeId) ?? prefer.modes[0]
   const refMode = prefer.modes.find((m) => m.slots.some((s) => s.kind === 'image_ref'))
   return {
-    modelKey: prefer.modelKey,
+    modelKey: prefer.modelId,
     // vendor 与 key 一起返回：调用方据此写节点，避免落地时按 key 反查命中别家（身份唯一键）。
     ...(prefer.vendor ? { modelVendor: prefer.vendor } : {}),
     ...(plainMode ? { modeId: plainMode.modeId } : {}),
@@ -224,7 +242,7 @@ export async function resolveStoryboardVideoDefault(): Promise<{ modelKey?: stri
   const refMode = prefer.modes.find((m) => m.slots.some((s) => s.kind === 'image_ref' || s.kind === 'first_frame'))
   const mode = refMode ?? prefer.modes.find((m) => m.modeId === prefer.defaultModeId) ?? prefer.modes[0]
   return {
-    modelKey: prefer.modelKey,
+    modelKey: prefer.modelId,
     // vendor 与 key 一起返回（身份唯一键）——见 buildAgentModelEntries 去重键的注释。
     ...(prefer.vendor ? { modelVendor: prefer.vendor } : {}),
     ...(mode ? { modeId: mode.modeId } : {}),

@@ -39,13 +39,17 @@ const server = createServer((req, res) => {
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
 const { port } = server.address()
-const quickstartUrl = `http://127.0.0.1:${port}/quickstart.html`
+// 2026-09-27 起快速上手由官网生成器出中英两页（docs/plan/2026-09-27-promo-0.22-site-readme.md）。
+const pages = [
+  { name: 'zh', url: `http://127.0.0.1:${port}/quickstart.html`, title: 'Nomi 快速上手', h1: '从下载， 到第一个镜头。' },
+  { name: 'en', url: `http://127.0.0.1:${port}/en/quickstart.html`, title: 'Nomi quick start', h1: 'From download to your first shot.' },
+]
 
-async function auditViewport(browser, name, viewport) {
+async function auditViewport(browser, target, name, viewport) {
   const page = await browser.newPage({ viewport })
-  await page.goto(quickstartUrl)
+  await page.goto(target.url)
   await page.waitForLoadState('networkidle')
-  await page.screenshot({ path: path.join(shotsDir, `quickstart-${name}.png`), fullPage: true })
+  await page.screenshot({ path: path.join(shotsDir, `quickstart-${target.name}-${name}.png`), fullPage: true })
 
   const result = await page.evaluate(() => {
     const overflow = document.documentElement.scrollWidth - document.documentElement.clientWidth
@@ -62,22 +66,25 @@ async function auditViewport(browser, name, viewport) {
     return { title: document.title, overflow, headings, links, images, blankImages, missingAlt }
   })
 
-  assert(result.title.includes('Nomi 新手指南'), `${name}: title 正确`)
-  assert(result.overflow <= 1, `${name}: 无横向溢出`)
-  assert(result.headings.includes('第一次打开 Nomi，就这样做。'), `${name}: hero H1 可见`)
-  assert(result.headings.some((h) => h.includes('Image-to-Video')), `${name}: Image-to-Video 章节可见`)
-  assert(result.links.includes('https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg'), `${name}: Mac arm64 下载链接在位`)
-  assert(result.links.includes('https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe'), `${name}: Windows 下载链接在位`)
-  assert(result.images.length >= 5, `${name}: 示意图资源已嵌入`)
-  assert(result.blankImages.length === 0, `${name}: 图片非空渲染`)
-  assert(result.missingAlt.length === 0, `${name}: 图片 alt 完整`)
+  const label = `${target.name}/${name}`
+  assert(result.title.includes(target.title), `${label}: title 正确`)
+  assert(result.overflow <= 1, `${label}: 无横向溢出`)
+  assert(result.headings.includes(target.h1), `${label}: hero H1 可见`)
+  assert(result.headings.length >= 5, `${label}: 四步 + 常见问题都有标题`)
+  assert(result.links.includes('https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg'), `${label}: Mac arm64 下载链接在位`)
+  assert(result.links.includes('https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe'), `${label}: Windows 下载链接在位`)
+  assert(result.images.length >= 4, `${label}: 三张步骤截图 + 标识都在`)
+  assert(result.blankImages.length === 0, `${label}: 图片非空渲染`)
+  assert(result.missingAlt.length === 0, `${label}: 图片 alt 完整`)
   await page.close()
 }
 
 const browser = await chromium.launch()
 try {
-  await auditViewport(browser, 'desktop', { width: 1440, height: 1200 })
-  await auditViewport(browser, 'mobile', { width: 390, height: 844 })
+  for (const target of pages) {
+    await auditViewport(browser, target, 'desktop', { width: 1440, height: 1200 })
+    await auditViewport(browser, target, 'mobile', { width: 390, height: 844 })
+  }
   console.log('\nMARKETING QUICKSTART PASS')
 } finally {
   await browser.close()

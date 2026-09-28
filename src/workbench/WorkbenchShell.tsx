@@ -13,9 +13,11 @@ import {
 } from "./workbenchStore";
 import { assistantWidthMaxFor } from "./assistantWidthBounds";
 import { cn } from "../utils/cn";
+import { cancelCanvasDraggingWithin } from "./generationCanvas/components/canvasDraggingFlag";
 import ProjectExplorerSidebar from "./explorer/ProjectExplorerSidebar";
 import DocumentListSidebar from "./creation/DocumentListSidebar";
 import { workspaceModeCarriesCreationResourceTree } from "./creation/creationResourceTreeModes";
+import { useCreationResourceTreeCollapsed } from "./creation/useCreationResourceTreeCollapsed";
 import { lazyWithChunkBoundary } from "../ui/chunkBoundary";
 import { WindowControls } from "../ui/app-shell/WindowControls";
 import { handleWindowTitlebarDoubleClick } from "../ui/app-shell/windowTitlebarDoubleClick";
@@ -98,8 +100,19 @@ function WorkspaceSlot({
     children,
     label,
 }: WorkspaceSlotProps): JSX.Element {
+    const slot = React.useRef<HTMLDivElement>(null);
+    // 槽位被藏起来 = 这里面还没结束的手势被打断。**隐藏是宿主自己知道的事**，
+    // 所以由它显式喊一声；画布那边因此不用给每次手势装一个扫祖先链的 MutationObserver
+    // （那条路每帧一轮 getComputedStyle，正压在拖图热路径上，见 canvasDraggingFlag 顶部注释）。
+    React.useEffect(() => {
+        if (active) return;
+        cancelCanvasDraggingWithin(slot.current);
+    }, [active]);
+    // 卸载同理：租约记着那张 stage，走掉了就没人再来收尾。
+    React.useEffect(() => () => cancelCanvasDraggingWithin(slot.current), []);
     return (
         <div
+            ref={slot}
             className={cn(
                 "workbench-shell__workspace",
                 "w-full h-full min-w-0 min-h-0",
@@ -261,6 +274,10 @@ export default function WorkbenchShell({
         return () => window.removeEventListener("nomi-focus-skill-library", onOpenSkillLibrary);
     }, [setWorkspaceMode, workspaceMode]);
 
+    // 「创作内容」那列收没收起：偏好 → 按面默认（创作展开 / 分镜收起）。
+    // 收起 = 整列不挂载（宽度归 0、不留 rail、不留 0 宽残壳），回头的钮在中间面板头部。
+    const creationResourceTreeCollapsed = useCreationResourceTreeCollapsed();
+
     const handleWorkspaceModeChange = React.useCallback(
         (mode: WorkspaceMode) => {
             if (!isWorkspaceMode(mode)) return;
@@ -271,7 +288,7 @@ export default function WorkbenchShell({
     );
 
     return (
-        <WorkspacePanelFrameContext.Provider value={workspaceMode === "creation"}>
+        <WorkspacePanelFrameContext.Provider value={workspaceModeCarriesCreationResourceTree(workspaceMode)}>
         <div
             className={cn(
                 "workbench-shell",
@@ -355,7 +372,7 @@ export default function WorkbenchShell({
                 className={cn(
                     "workbench-shell__body",
                     "relative min-w-0 min-h-0 overflow-hidden flex flex-1",
-                    workspaceMode === "creation" && "p-4 gap-4",
+                    workspaceModeCarriesCreationResourceTree(workspaceMode) && "p-4 gap-4",
                 )}>
                 {/* 文件树只在生成区显示：创作是纯文稿、预览/剪辑是回看时间轴，都不需要左侧资源树。 */}
                 {workspaceMode === "generation" ? (
@@ -364,7 +381,7 @@ export default function WorkbenchShell({
                 {/* 创作资源树（原稿 + 各自的分镜方案）：写剧本和编分镜表是同一批资源的两个视图，
                     所以树归 shell 所有、跨这两个模式常驻——挂在任一工作区里都会让另一个工作区
                     没有树（2026-09-06 回归：点开一个方案就再也点不到别的剧本/分镜）。 */}
-                {workspaceModeCarriesCreationResourceTree(workspaceMode) ? <DocumentListSidebar /> : null}
+                {workspaceModeCarriesCreationResourceTree(workspaceMode) && !creationResourceTreeCollapsed ? <DocumentListSidebar /> : null}
                 <div className='flex-1 min-w-0 min-h-0 relative'>
                     {mountedWorkspaceModes.includes("creation") ? (
                         <WorkspaceSlot

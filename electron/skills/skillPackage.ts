@@ -16,9 +16,11 @@ import { broadcastSkillLibraryChanged } from "./skillLibraryBroadcast";
 import fs from "node:fs";
 import path from "node:path";
 
-import { getSkillsRoots, getUserSkillsRoot } from "../runtimePaths";
+import { getUserSkillsRoot } from "../runtimePaths";
 import { readSkillCuration } from "../shared/skillCuration";
 import { parseSkillFrontmatter, readSkillFrontmatterIdentity } from "./skillFrontmatter";
+import { readSkillManifest, type SkillManifest } from "./skillManifestSchema";
+import type { SkillRecord } from "./skillStore";
 
 export const SKILL_PACKAGE_VERSION = "nomi-skill-v1";
 
@@ -217,12 +219,28 @@ export function readSkillDirFiles(absDir: string): Record<string, string> {
   return out;
 }
 
+/**
+ * 一条技能的**包文件表**——「哪些文件属于这个包」只此一处，目录（contentHash）、MCP 内容寻址与导出共用。
+ *
+ * 两种形态（pi 的加载器两种都认，2026-09-18）：
+ *   · `<dir>/SKILL.md`：包 = 那个目录（含 references/ assets/ scripts/ 等子目录）；
+ *   · 根目录下直接的 `<stem>.md`：包 = 那**一个文件**，并以 `SKILL.md` 这个键呈现——导出去落到别处就是标准的
+ *     `<dir>/SKILL.md`，外部 MCP 宿主也只看见一个普通的包，不必认第二种形状。
+ */
+export function readSkillPackageFiles(record: Readonly<{ filePath: string; packageDir: string }>): Record<string, string> {
+  if (path.basename(record.filePath) === "SKILL.md") return readSkillDirFiles(record.packageDir);
+  return { "SKILL.md": fs.readFileSync(record.filePath, "utf8") };
+}
+
 /** 把一个已校验的包写进用户 skills 根，按冲突避让取目录名。返回最终落地目录名 + 绝对路径。 */
 export function writeSkillImport(userRoot: string, pkg: SkillPackage): { dirName: string; dir: string } {
   fs.mkdirSync(userRoot, { recursive: true });
+  // 已占用的句柄：`<dir>/SKILL.md` 的目录名，**加上**根目录下 `<stem>.md` 单文件技能的 stem（pi 两种都认；
+  // 只数目录会让导入的 `foo/` 与已有的 `foo.md` 撞成同一个句柄，目录层再拿诊断去遮蔽其中一个）。
   const existing = new Set(
     fs.existsSync(userRoot)
-      ? fs.readdirSync(userRoot, { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name)
+      ? fs.readdirSync(userRoot, { withFileTypes: true }).flatMap((e) =>
+        e.isDirectory() ? [e.name] : e.isFile() && /\.md$/i.test(e.name) ? [e.name.replace(/\.md$/i, "")] : [])
       : [],
   );
   const dirName = resolveImportDirName(pkg.dirName, existing);
@@ -242,19 +260,23 @@ export function writeSkillImport(userRoot: string, pkg: SkillPackage): { dirName
 // --- runtimePaths 薄包装（生产用；FS 副作用，真机/IPC 走这里，不进单测） ---
 
 export type ImportSkillResult =
-  | { ok: true; dirName: string; skillName: string }
+  | { ok: true; dirName: string; skillName: string; manifest: SkillManifest | null }
   | { ok: false; error: string };
 
-/** 按目录名在所有 skills 根里找到该 skill 并打包导出（exportedAt 由调用方盖戳）。 */
-export function exportSkillPackageByName(directoryName: string, exportedAt: number): SkillPackage | null {
-  for (const root of getSkillsRoots()) {
-    const dir = path.join(root, directoryName);
-    if (fs.existsSync(path.join(dir, "SKILL.md"))) {
-      const pkg = buildSkillPackage(directoryName, readSkillDirFiles(dir), exportedAt);
-      return validateSkillPackage(pkg).ok ? pkg : null;
-    }
-  }
-  return null;
+/**
+ * 按句柄在目录里找到该 skill 并打包导出（exportedAt 由调用方盖戳）。
+ * `records` 由调用方 `await readSkillRecords()` 给（目录来自 pi 的加载器）；这里不再自己走一遍根——
+ * 两份发现逻辑迟早对同一目录给出不同答案。
+ */
+export function exportSkillPackageByName(
+  directoryName: string,
+  exportedAt: number,
+  records: readonly Pick<SkillRecord, "directoryName" | "filePath" | "packageDir">[],
+): SkillPackage | null {
+  const record = records.find((item) => item.directoryName === directoryName);
+  if (!record) return null;
+  const pkg = buildSkillPackage(directoryName, readSkillPackageFiles(record), exportedAt);
+  return validateSkillPackage(pkg).ok ? pkg : null;
 }
 
 export type DeleteSkillResult = { ok: true; dirName: string } | { ok: false; error: string };
@@ -262,6 +284,7 @@ export type DeleteSkillResult = { ok: true; dirName: string } | { ok: false; err
 /**
  * 删除一个**用户目录下**的 skill（不可逆）。安全：解析后必须严格落在 userRoot 内（防 `..` 穿越），
  * 且只删 userData/skills——内置随附 skill 在只读安装目录，这里碰不到，天然禁删（与导入对称）。
+ * 两种形态都认（与 `readSkillPackageFiles` 同一份判据）：`<name>/SKILL.md` 删目录，`<name>.md` 删那一个文件。
  */
 export function deleteUserSkill(directoryName: string): DeleteSkillResult {
   const name = String(directoryName || "").trim();
@@ -273,10 +296,14 @@ export function deleteUserSkill(directoryName: string): DeleteSkillResult {
   if (target !== path.join(userRoot, name) || !target.startsWith(userRoot + path.sep)) {
     return { ok: false, error: "只能删除用户目录下的技能" };
   }
-  if (!fs.existsSync(path.join(target, "SKILL.md"))) {
+  const looseFile = `${target}.md`;
+  if (fs.existsSync(path.join(target, "SKILL.md"))) {
+    fs.rmSync(target, { recursive: true, force: true });
+  } else if (fs.existsSync(looseFile) && fs.lstatSync(looseFile).isFile()) {
+    fs.rmSync(looseFile, { force: true });
+  } else {
     return { ok: false, error: "该技能不在用户目录（内置技能只读，不能删除）" };
   }
-  fs.rmSync(target, { recursive: true, force: true });
   broadcastSkillLibraryChanged();
   return { ok: true, dirName: name };
 }
@@ -298,5 +325,8 @@ export function importSkillPackageToUserDir(raw: unknown): ImportSkillResult {
   // 盘变了就说一声。挂在写盘这一层，是因为入口不止一个（渲染层导入、拖拽、Agent 的
   // `author_skill`），而漏掉的那一个不会报错——它只是让用户在技能菜单里找不到刚加的东西。
   broadcastSkillLibraryChanged();
-  return { ok: true, dirName, skillName: validated.skillName || dirName };
+  // 扩展块从刚落盘的这份包本身读（同一个 `readSkillManifest` owner）：导入是同步 IPC，等不了 async 目录，
+  // 而包就是落盘的那份——不必再扫一遍盘去找它。
+  const { manifest } = readSkillManifest(parseSkillFrontmatter(validated.pkg.files["SKILL.md"]));
+  return { ok: true, dirName, skillName: validated.skillName || dirName, manifest };
 }

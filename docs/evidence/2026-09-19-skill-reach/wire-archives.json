@@ -1,0 +1,18 @@
+{
+  "archives": [
+    {
+      "file": "q2-wire.jsonl.gz",
+      "entries": 130,
+      "bytes": 3102474,
+      "sha256": "974d70887cdb53790e4c63aa5c1c8d91f4f118adb45d4bd80df4c57c243befac"
+    },
+    {
+      "file": "q3-wire.jsonl.gz",
+      "entries": 358,
+      "bytes": 7905403,
+      "sha256": "f233fc7236103295b2364f89fac2d0145addd3c381c33965ac81c50c7bf41081"
+    }
+  ],
+  "totalFiles": 488,
+  "losslessComparedToRaw": true
+}

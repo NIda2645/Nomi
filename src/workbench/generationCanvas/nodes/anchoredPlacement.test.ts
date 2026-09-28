@@ -65,6 +65,12 @@ describe('resolveAnchoredPlacement', () => {
     expect(contains(placement, shortStage)).toBe(true)
   })
 
+  it('keeps natural height when the anchor fills the usable stage', () => {
+    const placement = resolveAnchoredPlacement({ ...base, anchor: stage })
+    expect(placement.height).toBe(base.height)
+    expect(contains(placement, stage)).toBe(true)
+  })
+
   it('never reports a negative size for a degenerate stage', () => {
     const collapsed: AnchoredRect = { left: 500, top: 400, right: 480, bottom: 380 }
     const placement = resolveAnchoredPlacement({ ...base, stage: collapsed })
@@ -72,10 +78,8 @@ describe('resolveAnchoredPlacement', () => {
     expect(placement.height).toBeGreaterThanOrEqual(0)
   })
 
-  // 调用方（useComposerViewportPlacement）不是把整个视口当 stage，而是先扣掉左缘常驻
-  // 工具条（CanvasToolbar）量到的真实矩形，传进来的 stage.left 因此常年不是 0——
-  // 这条守住「stage 本身左移之后，居中 + clamp 仍然是同一套算法」，不会因为 left≠0
-  // 悄悄漏出另一条分支（2026-09-10 反馈 #10：浮框左缘被左栏压住的复现根因）。
+  // 调用方传进来的 stage 常年不从 0 开始（先扣掉面板边距）——这条守住「stage 本身左移之后，
+  // 居中 + clamp 仍然是同一套算法」，不会因为 left≠0 悄悄漏出另一条分支。
   it('keeps the card clear of an inset stage.left, as when a fixed left dock narrows the usable area', () => {
     const dockedStage: AnchoredRect = { left: 96, top: 0, right: 1000, bottom: 800 }
     // 锚点紧贴收窄后的左边界——如果调用方仍按 stage.left=0 算居中，卡片会被推出
@@ -103,3 +107,4 @@ describe('resolveAnchoredPlacement', () => {
     expect(Object.keys(base)).toEqual(['stage', 'anchor', 'width', 'height', 'gap', 'aboveClearance'])
   })
 })
+

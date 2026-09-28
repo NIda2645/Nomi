@@ -1,0 +1,249 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-27-agent-panel-long-conversation-freeze",
+  "problem_type": "render-process starvation during long Agent conversations",
+  "symptom": "On Windows 0.22.1, a long Agent run made the renderer stop accepting clicks and stop painting text for seconds or minutes while the main process stayed healthy; users had to end the process.",
+  "direct_cause": "Every V4FlowRow rebuilt the complete labels object and called i18next translate about 64 times on every render, while each stream update recreated the full flow and passed fresh handlers, so all historical rows repeated the work. Tool labels and summaries were also translated again for every historical tool entry.",
+  "class_root": "The shared Agent-panel render boundary did not preserve the invariant that one stream update performs constant work with respect to history length: locale labels, derived flow subtrees, callbacks, and tool display results lacked stable identity at their earliest shared boundaries.",
+  "affected_population": [
+    "Windows users on Nomi 0.22.1 running long Agent conversations",
+    "Any locale and host that renders the V4 Agent panel, including resident and devlab surfaces",
+    "Conversations with many historical assistant, tool, or task rows receiving frequent streaming updates"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/v4/agentPanelV4Labels.ts",
+    "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+    "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+    "src/workbench/ai/v4/shareEqualDeep.ts"
+  ],
+  "entry_points": [
+    "useV4Labels and all of its resident, panel, collapsed-chip, and devlab consumers",
+    "V4FlowRow and the AgentPanelV4Panel flow map",
+    "useAgentPanelV4Data laneViewModel/collapseV4Flow derivation and shareFlowItems",
+    "toolLabel/toolSummary callbacks used while projecting tool calls"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/ai/v4",
+    "tests": [
+      "src/workbench/ai/v4/agentPanelV4Performance.test.ts"
+    ],
+    "why": "The labels cache, flow derivation, structural-sharing helper, and memoized row are one renderer-layer contract; the class test exercises both the pure derivation and the real panel update."
+  },
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://react.dev/reference/react/memo",
+      "checked_at": "2026-09-27",
+      "purpose": "Confirm that memo skips child renders when props are unchanged and that stable object/function props are required."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://react.dev/reference/react/useMemo",
+      "checked_at": "2026-09-27",
+      "purpose": "Confirm dependency-based reuse of derived values and stable references."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://react.i18next.com/latest/usetranslation-hook",
+      "checked_at": "2026-09-27",
+      "purpose": "Confirm useTranslation returns the translation function and responds to locale changes."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://www.i18next.com/overview/api",
+      "checked_at": "2026-09-27",
+      "purpose": "Confirm t is a key lookup operation whose repeated calls are direct work on the render path."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/TanStack/query/blob/main/packages/query-core/src/utils.ts",
+      "checked_at": "2026-09-27",
+      "purpose": "Use replaceEqualDeep as prior art for recursive structural sharing of equal arrays and ordinary objects."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/vercel/ai-chatbot/blob/main/components/chat.tsx",
+      "checked_at": "2026-09-27",
+      "purpose": "Compare a streaming chat UI that keeps message rendering at an independent component boundary."
+    }
+  ],
+  "invariants": [
+    "useV4Labels returns the same labels object for the same resolved language and creates a new object only after the language changes.",
+    "A stream update that changes only the final assistant item structurally shares every unchanged V4FlowItem subtree and only the changed row may receive new item identity.",
+    "V4FlowRow receives stable handler object identity while callback implementations remain current, including handlers added or removed between renders.",
+    "Tool label and summary translation results are cached by tool name and parameter object identity for the lifetime of one language-bound derivation cache.",
+    "The derived flow render work and row translation calls do not grow with the number of historical rows during a final-row streaming update."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/v4/states/01-vocabulary.tsx",
+      "symbol": "V4FlowRow"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/agentPanelV4Labels.ts",
+      "symbol": "buildV4Labels"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "V4FlowRow"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/v4/states/01-vocabulary.tsx",
+      "symbol": "useV4Labels"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/v4/states/03-flow.tsx",
+      "symbol": "useV4Labels"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/v4/states/07-spend-params.tsx",
+      "symbol": "useV4Labels"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/app-shell/CollapsedAiChip.tsx",
+      "symbol": "useV4Labels"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "useV4Labels"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/agentPanelV4Labels.ts",
+      "symbol": "buildV4Labels"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "useV4Labels"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/shareEqualDeep.ts",
+      "symbol": "replaceEqualDeep"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "replaceEqualDeep"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "useV4Labels"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "shareFlowItems"
+    }
+  ],
+  "door_reduction": {
+    "before": 9,
+    "after": 14,
+    "why_not": "door-map counts one door per file+symbol: useV4Labels is read by the panel, its row, the data hook, the resident shell, the collapsed chip and three devlab states; each is a real consumer of the one labels owner and now receives the same cached object per language, so none of them is a second owner. V4FlowRow is rendered by the production panel and the devlab vocabulary page. The added doors are the new owners wiring in: useV4Labels building labels once through buildV4Labels, useAgentPanelV4Data calling shareFlowItems/replaceEqualDeep (the single structural-sharing boundary every flow passes through), and replaceEqualDeep recursing into subtrees."
+  },
+  "generality_proof": "The locale cache sits in the only useV4Labels owner, the row memo sits at the only V4FlowRow owner, and shareFlowItems applies one recursive identity rule to the complete derived flow rather than enumerating current kinds. Every door-map entry therefore inherits the same identity and translation budget; a future V4FlowItem field is compared automatically by the generic deep-sharing boundary.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/ai/v4/agentPanelV4Labels.ts",
+      "symbol": "useV4Labels",
+      "responsibility": "Own the language-keyed labels cache and return one stable object per resolved language to every consumer."
+    },
+    {
+      "path": "src/workbench/ai/v4/shareEqualDeep.ts",
+      "symbol": "replaceEqualDeep",
+      "responsibility": "Recursively reuse equal ordinary-object and array subtrees while retaining reference identity for functions and other non-plain objects."
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "shareFlowItems",
+      "responsibility": "Apply the generic structural-sharing boundary to the complete derived V4 flow before it reaches the panel."
+    },
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "V4FlowRow",
+      "responsibility": "Memoize one rendered flow row and receive stable callback wrappers that dispatch through the latest handler ref."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "entry_point": "production V4FlowRow list",
+      "disposition": "enforced",
+      "evidence": "The panel is the reproduced freeze path; it now passes shared flow items and stable handler wrappers into React.memo(V4FlowRow)."
+    },
+    {
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "entry_point": "resident shell flowHandlers and panel host",
+      "disposition": "enforced",
+      "evidence": "The shell remains an existing consumer of useV4Labels and supplies inline callbacks; the panel boundary stabilizes them without changing the shell contract."
+    },
+    {
+      "path": "src/devlab/designLab/v4/states/01-vocabulary.tsx",
+      "entry_point": "devlab V4FlowRow and labels fixtures",
+      "disposition": "enforced",
+      "evidence": "The same cached labels hook and memoized row implementation are shared by the devlab consumer; no parallel row implementation was introduced."
+    },
+    {
+      "path": "src/ui/app-shell/CollapsedAiChip.tsx",
+      "entry_point": "collapsed label consumer",
+      "disposition": "enforced",
+      "evidence": "It consumes the centralized useV4Labels cache and requires no call-site change."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any longer transcript, faster stream, added V4FlowItem field, or new label consumer could recreate renderer starvation if a caller rebuilt labels, callbacks, or historical item objects at the shared boundary.",
+    "same_class_scan": [
+      "Ran node scripts/door-map.mjs useV4Labels V4FlowRow shareFlowItems; it found 10 consumer doors across production, resident, collapsed-chip, and devlab consumers. An extended symbol scan for the new replaceEqualDeep and buildV4Labels owner boundaries adds the two helper writes and the owner read/write, for 14 declared doors.",
+      "Read useAgentPanelV4Data.ts, laneViewModel.ts, and agentPanelV4Collapse.ts to trace parts -> flow items -> rows and confirm the full-history derivation path.",
+      "Checked all useV4Labels consumers with rg and verified they continue to use the one hook owner; no second labels owner or alternate row renderer was added."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/ai/v4/shareEqualDeep.ts",
+    "invariant": "Equal flow subtrees and same-language labels retain identity, so a final-row stream update cannot make historical rows appear changed solely because derivation ran again.",
+    "failure_mode": "Non-plain objects and functions are compared by reference, unknown future V4FlowItem fields participate automatically in the ordinary-object traversal, and a language change creates a fresh labels cache entry rather than serving stale locale text.",
+    "exception_policy": "none",
+    "strategy": "Enforce identity reuse at the labels hook and complete-flow projection boundaries before data reaches any row consumer; memoized rows then make unchanged history inert while ref wrappers preserve current actions.",
+    "artifacts": [
+      "src/workbench/ai/v4/shareEqualDeep.ts",
+      "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "src/workbench/ai/v4/agentPanelV4Labels.ts",
+      "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "src/workbench/ai/v4/agentPanelV4Performance.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/ai/v4/agentPanelV4Performance.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/v4/agentPanelV4Performance.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The existing labels hook, flow projection, and row renderer are corrected in place. No alternate legacy renderer, fallback, or parallel implementation remains."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The fix uses the existing React, i18next, and renderer dependencies; no dependency version or lifecycle controls the invariant.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted state, transcript format, or external contract changes. Existing flow data follows the new identity projection on the next render, and language changes naturally select a different labels cache entry.",
+  "residual_risks": [
+    "The current Windows sandbox cannot start Vitest/Vite child processes (spawn EPERM), so the requested behavioral suite needs a normal CI or developer process run for execution evidence.",
+    "The frozen worktree has no @testing-library/react or jsdom and cannot install them offline; the performance test uses the repository's installed @react-three/fiber reconciler through a shared harness instead.",
+    "The main renderer's exact 0.22.1 21-round DeepSeek profile was supplied by the主管 and was not repeated in this session."
+  ]
+}

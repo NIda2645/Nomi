@@ -27,6 +27,7 @@ import { filterProjectLibraryItems } from './libraryAdapters'
 import { LibraryDiscoveryToolbar } from './LibraryDiscoveryToolbar'
 import { getDesktopBridge } from '../../desktop/bridge'
 import ProjectSyncBadge from './ProjectSyncBadge'
+import { syncStatusBlocksOpen } from './projectSyncFace'
 import type { WorkspaceSyncInspection } from '../../../electron/shared/workspaceSyncContracts'
 
 type Props = {
@@ -222,7 +223,7 @@ export default function ProjectLibraryPage({
   const textModelMissing = hasTextModel === false
   const openProject = React.useCallback((projectId: string): void => {
     const status = syncInspectionByProject[projectId]?.status
-    if (status && status !== 'ready') {
+    if (status && syncStatusBlocksOpen(status)) {
       setOpenSyncProjectId(projectId)
       return
     }

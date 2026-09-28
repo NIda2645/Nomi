@@ -1,0 +1,15 @@
+{
+  "_why": "已退役的模型可见工具名。技能/文档是纯文本，编译器看不见——2026-09-14 那次 `37 个内部名 → 20 个动词` 的破坏性改名（afe85411d，提交里明写不留别名）一个技能文件都没改，四天后由真实用户场景暴露：分镜规划师照着旧名字调，调不到。退役一个工具就往这里加一个名字，check:mcp-tool-refs 会拿它扫 skills/。",
+  "_evidence": "每个名字都用 `git grep -c <name> afe85411d^ -- electron src` 验过当年确实是工具名（出现在 6–48 个文件里），不是凭印象列的。",
+  "retired": [
+    "read_canvas_state",
+    "propose_storyboard_plan",
+    "create_canvas_nodes",
+    "connect_canvas_edges",
+    "set_node_prompt",
+    "run_generation_batch",
+    "arrange_storyboard_to_timeline",
+    "delete_canvas_nodes",
+    "tidy_canvas"
+  ]
+}

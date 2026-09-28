@@ -1,4 +1,4 @@
-import { StoryboardOverrideBadge } from './StoryboardOverrideBadge'
+import NodeGenerationComposer from './LazyNodeGenerationComposer'
 import { notify } from '../../../ui/notificationPolicy'
 import React from 'react'
 import type { ImageGenerationPreset } from 'img-fx'
@@ -13,11 +13,12 @@ import { NodeCardBody } from './render/NodeCardBody'
 import ImageCropGridOverlay from './render/ImageCropGridOverlay'
 import NodeImageEditToolbar from './NodeImageEditToolbar'
 import { NodeResultStack } from './NodeResultStack'
+import { useNodeResultHistory, nodeHasResultStack } from './useNodeResultHistory'
 import { EmptyNodeVariantToolbar, FloatingToolbarShell, TOOLBAR_ICON as TBI, ToolbarButton, ToolbarDivider, ToolbarVariantProvenanceActions } from './NodeFloatingToolbar'
 import { useNodeImageEditing } from './useNodeImageEditing'
 import { isLocalImageOpPending, isRemoveBackgroundPending } from './localImageOpPhase'
 import { useNodeDragResize } from './useNodeDragResize'
-import { useHasFrameSourceEdge, useShotIndex, useMountedCards } from '../hooks/useNodeRelationships'
+import { useHasFrameSourceEdge, useShotIdentity, useMountedCards } from '../hooks/useNodeRelationships'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import {
   PendingGenerationPlaceholder,
@@ -26,14 +27,12 @@ import {
   STRIPED_BG_CLASS,
 } from './render/CardCommon'
 import PanoramaUploadFallback from './PanoramaUploadFallback'
-import { MagneticConnectionHandle } from './NodeConnectionHandles'
-import { SideTimelineDragHandle, TimelineNotchDragHandle } from './NodeTimelineDragHandles'
+import { TimelineNotchDragHandle } from './NodeTimelineDragHandles'
 import { cn } from '../../../utils/cn'
 import { DeferredNodeImage } from './DeferredNodeMedia'
 import { NodeVideoPlaybackGuard } from './NodeVideoPlaybackGuard'
 import { useNodePanoramaHandlers } from './useNodePanoramaHandlers'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
-import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { NodeGeneratingOverlay } from './NodeGeneratingOverlay'
 import { NodeGenerationStatus } from './NodeGenerationStatus'
@@ -49,7 +48,6 @@ import { NodeRecoverableReport } from './NodeRecoverableReport'
 import { dismissRecoverableNode, recoverNodeResult } from '../runner/recoverTaskActions'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { WorkbenchButton } from '../../../design'
-import { completeNodeConnection } from './completeNodeConnection'
 import { getGenerationNodeExecutionKind, isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import { anchorFreezeToolbarProps } from '../fixation/freezeAnchor'
 import { TechnicalReviewBadge } from './TechnicalReviewBadge'
@@ -60,14 +58,12 @@ import {
   RESIZE_DIRECTIONS,
   getNodeSizeBounds,
   FOCUS_GENERATION_NODE_EVENT,
-  computeMediaMetaPatch,
-  MEDIA_DIMENSION_UPDATE_OPTIONS,
   resolveNodeVisualSize,
 } from './nodeSizing'
-import { useNodeVideoHoverPreview } from './useNodeVideoHoverPreview'
 import { NodeLabelRow } from './NodeLabelRow'
 import { NodeInlineImageTitle } from './NodeImagePreviewActions'
-import { useNodeDisplayPrompt } from './useNodeDisplayPrompt'
+import { useNodeMediaMeasurement } from './useNodeMediaMeasurement'
+import { useNodeVideoPreviewIntent } from './useNodeVideoPreviewIntent'
 import { useNodeMediaPreview } from './useNodeMediaPreview'
 export type BaseGenerationNodeProps = {
   node: GenerationCanvasNode
@@ -81,7 +77,7 @@ export type BaseGenerationNodeProps = {
 const Model3DViewer = lazyWithChunkBoundary('3D 模型预览', () => import('./model3d/Model3DViewer')) // 生成出的 .glb 卡内可旋转预览（R3F）
 const TextDocumentNode = lazyWithChunkBoundary('文本节点编辑器', () => import('./render/TextDocumentNode'))
 const PanoramaViewer = lazyWithChunkBoundary('全景预览', () => import('./PanoramaViewer'))
-const NodeGenerationComposer = lazyWithChunkBoundary('节点生成面板', () => import('./NodeGenerationComposer'))
+
 
 function NodeBodyLoading(): JSX.Element {
   return <div className="h-full w-full rounded-nomi bg-nomi-paper shadow-nomi-md ring-1 ring-inset ring-nomi-line" />
@@ -121,19 +117,12 @@ function BaseGenerationNodeImpl({
   const sourceNodeExists = useGenerationCanvasStore((state) =>
     selectCanvasNodeExists(state, node.derivedFrom),
   )
-  const startConnection = useGenerationCanvasStore((state) => state.startConnection)
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
-  const isPendingConnectionSource = useGenerationCanvasStore((state) => state.pendingConnectionSourceId === node.id)
-  const pendingConnectionSourceSide = useGenerationCanvasStore((state) =>
-    state.pendingConnectionSourceId === node.id ? state.pendingConnectionSourceSide : null,
-  )
-  const isPendingConnectionTarget = useGenerationCanvasStore(
-    (state) => state.pendingConnectionSourceId !== '' && state.pendingConnectionSourceId !== node.id,
-  )
   const panoramaFullscreenRef = React.useRef<(() => void) | null>(null)
   const panoramaUploadInputRef = React.useRef<HTMLInputElement | null>(null)
   const [provenanceOpen, setProvenanceOpen] = React.useState(false)
-  const [resultStackOpen, setResultStackOpen] = React.useState(false)
+  const showNodeResultStack = React.useMemo(() => nodeHasResultStack(node), [node])
+  const [resultStackOpen, setResultStackOpen] = useNodeResultHistory({ id: node.id, kind: node.kind, selected: selected && !isMultiSelectActive, available: showNodeResultStack })
   const { openMediaPreview, mediaPreviewControls, mediaPreviewDoubleClick } = useNodeMediaPreview(node, selected && !isMultiSelectActive && !resultStackOpen, () => setProvenanceOpen(true), reportFeedback)
   const sizeBounds = getNodeSizeBounds(node.kind)
 
@@ -143,18 +132,6 @@ function BaseGenerationNodeImpl({
     event.dataTransfer.setData(TIMELINE_GENERATION_NODE_DRAG_MIME, encodeTimelineGenerationNodeDragPayload(node))
   }
 
-  const handleConnectionDragStart = React.useCallback(
-    (event: React.PointerEvent<HTMLElement>, side: ConnectionAnchorSide = 'right') => {
-      event.preventDefault()
-      event.stopPropagation()
-      if (typeof event.currentTarget.releasePointerCapture === 'function') {
-        event.currentTarget.releasePointerCapture(event.pointerId)
-      }
-      startConnection(node.id, side)
-    },
-    [node.id, startConnection],
-  )
-
   const handleAddToTimelineAtPlayhead = (event: React.MouseEvent<HTMLElement> | React.KeyboardEvent<HTMLElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -162,20 +139,9 @@ function BaseGenerationNodeImpl({
     void addGenerationNodeToTimelineEnd(liveNode)
   }
 
-  const updateMediaDimensions = (width: number, height: number, durationSeconds?: number) => {
-    const patch = computeMediaMetaPatch({
-      resultType: node.result?.type,
-      preserveSize: Boolean(node.runs?.some((run) => run.resultId === node.result?.id)),
-      meta: node.meta || {},
-      currentSize: node.size,
-      width,
-      height,
-      durationSeconds,
-    })
-    if (patch) updateNode(node.id, patch, MEDIA_DIMENSION_UPDATE_OPTIONS) // 加载完才量得到的派生尺寸不是用户编辑，别自成一个撤销点（否则刚建的一批节点按 Cmd+Z，撤掉的是「某张图量了尺寸」）
-  }
+  const mediaMeasurement = useNodeMediaMeasurement(node)
 
-  const { handleVideoNodePointerEnter, handleVideoNodePointerLeave } = useNodeVideoHoverPreview(node.result?.type)
+  const videoPreview = useNodeVideoPreviewIntent(node.result?.type === 'video')
 
   const handleFocusSourceNode = React.useCallback(
     (event: React.MouseEvent<HTMLButtonElement>) => {
@@ -224,11 +190,10 @@ function BaseGenerationNodeImpl({
   const isGenerating = status === 'queued' || status === 'running'
   const canGenerate = useGenerationCanvasStore((state) => selectCanvasNodeCanRun(state, node.id)) && !isGenerating
   const canSendToTimeline = canDragGenerationNodeToTimeline(node, { readOnly })
-  const showTimelineNotch =
-    canSendToTimeline &&
-    (node.result?.type === 'image' || node.result?.type === 'video') &&
-    !resultStackOpen
-  const showSideTimelineDrag = canSendToTimeline && !showTimelineNotch
+  // 「拖进时间轴」只有顶部这一个把手。卡片左右两侧归连线「+」圈（generationCanvasReactFlowVisualContract.ts）；
+  // 2026-09-24 用户反馈「多结果卡片拉环不见了」：旧的侧边拖柄（版本托盘展开 / 非图非视频结果时顶替顶部把手）
+  // 就住在右侧「+」圈的位置上、层级还更高，把圈整个盖住，于是删掉那一个，不再有两个东西抢同一块地方。
+  const showTimelineNotch = canSendToTimeline && !resultStackOpen
   // 2026-09-05：这几条的 zh+en 词条一直都在，只是渲染处写死了中文（英文界面恒显中文），现接回词条。
   const sourceNodeLabel = sourceNodeTitle || (node.derivedFrom && !sourceNodeExists ? t('generationCommon.node.sourceMissing') : node.derivedFrom || '')
   const sourceCategoryName = sourceNodeCategoryId ? getBuiltinCategoryById(sourceNodeCategoryId)?.name : null
@@ -240,10 +205,9 @@ function BaseGenerationNodeImpl({
         : t('generationCommon.node.copySourceMissing')
   const nodeExecutionKind = getGenerationNodeExecutionKind(node.kind)
   // L3：待生成卡给镜头序号，让未选中的占位卡也能一眼分清哪个镜头（非 shots 返回 null）。
-  const shotIndex = useShotIndex(node.id, node.categoryId)
+  const shotIdentity = useShotIdentity(node.id)
   // 切片2：镜头「挂了哪些设定卡」——不选中也能一眼看出挂了林夏/咖啡馆（可审计，免数连线）。
   const mountedCards = useMountedCards(node.id)
-  const displayPrompt = useNodeDisplayPrompt(node)
   const hasFrameSourceEdge = useHasFrameSourceEdge(node.id, nodeExecutionKind === 'video') // A15：已连上游边时占位不再喊「拖图」
   const needsFirstFrame = nodeExecutionKind === 'video' && !canGenerate && !isGenerating
   const { handlePanoramaFileChange, handlePanoramaScreenshot } = useNodePanoramaHandlers(node, visualSize, reportFeedback)
@@ -253,13 +217,10 @@ function BaseGenerationNodeImpl({
   // 图片类与素材类共用；编辑产物进入当前节点历史堆叠，并切换为主图。
   const imageEditing = useNodeImageEditing(node, visualSize, reportFeedback)
   const { downloading: panoramaDownloading, download: downloadPanorama } = useResultDownload(node, reportFeedback)
-  const showNodeResultStack =
-    !isCardKind &&
-    !isTextKind &&
-    node.kind !== 'panorama' &&
-    (node.result?.type === 'image' || node.result?.type === 'video') &&
-    Boolean(node.result.url)
-  const useMagneticConnectionHandles =
+  // 面板挂载走可打断的低优先级渲染（按下即选中时同步挂面板，拖动起手实测顿 70–95 ms）：高亮与拖动先出，面板随后到，取消选中立即卸载。
+  const composerWanted = selected && !isMultiSelectActive && !readOnly && !resultStackOpen && nodeHasGenerationComposer(node.kind)
+  const composerMounted = React.useDeferredValue(composerWanted)
+  const showFlowConnectionHandle =
     node.kind !== 'panorama' && (node.kind === 'image' || isAssetKind || isImageLikeGenerationNodeKind(node.kind))
 
   return (
@@ -286,82 +247,10 @@ function BaseGenerationNodeImpl({
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      onPointerEnter={handleVideoNodePointerEnter}
-      onPointerLeave={handleVideoNodePointerLeave}
+      onPointerEnter={videoPreview.onPointerEnter}
+      onPointerLeave={videoPreview.onPointerLeave}
     >
 {feedback ? <p role="status" className="absolute inset-x-0 bottom-0 z-[15] m-0 bg-nomi-paper px-2 py-1 text-caption text-nomi-ink-60">{feedback}</p> : null}
-      {!flowManagedLayout && !readOnly && node.kind !== 'panorama' ? (
-        selected && useMagneticConnectionHandles && !isPendingConnectionSource ? (
-          <>
-            <MagneticConnectionHandle
-              side="left"
-              active={isPendingConnectionTarget || pendingConnectionSourceSide === 'left'}
-              pendingTarget={isPendingConnectionTarget}
-              onStart={handleConnectionDragStart}
-              onComplete={(event) => {
-                event.stopPropagation()
-                completeNodeConnection(node.id, reportFeedback)
-              }}
-            />
-            <MagneticConnectionHandle
-              side="right"
-              active={isPendingConnectionTarget || pendingConnectionSourceSide === 'right'}
-              pendingTarget={isPendingConnectionTarget}
-              onStart={handleConnectionDragStart}
-              onComplete={(event) => {
-                event.stopPropagation()
-                completeNodeConnection(node.id, reportFeedback)
-              }}
-            />
-          </>
-        ) : (
-          <>
-            <WorkbenchButton
-              className={cn(
-                'generation-canvas-v2-node__handle generation-canvas-v2-node__handle--input',
-                'absolute top-1/2 left-[-14px] z-[7] inline-grid w-7 h-7 place-items-center p-0',
-                'border-0 rounded-full bg-transparent -translate-y-1/2 cursor-crosshair',
-                'opacity-80 transition-opacity duration-150 hover:opacity-100',
-                'data-[active=true]:opacity-100',
-              )}
-              aria-label={
-                isPendingConnectionTarget
-                  ? t('generationCommon.node.connectHere')
-                  : t('generationCommon.node.startConnection')
-              }
-              data-active={isPendingConnectionTarget ? 'true' : 'false'}
-              onPointerDown={(event) => {
-                if (isPendingConnectionTarget) {
-                  event.stopPropagation()
-                  return
-                }
-                handleConnectionDragStart(event, 'left')
-              }}
-              onClick={(event) => {
-                event.stopPropagation()
-                if (!isPendingConnectionTarget) return
-                completeNodeConnection(node.id, reportFeedback)
-              }}
-            >
-              <span className="generation-canvas-v2-node__handle-dot" aria-hidden="true" />
-            </WorkbenchButton>
-            <WorkbenchButton
-              className={cn(
-                'generation-canvas-v2-node__handle generation-canvas-v2-node__handle--output',
-                'absolute top-1/2 right-[-14px] z-[7] inline-grid w-7 h-7 place-items-center p-0',
-                'border-0 rounded-full bg-transparent -translate-y-1/2 cursor-crosshair',
-                'opacity-80 transition-opacity duration-150 hover:opacity-100',
-                'data-[active=true]:opacity-100',
-              )}
-              aria-label={t('generationCommon.node.startConnection')}
-              data-active={isPendingConnectionSource ? 'true' : 'false'}
-              onPointerDown={(event) => handleConnectionDragStart(event, 'right')}
-            >
-              <span className="generation-canvas-v2-node__handle-dot" aria-hidden="true" />
-            </WorkbenchButton>
-          </>
-        )
-      ) : null}
 
       <EmptyNodeVariantToolbar nodeId={node.id} visible={selected && !isMultiSelectActive && !readOnly && !resultStackOpen && !hasResult} />
       {node.kind === 'panorama' && selected && !isMultiSelectActive && !readOnly && node.result?.url ? (
@@ -422,7 +311,7 @@ function BaseGenerationNodeImpl({
       ) : null}
       {mediaPreviewControls}
       <NodeLabelRow>
-        <ShotPreviewOverlays shotIndex={shotIndex} />
+        <ShotPreviewOverlays {...shotIdentity} />
         {!isCardKind && !isTextKind ? <NodeInlineImageTitle nodeId={node.id} value={node.title || ''} readOnly={readOnly} /> : null}
         {!isCardKind ? <ShotMountBadges cards={mountedCards} /> : null}
         <TechnicalReviewBadge meta={node.meta} />
@@ -465,7 +354,7 @@ function BaseGenerationNodeImpl({
               ? undefined
               // P4 S6：多镜物化节点走返工链（一功能一个家 §3.E）；否则本地重跑/素材重导入（单镜/普通节点不变=回归门）。
               : productionRetry ?? (() => {
-                  void (node.meta?.retryableImport === true ? retryLocalAssetImport(node.id) : confirmAndRunNode(node.id))
+                  void (node.meta?.retryableImport === true ? retryLocalAssetImport(node.id) : confirmAndRunNode(node.id, { initiator: 'user' }))
                 })
           }
         />
@@ -537,23 +426,17 @@ function BaseGenerationNodeImpl({
           ) : node.result.type === 'video' ? (
             // 播放守卫：decode 失败自动转码自愈一次（HEVC 存量/供应商 HEVC 产物），修不了给人话原因。
             <NodeVideoPlaybackGuard
-              nodeId={node.id}
-              rawUrl={node.result.url}
+              node={node}
+              previewRequested={videoPreview.requested}
+              engaged={selected && !isMultiSelectActive}
               data-node-preview-video="true"
               className={cn('w-full h-full min-h-0 object-contain pointer-events-auto', 'bg-nomi-ink-05 select-none')}
               priority={mediaPreviewPriority}
               crossOrigin="use-credentials"
               controls
               playsInline
-              preload="auto"
               draggable={false}
-              onLoadedMetadata={(event) => {
-                updateMediaDimensions(
-                  event.currentTarget.videoWidth,
-                  event.currentTarget.videoHeight,
-                  event.currentTarget.duration,
-                )
-              }}
+              onLoadedMetadata={mediaMeasurement.onVideoMetadata}
             />
           ) : (
             <DeferredNodeImage
@@ -563,12 +446,11 @@ function BaseGenerationNodeImpl({
                 localImageOpPending && 'blur-sm scale-[1.02] transition-[filter,opacity]',
                 localImageOpPending && 'animate-remove-bg-pulse-slow',
               )}
-              src={node.result.url}
+              // 画布只挂落盘边界派生的预览；源 URL 留给编辑/导出/大图预览，画布不为每个节点解码 4K/8K 原图。
+              src={node.result.thumbnailUrl || node.result.url}
               priority={mediaPreviewPriority}
               alt=""
-              onLoad={(event) => {
-                updateMediaDimensions(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)
-              }}
+              onLoad={mediaMeasurement.onImageLoad}
             />
           )
         ) : localImageOpPending ? (
@@ -603,11 +485,11 @@ function BaseGenerationNodeImpl({
           node={node}
           readOnly={readOnly}
           selected={selected && !isMultiSelectActive}
+          open={resultStackOpen}
           onOpenChange={setResultStackOpen}
         />
       ) : null}
 
-      <div className="absolute left-0 top-full max-w-full pt-1"><StoryboardOverrideBadge node={node} /></div>
       {artifactSlots.toolbar}
 
       {showTimelineNotch ? (
@@ -620,15 +502,13 @@ function BaseGenerationNodeImpl({
       {!localImageOpPending ? <NodeGeneratingOverlay reportFeedback={reportFeedback} node={node} motion={waitingMotion} preset={waitingPreset} /> : null}
 
       <ProductionShotOverlays reportFeedback={reportFeedback} node={node} selected={selected && !isMultiSelectActive} />{/* P4 S5+S6 多镜叠加：占位三态 + 版本条（非多镜早退零开销） */}
-      {showSideTimelineDrag ? (
-        <SideTimelineDragHandle onAddAtPlayhead={handleAddToTimelineAtPlayhead} onDragStart={handleTimelineDragStart} />
-      ) : null}
       {/* composer：生成类节点 + **单选**时浮出。多选(框选)一律不挂——否则每个选中节点都弹自己的
           大 composer 层叠糊成一片(用户反馈 bug，根因收口此唯一挂载入口)。批量生成走选中浮条。 */}
-      {selected && !isMultiSelectActive && !readOnly && !resultStackOpen && nodeHasGenerationComposer(node.kind) ? (
-        <React.Suspense fallback={null}>
-          <NodeGenerationComposer onFeedback={reportFeedback} node={node} visualSize={visualSize} />
-        </React.Suspense>
+      {/* 只读画布不挂、结果堆叠展开时卸载（2026-09-21 收回来的两条）：
+          ① 只读时挂上去会多浮出一张「只读画布」提示卡，那是一张没出过样张的新 UI；
+          ② 藏不等于卸载：结果堆叠展开时浮框的编辑器、参考区订阅都还在跑，不挂才是不跑。 */}
+      {composerWanted && composerMounted ? (
+        <NodeGenerationComposer onFeedback={reportFeedback} node={node} visualSize={visualSize} readOnly={readOnly} />
       ) : null}
       {selected && !readOnly && !flowManagedLayout
         ? RESIZE_DIRECTIONS.map((direction) => (

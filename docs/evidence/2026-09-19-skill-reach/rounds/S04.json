@@ -1,0 +1,58 @@
+{
+  "id": "S04",
+  "bucket": "should",
+  "prompt": "古装短片设在明朝，官员上堂的衣冠和公堂布置要避开什么穿帮？",
+  "acceptableSkills": [
+    "director-guzhuang"
+  ],
+  "outputRubric": "服饰、建筑、现代物穿帮具体举例",
+  "timedOut": false,
+  "trace": {
+    "schemaVersion": 1,
+    "sessionId": "01a0b6a5-50c4-712e-ba30-b41a98dad43c",
+    "turnId": "01a0b6a5-521f-712e-ba30-b41feb09542c",
+    "timestamp": 1789770682911,
+    "spanName": "invoke_agent Nomi",
+    "prompt": "古装短片设在明朝，官员上堂的衣冠和公堂布置要避开什么穿帮？",
+    "response": "我来加载古装题材相关的技能，专门看看明朝官员衣冠和公堂布置的穿帮注意事项。\n\n根据古装形制技能，明朝官员上堂的衣冠和公堂布置要避开以下穿帮：\n\n## 官员衣冠穿帮避忌：\n1. **领型右衽**：必须左襟压右襟，左衽=死人/夷狄\n2. **补子等级**：文官九等补子（文官鸟·武官兽），注意按官阶配正确\n3. **官服色彩**：唐宋制三品以上紫·五品以上朱·七品以上绿·九品以上青，勿僭越\n4. **冠帽形制**：乌纱帽（前低后高圆顶·两翅），内衬网巾\n5. **发型**：男束发为本，绝不可有清制剃发辫子\n6. **配饰**：腰带玉/犀/银分级，禁手表、现代眼镜、塑料珠、钻戒\n7. **色彩等级**：明黄=帝王专属，紫朱=高官，庶民只许褐灰青本白\n\n## 公堂布置穿帮避忌：\n1. **堂内地面**：**堂内必须平整无台阶**——台阶只在堂外/院落之间，公堂内部是平的\n2. **屋顶等级**：衙署/公堂用**歇山**，别用民居的硬山或帝王的庑殿\n3. **匾额**：必须有「明镜高悬」「县衙」等古汉字，avoid 清单不能禁掉古汉字\n4. **室内陈设**：\n   - 后墙中堂画+对联\n   - 条案摆帽筒/花瓶/座钟（晚清）\n   - 八仙桌+两侧太师椅\n   - 抱柱楹联、屏风、宫灯/烛台\n5. **光源**：油灯、蜡烛、烛台，**禁任何电灯/现代光源**\n6. **建筑形制**：照壁→大门(署额匾+石狮+八字墙+鸣冤鼓)→仪门→甬道(戒石坊)→大堂\n7. **家具年代**：明已有垂足高坐、八仙桌太师椅，但注意不能太现代化\n\n## 关键避免：\n- 堂内加楼梯或升高平台\n- 现代家具（玻璃/金属/塑料）\n- 现代发际线/碎刘海/染发\n- 现代裸妆塑形眉、美瞳、高光修容、亮口红\n- 古匾汉字被 avoid text 误禁\n- 礼节用现代握手/鞠躬90度（应作揖跪拜）\n\n视觉锚描述要逐件写实：乌纱帽形制、补子图案、公案尺寸、屏风样式、烛台类型。",
+    "models": [
+      {
+        "provider": "apimart",
+        "model": "deepseek-v3.2"
+      }
+    ],
+    "tokens": {
+      "input": 4757,
+      "cacheRead": 45184,
+      "cacheWrite": 0,
+      "output": 676
+    },
+    "estimatedCostUsd": null,
+    "pricing": "unpriced",
+    "durationMs": 16289,
+    "status": "completed",
+    "tools": [
+      {
+        "toolCallId": "call_5929a15b40f7492daabcdf0f",
+        "name": "read_skill",
+        "spanName": "execute_tool read_skill",
+        "arguments": {
+          "name": "director-guzhuang"
+        },
+        "resultSummary": "{\"loaded\":true,\"name\":\"director-guzhuang\",\"directoryName\":\"director-guzhuang\",\"description\":\"中国古装题材形制知识——服饰造型(朝代/身份/发冠/妆容/色彩等级)、建筑形制(屋顶等级/开间/斗拱/院落/衙门公堂)、礼仪调度、穿帮自检，以及古装参考图/视频提示词要点(古匾汉字放开、现代穿帮 avoid)；Nomi 做古装短片/微短剧时参考。\",\"body\":\"---\\nname: director-guzhuang\\ndescription: 中国古装题材形制知识——服饰造型(朝代/身份/发冠/妆容/色彩等级)、建筑形制(屋顶等级/开间/斗拱/院落/衙门公堂)、礼仪调度、穿帮自检，以及古装参考图/视频提示词要点(古匾汉字放开、现代穿帮 avoid)；Nomi 做古装短片/微短剧时参考。\\nmetadata:\\n  nomi:\\n    selectable-in-workbench: true\\n    library:\\n      kind: skill\\n      title:\\n        zh-CN: 古装形制\\n        en: Period design\\n      summary:\\n        zh-CN: 中国古装题材形制知识——服饰造型(朝代/身份/发冠/妆容/色彩等级)、建筑形制(屋顶等级/开间/斗拱/院落/衙门公堂)、礼仪调度、穿帮自检，以及古装参考图/视频提示词要点(古匾汉字放开、现代穿帮 avoid)；Nomi\\n          做古装短片/微短剧时参考。\\n        en: Check period costumes, architecture and staging for historical coherence.\\n      appliesTo:\\n      - text\\n      group:\\n        zh-CN: 导演\\n        en: Directing\\n      slots: []\\n      source:\\n        url: https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/director-guzhuang/SKILL.md\\n        revision: 7a072f12d4e35d1bf341403d942e5c0c702e6c7b\\n        author: Nomi contributors\\n        changes: Nomi adds library presentation metadata; the skill body is unchanged.\\n        evidence:\\n        - https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/director-guzhuang/SKILL.md\\n      preview:\\n        path: assets/cover.png\\n        type: image\\n        provenance: illustration\\n    version: 1.0.0\\n    tools: []\\n    required-providers: []\\nlicense: AGPL-3.0-only\\n---\\n\\n# 古装形制（服化道造型 + 建筑风格）\\n\\n古装题材的「形制」知识库——把朝代/身份/礼制翻译成**可直接写进参考图与镜头提示词的具体元素**，治「把古代场景当空房间搭、缺件、穿帮、堂内乱加台阶」等通病。\\n\\n**怎么用（对应 Nomi 的两个阶段）**：\\n- **视觉 anchor（角色/场景/道具参考图）**：服饰造型、建筑形制主要写进这里——角色锚的定妆描述写领型/补子/官色/冠帽/妆容；场景锚的空镜描述写屋顶等级/院落/室内陈设。风格前缀与穿帮 **avoid 清单**也归这一阶段（生图时）。\\n- **shot 提示词**：礼仪调度（作揖/万福/跪拜、座次、称谓口令、仪仗）写进每一镜的动作提示词。\\n\\n**核心原则**：古装的位势/身份/年代靠**形制元素**落地（该有的匾、补子、屋顶、陈设、礼节），不靠含糊的「古色古香/庄严肃穆」。**先定朝代基线**，再按身份配造型、按等级配建筑。\\n\\n---\\n\\n## 一、",
+        "durationMs": 67.24737500003539,
+        "failed": false
+      }
+    ],
+    "approvals": [
+      {
+        "toolCallId": "call_5929a15b40f7492daabcdf0f",
+        "toolName": "read_skill",
+        "decision": "auto-granted"
+      }
+    ],
+    "errors": [],
+    "source": "/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/projects/未命名项目 09_19 06_31-mu7j94z5-e5a35306/.nomi/agent-sessions/--nomi-lane-main--/01a0b6a5-50c4-712e-ba30-b41a98dad43c.trace/trace.jsonl"
+  },
+  "uiText": "Nomi\n21%\n\n古装短片设在明朝，官员上堂的衣冠和公堂布置要避开什么穿帮？\n\n用了 1 个工具\n\n我来加载古装题材相关的技能，专门看看明朝官员衣冠和公堂布置的穿帮注意事项。\n\n根据古装形制技能，明朝官员上堂的衣冠和公堂布置要避开以下穿帮：\n\n官员衣冠穿帮避忌：\n领型右衽：必须左襟压右襟，左衽=死人/夷狄\n补子等级：文官九等补子（文官鸟·武官兽），注意按官阶配正确\n官服色彩：唐宋制三品以上紫·五品以上朱·七品以上绿·九品以上青，勿僭越\n冠帽形制：乌纱帽（前低后高圆顶·两翅），内衬网巾\n发型：男束发为本，绝不可有清制剃发辫子\n配饰：腰带玉/犀/银分级，禁手表、现代眼镜、塑料珠、钻戒\n色彩等级：明黄=帝王专属，紫朱=高官，庶民只许褐灰青本白\n公堂布置穿帮避忌：\n堂内地面：堂内必须平整无台阶——台阶只在堂外/院落之间，公堂内部是平的\n屋顶等级：衙署/公堂用歇山，别用民居的硬山或帝王的庑殿\n匾额：必须有「明镜高悬」「县衙」等古汉字，avoid 清单不能禁掉古汉字\n室内陈设：\n后墙中堂画+对联\n条案摆帽筒/花瓶/座钟（晚清）\n八仙桌+两侧太师椅\n抱柱楹联、屏风、宫灯/烛台\n光源：油灯、蜡烛、烛台，禁任何电灯/现代光源\n建筑形制：照壁→大门(署额匾+石狮+八字墙+鸣冤鼓)→仪门→甬道(戒石坊)→大堂\n家具年代：明已有垂足高坐、八仙桌太师椅，但注意不能太现代化\n关键避免：\n堂内加楼梯或升高平台\n现代家具（玻璃/金属/塑料）\n现代发际线/碎刘海/染发\n现代裸妆塑形眉、美瞳、高光修容、亮口红\n古匾汉字被 avoid text 误禁\n礼节用现代握手/鞠躬90度（应作揖跪拜）\n\n视觉锚描述要逐件写实：乌纱帽形制、补子图案、公案尺寸、屏风样式、烛台类型。\n\nDeepSeek V3.2\nSkill\n自动改"
+}

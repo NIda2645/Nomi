@@ -51,6 +51,8 @@ export const VERB_NEXT_ACTIONS = [
   "user_sees_review_card",
   "user_sees_confirm_card",
   "user_sees_panel",
+  /** 用户看到一张**提问卡**，这次调用的结果就是他的回答。见 `askUser.ts`。 */
+  "user_sees_question_card",
   "job_running",
 ] as const;
 export type VerbNextAction = (typeof VERB_NEXT_ACTIONS)[number];
@@ -106,6 +108,8 @@ export interface VerbDeclaration {
   readonly describe: VerbDescription;
   /** 模型真正要填的那一部分语义输入。别名定死的字段已经剥掉（见 `aliasBoundInput`）。 */
   readonly schema: ZodTypeAny;
+  /** 宿主返回的真实形状，仅供来源核对；不投影进模型输入面。未声明时沿用能力 outputSchema。 */
+  readonly outputSchema?: ZodTypeAny;
   /** 至少一个，当工具字段数 ≥10 或语义上有分支时（门岗 `missing-example`）。 */
   readonly examples: readonly VerbExample[];
   /** 通道③：进系统提示词的 `Guidelines`，跨工具去重。 */
@@ -141,10 +145,11 @@ export interface VerbDeclaration {
 const CONSEQUENCE_BY: Readonly<Record<VerbEffect, Partial<Record<VerbNextAction, string>>>> = Object.freeze({
   read: Object.freeze({
     none: "Nothing changes; it only reads.",
+    user_sees_question_card: "Nothing changes. The turn pauses on a question card in Nomi and this call's result is the user's own answer, so carry on in the same turn once you have it; if he stops the turn instead, you get no answer.",
   }),
   reversible_local: Object.freeze({
-    none: "The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
-    user_sees_spend_card: "The draft lands on the canvas and Nomi shows the user a priced confirmation card in its own panel; nothing is generated and nothing is spent until the user approves it there. Never say generation has started — say what the card shows.",
+    none: "The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
+    user_sees_spend_card: "Nomi applies the user's spending approval mode. In full-auto mode that mode approves the spend and generation starts at once. In every other mode the user sees a priced confirmation card and this call waits for him; its result is what he did with the card — approved (generation has started), closed it (the request is over), or wrote something else instead (the quote is withdrawn and his words are in the result). Say generation started only when the result says so. This request does not itself prove canvas placement.",
     user_sees_review_card: "The user sees the plan highlighted with a review card before it applies (in full-auto mode it applies and the result says so). The edit is reversible.",
     user_sees_panel: "A Nomi panel opens for the user; this call stores nothing by itself.",
   }),
@@ -186,6 +191,21 @@ export function verbMutates(effect: VerbEffect): boolean {
 /** 会不会花用户在供应商那里的钱。 */
 export function verbBillable(effect: VerbEffect): boolean {
   return effect === "spend";
+}
+
+/**
+ * 这次调用**有没有可能**已经把一笔提交发到供应商那里。
+ *
+ * `spend` 自不必说；`user_sees_spend_card` 那一档在「全自动」审批档下由策略当场代答、当场开跑
+ * （`policyStartedGeneration`），所以它也算。其余一律不算——它们连一次提交都发不出去。
+ *
+ * 为什么要这个派生：失败措辞里「提交结果可能未知，先去核对、别再提交」这句话，只有在它为真时才成立。
+ * 2026-09-21 真实模型实测（`docs/evidence/2026-09-21-askback-real-model/`）里，**23 次**失败把这句话
+ * 发给了 `draft_shots`——一个只起草、一分钱都花不出去的工具。模型照做，去核对一个从不存在的任务，
+ * A3 那一轮原地打转 27 次调用 / 696 秒。措辞按码选、而它的真假取决于**哪个工具**，就是那次的形状。
+ */
+export function verbMaySubmitGeneration(effect: VerbEffect, nextAction: VerbNextAction): boolean {
+  return effect === "spend" || nextAction === "user_sees_spend_card";
 }
 
 /**
@@ -275,6 +295,11 @@ export interface VerbAssemblyInput {
   readonly contractById: (id: string) => AnyCapabilityContract | undefined;
   /** 付费边界上的名字（`paidBoundary.isPaidBoundaryAlias`）。A4 用它对账。 */
   readonly isPaidBoundaryName: (name: string) => boolean;
+  /**
+   * 对外 `tools/list` 上的工具名（契约的 `aliases.mcp`）。只投对外 profile 的动词，说明书里
+   * 点名的是它们；A2 的名字解析把这些也算数（见 `assembleVerbDeclarations`）。
+   */
+  readonly mcpToolNames?: readonly string[];
 }
 
 /**
@@ -287,6 +312,12 @@ export function assembleVerbDeclarations(input: VerbAssemblyInput): readonly Ver
     if (names.has(declaration.name)) throw new Error(`Duplicate verb declaration: ${declaration.name}`);
     names.add(declaration.name);
   }
+  // 只投对外 profile 的动词，说明书是写给**外部宿主**读的——它那边看见的名字是契约的 `aliases.mcp`
+  // （`nomi_read` / `nomi_model_setup`），不是内部动词名。这些名字也算「解析得到」：A2 守的那件事
+  // 不变（点名的工具必须真的存在），只是把「存在」扩到它读者那一侧的名字。
+  // 刻意**不**并进 `names`：`notWhen` 里那条「至少点名另一个**动词**」的要求不放宽——
+  // 一个对外工具名不能替一条裁决充数。
+  const alsoResolvable = new Set(input.mcpToolNames ?? []);
   const published = new Map<string, JsonSchemaObject>();
   for (const declaration of input.declarations) {
     const contract = input.contractById(declaration.contractId);
@@ -296,7 +327,7 @@ export function assembleVerbDeclarations(input: VerbAssemblyInput): readonly Ver
     }
     published.set(declaration.name, toPublishedJsonSchema(declaration.schema));
     assertOneEffect(declaration, contract, input.isPaidBoundaryName);
-    assertFiveSlots(declaration, names, published.get(declaration.name)!);
+    assertFiveSlots(declaration, names, published.get(declaration.name)!, alsoResolvable);
     assertEnglish(declaration, published.get(declaration.name)!);
     assertNoPaidContradiction(declaration, input.isPaidBoundaryName);
     if (declaration.profiles && declaration.profiles.length !== 2 && !declaration.profileReason) {
@@ -327,8 +358,24 @@ function assertOneEffect(
   if (!VERB_NEXT_ACTIONS.includes(declaration.nextAction)) {
     throw new Error(`Verb ${declaration.name} declares nextAction "${String(declaration.nextAction)}"`);
   }
-  if (declaration.effect === "read" && declaration.nextAction !== "none") {
+  // 读动词原则上什么都不给用户看——它读完就回话。**唯一的例外是提问**：一次提问
+  // 同样一个字节都不改，可它的全部内容就是让用户看见一张卡并回答。这条例外**不是放宽**：
+  // 想用 `user_sees_question_card` 的动词，它的契约必须自己声明 `alwaysAsksUser`
+  // （那条声明同时让审批闸永不替用户自动答，`capabilityIsHardGated` ⑥），
+  // 所以第二个动词没法靠改一行说明书就自称「我也在问」。
+  if (declaration.nextAction === "user_sees_question_card" && !contract.alwaysAsksUser) {
+    throw new Error(
+      `Verb ${declaration.name} promises a question card but its capability ${contract.id} does not declare alwaysAsksUser, `
+      + "so nothing stops an approval tier from answering for the user.",
+    );
+  }
+  if (declaration.effect === "read" && declaration.nextAction !== "none" && declaration.nextAction !== "user_sees_question_card") {
     throw new Error(`Verb ${declaration.name} is read-only but promises the user will see "${declaration.nextAction}".`);
+  }
+  if (declaration.nextAction !== "user_sees_question_card" && contract.alwaysAsksUser) {
+    throw new Error(
+      `Capability ${contract.id} always asks the user, but verb ${declaration.name} promises "${declaration.nextAction}" instead of a question card.`,
+    );
   }
   verbConsequence(declaration.effect, declaration.nextAction);
   const expected = verbEffectExpectedByContract(contract);
@@ -351,7 +398,12 @@ function assertOneEffect(
 }
 
 /** A2 · 描述五槽齐全；`notWhen` 点名别的动词；名字都解析得到。 */
-function assertFiveSlots(declaration: VerbDeclaration, names: ReadonlySet<string>, schema: JsonSchemaObject): void {
+function assertFiveSlots(
+  declaration: VerbDeclaration,
+  names: ReadonlySet<string>,
+  schema: JsonSchemaObject,
+  alsoResolvable: ReadonlySet<string> = new Set(),
+): void {
   const { does, useWhen, notWhen, params } = declaration.describe;
   for (const [slot, text] of Object.entries({ does, useWhen, notWhen, params })) {
     if (typeof text !== "string" || text.trim().length === 0) {
@@ -363,7 +415,7 @@ function assertFiveSlots(declaration: VerbDeclaration, names: ReadonlySet<string
   }
   const enums = new Set<string>();
   enumValuesOf(schema, enums);
-  const resolvable = (token: string) => names.has(token) || enums.has(token);
+  const resolvable = (token: string) => names.has(token) || enums.has(token) || alsoResolvable.has(token);
   const siblings = [...notWhen.matchAll(NAME_TOKEN)].map((m) => m[0]).filter((token) => names.has(token) && token !== declaration.name);
   if (siblings.length === 0) {
     throw new Error(`Verb ${declaration.name}: describe.notWhen must name at least one other declared verb ("use X instead").`);

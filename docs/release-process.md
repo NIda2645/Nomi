@@ -28,6 +28,13 @@ pnpm run test:journeys
 
 PR 合入后运行 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`：它按该 SHA 拉取 checks，即使 `origin/main` 已前进也会记录当前 `tip` 与 `relation=ancestor`；文档门岗补齐则由 `Docs Gate Autosync` 另开 PR 回写，禁止直推受保护主线。
 
+### 合后立即验 main（核心冒烟第三道防线，2026-09-22）
+
+- 每合入一个 PR，**立刻**跑 `pnpm run delivery:verify-merged -- --expected-sha <merge SHA>`。
+- 只要这个 merge 不是纯文档（与 CI 同一个分类器，按相对第一父提交的 diff 判），收据就要求该 SHA 上 `Core Flow Smoke (empty)` 与 `Core Flow Smoke (used)` 两份 check 是 **success**。skipped、neutral、缺席都拒绝，并在报错里写明是哪一份、实际是什么结论。纯文档 merge 的收据会写 `coreSmoke: { required: false, reason: "docs_only" }`。
+- **上一个合入没有收据，就不合下一个。** 连着合两个 PR 时，第一个的收据没拿到，第二个就不许点合并。原因：两个各自绿的 PR 合在一起可能弄红 main，冒烟只有在真实 merge SHA 上跑过才算证明。
+- 冒烟红了**不自动回滚**。先看 `core-smoke-evidence-<fixture>` 里的截图和 `outputs/core-smoke/<fixture>/summary.json`，由人决定修还是 revert。
+
 ## 2. 生成可安装的开发预览版
 
 在 PR 上添加 `desktop-preview` label，或者手动运行 GitHub Actions 的 `Desktop Preview` 工作流并填写分支名。
@@ -38,6 +45,23 @@ PR 合入后运行 `pnpm run delivery:verify-merged -- --expected-sha <SHA>`：�
 - `Nomi Preview` Windows x64 安装包。
 
 Preview 使用 `com.nomi.app.preview` 和 `Nomi Preview Projects`，可以与正式 Nomi 同时安装。Preview 不接收 stable 自动更新。
+
+**配置与稳定版分家（2026-09-21 起真正生效）**：Preview 有自己的 userData（`<appData>/Nomi Preview`）
+和自己的项目根（`Documents/Nomi Preview Projects`）。
+
+在这之前这句话**只写在文档里、代码里没有实现**：Electron 的 `app.getName()` 读的是打进 asar 的
+package.json 的 `name`（= `nomi`），`build.productName` 不进 asar——两个包共用同一个 `%APPDATA%\nomi`。
+appId 分开只让它们能并存安装，数据并没有分家。后果不是理论问题：装一次 Preview 就足以把模型目录升到
+新版本号，回到稳定版之后它读得出来、却改不了，设置页显示成一片空白——也就是 09-21 用户报的那次
+「重装之后所有模型配置都没了」。分家现在由 `electron-builder.preview.cjs` 的 `extraMetadata.name` 落实。
+
+**首次启动会把稳定版那份配置拷一份过来**（`electron/settings/sideBySideInstallSeed.ts`，只在 Preview
+自己那份目录还不存在时做一次），之后两边各走各路。带过去的是供应商/模型/映射与各项偏好；
+macOS 上密钥的钥匙串条目名随 app 名走，所以密钥要在 Preview 里重新保存一次（设置页会明确标出
+「需要重新保存」，不是静默失效）。Windows 的 DPAPI 绑用户账户不绑 app，照常能解。
+
+**发 Preview 时要记得**：`extraMetadata.name` 一改，用户的 Preview 就换了一个 userData。
+现在这个名字是 `Nomi Preview`，**不要再改**——改一次等于让所有 Preview 用户的配置「又不见了」。
 
 预览包只用于确认单个 PR 或临时集成分支，不是正式发布源。
 
@@ -76,6 +100,16 @@ RC 工作流会：
 - FFmpeg、MP4 导出和文件选择器；
 - macOS 双架构与 Windows 安装包；
 - 官网下载和应用内检查更新；
+- **Windows 卡顿巡检**（2026-09-24 起必做）：在一台 Windows 机器上，用 RC 那个 commit 构建后跑
+  `node tests/ux/windows-freeze-sweep.walk.mjs --label rc-<版本>` 和同样参数加 `--held`（模拟同步盘 / 杀毒占用）。
+  两份 `tests/ux/shots/windows-freeze-sweep/<label>/report.json` 都必须 0 红、0 残留锁，截图亲眼看过。
+  原因：v0.22.0 的三个 Windows 专属问题（等待动效着色器在 D3D11 上编译 100 秒卡死、同步盘占用让存盘锁
+  永久卡住、导入被清理错误改写成失败）在 macOS 与 Linux CI 上全部测不出来。
+- **Windows 上 Agent 真能说话**（2026-09-24 起必做）：同一台 Windows、同一个 RC 构建，配一个真实文本模型，
+  新建项目后在生成面 Agent 面板里连发三句——打招呼、「加一个图片节点，提示词写…，先别生成」、「把它的提示词改成…」。
+  三回合都要有回复、节点真的建出来并改掉，工具调用无错。原因：v0.22.0 在 Windows 上点发送**没有任何反应**
+  （对话身份被补盘符，`docs/fixes/2026-09-24-lane-identity-host-path.root-cause.json`），Mac 上看不出来。
+  背景见 `docs/lessons/mac-only-testing-ships-windows-blind.md`。
 - **打包产物的命令沙箱 `active:true` 证据**：在打包好的 `.app` 上跑
   `node tests/ux/packaged-sandbox-active.e2e.mjs <打包产物路径>`，留下那一行
   `packaged sandbox active:true …`。沙箱没起来不会崩、不会红，症状只有

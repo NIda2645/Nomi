@@ -1,0 +1,30 @@
+{
+ "pytorch_cpu_threads4": {
+  "min_ms": 958.9100419543684,
+  "median_ms": 1433.0737919081002,
+  "mean_ms": 1403.4779188456014,
+  "s_per_min_min": 34.52076151035726,
+  "s_per_min_median": 51.590656508691616
+ },
+ "pytorch_cpu_threads1": {
+  "min_ms": 637.027999968268,
+  "median_ms": 2191.3694579852745,
+  "mean_ms": 2067.6652000343893,
+  "s_per_min_min": 22.933007998857647,
+  "s_per_min_median": 78.88930048746988
+ },
+ "ort_node_cpu_threadsdefault": {
+  "min_ms": 503.2342919148505,
+  "median_ms": 736.6421249462292,
+  "mean_ms": 829.110162431607,
+  "s_per_min_min": 18.116434508934617,
+  "s_per_min_median": 26.519116498064253
+ },
+ "ort_node_cpu_threads1": {
+  "min_ms": 1820.2317499089986,
+  "median_ms": 3036.3060830859467,
+  "mean_ms": 3230.0575186498463,
+  "s_per_min_min": 65.52834299672395,
+  "s_per_min_median": 109.3070189910941
+ }
+}

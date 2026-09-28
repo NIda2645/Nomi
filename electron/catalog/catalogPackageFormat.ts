@@ -12,9 +12,7 @@
 import { z } from "zod";
 import { modeDeliveryDefect } from "./transportDelivery";
 import { nowIso } from "../jsonUtils";
-import { decryptApiKeyRecord } from "./secrets";
 import { publicVendor } from "./customConfigStore";
-import { exportableVendorWithNetworkConfig } from "./networkConfigStore";
 import type { CatalogState, Mapping, Model, Vendor } from "./types";
 
 export const CATALOG_PACKAGE_VERSION = "desktop-local-v1";
@@ -112,7 +110,12 @@ const vendorBundleSchema = z
       })
       .passthrough()
       .optional()
-      .describe("Present only when the export was asked to carry credentials; re-import re-encrypts on the target machine."),
+      /**
+       * **只在导入方向存在**：导出（`buildCatalogPackage`）从 2026-09-21 起永远不写它。
+       * 它留在契约里是因为「让用户的 AI 照着供应商文档直接写一份配置文件」那条接入路径要用它
+       * （09-21 拍板：密钥两个入口并存）。写进来的值在本机 safeStorage 加密落盘，明文不留在盘上。
+       */
+      .describe("Import-only: a credential supplied by whoever wrote this file. Exports never contain it. On import it is encrypted on this machine."),
     models: z.array(modelSchema).optional(),
     mappings: z.array(mappingSchema).optional(),
   })
@@ -166,28 +169,27 @@ export const catalogPackageImportSchema = z
  * 才能一眼看出「导出写的」和「schema 说的」是不是同一件事；分开住，漂移只会在别人导入失败时
  * 才被发现。它是纯函数（state 由调用方读好传进来），所以与 catalogStore 之间没有反向依赖。
  */
-export function buildCatalogPackage(state: CatalogState, options: { includeApiKeys: boolean }): CatalogPackage {
-  const { includeApiKeys } = options;
+/**
+ * 导出侧的包构造。**永远不带密钥材料**——明文不带，safeStorage 密文也不带。
+ *
+ * 2026-09-21 删掉了 `includeApiKeys` 这一格（P1：不留逃生口；删之前全仓零个生产调用方，
+ * 只有两条测试在用）。三个理由，按份量排：
+ *   · 用户手配一晚上的是**结构**——供应商、模型、映射、参数翻译。那才是导出要救回来的东西；
+ *     key 他本来就能从供应商后台再复制一次（`rootcause-config-loss-on-reinstall.md` §6(b) 做法①）。
+ *   · 带明文 = 一个随手发到群里就泄露的文件，而它看起来只是「我的配置」。
+ *   · 带 safeStorage 密文更糟：换机器/换用户账户必然解不开，而解不开时长得跟「key 填错了」
+ *     一模一样——等于交付一个**会说谎的文件**。
+ *
+ * 导入侧刻意**仍然收** `apiKey`：那是另一个方向，也是「让用户的 AI 直接写一份配置文件」那条
+ * 已拍板的接入路径（09-21 密钥两个入口并存）。写进来的 key 在本机 safeStorage 加密落盘。
+ */
+export function buildCatalogPackage(state: CatalogState): CatalogPackage {
   return {
     version: CATALOG_PACKAGE_VERSION,
     exportedAt: nowIso(),
     vendors: state.vendors.map((vendor) => ({
-      // The exported vendor is public (no credential-bearing values) UNLESS keys are
-      // included for portability, in which case the effective (decrypted) proxy/headers
-      // ride the vendor plaintext exactly like the API key does, and re-import re-encrypts
-      // them on the target machine. Without includeApiKeys, no credential leaves the box.
-      vendor: includeApiKeys
-        ? exportableVendorWithNetworkConfig(publicVendor(vendor), state.apiKeysByVendor[vendor.key])
-        : publicVendor(vendor),
-      // Export carries plaintext keys for portability; re-import will re-encrypt on the target machine.
-      ...(includeApiKeys && state.apiKeysByVendor[vendor.key]
-        ? {
-            apiKey: {
-              apiKey: decryptApiKeyRecord(state.apiKeysByVendor[vendor.key]),
-              enabled: state.apiKeysByVendor[vendor.key].enabled,
-            },
-          }
-        : {}),
+      // publicVendor 同时剥掉解密叠加层与遗留明文；网络凭据（代理 URL / 额外请求头）也一并不出门。
+      vendor: publicVendor(vendor),
       models: state.models.filter((model) => model.vendorKey === vendor.key),
       mappings: state.mappings.filter((mapping) => mapping.vendorKey === vendor.key),
     })),

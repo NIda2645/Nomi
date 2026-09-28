@@ -20,7 +20,7 @@ const OP_ID = `canvas-landing:${RUN_ID}`
 // 补齐载荷：2 镜，其中 shot-1 已完成（带本地 result）、shot-2 还没（无 result）。
 function reconcilePayload(projectId) {
   return {
-    projectId, runId: RUN_ID, materializationOperationId: OP_ID, groupName: '恢复的批次',
+    projectId, runId: RUN_ID, materializationOperationId: OP_ID, planName: '恢复的批次',
     shots: [
       { shotId: 'shot-1', role: 'shot', kind: 'video', title: '镜头 1', prompt: '已完成镜', result: { id: 'production-job-shot-1', type: 'video', url: 'nomi-local://asset/p/shot-1.mp4', createdAt: Date.now() } },
       { shotId: 'shot-2', role: 'shot', kind: 'video', title: '镜头 2', prompt: '未完成镜' },

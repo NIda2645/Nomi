@@ -1,3 +1,4 @@
+import { safeTransportFailure } from "./transportFailure";
 import { createHash } from "node:crypto";
 
 import type { RuntimeToolCall, RuntimeToolDecision } from "../shared/agentCapabilities/transportContracts";
@@ -57,7 +58,7 @@ export type PiSkillWriteTransportAdapter = Readonly<{
 
 type SkillWriteDependencies = Readonly<{
   binding?: ProjectBinding;
-  readRecords?: () => SkillRecord[];
+  readRecords?: () => readonly SkillRecord[] | Promise<readonly SkillRecord[]>;
   importPackage?: (pkg: SkillPackage) => ImportSkillResult;
   now?: () => number;
 }>;
@@ -71,8 +72,7 @@ const PUBLIC_FAILURE_CODES = new Set([
 ]);
 
 function failure(code: string): Extract<RuntimeToolDecision, { ok: false }> {
-  const publicCode = PUBLIC_FAILURE_CODES.has(code) ? code : "capability_execution_failed";
-  return { ok: false, code: publicCode, message: publicCode };
+  return safeTransportFailure({ code }, { allowedCodes: PUBLIC_FAILURE_CODES, fallbackCode: "capability_execution_failed" });
 }
 
 function stableJson(value: unknown): string {
@@ -114,13 +114,13 @@ function resultFor(
   });
 }
 
-function resultFromImport(
+async function resultFromImport(
   imported: Extract<ImportSkillResult, { ok: true }>,
   pkg: SkillPackage,
-  readRecords: () => SkillRecord[],
-): SkillWriteResult {
+  readRecords: () => readonly SkillRecord[] | Promise<readonly SkillRecord[]>,
+): Promise<SkillWriteResult> {
   const contentHash = computeSkillContentHash(pkg.files);
-  const persisted = readRecords().find(
+  const persisted = (await readRecords()).find(
     (record) => record.origin === "user" && record.directoryName === imported.dirName && record.contentHash === contentHash,
   );
   if (!persisted) throw new Error("capability_execution_failed");
@@ -191,7 +191,7 @@ export function createPiSkillWriteTransportAdapter(
       ) return failure("capability_authority_invalid");
       try {
         const contentHash = computeSkillContentHash(prepared.pkg.files);
-        const existing = recordForHash(readRecords(), contentHash);
+        const existing = recordForHash(await readRecords(), contentHash);
         if (existing) {
           return {
             ok: true,
@@ -202,7 +202,7 @@ export function createPiSkillWriteTransportAdapter(
         }
         const imported = importPackage(prepared.pkg);
         if (!imported.ok) return failure("capability_execution_failed");
-        const result = resultFromImport(imported, prepared.pkg, readRecords);
+        const result = await resultFromImport(imported, prepared.pkg, readRecords);
         return { ok: true, result, proposalId: approval.receiptProposalId, silent: true };
       } catch (error) {
         return failure(error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"

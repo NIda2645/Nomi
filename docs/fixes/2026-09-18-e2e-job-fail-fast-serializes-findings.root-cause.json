@@ -1,0 +1,135 @@
+{
+  "schema_version": 3,
+  "external_sources": [],
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "本批改的是本仓自己的交付流水线（本地脚本 + GitHub Actions 的内置语义），没有第三方依赖决定这条不变量。",
+    "exit_criteria": []
+  },
+  "id": "2026-09-18-e2e-job-fail-fast-serializes-findings",
+  "problem_type": "fail-fast 的验证链把「发现」串行化：每轮只学一件事",
+  "symptom": "desktop-linux job 第一条走查红了，后面六条根本不跑。PR #804 连着三轮 CI，每轮红的都是另一条不同的走查。最近 40 次 quality-gate 里 E2E 红 14 次。",
+  "direct_cause": "七个 step 是默认语义（红了整个 job 立刻停），而这七条走查之间**没有依赖关系**——它们只是共享一次 build，不是流水线。",
+  "class_root": "互相独立的判据被串成 fail-fast 链时，排查的墙钟从「一轮」变成「红的条数 × 一轮」，而这一点在 CI 输出里完全看不出来：你只会看到一条红，以为就这一条。",
+  "affected_population": [
+    "所有触发 desktop / journeys / canvas-critical 面的 PR 与集成分支"
+  ],
+  "scope_paths": [
+    ".github/workflows/quality-gate.yml",
+    "scripts/summarize-e2e-chain.mjs",
+    "scripts/lib/chainSummary.mjs"
+  ],
+  "entry_points": [
+    ".github/workflows/quality-gate.yml 的 desktop-linux job",
+    "scripts/summarize-e2e-chain.mjs（job 的结论）"
+  ],
+  "internal_only_reason": "GitHub Actions 的 `continue-on-error` / `steps.<id>.outcome` 语义已按官方文档使用（outcome 保留真实结果、conclusion 被 continue-on-error 改写），本条不变量的其余部分是本仓自己的验证面编排。",
+  "invariants": [
+    "七条走查 step 一律 continue-on-error，且各自有 id",
+    "job 的结论由汇总步唯一决定，汇总步本身不许 continue-on-error",
+    "汇总读到七个 outcome 一个不少；认识 success/skipped 放行，其余一律红（fail-closed）"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "scripts/lib/chainSummary.mjs",
+      "symbol": "outcomeIsRed"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/run-ci-e2e-chain.mjs",
+      "symbol": "renderChainSummary"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/summarize-e2e-chain.mjs",
+      "symbol": "renderChainSummary"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/summarize-e2e-chain.mjs",
+      "symbol": "renderChainMarkdown"
+    }
+  ],
+  "door_reduction": {
+    "before": 5,
+    "after": 4,
+    "why_not": "四扇是同一份判据的消费点：本地链渲染一次、CI 汇总渲染表格并判红绿。判据本体已经只有 chainSummary.mjs 一份；把消费点合并等于让本地链去跑 CI 的汇总步，两个运行环境不同，合并没有意义。（第五扇 summarize-e2e-chain.mjs 的 outcomeIsRed 在 Ponytail 评审后删掉了——绿的那支不必再数一遍红；门岗当场报出它没了，这正是本批 D 件要的行为。）"
+  },
+  "generality_proof": "把「哪种 outcome 算红」收进 outcomeIsRed 一处并 fail-closed（没见过的值一律红），再由回归测试钉死「每一步都必须被汇总读到」——于是「加了一条走查却忘了接进结论」这种静默放行不可能发生。",
+  "shared_boundaries": [
+    {
+      "path": "scripts/lib/chainSummary.mjs",
+      "symbol": "outcomeIsRed",
+      "responsibility": "outcome → 红绿的唯一判据，fail-closed。"
+    },
+    {
+      "path": "scripts/summarize-e2e-chain.mjs",
+      "symbol": "renderChainSummary",
+      "responsibility": "desktop-linux job 的结论与证据指引。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/check-quality-gate-workflow.node-test.mjs",
+      "entry_point": "E2E chain summary",
+      "disposition": "enforced",
+      "evidence": "回归测试核对每一步的 continue-on-error/id、汇总步的 if/run，以及 CHAIN 里逐个 id 的 outcome 引用；实测拿掉一个 continue-on-error 或漏掉一个 id 都会红。"
+    },
+    {
+      "path": ".github/workflows/quality-gate.yml",
+      "entry_point": "canvas-acceptance",
+      "disposition": "not-affected",
+      "evidence": "canvas full 是两片 matrix，已经 `fail-fast: false`（分片之间本就互不阻塞），不属于本失败类。"
+    },
+    {
+      "path": ".github/workflows/quality-gate.yml",
+      "entry_point": "quality",
+      "disposition": "not-affected",
+      "evidence": "Quality Gate 汇总 job 早就是「continue-on-error + 末尾按 outcome 判」的形状，本次改动把 desktop-linux 对齐到它。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "每加一条互相独立的走查，默认语义又会把它接成 fail-fast 的一节；没有机器判据就会重来。",
+    "same_class_scan": [
+      "逐个 job 读 quality-gate.yml：contracts（单命令，不适用）、unit（单命令）、canvas-acceptance（已 fail-fast:false）、canvas-performance（单命令）、mac-package（有序依赖，必须 fail-fast）、quality（已是 outcome 判据）。只有 desktop-linux 是「多条独立判据串成 fail-fast」。",
+      "win-gate.yml / desktop-preview.yml 同样扫过：走查步骤各自独立成 job 或单条命令，不属于本类。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/lib/chainSummary.mjs",
+    "invariant": "所有步骤的 outcome 都要进汇总；只有 success/skipped 放行，其余（含没见过的新值、空值）一律红。",
+    "failure_mode": "CHAIN 为空 → 汇总步直接红（不拿算不出来当通过）；出现未知 outcome → 红。",
+    "exception_policy": "none",
+    "strategy": "结论集中到一步、判据集中到一个函数，并让回归测试核对「每一步都接进了结论」。",
+    "artifacts": [
+      ".github/workflows/quality-gate.yml",
+      "scripts/summarize-e2e-chain.mjs",
+      "scripts/lib/chainSummary.mjs"
+    ]
+  },
+  "regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有旧实现被留下：七步的命令、`if:` 条件、并行度一个没改，改的只是「谁来下结论」，而结论只有汇总步一处。"
+  },
+  "migration": "无数据迁移。读 CI 结果的人从此应看 “E2E chain summary” 那一步的表，而不是找第一条红的 step。",
+  "residual_risks": [
+    "一条走查把机器搞坏（OOM / 端口占用）时，后面几条可能被它污染成假红——本改动让它们跑，不保证它们互不影响。",
+    "总时长在全绿时不变、在有红时会变长（以前第一条红就停）：这是刻意的交换，换的是一轮收齐全部发现。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/lib/chainSummary.mjs",
+    "tests": [
+      "scripts/check-quality-gate-workflow.node-test.mjs"
+    ]
+  }
+}

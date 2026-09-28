@@ -1,4 +1,5 @@
-import { authHeaders } from "../ai/requestPipeline";
+import { authHeaders, type AuthType } from "../ai/requestPipeline";
+import { connectionAuthSpec } from "../catalog/vendorAuthSpec";
 import { normalizeProviderKind } from "../catalog/catalogStore";
 import { desktopT } from "../i18n";
 import type { AiSdkProviderKind } from "../catalog/types";
@@ -40,16 +41,20 @@ export function createRuntimeCredentialElicitationHttpDeps(): CredentialElicitat
     testCredential: async (sessionId, apiKey) => {
       const { config } = sessionConfig(sessionId);
       const providerKind = normalizeProviderKind(config.providerKind) as AiSdkProviderKind;
-      const authType = (config.authType || (providerKind === "anthropic" ? "x-api-key" : "bearer")) as
-        Parameters<typeof authHeaders>[0];
+      const authType = (config.authType || (providerKind === "anthropic" ? "x-api-key" : "bearer")) as AuthType;
+      // 方案词来自已保存的那条连接（凭证页上没有填它的格子）——不传它就是「生成能跑、测连接 401」。
+      const auth = connectionAuthSpec({
+        baseUrl: config.baseUrl as string,
+        authType,
+        ...(config.authHeader ? { authHeader: config.authHeader } : {}),
+        ...(config.authQueryParam ? { authQueryParam: config.authQueryParam } : {}),
+      });
       const candidates = await getConnectionCertificationService().discoverHttpModels({
         baseUrl: config.baseUrl as string,
         providerKind,
-        authType,
         apiKey,
-        ...(config.authHeader ? { authHeader: config.authHeader } : {}),
-        ...(config.authQueryParam ? { authQueryParam: config.authQueryParam } : {}),
-        headers: authHeaders(authType, apiKey, config.authHeader),
+        auth,
+        headers: authHeaders(auth, apiKey),
       });
       return Array.isArray(candidates) ? candidates.length : 0;
     },

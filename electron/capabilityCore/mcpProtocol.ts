@@ -1,4 +1,5 @@
 import { SKILL_URI_PREFIX, skillResourceUri, parseSkillResourceUri, skillFileMimeType, type SkillSummaryFrame, type SkillContentFrame } from './mcpSkillResources'
+import { buildSkillPrompts, buildSkillResources } from './mcpPassiveDiscovery'
 import { McpConnectionAuthenticationError } from './mcpConnectionContext'
 // 能力核 · MCP 协议层（传输注入，纯逻辑，可裸 node 单测）。
 //
@@ -66,6 +67,8 @@ const WIDGET_TOOL_NAMES = new Set(['nomi_run_start', 'nomi_read'])
 export interface McpTransport {
   send(message: unknown): void
   invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown>
+  /** Probe an already-live instance without allowing the transport to cold-start Nomi. */
+  invokeIfOpen?(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown | undefined>
   /**
    * Nomi 是否开着（有活实例）= **「应用内确认卡这条问法还在不在」**，不是「用户注意力在不在 Nomi」。
    * 确认优先弹在调用方（客户端声明 elicitation 即可）；本标志只用于回答「客户端问不了时，还有谁能问」。
@@ -582,9 +585,9 @@ export function createMcpProtocol(transport: McpTransport) {
           return
         }
         // 接模型要 key：规范 2025-11-25 要求走 URL 模式 elicitation（密钥不得经 form / 客户端 / 模型上下文）。
-        if (tool.name === 'nomi_integration' && args.action === 'open_credentials') {
+        if (tool.name === 'nomi_model_setup' && args.action === 'connect_provider') {
           const outcome = await runIntegrationCredentialElicitation({
-            built,
+            built, method: routedMethod,
             invoke: (method, params) => invokeForRequest(method, params),
             elicitation,
             locale: locale(),
@@ -634,13 +637,10 @@ export function createMcpProtocol(transport: McpTransport) {
     }
 
     if (method === 'resources/list') {
-      const res = (await invokeForRequest('skills.list', {})) as { skills?: SkillSummaryFrame[] } | null
-      const skillResources = (res?.skills || []).flatMap((skill) => {
-        return (skill.filePaths ?? ['SKILL.md']).flatMap(filePath => {
-          const uri = skillResourceUri(skill, filePath)
-          return uri ? [{ uri, name: filePath === 'SKILL.md' ? skill.name : `${skill.name}/${filePath}`, description: skill.description, mimeType: skillFileMimeType(filePath) }] : []
-        })
-      })
+      // Discovery is passive. A missing Nomi instance must not become visible as
+      // a desktop window merely because a host refreshes its resource list.
+      const res = await transport.invokeIfOpen?.('skills.list', {}) as { skills?: SkillSummaryFrame[] } | null | undefined
+      const skillResources = buildSkillResources(res?.skills || [])
       // 活 widget 资源（MCP Apps）：宿主预取渲染生成结果与 production Run 投影的活面板。
       const uiResources = [{
         uri: NOMI_LIVE_DRAFT_UI_URI,
@@ -700,21 +700,12 @@ export function createMcpProtocol(transport: McpTransport) {
       return
     }
     if (method === 'prompts/list') {
-      const res = (await invokeForRequest('skills.list', {})) as { skills?: SkillSummaryFrame[] } | null
+      const res = (await transport.invokeIfOpen?.('skills.list', {})) as { skills?: SkillSummaryFrame[] } | null | undefined
       // name 用 directoryName（斜杠命令友好，如 CodeBuddy 会转成 /director-cinematography）。
       // 版本/hash 一并返回：客户端可以把 prompt 绑定到与 resources 相同的内容快照，避免
       //「列表看到 A、get 却加载了后来写入的 B」的漂移。旧客户端仍可只传 name，get 会在
       // 同一次请求内解析当前元数据；显式传入身份时则严格校验。
-      const prompts = (res?.skills || []).map((s) => ({
-        name: s.directoryName,
-        title: s.name,
-        description: s.description,
-        arguments: [
-          { name: 'packageVersion', description: 'Package version from prompt metadata.', required: false },
-          { name: 'contentHash', description: 'Content hash from prompt metadata.', required: false },
-        ],
-        _meta: { packageVersion: s.packageVersion, contentHash: s.contentHash },
-      }))
+      const prompts = buildSkillPrompts(res?.skills || [])
       reply(id, { prompts })
       return
     }

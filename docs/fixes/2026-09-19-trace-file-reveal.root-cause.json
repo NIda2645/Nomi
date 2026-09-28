@@ -1,0 +1,127 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-19-trace-file-reveal",
+  "problem_type": "Trace navigation dispatches a package directory through OS file associations",
+  "symptom": "On macOS, a session .trace directory can launch Instruments instead of showing readable diagnostics.",
+  "direct_cause": "Both diagnostics entries pass derived directories to shell.openPath.",
+  "class_root": "Diagnostic navigation must reveal the derived readable file without dispatching its parent extension as an application document.",
+  "affected_population": [
+    "Session trace menu",
+    "Project trace settings"
+  ],
+  "scope_paths": [
+    "electron/diagnostics/agentTraceIpc.ts"
+  ],
+  "entry_points": [
+    "Session trace menu",
+    "Project trace settings"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Inspected installed Electron electron.d.ts showItemInFolder(fullPath):void and the native derived trace.md/index.md layout; ownership is application-specific.",
+  "invariants": [
+    "Reveal only an existing native-derived ordinary file for the still-active trusted project.",
+    "Success means the OS reveal was requested, not that Finder presentation was acknowledged."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/settings/registerSettingsIpc.ts",
+      "symbol": "registerAgentTraceIpc"
+    },
+    {
+      "kind": "read",
+      "path": "electron/diagnostics/agentTraceIpc.ts",
+      "symbol": "AgentTraceOpenResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/settingsBridge.ts",
+      "symbol": "AgentTraceOpenResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/useAgentTraceDirectory.ts",
+      "symbol": "AgentTraceOpenResult"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 4,
+    "why_not": "The single main IPC owner and its registration/type-only renderer consumers stay distinct; both actual navigation callers converge before the shell API."
+  },
+  "generality_proof": "Both session and project navigation converge on the same IPC resolver, existence check, sender revalidation, and reveal-only shell operation.",
+  "shared_boundaries": [
+    {
+      "path": "electron/diagnostics/agentTraceIpc.ts",
+      "symbol": "registerAgentTraceIpc",
+      "responsibility": "Resolve and reveal current derived readable diagnostics without application dispatch."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "entry_point": "session trace menu",
+      "disposition": "enforced",
+      "evidence": "Uses shared useAgentTraceDirectory IPC with a validated lane."
+    },
+    {
+      "path": "src/desktop/useAgentTraceDirectory.ts",
+      "entry_point": "project trace settings",
+      "disposition": "enforced",
+      "evidence": "Shared IPC without lane resolves native project index.md."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every future session has the same .trace extension; OS file associations vary.",
+    "same_class_scan": [
+      "door-map electron/diagnostics/agentTraceIpc.ts",
+      "Inspected session and settings useAgentTraceDirectory calls plus openLaneTraceDirectory return paths."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/diagnostics/agentTraceIpc.ts",
+    "invariant": "Trace navigation never executes an extension association and never reports a missing file as revealed.",
+    "failure_mode": "Bounded open-failed or project-changed status.",
+    "exception_policy": "none",
+    "strategy": "Resolve the native readable filename, require a regular file, revalidate identity, then call showItemInFolder.",
+    "artifacts": [
+      "electron/diagnostics/agentTraceIpc.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/diagnostics/agentTraceIpc.test.ts",
+    "tests/ux/agent-trace-log.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/diagnostics/agentTraceIpc.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/diagnostics/agentTraceIpc.ts"
+    ],
+    "rationale": "Replace shell.openPath with reveal-only navigation in place."
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "current": "Pinned Electron shell API",
+    "target": "Retain current Electron with documented showItemInFolder.",
+    "rationale": "Electron already exposes the required reveal semantic; an upgrade does not repair incorrect application dispatch.",
+    "exit_criteria": [
+      "Rerun packaged trace walk before any Electron upgrade."
+    ]
+  },
+  "migration": "No stored data changes. Existing derived session trace.md and project index.md are reused.",
+  "residual_risks": [
+    "showItemInFolder has no OS success acknowledgement.",
+    "Integrated packaged Finder walk remains coordinator acceptance."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/diagnostics/agentTraceIpc.ts",
+    "tests": [
+      "electron/diagnostics/agentTraceIpc.test.ts"
+    ]
+  }
+}

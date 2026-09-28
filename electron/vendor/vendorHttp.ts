@@ -3,7 +3,6 @@
 // 下游 classifyGenerationError 只能正则反猜。现在错误在抛出那一刻保留结构:
 // 下游(人话错误卡/事件日志/分类)读 structured,字符串 message 仅供展示兜底。
 import {
-  type AuthType,
   appendQueryParams,
   authQueryParams as buildAuthQueryParams,
   collectRequestSecretValues,
@@ -13,6 +12,7 @@ import {
 import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamMessage } from "../jsonUtils";
 import { fetchVendorWithBaseFallback } from "./vendorBaseFallback";
 import type { Vendor } from "../catalog/types";
+import { vendorAuthSpec } from "../catalog/vendorAuthSpec";
 import { networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
 import { BoundedResponseError, readBoundedResponseBytes } from "./boundedResponse";
 import { providerDispatcher } from "../providerNetwork";
@@ -103,9 +103,13 @@ export function categorizeVendorFailure(
   return { category: "unknown", retryable: false };
 }
 
-/** Vendor→primitive 鉴权 query 适配(从 runtime 迁来,全仓唯一)。 */
-export function authQueryParams(vendor: Vendor, apiKey: string): Record<string, string> {
-  return buildAuthQueryParams(vendor.authType as AuthType, apiKey, vendor.authQueryParam ?? undefined);
+/**
+ * Vendor→primitive 鉴权 query 适配(从 runtime 迁来,全仓唯一)。鉴权说法整份来自 vendorAuthSpec。
+ * 2026-09-21 从 `authQueryParams` 改名：与 requestPipeline 的同名函数并存时，读代码的人分不清
+ * 手上这一个到底收不收 authScheme 那一族字段——而那正是方案词漏在读路上的土壤。
+ */
+export function vendorAuthQueryParams(vendor: Vendor, apiKey: string): Record<string, string> {
+  return buildAuthQueryParams(vendorAuthSpec(vendor), apiKey);
 }
 
 /**
@@ -125,7 +129,7 @@ async function requestVendor(
   maxResponseBytes = DEFAULT_VENDOR_RESPONSE_MAX_BYTES,
   responseKind: "json" | "binary" = "json",
 ): Promise<unknown | BinaryVendorResponse> {
-  const requestAuthQuery = authQueryParams(vendor, apiKey);
+  const requestAuthQuery = vendorAuthQueryParams(vendor, apiKey);
   const finalUrl = appendQueryParams(url, { ...requestAuthQuery, ...query });
   const diagnosticUrl = safeNetworkUrl(url);
   const upperMethod = method.toUpperCase();
@@ -177,7 +181,14 @@ async function requestVendor(
     signal?.removeEventListener("abort", relayAbort);
     if (dispatcher) void dispatcher.close().catch(() => undefined);
   };
-  const submitRefusal = await authorizeSubmitDestination({ vendor, url: finalUrl, routedThroughProviderProxy: Boolean(dispatcher) });
+  const submitRefusal = await authorizeSubmitDestination({
+    vendor,
+    url: finalUrl,
+    routedThroughProviderProxy: Boolean(dispatcher),
+    // 「这次带 key 了吗」不在守卫里重猜：`collectRequestSecretValues` 已经按这一次具体请求
+    // 算过一遍（头、鉴权 query、query），复用同一个答案。
+    carriesCredential: requestSecrets.length > 0,
+  });
   // 授权是本轮新插进来的一段 await（要做 DNS），于是**取消有了一个新的落点**：调用方在这段
   // 窗口里 abort，signal 已经是 aborted 而 fetch 还没被调用过。不在这里接住的话，取消要么被
   // 无声吞掉（照旧把付费请求发出去），要么落进一个已经 abort 的 signal 上、事件永不再触发。

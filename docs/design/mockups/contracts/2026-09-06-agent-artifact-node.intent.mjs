@@ -11,6 +11,12 @@
 // 被 tests/ux/agent-artifact.walk.mjs 引用并在真机上跑。
 export default {
   mockup: 'docs/design/mockups/2026-09-06-agent-artifact-node.html',
+  /**
+   * 这份契约机械化的是哪一版拍板。这个面没有散文设计合同，拍板物就是样张本身，所以 `doc` 留空
+   * （门岗缺省拿 `mockup` 当正本）。`migratedAt` 是契约上一次真的照着样张逐条誊过的日期——
+   * 2026-09-07 接手返工时补的这份契约，样张最后变更在 2026-09-06，对得上。
+   */
+  mechanizes: { migratedAt: '2026-09-07' },
   surface: 'AI 手艺产物节点 · agent-artifact',
   layer: 'intent',
 

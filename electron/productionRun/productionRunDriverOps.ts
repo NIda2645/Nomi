@@ -312,7 +312,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       const current = requireRun(run.projectId, run.runId)
       const version = Math.max(0, ...current.artifacts.filter((item) => item.kind === 'script').map((item) => item.version || 0)) + 1
       const artifactId = `artifact-script-v${version}`
-      const skillEvidence = loadPlaybookStageEvidence(run.playbook.name, run.playbook.version, 'script')
+      const skillEvidence = await loadPlaybookStageEvidence(run.playbook.name, run.playbook.version, 'script')
       const scriptPath = `.nomi/runs/${run.runId}/script-v${version}.json`
       const timestamp = new Date().toISOString()
       writeProjectJson(run.projectId, scriptPath, {
@@ -379,7 +379,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       const version = Math.max(0, ...current.artifacts.filter((item) => item.kind === 'storyboard').map((item) => item.version || 0)) + 1
       const storyboardPath = `.nomi/runs/${run.runId}/storyboard-v${version}.json`
       const timestamp = new Date().toISOString()
-      const skillEvidence = loadPlaybookStageEvidence(run.playbook.name, run.playbook.version, 'storyboard')
+      const skillEvidence = await loadPlaybookStageEvidence(run.playbook.name, run.playbook.version, 'storyboard')
       writeProjectJson(run.projectId, storyboardPath, {
         schemaVersion: 1, kind: 'storyboard', projectId: run.projectId, runId: run.runId, version,
         source: 'nomi-agent', sourceArtifactId: source.artifactId, sourceVersion: source.version,

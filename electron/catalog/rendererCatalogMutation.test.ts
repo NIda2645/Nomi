@@ -191,6 +191,32 @@ describe("B4 candidate credentials", () => {
     await upsertRendererCatalogVendorApiKey("relay", { apiKey: "candidate-test" });
     expect(store.upsertModelCatalogVendorApiKey).toHaveBeenCalledWith("relay", { apiKey: "candidate-test", enabled: false, verificationPending: true });
   });
+  /**
+   * T-QA-13 的门岗（2026-09-18）。走查夹具「注入 key → hasApiKey」这条路整条死掉过，
+   * 而且是**静默**死的：所有靠它的走查照样跑、照样绿，只是模型那一档从来没真通过。
+   *
+   * 根因不是夹具写错，是 `ApiKeyRecord.enabled` 一个布尔背了两个意思——「用户停用了这把钥匙」
+   * （`credentialRecordCounts` 的读法）和「还没经过认证晋升」（渲染层写入的写法）。免鉴权的家
+   * （本地 ComfyUI / Ollama / loopback 夹具）没有第二种意思可讲：它不发鉴权，没有「验过没验过」。
+   * 于是它落进 enabled:false，`credentialRecordCounts` 判它不算数，`hasApiKey` 恒 false。
+   *
+   * 这两条断言就是那条不变量：免鉴权的家，① 不许拿「无法验证密钥」当失败报（没这件事可做），
+   * ② 凭据写进去必须算数。任一条回退，靠夹具注入凭据的走查会再次整批变成假绿。
+   */
+  it("a no-auth vendor's credential counts (fixture key injection stays alive)", async () => {
+    const catalog = state();
+    catalog.vendors[0] = { ...catalog.vendors[0], authType: "none", baseUrlHint: "http://127.0.0.1:1/v1" };
+    vi.mocked(store.readCatalog).mockReturnValue(catalog);
+    await upsertRendererCatalogVendorApiKey("relay", { apiKey: "fixture-key" });
+    expect(store.upsertModelCatalogVendorApiKey).toHaveBeenCalledWith("relay", { apiKey: "fixture-key", enabled: true });
+    expect(fetchModelList).not.toHaveBeenCalled();
+  });
+  it("a no-auth vendor never reports a credential verification failure", async () => {
+    const catalog = state();
+    catalog.vendors[0] = { ...catalog.vendors[0], authType: "none", baseUrlHint: null };
+    vi.mocked(store.readCatalog).mockReturnValue(catalog);
+    await expect(upsertRendererCatalogVendorApiKey("relay", { apiKey: "fixture-key" })).resolves.toBeDefined();
+  });
   it.each([401, 403])("%i never overwrites the previous credential or disables its vendor", async (status) => {
     const catalog = state();
     catalog.vendors[0] = { ...catalog.vendors[0], enabled: true, baseUrlHint: "https://relay.test/v1" };

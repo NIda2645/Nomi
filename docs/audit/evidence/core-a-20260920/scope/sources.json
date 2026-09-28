@@ -1,0 +1,19 @@
+[
+  {
+    "file": "Nomi_plan_A_core_fixes_2026-09-19.md",
+    "sha256": "ada6d3fca6b0f7d7005348f6a5ddb13f1a1b4a21a5ad30042075403da425a690",
+    "scope": "source document, unchanged"
+  },
+  {
+    "file": "Nomi_simplified_A_plus_T7_original_storyboard_plan_2026-09-20.md",
+    "sha256": "473dfb8eee63eb4585c1696d6c6537eff99927e71bb94b77580ee7c4842d6d14",
+    "scope": "source document, unchanged"
+  },
+  {
+    "file": "B-T7-excerpt.md",
+    "sha256": "90b3d003cb3674711aa253d9cbe77737d6d9eb2f11d331405c0d7e93482c8ca0",
+    "source": "Nomi_Plan_B_Full_Reviewed_Taskbook_2026-09-19.md",
+    "sourceSha256": "a016edb9ddbc2659c9a862ef47a2d6ed1244acfe26f05bd0891e6db4c143e98e",
+    "scope": "Exact section T7 only, through before T8; other B chapters excluded"
+  }
+]

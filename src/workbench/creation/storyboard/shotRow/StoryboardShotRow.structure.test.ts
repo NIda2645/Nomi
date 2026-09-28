@@ -43,8 +43,9 @@ describe('分镜行：参考区复用画布那套参考槽（不许再造一套�
     expect(zone).toContain("from './shotReferenceSlots'")
     // 供应商名字不该出现在分镜行的任何一层（P4：按声明渲染，不为具体模型写 if）。
     for (const source of [row, zone]) {
-      expect(source.toLowerCase()).not.toContain('seedance')
-      expect(source.toLowerCase()).not.toContain('veo')
+      expect(source).not.toMatch(/\bseedance(?:[-\d.]|\b)/i)
+      // Identifier substrings such as onResolveOverride are not model names.
+      expect(source).not.toMatch(/\bveo(?:[-\d.]|\b)/i)
     }
   })
 })
@@ -55,9 +56,12 @@ describe('分镜行 v6：不许退回 v5 的三处形态（合同 §2.3/§2.4）
 
   it('行 grid 的两个固定列宽从几何 derive，且只有一个 owner（锚展开行与镜头行共用同一份解剖）', () => {
     const shell = stripComments(read('src/workbench/creation/storyboard/shotRow/StoryboardRowShell.tsx'))
-    expect(shell).toContain('STORYBOARD_ROW_GRID_TEMPLATE')
-    expect(shell).toContain('FRAME_COLUMN_WIDTH')
-    expect(shell).toContain('REFERENCE_COLUMN_WIDTH')
+    const density = stripComments(read('src/workbench/creation/storyboard/shotRow/storyboardRowDensity.ts'))
+    // 列模板只有一个 owner：外壳只调函数，数全在 `storyboardRowDensity` 里 derive。
+    expect(shell).toContain('storyboardRowGridTemplate')
+    expect(shell).not.toMatch(/gridTemplateColumns:\s*`/)
+    expect(density).toContain('FRAME_COLUMN_WIDTH')
+    expect(density).toContain('REFERENCE_COLUMN_WIDTH')
     // 写死列宽的代价 2026-09-06 见过一次：盒子变了、`200px` 没跟着变，参考列当场横向溢出。
     expect(shell).not.toContain('grid-cols-[')
     expect(row).toContain('<StoryboardRowShell')

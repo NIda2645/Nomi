@@ -1,0 +1,259 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-draft-shots-drops-declared-model-identity",
+  "problem_type": "动词声明里的字段在传输层被静默丢掉——模型点了名的模型不算数",
+  "symptom": "① 隔离/新用户 profile 下让 Agent「生成一张图」：模型照着 `draft_shots` 的声明（示例里就写着 `candidate: { providerId, modelId }`）点了一个 `list_models` 里的模型，宿主仍然抛「没有配置可用的图片模型，请先在设置中选择模型」，画布上一个节点都没有，`generate` 接着报「draftId 缺少必填字段」。走查 `tests/ux/agent-spend-full-auto.walk.mjs` 因此在 origin/main 上恒红于第一步。② 保存过默认模型的用户不报错，但模型点的那个模型被**静默换成默认模型**扣钱。③ 两镜以上的 `draft_shots`（分镜主路）对模型抛一段裸 zod：`expected object, received undefined`。",
+  "direct_cause": "`electron/agentLane/laneVerbTransport.ts` 的 `draftShotToPlanShot` 解构 `draft_shots` 的一镜时只接了 prompt/taskKind/durationSec/modelKey/modeId/parameters/references/title/shotId/role，**没有接 `candidate`**；`verbToTransportCall` 的 `draft_shots` 分支也没有读顶层的 `candidate` / `taskKind`。于是 `semanticCandidateFromParams` 收到的 params 里既没有 `providerId` 也没有 `modelId`，只能退回「保存过的默认模型」，没有就抛。多镜那半另有一因：`draftShotFromPlan` 只认一份**完整 PlanCandidate**（candidateId/revision/moduleId/mode…），而动词交出来的是语义镜，`candidateFrom(undefined)` 当场 zod 抛。",
+  "class_root": "**动词声明是一份对模型的承诺，而传输层是手写的解构**。声明加一个字段是纯数据改动，传输层不接它既编译得过、schema 也过（翻译输出仍然合法）、既有的 `laneVerbTransport.test.ts` 也过（它只核方法名路不路得到）。于是「声明了 → 模型照着写 → 宿主收不到」这条缝没有任何一层看得见，而它恰好落在**哪个模型花用户的钱**这条线上：丢掉的后果不是报错，是沉默地换一个模型扣钱。同一条缝在 2026-09-14 的 20 动词切换（`4753f64af`）里一次开了三个口（每镜 candidate、顶层 candidate、顶层 taskKind）。",
+  "migration": "身份和语义一样过桥：`draftShotToPlanShot` 收下 `candidate{providerId,modelId}` 并把它翻成契约的扁平 `providerId`/`modelId`，顶层 `candidate`/`taskKind` 作为「这一批的默认」只被没写自己那份的镜头继承；传输契约的 `shots[]` 补上 `providerId`/`moduleId`（此前一镜能点名模型却点不了供应商，身份只有一半）；`semanticCandidateFromParams` 对**显式点名**的 provider+model 从目录反查 `moduleId`（模型面上根本没有这个字段可填，缺它等于点名永远差一格）；多镜 `plan` 入口对没带 candidate 的语义镜改走**单镜那同一个**解析器。旧的解构签名在同一 commit 被取代，没有并行版、没有开关、没有 fallback。",
+  "affected_population": [
+    "任何没有在设置里保存过默认图片/视频模型的用户（新装、新 profile、隔离走查）：Agent 每一次生成请求都被拒，模型点名也没用",
+    "保存过默认模型的用户：Agent 点名的模型被静默换成默认模型——用户以为在用 A 付的却是 B 的钱",
+    "任何让 Agent 拆两镜以上分镜的用户：`draft_shots` 抛裸 zod，整条分镜路 100% 不通",
+    "外部 MCP 宿主走 `nomi_operation_plan` 传语义镜的调用方（与桌面 lane 同一条 `resolveCreateShots`）"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneVerbTransport.ts",
+    "electron/capabilityCore/semanticGenerationCandidate.ts",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts",
+    "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+    "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+    "electron/agentLane/laneExtendedTools.ts",
+    "scripts/check-verb-host-conformance.mjs"
+  ],
+  "entry_points": [
+    "electron/agentLane/laneVerbTransport.ts:50 draftShotToPlanShot（`draft_shots` 一镜 → 生成契约一镜的唯一翻译点；字段落位由 `verbTransportRoutes.DRAFT_SHOT_FIELD_MAP` 这张声明表执行）",
+    "electron/agentLane/laneVerbTransport.ts:64 verbToTransportCall case draft_shots（顶层默认的唯一继承点，规则写在表的 `defaults` 上）",
+    "electron/capabilityCore/semanticGenerationCandidate.ts:270 semanticCandidateFromParams（语义 → 候选身份的唯一解析器，单镜与多镜共用）",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts:287 draftShotFromPlan（`plan` 入口解析一镜的唯一点，直接转调上面那个解析器）"
+  ],
+  "invariants": [
+    "动词声明里的每一个字段，要么被翻译成传输参数（可以改名），要么在 `check-verb-host-conformance.mjs` 的 `TRANSLATOR_CONSUMED` 里带理由登记——不许静默丢掉",
+    "模型显式点名的 provider+model 是权威的：它必须原样到达候选解析器，不许被保存的默认模型顶替，也不许因为缺一个模型面上填不了的内部字段（moduleId）而失效",
+    "既没有点名、也没有保存过默认模型时，宿主照旧诚实拒绝——不按目录行序替用户挑一个花钱的模型",
+    "一镜里 `modelKey` 与 `candidate.modelId` 指的是同一个模型：两者矛盾时当场退回去问模型，不许替它选一个"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 77,
+      "symbol": "draftShotToPlanShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 88,
+      "symbol": "draftShotToPlanShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 92,
+      "symbol": "draftShotToPlanShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 77,
+      "symbol": "verbToTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 560,
+      "symbol": "semanticCandidateFromParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 160,
+      "symbol": "semanticCandidateFromParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 287,
+      "symbol": "draftShotFromPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 419,
+      "symbol": "resolveCreateShots"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 547,
+      "symbol": "resolveCreateShots"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "line": 200,
+      "symbol": "rejectConflictingModelIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "line": 151,
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "line": 149,
+      "symbol": "spendCardResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 272,
+      "symbol": "moduleIdForIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 136,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 116,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationToolCatalog.ts",
+      "line": 22,
+      "symbol": "generationPlanInputSchema"
+    }
+  ],
+  "door_reduction": {
+    "before": 16,
+    "after": 16,
+    "why_not": "两组门各自已经收在一个判据产地上，再合并会把它们搬到错误的层。① 翻译那一组：`draftShotToPlanShot` 的三扇是**同一个函数**在 patch / 单镜 create / 多镜 create 三条分支上的三个调用点，合并它们就等于取消这三条分支（它们翻出的是三种不同的传输方法），而字段映射本身已经只有这一份。② 候选身份那一组：`semanticCandidateFromParams` 现在是单镜与多镜**共用的唯一解析器**——这次改动恰恰把门从 2 扇不同实现（单镜语义解析 + 多镜要完整 candidate）收成 1 份实现的 2 个调用点，这是本次的 door reduction 本体。合并批次 4 时又少一扇：`compileSemanticShot` 那个注入口是同一件事的第二个入口，`draftShotFromPlan` 自己调解析器之后它没有存在的理由（P1），同 commit 删掉。③ lane 与外部 MCP 各有一个 `resolveCreateShots` 读口是有意的：它们是两个宿主，共用同一个 helper 工厂，合并会让 lane 依赖 MCP 的调用栈。 ④ 声明那一组两扇：`draftShotSchema`（一镜声明）与 `rejectConflictingModelIdentity`（它的 prepareArguments 前置），一个是形状一个是前置校验，合并就等于把校验塞进 zod——而这条要拒的恰恰是 zod 验得过的情况（两个字段各自合法、互相矛盾）。 ⑤ 传输契约那一组：`generationPlanInputSchema` 是**唯一**的形状真相源，三扇都是它的读口（宿主投影、lane 适配器、外部 MCP 目录）——三个宿主各读一次正是单一真相源该有的样子，合并它们等于让其中一个宿主从另一个宿主的模块里拿 schema。⑥ `moduleIdForIdentity` 只有一扇（`semanticCandidateFromParams` 内部），它本来就是那个解析器的私有派生。"
+  },
+  "regression_tests": [
+    "scripts/check-verb-host-conformance.node-test.mjs",
+    "electron/capabilityCore/semanticGenerationCandidate.test.ts",
+    "electron/capabilityCore/mcpGenerationMultiShotSemantic.test.ts"
+  ],
+  "residual_risks": [
+    "`modelKey` 与 `candidate.modelId` 仍然是同一件事的两个名字（`list_models` 印的是 `modelKey=`，`draft_shots` 的示例演示的是 `candidate`）。本刀只做到「矛盾时当场拒绝、不矛盾时无损」；收敛到一个名字要动 `list_models` 的提示词与模型面，属 R13 第三档的工具面改动（需工具写对率数字），已记为结构性发现。",
+    "这条不变量的机器判据由 `check:verb-host-conformance` 的 R1b/R3 承担（合并批次 4 时与它合并：两者判的是同一条不变量，门岗盖 20 个动词 × 每个投影面、逐字段探针一次只加一个变量、且带 16 条变异阳性对照，严格更强）。它按叶子值比对，所以枚举/布尔字段恰好取到同一个值时仍有理论盲区；本次修的三个字段全是字符串。",
+    "`draft_shots` 的 patch 分支不收 `durationSec`（`candidatePatch` 契约里没有这个字段），已在 `NOT_FORWARDED` 登记：改稿改时长要走 `parameters.duration`。这是契约的既有形状，本刀没有扩它。",
+    "`moduleIdForIdentity` 依赖 registry snapshot：宿主没装 snapshot 时（部分单测夹具）它返回 undefined，行为退回本次改动之前——照旧诚实拒绝，不会误放行。"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这条缝完全在本仓自己的两层之间：模型面的动词声明（`verbs/writeVerbs.ts`）与宿主的生成契约（`generationPlanSchemas.ts`），中间那张手写翻译表也是我们自己的。没有任何外部协议或供应商契约参与；查外部文档证明不了「我们的声明和我们的传输对不上」。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "复发机制是结构性的：动词声明是纯数据，加一个字段不需要碰传输表；传输表是手写解构，少接一个字段不会有任何一层报错。同一个 commit（20 动词切换）一次就开了三个口，而 45 天里没有任何门岗、类型或测试看见过。每加一个动词字段、每改一次声明，都可能再来一次；而这条缝的落点是「哪个模型花用户的钱」，沉默的代价最高。",
+    "same_class_scan": [
+      "机器实扫（不是人工 grep）：门岗 `check:verb-host-conformance` 的 R1b（最小实例里的必填字段）与 R3（逐字段探针，一次只加一个可选字段）对**每个动词**的每个声明字段核对值有没有到达宿主，一次性量出全部丢字段。首跑（修前代码）红在 `draft_shots` 的 `candidate.providerId` / `candidate.modelId` / `shots[].candidate.*`；修后全绿。",
+      "`look_at_media`：它是 `assetReadInputOf` 的四条互斥分支路由器（waveform / inspect-range / inspect / search）。门岗的逐字段探针天生按「最小实例 + 一个字段」造样本，不会一次填满所有格，所以互斥分支不会被误判成丢字段。not-affected。",
+      "其余被传输的动词（generate / check_job / cancel_job / edit_timeline / undo / delete_from_canvas / export_video / read_skill / save_skill / start_model_setup）在同一把尺子下全绿：改名的（`durationSec→durationSeconds`、`changeId→undoToken`、`revision→baseRevision`）按值认得出来。",
+      "阳性对照：把身份那两条对应关系从 `expanded` 改成 `consumed`（等价于 2026-09-18 之前那版不接 candidate 的解构），门岗当场红在 D 类变异上；撤掉即回绿。这 16 条变异常驻 `scripts/check-verb-host-conformance.node-test.mjs`，每次跑门岗都重验一遍尺子本身。"
+    ]
+  },
+  "generality_proof": "三处症状（拒绝 / 静默换模型 / 裸 zod）共用同一条不变量：**声明即承诺，声明了就必须到得了宿主**。修法把「算」收在两个唯一 owner 上——身份翻译收在 `draftShotToPlanShot` 一份映射（三条分支共用），候选编译收在 `semanticCandidateFromParams` 一个解析器（单镜与多镜共用，多镜那份「要完整 candidate」的第二实现在同一 commit 被取代）。再加一道机器判据：`check:verb-host-conformance` 按声明逐字段探针（R3）+ 最小实例必填字段（R1b）核对值有没有到达宿主，丢掉的必须在 `TRANSLATOR_CONSUMED` 带理由登记。于是下一个动词再加字段时，忘了接它编译得过、schema 也过，但这条当场红——这一类不再靠人记得。",
+  "shared_boundaries": [
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "symbol": "draftShotToPlanShot",
+      "responsibility": "`draft_shots` 的一镜 → 生成契约一镜的唯一字段映射，语义与**身份**都在这里过桥；对应关系本身是数据（`verbTransportRoutes.DRAFT_SHOT_FIELD_MAP`），顶层 candidate/taskKind 的继承规则写在表的 `defaults` 上，也只有这一份。"
+    },
+    {
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "symbol": "semanticCandidateFromParams",
+      "responsibility": "「一份语义请求 → 哪个模型花这笔钱」的唯一解析器。单镜 create 与多镜 plan 入口共用它，所以「显式点名优先 / 其次保存的默认 / 都没有就拒绝 / 不借用别的模型的 mode」这四条纪律在两条路上逐字相同。"
+    },
+    {
+      "path": "scripts/check-verb-host-conformance.mjs",
+      "symbol": "checkVerb / fieldProbes / TRANSLATOR_CONSUMED",
+      "responsibility": "机器判据：按动词声明造实例（最小实例 + 逐字段探针），翻译后核对每个值有没有到达宿主，并把翻译结果喂给宿主真正用的那座桥；丢掉的必须在 `TRANSLATOR_CONSUMED` 带理由登记。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "draftShotToPlanShot",
+      "disposition": "enforced",
+      "evidence": "每镜 candidate、顶层 candidate、顶层 taskKind 三处全部接上（作为 `DRAFT_SHOT_FIELD_MAP` / `DRAFT_SHOTS_FIELD_MAP` 上的三条关系，不是手写解构）；门岗在修前对它报红、修后 0 处，D 类变异常驻复验。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "draftShotFromPlan",
+      "disposition": "enforced",
+      "evidence": "没带 candidate 的语义镜改走单镜那同一个解析器（`draftShotFromPlan` 自己调 `semanticCandidateFromParams`，不经第二个注入口）；`mcpGenerationMultiShotSemantic.test.ts` 钉住两镜各自点名 / 用保存的默认 / 都没有时照旧拒绝三种，并保留「不注入语义 deps 时行为一字不变」的阳性对照。"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbSemanticInput.ts",
+      "entry_point": "assetReadInputOf",
+      "disposition": "not-affected",
+      "evidence": "逐条核过：它是 `look_at_media` 的四分支路由器（waveform / inspect-range / inspect / search），互斥分支下「别的格没过桥」是路由的意思。门岗的逐字段探针按「最小实例 + 一个字段」造样本，不会撞上互斥分支，全绿。"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbSemanticInput.ts",
+      "entry_point": "documentWriteInputOf / canvasWriteInputOf",
+      "disposition": "not-affected",
+      "evidence": "`write_script` 等常驻动词自己绑执行，不经 `verbToTransportCall`；它们的字段映射由 `semanticInputOf` 全量转写（`where` 翻成 operation，`content` 原样），门岗按动词自己发布的 schema 逐个枚举，这几个走的是各自的语义输入面、同样被 R1/R2 核过。"
+    },
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "entry_point": "spendCardResult",
+      "disposition": "enforced",
+      "evidence": "F 块合同 residual_risks 第三条（`code: 'user_sees_spend_card'` 只靠调用点的 if）本次收口：判据搬进函数自身，宣称「有卡在等你」之前先核 `policyStartedGeneration`，已被代答的那一笔当场抛程序员错误。没有扩 `check:announced-card` 的正则——它分不清「写死且无条件」与「写死但被真实结论守着」，扩了会对这一行报假红。"
+    }
+  ],
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/check-verb-host-conformance.mjs",
+    "invariant": "每个动词，其声明 schema 里的每个字段都必须在传输层输出里幸存（可改名，按叶子值认），并且翻出来的载荷要被宿主真正用的那座桥收下；`TRANSLATOR_CONSUMED` 不是豁免口，而是这条不变量的另一半——登记一条就必须写清「模型照着声明写了，宿主收不到，用户会看见什么」，没有理由的条目不算数，门岗照旧红。",
+    "failure_mode": "门岗逐个动词打印丢掉的字段路径与「要么把它传下去，要么在 TRANSLATOR_CONSUMED 里具名登记」这句话，退出码 1；它在 `gates:contracts` 档里跑。",
+    "exception_policy": "none",
+    "strategy": "按声明**机器生成**样本（不手抄字段名）：最小实例（R1/R1b）、两两组合（R2b）、字段填满（R2）、逐字段探针（R3，一次只加一个变量，所以「被更具体的字段合法盖掉」与「被丢掉」分得开）。按 R17「加规则先验它会红」，16 条变异常驻 `check-verb-host-conformance.node-test.mjs`，每次跑都先验尺子会红再验代码是绿。",
+    "artifacts": [
+      "scripts/check-verb-host-conformance.mjs",
+      "scripts/check-verb-host-conformance.node-test.mjs",
+      "electron/agentLane/verbTransportRoutes.ts",
+      "electron/agentLane/laneVerbTransport.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "scripts/check-verb-host-conformance.node-test.mjs",
+    "electron/capabilityCore/mcpGenerationMultiShotSemantic.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneVerbTransport.ts",
+      "electron/capabilityCore/mcpGenerationMultiShot.ts"
+    ],
+    "rationale": "`draftShotToPlanShot` 那份丢身份的解构在同一 commit 被取代（不是加分支，是那个签名没了，对应关系搬成了 `verbTransportRoutes` 上的数据）；`draftShotFromPlan` 里「语义镜一律 `candidateFrom(undefined)` 抛」的那条路被单镜解析器取代。合并批次 4 时又删掉一份并行版：`createMultiShotCreateHelpers` 里那个注入式 `compileSemanticShot` 与 `draftShotFromPlan` 自己调解析器是同一件事的两个入口，只留后者（P1）。没有留并行版、开关或 fallback。",
+    "verified_by": [
+      "electron/capabilityCore/mcpGenerationParity.test.ts"
+    ]
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有引入或升级任何依赖；全部落在仓内自己的动词声明、翻译表与候选解析器上。",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/laneVerbTransport.ts",
+    "tests": [
+      "scripts/check-verb-host-conformance.node-test.mjs",
+      "electron/agentLane/laneVerbTransport.test.ts",
+      "electron/capabilityCore/semanticGenerationCandidate.test.ts",
+      "electron/capabilityCore/mcpGenerationMultiShotSemantic.test.ts",
+      "tests/ux/agent-spend-full-auto.walk.mjs",
+      "tests/ux/agent-spend-real-image.paid.mjs"
+    ],
+    "structural_ticket": "docs/roadmap/TODO.md",
+    "note": "这两条真机走查（`agent-spend-full-auto.walk.mjs` / `agent-spend-real-image.paid.mjs`）是 94d0cf7ed 为**那一版**实现取的证：模型点名的模型真的到了供应商、全自动档真的不出卡。合并批次 4 时它们一个字没改，所以不再列进 `regression_tests`——那份名单的意思是「为这次改动背书的测试」，把没跑过这次改动的东西列进去是假话。它们仍在仓里、仍在 e2e 链上跑、仍守着同一条不变量，所以记在这里（这条不变量归哪层管、那层有哪些测试）。"
+  }
+}

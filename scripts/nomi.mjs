@@ -10,11 +10,11 @@
 //   node scripts/nomi.mjs projects
 //   node scripts/nomi.mjs project create "我的项目"
 //   node scripts/nomi.mjs canvas read <projectId>
-//   node scripts/nomi.mjs canvas add <projectId> <kind> [prompt]
-//   node scripts/nomi.mjs canvas connect <projectId> <sourceId> <targetId> [mode]
-//   node scripts/nomi.mjs canvas prompt <projectId> <nodeId> "<prompt>"
-//   node scripts/nomi.mjs canvas delete <projectId> <nodeId> [nodeId...]
 //   node scripts/nomi.mjs generate <projectId> <vendor> <modelKey> <intent> "<prompt>"
+//
+// 画布**写**（建节点/连边/改提示词/删节点）不在这条 CLI 上：裸 bearer 只证明「这台机器上的某个进程读到了
+// token」，证不出「哪个客户端、哪次会话、哪个项目」。写路只走语义面 `nomi_canvas_edit` /
+// `nomi_canvas_maintenance`（MCP，带 leaseHandle + 确认 + undoToken）。
 import { invoke, readLiveInstance, readToken } from './lib/nomiClient.mjs'
 
 function parseArgs(argv) {
@@ -37,12 +37,8 @@ function parseArgs(argv) {
       if (rest[0] === 'create') return { method: 'project.create', params: rest[1] ? { name: rest[1] } : {} }
       break
     case 'canvas': {
-      const [sub, projectId, ...args] = rest
+      const [sub, projectId] = rest
       if (sub === 'read') return { method: 'canvas.read', params: { projectId } }
-      if (sub === 'add') return { method: 'canvas.addNodes', params: { projectId, nodes: [{ kind: args[0] || 'text', prompt: args[1] }] } }
-      if (sub === 'connect') return { method: 'canvas.connect', params: { projectId, connections: [{ source: args[0], target: args[1], mode: args[2] }] } }
-      if (sub === 'prompt') return { method: 'canvas.setPrompt', params: { projectId, nodeId: args[0], prompt: args[1] } }
-      if (sub === 'delete') return { method: 'canvas.deleteNodes', params: { projectId, nodeIds: args } }
       break
     }
     case 'generate': {

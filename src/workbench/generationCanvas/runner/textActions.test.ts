@@ -3,7 +3,7 @@ import { generateText, getTextGenMode } from './textActions'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { TaskResultDto } from '../../api/taskApi'
-import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
+import { createProjectSessionTestHarness, testProjectBinding, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 
 const PROJECT_ID = 'project-test'
 
@@ -11,7 +11,7 @@ const disk = vi.hoisted(() => new Map<string, unknown>())
 vi.mock('../../library/localProjectStore', () => ({
   readLocalProjectAsync: vi.fn(async (projectId: string) => structuredClone(disk.get(projectId) ?? null)),
   saveLocalProject: vi.fn(async (projectId: string, payload: unknown, name?: string) => {
-    disk.set(projectId, structuredClone({ id: projectId, name, version: 1, payload }))
+    disk.set(projectId, structuredClone({ id: projectId, name, version: 1, immutableProjectUuid: testProjectBinding(projectId).immutableProjectUuid, projectGeneration: testProjectBinding(projectId).projectGeneration, payload }))
     return disk.get(projectId)
   }),
 }))
@@ -156,7 +156,7 @@ describe('generateText — 流式增量落地', () => {
       expect(projectId).toBe(PROJECT_ID)
       opts.onDelta?.('生成')
       const origin = useGenerationCanvasStore.getState()
-      disk.set(PROJECT_ID, structuredClone({ id: PROJECT_ID, name: 'origin', version: 1, payload: { generationCanvas: { nodes: origin.nodes, edges: origin.edges, groups: origin.groups, selectedNodeIds: [] } } }))
+      disk.set(PROJECT_ID, structuredClone({ id: PROJECT_ID, name: 'origin', version: 1, immutableProjectUuid: projectTarget.immutableProjectUuid, projectGeneration: projectTarget.projectGeneration, payload: { generationCanvas: { nodes: origin.nodes, edges: origin.edges, groups: origin.groups, selectedNodeIds: [] } } }))
       await session.open('project-other')
       useGenerationCanvasStore.setState({ nodes: [{ ...node, contentJson: { type: 'doc', content: [] } }], edges: [], selectedNodeIds: [], groups: [] })
       opts.onDelta?.('的全文')

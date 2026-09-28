@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { NomiRenderManifestV1 } from "./exportManifest";
 import type { ExportProfile } from "./exportTypes";
-import { compileFfmpegFiltergraph, FfmpegFiltergraphError } from "./ffmpegFiltergraph";
+import { compileFfmpegFiltergraph } from "./ffmpegFiltergraph";
+import { FfmpegFiltergraphError } from "./ffmpegGraphPrimitives";
 
 const profile: ExportProfile = {
   preset: "publish",
@@ -385,13 +386,18 @@ describe("compileFfmpegFiltergraph", () => {
       ],
     });
 
-    // 两条 overlay PNG 作为新输入接在素材输入之后（index 1、2），-loop 1 -t 全长 5s
-    expect(plan.inputs[1]).toEqual({ assetId: "text_overlay_0", path: "/tmp/job/text-overlay-0.png", kind: "image", inputArgs: ["-loop", "1", "-t", "5"] });
-    expect(plan.inputs[2]).toEqual({ assetId: "text_overlay_1", path: "/tmp/job/text-overlay-1.png", kind: "image", inputArgs: ["-loop", "1", "-t", "5"] });
-    // 第一条 overlay：base=vcomposite（视觉链尾，未定型），输入 index 1，区间 0~3s
-    expect(plan.filterComplex).toContain("[vcomposite][1:v]overlay=0:0:eof_action=pass:enable='between(t,0,3)'[vtxt0]");
-    // 第二条 overlay：base=vtxt0，输入 index 2，区间 1~5s，末条补 format=yuv420p，输出 voutfinal
-    expect(plan.filterComplex).toContain("[vtxt0][2:v]overlay=0:0:eof_action=pass:enable='between(t,1,5)',format=yuv420p[voutfinal]");
+    // 两条 overlay PNG 作为新输入接在素材输入之后（index 1、2）。
+    // -t **只覆盖自己的窗口**（前后各留 0.2s 余量），不是时间轴全长 5s：
+    //   #0 窗口 0~3s → 流 0~3.2s；#1 窗口 1~5s → 流 0.8~5.2s。
+    expect(plan.inputs[1]).toEqual({ assetId: "text_overlay_0", path: "/tmp/job/text-overlay-0.png", kind: "image", inputArgs: ["-loop", "1", "-t", "3.2"] });
+    expect(plan.inputs[2]).toEqual({ assetId: "text_overlay_1", path: "/tmp/job/text-overlay-1.png", kind: "image", inputArgs: ["-loop", "1", "-t", "4.4"] });
+    // 每条流先 setpts 落到时间轴位置（窗口起点减余量，夹到 ≥0）
+    expect(plan.filterComplex).toContain("[1:v]setpts=PTS-STARTPTS+0/TB[vtxtsrc0]");
+    expect(plan.filterComplex).toContain("[2:v]setpts=PTS-STARTPTS+0.8/TB[vtxtsrc1]");
+    // 第一条 overlay：base=vcomposite（视觉链尾，未定型），区间 0~3s
+    expect(plan.filterComplex).toContain("[vcomposite][vtxtsrc0]overlay=0:0:eof_action=pass:enable='between(t,0,3)'[vtxt0]");
+    // 第二条 overlay：base=vtxt0，区间 1~5s，末条补 format=yuv420p，输出 voutfinal
+    expect(plan.filterComplex).toContain("[vtxt0][vtxtsrc1]overlay=0:0:eof_action=pass:enable='between(t,1,5)',format=yuv420p[voutfinal]");
     expect(plan.videoOutputLabel).toBe("[voutfinal]");
   });
 
@@ -411,6 +417,126 @@ describe("compileFfmpegFiltergraph", () => {
     expect(plan.videoOutputLabel).toBe("[vout]");
     expect(plan.filterComplex).not.toContain("text_overlay");
     expect(plan.inputs).toHaveLength(1);
+  });
+
+  // ── 类级：叠加层的成本随条目数怎么涨 ───────────────────────────────────────
+  // 守的不变量：**每条叠加层的上游只生成它自己可见的那一段**。
+  // 破坏它的写法（`-loop 1 -t <全片长>`）在小样本上完全正常、零报错，只有条目一多才炸：
+  // 2026-09-21 实测 60 条字幕把 107 秒的导出拖成 75 分钟、内存 1.01 GB → 6.71 GB。
+  // 所以这一族断言看的是**输入时长与什么相关**，不是某一条的字面值。
+  describe("文字叠加层的输入预算", () => {
+    const FPS = 30;
+    const MARGIN_SECONDS = 0.2;
+
+    function overlayPlan(
+      durationFrames: number,
+      windows: ReadonlyArray<{ startFrame: number; endFrame: number }>,
+    ) {
+      return compileFfmpegFiltergraph({
+        manifest: manifest({
+          assets: { video1: { id: "video1", kind: "video", absolutePath: "/media/take.mp4", durationSeconds: durationFrames / FPS } },
+          timeline: {
+            fps: FPS,
+            durationFrames,
+            range: { startFrame: 0, endFrame: durationFrames },
+            tracks: [{ id: "visual-1", kind: "visual", clips: [{ id: "clip-1", assetId: "video1", startFrame: 0, endFrame: durationFrames }] }],
+          },
+        }),
+        textOverlays: windows.map((window, index) => ({ path: `/tmp/job/text-overlay-${index}.png`, ...window })),
+      });
+    }
+
+    /** 从 inputArgs 里读出 `-t` 的秒数（叠加层输入的真实生成时长）。 */
+    function inputSeconds(args: readonly string[]): number {
+      const index = args.indexOf("-t");
+      return index >= 0 ? Number(args[index + 1]) : 0;
+    }
+
+    it("叠加层输入的时长只由它自己的窗口决定，与时间轴有多长无关", () => {
+      const windows = [{ startFrame: 300, endFrame: 390 }, { startFrame: 600, endFrame: 700 }];
+      // 30 秒的片子 和 10 分钟的片子，同样两条字幕（都落在片长以内）→ 输入参数必须一模一样。
+      const short = overlayPlan(900, windows);
+      const long = overlayPlan(18_000, windows);
+      expect(short.inputs.slice(1).map((input) => input.inputArgs)).toEqual(long.inputs.slice(1).map((input) => input.inputArgs));
+      expect(inputSeconds(long.inputs[1].inputArgs)).toBeCloseTo((390 - 300) / FPS + 2 * MARGIN_SECONDS, 5);
+    });
+
+    it("窗口伸出片尾时按片尾夹住——不许比旧写法还多生成", () => {
+      // 旧写法按全片长封顶（每条 = 片长），新写法按窗口算；窗口比片子长时不夹就会反过来更贵
+      // （验收实测的 B3 形态：静帧合计旧 16.0s → 新 17.1s）。生产今天造不出这种 manifest
+      // （computeTimelineDuration 会被字幕自己撑长），这条是纵深。
+      const timelineSeconds = 900 / FPS;
+      const plan = overlayPlan(900, [{ startFrame: 600, endFrame: 3000 }]);
+      expect(inputSeconds(plan.inputs[1].inputArgs)).toBeCloseTo(timelineSeconds + MARGIN_SECONDS - (600 / FPS - MARGIN_SECONDS), 5);
+      expect(inputSeconds(plan.inputs[1].inputArgs)).toBeLessThan(timelineSeconds);
+      // enable 的区间仍然按真实窗口写，夹的只是上游生成多久。
+      expect(plan.filterComplex).toContain("enable='between(t,20,100)'");
+    });
+
+    // 这条是全套里**唯一让 N 自己变大**的：其余几条都把 N 固定在 1–5，钉的是「每条怎么算」。
+    // 类根因是「成本随 N 成倍涨」，所以必须有一条真的把 N 拉到现实上限（一条 10 分钟片子的字幕数）
+    // 去看总量。删了它，回归到「每条都对、加起来仍然爆炸」这种形状就没人拦。
+    it("200 条字幕的输入总时长 ≈ 各自窗口之和，而不是 200 × 全片长", () => {
+      const durationFrames = 18_000; // 10 分钟
+      const windows = Array.from({ length: 200 }, (_, index) => ({ startFrame: index * 90, endFrame: index * 90 + 90 }));
+      const plan = overlayPlan(durationFrames, windows);
+      const overlayInputs = plan.inputs.slice(1);
+      expect(overlayInputs).toHaveLength(200);
+
+      const totalSeconds = overlayInputs.reduce((sum, input) => sum + inputSeconds(input.inputArgs), 0);
+      const timelineSeconds = durationFrames / FPS;
+      const windowSeconds = windows.reduce((sum, w) => sum + (w.endFrame - w.startFrame) / FPS, 0);
+      const marginSeconds = 200 * 2 * MARGIN_SECONDS;
+      expect(totalSeconds).toBeLessThanOrEqual(windowSeconds + marginSeconds + 0.01);
+      // 旧写法会是 200 × 600s = 120000s；这条断言就是它与新写法的分水岭。
+      expect(totalSeconds).toBeLessThan(timelineSeconds * 2);
+    });
+
+    it("空档、重叠、超出片尾、单帧窗、片头贴边都只生成自己的窗口", () => {
+      const durationFrames = 900;
+      const windows = [
+        { startFrame: 0, endFrame: 30 }, // 片头贴边：余量被夹到 0
+        { startFrame: 120, endFrame: 150 }, // 前面留了空档
+        { startFrame: 140, endFrame: 260 }, // 与上一条重叠（同屏标题 + 字幕）
+        { startFrame: 500, endFrame: 501 }, // 一帧窗
+        { startFrame: 880, endFrame: 960 }, // 尾巴超出片长
+      ];
+      const plan = overlayPlan(durationFrames, windows);
+      const overlayInputs = plan.inputs.slice(1);
+      // 逐条写死，不用公式反推（公式反推会把实现的错一起抄过来）：
+      //   窗口秒 = [0~1, 4~5, 4.666667~8.666667, 16.666667~16.7, 29.333333~32]
+      //   流 = [max(0,起-0.2), min(止,片长)+0.2] → -t 依次是 1.2 / 1.4 / 4.4 / 0.433333 / 1.066667
+      //   最后一条窗口伸出片尾（29.333333~32s，片长 30s），末端被夹到 30.2s
+      expect(overlayInputs.map((input) => inputSeconds(input.inputArgs))).toEqual([1.2, 1.4, 4.4, 0.433333, 1.066667]);
+      expect(plan.filterComplex).toContain("[2:v]setpts=PTS-STARTPTS+3.8/TB[vtxtsrc1]");
+      expect(plan.filterComplex).toContain("[4:v]setpts=PTS-STARTPTS+16.466667/TB[vtxtsrc3]");
+      expect(plan.filterComplex).toContain("[5:v]setpts=PTS-STARTPTS+29.133333/TB[vtxtsrc4]");
+      // 片头那条的落位偏移被夹到 0，不会出现负的 setpts。
+      expect(plan.filterComplex).toContain("[1:v]setpts=PTS-STARTPTS+0/TB[vtxtsrc0]");
+      expect(plan.filterComplex).not.toContain("setpts=PTS-STARTPTS+-");
+      // 没有一条输入的时长达到全片长（30s）。
+      for (const input of overlayInputs) expect(inputSeconds(input.inputArgs)).toBeLessThan(durationFrames / FPS);
+    });
+
+    // 除了层序，这条还钉着**六位小数截断**下的 enable 端点（3.333333 / 6.666667 / 13.333333 /
+    // 16.666667）。那几个数字正是 `-framerate` 那次回归翻车的地方：time_base 一变，
+    // 闭区间端点帧就从「不显示」翻成「显示」。别的测试用的都是整秒，翻不出这一档。
+    it("层序 = 数组序：第 k 条叠在第 k-1 条的输出上，最后一条收口 format", () => {
+      const plan = overlayPlan(900, [
+        { startFrame: 0, endFrame: 300 },
+        { startFrame: 100, endFrame: 400 },
+        { startFrame: 200, endFrame: 500 },
+      ]);
+      expect(plan.filterComplex).toContain("[vcomposite][vtxtsrc0]overlay=0:0:eof_action=pass:enable='between(t,0,10)'[vtxt0]");
+      expect(plan.filterComplex).toContain("[vtxt0][vtxtsrc1]overlay=0:0:eof_action=pass:enable='between(t,3.333333,13.333333)'[vtxt1]");
+      expect(plan.filterComplex).toContain("[vtxt1][vtxtsrc2]overlay=0:0:eof_action=pass:enable='between(t,6.666667,16.666667)',format=yuv420p[voutfinal]");
+      expect(plan.videoOutputLabel).toBe("[voutfinal]");
+    });
+
+    it("窗口非正（endFrame ≤ startFrame）fail-closed，不许悄悄产出负时长输入", () => {
+      expect(() => overlayPlan(900, [{ startFrame: 120, endFrame: 120 }])).toThrow(FfmpegFiltergraphError);
+      expect(() => overlayPlan(900, [{ startFrame: 120, endFrame: 90 }])).toThrow(/endFrame > startFrame/);
+    });
   });
 
   it("renders an authored dissolve between contiguous visual clips with xfade", () => {

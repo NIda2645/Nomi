@@ -3,18 +3,14 @@ import { useTranslation } from 'react-i18next'
 import { confirmDialog } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { toast } from '../../ui/toast'
+import { shareInFlight } from './projectCreationFlight'
+import { projectSaveFailureText } from './projectSaveFailureText'
+import { logRendererError } from '../../desktop/rendererLog'
 
 /** Repeated library exits share the entire pending save/release operation. */
 export function useProjectLeaveAction(leave: () => Promise<void>): () => Promise<void> {
   const pending = useRef<Promise<void> | null>(null)
-  return useCallback(() => {
-    if (pending.current) return pending.current
-    const operation = Promise.resolve().then(leave)
-    pending.current = operation
-    const clear = () => { if (pending.current === operation) pending.current = null }
-    void operation.then(clear, clear)
-    return operation
-  }, [leave])
+  return useCallback(() => shareInFlight(pending, leave), [leave])
 }
 
 /** Close/reload acknowledges the active project's save before releasing its renderer. */
@@ -38,8 +34,8 @@ export function useProjectWindowLifecycle(): void {
           getDesktopBridge()?.window?.confirmClose?.(requestId)
         })
         .catch((error: unknown) => {
-          console.error('window close save error', error)
-          toast(t('studio.projectSaveFailed'), 'error')
+          logRendererError('project-save-failed', error, { trigger: 'window-close' })
+          toast(projectSaveFailureText(error, t), 'error')
           getDesktopBridge()?.window?.cancelClose?.(requestId)
         })
         .finally(() => { if (pendingClose.current === requestId) pendingClose.current = null })
@@ -58,8 +54,8 @@ export function useProjectWindowLifecycle(): void {
         .then(({ persistActiveWorkbenchProjectNow }) => persistActiveWorkbenchProjectNow())
         .then(() => { app.hardReloadWindow?.() })
         .catch((error: unknown) => {
-          console.error('hard reload save error', error)
-          toast(t('studio.projectSaveFailed'), 'error')
+          logRendererError('project-save-failed', error, { trigger: 'hard-reload' })
+          toast(projectSaveFailureText(error, t), 'error')
           reloading.current = false
         })
     }

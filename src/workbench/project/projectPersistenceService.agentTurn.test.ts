@@ -3,7 +3,7 @@ import type { WorkbenchProjectRecordV1 } from './projectRecordSchema'
 
 const deps = vi.hoisted(() => ({ read: vi.fn(), save: vi.fn(), restore: vi.fn(), replay: vi.fn(), upgrade: vi.fn() }))
 vi.mock('../library/localProjectStore', () => ({ readLocalProjectAsync: deps.read, saveLocalProject: deps.save }))
-vi.mock('./projectMediaMigration', () => ({ upgradeWorkbenchProjectMediaUrls: deps.upgrade, normalizeLegacyImageAssetKinds: (value: unknown) => value }))
+vi.mock('./projectMediaMigration', () => ({ upgradeWorkbenchProjectMediaUrls: deps.upgrade, backfillCanvasMediaDimensions: async (value: unknown) => value, normalizeLegacyImageAssetKinds: (value: unknown) => value }))
 vi.mock('./projectCategoryMigration', () => ({ migrateProjectRecord: (record: unknown) => ({ record, diagnostic: { alreadyMigrated: true } }) }))
 vi.mock('./projectV51ToV60Migration', () => ({ migrateProjectV51ToV60: (record: unknown) => ({ record }) }))
 vi.mock('./workbenchProjectSession', () => ({

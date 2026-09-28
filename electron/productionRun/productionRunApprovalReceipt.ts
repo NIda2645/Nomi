@@ -8,6 +8,7 @@ import {
 import { isSpendGate } from './productionRunGateIdentity'
 import { readTrustGrantBinding } from './productionRunTrustGrant'
 import { normalizeTrustLevel, trustLevelOf, type ProductionRun, type RunCommand } from './productionRunTypes'
+import { isTrustDowngrade } from './productionRunTrustAuthority'
 
 export type ProjectRevisionResolver = (projectId: string) => number | undefined
 
@@ -148,20 +149,24 @@ export function createGateApprovalOwner(
    *  ② 一张收据：绑死 runId + 币种 + 上限（costScope）与已封存授权的 digest（contractHash）——
    *     改上限、改计划或换 run 都会失配。收据由主进程签发（HMAC + TTL + 一次性），客户端只是
    *     **问人的那个面**，答案本身仍由主进程背书（MCP 安全基线：客户端自述的同意不构成授权）。
-   * 其余档位（key_confirm / confirm_all）是**收紧**，不放行任何花费，不进这条闸。
+   * 收紧（升档到 key_confirm / confirm_all）不放行任何东西，不进这条闸。
+   *
+   * 2026-09-21：这里原来还有一句「`current.policy` 不是 confirm_all 就直接 return undefined」——
+   * 即 key_confirm → budget_only **一份证据都不要**。理由曾是「那一档只跳过免费的创意/样片门，
+   * 钱门一道不跳」。但跳过创意门本身就是用户拍板过的那件事：**全自动档要不要开，由用户的设置或
+   * 一次真人答过的确认决定，不是调用方在参数里说了算**（09-21）。真机已证：一个只持裸 bearer 的
+   * 本机进程能把一个 Run 的方向门批掉而没有任何人看见。所以证据标准对齐——任何往 budget_only 的
+   * 降档都要 ① 手势章 或 ② 一张收据；只有 confirm_all → budget_only 额外绑死花费范围
+   * （那一档真的拿掉了逐镜付费确认）。
    */
   function verifyTrustGrant(projectId: string, runId: string, current: ProductionRun, command: RunCommand): GateApprovalReceipt | undefined {
     if (command.type !== 'run.control' || command.payload.action !== 'set_trust') return undefined
     if (normalizeTrustLevel(command.payload.trustLevel) !== 'budget_only') return undefined
-    // 只有**真的拿掉了一次付费确认**才要人证：逐镜确认门只在 confirm_all 生成（productionRunDriverOps），
-    // 所以 confirm_all → budget_only 等于「以后这些镜头不再问你了」= 一次付费放行。从 key_confirm 降档
-    // 只跳过免费的创意/样片门（钱门一道不跳），拿它当付费放行会把「别问了直接出」这句话在还没定价的
-    // 阶段直接卡死——那是把不变量放大成打扰，不是把它守住。
-    if (trustLevelOf(current.policy) !== 'confirm_all') return undefined
+    if (!isTrustDowngrade(trustLevelOf(current.policy), 'budget_only')) return undefined
     const { receiptId, suppliedToken } = suppliedReceiptHandles(command)
     if (!receiptId && !suppliedToken) {
       if (command.humanGesture === true) return undefined
-      throw new HumanApprovalRequiredError('Lowering this run to budget_only authorizes provider spend and needs a verified Nomi confirmation')
+      throw new HumanApprovalRequiredError('Lowering this run to budget_only skips checkpoints and needs a verified Nomi confirmation')
     }
     if (!authority) throw new HumanApprovalRequiredError('The main-process approval receipt authority is not assembled for this production service')
     // 上限从**已封存授权**重算，不从命令里抄——抄来的上限等于让调用方自己写自己的额度。

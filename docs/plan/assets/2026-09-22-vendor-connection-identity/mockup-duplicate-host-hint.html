@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>issue #831 样张 · 添加连接表单的「同域名已有连接」内联提示</title>
+<style>
+/* Token 值逐字抄自 src/theme/nomi-tokens.css 的暗色块（:root[data-mantine-color-scheme="dark"]）。
+   样张只加一行，其余布局逐项对着真实 before 截图
+   （03-zh-add-connection-form-filled.png / 06-en-add-connection-form-filled.png）复刻。 */
+:root {
+  --nomi-bg: oklch(0.18 0.006 80);
+  --nomi-paper: oklch(0.235 0.007 80);
+  --nomi-ink: oklch(0.93 0.006 85);
+  --nomi-ink-60: oklch(0.70 0.006 85);
+  --nomi-ink-40: oklch(0.62 0.006 85);
+  --nomi-ink-05: oklch(0.30 0.006 85);
+  --nomi-line: oklch(0.36 0.007 80);
+  --nomi-line-soft: oklch(0.31 0.007 80);
+  --nomi-accent: oklch(0.70 0.13 250);
+  --nomi-info-ink: oklch(0.82 0.13 250);
+  --nomi-info-soft: oklch(0.295 0.045 250);
+  --nomi-info-edge: oklch(0.395 0.065 250);
+  --nomi-font: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; padding: 32px; background: var(--nomi-bg);
+  color: var(--nomi-ink); font-family: var(--nomi-font);
+}
+h1 { font-size: 15px; font-weight: 500; color: var(--nomi-ink-60); margin: 0 0 4px; }
+p.lede { font-size: 12px; color: var(--nomi-ink-40); margin: 0 0 24px; max-width: 900px; line-height: 1.6; }
+.tracks { display: flex; gap: 32px; flex-wrap: wrap; }
+.track { flex: 1 1 520px; min-width: 460px; }
+.track > h2 { font-size: 12px; font-weight: 500; color: var(--nomi-ink-40); margin: 0 0 8px; letter-spacing: .04em; }
+.panel {
+  background: var(--nomi-paper); border: 1px solid var(--nomi-line-soft);
+  border-radius: 12px; overflow: hidden;
+}
+.panel-head { padding: 16px 22px 14px; border-bottom: 1px solid var(--nomi-line-soft); }
+.panel-head .title { font-size: 14px; font-weight: 500; }
+.panel-head .sub { font-size: 11px; color: var(--nomi-ink-40); margin-top: 3px; }
+.body { padding: 18px 22px 22px; }
+.field { margin-bottom: 14px; }
+.label { font-size: 11px; color: var(--nomi-ink-60); margin-bottom: 6px; }
+.input {
+  height: 34px; border-radius: 8px; background: var(--nomi-ink-05);
+  border: 1px solid transparent; padding: 0 12px; font-size: 13px;
+  display: flex; align-items: center; color: var(--nomi-ink);
+}
+.input.focused { border-color: var(--nomi-accent); }
+.hint { font-size: 11px; color: var(--nomi-ink-40); margin-top: 6px; }
+/* ── 本次样张唯一的新增：撞域名时**原位替换**上面那句静态 hint ──
+   不新增元素、不新增样式：同一个 .hint 容器、同一档 muted 文字 token，
+   只有连接名用 ink 色加粗。表单的视觉词汇就是「标签 / 输入框 / 灰字提示」，
+   蓝底块和聚焦态输入框同色系，会被读成一个能点的控件。 */
+.hint strong { color: var(--nomi-ink); font-weight: 500; }
+.switch-row { display: flex; gap: 10px; align-items: flex-start; margin: 16px 0 14px; }
+.switch { width: 34px; height: 19px; border-radius: 999px; background: var(--nomi-ink-05); border: 1px solid var(--nomi-line); position: relative; flex: 0 0 auto; }
+.switch::after { content: ""; position: absolute; left: 2px; top: 1.5px; width: 14px; height: 14px; border-radius: 999px; background: var(--nomi-ink-60); }
+.switch-row .t { font-size: 12px; }
+.switch-row .h { font-size: 11px; color: var(--nomi-ink-40); margin-top: 2px; }
+.disclosure { font-size: 12px; color: var(--nomi-ink-60); margin-top: 14px; }
+.rule { height: 1px; background: var(--nomi-line-soft); margin: 14px 0; }
+.foot { display: flex; justify-content: flex-end; margin-top: 18px; }
+.btn { height: 32px; padding: 0 16px; border-radius: 8px; background: var(--nomi-ink-05); border: 1px solid var(--nomi-line); font-size: 12px; display: inline-flex; align-items: center; color: var(--nomi-ink); }
+.note { font-size: 11px; color: var(--nomi-ink-40); margin-top: 12px; line-height: 1.7; }
+.note code { color: var(--nomi-ink-60); }
+</style>
+</head>
+<body>
+<h1>issue #831 样张 · 添加连接表单：域名撞上已有连接时的内联一行</h1>
+<p class="lede">
+  <strong>不新增任何元素。</strong>撞域名时，把 <em>接入地址</em> 下面那句静态 hint
+  （「中转后台那个地址，带不带 /v1 都行」）<strong>原位替换</strong>成动态句——同一行、同一档灰字，
+  只有连接名用 ink 色加粗。其余每个字段、每句 hint、每个控件都与真实 before 截图逐项相同
+  （<code>03-zh-add-connection-form-filled.png</code> / <code>06-en-add-connection-form-filled.png</code>）。
+  不弹窗、不拦保存、不给按钮——它唯一的活是把「你现在做的是<strong>新建</strong>，不是改那一个」说清楚。
+</p>
+
+<div class="tracks">
+  <!-- ─────────── zh ─────────── -->
+  <div class="track">
+    <h2>zh-CN</h2>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="title">接入 API / 中转站</div>
+        <div class="sub">先保存连接，再选择要使用的模型</div>
+      </div>
+      <div class="body">
+        <div class="field">
+          <div class="label">来源名称</div>
+          <div class="input">Mini 特价组</div>
+          <div class="hint">给这个上游起个名，方便区分不同 API（断供时一眼知道哪家）</div>
+        </div>
+        <div class="field">
+          <div class="label">接入地址（BaseURL）</div>
+          <div class="input focused">https://gw.example.com/v1</div>
+          <div class="hint">此地址已有连接「<strong>满血组</strong>」：填不同名称会新建独立连接；要改它的 Key，去那个连接里改。</div>
+        </div>
+        <div class="switch-row">
+          <div class="switch"></div>
+          <div>
+            <div class="t">无需 API Key</div>
+            <div class="h">适用于局域网或已经在网关层完成鉴权的服务</div>
+          </div>
+        </div>
+        <div class="field">
+          <div class="label">你的 API Key</div>
+          <div class="input focused">••••••••••</div>
+          <div class="hint">只存在你的电脑上，加密保存</div>
+        </div>
+        <div class="disclosure">› 高级设置（接口协议 / 自定义请求头）</div>
+        <div class="rule"></div>
+        <div class="disclosure">连接诊断（可选）</div>
+        <div class="foot"><span class="btn">保存连接</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ─────────── en ─────────── -->
+  <div class="track">
+    <h2>en</h2>
+    <div class="panel">
+      <div class="panel-head">
+        <div class="title">Connect an API or relay</div>
+        <div class="sub">Save the connection first, then choose the models to use</div>
+      </div>
+      <div class="body">
+        <div class="field">
+          <div class="label">Source name</div>
+          <div class="input">Mini budget tier</div>
+          <div class="hint">Name this upstream API so you can identify it later</div>
+        </div>
+        <div class="field">
+          <div class="label">Base URL</div>
+          <div class="input focused">https://gw.example.com/v1</div>
+          <div class="hint">This address already has a connection “<strong>Full tier</strong>”. A different name creates a separate connection; to change its key, edit that connection.</div>
+        </div>
+        <div class="switch-row">
+          <div class="switch"></div>
+          <div>
+            <div class="t">No API key required</div>
+            <div class="h">For local-network services or gateways that handle authentication upstream</div>
+          </div>
+        </div>
+        <div class="field">
+          <div class="label">API key</div>
+          <div class="input focused">••••••••••</div>
+          <div class="hint">Stored encrypted on this computer only</div>
+        </div>
+        <div class="disclosure">› Advanced settings (protocol / custom headers)</div>
+        <div class="rule"></div>
+        <div class="disclosure">Connection diagnostics (optional)</div>
+        <div class="foot"><span class="btn">Save connection</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<p class="note">
+  三种状态共用同一行、同一个容器：<code>none</code> 显示原来那句静态 hint；
+  <code>create</code>（同域名 + 不同名）显示上图那句；<code>update</code>（同域名 + 同名，
+  或名字为空 / 纯中文导致 slug 为空）显示「保存会更新连接「满血组」的 Key。」。
+  判据住 <code>src/ui/onboarding/duplicateHostConnections.ts</code>，和写入侧
+  <code>electron/catalog/connectionVendorKey.ts</code> 用同一条规则——提示说的必须就是实际会做的。<br />
+  英文那句比中文长约 1.6 倍，仍在一行灰字里收住（EN 串长是 R15 点名的坑）。
+</p>
+</body>
+</html>

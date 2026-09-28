@@ -1,0 +1,54 @@
+{
+  "name": "golden-path",
+  "mode": "development",
+  "tempRoot": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-golden-path-wV5ouB",
+  "outputDir": "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077",
+  "launches": [
+    {
+      "packaged": false,
+      "appPath": "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920",
+      "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-golden-path-wV5ouB/user-data",
+      "node": "24.18.1",
+      "electron": "43.4.1",
+      "pid": 57476
+    },
+    {
+      "packaged": false,
+      "appPath": "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920",
+      "userData": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-golden-path-wV5ouB/user-data",
+      "node": "24.18.1",
+      "electron": "43.4.1",
+      "pid": 59994
+    }
+  ],
+  "screenshots": [
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/01-new-empty-project.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/02-script-written.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/03-plan-landed-three-shots.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/04-canvas-opened-after-landing.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/05-shot-table-three-rows.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/06-shot2-selected.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/07-shot2-prompt-patched.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/08-generation-awaits-confirm.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/09-shot2-generated.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/10-restart-project-reopened.png",
+    "/Users/aoqimin/Desktop/Nomi-waiting-grid-20260920/.tmp/golden-path-1789890809077/11-restart-changes-persist.png"
+  ],
+  "paidCalls": 0,
+  "positiveControl": false,
+  "projectId": "project-1789890811061-wc62ub",
+  "projectRoot": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-pi-golden-path-wV5ouB/projects/未命名项目 09_20 15_53-mu9irws9-e3f184c6",
+  "verified": [
+    "new-empty-project",
+    "three-line-script",
+    "draft-shots-land-on-canvas-with-shot-table",
+    "shot2-selection-in-shot-table",
+    "draft-shots-patch-one-shot",
+    "loopback-image-generation",
+    "cold-restart-persistence"
+  ],
+  "textRequests": 5,
+  "imageRequests": 1,
+  "unexpected": [],
+  "result": "passed"
+}

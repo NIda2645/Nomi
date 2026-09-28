@@ -9,8 +9,6 @@ vi.mock('react-i18next', () => ({
       if (key.endsWith('nodeStackCount')) return `${values?.count} 节点`
       if (key.endsWith('collapsedAria')) return `${values?.name} · ${values?.count} 节点`
       if (key.endsWith('dragWhole')) return '拖动整体'
-      if (key.endsWith('connectInput')) return '连接到整组'
-      if (key.endsWith('connectOutput')) return '从整组连接'
       return key
     },
   }),
@@ -22,12 +20,9 @@ describe('CollapsedGroupCard', () => {
       React.createElement(CollapsedGroupCard, {
         card: { groupId: 'group-1', name: '雨夜咖啡馆', memberCount: 8, position: { x: 120, y: 90 } },
         readOnly: false,
-        pendingConnection: false,
-        pendingConnectionSource: false,
+        selected: false,
         onPointerDown: () => undefined,
         onExpand: () => undefined,
-        onStartConnection: () => undefined,
-        onCompleteConnection: () => undefined,
       }),
     )
     expect(html).toContain('data-collapsed-group-id="group-1"')
@@ -39,8 +34,8 @@ describe('CollapsedGroupCard', () => {
     // 折叠卡上只留框标题与计数：「编组」是我们自己的词汇，用户看的是他给这个框起的名字
     // （2026-09-07 用户指出）。这条断言防的是「顺手把徽标加回来」。
     expect(html).not.toContain('编组')
-    expect(html).toContain('aria-label="连接到整组"')
-    expect(html).toContain('aria-label="从整组连接"')
+    // 「+」圈不在这张卡上（由画布内核里的编组端口节点画，选中才出）：卡上不能再长出旧的连线按钮。
+    expect(html).not.toContain('magnetic-handle')
     expect(html).not.toContain('border-nomi-accent')
     expect(html).not.toContain('style="border-color')
   })

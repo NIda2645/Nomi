@@ -1,4 +1,5 @@
 import type { ProjectBinding } from "../shared/projectBinding";
+import { sameCommittedProjectSelection } from "../shared/projectBinding";
 import type { WorkspaceProjectIdentity } from "../workspace/workspaceProjectIdentity";
 import { WorkspaceProjectIdentityUnavailableError } from "../workspace/workspaceProjectIdentity";
 import {
@@ -29,13 +30,13 @@ type VerifiedDiskTarget = Readonly<{
   canonicalRootDigest: string;
 }>;
 
+// C2：四维比对走 owner。这里的两个入参形状不同（一个是工作区身份、一个是「绑定 + 摘要」），
+// 拼成同一个选择记录再比——差异只在**怎么取到那四个值**，不在「什么叫同一个」。
 function sameIdentity(identity: WorkspaceProjectIdentity, target: VerifiedDiskTarget): boolean {
-  return (
-    identity.projectId === target.binding.projectId &&
-    identity.immutableProjectUuid === target.binding.immutableProjectUuid &&
-    identity.projectGeneration === target.binding.projectGeneration &&
-    identity.canonicalRootDigest === target.canonicalRootDigest
-  );
+  return sameCommittedProjectSelection(identity, {
+    ...target.binding,
+    canonicalRootDigest: target.canonicalRootDigest,
+  });
 }
 
 async function assertDiskIdentity(target: VerifiedDiskTarget, deps: DiskCanvasReadPortDeps): Promise<void> {

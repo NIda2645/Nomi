@@ -11,6 +11,9 @@ import {
   MODEL_BOX_MODELS,
   MODEL_BOX_PREFERENCE,
   RUNNABLE_VENDORS,
+  UNLISTED_MODELS,
+  SIBLING_CONNECTION_MODELS,
+  VENDOR_APIMART_MINI,
   onlyFromVendors,
   VENDOR_APIMART,
   VENDOR_KIE,
@@ -81,6 +84,22 @@ export const PICKER_STATES: readonly LabState[] = [
     ),
   },
   {
+    // 改号 2026-09-22：本分支原本 mint 的 vo-10 与 main（#831）的 `vo-10-settings-model-box` 撞号。
+    // 按「ID 不回收」，main 的留着，本分支这格顺延到 vo-11。
+    id: 'vo-11-picker-unlisted',
+    name: '供应商清单里暂时没有它 · 如实标一句，照样选得了',
+    source: 'scratchpad report-A-pass3e.md §3（后台对账不再静默停用）· 用户 2026-09-21',
+    coverage: 'shell',
+    // 判据是「**每一家**都没列出才标」：FLUX.2 Pro 只挂 Kie 且没列出 → 标；
+    // Nano Banana 2 还有 APIMart 列着 → 不标。哪天写成「有一家没列出就标」，这一格当场变样。
+    render: () => (
+      <ModelPickerStage
+        models={UNLISTED_MODELS}
+        preferredVendorKeys={[VENDOR_APIMART, VENDOR_KIE]}
+      />
+    ),
+  },
+  {
     id: 'vo-06-picker-model-box',
     name: '整理过的模型框 · 按手排的顺序、藏起来的不在、手点过的那家高亮',
     source: 'docs/plan/2026-09-11-model-box-tidy.md §3 + 样张 PickerAfter.dc.html · 用户 2026-09-11 拍板',
@@ -93,6 +112,26 @@ export const PICKER_STATES: readonly LabState[] = [
         models={MODEL_BOX_MODELS}
         preferredVendorKeys={[VENDOR_APIMART, VENDOR_KIE]}
         modelBoxPreference={MODEL_BOX_PREFERENCE}
+      />
+    ),
+  },
+  {
+    id: 'vo-07-picker-sibling-connections',
+    name: '同一家多条连接 · 只有重名的那行改显示连接名',
+    source: 'docs/plan/2026-09-22-vendor-connection-identity.md §4.5 · GitHub issue #831 · 用户 2026-09-22 拍板',
+    coverage: 'shell',
+    // #831：一个中转站可以有三个计价分组（同地址、不同 Key）。它们的 chip 若都显示厂商短名
+    // 「APIMart」，用户分不出哪个是满血组。这一格钉住三种情形同屏：
+    //   · Seedance 2.0   同一家两条连接 → 两个 chip 各显示**自己的连接名**（满血组 / Mini 特价组）；
+    //   · Nano Banana 2  两家不同 root → 仍是厂商短名，一个字都不加；
+    //   · FLUX.2 Pro     只有一条连接 → 连 chip 都没有；
+    //   · Kling 2.5      同 Seedance，但连接名是 EN 长串（R15 串长 1.5-2 倍）→ 钉住放得下。
+    // 这一格还钉住一件第一版做错的事：曾经拼成「APIMart · 满血组」，超宽后被截成「APIMart · …」，
+    // 截掉的正好是唯一有区分力的那段。判据由 `providerConnectionSuffixes` 一处算，写反了当场变样。
+    render: () => (
+      <ModelPickerStage
+        models={SIBLING_CONNECTION_MODELS}
+        preferredVendorKeys={[VENDOR_APIMART, VENDOR_APIMART_MINI, VENDOR_KIE]}
       />
     ),
   },

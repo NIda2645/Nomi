@@ -5,7 +5,7 @@ import { applyBuiltinSeeds } from "./seedBuiltins";
 import type { CatalogState } from "./types";
 import { findOutboundContractBreaches } from "../../scripts/check-reference-outbound-contract";
 import { buildArchetypeInputParams } from "../../src/workbench/generationCanvas/nodes/controls/archetypeMeta";
-import { resolveArchetypeForModel } from "../../src/config/modelArchetypes";
+import { resolveArchetypeForModel } from "../shared/modelArchetypes";
 import { taskTemplateParams } from "./taskParams";
 import { renderTemplateValue } from "../ai/requestPipeline";
 

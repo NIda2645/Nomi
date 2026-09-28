@@ -34,6 +34,7 @@ export function parseLaneCommand(wire: unknown): LaneCommand {
     throw new LaneCommandError("Lane command must be an object");
   }
   const record = wire as Record<string, unknown>;
+  if (record.kind === "history-older") return { kind: "history-older", before: parseEntryId(record.before) };
   if (record.kind === "abort") return { kind: "abort" };
   if (record.kind === "approval") return parseApproval(record);
   if (record.kind === "cancel-queued") return { kind: "cancel-queued", entryId: parseEntryId(record.entryId) };

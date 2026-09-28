@@ -6,7 +6,7 @@ import path from 'node:path'
 import { once } from 'node:events'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { clickOrFail, expect, screenshotSettled } from './_assert.mjs'
-import { createAgentRuntimeFixture, FIXTURE_TEXT_MODEL, FIXTURE_VENDOR } from './agent-runtime-fixture.mjs'
+import { createAgentRuntimeFixture, FIXTURE_APIMART_API_KEY, FIXTURE_NON_APIMART_VENDOR, FIXTURE_TEXT_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import { require as tsxRequire } from 'tsx/cjs/api'
 
 const { LANE_MODEL_TOOL_CATALOG, LANE_DEFERRED_TOOL_CATALOG } = tsxRequire('../../electron/agentLane/laneToolCatalog.ts', import.meta.url)
@@ -46,6 +46,12 @@ export const APP_BAR_RIGHT = '.nomi-appbar__right'
 /** 面板级错误带（外壳渲染，不在 v4 积木里）。 */
 export const PANEL_ERROR = '[data-agent-error="true"]'
 export const THREAD_MENU = '[data-agent-thread-menu="true"]'
+/**
+ * 对话列表里「一条对话」那一行。菜单的直接子 `div` 不全是对话：第一格是表头（「对话 · 新对话」），
+ * 414bf19a9（2026-09-10）起末尾还多一格「查看轨迹」——数 `> div` 会把它也数进去。
+ * 认行的判据是这一行自己带的那颗「删除对话」钮。
+ */
+export const THREAD_ROW = `${THREAD_MENU} > div:has(> button[aria-label="删除对话"])`
 
 export const DOCUMENT = '[aria-label="创作文档编辑区"] .tiptap[contenteditable="true"]'
 
@@ -59,6 +65,14 @@ export const ASSISTANT_MESSAGE = '[data-v4-block="assistant"]'
 export const THINKING_LINE = '[data-v4-block="thinking"]'
 export const SUGGESTION = '[data-v4-block="suggestion"]'
 export const TOOL_RECEIPT = '[data-v4-block="tool"]'
+/**
+ * 过程行：一段工作（工具调用 + 思考）折成的那一块 `<details>`，**默认收起**
+ * （33b30b851，2026-09-09「One process per work stretch」——单个工具调用也折）。
+ * 收据（`TOOL_RECEIPT`）和它行尾那颗「撤销」都住在里面：收起时它们在 DOM 里却不可见，
+ * 于是 `toBeVisible` 等满超时、`getByRole` 找不到按钮，而「看不到撤销钮」那类断言恒真（假绿）。
+ * 要看收据，先像用户那样点开它（`openProcess`）。
+ */
+export const PROCESS = '[data-v4-block="process"]'
 export const TASK_CARD = '[data-v4-block="task"]'
 export const ERROR_BAR = '[data-v4-block="errorbar"]'
 export const QUEUE = '[data-v4-block="queue"]'
@@ -76,7 +90,12 @@ export const EMPTY_STARTER = '[data-v4-starter]'
 export const APPROVAL_CARD = '[data-v4-block="intervention"]'
 export const INTERVENTION_SLOT = APPROVAL_CARD
 export const INTERVENTION_CONFIRM = '[data-v4-control="confirm"]'
-export const INTERVENTION_REJECT = '[data-v4-control="reject"]'
+/**
+ * 卡上那颗否定动作（×）。2026-09-22 换壳后它由 `V4SlotShell` 统一摆在**右上**，
+ * 锚点随之从 `reject` 改成 `slot-dismiss`——它不再是页脚里的一颗钮，而是外壳的零件。
+ * 常量在这里改一次，全部走查跟着走（这就是它当初被抽成常量的理由）。
+ */
+export const INTERVENTION_REJECT = '[data-v4-control="slot-dismiss"]'
 export const INTERVENTION_CONFIRM_REJECT = '[data-v4-control="confirm-reject"]'
 export const INTERVENTION_CANCEL_REJECT = '[data-v4-control="cancel-reject"]'
 export const INTERVENTION_ESCALATE = '[data-v4-control="escalate"]'
@@ -110,7 +129,7 @@ export const COLLAPSE_BUTTON = '[data-v4-control="collapse"]'
 /** The real desktop assembly publishes domain and native schemas from the first request. */
 export function residentToolNames() {
   return [...LANE_MODEL_TOOL_CATALOG, ...LANE_DEFERRED_TOOL_CATALOG].map(tool => tool.name)
-    .concat([...LANE_CODING_TOOL_NAMES, 'nomi_read', 'nomi_request_tools']).sort()
+    .concat([...LANE_CODING_TOOL_NAMES, 'list_models', 'nomi_request_tools']).sort()
 }
 
 export function toolNames(body) {
@@ -119,6 +138,18 @@ export function toolNames(body) {
 
 export function hasToolResult(body, id) {
   return (body.messages ?? []).some((message) => message.role === 'tool' && message.tool_call_id === id)
+}
+
+/**
+ * 像人一样把一张待决的报价卡关掉：点 ×，卡要是先问一句「改的内容会一起丢」就再点确认。
+ *
+ * 2026-09-22 裁决 A 之后 `generate` 的回合**挂在这张卡上等用户**；一条走查要是看完卡就走，
+ * 那个回合永远不结束，夹具里那条「回合收尾」的期望也就永远没人消费。看完就该答——真人也是。
+ */
+export async function closeSpendCard(card, label = '关掉这张报价卡') {
+  const confirm = card.locator(INTERVENTION_CONFIRM_REJECT)
+  if (!(await confirm.isVisible().catch(() => false))) await clickOrFail(card.locator(INTERVENTION_REJECT), label)
+  if (await confirm.isVisible().catch(() => false)) await clickOrFail(confirm, `${label}（确认）`)
 }
 
 /** One I/O safety bound, not a polling/sleep-based completion signal. */
@@ -279,6 +310,13 @@ export function escapeForRegExp(text) {
   return String(text).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
 }
 
+/** 点开一块收起的过程行（见 `PROCESS`）。已经开着就不动它——再点一下是把它合上。 */
+export async function openProcess(process, label = '展开运行过程') {
+  await expect(process, '这一轮没有留下过程行').toBeVisible()
+  if (await process.getAttribute('open') === null) await clickOrFail(process.locator(':scope > summary'), label)
+  await expect(process, `${label}：点了没展开`).toHaveAttribute('open', '')
+}
+
 export async function openCanvas(win) {
   await clickOrFail(win.getByRole('button', { name: '生成', exact: true }), '生成工作区')
   await expect(win.locator('.generation-canvas-v2__stage')).toBeVisible()
@@ -346,7 +384,17 @@ export async function approvePendingIntervention(win, panel) {
   await clickOrFail(slot.locator(INTERVENTION_CONFIRM), '介入槽「确认」')
 }
 
-export async function createRuntimeWalk(name) {
+/**
+ * @param {string} name
+ * @param {{generationProvider?: 'loopback'|'apimart'|'higgsfield', videoResultPath?: string, env?: Record<string, string>}} [options]
+ *   `generationProvider: 'apimart'` = 这条走查要走**真实那条生成供应商路径**：目录里装内置 apimart
+ *   档案与 curated mapping，供应商地址由 `NOMI_E2E_PRODUCTION_FIXTURE` 那个只认 loopback 的口子
+ *   指到本机这台夹具。不传 = 老样子（自造 loopback 供应商，只跑 SDK/画布那半边，按付费确认键会被
+ *   宿主在供应商就绪那一步诚实拒绝）。
+ *   `videoResultPath` 透传给夹具（出片地址的路径段）；`env` 追加到被测 App 的进程环境（如把公网出口指到一个
+ *   只记账不放行的本地代理，证明走查碰不到真供应商）。都不传 = 老样子。
+ */
+export async function createRuntimeWalk(name, { generationProvider = 'loopback', videoResultPath, env: extraEnv = {} } = {}) {
   const args = process.argv.slice(2)
   if (args.length && (args.length !== 2 || args[0] !== '--packaged' || !path.isAbsolute(args[1]))) {
     throw new Error('Usage: node <walk.mjs> [--packaged /absolute/Nomi.app/Contents/MacOS/Nomi]')
@@ -355,9 +403,20 @@ export async function createRuntimeWalk(name) {
   const mode = executablePath ? 'packaged' : 'development'
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `nomi-pi-${name}-`))
   const settingsDir = path.join(tempRoot, 'settings')
+  // 显式给出、并原样交给启动器：付费走查要在起 App 之前往这里放凭据钥匙（Windows 的 Local State，
+  // 见 _realProfile.mjs），它必须和 App 真正用的 userData 是同一个目录，不能靠两边各自猜默认值。
+  const userDataDir = path.join(tempRoot, 'user-data')
   const outputDir = path.join(repoRoot, '.tmp', `pi-${name}-${mode}-${Date.now()}`)
   fs.mkdirSync(outputDir, { recursive: true })
-  const fixture = await createAgentRuntimeFixture({ rootDir: repoRoot, settingsDir })
+  // safeStorage 的加密身份 = app 名。开发态跑的是仓库目录（package.json 的 `nomi`），
+  // `--packaged` 跑的是打包后的 `Nomi`。给错只会解出 `locked`，模型照样显示为不可用。
+  const fixture = await createAgentRuntimeFixture({
+    rootDir: repoRoot, settingsDir, generationProvider,
+    ...(videoResultPath ? { videoResultPath } : {}),
+    ...(generationProvider === 'apimart' || generationProvider === 'higgsfield'
+      ? { userDataDir, appName: executablePath ? 'Nomi' : 'nomi' }
+      : {}),
+  })
   const launches = []
   const screenshots = []
   const report = { name, mode, tempRoot, outputDir, launches, screenshots, paidCalls: 0 }
@@ -371,7 +430,7 @@ export async function createRuntimeWalk(name) {
       .map((arg) => arg.trim())
       .filter(Boolean)
     current = await launchNomiApp({
-      name: `pi-${name}`, tempRoot, settingsDir, settleMs: 0,
+      name: `pi-${name}`, tempRoot, settingsDir, userDataDir, settleMs: 0,
       ...(executablePath ? { executablePath } : {}),
       ...(name === 'golden-path' ? {
         initialLocalStorage: {
@@ -379,7 +438,21 @@ export async function createRuntimeWalk(name) {
           'nomi.assistantModel': JSON.stringify({ vendorKey: FIXTURE_VENDOR, modelKey: FIXTURE_TEXT_MODEL }),
         },
       } : {}),
-      env: { NOMI_RENDERER_URL: '', VITE_DEV_SERVER_URL: '', NOMI_DESKTOP_DEV: '', NOMI_E2E_PRODUCTION_FIXTURE: '0', NOMI_DISABLE_AUTO_UPDATE: '1' },
+      env: {
+        ...extraEnv,
+        NOMI_RENDERER_URL: '', VITE_DEV_SERVER_URL: '', NOMI_DESKTOP_DEV: '', NOMI_DISABLE_AUTO_UPDATE: '1',
+        // 这三个是同一个口子的三把钥匙（`safeFixtureBaseUrl` 只接受 http(s) 的 127.0.0.1/localhost/::1）：
+        // 少一把就装不出可提交的生成供应商。默认仍是 '0'，老走查一个字都不变。
+        ...(generationProvider === 'apimart' || generationProvider === 'higgsfield'
+          ? {
+            NOMI_E2E_PRODUCTION_FIXTURE: '1',
+            NOMI_E2E_FIXTURE_BASE_URL: fixture.baseURL,
+            NOMI_E2E_FIXTURE_API_KEY: FIXTURE_APIMART_API_KEY,
+            // 夹具只认一家；不点名就是 apimart（老走查一个字不变）。
+            ...(generationProvider === 'higgsfield' ? { NOMI_E2E_FIXTURE_VENDOR: FIXTURE_NON_APIMART_VENDOR } : {}),
+          }
+          : { NOMI_E2E_PRODUCTION_FIXTURE: '0' }),
+      },
       args: ['--no-proxy-server', ...extraArgs],
     })
     const { win, app } = current
@@ -433,20 +506,30 @@ export async function createRuntimeWalk(name) {
   }
 
   /**
-   * 把窗口调成指定尺寸，返回调之前那份 bounds（调回去用）。
+   * 把内容区调成指定尺寸，返回调之前那份内容区尺寸（调回去用）。
    *
-   * 有些事只有在**真实的小窗**里才发生：最小窗 1100×720（`electron/main.ts:299-300` 锁死的那个数）
+   * 有些事只有在**真实的小窗**里才发生：最小窗 1100×720（`electron/main.ts` 的 minWidth/minHeight）
    * 下面板只剩 476 高，对话流这才真的溢出——「展开回来还停在原处」那条断言也才有信号可言。
    * 在默认大窗里流根本装得下，滚动位置恒 0，前后相等是个恒真式。
+   *
+   * 原生窗口与 Playwright 视口**两层一起改**：`_launchApp` 从 7f9436c23（2026-09-09）起用视口仿真把内容区
+   * 钉在验收尺寸，此后只 `setBounds` 的话窗口是缩了，`innerWidth` 却纹丝不动——渲染层看到的还是 1280 宽，
+   * 面板宽度上限按 1280 算（Windows 真机实测：窗口 1100×721，innerWidth 1280）。调完当场核对，没变成就报红。
    */
   async function resizeWindow(width, height) {
-    const browserWindow = await current.app.browserWindow(current.win)
-    return await browserWindow.evaluate((windowRef, bounds) => {
-      const previous = windowRef.getBounds()
-      windowRef.setBounds({ x: 0, y: 0, ...bounds })
+    const { app, win } = current
+    const previous = await win.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+    const browserWindow = await app.browserWindow(win)
+    await browserWindow.evaluate((windowRef, size) => {
+      windowRef.setContentSize(size.width, size.height)
       windowRef.center()
-      return previous
     }, { width, height })
+    await win.setViewportSize({ width, height })
+    const actual = await win.evaluate(() => ({ width: innerWidth, height: innerHeight }))
+    if (actual.width !== width || actual.height !== height) {
+      throw new Error(`resizeWindow：内容区没变成 ${width}×${height}，实际 ${actual.width}×${actual.height}`)
+    }
+    return previous
   }
 
   async function stopApp() {
@@ -456,19 +539,34 @@ export async function createRuntimeWalk(name) {
     await stopRuntimeApp(closed.app)
   }
 
-  async function finish(error) {
+  /**
+   * `collect`：App 关掉之后再取的证据（付费走查的收据、原库指纹）；抛错 = 这一场判红。
+   * `unscriptedFixture`：这一场根本没给夹具写剧本（付费走查的大脑和供应商都是真的）。那么夹具收到的
+   * 只可能是 App 自己发起的后台调用——例如出图后的镜级自评落到目录里第一个文本模型上——
+   * 如实记进报告（路径 + 请求里第一句话），不判红：它们不是这条走查在测的东西，也不花钱。
+   */
+  async function finish(error, { collect, unscriptedFixture = false } = {}) {
     if (error && current) {
       try { await current.win.screenshot({ path: path.join(outputDir, 'FAIL.png') }) }
       catch (captureError) { console.error('Failure screenshot unavailable:', captureError.message) }
     }
     await finalizeRuntimeWalk(report, {
       error, cleanup: [stopApp, () => fixture.close()],
-      collect: () => {
-        Object.assign(report, { textRequests: fixture.requests.length, imageRequests: fixture.images.length, unexpected: fixture.unexpected })
-        fixture.assertClean() // Includes requests received during app teardown, after the body checkpoint.
+      collect: async () => {
+        if (unscriptedFixture) {
+          report.backgroundFixtureCalls = fixture.unexpected.map((record) => ({
+            path: record.path,
+            firstUserLine: flattenRequestText({ messages: (record.body?.messages ?? []).filter((message) => message?.role === 'user').slice(-1) })
+              .trim().split('\n')[0].slice(0, 80),
+          }))
+        } else {
+          Object.assign(report, { textRequests: fixture.requests.length, imageRequests: fixture.images.length, unexpected: fixture.unexpected })
+          fixture.assertClean() // Includes requests received during app teardown, after the body checkpoint.
+        }
+        return collect?.()
       },
     })
   }
 
-  return { fixture, report, outputDir, start, newProject, snap, resizeWindow, stopApp, finish }
+  return { fixture, report, outputDir, settingsDir, userDataDir, start, newProject, snap, resizeWindow, stopApp, finish }
 }

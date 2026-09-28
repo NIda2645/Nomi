@@ -6,6 +6,7 @@
 import { launchNomiApp } from './_launchApp.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
+import { stationTimeout } from './_station-budget.mjs'
 
 const repoRoot = process.cwd()
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/asset-audio')
@@ -62,13 +63,26 @@ try {
   await snap('library')
 
   const card = getWin().locator('[data-project-card][role="button"]').first()
-  if (await card.count()) { await card.click({ timeout: 4000 }).catch(() => {}) }
+  if (await card.count()) {
+    await card.click({ timeout: 4000 }).catch(() => {})
+    const continueButton = getWin().getByText('继续创作', { exact: false }).first()
+    if (await continueButton.count()) await continueButton.click({ timeout: 4000 }).catch(() => {})
+  } else {
+    // This isolated profile starts with zero projects; create the real blank
+    // project through the same library CTA instead of assuming seeded state.
+    await getWin().getByRole('button', { name: /新建空白项目/ }).first().click({ timeout: 4000 })
+  }
   await win.waitForTimeout(2600)
   await dismiss()
   check('进入项目', /projectId=/.test(getWin().url()), getWin().url().slice(-40))
 
-  // 打开素材库（2026-07-22 起唯一门=侧栏 tab，nomi-open-files-panel 展开）
-  await getWin().evaluate(() => window.dispatchEvent(new CustomEvent('nomi-open-files-panel')))
+  // 音频是剪辑页素材来源，不进入生成画布的图片/视频素材池；打开预览页
+  // 的「素材」来源栏，复用同一素材库壳但显式 includeAudio=true。
+  const previewTab = getWin().getByRole('button', { name: /预览/ }).first()
+  if (await previewTab.count()) await previewTab.click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
+  await getWin().waitForTimeout(1200)
+  const sourceAssetsTab = getWin().getByRole('tab', { name: /^素材$/ }).first()
+  if (await sourceAssetsTab.count()) await sourceAssetsTab.click({ timeout: stationTimeout({ operations: 2 }) }).catch(() => {})
   await getWin().waitForTimeout(900)
   const accept = await getWin().locator('input[aria-label="素材文件选择器"]').getAttribute('accept').catch(() => null)
   const a = accept || ''
@@ -85,11 +99,11 @@ try {
   // 确认每个格式都出现在面板网格（含曾静默蒸发的 .flac/.m4a）；音频 kind 以瓦片「音频」角标为证
   await getWin().waitForTimeout(1200)
   const probe = await getWin().evaluate(() => {
-    const dialog = document.querySelector('section[aria-label="素材库"]')
+    const dialog = document.querySelector('aside[aria-label="素材来源"]')
     if (!dialog) return { found: false, why: 'no panel' }
     const spans = Array.from(dialog.querySelectorAll('span')).map((s) => (s.textContent || '').trim())
     const badgeCount = spans.filter((t) => t === '音频').length
-    const names = spans.filter((t) => /probe-tone/.test(t))
+    const names = Array.from(dialog.querySelectorAll('[title*="probe-tone"]')).map((node) => node.getAttribute('title') || '')
     return { found: badgeCount > 0 || names.length > 0, badgeCount, names }
   }).catch((e) => ({ found: false, why: e.message }))
   const names = probe.names || []

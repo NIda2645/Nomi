@@ -1,0 +1,317 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-spend-confirm-never-generated",
+  "problem_type": "A refusal was scored as a pass, because every real-screen walkthrough of the paid confirm ran on a fixture that could not reach the production provider path",
+  "symptom": "在真实界面上按下付费确认卡的主按钮（含未知价的「仍要生成」），右上角浮出「暂时无法确认这一步的结果，请查看任务状态后再操作。」，卡留在原处，画布节点仍是「排队中」，一次供应商请求都没有发生。三条走查（agent-spend-unknown-price / agent-spend-confirm-executes / agent-spend-full-auto）中，前两条把这次拒绝当作通过、第三条红在一句过期的英文串上。",
+  "direct_cause": "createGenerationProviderBootstrap 只为 apimart 装生成供应商，其余供应商一律 providerReady:false；而 agent-runtime 系列走查的夹具供应商是自造的 agent-runtime-loopback，且 agent-runtime-walk-support 显式以 NOMI_E2E_PRODUCTION_FIXTURE=0 启动。于是确认必然停在供应商就绪那一步，appIntegrationSpendConfirm.failed() 把原话换成 generation_execution_failed（且不落任何日志），渲染层再把所有失败印成同一句 agentPanelV4.spendActionFailed。",
+  "class_root": "走查在一个**走不到那条生产路径**的替身上运行，于是它断言的不是「这件事成了」，而是「这件事以某种方式结束了」。只要断言只盯用户面上的一个反应（有 toast / 有文案 / 有红带），拒绝和成功在测量仪器上就长得一样——两条走查因此把注释里明写的缺口一路带到了发版前。同一形状还表现在失败话术上：宿主明明知道「有没有发起」这个事实（账本里有没有提交意图落盘），却把它折成一句放之四海的安慰话。",
+  "affected_population": [
+    "所有在 Agent 面板里按付费确认卡的用户：这条链在任何一条真机走查里都没有被证过，缺口靠三份文件头注释口头登记（main / PR #828 head / 本分支的 generationProviderBootstrap.ts 是同一个 blob dd4c75b2，不是谁改坏的）。",
+    "确认失败时的每一个用户：无论有没有真的发起，读到的都是同一句「结果未确认」，于是不敢再按，转而去找一个并不存在的任务。"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "src/workbench/ai/lane/laneToolFailureText.ts",
+    "src/i18n/locales/agentToolFailure.ts",
+    "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+    "electron/shared/agentLane/laneFailureFromDecision.ts",
+    "tests/ux/agent-runtime-fixture.mjs",
+    "tests/ux/agent-runtime-walk-support.mjs",
+    "tests/ux/agent-spend-unknown-price.walk.mjs",
+    "tests/ux/agent-spend-confirm-executes.walk.mjs",
+    "tests/ux/agent-spend-full-auto.walk.mjs"
+  ],
+  "entry_points": [
+    "Agent 面板付费卡：确认 / 逐镜确认 / 改参数 / 丢弃（useAgentPanelSpendConfirm 的四个动作，同一个 act()）",
+    "外部 MCP 的生成确认（mcpGenerationTools → 同一条 decideGenerationSpend）",
+    "全自动档的免卡放行（policySpendDecision → 同一条 decideGenerationSpend）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "失败话术与走查夹具都在本仓内；供应商那一侧只提供 HTTP 形状，由本机 loopback 夹具复刻。",
+  "invariants": [
+    "真实界面上按下付费确认，必须真的把请求发给供应商、产物必须落回草稿那一刻建的那个节点。",
+    "失败那一句说的必须是事实：没有任何提交意图落过盘就说「没发起、没花钱」，落过了才说「结果未知」。",
+    "走查不许把「有反应」当成「成功」：判据必须落在供应商那一侧收到的请求与盘上的产物。"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "RendererGestureTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendActionDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendSurfaceUnavailableError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "listPendingSpendConfirmations"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "installPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "pendingSpendDependencies"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "revisePendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "discardPendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "confirmPendingSpendConfirmation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneFailureFromDecision.ts",
+      "symbol": "LaneFailureAdvice"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "symbol": "laneFailureFromDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "symbol": "laneFailureFromDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneFailureFromDecision.ts",
+      "symbol": "isBareCodeMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneTools.mts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneContracts.ts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolFailureEnvelope.ts",
+      "symbol": "LANE_TOOL_OWN_FAILURE_CODE_LIST"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "symbol": "LANE_TOOL_OWN_FAILURE_CODE_LIST"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneViewModel.ts",
+      "symbol": "LaneToolPublicFailure"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "laneToolFailureOf"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "zhAgentPanelV4"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "enAgentPanelV4"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/locales/agentToolFailure.ts",
+      "symbol": "zhAgentToolFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "zhAgentToolFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/resources.ts",
+      "symbol": "enAgentToolFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "symbol": "AGENT_TOOL_FAILURE_TEXT_KEY"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneToolFailureText.ts",
+      "symbol": "laneToolFailureSummary"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "laneToolFailureSummary"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "laneToolFailureDetail"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "AgentPanelSpendConfirm"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "useAgentPanelSpendConfirm"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "hasPendingSpendCapability"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "pendingSpendOfRead"
+    }
+  ],
+  "door_reduction": {
+    "before": 37,
+    "after": 37,
+    "why_not": "门表是本次改动那 6 个受管生产文件的机器门表（写/读入口）。「有几处回答这个问题」的答案是 1：付费卡四个动作的失败出口只有 appIntegrationSpendConfirm.failed 一处，「这一笔有没有离开过这台机器」这个事实也只在那里派生一次，改参数/丢弃两个动作把 started 固定成 false。表里其余的门是同一族失败码的 owner 登记表（码表 / 模型侧建议 / 渲染层查表 / i18n 词条），每一份各自只有一处，合并没有对象。本次没有新开任何入口。注：同时改到的 src/i18n/locales/agentPanelV4.ts 是纯词条文件，没有任何符号在它自己里被读写，它的门在 src/i18n/resources.ts（已在门表内），所以它不列进 scope_paths——列进去只会得到一条数不出门的假记账。"
+  },
+  "generality_proof": "「说哪一句」不再由调用点各自决定：failed() 是唯一产地，它只读账本（作业状态是否越过 submit_intent_persisted）。改参数/丢弃两个动作从不提交，恒走 not_started；确认那一条按事实算。任何新增的第五个动作只要走 failed() 就自动正确。",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions",
+      "responsibility": "付费卡四个动作（读/改参数/丢弃/确认）的唯一编排与唯一失败出口；「这一笔有没有离开过这台机器」这个事实只在这里派生一次。"
+    },
+    {
+      "path": "tests/ux/agent-runtime-walk-support.mjs",
+      "symbol": "createRuntimeWalk",
+      "responsibility": "agent-runtime 系列走查的唯一启动口；生成供应商走自造 loopback 还是真实那条生产路径在这里选。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "tests/ux/agent-runtime-walk-support.mjs",
+      "entry_point": "createRuntimeWalk",
+      "disposition": "enforced",
+      "evidence": "agent-runtime 系列走查唯一的启动口。新增 generationProvider:'apimart' 一档：装内置 apimart 档案与 curated mapping、按真 safeStorage 身份种钥匙、并把 NOMI_E2E_PRODUCTION_FIXTURE 那三把钥匙一起给出去。任何要断言「真的生成了」的走查从此能接到真实那条生产路径上；三条走查已改用它并逐条断言供应商请求 + 盘上产物 + 节点 success。"
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "failed",
+      "disposition": "enforced",
+      "evidence": "付费卡四个动作的唯一失败出口。按账本（作业状态是否越过 submit_intent_persisted）在 generation_not_started 与 generation_execution_failed 之间选，改参数/丢弃恒走前者；原话同时进主进程日志。渲染层按码选话术，读不到新码时落回更保守的那一句。"
+    },
+    {
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "entry_point": "generation_execution_failed 回落",
+      "disposition": "not-affected",
+      "evidence": "传输层那一处确实分不出「有没有发起」——它拿到的只有一个传输异常，账本不在它手上。保留兜底码是诚实的：它说的正是「可能已经提交」。分辨那件事的位置只有 Run 账本旁边这一处，本次已在那里做了。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一形状在这一批里同时出现在三条走查上，而且已经以文件头注释的形式被登记过两次（「这条走查证不到产物落回节点，这是有意的」）——口头登记的缺口会一直活着，直到有人在发版前真的去按那颗按钮。",
+    "same_class_scan": [
+      "断言只盯「用户面上有反应」的走查：本次把三条改成盯供应商请求 + 盘上产物 + 节点状态。",
+      "把多种事实折成一句兜底话的出口：appIntegrationSpendConfirm.failed（本次修）；同族 generationTransportAdapters 的 generation_execution_failed 回落仍在，但它在传输层、确实分不出有没有发起，保留。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "invariant": "付费卡四个动作只有一个失败出口，而它说哪一句由账本决定：没有任何作业越过 submit_intent_persisted 就是「没发起、没花钱」，越过了才是「结果未知」。改参数与丢弃从不提交，恒走前者。与之配套，要断言「真的生成了」的真机走查必须跑在能装出可提交生成供应商的那一档上，判据落在供应商那一侧收到的请求、盘上的产物与屏上的节点状态。",
+    "failure_mode": "failed() 是唯一产地：任何新增动作只要走它就自动说对话，绕过它就得自己写一句——那在代码走查里是看得见的。走查侧：createAgentRuntimeFixture 在 generationProvider:'apimart' 下缺 userDataDir/appName 直接抛 TypeError；供应商没收到请求时 walk.fixture.images 恒 0，断言立刻红。",
+    "exception_policy": "none",
+    "strategy": "把「这条走查接得到生产路径吗」从每份文件头的口头注释，变成启动口上的一个显式开关 + 机器可验的事实断言。",
+    "artifacts": [
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "tests/ux/agent-runtime-walk-support.mjs",
+      "tests/ux/agent-spend-unknown-price.walk.mjs"
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/agent-spend-unknown-price.walk.mjs",
+    "tests/ux/agent-spend-confirm-executes.walk.mjs",
+    "tests/ux/agent-spend-full-auto.walk.mjs",
+    "tests/ux/agent-runtime-walk-support.mjs"
+  ],
+  "class_regression_tests": [
+    "tests/ux/agent-runtime-walk-support.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有旧实现被替换：新增的是一个此前不存在的区分（没发起 / 结果未知），原来那句兜底话在「确实可能已提交」那一档上仍然是对的，继续用。走查侧的旧档（自造 loopback 供应商）也保留——agent-spend-card 与 agent-spend-reprice 证的是卡的长相与改价三拍，它们本来就不该去碰提交那条链。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "这条不变量与失败话术都由 Nomi 自己拥有，没有框架在上游决定它。",
+    "exit_criteria": []
+  },
+  "migration": "无数据迁移：新增的 generation_not_started 只影响一次失败返回里的字符串码，不落盘、不进任何持久化结构；旧版本写下的收据、Run 事件与账本一个字节都不变。渲染层读不到这个码时会落回原来那句（更保守的那一句），所以新旧渲染层与新旧主进程任意搭配都不会说错话。",
+  "residual_risks": [
+    "NOMI_E2E_PRODUCTION_FIXTURE=1 同时把 Run 的 policy.maxSpend 钉成 0（零额度硬保险），所以真机走查只能覆盖「算不出价」那一档的提交；有已知价的提交仍只由 electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts 在能力层断言。",
+    "Agent 这条路上用户在卡上改的参数今天会在 executionContract.compileParameters 被整包丢弃（module.parameterSchema 只从 onboarding.fields 与 mapping.create.defaultParams 派生，内置目录 248 个 mapping 只有 12 个带 defaultParams、156 个模型 0 个有 onboarding），线缆上跑的是 archetypeWireDefaults 的默认值。2026-09-21 实测发现，属另一条根因（档案不是合同那一侧参数声明的主人），未在本次修；agent-spend-confirm-executes 因此只断言改动落进了盘上那份候选。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "tests": [
+      "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+      "electron/capabilityCore/unknownPriceSpendConfirm.e2e.test.ts",
+      "tests/ux/agent-spend-unknown-price.walk.mjs"
+    ],
+    "structural_ticket": "docs/plan/2026-09-21-unknown-price-open-gate.md"
+  }
+}

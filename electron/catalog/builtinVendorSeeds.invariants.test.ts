@@ -7,7 +7,7 @@
  * 验证判据按单一 HTTP 路由（/v1/models）。只要还这么分派，下一家新接的供应商
  * 就会以同样方式再掉进来。三条不变量把「新加一家」的正确性搬到装配期：
  *
- *   (a) 声明 direct-key ⇒ 必须带零成本 livenessProbe（否则会掉回 /v1/models 判据）；
+ *   (a) 声明 direct-key ⇒ 必须带 credentialProbe（带出处 + 显式 cost），否则会掉回 /v1/models 判据；
  *   (b) 有 curated 模型 + curated mapping ⇒ 发布判据必须能对它返回 true；
  *   (c) 用户要填凭据的内置家 ⇒ 必须有一条不当场 throw 的验证分支。
  *
@@ -39,7 +39,7 @@ vi.mock("../ai/antigravityConnection", () => ({
   antigravityConnection: { canEnable: () => false, hasPassed: () => false },
 }));
 
-// livenessProbe 走生产传输 appFetch（check-network-entry 禁裸 fetch 当值），按既有夹具手法在模块层注入。
+// credentialProbe 走生产传输 appFetch（check-network-entry 禁裸 fetch 当值），按既有夹具手法在模块层注入。
 const { mockAppFetch } = vi.hoisted(() => ({ mockAppFetch: vi.fn<typeof fetch>() }));
 vi.mock("../appFetch", () => ({ appFetch: mockAppFetch }));
 
@@ -71,14 +71,40 @@ function vendorsWithCodeOwnedExecution(state: CatalogState): string[] {
     .map((seed) => seed.key);
 }
 
-describe("(a) direct-key 必须带零成本存活探测", () => {
-  it("每个 credentialMode==='direct-key' 的种子都声明了 livenessProbe（带官方出处）", () => {
+describe("(a) direct-key 必须带零成本凭据探测", () => {
+  it("每个 credentialMode==='direct-key' 的种子都声明了 credentialProbe（带官方出处 + 显式 cost）", () => {
     for (const seed of BUILTIN_VENDOR_SEEDS) {
       if (seed.credentialMode !== "direct-key") continue;
-      expect(seed.livenessProbe, `${seed.key} 声明了 direct-key 却没有 livenessProbe`).toBeTruthy();
-      expect(seed.livenessProbe?.source.url).toMatch(/^https:\/\//);
-      expect(seed.livenessProbe?.source.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(seed.credentialProbe, `${seed.key} 声明了 direct-key 却没有 credentialProbe`).toBeTruthy();
+      expect(seed.credentialProbe?.source.url).toMatch(/^https:\/\//);
+      expect(seed.credentialProbe?.source.checkedAt).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // 花不花钱必须**写在声明里**（T-MO-10，用户 2026-09-22 拍板）。09-11 群反馈撞上的正是
+      // 「注释说零成本、实际是一次真实生成」——没写下来的免费不算免费。缺省虽然 fail-closed
+      // 判 paid，内置家也不许靠缺省：靠缺省就等于每次接入都多一张确认卡。
+      expect(
+        seed.credentialProbe?.cost,
+        `${seed.key} 的 credentialProbe 没说自己花不花钱；免费要有出处，付费要走确认面`,
+      ).toMatch(/^(free|paid)$/);
     }
+  });
+
+  /**
+   * 「验证不花钱」的机器判据（TODO T-MO-10 09-17 裁决原话：任何 credential 探测路径出现
+   * `POST /chat/completions` 即红）。声明成 free 的端点不许长成一次生成提交。
+   */
+  it("声明为 free 的探测端点，不许是一次生成提交（chat/completions、*/generations、messages…）", () => {
+    const GENERATION_LIKE = /(chat\/completions|\/completions|\/generations|\/v1\/messages|\/responses|\/images|\/videos|\/audio)/i;
+    let checkedFree = 0;
+    for (const seed of BUILTIN_VENDOR_SEEDS) {
+      if (seed.credentialProbe?.cost !== "free") continue;
+      checkedFree += 1;
+      expect(
+        GENERATION_LIKE.test(seed.credentialProbe.request.path),
+        `${seed.key} 把一个长得像生成提交的端点声明成了免费凭据探测：${seed.credentialProbe.request.path}`,
+      ).toBe(false);
+    }
+    // 采不到样本的扫描会以「全绿」的样子通过，和真绿长得一模一样。
+    expect(checkedFree, "一个 free 探测端点都没采到——选择器失效了").toBeGreaterThanOrEqual(2);
   });
 });
 
@@ -127,8 +153,10 @@ describe("(c) 填 key → 凭据落盘 + 该家发布（逐家参数化，用户
     const { readCatalog } = await import("./catalogStore");
     const modelListProbe = await import("../ai/onboarding/modelListProbe");
     vi.spyOn(modelListProbe, "fetchModelList").mockResolvedValue({ ok: true, models: [], statuses: [200] });
-    // 探测型（apimart）：上游按官方契约回一条最小 completion。
-    mockAppFetch.mockResolvedValue(new Response(JSON.stringify({ choices: [{ message: { content: "Hi" } }] }), { status: 200 }));
+    // 探测型（apimart 的 `GET /v1/balance` / higgsfield 的 estimate）：两家的免费端点各回各的
+    // 成功字段，一条响应体同时满足两个 successPath（`remain_balance` / `credits`）即可
+    // ——这里要钉的是「每家都存得进、存完就发布」，不是各家的响应形状。
+    mockAppFetch.mockResolvedValue(new Response(JSON.stringify({ success: true, remain_balance: 10.5, credits: "0.050" }), { status: 200 }));
 
     const failures: string[] = [];
     for (const vendorKey of credentialVendorKeys()) {
@@ -195,7 +223,7 @@ describe("每一类各自的正路（用户反馈里被点名的四种情形）"
     expect(state.apiKeysByVendor.replicate?.apiKey).toBeTruthy();
   });
 
-  it("apimart（种子带 livenessProbe）：401 仍然判 key 无效，不发布", async () => {
+  it("apimart（种子带 credentialProbe）：401 仍然判 key 无效，不发布", async () => {
     mockAppFetch.mockResolvedValue(new Response("{}", { status: 401 }));
     await expect(saveKey("apimart", "sk-bad")).rejects.toThrow();
     const { readCatalog } = await import("./catalogStore");

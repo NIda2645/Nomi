@@ -34,7 +34,7 @@ import { DEFAULT_TIMEOUT_MS, clickOrFail, expect } from './_assert.mjs'
 import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER_PERMISSION, INTERVENTION_CONFIRM,
-  PERMISSION_POPOVER, createRuntimeWalk, openCanvas, permissionTier, readProject, recorded, sendCanvas,
+  PERMISSION_POPOVER, createRuntimeWalk, openCanvas, permissionTier, readProject, recorded, sendCanvas, closeSpendCard,
 } from './agent-runtime-walk-support.mjs'
 
 const ASK_SAFE = 'S_AUTO_ASK_1：帮我生成一张六棱柱的图。'
@@ -45,7 +45,7 @@ const PRICE_TOTAL = '[data-v4-price="total"]'
 function draftTurn(walk, { marker, callId, prompt, done }) {
   // 20 动词：draft_shots 建草稿（落画布、不出卡），generate 才把报价卡摆到用户面前；「全自动」档在 generate 那一刻替用户决门。
   const generateId = `${callId}-generate`
-  let draftId
+  let operationId
   const planner = walk.fixture.expectText({
     label: `the agent drafts a generation for ${marker}`,
     match: (body) => flattenRequestText(body).includes(marker),
@@ -54,16 +54,16 @@ function draftTurn(walk, { marker, callId, prompt, done }) {
     } },
   })
   const drafted = walk.fixture.expectText({
-    label: `the draft for ${marker} comes back with its draftId, then the agent calls generate`,
+    label: `the draft for ${marker} comes back with its operationId, then the agent calls generate`,
     match: (body) => {
       const result = (body.messages ?? []).find((message) => message.role === 'tool' && message.tool_call_id === callId)
       if (!result) return false
-      draftId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
+      operationId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
       return true
     },
     reply: { type: 'hold' },
   })
-  drafted.received.then(() => drafted.release({ type: 'tool', id: generateId, name: 'generate', args: { draftId } }))
+  drafted.received.then(() => drafted.release({ type: 'tool', id: generateId, name: 'generate', args: { operationId } }))
   const finished = walk.fixture.expectText({
     label: `the drafting turn for ${marker} completes through the same SDK turn`,
     match: (body) => (body.messages ?? []).some((message) => message.role === 'tool' && message.tool_call_id === generateId),
@@ -85,7 +85,7 @@ try {
   const first = draftTurn(walk, { marker: 'S_AUTO_ASK_1', callId: 'auto-draft-1', prompt: '一个悬浮的六棱柱，柔和的演播室灯光', done: 'S_AUTO_DONE_1：草稿已就绪，等你确认。' })
   await sendCanvas(win, ASK_SAFE)
   await recorded(first.planner.received, 'safe-auto draft request')
-  await recorded(first.finished.received, 'safe-auto draft result')
+  // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——这一轮此刻正挂在卡上，收尾在下面关卡之后。
 
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   await expect(card, '「自动改」档下每一笔付费生成照旧逐次问——这一档一个字都没变').toBeVisible()
@@ -95,13 +95,19 @@ try {
   await expect(card.locator(PRICE_TOTAL), '「自动改」档下那张卡照旧印着宿主按目录算的价').toContainText('0.30')
   // 阴性对照：这一档下宿主**根本不去碰那道门**，所以不该有任何失败。
   // ③ 里同一个定位器要变成「有」——两次之间唯一的变量就是档位。
-  const failures = win.locator(`${CANVAS_PANEL} [data-v4-block="errorbar"], ${CANVAS_PANEL} [data-v4-block="tool"][data-status="failed"]`)
-  await expect(failures, '「自动改」档下不该去决门，也就不该有任何失败').toHaveCount(0)
+  //
+  // 出卡不留任何失败痕迹：等用户不再以「错误 + STOP」的形状出现（2026-09-22 裁决 A），
+  // 所以这里没有一句要滤掉的「公告」——**任何**失败行都算数。
+  const anyFailure = win.locator(`${CANVAS_PANEL} [data-v4-block="errorbar"], ${CANVAS_PANEL} [data-v4-block="tool"][data-status="failed"]`)
+  // 公告那一行现在是普通完成态，所以「除了公告之外的失败」= **任何**失败行：不用再把它滤出去。
+  const failures = anyFailure
+  await expect(failures, '「自动改」档下不该去决门，也就不该有任何决门失败').toHaveCount(0)
   await walk.snap('full-auto-01-safe-auto-still-asks')
 
-  // 这一张**不丢弃**：2026-09-11 用户拍板「已经在等的那张卡不因切档而被放行」，
-  // 而 ④ 正要证它在决门失败之后仍然在原处。切档对它的影响那一条由
-  // `agent-spend-card.walk.mjs` 钉着，这里不重复断言。
+  // 看完就答：把这张卡关掉，等它的那个回合才收得了尾（「已经在等的那张卡不因切档而被放行」由
+  // `agent-spend-card.walk.mjs` 钉着，这里不重复）。不关它，下面那句新的请求就成了对这张卡的回答（裁决 E）。
+  await closeSpendCard(card, '关掉「自动改」档下的那张卡')
+  await recorded(first.finished.received, 'the safe-auto generate returns once its card was closed')
 
   // ② 切到「全自动」。那张二次确认卡上的话必须和今天的行为一致——
   // 它 2026-09-12 之前写的是「付费和不可逆的操作仍然每次问」，而那句话现在是假的。

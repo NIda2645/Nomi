@@ -43,7 +43,7 @@ function run(patch: Partial<ProductionRun> = {}, shots?: ProductionGenerationSho
     schemaVersion: 1, runId: 'run-1', projectId: 'proj-1', revision: 1, status: 'draft', stageId: 'generate',
     playbook: { name: 'generation.single-shot', version: '1.0.0' }, origin: { host: 'semantic-mcp' },
     policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: null, maxAttemptsPerJob: 1, minimizeUploads: true },
-    budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0 }, planVersion: 1, snapshotCursor: 0,
+    budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 }, planVersion: 1, snapshotCursor: 0,
     stages: [], gates: [], jobs: [], artifacts: [],
     generationPlan: {
       operationId: 'run-1',
@@ -61,7 +61,6 @@ describe('materialize-shots wire carries the candidate model identity', () => {
   it('每一镜都带 vendor / modelKey / modeId / revision（节点模型从此以候选为准）', () => {
     const payload = buildMaterializeShotsPayload(run({}, [shot('a1', { role: 'anchor' }), shot('s1', { role: 'shot' })]), {
       projectRoot: null,
-      previewSecret: 'secret',
     })
     expect(payload).not.toBeNull()
     for (const wire of payload!.shots) {
@@ -76,13 +75,13 @@ describe('materialize-shots wire carries the candidate model identity', () => {
   })
 
   it('单镜草稿（shots[] 为空，候选在 plan 顶层）同样带身份', () => {
-    const payload = buildMaterializeShotsPayload(run(), { projectRoot: null, previewSecret: 'secret' })
+    const payload = buildMaterializeShotsPayload(run(), { projectRoot: null })
     expect(payload!.shots).toHaveLength(1)
     expect(payload!.shots[0].candidate?.modelKey).toBe('gpt-image-2')
   })
 
   it('绝不把 transportModelId（内部投影）或候选参数泄进 RPC 报文', () => {
-    const payload = buildMaterializeShotsPayload(run({}, [shot('s1')]), { projectRoot: null, previewSecret: 'secret' })
+    const payload = buildMaterializeShotsPayload(run({}, [shot('s1')]), { projectRoot: null })
     const serialized = JSON.stringify(payload)
     expect(serialized).not.toContain('transportModelId')
     expect(serialized).not.toContain('internal/gpt-image-2-wire')
@@ -154,6 +153,20 @@ describe('draft lifecycle notifies the canvas landing', () => {
     expect(onPlanChanged).toHaveBeenCalledWith('proj-1', 'run-1')
   })
 
+  it('改多镜草稿里的一镜 → 命令带 shotId，幂等键跟那一镜的候选 revision 走（顶层候选不动）', async () => {
+    const onPlanChanged = vi.fn()
+    const owner = ownerFor(run({}, [shot('s1'), { ...shot('s2'), candidate: candidate({ candidateId: 's2', revision: 7 }) }]))
+    const store = createProductionGenerationOperationStore(owner as never, { onPlanChanged })
+    await store.patch('proj-1', 'run-1', { prompt: '改第二镜' }, NOW, 's2')
+    expect(owner.command).toHaveBeenCalledWith('proj-1', 'run-1', expect.objectContaining({
+      type: 'generation.patch',
+      commandId: 'generation.patch:run-1:s2:7',
+      payload: { patch: { prompt: '改第二镜' }, shotId: 's2' },
+    }))
+    expect(onPlanChanged).toHaveBeenCalledWith('proj-1', 'run-1')
+    await expect(store.patch('proj-1', 'run-1', { prompt: 'x' }, NOW, 's9')).rejects.toThrow(/s9/)
+  })
+
   it('落地观察者抛错不许把草稿命令带崩（落地是 best-effort，§1 铁律）', async () => {
     const owner = ownerFor(run())
     const store = createProductionGenerationOperationStore(owner as never, {
@@ -179,7 +192,6 @@ describe('付费信封与自家画布投影的先后', () => {
       command: async () => undefined,
       requestRenderer,
       resolveProjectRoot: () => '/tmp/nomi-proj',
-      previewSecret: () => 'preview-secret',
       isProjectOpen: () => true,
     })
   }
@@ -240,7 +252,7 @@ describe('封存不许抹掉画布绑定', () => {
       schemaVersion: 1, candidateId: shotId, candidateRevision: source.revision,
       moduleId: source.moduleId, moduleVersion: '1.0.0', providerId: source.providerId, modelId: source.modelId,
       mode: source.mode, prompt: source.prompt, parameters: source.parameters, references: [],
-      contractHash: `hash-${shotId}`, warnings: [], droppedFields: [],
+      contractHash: `hash-${shotId}`, warnings: [],
     } as ExecutionContractV1
   }
   /** capabilityCore 的 sealMultiShotFor 投出来的形状：**逐字段重建，不带 nodeId**。这是引爆点，故照抄。 */
@@ -284,6 +296,7 @@ describe('封存不许抹掉画布绑定', () => {
       operation: { operationId: 'run-1', projectId: 'proj-1', candidate: shots[0].candidate, planVersion: current.planVersion },
       contract: contractFor('c9-shot-1'),
       multiShot: { shots, planHash: 'plan-hash-1' },
+      run: current,
       providers: [{
         providerId: 'apimart',
         capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },

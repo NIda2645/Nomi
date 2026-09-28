@@ -5,7 +5,7 @@ import {
   parseCustomCapabilityContract,
   replaceCustomCapabilityContractMeta,
   resolveArchetypeForModel,
-} from '../../config/modelArchetypes'
+} from '../../../electron/shared/modelArchetypes'
 import { getDesktopBridge } from '../../desktop/bridge'
 import { confirmDialog, DesignButton } from '../../design'
 import type { ChipModel } from './ModelChipGroups'

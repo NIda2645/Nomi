@@ -1,0 +1,242 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-background-reconcile-disables-user-models",
+  "problem_type": "Who owns a model's enable decision",
+  "symptom": "用户昨天还能选的文本模型，过一夜从下拉里消失，没有任何通知。他没做过任何事。触发条件是供应商 /models 列表里查不到这个 id——对中转站与自建网关来说这是常态（本机记忆里已有「中转页的上限≠模型的上限」这条）。",
+  "direct_cause": "`electron/catalog/modelListReconcile.ts` 的 patch 是 `{ unlisted, enabled: unlisted ? false : model.enabled }`：`unlisted` 时**强制** `enabled: false`。它由 `vendorHealth.startCatalogReconciliation` 的 24 小时 setInterval 触发（`reconcileTextVendorCatalogs` → `checkVendorHealth` → `mutateCatalog(tx.upsertModel)`），只发一个 `nomi:model-catalog:changed` 让 UI 刷新，不告诉任何人发生了什么。`seedBuiltins.ts` 的一次性退役迁移做同一件事（同一行里连写 `enabled: false, unlisted: true`），与它上方三行「种子不碰 enabled（那是用户数据）」的注释自相矛盾。",
+  "class_root": "「供应商这次没列出它」与「用户要不要用它」是两件事，被写在同一个赋值里。前者是我们观察到的一条**旁注**，随网络、网关、分页形状抖动；后者是用户的**决定**。一旦让前者去写后者，任何一次观察抖动都会变成用户资料里的一次静默修改——而且改的是他看得见、要负责的那一栏。同类形状：把「检测到的事实」直接当「该采取的动作」，中间没有人。",
+  "affected_population": [
+    "所有在中转站/自建网关上接文本模型的用户（/models 的内容随网关配置变，模型仍然可用）",
+    "所有老装机：seedBuiltins 的一次性退役迁移在冷启动时对 RETIRED_APIMART_TEXT_MODEL_KEYS 做同一件事"
+  ],
+  "scope_paths": [
+    "electron/catalog/modelListReconcile.ts",
+    "electron/catalog/modelListReconcile.test.ts",
+    "electron/catalog/seedBuiltins.ts",
+    "electron/catalog/apimartTextMigration.test.ts",
+    "electron/catalog/catalogLivenessPersistence.test.ts",
+    "electron/ai/onboarding/vendorHealth.test.ts"
+  ],
+  "entry_points": [
+    "后台定时：vendorHealth.startCatalogReconciliation 的 24h setInterval → reconcileTextVendorCatalogs",
+    "冷启动迁移：catalogStore → applyBuiltinSeeds 的 RETIRED_APIMART_TEXT_MODEL_KEYS 一次性迁移",
+    "用户在设置里点「重新检查」：checkVendorHealth(vendorKey, force) 走同一条对账",
+    "用户自己开关模型：设置→模型→启用开关（upsertModel，这是唯一应该改 enabled 的入口）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是我们自己的目录状态归属问题：哪一份状态属于用户、哪一份属于观察。判据来自本仓源码与 2026-09-08 那份设计的原始拍板记录（docs/plan/2026-09-08-catalog-liveness-reconcile.md「自动禁用，保留配置；恢复列出不自动启用」），以及 2026-09-21 用户对这条设计的改判（「缺口是我们的，不能让用户扛、不能静默」）。没有外部规范决定这件事。",
+  "invariants": [
+    "`Model.enabled` 只由用户的动作改变；任何后台任务、定时对账、冷启动迁移都不许写它",
+    "供应商清单只落 `unlisted` 旁注，并在模型旁如实显示；停不停用由用户决定",
+    "一次失败 / 不完整 / 304 / **成功但为空**的清单都不是「它不在了」的证据，不产生任何状态变更"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "modelListReconciliation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/antigravityCatalog.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogCommit.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "applyBuiltinSeeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/comfyuiWorkflowImport.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/comfyuiWorkflowImportStore.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/customCallDraft.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/modelListReconcile.ts",
+      "symbol": "modelListReconciliation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/modelRetype.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "applyBuiltinSeeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/serviceCatalog.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/api/desktopClient.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/catalogLiveness/states/01-listing.tsx",
+      "symbol": "modelListReconciliation"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/CustomCallEditor.tsx",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/LocalModelCard.tsx",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/ModelCapabilityEditor.tsx",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/OnboardingDrawer.tsx",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/antigravityCardModel.ts",
+      "symbol": "upsertModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/api/modelCatalogApi.ts",
+      "symbol": "upsertModel"
+    }
+  ],
+  "door_reduction": {
+    "before": 21,
+    "after": 20,
+    "why_not": "门表列的是「谁能写一条模型记录」的全部入口（machine：node scripts/door-map.mjs upsertModel / applyBuiltinSeeds / modelListReconciliation）。这 20 扇里，14 扇是用户动作的写入口（设置页的启用开关、能力编辑、自定义调用、重分类、本地模型卡、接入抽屉、目录 API 等），它们**应当**能写 enabled——那正是用户的决定。真正要减的不是门数，是「**不是用户**的那些门能不能碰 enabled」：修前有 2 扇（后台对账 modelListReconcile、冷启动迁移 seedBuiltins），修后 0 扇。门表因此净减 1（modelListReconcile 的 patch 类型里已经没有 enabled 这个字段，编译器不让它再写；seedBuiltins 那一行只留 unlisted，它作为门仍在，因为它还写 meta 与 unlisted）。让「下一个后台任务顺手改 enabled」会报错的机器判据是 modelListReconcile.test.ts 的结构断言：electron/ 全树扫「同一行里既提 unlisted 又给 enabled 赋值」，零基线。"
+  },
+  "generality_proof": "① 类型闭合：`modelListReconciliation` 的返回类型从 `Pick<Model,'vendorKey'|'modelKey'|'unlisted'|'enabled'>` 收成 `Pick<Model,'vendorKey'|'modelKey'|'unlisted'>`——这条边界再也构造不出一个带 enabled 的 patch，编译器负责。② 结构闭合：`modelListReconcile.test.ts` 最后一条机械扫 electron/ 全部非测试 .ts，任何一行同时提到 `unlisted` 又给 `enabled:` 赋值即红（零基线，不是棘轮）。改回旧写法验过：3 条红。③ 证据闭合：成功但为空的清单也不再是证据——这是同一条不变量的另一半（不许把一次抖动写成状态）。",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/modelListReconcile.ts",
+      "symbol": "modelListReconciliation",
+      "responsibility": "把供应商清单翻译成**旁注**（unlisted）的唯一实现；它的返回类型里没有 enabled，因此它写不了用户的决定。"
+    },
+    {
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "applyBuiltinSeeds",
+      "responsibility": "冷启动种子与退役迁移；只落旁注与 lifecycle，不碰用户数据（这条纪律原本就写在它自己的注释里，现在代码与注释一致了）。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/catalog/modelListReconcile.ts",
+      "entry_point": "24h 后台对账产出的 patch",
+      "disposition": "not-affected",
+      "evidence": "enabled 从返回类型里删除；modelListReconcile.test.ts 第一条断言 patch 上没有 enabled 这个键。"
+    },
+    {
+      "path": "electron/catalog/seedBuiltins.ts",
+      "entry_point": "冷启动的 RETIRED_APIMART_TEXT_MODEL_KEYS 一次性迁移",
+      "disposition": "not-affected",
+      "evidence": "同一行里的 `enabled: false` 删除；apimartTextMigration.test.ts 两条从钉 `enabled:false` 改成钉 `enabled:true, unlisted:true`（用户的启用决定原样保留）。"
+    },
+    {
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "entry_point": "checkVendorHealth 的 mutateCatalog(tx.upsertModel)",
+      "disposition": "enforced",
+      "evidence": "它写的就是上面那份 patch；patch 里没有 enabled，这条路就写不到 enabled。vendorHealth.test.ts 的对账用例改钉 `enabled:true, unlisted:true`。"
+    },
+    {
+      "path": "electron/catalog/catalogCommit.ts",
+      "entry_point": "接入提交时的 upsertModel",
+      "disposition": "enforced",
+      "evidence": "它的 `enabled:false` 是**新建**一条候选模型的初值（用户还没启用过），不是把用户已经启用的行改掉；不在本条不变量范围内。"
+    },
+    {
+      "path": "src/ui/onboarding/ModelEnableEditor.tsx",
+      "entry_point": "设置页的启用开关（同族还有 ModelCapabilityEditor / CustomCallEditor / LocalModelCard / OnboardingDrawer / antigravityCardModel，见 doors）",
+      "disposition": "enforced",
+      "evidence": "这些是用户动作本身，本来就该写 enabled；本次未改。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一形状在同一份状态上已经发生两次（后台对账一处、冷启动迁移一处，两处都是 2026-09-08 同一批改动引入，且第二处与它自己上方三行的注释直接冲突）。只要还有人把「我们观察到的事实」直接写成「用户的设置」，它就会再来——下一个候选是画幅、默认模型、供应商启用位。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs upsertModel，逐扇门问它是用户动作还是后台观察",
+      "git grep -n 'setInterval' -- electron，逐个定时任务问它写了哪份状态、那份状态是谁的",
+      "git grep -nE 'unlisted.*enabled|enabled.*unlisted' -- electron src（modelListReconcile.test.ts 已把它机器化）"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/modelListReconcile.ts",
+    "invariant": "Model.enabled 只由用户的动作改变；清单证据只落 unlisted 旁注",
+    "failure_mode": "Stop and show actionable feedback",
+    "exception_policy": "none",
+    "strategy": "把「观察」与「决定」在**类型**上分开：翻译清单的那条边界的返回类型里不再有 enabled，写不出来（R17 编译器优先）。再加一条零基线的结构断言，挡住「有人在别处把两件事写回同一行」。",
+    "artifacts": [
+      "electron/catalog/modelListReconcile.ts",
+      "electron/catalog/modelListReconcile.test.ts",
+      "electron/catalog/seedBuiltins.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/modelListReconcile.test.ts",
+    "electron/catalog/apimartTextMigration.test.ts",
+    "electron/catalog/catalogLivenessPersistence.test.ts",
+    "electron/ai/onboarding/vendorHealth.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/modelListReconcile.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/catalog/modelListReconcile.ts",
+      "electron/catalog/seedBuiltins.ts"
+    ],
+    "rationale": "`enabled: unlisted ? false : model.enabled` 与 seedBuiltins 那一行的 `enabled: false` 同 commit 删除，连同返回类型里的 enabled 字段。没有留开关、没有留「仅对内置家自动停用」的半版——留着就等于留一条后台改用户设置的路。原设计（2026-09-08「自动禁用，保留配置」）想防的事由 unlisted 旁注继续防：它**告诉**用户，不**替**用户决定。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "内部目录状态归属，不涉及第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "已经被后台改成停用的模型不会自动恢复——我们没有记录「这次停用是谁做的」，自动恢复会变成第二次替用户做决定。用户在 设置→模型 里看到带「供应商清单里暂时没有它」旁注的行，自己决定开不开。这一条要在发版说明里写清楚。",
+  "residual_risks": [
+    "存量用户资料里已经有被后台停用的行，本次不回填（见 migration）。若要回填，需要先给 upsertModel 加「这次写入的来源」，那是另一刀。",
+    "`unlisted` 的界面文案现在是「供应商已不再列出」/「No longer listed by provider」（src/i18n/locales/onboardingProviders.ts 的 modelControls.unlisted）。用户 2026-09-21 的措辞是「供应商清单里暂时没有它」——`已不再` 断言了永久性，而清单抖动是常态。文案改动属渲染层 lane，本合同只提出建议，未改（见 report-A-pass3e.md）。",
+    "「成功但为空的清单不算证据」这条会让一家**真的**把所有模型都下线的供应商永远标不上 unlisted。这是刻意的取舍：那种情况极罕见，而空清单在抖动里很常见；宁可漏标，不可误标。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/modelListReconcile.ts",
+    "tests": [
+      "electron/catalog/modelListReconcile.test.ts",
+      "electron/catalog/catalogLivenessPersistence.test.ts"
+    ]
+  }
+}

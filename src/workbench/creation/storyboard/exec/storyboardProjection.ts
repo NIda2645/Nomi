@@ -3,7 +3,7 @@ import type { useGenerationCanvasStore } from '../../../generationCanvas/store/g
 import { findShotNode, findShotKeyframeNode } from './storyboardNodeBinding'
 import { buildAgentModelEntries } from '../../../generationCanvas/agent/availableModels'
 import { buildModelEntryIndex } from '../../../generationCanvas/agent/plannedNodeMeta'
-import { resolveArchetypeForModel } from '../../../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../../electron/shared/modelArchetypes'
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
 import { overriddenShotFields, nodeShotField } from '../../../generationCanvas/model/storyboardOverrides'
 import { effectiveShotValue } from '../shotRow/shotRowModel'
@@ -12,7 +12,7 @@ import type { AgentModelEntry } from '../../../generationCanvas/agent/availableM
 import { renderShotNodePrompt, renderShotKeyframePrompt, effectiveShotDurationSec, type PlanShot, type StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
 import { shotReferenceMetaPatch } from '../shotRow/shotReferenceSlots'
 import { resolveKeyframeParams, resolveShotParams } from '../../../generationCanvas/agent/storyboardShotScope'
-import type { ArchetypeMode } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes/types'
 const PRIMITIVE = new Set(['string', 'number', 'boolean'])
 
 /** Shared projection for plan writes and generation; canvas overrides are never reset. */
@@ -69,7 +69,7 @@ export function projectShotNode(
 }
 
 /** Called only for explicit plan edits, never project hydration. Dependency supplied by the composition root. */
-export function projectStoryboardDesign(design: StoryboardDesign, canvas: ReturnType<typeof useGenerationCanvasStore.getState>): void {
+export function projectStoryboardDesign(design: Pick<StoryboardDesign, 'id' | 'plan'>, canvas: ReturnType<typeof useGenerationCanvasStore.getState>): void {
   for (const shot of design.plan.shots) {
     const entries = buildModelEntryIndex(buildAgentModelEntries(shot.modelKey ? [{ value: shot.modelKey, label: shot.modelKey, vendor: shot.modelVendor, kind: shot.shotKind ?? 'video' }] : []))
     const profile = resolveArchetypeForModel({ modelKey: shot.modelKey ?? '', vendorKey: shot.modelVendor })

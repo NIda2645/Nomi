@@ -1,0 +1,160 @@
+{
+ "schema_version": 3,
+ "id": "2026-09-21-approval-policy-never-reached-mcp",
+ "problem_type": "A user-chosen policy is read correctly by every judge, but two hosts never hand it to them, so the judges answer from a fail-closed default",
+ "symptom": "用户在设置里把档位切到「全自动」（切进去还要二次确认、面板顶上常驻提醒）。Agent 面板上确实不再逐笔弹报价卡；但**外部 MCP 发起生成**、以及外部 MCP 的**接入试跑**（`nomi_try_model`），仍然要他回到 Nomi 窗口点一次——他刚刚才授权过「不用再问」。",
+ "direct_cause": "`DispatchContext.approvalPolicy` 这个口子一直存在（dispatcher.ts:119），下游也一直在读它（`modelOnboarding/dispatch.ts:442` → `tryModel.ts:102`），但**没有任何一个生产宿主传它**：`mcpStdioServer.ts` 与 `appIntegration.ts` 里 `approvalPolicy` 零命中。于是每一个读档位的判据都拿到 `undefined`，按「不知道档位 = 不许替用户花钱」走。",
+ "class_root": "判据有 owner、也写对了，但**没有人把那份状态交给它**。这类缺陷在代码里长得像「功能没做」，其实是接线没接：单元测试全绿（判据自己是对的），宿主级别没有任何东西会红。只要「谁负责把用户的选择递下去」这件事没有一条会红的断言，它就会在每新增一个宿主时重犯一次。",
+ "affected_population": [
+  "所有把档位切到「全自动」并使用外部 MCP 宿主（Claude Code / Codex 等）的用户：发起生成与接入试跑都仍然被叫回 Nomi 窗口",
+  "App 内的 MCP 面（appIntegration）同样没递，行为相同",
+  "Agent 面板（pi transport）不受影响：lane 一直传 `() => composer.approvalPolicy`"
+ ],
+ "scope_paths": [
+  "electron/capabilityCore/generationDispatcher.ts",
+  "electron/capabilityCore/mcpStdioServer.ts",
+  "electron/capabilityCore/appIntegration.ts",
+  "electron/capabilityCore/rpcServer.ts"
+ ],
+ "entry_points": [
+  "外部 MCP 付费门（nomi_request_generation_gate → nomi_decide_generation_gate → nomi_start_generation）",
+  "外部 MCP 接入试跑（nomi_try_model）",
+  "App 内 MCP 面的同两条路"
+ ],
+ "external_sources": [],
+ "internal_only_reason": "「用户选的档位怎么在本仓内部传到判据面前」完全是本仓自己的调度上下文契约，没有外部规范参与；对外的 MCP 工具形状本次一个字未改。",
+ "invariants": [
+  "每一个能花钱的宿主都必须把**持久化的那一份**档位（`readAgentApprovalPolicy`）递进调度上下文；宿主只负责递，不自己编一份",
+  "「这一档要不要问」只由 `spendDecidedByPolicy` 回答；宿主、调度器、工具层都不得另写判据",
+  "档位读不到（宿主没递 / 设置读不出）时一律 fail-closed：照常弹卡，绝不替用户花钱",
+  "全自动代答与真人点头走**同一条链**：同一张挑战、同一个收据铸造口，只有 attestation 的来源不同"
+ ],
+ "doors": [
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/generationDispatcher.ts",
+   "symbol": "spendDecidedByPolicy"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/generationTransportAdapters.ts",
+   "symbol": "spendDecidedByPolicy"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+   "symbol": "spendDecidedByPolicy"
+  },
+  {
+   "kind": "read",
+   "path": "electron/capabilityCore/mcpStdioServer.ts",
+   "symbol": "readAgentApprovalPolicy"
+  },
+  {
+   "kind": "read",
+   "path": "electron/capabilityCore/appIntegration.ts",
+   "symbol": "readAgentApprovalPolicy"
+  },
+  {
+   "kind": "read",
+   "path": "electron/capabilityCore/rpcServer.ts",
+   "symbol": "approvalPolicy"
+  }
+ ],
+ "door_reduction": {
+  "before": 6,
+  "after": 6,
+  "why_not": "这次不是合并门，是**给已有的门接上水管**：三扇 `spendDecidedByPolicy` 是同一个纯函数的三个调用点（付费门 / pi 适配器 / 接入试跑），它们问的是同一个问题、拿的是同一个答案，合并成一扇就意味着把三条不同的执行链也合并，那不是这一刀。两扇宿主读点是「谁把用户的选择递下去」，按定义每个宿主各一扇；rpcServer 那扇是 App 内宿主到调度上下文之间的唯一转发点。"
+ },
+ "generality_proof": "判据、状态源、转发点三者都只有一份：档位来自 `readAgentApprovalPolicy`（设置的单一 owner），判据是 `spendDecidedByPolicy`，宿主只做转发。新增宿主时只需要多一行转发，而「忘了转发」这件事由本次新增的结构断言当场抓住——不需要谁记得回来补。",
+ "shared_boundaries": [
+  {
+   "path": "electron/capabilityCore/generationDispatcher.ts",
+   "symbol": "spendDecidedByPolicy",
+   "responsibility": "付费门这一步：全自动档当场铸策略收据往下走，其余档位原样交回挑战让用户在 Nomi 窗口点。"
+  },
+  {
+   "path": "electron/capabilityCore/rpcServer.ts",
+   "symbol": "approvalPolicy",
+   "responsibility": "App 内宿主 → 调度上下文的唯一转发点。"
+  }
+ ],
+ "same_class_entry_points": [
+  {
+   "path": "electron/capabilityCore/mcpStdioServer.ts",
+   "entry_point": "外部 MCP 宿主（付费门 + 接入试跑）",
+   "disposition": "enforced",
+   "evidence": "approvalPolicyAcrossEntrances.test.ts 的结构断言：改动前实测红（文件里 `approvalPolicy` 零命中）。"
+  },
+  {
+   "path": "electron/capabilityCore/appIntegration.ts",
+   "entry_point": "App 内 MCP 面",
+   "disposition": "enforced",
+   "evidence": "同上，改动前同样红。"
+  },
+  {
+   "path": "electron/capabilityCore/generationDispatcher.ts",
+   "entry_point": "nomi_request_generation_gate",
+   "disposition": "enforced",
+   "evidence": "approvalPolicyAcrossEntrances.test.ts 的行为断言：全自动 → 铸一张 `policy:full_auto` 收据并带进 handoff（改动前红：一张都没铸）；step / safe-auto / 宿主没递档位 → 一张都不铸（改动前后都绿，证明 fail-closed 那条没被顺手放松）。"
+  },
+  {
+   "path": "electron/agentLane/laneDesktopRuntime.ts",
+   "entry_point": "Agent 面板（pi transport）",
+   "disposition": "not-affected",
+   "evidence": "它一直传 `() => composer.approvalPolicy`，三档行为由 agentPanelSpendConfirm.e2e.test.ts 的「三档 × 付费报价卡」守着，本次一个字未改。"
+  }
+ ],
+ "recurrence": {
+  "classification": "recurring",
+  "reason": "每新增一个能花钱的宿主都要重接一次这根水管；而「忘了接」的表现是功能静默缺席，不是报错。",
+  "same_class_scan": [
+   "node scripts/door-map.mjs spendDecidedByPolicy → 3 扇（付费门 / pi 适配器 / 接入试跑），全部读同一个纯函数",
+   "node scripts/door-map.mjs readAgentApprovalPolicy → 5 扇读点（lane / appIntegration / mcpStdioServer / resident 工厂 / Run 服务），全部读设置里那一份",
+   "grep -rn 'approvalPolicy' electron --include=*.ts | grep -v test → 没有第二个「自己编一份档位」的地方"
+  ]
+ },
+ "prevention": {
+  "kind": "centralized-boundary",
+  "enforcement_path": "electron/capabilityCore/generationDispatcher.ts",
+  "invariant": "宿主递持久化档位 → `spendDecidedByPolicy` 回答 → 全自动走策略收据、其余档位走人。",
+  "failure_mode": "宿主漏递 → approvalPolicyAcrossEntrances.test.ts 的结构断言当场红并点名是哪个宿主；判据被绕过 → 同文件的行为断言红。",
+  "exception_policy": "none",
+  "strategy": "把「谁负责递」做成一条会红的断言，而不是靠下一个人记得。",
+  "artifacts": [
+   "electron/capabilityCore/generationDispatcher.ts",
+   "electron/capabilityCore/approvalPolicyAcrossEntrances.test.ts",
+   "electron/capabilityCore/rpcServer.ts"
+  ]
+ },
+ "regression_tests": [
+  "electron/capabilityCore/approvalPolicyAcrossEntrances.test.ts"
+ ],
+ "class_regression_tests": [
+  "electron/capabilityCore/approvalPolicyAcrossEntrances.test.ts"
+ ],
+ "legacy_paths": {
+  "status": "not-applicable",
+  "removed_paths": [],
+  "rationale": "没有旧实现要删：缺的是一根从没接上的水管，不是一条并行的老路。"
+ },
+ "dependency_lifecycle": {
+  "decision": "not-applicable",
+  "rationale": "不变量完全由本仓的调度上下文与设置存储决定，没有第三方运行时参与。",
+  "exit_criteria": []
+ },
+ "migration": "不需要迁移：档位本来就存在设置里，本次只是让两个宿主把它读出来递下去。已在「全自动」档的用户下一次经外部 MCP 发起生成就不再被叫回窗口；其余档位逐字不变。",
+ "residual_risks": [
+  "本条只证到调度层：全自动时付费门返回的 handoff 带上了策略收据。**真机上「外部 MCP 全自动跑通一整条生成」还没跑过**（需要打包 + 走查），报告里记为待验。",
+  "策略收据的 token 经 MCP 线缆交给外部客户端，与真人点头之后交出去的是同一种东西；护栏仍是宿主侧的 trustedHosts / allowedProviders / allowedModels / maxSpend，本次一条都没放松。",
+  "`try_model` 这条只补了宿主接线，没有为它单独加一条三档行为测试——它读的是同一个 `spendDecidedByPolicy`，且 `acceptanceLoopback.test.ts` 已覆盖判据本身。"
+ ],
+ "invariant_owner_layer": {
+  "layer": "electron/shared/agentCapabilities/capabilityApprovalPolicy.ts",
+  "tests": [
+   "electron/capabilityCore/approvalPolicyAcrossEntrances.test.ts",
+   "electron/shared/agentCapabilities/capabilityApprovalPolicy.test.ts"
+  ],
+  "notes": "判据一直在这一层且写得对；本次补的是「宿主必须把状态交给它」，并让这件事有一条会红的断言。三条新断言在改动前实测为红。"
+ }
+}

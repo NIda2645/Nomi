@@ -23,8 +23,6 @@
     "nomi_canvas_edit",
     "nomi_canvas_maintenance",
     "nomi_export_job",
-    "nomi_integration",
-    "nomi_integration_manage",
     "nomi_operation_control",
     "nomi_operation_execute",
     "nomi_operation_gate",

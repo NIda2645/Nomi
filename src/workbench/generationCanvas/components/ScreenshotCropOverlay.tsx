@@ -18,6 +18,7 @@ import { dataUrlToFile, persistNodeImageFile } from '../adapters/persistNodeImag
 import { isProjectImportCancellation } from '../adapters/assetImportAdapter'
 import type { ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { cropScreenshotRegion, normalizeSelectionRect, type SelectionRect } from './screenshotCropGeometry'
+import { computeMediaMetaPatch } from '../nodes/nodeSizing'
 
 type Props = {
   capture: { url: string; width: number; height: number }
@@ -72,8 +73,11 @@ export function ScreenshotCropOverlay({ capture, project, basePosition, category
       })
       const createdAt = Date.now()
       const resultId = `screenshot-${createdAt}`
+      const dimensions = cropped ? { width: cropped.width, height: cropped.height } : { width: capture.width, height: capture.height }
+      const mediaMeta = computeMediaMetaPatch({ resultType: 'image', meta: created.meta || {}, ...dimensions })?.meta
       useGenerationCanvasStore.getState().updateNode(created.id, {
         result: { id: resultId, type: 'image', url, createdAt },
+        ...(mediaMeta ? { meta: mediaMeta } : {}),
       })
       useGenerationCanvasStore.getState().selectNode(created.id)
       // 裁过的图是 base64 → 落盘换成 nomi-local://（别让 PNG base64 常驻 store）。

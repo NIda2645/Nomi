@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ArchetypeMode } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes/types'
 import type { PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
 import { cellCount, referenceColumnOf } from './shotReferenceCells'
 

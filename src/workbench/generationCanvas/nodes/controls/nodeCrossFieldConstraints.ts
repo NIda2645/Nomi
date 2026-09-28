@@ -1,5 +1,5 @@
 import { remainingReferenceCapacity } from '../../../../../electron/shared/videoCapabilities/crossFieldConstraints'
-import type { ArchetypeMode } from '../../../../config/modelArchetypes'
+import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes'
 import type { GenerationCanvasNode, GenerationCanvasEdge } from '../../model/generationCanvasTypes'
 import { resolveReferenceSlots } from '../../runner/referenceSlots'
 

@@ -424,95 +424,79 @@ export class ProviderAdapterCertificationCoordinator {
     execute: (onRemoteTaskAccepted: (remoteTaskId: string) => void) => Promise<AdapterVerificationResult>;
     reconcile?: (remoteTaskId: string) => Promise<AdapterVerificationResult>;
     reuse: (operation: CertificationModeOperation) => AdapterVerificationResult;
-    isUncertainError: (error: unknown) => boolean;
   }): Promise<AdapterVerificationResult> {
     let operation = this.ledger.getByRunId(input.runId);
     if (!operation) throw new Error("Certification operation ledger entry is missing");
     const modeIdentity = certificationModeIdentity(input.modelKey, input.taskKind);
     const existingIndex = operation.modeOperationKeys[modeIdentity];
     let mode = existingIndex ? operation.modeOperations[existingIndex.operationKey] : undefined;
-    try {
-      let result: AdapterVerificationResult;
-      if (mode?.submissionState === "unknown" || mode?.submissionState === "submitted") {
-        if (!mode.remoteTaskId || !input.reconcile) {
-          this.markSubmissionUnknown(input.runId, mode.remoteTaskId ? "submission_unknown" : "submission_reconcile_unavailable");
-          throw new AdapterReconciliationRequiredError();
-        }
-        if (mode.submissionState === "unknown") {
-          operation = this.ledger.markReconciled(input.runId, {
-            operationKey: mode.operationKey,
-            remoteTaskId: mode.remoteTaskId,
-            expectedRevision: operation.revision,
-            now: this.now(),
-          });
-          mode = operation.modeOperations[mode.operationKey];
-        }
-        result = await input.reconcile(mode.remoteTaskId!);
-      } else if (mode?.submissionState === "settled" && input.attempt <= mode.attempt) {
-        result = input.reuse(mode);
-      } else {
-        input.beforeSubmit?.();
-        operation = this.ledger.markSubmitting(input.runId, {
-          operationKey: input.operationKey,
-          modelKey: input.modelKey,
-          taskKind: input.taskKind,
-          attempt: input.attempt,
-          providerIdempotency: operation.providerIdempotency,
-          expectedRevision: operation.revision,
-          now: this.now(),
-        });
-        this.syncRunOperationState(input.runId, operation);
-        result = await input.execute((remoteTaskId) => {
-          const fresh = this.ledger.getByRunId(input.runId);
-          const freshMode = fresh?.modeOperations[input.operationKey];
-          if (!fresh || !freshMode) throw new Error("Certification mode disappeared before remote checkpoint");
-          if (freshMode.submissionState === "submitted" && freshMode.remoteTaskId === remoteTaskId) return;
-          const submitted = this.ledger.markSubmitted(input.runId, {
-            operationKey: input.operationKey,
-            remoteTaskId,
-            expectedRevision: fresh.revision,
-            now: this.now(),
-          });
-          this.syncRunOperationState(input.runId, submitted);
-        });
-      }
-      operation = this.ledger.getByRunId(input.runId)!;
-      mode = operation.modeOperations[input.operationKey] || operation.modeOperations[operation.modeOperationKeys[modeIdentity]?.operationKey];
-      if (!mode) throw new Error("Certification mode operation is missing after verification");
-      // 自检不向上游提交任何东西，所以**不可能**留下一个「不知道有没有落地」的远端任务：
-      // 「提交状态未知 → 需要对账」那一整族分支随付费验证一起删了（P1，无并行版）。
-      // ledger 的 markUnknown/markSubmitted 仍然保留，但只服务于**本次改动之前**落盘、
-      // 仍停在 submitting/unknown 的历史 run 的恢复路径。
-      if (mode.submissionState === "submitting" || mode.submissionState === "submitted") {
-        operation = this.ledger.markSettled(input.runId, {
-          operationKey: mode.operationKey,
-          expectedRevision: operation.revision,
-          result: settledResultFromVerification(result),
-          now: this.now(),
-        });
-        this.syncRunOperationState(input.runId, operation);
-      }
-      return result;
-    } catch (error) {
-      if (error instanceof AdapterReconciliationRequiredError) throw error;
-      const inFlight = this.ledger.getByRunId(input.runId);
-      const inFlightMode = inFlight?.modeOperations[input.operationKey]
-        || (inFlight ? inFlight.modeOperations[inFlight.modeOperationKeys[modeIdentity]?.operationKey] : undefined);
-      if (input.isUncertainError(error) && inFlight && inFlightMode
-        && (inFlightMode.submissionState === "submitting" || inFlightMode.submissionState === "submitted")) {
-        const unknown = this.ledger.markUnknown(input.runId, {
-          operationKey: inFlightMode.operationKey,
-          expectedRevision: inFlight.revision,
-          userAction: "reconcile_or_contact_provider",
-          ...(inFlight.remoteTaskId ? { remoteTaskId: inFlight.remoteTaskId } : {}),
-          now: this.now(),
-        });
-        this.syncRunOperationState(input.runId, unknown);
-        this.markSubmissionUnknown(input.runId, inFlightMode.remoteTaskId ? "submission_unknown" : "submission_reconcile_unavailable");
+    let result: AdapterVerificationResult;
+    if (mode?.submissionState === "unknown" || mode?.submissionState === "submitted") {
+      // 历史落盘、本次改动之前就停在 submitting/unknown 的 run 走这条恢复路径——
+      // 不是这次超时新写的，别跟着下面「自检不确定」那族一起删。
+      if (!mode.remoteTaskId || !input.reconcile) {
+        this.markSubmissionUnknown(input.runId, mode.remoteTaskId ? "submission_unknown" : "submission_reconcile_unavailable");
         throw new AdapterReconciliationRequiredError();
       }
-      throw error;
+      if (mode.submissionState === "unknown") {
+        operation = this.ledger.markReconciled(input.runId, {
+          operationKey: mode.operationKey,
+          remoteTaskId: mode.remoteTaskId,
+          expectedRevision: operation.revision,
+          now: this.now(),
+        });
+        mode = operation.modeOperations[mode.operationKey];
+      }
+      result = await input.reconcile(mode.remoteTaskId!);
+    } else if (mode?.submissionState === "settled" && input.attempt <= mode.attempt) {
+      result = input.reuse(mode);
+    } else {
+      input.beforeSubmit?.();
+      operation = this.ledger.markSubmitting(input.runId, {
+        operationKey: input.operationKey,
+        modelKey: input.modelKey,
+        taskKind: input.taskKind,
+        attempt: input.attempt,
+        providerIdempotency: operation.providerIdempotency,
+        expectedRevision: operation.revision,
+        now: this.now(),
+      });
+      this.syncRunOperationState(input.runId, operation);
+      result = await input.execute((remoteTaskId) => {
+        const fresh = this.ledger.getByRunId(input.runId);
+        const freshMode = fresh?.modeOperations[input.operationKey];
+        if (!fresh || !freshMode) throw new Error("Certification mode disappeared before remote checkpoint");
+        if (freshMode.submissionState === "submitted" && freshMode.remoteTaskId === remoteTaskId) return;
+        const submitted = this.ledger.markSubmitted(input.runId, {
+          operationKey: input.operationKey,
+          remoteTaskId,
+          expectedRevision: fresh.revision,
+          now: this.now(),
+        });
+        this.syncRunOperationState(input.runId, submitted);
+      });
     }
+    operation = this.ledger.getByRunId(input.runId)!;
+    mode = operation.modeOperations[input.operationKey] || operation.modeOperations[operation.modeOperationKeys[modeIdentity]?.operationKey];
+    if (!mode) throw new Error("Certification mode operation is missing after verification");
+    // 自检不向上游提交任何东西，所以**不可能**留下一个「不知道有没有落地」的远端任务：
+    // 「提交状态未知 → 需要对账」那一整族分支随付费验证一起删了（P1，无并行版）。
+    // 「execute 超时就判 uncertain → reconciling」的 catch 分支已删（2026-09-22，P1 补删
+    // d76745ec6 漏掉的一半）：唯一调用者（ProviderAdapterService 的 Model self-check）
+    // 从未真的需要它，判据恒 false，是死代码——超时就让错误原样往上抛，由调用方按
+    // 「自检超时 = 干净 failed/timed_out」处理，不再经这里包装成「不确定」。
+    // ledger 的 markUnknown/markSubmitted 仍然保留，但只服务于上面「本次改动之前」
+    // 落盘、仍停在 submitting/unknown 的历史 run 的恢复路径。
+    if (mode.submissionState === "submitting" || mode.submissionState === "submitted") {
+      operation = this.ledger.markSettled(input.runId, {
+        operationKey: mode.operationKey,
+        expectedRevision: operation.revision,
+        result: settledResultFromVerification(result),
+        now: this.now(),
+      });
+      this.syncRunOperationState(input.runId, operation);
+    }
+    return result;
   }
 
   private syncRunOperationState(runId: string, operation: CertificationOperationRecord): void {

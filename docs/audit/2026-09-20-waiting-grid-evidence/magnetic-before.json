@@ -1,0 +1,19 @@
+[
+  {
+    "name": "01-unselected-dots",
+    "pass": true
+  },
+  {
+    "name": "02-selected-band-follows",
+    "pass": false,
+    "error": "Error: 带子 168px 高（min(168, 卡高+28)）\n\nexpect(received).toBe(expected) // Object.is equality\n\nExpected: 168\nReceived: 163"
+  },
+  {
+    "name": "03-drag-snaps-to-target",
+    "pass": true
+  },
+  {
+    "name": "04-close-edge-stays-clickable",
+    "pass": true
+  }
+]

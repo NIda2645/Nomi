@@ -109,7 +109,6 @@ describe("Agent lane production cutover structure", () => {
     expect(exists("src/workbench/creation/creationTurnController.ts")).toBe(false);
 
     const productionFiles = [
-      "src/workbench/creation/creationAiReplyText.ts",
       "src/workbench/project/projectPersistenceService.ts",
       "src/workbench/project/releaseWorkbenchProjectSession.ts",
       "src/workbench/workbenchStore.ts",
@@ -148,7 +147,8 @@ describe("一条 lane 的系统提示词每回合整体重新求值（2026-09-11
     const paths = source("electron/agentLane/laneCodingPaths.mts");
 
     expect(port).toContain("systemPrompt: string | (() => string)");
-    expect(port).toContain("skills: readonly SkillRecord[] | (() => readonly SkillRecord[])");
+    // 目录由 pi 的加载器给（async），所以来源可以回 Promise；给数组仍合法（影子夹具）。
+    expect(port).toContain("skills: readonly SkillRecord[] | (() => readonly SkillRecord[] | Promise<readonly SkillRecord[]>)");
     // 可信读根与索引同源：看得见就必须读得到，不许一个活一个死。
     expect(paths).toContain("export type LaneTrustedSkillRoots = readonly string[] | (() => readonly string[])");
   });
@@ -167,8 +167,9 @@ describe("一条 lane 的系统提示词每回合整体重新求值（2026-09-11
     expect(transform).not.toMatch(/\{\s*systemPrompt:\s*\[systemPrompt,/);
     expect(transform).not.toContain("composeSystemPrompt()");
     // 「这条技能要不要 coding 工具」判在准入那一刻，而用户可能刚导入它——先刷再问。
-    const admission = host.slice(host.indexOf("if (command.kind === 'prompt' && !projection.running"), host.indexOf("const admission = await lane.accept"));
-    expect(admission).toContain("await native?.skillIndex.refresh();");
+    const admission = host.slice(host.indexOf("if (command.kind === 'prompt' && !projection.running"), host.indexOf("const accepted = await lane.accept"));
+    expect(admission).toContain("await awaitWithContext(Promise.resolve(native?.skillIndex.refresh()), admission);");
+    expect(admission.indexOf("skillIndex.refresh()")).toBeLessThan(admission.indexOf("laneSkillUnlockReason(currentSkills()"));
     expect(admission).toContain("laneSkillUnlockReason(currentSkills()");
   });
 
@@ -180,7 +181,7 @@ describe("一条 lane 的系统提示词每回合整体重新求值（2026-09-11
     expect(runtime).toContain("currentProjectMemory(binding.projectId)");
     expect(runtime).not.toMatch(/let memory = ''/);
     // 技能库同理：给函数，宿主每回合重读一次。
-    expect(runtime).toContain("skills: () => readSkillRecords().filter(isSkillSelectableInWorkbench)");
+    expect(runtime).toContain("skills: async () => (await readSkillRecords()).filter(isSkillSelectableInWorkbench)");
   });
 
   it("技能索引与可信读根是同一个 owner 的同一份快照", () => {

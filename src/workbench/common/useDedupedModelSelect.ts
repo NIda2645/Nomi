@@ -9,7 +9,7 @@ import { IconEyeOff } from '@tabler/icons-react'
 import type { ModelOption } from '../../config/models'
 import type { NomiSelectOption } from '../../design'
 import i18n from '../../i18n'
-import { dedupeModelOptions, sortModelProviders, modelCatalogLifecycle, type DedupedModel } from '../../config/modelIdentity'
+import { dedupeModelOptions, pickImplicitVendorMatch, providerConnectionSuffixes, sortModelProviders, modelCatalogLifecycle, type DedupedModel } from '../../config/modelIdentity'
 import { partitionByModelBoxPreference, rememberedProviderIndex, rememberedVendorFor } from '../../config/modelBoxPreference'
 import type { ModelBoxPreferenceSettings } from '../../../electron/shared/contracts/modelBoxPreference'
 import { useVendorPreferenceOrder } from './useVendorPreference'
@@ -36,13 +36,20 @@ const VENDOR_LABELS: Record<string, string> = {
 
 /** 厂商显示名：内置短名映射（下拉附注要短）> option.vendorName（自定义中转的真名）> key 原样。
  *  短名优先：catalog 里内置家的 name 是接入卡全称（如「即梦会员（本地 CLI）」），当 trailing 太啰嗦。 */
-export function modelProviderLabel(provider?: ModelProviderRef | null): string {
+export function modelProviderLabel(provider?: ModelProviderRef | null, connectionSuffix?: string): string {
   if (!provider) return translateModelDisplayText('默认')
   const short = provider.vendor ? VENDOR_LABELS[provider.vendor.toLowerCase()] : undefined
-  if (short) return translateModelDisplayText(short)
-  const fromCatalog = provider.option.vendorName?.trim()
-  if (fromCatalog) return translateModelDisplayText(fromCatalog)
-  return translateModelDisplayText(provider.vendor || '默认')
+  const base = short
+    ? translateModelDisplayText(short)
+    : translateModelDisplayText(provider.option.vendorName?.trim() || provider.vendor || '默认')
+  // #831：同一家有多条连接（满血组 / Mini 特价组）时，chip 直接显示**连接名本身**。
+  //
+  // 为什么不是「APIMart · 满血组」：实验室那一格（vo-07）拍出来是 `APIMart · …` —— 两段拼起来
+  // 超出 chip 宽度，被截掉的恰好是**唯一有区分力的那一段**，等于白加。而这一刻品牌名是冗余的：
+  // 两个 chip 本来就同属一家，用户要认的是「哪个分组」。
+  // 后缀由 `providerConnectionSuffixes` 一处算出，且**只进显示名**——不进排序键、不进请求、不进持久化。
+  if (!connectionSuffix) return base
+  return translateModelDisplayText(connectionSuffix) || base
 }
 
 /** 该模型是否「病」了：**每一家**供应商都在避让期才算。注入判据便于纯函数单测。 */
@@ -121,6 +128,22 @@ function connectVendorOption(): NomiSelectOption {
  * 而不是让用户以为列在这里的东西都验过了（D4）。印记由主进程在发布时写下（promotionMeta.ts）；
  * 老装机上由真实付费生成认证过的行没有这个印记，因此不会被误标。
  */
+/**
+ * 这一行是不是「供应商清单里暂时没有它」。
+ *
+ * **要每一家都没列出才算**：同一个模型可能同时挂在两家上，其中一家的清单抖了一下。
+ * 只要还有一家列着它，这一行就不该标——标了等于对用户说「这个模型没了」，而他点下去
+ * 明明能用。与「最近连败」同一口径（那条也是每家都在避让期才成立）。
+ */
+function unlistedByModel(model: DedupedModel): boolean {
+  return model.providers.length > 0 && model.providers.every((provider) => provider.option.unlisted === true)
+}
+
+/** 行尾那串限定语：厂商短名 + 至多两句实话（未试跑 / 暂未列出）。 */
+function providerTrailing(provider: ModelProviderRef, notes: readonly string[]): string {
+  return [modelProviderLabel(provider), ...notes].join(' · ')
+}
+
 function untriedByModel(model: DedupedModel): boolean {
   return model.providers.some((provider) => {
     const meta = provider.option.meta
@@ -156,10 +179,11 @@ export function buildModelSelectOptions(
     // 「我改过的是这一行」而不是「全局顺序变了」（2026-09-11 样张：Nano Banana 2 高亮 Kie，其余高亮第一家）。
     const rememberedIndex = rememberedProviderIndex(uniqueProviders, rememberedVendorFor(m, preference))
     const activeIndex = rememberedIndex >= 0 ? rememberedIndex : 0
+    const connectionSuffixes = providerConnectionSuffixes(uniqueProviders)
     const chips = multiVendor
       ? uniqueProviders.map((provider, index) => ({
           value: providerAddress(provider),
-          label: modelProviderLabel(provider),
+          label: modelProviderLabel(provider, provider.vendor ? connectionSuffixes.get(provider.vendor) : undefined),
           active: index === activeIndex,
         }))
       : undefined
@@ -171,9 +195,14 @@ export function buildModelSelectOptions(
       // 「未试跑」附在厂商短名后面，**不另起一个新元素**：2026-09-06 用户拍板过「别把模型名挤没」，
       // 而这一行要说的只是一句限定语（这家、还没真跑过），不是第二条信息。
       // 多家那种情况行尾已经是 chip 排（与 trailing 互斥），就不标——多家里总有真跑过的。
+      // 「暂未列出」和「未试跑」同一个槽、同一种写法：都是附在厂商短名后面的一句限定语，
+      // 不是第二条信息、也不拦使用（2026-09-21：清单里查不到不等于用户不要它了）。
       ...(multiVendor
         ? { chips }
-        : { trailing: untriedByModel(m) ? `${modelProviderLabel(providers[0])} · ${i18n.t('generationCommon.parameters.untried')}` : modelProviderLabel(providers[0]) }),
+        : { trailing: providerTrailing(providers[0], [
+            ...(untriedByModel(m) ? [i18n.t('generationCommon.parameters.untried')] : []),
+            ...(unlistedByModel(m) ? [i18n.t('generationCommon.parameters.unlisted')] : []),
+          ]) }),
     }
     // 「最近多次失败」是行级判断（每一家都在避让期才成立），压过 chip 的换家提示——
     // 这一行现在没有一家能走，摆一排可点的 chip 是在骗人。
@@ -254,7 +283,10 @@ export function buildVendorExplicitModelOptions(
               more: modelCatalogLifecycle(model) === 'legacy',
               label: model.label,
               icon: modelIdentityIcon(model),
-              trailing: modelProviderLabel(representative),
+              // 摊平版一行就是一家，所以「暂未列出」按**这一家**判，不看别家
+              // （折叠版要每家都没列出才标——那一行代表的是所有家）。
+              trailing: providerTrailing(representative, representative.option.unlisted === true
+                ? [i18n.t('generationCommon.parameters.unlisted')] : []),
             },
       })
     }
@@ -383,9 +415,21 @@ export function useDedupedModelSelect(
     [deduped, preference, i18n.language],
   )
 
+  // 「当前存的是哪一家」只有一个判定口：记了 vendor → (value, vendor) 精确命中，那家不在就是没选中
+  // （不许悄悄换成同名的别家）；没记 vendor（旧数据）→ pickImplicitVendorMatch，与执行侧落地同一把尺。
+  // 以前没记 vendor 时取「第一个含同名 value 的组」——目录新接入的在前，于是自定义同名模型一加，
+  // 回显就换成了它（2026-09-21 分镜三处复现）。
+  const effectiveVendor = React.useMemo(() => {
+    if (!value) return null
+    const candidates = deduped.flatMap((m) => m.providers).filter((p) => p.option.value === value)
+    if (vendor) return candidates.some((p) => p.vendor === vendor) ? vendor : null
+    return pickImplicitVendorMatch(candidates, (p) => p.vendor, orderedVendorKeys)?.vendor ?? null
+  }, [deduped, value, vendor, orderedVendorKeys])
   const selectedModel = React.useMemo(
-    () => deduped.find((m) => m.providers.some((p) => p.option.value === value && (!vendor || p.vendor === vendor))) || null,
-    [deduped, value, vendor],
+    () => (value && (effectiveVendor !== null || !vendor)
+      ? deduped.find((m) => m.providers.some((p) => p.option.value === value && (effectiveVendor === null || p.vendor === effectiveVendor))) || null
+      : null),
+    [deduped, value, vendor, effectiveVendor],
   )
 
   const modelOptionsView = React.useMemo<NomiSelectOption[]>(
@@ -400,13 +444,13 @@ export function useDedupedModelSelect(
       const model = deduped.find((m) => m.canonicalId === canonicalId)
       if (!model) return
       // Reopening/reselecting the family must not reset a saved reasoning tier.
-      const current = model.providers.find((p) => p.option.value === value && (!vendor || p.vendor === vendor))
+      const current = model.providers.find((p) => p.option.value === value && (effectiveVendor === null || p.vendor === effectiveVendor))
       if (current) { onChange(current.option.value, current.vendor); return }
       const best = pickHealthiestProvider(model, isModelRecentlyAiling, orderedVendorKeys, rememberedVendorFor(model, preference))
       const preferred = model.providers.find((p) => p.vendor === best?.vendor && p.option.variant?.defaultVariant) || best
       if (preferred) onChange(preferred.option.value, preferred.vendor)
     },
-    [deduped, onChange, value, vendor, orderedVendorKeys, preference],
+    [deduped, onChange, value, effectiveVendor, orderedVendorKeys, preference],
   )
 
   const onModelProviderPick = React.useCallback(
@@ -438,7 +482,7 @@ export function useDedupedModelSelect(
     [selectedModel, onChange],
   )
 
-  const providerValue = resolveProviderSelectValue(selectedModel, value, vendor)
+  const providerValue = resolveProviderSelectValue(selectedModel, value, effectiveVendor)
   const selectedProvider = selectedModel?.providers.find((p) => providerAddress(p) === providerValue)
   const variantOptions = selectedProvider?.option.variant
     ? (selectedModel?.providers || [])

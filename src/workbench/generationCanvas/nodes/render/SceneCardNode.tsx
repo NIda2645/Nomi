@@ -14,6 +14,7 @@ import { useNodeUsageCount, useNodeVariantCount } from '../../hooks/useNodeRelat
 import { STRIPED_BG_CLASS, UsageDot, VariantChip, UploadFallback } from './CardCommon'
 import { useNodeImageUpload } from '../../adapters/useNodeImageUpload'
 import { EditableNodeTitle } from './EditableNodeTitle'
+import { useNodeMediaMeasurement } from '../useNodeMediaMeasurement'
 import { DeferredNodeImage } from '../DeferredNodeMedia'
 
 type Props = {
@@ -22,6 +23,7 @@ type Props = {
 
 function SceneCardNodeImpl({ node }: Props): JSX.Element {
   const { t } = useTranslation()
+  const mediaMeasurement = useNodeMediaMeasurement(node)
   const meta = readSceneMeta(node)
   const usageCount = useNodeUsageCount(node.id, node.title)
   const variantCount = useNodeVariantCount(node.id)
@@ -38,6 +40,7 @@ function SceneCardNodeImpl({ node }: Props): JSX.Element {
         {hasImage ? (
           <DeferredNodeImage
             src={node.result!.url!}
+            onLoad={mediaMeasurement.onImageLoad}
             alt={node.title || ''}
             className="w-full h-full object-contain object-center select-none pointer-events-none"
           />

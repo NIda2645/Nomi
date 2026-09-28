@@ -1,6 +1,6 @@
 // 技能库面板的数据 hook：列出技能（内置+用户合并）、当前可用模态、删除/导入/导出。
-// 列表是同步 IPC（invokeSync）；可用模态是异步（读 catalog health）。catalog 变了（接入新模型）
-// 监听 nomi-model-catalog-changed 重算可用模态，让「缺 provider」标记实时刷新。
+// 列表与导出是异步 IPC（目录由 pi 的加载器给）；导入/删除仍是同步回执。可用模态是异步（读 catalog health）。
+// catalog 变了（接入新模型）监听 nomi-model-catalog-changed 重算可用模态，让「缺 provider」标记实时刷新。
 import React from 'react'
 import {
   deleteWorkbenchSkill,
@@ -19,7 +19,7 @@ export type UseWorkbenchSkills = {
   reload: () => void
   remove: (dirName: string) => { ok: boolean; error?: string }
   importPackage: (payload: unknown) => { ok: boolean; skillName?: string; error?: string }
-  exportPackage: (dirName: string) => unknown
+  exportPackage: (dirName: string) => Promise<unknown>
 }
 
 export function useWorkbenchSkills(opened: boolean): UseWorkbenchSkills {
@@ -27,11 +27,9 @@ export function useWorkbenchSkills(opened: boolean): UseWorkbenchSkills {
   const [available, setAvailable] = React.useState<ReadonlySet<SkillProviderKind>>(new Set())
 
   const reload = React.useCallback(() => {
-    try {
-      setItems(listWorkbenchSkills())
-    } catch {
-      setItems([])
-    }
+    listWorkbenchSkills()
+      .then(setItems)
+      .catch(() => setItems([]))
     getAvailableSkillProviders()
       .then(setAvailable)
       .catch(() => setAvailable(new Set()))

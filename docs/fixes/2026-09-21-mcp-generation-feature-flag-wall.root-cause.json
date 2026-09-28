@@ -1,0 +1,246 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-mcp-generation-feature-flag-wall",
+  "problem_type": "A rollout flag with no user interface outlives its rollout and becomes a wall in front of capabilities the product still advertises",
+  "symptom": "用户让他的外部助手（Claude Code / Codex 等）在 Nomi 里生成一张图。助手在 tools/list 上看得见五个生成工具，照着说明书调用，拿回一个裸的 `feature_disabled` 和一句指向「设置 → 自动化 → MCP 生成」某个开关的下一步——而那个开关在界面上并不存在。实测 14 次调用、6 次被拒、真实生成 0 次。",
+  "direct_cause": "`createRuntimeMcpGenerationPolicy` 从两个环境变量（NOMI_MCP_GENERATION_SINGLE_SHOT_V1 / _E1_V1）派生 schema_only / e0_zero_credit / e1_paid 三个阶段，默认全关；`dispatchSemanticStub` 在任何语义服务调用之前先 `policy.decide()`，未开就抛 feature_disabled / phase_not_ready。而 `tools/list` 的投影与这个 flag 无关，工具照常广告出去。",
+  "class_root": "「这个能力现在开不开」被交给了一个**产品面上没有任何人能读也没有人能改**的开关。rollout 结束之后没有人回来关掉这条判据，于是它从「分阶段放量」退化成「一道恒闭的墙」，而墙的存在只在模型侧可见——用户看到的只是他的助手一直做不成事。",
+  "affected_population": [
+    "所有用外部 MCP 宿主（Claude Code / Codex / 其它客户端）驱动 Nomi 生成的用户——默认安装下 100% 命中",
+    "不影响 Nomi 窗口内的 Agent 面板（它走 lane，不经这条 env 判据）"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/mcpGenerationPolicy.ts",
+    "electron/capabilityCore/generationDispatcher.ts",
+    "electron/capabilityCore/projectSessionAuthority.ts",
+    "electron/capabilityCore/dispatcher.ts",
+    "electron/capabilityCore/rpcError.ts",
+    "electron/capabilityCore/rpcServer.ts",
+    "electron/capabilityCore/appIntegration.ts",
+    "electron/capabilityCore/appIntegrationAuthorities.ts",
+    "electron/capabilityCore/mcpStdioServer.ts",
+    "electron/capabilityCore/mcpStdioProjectSessionBinding.ts",
+    "electron/capabilityCore/projectSessionRuntime.ts",
+    "electron/capabilityCore/mcpRpcError.ts"
+  ],
+  "entry_points": [
+    "外部 MCP stdio 服务器（mcpStdioServer）",
+    "本机 RPC 服务器（rpcServer → dispatcher → dispatchSemanticGeneration）",
+    "项目租约发的 scope（deriveProjectSessionScopes）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是本仓自己的放量机制，没有任何外部规范或依赖参与；它该不该继续存在是产品决定（用户 2026-09-21 拍板「这版要开」）。",
+  "invariants": [
+    "tools/list 上广告出去的工具必须真的调得动——广告与可达性不得由两套判据回答",
+    "「能不能做」由租约、闸与人证回答；不由环境变量回答",
+    "给模型的 nextAction 必须指向一个真的存在、且它照做得了的动作"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "classifyMcpGenerationRoute"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "guardLegacyGenerationRoute"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/projectSessionAuthority.ts",
+      "symbol": "deriveProjectSessionScopes"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationPolicy.ts",
+      "symbol": "MCP_GENERATION_CAPABILITIES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/projectSessionAuthority.ts",
+      "symbol": "MCP_GENERATION_CAPABILITIES"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createDefaultAuthorities"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createDefaultAuthorities"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createProductionMcpStdioProjectSessionBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "symbol": "rpcErrorWirePayload"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpRpcError.ts",
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationDispatcher.ts",
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "RpcError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationDispatcher.ts",
+      "symbol": "RpcPolicyErrorDetails"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioProjectSessionBinding.ts",
+      "symbol": "createProductionProjectSessionRuntime"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationAuthorities.ts",
+      "symbol": "createProductionProjectSessionRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/rpcError.ts",
+      "symbol": "McpGenerationCapability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/projectSessionRuntime.ts",
+      "symbol": "createProjectSessionAuthority"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/projectSessionAuthority.ts",
+      "symbol": "McpGenerationCapability"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationDispatcher.ts",
+      "symbol": "McpGenerationCapability"
+    }
+  ],
+  "door_reduction": {
+    "before": 23,
+    "after": 20,
+    "why_not": "三扇门直接消失：`createMcpGenerationPolicy` / `createRuntimeMcpGenerationPolicy` / `McpGenerationPolicy.decide` 连同它们背后的 env 读取一起删除，`generationPolicy` 这个穿九个文件的可选依赖整条拔掉（dispatcher / rpcServer / appIntegration / appIntegrationAuthorities / mcpStdioServer / mcpStdioProjectSessionBinding / projectSessionRuntime / projectSessionAuthority 全部不再持有它）。剩下的八扇各自必须存在：路由分类（墓碑）与 legacy 防火墙是两件事、scope 派生是租约那一层的事、两个装配点各有自己的进程（GUI 与 stdio）。"
+  },
+  "generality_proof": "判据不是「把默认值改成开」——那会留一个逃生口：任何人设一次 `=0` 就把整个面关掉，而没有任何界面会告诉用户发生了什么，下一次同样的工单还会再来一遍。删掉 flag、阶段与三个 blocked 分支之后，**这个问题不再可被提出**：没有任何输入能让语义路在到达租约/闸/人证之前被打回。`mcpGenerationPolicy.test.ts` 与 `mcpGenerationDispatcher.test.ts` 各有一条阳性对照——故意把旧的环境变量设成 '0'，断言 scope 照发、调用照常走到「缺租约」那一步。",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/generationDispatcher.ts",
+      "symbol": "dispatchSemanticStub",
+      "responsibility": "语义生成路的唯一入口守卫：只校验租约、人证与装配（处理器在不在），不再校验任何 rollout 状态。"
+    },
+    {
+      "path": "electron/capabilityCore/projectSessionAuthority.ts",
+      "symbol": "deriveProjectSessionScopes",
+      "responsibility": "租约发哪些 scope 从能力枚举派生；`start`（提交=花钱）仍然不发，它要的是人证不是租约。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationPolicy.ts",
+      "symbol": "classifyMcpGenerationRoute",
+      "responsibility": "这个模块不读任何环境变量；它只回答「这条方法是不是墓碑」与「这个面有哪些能力」。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "entry_point": "startMcpStdioServer",
+      "disposition": "enforced",
+      "evidence": "不再构造 runtime policy，也不再把它递给 createDefaultAuthorities / 项目会话绑定；tests/ux 的四条 e2e 走查同 commit 删掉了它们注入的那两个环境变量，仍然绿。"
+    },
+    {
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "entry_point": "RpcServerOptions.generationPolicy",
+      "disposition": "enforced",
+      "evidence": "可选依赖整条删除；rpcServer.test.ts 那条钉 `feature_disabled` 的断言改成钉「走到缺租约那一步且结构化细节照常带出来」。"
+    },
+    {
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "entry_point": "guardLegacyGenerationRoute",
+      "disposition": "not-affected",
+      "evidence": "六条 legacy 生成路仍是墓碑（classifyMcpGenerationRoute 保留并有测试）——删掉的是 rollout 判据，不是 legacy 防火墙。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一个形状会在每一次「先上灰度开关、之后忘了拆」里重现；本仓还有别的 env 开关，而本条的代价是用户看不见的：只有模型侧拿得到那句拒绝。",
+    "same_class_scan": [
+      "grep -rn \"NOMI_MCP_GENERATION_SINGLE_SHOT\" electron/ src/ tests/ scripts/ → 改后只剩两条阳性对照测试（故意设成 '0' 证明关不掉）",
+      "grep -rn \"feature_disabled|phase_not_ready\" electron/ → 生产码 0 命中；仅 mcpToolErrorResults.ts:128 的许可码集合里留着两个已不存在的码（那个文件归 MCP lane，已列进报告）",
+      "node scripts/door-map.mjs deriveProjectSessionScopes / classifyMcpGenerationRoute / guardLegacyGenerationRoute → 各 1 扇"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/mcpGenerationPolicy.ts",
+    "invariant": "这个模块不读任何环境变量；它只回答「这条方法是不是墓碑」与「这个面有哪些能力」。",
+    "failure_mode": "不适用——被删掉的判据不会再拒绝任何东西；真正的拒绝仍然由租约（lease_required）、人证（human_approval_required / receipt_*）与 legacy 防火墙（legacy_path_forbidden）给出，全部 fail-closed。",
+    "exception_policy": "none",
+    "strategy": "删除而不是改默认值：一个能被环境变量关掉、却没有任何界面能告诉用户它被关掉了的开关，就是这个 bug 本身。",
+    "artifacts": [
+      "electron/capabilityCore/mcpGenerationPolicy.ts",
+      "electron/capabilityCore/generationDispatcher.ts",
+      "electron/capabilityCore/projectSessionAuthority.ts",
+      "electron/capabilityCore/rpcError.ts"
+    ]
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/generationDispatcher.ts",
+    "tests": [
+      "electron/capabilityCore/mcpGenerationPolicy.test.ts",
+      "electron/capabilityCore/mcpGenerationDispatcher.test.ts",
+      "electron/capabilityCore/rpcServer.test.ts"
+    ],
+    "notes": "语义生成路的守卫从此只回答租约/人证/装配三件事；两条阳性对照（故意设旧 env 变量）证明没有任何输入能把这个面关掉。"
+  },
+  "regression_tests": [
+    "electron/capabilityCore/mcpGenerationPolicy.test.ts",
+    "electron/capabilityCore/mcpGenerationDispatcher.test.ts",
+    "electron/capabilityCore/rpcServer.test.ts",
+    "electron/capabilityCore/mcpRpcError.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/mcpGenerationPolicy.test.ts",
+    "electron/capabilityCore/mcpGenerationDispatcher.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/mcpGenerationPolicy.ts",
+      "electron/capabilityCore/generationDispatcher.ts",
+      "electron/capabilityCore/rpcError.ts",
+      "electron/capabilityCore/mcpRpcError.ts"
+    ],
+    "rationale": "两个 env flag、三段式 phase、checkpoints、snapshot()/decide()、`feature_disabled` / `phase_not_ready` 两个错误码与整个 `phase` 字段全部同 commit 删除；九个文件里那个穿透式的 `generationPolicy` 可选依赖一并拔掉。没有留开关、没有留默认值、没有留回退。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "放量机制完全由本仓拥有，没有第三方运行时参与。",
+    "exit_criteria": []
+  },
+  "migration": "不需要迁移：环境变量从此被忽略（设了也没用），四条 e2e 走查里注入它们的那几行同 commit 删掉。旧的 `phase` 字段不再出现在错误载荷里；读它的客户端本来就只是把它原样打印。",
+  "residual_risks": [
+    "`mcpToolErrorResults.ts` 仍在许可码集合里留着 `feature_disabled` / `phase_not_ready`，并且仍会把 `phase` 透传出去——那个文件归 MCP 接模型 lane，本 lane 按任务书不碰。两处已列进交接报告。",
+    "打开之后的真实效果（外部 AI 真的生成出一张图）本轮只证到「调用不再被打回、停在缺租约/缺人证那一步」。端到端那一段要 `mcp-l2-journeys.e2e.mjs` 与真机验收，且它还会撞上「Run 路径只装得下 APIMart」那道更深的墙（BL-1，步骤 B）。",
+    "给模型的 nextAction 由指向一个不存在的设置开关改成「Open a new project session and retry」。这是模型可见文案改动，本轮没有真实模型回合数字（R13 第三档），发版前的 16 句真实模型重跑应覆盖它。"
+  ]
+}

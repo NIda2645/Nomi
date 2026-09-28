@@ -393,3 +393,23 @@ describe("referenceModeForIntent — 带参考时按目录选生成 kind（不�
     expect(referenceModeForIntent(s, "relay", "relay-img", "image")).toBe("image_edit");
   });
 });
+
+// 这个模块的**导出面**是一条锁（2026-09-22）。
+//
+// 为什么要它：`7df4c036f` 在这里只删了两个没人读的 import（合并后压 lint 用的是删真死代码，
+// 不是抬上限）。那次改动没有症状、没有直接原因、没有类根因——编一份纠正性根因合同出来，
+// 只会让根因台账多一条假记录，所以走的是 `change_kind: "structural"` 那条正规出口。
+// 而结构性合同宣称的是「行为逐字不变」，这条断言就是那句话**机器可核**的形状：
+// 导出集合少一个、多一个、改个名字，它当场红。
+describe("modelCatalogListing 的导出面", () => {
+  it("导出集合是一条锁——纯删死 import 不许动它", async () => {
+    const module = await import("./modelCatalogListing");
+    expect(Object.keys(module).sort()).toEqual([
+      "deriveModelListing",
+      "mappingsForModel",
+      "modelModeBodies",
+      "referenceModeForIntent",
+      "videoBodyKeysForModel",
+    ]);
+  });
+});

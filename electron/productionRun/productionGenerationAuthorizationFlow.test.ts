@@ -1,3 +1,4 @@
+import { deriveGenerationReauthorizationState } from "./productionGenerationAuthorizationState";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -57,7 +58,7 @@ function candidate(): PlanCandidate {
   };
 }
 
-function setup(approve = true) {
+function setup(approve = true, hardCap = 10) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-generation-authorization-flow-"));
   roots.push(root);
   const repository = createProductionRunRepository({
@@ -88,7 +89,7 @@ function setup(approve = true) {
       trustedHosts: ["semantic-mcp"],
       allowedProviders: ["fixture-provider"],
       allowedModels: ["fixture-model"],
-      maxSpend: 10,
+      maxSpend: hardCap,
       maxAttemptsPerJob: 2,
     },
   });
@@ -97,6 +98,8 @@ function setup(approve = true) {
     projectRevision: 12,
     operation: { operationId: "op-1", projectId: "project-1", candidate: planCandidate, planVersion: 1 },
     contract,
+    // 授权站在真实 Run 上：attempt 谱系和硬上限都从它算（`run` 是必填，不再有 attempt 恒为 1 的降级口）。
+    run: repository.read("project-1", "op-1")!,
     providers: [provider],
     resolveShotPrice: () => ({ known: true, amount: 6 }),
     now: NOW,
@@ -554,7 +557,7 @@ describe("Run-owned paid generation authorization", () => {
   });
 
   it("rework uses a fresh digest, gate, Approval and budget before dispatching only attempt 2", async () => {
-    const { repository, authorization: initial, submission, submit, provider } = setup();
+    const { repository, authorization: initial, submission, submit, provider } = setup(true, 12);
     await submission.start({ projectId: "project-1", operationId: "op-1" });
     let run = repository.read("project-1", "op-1")!;
     const firstJob = run.jobs[0];
@@ -574,6 +577,10 @@ describe("Run-owned paid generation authorization", () => {
       now: "2026-08-23T00:01:00.000Z",
     });
     expect(reauthorization.authorizationDigest).not.toBe(initial.authorizationDigest);
+    expect(() => deriveGenerationReauthorizationState({
+      run: { ...run, policy: { ...run.policy, maxSpend: 10 } }, preparation: reauthorization, now: NOW,
+    })).toThrow(/safely extend/);
+
     run = repository.execute("project-1", "op-1", {
       commandId: "request-rework",
       expectedRevision: run.revision,

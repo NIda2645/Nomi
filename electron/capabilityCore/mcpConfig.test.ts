@@ -4,12 +4,13 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let homeDir = ''
+const originalExecPath = process.execPath
 let isPackaged = false
 /** 「真实用户主目录」（passwd 那份）。默认取本机真值——临时 HOME 不在它下面，写盘不受隔离守卫影响。 */
 let realHome: string | null = null
 
 vi.mock('electron', () => ({
-  app: { getAppPath: () => '/fake/repo', getPath: () => homeDir, get isPackaged() { return isPackaged } },
+  app: { getAppPath: () => path.join(homeDir, 'repo'), getPath: () => homeDir, get isPackaged() { return isPackaged } },
 }))
 vi.mock('node:os', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:os')>()
@@ -24,6 +25,7 @@ import {
   classifyMcpEntry,
   installMcp,
   listCustomMcpProfiles,
+  mcpServerEntry,
   packagedMcpLauncherAvailable,
   readMcpInfo,
   registerCustomMcpProfile,
@@ -68,6 +70,20 @@ function installHost(dir: string): void {
 
 beforeEach(() => {
   homeDir = tempHome()
+  const appCommand = process.platform === 'darwin'
+    ? path.join(homeDir, 'Current Nomi.app', 'Contents', 'MacOS', 'Nomi')
+    : path.join(homeDir, process.platform === 'win32' ? 'Nomi.exe' : 'Nomi')
+  Object.defineProperty(process, 'execPath', { value: appCommand, configurable: true })
+  const runtime = process.platform === 'darwin'
+    ? path.join(homeDir, 'Current Nomi.app', 'Contents', 'Frameworks', 'Nomi Helper.app', 'Contents', 'MacOS', 'Nomi Helper')
+    : appCommand
+  const script = process.platform === 'darwin'
+    ? path.join(homeDir, 'Current Nomi.app', 'Contents', 'Resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+    : path.join(homeDir, 'resources', 'app.asar', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+  for (const file of [appCommand, runtime, script, path.join(homeDir, 'repo', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')]) {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, '', { mode: 0o755 })
+  }
   // 隔离 capability-core 目录（security.ts 的 capabilityCoreDir() 用这个 env）。
   process.env[CAPABILITY_DIR_ENV] = path.join(homeDir, '.nomi-cap')
   isPackaged = false
@@ -77,6 +93,8 @@ beforeEach(() => {
   ensureToken()
 })
 afterEach(() => {
+  Object.defineProperty(process, 'execPath', { value: originalExecPath, configurable: true })
+  vi.restoreAllMocks()
   delete process.env[CAPABILITY_DIR_ENV]
   delete process.env.NOMI_E2E
   delete process.env.NOMI_SETTINGS_DIR
@@ -124,7 +142,7 @@ describe('capabilityCore/mcpConfig', () => {
     expect(after.mcpServers.nomi.env.ELECTRON_RUN_AS_NODE).toBe('1')
     expect(after.mcpServers.nomi.env.NOMI_MCP_STDIO).toBe('1')
     expect(after.mcpServers.nomi.env.NOMI_MCP_APP_COMMAND).toBe(process.execPath)
-    expect(JSON.parse(after.mcpServers.nomi.env.NOMI_MCP_APP_ARGS)).toEqual(['/fake/repo'])
+    expect(JSON.parse(after.mcpServers.nomi.env.NOMI_MCP_APP_ARGS)).toEqual([path.join(homeDir, 'repo')])
     expect(after.mcpServers.nomi.env.NOMI_SETTINGS_DIR).toBe(homeDir)
     expect(after.mcpServers.nomi.env[MCP_CONFIG_VERSION_ENV]).toBe(MCP_CONFIG_VERSION)
     expect(after.mcpServers.nomi.env[MCP_CONFIG_KIND_ENV]).toBe('development')
@@ -133,7 +151,7 @@ describe('capabilityCore/mcpConfig', () => {
       after.mcpServers.nomi.env[MCP_CLIENT_ENV],
       after.mcpServers.nomi.env[MCP_CLIENT_PROOF_ENV],
     )).toBe('claude')
-    expect(after.mcpServers.nomi.args[0]).toBe('/fake/repo/dist-electron/capabilityCore/mcpNodeLauncher.js')
+    expect(after.mcpServers.nomi.args[0]).toBe(path.join(homeDir, 'repo', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js'))
   })
 
   it('install 在 ~/.claude.json 不存在时也能建出来', () => {
@@ -322,12 +340,12 @@ describe('capabilityCore/mcpConfig', () => {
     expect(readMcpInfo(0).clients.claude.configState).toBe('current')
   })
 
-  it('auto-upgrades the direct packaged launcher written by the previous Nomi release', () => {
+  it('repairs a missing direct packaged launcher written by the previous Nomi release', () => {
     isPackaged = true
     fs.writeFileSync(claudeJson(), JSON.stringify({
       mcpServers: {
         nomi: {
-          command: '/Applications/Nomi.app/Contents/MacOS/Nomi',
+          command: path.join(homeDir, 'Deleted Nomi.app', 'Contents', 'MacOS', 'Nomi'),
           args: [],
           env: {
             NOMI_MCP_STDIO: '1',
@@ -338,7 +356,7 @@ describe('capabilityCore/mcpConfig', () => {
       },
     }, null, 2))
 
-    expect(readMcpInfo(0).clients.claude.configState).toBe('auth-stale') // 上一版的 proof 对不上当前 token
+    expect(readMcpInfo(0).clients.claude.configState).toBe('launcher-broken')
     expect(repairStaleMcpConfigs().changed).toBe(true)
     const info = readMcpInfo(0)
     expect(info.clients.claude.configState).toBe('current')
@@ -371,13 +389,13 @@ describe('capabilityCore/mcpConfig', () => {
     expect(fs.readFileSync(`${target}.nomi-backup`, 'utf8')).toContain('/old/Nomi/scripts/nomi-mcp.mjs')
   })
 
-  it('auto-upgrades a previous packaged Codex entry that uses an env subtable', () => {
+  it('repairs a missing previous packaged Codex entry that uses an env subtable', () => {
     isPackaged = true
     const target = path.join(homeDir, '.codex', 'config.toml')
     fs.mkdirSync(path.dirname(target), { recursive: true })
     fs.writeFileSync(target, [
       '[mcp_servers.nomi]',
-      'command = "/Applications/Nomi.app/Contents/MacOS/Nomi"',
+      `command = ${JSON.stringify(path.join(homeDir, 'Deleted Nomi.app', 'Contents', 'MacOS', 'Nomi'))}`,
       'args = []',
       '',
       '[mcp_servers.nomi.env]',
@@ -388,7 +406,7 @@ describe('capabilityCore/mcpConfig', () => {
       '',
     ].join('\n'))
 
-    expect(readMcpInfo(0).clients.codex.configState).toBe('auth-stale')
+    expect(readMcpInfo(0).clients.codex.configState).toBe('launcher-broken')
     expect(repairStaleMcpConfigs().changed).toBe(true)
     expect(readMcpInfo(0).clients.codex.configState).toBe('current')
     const after = fs.readFileSync(target, 'utf8')
@@ -429,6 +447,114 @@ describe('capabilityCore/mcpConfig', () => {
     expect(repairStaleMcpConfigs()).toEqual({ changed: false, repaired: [] })
   })
 
+  describe('startup preserves another viable launcher', () => {
+    function otherLauncher() {
+      const command = path.join(homeDir, 'Other Nomi', process.platform === 'win32' ? 'Nomi.exe' : 'Nomi')
+      fs.mkdirSync(path.dirname(command), { recursive: true })
+      fs.writeFileSync(command, '', { mode: 0o755 })
+      return { command, args: [], env: { NOMI_SETTINGS_DIR: homeDir, NOMI_MCP_STDIO: '1' } }
+    }
+
+    it.each(['claude', 'codex', 'sample-assistant'])('preserves %s byte for byte despite another owner authentication', (client) => {
+      isPackaged = true
+      const entry = otherLauncher()
+      const target = client === 'codex' ? path.join(homeDir, '.codex', 'config.toml')
+        : client === 'claude' ? claudeJson() : path.join(homeDir, 'sample.json')
+      if (client === 'sample-assistant') registerCustomMcpProfile({ key: client, label: 'Sample', format: 'json', configPath: target })
+      const before = client === 'codex'
+        ? `[mcp_servers.nomi]\ncommand = ${JSON.stringify(entry.command)}\nargs = []\nenv = { NOMI_SETTINGS_DIR = ${JSON.stringify(homeDir)}, NOMI_MCP_STDIO = "1" }\n`
+        : JSON.stringify({ untouched: true, mcpServers: { nomi: entry } }, null, 2)
+      fs.writeFileSync(target, before)
+      expect(repairStaleMcpConfigs()).toEqual({ changed: false, repaired: [] })
+      expect(fs.readFileSync(target, 'utf8')).toBe(before)
+      expect(readMcpInfo(0).clients[client]).toMatchObject({ configState: 'launcher-elsewhere', configuredCommand: entry.command })
+      expect(fs.existsSync(`${target}.nomi-backup`)).toBe(false)
+      expect(installMcp(client).ok).toBe(true)
+      expect(readMcpInfo(0).clients[client].configState).toBe('current')
+      expect(fs.readFileSync(`${target}.nomi-backup`, 'utf8')).toBe(before)
+    })
+
+    it('preserves the same executable with a different existing profile', () => {
+      isPackaged = true
+      installMcp('claude')
+      const written = JSON.parse(fs.readFileSync(claudeJson(), 'utf8'))
+      const profile = path.join(homeDir, 'another-profile')
+      fs.mkdirSync(profile)
+      written.mcpServers.nomi.env.NOMI_SETTINGS_DIR = profile
+      written.mcpServers.nomi.env[MCP_CLIENT_PROOF_ENV] = 'another-profile-proof'
+      const before = JSON.stringify(written)
+      fs.writeFileSync(claudeJson(), before)
+      expect(repairStaleMcpConfigs()).toEqual({ changed: false, repaired: [] })
+      expect(fs.readFileSync(claudeJson(), 'utf8')).toBe(before)
+      expect(readMcpInfo(0).clients.claude.configState).toBe('launcher-elsewhere')
+    })
+
+    it.each(['healthy', 'missing-script', 'missing-app'])('checks every resource of a %s Helper launcher', (state) => {
+      isPackaged = true
+      const command = path.join(homeDir, 'Other', process.platform === 'win32' ? 'Nomi.exe' : 'Nomi Helper')
+      const appCommand = path.join(homeDir, 'Other', 'Nomi')
+      const script = path.join(homeDir, 'Other', 'dist-electron', 'capabilityCore', 'mcpNodeLauncher.js')
+      for (const file of [command, appCommand, script]) {
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        fs.writeFileSync(file, '', { mode: 0o755 })
+      }
+      const entry = { command, args: [script], env: {
+        NOMI_MCP_STDIO: '1', ELECTRON_RUN_AS_NODE: '1', NOMI_MCP_APP_COMMAND: appCommand,
+        NOMI_SETTINGS_DIR: homeDir, [MCP_CLIENT_PROOF_ENV]: 'another-token',
+      } }
+      if (state === 'missing-script') fs.unlinkSync(script)
+      if (state === 'missing-app') fs.unlinkSync(appCommand)
+      const before = JSON.stringify({ mcpServers: { nomi: entry } })
+      fs.writeFileSync(claudeJson(), before)
+      expect(classifyMcpEntry('claude', entry)).toBe(state === 'healthy' ? 'launcher-elsewhere' : 'launcher-broken')
+      expect(repairStaleMcpConfigs().changed).toBe(state !== 'healthy')
+      if (state === 'healthy') expect(fs.readFileSync(claudeJson(), 'utf8')).toBe(before)
+    })
+
+    it('still repairs authentication for the current installation', () => {
+      isPackaged = true
+      const entry = mcpServerEntry('claude')
+      entry.env![MCP_CLIENT_PROOF_ENV] = 'expired-proof'
+      fs.writeFileSync(claudeJson(), JSON.stringify({ mcpServers: { nomi: entry } }))
+      expect(readMcpInfo(0).clients.claude.configState).toBe('auth-stale')
+      expect(repairStaleMcpConfigs().repaired).toMatchObject([{ client: 'claude', from: 'auth-stale' }])
+      expect(readMcpInfo(0).clients.claude.configState).toBe('current')
+    })
+
+    it.each(['missing', 'directory', 'not-executable'])('repairs a %s launcher', (failure) => {
+      isPackaged = true
+      const entry = otherLauncher()
+      if (failure === 'missing' || failure === 'directory') fs.unlinkSync(entry.command)
+      if (failure === 'directory') fs.mkdirSync(entry.command)
+      if (failure === 'not-executable') {
+        fs.chmodSync(entry.command, 0o644)
+        // Windows access(X_OK) only checks existence; exercise denial without assuming POSIX modes.
+        if (process.platform === 'win32') {
+          const access = fs.accessSync.bind(fs)
+          vi.spyOn(fs, 'accessSync').mockImplementation((target, mode) => {
+            if (target === entry.command) throw Object.assign(new Error('denied'), { code: 'EACCES' })
+            return access(target, mode)
+          })
+        }
+      }
+      fs.writeFileSync(claudeJson(), JSON.stringify({ mcpServers: { nomi: entry } }))
+      expect(classifyMcpEntry('claude', entry)).toBe('launcher-broken')
+      expect(repairStaleMcpConfigs()).toMatchObject({ changed: true, repaired: [{ from: 'launcher-broken' }] })
+      expect(readMcpInfo(0).clients.claude.configState).toBe('current')
+      vi.restoreAllMocks()
+    })
+
+    it('repairs an existing retired script rather than treating existence as viability', () => {
+      isPackaged = true
+      const script = path.join(homeDir, 'scripts', 'nomi-mcp.mjs')
+      fs.mkdirSync(path.dirname(script))
+      fs.writeFileSync(script, 'process.exit(2)')
+      fs.writeFileSync(claudeJson(), JSON.stringify({ mcpServers: { nomi: { command: process.execPath, args: [script] } } }))
+      expect(repairStaleMcpConfigs()).toMatchObject({ changed: true, repaired: [{ from: 'legacy-launcher' }] })
+      expect(readMcpInfo(0).clients.claude.configState).toBe('current')
+    })
+  })
+
   // 2026-09-13 现场：只是打开设置页，本机 5 个客户端配置全被改成指向一个跑完就删的 /tmp profile。
   // 守卫住在唯一的写盘门（atomicWrite）上：repair / install / uninstall 三条路都从这扇门过，谁也绕不开。
   describe('an isolated instance never rewrites host configs in the real user home', () => {
@@ -460,7 +586,7 @@ describe('capabilityCore/mcpConfig', () => {
     })
   })
 
-  it('reports a config whose NOMI_SETTINGS_DIR points at another or deleted profile as launcher-stale, and repairs it at boot', () => {
+  it('reports a config whose NOMI_SETTINGS_DIR points at a deleted profile as launcher-broken, and repairs it at boot', () => {
     isPackaged = true
     installMcp('claude')
     const written = JSON.parse(fs.readFileSync(claudeJson(), 'utf8'))
@@ -468,9 +594,9 @@ describe('capabilityCore/mcpConfig', () => {
     // 同一台机器上另一个（已删除的）隔离实例写过的样子：命令、签名全对，只有 profile 指错了。
     written.mcpServers.nomi.env.NOMI_SETTINGS_DIR = path.join(homeDir, 'gone-profile')
     fs.writeFileSync(claudeJson(), JSON.stringify(written, null, 2))
-    expect(readMcpInfo(0).clients.claude.configState).toBe('launcher-stale')
-    expect(classifyMcpEntry('claude', written.mcpServers.nomi)).toBe('launcher-stale')
-    expect(repairStaleMcpConfigs()).toEqual({ changed: true, repaired: [{ client: 'claude', label: 'Claude Code', from: 'launcher-stale' }] })
+    expect(readMcpInfo(0).clients.claude.configState).toBe('launcher-broken')
+    expect(classifyMcpEntry('claude', written.mcpServers.nomi)).toBe('launcher-broken')
+    expect(repairStaleMcpConfigs()).toEqual({ changed: true, repaired: [{ client: 'claude', label: 'Claude Code', from: 'launcher-broken' }] })
     expect(JSON.parse(fs.readFileSync(claudeJson(), 'utf8')).mcpServers.nomi.env.NOMI_SETTINGS_DIR).toBe(homeDir)
     expect(readMcpInfo(0).clients.claude.configState).toBe('current')
   })

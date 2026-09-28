@@ -6,7 +6,8 @@ const fixture = vi.hoisted(() => ({ controller: new AbortController(), upload: v
 vi.mock('react', async original => {
   const actual = await original<typeof import('react')>()
   return { ...actual, default: { ...actual, useCallback: (fn: unknown) => fn, useMemo: (fn: () => unknown) => fn(),
-    useState: (initial: unknown) => [initial, fixture.state], useRef: (initial: unknown) => ({ current: initial }) } }
+    // No Provider in this direct-hook fixture: retain the real canvas writer and project checks.
+    useContext: () => null, useState: (initial: unknown) => [initial, fixture.state], useRef: (initial: unknown) => ({ current: initial }) } }
 })
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }))
 vi.mock('../../../i18n', () => ({ default: { t: (key: string) => key } }))

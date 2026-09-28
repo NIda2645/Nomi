@@ -2,7 +2,7 @@
 //
 // 合同（2026-09-11 用户拍板恢复）：
 //   · 未选中的卡片 = 两个 28px 圆点，卡片外侧**没有**捕获指针的带子；
-//   · 选中的图片类卡片（且只有它）= 左右各一条 112×168 的带子，加号在带内跟着指针走；
+//   · 选中的图片类卡片（且只有它）= 左右各一条 112×min(168, 卡高+28) 的带子，加号在带内跟着指针走；
 //   · 拖线进入目标卡片外侧热区 → 端点吸到该侧边缘，离开就放开；
 //   · 因为同一时刻只有一张卡有带子，卡片之间的连线始终点得到（这条是回归的那一条）。
 import fs from 'node:fs'
@@ -11,7 +11,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
 import { expect, expectAbsent, proveProbe, screenshotSettled, waitForVisualQuiescence } from './_assert.mjs'
-import { findCanvasBlankPoint, findEdgeHitPoint, findNodeHitPoint } from './_canvasHit.mjs'
+import { findCanvasBlankPoint, findEdgeHitPoint, findNodeHitPoint, readCanvasViewport, waitForCanvasViewportSettled } from './_canvasHit.mjs'
 import { createCanvasPerformanceFixture } from './fixtures/canvas-performance-fixture.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
@@ -24,7 +24,7 @@ const images = fixture.record.payload.generationCanvas.nodes.filter((node) => no
 images.forEach((node, index) => {
   node.position = [{ x: 130, y: 120 }, { x: 130, y: 460 }, { x: 520, y: 120 }][index]
   node.title = ['参考图一', '参考图二', '目标图片'][index]
-  node.size = { width: 240, height: 180 }
+  node.size = { width: index === 1 ? 320 : 240, height: 180 }
   node.meta = { ...node.meta, previewHeight: 180, userResized: true }
 })
 fixture.record.payload.generationCanvas = { nodes: images, edges: [], groups: [], selectedNodeIds: [] }
@@ -128,6 +128,12 @@ try {
   })
   await win.locator('.generation-canvas-v2__stage').waitFor()
   await expect(win.locator('.react-flow__node')).toHaveCount(3)
+  // 打开项目那一刻画布会一次性摆全貌（useAutoFitOnLoad：没有记住的视角 → 量完节点后适应一次）。这条走查量的是
+  // 1:1 下握把 / 带子的屏幕像素，像人一样先点「重置视图」回到 100%，再开始。
+  await waitForCanvasViewportSettled(win)
+  await win.getByRole('button', { name: '重置视图', exact: true }).first().click()
+  await waitForCanvasViewportSettled(win)
+  expect((await readCanvasViewport(win))?.zoom, '重置视图后缩放回到 100%').toBeCloseTo(1, 3)
 
   // 先证明「带子看得见」，之后的缺席断言才有意义（expectAbsent 需要阳性对照）。
   await select(images[0].id)
@@ -166,14 +172,22 @@ try {
   })
 
   await task('02-selected-band-follows', async () => {
-    await select(images[0].id)
-    await expect(magneticBands(images[0].id), '选中的图片卡左右各一条带子').toHaveCount(2)
-    for (const side of ['left', 'right']) {
-      const hit = handle(images[0].id, 'source', side).locator('.generation-canvas-react-flow__handle-hit')
-      const box = await hit.boundingBox()
-      expect(Math.round(box.width), '带子 112px 宽').toBe(112)
-      expect(Math.round(box.height), '带子 168px 高（min(168, 卡高+28)）').toBe(168)
+    // 夹具图像均为16:9；名义存储高度不覆盖图片自身比例。两张卡分别覆盖短卡与168px上限。
+    for (const [index, expectedCardHeight] of [[0, 135], [1, 180]]) {
+      const id = images[index].id
+      await select(id)
+      await expect(magneticBands(id), '选中的图片卡左右各一条带子').toHaveCount(2)
+      const card = await win.locator(selector(id)).boundingBox()
+      expect(Math.round(card.height), '卡片按真实图片比例显示').toBe(expectedCardHeight)
+      for (const side of ['left', 'right']) {
+        const hit = handle(id, 'source', side).locator('.generation-canvas-react-flow__handle-hit')
+        const box = await hit.boundingBox()
+        expect(Math.round(box.width), '带子112px宽').toBe(112)
+        expect(Math.round(box.height), '带子高度遵循min(168,卡高+28)').toBe(Math.min(168, expectedCardHeight + 28))
+      }
+
     }
+    await select(images[0].id)
     // 加号跟着指针走：在带内取一个**不是静止位**的点，图标中心要追上来。
     const card = await win.locator(selector(images[0].id)).boundingBox()
     const follow = { x: card.x + card.width + 78, y: card.y + card.height / 2 - 46 }
@@ -245,8 +259,47 @@ try {
     await expect(win.locator('.generation-canvas-react-flow__edge-label').first(), '点连线打开连线模式药丸').toBeVisible()
     await snap('04-close-edge-stays-clickable')
   })
+
+  // 卡面与自己把手的上下层（docs/fixes/2026-09-22-card-face-over-own-ports.root-cause.json）：
+  // 磁吸档把卡面抬到带子之上（版本胶囊/托盘点得到），小圆点档的圆点必须整颗压在卡面上。
+  // 2026-09-22 回归：卡面按 data-selected 抬，多选时每张卡的圆点内半边和正中都归卡面，按下去是拖卡。
+  await task('05-card-face-and-own-ports-stacking', async () => {
+    await select(images[0].id)
+    const single = await win.locator(selector(images[0].id)).boundingBox()
+    const insideEdge = await ownerAt({ x: single.x + single.width - 2, y: single.y + single.height / 2 })
+    expect(insideEdge.inHandle, `磁吸档：卡边内侧 2px 归卡面，不归带子 → ${insideEdge.className}`).toBe(false)
+    await win.keyboard.down('Shift')
+    const second = await findNodeHitPoint(win, { nodeSelector: selector(images[1].id) })
+    expect(second, `node ${images[1].id} hittable for shift-select`).not.toBeNull()
+    await win.mouse.click(second.x, second.y)
+    await win.keyboard.up('Shift')
+    await expect(win.locator('.react-flow__node.selected')).toHaveCount(2)
+    await waitForVisualQuiescence(win)
+    for (const [id, side] of [[images[0].id, 'left'], [images[0].id, 'right'], [images[1].id, 'left'], [images[1].id, 'right']]) {
+      const source = handle(id, 'source', side)
+      await expect(source, `多选时是圆点把手：${id}/${side}`).toHaveAttribute('data-affordance', 'dot')
+      const dot = await iconCenter(id, side)
+      const inward = side === 'left' ? 1 : -1
+      for (const [label, dx] of [['正中', 0], ['内半边', inward * dot.width / 3], ['外半边', -inward * dot.width / 3]]) {
+        const owner = await ownerAt({ x: dot.x + dx, y: dot.y })
+        expect(owner.inHandle, `多选圆点${label}归把手：${id}/${side} → ${owner.className}`).toBe(true)
+      }
+    }
+    // 真手势：按在多选卡的圆点正中，拉出去是一条待连线，不是拖卡。
+    const cardBefore = await win.locator(selector(images[0].id)).boundingBox()
+    const dot = await iconCenter(images[0].id, 'right')
+    await win.mouse.move(dot.x, dot.y)
+    await win.mouse.down()
+    await win.mouse.move(dot.x + 60, dot.y + 40, { steps: 10 })
+    await expect(win.locator('.react-flow__connection-path'), '按圆点正中拉出待连线').toHaveCount(1)
+    const cardDuring = await win.locator(selector(images[0].id)).boundingBox()
+    expect(Math.hypot(cardDuring.x - cardBefore.x, cardDuring.y - cardBefore.y), '卡片没被拖动').toBeLessThan(1)
+    await snap('05-multi-selected-dot-starts-connection')
+    await win.keyboard.press('Escape')
+    await win.mouse.up()
+  })
 } finally {
   fs.writeFileSync(path.join(evidence, `${phase}-results.json`), JSON.stringify(results, null, 2))
   await app.close()
 }
-if (results.length !== 4 || results.some((result) => !result.pass)) process.exitCode = 1
+if (results.length !== 5 || results.some((result) => !result.pass)) process.exitCode = 1

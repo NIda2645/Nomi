@@ -294,6 +294,9 @@ export function spawnMcpStdioClient({
       NOMI_E2E: '1',
       NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
       NOMI_MCP_STDIO: '1',
+      // 服务端日志必须镜到 stderr：stdout 整条给了 JSON-RPC，stderr 是它唯一能说话的地方，
+      // 而 `mirrorToStderr` 在打包形态下默认只落盘（盘在运行器里，没人看得到）。
+      NOMI_LOG_STDERR: '1',
       NOMI_SETTINGS_DIR: settingsDir,
       NOMI_ELECTRON_USER_DATA_DIR: userDataDir,
       NOMI_PROJECTS_DIR: projectsDir,

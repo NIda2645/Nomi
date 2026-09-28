@@ -1,4 +1,4 @@
-import { authHeaders, authQueryParams, buildHttpRequest, type BuiltRequest } from "../ai/requestPipeline";
+import { authHeaders, authQueryParams, buildHttpRequest, type BuiltRequest, type VendorAuthSpec } from "../ai/requestPipeline";
 import { buildModelListRequests, fetchModelList } from "../ai/onboarding/modelListProbe";
 import { readCatalog } from "../catalog/catalogStore";
 import { decryptApiKeyRecord } from "../catalog/secrets";
@@ -51,10 +51,9 @@ type LocalRuntimeProbe = typeof probeLocalAiExternalRuntime;
 export type HttpDiscoveryInput = {
   baseUrl: string;
   providerKind: AiSdkProviderKind;
-  authType: "none" | "bearer" | "x-api-key" | "query";
   apiKey: string;
-  authHeader?: string;
-  authQueryParam?: string;
+  /** 整份鉴权说法（含 authScheme），由 connectionAuthSpec 从已保存的连接派生；别再拆成散字段。 */
+  auth: VendorAuthSpec;
   headers: Record<string, string>;
   search?: string;
 };
@@ -109,10 +108,10 @@ function defaultExistingActions(service: HttpConnectorPrimitives): ExistingConne
     async fetchModels(input) {
       const headers = mergeHeadersCaseInsensitive(
         input.providerKind === "anthropic" ? { "anthropic-version": "2023-06-01" } : {},
-        authHeaders(input.authType, input.apiKey, input.authHeader),
+        authHeaders(input.auth, input.apiKey),
         input.headers,
       );
-      const query = authQueryParams(input.authType, input.apiKey, input.authQueryParam);
+      const query = authQueryParams(input.auth, input.apiKey);
       return fetchModelList(input.providerKind, input.baseUrl, headers, input.signal, { query });
     },
     startAdapter: ({ vendorKey, ...input }) => service.start({ ...input, catalogVendorKey: vendorKey }),
@@ -152,9 +151,9 @@ export class HttpProviderConnector {
         localRuntime = await this.probeExternalLocalRuntime({
           baseUrl: input.baseUrl,
           providerKind: input.providerKind,
-          authType: input.authType,
+          authType: input.auth.authType,
           apiKey: input.apiKey,
-          ...(input.authHeader ? { authHeader: input.authHeader } : {}),
+          ...(input.auth.headerName ? { authHeader: input.auth.headerName } : {}),
           authScope: input.apiKey ? "user" : undefined,
         });
       }
@@ -173,7 +172,7 @@ export class HttpProviderConnector {
       if (filtered.length || localRuntime.capabilities.length === 0) return filtered;
     }
     const result = await fetchModelList(input.providerKind, input.baseUrl, input.headers, new AbortController().signal, {
-      query: authQueryParams(input.authType, input.apiKey, input.authQueryParam),
+      query: authQueryParams(input.auth, input.apiKey),
     });
     if (!result.ok) throw new Error(`model_discovery_${result.failureKind || "unknown"}`);
     const descriptors = new Map((result.descriptors || []).map((descriptor) => [descriptor.id, descriptor]));

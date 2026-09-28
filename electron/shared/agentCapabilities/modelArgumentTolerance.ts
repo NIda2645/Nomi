@@ -34,8 +34,33 @@
 // 支持 `anyOf`（`pi-ai/dist/api/google-shared.js:278-281`）。新通路不走那条路：契约保持
 // 干净的 `z.array(...)`，容忍全部落在这里，校验之前。旧通路仍需要 T1，到阶段 4 一起删。
 
-/** JSON 文本 → 值。解不出就原样返回，让 pi 的校验器去报「期望数组」。 */
-function parseJsonText(value: unknown): unknown {
+/**
+ * 模型把一个结构化字段写成了 JSON 文本，**而那段文本自己坏了**。
+ *
+ * 2026-09-21 真实模型实测：`shots: must be array` 一共 12 次，**12 次全是这一种**
+ * ——不是「多包了一层字符串」（那一族下面的 `parseJsonText` 早就捏得回来），是那段
+ * JSON 在同一个位置断掉：`"durationSec": ` 之后跟着 `наш0` / `工商5` / `keyframe = 4` /
+ * `补充删除` 这类乱码。模型读到的却是「shots: must be array」——**一句在描述另一个问题的话**，
+ * 于是它把同样坏掉的载荷再发一遍（A5 一轮发了三次）。
+ *
+ * 所以这一档必须当场说清：不是「你该给数组」，是「你给的这段 JSON 在第 N 个字符处坏了，
+ * 坏在这里：…」。它是**诊断**，不是容忍——容忍解不出来就该说实话。
+ */
+export class MalformedJsonArgumentError extends Error {
+  constructor(readonly field: string, readonly detail: string) {
+    super(detail);
+    this.name = "MalformedJsonArgumentError";
+  }
+}
+
+/** 坏掉那一段附近的原文（前后各 40 字），让模型看见自己写坏的那几个字。 */
+function nearOffset(text: string, offset: number): string {
+  const start = Math.max(0, offset - 40);
+  return `${start > 0 ? "…" : ""}${text.slice(start, offset + 40)}${offset + 40 < text.length ? "…" : ""}`;
+}
+
+/** JSON 文本 → 值。看起来是 JSON 却解不出来 → 当场说清坏在哪；不像 JSON 就原样返回。 */
+function parseJsonText(value: unknown, field?: string): unknown {
   if (typeof value !== "string") return value;
   const trimmed = value.trim();
   if (!trimmed) return value;
@@ -43,8 +68,15 @@ function parseJsonText(value: unknown): unknown {
   if (first !== "[" && first !== "{") return value;
   try {
     return JSON.parse(trimmed) as unknown;
-  } catch {
-    return value;
+  } catch (error) {
+    if (!field) return value;
+    const message = error instanceof Error ? error.message : String(error);
+    const offset = Number(/position (\d+)/.exec(message)?.[1] ?? NaN);
+    const where = Number.isFinite(offset) ? ` It breaks near: ${nearOffset(trimmed, offset)}` : "";
+    throw new MalformedJsonArgumentError(field,
+      `"${field}" arrived as a JSON string, and that string is not valid JSON (${message}).${where}`
+      + ` Send "${field}" as a real JSON value, not as text, and write each field's value directly`
+      + ` — do not paste a number or an identifier where a number belongs.`);
   }
 }
 
@@ -103,7 +135,7 @@ export function modelArgumentTolerance(shape: ModelToleranceShape): (args: unkno
     }
 
     for (const field of arrayFields) {
-      const value = parseJsonText(record[field]);
+      const value = parseJsonText(record[field], field);
       if (value === undefined) continue;
       // C · 单个对象 → 一元数组。pi 为这一族单开过 issue #7835；上游自己的 `edit` 工具
       // 也在 `prepareEditArguments` 里做同一件事（`core/tools/edit.js:63-65`）。
@@ -111,7 +143,7 @@ export function modelArgumentTolerance(shape: ModelToleranceShape): (args: unkno
     }
 
     for (const field of objectFields) {
-      const value = parseJsonText(record[field]);
+      const value = parseJsonText(record[field], field);
       if (value !== undefined) record[field] = value;
     }
 

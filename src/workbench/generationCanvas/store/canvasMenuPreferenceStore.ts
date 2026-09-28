@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 import { create } from 'zustand'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { DEFAULT_CANVAS_MENU_PREFERENCE_SETTINGS, normalizeCanvasMenuPreferenceSettings, type CanvasMenuPreferenceSettings } from '../../../../electron/shared/contracts/canvasMenuPreference'
@@ -34,3 +35,12 @@ export const useCanvasMenuPreferenceStore = create<PreferenceState>((set) => ({
     }
   },
 }))
+
+/**
+ * C1 寿命声明：右键菜单的展示偏好是**这个窗口**里用户的手感，与打开哪个项目无关。
+ * 切项目清掉它 = 每换一次项目就把用户刚调好的偏好还原一次。
+ */
+export const canvasMenuPreferenceStoreLifetime = declareStoreLifetime({
+  store: 'useCanvasMenuPreferenceStore',
+  fields: { preference: 'window' },
+})

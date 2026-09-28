@@ -1,0 +1,190 @@
+{
+  "schemaVersion": 1,
+  "lockedBeforeLiveRun": true,
+  "selectionCriterion": "read_skill 或通用 read 成功读取 acceptableSkills 中任一 SKILL.md；只在回复提名不算。模糊组单列，不进入命中/误选分母。",
+  "successCriterion": "人工逐项核查 outputRubric；工具错误导致无法完成算失败。",
+  "positiveControl": "S03 同一句同模型独立会话；第二臂只从出站 available_skills 索引去掉 director-consistency 条目；其余保持一致，记录原始/发出 system 和哈希。",
+  "cases": [
+    {
+      "id": "S01",
+      "bucket": "should",
+      "prompt": "给父女争吵的这场戏设计潜台词：女儿问你什么时候走，父亲说饭还没吃。别改文稿，先给三组对白。",
+      "acceptableSkills": [
+        "writer-dialogue"
+      ],
+      "outputRubric": "对白三组；表面问题与真正诉求区分"
+    },
+    {
+      "id": "S02",
+      "bucket": "should",
+      "prompt": "三个人围着餐桌谈判，一个人掌握秘密，帮我安排站位、视线和前后景。",
+      "acceptableSkills": [
+        "director-staging"
+      ],
+      "outputRubric": "三人位置、视线、焦点有明确安排"
+    },
+    {
+      "id": "S03",
+      "bucket": "should",
+      "prompt": "角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。",
+      "acceptableSkills": [
+        "director-consistency"
+      ],
+      "outputRubric": "参考锚、稳定特征、跨镜状态"
+    },
+    {
+      "id": "S04",
+      "bucket": "should",
+      "prompt": "古装短片设在明朝，官员上堂的衣冠和公堂布置要避开什么穿帮？",
+      "acceptableSkills": [
+        "director-guzhuang"
+      ],
+      "outputRubric": "服饰、建筑、现代物穿帮具体举例"
+    },
+    {
+      "id": "S05",
+      "bucket": "should",
+      "prompt": "把她很害怕但装作镇定改成演员能执行的表演动作。",
+      "acceptableSkills": [
+        "director-performance",
+        "director-shot-translation"
+      ],
+      "outputRubric": "可拍身体信号；不只抽象情绪"
+    },
+    {
+      "id": "S06",
+      "bucket": "should",
+      "prompt": "两个镜头首尾接不上，一个在走廊一个在街上，给我三个遮挡或匹配转场方案。",
+      "acceptableSkills": [
+        "director-transitions"
+      ],
+      "outputRubric": "至少三种有首尾动作的转场"
+    },
+    {
+      "id": "S07",
+      "bucket": "should",
+      "prompt": "一个孤独门卫逐渐失控的故事，帮我按保罗施拉德的克制风格想开场。",
+      "acceptableSkills": [
+        "writer-style-schrader"
+      ],
+      "outputRubric": "日常重复、克制、内压的具体开场"
+    },
+    {
+      "id": "S08",
+      "bucket": "should",
+      "prompt": "想拍雨夜追逐，怎么把跑酷动作和环境互动写成清楚的视频提示词？",
+      "acceptableSkills": [
+        "director-action",
+        "director-shot-translation"
+      ],
+      "outputRubric": "动作和环境因果、身体力学、具体机位"
+    },
+    {
+      "id": "S09",
+      "bucket": "should",
+      "prompt": "帮我设计一个故事的对手网络：主角是想卖掉老屋的女儿，父亲坚决不同意。",
+      "acceptableSkills": [
+        "writer-structure"
+      ],
+      "outputRubric": "主角欲望与至少两方不同价值冲突"
+    },
+    {
+      "id": "S10",
+      "bucket": "should",
+      "prompt": "我只有个碎片：凌晨四点，有人每天给空房间送早餐。先通过提问帮我长出故事，别直接写剧本。",
+      "acceptableSkills": [
+        "writer-incubation"
+      ],
+      "outputRubric": "提问孵化；不直接给完整剧本"
+    },
+    {
+      "id": "S11",
+      "bucket": "should",
+      "prompt": "这场戏父亲不说话，女儿收拾行李，怎么用环境音和沉默制造张力？",
+      "acceptableSkills": [
+        "director-sound"
+      ],
+      "outputRubric": "环境音与沉默叙事安排；不塞生视频提示词"
+    },
+    {
+      "id": "S12",
+      "bucket": "should",
+      "prompt": "把一个长篇小说改成五分钟短片，怎样挑核心戏剧点而不是逐章浓缩？",
+      "acceptableSkills": [
+        "writer-adaptation",
+        "writer-novel-digester"
+      ],
+      "outputRubric": "核心冲突、删减/合并、结构映射"
+    },
+    {
+      "id": "A01",
+      "bucket": "ambiguous",
+      "prompt": "这段感觉还差点意思，你能帮我想想吗？",
+      "acceptableSkills": [],
+      "outputRubric": "先问素材或问题；不编造现有文稿"
+    },
+    {
+      "id": "A02",
+      "bucket": "ambiguous",
+      "prompt": "我想拍点温暖的东西。",
+      "acceptableSkills": [],
+      "outputRubric": "给方向或澄清；不擅自生成收费媒体"
+    },
+    {
+      "id": "A03",
+      "bucket": "ambiguous",
+      "prompt": "开头太慢了怎么办？",
+      "acceptableSkills": [],
+      "outputRubric": "合理建议或澄清具体开头"
+    },
+    {
+      "id": "A04",
+      "bucket": "ambiguous",
+      "prompt": "能更有电影感吗？",
+      "acceptableSkills": [],
+      "outputRubric": "具体建议或澄清画面"
+    },
+    {
+      "id": "N01",
+      "bucket": "should_not",
+      "prompt": "17 加 25 等于多少？",
+      "acceptableSkills": [],
+      "outputRubric": "42"
+    },
+    {
+      "id": "N02",
+      "bucket": "should_not",
+      "prompt": "把 hello 翻译成中文，只回译文。",
+      "acceptableSkills": [],
+      "outputRubric": "你好"
+    },
+    {
+      "id": "N03",
+      "bucket": "should_not",
+      "prompt": "谢谢，今天先到这里。",
+      "acceptableSkills": [],
+      "outputRubric": "简短回应"
+    },
+    {
+      "id": "N04",
+      "bucket": "should_not",
+      "prompt": "把这三个词按字母排序：pear apple banana。",
+      "acceptableSkills": [],
+      "outputRubric": "apple banana pear"
+    },
+    {
+      "id": "N05",
+      "bucket": "should_not",
+      "prompt": "用一句话解释什么是质数。",
+      "acceptableSkills": [],
+      "outputRubric": "大于1且仅1和自身两个正因数"
+    },
+    {
+      "id": "N06",
+      "bucket": "should_not",
+      "prompt": "只回复数字 7。",
+      "acceptableSkills": [],
+      "outputRubric": "7"
+    }
+  ]
+}

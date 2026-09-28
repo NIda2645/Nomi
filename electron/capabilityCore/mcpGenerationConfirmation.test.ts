@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 
 import { createMcpProtocol, type GenerationGateChallengeProjection, type McpTransport } from './mcpProtocol'
+import { spendConfirmationMessage } from './mcpGateConfirmation'
 
 const challenge: GenerationGateChallengeProjection = {
   challengeId: 'challenge-1',
@@ -323,9 +324,10 @@ describe('生产装配面：没有验证器时，客户端的同意换不来收�
     expect(request.params.message).toContain('¥9 内不再逐镜问')
   })
 
-  // 永不把「算不出」当 ¥0 摆出去：整批都定不出价就别弹。（真免费的模型 amount=0 仍照常问——
-  // 未知与免费是两回事，见 shotPricing 的 price.known。）
-  it('refuses to ask anyone when every shot price is unknown', async () => {
+  // 2026-09-21 未知价开闸：整批定不出价**照样弹**，只是如实说「没有标价、花多少事后才知道」。
+  // 这条从前钉的是「别弹、回 surface:none」——那等于外部 MCP 这条路上用户连拒绝的机会都没有，
+  // 而内置 204 个模型一条价都没填。永不把「算不出」当 ¥0 摆出去这一条一个字没松（见下面两条）。
+  it('asks with an honest unpriced message instead of refusing to ask at all', async () => {
     const frames: unknown[] = []
     const confirmGenerationInNomi = vi.fn(async () => true)
     const transport: McpTransport = {
@@ -336,16 +338,58 @@ describe('生产装配面：没有验证器时，客户端的同意换不来收�
       confirmGenerationInNomi,
     }
     const protocol = await initialized(transport)
-    await expect(protocol.requestGenerationConfirmation({
+    const promise = protocol.requestGenerationConfirmation({
       ...challenge,
       challengeId: 'challenge-unpriced',
+      maximumCost: null,
+      unknownShotCount: 1,
       confirmationText: undefined,
       shots: {
         currency: '¥',
         shots: [{ shotId: 'shot-1', index: 1, sceneOneLiner: '开场', providerModelText: 'apimart · kling-v2', durationSeconds: null, price: { known: false }, degradations: [] }],
       },
-    })).resolves.toMatchObject({ confirmed: false, surface: 'none' })
-    expect(frames.some((frame) => (frame as { method?: string }).method === 'elicitation/create')).toBe(false)
-    expect(confirmGenerationInNomi).not.toHaveBeenCalled()
+    })
+    await tick()
+    const request = frames.find((frame) => (frame as { method?: string }).method === 'elicitation/create') as { id: string; params: { message: string } }
+    // 问出去了（从前这里一帧都不发），而且那段文字里没有任何被编出来的 ¥0。
+    expect(request).toBeTruthy()
+    expect(request.params.message).toContain('#1 开场 · apimart · kling-v2 · 价格未知')
+    expect(request.params.message).toContain('花多少事后才知道')
+    expect(request.params.message).not.toMatch(/[¥$]\s?0(?!\d)/)
+    protocol.handleIncoming({ id: request.id, result: { action: 'accept', content: { confirm: true } } })
+    await expect(promise).resolves.toMatchObject({ confirmed: true })
+  })
+
+  it('never prints ¥0 for an unpriced batch', () => {
+    const message = spendConfirmationMessage({
+      ...challenge,
+      maximumCost: null,
+      unknownShotCount: 1,
+      shots: {
+        currency: '¥',
+        shots: [{ shotId: 'shot-1', index: 1, sceneOneLiner: '开场', providerModelText: 'apimart · kling-v2', durationSeconds: null, price: { known: false }, degradations: [] }],
+      },
+    })
+    expect(message).toContain('价格未知')
+    expect(message).toContain('花多少事后才知道')
+    expect(message).not.toMatch(/[¥$]\s?0(?!\d)/)
+    expect(message).not.toContain('合计最多')
+  })
+
+  it('states the known subtotal AND the unpriced remainder for a mixed batch', () => {
+    const message = spendConfirmationMessage({
+      ...challenge,
+      maximumCost: 9,
+      unknownShotCount: 1,
+      shots: {
+        currency: '¥',
+        shots: [
+          { shotId: 'shot-1', index: 1, sceneOneLiner: '开场', providerModelText: 'apimart · kling-v2', durationSeconds: null, price: { known: true, amount: 9 }, degradations: [] },
+          { shotId: 'shot-2', index: 2, sceneOneLiner: '收尾', providerModelText: 'apimart · kling-v2', durationSeconds: null, price: { known: false }, degradations: [] },
+        ],
+      },
+    })
+    expect(message).toContain('已知的部分合计最多 ¥9')
+    expect(message).toContain('另有 1 镜目录未标价')
   })
 })

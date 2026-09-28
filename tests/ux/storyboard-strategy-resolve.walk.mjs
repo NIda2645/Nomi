@@ -10,7 +10,7 @@
 //      4–15s），每一镜显式指名它 —— 于是「拆几条、并哪几镜」是确定的，可以硬断言而不是靠人眼。
 //   ② 因此 `state=unavailable` / 没有候选模型 **必须报红**：上一版的 `if (state === 'ready') … else 打印一行`
 //      让「能力核没起来」和「一切正常」都走绿灯，正是那种看不见的假绿。
-//   ③ 闸不是看看就算：真点一次「生成剩余」，断言 toast 出现且带着机器理由（含模型名）。
+//   ③ 闸不是看看就算：真点一次「生成剩余」，断言页脚行内提示出现且带着机器理由（含模型名）。
 //   ④ 四张截图逐张比 md5：字节相同 = 中间那几步根本没发生（`_assert.mjs` 头注释里那条老坑）。
 //
 // 零额度：resolve 是主进程 stateless 纯计算，不调任何 provider；闸把整批拦在 materialize 之前，
@@ -25,7 +25,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
-import { applyColorSchemeForShot, clickOrFail, expect, expectHidden, expectVisible, screenshotSettled } from './_assert.mjs'
+import { applyColorSchemeForShot, clickOrFail, expect, expectVisible, screenshotSettled } from './_assert.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-strategy-resolve-'))
@@ -57,7 +58,21 @@ fs.writeFileSync(path.join(settingsDir, 'model-catalog.json'), `${JSON.stringify
     vendorKey: VENDOR, modelKey: VIDEO_MODEL, labelZh: VIDEO_MODEL_LABEL, kind: 'video',
     enabled: true, published: true, meta: { archetypeId: 'minimax-h3' }, createdAt: NOW, updatedAt: NOW,
   }],
-  mappings: [],
+  // 一条启用的 text_to_video 映射：候选名单只收**可用**模型（usableVideoModelCandidates.ts，88a485019 起
+  // 不再只看 enabled），而「发布资格」对无认证 revision 的行就看有没有启用的可执行映射
+  // （modelPublication.ts derivePublishedExecution）。没有这条，引擎会把方案里钉的模型换成清单里
+  // 别家的（面板会写「清单里没有模型 walk-video-h3，已改用 …」），断言里的模型名就对不上。
+  mappings: [{
+    id: `${VIDEO_MODEL}-text_to_video`, vendorKey: VENDOR, modelKey: VIDEO_MODEL, taskKind: 'text_to_video',
+    name: '走查 t2v', enabled: true,
+    create: {
+      method: 'POST', path: '/v1/videos/generations',
+      headers: { 'Content-Type': 'application/json' },
+      body: { model: '{{model.modelKey}}', prompt: '{{request.prompt}}' },
+      response_mapping: { video_url: 'data.0.url' },
+    },
+    createdAt: NOW, updatedAt: NOW,
+  }],
   apiKeysByVendor: {},
 }, null, 2)}\n`)
 
@@ -115,7 +130,9 @@ const strategyRoot = () => win.locator('[data-storyboard-strategy-root="true"]')
 const panel = () => win.locator('[data-storyboard-strategy-panel="true"]').first()
 const proposals = () => panel().locator('[data-storyboard-strategy-proposal="true"]')
 const rowWarnings = () => win.locator('[data-storyboard-row-duration-warning]')
-const notification = () => win.locator(`[class*="mantine-Notification-root"]`).first()
+// 闸的提示是**行内**反馈（notificationPolicy `level:'inline'`，4a5f52130 起不再走 Mantine toast）：
+// StoryboardPlanEditor 把 reportFailure 渲染成页脚那行 `<p role="status" data-storyboard-action-feedback>`。
+const gateFeedback = () => win.locator('[data-storyboard-action-feedback]').first()
 
 try {
   await win.evaluate(() => {
@@ -156,12 +173,9 @@ try {
   const batchButton = win.locator('[data-storyboard-batch="true"]')
   await expect(batchButton, '整批生成按钮不可点 —— 闸拦没拦得住这一步就无从判断').toBeEnabled({ timeout: 10_000 })
   await clickOrFail(batchButton, '点整批生成（应被执行计划闸拦下）')
-  await expectVisible(notification(), '闸没有给出任何提示 —— 整批生成可能已经放行了', 10_000)
-  await expect(notification(), '闸的 toast 没有带机器理由（应含模型名与单条上限）').toContainText(VIDEO_MODEL_LABEL)
-  await snap('04-gate-blocked-toast')
-  // toast 停在 top-center，正好盖住面板的「采纳」钮。等它按自己的 ttl 退场再往下点——
-  // 这不是拿 sleep 当完成信号，是对真实 DOM 状态的自动重试断言。
-  await expectHidden(notification(), 'toast 没有自行退场，后续点击会被它挡住', 20_000)
+  await expectVisible(gateFeedback(), '闸没有给出任何提示 —— 整批生成可能已经放行了', stationTimeout({ operations: 1 }))
+  await expect(gateFeedback(), '闸的提示没有带机器理由（应含模型名与单条上限）').toContainText(VIDEO_MODEL_LABEL)
+  await snap('04-gate-blocked-inline')
 
   // ── 面板必须真的占着高度。2026-09-07 实测过一次反例：section 高 2px + overflow-hidden，
   //    建议画在盒外、「采纳」点不到，而 toBeVisible（只看 bounding box 非空）照样绿。

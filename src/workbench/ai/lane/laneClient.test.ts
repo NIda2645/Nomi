@@ -6,7 +6,7 @@ import type {
 } from '../../../../electron/shared/agentLane/laneContracts'
 import type { LaneDesktopCommand } from '../../../../electron/shared/agentLane/laneDesktopContracts'
 import {
-  EMPTY_LANE_PROJECTION, EMPTY_LANE_WORKSPACE, createLaneClient, resolveLaneBridge, type LaneBridge,
+  EMPTY_LANE_PROJECTION, EMPTY_LANE_WORKSPACE, createLaneClient, resolveLaneBridge, type LaneBridge, type LaneCommandResult,
 } from './laneClient'
 
 function fakeBridge() {
@@ -44,12 +44,44 @@ const projection = (text: string): LaneProjection => ({
 })
 
 describe('laneClient', () => {
+  it('returns only the safe code when automatic reopen fails with provider diagnostics', async () => {
+    const { bridge, push } = fakeBridge()
+    bridge.send = vi.fn().mockResolvedValueOnce({ ok: true, workspaceId: 'old' })
+      .mockResolvedValueOnce({ ok: false, code: 'agent_lane_model_unconfigured', diagnostic: 'secret-provider-token /private/project' })
+    const client = createLaneClient(bridge)
+    await client.open({ projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 })
+    push({ ...workspace(projection('history')), closed: true })
+    expect(await client.prompt('new input')).toEqual({ ok: false, code: 'agent_lane_model_unconfigured', diagnostic: '' })
+  })
+
+  it('does not borrow B authority when A command waits for its opening promise', async () => {
+    const { bridge, sent, push } = fakeBridge()
+    let finishA!: (result: { ok: true; workspaceId: string }) => void
+    bridge.send = async command => {
+      sent.push(command)
+      if (command.kind !== 'workspace-open') return { ok: true }
+      if (command.binding.projectId === 'a') return new Promise(resolve => { finishA = resolve })
+      return { ok: true, workspaceId: 'workspace-b' }
+    }
+    const client = createLaneClient(bridge)
+    const openingA = client.open({ projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 })
+    const pending = client.prompt('belongs to A')
+    await client.open({ projectId: 'b', immutableProjectUuid: 'uuid-b', projectGeneration: 1 })
+    push({ ...workspace(projection('B')), workspaceId: 'workspace-b' })
+    finishA({ ok: true, workspaceId: 'workspace-a' })
+    await openingA
+    expect(await pending).toMatchObject({ ok: false, code: 'agent_lane_workspace_stale' })
+    expect(sent.filter(command => command.kind === 'prompt')).toEqual([])
+  })
+
   it('retires a main-closed workspace and requests fresh authority only for the next new prompt', async () => {
     const binding = { projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 }
     const { bridge, push } = fakeBridge()
     bridge.send = vi.fn().mockResolvedValueOnce({ ok: true, workspaceId: 'old' })
       .mockResolvedValueOnce({ ok: false, code: 'agent_lane_closed' })
-      .mockResolvedValueOnce({ ok: true, workspaceId: 'new' }).mockResolvedValue({ ok: true })
+      // 主进程开工作区时先推一份投影再回 ok（`laneIpc.ts` workspace-open 里的 `push(workspace.projection())`）。
+      .mockImplementationOnce(async () => { push({ ...workspace(projection('history')), workspaceId: 'new' }); return { ok: true, workspaceId: 'new' } })
+      .mockResolvedValue({ ok: true })
     const client = createLaneClient(bridge)
     await client.open(binding)
     push({ ...workspace(projection('history')), closed: true })
@@ -59,7 +91,21 @@ describe('laneClient', () => {
     expect(bridge.send).toHaveBeenCalledTimes(2)
     await client.prompt('New action after reopening')
     expect(bridge.send).toHaveBeenNthCalledWith(3, { kind: 'workspace-open', binding })
-    expect(bridge.send).toHaveBeenLastCalledWith({ kind: 'prompt', text: 'New action after reopening', workspaceId: 'new' })
+    expect(bridge.send).toHaveBeenLastCalledWith({ kind: 'prompt', text: 'New action after reopening', workspaceId: 'new',
+      expectedLane: 'main', expectedSessionId: 's-1' })
+  })
+
+  it('refuses input with a named failure when the workspace lists no conversation, instead of a silent null', async () => {
+    // 2026-09-24 Windows 真机：列表认不出任何对话 → 以前 prepareInput 回 null，发送钮静默返回，
+    // 字留在框里、哪儿都没有一句话。现在这一步必须有名有姓地失败，面板按码出文案。
+    const { bridge, push } = fakeBridge()
+    bridge.send = vi.fn().mockImplementation(async (command: LaneDesktopCommand) => {
+      if (command.kind === 'workspace-open') push({ lanes: [], active: projection('none'), workspaceId: 'w' })
+      return command.kind === 'workspace-open' ? { ok: true, workspaceId: 'w' } : { ok: true }
+    })
+    const client = createLaneClient(bridge)
+    await client.open({ projectId: 'a', immutableProjectUuid: 'uuid-a', projectGeneration: 1 })
+    await expect(client.prepareInput()).rejects.toMatchObject({ laneCode: 'agent_lane_closed' })
   })
 
   it('does not reopen old A after the user switches to B', async () => {
@@ -325,4 +371,99 @@ describe('laneClient', () => {
     expect(sent[1]).toMatchObject({ kind: 'prompt', workspaceId: 'w' })
   })
 
+})
+
+it('R05 withholds old workspace pushes during a new open until its identity is acknowledged', async () => {
+  const { bridge, push } = fakeBridge()
+  let finish!: (value: { ok: true; workspaceId: string }) => void
+  bridge.send = vi.fn().mockResolvedValueOnce({ ok: true, workspaceId: 'old' })
+    .mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+  const client = createLaneClient(bridge)
+  await client.open({ projectId: 'a', immutableProjectUuid: 'a', projectGeneration: 1 })
+  const opening = client.open({ projectId: 'b', immutableProjectUuid: 'b', projectGeneration: 1 })
+  push({ ...workspace(projection('old secret')), workspaceId: 'old' })
+  expect(client.projection().parts).toEqual([])
+  push({ ...workspace(projection('new history')), workspaceId: 'new' })
+  expect(client.projection().parts).toEqual([])
+  finish({ ok: true, workspaceId: 'new' })
+  await opening
+  expect(client.projection().parts).toEqual(projection('new history').parts)
+})
+
+describe('C23 late history delivery', () => {
+  it.each(['workspace', 'reconnect'] as const)('%s replacement rejects an old page and old approval without touching the new draft', async replacement => {
+    const { useWorkbenchStore } = await import('../../workbenchStore')
+    const before = useWorkbenchStore.getState()
+    let finishPage!: (result: { ok: true }) => void
+    let oldListener!: (value: LaneWorkspaceProjection) => void
+    const old = fakeBridge()
+    old.bridge.onProjection = listener => { oldListener = listener; return () => {} }
+    old.bridge.send = vi.fn(async (command: LaneDesktopCommand): Promise<LaneCommandResult> => {
+      old.sent.push(command)
+      if (command.kind === 'workspace-open') return { ok: true, workspaceId: 'old' }
+      if (command.kind === 'history-older') return new Promise(resolve => { finishPage = resolve })
+      return { ok: true }
+    })
+    const client = createLaneClient(old.bridge)
+    try {
+      await client.open({ projectId: 'a', immutableProjectUuid: 'a', projectGeneration: 1 })
+      oldListener({ ...workspace({ ...projection('A newest'), history: { hasMore: true, before: 'a-cursor' } }), workspaceId: 'old' })
+      const address = client.conversation()!
+      const loading = client.loadOlder()
+      expect(old.sent.at(-1)).toEqual({ kind: 'history-older', before: 'a-cursor', workspaceId: 'old', expectedLane: 'main', expectedSessionId: 's-1' })
+      const next = fakeBridge()
+      next.bridge.send = vi.fn(async (command: LaneDesktopCommand): Promise<LaneCommandResult> => { next.sent.push(command); return command.kind === 'workspace-open' ? { ok: true, workspaceId: 'new' } : { ok: true } })
+      if (replacement === 'reconnect') client.connect(next.bridge)
+      else old.bridge.send = next.bridge.send
+      await client.open({ projectId: 'b', immutableProjectUuid: 'b', projectGeneration: 1 })
+      const current = { ...workspace(projection('B newest')), workspaceId: 'new' }
+      if (replacement === 'reconnect') next.push(current)
+      else oldListener(current)
+      useWorkbenchStore.getState().setProjectAgentDraft('NEW_B_UNSENT_DRAFT')
+      const revision = useWorkbenchStore.getState().projectAgentDraftRevision
+      // Invoke the retired subscription even after unsubscribe: connectionEpoch must defend this boundary.
+      oldListener({ ...workspace(projection('A late older page')), workspaceId: 'old' })
+      finishPage({ ok: true })
+      await loading
+      expect(client.workspace()).toBe(current)
+      expect(await client.approve('old-approval', address)).toMatchObject({ ok: false, code: 'agent_lane_workspace_stale' })
+      expect([...old.sent, ...next.sent].filter(command => command.kind === 'approval' || command.kind === 'prompt')).toEqual([])
+      expect(useWorkbenchStore.getState().projectAgentDraft).toBe('NEW_B_UNSENT_DRAFT')
+      expect(useWorkbenchStore.getState().projectAgentDraftRevision).toBe(revision)
+      // Positive control: the newly published conversation still accepts its own explicit command.
+      await client.approve('current-approval', client.conversation()!)
+      expect(next.sent.at(-1)).toMatchObject({ kind: 'approval', toolCallId: 'current-approval', workspaceId: 'new', expectedSessionId: 's-1' })
+    } finally {
+      client.dispose()
+      useWorkbenchStore.setState(before)
+    }
+  })
+
+  it('a pending page ACK after lane selection cannot restore the old lane or admit its approval', async () => {
+    const { bridge, sent, push } = fakeBridge()
+    let finishPage!: (result: { ok: true }) => void
+    bridge.send = async command => {
+      sent.push(command)
+      if (command.kind === 'workspace-open') return { ok: true, workspaceId: 'w' }
+      if (command.kind === 'history-older') return new Promise(resolve => { finishPage = resolve })
+      return { ok: true }
+    }
+    const client = createLaneClient(bridge)
+    try {
+      await client.open({ projectId: 'a', immutableProjectUuid: 'a', projectGeneration: 1 })
+      push({ ...workspace({ ...projection('A'), history: { hasMore: true, before: 'a-cursor' } }), workspaceId: 'w' })
+      const oldAddress = client.conversation()!
+      const loading = client.loadOlder()
+      await client.selectLane('research')
+      const selected: LaneWorkspaceProjection = { workspaceId: 'w', lanes: [{ laneName: 'research', sessionId: 's-2', createdAt: 1, updatedAt: 2 }], active: { ...projection('B'), lane: 'research' } }
+      push(selected)
+      finishPage({ ok: true })
+      await loading
+      expect(client.workspace()).toBe(selected)
+      expect(await client.approve('old-tool', oldAddress)).toMatchObject({ ok: false, code: 'agent_lane_workspace_stale' })
+      expect(sent.filter(command => command.kind === 'approval')).toEqual([])
+      await client.prompt('new B input')
+      expect(sent.at(-1)).toMatchObject({ kind: 'prompt', expectedLane: 'research', expectedSessionId: 's-2' })
+    } finally { client.dispose() }
+  })
 })

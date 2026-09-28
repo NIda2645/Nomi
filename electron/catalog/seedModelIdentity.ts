@@ -50,6 +50,20 @@ export const CANONICAL_MODEL_IDS: Record<string, string> = {
   "gpt-image-2-image-to-image": "gpt image 2",
   "gpt-image-2": "gpt image 2",
   "rhart-image-g-2-official": "gpt image 2",
+  // GPT Image 2.5（kie 把「档次 × 模式」拆成 4 个 id / apimart 每档次一个 id）——**档次级**分键：
+  // Flare 与 Sunburst 是并列产品（快 vs 精修）不是同一款的快慢档，合并成一条会让用户选不到精修那款。
+  "gpt-image-2-5-flare-text-to-image": "gpt image 2.5 flare",
+  "gpt-image-2-5-flare-image-to-image": "gpt image 2.5 flare",
+  "gpt-image-2.5-flare": "gpt image 2.5 flare",
+  "gpt-image-2-5-sunburst-text-to-image": "gpt image 2.5 sunburst",
+  "gpt-image-2-5-sunburst-image-to-image": "gpt image 2.5 sunburst",
+  "gpt-image-2.5-sunburst": "gpt image 2.5 sunburst",
+  // Gemini Image 3 Pro（Runway / apimart 两家同一模型 → 模型框合并成一条 + 2 家）
+  "gemini_image3_pro": "gemini image 3 pro",
+  "gemini-3-pro-image-preview": "gemini image 3 pro",
+  // Grok Imagine Image 2（Runway / apimart；apimart 侧只有文生图，合并不受影响——合并的是模型不是模式）
+  "grok_imagine_image_2": "grok imagine image 2",
+  "grok-imagine-2.0-ext": "grok imagine image 2",
   // 可灵 3.0（kie / apimart / RunningHub）
   "kling-3.0": "可灵 3.0",
   "kling-v3": "可灵 3.0",
@@ -90,6 +104,14 @@ const FLAGSHIP_MODEL_KEYS = new Set([
   "gpt-image-2-text-to-image",
   "gpt-image-2-image-to-image",
   "gpt-image-2",
+  "gpt-image-2-5-flare-text-to-image",
+  "gpt-image-2-5-sunburst-text-to-image",
+  "gpt-image-2.5-flare",
+  "gpt-image-2.5-sunburst",
+  // 与已在旗舰名单里的 Runway 行 `gemini_image3_pro` / `grok_imagine_image_2` 是同一个模型的另一条接入线，
+  // 不跟着标就会出现「同一款经 Runway 是旗舰、经 APIMart 是陪跑」的自相矛盾分档。
+  "gemini-3-pro-image-preview",
+  "grok-imagine-2.0-ext",
   "nano-banana-2",
   "gemini-3.1-flash-image-preview",
   "seedream/5-pro-text-to-image",

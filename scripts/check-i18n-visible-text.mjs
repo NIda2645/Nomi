@@ -69,6 +69,11 @@ const EXCLUDED_FILES = new Set([
   'src/workbench/generationCanvas/agent/shotVerify.ts', // stable source strings; ReconcileDeviationCard translates them at the display boundary
   // 阶段 5a：说明书那一半搬到了能力契约旁边(两个 profile 共用),示例参数跟着搬。理由不变——
   // 「林夏」「天台开场」是喂模型的示范数据(契约本身要求中文用户配中文提示词),不是界面文案。
+  // ask_user 的示例参数。它比 canvasVerbs 那条更要紧：这个工具的全部内容就是**用用户自己的
+  // 语言问一句话**，示例里那几个中文 label/description 正是在示范这件事（动词装配期不变量 A3
+  // 也是为此把「示例**值**」从「说明性文字全英文」里单独豁免出去的）。这个文件里没有、也永远
+  // 不会有界面文案——它是一份说明书。
+  'electron/shared/agentCapabilities/verbs/askVerbs.ts',
   'electron/shared/agentCapabilities/verbs/canvasVerbs.ts',
   // 对外 MCP 工具的租约字段说明。模型可见,不是界面文案;它随 tools/list 广播给宿主的模型,
   // 走 i18n 等于让同一份 schema 有两个版本——那正是本阶段在消灭的东西。
@@ -98,7 +103,7 @@ const EXCLUDED_FILES = new Set([
 // 都误报成漏译(2026-09-01 摘掉整目录豁免后,泛化 object-prop 规则一次照出 648 个这类误报)。
 // 于是:泛化 object-prop 规则**跳过**这些目录,改由 collector 按翻译契约校验(严格更强,不是更弱)。
 const MODEL_SPEC_PREFIXES = [
-  'src/config/modelArchetypes/',
+  'electron/shared/modelArchetypes/',
   'electron/shared/videoCapabilities/',
   'electron/shared/audioCapabilities/', // 音频侧的 wire 事实表(档案 params 由它构建),同走 model-display 边界
   'electron/catalog/', // 供应商目录里的档案标签,与 modelArchetypes 同走 model-display 边界
@@ -220,15 +225,33 @@ const ELECTRON_EXCLUDED_PREFIXES = [
 const ELECTRON_EXCLUDED_FILES = new Set([
   'electron/ai/composeAgentSystemPrompt.ts', // agent system prompt 拼装,喂模型
   // 逐条排除、不整目录排——`electron/agentLane/` 到阶段 4 会变成用户可达的通路,
-  // 那时目录级豁免会把真的漏译一起放过去。下面三条各自的理由:
+  // 那时目录级豁免会把真的漏译一起放过去。下面六条各自的理由:
   // 见上面 EXCLUDED_FILES 里同一条的理由(模型可见工具的示例参数,不是界面文案)。
   'electron/shared/agentCapabilities/verbs/canvasVerbs.ts',
+  // ask_user 的示例参数。它比 canvasVerbs 那条更要紧：这个工具的全部内容就是**用用户自己的
+  // 语言问一句话**，示例里那几个中文 label/description 正是在示范这件事（动词装配期不变量 A3
+  // 也是为此把「示例**值**」从「说明性文字全英文」里单独豁免出去的）。这个文件里没有、也永远
+  // 不会有界面文案——它是一份说明书。
+  'electron/shared/agentCapabilities/verbs/askVerbs.ts',
   // 工具预算超限时的**装配期**报错。它在模块加载时抛,受众是往目录里加第 12 个工具的开发者;
   // 用户会话里到不了这一句——真到了,那是 lane 压根没起来,界面显示的是别的东西。
   'electron/agentLane/laneToolCatalog.ts',
   // 扁平化派生器对**契约作者**的报错(「这个 union 没有判别字段」这一族)。同样是装配期,
   // 且它的读者按定义是正在写 zod 契约的人。
   'electron/shared/agentCapabilities/flatModelInput.ts',
+  // 来源(from-read)可解性的**装配期**核对: assertVerbFieldProvenance 只被 verbDeclarations.ts 的
+  // 顶层调用,也就是模块加载那一刻。红了等于这个模块起不来,到不了任何会话;句子要求的动作
+  // ("把那个能力的 outputSchema 收成真形状")也只有契约作者做得了。
+  'electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts',
+  // 唯一一条是 objectFieldKeys 的「这不是一份能取出字段名单的对象 schema」:模块加载时的装配期断言,
+  // 读者是正在写投影的人。它比 verbFieldMap.ts 时代那一条还窄(那份排除随文件一起删了,这里净减一条)。
+  'electron/shared/agentCapabilities/verbs/verbProjections.ts',
+  // draft_shots 投影里唯一的运行期那条是 refuse,它带 code: 'capability_input_invalid' ——
+  // 走的是错误码通道,读者是模型(工具失败原因),界面拿到的是码不是这句话。其余是装配期/开发者报错。
+  'electron/shared/agentCapabilities/verbs/draftShotsProjection.ts',
+  // 只有一条: exportJobTransportCall 收到一个不是双域动词的名字。受众是接线的开发者,
+  // 用户走到的是工具失败,不是这句英/中文。
+  'electron/agentLane/laneVerbTransport.ts',
 ])
 
 function isElectronVisibleScope(relative) {
@@ -399,7 +422,7 @@ function readTranslatedLabels() {
 
 function collectUntranslatedModelLabels() {
   const sourceRoots = [
-    path.join(SRC_ROOT, 'config', 'modelArchetypes'),
+    path.join(ELECTRON_ROOT, 'shared', 'modelArchetypes'),
     path.join(ELECTRON_ROOT, 'catalog'),
     path.join(ELECTRON_ROOT, 'shared', 'videoCapabilities'),
     path.join(ELECTRON_ROOT, 'shared', 'audioCapabilities'),
@@ -470,6 +493,7 @@ const LOCALE_NEUTRAL_VENDOR_NAMES = new Map([
   ['MiniMax', '\u5382\u5546\u54c1\u724c\u540d,\u79cd\u5b50 baseUrl api.minimaxi.com;\u4ed3\u5185\u4e2d\u82f1\u6587\u6587\u6848\u5747\u5199 MiniMax(MiniMax H3 \u5404\u6761\u540c\u5199\u6cd5)'],
   ['ElevenLabs', '\u5382\u5546\u54c1\u724c\u540d,\u79cd\u5b50 baseUrl api.elevenlabs.io;\u4ed3\u5185\u5404\u6761\u540c\u5199\u6cd5(Eleven v3 / Eleven Music v2)'],
   ['Meshy', '\u5382\u5546\u54c1\u724c\u540d,\u79cd\u5b50 baseUrl api.meshy.ai;\u4ed3\u5185\u5404\u6761\u540c\u5199\u6cd5(Meshy 7)'],
+  ['Higgsfield', '\u5382\u5546\u54c1\u724c\u540d,\u79cd\u5b50 baseUrl api.higgsfield.ai;\u5b98\u65b9\u53ea\u7528\u62c9\u4e01\u5199\u6cd5,\u65e0\u4e2d\u6587\u8bd1\u540d'],
 ])
 
 /** \u89e3\u6790 BUILTIN_VENDOR_SEEDS \u540d\u5355 \u2192 \u6bcf\u4e2a\u79cd\u5b50\u7684 { ident, file, name }\u3002\u89e3\u6790\u4e0d\u51fa\u6765\u4e00\u5f8b\u629b(fail-closed)\u3002 */

@@ -8,7 +8,7 @@
 // 大 bug。真相是 apimart 用 image_urls、火山用 volcengine_*，都不是缺省键——**必须喂真实档案的槽**，
 // 拿泛槽扫等于自己造了个错夹具骗自己。
 import { describe, expect, it } from "vitest";
-import { resolveArchetypeForModel } from "../../src/config/modelArchetypes";
+import { resolveArchetypeForModel } from "../shared/modelArchetypes";
 import { modeTransportFor } from "../shared/videoCapabilities";
 import { modeSlotReach } from "./referenceReachability";
 import { APIMART_VIDEO_MODELS } from "./apimartVideos";

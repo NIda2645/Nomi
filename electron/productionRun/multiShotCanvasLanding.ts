@@ -6,9 +6,11 @@
 // 绝不阻断生成。故所有落点调用点都 try/catch 后继续。
 //
 // 幂等（§3.4）：materializationOperationId = `canvas-landing:{runId}`（每 Run 一个稳定 op），跑两次不重复建节点/组。
-import { createArtifactProjection } from "./artifactProjection";
+import { resolveOwnedArtifactFile, safeProjectRelativePath } from "./artifactProjection";
+import { localAssetUrl } from "../assets/assetPaths";
 import type { ProductionRun, ProductionGenerationShot } from "./productionRunTypes";
 import { logWarn } from "../logging/logger";
+import { deriveProductionShotState, productionRunRecordId } from "../shared/productionShotPhase";
 
 /**
  * 一镜候选的**模型身份**，随落地报文过 RPC。它是画布节点模型的唯一来源：带上它，渲染层就不再
@@ -43,6 +45,22 @@ export type MaterializeShotCandidateWire = {
   parameters?: Record<string, string | number | boolean>;
 };
 
+/**
+ * 这一镜此刻在节点上该是什么运行状态——**写进节点自己的运行记录**，与普通生成同一份状态、同一套画法
+ * （NodeGeneratingOverlay / NodeErrorReport），不再由渲染层另轮询一份 Run 快照、另画一套「整卡模糊 + N 字标」。
+ *
+ * - running：已交给供应商、还没结论（节点显示普通生成那张等待画面）；
+ * - failed：这一镜确定失败（节点显示普通生成那张失败卡，重试走返工链）；
+ * - ended：不在跑（排队 / 已停 / 这一镜的产物投不出来）——节点上若还挂着本制作的「生成中」记录，收掉它。
+ * 已完成的镜不带它：带 `result`，回填本身就把那条记录记成成功。
+ *
+ * `runRecordId` = 节点运行记录的身份，取自这一镜那次任务的 jobId（同一任务反复投影幂等，返工 = 新任务 = 新记录）。
+ */
+export type MaterializeShotGenerationWire =
+  | { state: "running"; runRecordId: string; startedAt: number }
+  | { state: "failed"; runRecordId: string; startedAt: number; message?: string }
+  | { state: "ended" };
+
 /** 渲染层 materialize-shots 载荷里的一镜（与渲染层 MaterializeShotInput 对齐，跨 RPC 序列化形状）。 */
 export type MaterializeShotWire = {
   shotId: string;
@@ -52,28 +70,82 @@ export type MaterializeShotWire = {
   prompt?: string;
   candidate?: MaterializeShotCandidateWire;
   result?: { id: string; type: "image" | "video"; url: string; createdAt: number; thumbnailUrl?: string; providerUrl?: string; model?: string };
+  mediaDimensions?: { width: number; height: number };
+  /** 没有 result 时，这一镜在节点上的运行状态（见 MaterializeShotGenerationWire）。 */
+  generation?: MaterializeShotGenerationWire;
 };
 
 export type MaterializeShotsWirePayload = {
   projectId: string;
   runId: string;
   materializationOperationId: string;
-  groupName: string;
+  /**
+   * 计划名本体。渲染层用它拼分镜组名（`分镜组·<计划名>`）和分镜表标题，**两处都走 i18n**。
+   * 主进程不再合成任何面向用户的文案：以前这里发的是硬编码的 `分镜组·多镜计划`，它会盖过渲染层
+   * 带 zh/en 的兜底，英文用户看到的是中文（与「镜头 N」那处同一个病）。没有计划名就不带。
+   */
+  planName?: string;
   shots: MaterializeShotWire[];
+  /**
+   * 只动画布上**已经在**的节点：不建节点、不建组、不重绑定候选。文稿来源的计划恒为 true；
+   * Run 跟随者（Run 变了 → 节点跟上）也用它——它的职责是「让已有节点跟上真实状态」，
+   * 不是「把用户删掉的节点再建回来」（节点刚删、detach 记账还没落盘的那一拍里，全量落地会把它复活）。
+   */
+  existingOnly?: boolean;
 };
+
+/** 没有 result 的一镜，在节点上该挂什么运行状态（判定只有一份：`deriveProductionShotState`）。 */
+function shotGeneration(run: ProductionRun, shotId: string): MaterializeShotGenerationWire {
+  const state = deriveProductionShotState(run, shotId);
+  const job = state?.job;
+  if (state?.phase === "generating" && job) {
+    return { state: "running", runRecordId: productionRunRecordId(job.jobId), startedAt: Date.parse(job.createdAt) || Date.now() };
+  }
+  if (state?.phase === "failed" && job) {
+    return {
+      state: "failed", runRecordId: productionRunRecordId(job.jobId), startedAt: Date.parse(job.createdAt) || Date.now(),
+      ...(state.failureMessage ? { message: state.failureMessage } : {}),
+    };
+  }
+  // 排队 / 已停 / 已完成但产物投不出来（文件缺失）：都不是「生成中」。
+  return { state: "ended" };
+}
+
+/**
+ * 一次投影的指纹：每一镜「绑到哪、结果是哪个、运行态是什么」。**不含 URL**——预览链接每次投影都会重签，
+ * 拿它比会让每次轮询都算成「变了」。指纹不变 = 画布上该有的样子没变，跟随者不必再去打扰渲染层。
+ */
+export function materializeShotsSignature(payload: MaterializeShotsWirePayload): string {
+  return JSON.stringify(payload.shots.map((shot) => [
+    shot.shotId,
+    shot.result?.id ?? null,
+    shot.mediaDimensions ? [shot.mediaDimensions.width, shot.mediaDimensions.height] : null,
+    shot.generation ? [shot.generation.state, "runRecordId" in shot.generation ? shot.generation.runRecordId : null] : null,
+    shot.candidate?.revision ?? null,
+  ]));
+}
 
 /** 该 Run 的画布落地稳定 op id（每 Run 一个 → 崩溃/重开补齐都对同一章去重）。 */
 export function canvasLandingOperationId(runId: string): string {
   return `canvas-landing:${runId}`;
 }
 
-/** 从镜的 candidate 推一个人话标题（有 index 用「镜头 N」；锚用其 prompt 前缀）。纯函数。 */
-function shotTitle(shot: ProductionGenerationShot, index: number): string {
-  if (shot.role === "anchor") {
-    const p = shot.candidate?.prompt?.trim() ?? "";
-    return p ? p.slice(0, 24) : `参考 ${index + 1}`;
-  }
-  return `镜头 ${index + 1}`;
+/**
+ * 这一镜落到画布上的标签。
+ *
+ * 优先用**模型自己拟的标题**（`draft_shots` 的 `title`，如「日落前的一分钟」）。以前这里读不到它：
+ * 动词收下了，翻译层扔了，草稿信封没有装它的口袋，于是主进程只能自己编一个「镜头 N」。
+ *
+ * 编不出来时**返回空**，让渲染层用它那份带 zh/en 的 i18n 兜底
+ * （`generationCommon.production.canvasLanding.shotFallbackTitle`）。主进程再合成一份就是第二份兜底，
+ * 而且是硬编码中文——它会盖过 i18n 那份，英文用户因此在画布上看到「镜头 1」（R15）。
+ * 只保留「图片镜/锚用提示词前缀」这一条派生：它随输入 derive，不是写死的语言。
+ */
+function shotLabel(shot: ProductionGenerationShot): string {
+  const authored = shot.title?.trim() ?? "";
+  if (authored) return authored;
+  const isStill = shot.role === "anchor" || /image/i.test(shot.candidate?.mode ?? "");
+  return isStill ? (shot.candidate?.prompt?.trim().slice(0, 24) ?? "") : "";
 }
 
 /**
@@ -110,13 +182,17 @@ function shotKind(shot: ProductionGenerationShot): "image" | "video" {
 }
 
 /**
- * 从 Run 投影出 materialize-shots 载荷。**只投影 included 的锚 + 镜**（试拍/分批只覆盖勾选镜，§3.1）。
+ * 从 Run 投影出 materialize-shots 载荷。投影完整草稿；included 仅表示当前付费范围，不能删除未选镜头。
  * 已完成（ready/adopted）且有本地 artifact 的镜带上 result（打开项目补齐时一并回填；确认即落时通常还没有）。
- * groupName = 计划名（分镜组·<计划名>）。previewSecret/projectRoot 用于把 artifact 投成 nomi-local:// url。
+ * 没有 result 的镜带上 `generation`（它在节点上此刻该挂的运行状态）。
+ * planName = 计划名（渲染层据它拼分镜组名与分镜表标题）。projectRoot 用于核验产物文件真的在项目里。
+ *
+ * 用户删掉的占位（`canvasDetached`）不投影：撤销事实优先，补齐 / 跟随都不许把它复活
+ * （单镜早就这样判；多镜以前漏了，重开项目会把删掉的镜头节点建回来）。
  */
 export function buildMaterializeShotsPayload(
   run: ProductionRun,
-  deps: { projectRoot: string | null; previewSecret: string; planName?: string; nowMs?: number },
+  deps: { projectRoot: string | null; planName?: string; existingOnly?: boolean },
 ): MaterializeShotsWirePayload | null {
   const plan = run.generationPlan;
   if (!plan) return null;
@@ -129,10 +205,9 @@ export function buildMaterializeShotsPayload(
   // through the same materialize-shots owner so the resident flow gets one
   // real canvas node instead of an answer-only receipt.
   const sourceShots = plan.shots && plan.shots.length > 0
-    ? plan.shots
+    ? plan.shots.filter((shot) => !shot.canvasDetached)
     : [{ shotId: plan.candidate.candidateId, candidate: plan.candidate, updatedAt: plan.updatedAt }]
-  const included = sourceShots.filter((shot) => shot.included !== false);
-  if (included.length === 0) return null;
+  if (sourceShots.length === 0) return null;
 
   // shotId → 已完成镜的本地 result（从 artifacts 投影）。job 谱系：job.metadata.shotId → job → artifact.jobId。
   const jobByShot = new Map<string, string>();
@@ -143,48 +218,60 @@ export function buildMaterializeShotsPayload(
     if (resolvedShotId && (job.status === "ready" || job.status === "adopted")) jobByShot.set(resolvedShotId, job.jobId);
   }
   const resultByShot = new Map<string, MaterializeShotWire["result"]>();
+  const dimensionsByShot = new Map<string, { width: number; height: number }>();
   if (deps.projectRoot) {
     for (const [shotId, jobId] of jobByShot.entries()) {
       const artifact = run.artifacts.find((candidate) => candidate.jobId === jobId && (candidate.kind === "image" || candidate.kind === "video") && (candidate.status === "ready" || candidate.status === "adopted"));
-      if (!artifact || !(artifact.projectRelativePath || artifact.thumbnailRelativePath)) continue;
+      const mediaPath = safeProjectRelativePath(artifact?.projectRelativePath);
+      if (!artifact || !mediaPath) continue;
       try {
-        const projected = createArtifactProjection({ projectRoot: deps.projectRoot, run, artifact, secret: deps.previewSecret, nowMs: deps.nowMs });
-        const url = projected.preview?.nomiUrl;
-        if (!url) continue;
+        // 文件真的在项目里（拒越界 / 符号链接 / 缺失）才投。
+        resolveOwnedArtifactFile(deps.projectRoot, mediaPath);
+        const posterPath = safeProjectRelativePath(artifact.thumbnailRelativePath);
+        const createdAt = Date.parse(artifact.createdAt);
         resultByShot.set(shotId, {
-          id: `production-${jobId}`,
+          id: productionRunRecordId(jobId),
           type: artifact.kind === "image" ? "image" : "video",
-          url, // nomi-local:// —— 渲染层 attach 断言要求本地协议
-          createdAt: deps.nowMs ?? Date.now(),
-          ...(projected.preview?.nomiUrl && artifact.thumbnailRelativePath ? { thumbnailUrl: url } : {}),
+          // 节点结果用素材库那条**永久**地址（与普通生成落地的 nomi-local://asset 同一种）。
+          // 以前这里用的是 production-preview 签名链：5 分钟过期，而且优先指向缩略图——
+          // 视频节点的 result.url 是一张封面图，过 5 分钟连封面也打不开。
+          url: localAssetUrl(run.projectId, mediaPath),
+          ...(posterPath ? { thumbnailUrl: localAssetUrl(run.projectId, posterPath) } : {}),
+          // 用产物自己的时刻：同一份产物每次投影都是同一个结果（幂等），「已保存」回执也不会在重开项目时再冒一次。
+          createdAt: Number.isFinite(createdAt) ? createdAt : 0,
         });
+        if (artifact.width && artifact.height) dimensionsByShot.set(shotId, { width: artifact.width, height: artifact.height });
       } catch {
         // 文件缺失/越界 → 跳过这镜的 result（占位仍落，只是没回填），不阻断整批。
       }
     }
   }
 
-  const shots: MaterializeShotWire[] = included.map((shot, index) => {
+  const shots: MaterializeShotWire[] = sourceShots.map((shot) => {
     const result = resultByShot.get(shot.shotId);
+    const generation = result ? undefined : shotGeneration(run, shot.shotId);
     return {
       shotId: shot.shotId,
       ...(shot.role ? { role: shot.role } : {}),
       kind: shotKind(shot),
-      title: shot.role === undefined && /image/i.test(shot.candidate.mode)
-        ? (shot.candidate.prompt.trim().slice(0, 24) || shotTitle(shot, index))
-        : shotTitle(shot, index),
+      // 空标题**不发**：发空串会盖掉渲染层的 i18n 兜底，和发硬编码中文是同一个 bug。
+      ...(shotLabel(shot) ? { title: shotLabel(shot) } : {}),
       prompt: shot.candidate?.prompt ?? "",
       ...(shot.candidate ? { candidate: candidateWire(shot.candidate) } : {}),
       ...(result ? { result } : {}),
+      ...(result && dimensionsByShot.get(shot.shotId) ? { mediaDimensions: dimensionsByShot.get(shot.shotId) } : {}),
+      ...(generation ? { generation } : {}),
     };
   });
 
+  const planName = (deps.planName || "").trim();
   return {
     projectId: run.projectId,
     runId: run.runId,
     materializationOperationId: canvasLandingOperationId(run.runId),
-    groupName: `分镜组·${(deps.planName || "").trim() || "多镜计划"}`,
+    ...(planName ? { planName } : {}),
     shots,
+    ...(run.origin.sourceDocument || deps.existingOnly ? { existingOnly: true } : {}),
   };
 }
 
@@ -193,9 +280,9 @@ export type CanvasLandingDeps = {
   /** 执行一条 Run 命令（bind-shot-nodes 写回 nodeId）。 */
   bindShotNodes: (projectId: string, runId: string, expectedRevision: number, bindings: Array<{ shotId: string; nodeId: string }>) => Promise<void>;
   projectRoot: string | null;
-  previewSecret: string;
   planName?: string;
-  nowMs?: number;
+  /** 只让已有节点跟上状态（见 MaterializeShotsWirePayload.existingOnly）。 */
+  existingOnly?: boolean;
   /** Optional lifecycle guard for detached observers.  It is checked before
    * touching the renderer and again before the durable Run bind. */
   isCurrent?: () => boolean;
@@ -207,7 +294,7 @@ export type CanvasLandingDeps = {
  */
 export async function landCanvasForRun(run: ProductionRun, deps: CanvasLandingDeps): Promise<boolean> {
   if (deps.isCurrent && !deps.isCurrent()) return false;
-  const payload = buildMaterializeShotsPayload(run, { projectRoot: deps.projectRoot, previewSecret: deps.previewSecret, planName: deps.planName, nowMs: deps.nowMs });
+  const payload = buildMaterializeShotsPayload(run, { projectRoot: deps.projectRoot, planName: deps.planName, ...(deps.existingOnly ? { existingOnly: true } : {}) });
   if (!payload) return false;
   try {
     if (deps.isCurrent && !deps.isCurrent()) return false;

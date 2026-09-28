@@ -24,7 +24,11 @@ import type { VideoModelCandidate } from "./recommendation";
 import { effectiveVideoModes } from "./recommendation";
 import { clampToRange, isParamValueAllowed, modeDurationRange, numericRangeOf } from "./paramConstraints";
 
-/** 逻辑镜头输入（调用方 = storyboard planner / GUI；durationSec 建议用演时换算的真实表演秒）。 */
+/**
+ * 逻辑镜头输入（调用方 = storyboard planner / GUI；durationSec 建议用演时换算的真实表演秒）。
+ * 主进程的接受集合是 `agentCapabilities/generation.ts` 的 `generationResolveInputSchema`（`.strict()`）——
+ * 这里加减一个键，那边的逐键守卫会让编译失败，别只改一边。
+ */
 export type PlanShotInput = {
   id: string;
   /** 语义表演时长（秒）。可为小数，落参数时按模式约束取整/钳值。 */
@@ -35,6 +39,8 @@ export type PlanShotInput = {
   anchorIds?: string[];
   /** 期望模型（catalog modelKey）。留空 → 系统默认候选。 */
   modelKey?: string;
+  /** 期望模型的供应商（与 modelKey 成对构成身份）；同名多家时按它取那一家的档案约束。 */
+  modelVendor?: string;
   /** 期望模式 id（档案 modeId）。留空/非法 → 档案默认模式 + issue。 */
   modeId?: string;
   /** 期望参数（仅档案真实键会被保留；未知键丢弃并记 issue）。 */
@@ -128,9 +134,12 @@ export type GenerationResolutionResult = {
 /** 短拍效率合并的比例阈值：单镜 ≤ 单条上限一半视为「短拍」，同场相邻可并入一条。 */
 const MERGE_SHORT_FRACTION = 0.5;
 
-function findCandidate(candidates: readonly VideoModelCandidate[], modelKey?: string): VideoModelCandidate | undefined {
+function findCandidate(candidates: readonly VideoModelCandidate[], modelKey?: string, modelVendor?: string): VideoModelCandidate | undefined {
   if (!modelKey) return undefined;
-  return candidates.find((candidate) => candidate.modelKey === modelKey.trim() || candidate.modelKey.endsWith(`/${modelKey.trim()}`));
+  const matches = candidates.filter((candidate) => candidate.modelKey === modelKey.trim() || candidate.modelKey.endsWith(`/${modelKey.trim()}`));
+  // 同名模型来自不同供应商是两个模型：记了供应商就取那一家的约束，不按名字取第一家。
+  const vendor = modelVendor?.trim();
+  return (vendor ? matches.find((candidate) => candidate.provider === vendor) : undefined) ?? matches[0];
 }
 
 /** 校验 + 铺参数的单镜解析：拒绝/钳值一切不合法的东西，产出可行参数与逐条 issue。 */
@@ -154,7 +163,7 @@ function resolveShot(shot: PlanShotInput, candidates: readonly VideoModelCandida
   }
   const firstCandidate = candidates[0]!;
 
-  const candidate = findCandidate(candidates, shot.modelKey) ?? findCandidate(candidates, defaultModelKey) ?? firstCandidate;
+  const candidate = findCandidate(candidates, shot.modelKey, shot.modelVendor) ?? findCandidate(candidates, defaultModelKey) ?? firstCandidate;
   if (shot.modelKey && candidate.modelKey !== shot.modelKey && !candidate.modelKey.endsWith(`/${shot.modelKey.trim()}`)) {
     issues.push({ code: "model.missing", shotId: shot.id, params: { requested: shot.modelKey, modelLabel: candidate.label } });
   }

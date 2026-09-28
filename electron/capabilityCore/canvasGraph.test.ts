@@ -159,3 +159,17 @@ describe('capabilityCore/canvasGraph', () => {
     expect('readCanvas' in canvasGraph).toBe(false)
   })
 })
+
+
+it('headless recovery uses the same unique shot owners before adding or reading nodes', () => {
+  const nodes = [
+    { id: 'v1', title: '', kind: 'video', position: { x: 0, y: 0 }, shotIndex: 1 },
+    { id: 'v2', title: '', kind: 'video', position: { x: 400, y: 0 }, shotIndex: 1 },
+    { id: 'frame', title: '', kind: 'image', position: { x: 0, y: 400 }, shotIndex: 1, meta: { storyboardKeyframe: true } },
+  ]
+  const restored = normalizeSnapshot({ nodes, edges: [] })
+  expect(restored.nodes.map(n => n.shotIndex)).toEqual([1, 2, undefined])
+  expect(addNodes(restored, [{ kind: 'video' }]).snapshot.nodes.map(n => n.shotIndex)).toEqual([1, 2, undefined, 3])
+  expect(normalizeSnapshot(restored)).toEqual(restored)
+  expect(nodes.map(n => n.shotIndex)).toEqual([1, 1, 1])
+})

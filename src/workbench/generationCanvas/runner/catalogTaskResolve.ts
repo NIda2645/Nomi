@@ -28,14 +28,17 @@ import {
   modeTransportFor,
   replaceCustomCapabilityContractMeta,
   resolveArchetypeForModel,
-} from '../../../config/modelArchetypes'
+} from '../../../../electron/shared/modelArchetypes'
 import { currentArchetypeMode } from '../nodes/controls/archetypeMeta'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { resolveComfyWorkflowTaskKind } from '../../../../electron/catalog/comfyuiWorkflowTaskContract'
 import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
 import { remapArchetypeMode, resolveUsableModelForNode } from './usableVendorModel'
+import type { MediaDimensions } from '../nodes/nodeSizing'
 
 export type CatalogTaskActionOptions = {
+  /** Intrinsic source dimensions discovered while localizing a media result. */
+  onMediaDimensions?: (dimensions: MediaDimensions) => void
   references?: Partial<ResolvedGenerationReferences>
   /** Re-resolve declared inputs against the freshly selected catalog model, without persisting URLs. */
   referenceContext?: { nodes?: GenerationCanvasNode[]; edges?: GenerationCanvasEdge[] }

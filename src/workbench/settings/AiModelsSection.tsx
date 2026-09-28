@@ -7,6 +7,7 @@ import { DesignSwitch, WorkbenchButton } from '../../design'
 import { getDesktopBridge, type AssetTransportChannelView } from '../../desktop/bridge'
 import type { AutomationPolicySettings } from '../../../electron/settings/automationPolicyContract'
 import { translateModelDisplayText } from '../../i18n/modelDisplayText'
+import { builtinVendorKeyOfKey } from '../../../electron/shared/builtinVendorIdentity'
 import { buildProviderHealthView, type SettingsProviderInput } from './settingsAutomationView'
 import { listWorkbenchModelCatalogModels, type ModelCatalogModelDto } from '../api/modelCatalogApi'
 import { DefaultGenerationModelsSection } from './DefaultGenerationModelsSection'
@@ -82,10 +83,11 @@ export function AiModelsSection({
           .catch(() => undefined)
       }
       void listWorkbenchModelCatalogModels({ enabled: true })
-        .then((values) => setModels(Array.isArray(values) ? values : []))
-        .catch(() => setModels([]))
+        .then((values) => { if (Array.isArray(values)) setModels(values) })
+        // 读失败保留上一份：一次读不到就把下拉清空，用户会以为模型被删了（2026-09-21 同形横扫）。
+        .catch(() => undefined)
     } catch {
-      setProviders([])
+      // 同上——不清 providers。
     }
   }, [])
 
@@ -146,7 +148,7 @@ export function AiModelsSection({
   const health = buildProviderHealthView(providers)
   // 「已接入」按**它是否真的在收文件**判，不按「key 存不存在」判——否则徽章说已接入、下面两行却写着
   // 走公共图床，用户不知道该信哪个。
-  const kieConnected = channels.some((channel) => channel.vendorKey === 'kie')
+  const kieConnected = channels.some((channel) => builtinVendorKeyOfKey(channel.vendorKey) === 'kie')
   const vendorNameOf = React.useCallback(
     (vendorKey: string) => health.find((provider) => provider.key === vendorKey)?.name || vendorKey,
     [health],

@@ -7,7 +7,7 @@ import type { LanguageModelV1 } from "ai";
 import type { Model, Vendor } from "../catalog/types";
 import { ProviderAdapterStore, isTerminalAdapterStage } from "./store";
 import { ProviderAdapterService, type ProviderAdapterCatalogPort, type ProviderAdapterServiceDependencies } from "./service";
-import type { ProviderAdapterDraft } from "./types";
+import type { ProviderAdapterDraft, ProviderAdapterRun } from "./types";
 
 /**
  * 真实验收（本地假服务器版）：让一个模型**真的挂住**（服务器收下请求就再也不回），
@@ -142,9 +142,69 @@ describe("a model that really hangs", () => {
     service.stopWatchdog();
   }, 20_000);
 
-  it("没人按 cancel 时，看门狗在 deadline 之后自己把它收成 timed_out", async () => {
-    const provider = await hangingProvider();
+  // 2026-09-22 换场景：这条用例原本靠一次真实 socket hang 撞 executeSubmission 的
+  // 「execute 超时就判 uncertain → reconciling」把 run 卡在非终态，再靠看门狗把 reconciling
+  // 收成 timed_out。2026-09-11 d76745ec6 早就拍板「自检不向上游提交任何东西，不可能有
+  // 不确定的远端任务」，那条 uncertain→reconciling 分支已经删干净（含 isUncertainError
+  // 选项本身），executeRun 现在会自己把挂死的自检直接收成 timed_out（见下一条用例）——
+  // 于是这条用例原来要证明的「看门狗能收 reconciling」不再发生，得换个真正会让 run
+  // 停在非终态的场景：装机重启后，上次没能来得及终态化就停在中间态、deadline 已经
+  // 过去的历史 run（09-12 b58e409bc 那条不变量本来要治的就是这个）。这里直接把这样一条
+  // run 落进 store，不跑 executeRun，纯测看门狗那半边契约。
+  it("看门狗把崩溃重启后滞留在中间态、deadline 已过的 run 收成 timed_out", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-hanging-model-reaper-"));
+    dirs.push(dir);
+    const filePath = path.join(dir, "provider-adapters.json");
+    const store = new ProviderAdapterStore(filePath);
+
+    const staleRun: ProviderAdapterRun = {
+      id: "run-stranded",
+      vendorKey: "hang-example",
+      vendorName: "Hanging",
+      connectionFingerprint: "fingerprint-stub",
+      selectedModelKeys: ["text-v1"],
+      stage: "testing",
+      repairAttempt: 0,
+      models: [],
+      sourceUrls: [],
+      deadlineAt: new Date(Date.now() - 5_000).toISOString(),
+      createdAt: new Date(Date.now() - 10_000).toISOString(),
+      updatedAt: new Date(Date.now() - 10_000).toISOString(),
+    };
+    store.upsertRun(staleRun);
+
+    const deps = {
+      catalog: catalogPort("http://127.0.0.1/v1"),
+      schedule: () => {},
+      discover: async () => ({ sources: [], corpus: "" }),
+      resolveLanguageModels: () => [{} as LanguageModelV1],
+      compile: async () => ({ draft: draft(), failures: [] }),
+      verify: async () => { throw new Error("must not be called: this test never calls executeRun"); },
+      now: () => new Date().toISOString(),
+      id: () => "unused",
+      batchTimeoutMs: 300,
+      verifyTimeoutMs: 60_000,
+      terminalErrorJournalPath: `${filePath}.errors.jsonl`,
+    } as unknown as ProviderAdapterServiceDependencies;
+
+    const service = new ProviderAdapterService(store, deps);
+
+    expect(isTerminalAdapterStage(store.getRun(staleRun.id)!.stage)).toBe(false);
+    expect(service.sweepExpiredRuns()).toEqual([staleRun.id]);
+    await service.awaitTerminalWrites();
+    const settled = store.getRun(staleRun.id)!;
+    expect(settled.stage).toBe("timed_out");
+    expect(settled.error).toContain("deadline expired");
+
+    service.stopWatchdog();
+  });
+
+  // 09-11 契约的正面证明：真实 hang（同上，socket 级）+ 真实 executeRun，不经看门狗，
+  // executeRun 自己在 deadline 到了之后把它收成 timed_out——09-11 与 09-12 两条契约
+  // 各有一条用例覆盖，互不假借对方的边界。
+  it("executeRun 自己把挂死的自检收成 timed_out，不用看门狗", async () => {
+    const provider = await hangingProvider();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-hanging-model-selfcollect-"));
     dirs.push(dir);
     const filePath = path.join(dir, "provider-adapters.json");
     const store = new ProviderAdapterStore(filePath);
@@ -155,17 +215,16 @@ describe("a model that really hangs", () => {
       discover: async () => ({ sources: [], corpus: "" }),
       resolveLanguageModels: () => [{} as LanguageModelV1],
       compile: async () => ({ draft: draft(), failures: [] }),
-      repair: async () => draft(),
       // 凭据自检必须放行，否则这条 run 在**够到**那个挂死的模型自检之前就先失败终态化了，
-      // 用例断言的「挂住 → 被看门狗收走」根本没发生过（假绿）。这台假服务器是 socket 级 hang，
-      // 没有真的 /models 可打。
+      // 用例断言的「挂住 → executeRun 自己收尾」根本没发生过（假绿）。这台假服务器是
+      // socket 级 hang，没有真的 /models 可打。
       probeCredential: async () => ({ ok: true as const, modelIds: ["text-v1"], listed: true }),
       verify: ({ signal }: { signal?: AbortSignal }) => new Promise((_resolve, reject) => {
         void fetch(`${provider.baseUrl}/chat`, { method: "POST", body: "{}", signal }).catch(() => {});
         signal?.addEventListener("abort", () => reject(new Error("aborted")));
       }),
       now: () => new Date().toISOString(),
-      id: () => "run-hang-2",
+      id: () => "run-hang-selfcollect",
       batchTimeoutMs: 300,
       verifyTimeoutMs: 60_000,
       terminalErrorJournalPath: `${filePath}.errors.jsonl`,
@@ -180,20 +239,15 @@ describe("a model that really hangs", () => {
       providerKind: "openai-compatible" as const,
       headers: {},
       models: [{ modelKey: "text-v1", labelZh: "Text V1", kind: "text" as const }],
-      certification: { contractDigest: "0".repeat(64), idempotencyKey: "hang-test-2", remoteIdempotency: "unknown" as const },
+      certification: { contractDigest: "0".repeat(64), idempotencyKey: "hang-test-selfcollect", remoteIdempotency: "unknown" as const },
     } as never);
 
-    const execution = service.executeRun(run.id);
-    await new Promise((resolve) => setTimeout(resolve, 500)); // 越过 300ms 的 deadline
-    expect(isTerminalAdapterStage(store.getRun(run.id)!.stage)).toBe(false);
+    await service.executeRun(run.id);
 
-    expect(service.sweepExpiredRuns()).toEqual([run.id]);
-    await service.awaitTerminalWrites();
     const settled = store.getRun(run.id)!;
     expect(settled.stage).toBe("timed_out");
-    expect(settled.error).toContain("deadline expired");
+    expect(settled.error).toContain("deadline");
 
-    await execution;
     service.stopWatchdog();
   }, 20_000);
 });

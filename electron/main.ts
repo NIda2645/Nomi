@@ -28,7 +28,6 @@ import { openWorkspaceFolder, selectWorkspaceFolder } from "./workspace/workspac
 import { listWorkspaceFiles, resolveWorkspaceFilePath } from "./workspace/workspaceFileIndex";
 import { registerWorkspaceFileDeleteIpc } from "./workspace/workspaceFileDelete";
 import { registerWorkspaceSyncIpc } from "./workspace/workspaceSyncIpc";
-import { registerRendererCrashIpc } from "./crashLog";
 import { installMainProcessLifecycle } from "./mainProcessLifecycle";
 import { registerExportJobIpc } from "./export/exportJobIpc";
 import { registerTextStreamIpc } from "./ai/textStreamIpc";
@@ -74,9 +73,13 @@ import { createDesktopProposalReceiptResolver } from "./capabilityCore/projectAg
 import { installContentSecurityPolicy } from "./contentSecurityPolicy";
 import { registerSkillIpc } from "./skills/skillIpc";
 import { logError, logInfo, logWarn } from "./logging/logger";
+import { seedFromStableInstallAtBoot } from "./settings/sideBySideInstallSeed";
 import { registerDevDiagnostics } from "./logging/devDiagnostics";
+import { registerRendererLogIpc } from "./logging/rendererLog";
 import { createProjectInteractionCapture } from "./assets/projectInteractionCapture";
 import { issueChildWindowProject } from "./assets/windowProjectCapture";
+import { installWindowNavigation } from "./windowNavigation";
+import { backgroundWindowOptions, disposeBackgroundLifecycle, hasInFlightProductionWork, installBackgroundLifecycle, installBackgroundWindowBehavior, isBackgroundLaunch, touchBackgroundActivity } from "./backgroundLaunch";
 // profile 重定向必须排在 installMainProcessLifecycle **之前**：崩溃处理与日志一装上就会写盘，
 // 晚一步重定向，这次会话的头几行（含会话表头）会落在被隔离掉的那个目录里。
 const configuredUserDataDir = String(process.env.NOMI_ELECTRON_USER_DATA_DIR || "").trim();
@@ -105,7 +108,12 @@ const isMcpStdio = process.env.NOMI_MCP_STDIO === "1";
 if (isMcpStdio && process.env.NOMI_APP_NAME) app.setName(process.env.NOMI_APP_NAME);
 const allowE2eMultiInstance = process.env.NOMI_E2E_ALLOW_MULTI_INSTANCE === "1";
 const hasSingleInstanceLock = isMcpStdio ? false : allowE2eMultiInstance ? true : app.requestSingleInstanceLock();
-const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({ isMcpStdio, allowE2eMultiInstance, hasSingleInstanceLock, ensureMainWindow: () => ensureMainWindow() });
+const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({
+  isMcpStdio,
+  allowE2eMultiInstance,
+  hasSingleInstanceLock,
+  ensureMainWindow: () => ensureMainWindow(),
+});
 if (isMcpStdio) {
   void app
     .whenReady()
@@ -178,6 +186,7 @@ async function startDesktopCapabilityCore(): Promise<void> {
     {
       canvasReadExecutionRuntime: desktopCanvasReadExecutionRuntime,
       proposalReceiptFor: createDesktopProposalReceiptResolver(),
+      onRpcActivity: touchBackgroundActivity,
     },
   );
   capabilityPortCache = core.getCapabilityPort();
@@ -239,18 +248,6 @@ function getRendererUrlWithRoute(currentUrl?: string): string {
   }
 }
 
-function isRendererEntryUrl(url: string, rendererUrl: string): boolean {
-  try {
-    const actual = new URL(url);
-    const expected = new URL(rendererUrl);
-    if (actual.protocol !== expected.protocol) return false;
-    if (actual.protocol === "file:") return actual.pathname === expected.pathname;
-    return actual.origin === expected.origin && actual.pathname === expected.pathname;
-  } catch {
-    return url === rendererUrl;
-  }
-}
-
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -296,7 +293,9 @@ async function createWindow(
       nodeIntegration: false,
       sandbox: false,
     },
+    ...backgroundWindowOptions(),
   });
+  installBackgroundWindowBehavior(mainWindow);
   setMainWindow(mainWindow); // 主窗口单一真相（registry）；closed 条件清理防窗口重建竞态误清新窗
   installMainWindowInteractions(mainWindow);
   mainWindow.on("closed", () => {
@@ -307,26 +306,12 @@ async function createWindow(
   mainWindow.on("maximize", () => mainWindow.webContents.send("nomi:window:maximized", true));
   mainWindow.on("unmaximize", () => mainWindow.webContents.send("nomi:window:maximized", false));
 
-  // External http(s) links (e.g. the "get your API key" link → provider console)
-  // open in the user's real browser, never as a new in-app Electron window.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) {
-      void shell.openExternal(url);
-    }
-    return { action: "deny" };
-  });
-
   const rendererUrl = options.rendererUrl || getRendererUrl();
+  installWindowNavigation(mainWindow, rendererUrl);
 
   // 纵深防御：setWindowOpenHandler 只拦新窗口，拦不住顶层框架自身被诱导导航
   // （window.location = 'http://evil'）。一旦发生，整个 app 会变成加载远端页面的浏览器。
   // 这里把任何「离开本地渲染入口」的顶层导航一律拦下；外链改走系统浏览器。
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (isRendererEntryUrl(url, rendererUrl)) return;
-    event.preventDefault();
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
-  });
-
   // 能力核 A 模式实时桥：登记当前窗口 webContents，让主进程把外部 MCP 的画布改动/付费确认
   // 转发进运行中的渲染层（所见即所得）。窗口销毁即清除，避免向死窗口发送。
   setRendererTarget(mainWindow.webContents);
@@ -370,7 +355,11 @@ function recreateMainWindowFromSender(sender: WebContents, options: { preserveRo
     session.defaultSession.clearCodeCaches({}).catch(() => undefined),
   ])
     .then(() => createWindow({ bounds, maximize, rendererUrl }))
-    .then((nextWindow) => nextWindow.focus())
+    .then((nextWindow) => {
+      // A renderer reload can also happen in the hidden MCP-launched process;
+      // never let that maintenance path surface the background window.
+      if (!isBackgroundLaunch) nextWindow.focus();
+    })
     .catch((error) => {
       logError("window", "recreate-window-failed", error, { reason: options.reason });
     })
@@ -412,8 +401,8 @@ function registerIpc(): void {
   // model-integration-trusted-audio.e2e 抓到后按根因恢复注册。
   registerIntegrationHandoffIpc();
   registerIntegrationSessionIpc(installIntegrationSessionRuntime());
-  // 渲染层崩溃（RootErrorBoundary）也落到同一崩溃日志（P0-8）；注册与 sender 守卫住在 crashLog（main.ts 巨壳只减不增）。
-  registerRendererCrashIpc({ onMessage: ipcMain.on.bind(ipcMain), assertTrusted: assertTrustedUiSender });
+  // 渲染层失败与崩溃的唯一日志通道（崩溃另进崩溃日志，P0-8）；注册与 sender 守卫住在 logging/rendererLog（main.ts 巨壳只减不增）。
+  registerRendererLogIpc({ onMessage: ipcMain.on.bind(ipcMain), assertTrusted: assertTrustedUiSender });
   // 窗口控制（Windows 自绘标题栏）：只注册一次，作用于发起请求的那个窗口（fromWebContents），
   // 而非闭包捕获某个窗口实例——后者会在第二次 createWindow（重开库/activate）时重复注册 handle 抛错、崩窗。
   ipcMain.handle("nomi:window:minimize", (event) => BrowserWindow.fromWebContents(event.sender)?.minimize());
@@ -442,15 +431,12 @@ function registerIpc(): void {
     assertTrustedSender(event);
     recreateMainWindowFromSender(event.sender, { preserveRoute: true, reason: "hard reload window" });
   });
-  // 读目录前补一次内置种子（渲染层热更新不重启 main，不补就停在旧目录）：共用同一份目录的读路径必须都补——只补 models:list 正是「供应商列表不全」的根因。
-  const readCatalog = <T>(read: (params?: unknown) => T) => (params?: unknown): T => {
-    ensureBuiltinModelSeeds();
-    return read(params);
-  };
-  registerSyncIpc("nomi:model-catalog:vendors:list", readCatalog(listModelCatalogVendors));
-  registerSyncIpc("nomi:model-catalog:models:list", readCatalog(listModelCatalogModels));
-  registerSyncIpc("nomi:model-catalog:mappings:list", readCatalog(listModelCatalogMappings));
-  registerSyncIpc("nomi:model-catalog:health", readCatalog(getModelCatalogHealth));
+  // 读目录的 IPC 是**纯读**：种子对账（写盘）只在启动期跑一次。挂在读上时，盘上版本比应用新就会
+  // 让每次读都抛 → 设置页全空零报错（判据住 electron/catalogReadChannelsPureRead.test.ts）。
+  registerSyncIpc("nomi:model-catalog:vendors:list", listModelCatalogVendors);
+  registerSyncIpc("nomi:model-catalog:models:list", listModelCatalogModels);
+  registerSyncIpc("nomi:model-catalog:mappings:list", listModelCatalogMappings);
+  registerSyncIpc("nomi:model-catalog:health", getModelCatalogHealth);
   registerSyncIpc("nomi:model-catalog:vendor:upsert", upsertRendererCatalogVendor);
   registerSyncIpc("nomi:model-catalog:vendor:delete", deleteModelCatalogVendor);
   registerSyncIpc("nomi:model-catalog:vendor-api-key:clear", clearModelCatalogVendorApiKey);
@@ -462,7 +448,7 @@ function registerIpc(): void {
   registerSyncIpc("nomi:model-catalog:models:delete", deleteModelCatalogModels);
   registerSyncIpc("nomi:model-catalog:mapping:upsert", upsertRendererCatalogMapping);
   registerSyncIpc("nomi:model-catalog:mapping:delete", deleteModelCatalogMapping);
-  registerSyncIpc("nomi:model-catalog:export", readCatalog(exportModelCatalogPackage));
+  registerSyncIpc("nomi:model-catalog:export", exportModelCatalogPackage);
   registerSyncIpc("nomi:model-catalog:import", importRendererCatalogPackage);
   // 域 IPC 各住各的模块（给 main.ts 800 行门腾空间；新通道加到对应模块，别回填这里）。comfy 那棵树重 → 惰性 require；素材通道薄 → 顶部静态 import。
   (require("./comfyuiIpc") as typeof import("./comfyuiIpc")).registerComfyuiIpc(registerSyncIpc);
@@ -647,7 +633,9 @@ if (hasSingleInstanceLock)
         .then(() => import("./vendor/vendorBaseFallbackBoot"))
         .then((m) => m.configureVendorBaseFallbackAtBoot())
         .catch((error) => logError("main", "network-boot-failed", error));
-      // 写入内置模型种子（Seedance 等主流模型档案）；幂等、存在即跳过，不覆盖用户已有记录。
+      // Preview/RC 首次启动从稳定版拷一份配置过来（共用 userData 不行，理由在该模块头注释）。
+      // 必须排在种子对账与任何一次配置读之前：它判断的正是「自己这份是不是全新的」。
+      seedFromStableInstallAtBoot();      // 写入内置模型种子（Seedance 等主流模型档案）；幂等、存在即跳过，不覆盖用户已有记录。
       // sync 且渲染层一进库就读 catalog → 须在 createWindow 前完成。
       try {
         ensureBuiltinModelSeeds();
@@ -656,6 +644,7 @@ if (hasSingleInstanceLock)
       }
       registerIpc(); void import('./telemetry/telemetryLifecycle').then(({ recordAppStarted }) => recordAppStarted());
       await createWindow();
+      installBackgroundLifecycle({ hasInFlightWork: hasInFlightProductionWork, quit: () => app.quit() });
       // 外部 capability RPC 不是首窗依赖，且它一旦 listen 就可能收到会解析凭据的 models/generation 请求。
       // 必须在窗口完成后才暴露；失败显式消化，不能反向拖垮已经可用的首窗。低内存模式仍默认跳过。
       if (!capabilityCoreDisabled) {
@@ -693,6 +682,7 @@ app.on("window-all-closed", () => {
 // abort → ffmpegRunner 监听 abort 后 kill 子进程。同步、不抛，绝不拖住退出。
 app.on("before-quit", () => {
   // 能力核退出清理：清实例广告 + 关 RPC，让外部探测立刻知道「app 已关」。同步、不抛。
+  disposeBackgroundLifecycle();
   stopDesktopCapabilityCore();
   void desktopLaneIpc?.dispose().catch((error) => logError("agent", "close-on-quit-failed", error));
   try {

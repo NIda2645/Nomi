@@ -32,6 +32,53 @@ export const DURATION_OPTIONS_SEC: readonly number[] = [4, 5, 6, 8, 10, 12, 15]
 /** 切到视频档/空方案首镜的兜底时长（秒）。 */
 const DEFAULT_VIDEO_DURATION_SEC = 5
 
+// ── 模型身份：(modelKey, modelVendor) 永远成对写 ──
+//
+// 身份唯一键是 `(vendor, modelKey)`：两家供应商提供同名模型（自定义中转也叫 gpt-image-2）是**两个模型**。
+// 2026-09-21 群反馈：分镜三处模型框各自只写 modelKey——镜头保留着旧 modelVendor，界面选的是 APIMart，
+// 请求却发去了自定义那家（花错钱）。修法不是在三个组件里各补一行，而是让「写模型」只有一种形状：
+//   · 类型上：`PlanShotPatch` / `PlanAnchorPatch` 不允许单独出现 modelKey 或 modelVendor；
+//   · 运行时：`updateShotAt` / `updateAnchor` 再兜一次（`any` / 旧 JS 调用者也逃不掉）——
+//     补丁里有 modelKey 却没有 modelVendor，就把 modelVendor 清掉（「不知道哪家」回到旧数据的解析规则，
+//     绝不留一个为别的模型记下的供应商）。
+
+/** 模型身份两半：要么都不写，要么一起写（值可以是 undefined = 回「默认模型」）。 */
+export type PairedModelIdentity =
+  | { modelKey?: never; modelVendor?: never }
+  | { modelKey: string | undefined; modelVendor: string | undefined }
+
+export type PlanShotPatch = Omit<Partial<PlanShot>, 'modelKey' | 'modelVendor'> & PairedModelIdentity
+export type PlanAnchorPatch = Omit<Partial<PlanAnchor>, 'modelKey' | 'modelVendor'> & PairedModelIdentity
+
+/**
+ * 「给这一镜/这张锚换模型」的**唯一**写法：(modelKey, vendor) 成对落盘，模式与参数随模型清空
+ * （它们属于上一个模型）。空 modelKey = 回「默认模型」，供应商一起清。
+ * 镜卡底栏、锚行、批量条、框选条、Agent 改镜全部经这里（或与它同形的 `applyModelToAll`）。
+ */
+export function planModelSelection(modelKey: string | undefined, modelVendor: string | undefined): {
+  modelKey: string | undefined
+  modelVendor: string | undefined
+  modeId: undefined
+  params: undefined
+} {
+  const key = modelKey?.trim() || undefined
+  return { modelKey: key, modelVendor: key ? modelVendor?.trim() || undefined : undefined, modeId: undefined, params: undefined }
+}
+
+/** 运行时兜底：补丁带了 modelKey 却没带 modelVendor → modelVendor 置空，绝不沿用上一个模型的供应商。 */
+function pairModelIdentity<T extends { modelKey?: unknown; modelVendor?: unknown }>(patch: T): T {
+  if (Object.prototype.hasOwnProperty.call(patch, 'modelKey') && !Object.prototype.hasOwnProperty.call(patch, 'modelVendor')) {
+    return { ...patch, modelVendor: undefined }
+  }
+  return patch
+}
+
+/** 继承上一镜的模型时，两半一起继承（只继承 modelKey 会让新镜落到「同名里排第一的那家」）。 */
+function inheritedModelIdentity(source: PlanShot | undefined): Partial<Pick<PlanShot, 'modelKey' | 'modelVendor'>> {
+  if (!source?.modelKey) return {}
+  return { modelKey: source.modelKey, ...(source.modelVendor ? { modelVendor: source.modelVendor } : {}) }
+}
+
 /** style 默认文本锚（每镜常驻，拼进 prompt）；character/scene/prop 默认视觉锚（生成参考图）。 */
 export function defaultCarrierForKind(kind: PlanAnchorKind): PlanAnchorCarrier {
   return kind === 'style' ? 'text' : 'visual'
@@ -66,8 +113,9 @@ export function addAnchor(plan: StoryboardPlan, kind: PlanAnchorKind = 'characte
   return { ...plan, anchors: [...plan.anchors, anchor] }
 }
 
-export function updateAnchor(plan: StoryboardPlan, id: string, patch: Partial<PlanAnchor>): StoryboardPlan {
-  return { ...plan, anchors: plan.anchors.map((anchor) => (anchor.id === id ? { ...anchor, ...patch } : anchor)) }
+export function updateAnchor(plan: StoryboardPlan, id: string, patch: PlanAnchorPatch): StoryboardPlan {
+  const paired = pairModelIdentity(patch)
+  return { ...plan, anchors: plan.anchors.map((anchor) => (anchor.id === id ? { ...anchor, ...paired } : anchor)) }
 }
 
 /** 记录 @ token 对应的 URL，绑定关系仍由镜头的 anchorIds 唯一持有。 */
@@ -138,7 +186,7 @@ export function addShot(plan: StoryboardPlan): StoryboardPlan {
     ...(lastKind ? { shotKind: lastKind } : {}),
     ...(last?.sceneId ? { sceneId: last.sceneId } : {}),
     ...(lastKind === 'video' && lastKeyframeEnabled ? { keyframe: { enabled: true, prompt: '' } } : {}),
-    ...(last?.modelKey ? { modelKey: last.modelKey } : {}),
+    ...inheritedModelIdentity(last),
     ...(last?.modeId ? { modeId: last.modeId } : {}),
     // 画幅继承但不拷整份 params——其余参数（负向词/清晰度…）是那一镜的创作选择，新镜从默认起。
     ...(lastAspect !== undefined ? { params: { aspect_ratio: lastAspect } } : {}),
@@ -158,7 +206,7 @@ export function insertShotAt(plan: StoryboardPlan, pos: number): StoryboardPlan 
         index: pos + 1,
         ...(previous.shotKind ? { shotKind: previous.shotKind } : {}),
         ...(previous.sceneId ? { sceneId: previous.sceneId } : {}),
-        ...(previous.modelKey ? { modelKey: previous.modelKey } : {}),
+        ...inheritedModelIdentity(previous),
         ...(previous.modeId ? { modeId: previous.modeId } : {}),
         ...(previous.params?.aspect_ratio !== undefined ? { params: { aspect_ratio: previous.params.aspect_ratio } } : {}),
         durationSec: effectiveShotDurationSec(previous) || DEFAULT_VIDEO_DURATION_SEC,
@@ -181,8 +229,9 @@ export function duplicateShotAt(plan: StoryboardPlan, pos: number): StoryboardPl
   return { ...plan, shots: renumber(shots) }
 }
 
-export function updateShotAt(plan: StoryboardPlan, pos: number, patch: Partial<PlanShot>): StoryboardPlan {
-  return { ...plan, shots: plan.shots.map((shot, i) => (i === pos ? { ...shot, ...patch } : shot)) }
+export function updateShotAt(plan: StoryboardPlan, pos: number, patch: PlanShotPatch): StoryboardPlan {
+  const paired = pairModelIdentity(patch)
+  return { ...plan, shots: plan.shots.map((shot, i) => (i === pos ? { ...shot, ...paired } : shot)) }
 }
 
 export function removeShotAt(plan: StoryboardPlan, pos: number): StoryboardPlan {
@@ -363,8 +412,8 @@ export function shotTypeOf(shot: PlanShot): ShotTypeValue {
  * 切类型清掉模型/模式/参数——两种类的模型目录不通用，留着会张冠李戴（落画布按种类取默认兜底）；
  * 切到视频档时时长兜底 5s；image-video 档置 keyframe.enabled 并保留已写的首帧提示词。
  */
-export function shotKindPatch(shot: PlanShot, next: ShotTypeValue): Partial<PlanShot> {
-  const cleared = { modelKey: undefined, modeId: undefined, params: undefined } as const
+export function shotKindPatch(shot: PlanShot, next: ShotTypeValue): PlanShotPatch {
+  const cleared = planModelSelection(undefined, undefined)
   if (next === 'image') return { shotKind: 'image', keyframe: undefined, ...cleared }
   const durationSec = shot.durationSec > 0 ? shot.durationSec : DEFAULT_VIDEO_DURATION_SEC
   if (next === 'image-video') {
@@ -398,13 +447,7 @@ export function applyShotKindToAll(plan: StoryboardPlan, next: ShotTypeValue): S
 export function applyModelToAll(plan: StoryboardPlan, modelKey: string, modelVendor?: string): StoryboardPlan {
   return {
     ...plan,
-    shots: plan.shots.map((shot) => ({
-      ...shot,
-      modelKey: modelKey || undefined,
-      modelVendor: modelKey ? modelVendor || undefined : undefined,
-      modeId: undefined,
-      params: undefined,
-    })),
+    shots: plan.shots.map((shot) => ({ ...shot, ...planModelSelection(modelKey, modelVendor) })),
   }
 }
 

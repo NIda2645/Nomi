@@ -1,4 +1,4 @@
-// 把档案(src/config/modelArchetypes)的参数默认值抽成纯数据，桥接给 electron。
+// 把档案(electron/shared/modelArchetypes)的参数默认值抽成纯数据，桥接给 electron。
 // 为什么要它：electron/tsconfig rootDir 隔离，runtime 不能直接 import src/config 的档案；
 // 但 headless/MCP 生成不经 UI → request.params 为空 → 缺必填参(model 变体 / duration / 比例…) vendor 拒。
 // 本脚本(跑在 electron 编译外、可 import src/config)抽 {archetypeId: {taskKind: {param: defaultValue}}}，
@@ -7,8 +7,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { MODEL_ARCHETYPES } from "../src/config/modelArchetypes/index.ts";
-import type { ModelArchetype } from "../src/config/modelArchetypes/types.ts";
+import { MODEL_ARCHETYPES } from "../electron/shared/modelArchetypes/index.ts";
+import type { ModelArchetype } from "../electron/shared/modelArchetypes/types.ts";
 import { modeTransportFor } from "../electron/shared/videoCapabilities/modeTransport.ts";
 
 type WireDefaults = Record<string, Record<string, Record<string, Record<string, unknown>>>>;

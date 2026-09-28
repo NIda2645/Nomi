@@ -50,3 +50,35 @@ describe("resolveNodeVisualSize — 真实渲染尺寸（连线锚点单一真�
     expect(getNodeSizeBounds("clip")).toMatchObject({ minWidth: 560, maxWidth: 960, minHeight: 120, maxHeight: 180 });
   });
 });
+
+const imageResult = { id: 'generated', type: 'image', url: 'nomi-local://asset/image.png', createdAt: 1 };
+describe('image results own their intrinsic canvas aspect ratio', () => {
+  it.each([[1920, 1080], [1080, 1920], [4096, 256], [256, 4096]])('preserves complete %i×%i image after generation and restoration', (width, height) => {
+    const visual = resolveNodeVisualSize(node({ kind: 'image', size: { width: 340, height: 340 }, result: imageResult,
+      meta: { imageWidth: width, imageHeight: height, previewHeight: 340, userResized: true } }));
+    expect(visual.width / visual.height).toBeCloseTo(width / height, 8);
+    expect(visual.width).toBeLessThanOrEqual(680);
+    expect(visual.height).toBeLessThanOrEqual(520);
+  });
+  it('same dimensions, stale previewHeight and next-generation parameters cannot override a measured result', () => {
+    const input = { kind: 'image', size: { width: 480, height: 480 }, result: imageResult,
+      meta: { imageWidth: 1920, imageHeight: 1080, imageAspectRatio: 1, previewHeight: 480, params: { aspect_ratio: '1:1' } } };
+    expect(resolveNodeVisualSize(node(input))).toEqual({ width: 480, height: 270 });
+  });
+  it('split layout probes and completed asset tiles keep the same tall slot', () => {
+    const input = { kind: 'asset', size: { width: 260, height: 1040 }, result: imageResult,
+      meta: { source: 'image-grid-split-3x3', previewHeight: 1040 } };
+    const probe = resolveNodeVisualSize(node(input));
+    expect(probe).toEqual({ width: 260, height: 1040 });
+    expect(resolveNodeVisualSize(node({ ...input, meta: { ...input.meta, imageWidth: 100, imageHeight: 400 } }))).toEqual(probe);
+  });
+  it('video and dedicated cards use intrinsic media ratio plus card information', () => {
+    const input = { size: { width: 340, height: 340 }, meta: { imageWidth: 1920, imageHeight: 1080, previewHeight: 340 } };
+    expect(resolveNodeVisualSize(node({ ...input, kind: 'video', meta: { videoWidth: 1920, videoHeight: 1080, previewHeight: 340 }, result: { ...imageResult, type: 'video' } }))).toEqual({ width: 340, height: 191.25 });
+    expect(resolveNodeVisualSize(node({ ...input, kind: 'character', meta: { ...input.meta, cardInfoHeight: 36 }, result: imageResult }))).toEqual({ width: 200, height: 148.5 });
+  });
+  it('invalid measurements do not invent an aspect ratio', () => {
+    expect(resolveNodeVisualSize(node({ kind: 'image', size: { width: 340, height: 240 }, result: imageResult,
+      meta: { imageWidth: Infinity, imageHeight: 0 } }))).toEqual({ width: 340, height: 240 });
+  });
+});

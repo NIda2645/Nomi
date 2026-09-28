@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { nowIso } from "../jsonUtils";
 import { NEWAPI_STATUS_MAPPING, NEWAPI_VIDEO_CREATE_OP, NEWAPI_VIDEO_QUERY_OP } from "./newapiTransport";
-import { BUILTIN_VENDOR_KEYS } from "./relayImageEditMigration";
+import { isBuiltinRelayVendorKey } from "./relayImageEditMigration";
 import type { CatalogState } from "./types";
 
 /**
@@ -21,7 +21,7 @@ export function migrateRelayVideoImageToVideo(state: CatalogState): { state: Cat
   const mappings = [...state.mappings];
   const t = nowIso();
   for (const model of state.models) {
-    if (model.kind !== "video" || BUILTIN_VENDOR_KEYS.has(model.vendorKey)) continue;
+    if (model.kind !== "video" || isBuiltinRelayVendorKey(model.vendorKey)) continue;
     // OpenAI/new-api 兼容视频形状的证据：该 vendor 有一条走 /video/generations 的 text_to_video。
     const t2v = mappings.find(
       (m) =>

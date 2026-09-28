@@ -2,8 +2,9 @@ import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconChevronUp, IconPlus } from '../../../../vendor/tablerIcons'
 import type { ModelOption } from '../../../../config/models'
-import type { PlanAnchor, PlanAnchorKind } from '../../../generationCanvas/agent/storyboardPlan'
+import type { PlanAnchorKind } from '../../../generationCanvas/agent/storyboardPlan'
 import type { AnchorCardRuntime } from '../exec/storyboardRowStatus'
+import type { PlanAnchorPatch } from '../../../generationCanvas/agent/storyboardPlanEdits'
 import StoryboardAnchorStrip from './StoryboardAnchorStrip'
 import StoryboardAnchorRow from './StoryboardAnchorRow'
 
@@ -27,7 +28,7 @@ type Props = {
   /** 受控展开态；缺省 = 组件自持（实验室 / 独立使用时用得上）。 */
   expanded?: boolean
   onToggleExpanded?: ((next: boolean) => void) | undefined
-  onUpdateAnchor: (anchorId: string, patch: Partial<PlanAnchor>) => void
+  onUpdateAnchor: (anchorId: string, patch: PlanAnchorPatch) => void
   onChangeKind: (anchorId: string, kind: PlanAnchorKind) => void
   onRemoveAnchor: (anchorId: string) => void
   onGenerateAnchor: (runtime: AnchorCardRuntime) => void

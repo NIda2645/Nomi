@@ -10,6 +10,7 @@ import {
 } from "./generationTransportAdapters";
 import type { ProjectBinding } from "../shared/projectBinding";
 import type { ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
+import { readAgentApprovalPolicy } from "../settings/agentApprovalPolicySettings";
 import type { ProductionRunService } from "../productionRun/productionRunService";
 
 type RunOwner = Pick<ProductionRunService, "readFull" | "command">;
@@ -26,8 +27,9 @@ export type ResidentGenerationAdapterFactoryInput = Readonly<{
 
 export type ResidentGenerationAdapterFactory = Readonly<{
   /**
-   * `approvalPolicy` 是宿主持有的档位快照（lane 传 `() => composer.approvalPolicy`）。
-   * 缺席 = 这条路没有档位可读 → 适配器按默认档走，也就是照旧弹报价卡。
+   * `approvalPolicy` 是宿主持有的档位快照（lane 传 `() => composer.approvalPolicy`，它和主进程
+   * 那份权威值是同一个东西——lane 每次切档都写回去）。**缺席不再等于「按默认档」**：这时直接读
+   * 主进程持有的那份权威值。调用方永远没有办法「自报」一个更松的档位。
    */
   factory: (binding: ProjectBinding, approvalPolicy?: () => ProjectAgentApprovalPolicy | undefined) => PiGenerationTransportAdapter;
   /**
@@ -114,7 +116,9 @@ export function createResidentGenerationAdapterFactory(
     confirmGenerationInNomi: input.confirmGenerationInNomi,
     approvalReceiptAuthority: input.approvalReceiptAuthority,
     leaseFor,
-    ...(approvalPolicy ? { approvalPolicy } : {}),
+    // 宿主没给档位时**不再按默认档走**：档位是用户设置，主进程自己就持有那份权威值。
+    // 此前这里缺席 = 照旧弹卡，于是用户选了「全自动」而非 lane 的宿主（外部 MCP 等）仍然每步问人。
+    approvalPolicy: approvalPolicy ?? readAgentApprovalPolicy,
   });
 
   return {

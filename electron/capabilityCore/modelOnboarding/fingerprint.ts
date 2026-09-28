@@ -1,0 +1,29 @@
+import crypto from "node:crypto";
+
+/**
+ * 「我读到的还是这一份吗」——`nomi_remove_provider` 的 `ifUnchanged` 认它。
+ *
+ * 为什么不用 revision 数字：删除的对象是**目录里那几行**，而目录会被别的路径改（用户在设置里
+ * 删了一个、另一次接入加了三个）。一个全局计数器答不了「我刚读到的那几行还在不在」；
+ * 一个对身份列表的摘要能。
+ */
+export function catalogFingerprint(rows: ReadonlyArray<{ vendor: string; modelKey: string }>): string {
+  const identity = rows.map((row) => `${row.vendor}::${row.modelKey}`).sort().join("|");
+  return `models-${crypto.createHash("sha256").update(identity).digest("hex").slice(0, 12)}`;
+}
+
+/** 这一跳的幂等身份：同一个 setup + 同一个 action + 同一份入参 = 同一个 changeId。 */
+export function changeIdFor(setupId: string, action: string, args: unknown): string {
+  const canonical = JSON.stringify(stable(args));
+  return crypto.createHash("sha256").update(`${setupId}\u0000${action}\u0000${canonical}`).digest("hex").slice(0, 16);
+}
+
+function stable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(stable);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => [key, stable(item)]),
+  );
+}

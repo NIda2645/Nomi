@@ -17,6 +17,7 @@ import type {
 import type { AdapterRunStage as SharedAdapterRunStage } from "../shared/providerAdapterContract";
 import type { TransportAbandonDisposition, TransportDelivery } from "../catalog/transportDelivery";
 import type { AdapterSelfCheckReason } from "./selfCheck";
+import type { DeclaredAssetIngestion, DeclaredSelfCheck } from "./declarationCard";
 
 export type AdapterAuthType = "none" | "bearer" | "x-api-key" | "query";
 
@@ -110,6 +111,8 @@ export type AdapterModelDraft = {
     default?: string | number | boolean;
     min?: number;
     max?: number;
+    /** §5：这个参数的取值范围与默认值是从哪一页读来的（mode 级 sourceUrls 已有，参数级补齐）。 */
+    sourceUrl?: string;
   }>;
   modes: AdapterModeDraft[];
 };
@@ -120,10 +123,23 @@ export type ProviderAdapterDraft = {
     authType: AdapterAuthType;
     authHeader?: string;
     authQueryParam?: string;
+    /**
+     * `Authorization` 里 key 前面的方案词（Higgsfield 的 `Key id:secret`）。由 Nomi 从已绑定的
+     * vendor 填；卡上只能复述、不能改——它属于「key 怎么放」，与地址同一档（§6.1）。
+     */
+    authScheme?: string;
     providerKind?: AiSdkProviderKind;
   };
   sources: AdapterSourceEvidence[];
   models: AdapterModelDraft[];
+  /** §5：本地素材怎么进这家。Agent 交件时**必填**（`none` 必须显式）；内部编译器那条路可空。 */
+  assetIngestion?: DeclaredAssetIngestion;
+  /** §5：免费自检的形状。缺省 = 打这家自己的模型列表。 */
+  selfCheck?: DeclaredSelfCheck;
+  /** §5：文档写了但这张卡刻意不声明的字段 + 理由。不参与执行，只让取舍可审计。 */
+  omitted?: Array<{ field: string; reason: string; sourceUrl: string }>;
+  /** §2.3：指回供应商自己的 OpenAPI 文档作为证据（我们指向它，不复制它）。 */
+  openapi?: { url: string; operationIds?: Record<string, string> };
 };
 
 /**

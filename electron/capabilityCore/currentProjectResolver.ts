@@ -1,3 +1,4 @@
+import { sameCommittedProjectSelection } from "../shared/projectBinding";
 import crypto from 'node:crypto'
 
 import type { WorkspaceProjectIdentity } from '../workspace/workspaceProjectIdentity'
@@ -69,15 +70,8 @@ function authorizedProject(
   return { projectId }
 }
 
-function matchesCommittedSelection(
-  identity: WorkspaceProjectIdentity,
-  selection: CurrentProjectSelection,
-): boolean {
-  return identity.projectId === selection.projectId
-    && identity.immutableProjectUuid === selection.immutableProjectUuid
-    && identity.projectGeneration === selection.projectGeneration
-    && identity.canonicalRootDigest === selection.canonicalRootDigest
-}
+// C2：四维比对走 owner（`shared/projectBinding.ts`），这里不再列字段。
+const matchesCommittedSelection = sameCommittedProjectSelection
 
 /**
  * Resolve only server-authorized project-selection sources. Project existence

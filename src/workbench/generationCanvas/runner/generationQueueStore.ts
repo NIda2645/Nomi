@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 // 生成任务队列（调度真相源）。方案：docs/plan/2026-08-02-task-center-queue.md
 //
 // 存在的理由：在此之前「队列」只是 runGenerationNodesBatch 里的闭包变量（const queue + let cursor），
@@ -274,3 +275,16 @@ export function beginSingletonBatch(nodeId: string, projectId: string): string {
 export function selectIsNodeQueued(state: GenerationQueueState, nodeId: string): boolean {
   return state.entries.some((entry) => entry.nodeId === nodeId && entry.state === 'queued')
 }
+
+/**
+ * C1 寿命声明。**刻意 `process`**：每条 entry 在提交那一刻就签了 `projectId`
+ * （审计 §1.1 把它列为「身份随创建签发」的正例），读侧按 id 自校，所以它不串项目。
+ *
+ * 而且切项目**不能**清它：用户离开项目 A 去项目 B 的时候，A 那边在途的生成还在跑——
+ * 清空队列等于把它们从界面上抹掉，任务却还在花钱。身份轴已经解决了串扰，
+ * 寿命轴在这里的正确答案就是「活到进程结束」。
+ */
+export const generationQueueStoreLifetime = declareStoreLifetime({
+  store: 'useGenerationQueueStore',
+  fields: { entries: 'process', batches: 'process' },
+})

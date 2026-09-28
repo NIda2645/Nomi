@@ -1,8 +1,13 @@
 {
   "lane": "main",
+  "model": {
+    "provider": "nomi-lane",
+    "modelId": "chosen-model"
+  },
   "parts": [
     {
       "sequence": 0,
+      "entryId": "native-entry-4",
       "entrySeq": 4,
       "contentIndex": 0,
       "kind": "user",
@@ -12,6 +17,7 @@
       "sequence": 1,
       "entrySeq": 17,
       "contentIndex": 0,
+      "entryId": "native-entry-17",
       "kind": "tool-call",
       "toolCallId": "call-read",
       "toolName": "read_script",
@@ -20,6 +26,7 @@
     },
     {
       "sequence": 2,
+      "entryId": "native-entry-27",
       "entrySeq": 27,
       "contentIndex": 0,
       "kind": "tool-result",
@@ -32,6 +39,7 @@
       "sequence": 3,
       "entrySeq": 39,
       "contentIndex": 0,
+      "entryId": "native-entry-39",
       "kind": "tool-call",
       "toolCallId": "call-write",
       "toolName": "write_script",
@@ -43,6 +51,7 @@
     },
     {
       "sequence": 4,
+      "entryId": "native-entry-49",
       "entrySeq": 49,
       "contentIndex": 0,
       "kind": "tool-result",
@@ -59,12 +68,15 @@
       "sequence": 5,
       "entrySeq": 60,
       "contentIndex": 0,
+      "entryId": "native-entry-60",
       "kind": "assistant-text",
       "text": "I read the document and appended one paragraph.",
-      "streaming": false
+      "streaming": false,
+      "retryInputEntryId": "native-entry-4"
     }
   ],
   "running": false,
+  "queues": [],
   "usage": {
     "inputTokens": 30,
     "outputTokens": 12,
@@ -84,7 +96,6 @@
       "reason": "model-has-no-reasoning"
     }
   },
-  "queues": [],
   "thinking": {
     "supportedLevels": [
       "off"
@@ -92,8 +103,8 @@
     "level": "off",
     "canTurnOff": true
   },
-  "model": {
-    "provider": "nomi-lane",
-    "modelId": "chosen-model"
+  "history": {
+    "hasMore": false,
+    "before": "native-entry-4"
   }
 }

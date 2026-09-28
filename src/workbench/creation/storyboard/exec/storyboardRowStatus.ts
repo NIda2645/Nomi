@@ -1,14 +1,17 @@
-import { anchorsConsumedBy, SLOT_ACCEPTS } from '../../../../config/modelArchetypes/anchorPolicy'
+import { anchorsConsumedBy } from '../../../../../electron/shared/modelArchetypes/anchorPolicy'
 import { ignoredShotAnchors, type IgnoredAnchor } from '../../../generationCanvas/agent/storyboardAnchorPolicy'
 import type { GenerationCanvasNode } from '../../../generationCanvas/model/generationCanvasTypes'
-import type { ArchetypeMode, ArchetypeReferenceSlot } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode, ArchetypeReferenceSlot } from '../../../../../electron/shared/modelArchetypes/types'
 import type { ModelOption } from '../../../../config/models'
 import { stableShotId, type PlanAnchor, type PlanShot, type StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
-import { isVisualAnchor } from '../../../generationCanvas/agent/storyboardPromptCompiler'
+import { anchorCarriesOwnMaterial, isVisualAnchor } from '../../../generationCanvas/agent/storyboardPromptCompiler'
 import { isAnchorFrozen } from '../../../generationCanvas/model/anchorBibleKeys'
 import { hasUsableResult } from '../../../generationCanvas/runner/dependencyWaves'
-import { effectiveShotValue, missingRequiredSlots, referencedVisualAnchors, resolveShotArchetypeMode } from '../shotRow/shotRowModel'
+import { effectiveShotValue, missingRequiredSlots, plannedFirstFrameSlot, referencedVisualAnchors, resolveShotArchetypeMode } from '../shotRow/shotRowModel'
 import { findAnchorNode, findShotKeyframeNode, findShotNode } from './storyboardNodeBinding'
+import { findModelOptionByIdentifier } from '../../../../config/modelOptionResolvers'
+import { peekVendorPreferenceOrder } from '../../../common/useVendorPreference'
+
 
 /**
  * 分镜行的**执行态 derive 层**（纯函数，v5 B）：行状态不是存的，是从「plan × 画布节点」推出来的
@@ -39,6 +42,11 @@ export type WaitingRef = {
   node: GenerationCanvasNode | null
 }
 
+export type PlannedFirstFrame = {
+  slotKind: ArchetypeReferenceSlot['kind']
+  url: string | null
+}
+
 export type ShotRowExec = {
   status: ShotRowStatus
   /** 该行绑定的画布节点（未 materialize 则 null）。 */
@@ -55,8 +63,16 @@ export type ShotRowExec = {
   ignoredAnchors: IgnoredAnchor[]
   /** 已出图但未锁定的引用锚：单跑不拦（画布同一破锁语义）、批量要等锁。 */
   unlockedRefs: PlanAnchor[]
-  /** 缺必填参考的槽（红态文案用第一个）。 */
+  /**
+   * 缺必填参考的槽（shotRowModel.missingRequiredSlots）。画面格「缺X参考」、批量排除、场组头计数、
+   * **参考列的红格**都读这一份——参考列不再自己拿「必填 + 没绑定」另判一遍（0.22.0 误报）。
+   */
   missingSlots: ArchetypeReferenceSlot[]
+  /**
+   * 计划首帧：生成时首帧图落进的那个槽 + 首帧图已出来时的缩略图（还没出来 = null）。
+   * 参考列把它画进那一格——那一格生成时本来就会被首帧填上。没开首帧 / 本模式收不下 → null。
+   */
+  plannedFirstFrame: PlannedFirstFrame | null
   /**
    * 参考已变（v5 §v3-3）：本行产物生成时用的参考图版本（吃参考节点的 meta.refSnapshot，
    * 提交时由 runner 打戳）与锚节点**当前** result 不一致的锚。done 态才亮
@@ -121,10 +137,22 @@ export function deriveShotRowExec(input: {
     // isVisualAnchor 再过一道：与 materialize 连边同一谓词——不给「永远等一张不会生成的卡」留缝
     // （如 carrier 被手动翻成 visual 的 style 锚，materialize 不建节点也不连边）。
     for (const anchor of referencedVisualAnchors(shot, plan.anchors).filter(isVisualAnchor)) {
-      // A real reference already bound in the active image slot is the input;
-      // materialization deliberately does not create another anchor node for it.
-      if (anchor.referenceUrl && !anchor.referenceSourceNodeId && mode?.slots.some(slot => SLOT_ACCEPTS[slot.kind].includes('image')
-        && shot.referenceBindings?.[slot.kind]?.some(binding => binding.anchorId === anchor.id && binding.url === anchor.referenceUrl))) continue
+      // 自带素材的锚（@ 引用素材库/上传、结果即收）**没有**参考卡节点可等——materialize 按同一个
+      // 谓词决定不给它建卡（storyboardPromptCompiler.anchorCarriesOwnMaterial）。等不等，要看
+      // **素材怎么到模型**（与 storyboardPlan.ts 的两条出口一一对应）：
+      //   · 只带 URL       → 随 `params.referenceImageUrls` 走，节点建不建都不影响 → 从不等；
+      //   · 指着画布节点   → 随一条参考边从那个节点走 → 那个节点还在、且真出了图，才叫就位。
+      // 这里曾另写一份判据：「URL 有没有落进本行吃图槽的 `referenceBindings`」。但 `referenceBindings`
+      // 今天根本不投影到节点（v6 合同 §9.3 记着这笔债），@ 引用与结果即收两条路也都不写它，
+      // 没钉模型的行更连槽都没有——于是同一张锚在执行层「素材已就位」、在状态层「等参考图」。
+      if (anchorCarriesOwnMaterial(anchor)) {
+        if (!anchor.referenceSourceNodeId) continue
+        const sourceNode = nodes.find((candidate) => candidate.id === anchor.referenceSourceNodeId) ?? null
+        if (sourceNode && hasUsableResult(sourceNode)) continue
+        // 源节点被删/还没出图：那条边接不上，素材真的到不了模型——这一行该等，且等的是它。
+        waitingRefs.push({ anchor, node: sourceNode })
+        continue
+      }
       const anchorNode = findAnchorNode(nodes, designId, anchor)
       if (!anchorNode || !hasUsableResult(anchorNode)) {
         waitingRefs.push({ anchor, node: anchorNode })
@@ -135,6 +163,10 @@ export function deriveShotRowExec(input: {
   }
 
   const missingSlots = missingRequiredSlots(mode, shot, plan.anchors)
+  const plannedSlot = plannedFirstFrameSlot(mode, shot)
+  const plannedFirstFrame: PlannedFirstFrame | null = plannedSlot
+    ? { slotKind: plannedSlot.kind, url: keyframeNode && hasUsableResult(keyframeNode) ? resultDisplayUrl(keyframeNode) : null }
+    : null
   const locked = Boolean(node && isAnchorFrozen(node) && hasUsableResult(node))
   const generating = isNodeActive(node) || isNodeActive(keyframeNode)
   const failedNode = isNodeFailed(node) ? node : isNodeFailed(keyframeNode) ? keyframeNode : null
@@ -195,11 +227,59 @@ export function deriveShotRowExec(input: {
     ignoredAnchors,
     unlockedRefs,
     missingSlots,
+    plannedFirstFrame,
     changedRefs,
     resultUrl: resultDisplayUrl(node),
     progressPercent: typeof percent === 'number' && Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null,
     progressMessage: activeNode?.progress?.message || null,
     errorMessage: failedNode?.error || null,
+    locked,
+  }
+}
+
+/**
+ * **没有方案的行**——Run 落地的画布节点（Agent 分镜的唯一账本）。状态只从节点本身推：
+ * 没有锚可等、没有必填参考可缺、没有首帧图可连。`external` 是 Run 那边对这一镜的看法
+ * （占位三态：主进程调度器在跑 / 上游拒了），只在节点自己还没结果时补位——节点一旦有结果，
+ * 它说了算。状态词表与方案行**同一份**（SHOT_ROW_STATUSES），不另立第二套。
+ */
+export function deriveNodeRowExec(
+  node: GenerationCanvasNode,
+  external?: { generating?: boolean; failedMessage?: string | null },
+): ShotRowExec {
+  const done = hasUsableResult(node)
+  const locked = Boolean(isAnchorFrozen(node) && done)
+  const generating = isNodeActive(node) || (!done && external?.generating === true)
+  const failedNode = isNodeFailed(node) ? node : null
+  const externallyFailed = !failedNode && !done && external?.failedMessage !== undefined && external.failedMessage !== null
+  const recoverableNode = isNodeRecoverable(node) ? node : null
+  const status: ShotRowStatus = generating
+    ? 'generating'
+    : failedNode || externallyFailed
+      ? 'failed'
+      : recoverableNode
+        ? 'recoverable'
+        : locked
+          ? 'locked'
+          : done
+            ? 'done'
+            : 'ready'
+  const percent = isNodeActive(node) ? node.progress?.percent : undefined
+  return {
+    status,
+    node,
+    keyframeNode: null,
+    recoverableNode,
+    waitingRefs: [],
+    ignoredAnchors: [],
+    unlockedRefs: [],
+    missingSlots: [],
+    plannedFirstFrame: null,
+    changedRefs: [],
+    resultUrl: resultDisplayUrl(node),
+    progressPercent: typeof percent === 'number' && Number.isFinite(percent) ? Math.max(0, Math.min(100, percent)) : null,
+    progressMessage: isNodeActive(node) ? node.progress?.message || null : null,
+    errorMessage: failedNode?.error || (externallyFailed ? external?.failedMessage ?? null : null),
     locked,
   }
 }
@@ -227,7 +307,8 @@ export function deriveStoryboardRowRuntimes(input: {
     const node = findShotNode(nodes, designId, shot)
     const modelKey = effectiveShotValue(shot, node, 'modelKey')
     const vendor = effectiveShotValue(shot, node, 'modelVendor')
-    const modelOption = options.find((option) => option.value === modelKey && (!vendor || option.vendor === vendor)) ?? null
+    // 与模型框回显、执行落地同一个判定口：记了 vendor 按 (key, vendor)；没记按 pickImplicitVendorMatch。
+    const modelOption = findModelOptionByIdentifier(options, modelKey as string | undefined, vendor as string | undefined, peekVendorPreferenceOrder())
     const mode = resolveShotArchetypeMode(modelOption, effectiveShotValue(shot, node, 'modeId') as string | undefined)?.mode ?? null
     return { shot, mode, exec: deriveShotRowExec({ plan, shot, designId, nodes, mode }) }
   })

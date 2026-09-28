@@ -5,6 +5,7 @@ import type {
   GenerationNodeKind,
 } from '../model/generationCanvasTypes'
 import { resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { readGroupPort } from '../model/groupPort'
 
 /**
  * React Flow is a rendering adapter. The persisted canvas model remains the
@@ -57,6 +58,9 @@ export function toGenerationFlowNode(
   visualState: { appear?: boolean; focusFlash?: boolean } = {},
 ): GenerationFlowNode {
   const size = resolveNodeVisualSize(node)
+  // 编组端口节点（model/groupPort.ts）只为挂连线把手而存在：不可选、不可拖、外壳不吃指针
+  // （框体 / 折叠卡与框里的卡照常点得到），排在卡片之下；把手自己的 pointer-events 在 CSS 里单独打开。
+  const groupPort = Boolean(readGroupPort(node))
   return {
     id: node.id,
     type: 'generation',
@@ -72,14 +76,17 @@ export function toGenerationFlowNode(
     // **不写 `draggable`**：节点上的这颗开关会覆盖 `<ReactFlow nodesDraggable>`，
     // 于是「能不能拖」有了两份定义，而画布外壳那一份还要额外表达「框工具就绪时不许拖」
     // （R29 §6.2）。它原本的值恒等于 `!readOnly`，与外壳传的一模一样，删掉即可（P1）。
-    selectable: !readOnly,
+    selectable: !readOnly && !groupPort,
     connectable: !readOnly,
-    focusable: !readOnly,
+    focusable: !readOnly && !groupPort,
     // Controlled re-projections replace measured state. Give the framework
     // the same domain-derived dimensions used by the node shell.
     width: size.width,
     height: size.height,
-    style: { width: size.width, height: size.height },
+    style: groupPort
+      ? { width: size.width, height: size.height, pointerEvents: 'none' }
+      : { width: size.width, height: size.height },
+    ...(groupPort ? { draggable: false, zIndex: -1 } : {}),
     className: 'generation-canvas-react-flow__node',
   }
 }
@@ -228,6 +235,28 @@ export function collectFlowSelectionChanges(
     if (change.type !== 'select') return []
     return [{ nodeId: change.id, selected: change.selected }]
   })
+}
+
+/**
+ * 把内核报上来的那批选择变更叠到当前选区上，算出下一份选区；**没真变就回 null**。
+ *
+ * 「没变就不写」这一条必须在这里：React Flow 的选择 store 是内部的、持久选区在 Zustand，
+ * 每收到一次内部通知就同步一次会自激（2026-09-22 总合并把它从组件体里搬出来，同刻让那份壳回到 800 行门岗内）。
+ */
+export function nextSelectionFromFlowChanges(
+  changes: readonly NodeChange<GenerationFlowNode>[],
+  currentSelection: readonly string[],
+): string[] | null {
+  const selectionChanges = collectFlowSelectionChanges(changes)
+  if (selectionChanges.length === 0) return null
+  const selected = new Set(currentSelection)
+  for (const change of selectionChanges) {
+    if (change.selected) selected.add(change.nodeId)
+    else selected.delete(change.nodeId)
+  }
+  const next = [...selected]
+  if (next.length === currentSelection.length && next.every((nodeId, index) => nodeId === currentSelection[index])) return null
+  return next
 }
 
 export function flowViewportFromCanvas(viewport: { zoom: number; offset: { x: number; y: number } }): Viewport {

@@ -1,3 +1,4 @@
+import type { ProjectBinding } from '../../../electron/shared/projectBinding'
 import React from 'react'
 import useSWR, { mutate } from 'swr'
 import {
@@ -135,8 +136,9 @@ export async function saveLocalProject(
   projectId: string,
   state: WorkbenchProjectPayload,
   name?: string,
+  expectedBinding?: ProjectBinding,
 ): Promise<LocalProjectRecord> {
-  const record = await saveProjectRecord(projectId, state, name)
+  const record = await saveProjectRecord(projectId, state, name, expectedBinding)
   publishLocalProjectRecord(record)
   return record
 }

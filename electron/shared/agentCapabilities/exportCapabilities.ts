@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { taskReferenceSchema } from './taskReference';
 
 import type { CapabilityContract } from "./capabilityContract";
 import { EXPORT_JOB_STATUSES } from "../contracts/exportTypes";
@@ -16,7 +17,7 @@ const exportTimelinePiInputSchema = z
     quality: z.enum(["small", "standard", "high"]).optional(),
   })
   .strict();
-const exportJobPiInputSchema = z.object({ jobId: exportJobIdSchema }).strict();
+const exportJobPiInputSchema = z.object({ jobId: exportJobIdSchema, domain: z.literal('export').optional() }).strict();
 
 export const exportReadSemanticInputSchema = z.discriminatedUnion("operation", [
   exportJobPiInputSchema.extend({ operation: z.literal("inspect_export_job") }),
@@ -44,6 +45,7 @@ export const exportReadResultSchema = z.discriminatedUnion("operation", [
   z
     .object({
       operation: z.literal("inspect_export_job"),
+      taskRef: taskReferenceSchema.optional(),
       jobId: exportJobIdSchema,
       status: exportStatusSchema,
       progress: z
@@ -93,6 +95,7 @@ export const exportWriteResultSchema = z.union([
     .object({
       operation: z.literal("export_timeline"),
       accepted: z.literal(true),
+      taskRef: taskReferenceSchema.optional(),
       jobId: exportJobIdSchema,
       backend: z.enum(["filtergraph", "webm"]),
       timelineRevision: revisionSchema,
@@ -109,6 +112,7 @@ export const exportWriteResultSchema = z.union([
   z
     .object({
       operation: z.literal("cancel_export_job"),
+      taskRef: taskReferenceSchema.optional(),
       jobId: exportJobIdSchema,
       cancelled: z.boolean(),
       status: exportStatusSchema,

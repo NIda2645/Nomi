@@ -20,7 +20,9 @@ export function createDocumentLaneTools(port: DocumentLanePort): LaneToolDescrip
   return [...specsForCapability("document.read"), ...specsForCapability("document.write")].map((spec) => {
     if (spec.contractId === "document.read") {
       return bindLaneTool(spec, async (args, context) => {
-        const scope = ((args as { scope?: DocumentReadInput["scope"] }).scope ?? "full");
+        // 「缺省 full」住在声明的 `semanticInputOf` 里（两个 profile 共用），不在这里再写第二遍——
+        // 这里曾有一句 `?? "full"`，而对外 MCP 面没有它，于是同一个动词在两个面上行为不同（P1）。
+        const { scope } = toSemanticInput(spec, args as Record<string, unknown>) as DocumentReadInput;
         const result: DocumentReadResult = projectDocumentRead(await port.read(scope, context));
         return { ok: true, text: result.text, details: { scope } };
       });

@@ -1,5 +1,5 @@
 import type { ProjectBinding } from '../../electron/shared/projectBinding'
-import type { DeconstructionProgress } from '../../electron/shared/canvas/shotTable'
+import type { DeconstructionProgress, ShotCutCoverage } from '../../electron/shared/canvas/shotTable'
 import type { VideoDepthMainOwnedPhase } from '../../electron/shared/canvas/videoDepthRun'
 /**
  * 媒体类桥口（抽帧 / 胶片条 / 按镜头拆 / 全局截图）的类型。
@@ -41,12 +41,16 @@ export type DesktopMediaBridge = {
       videoUrl: string
       projectId: string
     }) => Promise<{
+      /** 第 i 刀恒是联系表第 i 格——联系表按这份清单的 pts 点名拼出来，由构造保证。 */
       cuts: { seconds: number; score: number }[]
       durationSeconds: number
       sheetUrl: string | null
       sheetColumns: number
+      /** 联系表行数：主进程算好下发，渲染层**不许自己推**（两份算式会分叉，整张图会压扁）。 */
+      sheetRows: number
       sheetTileHeight: number
-      truncated: boolean
+      /** 这次给全了没有（超上限时按分数抬阈值，全片覆盖不变）。见 ShotCutCoverage。 */
+      coverage: ShotCutCoverage
     }>
     /**
      * 视频拆解：切镜 + 每镜多帧读图 + 音轨转写 → 结构化分镜表。见 electron/video/deconstructVideo.ts。
@@ -58,6 +62,11 @@ export type DesktopMediaBridge = {
       requestId?: string
       videoUrl: string
       projectId: string
+      /**
+       * 这次对白走哪条转写线。不给 = 沿用自动解析（跟着文本大脑那家的音频线走）。
+       * `'cloud'` 是本地那条挂了之后用户点「改用云端重试」传进来的显式动作。
+       */
+      transcribe?: { vendorKey: string; modelKey: string } | 'cloud'
       threshold?: number
       framesPerShot?: number
       customColumns?: { name: string; hint?: string }[]
@@ -86,9 +95,13 @@ export type DesktopMediaBridge = {
       }[]
       durationSeconds: number
       hasAudio: boolean
+      /** 这张表是不是整条片子（超上限时自动抬了阈值，全片覆盖不变但行变少）。 */
+      cutCoverage: ShotCutCoverage
       failedShotIndexes: number[]
       /** 整次拆解层面的原因（如「对白没取到」）；UI 顶部一行显示，不摊进每一格。 */
       failureReason?: string
+      /** 失败类别（机器可读）。`local-speech` = 本地离线转写那一路挂了，UI 据此给「改用云端重试」。 */
+      failureKind?: 'local-speech'
     }>
   }
   /**

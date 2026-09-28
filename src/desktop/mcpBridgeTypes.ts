@@ -28,6 +28,8 @@ export type McpClientInfo = {
   configPath: string
   snippet: string
   configState: McpConfigState
+  configuredCommand: string | null
+  configuredSettingsDir: string | null
   launcherKind: McpLauncherKind
 }
 

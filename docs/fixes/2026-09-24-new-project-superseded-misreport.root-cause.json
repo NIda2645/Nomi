@@ -1,0 +1,185 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-24-new-project-superseded-misreport",
+  "problem_type": "A superseded project open is reported as a creation failure and repeated activations create duplicate projects",
+  "symptom": "After the app recovered from a freeze, the project library showed '新建项目失败，请检查本地磁盘权限' although the disk was fine. Reproduced by clicking 新建空白项目 twice quickly: two empty projects are created and the banner appears when returning to the library.",
+  "direct_cause": "createAndOpenProject created a project on every activation and awaited hydrateProject; the second activation's hydration supersedes the first, which rejects with ProjectHydrationSupersededError, and the newProject / playJourneyTour entries reported every rejection as a creation failure.",
+  "class_root": "The single creation orchestration point did not own two rules that every other open entry already follows: an open superseded by a newer open is not a failure, and a creation still in flight must not be started again by queued activations.",
+  "affected_population": [
+    "Any user whose clicks queue up while the UI is busy or frozen, or who double-clicks 新建空白项目",
+    "Users who start a new project and immediately open another project card",
+    "The guided demo entry (重看一遍引导) that goes through the same orchestration"
+  ],
+  "scope_paths": [
+    "src/workbench/NomiStudioApp.tsx",
+    "src/workbench/project/projectCreationFlight.ts",
+    "src/workbench/project/useProjectWindowLifecycle.ts"
+  ],
+  "entry_points": [
+    "新建空白项目 (newProject -> createAndOpenProject)",
+    "重看一遍引导 demo project (playJourneyTour -> createAndOpenProject)",
+    "Leaving a project for the library (useProjectLeaveAction), which already de-duplicated repeated calls with a hand-written copy of the same rule"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Application-owned orchestration: ProjectHydrationSupersededError and hydrateProject are Nomi code; the other open entries (openProject, openWorkspaceFolder, route hydration, notification navigation) were read to align with their existing handling.",
+  "invariants": [
+    "At most one create-and-open runs at a time; activations while it is in flight receive the same outcome",
+    "A created project whose open is superseded resolves as opened:false and is never reported as a failure",
+    "Real creation or open failures still reach the entry that reports them"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/project/projectCreationFlight.ts",
+    "tests": [
+      "src/workbench/project/projectCreationFlight.test.ts",
+      "src/workbench/project/useProjectWindowLifecycle.test.ts"
+    ],
+    "why": "projectCreationFlight owns both rules (one in-flight operation per slot; superseded open is not a failure); createAndOpenProject and useProjectLeaveAction consume it, and both layers keep their own tests."
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "ProjectHydrationSupersededError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "createAndOpenProject"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "symbol": "ProjectHydrationSupersededError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectCreationFlight.ts",
+      "symbol": "ProjectHydrationSupersededError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/useProjectNotificationTarget.ts",
+      "symbol": "ProjectHydrationSupersededError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "shareInFlight"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "openCreatedProject"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "createAndOpenProject"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/project/useProjectWindowLifecycle.ts",
+      "symbol": "shareInFlight"
+    }
+  ],
+  "door_reduction": {
+    "before": 10,
+    "after": 9,
+    "why_not": "The remaining doors are distinct owners: the error type's definition site, each hydration consumer (studio routes, notification navigation), the new-project and demo entries that share createAndOpenProject, and project leave. The hand-written in-flight copy in useProjectLeaveAction was merged into shareInFlight, which is the one reduction; the superseded consumers already handle the error and are listed so the next reader sees every place that must keep doing so."
+  },
+  "generality_proof": "Both creation entries go through createAndOpenProject, which now runs inside shareInFlight and opens through openCreatedProject, so neither entry can create a duplicate or surface a superseded open. Project leave uses the same shareInFlight, so 'repeat triggers share one pending operation' has one definition in the project lifecycle.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/project/projectCreationFlight.ts",
+      "symbol": "shareInFlight",
+      "responsibility": "One pending operation per slot; repeated triggers share it; settles (success or failure) release the slot."
+    },
+    {
+      "path": "src/workbench/project/projectCreationFlight.ts",
+      "symbol": "openCreatedProject",
+      "responsibility": "Maps a superseded open of a just-created project to opened:false and rethrows every other failure."
+    },
+    {
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "createAndOpenProject",
+      "responsibility": "The only create-and-open orchestration; routes through both helpers."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "entry_point": "newProject",
+      "disposition": "enforced",
+      "evidence": "Calls createAndOpenProject; real app: two rapid clicks now create one project and no banner (before: two projects plus 新建项目失败)."
+    },
+    {
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "entry_point": "playJourneyTour",
+      "disposition": "enforced",
+      "evidence": "Calls createAndOpenProject and starts the tour only when opened is true; a superseded open now resolves opened:false instead of reporting demoProjectFailed."
+    },
+    {
+      "path": "src/workbench/project/useProjectWindowLifecycle.ts",
+      "entry_point": "useProjectLeaveAction",
+      "disposition": "enforced",
+      "evidence": "Now delegates to shareInFlight; existing test 'shares a pending library exit across repeated calls and allows retry after a failed save' still passes."
+    },
+    {
+      "path": "src/workbench/project/useProjectNotificationTarget.ts",
+      "entry_point": "useProjectNotificationTarget",
+      "disposition": "not-affected",
+      "evidence": "Already catches ProjectHydrationSupersededError and returns false without reporting; it creates nothing."
+    },
+    {
+      "path": "src/workbench/library/openWorkspaceFlow.ts",
+      "entry_point": "openWorkspaceFromLibrary",
+      "disposition": "not-affected",
+      "evidence": "Its caller openWorkspaceFolder in NomiStudioApp swallows ProjectHydrationSupersededError; folder opens bind an existing folder and are idempotent by rootPath."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any busy or frozen UI queues clicks, and any user can double-click or switch projects during creation; every such case produced a duplicate project or a false failure banner.",
+    "same_class_scan": [
+      "door-map shareInFlight openCreatedProject createAndOpenProject ProjectHydrationSupersededError: 9 doors",
+      "door-map hydrateProject: every consumer except createAndOpenProject already filtered ProjectHydrationSupersededError (openProject, openWorkspaceFolder, route effects, notification target)",
+      "rg 'pending.current' in src/workbench/project: the only other in-flight de-duplication was useProjectLeaveAction, now merged"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/project/projectCreationFlight.ts",
+    "invariant": "One create-and-open in flight; a superseded open is not a failure",
+    "failure_mode": "Repeated activations resolve to the in-flight outcome; real failures still reject to the reporting entry",
+    "exception_policy": "none",
+    "strategy": "Own both rules in the helper that the single orchestration point must use, and merge the pre-existing hand-written in-flight copy into it.",
+    "artifacts": [
+      "src/workbench/project/projectCreationFlight.ts",
+      "src/workbench/NomiStudioApp.tsx",
+      "src/workbench/project/useProjectWindowLifecycle.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/project/projectCreationFlight.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/project/projectCreationFlight.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/project/useProjectWindowLifecycle.ts"
+    ],
+    "rationale": "The hand-written pending-promise de-duplication inside useProjectLeaveAction was deleted in favour of shareInFlight; createAndOpenProject's unguarded create-then-hydrate body was replaced in place."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party runtime controls project creation or hydration ordering.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data changes. Projects duplicated by the old behaviour remain as ordinary empty drafts and are reclaimed by the existing empty-draft GC on the next launch.",
+  "residual_risks": [
+    "A creation triggered from a different entry while another is in flight (e.g. 新建 then 重看引导 within the same second) returns the first outcome and drops the second request; acceptable because both land in the same hydration view, but not user-tested.",
+    "The first creation after a cold start still blocks the renderer about 1.3 s (second creation 0.23 s); not addressed here."
+  ]
+}

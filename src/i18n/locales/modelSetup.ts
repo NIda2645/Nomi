@@ -12,6 +12,9 @@ export const zhModelSetup = {
   baseUrl: '接入地址（BaseURL）',
   baseUrlAnthropicHint: '留空用官方地址；中转站填它给你的地址',
   baseUrlHint: '中转后台那个地址，带不带 /v1 都行',
+  /** #831：地址撞上已有连接时，**原位替换**上面那句静态 hint（同一行、同一档灰字，不新增元素）。 */
+  baseUrlDuplicateCreate: '此地址已有连接「{{name}}」：填不同名称会新建独立连接；要改它的 Key，去那个连接里改。',
+  baseUrlDuplicateUpdate: '保存会更新连接「{{name}}」的 Key。',
   proxyUrl: '这个 API 单独走代理（可选）',
   proxyUrlHint: '只影响这个 API，不会改变其他厂商；支持 HTTP / HTTPS / SOCKS。只存在你的电脑上，加密保存',
   proxyUrlPlaceholder: '如：http://127.0.0.1:7897 或 socks5://127.0.0.1:7897',
@@ -70,6 +73,9 @@ export const zhModelSetup = {
   diagnostics: '连接诊断（可选）',
   testConnection: '测试连接',
   testAndSaveHint: '“测试连接”是可选的显式上游请求，可能产生少量额度；“保存”只写入本地，不会发起测试。',
+  // T-MO-27：这一下今天确实会发一次真实 POST /chat/completions（onboardingIpc.probeOneProtocol）。
+  // 费用边界的 owner（catalog/credentialProbePolicy）还没接到这条路上，所以本批先如实说，不加确认卡。
+  testConnectionSpendHint: '会向该地址发送一次测试请求，可能按供应商计费。',
   connectedProtocol: '已连上 · 用的是 {{protocol}} 协议',
   connected: '连接正常',
   connectedReachabilityOnly:
@@ -148,6 +154,8 @@ export const enModelSetup = {
   baseUrl: 'Base URL',
   baseUrlAnthropicHint: 'Leave empty for the official endpoint, or enter your gateway URL',
   baseUrlHint: 'Enter the gateway URL; /v1 is optional',
+  baseUrlDuplicateCreate: 'This address already has a connection “{{name}}”. A different name creates a separate connection; to change its key, edit that connection.',
+  baseUrlDuplicateUpdate: 'Saving will update the key for “{{name}}”.',
   proxyUrl: 'Proxy for this API (optional)',
   proxyUrlHint: 'Only this API uses it; other providers are unchanged. HTTP / HTTPS / SOCKS supported. Stored encrypted on this computer only.',
   proxyUrlPlaceholder: 'Example: http://127.0.0.1:7897 or socks5://127.0.0.1:7897',
@@ -213,6 +221,8 @@ export const enModelSetup = {
   testConnection: 'Test connection',
   testAndSaveHint:
     '“Test connection” is an optional explicit upstream request and may use a small amount of credit. “Save” only writes locally and never runs a test.',
+  testConnectionSpendHint:
+    'This sends one test request to that address, which the provider may bill you for.',
   connectedProtocol: 'Connected · Using the {{protocol}} protocol',
   connected: 'Connection successful',
   connectedReachabilityOnly:

@@ -8,7 +8,7 @@ import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { DOOR_MAP_THRESHOLD_DATE, contractDate, evaluatePullRequest, governedContracts, referencedContracts } from './door-map-lib.mjs'
-import { mapDoors } from './door-map.mjs'
+import { mapDoors, mapDoorOccurrences } from './door-map.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const FILE = 'docs/fixes/2026-09-11-fixture.root-cause.json'
@@ -95,37 +95,57 @@ test('案例二（付费收据）：收据门的签发方只有一个，核验�
   assert.ok(verifyPaths.has('electron/capabilityCore/productionTrustGrantChallenge.ts'))
 })
 
+// 2026-09-18 技能目录迁到 pi 之后（docs/plan/2026-09-18-skill-loading-migration.md）：读盘的那扇门叫
+// `discoverSkillRecords`（岛上），CJS 侧经 `readSkillRecords()` 拿；curatedPrompts / skillPreview 改成显式收
+// records、不再自己读盘，读盘的消费者因此挪到了它们的调用方（builtinPacks / localProtocol）。案例仍是
+// 「同一份状态 ≥7 个消费者」，只是门的名字与住址跟着 owner 走。
 test('案例三（技能事实）：SkillRecord 的消费者 ≥7 个模块（docs/audit/2026-09-11-skill-fact-projections-structure.md）', () => {
-  const doors = doorsFor(['readSkillRecords', 'discoverSkillRecordsFromRoots'], new Map([
+  const doors = doorsFor(['readSkillRecords', 'discoverSkillRecords'], new Map([
     ['readSkillRecords', 'read'],
-    ['discoverSkillRecordsFromRoots', 'read'],
+    ['discoverSkillRecords', 'read'],
   ]))
   assert.ok(doors.every((entry) => entry.kind === 'read'), '显式 --read= 必须压过默认启发式')
   const consumers = new Set(doors.map((entry) => entry.path).filter((file) => file !== 'electron/skills/skillStore.ts'))
   assert.ok(consumers.size >= 7, `期望 ≥7 个消费者模块，实得 ${consumers.size}：${[...consumers].join(', ')}`)
   for (const expected of [
     'electron/agentLane/laneDesktopRuntime.ts',
-    'electron/promptLibrary/curatedPrompts.ts',
+    'electron/agentLane/laneNativeLoader.cts',
+    'electron/promptLibrary/builtinPacks.ts',
     'electron/skills/skillIpc.ts',
-    'electron/skills/skillPreview.ts',
+    'electron/protocol/localProtocol.ts',
     'electron/skills/skillExecutionEvidence.ts',
   ]) assert.ok(consumers.has(expected), `漏数了消费者：${expected}`)
 })
 
+const fixtureScan = {
+  files: ['fixture.ts'],
+  readFile: () => [
+    "import { applyThing } from './other'",
+    'export function applyThing() {}',
+    'const map = { applyThing: 1 }',
+    'applyThing()',
+    'const alias = applyThing',
+    'applyThing()',
+  ].join('\n'),
+  targetSymbols: ['applyThing'],
+}
+
 test('数门不把声明、import 绑定和对象键当成门', () => {
-  const doors = mapDoors({
-    files: ['fixture.ts'],
-    readFile: () => [
-      "import { applyThing } from './other'",
-      'export function applyThing() {}',
-      'const map = { applyThing: 1 }',
-      'applyThing()',
-      'const alias = applyThing',
-    ].join('\n'),
-    targetSymbols: ['applyThing'],
-  })
-  assert.deepEqual(doors, [
+  assert.deepEqual(mapDoorOccurrences(fixtureScan), [
     { kind: 'read', path: 'fixture.ts', line: 5, symbol: 'applyThing' },
     { kind: 'write', path: 'fixture.ts', line: 4, symbol: 'applyThing' },
+    { kind: 'write', path: 'fixture.ts', line: 6, symbol: 'applyThing' },
   ])
+})
+
+// 2026-09-18：进合同的那份门表**不带行号**，同一个文件里调两次仍是一扇门。
+// 行号只是某一刻的排版：钉着它的那半年长出一族「门表的行号跟上 xxx」提交，
+// 一次都没发现过真的门增删（批次 3 一次集成修了 16 处漂移）。
+test('门表本体按 {kind, path, symbol} 去重，且不含行号', () => {
+  const doors = mapDoors(fixtureScan)
+  assert.deepEqual(doors, [
+    { kind: 'read', path: 'fixture.ts', symbol: 'applyThing' },
+    { kind: 'write', path: 'fixture.ts', symbol: 'applyThing' },
+  ])
+  assert.ok(doors.every((door) => !('line' in door)), '门表里不许再出现行号')
 })

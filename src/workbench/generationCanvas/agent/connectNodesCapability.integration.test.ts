@@ -45,9 +45,9 @@ describe('T8 集成：connect_nodes 按目标模型能力校验参考边（真�
   beforeEach(resetCanvas)
 
   it('夹具自检：真实档案的参考槽如预期', () => {
-    const imagen = ENTRIES.find((e) => e.modelKey === 'imagen-4')!
+    const imagen = ENTRIES.find((e) => e.modelId === 'imagen-4')!
     expect(imagen.modes.every((m) => m.slots.length === 0)).toBe(true)
-    const seedream = ENTRIES.find((e) => e.modelKey === 'seedream')!
+    const seedream = ENTRIES.find((e) => e.modelId === 'seedream')!
     expect(seedream.modes.some((m) => m.slots.some((s) => s.kind === 'image_ref'))).toBe(true)
   })
 

@@ -111,13 +111,13 @@ async function main() {
   const { createDesktopLaneInput } = require(desktopBundle);
   process.env.NOMI_SETTINGS_DIR = settings;
   process.env.NOMI_PROJECTS_DIR = path.join(root, 'projects');
-  const input = createDesktopLaneInput({ projectId: 'b1b-real', capture: () => context, activate: () => {},
+  const input = createDesktopLaneInput({ projectId: 'b1b-real', capture: () => context, activate: () => {}, prepare: async (captured: LaneComposerContext) => captured,
     model: () => ({ model: { modelKey: model.modelId, vendorKey: model.providerId, kind: 'text' } as never, kind: model.kind }) });
   const projectDir = await mkdtemp(path.join(root, 'project-'));
   const lane = await openLane({ projectDir, tools, model, fetch: guardedFetch, input,
     native: { settingsRoot: settings, skills: [{ name: 'workbench-storyboard-planner', directoryName: 'workbench-storyboard-planner',
-      filePath: skillPath, description: '将故事规划成有序分镜方案供用户审阅，保持角色、场景、风格和用户约束一致；不直接落画布或生成。',
-      body: skillBody, manifest: null, origin: 'builtin', audience: 'internal', packageVersion: 'nomi-skill-v1', contentHash: 'b1b-fixture' }] },
+      filePath: skillPath, packageDir: path.dirname(skillPath), description: '将故事规划成有序分镜方案供用户审阅，保持角色、场景、风格和用户约束一致；不直接落画布或生成。',
+      body: skillBody, content: skillBody, manifest: null, origin: 'builtin', audience: 'internal', packageVersion: 'nomi-skill-v1', contentHash: 'b1b-fixture', requiresCodingTools: false }] },
     approval: { hasUserInterface: true, policy: () => context.approvalPolicy }, limits: { maxModelRequests: 8 },
     systemPrompt: '你是 Nomi 视频创作助手。根据真实工具结果回答。当前宿主只能创建试拍草稿，报价和生成由画布提交提供；不能假称已生成。',
   });
@@ -173,3 +173,4 @@ async function main() {
   } finally { unsubscribe(); await lane.close(); }
 }
 void app.whenReady().then(main).then(() => app.exit(0), () => { console.error('B1B_REAL_SAMPLE_FAILED; inspect isolated budget and transcript, no credential output'); app.exit(1); });
+import type { LaneComposerContext } from '../../electron/shared/agentLane/laneDesktopContracts.js';

@@ -11,6 +11,7 @@ import { asTrimmedString, resolveTaskKind, selectedModelKey, selectedVendor } fr
 import { normalizeCatalogTaskResult } from './catalogTaskResultParse'
 import i18n from '../../../i18n'
 import { describeOpaqueFailure } from '../../observability/opaqueFailure'
+import type { MediaDimensions } from '../nodes/nodeSizing'
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
 const RECOVER_POLL_INTERVAL_MS = 3000
@@ -130,10 +131,12 @@ export async function recoverNodeResult(nodeId: string, project: ProjectExecutio
 
   if (!current) return
   try {
-    const normalized = normalizeCatalogTaskResult(current, node)
+    let mediaDimensions: MediaDimensions | undefined
+    const onMediaDimensions = (dimensions: MediaDimensions) => { mediaDimensions = dimensions }
+    const normalized = normalizeCatalogTaskResult(current, node, onMediaDimensions)
     // 结构闸（找回路径）：找回本身就发生在 CDN 快过期的时刻，此处尤其要把临时 URL 落地——落进任务所属项目。
-    const localized = await localizeRemoteResultUrl(normalized, target.projectId, id)
-    const landedInOpenProject = await deliverRunOutcome(target, id, { kind: 'result', result: localized })
+    const localized = await localizeRemoteResultUrl(normalized, target.projectId, id, onMediaDimensions)
+    const landedInOpenProject = await deliverRunOutcome(target, id, { kind: 'result', result: localized, ...(mediaDimensions ? { mediaDimensions } : {}) })
     if (landedInOpenProject) await persistActiveWorkbenchProjectNow().catch(() => {})
   } catch (error) {
     // 终态是 failed（normalizeCatalogTaskResult 对 failed 抛错）→ 这才是真失败，落 error 桶。

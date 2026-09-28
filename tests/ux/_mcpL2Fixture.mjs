@@ -31,11 +31,12 @@ export async function startFakeApimartServer({ pendingPolls = 0 } = {}) {
   const tasks = new Map()
   const hits = []
   let sequence = 0
+  const socketEvents = []
   const server = http.createServer((req, res) => {
     let body = ''
     req.on('data', (chunk) => { body += chunk })
     req.on('end', () => {
-      hits.push({ method: req.method, url: req.url, body })
+      hits.push({ method: req.method, url: req.url, body, at: new Date().toISOString() })
       const json = (value, status = 200) => {
         const payload = JSON.stringify(value)
         res.writeHead(status, { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) })
@@ -69,10 +70,31 @@ export async function startFakeApimartServer({ pendingPolls = 0 } = {}) {
       json({ error: 'not found' }, 404)
     })
   })
+  // 出站失败（`fetch failed`）在调用方那侧只剩一句「fetch failed」——真正能分清
+  // 「请求根本没到过供应商」与「到了但连接半路断了」的，只有服务端这半边的连接账本。
+  // 2026-09-18 C9 那条间歇红就卡在这个区分上。
+  server.on('connection', (socket) => {
+    const at = new Date().toISOString()
+    socketEvents.push(`open ${at} ${socket.remoteAddress}:${socket.remotePort}`)
+    socket.on('close', (hadError) => socketEvents.push(`close ${new Date().toISOString()} opened=${at} hadError=${hadError}`))
+  })
+  server.on('clientError', (error, socket) => {
+    socketEvents.push(`clientError ${new Date().toISOString()} ${error?.code || error?.message}`)
+    try { socket.destroy() } catch { /* 诊断不许反过来弄炸夹具 */ }
+  })
   let origin = ''
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
   origin = `http://127.0.0.1:${server.address().port}`
-  return { origin, hits, referencePath: media.referencePath, videoPath: path.join(media.root, 'fixture.mp4'), close: () => new Promise((resolve) => server.close(resolve)) }
+  return {
+    origin,
+    hits,
+    socketEvents,
+    /** Node 默认 5s 就把闲置的 keep-alive 连接关掉；把它记下来，好判断空窗期是不是跨过了它。 */
+    keepAliveTimeoutMs: server.keepAliveTimeout,
+    referencePath: media.referencePath,
+    videoPath: path.join(media.root, 'fixture.mp4'),
+    close: () => new Promise((resolve) => server.close(resolve)),
+  }
 }
 
 export function encryptFixtureKey(userDataDir) {
@@ -95,9 +117,12 @@ export function writeFakeApimartCatalog(settingsDir, userDataDir, _origin = '', 
   const { applyBuiltinSeeds } = tsxRequire('../../electron/catalog/seedBuiltins.ts', import.meta.url)
   const seeded = applyBuiltinSeeds({ version: currentCatalogVersion(), vendors: [], models: [], mappings: [], apiKeysByVendor: {} }, new Date().toISOString()).state
   const encrypted = encryptFixtureKey(userDataDir)
-  const models = seeded.models.map((model) => model.vendorKey === 'apimart' && model.kind === 'video'
-    ? { ...model, pricing: { cost: 0, enabled: true, specCosts: [] } }
-    : model)
+  // 2026-09-21：这里曾经给 apimart 的视频模型塞一行 `pricing: { cost: 0, enabled: true }`——
+  // 那是为了绕过当时的「算不出价就不发付费门」（`assertKnownShotPrice`）而**编出来的一个 0 元价**。
+  // 编出来的 0 恰好是三种可能（免费 / 算不出 / 真的零元）里唯一会被读成「这次免费」的那一种，
+  // 而且它让这条旅程一直在测一个「所有模型都标着 ¥0」的世界——**真实装机上一个模型都没有价目**。
+  // 闸开了之后那个绕行没有存在的理由了：去掉它，这条旅程从此跑的是真实处境（价格未知）。
+  const models = seeded.models
   const catalog = {
     ...seeded,
     // Keep the shipped APIMart scope intact. The explicit loopback fixture

@@ -9,7 +9,6 @@ import { projectCanvasRead } from "../shared/agentCapabilities/canvasRead";
 import { createInternalDocumentReadVerifiedInvocationFactory } from "./verifiedCapabilityInvocation";
 import type { WorkspaceProjectIdentity } from "../workspace/workspaceProjectIdentity";
 import { createMcpConnectionContext } from "./mcpConnectionContext";
-import { createMcpGenerationPolicy } from "./mcpGenerationPolicy";
 import { createProjectSessionRuntime, createVerifiedProjectSessionBinding } from "./projectSessionRuntime";
 import { CAPABILITY_DIR_ENV, ensureToken, signMcpClient } from "./security";
 import {
@@ -71,7 +70,6 @@ function makeHarness() {
   });
   const ensureProjectIdentity = vi.fn(async () => ({ ...identity }));
   const runtime = createProjectSessionRuntime({
-    generationPolicy: createMcpGenerationPolicy({ env: {} }),
     leaseFilePath: path.join(dir, "project-leases-v2"),
     leaseMacKey: "executor-lease-key",
     leaseStoreMacKey: "executor-store-key",

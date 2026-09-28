@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createStoryboardShotTable, normalizeShotTableMeta, readShotTable, shotTableDocumentSchema } from './shotTable'
+import { createProductionShotTable, createStoryboardShotTable, normalizeShotTableMeta, readShotTable, shotTableDocumentSchema } from './shotTable'
 
 const table = () => createStoryboardShotTable('document-1', 'design-1', '2026-09-10T00:00:00.000Z')
 
@@ -39,6 +39,38 @@ describe('shot table persistence ownership', () => {
     expect(restored.rows?.[0].cells.visual).toBe('A doorway')
     expect(shotTableDocumentSchema.safeParse({ ...value, rows: [...value.rows, ...value.rows] }).success).toBe(false)
     expect(shotTableDocumentSchema.safeParse({ ...value, rows: [{ ...value.rows[0], keyframeRef: 'data:image/png;base64,AA==' }] }).success).toBe(false)
+  })
+})
+
+describe('cut coverage survives persistence (2026-09-22)', () => {
+  const deconstruction = (extra: Record<string, unknown>) => ({
+    ...table(),
+    source: { kind: 'deconstruction', sourceNodeId: 'video-1', title: 'Reference', status: 'ready', ...extra },
+    columnSetId: 'facts',
+    columns: [{ columnId: 'visual', kind: 'builtin', labelKey: 'visual', order: 0, visible: true }],
+    rows: [],
+  })
+
+  it('round trips the whole coverage block, so a reopened project still knows the table was capped', () => {
+    const coverage = {
+      detectedCuts: 399, keptCuts: 120, appliedThreshold: 0.2055,
+      capped: true, coveredSeconds: 348.1, durationSeconds: 361.081,
+    }
+    const restored = shotTableDocumentSchema.parse(deconstruction({ cutCoverage: coverage }))
+    expect(restored.source).toMatchObject({ cutCoverage: coverage })
+  })
+
+  // 2026-09-22 之前落盘的表里没有这一块。读不回来不该让整张表 parse 失败——
+  // 那会把一次「缺字段」变成一次「项目打不开」。
+  it('still reads tables saved before the field existed', () => {
+    const restored = shotTableDocumentSchema.parse(deconstruction({}))
+    expect(restored.source).not.toHaveProperty('cutCoverage')
+  })
+
+  // 半块覆盖信息比没有更糟：它会让 UI 理直气壮地显示一个错数字。
+  it('refuses a partial coverage block instead of filling the gaps itself', () => {
+    expect(shotTableDocumentSchema.safeParse(deconstruction({ cutCoverage: { detectedCuts: 399, capped: true } })).success).toBe(false)
+    expect(shotTableDocumentSchema.safeParse(deconstruction({ cutCoverage: { detectedCuts: 399, keptCuts: 120, appliedThreshold: 0.2, capped: true, coveredSeconds: 1, durationSeconds: 2, extra: 1 } })).success).toBe(false)
   })
 })
 
@@ -87,5 +119,26 @@ describe('shot time precision is owned by the persistence boundary', () => {
     expect((once.shotTable as { rows: Array<{ startSeconds: number; endSeconds: number }> }).rows[0])
       .toMatchObject({ startSeconds: 0, endSeconds: 2.1, durationSeconds: 2.1 })
     expect(normalizeShotTableMeta(once)).toEqual(once)
+  })
+})
+
+describe('production shot table (Agent 分镜的唯一账本是 Run 落地的节点)', () => {
+  it('round trips only a run reference and view state, with no owned rows', () => {
+    const value = createProductionShotTable('run-1', 'canvas-landing:run-1', '2026-09-18T00:00:00.000Z')
+    expect(value.source).toEqual({ kind: 'production', runId: 'run-1', materializationOperationId: 'canvas-landing:run-1' })
+    const restored = readShotTable(JSON.parse(JSON.stringify({ shotTable: value })))
+    expect(restored).toEqual(value)
+    expect(restored).not.toHaveProperty('rows')
+  })
+
+  it('rejects cached rows for a production table at the shared persistence boundary', () => {
+    const meta = { shotTable: { ...createProductionShotTable('run-1', 'canvas-landing:run-1'), rows: [{ rowId: 'node-1' }] } }
+    expect(readShotTable(meta)).toBeUndefined()
+    expect(() => normalizeShotTableMeta(meta)).toThrow()
+  })
+
+  it('rejects a production source without its run identity', () => {
+    const value = { ...createProductionShotTable('run-1', 'canvas-landing:run-1'), source: { kind: 'production', runId: 'run-1' } }
+    expect(shotTableDocumentSchema.safeParse(value).success).toBe(false)
   })
 })

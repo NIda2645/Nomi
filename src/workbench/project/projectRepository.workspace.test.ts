@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { createLocalProject, readLocalProject } from './projectRepository'
+import { createLocalProject, readLocalProject, saveLocalProject } from './projectRepository'
 import { migrateProjectRecord } from './projectCategoryMigration'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { DesktopBridge } from '../../desktop/bridge'
@@ -229,4 +229,16 @@ describe('projectRepository workspace project creation', () => {
     expect(record?.payload.timeline.tracks.length).toBeGreaterThan(0)
     expect(Array.isArray(record?.payload.generationCanvas.nodes)).toBe(true)
   })
+})
+
+
+it('passes the original background binding through the existing desktop save call', async () => {
+  const expectedBinding = { projectId: 'project-a', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 3 }
+  mockedGetDesktopBridge.mockReturnValue(null)
+  const fixture = createLocalProject('Original')
+  const record = { ...fixture, id: expectedBinding.projectId, immutableProjectUuid: expectedBinding.immutableProjectUuid, projectGeneration: expectedBinding.projectGeneration }
+  const save = vi.fn(async (_id: string, value: unknown) => value)
+  mockedGetDesktopBridge.mockReturnValue(stubBridge({ read: () => record, save }))
+  await saveLocalProject(record.id, record.payload, record.name, expectedBinding)
+  expect(save).toHaveBeenCalledExactlyOnceWith(record.id, expect.objectContaining({ expectedBinding, payload: record.payload }))
 })

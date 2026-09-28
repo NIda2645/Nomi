@@ -30,6 +30,7 @@ import type {
   LaneApprovalCancelCause,
   LaneApprovalDecision,
   LaneApprovalNote,
+  LaneHoldOutcome,
   LanePendingApproval,
 } from "../shared/agentLane/laneContracts";
 import { modelToolCapabilityId } from "../shared/agentCapabilities/modelFacingTools";
@@ -84,7 +85,34 @@ export interface LaneApprovalGate {
   /** 用户在卡上点了什么。答的不是当前那张卡就返回 `false`（卡已经翻篇了，别把答案落到新的一张上）。 */
   answer(toolCallId: string, action: LaneApprovalAction, reason?: string): boolean;
   pending(): LanePendingApproval | undefined;
+  /**
+   * 这一次调用**真的**是怎么过闸的（2026-09-18 · T-ED-02）。工具回执据此说人话：
+   * `auto-granted` = 用户这一档下压根没出过卡，`granted-once` / `granted-session` = 他点过。
+   *
+   * 为什么回执不能查一张静态表：`laneExtendedTools.ts` 原来对 `edit_timeline` **无条件**回
+   * 「一张复审卡正在问用户要不要应用」——而这道闸跑在 `before_tool`，回执写出来的时候
+   * 那张卡早就答完了、改动也已经落下去了。模型照着那句话让用户去点一张不存在的卡
+   * （2026-09-12 「劈成两半」那次）。事实在这里，回执就该从这里取。
+   */
+  decisionFor(toolCallId: string): LaneApprovalDecision | undefined;
+  /**
+   * 用户回答这道题时的**原话**（只有 `answered` 有）。`ask_user` 的 execute 读它，
+   * 把这句话作为成功形状的 tool result 交回模型——「他答上了」不是一次工具失败。
+   */
+  answerFor(toolCallId: string): string | undefined;
+  /** 这次调用结束了，忘掉它的结论（宿主在 `after_tool` 调）。 */
+  forget(toolCallId: string): void;
   describe(request: LaneApprovalRequest): string;
+  /**
+   * 替一张**画在别处的卡**等用户（见 `LaneHoldOutcome`）。与 `preflight` 的等待同性质：race 那个 signal、
+   * 被打断时兑现成 `cancelled`、不设超时、`cancelAll` 一并收尾。**不投影成闸卡**——那张卡已经有人画了，
+   * 再投影一张就是同一个问题问两遍。
+   */
+  hold(request: Pick<LaneApprovalRequest, "toolCallId" | "toolName">, signal: AbortSignal | undefined): Promise<LaneHoldOutcome>;
+  /** 那张卡上的结论到了（面板点了「生成」/ ×，或用户打了字）。只认第一次；没有这笔等待返回 `false`。 */
+  settleHold(toolCallId: string, outcome: Exclude<LaneHoldOutcome, { kind: "cancelled" }>): boolean;
+  /** 此刻替哪次调用等着（E：宿主据此把用户打的字送给它）。 */
+  holding(): Readonly<{ toolCallId: string; toolName: string }> | undefined;
   /** 关窗 / 切项目 / 按停止：等待中的卡一律以 `cancelled` 收尾。 */
   cancelAll(cause: LaneApprovalCancelCause): void;
   /** 还没落盘的结局记录（只有 `cancelled` 会走这里，理由见文件头 ③）。取走即清空。 */
@@ -118,6 +146,8 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
   const sessionGrants = new Set<string>();
   const restored = new Set<string>(options.restoredToolCallIds ?? []);
   const waiting = new Map<string, WaitingCard>();
+  /** 「卡画在别处」的等待（`hold`）。键同样是 toolCallId；不进 `waiting`——那张表是要投影成闸卡的。 */
+  const holds = new Map<string, { toolName: string; settle: (outcome: LaneHoldOutcome) => void }>();
   const undrained: LaneApprovalNote[] = [];
   /**
    * 已经记过一条结局的调用。
@@ -127,6 +157,33 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
    * 不去猜顺序，也不让用户在转录里看到同一次取消出现两遍。
    */
   const noted = new Set<string>();
+  /**
+   * `toolCallId` → 这次调用真的是怎么过闸的。回执（`laneExtendedTools.ts`）读它。
+   *
+   * 宿主在 `after_tool` 里 `forget`，所以正常只会存着在飞的那一两条。上限是兜底：
+   * 被闸拦下的调用在某些路径上不走 `after_tool`，而一条永远只涨不落的表在一条活一整天的
+   * lane 上就是泄漏。超了丢最老的（Map 按插入序），丢掉的后果只是那条回执少一句限定语。
+   */
+  const decisions = new Map<string, LaneApprovalDecision>();
+  /** `toolCallId` → 用户答这道题时的原话。只有 `answered` 有，随 `decisions` 同生同死。 */
+  const answers = new Map<string, string>();
+  const DECISION_MEMORY = 256;
+
+  function rememberDecision(toolCallId: string, decision: LaneApprovalDecision): void {
+    if (!toolCallId) return;
+    decisions.set(toolCallId, decision);
+    while (decisions.size > DECISION_MEMORY) {
+      const oldest = decisions.keys().next();
+      if (oldest.done) break;
+      answers.delete(oldest.value);
+      decisions.delete(oldest.value);
+    }
+  }
+
+  function rememberAnswer(toolCallId: string, text: string): void {
+    if (!toolCallId) return;
+    answers.set(toolCallId, text);
+  }
 
   function note(entry: LaneApprovalNote): void {
     if (noted.has(entry.toolCallId)) return;
@@ -155,6 +212,9 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
       effect: contract?.effect,
       effectClass: capabilityEffectClassOf(contract, request.args),
       ...capabilityPlanReviewOf(contract, request.args),
+      // 「这个能力就是问用户一句」。从契约上原样带过来，不在这里按工具名判——
+      // 按名字判就是第二份真相源，而提问工具正是最容易长出第二份的那一个。
+      ...(contract?.alwaysAsksUser ? { alwaysAsksUser: true as const } : {}),
       // 原生 lane 工具没有外部服务器的 hint。MCP 工具进 lane 是阶段 5 的事，
       // 那时它从工具声明上读，且**只能抬高摩擦**（`CapabilityApprovalSubject` 的注释）。
       destructiveHint: false,
@@ -193,8 +253,63 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     return true;
   }
 
+  /**
+   * 预检那一趟本身。外面那层 `preflight` 只多做一件事：**把结论记下来**，
+   * 好让工具回执从真实的这一条派生，而不是从一张静态表上抄（T-ED-02）。
+   */
+  async function runPreflight(
+    request: LaneApprovalRequest, signal: AbortSignal | undefined,
+  ): Promise<LaneApprovalOutcome> {
+    // 重启后被 pi 再问一次的那些调用：不复活卡，直接取消（探针 ③ 的裁决）。
+    if (restored.delete(request.toolCallId)) {
+      // 记录由宿主在钩子里当场写：这一支**没有 abort 在飞**，所以它不会被 stranded
+      // （文件头 ③ 只管被 abort 打断的那两支）。
+      return { allow: false, decision: "cancelled", cause: "restart", reason: RESTART_REASON };
+    }
+    const { resolved, subject, policy, decided } = decisionOf(request);
+    if (decided.state === "auto-granted") return { allow: true, decision: "auto-granted",
+      undoable: subject.effect !== 'read' && subject.effectClass === 'reversible_local' };
+    if (decided.state === "denied-by-policy") {
+      return { allow: false, decision: "denied-by-policy", reason: decided.reason };
+    }
+
+    let settle!: (outcome: LaneApprovalOutcome) => void;
+    const answered = new Promise<LaneApprovalOutcome>((resolve) => { settle = resolve; });
+    waiting.set(request.toolCallId, {
+      settle,
+      capabilityId: subject.capabilityId,
+      pending: Object.freeze({
+        toolCallId: request.toolCallId,
+        toolName: request.toolName,
+        args: request.args,
+        ...(subject.effectClass ? { effectClass: subject.effectClass } : {}),
+        grantable: laneApprovalGrantable(subject, policy) && resolved?.grantable !== false,
+        pendingCount: waiting.size + 1,
+      }),
+    });
+    publish();
+
+    // 文件头 ①②：race 那个 signal，**被打断时 resolve**。等待本身不设超时——
+    // 等待期没有请求在飞、不花一分钱，「你没在五分钟内回答」不是一个我们要替用户
+    // 编出来的事件（方案 §1.2）。关窗 / 切项目 / 按停止走 `cancelAll`，文案不同。
+    //
+    // 监听器用一次性的 controller 摘掉：不摘的那一版会在这次调用**早就批过之后**、
+    // 下一次 abort 时再兑现一遍，往 `drainNotes()` 里塞一条不存在的取消记录——
+    // 一条用户从没经历过的「你取消了」。
+    const detach = new AbortController();
+    try {
+      return await Promise.race([answered, abortedTo(signal, request, detach.signal)]);
+    } finally {
+      detach.abort();
+      if (waiting.delete(request.toolCallId)) publish();
+    }
+  }
+
   return {
     pending: currentPending,
+    decisionFor: (toolCallId) => decisions.get(toolCallId),
+    answerFor: (toolCallId) => answers.get(toolCallId),
+    forget: (toolCallId) => { answers.delete(toolCallId); decisions.delete(toolCallId); },
     describe: (request) => {
       const { subject, decided } = decisionOf(request);
       if (decided.state === 'denied-by-policy') return '当前策略禁止此动作';
@@ -205,6 +320,29 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     drainNotes: () => undrained.splice(0, undrained.length),
 
     answer: (toolCallId, action, reason) => {
+      if (action === "answer") {
+        const text = reason?.trim();
+        // 空答案不成立：卡自己已经挡住了（`questionAnswerFromInput` 对空串回 undefined），
+        // 这里再挡一次是因为**这一侧不该相信渲染层送来的东西**——一个空的「答案」会变成
+        // 一段空白 tool result，模型只能接着猜，而用户以为自己答过了。
+        if (!text) return false;
+        /**
+         * `allow: true`——**「他答上了」是成功，不是失败**（2026-09-22，run4 六次全中）。
+         *
+         * 这里原来写 `allow: false`，注释自陈「与 deny 走同一条既有通路」。那条通路的下游是
+         * `laneHost` 的 `block`，而 pi 对 `block` 是硬编码的 `immediateError(isError: true)`
+         * （`pi-agent-core/dist/harness/execution/tools.js`），再由 `pi-ai` 原样映射成 Anthropic
+         * `tool_result.is_error: true`。于是**用户每答一次卡，模型都收到一条「ask_user 失败了」**，
+         * 正文恰好是他那句答案；Nomi 自己还拿 `event.isError` 计「连续撞墙」——他答一次，熔断计数器加一格。
+         * 既是错误形状，又在教模型「问了会失败」。
+         *
+         * 放行之后没有东西会被执行：`ask_user` 的 execute 读 `context.approvalAnswer`，
+         * 把这句原话原样作为**成功形状**的 tool result 交回去（`laneDesktopTools.ts`）。
+         * 读不到才是 fail-closed 的那一支（没装闸 = 这条会话没有能问的人）。
+         */
+        rememberAnswer(toolCallId, text);
+        return settleWaiting(toolCallId, { allow: true, decision: "answered", reason: text });
+      }
       if (action === "deny") {
         const text = reason?.trim();
         return settleWaiting(toolCallId, {
@@ -227,7 +365,44 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
       return settleWaiting(toolCallId, { allow: true, decision: "granted-once" });
     },
 
+    hold: async (request, signal) => {
+      let settle!: (outcome: LaneHoldOutcome) => void;
+      const answered = new Promise<LaneHoldOutcome>((resolve) => { settle = resolve; });
+      holds.set(request.toolCallId, { toolName: request.toolName, settle });
+      const detach = new AbortController();
+      const stopped = new Promise<LaneHoldOutcome>((resolve) => {
+        if (!signal) return;
+        const cancelled: LaneHoldOutcome = { kind: "cancelled", cause: "stopped" };
+        if (signal.aborted) { resolve(cancelled); return; }
+        signal.addEventListener("abort", () => resolve(cancelled), { once: true, signal: detach.signal });
+      });
+      try {
+        return await Promise.race([answered, stopped]);
+      } finally {
+        detach.abort();
+        holds.delete(request.toolCallId);
+      }
+    },
+
+    settleHold: (toolCallId, outcome) => {
+      const held = holds.get(toolCallId);
+      if (!held) return false;
+      // 只认第一次：面板确认与「用户打字」同时到时，先到的那个算数（方案反方评审 Q1-b）。
+      holds.delete(toolCallId);
+      held.settle(outcome);
+      return true;
+    },
+
+    holding: () => {
+      const first = holds.entries().next();
+      return first.done ? undefined : { toolCallId: first.value[0], toolName: first.value[1].toolName };
+    },
+
     cancelAll: (cause) => {
+      for (const [toolCallId, held] of [...holds]) {
+        holds.delete(toolCallId);
+        held.settle({ kind: "cancelled", cause });
+      }
       for (const [toolCallId, card] of [...waiting]) {
         waiting.delete(toolCallId);
         // 记录不在这里写：abort 不是一个转录边界，钩子里追加的条目会悬在 `queues` 里
@@ -242,49 +417,9 @@ export function createLaneApprovalGate(options: LaneApprovalGateOptions): LaneAp
     },
 
     preflight: async (request, signal) => {
-      // 重启后被 pi 再问一次的那些调用：不复活卡，直接取消（探针 ③ 的裁决）。
-      if (restored.delete(request.toolCallId)) {
-        // 记录由宿主在钩子里当场写：这一支**没有 abort 在飞**，所以它不会被 stranded
-        // （文件头 ③ 只管被 abort 打断的那两支）。
-        return { allow: false, decision: "cancelled", cause: "restart", reason: RESTART_REASON };
-      }
-      const { resolved, subject, policy, decided } = decisionOf(request);
-      if (decided.state === "auto-granted") return { allow: true, decision: "auto-granted",
-        undoable: subject.effect !== 'read' && subject.effectClass === 'reversible_local' };
-      if (decided.state === "denied-by-policy") {
-        return { allow: false, decision: "denied-by-policy", reason: decided.reason };
-      }
-
-      let settle!: (outcome: LaneApprovalOutcome) => void;
-      const answered = new Promise<LaneApprovalOutcome>((resolve) => { settle = resolve; });
-      waiting.set(request.toolCallId, {
-        settle,
-        capabilityId: subject.capabilityId,
-        pending: Object.freeze({
-          toolCallId: request.toolCallId,
-          toolName: request.toolName,
-          args: request.args,
-          ...(subject.effectClass ? { effectClass: subject.effectClass } : {}),
-          grantable: laneApprovalGrantable(subject, policy) && resolved?.grantable !== false,
-          pendingCount: waiting.size + 1,
-        }),
-      });
-      publish();
-
-      // 文件头 ①②：race 那个 signal，**被打断时 resolve**。等待本身不设超时——
-      // 等待期没有请求在飞、不花一分钱，「你没在五分钟内回答」不是一个我们要替用户
-      // 编出来的事件（方案 §1.2）。关窗 / 切项目 / 按停止走 `cancelAll`，文案不同。
-      //
-      // 监听器用一次性的 controller 摘掉：不摘的那一版会在这次调用**早就批过之后**、
-      // 下一次 abort 时再兑现一遍，往 `drainNotes()` 里塞一条不存在的取消记录——
-      // 一条用户从没经历过的「你取消了」。
-      const detach = new AbortController();
-      try {
-        return await Promise.race([answered, abortedTo(signal, request, detach.signal)]);
-      } finally {
-        detach.abort();
-        if (waiting.delete(request.toolCallId)) publish();
-      }
+      const outcome = await runPreflight(request, signal);
+      rememberDecision(request.toolCallId, outcome.decision);
+      return outcome;
     },
   };
 

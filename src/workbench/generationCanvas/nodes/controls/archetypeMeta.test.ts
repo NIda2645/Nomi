@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { getArchetypeById, specializeArchetypeForVariant, type ModelArchetype } from '../../../../config/modelArchetypes'
+import { getArchetypeById, specializeArchetypeForVariant, type ModelArchetype } from '../../../../../electron/shared/modelArchetypes'
 import { archetypeModeModelEnum, type ResolvedReferenceValues } from './archetypeMeta'
 import { archetypeModeChoices } from './channelModeReach'
 import {

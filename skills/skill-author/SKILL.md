@@ -62,13 +62,13 @@ Nomi 技能能调用的工具就这些，**只能用这些**：
 
 | Nomi 工具 | 干什么 | 别家的什么映射过来 |
 |---|---|---|
-| `read_canvas_state` | 读画布现状（只读） | 「查看已有素材/节点」 |
-| `propose_storyboard_plan` | 产出分镜方案（拆镜头，落创作区给用户审） | 「脚本拆解 / storyboard / 分镜设计」 |
-| `create_canvas_nodes` | 把镜头排成画布节点 | 「建生成任务 / 节点」 |
-| `connect_canvas_edges` | 连参考边（把角色/产品锚喂给镜头） | 「绑定参考图 / reference」 |
-| `set_node_prompt` | 改某节点提示词 | 「编辑提示词」 |
-| `run_generation_batch` | 按波次生成（图/视频，**花额度**） | 「批量生成 / 出图 / 出片」 |
-| `arrange_storyboard_to_timeline` | 把镜头按序排到时间轴 | 「合成 / 拼接 / 剪辑」 |
+| `look_at_canvas` | 查画布现状 | 「查看已有素材/节点」 |
+| `draft_shots` | 产出分镜方案（拆镜头，落创作区给用户审） | 「脚本拆解 / storyboard / 分镜设计」 |
+| `draft_shots` | 把镜头排成画布节点 | 「建生成任务 / 节点」 |
+| `arrange_canvas` | 连参考边（把角色/产品锚喂给镜头） | 「绑定参考图 / reference」 |
+| `draft_shots` | 改某节点提示词 | 「编辑提示词」 |
+| `generate` | 按波次生成（图/视频） | 「批量生成 / 出图 / 出片」 |
+| （排时间轴：无对应动词，交给用户） | 把镜头按序排到时间轴 | 「合成 / 拼接 / 剪辑」 |
 
 **映射原则**：找语义最接近的 Nomi 工具替换，让整体效果和原来一致。
 
@@ -100,7 +100,7 @@ metadata:
   nomi:                         # Nomi 独有的声明都住这里；别的宿主原样忽略
     version: "1.0.0"
     label: 音乐 MV               # 人话名，跟用户语言
-    tools: [read_script, create_canvas_nodes]   # 上面映射出的 Nomi 工具名
+    tools: [read_script, draft_shots]   # 上面映射出的 Nomi 工具名
     required-providers: [text, image, video]       # 端到端需要的所有模态（含换不了的，让缺口浮现）
     stages:                     # 多步流程才给；单段技能整块省略
       - id: storyboard

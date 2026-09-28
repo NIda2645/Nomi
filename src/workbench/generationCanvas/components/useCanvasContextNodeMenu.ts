@@ -87,6 +87,32 @@ const MENU_HEIGHT = 330
 const NODE_MENU_HEIGHT = 196
 const MENU_EDGE_GAP = 8
 
+/** 菜单落点几何的唯一 owner：右键与键盘打开共用（视口坐标 → 舞台内夹边位置 + 画布坐标）。 */
+function buildMenuAt(
+  clientX: number,
+  clientY: number,
+  hit: { target: CanvasContextMenuTarget; nodeId: string | null; frameId: string | null },
+  stage: HTMLElement,
+  offset: Offset,
+  zoomValue: number,
+): CanvasContextNodeMenu {
+  const rect = stage.getBoundingClientRect()
+  const stageX = clientX - rect.left
+  const stageY = clientY - rect.top
+  const zoom = zoomValue || 1
+  // 节点菜单比添加菜单矮：按各自高度夹边，免得贴着视口下缘弹出时被切掉。
+  const menuHeight = hit.target === 'blank' ? MENU_HEIGHT : NODE_MENU_HEIGHT
+  return {
+    clientX,
+    clientY,
+    stageX: clampNumber(stageX, MENU_EDGE_GAP, Math.max(MENU_EDGE_GAP, rect.width - MENU_WIDTH - MENU_EDGE_GAP)),
+    stageY: clampNumber(stageY, MENU_EDGE_GAP, Math.max(MENU_EDGE_GAP, rect.height - menuHeight - MENU_EDGE_GAP)),
+    canvasX: Math.round((stageX - offset.x) / zoom),
+    canvasY: Math.round((stageY - offset.y) / zoom),
+    ...hit,
+  }
+}
+
 /**
  * Blank-canvas context menu lifecycle.
  *
@@ -122,10 +148,6 @@ export function useCanvasContextNodeMenu({
     const target = event.target instanceof Element ? event.target : null
     if (target?.closest(CONTEXT_TARGET_GUARD)) return false
 
-    const rect = stageRef.current.getBoundingClientRect()
-    const stageX = event.clientX - rect.left
-    const stageY = event.clientY - rect.top
-    const zoom = zoomRef.current || 1
     const nodeId = target?.closest(NODE_SELECTOR)?.getAttribute('data-node-id') || null
     const frameId = target?.closest(FRAME_SELECTOR)?.getAttribute('data-group-id') || null
     const menuTarget = resolveCanvasContextMenuTarget({
@@ -133,8 +155,6 @@ export function useCanvasContextNodeMenu({
       selectionOverlay: isCanvasSelectionOverlayTarget(target),
       frameId,
     })
-    // 节点菜单比添加菜单矮：按各自高度夹边，免得贴着视口下缘弹出时被切掉。
-    const menuHeight = menuTarget === 'blank' ? MENU_HEIGHT : NODE_MENU_HEIGHT
     pendingMenuRef.current = {
       pointerId: event.pointerId,
       button: event.button,
@@ -142,19 +162,18 @@ export function useCanvasContextNodeMenu({
       startY: event.clientY,
       moved: false,
       contextMenuSeen: false,
-      menu: {
-        clientX: event.clientX,
-        clientY: event.clientY,
-        stageX: clampNumber(stageX, MENU_EDGE_GAP, Math.max(MENU_EDGE_GAP, rect.width - MENU_WIDTH - MENU_EDGE_GAP)),
-        stageY: clampNumber(stageY, MENU_EDGE_GAP, Math.max(MENU_EDGE_GAP, rect.height - menuHeight - MENU_EDGE_GAP)),
-        canvasX: Math.round((stageX - offsetRef.current.x) / zoom),
-        canvasY: Math.round((stageY - offsetRef.current.y) / zoom),
-        target: menuTarget,
-        nodeId,
-        frameId,
-      },
+      menu: buildMenuAt(event.clientX, event.clientY, { target: menuTarget, nodeId, frameId }, stageRef.current, offsetRef.current, zoomRef.current),
     }
     return event.button === 0
+  }, [offsetRef, pendingConnectionSourceId, readOnly, stageRef, zoomRef])
+
+  /**
+   * 键盘（Tab）打开「添加节点」菜单：与空白右键**同一个菜单、同一套落点几何**，只是没有指针手势要等。
+   * 选择原样保留——键盘新建不该顺手把用户选中的东西扔掉（右键空白清选择是因为那一下点在了空白上）。
+   */
+  const openBlankMenuAt = React.useCallback((clientX: number, clientY: number) => {
+    if (readOnly || pendingConnectionSourceId || !stageRef.current) return
+    setContextNodeMenu(buildMenuAt(clientX, clientY, { target: 'blank', nodeId: null, frameId: null }, stageRef.current, offsetRef.current, zoomRef.current))
   }, [offsetRef, pendingConnectionSourceId, readOnly, stageRef, zoomRef])
 
   const handleContextMenuPointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
@@ -242,6 +261,7 @@ export function useCanvasContextNodeMenu({
   return {
     contextNodeMenu,
     setContextNodeMenu,
+    openBlankMenuAt,
     prepareContextMenuPointerDown,
     handleContextMenuPointerMove,
     finishContextMenuPointerUp,

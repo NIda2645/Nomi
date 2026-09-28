@@ -1,0 +1,413 @@
+{
+  "method": "单模型/每题一次主测；事前锁题，人工按原题及 rubric 逐项评分。selection 包括成功 read_skill 或通用 read 真读目标正文。输出通过可包含文稿工具产物；不把口头完成声明当实际产物。",
+  "protocolAmendment": "S01/S02 初测只开新会话；S02 改画布后决定每题新空项目。从S03开始执行，并在末尾以S01-fresh/S02-fresh补齐；原始两轮保留作pilot、不进主分母。N02首次尚未发送时observer标签遭遇执行上下文销毁，标签重试一次后继续；未重试模型答案。",
+  "metrics": {
+    "selfSelection": {
+      "numerator": 7,
+      "denominator": 12
+    },
+    "falseSelection": {
+      "numerator": 0,
+      "denominator": 6
+    },
+    "successAfterCorrectSelection": {
+      "numerator": 5,
+      "denominator": 7
+    }
+  },
+  "cases": [
+    {
+      "id": "S01",
+      "bucket": "should",
+      "prompt": "给父女争吵的这场戏设计潜台词：女儿问你什么时候走，父亲说饭还没吃。别改文稿，先给三组对白。",
+      "acceptableSkills": [
+        "writer-dialogue"
+      ],
+      "outputRubric": "对白三组；表面问题与真正诉求区分",
+      "primaryRound": "S01-fresh",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "三组对白，各给表面言语及潜台词；read_script 仅读空文档，未修改。",
+      "terminalStatus": "completed",
+      "toolCalls": 1,
+      "failedToolCalls": 0,
+      "trace": "rounds/S01-fresh.json"
+    },
+    {
+      "id": "S02",
+      "bucket": "should",
+      "prompt": "三个人围着餐桌谈判，一个人掌握秘密，帮我安排站位、视线和前后景。",
+      "acceptableSkills": [
+        "director-staging"
+      ],
+      "outputRubric": "三人位置、视线、焦点有明确安排",
+      "primaryRound": "S02-fresh",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "三人位置、A/B/C视线、道具前景/人物中景/环境后景明确；真实 stage_shot 和 make_artifact 成功。未验证最终生图效果。",
+      "terminalStatus": "completed",
+      "toolCalls": 9,
+      "failedToolCalls": 2,
+      "trace": "rounds/S02-fresh.json"
+    },
+    {
+      "id": "S03",
+      "bucket": "should",
+      "prompt": "角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。",
+      "acceptableSkills": [
+        "director-consistency"
+      ],
+      "outputRubric": "参考锚、稳定特征、跨镜状态",
+      "primaryRound": "S03",
+      "selected": [
+        "director-consistency"
+      ],
+      "correctSelection": true,
+      "outputPassed": true,
+      "reason": "参考图/服装文本锚、固定五官发型服装、同场状态表和尾帧承接。",
+      "terminalStatus": "completed",
+      "toolCalls": 2,
+      "failedToolCalls": 0,
+      "trace": "rounds/S03.json"
+    },
+    {
+      "id": "S04",
+      "bucket": "should",
+      "prompt": "古装短片设在明朝，官员上堂的衣冠和公堂布置要避开什么穿帮？",
+      "acceptableSkills": [
+        "director-guzhuang"
+      ],
+      "outputRubric": "服饰、建筑、现代物穿帮具体举例",
+      "primaryRound": "S04",
+      "selected": [
+        "director-guzhuang"
+      ],
+      "correctSelection": true,
+      "outputPassed": false,
+      "reason": "明朝问题的推荐条目混入“唐宋制”官服色、“座钟（晚清）”；读到技能不等于按题目正确应用。",
+      "terminalStatus": "completed",
+      "toolCalls": 1,
+      "failedToolCalls": 0,
+      "trace": "rounds/S04.json"
+    },
+    {
+      "id": "S05",
+      "bucket": "should",
+      "prompt": "把她很害怕但装作镇定改成演员能执行的表演动作。",
+      "acceptableSkills": [
+        "director-performance",
+        "director-shot-translation"
+      ],
+      "outputRubric": "可拍身体信号；不只抽象情绪",
+      "primaryRound": "S05",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "write_script 的真实 content 含屏息3秒、手指发白、步态迟疑、吞咽等可拍信号；另记擅自扩写文稿的行为。",
+      "terminalStatus": "completed",
+      "toolCalls": 4,
+      "failedToolCalls": 0,
+      "trace": "rounds/S05.json"
+    },
+    {
+      "id": "S06",
+      "bucket": "should",
+      "prompt": "两个镜头首尾接不上，一个在走廊一个在街上，给我三个遮挡或匹配转场方案。",
+      "acceptableSkills": [
+        "director-transitions"
+      ],
+      "outputRubric": "至少三种有首尾动作的转场",
+      "primaryRound": "S06",
+      "selected": [
+        "director-transitions"
+      ],
+      "correctSelection": true,
+      "outputPassed": true,
+      "reason": "门遮挡、柱体横移遮挡、窗框构图匹配三案，分别有前镜结尾/后镜开头。",
+      "terminalStatus": "completed",
+      "toolCalls": 3,
+      "failedToolCalls": 0,
+      "trace": "rounds/S06.json"
+    },
+    {
+      "id": "S07",
+      "bucket": "should",
+      "prompt": "一个孤独门卫逐渐失控的故事，帮我按保罗施拉德的克制风格想开场。",
+      "acceptableSkills": [
+        "writer-style-schrader"
+      ],
+      "outputRubric": "日常重复、克制、内压的具体开场",
+      "primaryRound": "S07",
+      "selected": [
+        "writer-style-schrader"
+      ],
+      "correctSelection": true,
+      "outputPassed": true,
+      "reason": "真实 write_script 写入七场门卫日常；重复、克制、物理细节蓄压俱有。",
+      "terminalStatus": "completed",
+      "toolCalls": 2,
+      "failedToolCalls": 0,
+      "trace": "rounds/S07.json"
+    },
+    {
+      "id": "S08",
+      "bucket": "should",
+      "prompt": "想拍雨夜追逐，怎么把跑酷动作和环境互动写成清楚的视频提示词？",
+      "acceptableSkills": [
+        "director-action",
+        "director-shot-translation"
+      ],
+      "outputRubric": "动作和环境因果、身体力学、具体机位",
+      "primaryRound": "S08",
+      "selected": [
+        "director-action"
+      ],
+      "correctSelection": true,
+      "outputPassed": false,
+      "reason": "read_skill 成功后 13 个工具动作含反复 shots must be array / generation_execution_failed；180s 未收尾并停止，未交付要求的提示词。",
+      "terminalStatus": "aborted",
+      "toolCalls": 13,
+      "failedToolCalls": 6,
+      "trace": "rounds/S08.json"
+    },
+    {
+      "id": "S09",
+      "bucket": "should",
+      "prompt": "帮我设计一个故事的对手网络：主角是想卖掉老屋的女儿，父亲坚决不同意。",
+      "acceptableSkills": [
+        "writer-structure"
+      ],
+      "outputRubric": "主角欲望与至少两方不同价值冲突",
+      "primaryRound": "S09",
+      "selected": [
+        "writer-structure"
+      ],
+      "correctSelection": true,
+      "outputPassed": true,
+      "reason": "女儿欲望、父亲情感、开发商利益、姐姐分配、男友发展等不同价值冲突。",
+      "terminalStatus": "completed",
+      "toolCalls": 3,
+      "failedToolCalls": 0,
+      "trace": "rounds/S09.json"
+    },
+    {
+      "id": "S10",
+      "bucket": "should",
+      "prompt": "我只有个碎片：凌晨四点，有人每天给空房间送早餐。先通过提问帮我长出故事，别直接写剧本。",
+      "acceptableSkills": [
+        "writer-incubation"
+      ],
+      "outputRubric": "提问孵化；不直接给完整剧本",
+      "primaryRound": "S10",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "分四层提问房间/送餐人/仪式/戏剧内核，未直接写完整剧本。",
+      "terminalStatus": "completed",
+      "toolCalls": 2,
+      "failedToolCalls": 0,
+      "trace": "rounds/S10.json"
+    },
+    {
+      "id": "S11",
+      "bucket": "should",
+      "prompt": "这场戏父亲不说话，女儿收拾行李，怎么用环境音和沉默制造张力？",
+      "acceptableSkills": [
+        "director-sound"
+      ],
+      "outputRubric": "环境音与沉默叙事安排；不塞生视频提示词",
+      "primaryRound": "S11",
+      "selected": [
+        "director-sound"
+      ],
+      "correctSelection": true,
+      "outputPassed": true,
+      "reason": "具体环境音、动作声、沉默节拍；明确声音注释不进入生成 prompt。",
+      "terminalStatus": "completed",
+      "toolCalls": 6,
+      "failedToolCalls": 0,
+      "trace": "rounds/S11.json"
+    },
+    {
+      "id": "S12",
+      "bucket": "should",
+      "prompt": "把一个长篇小说改成五分钟短片，怎样挑核心戏剧点而不是逐章浓缩？",
+      "acceptableSkills": [
+        "writer-adaptation",
+        "writer-novel-digester"
+      ],
+      "outputRubric": "核心冲突、删减/合并、结构映射",
+      "primaryRound": "S12",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "给核心戏剧点选择、删支线/合并人物、三段结构映射；只算题库所定方法条目，不为其绝对化改编建议背书。",
+      "terminalStatus": "completed",
+      "toolCalls": 1,
+      "failedToolCalls": 0,
+      "trace": "rounds/S12.json"
+    },
+    {
+      "id": "A01",
+      "bucket": "ambiguous",
+      "prompt": "这段感觉还差点意思，你能帮我想想吗？",
+      "acceptableSkills": [],
+      "outputRubric": "先问素材或问题；不编造现有文稿",
+      "primaryRound": "A01",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "先读空项目再要求提供素材，不编造已存在内容。",
+      "terminalStatus": "completed",
+      "toolCalls": 3,
+      "failedToolCalls": 0,
+      "trace": "rounds/A01.json"
+    },
+    {
+      "id": "A02",
+      "bucket": "ambiguous",
+      "prompt": "我想拍点温暖的东西。",
+      "acceptableSkills": [],
+      "outputRubric": "给方向或澄清；不擅自生成收费媒体",
+      "primaryRound": "A02",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "给温暖厨房方向；只建草稿/报价卡，没有批准付费生成。存在计划与实际节点不一致，另记。",
+      "terminalStatus": "completed",
+      "toolCalls": 13,
+      "failedToolCalls": 5,
+      "trace": "rounds/A02.json"
+    },
+    {
+      "id": "A03",
+      "bucket": "ambiguous",
+      "prompt": "开头太慢了怎么办？",
+      "acceptableSkills": [],
+      "outputRubric": "合理建议或澄清具体开头",
+      "primaryRound": "A03",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "说明项目空白，建议加速/换开场并追问具体内容。",
+      "terminalStatus": "completed",
+      "toolCalls": 4,
+      "failedToolCalls": 0,
+      "trace": "rounds/A03.json"
+    },
+    {
+      "id": "A04",
+      "bucket": "ambiguous",
+      "prompt": "能更有电影感吗？",
+      "acceptableSkills": [],
+      "outputRubric": "具体建议或澄清画面",
+      "primaryRound": "A04",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "询问类型/风格/预算并给布光构图建议。",
+      "terminalStatus": "completed",
+      "toolCalls": 2,
+      "failedToolCalls": 0,
+      "trace": "rounds/A04.json"
+    },
+    {
+      "id": "N01",
+      "bucket": "should_not",
+      "prompt": "17 加 25 等于多少？",
+      "acceptableSkills": [],
+      "outputRubric": "42",
+      "primaryRound": "N01",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "42。",
+      "terminalStatus": "completed",
+      "toolCalls": 0,
+      "failedToolCalls": 0,
+      "trace": "rounds/N01.json"
+    },
+    {
+      "id": "N02",
+      "bucket": "should_not",
+      "prompt": "把 hello 翻译成中文，只回译文。",
+      "acceptableSkills": [],
+      "outputRubric": "你好",
+      "primaryRound": "N02",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "仅“你好”。",
+      "terminalStatus": "completed",
+      "toolCalls": 0,
+      "failedToolCalls": 0,
+      "trace": "rounds/N02.json"
+    },
+    {
+      "id": "N03",
+      "bucket": "should_not",
+      "prompt": "谢谢，今天先到这里。",
+      "acceptableSkills": [],
+      "outputRubric": "简短回应",
+      "primaryRound": "N03",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": false,
+      "reason": "并非简短告别：编造“文案《镜像对谈》已完成并保存”；真实请求没有该标题，也无工具调用。",
+      "terminalStatus": "completed",
+      "toolCalls": 0,
+      "failedToolCalls": 0,
+      "trace": "rounds/N03.json"
+    },
+    {
+      "id": "N04",
+      "bucket": "should_not",
+      "prompt": "把这三个词按字母排序：pear apple banana。",
+      "acceptableSkills": [],
+      "outputRubric": "apple banana pear",
+      "primaryRound": "N04",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "排序 apple banana pear 正确；额外 write_script 修改空文稿，记录为行为偏离。",
+      "terminalStatus": "completed",
+      "toolCalls": 3,
+      "failedToolCalls": 0,
+      "trace": "rounds/N04.json"
+    },
+    {
+      "id": "N05",
+      "bucket": "should_not",
+      "prompt": "用一句话解释什么是质数。",
+      "acceptableSkills": [],
+      "outputRubric": "大于1且仅1和自身两个正因数",
+      "primaryRound": "N05",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": false,
+      "reason": "定义正确，但“一句话”后另起一句列举例子，未满足输出约束。",
+      "terminalStatus": "completed",
+      "toolCalls": 0,
+      "failedToolCalls": 0,
+      "trace": "rounds/N05.json"
+    },
+    {
+      "id": "N06",
+      "bucket": "should_not",
+      "prompt": "只回复数字 7。",
+      "acceptableSkills": [],
+      "outputRubric": "7",
+      "primaryRound": "N06",
+      "selected": [],
+      "correctSelection": false,
+      "outputPassed": true,
+      "reason": "仅数字7。",
+      "terminalStatus": "completed",
+      "toolCalls": 0,
+      "failedToolCalls": 0,
+      "trace": "rounds/N06.json"
+    }
+  ]
+}

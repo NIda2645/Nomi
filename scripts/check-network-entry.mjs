@@ -9,6 +9,9 @@ const EXPLICIT_BOUNDARIES = new Set([
   'electron/appFetch.ts', // injects the app-owned dispatcher into native fetch
   'electron/agentLane/laneModelProvider.mts', // standalone SDK model tests; normal runtime injects fetch
   'electron/capabilityCore/mcpNodeLauncher.ts', // pure Node CLI -> authenticated localhost RPC only
+  // Test-only capture point: it *replaces* globalThis.fetch so parity tests record every outbound call of both
+  // engines. It never sends anything itself, and it is imported only by electron/parity/*.test.ts + parityDrive.ts.
+  'electron/parity/generationParityTestUtils.ts',
 ]);
 const CLIENT_METHODS = new Map([
   ['undici', new Set(['fetch', 'request', 'pipeline', 'stream', 'connect', 'dispatch'])],

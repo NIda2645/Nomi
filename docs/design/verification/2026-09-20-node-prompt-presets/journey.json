@@ -1,0 +1,15 @@
+{
+  "passed": true,
+  "paidCalls": 0,
+  "tasks": [
+    "ordinary public presets",
+    "search and empty results",
+    "append and undo",
+    "real personal image/video creation",
+    "refresh existing picker",
+    "image/video filtering",
+    "Escape and outside click",
+    "zh/en light/dark",
+    "Agent shared picker search/preview/selection"
+  ]
+}

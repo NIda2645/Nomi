@@ -1,0 +1,212 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-skill-restates-registry-facts",
+  "problem_type": "Skill prose restates a fact the capability registry already owns, and the copy goes stale",
+  "symptom": "Real run 2026-09-18: the user asked the Agent to turn a script into a storyboard; 4 of 5 turns on a real model called no tool at all and only wrote text.",
+  "direct_cause": "skills/workbench-storyboard-planner/SKILL.md:203 said 「绝不调用写画布/生成类工具」 while :199/:200/:204 told the model to call draft_shots. draft_shots is generation.plan with effect reversible_write, so :203 literally forbade :204 and the model obeyed the prohibition.",
+  "class_root": "The skill body restated, in prose, facts that live on CapabilityContract — a tool's name, whether it reads or writes, whether the user must confirm first, and whether it costs money. :203 was written 2026-06-13 (commit 44304dd42) for propose_storyboard_plan, which was read-only at the time. The registry moved; the prose did not, because nothing connects them. Tool names were already guarded by check:mcp-tool-references; the tool's *nature* was guarded by nothing, and that is the half that failed here — the name draft_shots was correct throughout.",
+  "affected_population": [
+    "Every turn that runs a Nomi skill whose body describes what a tool does, which is all 9 skills that declare tools",
+    "Every externally authored skill a user installs, which may have been written for another host or before a rename"
+  ],
+  "scope_paths": [
+    "skills/",
+    "electron/harness/context/agentContext.ts",
+    "scripts/check-skill-tool-binding.ts",
+    "scripts/skill-tool-binding-lib.mjs",
+    "electron/shared/agentCapabilities/registry.ts",
+    "electron/skills/skillPackage.ts",
+    "scripts/check-skill-tool-binding.node-test.mjs"
+  ],
+  "entry_points": [
+    "Composer: user attaches a skill and sends a turn (laneDesktopRuntime singleShot)",
+    "Composer: user attaches a skill in an open workspace session (laneDesktopRuntime configure)",
+    "Skill library: user imports an externally authored skill package"
+  ],
+  "invariants": [
+    "A skill authored in this repository stays usable outside Nomi: it describes what to accomplish, so a host with different tool names can still run it",
+    "A skill body never states a tool's effect class; read/write, approval, cost and reversibility are derived from CapabilityContract and rendered once by verbConsequence(effect, nextAction)",
+    "A skill body may still state workflow intent — which stage gates on user review, what order to do things in — because the registry does not own that",
+    "An externally authored skill is never rejected for naming a tool this host lacks or for describing a tool wrongly; it is accepted verbatim and corrected at prompt-assembly time",
+    "The authoritative tool section is injected after the skill body, and refers to the tool sections by name rather than by direction, so it stays correct if assembly order changes"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/harness/context/agentContext.ts",
+      "line": 166,
+      "symbol": "buildSelectedSkillPrompt"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 105,
+      "symbol": "buildSelectedSkillPrompt"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "line": 183,
+      "symbol": "buildSelectedSkillPrompt"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "One definition plus its two callers. The definition is already the repository's sole place a user-selected skill becomes prompt text (consolidated 2026-09-15, when a fourth zero-caller door was deleted), so the authority section was added there once and both callers inherit it without knowing about it. The two call sites are the lane's singleShot and configure entry paths; merging them is a lane-lifecycle change unrelated to this fix."
+  },
+  "generality_proof": "The gate derives every tool name and every effect value from resolveCapabilityAlias() at run time and hardcodes neither, so a tool renamed or reclassified tomorrow is judged by its new facts with no edit to the gate. The runtime authority section names no tool at all — it defers to the sections that renderLanePromptSections already derives from the registry — so it cannot itself go stale.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/agentCapabilities/registry.ts",
+      "symbol": "resolveCapabilityAlias",
+      "responsibility": "The single source for which model-facing name maps to which capability contract, and therefore for that tool's effect class"
+    },
+    {
+      "path": "electron/harness/context/agentContext.ts",
+      "symbol": "buildSelectedSkillPrompt",
+      "responsibility": "The only place a user-selected skill becomes system-prompt text, and therefore the only place the registry's authority can be asserted over it"
+    },
+    {
+      "path": "scripts/check-skill-tool-binding.ts",
+      "symbol": "findEffectRestatements, findFalseFieldValues",
+      "responsibility": "The commit-time boundary that keeps this repository's own skills free of tool-nature claims, so they stay portable to other hosts and cannot drift out of step with the registry"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "skills/brand-promo/SKILL.md",
+      "entry_point": "Composer: user attaches brand-promo and sends a turn",
+      "disposition": "enforced",
+      "evidence": "Claimed draft_shots 「不碰画布、不花额度」. The first half was already false — draft_shots is documented as 'Create or update draft shots on the canvas' (writeVerbs.ts:112). Both clauses deleted; check:skill-tool-binding now reds on this shape (mutation M3 confirmed)."
+    },
+    {
+      "path": "skills/drama-short/SKILL.md",
+      "entry_point": "Composer: user attaches drama-short and sends a turn",
+      "disposition": "enforced",
+      "evidence": "Carried the same false 「不碰画布、不花额度」 claim plus 「剧本/规划/落画布免费可改，生成才花额度」. Deleted; gate covers the shape."
+    },
+    {
+      "path": "skills/skill-author/SKILL.md",
+      "entry_point": "Composer: user attaches skill-author to write a new skill",
+      "disposition": "enforced",
+      "evidence": "A tool table restating 「只读」 and 「花额度」. Highest-leverage instance: this skill teaches people to author skills, so its table is the shape that gets copied. Both parentheticals deleted; gate covers the shape."
+    },
+    {
+      "path": "skills/release-media-pack/SKILL.md",
+      "entry_point": "Composer: user attaches release-media-pack and sends a turn",
+      "disposition": "enforced",
+      "evidence": "Restated 「不提前花费」 and that generate runs only after confirmation. Rewritten as wave sequencing, which is this skill's own workflow and is not a registry fact; gate covers the shape."
+    },
+    {
+      "path": "skills/workbench-fixation-planner/SKILL.md",
+      "entry_point": "Workbench fixation planning stage",
+      "disposition": "enforced",
+      "evidence": "Restated look_at_canvas as 只读. Deleted; gate covers the shape (mutation M2 confirmed on the identical shape in workbench-storyboard-planner)."
+    },
+    {
+      "path": "skills/workbench-generation/SKILL.md",
+      "entry_point": "Workbench generation stage",
+      "disposition": "enforced",
+      "evidence": "Restated 「用户确认后手动点生成」. Deleted; the surviving 「不要执行生成，只创建节点」 is this skill's own scope decision, which the registry does not own."
+    },
+    {
+      "path": "electron/skills/skillPackage.ts",
+      "entry_point": "Skill library: user imports an externally authored skill package",
+      "disposition": "not-affected",
+      "evidence": "not-affected by the gate, deliberately: external packages are never rejected for naming a tool this host lacks or describing one wrongly (2026-09-18 user ruling — rejecting pushes our problem onto them). Asserted by two negative tests in electron/skills/skillPackage.test.ts; the correction happens at runtime in buildSelectedSkillPrompt instead."
+    },
+    {
+      "path": "electron/harness/context/agentContext.ts",
+      "entry_point": "Every turn that injects a user-selected skill, ours or installed",
+      "disposition": "enforced",
+      "evidence": "enforced at runtime: the authority section is injected after the skill envelope so recency favours the registry, voids any tool name or tool-nature claim in the body, and tells the model to say so in plain words when a named tool is absent. Ordering and content pinned by two tests in agentContext.test.ts."
+    }
+  ],
+  "fix": {
+    "failure_mode": "If a skill still describes a tool wrongly — an external one we do not gate — the model reads the authority section after it and disregards the claim; if it names a tool we do not have, it tells the user in plain words and finishes the remaining steps.",
+    "exception_policy": "none",
+    "strategy": "Delete the restatements from our own skills, make the restatement shape a red gate at commit time for our skills only, and at run time assert the registry's authority over whatever any skill body says.",
+    "artifacts": [
+      "electron/harness/context/agentContext.ts",
+      "scripts/check-skill-tool-binding.ts",
+      "scripts/skill-tool-binding-lib.mjs",
+      "skills/brand-promo/SKILL.md",
+      "skills/drama-short/SKILL.md",
+      "skills/release-media-pack/SKILL.md",
+      "skills/skill-author/SKILL.md",
+      "skills/workbench-fixation-planner/SKILL.md",
+      "skills/workbench-generation/SKILL.md",
+      "skills/workbench-storyboard-planner/SKILL.md"
+    ]
+  },
+  "regression_tests": [
+    "scripts/check-skill-tool-binding.node-test.mjs",
+    "electron/harness/context/agentContext.test.ts",
+    "electron/skills/skillPackage.test.ts",
+    "electron/skills/foreignSkillPortability.test.ts"
+  ],
+  "class_regression_tests": [
+    "scripts/check-skill-tool-binding.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "skills/workbench-storyboard-planner/SKILL.md",
+      "skills/brand-promo/SKILL.md",
+      "skills/drama-short/SKILL.md",
+      "skills/release-media-pack/SKILL.md",
+      "skills/skill-author/SKILL.md",
+      "skills/workbench-fixation-planner/SKILL.md",
+      "skills/workbench-generation/SKILL.md"
+    ],
+    "rationale": "Every effect-class restatement is deleted from the tool-declaring skills; the gate is hard-zero with no baseline file, so there is no surviving parallel copy and no debt ledger to drift."
+  },
+  "migration": "No persisted data changes. Installed user skills are not rewritten; the runtime authority section covers them.",
+  "residual_risks": [
+    "The commit-time gate detects effect claims through Chinese phrasing only. Registered as a dated debt, not a bare acknowledgement: expires 2026-12-18; until then the runtime authority section is the substitute, and it depends on no phrasing recognition at all, so the exposure is 'an English restatement could be committed into our own skills', not 'the model could be misled'. Expiry verification is specified in docs/plan/2026-09-18-portable-skill-tool-binding.md §7.5.3 — translate the three existing positive controls into English, assert red, then mutate one live skill into English and require exit=1. Not done now because all 88 skills are Chinese, so an English criterion would have zero real samples to prove it reds, which is exactly the 'added a rule without verifying it reds' that R17 forbids.",
+    "The authority section's position is provisional, not concluded. SKILL_TOOL_AUTHORITY_PLACEMENT defaults to after_body on a recency argument, and a three-arm A/B on a real model is measuring it (omitted as the positive control, before_body, after_body), plus whether the model still honours it past the 8th tool call in one turn. The placement is a single switchable parameter with all three arms reachable and a test pinning that, so the outcome changes one constant.",
+    "The end-to-end leg — a real model, with the foreign ChatCut skill installed, mapping submit_video onto Nomi's video verb — was not executed in this batch. Covered today by the prompt-assembly assertions and the import assertions in electron/skills/foreignSkillPortability.test.ts, not by a live run."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/agentCapabilities/registry.ts",
+    "has_tests": true,
+    "tests": [
+      "scripts/check-skill-tool-binding.node-test.mjs",
+      "electron/shared/agentCapabilities/registry.test.ts"
+    ],
+    "rationale": "The registry owns what a tool is called and what it does. Both the commit-time gate and the runtime authority section read from it rather than restating it, which is the same rule this fix imposes on skill prose."
+  },
+  "internal_only_reason": "Which of this host's tools writes, costs money or needs confirmation is a fact about this repository's own capability registry; no external specification decides it. The Agent Skills specification is silent on how a skill may refer to host tools — see docs/plan/2026-09-18-portable-skill-tool-binding.md §2.3 for the evidence that the standards body considered and declined to specify it.",
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency is involved.",
+    "exit_criteria": []
+  },
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "This is the third instance of one class in four days, and the first two were fixed as instances. 2026-09-14: a 37-name to 20-verb rename left 128 stale tool names across 8 skills. 2026-09-18 morning: creation_write / creation_read sat in two skills with zero implementations anywhere. 2026-09-18 (this one): the tool NAME was correct and the tool's NATURE was stale. Every skill body that describes a tool can reproduce it, and every future rename or reclassification re-arms it, because prose and registry have no mechanical link. The population also includes skills we do not author at all — a user may install a skill written for another host — so the class cannot be closed by editing our own files. It therefore gets both a commit-time ratchet for the files we own and a runtime assertion for the ones we do not.",
+    "same_class_scan": [
+      "Enumerated all 88 SKILL.md files and derived, from resolveCapabilityAlias(), which of them name a registered tool or assert an effect class; 9 declare tools, and only those 9 can express this defect.",
+      "Ran the new gate over the full corpus: it found 6 restatements beyond the 12 lines found by hand, in 4 further skills (brand-promo, drama-short, release-media-pack, skill-author). Hand review missed a third of the population, which is the reason the rule is a gate and not a doc.",
+      "Two of those 6 were already factually wrong, not merely fragile: brand-promo and drama-short both told the model draft_shots 「不碰画布」, while the verb's own description is 'Create or update draft shots on the canvas' (writeVerbs.ts:112). The drift had already happened and nobody had noticed.",
+      "Checked the opposite direction for false positives: the writer-* and director-* craft skills use 不可逆 / 只读 in a dramaturgical sense. They declare zero tools and name none, so the criterion excludes them structurally rather than through an exemption list whose rationale would expire.",
+      "Confirmed the sibling gate check:mcp-tool-references covers the NAME half (frontmatter declarations against the live catalogs, plus a retired-name list) and does not look at effect class at all, so the two gates partition the edge rather than overlapping.",
+      "Checked the outbound half: no skill is marked audience: mcp today, so none of our skills is currently shipped to external agents; the inbound half is live and is what the runtime authority section covers."
+    ]
+  },
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/check-skill-tool-binding.ts",
+    "invariant": "A skill in this repository never states a tool's name-bound effect class — read/write, approval, cost, reversibility. Those four facts are derived from CapabilityContract and rendered once by verbConsequence(effect, nextAction). Workflow intent stays, because the registry does not own it. Externally authored skills are deliberately out of this gate's scope and are handled at run time instead.",
+    "failure_mode": "Hard zero with no baseline file: any restatement in skills/ fails the contracts run. Ratchets need a baseline, and a baseline for this class would be a list of skills still allowed to lie about tools — there is no such legitimate state, so the count is zero.",
+    "exception_policy": "none",
+    "strategy": "Derive both halves of the judgement from resolveCapabilityAlias() so the gate cannot hold a stale copy of the truth it is enforcing, and scope it to skills that declare tools so craft skills are excluded structurally rather than by an exemption list.",
+    "artifacts": [
+      "scripts/check-skill-tool-binding.ts",
+      "scripts/skill-tool-binding-lib.mjs",
+      "scripts/check-skill-tool-binding.node-test.mjs",
+      "package.json"
+    ]
+  }
+}

@@ -1,0 +1,148 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-process-motion-probe",
+  "problem_type": "Repeated temporary WebGL probes lack shared lifetime and disposal",
+  "symptom": "Each waiting surface and status badge creates new GPU probe contexts on initialization and mount, even when only four effects are admitted",
+  "direct_cause": "useReducedProcessMotion calls readProcessMotionCapability per consumer twice; the reader creates a canvas context without explicit disposal",
+  "class_root": "Stable document renderer capability and live accessibility preference share a per-consumer probe lifecycle",
+  "affected_population": [
+    "Waiting surfaces and status badges across many nodes, mount cycles and preference changes"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/nodes/processMotionCapability.ts",
+    "src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts"
+  ],
+  "entry_points": [
+    "GenerationWaitingSurface",
+    "GenerationStatusBar",
+    "Serialized canvas performance probe"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Application-owned probe lifecycle. Read both actual hook consumers, serialized performance caller, and installed img-fx shared renderer cleanup; no new external API or dependency introduced.",
+  "invariants": [
+    "Hook consumers share one renderer probe per Document",
+    "Temporary contexts are explicitly released when the browser exposes WEBGL_lose_context, including failed reads",
+    "System reduced-motion preference remains live and listener cleanup remains paired",
+    "readProcessMotionCapability remains self-contained when serialized into page.evaluate"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/processMotionCapability.ts",
+      "symbol": "ProcessMotionCapability"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts",
+      "symbol": "readProcessMotionCapability"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts",
+      "symbol": "shouldReduceProcessMotion"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/GenerationStatusBar.tsx",
+      "symbol": "useReducedProcessMotion"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+      "symbol": "useReducedProcessMotion"
+    }
+  ],
+  "door_reduction": {
+    "before": 5,
+    "after": 5,
+    "why_not": "Reader type owner, hook read/policy calls, waiting surface and status badge are distinct required doors. Generated union of door-map processMotionCapability.ts and useReducedProcessMotion; both consumers converge on the hook cache."
+  },
+  "generality_proof": "The shared hook caches only renderer state per document, so every consumer and remount reuses it while live media preference is read separately. The reader always releases its own temporary context, including callers serialized outside React.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts",
+      "symbol": "useReducedProcessMotion",
+      "responsibility": "Share document renderer capability while observing dynamic preference"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/processMotionCapability.ts",
+      "symbol": "readProcessMotionCapability",
+      "responsibility": "Self-contained capability read and temporary context release"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+      "entry_point": "GenerationWaitingSurface",
+      "disposition": "enforced",
+      "evidence": "Uses shared hook before effect admission; no consumer-local probe remains"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/GenerationStatusBar.tsx",
+      "entry_point": "GenerationStatusBar",
+      "disposition": "enforced",
+      "evidence": "Uses same hook even though status dot does not need its own GPU context"
+    },
+    {
+      "path": "tests/ux/canvas-perf/waitingFxScenario.mjs",
+      "entry_point": "expectedEffects",
+      "disposition": "enforced",
+      "evidence": "Serialized direct reader retains self-containment and now releases its context"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every additional node, mount or accessibility change can repeat context allocation",
+    "same_class_scan": [
+      "door-map processMotionCapability.ts: 3 doors",
+      "door-map useReducedProcessMotion: 2 consumer doors",
+      "Read GenerationWaitingSurface, GenerationStatusBar and waitingFxScenario serialized reader"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts",
+    "invariant": "One renderer probe per document for all hook consumers, with explicit temporary context disposal",
+    "failure_mode": "Missing or throwing WebGL reads produce null renderer and reduced motion; disposal absence/error cannot turn a valid read into an exception",
+    "exception_policy": "none",
+    "strategy": "Document-scoped weak cache at the existing shared hook, separate dynamic preference reads, and reader finally cleanup",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/processMotionCapability.ts",
+      "src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/nodes/useReducedProcessMotion.test.ts",
+    "tests/ux/process-feedback-imgfx.e2e.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/nodes/useReducedProcessMotion.test.ts",
+    "tests/ux/process-feedback-imgfx.e2e.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/nodes/processMotionCapability.ts",
+      "src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts"
+    ],
+    "rationale": "Replace repeated renderer probes and unowned temporary context lifetime; preserve the one reader and hook API"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Application creates and owns these temporary contexts; no third-party runtime upgrade controls their lifecycle",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data changes. Renderer cache resets on new Document.",
+  "residual_risks": [
+    "GPU switching within the same document is not proactively re-probed; reload refreshes capability",
+    "If WEBGL_lose_context is unavailable, temporary canvas lifetime relies on browser collection"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/nodes/useReducedProcessMotion.ts",
+    "tests": [
+      "src/workbench/generationCanvas/nodes/useReducedProcessMotion.test.ts",
+      "tests/ux/process-feedback-imgfx.e2e.mjs"
+    ],
+    "why": "All production consumers share this hook; direct reader tests separately prove cleanup and serialization"
+  }
+}

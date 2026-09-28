@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+  annotateDiff,
+  annotateEntries,
   apimartSubIndexUrls,
   collectApimart,
   collectVendors,
   diffVendor,
+  elsewhereVendors,
+  hasKnownWire,
   isCovered,
   normalizeToken,
   offlineFileName,
@@ -15,6 +19,7 @@ import {
   usableApiKeyFromRecord,
 } from "./model-radar";
 import type { RadarEntry } from "./model-radar";
+import type { Mapping } from "../electron/catalog/types";
 
 // 全部用内联样本，**不打网络**：雷达的解析逻辑要能在 CI 里回归，
 // 而网络测试既慢又会因为对方改文档而随机翻红（那样门岗会被习惯性忽略）。
@@ -134,6 +139,24 @@ describe("覆盖判定 isCovered（三级判据 + 长度闸）", () => {
     // 没有这道闸，"wan"(3 字) 会命中 wan30video，于是所有 wan 系缺口被静默吞掉。
     expect(isCovered("wan", coverage)).toBe(false);
     expect(isCovered("x", coverage)).toBe(false);
+  });
+
+  // 2026-09-18 档案批 lane 实测（scripts/model-radar.ts:353）：isCovered 曾在两个方向各骗一次人。
+  it("短探针够得到已接的长 token：veo3 已接（veo3.1 家族已在 coverage 里），不许再报假缺口", () => {
+    // 真实场景：kie/apimart 的 veo3 文档页 normalize 后只有 4 字，旧闸要求 probe ≥8 字，
+    // 4 字探针永远够不到已接的 "veo3.1"/"veo3.1-fast" 等 token——闸挡住了真覆盖，报了假缺口。
+    const veoCoverage = new Set(["veo31", "veo31fast", "veo31quality", "veo31lite"]);
+    expect(isCovered("veo3", veoCoverage)).toBe(true);
+    // 底线不能跟着下移："wan"(3 字) 仍然太短，别让这条放宽复活 wan 系诈胡。
+    expect(isCovered("wan", coverage)).toBe(false);
+  });
+
+  it("新探针包住旧 token 不算数：gpt-image-2.5 未接（不许被已接的 gpt-image-2 冒领）", () => {
+    // gpt-image-2 与 gpt-image-2.5 互相包含（"gptimage2" 是 "gptimage25" 的前缀），旧代码双向都认，
+    // 于是 2.5 独有的 6 个真参数（size/resolution/quality/n/image_urls 上限）永远进不了「未接入」。
+    // 只许「已有 token 包住新 probe」这一个方向命中，反方向（新 probe 包住旧 token）不算覆盖。
+    const gptCoverage = new Set(["gptimage2"]);
+    expect(isCovered("gpt-image-2.5", gptCoverage)).toBe(false);
   });
 });
 
@@ -365,5 +388,108 @@ describe("离线样本命名", () => {
     expect(offlineFileName("https://docs.apimart.ai/_llms/en/api-manual.md")).toBe(
       "docs.apimart.ai__llms_en_api-manual.md",
     );
+  });
+});
+
+// —— 2026-09-18 补：wire/elsewhere 两列——把「缺档案」和「缺协议」分开看 ——
+describe("wire 判据 hasKnownWire（不摸真实 catalog，只喂 mappings）", () => {
+  const mapping = (overrides: Partial<Mapping>): Mapping => ({
+    id: "m",
+    vendorKey: "apimart",
+    taskKind: "text_to_image",
+    name: "m",
+    enabled: true,
+    create: { method: "POST", path: "/x" },
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  });
+
+  it("该 vendor 该 category 有 enabled mapping → known", () => {
+    const mappings = [mapping({ vendorKey: "apimart", taskKind: "text_to_image" })];
+    expect(hasKnownWire("apimart", "image", mappings)).toBe(true);
+  });
+
+  it("有 mapping 但 disabled 不算数", () => {
+    const mappings = [mapping({ vendorKey: "apimart", taskKind: "text_to_image", enabled: false })];
+    expect(hasKnownWire("apimart", "image", mappings)).toBe(false);
+  });
+
+  it("同 vendor 别的 category 不借用——kie 没有 text mapping 就是 unknown（如实报，不是 bug）", () => {
+    const mappings = [
+      mapping({ vendorKey: "kie", taskKind: "text_to_video" }),
+      mapping({ vendorKey: "kie", taskKind: "text_to_audio" }),
+    ];
+    expect(hasKnownWire("kie", "video", mappings)).toBe(true);
+    expect(hasKnownWire("kie", "text", mappings)).toBe(false);
+  });
+
+  it("别的 vendor 的 mapping 不借用", () => {
+    const mappings = [mapping({ vendorKey: "runway", taskKind: "text_to_image" })];
+    expect(hasKnownWire("apimart", "image", mappings)).toBe(false);
+  });
+});
+
+describe("elsewhere 判据 elsewhereVendors（跨 vendor 版 isCovered，纯查表）", () => {
+  it("别的供应商的 coverage 里有这个模型 → 命中该 vendor", () => {
+    const coverageByVendor = new Map<string, Set<string>>([
+      ["apimart", new Set(["somethingelseentirely"])],
+      ["runway", new Set(["geminiomni11flash"])],
+      ["kie", new Set()],
+    ]);
+    expect(elsewhereVendors("gemini-omni-1.1-flash", "apimart", coverageByVendor)).toEqual(["runway"]);
+  });
+
+  it("排除条目自己的供应商——同供应商的覆盖已经在 uncovered 里判过，不重复报", () => {
+    const coverageByVendor = new Map<string, Set<string>>([["apimart", new Set(["geminiomni11flash"])]]);
+    expect(elsewhereVendors("gemini-omni-1.1-flash", "apimart", coverageByVendor)).toEqual([]);
+  });
+
+  it("哪家都没有 → 空数组，不是 undefined/报错", () => {
+    const coverageByVendor = new Map<string, Set<string>>([["runway", new Set(["totallyunrelatedmodel"])]]);
+    expect(elsewhereVendors("brand-new-thing", "apimart", coverageByVendor)).toEqual([]);
+  });
+
+  it("命中多家时按 key 排序，打印稳定", () => {
+    const coverageByVendor = new Map<string, Set<string>>([
+      ["runway", new Set(["sharedmodeltoken"])],
+      ["kie", new Set(["sharedmodeltoken"])],
+    ]);
+    expect(elsewhereVendors("shared-model-token", "apimart", coverageByVendor)).toEqual(["kie", "runway"]);
+  });
+});
+
+describe("注解 annotateEntries / annotateDiff（把 wire/elsewhere 贴到 added/uncovered，diffVendor 本身不变）", () => {
+  const e = (slug: string, category: RadarEntry["category"] = "image"): RadarEntry => ({
+    vendor: "apimart",
+    category,
+    slug,
+    title: slug,
+    url: `https://docs.apimart.ai/en/api-reference/images/${slug}/generation.md`,
+  });
+
+  it("annotateEntries 逐条贴 wire/elsewhere，其余字段原样带过", () => {
+    const annotated = annotateEntries([e("gemini-3-pro")], () => "known", () => ["runway"]);
+    expect(annotated).toEqual([{ ...e("gemini-3-pro"), wire: "known", elsewhere: ["runway"] }]);
+  });
+
+  it("annotateDiff 只改 added/uncovered，removed/unlisted/total 原样不动", () => {
+    const diff = diffVendor("apimart", [e("fresh")], [e("gone")], new Set());
+    const annotated = annotateDiff(diff, () => "unknown", () => []);
+    expect(annotated.added).toEqual([{ ...e("fresh"), wire: "unknown", elsewhere: [] }]);
+    expect(annotated.removed).toEqual(diff.removed);
+    expect(annotated.unlisted).toEqual(diff.unlisted);
+    expect(annotated.total).toBe(diff.total);
+    expect(annotated.vendor).toBe(diff.vendor);
+  });
+
+  it("uncovered 条目也贴 wire/elsewhere——这就是本次要修的「未接入 93」误判", () => {
+    const diff = diffVendor("apimart", [e("veo3", "video")], null, new Set());
+    const annotated = annotateDiff(
+      diff,
+      () => "known",
+      (slug) => (slug === "veo3" ? ["runway"] : []),
+    );
+    expect(annotated.uncovered).toEqual([{ ...e("veo3", "video"), wire: "known", elsewhere: ["runway"] }]);
   });
 });

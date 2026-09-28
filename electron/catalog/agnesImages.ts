@@ -10,7 +10,7 @@
 //   ② 图生图参考图放 **extra_body.image**(数组，公网 URL / data:URI)，非顶层 image。
 // 故 t2i/edit 的 body 都把这俩塞进 extra_body（模板引擎渲染嵌套对象，空键自动丢）。
 //
-// 档案：agnes-image（全新族，src/config/modelArchetypes/agnesImage.ts）。canonical 参数 size 直透（无翻译）。
+// 档案：agnes-image（全新族，electron/shared/modelArchetypes/agnesImage.ts）。canonical 参数 size 直透（无翻译）。
 
 import type { HttpOperation, ProfileKind } from "./types";
 

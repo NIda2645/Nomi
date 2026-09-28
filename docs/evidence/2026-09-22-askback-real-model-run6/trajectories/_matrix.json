@@ -1,0 +1,216 @@
+{
+  "perCase": [
+    {
+      "caseId": "A1",
+      "calls": 8,
+      "argRejected": 2,
+      "domainFailed": 2,
+      "retried": 1
+    },
+    {
+      "caseId": "A2",
+      "calls": 3,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A3",
+      "calls": 12,
+      "argRejected": 3,
+      "domainFailed": 2,
+      "retried": 2
+    },
+    {
+      "caseId": "A9",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A4",
+      "calls": 2,
+      "argRejected": 0,
+      "domainFailed": 1,
+      "retried": 0
+    },
+    {
+      "caseId": "A5",
+      "calls": 0,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A6",
+      "calls": 0,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A7",
+      "calls": 0,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A8",
+      "calls": 0,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A10",
+      "calls": 0,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N1",
+      "calls": 0,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N2",
+      "calls": 0,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N6",
+      "calls": 2,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N3",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N4",
+      "calls": 2,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "N5",
+      "calls": 1,
+      "argRejected": 0,
+      "domainFailed": 0,
+      "retried": 0
+    },
+    {
+      "caseId": "A11",
+      "calls": 20,
+      "argRejected": 3,
+      "domainFailed": 5,
+      "retried": 4
+    },
+    {
+      "caseId": "A12",
+      "calls": 13,
+      "argRejected": 1,
+      "domainFailed": 1,
+      "retried": 1
+    }
+  ],
+  "byTool": [
+    {
+      "tool": "draft_shots",
+      "calls": 26,
+      "arg_rejected": 9,
+      "domain_failed": 10,
+      "retries": 8
+    },
+    {
+      "tool": "list_models",
+      "calls": 9,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "read_script",
+      "calls": 8,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "look_at_canvas",
+      "calls": 8,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "look_at_media",
+      "calls": 3,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "write_script",
+      "calls": 2,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "make_artifact",
+      "calls": 2,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "generate",
+      "calls": 2,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "read_skill",
+      "calls": 2,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "delete_from_canvas",
+      "calls": 1,
+      "arg_rejected": 0,
+      "domain_failed": 1,
+      "retries": 0
+    },
+    {
+      "tool": "ask_user",
+      "calls": 1,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    },
+    {
+      "tool": "arrange_canvas",
+      "calls": 1,
+      "arg_rejected": 0,
+      "domain_failed": 0,
+      "retries": 0
+    }
+  ]
+}

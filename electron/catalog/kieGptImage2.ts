@@ -13,6 +13,7 @@
 // baseUrl/path 约定见 kieSeedance.ts（裸 baseUrl + 完整 /api/v1 path，避开 joinUrl 双前缀坑）。
 
 import type { HttpOperation, ProfileKind } from "./types";
+import { builtinVendorKeyOfKey } from "../shared/builtinVendorIdentity";
 
 /** 文生图模型种子（modelKey 即 kie 的 model enum）。 */
 export const GPT_IMAGE_2_T2I_MODEL_SEED = {
@@ -115,7 +116,8 @@ export function isBrokenKieImageMapping(mapping: {
   create?: { body?: unknown };
   query?: { response_mapping?: Record<string, unknown> };
 }): boolean {
-  if (mapping.vendorKey !== "kie" || mapping.taskKind !== "text_to_image") return false;
+  // mapping 行手里没有 vendors 列表，只能按 key 形状解析 root（兄弟连接 `kie--x` 同样命中）。
+  if (builtinVendorKeyOfKey(mapping.vendorKey) !== "kie" || mapping.taskKind !== "text_to_image") return false;
   const input = (mapping.create?.body as { input?: Record<string, unknown> } | undefined)?.input;
   // 视频形状的唯一可靠标志是 duration —— resolution 现在是 gpt-image-2 的合法图像参数（铁律：能力进基础层），
   // 不再当作「坏视频 mapping」标志（否则会把刚补好 resolution 的正确 mapping 误判 repair）。

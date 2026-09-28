@@ -1,3 +1,4 @@
+import { backfillShotIndexes } from '../model/shotNumbering'
 // 画布事件重放器(harness S5-a):事件 → 投影的纯函数。
 // 这就是"账本算余额"的那只手——S5-a 当 CI 安全网(replay≡snapshot 属性测试),
 // S5-b 翻正后当 hydrate/undo 的正式投影。复用 graphOps 纯算子保证与 store 同语义。
@@ -202,6 +203,13 @@ export function applyCanvasEvent(projection: CanvasProjection, event: Replayable
   }
 }
 
-export function replayCanvasEvents(events: readonly ReplayableEvent[]): CanvasProjection {
-  return events.reduce(applyCanvasEvent, emptyCanvasProjection())
+export function replayCanvasEvents(
+  events: readonly ReplayableEvent[],
+  initial: CanvasProjection = emptyCanvasProjection(),
+): CanvasProjection {
+  // Older batches persist individual patches. Repairing a temporary duplicate
+  // between two number-swap patches would overwrite the batch's final identity.
+  // Full replay, recovery tails and undo prefixes share this completion boundary.
+  const projection = events.reduce(applyCanvasEvent, initial)
+  return { ...projection, nodes: backfillShotIndexes(projection.nodes).nodes }
 }

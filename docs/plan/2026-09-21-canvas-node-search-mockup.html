@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>画布节点搜索样张</title>
+<!-- 真实 token：与画布同一份 --nomi-*（src/theme/nomi-tokens.css），样张不自抄色值。 -->
+<link rel="stylesheet" href="../../src/theme/nomi-tokens.css">
+<style>
+  body { margin: 0; font-family: var(--nomi-font-sans); background: var(--nomi-bg); color: var(--nomi-ink); }
+  .note { max-width: 880px; margin: 24px auto 12px; padding: 0 16px; font-size: 13px; color: var(--nomi-ink-60); line-height: 1.6; }
+  .note b { color: var(--nomi-ink); }
+  .stage { position: relative; max-width: 880px; height: 520px; margin: 0 auto 32px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius-lg); background: var(--nomi-bg); overflow: hidden;
+    background-image: radial-gradient(var(--nomi-ink-10) 1px, transparent 1px); background-size: 20px 20px; }
+  .card { position: absolute; width: 150px; height: 96px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius); background: var(--nomi-paper); box-shadow: var(--nomi-shadow-sm); font-size: 12px; padding: 8px; box-sizing: border-box; color: var(--nomi-ink-60); }
+  .card b { display: block; color: var(--nomi-ink); margin-bottom: 4px; }
+  .card.hit { outline: 2px solid var(--nomi-accent); outline-offset: 2px; }
+  .card.dim { opacity: .35; }
+  /* 搜索浮层：画布顶部居中，不是全屏遮罩——画布照样看得见，命中项在画布上同步高亮。 */
+  .search { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); width: 360px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius); background: var(--nomi-paper); box-shadow: var(--nomi-shadow-lg); }
+  .search input { box-sizing: border-box; width: 100%; border: 0; border-bottom: 1px solid var(--nomi-line-soft); background: transparent; padding: 10px 12px; font: inherit; font-size: 13px; color: var(--nomi-ink); outline: none; }
+  .row { display: flex; align-items: center; gap: 8px; padding: 7px 12px; font-size: 12px; color: var(--nomi-ink-80); }
+  .row .kind { flex: none; padding: 1px 6px; border-radius: var(--nomi-radius-sm); background: var(--nomi-ink-05); color: var(--nomi-ink-60); }
+  .row .snip { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--nomi-ink-60); }
+  .row.active { background: var(--nomi-accent-soft); color: var(--nomi-ink); }
+  mark { background: transparent; color: var(--nomi-accent); font-weight: 600; }
+  .foot { display: flex; justify-content: space-between; padding: 6px 12px; font-size: 11px; color: var(--nomi-ink-40); border-top: 1px solid var(--nomi-line-soft); }
+  kbd { font-family: inherit; padding: 0 4px; border: 1px solid var(--nomi-line); border-radius: var(--nomi-radius-sm); background: var(--nomi-ink-05); }
+</style>
+</head>
+<body>
+<p class="note">
+  <b>⌘F 画布节点搜索（样张，待拍板，未实现）</b><br>
+  按 ⌘F（Windows Ctrl+F）→ 画布顶部居中弹一个输入框。按<b>节点标题 / 提示词 / 镜头号</b>过滤当前分类的节点，
+  结果最多 8 条；画布上命中的卡片同步描边、没命中的变淡。↑↓ 选，<b>回车 = 视口飞到那张卡并选中它、关掉搜索</b>；Esc 关掉、画布恢复原样。
+  不搜别的分类、不搜素材库（那是资源库的搜索），不做模糊拼音（v1 只做包含匹配）。
+</p>
+<div class="stage" aria-label="画布">
+  <div class="card hit" style="left:90px;top:150px"><b>镜头 3 · 雨夜街口</b>女主撑伞回头，霓虹倒影…</div>
+  <div class="card dim" style="left:280px;top:150px"><b>镜头 4 · 便利店</b>店员抬头，门铃响…</div>
+  <div class="card hit" style="left:470px;top:150px"><b>镜头 7 · 雨夜屋顶</b>俯拍，雨丝斜切画面…</div>
+  <div class="card dim" style="left:660px;top:150px"><b>角色设定</b>短发，黑色风衣…</div>
+  <div class="card dim" style="left:180px;top:320px"><b>镜头 8 · 地铁</b>车窗外灯带流过…</div>
+  <div class="card hit" style="left:420px;top:320px"><b>参考图 · 霓虹</b>提示词：雨夜，霓虹招牌…</div>
+  <div class="search" role="dialog" aria-label="搜索画布节点">
+    <input value="雨夜" aria-label="按标题或提示词搜索">
+    <div class="row active"><span class="kind">镜头 3</span><span><mark>雨夜</mark>街口</span><span class="snip">女主撑伞回头，霓虹倒影</span></div>
+    <div class="row"><span class="kind">镜头 7</span><span><mark>雨夜</mark>屋顶</span><span class="snip">俯拍，雨丝斜切画面</span></div>
+    <div class="row"><span class="kind">图片</span><span>参考图 · 霓虹</span><span class="snip">提示词：<mark>雨夜</mark>，霓虹招牌</span></div>
+    <div class="foot"><span><kbd>↑</kbd><kbd>↓</kbd> 选择 · <kbd>↵</kbd> 定位并选中</span><span><kbd>Esc</kbd> 关闭</span></div>
+  </div>
+</div>
+</body>
+</html>

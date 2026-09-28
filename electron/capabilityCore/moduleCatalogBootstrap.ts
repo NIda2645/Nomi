@@ -2,6 +2,8 @@ import { createModuleRegistry } from "./moduleRegistry";
 import type { ModuleManifest } from "./moduleManifest";
 import type { GenerationProviderCapabilities } from "./generationRuntimeAdapter";
 import { readCatalog } from "../catalog/catalogStore";
+import { wireReferencedParamKeys, consumedCanonicalKeys } from "../catalog/paramTranslate";
+import { ARCHETYPE_WIRE_DEFAULTS } from "../catalog/archetypeWireDefaults.generated";
 import type { CatalogState, Mapping, Model, ProfileKind } from "../catalog/types";
 import { createCatalogAvailability } from "../catalog/catalogModelAvailability";
 import { isCredentialReason } from "../shared/modelAvailability";
@@ -33,8 +35,41 @@ function parameterType(field: NonNullable<Model["onboarding"]>["fields"][number]
   return "string";
 }
 
+/**
+ * 一个模型在 Run 路径上的**合法参数表**。
+ *
+ * 2026-09-21 之前这张表只从 `model.onboarding.fields` + `mapping.create.defaultParams` 派生，而用户真实
+ * 目录里 165 个模型只有 3 个有 `onboarding.fields`、270 条 mapping 只有 12 条有 `defaultParams`——也就是
+ * 说**绝大多数模型的这张表是空的**，于是 `compileParameters` 把用户在付款卡上改的每一个参数都当成
+ * 「这个模型不支持」丢掉（卡上选 2K → 供应商收到 1k → 节点还印着 2K，花的是真钱）。
+ *
+ * 权威来源本来就在手边，而且**和手动画布那条路读的是同一份声明**：
+ *  ① `wireReferencedParamKeys(mapping.create)` —— 这条 create op 的 body 与进程型 transport 的 argv 里
+ *     所有 `{{request.params.X}}` 引用的键。一个键要是这里没出现，它根本发不出去；出现了，它就是合法的。
+ *     （`electron/runtime.ts` 的手动路把 extras 原样交给 `buildProfileHttpRequest` 渲染同一批令牌。）
+ *  ② `consumedCanonicalKeys(paramMap)` + `paramMap.drops` —— 经参数映射改名/丢弃的那些键同样合法
+ *     （与 `apimartGenerationProjection.normalizeParameters` 的判据逐条同源，否则会出现
+ *     「合同放行、运输拒收」这种两道门各答一次的裂缝）。
+ *  ③ 档案 wire 默认 `ARCHETYPE_WIRE_DEFAULTS[archetypeId][taskKind][vendorKey|"*"]` —— 档案声明过默认值的
+ *     那些键（手动路的 `applyHeadlessParamDefaults` 兜底填的就是它们）。
+ *  ④ 既有的 `onboarding.fields`（带类型与选项，**类型信息最强，优先**）与 `defaultParams`。
+ *
+ * 类型这一栏只在我们**真的知道**的时候才写死：`onboarding.fields` 声明了控件类型与选项 → 照抄；
+ * `defaultParams` 有值 → 按值的类型；只由线缆模板得知的键 → `"any"`。写一个猜出来的类型等于凭空造出
+ * 第二份真相源，会把手动路照发、Run 路拒收的裂缝换个地方再长一次。
+ */
+function wireDefaultKeysFor(model: Model, mapping: Mapping): readonly string[] {
+  const archetypeId = model.meta && typeof model.meta === "object" && !Array.isArray(model.meta)
+    ? (model.meta as Record<string, unknown>).archetypeId
+    : undefined;
+  if (typeof archetypeId !== "string" || !archetypeId) return [];
+  const perKind = ARCHETYPE_WIRE_DEFAULTS[archetypeId]?.[mapping.taskKind];
+  if (!perKind) return [];
+  return Object.keys(perKind[mapping.vendorKey] ?? perKind["*"] ?? {});
+}
+
 function modelParameterSchema(model: Model, mappings: readonly Mapping[]) {
-  const schema: Record<string, { type: "string" | "number" | "boolean" | "enum"; enum?: string[] }> = {};
+  const schema: Record<string, { type: "string" | "number" | "boolean" | "enum" | "any"; enum?: string[] }> = {};
   for (const field of model.onboarding?.fields ?? []) {
     schema[field.key] = {
       type: parameterType(field),
@@ -46,9 +81,21 @@ function modelParameterSchema(model: Model, mappings: readonly Mapping[]) {
   for (const mapping of mappings) {
     for (const [key, value] of Object.entries(mapping.create.defaultParams ?? {})) {
       if (schema[key]) continue;
-      const type = typeof value === "number" ? (Number.isInteger(value) ? "number" : "number")
-        : typeof value === "boolean" ? "boolean" : "string";
+      const type = typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : "string";
       schema[key] = { type };
+    }
+  }
+  // 线缆模板与档案默认只能证明「这个键送得出去」，证明不了它的取值域——记成 `any`，取值由供应商裁决，
+  // 我们不替它编一份枚举。
+  for (const mapping of mappings) {
+    for (const key of [
+      ...wireReferencedParamKeys(mapping.create),
+      ...consumedCanonicalKeys(mapping.create.paramMap),
+      ...(mapping.create.paramMap?.drops ?? []),
+      ...wireDefaultKeysFor(model, mapping),
+    ]) {
+      if (schema[key]) continue;
+      schema[key] = { type: "any" };
     }
   }
   return schema;

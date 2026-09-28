@@ -37,14 +37,14 @@ function envelope(): ProductionGenerationAuthorizationEnvelopeV1 {
       providerIdempotencyKey: "generation:run-1:shot-1:attempt-1",
       price: { currency: "CNY", maximum: 6 },
     }],
-    budget: { currency: "CNY", maximum: 6, ledgerCeiling: 6 },
+    budget: { currency: "CNY", maximum: 6, ledgerCeiling: 6, unknownJobCount: 0 },
   };
 }
 
 describe("ProductionGenerationAuthorizationEnvelope", () => {
   it("is stable across object key ordering", () => {
     const first = envelope();
-    const second = { ...first, budget: { maximum: 6, ledgerCeiling: 6, currency: "CNY" } };
+    const second = { ...first, budget: { maximum: 6, ledgerCeiling: 6, currency: "CNY", unknownJobCount: 0 } };
     expect(productionGenerationAuthorizationDigest(first)).toBe(productionGenerationAuthorizationDigest(second));
   });
 
@@ -62,7 +62,7 @@ describe("ProductionGenerationAuthorizationEnvelope", () => {
     ["job set", (value: ProductionGenerationAuthorizationEnvelopeV1) => ({ ...value, jobs: [{ ...value.jobs[0], jobId: "job-2" }] })],
     ["wire payload", (value: ProductionGenerationAuthorizationEnvelopeV1) => ({ ...value, jobs: [{ ...value.jobs[0], providerWirePayloadHash: productionGenerationPayloadHash({ changed: true }) }] })],
     ["idempotency identity", (value: ProductionGenerationAuthorizationEnvelopeV1) => ({ ...value, jobs: [{ ...value.jobs[0], providerIdempotencyKey: "generation:run-1:shot-1:attempt-2" }] })],
-    ["budget", (value: ProductionGenerationAuthorizationEnvelopeV1) => ({ ...value, jobs: [{ ...value.jobs[0], price: { currency: "CNY", maximum: 7 } }], budget: { currency: "CNY", maximum: 7, ledgerCeiling: 7 } })],
+    ["budget", (value: ProductionGenerationAuthorizationEnvelopeV1) => ({ ...value, jobs: [{ ...value.jobs[0], price: { currency: "CNY", maximum: 7 } }], budget: { currency: "CNY", maximum: 7, ledgerCeiling: 7, unknownJobCount: 0 } })],
   ] as Array<[string, (value: ProductionGenerationAuthorizationEnvelopeV1) => ProductionGenerationAuthorizationEnvelopeV1]>)(
     "changes the digest when %s changes",
     (_label, mutate) => {
@@ -80,8 +80,8 @@ describe("ProductionGenerationAuthorizationEnvelope", () => {
 
   it("allows a tighter batch cap but rejects one above the ordered job ceilings", () => {
     const value = envelope();
-    expect(createProductionGenerationAuthorizationEnvelope({ ...value, budget: { currency: "CNY", maximum: 5, ledgerCeiling: 6 } }).budget.maximum).toBe(5);
-    expect(() => createProductionGenerationAuthorizationEnvelope({ ...value, budget: { currency: "CNY", maximum: 7, ledgerCeiling: 7 } })).toThrow(
+    expect(createProductionGenerationAuthorizationEnvelope({ ...value, budget: { currency: "CNY", maximum: 5, ledgerCeiling: 6, unknownJobCount: 0 } }).budget.maximum).toBe(5);
+    expect(() => createProductionGenerationAuthorizationEnvelope({ ...value, budget: { currency: "CNY", maximum: 7, ledgerCeiling: 7, unknownJobCount: 0 } })).toThrow(
       "Budget ceiling must not exceed",
     );
   });

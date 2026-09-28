@@ -1,0 +1,80 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-generated-data-exemption-cannot-read-its-own-files",
+  "problem_type": "门岗规则的判据读不到它要判的那些文件的正文，于是规则恒为 false",
+  "symptom": "check:root-cause-contracts 在合并树上报「changed production file is not in the door map: electron/catalog/archetypeWireDefaults.{image,video}.generated.ts」。这两个文件正是 2026-09-18 刚加的「@generated 纯数据免门」要豁免的那一类：它们只有一张常量表，没有任何写入口或读入口。规则的单测全绿，真仓里照样红。",
+  "direct_cause": "scripts/check-root-cause-contracts.mjs 只按两个来源装 fileContents：每条 door 的 path（116-125 行那段循环）与 structural 合同的 preserved_exports。isGeneratedDataFile（scripts/root-cause-contracts.mjs:428）先 fileContent() 取正文，取不到就 return false。而它要判的正是**没有门的文件**——没有门就不在装载面里，于是永远取不到正文、永远返回 false。",
+  "class_root": "装载面按「已知的那一维」建（门表里的 path），判据却问「本次改动的那一维」（changed files）。两维不重合的那一格就是规则的盲区，而盲区恰好等于规则本身要覆盖的集合。同形状的错误在单测里看不见：测试直接把 fileContents 喂进 validator，绕过了 CLI 的装载那一步。",
+  "migration": "CLI 在装门表正文之前，先对本次改动的每个文件调一次 loadFileContent；loadFileContent 自己幂等（has 就 return）也自带路径越界与非文件保护，所以装载面只是变成 changed ∪ doors ∪ preserved 的并集，没有第二份装载实现要删。",
+  "affected_population": [
+    "任何一份含 @generated 纯数据文件、而该文件没有门的根因合同——2026-09-18 合并树上实际中招的是 Higgsfield 那份（archetypeWireDefaults.image/video.generated.ts）",
+    "以后每一条「判据要读文件正文」的合同门岗规则：只要它判的文件不在门表里，就同样读不到正文"
+  ],
+  "scope_paths": [
+    "scripts/check-root-cause-contracts.mjs",
+    "scripts/check-root-cause-contracts.node-test.mjs"
+  ],
+  "entry_points": [
+    "scripts/check-root-cause-contracts.mjs:116 fileContents 的唯一装载面",
+    "scripts/root-cause-contracts.mjs:429 isGeneratedDataFile 读正文",
+    "scripts/root-cause-contracts.mjs:189 validateStructuralContract 读 preserved_exports 正文",
+    "scripts/root-cause-contracts.mjs:469 validateDoorMap 逐条核 door 行"
+  ],
+  "invariants": [
+    "本次改动的每个文件，validator 都能拿到它的正文；任何「要读正文才能判」的规则不会因为装载面漏了它而静默返回 false"
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/check-root-cause-contracts.mjs",
+    "tests": [
+      "scripts/check-root-cause-contracts.node-test.mjs"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": "scripts/check-root-cause-contracts.mjs",
+      "line": 123,
+      "symbol": "fileContents"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/check-root-cause-contracts.mjs",
+      "line": 149,
+      "symbol": "fileContents"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "写入口只有 loadFileContent 里那一处 set（本次新增的 changedFiles 循环也走它，不是第二扇门）；读入口是把整张表交给 validator 的那一处。两扇一写一读，本就是同一个 owner 的两端，合并没有意义。"
+  },
+  "regression_tests": [
+    "scripts/check-root-cause-contracts.node-test.mjs"
+  ],
+  "residual_risks": [
+    "装载面变大意味着每次 CLI 运行多读若干文件；改动面大的 diff 会多读几百个文件的正文，实测这一轮 89 门岗链里该门岗仍是 5-10 秒量级，没有可观测的代价。",
+    "新加的那条断言是源码级的（核 CLI 里有那一行），不是端到端跑一次 CLI。真正的端到端保护仍是同文件里「every existing docs/fixes contract still validates through the formal checker」那条——它正是 2026-09-18 把这个 bug 抓出来的那条。"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "纯内部门岗实现问题：判据、装载面与调用方都在本仓 scripts/ 下，没有外部规范或第三方 API 参与。",
+  "recurrence": {
+    "classification": "one_off",
+    "reason": "装载面只有一处（scripts/check-root-cause-contracts.mjs:116-125），本次改完它就是 changed ∪ doors ∪ preserved 的并集，已经盖住 validator 里全部三个读正文的判据。全仓再无第二处把 fileContents 喂给 validateRootCauseChange 的地方，所以这不是一类会从别的调用者回来的问题，而是这一处的装载面画小了。",
+    "same_class_scan": [
+      "scripts/root-cause-contracts.mjs:189 validateStructuralContract → 读 preserved_exports 的正文；这些 path 一直由 CLI 显式装载，改动后仍在并集里",
+      "scripts/root-cause-contracts.mjs:429 isGeneratedDataFile → 本次修的那条，改动后落在 changed 维上",
+      "scripts/root-cause-contracts.mjs:469 validateDoorMap → 读 door.path 的正文；这些 path 一直由 CLI 显式装载",
+      "scripts/check-root-cause-contracts.mjs:149 全仓唯一一处把 fileContents 传进 validateRootCauseChange（grep 'fileContents' 全仓只有这两个文件命中）"
+    ]
+  },
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "只是把装载面补全，没有第二份实现或旧路径可删——loadFileContent 本来就是唯一的装载函数。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及任何第三方依赖的引入、升级或保留。",
+    "exit_criteria": []
+  }
+}

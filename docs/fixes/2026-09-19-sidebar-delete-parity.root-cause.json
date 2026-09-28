@@ -1,0 +1,108 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-19-sidebar-delete-parity",
+  "problem_type": "Existing resource action removed outside authorized scope",
+  "symptom": "Legacy storyboard context menu lacks delete while document delete remains",
+  "direct_cause": "Sidebar delete renderer was narrowed to document targets",
+  "class_root": "Shared resource menu did not preserve target-dispatched existing actions",
+  "affected_population": [
+    "Existing legacy storyboard resources in creation sidebar"
+  ],
+  "scope_paths": [
+    "src/workbench/creation/DocumentListSidebar.tsx"
+  ],
+  "entry_points": [
+    "Legacy storyboard context menu",
+    "Document context menu"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Internal restoration of existing menu and deletion owner; no external API changes",
+  "invariants": [
+    "Document and storyboard resource menus dispatch deletion to their existing target owners after confirmation"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "deleteStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "deleteStoryboardDesign"
+    }
+  ],
+  "door_reduction": {
+    "before": 0,
+    "after": 2,
+    "why_not": "The restored menu must read the existing owner action and dispatch confirmed deletion; no second deletion owner is introduced."
+  },
+  "generality_proof": "Both resource targets use the same menu entry; target identity is captured before asynchronous confirmation.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "DocumentListSidebar",
+      "responsibility": "Render existing resource actions and dispatch confirmed deletion by target kind"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "entry_point": "onDeleteStoryboard",
+      "disposition": "enforced",
+      "evidence": "Browser clicks legacy menu, cancels, then confirms and checks actual store-backed rows"
+    },
+    {
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "entry_point": "onDeleteDocument",
+      "disposition": "enforced",
+      "evidence": "Browser deletes document and verifies last document remains protected"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every legacy resource lost the same shared action",
+    "same_class_scan": [
+      "door-map DocumentListSidebar.tsx: one shell reader",
+      "Compared both document and storyboard context-menu targets and existing deletion owners",
+      "Before repair deleteStoryboardDesign door map had zero consumers; after restoring original menu it reports read/write at DocumentListSidebar."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/creation/DocumentListSidebar.tsx",
+    "invariant": "Shared menu exposes the existing confirmed deletion for both resource kinds",
+    "failure_mode": "Cancel performs no deletion; final document remains protected",
+    "exception_policy": "none",
+    "strategy": "Restore shared target-dispatched menu instead of separate new deletion mechanisms",
+    "artifacts": [
+      "src/workbench/creation/DocumentListSidebar.tsx"
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/creation-sidebar-delete.test.mjs"
+  ],
+  "class_regression_tests": [
+    "tests/ux/creation-sidebar-delete.test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Restores original owner; no new parallel deletion implementation"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency behavior involved",
+    "exit_criteria": []
+  },
+  "migration": "No format change or migration",
+  "residual_risks": [
+    "Controlled browser component evidence is not Electron package acceptance"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/creation/DocumentListSidebar.tsx",
+    "tests": [
+      "tests/ux/creation-sidebar-delete.test.mjs"
+    ]
+  }
+}

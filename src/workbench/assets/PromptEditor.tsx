@@ -6,10 +6,12 @@ import { Extension } from '@tiptap/core'
 import { Plugin } from '@tiptap/pm/state'
 import { Decoration, DecorationSet } from '@tiptap/pm/view'
 import { cn } from '../../utils/cn'
+import { TIPTAP_PLACEHOLDER_CLASSES } from './tiptapPlaceholderClasses'
 import { AssetMention } from './AssetMentionNode'
 import { createAssetMentionSuggestion } from './AssetMentionSuggestion'
 import type { MentionSuggestionItem, MentionUploadControls } from './AssetMentionSuggestionList'
-import { promptToContent, shouldApplyExternalPromptSync, shouldEmitPromptUpdate } from './promptEditorContent'
+import { promptToContent } from './promptEditorContent'
+import { createControlledEditorSync } from '../common/controlledEditorSync'
 import { encodeMention } from './promptMentions'
 import { promptRangeToDocRanges, promptRunsFromDocument, type PromptEditorSegment } from './promptEditorSkeleton'
 
@@ -133,28 +135,39 @@ export default function PromptEditor({ value, onChange, placeholder, ariaLabel, 
     }),
     [],
   )
-  // 防控制内容回灌死循环:记下编辑器自身最后产出的字符串,外部 value 等于它就不重设。
-  const lastStringRef = React.useRef(value)
-  const latestValueRef = React.useRef(value)
-  latestValueRef.current = value
+  // 编辑器是自己文本的唯一 owner：外部 value 只有「真正来自外部」时才写进来，
+  // 自己发出去又从 store → props 回流的旧值一律不覆盖文档（裁决见 controlledEditorSync.ts）。
+  const syncRef = React.useRef<ReturnType<typeof createControlledEditorSync> | null>(null)
+  if (!syncRef.current) syncRef.current = createControlledEditorSync(value)
+  const sync = syncRef.current
+
+  // 传给 useEditor 的选项必须引用稳定：tiptap 按引用比较 extensions 的每一项以及 content / editorProps，
+  // 变了就 setOptions + view.updateState——原来每次渲染（每敲一个字）都白做一遍（2026-09-25 画布跟手）。
+  // content 只在创建时生效；之后外部 value 由下面的同步 effect 写入，所以这里只取第一次的值。
+  const extensions = React.useMemo(() => [
+    StarterKit.configure({ heading: false, bulletList: false, orderedList: false, blockquote: false, codeBlock: false, horizontalRule: false }),
+    Placeholder.configure({ placeholder: () => placeholderRef.current }),
+    AssetMention,
+    suggestionExt,
+    promptSkeletonExt,
+  ], [suggestionExt, promptSkeletonExt])
+  const initialContentRef = React.useRef<ReturnType<typeof promptToContent> | null>(null)
+  if (!initialContentRef.current) initialContentRef.current = promptToContent(value, mentionReferences ?? mentionCandidates)
+  const editorProps = React.useMemo(
+    () => ({ attributes: { class: 'generation-canvas-v2-node__prompt-input outline-0', ...(ariaLabel ? { 'aria-label': ariaLabel } : {}) } }),
+    [ariaLabel],
+  )
 
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({ heading: false, bulletList: false, orderedList: false, blockquote: false, codeBlock: false, horizontalRule: false }),
-      Placeholder.configure({ placeholder: () => placeholderRef.current }),
-      AssetMention,
-      suggestionExt,
-      promptSkeletonExt,
-    ],
-    content: promptToContent(value, mentionReferences ?? mentionCandidates),
+    extensions,
+    content: initialContentRef.current,
     editable: editable !== false,
-    editorProps: { attributes: { class: 'generation-canvas-v2-node__prompt-input outline-0', ...(ariaLabel ? { 'aria-label': ariaLabel } : {}) } },
+    editorProps,
+    // 仅真正改变 prompt 字符串的文档事务向 owner 回写；胶囊编号事务（串不变）不回写，不覆盖外部 plan 编辑。
     onUpdate: ({ editor: current, transaction }) => {
+      if (!transaction.docChanged) return
       const next = contentToPrompt(current)
-      if (!shouldEmitPromptUpdate(transaction.docChanged, next, latestValueRef.current)) return
-      lastStringRef.current = next
-      latestValueRef.current = next
-      onChangeRef.current(next)
+      if (sync.emit(next)) onChangeRef.current(next)
     },
   })
 
@@ -181,13 +194,12 @@ export default function PromptEditor({ value, onChange, placeholder, ariaLabel, 
     if (editor.isEditable !== next) editor.setEditable(next, false)
   }, [editor, editable])
 
-  // 外部 value 变化(切节点 / AI 写入)→ 同步进编辑器,跳过自身刚产出的那次。
+  // 外部 value 变化(切节点 / AI 写入 / 撤销)→ 写进编辑器；自己发出去的回声不写。
   React.useEffect(() => {
     if (!editor || editor.isDestroyed) return
-    if (!shouldApplyExternalPromptSync(value, latestValueRef.current, lastStringRef.current)) return
-    lastStringRef.current = value
+    if (!sync.receive(value)) return
     editor.commands.setContent(promptToContent(value, mentionReferences ?? orderedUrlsRef.current), { emitUpdate: false })
-  }, [editor, mentionReferences, value])
+  }, [editor, mentionReferences, sync, value])
 
   // 参考拖拽重排后，prompt 字符串仍是同一批 url，但 chip 的媒体编号必须按最新列表立即刷新。
   // 只改易失的 index 属性，不改持久化内容、不重建编辑器，也不打断当前光标。
@@ -225,7 +237,7 @@ export default function PromptEditor({ value, onChange, placeholder, ariaLabel, 
       editor={editor}
       onBlur={onBlur}
       data-prompt-box="true"
-      className={cn('text-nomi-ink text-body-sm leading-[1.7] [&_.ProseMirror]:outline-0 [&_.ProseMirror]:min-h-[38px] [&_.ProseMirror_p]:m-0 [&_.is-editor-empty]:before:text-nomi-ink-40 [&_.is-editor-empty]:before:content-[attr(data-placeholder)] [&_.is-editor-empty]:before:float-left [&_.is-editor-empty]:before:pointer-events-none [&_.is-editor-empty]:before:h-0 [&_.storyboard-prompt-segment]:border-b [&_.storyboard-prompt-segment]:border-dashed [&_.storyboard-prompt-segment]:border-nomi-ink-30 [&_.storyboard-prompt-segment]:cursor-pointer [&_.storyboard-prompt-segment:hover]:border-nomi-accent [&_.storyboard-prompt-segment:hover]:text-nomi-ink', className)}
+      className={cn('text-nomi-ink text-body-sm leading-[1.7] [&_.ProseMirror]:outline-0 [&_.ProseMirror]:min-h-[38px] [&_.ProseMirror_p]:m-0', TIPTAP_PLACEHOLDER_CLASSES, '[&_.storyboard-prompt-segment]:border-b [&_.storyboard-prompt-segment]:border-dashed [&_.storyboard-prompt-segment]:border-nomi-ink-30 [&_.storyboard-prompt-segment]:cursor-pointer [&_.storyboard-prompt-segment:hover]:border-nomi-accent [&_.storyboard-prompt-segment:hover]:text-nomi-ink', className)}
     />
   )
 }

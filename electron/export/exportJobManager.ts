@@ -1,3 +1,4 @@
+import { sameCommittedProjectSelection } from "../shared/projectBinding";
 import { createHash, randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -123,12 +124,9 @@ function toErrorDetails(error: unknown): ExportJobError {
   return { message: JSON.stringify(error) || String(error) };
 }
 
-function sameProjectIdentity(left: ExportJobProjectIdentity | null, right: ExportJobProjectIdentity): boolean {
-  return left !== null && left.projectId === right.projectId
-    && left.immutableProjectUuid === right.immutableProjectUuid
-    && left.projectGeneration === right.projectGeneration
-    && left.canonicalRootDigest === right.canonicalRootDigest;
-}
+// C2：同 exportJobIpc / exportJobs / canvasReadPortResolver / currentProjectResolver，
+// 这四维以前在五处各写一遍；现在只从 owner import。
+const sameProjectIdentity = sameCommittedProjectSelection;
 
 function correlationDigest(auditManifestDigest: string, input: ExportJobExecutionEvidence["input"]): string {
   const inputIdentity = input.kind === "webm" ? `webm:${input.sha256}:${input.bytes}` : "filtergraph";

@@ -40,8 +40,25 @@ export function moduleKey(candidate) {
   return segments[0]
 }
 
+/**
+ * 这份合同算不算「这一层又被修了一次」。
+ *
+ * **`change_kind: "structural"` 的不算**（2026-09-22）。这道门自己的判词是「同一层在短时间里被修
+ * 第三次，就先出结构评审」——它数的单位是**纠正性修复**。而结构性合同按 schema 定义就没有
+ * `symptom` / `direct_cause` / `class_root`（`root-cause-contracts.mjs` 的 `validateStructuralContract`
+ * 根本不要求这三样）：它声明的是「这次改动行为逐字不变」。把它算进症状簇，等于让一次纯搬家
+ * 或纯删死代码去要求一份没有证据的结构评审——而**没有证据的评审正是这道门想防的东西**。
+ *
+ * 触发这条判断的实例：`2026-09-22-catalog-listing-dead-imports`（删两个没人读的 import，
+ * 零行为变化，按门岗自己的正规出口走 structural），它一进来就把 `electron/catalog` 顶过了阈值。
+ */
+export function countsAsSymptom(contract) {
+  return contract?.change_kind !== "structural"
+}
+
 /** 一份合同碰了哪些模块。scope_paths 是正式声明，entry_points 里夹的路径是补充。 */
 export function modulesOf(contract) {
+  if (!countsAsSymptom(contract)) return []
   const modules = new Set()
   for (const scope of Array.isArray(contract?.scope_paths) ? contract.scope_paths : []) {
     const key = moduleKey(scope)

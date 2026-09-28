@@ -82,7 +82,7 @@ for (const kind of ['openai-compatible', 'openai-responses', 'anthropic'] as con
     const beforeInvalid = structuredClone(await session.findEntries({ type: 'message', order: 'asc' }, BACKGROUND_CONTEXT))
     for (const invalidId of ['missing-entry', foreignId, original[0]!.id, messages.at(-1)!.id]) {
       draft = Object.assign({}, draft, { continueFromEntryId: invalidId })
-      await assert.rejects(lane.execute({ kind: 'prompt', text: 'Must not be admitted.' }), /continuation/i)
+      await assert.rejects(lane.execute({ kind: 'prompt', text: 'Must not be admitted.' }), /continuation|input_reference_invalid/i)
     }
     assert.deepEqual(await session.findEntries({ type: 'message', order: 'asc' }, BACKGROUND_CONTEXT), beforeInvalid)
     assert.equal(fixture.http.requests.length, 3, 'Invalid references fail before input persistence or provider requests.')

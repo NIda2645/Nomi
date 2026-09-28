@@ -17,7 +17,6 @@ import { createWorkspaceProject, readWorkspaceProject, saveWorkspaceProject } fr
 import { ensureWorkspaceProjectIdentity } from '../workspace/workspaceProjectIdentity'
 import { CAPABILITY_DIR_ENV, ensureToken, signMcpClient } from './security'
 import { createMcpConnectionContext } from './mcpConnectionContext'
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import { createProductionProjectSessionRuntime } from './projectSessionRuntime'
 import { createMcpProtocol, type McpTransport } from './mcpProtocol'
 import { dispatch } from './dispatcher'
@@ -117,13 +116,11 @@ async function makeFixture() {
     proof: signMcpClient('codex'),
     randomSecret: () => 'S'.repeat(43),
   })
-  const generationPolicy = createMcpGenerationPolicy({ env: {} })
   const runtime = createProductionProjectSessionRuntime({
-    generationPolicy,
     getOpenProjectSelection: () => committedSelection,
     isServerAllowlisted: () => false,
   })
-  return { deps, connection, generationPolicy, runtime }
+  return { deps, connection, runtime }
 }
 
 function makeClient(
@@ -209,7 +206,6 @@ describe('MCP semantic operation production-path matrix', () => {
       runTask: vi.fn(),
       makeGateway: (projectId: string) => createDiskGateway(projectId),
       productionRuns: {},
-      generationPolicy: fixture.generationPolicy,
       origin: { host: 'codex' as const },
       projectSession: { authority: fixture.runtime.authority, connection: fixture.connection },
     }
@@ -322,7 +318,6 @@ describe('MCP semantic operation production-path matrix', () => {
       runTask: vi.fn(),
       makeGateway: (projectId: string) => createDiskGateway(projectId),
       productionRuns: {},
-      generationPolicy: fixture.generationPolicy,
       origin: { host: 'codex' as const },
       projectSession: { authority: fixture.runtime.authority, connection: fixture.connection },
     }
@@ -387,7 +382,6 @@ describe('MCP semantic operation production-path matrix', () => {
       runTask: vi.fn(),
       makeGateway: (projectId: string) => createDiskGateway(projectId),
       productionRuns: {},
-      generationPolicy: fixture.generationPolicy,
       origin: { host: 'codex' as const },
       projectSession: { authority: fixture.runtime.authority, connection: fixture.connection },
     }

@@ -63,6 +63,9 @@ export function completeNodeConnection(connectedNodeId: string, present?: (messa
     if (target) {
       if (resolveParameterReferenceAssignments(target, nodes, edges).some(({ edge }) => edge?.source === sourceNodeId)) return
       const slots = resolveReferenceSlots(target, nodes, edges)
+      // 目标还没有模型档案（刚从连线菜单新建、模型稍后才挂上）= 没有声明任何槽，谈不上「满」：
+      // 与 validateReferenceEdge「无档案一律放行」同口径。此前这里照报「该参考已满」，连线新建节点次次误报。
+      if (slots.length === 0) return
       const landed = slots.some((s) => s.fills.some((f) => f.origin.type === 'edge' && f.origin.sourceNodeId === sourceNodeId))
       const hasEdge = edges.some((e) => e.source === sourceNodeId && e.target === targetNodeId)
       if (hasEdge && !landed) {

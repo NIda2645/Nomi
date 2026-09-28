@@ -107,7 +107,9 @@ export function createRunOwnedGenerationGateAuthority(input: Readonly<{
       contractHash: digest,
       gateId: envelope.gateId,
       costScope: envelope.costScope,
-      maximumCost: envelope.budget.maximum,
+      // 一批**全是**未知价：没有已知金额可报，如实回 null（绝不是 ¥0）。
+      maximumCost: envelope.budget.unknownJobCount === envelope.jobs.length ? null : envelope.budget.maximum,
+      ...(envelope.budget.unknownJobCount > 0 ? { unknownShotCount: envelope.budget.unknownJobCount } : {}),
       currency: envelope.budget.currency,
       challengeId: challenge.challenge.challengeId,
       nonce: challenge.challenge.nonce,

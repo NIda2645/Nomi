@@ -5,7 +5,7 @@ import { chmod, lstat, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 
 import { validateAntigravityImage } from "../ai/antigravityArtifacts";
 import { Model3DValidationError, validateGlbStructure } from "../assets/model3dValidation";
-import { contentTypeFromMagicBytes, extensionFromContentType, isCertifiableMediaContentType, MEDIA_TYPES } from "../assets/mediaTypes";
+import { contentTypeFromMagicBytes, extensionFromContentType, isCertifiableMediaContentType, isMarkupMasquerade, MEDIA_TYPES } from "../assets/mediaTypes";
 import { decodeMediaBytes, decodeMediaFile, probeMediaBytes, probeMediaMetadata, type MediaProbeMetadata } from "../export/mediaProbe";
 import { hardenedFetch, type HardenedFetchResult } from "../hardenedFetch";
 import { isCanonicalBase64Body } from "./base64";
@@ -151,7 +151,6 @@ const DEFAULT_LIMITS: Record<CertificationMediaKind, Required<CertificationMedia
 
 const DEFAULT_PROCESS_STDOUT_LIMIT = 256 * 1024;
 const DEFAULT_PROCESS_STDERR_LIMIT = 64 * 1024;
-const MARKUP_SCAN_BYTES = 4_096;
 
 export function defaultCertificationMediaRoot(): string {
   const suffix = typeof process.getuid === "function" ? String(process.getuid()) : String(process.pid);
@@ -196,14 +195,6 @@ function kindForContentType(contentType: string): CertificationMediaKind | null 
   if (contentType.startsWith("audio/")) return "audio";
   if (contentType === "model/gltf-binary") return "model3d";
   return null;
-}
-
-function isMarkupMasquerade(bytes: Uint8Array): boolean {
-  const prefix = Buffer.from(bytes.subarray(0, MARKUP_SCAN_BYTES))
-    .toString("utf8")
-    .replace(/^\uFEFF/, "")
-    .trimStart();
-  return /^(?:<!doctype\s+html|<html\b|<\?xml\b|<svg\b|<(?:error|response|message)\b|\{\s*"(?:error|message)"\s*:)/i.test(prefix);
 }
 
 function detectContentType(bytes: Uint8Array): string | null {

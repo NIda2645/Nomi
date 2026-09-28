@@ -52,7 +52,7 @@ export function overlayCanvasDragDraft(
 
 /**
  * Re-arms React Flow's ownership after a drag ends. The kernel path
- * (applyCanvasDragKernelPositionChanges / drag-start) turns `hasDefaultNodes`
+ * (drag-start) turns `hasDefaultNodes`
  * off so React Flow does not double-apply drag geometry it never received via
  * setNodes. That flag also gates React Flow's own change self-application:
  * while it is false both `store.triggerNodeChanges` and the batched
@@ -102,5 +102,5 @@ export function applyCanvasDragKernelPositionChanges(
     }
     nodeLookup.set(change.id, nextNode)
   }
-  store.setState({ nodeLookup, hasDefaultNodes: false })
+  store.setState({ nodeLookup })
 }

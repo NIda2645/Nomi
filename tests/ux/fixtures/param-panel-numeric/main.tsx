@@ -8,7 +8,9 @@
 import React from 'react'
 import { createRoot } from 'react-dom/client'
 import { MantineProvider } from '@mantine/core'
+import { ReactFlow, ReactFlowProvider, useStoreApi } from '@xyflow/react'
 import '@mantine/core/styles.css'
+import '@xyflow/react/dist/style.css'
 import { I18nextProvider } from 'react-i18next'
 import i18n from '../../../../src/i18n'
 import type { ModelOption } from '../../../../src/config/models'
@@ -21,6 +23,9 @@ const workflowOption: ModelOption = {
   modelKey: 'comfyui-imported-workflow',
   vendor: 'comfyui-local',
   label: '导入的工作流',
+}
+const remoteWorkflowOption: ModelOption = {
+  ...workflowOption, value: 'remote-imported-workflow', vendor: 'fixture-remote', vendorName: 'Remote fixture',
 }
 
 /** 自由数值：无候选项、无区间 → 走面板里的输入行。百万像素就是这一类。 */
@@ -58,7 +63,11 @@ const durationControl: ModelParameterControl = {
   defaultValue: 5,
 }
 
-function Fixture(): JSX.Element {
+const fixtureQuery = new URLSearchParams(window.location.search)
+
+function NumericControls(): JSX.Element {
+  const [selectedModel, setSelectedModel] = React.useState(workflowOption)
+  const modelOptions = fixtureQuery.has('providers') ? [workflowOption, remoteWorkflowOption] : [workflowOption]
   const [meta, setMeta] = React.useState<Record<string, unknown>>({
     megapixels: 1,
     denoise: 1,
@@ -74,27 +83,56 @@ function Fixture(): JSX.Element {
   }
 
   return (
-    <I18nextProvider i18n={i18n}>
-      <MantineProvider>
-        <main style={{ padding: 200 }}>
-          <InlineParameterBar
-            modelOptions={[workflowOption]}
-            modelCatalogStatus={{ message: 'ready' }}
-            renderedControls={[megapixelsControl, denoiseControl, durationControl]}
-            selectedModelOption={workflowOption}
-            archetype={null}
-            meta={meta}
-            onModelChange={() => undefined}
-            onCatalogControlChange={() => undefined}
-            onParameterControlChange={handleParameterControlChange}
-          />
-          <output data-testid="megapixels-value">{String(meta.megapixels)}</output>
-          <output data-testid="denoise-value">{String(meta.denoise)}</output>
-          <output data-testid="commit-log">{commits.join('|')}</output>
-        </main>
-      </MantineProvider>
-    </I18nextProvider>
+    <>
+      <InlineParameterBar
+        modelOptions={modelOptions}
+        modelCatalogStatus={{ message: 'ready' }}
+        renderedControls={fixtureQuery.has('single')
+          ? [durationControl] : [megapixelsControl, denoiseControl, durationControl]}
+        panelMode={fixtureQuery.has('inline') ? 'inline' : 'portal'}
+        selectedModelOption={selectedModel}
+        archetype={null}
+        meta={meta}
+        onModelChange={(value, vendor) => {
+          const option = modelOptions.find(option => option.value === value && (!vendor || option.vendor === vendor))
+          if (option) setSelectedModel(option)
+        }}
+        onCatalogControlChange={() => undefined}
+        onParameterControlChange={handleParameterControlChange}
+      />
+      <output data-testid="megapixels-value">{String(meta.megapixels)}</output>
+      <output data-testid="denoise-value">{String(meta.denoise)}</output>
+      <output data-testid="duration-value">{String(meta.duration)}</output>
+      <output data-testid="commit-log">{commits.join('|')}</output>
+      <output data-testid="selected-provider">{selectedModel.vendor}</output>
+    </>
   )
+}
+
+// Mount the original parameter component inside the actual framework NodeWrapper.
+// The fixture adds no keyboard suppression: portal ownership belongs to the component.
+const numericNodeTypes = { numeric: NumericControls }
+const numericNodes = [{ id: 'numeric-node', type: 'numeric', position: { x: 80, y: 80 },
+  selected: true, data: {}, style: { width: 320 } }]
+function NumericFlowFixture(): JSX.Element {
+  const store = useStoreApi()
+  React.useEffect(() => {
+    Object.assign(window, { numericFlowSnapshot: () => {
+      const state = store.getState()
+      return { ownsNodes: state.hasDefaultNodes, position: state.nodeLookup.get('numeric-node')?.position }
+    } })
+  }, [store])
+  return <div style={{ width: 800, height: 600 }}>
+    <ReactFlow defaultNodes={numericNodes} nodeTypes={numericNodeTypes} deleteKeyCode={null} />
+  </div>
+}
+
+function Fixture(): JSX.Element {
+  return <I18nextProvider i18n={i18n}><MantineProvider>
+    <main style={{ padding: fixtureQuery.has('flow') ? 40 : 200 }}>
+      {fixtureQuery.has('flow') ? <ReactFlowProvider><NumericFlowFixture /></ReactFlowProvider> : <NumericControls />}
+    </main>
+  </MantineProvider></I18nextProvider>
 }
 
 createRoot(document.getElementById('root')!).render(<Fixture />)

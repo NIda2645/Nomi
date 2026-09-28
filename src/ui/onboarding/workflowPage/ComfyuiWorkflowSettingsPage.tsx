@@ -15,6 +15,7 @@
  *   贴 JSON 导入 = 接入动作，留在 ComfyUI 卡里；
  *   改绑定/改字段/改名/删除 = 配置动作，全在这页。窄栏那套编辑态已同 commit 删除，不留并行版（P1）。
  */
+import { CatalogNoticeBanner } from '../ModelCatalogNotices'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { Portal } from '@mantine/core'
@@ -379,6 +380,19 @@ export function ComfyuiWorkflowSettingsPage({
             <IconX size={15} stroke={1.8} aria-hidden="true" />
           </button>
         </header>
+
+        {/* 目录这一次读不了：列表仍是上一份，所以必须明说「这是上一次读到的」——
+            不说的话，用户看到的是一份看起来正常、其实可能过期的清单。 */}
+        {catalog.loadError ? (
+          <div className="px-3 pt-3">
+            <CatalogNoticeBanner
+              marker="workflow-load-error"
+              title={t('onboardingProviders.drawer.loadErrorTitle')}
+              body={t('onboardingProviders.drawer.loadErrorBody', { detail: catalog.loadError })}
+              action={{ label: t('common.reload'), onClick: catalog.refresh }}
+            />
+          </div>
+        ) : null}
 
         <div className="flex min-h-0 flex-1 gap-3 p-3">
           <aside className="flex w-[268px] flex-none flex-col gap-3 overflow-y-auto">

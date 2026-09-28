@@ -9,7 +9,7 @@ import {
   buildEffectiveImageCatalogConfig,
   buildEffectiveVideoCatalogConfig,
 } from './controls/parameterControlModel'
-import { specializeArchetypeForVariant } from '../../../config/modelArchetypes'
+import { specializeArchetypeForVariant } from '../../../../electron/shared/modelArchetypes'
 import {
   archetypeModeParams,
   currentArchetypeMode,

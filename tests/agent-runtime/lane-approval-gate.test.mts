@@ -20,6 +20,7 @@ import { LANE_WRITE_TOOL_TIMEOUT_MS } from '../../electron/shared/agentLane/lane
 import type { LaneApprovalOptions } from '../../electron/agentLane/laneRuntimePort.js';
 import { createDocumentLaneTools } from '../../electron/agentLane/laneDocumentTools.js';
 import { createDocumentPort, createLaneFixture, FIXTURE_DESCRIBE } from './laneFixture.mjs';
+import { createAskUserLaneTools } from '../../electron/agentLane/laneAskUserTool.js';
 
 const APPEND = { type: 'tool' as const, calls: [{ id: 'call-append', name: 'write_script', arguments: { where: 'end', content: ' and then she left.' } }] };
 const CLOSING = { type: 'text' as const, text: 'Done.' };
@@ -221,3 +222,83 @@ test('G3b ③ · 崩溃重启：不复活确认卡，那次调用被取消，模
 function reopenTools(document: ReturnType<typeof createDocumentPort>) {
   return createDocumentLaneTools(document);
 }
+
+// ── 「他答上了」是成功，不是失败（2026-09-22 · run4 发现 ①）──────────────────────────────
+//
+// 用户在提问卡上点完选项 / 打完字之后，这次 `ask_user` 的 tool result 带着 `isError: true` 回到模型，
+// **正文恰好就是他那句答案**（run4 的 6 次 `ask_user` 全中）。链条：闸把「答上了」编码成 `allow: false`
+// → 宿主一律翻成 pi 的 `block` → pi 对 block 硬编码 `immediateError(isError: true)` → `pi-ai` 映射成
+// Anthropic `tool_result.is_error: true`。而 Nomi 自己还拿 `event.isError` 计「连续撞墙」——
+// 用户每答一次卡，就给这一轮的熔断计数器加一格，撞满三次这个工具就被自己拦下来。
+//
+// 既是错误形状，又在教模型「问了会失败」。修在源头：`answered` 放行，`ask_user` 的 execute 读
+// `context.approvalAnswer`，把原话作为成功形状交回去（`laneAskUserTool.ts`）。
+
+const ASK_CALLS = ['call-ask-1', 'call-ask-2', 'call-ask-3'] as const;
+const ANSWERS = ['给我妈看，她不爱看快剪', '横屏', '第二镜改短点'] as const;
+
+function askReply(id: string, question: string) {
+  return { type: 'tool' as const, calls: [{ id, name: 'ask_user', arguments: { questions: [{ question }] } }] };
+}
+
+/** 等到投影里出现**这一张**卡（答完一张之后还会有下一张，所以不能只等「有卡」）。 */
+function pendingCard(lane: { subscribe(listener: (projection: LaneProjection) => void): () => void; projection(): LaneProjection }, toolCallId: string) {
+  const now = lane.projection().pending;
+  if (now?.toolCallId === toolCallId) return Promise.resolve(now);
+  return new Promise<NonNullable<LaneProjection['pending']>>((resolve) => {
+    const stop = lane.subscribe((projection) => {
+      if (projection.pending?.toolCallId !== toolCallId) return;
+      stop();
+      resolve(projection.pending);
+    });
+  });
+}
+
+test('答上了的 ask_user 以成功形状回给模型，正文就是他的原话——连答三次也不进熔断', async (t: TestContext) => {
+  const fixture = await createLaneFixture(t, [
+    askReply(ASK_CALLS[0], '这条片子是给谁看的？'),
+    askReply(ASK_CALLS[1], '要横屏还是竖屏？'),
+    askReply(ASK_CALLS[2], '第二镜想怎么改？'),
+    CLOSING,
+  ], STEP);
+  const lane = await fixture.openLane({ ...fixture.options, tools: createAskUserLaneTools() });
+  const turn = lane.execute({ kind: 'prompt', text: '帮我剪一条片子。' });
+  for (const [index, toolCallId] of ASK_CALLS.entries()) {
+    const card = await pendingCard(lane, toolCallId);
+    assert.equal(card.toolName, 'ask_user');
+    await lane.execute({ kind: 'approval', toolCallId, action: 'answer', reason: ANSWERS[index] });
+  }
+  await turn;
+
+  const results = toolResults(lane.projection());
+  assert.equal(results.length, 3, '三次提问各有一条结果');
+  for (const [index, result] of results.entries()) {
+    assert.equal(result.isError, false, '「他答上了」不是一次工具失败——错误形状会让模型重试、进熔断、向用户报「出错了」');
+    assert.equal(result.text, ANSWERS[index], '正文一字不改就是他的原话');
+  }
+  // 熔断计数不动的机器形式：阈值是 3（`LANE_REPEATED_FAILURE_BLOCK`）。旧行为下第三次提问会被
+  // 宿主自己拦下来，模型读到的是「ask_user has failed the same way 3 times in a row」。
+  assert.ok(!results.some((result) => /failed the same way/.test(result.text)),
+    '连答三次，没有一次被熔断拦下');
+  assert.deepEqual(approvalNotes(lane.projection()).map((note) => note.decision), ['answered', 'answered', 'answered'],
+    '转录上仍然记的是「他回答了」，不是「他拒绝了」');
+  const lastRequest = JSON.stringify(fixture.http.requests.at(-1)?.body ?? {});
+  assert.ok(lastRequest.includes(ANSWERS[2]), '他那句话进了下一次模型请求，回合据此继续');
+});
+
+test('阳性对照：真的「不要」仍然是错误形状，而且带的是他那句话', async (t: TestContext) => {
+  const denial = '别动我的文稿';
+  const fixture = await createLaneFixture(t, [APPEND, CLOSING], STEP);
+  const lane = await fixture.openLane(fixture.options);
+  const before = fixture.document.text();
+  const turn = lane.execute({ kind: 'prompt', text: 'Append a closing line.' });
+  const pending = await firstPending(lane);
+  await lane.execute({ kind: 'approval', toolCallId: pending.toolCallId, action: 'deny', reason: denial });
+  await turn;
+
+  assert.equal(fixture.document.text(), before, '拒了就没跑');
+  const [result] = toolResults(lane.projection());
+  assert.equal(result?.isError, true, '「他说不要」照旧是错误形状：那一支没被这一刀带走');
+  assert.equal(result.text, denial);
+  assert.deepEqual(approvalNotes(lane.projection()).map((note) => note.decision), ['denied']);
+});

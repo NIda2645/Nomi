@@ -1,11 +1,14 @@
 // 七个读动词（设计正本 §5.1）：模型看到的世界 = 用户看到的世界。执行那一半住 `electron/agentLane/`
 // （`laneCanvasTools.ts` / `laneDocumentTools.ts` / `laneTimelineTools.ts` / `laneModelRead.mts` / `laneExtendedDesktopPorts.ts`）。
 import { z } from "zod";
+import { agentModelEntrySchema } from "../availableModelsSchema";
 
 import { LANE_MODEL_OUTPUT_MAX_BYTES, LANE_MODEL_OUTPUT_MAX_LINES } from "../../agentLane/laneContracts";
+import type { DocumentReadInput } from "../documentRead";
 import { modelArgumentTolerance, noArgumentTolerance } from "../modelArgumentTolerance";
 import { NO_ARGUMENTS_SCHEMA } from "../verbDeclaration";
 import type { VerbDeclaration } from "../verbDeclaration";
+import { checkJobModelSchema, readScriptModelSchema, readSkillModelSchema, READ_SCRIPT_SCOPE_DEFAULT } from "./verbProjections";
 import { assetReadInputOf, timelineReadInputOf } from "./verbSemanticInput";
 
 const OUTPUT_LIMIT = `Long text is truncated to the first ${LANE_MODEL_OUTPUT_MAX_LINES} lines or ${LANE_MODEL_OUTPUT_MAX_BYTES / 1024}KB; the result says so when that happens.`;
@@ -24,6 +27,33 @@ export const DOCUMENT_ID_TRANSPORT_FIELD = Object.freeze({
 });
 
 const assetId = z.string().trim().min(1).max(512).describe("Stable asset id from a look_at_media search, a canvas read or a timeline read — never a filename or path.");
+
+/**
+ * 一个范围的两条跨字段约束：**要么都给要么都不给**、且末端大于起点。
+ *
+ * 为什么它必须在动词这一层（2026-09-18 扫描 · R17「防线建在最早能拦住的那层」）：宿主的
+ * `inspect_source_range` / `read_waveform` 两条都强制这两条约束，而动词把两端各自声明成可选。
+ * 模型只给 `startFrame` 时，翻译层过去会替它补一个 `endFrame: 0`，于是宿主回的是
+ * 「Number must be greater than 0」——一个模型没写过的字段、一个它看不懂的数字。约束搬到动词上
+ * 之后，pi 的校验器在**调用发出之前**就用动词自己的字段名说清哪儿不对，翻译层也不必再编造缺省值。
+ */
+function rangeRefinement(startField: string, endField: string) {
+  return (value: Record<string, unknown>, context: z.RefinementCtx): void => {
+    const start = value[startField] as number | undefined;
+    const end = value[endField] as number | undefined;
+    if (start === undefined && end === undefined) return;
+    if (start === undefined || end === undefined) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom, path: [start === undefined ? startField : endField],
+        message: `give both ${startField} and ${endField}, or neither`,
+      });
+      return;
+    }
+    if (end <= start) {
+      context.addIssue({ code: z.ZodIssueCode.custom, path: [endField], message: `${endField} must be greater than ${startField}` });
+    }
+  };
+}
 
 export function readVerbs(): VerbDeclaration[] {
   const lookAtCanvas: VerbDeclaration = {
@@ -46,10 +76,18 @@ export function readVerbs(): VerbDeclaration[] {
       params: `scope is full (default) or selection. ${OUTPUT_LIMIT}`,
     },
     promptGuidelines: READ_GUIDELINES,
-    schema: z.object({ scope: z.enum(["full", "selection"]).optional().describe("full (default) reads the whole document; selection reads only what the user selected.") }).strict(),
+    // 模型面从宿主契约 schema 派生（`verbProjections.ts`）：宿主的 `scope` 必填，模型面让它可选，
+    // 缺省由宿主补（下面的 `semanticInputOf`）。宿主改字段名或改枚举，这里是 tsc 红。
+    schema: readScriptModelSchema,
     examples: [{ when: "Read the whole document:", arguments: {} }, { when: "Resolve \"this part\":", arguments: { scope: "selection" } }],
     mcpTransportFields: DOCUMENT_ID_TRANSPORT_FIELD,
     prepareArguments: modelArgumentTolerance({ knownFields: ["scope"] }),
+    // 「缺省 full」是**声明**的一部分，所以它住在翻译层（两个 profile 共用），不住在某个执行器里。
+    // 2026-09-18 扫描：`document.read` 契约的 `scope` 是必填，而动词说它可选、示例就是 `{}`。
+    // 内部 lane 靠 `laneDocumentTools` 里一句手写的 `?? "full"` 兜住，对外 MCP 面没有那句，
+    // 于是 `nomi_document_read` 只带租约调用时当场 `capability_input_invalid`——同一个默认值，
+    // 一边有一边没有，就是漂移。补在这里之后那句手写兜底已删（P1）。
+    semanticInputOf: (args) => ({ scope: (args as { scope?: DocumentReadInput["scope"] }).scope ?? READ_SCRIPT_SCOPE_DEFAULT }),
   };
   const readTimeline: VerbDeclaration = {
     // 常驻（设计正本 §5.1 / PR A 的常驻 10 个）：读时间轴不需要先请求 timeline 组；执行绑在 laneTimelineTools。
@@ -64,7 +102,7 @@ export function readVerbs(): VerbDeclaration[] {
     schema: z.object({
       startFrame: z.number().int().min(0).optional().describe("First frame of the range, at the project fps."),
       endFrame: z.number().int().min(1).optional().describe("Last frame of the range (exclusive), greater than startFrame."),
-    }).strict(),
+    }).strict().superRefine(rangeRefinement("startFrame", "endFrame")),
     examples: [{ when: "Read the whole timeline and its revision:", arguments: {} }, { when: "Look at the fourth to sixth second at 30fps:", arguments: { startFrame: 120, endFrame: 180 } }],
     prepareArguments: modelArgumentTolerance({}),
     semanticInputOf: (args) => timelineReadInputOf(args) as unknown as Record<string, unknown>,
@@ -90,8 +128,24 @@ export function readVerbs(): VerbDeclaration[] {
         startSeconds: z.number().min(0).optional().describe("Start of the audio range, seconds from the asset start."),
         endSeconds: z.number().positive().optional().describe("End of the audio range, seconds; greater than startSeconds."),
         buckets: z.number().int().min(1).max(256).optional().describe("How many amplitude buckets to return."),
-      }).strict().optional().describe("With assetId: read peak and RMS amplitude buckets for one audio range."),
-    }).strict(),
+      }).strict().superRefine(rangeRefinement("startSeconds", "endSeconds")).optional().describe("With assetId: read peak and RMS amplitude buckets for one audio range."),
+    }).strict().superRefine((value, context) => {
+      rangeRefinement("startFrame", "endFrame")(value as Record<string, unknown>, context);
+      // 五合一读**按参数形状**派生方法名，所以「同时给两套参数」不是更精确，是有一套会被静默忽略。
+      // 2026-09-18 扫描：`{assetId, startFrame, endFrame, waveform}` 过得了动词、翻出来只剩波形那一套，
+      // 帧范围无声消失。把互斥写进声明，模型当场知道该给哪一套。
+      const modes = [
+        value.query !== undefined || value.kinds !== undefined || value.limit !== undefined ? "search" : undefined,
+        value.startFrame !== undefined || value.endFrame !== undefined ? "frame range" : undefined,
+        value.waveform !== undefined ? "waveform" : undefined,
+      ].filter(Boolean);
+      if (modes.length > 1) {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `give only one of: search (query/kinds/limit), frame range (startFrame+endFrame), waveform — got ${modes.join(" and ")}` });
+      }
+      if (value.assetId === undefined && modes.length > 0 && modes[0] !== "search") {
+        context.addIssue({ code: z.ZodIssueCode.custom, path: ["assetId"], message: `assetId is required to read a ${modes[0]}` });
+      }
+    }),
     examples: [
       { when: "Find rainy footage:", arguments: { query: "雨天", kinds: ["video"] } },
       { when: "Read one asset's record and container facts:", arguments: { assetId: "asset-1" } },
@@ -102,17 +156,19 @@ export function readVerbs(): VerbDeclaration[] {
   };
   // `models` 组由原生装配层绑定执行（`laneModelRead.mts`），按组延迟披露。
   const listModels: VerbDeclaration = {
+    outputSchema: z.object({ models: z.array(agentModelEntrySchema) }).strict(),
     name: "list_models", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "generation.context.read", effect: "read", nextAction: "none", internalGroup: "models",
     describe: {
       does: "Read the models the user has connected: each model's modes, parameters with allowed values, and reference slots.",
-      useWhen: "Before choosing a modelKey or any parameter in draft_shots, and when the user asks which models can do something.",
-      notWhen: "It cannot connect a model or take an API key (start_model_setup). Never invent a modelKey — use the exact strings returned here.",
-      params: "kind (image, video or audio) narrows the catalog; modelKey returns one model in full.",
+      useWhen: "Before choosing a modelId or any parameter in draft_shots, and when the user asks which models can do something.",
+      notWhen: "It cannot connect a model or take an API key (start_model_setup). Never invent a modelId — use the exact strings returned here.",
+      params: "kind (image, video or audio) narrows the catalog; modelId returns one model in full; vendor picks which provider when two of them carry the same modelId.",
     },
     promptGuidelines: READ_GUIDELINES,
     schema: z.object({
       kind: z.enum(["image", "video", "audio"]).optional().describe("Only models that produce this kind of media."),
-      modelKey: z.string().trim().min(1).optional().describe("Catalog key of one model to read in full."),
+      modelId: z.string().trim().min(1).optional().describe("Catalog id of one model to read in full — the same modelId this verb returns and draft_shots takes."),
+      vendor: z.string().trim().min(1).optional().describe("Provider of that model. Required when the thin list shows the same modelId under two providers — they are two different models with different modes and parameters."),
     }).strict(),
     examples: [{ when: "Which models can make video:", arguments: { kind: "video" } }],
     prepareArguments: modelArgumentTolerance({}),
@@ -125,11 +181,13 @@ export function readVerbs(): VerbDeclaration[] {
       does: "Read one generation or export job: its stage, progress, result reference and what it has cost so far.",
       useWhen: "The user asks whether something is done, what is still running, or what it cost; before cancel_job.",
       notWhen: "It never starts, retries or reconciles provider work. Not for stopping a job (cancel_job). If a job id is unknown, say so — do not resubmit.",
-      params: "jobId comes from the result of generate or export_video, or from look_at_canvas.",
+      params: "Copy domain and jobId from taskRef returned by generate, export_video or look_at_canvas. A node ID is never a task ID. A draft has not executed; do not treat it as a failed execution.",
     },
     promptGuidelines: READ_GUIDELINES,
-    schema: z.object({ jobId: z.string().trim().min(1).max(160).describe("The job id returned by generate or export_video, or shown on a canvas node.") }).strict(),
-    examples: [{ when: "Check a running job:", arguments: { jobId: "op-1" } }],
+    // **双域动词**：模型面投在导出域上（`export.read` 的 `inspect_export_job` 分支减掉 `operation`，
+    // 零 rename 的真投影）；生成域那一半的改名在 `verbDualDomain.ts`，理由是两个域各有一份持久化。
+    schema: checkJobModelSchema,
+    examples: [{ when: "Check a running job:", arguments: { domain: 'generation', jobId: "op-1" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
   const readSkill: VerbDeclaration = {
@@ -140,7 +198,9 @@ export function readVerbs(): VerbDeclaration[] {
       notWhen: "Loading a skill grants no tool permission and runs nothing; to store a new one use save_skill.",
       params: "name is the skill name from the skills index.",
     },
-    schema: z.object({ name: z.string().trim().min(1).max(240).describe("Skill name exactly as listed in the skills index.") }).strict(),
+    // 模型面从 `skill.read` 契约派生：藏掉 `operation`（传输方法词表）与 `expectedContentHash`
+    // （只有宿主拿得到的内容哈希）。见 `verbProjections.ts`。
+    schema: readSkillModelSchema,
     examples: [{ when: "Load the UGC ad skill:", arguments: { name: "ugc-ad" } }],
     prepareArguments: modelArgumentTolerance({}),
   };

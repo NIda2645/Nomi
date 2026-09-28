@@ -13,7 +13,7 @@ const NO_HANDLERS = { onPlanToggle: () => undefined, onCollapsePlan: () => undef
 const html = renderToStaticMarkup;
 const text = '这是**「重点」**的句子\n\n| 参数 | 值 |\n| --- | --- |\n| 时长 | 8 |\n\n- 项目';
 const labels = { copy: 'copy', retry: 'retry', continue: 'continue', stopped: 'stopped' };
-const slotLabels = { confirm: 'yes', reject: 'no', escalate: 'always', cancel: 'cancel', confirmReject: 'no', collapsePlan: 'collapse', expandPlan: 'expand' };
+const slotLabels = { confirm: 'yes', reject: 'no', escalate: 'always', cancel: 'cancel', confirmReject: 'no', collapsePlan: 'collapse', expandPlan: 'expand' , ask: { dismiss: '', skip: '', continueLabel: '', send: '', customPlaceholder: '', recommended: '' } };
 const md = (source: string) => html(React.createElement(NomiMarkdown, { compact: true, profile: "agent-v4", children: source }));
 describe('B2e 审计 D1–D13：单一 Markdown 内核', () => {
     it('D1 代码复制消费内核 source，禁止从 ReactNode String 反提取', () => {
@@ -37,7 +37,7 @@ describe('B2e 审计 D1–D13：单一 Markdown 内核', () => {
     });
     it('D4 审批投影保留完整 Markdown 和换行', () => {
         const content = '- **镜头一**：窗边\n- **镜头二**：茶杯\n' + '完整正文'.repeat(30);
-        const output = projectV4Intervention({ toolName: 'append_to_end', args: { content }, effectClass: 'reversible_local', pendingCount: 1 }, { irreversible: '', reversible: '', spendBadge: '', credentialTitle: '', credentialConfirm: '', credentialAlternate: '', questionTitle: '', planTitle: '', more: '', scopeOnce: '', scopeCapability: '' }, key => key);
+        const output = projectV4Intervention({ toolName: 'append_to_end', args: { content }, effectClass: 'reversible_local', pendingCount: 1 }, { irreversible: '', reversible: '', spendBadge: '', credentialTitle: '', credentialConfirm: '', credentialAlternate: '', planTitle: '', more: '', scopeOnce: '', scopeCapability: '' }, key => key);
         expect(JSON.stringify(output)).toContain(JSON.stringify(content).slice(1, -1));
         expect(html(React.createElement(V4Intervention, { ...NO_HANDLERS, data: output!, labels: slotLabels }))).toContain('<ul');
     });
@@ -71,6 +71,17 @@ describe('B2e 审计 D1–D13：单一 Markdown 内核', () => {
         const output = md('```\n  first\n  last\n```');
         expect(output).toContain('data-streamdown="code-block"');
         expect(output).not.toContain('px-1 py-0.5');
+    });
+    it('D11b 围栏按内容标字体：粘贴用的提示词是文字，JSON 仍是代码（皮肤只认这一个标记）', () => {
+        const output = md('英文版：\n\n```\nA cozy vintage camera shop at dawn, warm golden light, 35mm film grain, 16:9\n```\n\n```json\n{ "style": "cinematic" }\n```');
+        const bodies = [...output.matchAll(/data-streamdown="code-block-body"[^>]*/g)].map((match) => match[0]);
+        expect(bodies).toHaveLength(2);
+        expect(bodies[0]).toContain('data-nomi-code="prose"');
+        expect(bodies[1]).toContain('data-nomi-code="code"');
+        const skin = readFileSync('src/workbench/common/NomiMarkdown.tsx', 'utf8');
+        expect(skin).toContain('[&_[data-nomi-code=prose]_pre]:font-nomi-sans');
+        expect(skin).toContain('[&_pre]:whitespace-pre-wrap');
+        expect(skin).toContain('[&_[data-streamdown=code-block-body]]:border-0');
     });
     it('D12 回答不折，用户输入只在超过 12 行时折', () => {
         const long = Array.from({ length: 13 }, (_, i) => `行 ${i}`).join('\n');

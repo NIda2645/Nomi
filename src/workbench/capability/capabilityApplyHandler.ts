@@ -5,7 +5,7 @@ import {
   MCP_REALTIME_SURFACE_CAPABILITY_OPS,
   capabilityProjectBindingError,
 } from './capabilityProjectBinding'
-import { spendQuoteDetail, useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
+import { useSpendConfirmStore } from '../generationCanvas/spend/spendConfirm'
 import { buildMultiShotContractView, type MultiShotGatePayload } from '../generationCanvas/spend/productionContractView'
 import { getDesktopBridge } from '../../desktop/bridge'
 import i18n from '../../i18n'
@@ -43,6 +43,9 @@ import { executeTimelineReadTarget, executeTimelineWriteTarget } from '../timeli
 import { executeAssetReadTarget, executeExportReadTarget } from '../timeline/agent/phase4CapabilityTargets'
 import { executeCanonicalCanvasPlanPatch } from './canonicalCanvasPlanPatch'
 import { handleMcpHostSurfaceOp } from './mcpHostSurfaceOps'
+import { presentStoryboard } from './storyboardPresent'
+import { patchAgentStoryboardDesign, upsertAgentStoryboardDesign } from '../creation/storyboard/agentStoryboardDesign'
+import { confirmCredentialProbeSpend, spendModelLine } from './credentialProbeSpendCard'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
 // 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
@@ -79,7 +82,10 @@ type GenerationGateConfirmPayload = {
   shotSummary?: string
   model?: string
   referenceCount?: number
-  maximumCost?: number
+  /** `null`/缺席 = 目录算不出价。绝不是 0 元。 */
+  maximumCost?: number | null
+  /** 这批里价格未知的镜数（> 0 时卡上如实说出来）。 */
+  unknownShotCount?: number
   currency?: string
   expiresAt?: string
   /**
@@ -110,7 +116,8 @@ async function runProductionTextPlanner(input: {
       ? [
           '你是分镜规划师。请根据下面的原分镜方案和修改要求，输出一份完整、可执行的 StoryboardPlan JSON。',
           '只输出 JSON，不要 Markdown、解释或代码围栏。必须包含 title、anchors、shots；每个 shot 必须包含 index、durationSec、anchorIds、prompt。',
-          '允许的 shot 字段：shotId、shotKind(image|video)、durationSec、anchorIds、prompt、modelKey、modeId、params、ffDesc、motionDesc、variationType(large|medium|small)、camIdx、continuity、keyframe。',
+          '允许的 shot 字段：shotId、shotKind(image|video)、durationSec、anchorIds、prompt、modelKey、modelVendor、modeId、params、ffDesc、motionDesc、variationType(large|medium|small)、camIdx、continuity、keyframe。',
+          'modelKey 与 modelVendor 是同一个模型身份的两半：原样保留就两个都保留；改 modelKey 必须同时给出新模型的 modelVendor，给不出就两个都删掉（交给默认模型），绝不能只改其中一个。',
           `修改要求：${input.instruction || '保持原方案，只修正明显问题。'}`,
           '原分镜方案：',
           input.source || '',
@@ -150,6 +157,9 @@ async function runProductionTextPlanner(input: {
  *   · 用户自己在画布上点的那一下（视频拆解）→ 金币图标 + 说清「这一批要发几次调用」。
  */
 async function confirmSpendFromMainProcess(info: SpendConfirmPayload): Promise<{ confirmed: boolean }> {
+  // 凭据验证（T-MO-10）：它不挂在任何节点上（用户此刻在接入页，不在画布），措辞与明细
+  // 另有一家（`credentialProbeSpendCard.ts`），但弹的仍是全仓唯一那张卡。
+  if (info.intent === 'credential-probe') return confirmCredentialProbeSpend(info)
   const store = useGenerationCanvasStore.getState()
   const node = store.nodes.find((item) => item.id === info.nodeId)
   const nodeLabel =
@@ -182,17 +192,14 @@ async function confirmSpendFromMainProcess(info: SpendConfirmPayload): Promise<{
     ].join('\n'),
     confirmLabel: i18n.t(isDeconstruct ? 'runtime.capability.confirmDeconstruct' : 'runtime.capability.confirmGenerate'),
     source: isDeconstruct ? 'user' : 'agent',
+    // 不印金额行（2026-09-26 用户拍板：官方额度上线前隐藏价格维度）。
     details: [
-      spendQuoteDetail(info.quote ?? { amount: null }),
-      // 批量确认必须报出「这一下批掉几次调用」——只给总价，用户看不出批量有多大。
+      // 批量确认必须报出「这一下批掉几次调用」，用户才看得出批量有多大。
       ...(callCount ? [{ label: i18n.t('runtime.capability.callCount'), value: String(callCount) }] : []),
       // 项目行放第一位：用户可能不在这个项目里，先让他知道花在哪个项目。
       ...(projectName ? [{ label: i18n.t('runtime.capability.project'), value: projectName }] : []),
       { label: i18n.t('runtime.capability.node'), value: nodeLabel },
-      {
-        label: i18n.t('runtime.capability.model'),
-        value: [info.vendor, info.modelKey].filter(Boolean).join(' · ') || i18n.t('runtime.capability.defaultModel'),
-      },
+      { label: i18n.t('runtime.capability.model'), value: spendModelLine(info.vendor, info.modelKey) },
       ...(isDeconstruct ? [] : [{ label: i18n.t('runtime.capability.output'), value: describeIntent(info.intent) }]),
     ],
   })
@@ -255,12 +262,18 @@ async function confirmGenerationGateForAgent(
     typeof info.shotSummary === 'string' && info.shotSummary.trim()
       ? info.shotSummary.trim()
       : i18n.t('runtime.capability.generationGateShotFallback')
-  const maximumCost = Number.isFinite(info.maximumCost) ? Number(info.maximumCost) : 0
-  const cost = `${typeof info.currency === 'string' ? info.currency : ''}${maximumCost}`
+  // 「算不出价」和「0 元」是两件事：只有后者才该印出一个数。缺席/非数 → 走未知那一档的文案，
+  // 绝不落成 ¥0（2026-09-21 未知价开闸；三种可能里只有 0 会被读成「这次免费」）。
+  const costKnown = typeof info.maximumCost === 'number' && Number.isFinite(info.maximumCost)
+  const cost = costKnown
+    ? `${typeof info.currency === 'string' ? info.currency : ''}${Number(info.maximumCost)}`
+    : i18n.t('runtime.capability.generationGateCostUnknown')
   const ok = await useSpendConfirmStore.getState().requestConfirm({
     kind: 'generation',
     title: i18n.t('runtime.capability.generationGateTitle'),
-    message: i18n.t('runtime.capability.generationGateMessage', { model, cost, shot }),
+    message: costKnown
+      ? i18n.t('runtime.capability.generationGateMessage', { model, cost, shot })
+      : i18n.t('runtime.capability.generationGateMessageUnknownCost', { model, shot }),
     confirmLabel: i18n.t('runtime.capability.confirmGenerate'),
     source: 'agent',
     details: [
@@ -397,10 +410,13 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
     plannerCapturedCanvasReadSnapshot = await sealCurrentProjectCanvasReadSnapshot(plannerBinding, plannerSnapshot)
   }
 
-  // P4 S5 画布落地（materialize-shots / attach-shot-result）——受上面的活动项目守卫约束（只动当前项目 store），
+  // P4 S5 画布落地（materialize-shots：建占位 + 每一镜的运行状态 / 结果）——受上面的活动项目守卫约束（只动当前项目 store），
   // 落点住在 multiShotCanvasLanding（保持本 handler 精简）。未处理返回 null → 继续走下方 switch。
   const landed = await handleMultiShotCanvasLandingOp(op, data)
   if (landed !== null) return landed
+  if (op === 'storyboard.present') return presentStoryboard(data)
+  if (op === 'storyboard.upsert-design') return upsertAgentStoryboardDesign(data)
+  if (op === 'storyboard.patch-design') return patchAgentStoryboardDesign(data)
 
   // 外部 MCP 宿主触发的纯渲染层副作用（打开凭据页 / 宿主配置已修复提示），落点住在 mcpHostSurfaceOps。
   const hostSurface = handleMcpHostSurfaceOp(op, data)

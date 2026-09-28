@@ -1,4 +1,4 @@
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { resolveHostVendorKey } from "../catalog/connectionVendorKey";
 import { normalizeProviderProxyUrl } from "../providerNetwork";
 import type { ProviderAdapterCatalogPort } from "./serviceCatalog";
 import type {
@@ -38,9 +38,13 @@ export function registerProviderConnection(input: {
   now: () => string;
 }): ProviderAdapterRegistration {
   const normalized = normalizeProviderAdapterInput(input.rawInput, "register");
-  const vendorKey = String(normalized.catalogVendorKey || "").trim() ||
-    deriveVendorKeyFromBaseUrl(normalized.baseUrl);
-  if (!vendorKey) throw new Error("Unable to derive a provider id from the API base URL");
+  // 这里只解析到「这一族的 root」。落在哪条兄弟连接上（#831：同域名可以有多条）由目录写入侧
+  // 的 `defaultCatalog.register` 按「域名 + 连接名」决定 —— 身份判据只许有一个 owner，
+  // 而它必须是**读得到目录**的那一层。
+  const vendorKey = resolveHostVendorKey({
+    baseUrl: normalized.baseUrl,
+    catalogVendorKey: normalized.catalogVendorKey,
+  });
   const savedAt = input.now();
   const registered = input.catalog.register({ ...normalized, vendorKey, savedAt });
   return {

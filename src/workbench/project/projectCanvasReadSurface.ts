@@ -4,7 +4,7 @@ import type {
   SurfacePortBindingWire,
   SurfaceSuspensionWire,
 } from '../../../electron/shared/surfacePortBinding'
-import { settleSurfacePortHandler, surfacePortFailure, SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
+import { sameSurfacePortBindingWire, settleSurfacePortHandler, surfacePortFailure, SurfacePortWireError } from '../../../electron/shared/surfacePortBinding'
 import { sameProjectAgentBinding, type ProjectBinding } from '../../../electron/shared/projectBinding'
 import type { CanvasWriteInput, CanvasWriteOperation } from '../../../electron/shared/agentCapabilities/canvasWrite'
 import type { CanvasDeleteInput } from '../../../electron/shared/agentCapabilities/canvasDelete'
@@ -362,22 +362,10 @@ function requiredProjectId(value: string): string {
   return projectId
 }
 
-function sameBinding(left: SurfacePortBindingWire, right: SurfacePortBindingWire): boolean {
-  return (
-    left.version === right.version &&
-    left.bindingId === right.bindingId &&
-    left.binding.projectId === right.binding.projectId &&
-    left.binding.immutableProjectUuid === right.binding.immutableProjectUuid &&
-    left.binding.projectGeneration === right.binding.projectGeneration &&
-    left.webContentsId === right.webContentsId &&
-    left.processId === right.processId &&
-    left.frameRoutingId === right.frameRoutingId &&
-    left.origin === right.origin &&
-    left.surfaceInstanceId === right.surfaceInstanceId &&
-    left.portRevision === right.portRevision &&
-    left.nonce === right.nonce
-  )
-}
+// C2：这一份与主进程登记表那一份维度完全相同（13 维），是逐字抄的第二遍。
+// 抄得再准也只是「今天还一致」——上游给 SurfacePortBindingWire 加一个字段时，
+// 三层里跟上的那几层和没跟上的那层就开始给出不同答案。现在只从 owner import。
+const sameBinding = sameSurfacePortBindingWire
 
 export function createProjectCanvasReadSurfaceCoordinator(
   input: Readonly<{

@@ -447,6 +447,22 @@
       "modeId": "regenerate"
     }
   },
+  "higgsfield-dop/kie": {
+    "image": {},
+    "video": {
+      "modelKey": "higgsfield-ai/dop/standard",
+      "modelVendor": "kie",
+      "modeId": "i2v"
+    }
+  },
+  "higgsfield-dop/apimart": {
+    "image": {},
+    "video": {
+      "modelKey": "higgsfield-ai/dop/standard",
+      "modelVendor": "apimart",
+      "modeId": "i2v"
+    }
+  },
   "volcengine-seedance-2/kie": {
     "image": {},
     "video": {
@@ -870,6 +886,42 @@
     },
     "video": {}
   },
+  "gpt-image-2.5-flare/kie": {
+    "image": {
+      "modelKey": "gpt-image-2.5-flare",
+      "modelVendor": "kie",
+      "modeId": "t2i",
+      "refModeId": "i2i"
+    },
+    "video": {}
+  },
+  "gpt-image-2.5-flare/apimart": {
+    "image": {
+      "modelKey": "gpt-image-2.5-flare",
+      "modelVendor": "apimart",
+      "modeId": "t2i",
+      "refModeId": "i2i"
+    },
+    "video": {}
+  },
+  "gpt-image-2.5-sunburst/kie": {
+    "image": {
+      "modelKey": "gpt-image-2.5-sunburst",
+      "modelVendor": "kie",
+      "modeId": "t2i",
+      "refModeId": "i2i"
+    },
+    "video": {}
+  },
+  "gpt-image-2.5-sunburst/apimart": {
+    "image": {
+      "modelKey": "gpt-image-2.5-sunburst",
+      "modelVendor": "apimart",
+      "modeId": "t2i",
+      "refModeId": "i2i"
+    },
+    "video": {}
+  },
   "seedream/kie": {
     "image": {
       "modelKey": "seedream",
@@ -1047,6 +1099,38 @@
       "modelVendor": "apimart",
       "modeId": "t2i",
       "refModeId": "edit"
+    },
+    "video": {}
+  },
+  "imagen-4-fast/kie": {
+    "image": {
+      "modelKey": "google/imagen4-fast",
+      "modelVendor": "kie",
+      "modeId": "t2i"
+    },
+    "video": {}
+  },
+  "imagen-4-fast/apimart": {
+    "image": {
+      "modelKey": "google/imagen4-fast",
+      "modelVendor": "apimart",
+      "modeId": "t2i"
+    },
+    "video": {}
+  },
+  "imagen-4-ultra/kie": {
+    "image": {
+      "modelKey": "google/imagen4-ultra",
+      "modelVendor": "kie",
+      "modeId": "t2i"
+    },
+    "video": {}
+  },
+  "imagen-4-ultra/apimart": {
+    "image": {
+      "modelKey": "google/imagen4-ultra",
+      "modelVendor": "apimart",
+      "modeId": "t2i"
     },
     "video": {}
   },
@@ -1428,6 +1512,46 @@
       "modelVendor": "apimart",
       "modeId": "t2i",
       "refModeId": "edit"
+    },
+    "video": {}
+  },
+  "nomi-local-speech/kie": {
+    "image": {},
+    "video": {}
+  },
+  "nomi-local-speech/apimart": {
+    "image": {},
+    "video": {}
+  },
+  "higgsfield-soul-2/kie": {
+    "image": {
+      "modelKey": "higgsfield-ai/soul/v2/standard",
+      "modelVendor": "kie",
+      "modeId": "t2i"
+    },
+    "video": {}
+  },
+  "higgsfield-soul-2/apimart": {
+    "image": {
+      "modelKey": "higgsfield-ai/soul/v2/standard",
+      "modelVendor": "apimart",
+      "modeId": "t2i"
+    },
+    "video": {}
+  },
+  "higgsfield-soul-cinema/kie": {
+    "image": {
+      "modelKey": "higgsfield-ai/soul/cinema",
+      "modelVendor": "kie",
+      "modeId": "t2i"
+    },
+    "video": {}
+  },
+  "higgsfield-soul-cinema/apimart": {
+    "image": {
+      "modelKey": "higgsfield-ai/soul/cinema",
+      "modelVendor": "apimart",
+      "modeId": "t2i"
     },
     "video": {}
   },

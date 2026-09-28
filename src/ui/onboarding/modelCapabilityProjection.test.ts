@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Mapping } from '../../../electron/catalog/types'
-import type { ModelArchetype } from '../../config/modelArchetypes'
+import type { ModelArchetype } from '../../../electron/shared/modelArchetypes'
 import type { ChipModel } from './ModelChipGroups'
 import { projectModelCapability } from './modelCapabilityProjection'
 

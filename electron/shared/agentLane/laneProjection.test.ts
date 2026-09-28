@@ -18,7 +18,7 @@ describe('lane provider failure visibility', () => {
     }
     const projection = projectLaneSnapshot(snapshot, { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
     expect(projection.parts).toEqual([{
-      kind: 'error', text: 'Connection closed before a response.', sequence: 0, entrySeq: 1, contentIndex: 0,
+      kind: 'error', text: 'Connection closed before a response.', entryId: 'failed', sequence: 0, entrySeq: 1, contentIndex: 0,
     }])
     expect(projection.running).toBe(false)
   })
@@ -45,6 +45,18 @@ describe('lane skill provenance', () => {
     id: `e${seq}`, parentId: null, seq, timestamp: seq, type: 'message',
     message: { role: 'nomi.input', content, timestamp: seq, context },
   } as unknown as LaneSnapshot['transcript'][number])
+
+  it('keeps queued targets out of the active transcript projection', () => {
+    const storyboardTarget = { projectId: 'p', sourceDocumentId: 'a', sourceDocumentRevision: 3,
+      sourceDocumentContentHash: 'h', targetKind: 'storyboard', requestId: 'request-a', plans: [] }
+    const lane = laneWith([input(1, 'A', { storyboardTarget })])
+    lane.queues = [{ entryId: 'queued-b', kind: 'followUp', message: { role: 'nomi.input', content: 'B', timestamp: 2,
+      context: { approvalPolicy: { mode: 'step', spend: 'confirm' }, storyboardTarget: { ...storyboardTarget, sourceDocumentId: 'b' } } } }] as unknown as LaneSnapshot['queues']
+    const projection = projectLaneSnapshot(lane, { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
+    expect(projection.parts).toHaveLength(1)
+    expect(projection.parts[0]).toMatchObject({ kind: 'user', storyboardTarget })
+    expect(projection.queues[0].intent?.storyboardTarget?.sourceDocumentId).toBe('b')
+  })
 
   it('carries the skill recorded on that very message, and nothing when it had none', () => {
     const projection = projectLaneSnapshot(laneWith([
@@ -79,7 +91,7 @@ describe('lane stop visibility', () => {
     const projection = projectLaneSnapshot(abortedLane([]), { pricing: 'unpriced', supportedThinkingLevels: ['off'] })
     expect(projection.parts).toEqual([{
       kind: 'assistant-text', text: '', interrupted: true, streaming: false,
-      sequence: 0, entrySeq: 1, contentIndex: 0,
+      sequence: 0, entryId: 'stopped', entrySeq: 1, contentIndex: 0,
     }])
   })
 

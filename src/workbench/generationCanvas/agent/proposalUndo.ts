@@ -16,6 +16,7 @@ import {
   type ProjectAgentProposalReceiptView,
 } from '../../../../electron/shared/projectAgentProposalReceipt'
 import type { ProjectBinding } from '../../../../electron/shared/projectBinding'
+import { sameProjectAgentBinding } from '../../../../electron/shared/projectBinding'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { withCanvasGestureContext } from '../events/canvasGestureContext'
@@ -77,13 +78,9 @@ export function parseCommittedProposalRecord(input: unknown): CommittedProposalR
   return parseProjectAgentCommittedProposal(input)
 }
 
+// C2：这三维正是 owner 的 `sameProjectAgentBinding`，逐字抄了一遍。改成 import。
 function sameBinding(left: ProjectBinding | null, right: ProjectBinding): boolean {
-  return Boolean(
-    left &&
-    left.projectId === right.projectId &&
-    left.immutableProjectUuid === right.immutableProjectUuid &&
-    left.projectGeneration === right.projectGeneration,
-  )
+  return Boolean(left) && sameProjectAgentBinding(left as ProjectBinding, right)
 }
 
 function sameProposal(left: CommittedProposalRecord, right: CommittedProposalRecord): boolean {

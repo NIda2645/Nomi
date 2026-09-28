@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "publicPromptApplied": true,
+  "media": {
+    "decodedImage": true,
+    "promptFallback": false
+  },
+  "faultInjection": "not performed; IPC ok:false behavior covered by API unit tests",
+  "paidCalls": 0
+}

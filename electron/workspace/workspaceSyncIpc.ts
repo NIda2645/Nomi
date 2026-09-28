@@ -20,12 +20,12 @@ export function registerWorkspaceSyncIpc(deps: { readProject: ProjectLookup }): 
     if (!rootPath) throw new Error("Project folder is unavailable");
     const settingsRoot = getSettingsRoot();
     const baseline = readWorkspaceSyncBaseline(settingsRoot, id, rootPath);
-    const inspection = inspectWorkspaceSync(rootPath, baseline ? { revision: baseline.revision, contentHash: baseline.contentHash } : undefined);
+    const inspection = inspectWorkspaceSync(rootPath, id, baseline ? { revision: baseline.revision, contentHash: baseline.contentHash } : undefined);
     if ((baseline === null || adopt) && inspection.observedRevision !== null && inspection.contentHash) {
       writeWorkspaceSyncBaseline(settingsRoot, id, { rootPath, revision: inspection.observedRevision, contentHash: inspection.contentHash });
       // Adoption is an explicit acknowledgement: re-read against the new
       // baseline so the UI reflects the state the user just accepted.
-      return inspectWorkspaceSync(rootPath, undefined);
+      return inspectWorkspaceSync(rootPath, id, undefined);
     }
     return inspection;
   });

@@ -1,3 +1,5 @@
+import { resolveIndexedReferencePreview } from './pendingSpendReferences'
+import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 // 能力核 · MCP stdio server（app 自身二进制以 NOMI_MCP_STDIO 模式跑；见 docs/plan/2026-06-24-packaged-mcp-stdio-server.md）。
 //
 // Claude Code / Codex / Cursor 用 `<Nomi 二进制> + env NOMI_MCP_STDIO=1` 把 Nomi 拉起当 MCP server。
@@ -20,6 +22,7 @@ import { appFetch } from '../appFetch'
 import { readProxyPrefs } from '../proxySettings'
 import { getProductionRunService } from '../productionRun/productionRunRuntime'
 import { startArtifactPreviewHttpServer, withAssetPreview } from '../productionRun/artifactPreviewHttpServer'
+import { resolveProjectAssetReferenceIdentity } from '../assets/projectAssetStore'
 import { startCredentialElicitationServer } from '../integrationCertification/credentialElicitationServer'
 import { installIntegrationSessionRuntime } from '../integrationCertification/integrationSessionRuntimeInstall'
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
@@ -33,23 +36,24 @@ import {
   ensureCapabilitySigningKey,
 } from './security'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
-import { createRuntimeMcpGenerationPolicy, type McpGenerationPolicy } from './mcpGenerationPolicy'
 import type { DispatchContext } from './dispatcher'
 import { createGenerationPlanningHandler } from './mcpGenerationTools'
 import { planStoryboardFromScript } from './mcpStoryboardPlanner'
 import { createProductionGenerationOperationStore } from '../productionRun/productionGenerationOperationStore'
 import { createProductionGenerationSubmission } from '../productionRun/productionGenerationSubmission'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
-import { prepareProductionGenerationAuthorization } from '../productionRun/prepareProductionGenerationAuthorization'
+import { prepareProductionGenerationAuthorizationWithReferences } from '../productionRun/prepareProductionGenerationAuthorization'
 import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
 import { createLiveGenerationRuntime } from './liveGenerationRuntime'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
 import { markSingleShotAttention, markSingleShotCompleted, markSingleShotRunning } from '../productionRun/singleShotRunLifecycle'
 import { createGenerationOutputMaterializer } from './generationOutputMaterializer'
+import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings'
 import { readCatalog } from '../catalog/catalogStore'
 import { recommendVideoGeneration } from '../shared/videoCapabilities'
 import { deriveUsableVideoModelCandidates } from './usableVideoModelCandidates'
+import { installCatalogRowLookup } from './modelSpecRead'
 import type { McpConnectionContext } from './mcpConnectionContext'
 import { createMcpStdioProjectSessionRouter } from './mcpStdioProjectSessionRouter'
 import { createProductionMcpStdioProjectSessionBinding } from './mcpStdioProjectSessionBinding'
@@ -69,11 +73,13 @@ import { logWarn } from '../logging/logger'
 
 const productionRuns = getProductionRunService()
 
+// 档案解析要目录行里的 meta（fal/* 这类键靠 meta.archetypeId 钉档案）。装配期接一次。
+installCatalogRowLookup()
+
 export type McpStdioServerOptions = {
   approvalReceiptAuthority?: ApprovalReceiptAuthority
   requestGenerationGate?: DispatchContext['requestGenerationGate']
   authorizeGeneration?: DispatchContext['authorizeGeneration']
-  generationPolicy?: McpGenerationPolicy
   generationContext?: (params: Record<string, unknown>) => unknown | Promise<unknown>
   generationPlanning?: DispatchContext['generationPlanning']
   generationModuleRegistry?: Pick<ModuleRegistry, 'resolve'>
@@ -253,12 +259,11 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
   if (process.env.NOMI_E2E_SYNTHETIC_CREDENTIAL_STORAGE === '1' && process.platform === 'linux') {
     safeStorage.setUsePlainTextEncryption(true)
   }
-  const generationPolicy = authorities.generationPolicy ?? createRuntimeMcpGenerationPolicy()
-  const defaultAuthorities = createDefaultAuthorities(generationPolicy)
+  const defaultAuthorities = createDefaultAuthorities()
   const projectRevisionResolver = authorities.projectRevisionResolver ?? defaultAuthorities.projectRevisionResolver!
   const approvalReceiptAuthority = authorities.approvalReceiptAuthority ?? defaultAuthorities.approvalReceiptAuthority
   let verifiedSession: VerifiedProjectSessionBinding | undefined
-  const projectSession = () => verifiedSession ??= createProductionMcpStdioProjectSessionBinding(generationPolicy)
+  const projectSession = () => verifiedSession ??= createProductionMcpStdioProjectSessionBinding()
   const proposalReceiptFor = authorities.proposalReceiptFor ?? createDefaultMcpProposalReceiptResolver()
   const canvasReadExecutionRuntime = createHeadlessCanvasReadExecutionRuntime()
   // 无窗口进程：mac 别在 dock 弹图标。
@@ -299,20 +304,15 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
   }
 
   const fixtureBaseUrlOverride = process.env.NOMI_E2E_PRODUCTION_FIXTURE === '1'
-    ? process.env.NOMI_E2E_APIMART_BASE_URL
+    ? process.env.NOMI_E2E_FIXTURE_BASE_URL
     : undefined
-  const fixtureReferenceUrl = fixtureBaseUrlOverride && process.env.NOMI_E2E_APIMART_REFERENCE_URL
-    ? process.env.NOMI_E2E_APIMART_REFERENCE_URL
+  const fixtureReferenceUrl = fixtureBaseUrlOverride && process.env.NOMI_E2E_FIXTURE_REFERENCE_URL
+    ? process.env.NOMI_E2E_FIXTURE_REFERENCE_URL
     : undefined
   const liveGenerationRuntime = createLiveGenerationRuntime({
     bootstrap: (state, options) => createGenerationProviderBootstrap(state, {
       ...options,
       ...(fixtureBaseUrlOverride ? { fixtureBaseUrlOverride } : {}),
-      ...(fixtureReferenceUrl ? {
-        resolveReferenceUrls: (input) => ({
-          imageUrls: input.references.filter((reference) => reference.kind === 'image').map(() => fixtureReferenceUrl),
-        }),
-      } : {}),
     }),
   })
   const readProviderBootstrap = liveGenerationRuntime.readBootstrap
@@ -330,6 +330,13 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
       operations: operationStore,
       get videoModelCandidates() { return deriveUsableVideoModelCandidates() },
       defaultModelForTaskKind: (taskKind) => readGenerationDefaultModelResolver()(taskKind),
+      // 参考素材的身份（内容哈希 + 版本）归项目素材库管，模型只给 assetId。接线前 `draft_shots`
+      // 只要带一张参考图就 100% 被判 `generation_input_invalid`，而那两个字段模型根本拿不到。
+      resolveAssetReferenceIdentity: (projectId, assetId) => resolveProjectAssetReferenceIdentity(projectId, assetId),
+      // 今天走不到：stdio 的 origin 只有 `{ host: authenticatedClient }`，没有 `sourceDocument`，
+      // 而分镜正本那两条路都以它为闸。留着是因为它是一个**参数**不是第二份实现——外部 MCP 哪天带上
+      // 文稿来源，缺了它就是悄悄少一份预览 URL。核实日期 2026-09-21。
+      resolveStoryboardReferenceUrl: resolveIndexedReferencePreview,
       planStoryboard: planStoryboardFromScript,
       recommendVideoGeneration,
       resolveModelPricing,
@@ -342,8 +349,17 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
         const projectRecord = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
         if (!projectRecord || !Number.isInteger(projectRecord.revision)) throw new Error('Generation authorization requires the current project revision')
         const authorizationRun = productionRuns.repository.read(lease.projectId, operation.operationId)
-        return prepareProductionGenerationAuthorization({
+        if (!authorizationRun) throw new Error('Generation authorization requires the current Run snapshot')
+        return prepareProductionGenerationAuthorizationWithReferences({
           lease,
+            assertCurrent: () => {
+              const currentProject = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
+              const currentRun = productionRuns.repository.read(lease.projectId, operation.operationId)
+              if (!currentProject || currentProject.revision !== projectRecord.revision
+                || currentProject.immutableProjectUuid !== lease.immutableProjectUuid
+                || currentProject.projectGeneration !== lease.projectGeneration
+                || currentRun?.revision !== authorizationRun?.revision) throw new Error('generation_reference_scope_changed')
+            },
           projectRevision: projectRecord.revision,
           operation,
           contract,
@@ -351,8 +367,9 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           providers: providerBootstrap.providers,
           resolveShotPrice,
           maximumSpend: authorizationRun?.policy.maxSpend,
+            run: authorizationRun,
           now: new Date().toISOString(),
-        })
+        }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
       },
       start: async (operation, lease) => {
         const providerBootstrap = readProviderBootstrap()
@@ -374,7 +391,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           projectRevision: projectRecord.revision,
           intentMacKey: ensureCapabilitySigningKey('generation-intent'),
           providers: providerBootstrap.providers,
-          materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+          materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
         })
         // A semantic multi-shot operation must enter the durable batch
         // scheduler. Calling submission.start() without shotId would submit
@@ -433,7 +450,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           projectRevision: projectRecord.revision,
           intentMacKey: ensureCapabilitySigningKey('generation-intent'),
           providers: providerBootstrap.providers,
-          materializeOutput: ({ projectId, providerTaskId, output }) => outputMaterializer.materialize({ projectId, providerTaskId, output }),
+          materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
         })
         try {
           const polled = await submission.poll({ projectId: lease.projectId, operationId: operation.operationId })
@@ -470,7 +487,10 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     approvalReceiptAuthority,
     projectRevisionResolver,
     generationPlanning,
-    generationPolicy,
+    // 用户此刻选的审批档位——**持久化的那一份**（设置里的单一 owner）。
+    // 不递下去的后果不是崩溃，是「全自动」在这个宿主上完全不存在：接入试跑与付费门
+    // 读到 undefined，一律把用户叫回 Nomi 窗口点一次——而他刚刚才授权过「不用再问」。
+    approvalPolicy: readAgentApprovalPolicy,
     proposalReceiptFor,
     ...(authorities.requestGenerationGate ?? runOwnedGenerationAuthority?.requestGenerationGate
       ? { requestGenerationGate: authorities.requestGenerationGate ?? runOwnedGenerationAuthority!.requestGenerationGate }
@@ -479,16 +499,20 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
       ? { authorizeGeneration: authorities.authorizeGeneration ?? runOwnedGenerationAuthority!.authorizeGeneration }
       : {}),
   }
+  const invokeRequest = (method: string, params: Record<string, unknown>, options?: McpInvokeOptions) => invoke(
+    method,
+    params,
+    options,
+    generationAuthorities,
+    projectSession(),
+    canvasReadExecutionRuntime,
+  )
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
-    invoke: (method, params, options) => invoke(
-      method,
-      params,
-      options,
-      generationAuthorities,
-      projectSession(),
-      canvasReadExecutionRuntime,
-    ),
+    invoke: invokeRequest,
+    // This protocol instance is itself a live Nomi host. Its direct route does
+    // not cold-start another desktop process, so discovery may use it.
+    invokeIfOpen: invokeRequest,
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
     getAuthenticatedClient: () => projectSession().connection.authenticatedClient,
     onClientDetected: (name) => { recordDetectedMcpClient(name) },

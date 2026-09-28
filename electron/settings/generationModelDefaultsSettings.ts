@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { readJsonFile, writeJsonFileAtomic } from "../jsonFile";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 import {
   DEFAULT_GENERATION_MODEL_DEFAULTS,
   normalizeGenerationModelDefaults,
@@ -24,15 +24,13 @@ export function generationModelDefaultsSettingsPath(): string {
 }
 
 export function readGenerationModelDefaults(): GenerationModelDefaults {
-  try {
-    return normalizeGenerationModelDefaults(readJsonFile(generationModelDefaultsSettingsPath()));
-  } catch {
-    return normalizeGenerationModelDefaults(DEFAULT_GENERATION_MODEL_DEFAULTS);
-  }
+  return normalizeGenerationModelDefaults(
+    readConfigFileOrDefault<unknown>(generationModelDefaultsSettingsPath(), () => DEFAULT_GENERATION_MODEL_DEFAULTS),
+  );
 }
 
 export function writeGenerationModelDefaults(value: unknown): GenerationModelDefaults {
   const next = normalizeGenerationModelDefaults(value);
-  writeJsonFileAtomic(generationModelDefaultsSettingsPath(), next);
+  writeConfigFileAtomic(generationModelDefaultsSettingsPath(), next);
   return next;
 }

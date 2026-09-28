@@ -10,6 +10,7 @@ import { persistNodeImageBlob } from '../adapters/persistNodeImage'
 import { isProjectImportCancellation } from '../adapters/assetImportAdapter'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { CONTACT_SHEET_DEFAULTS, computeContactSheetLayout, containRect } from './contactSheetLayout'
+import { computeMediaMetaPatch } from './nodeSizing'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
 
@@ -120,9 +121,15 @@ export async function buildContactSheetNode(selectedNodeIds: readonly string[], 
       // 联系表这种大图一次就是十几 MB（同 useNodeImageEditing 的收敛，见 persistNodeImageBlob 注释）。
       const stored = await persistNodeImageBlob(rendered.blob, created.id, `contact-sheet-${createdAt}.png`, project)
       project.assertCurrent()
+      const mediaMeta = computeMediaMetaPatch({
+        resultType: 'image',
+        meta: created.meta || {},
+        width: rendered.width,
+        height: rendered.height,
+      })?.meta
       useGenerationCanvasStore.getState().updateNode(created.id, {
         result: { id: `contact-sheet-${createdAt}`, type: 'image', url: stored.url, createdAt },
-        meta: { localOnly: stored.localOnly, ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }) },
+        meta: { ...(mediaMeta || {}), localOnly: stored.localOnly, ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }) },
       })
 
       if (rendered.failed > 0) {

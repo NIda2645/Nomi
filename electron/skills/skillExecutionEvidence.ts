@@ -6,12 +6,12 @@ export type SkillExecutionEvidence = LoadedSkillEvidence & { stageId: string };
 
 /** Resolve the declared craft skills for a built-in playbook and prove that
  * each referenced skill was actually present on disk when the stage ran. */
-export function loadPlaybookStageEvidence(
+export async function loadPlaybookStageEvidence(
   playbookName: string,
   playbookVersion: string,
   stageId: string,
-): SkillExecutionEvidence[] {
-  const records = readSkillRecords();
+): Promise<SkillExecutionEvidence[]> {
+  const records = await readSkillRecords();
   const playbook = findSkillRecord(playbookName, playbookName, records);
   if (!playbook?.manifest) {
     return [{ name: playbookName, version: playbookVersion, stageId }];

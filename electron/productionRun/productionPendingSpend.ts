@@ -1,3 +1,5 @@
+import { sumBudgetAmounts } from "./budgetLedger";
+import { createHash } from "node:crypto";
 // 「有一笔生成在等你点头」的**宿主投影**（纯函数，唯一 owner）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -53,9 +55,48 @@ function shotsOf(plan: ProductionGenerationPlan, resolvePricing: PricingResolver
     modelId: entry.candidate.modelId,
     ...(entry.candidate.mode ? { mode: entry.candidate.mode } : {}),
     ...(entry.candidate.modeId ? { modeId: entry.candidate.modeId } : {}),
+    ...(entry.candidate.variantId ? { variantId: entry.candidate.variantId } : {}),
     parameters: { ...(entry.candidate.parameters ?? {}) },
+    references: entry.candidate.references.map(reference => ({ ...reference })),
     price: candidatePrice(entry.candidate, resolvePricing),
   }));
+}
+
+/**
+ * 「这一笔此刻正由**档位**代答」。`true` = 它不在等用户，别投影成卡。
+ *
+ * 事实的 owner 是 `capabilityCore/policySpendDecision.ts`（进程内，有始有终）；这里只收一个谓词，
+ * 因为本文件是纯投影，不认识宿主。缺席 = 没有任何档位在代答，行为逐字不变（外部 MCP 宿主那条路
+ * 从来不传它）。
+ */
+export type SpendAnsweredByPolicy = (projectId: string, operationId: string) => boolean;
+
+/**
+ * 「这份计划此刻**正摆在用户面前等他点头**吗」——这条判据只有这一份。
+ *
+ * 两个读者：`projectPendingSpendConfirm`（把它画成卡）与启动清扫 `stalePresentationSweep`
+ * （重启后没人在等的那一笔要撤回出价，裁决 C）。两边各写一遍就会出现「卡不画了、清扫却不认」
+ * 或反过来的分叉——那种分叉不报错。
+ */
+export function awaitingSpendDecision(
+  run: ProductionRun,
+  spendAnsweredByPolicy?: SpendAnsweredByPolicy,
+): Readonly<{ plan: ProductionGenerationPlan; gateId?: string }> | undefined {
+  if (run.origin.host !== IN_APP_AGENT_ORIGIN_HOST) return undefined;
+  const plan = run.generationPlan;
+  if (!plan) return undefined;
+  if (plan.state === "sealed") {
+    const gate = run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
+    // 封印了却没有一道在等的门 = 这笔已经被决定过了，不该再问一次。
+    if (!gate || gate.status !== "waiting") return undefined;
+    return { plan, gateId: gate.gateId };
+  }
+  if (plan.state !== "draft") return undefined;
+  // `draft_shots` 建的草稿：落了画布、带单价，但模型还没调 `generate`——这一笔还不是「在等你点头」。
+  if (plan.cardHidden === true) return undefined;
+  // 「全自动」档正在替用户决这一笔。它不在等人，别摆卡。
+  if (spendAnsweredByPolicy?.(run.projectId, plan.operationId) === true) return undefined;
+  return { plan };
 }
 
 /**
@@ -63,26 +104,26 @@ function shotsOf(plan: ProductionGenerationPlan, resolvePricing: PricingResolver
  *
  * 刻意**不**投影 `submitted` / `cancelled`：那两档已经不是「等你决定」了，
  * 它们各有自己的界面（任务卡 / 收据行），再出一张确认卡就是在问一个已经答过的问题。
+ *
+ * ── 档位那一档（2026-09-18 · T-AG-04）──
+ *
+ * 用户在「全自动」档下拍过板：付费生成直接跑、不再逐笔看报价（2026-09-12）。所以一份
+ * **正在被档位代答**的草稿不是「在等你点头」——它在等的是策略，而策略马上就会在同一道闸上决完
+ * （`decideByPolicyAfterDraft`）。此前这里完全不看这件事，于是草稿落盘到封印之间的那一段，
+ * 面板照旧弹卡，用户刚答应过的事被又问了一遍（T-AG-04）。
+ *
+ * 判据只放在 `draft` 这一支，**`sealed` 那一支一个字不动**，这是裁决明写要保留的行为：
+ * 代答链（`decideGenerationSpend`）第一步就是封印+开门，之后任何一步失败都留下
+ * 「sealed + gate waiting」——那时卡照旧出现在原处等用户，也就是「策略答不了才问人」。
  */
 export function projectPendingSpendConfirm(
   run: ProductionRun,
   resolvePricing: PricingResolver,
+  spendAnsweredByPolicy?: SpendAnsweredByPolicy,
 ): PendingSpendConfirm | undefined {
-  if (run.origin.host !== IN_APP_AGENT_ORIGIN_HOST) return undefined;
-  const plan = run.generationPlan;
-  if (!plan) return undefined;
-  let gateId: string | undefined;
-  if (plan.state === "sealed") {
-    const gate = run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
-    // 封印了却没有一道在等的门 = 这笔已经被决定过了，不该再问一次。
-    if (!gate || gate.status !== "waiting") return undefined;
-    gateId = gate.gateId;
-  } else if (plan.state !== "draft") {
-    return undefined;
-  } else if (plan.cardHidden === true) {
-    // `draft_shots` 建的草稿：落了画布、带单价，但模型还没调 `generate`——这一笔还不是「在等你点头」。
-    return undefined;
-  }
+  const awaiting = awaitingSpendDecision(run, spendAnsweredByPolicy);
+  if (!awaiting) return undefined;
+  const { plan, gateId } = awaiting;
   const shots = shotsOf(plan, resolvePricing);
   // 走到这里意味着**这一笔确实在等人点头**（draft，或封印后那道门还 `waiting`），却一镜都投影不出来。
   // 那不是「没有要确认的东西」，是「我知道有，但我画不出来」——写成 `undefined` 的后果是：
@@ -95,12 +136,18 @@ export function projectPendingSpendConfirm(
       { code: "pending_spend_projection_empty" },
     );
   }
-  const knownSubtotal = shots.reduce((sum, shot) => (shot.price.known ? sum + shot.price.amount : sum), 0);
+  const knownSubtotal = sumBudgetAmounts(shots.map(shot => shot.price.known ? shot.price.amount : 0));
   return Object.freeze({
     projectId: run.projectId,
     runId: run.runId,
     operationId: plan.operationId,
     planVersion: run.planVersion,
+    quoteId: createHash("sha256").update(JSON.stringify({
+      projectId: run.projectId, operationId: plan.operationId, planVersion: run.planVersion,
+      candidateRevision: plan.candidate.revision,
+      revisions: plan.shots?.filter((shot) => shot.included !== false).map((shot) => [shot.shotId, shot.candidate.revision]),
+      shots: shots.map(({ nodeId: _nodeId, ...shot }) => shot), currency: run.budget.currency,
+    })).digest("hex"),
     candidateRevision: plan.candidate.revision,
     ...(gateId ? { gateId } : {}),
     currency: run.budget.currency,
@@ -117,12 +164,13 @@ export function projectPendingSpendConfirm(
 export function listPendingSpendConfirms(
   runs: readonly ProductionRun[],
   resolvePricing: PricingResolver,
+  spendAnsweredByPolicy?: SpendAnsweredByPolicy,
 ): readonly PendingSpendConfirm[] {
   return Object.freeze(
     runs
       .slice()
       .sort((left, right) => left.updatedAt.localeCompare(right.updatedAt))
-      .map((run) => projectPendingSpendConfirm(run, resolvePricing))
+      .map((run) => projectPendingSpendConfirm(run, resolvePricing, spendAnsweredByPolicy))
       .filter((value): value is PendingSpendConfirm => Boolean(value)),
   );
 }

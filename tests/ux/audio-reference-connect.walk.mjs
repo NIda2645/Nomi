@@ -2,7 +2,7 @@
 //
 // 用户现场：拖一个「声音」节点想当参考连到 Seedance 全能参考视频节点（模型档案早就声明了
 // audio_ref 参考音频槽），画布却直接拒绝这条连线——根因是共享的参考边分类器/门岗
-// （src/config/modelArchetypes/anchorPolicy.ts + referenceEdgeCapability.ts）从没认过
+// （electron/shared/modelArchetypes/anchorPolicy.ts + referenceEdgeCapability.ts）从没认过
 // audio 是一种可参考资产类型，不管目标模型声明了什么。
 //
 // 这个走查验的是**真实画布连线 → composer 判定 → 请求体字段**这条完整链路，不是单测里的纯函数：
@@ -178,7 +178,7 @@ try {
     const state = canvasStore.useGenerationCanvasStore.getState()
     const node = state.nodes.find((n) => n.id === shot)
     const { resolveGenerationReferences } = await import('/src/workbench/generationCanvas/runner/generationReferenceResolver.ts')
-    const { resolveArchetypeForModel } = await import('/src/config/modelArchetypes/index.ts')
+    const { resolveArchetypeForModel } = await import('/electron/shared/modelArchetypes/index.ts')
     const { buildArchetypeInputParams, currentArchetypeMode } = await import('/src/workbench/generationCanvas/nodes/controls/archetypeMeta.ts')
     const references = resolveGenerationReferences(node, { nodes: state.nodes, edges: state.edges })
     // 不 hardcode 具体是哪个 archetype——真机上新建视频节点默认拿到哪个模型由目录决定（隔离测试

@@ -1,0 +1,19 @@
+{
+ "schema_version": 3,
+ "id": "2026-09-22-catalog-listing-dead-imports",
+ "change_kind": "structural",
+ "scope_paths": [
+  "electron/catalog/modelCatalogListing.ts"
+ ],
+ "regression_tests": [
+  "electron/catalog/modelCatalogListing.test.ts"
+ ],
+ "structural_evidence": {
+  "affected_paths": [
+   "electron/catalog/modelCatalogListing.ts"
+  ],
+  "preserved_exports": [],
+  "behavior_preservation": "`7df4c036f` 在这个文件里只删了**两个没有任何人读的 import**（合并后 lint:ci 从 86 降到上限内，靠的是删真死代码而不是抬上限）。运行时没有一行代码引用过它们：删除前后这个模块的导出集合、每个导出的签名与它们的返回值逐字不变，`tsc` 与既有单测都不需要任何配合改动。这不是一次纠正性修复——没有症状、没有直接原因、没有类根因可写，编一个出来只会让根因台账多一条假记录。",
+  "verification_limits": "证据是编译期与测试：`pnpm run typecheck`（三份 tsconfig）通过，`electron/catalog` 全部单测通过，`npx vitest run electron src` 1490 文件全绿。**没有**真机走查——一次纯 import 删除没有可走查的用户可见面。若将来有人往这个文件里加行为，那属于另一次改动，要按纠正性合同重新立案。"
+ }
+}

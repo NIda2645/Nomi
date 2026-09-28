@@ -1,0 +1,206 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-model-face-refers-to-fields-the-model-cannot-fill",
+  "problem_type": "宿主替模型写的那一行里，引用名不是模型能填的字段名——同一个值出来叫 A、进去要填 B，而两边都没人核",
+  "symptom": "一次 edit_timeline 之后，模型读到的工具结果正文里是 \"undoToken\":\"undo-1\"，而宿主拼在末行的是 (changeId=undo-1)，undo 动词收的字段又叫 changeId：三处三种搭配，模型只能靠猜哪个是下一步要填的。draft_shots 更直接——它的末行把草稿 id 标成 jobId=op-7，而下一步 draft_shots / generate 要求填 draftId（09-18 改名后是 operationId），而且那一刻根本没有 job 在跑。两条都不报错，模型填错就是一次白费的来回；09-18 真机 23 轮里 draft_shots→generate 的接力就在这条缝上。",
+  "direct_cause": "electron/agentLane/laneExtendedTools.ts 的 nextActionFor 在两个分支上各写了一次改名：edit_timeline 分支 `{ changeId: record.undoToken }`，draft_shots 分支 `{ jobId: draftId }`。两个名字都是就地手写的字面量，没有任何东西把它们和动词 schema 上真实存在的字段对上。",
+  "class_root": "工具结果的末行是宿主替模型写的一句**指令**（「下一步要填的那个值在这里」），但它被当成一个**标签**来写：谁拼这一行，谁就顺手起一个自己觉得顺口的名字。动词声明那一侧有注册表、有 schema、有门岗；回程这一侧只有一个 interface，字段名是不是模型真能填的，没有任何一层能表达，更谈不上核对。R1/R3 那一族不变量全部只管**去程**（模型填的东西能不能到宿主）；回程（宿主递回来的名字模型能不能用）在 09-18 之前没有任何一条不变量。",
+  "migration": "末行的引用名从「每个分支就地起名」改成一份具名常量 LANE_TOOL_NEXT_ACTION_REFS，渲染函数按它迭代；changeId 与 cardId 两个名字同 commit 删除（changeId 改回契约与动词共用的 undoToken；cardId 全仓没有任何写点，是纯死字段）。draft_shots 的草稿 id 改用 operationId——与同一刀里动词面改名后的字段同名。没有留兼容层：末行的旧名字不再被任何地方发出，模型也从来不需要向我们发回这一行。",
+  "affected_population": [
+    "每一次 edit_timeline 成功之后模型要不要/怎么调 undo——模型读到三个名字的两种搭配",
+    "每一次 draft_shots → generate 的接力：草稿 id 出来叫 jobId、进去要填 operationId",
+    "将来每一个想在末行多递一个引用的写动词：没有任何东西提醒作者「这个名字得是某个动词真的收的字段」"
+  ],
+  "scope_paths": [
+    "electron/shared/agentLane/laneToolNextAction.ts",
+    "electron/agentLane/laneExtendedTools.ts",
+    "electron/agentLane/laneTools.mts"
+  ],
+  "entry_points": [
+    "electron/agentLane/laneExtendedTools.ts:76 nextActionFor 的 edit_timeline 分支（曾发出 changeId=）",
+    "electron/agentLane/laneExtendedTools.ts:65 nextActionFor 的 draft_shots 分支（曾发出 jobId=<草稿 id>）",
+    "electron/shared/agentLane/laneToolNextAction.ts:33 renderLaneToolNextAction 的引用行拼接（曾是三条手写的三元）",
+    "electron/shared/agentLane/laneToolNextAction.ts:25 LaneToolNextAction.cardId（全仓零写点的死字段）"
+  ],
+  "invariants": [
+    "末行里出现的每个 `name=value` 引用名，都必须是某个已注册动词 schema 上真实存在的字段名",
+    "同一个值在工具结果正文里叫什么，在末行就叫什么，模型下一步要填的字段也叫什么——三处同名",
+    "末行支持的引用名是一份具名常量，渲染函数从它迭代；新增一个引用只能改那一处",
+    "没有任何动词收的引用名，不许留在信封上（cardId 这种全仓零写点的字段是死代码，不是预留）"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "line": 155,
+      "symbol": "nextActionFor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneTools.mts",
+      "line": 320,
+      "symbol": "renderLaneToolNextAction"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "line": 73,
+      "symbol": "renderLaneToolNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "line": 48,
+      "symbol": "LANE_TOOL_NEXT_ACTION_REFS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "line": 58,
+      "symbol": "LaneToolNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneRuntimePort.ts",
+      "line": 39,
+      "symbol": "LaneToolNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneContracts.ts",
+      "line": 78,
+      "symbol": "LaneToolNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "line": 47,
+      "symbol": "LaneToolNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "line": 57,
+      "symbol": "LaneToolNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "line": 63,
+      "symbol": "LaneToolNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "line": 71,
+      "symbol": "LaneToolNextAction"
+    }
+  ],
+  "door_reduction": {
+    "before": 11,
+    "after": 11,
+    "why_not": "11 扇里只有 3 扇是写门，且它们本来就已经收敛：唯一的信封生产者是 nextActionFor，唯一的渲染点是 renderLaneToolNextAction（laneTools.mts:320 是它的唯一调用者，不是第二份实现）。剩下 8 扇全是 read 门——类型引用与同文件内的读回/去尾函数，合并它们只会把一个类型拆成更多间接层。这次缺的不是「门太多」，是这扇门上没有一条判据：修法是给它加判据（LANE_TOOL_NEXT_ACTION_REFS + 三条从注册表派生的断言），不是减门。"
+  },
+  "regression_tests": [
+    "electron/agentLane/laneExtendedTools.test.ts"
+  ],
+  "residual_risks": [
+    "断言核的是「这个名字是某个动词的字段」，不是「是**这一次**模型该调的那个动词的字段」。第三条（全集断言）本就宽；前两条按具体动词核（undo / draft_shots + generate），但新增一个引用时作者仍可能只加进全集而不写针对性的那条。",
+    "工具结果**正文**是宿主返回值的原样 JSON（laneExtendedTools.ts:154），它里面的字段名同样是模型下一步要填的名字。那一半由 verbFieldMap 的 `from: from-read:<verb>.<field>` 来源声明去核——但五个动词的 outputSchema 仍是 z.unknown()（PROVENANCE_UNVERIFIABLE），对它们这条核不动。",
+    "失败路的 `Next: …` 那一行是自由散文（laneToolContract.ts:118），里面如果写出一个字段名，没有任何东西核它。今天那 7 处都不含具体字段名，所以不是缺陷，但也不是被拦住的。"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是我们自己两处代码互相矛盾，不涉及任何外部契约或第三方行为；外部依据在同一刀的 docs/plan/2026-09-18-tool-layer-prior-art-verdict.md 里已经查过（六家都没有「回程改名」这一层）。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一天、同一个函数里独立长出两条（changeId 与 jobId），作者各不相同、间隔数月，而且两条都没被任何门岗、任何测试、任何类型看见。一个「每个分支自己起名、没有判据」的结构，下一个写动词还会再长一条。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs LaneToolNextAction / nextActionFor / renderLaneToolNextAction / LANE_TOOL_NEXT_ACTION_REFS —— 门表见 doors，11 扇逐扇看过",
+      "grep -rn \"nextAction: '\" electron/shared/agentLane electron/agentLane —— 7 处失败路的 nextAction 全是散文，无一含字段名（laneExtendedDesktopPorts.ts:61、laneRuntimePort.ts:99、laneTools.mts:153/191、laneExtendedTools.ts:129/150、laneDesktopTools.ts:62）",
+      "读 nextActionFor 的全部 9 个 case，逐个判「它递回去的名字有没有对应动词字段」：draft_shots / generate / edit_timeline / export_video 四个带引用，其余五个只有 userSees 散文",
+      "grep -rn \"changeId\\|cardId\" electron src tests —— 改完全仓只剩注释里的历史说明；cardId 在改动前全仓 0 个写点"
+    ]
+  },
+  "generality_proof": "末行只有一个渲染点（renderLaneToolNextAction），而渲染点现在只认一份具名引用名单。于是「模型会读到哪些引用名」这件事收成了一个可枚举的集合，而集合里的每个名字都被一条从动词注册表派生的断言核过。新增一个引用必须改那份名单——改了就被那条断言接住；不改名单而在某个分支里塞一个字段，渲染函数根本不会印它（值到不了模型，测试里那条「至少印出一个」会红）。两条出路都被堵上，这才是「整类不再复发」而不是「这两处改对了」。",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "symbol": "LANE_TOOL_NEXT_ACTION_REFS / renderLaneToolNextAction",
+      "responsibility": "末行能出现哪些引用名，由这一份名单说了算；渲染函数只迭代它，不接受名单外的字段"
+    },
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "symbol": "nextActionFor",
+      "responsibility": "信封的唯一生产者：每个写动词递回去的那个值，用的必须是模型下一步真能填的字段名"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "entry_point": "nextActionFor 的 edit_timeline 分支",
+      "disposition": "enforced",
+      "evidence": "改名垫片删除（P1），原样带 undoToken；断言「末行里带 undo-1 的那个名字必须 ∈ undo 动词 schema 的字段」从注册表派生，不写死期望名。改之前这条断言红（changeId ∉ undo 字段）。"
+    },
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "entry_point": "nextActionFor 的 draft_shots 分支",
+      "disposition": "enforced",
+      "evidence": "jobId → operationId；断言「末行里带 op-7 的那个名字必须同时 ∈ draft_shots 与 generate 的字段」。改之前红（jobId ∉ 两者）。"
+    },
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "entry_point": "nextActionFor 的 generate / export_video 分支",
+      "disposition": "not-affected",
+      "evidence": "两者递回的都是真正在跑的那一笔，名字 jobId，而 check_job / cancel_job 收的字段就叫 jobId——出来进去同名。第三条全集断言把这个名字也一并核过。"
+    },
+    {
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "entry_point": "LaneToolNextAction.cardId",
+      "disposition": "enforced",
+      "evidence": "全仓 0 个写点（改动前 grep 只有类型声明与渲染那一行本身），任何动词都不收这个名字，同 commit 删除。留着它 = 一个没人要的名字随时可能被下一个人拿去用。"
+    },
+    {
+      "path": "electron/shared/agentLane/laneToolContract.ts",
+      "entry_point": "renderLaneToolFailure 的 `Next:` 行",
+      "disposition": "not-affected",
+      "evidence": "它印的是自由散文（failure.nextAction），全仓 7 个产地逐个读过，没有一处写出具体字段名。它与本类同一个「宿主替模型写话」的位置，但不承载引用名，所以不在这条不变量的管辖里。"
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/agentLane/laneToolNextAction.ts",
+    "invariant": "末行能印出的引用名 = LANE_TOOL_NEXT_ACTION_REFS，且其中每个名字都是某个已注册动词 schema 上的字段",
+    "failure_mode": "electron/agentLane/laneExtendedTools.test.ts 里那三条从 VERB_DECLARATIONS 派生的断言报红：要么末行印出的名字不在该动词字段里，要么名单里有一个没人收的名字。",
+    "exception_policy": "none",
+    "strategy": "把「末行可以出现哪些引用名」从九个分支各自的字面量收成一份具名名单，再让断言拿这份名单去和动词注册表对账",
+    "artifacts": [
+      "electron/shared/agentLane/laneToolNextAction.ts",
+      "electron/agentLane/laneExtendedTools.ts",
+      "electron/agentLane/laneExtendedTools.test.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/agentLane/laneExtendedTools.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneExtendedTools.ts",
+      "electron/shared/agentLane/laneToolNextAction.ts"
+    ],
+    "rationale": "P1 加新删旧，同 commit 删掉三样：laneExtendedTools.ts 里 `{ changeId: record.undoToken }` 那条改名垫片、同文件里 `{ jobId: draftId }` 那条把草稿 id 标成 job 的写法，以及 laneToolNextAction.ts 上的 LaneToolNextAction.changeId / .cardId 两个字段与渲染函数里那三条手写三元。新的引用名单是唯一实现，没有并行版也没有兼容读回——这一行只往模型那边去，模型从不把它发回给我们，所以不存在旧转录要兼容。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及任何第三方依赖：改的是我们自己模型面回程的字段命名与它的判据。",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/shared/agentLane/laneToolNextAction.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/agentLane/laneExtendedTools.test.ts"
+    ],
+    "rationale": "「末行能出现哪些引用名」既不属于任何一个动词，也不属于任何一个域端口——它是回程这一面的公共词表，所以住在唯一渲染点自己的模块里，和渲染函数同生共死。它的尺子在 laneExtendedTools.test.ts：三条断言全部从 VERB_DECLARATIONS 派生（两条按具体动词核 undo / draft_shots+generate，一条核名单全集），改这三条里任何一条之前先证明它会红——本次就是先写红再修的。"
+  }
+}

@@ -37,6 +37,7 @@ import { previousShotPromptFor } from './shotOrder'
 import { MediaImportRejectedError, importLocalFile } from '../assets/localFileImport'
 import { mcpImportRejectionMessage } from './mcpImportRejectionMessage'
 import { checkImportAsset, contentTypeForExtension } from './importAssetGuard'
+import { assertCatalogModelIdentity } from './canvasModelIdentity'
 
 /** 生成意图（粗粒度）→ 默认 ProfileKind。调用方也可显式传 kind 覆盖。 */
 export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
@@ -311,7 +312,9 @@ export async function addProjectNodes(gateway: ProjectGateway, specs: NodeSpec[]
     })
     if (!approved) return { ids: [], cancelled: true }
   }
-  const { snapshot, ids } = addNodes(await gateway.readDoc(), specs)
+  const { snapshot, ids } = addNodes(await gateway.readDoc(), specs, {
+    assertModelIdentity: (identity) => assertCatalogModelIdentity(listAvailableModels(), identity),
+  })
   await gateway.apply(snapshot)
   return { ids }
 }
@@ -727,7 +730,7 @@ export async function generateOnProject(
             // 对外说三轴、实际只跑了两轴——而「接不接得上」正是短剧最容易崩的那一轴（L3-F1 实测抓出）。
             // 判不出上一镜时返回 undefined → 判分器按「首镜不评 continuity」处理，不拿错参照物硬比。
             ...(() => {
-              const prev = previousShotPromptFor(snapshot.nodes, nodeId)
+              const prev = previousShotPromptFor(snapshot.nodes, nodeId, snapshot.edges)
               return prev ? { previousShotPrompt: prev } : {}
             })(),
             frameSourceUrl: primary!.url as string,

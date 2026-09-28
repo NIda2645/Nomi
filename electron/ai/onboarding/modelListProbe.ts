@@ -12,9 +12,11 @@ import type { AiSdkProviderKind } from "../../catalog/types";
 import { appFetch } from "../../appFetch";
 import {
   appendQueryParams,
+  authHeaders,
   buildHttpRequest,
   type AuthType,
   type BuiltRequest,
+  type VendorAuthSpec,
 } from "../requestPipeline";
 import { describeIllegalHeader, findIllegalHeader, isJsonRecord, mergeHeadersCaseInsensitive, pickUpstreamMessage } from "../../jsonUtils";
 import { parseModelListPage, type ModelListResult, type ModelListDescriptor, type ModelListFailureKind } from "./modelListResponse";
@@ -63,16 +65,27 @@ export function readExtraHeaders(raw: unknown): Record<string, string> {
   return out;
 }
 
-/** 按协议给鉴权头（anthropic 用 x-api-key + 版本；其余 Bearer）。拉模型/可达性探测共用。 */
+/**
+ * 按协议给鉴权头（anthropic 用 x-api-key + 版本；其余 Bearer）。拉模型/可达性探测共用。
+ *
+ * 2026-09-21：这里原来自己写死 `authorization: Bearer ${apiKey}` —— 全仓第二处拼鉴权头的地方，
+ * 于是 vendor.authScheme（Higgsfield 的 `Key id:secret`）在「测试连接 / 可达性探测」这条路上
+ * 根本没有出现的机会。现在头由 requestPipeline.authHeaders 这一个 owner 拼；`auth` 给了就以它为准
+ * （调用方从已保存的连接派生，见 catalog/vendorAuthSpec.connectionAuthSpec），没给才按协议缺省。
+ */
 export function buildAuthHeaders(
   providerKind: AiSdkProviderKind,
   apiKey: string,
   extraHeaders: Record<string, string>,
+  auth?: VendorAuthSpec,
 ): Record<string, string> {
+  const spec: VendorAuthSpec = auth
+    ?? (providerKind === "anthropic" ? { authType: "x-api-key", headerName: "x-api-key" } : { authType: "bearer" });
   return mergeHeadersCaseInsensitive(
-    providerKind === "anthropic"
-      ? { "anthropic-version": "2023-06-01", ...(apiKey ? { "x-api-key": apiKey } : {}) }
-      : { ...(apiKey ? { authorization: `Bearer ${apiKey}` } : {}) },
+    {
+      ...(providerKind === "anthropic" ? { "anthropic-version": "2023-06-01" } : {}),
+      ...authHeaders(spec, apiKey),
+    },
     extraHeaders,
   );
 }

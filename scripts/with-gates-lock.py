@@ -22,7 +22,26 @@ import time
 import uuid
 
 if os.name == 'nt':
+    import ctypes
+    from ctypes import wintypes
     import msvcrt
+
+    # Windows has no signals: CPython maps os.kill(pid, 0) onto
+    # GenerateConsoleCtrlEvent(CTRL_C_EVENT=0, pid), which interrupts every
+    # process sharing that console (issue #838: it killed the host backend).
+    # Observing a process object is the read-only equivalent.
+    PROCESS_SYNCHRONIZE = 0x00100000
+    ERROR_INVALID_PARAMETER = 87
+    ERROR_ACCESS_DENIED = 5
+    WAIT_OBJECT_0 = 0
+    WAIT_TIMEOUT = 258
+    _kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+    _kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.WaitForSingleObject.argtypes = (wintypes.HANDLE, wintypes.DWORD)
+    _kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    _kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    _kernel32.CloseHandle.restype = wintypes.BOOL
 else:
     import fcntl
 
@@ -50,10 +69,43 @@ def try_lock(file):
 
 
 def alive(pid):
+    """Read-only liveness of a lock owner. Never signals, never terminates.
+
+    A false positive hands the shared lock to a caller that cannot really
+    inherit it, so unknown states raise instead of guessing.
+    """
+    # Rejecting non-positive-int pids up front keeps 0 (= "my own console
+    # group" on Windows, "my process group" on POSIX), negatives, bools and
+    # junk metadata out of the system call.
+    if type(pid) is not int or pid <= 0:
+        return False
+    if os.name == 'nt':
+        if pid > 0xFFFFFFFF:  # not a DWORD, so not a pid
+            return False
+        handle = _kernel32.OpenProcess(PROCESS_SYNCHRONIZE, False, pid)
+        if not handle:
+            error = ctypes.get_last_error()
+            if error == ERROR_INVALID_PARAMETER:  # no process carries this id
+                return False
+            if error == ERROR_ACCESS_DENIED:  # exists, just not ours to open
+                return True
+            raise ctypes.WinError(error)
+        try:
+            # Zero-wait on the process object: signaled means it has exited.
+            # GetExitCodeProcess alone cannot tell STILL_ACTIVE from a process
+            # that really exited with that very code.
+            state = _kernel32.WaitForSingleObject(handle, 0)
+            if state == WAIT_TIMEOUT:
+                return True
+            if state == WAIT_OBJECT_0:
+                return False
+            raise ctypes.WinError(ctypes.get_last_error())  # WAIT_FAILED etc.
+        finally:
+            _kernel32.CloseHandle(handle)
     try:
-        os.kill(int(pid), 0)
+        os.kill(pid, 0)
         return True
-    except (ValueError, TypeError, ProcessLookupError):
+    except (OverflowError, ProcessLookupError):
         return False
     except PermissionError:
         return True

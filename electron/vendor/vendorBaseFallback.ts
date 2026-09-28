@@ -74,21 +74,22 @@ function normalizeOrigin(url: string): string {
   }
 }
 
-/** 沿 cause 链 + AggregateError.errors（happy-eyeballs 双栈失败的形态）收集错误码。 */
-function collectErrorCodes(error: unknown, depth = 0): string[] {
-  if (depth > 5 || !error || typeof error !== "object") return [];
-  const codes: string[] = [];
-  const code = (error as { code?: unknown }).code;
-  if (typeof code === "string") codes.push(code);
-  const aggregate = (error as { errors?: unknown }).errors;
-  if (Array.isArray(aggregate)) for (const item of aggregate) codes.push(...collectErrorCodes(item, depth + 1));
-  codes.push(...collectErrorCodes((error as { cause?: unknown }).cause, depth + 1));
-  return codes;
+const PRE_TLS_ECONNRESET = /before secure TLS connection was established|disconnected before secure TLS/i;
+
+/** 沿 cause 链 + AggregateError.errors 查找安全的连接阶段错误，命中后立即停止遍历。 */
+function hasConnectPhaseError(error: unknown, depth = 0): boolean {
+  if (depth > 5 || !error || typeof error !== "object") return false;
+  const item = error as { code?: unknown; message?: unknown; errors?: unknown; cause?: unknown };
+  const code = typeof item.code === "string" ? item.code : "";
+  const message = typeof item.message === "string" ? item.message : "";
+  if (SAFE_RETRY_CODES.has(code) || (code === "ECONNRESET" && PRE_TLS_ECONNRESET.test(message))) return true;
+  if (Array.isArray(item.errors)) for (const nested of item.errors) if (hasConnectPhaseError(nested, depth + 1)) return true;
+  return hasConnectPhaseError(item.cause, depth + 1);
 }
 
 /** 连接从未建立（请求从未离开本机）→ 换线重发对任何方法都安全。 */
 export function isConnectPhaseError(error: unknown): boolean {
-  return collectErrorCodes(error).some((code) => SAFE_RETRY_CODES.has(code));
+  return hasConnectPhaseError(error);
 }
 
 function persist(): void {
@@ -228,6 +229,21 @@ export async function fetchVendorWithBaseFallback(url: string, init: RequestInit
 }
 
 /** 当前生效的 override（无则 null）——供诊断/后续管理卡展示线路。 */
+/**
+ * 这家供应商在**代码里写死**的合法 origin（主域 + 官方公告的备用域）。
+ *
+ * 凭据绑定守卫要它：自愈梯子会把请求改发到备用域，那不是「有人偷偷改了地址」——
+ * 它是编译进包的声明，不是任何一段数据能写的东西（`FAMILIES` 就在本文件上方）。
+ * 不认识的 vendorKey 返回空数组：空 = 没有例外，不是放行。
+ */
+export function codeDeclaredFallbackOrigins(vendorKey: string): string[] {
+  const family = FAMILIES.find((item) => item.vendorKey === vendorKey);
+  if (!family) return [];
+  // 归一用的是本文件已有的那一个（`runLadder` 对同一批 family URL 用的也是它）：
+  // 声明写错了它返回空串，就当这条不存在——绝不因此放行一个解析不出来的目的地。
+  return [...new Set([family.primary, ...family.alternates].map(normalizeOrigin).filter(Boolean))];
+}
+
 export function activeVendorBaseOverride(vendorKey: string): string | null {
   return overrides[vendorKey] ?? null;
 }

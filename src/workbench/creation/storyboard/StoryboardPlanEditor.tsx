@@ -1,7 +1,10 @@
 import React from 'react'
+import { deleteStoryboardRows, restoreStoryboardDeletion, type StoryboardDeletion } from './storyboardDeleteUndo'
+import { isCanvasTextEditingContext } from '../../generationCanvas/components/useCanvasShortcuts'
+import { flushSync } from 'react-dom'
 import { useTranslation } from 'react-i18next'
-import { IconAlertTriangle, IconMovie, IconLockOpen, IconPlayerPlay, IconPlus, IconRobot, IconWand, IconX } from '@tabler/icons-react'
-import { confirmDialog, WorkbenchButton } from '../../../design'
+import { IconAlertTriangle, IconMovie, IconLockOpen, IconPlayerPlay, IconPlus, IconRobot, IconX } from '@tabler/icons-react'
+import { WorkbenchButton } from '../../../design'
 import { notify } from '../../../ui/notificationPolicy'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { useGenerationCanvasStore } from '../../generationCanvas/store/generationCanvasStore'
@@ -17,8 +20,9 @@ import {
   validatePlan,
   type PlanIssue,
 } from '../../generationCanvas/agent/storyboardPlanEdits'
-import type { StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
+import { isEmptyStoryboardPlan, type StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
 import { planDefaultAspect } from '../../generationCanvas/agent/storyboardShotScope'
+import { CreationResourceTreeToggle } from '../CreationResourceTreeToggle'
 import StoryboardAnchorZone from './anchorZone/StoryboardAnchorZone'
 import StoryboardBulkBar from './StoryboardBulkBar'
 import StoryboardShotTable from './StoryboardShotTable'
@@ -38,19 +42,23 @@ import {
   rerunShotRowWithFreshRefs,
   runStoryboardBatch,
   toggleNodeLock,
+  type RowActionContext,
 } from './exec/storyboardRowActions'
 import { recoverNodeResult } from '../../generationCanvas/runner/recoverTaskActions'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
+import { stableProjectAgentJson } from '../../../../electron/shared/legacyAgentJson'
+import { isRunTargetLoaded, readRunProjectRecord } from '../../generationCanvas/runner/runProjectDelivery'
 import { canvasNodeToAssetRefs } from '../../assets/assetTypes'
 import { AssetPreviewDialog, type AssetPreviewSequenceItem } from '../../assets/AssetPreviewDialog'
 import type { AssetRef } from '../../assets/assetTypes'
 import { buildStoryboardPlaybackQueue, hiddenGeneratingCount, positionsForAnchorFilter } from './storyboardDInteractions'
-import { buildStoryboardReference } from '../../ai/resident/residentReferences'
+import { buildStoryboardReference, isStoryboardReference } from '../../ai/resident/residentReferences'
 import StoryboardPlanStrategyPanel from './StoryboardPlanStrategyPanel'
 import { resolveGeneratableGate, type StoryboardResolveClient } from './strategyGate'
 import { useStoryboardStrategy } from './useStoryboardStrategy'
 import { describeBlocker, describeIssue } from './strategyText'
 import { storyboardShotId } from '../../generationCanvas/agent/storyboardStrategy'
+import { FOCUS_GENERATION_NODE_EVENT } from '../../generationCanvas/nodes/nodeSizing'
 import { getDesktopBridge } from '../../../desktop/bridge'
 
 /**
@@ -71,18 +79,19 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   })
   const plan = activeDesign?.plan ?? null
   const designId = activeDesign?.id ?? ''
-  const setStoryboardPlan = useWorkbenchStore((s) => s.setStoryboardPlan)
-  const deleteStoryboardDesign = useWorkbenchStore((s) => s.deleteStoryboardDesign)
+  const legacySetStoryboardPlan = useWorkbenchStore((s) => s.setStoryboardPlan)
+  const setStoryboardPlan = React.useMemo(() => (next: StoryboardPlan) => {
+    if (activeDesign) legacySetStoryboardPlan(next, activeDesign.documentId, activeDesign.id)
+  }, [activeDesign, legacySetStoryboardPlan])
   const setWorkspaceMode = useWorkbenchStore((s) => s.setWorkspaceMode)
   const setActiveStoryboardId = useWorkbenchStore((s) => s.setActiveStoryboardId)
-  const activeDocumentId = useWorkbenchStore((s) => s.activeDocumentId)
+  const selectedDocumentId = useWorkbenchStore((s) => s.activeDocumentId)
+  const activeDocumentId = selectedDocumentId
   const setProjectAgentReferences = useWorkbenchStore((s) => s.setProjectAgentReferences)
-  const setProjectAgentDraft = useWorkbenchStore((s) => s.setProjectAgentDraft)
-  const setProjectAgentDockCollapsed = useWorkbenchStore((s) => s.setProjectAgentDockCollapsed)
   const canvasNodes = useGenerationCanvasStore((s) => s.nodes)
   // 图片/视频模型清单各拉一次，按镜头种类传给镜行的模型选择器 + 参数控件（完整 option 供解析 archetype 参数）。
-  const videoModelOptions = useModelOptionsState('video').options
-  const imageModelOptions = useModelOptionsState('image').options
+  const videoModelOptions = useModelOptionsState('video', 'any-published').options
+  const imageModelOptions = useModelOptionsState('image', 'any-published').options
   // 行内/批量生成的重入闸（生成本身异步、确认卡在别处；按钮点两下不重复 materialize）。
   const [busy, setBusy] = React.useState(false)
   const [actionFeedback, setActionFeedback] = React.useState<{ designId: string | null; message: string } | null>(null)
@@ -111,7 +120,42 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   const [skippedShotIds, setSkippedShotIds] = React.useState<ReadonlySet<string>>(new Set())
   // 选中的行（表上报）——footer 的「交给 Agent 改」与多选浮条读同一份，不各存一份。
   const [selectedRuntimes, setSelectedRuntimes] = React.useState<StoryboardRowRuntime[]>([])
-  const deletedPlanUndoRef = React.useRef<{ plan: NonNullable<typeof plan>; canvasSteps: number } | null>(null)
+  const deletedPlanUndoRef = React.useRef<(StoryboardDeletion & { projectId: typeof projectId; documentId: string; designId: string }) | null>(null)
+  const editorRef = React.useRef<HTMLElement>(null)
+  const deletedFocusRef = React.useRef<Element | null>(null)
+  const lastEditorFocusRef = React.useRef<Element | null>(null)
+  React.useLayoutEffect(() => {
+    const removedFocus = deletedFocusRef.current
+    deletedFocusRef.current = null
+    const active = document.activeElement
+    // Original confirmation resolves before its exit animation removes the focused button.
+    // Restore only that departing control or orphaned body focus, never a new live input.
+    const closingConfirmation = removedFocus?.matches('[data-confirm-dialog-confirm="true"]')
+    if (removedFocus && ((!removedFocus.isConnected && active === document.body)
+      || (closingConfirmation && (active === removedFocus || active === document.body)))
+      && editorRef.current?.offsetParent !== null) editorRef.current?.focus({ preventScroll: true })
+  }, [plan])
+  const currentTargetRef = React.useRef({ projectId, activeDocumentId, designId, plan })
+  currentTargetRef.current = { projectId, activeDocumentId, designId, plan }
+  const onUndo = (event: React.KeyboardEvent<HTMLElement>): void => {
+    const root = editorRef.current
+    if (event.defaultPrevented || event.shiftKey || event.altKey || !(event.metaKey || event.ctrlKey)
+      || event.key.toLowerCase() !== 'z' || !deletedPlanUndoRef.current || !plan
+      || !root || root.offsetParent === null || !(event.target instanceof Node) || !root.contains(event.target)
+      || isCanvasTextEditingContext(event.target, document.activeElement)) return
+    event.preventDefault()
+    if (deletedPlanUndoRef.current.projectId !== projectId || deletedPlanUndoRef.current.documentId !== activeDocumentId
+      || deletedPlanUndoRef.current.designId !== designId) {
+      deletedPlanUndoRef.current = null
+      reportFailure(t('storyboardEditor.exec.actionFailed'))
+      return
+    }
+    try {
+      const next = restoreStoryboardDeletion(plan, deletedPlanUndoRef.current, useGenerationCanvasStore.getState())
+      deletedPlanUndoRef.current = null
+      setStoryboardPlan(next)
+    } catch { reportFailure(t('storyboardEditor.exec.actionFailed')) }
+  }
 
   const firstIssueLabel = (issue: PlanIssue): string => {
     if (issue.kind === 'anchor-not-consumable') return issue.correction
@@ -153,19 +197,6 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
     window.addEventListener('nomi:asset-mention-preview', onMentionPreview)
     return () => window.removeEventListener('nomi:asset-mention-preview', onMentionPreview)
   }, [canvasNodes])
-
-  React.useEffect(() => {
-    const onUndo = (event: KeyboardEvent): void => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'z' || !deletedPlanUndoRef.current) return
-      event.preventDefault()
-      const undo = deletedPlanUndoRef.current
-      deletedPlanUndoRef.current = null
-      for (let index = 0; index < undo.canvasSteps; index += 1) useGenerationCanvasStore.getState().undo()
-      setStoryboardPlan(undo.plan)
-    }
-    window.addEventListener('keydown', onUndo)
-    return () => window.removeEventListener('keydown', onUndo)
-  }, [setStoryboardPlan])
 
   const visiblePositions = React.useMemo(() => positionsForAnchorFilter(plan ?? { title: '', anchors: [], shots: [] }, filterAnchorId), [filterAnchorId, plan])
   const visibleRows = React.useMemo(
@@ -232,31 +263,49 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   if (!plan) return null
 
   const issues = validatePlan(plan).filter(issue => issue.kind !== 'anchor-not-consumable')
-  const emptyPromptShots = new Set(issues.filter((i) => i.kind === 'empty-shot-prompt').map((i) => i.shotIndex))
-  const noNameAnchorIds = new Set(issues.filter((i) => i.kind === 'anchor-no-name').map((i) => i.anchorId))
-
-  const onDiscard = async () => {
-    const targetDocumentId = activeDocumentId
-    const targetStoryboardId = designId
-    if (!targetStoryboardId) return
-    const ok = await confirmDialog({
-      title: t('storyboardEditor.discardTitle'),
-      message: t('storyboardEditor.discardMessage'),
-      confirmLabel: t('storyboardEditor.discard'),
-      danger: true,
-    })
-    if (ok) deleteStoryboardDesign(targetStoryboardId, targetDocumentId)
-  }
+  // 刚建出来、一个字都还没写的空白起手式**不报错**（2026-09-21 真机截图：新建方案一落地，
+  // 底栏立刻红着「2 处待处理」、两行也带红边）。那两条「提示词为空」说的是真的，但此刻它们
+  // 不是「你做错了」，而是「你还没开始」——在用户动手之前先给一片红，是把起点说成了失败。
+  // 拦截不变：`issues` 仍然拦住生成（下面的生成动作照读它），只是**不在这一刻冲他喊**。
+  const untouched = isEmptyStoryboardPlan(plan)
+  const visibleIssues = untouched ? [] : issues
+  const emptyPromptShots = new Set(visibleIssues.filter((i) => i.kind === 'empty-shot-prompt').map((i) => i.shotIndex))
+  const noNameAnchorIds = new Set(visibleIssues.filter((i) => i.kind === 'anchor-no-name').map((i) => i.anchorId))
 
   // 动作统一包一层：失败原因回当前方案（生成失败本身落在节点卡片，这里只兜 materialize/确认前异常）。
-  const runAction = async (action: () => Promise<void>): Promise<void> => {
+  // 回调的返回值放宽成 `unknown`：这些执行口 2026-09-22 起会**回报结局**（用户同意 / 取消 /
+  // 没得跑，见 `generationRunOutcome.ts`），而编辑器这一侧是用户自己在点按钮——他自己知道点了什么，
+  // 不需要读那一格。要读它的是 Agent 那条路（`storyboardPresent.ts`）。
+  const runAction = async (action: (context: RowActionContext) => Promise<unknown>): Promise<void> => {
     if (busy) {
       return
     }
     setBusy(true)
     setActionFeedback(null)
     try {
-      await action()
+      await withProjectAction(async project => {
+        project.assertCurrent()
+        if (projectId && project.binding.projectId !== projectId) throw new Error('Storyboard project changed')
+        project.assertCurrent()
+        const gesture = { source: 'user' as const, txnId: crypto.randomUUID(), canWrite: () => { project.assertCurrent(); return !project.signal.aborted } }
+        const capturedContent = stableProjectAgentJson(JSON.parse(JSON.stringify(plan)))
+        const assertAuthorCurrent = async () => {
+          const designs = isRunTargetLoaded(project.binding)
+            ? useWorkbenchStore.getState().storyboardDesignsByDocumentId
+            : (await readRunProjectRecord(project.binding))?.payload.storyboardDesignsByDocumentId
+          const current = designs?.[activeDocumentId]?.find(value => value.id === designId)
+          if (!current || stableProjectAgentJson(JSON.parse(JSON.stringify(current.plan))) !== capturedContent) {
+            throw new Error('Storyboard target changed')
+          }
+        }
+        const assertCurrent = async () => {
+          project.assertCurrent()
+          await assertAuthorCurrent()
+          project.assertCurrent()
+        }
+        await assertCurrent()
+        await action({ ...execCtx, gesture, assertCurrent, assertAuthorCurrent })
+      }, () => { throw new Error(t('storyboardEditor.exec.actionFailed')) })
     } catch (error: unknown) {
       reportFailure(error instanceof Error && error.message ? error.message : t('storyboardEditor.exec.actionFailed'))
     } finally {
@@ -279,40 +328,55 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   const resolveClient = (): StoryboardResolveClient | null => getDesktopBridge()?.generationStrategy ?? null
   const guardMaterialize = async (
     scope: readonly StoryboardRowRuntime[],
-    action: () => Promise<void>,
+    action: (context: RowActionContext) => Promise<unknown>,
   ): Promise<void> => {
-    await runAction(async () => {
+    await runAction(async context => {
       const shotIds = scope.map((runtime) => storyboardShotId(runtime.shot))
       const blocker = await resolveGeneratableGate(plan, projectId, resolveClient(), shotIds)
       if (blocker) {
         reportFailure(describeBlocker(t, blocker))
         return
       }
-      await action()
+      await action(context)
     })
   }
 
   const execCtx = { documentId: activeDocumentId, designId, plan }
   const onStoryboardShotSelect = (shot: StoryboardPlan['shots'][number]): void => {
-    const reference = buildStoryboardReference('shot', shot.index, t('storyboardEditor.row.selectAria', { index: shot.index }), 'selected shot')
+    const reference = buildStoryboardReference('shot', shot.index, t('storyboardEditor.row.selectAria', { index: shot.index }), 'selected shot', shot.shotId ? {documentId:activeDocumentId,designId,shotId:shot.shotId} : undefined)
     setProjectAgentReferences((current) => [
-      ...current.filter((item) => !/^storyboard:(?:shot|result):\d+$/.test(item.value ?? '')),
+      ...current.filter((item) => !isStoryboardReference(item)),
       reference,
     ])
   }
+  const placed = rows.length > 0 && rows.every(row => row.exec.node &&
+    (!(row.shot.shotKind !== 'image' && row.shot.keyframe?.enabled) || row.exec.keyframeNode)) &&
+    anchorCards.every(card => card.anchor.carrier === 'text' || card.anchor.referenceUrl || card.anchor.referenceSourceNodeId || card.node)
+  const onPlaceOnCanvas = (): void => {
+    if (placed) {
+      const nodeId = rows[0]?.exec.node?.id
+      flushSync(() => setWorkspaceMode('generation'))
+      // 「查看画布」= 带我去看**这一批**落在哪儿，不是「打开第 1 镜开始改」。
+      // 所以只跳不选（`select: false`）：选中第 1 镜会浮出它那张 composer，
+      // 而 composer 比卡本身宽，正好盖住紧挨着的第 2 镜——用户点「查看」却看不见第二个。
+      if (nodeId) window.dispatchEvent(new CustomEvent(FOCUS_GENERATION_NODE_EVENT, { detail: { nodeId, select: false } }))
+      return
+    }
+    void runAction(context => runStoryboardBatch(context, rows, { groupTitle: plan.title, placementOnly: true }))
+  }
   const onGenerateRow = (runtime: StoryboardRowRuntime): void => {
-    void guardMaterialize([runtime], () => generateShotRow(execCtx, runtime.shot, runtime.mode))
+    void guardMaterialize([runtime], context => generateShotRow(context, runtime.shot, runtime.mode))
   }
   const onRunBatch = (): void => {
     const running = batch.runnable
     // 「本次跳过」的作用域就是这一批：批次一发出去，标记立刻清空（§2.10）。
     setSkippedShotIds(new Set())
-    void guardMaterialize(running, () => runStoryboardBatch(execCtx, running))
+    void guardMaterialize(running, context => runStoryboardBatch(context, running))
   }
   const onRunSelected = (selected: StoryboardRowRuntime[]): void => {
     if (selected.length === 0) return
     setSkippedShotIds(new Set())
-    void guardMaterialize(selected, () => runStoryboardBatch(execCtx, selected))
+    void guardMaterialize(selected, context => runStoryboardBatch(context, selected))
   }
   const onToggleSkip = (shotId: string): void => {
     setSkippedShotIds((previous) => {
@@ -330,26 +394,22 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   const onAgentHandoff = (runtimes: StoryboardRowRuntime[]): void => {
     if (runtimes.length === 0) return
     setProjectAgentReferences((current) => [
-      ...current.filter((item) => !/^storyboard:(?:shot|result):\d+$/.test(item.value ?? '')),
+      ...current.filter((item) => !isStoryboardReference(item)),
       ...runtimes.map((runtime) => buildStoryboardReference(
         'shot',
         runtime.shot.index,
         t('storyboardEditor.row.selectAria', { index: runtime.shot.index }),
         'agent handoff',
+        runtime.shot.shotId ? {documentId:activeDocumentId,designId,shotId:runtime.shot.shotId} : undefined,
       )),
     ])
   }
   const onLockSelected = (runtimes: StoryboardRowRuntime[]): void => {
     for (const runtime of runtimes) if (runtime.exec.node) toggleNodeLock(runtime.exec.node.id)
   }
-  /** 「从原稿重新拆分镜」：把请求交给常驻 Agent（分镜规划 Skill），不在这里另写一条拆镜逻辑。 */
-  const onResplitFromScript = (): void => {
-    setProjectAgentDockCollapsed(false)
-    setProjectAgentDraft(t('storyboardEditor.resplitDraft'))
-  }
   const onRegenerateRow = (runtime: StoryboardRowRuntime): void => {
     const node = runtime.exec.node
-    if (node) void runAction(() => regenerateShotRow(execCtx, runtime.shot, node, runtime.mode))
+    if (node) void runAction(context => regenerateShotRow(context, runtime.shot, node, runtime.mode))
   }
   /**
    * 可找回行的**免费**续查：走画布同一条 `recoverNodeResult`（query IPC，不铸付费令牌、不弹花费确认）。
@@ -362,7 +422,7 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   }
   const onVariantsRow = (runtime: StoryboardRowRuntime): void => {
     const node = runtime.exec.node
-    if (node) void runAction(() => generateShotRowVariants(execCtx, runtime.shot, node, runtime.mode))
+    if (node) void runAction(context => generateShotRowVariants(context, runtime.shot, node, runtime.mode))
   }
   // 锁定开关：同步写 meta（不花钱不确认）；状态经 derive 立刻回流行/组头/footer。
   const onToggleLockRow = (runtime: StoryboardRowRuntime): void => {
@@ -370,16 +430,16 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   }
   // 参考已变「用新图重跑」：一键补跑（花钱确认照过；首帧行按波次连跑），绝不自动跑。
   const onRerunFreshRefsRow = (runtime: StoryboardRowRuntime): void => {
-    void runAction(() => rerunShotRowWithFreshRefs(execCtx, runtime.shot, runtime.exec, runtime.mode))
+    void runAction(context => rerunShotRowWithFreshRefs(context, runtime.shot, runtime.exec, runtime.mode))
   }
   // 参考卡就地生成/重生成/锁定（B3）：同一执行通路；重生成后引用镜经「参考已变」提示补跑。
   const onGenerateAnchor = (runtime: AnchorCardRuntime): void => {
-    void runAction(() => generateAnchorCard(execCtx, runtime.anchor))
+    void runAction(context => generateAnchorCard(context, runtime.anchor))
   }
   const onRegenerateAnchor = (runtime: AnchorCardRuntime): void => {
     const node = runtime.node
-    if (node) void runAction(() => regenerateAnchorCard(execCtx, runtime.anchor, node))
-    else void runAction(() => generateAnchorCard(execCtx, runtime.anchor))
+    if (node) void runAction(context => regenerateAnchorCard(context, runtime.anchor, node))
+    else void runAction(context => generateAnchorCard(context, runtime.anchor))
   }
   const onRecoverAnchor = (runtime: AnchorCardRuntime): void => {
     const node = runtime.node
@@ -444,11 +504,23 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
 
   return (
     <section
-      className="relative w-full h-full min-h-0 grid grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border border-workbench-border rounded-workbench bg-workbench-surface-solid shadow-workbench-md overflow-hidden"
+      // `grid-cols-1` 不是装饰，是 W-03 的根因修法（2026-09-17 实测）：这张 grid 从来没写过列模板，
+      // 于是浏览器给它一条**隐式 `auto` 列 = max-content**——最长的那一行（页脚 min-content 702px、
+      // 批量条那句提示 max-content 795px）把整列撑到 707px，五个行块连同分镜表全被一起拉宽，
+      // 再被这里的 `overflow-hidden` 从右边剪掉：1280 视口 + Agent 面板展开时 29–33 个叶子越界。
+      // 表格自己的 min-content 只有 417px，完全装得下 —— 它是被撑的，不是撑人的那个。
+      // `grid-cols-1` = `repeat(1, minmax(0,1fr))`，把列钉回容器宽，各行自己去 truncate / 滚动。
+      className="relative w-full h-full min-h-0 grid grid-cols-1 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] border border-workbench-border rounded-workbench bg-workbench-surface-solid shadow-workbench-md overflow-hidden"
+      ref={editorRef}
+      tabIndex={-1}
+      onKeyDown={onUndo}
+      onFocusCapture={event => { if (event.target instanceof Element) lastEditorFocusRef.current = event.target }}
       data-storyboard-editor="true"
     >
       <header className="flex items-center justify-between gap-3 h-12 px-4 border-b border-nomi-line">
         <div className="flex items-center gap-2 min-w-0">
+          {/* 左栏收起时的展开钮：住标题左边、把标题挤开一格（收起态它是 L1 常驻）。 */}
+          <CreationResourceTreeToggle placement="panel" />
           <IconMovie size={16} stroke={1.5} className="text-nomi-ink-60 shrink-0" />
           <input
             value={plan.title}
@@ -460,23 +532,8 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
           <span className="shrink-0 text-micro text-nomi-ink-40 bg-nomi-ink-05 px-2 py-0.5 rounded-full">{t('storyboardEditor.shotCount', { count: plan.shots.length })}</span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {/* 「从原稿重新拆分镜」（§2.7 入口 1）：旧分镜表"写完剧本一键转化"的心智在这里延续——
-              只是执行者从确定性代码换成了 Agent，入口位置不变。 */}
-          <WorkbenchButton
-            variant="default"
-            size="sm"
-            data-storyboard-script-to-shots="true"
-            onClick={onResplitFromScript}
-          >
-            <IconWand size={14} stroke={1.7} />
-            {t('storyboardEditor.resplitFromScript')}
-          </WorkbenchButton>
-          <WorkbenchButton
-            variant="default"
-            size="sm"
-            onClick={onDiscard}
-          >
-            {t('storyboardEditor.discardPlan')}
+          <WorkbenchButton size="sm" disabled={busy || rows.length === 0} onClick={onPlaceOnCanvas} data-place-storyboard={designId}>
+            {t(placed ? 'storyboardEditor.viewOnCanvas' : 'storyboardEditor.placeOnCanvas')}
           </WorkbenchButton>
         </div>
       </header>
@@ -495,7 +552,10 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
         onChange={setStoryboardPlan}
       />
 
-      <div className="overflow-y-auto px-4 py-4 flex flex-col gap-4">
+      {/* 分镜行按**这块**的可用宽度分档（容器查询），不按视口宽——Agent 面板开/关才是真正的变量，
+          视口宽只是它的一个远因。`container-type:inline-size` 同时把"内容反过来撑宽容器"这条路堵死，
+          于是上面那条 `grid-cols-1` 有了第二道保险。容器起名 `storyboard`，免得被别处的容器截胡。 */}
+      <div className="overflow-y-auto px-4 py-4 flex flex-col gap-4 [container-name:storyboard] [container-type:inline-size]" data-storyboard-scroll="true">
         {/* 执行计划审阅条（切片 3）：主进程同源 resolve 的合并/拆条建议 + 阻断问题，逐条采纳即改方案。
             同一份 resolve 结果还喂给表格行的行内警示（D1：摩擦在行上，提示就在行上）。 */}
         <StoryboardPlanStrategyPanel plan={plan} state={strategyState} onChange={setStoryboardPlan} />
@@ -577,11 +637,21 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
               onSetResultAsFirstFrame={onSetResultAsFirstFrame}
               onGenerateSelected={(selected) => onRunSelected(selected)}
               onDeleteSelected={(selected) => {
-                const ids = selected.flatMap((runtime) => [runtime.exec.node?.id, runtime.exec.keyframeNode?.id]).filter((id): id is string => Boolean(id))
-                deletedPlanUndoRef.current = { plan, canvasSteps: ids.length }
-                ids.forEach((id) => useGenerationCanvasStore.getState().deleteNode(id))
-                const selectedIds = new Set(selected.map((runtime) => runtime.shot.shotId ?? `index:${runtime.shot.index}`))
-                setStoryboardPlan({ ...plan, shots: plan.shots.filter((shot) => !selectedIds.has(shot.shotId ?? `index:${shot.index}`)).map((shot, index) => ({ ...shot, index: index + 1 })) })
+                const current = currentTargetRef.current
+                if (current.plan !== plan || current.projectId !== projectId || current.activeDocumentId !== activeDocumentId
+                  || current.designId !== designId || !editorRef.current || editorRef.current.offsetParent === null) {
+                  reportFailure(t('storyboardEditor.exec.actionFailed'))
+                  return
+                }
+                try {
+                  const ids = selected.flatMap(runtime => [runtime.exec.node?.id, runtime.exec.keyframeNode?.id]).filter((id): id is string => Boolean(id))
+                  const deletion = deleteStoryboardRows(plan, selected.map(runtime => runtime.shot), ids, useGenerationCanvasStore.getState())
+                  const focused = document.activeElement
+                  deletedFocusRef.current = focused && (editorRef.current.contains(focused) || focused.matches('[data-confirm-dialog-confirm="true"]'))
+                    ? focused : focused === document.body ? lastEditorFocusRef.current : null
+                  deletedPlanUndoRef.current = { ...deletion.undo, projectId, documentId: activeDocumentId, designId }
+                  setStoryboardPlan(deletion.plan)
+                } catch { reportFailure(t('storyboardEditor.exec.actionFailed')) }
               }}
               onPlayGroup={onStartPlayback}
               filterAnchorId={filterAnchorId}
@@ -617,10 +687,10 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
             <IconRobot size={14} stroke={1.7} />
             {t('storyboardEditor.agentHandoff.footer', { count: selectedRuntimes.length })}
           </WorkbenchButton>
-          {issues.length > 0 ? (
-            <span className="text-caption text-workbench-danger inline-flex items-center gap-[5px] min-w-0">
+          {visibleIssues.length > 0 ? (
+            <span className="text-caption text-workbench-danger inline-flex items-center gap-[5px] min-w-0" data-storyboard-issues={visibleIssues.length}>
               <IconAlertTriangle size={14} stroke={1.8} className="shrink-0" />
-              <span className="truncate">{t('storyboardEditor.issuesSummary', { count: issues.length, issue: firstIssueLabel(issues[0]) })}</span>
+              <span className="truncate">{t('storyboardEditor.issuesSummary', { count: visibleIssues.length, issue: firstIssueLabel(visibleIssues[0]) })}</span>
             </span>
           ) : (
             <span className="text-caption text-nomi-ink-60 min-w-0 truncate" data-storyboard-progress="true">
@@ -629,10 +699,15 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
             </span>
           )}
         </div>
-        {/* 页脚右组在窄列下会把左边那句进度挤没（W-03）。允许它整组换行，
-            主动作按钮本身仍不收缩。 */}
-        <div className="flex flex-wrap items-center justify-end gap-2.5">
-          <span className="text-micro text-nomi-ink-40">{t('storyboardEditor.footer.spendNote')}</span>
+        {/* 右端只留主动作。这里原本还挂着一句 `footer.spendNote`——而它**逐字**就是上面那条
+            提示行（`spendHint`）的后半句「每次生成前确认花费 / Cost is confirmed before every
+            generation」，同一屏写了两遍。它住在 `shrink-0` 的组里，所以永远不让位：英文下白占
+            约 220px（中文约 110px），而左边那句**有行动价值**的进度/问题摘要正是靠 `truncate`
+            在这点宽度上被切掉的——1280 + Agent 面板展开时 EN 被切 426px，连「还差几张参考卡」
+            都看不见；1680 宽屏也仍被切 26px。让位顺序反了：零行动价值的重复说明不让，
+            要用户去做事的那句反而让。删掉重复的那句就是修在根因（R2「有行动价值吗，没有删」）。
+            2026-09-26 提示行里那半句也删了：用户自己点的单行生成不再弹花钱确认卡，承诺不成立。 */}
+        <div className="flex items-center gap-2.5 shrink-0">
           <WorkbenchButton
             variant="primary"
             onClick={onRunBatch}

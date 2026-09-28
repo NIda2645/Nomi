@@ -10,11 +10,13 @@ import type {
 import { LANE_APPROVAL_NOTE_TYPE } from '../../../../electron/shared/agentLane/laneContracts'
 import { laneInterventionSource, laneViewModel, type LaneViewModelLabels } from './laneViewModel'
 import { humanizeToolFailure, readableToolName, readableToolSummary } from '../resident/residentToolDisplay'
+import { laneToolFailureDetail, laneToolFailureSummary } from './laneToolFailureText'
 
 const labels: LaneViewModelLabels = {
   toolLabel: (name) => `[${name}]`,
   toolSummary: () => undefined,
   toolFailure: () => undefined,
+  toolFailureDetail: (failure) => failure.code,
   thinkingLabel: '[thinking]',
   formatTokens: (value) => `${value}t`,
   formatCost: (usd) => `$${usd.toFixed(4)}`,
@@ -27,6 +29,7 @@ const labels: LaneViewModelLabels = {
   formatStages: (done, total) => `${done}/${total} stages`,
   formatMoney: (currency, amount) => `${currency} ${amount.toFixed(2)}`,
   taskUnknown: '[task-unknown]',
+  answered: '[answered]',
   skillLabel: (key) => `[skill:${key}]`,
 }
 
@@ -83,7 +86,8 @@ describe('laneViewModel', () => {
       ...labels,
       toolLabel: (name, args) => readableToolName(translate, name, args),
       toolSummary: (name, args) => readableToolSummary(translate, name, args),
-      toolFailure: text => humanizeToolFailure(translate, text),
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
     }
     const receipt = (isError: boolean, denied = false) => {
       next = 0
@@ -103,9 +107,90 @@ describe('laneViewModel', () => {
     expect(receipt(false).summary).toContain('agentResident.toolCanvasWriteArtifactSummary')
     expect(receipt(true).summary).not.toContain('agentResident.toolNoGeneration')
     expect(receipt(true).summary).toContain('agentResident.issueExpected')
-    expect(receipt(true).output).toBe('Validation failed for tool "make_artifact":\n  - nodes: Expected array\n\nReceived arguments:\n{}')
+    // C5（2026-09-18）：展开体**不再**是模型收到的那段英文散文。这条断言以前逐字锁着
+    // `Validation failed for tool "make_artifact": …\nReceived arguments:\n{}`——
+    // 也就是把「中文界面印英文原文 + 回显整个参数对象」锁成了正确行为。
+    // 现在失败一律走本地文案：这一条没有结构化信封（旧转录形状），退回正文猜法的结果。
+    expect(receipt(true).output).toContain('agentResident.issueExpected')
+    expect(receipt(true).output).not.toContain('Received arguments')
+    expect(receipt(true).output).not.toContain('Validation failed for tool')
     expect(receipt(true, true)).toMatchObject({ status: 'output-denied' })
     expect(receipt(true, true).summary).toBeUndefined()
+  })
+
+  /**
+   * C5 的正路：结构化信封在时，面板印的是**由 code 派生的本地文案 + 结构化字段**。
+   *
+   * 这条断言存在的理由是一张真机截图（审计 §5 / B03）：中文界面上飘出
+   * `The current target could not accept this action (surface_port_stale). Next: …`。
+   * 那段字是 `renderLaneToolFailure` 拼给**模型**读的——英文、第三人称、末尾还带一行
+   * 只对模型成立的 `Next:` 指令。用户读到它既不知道发生了什么，也不知道该干什么。
+   */
+  it('C5：失败按 failure.code 走 i18n，模型正文一个字都不进面板', () => {
+    const translate = (key: string, options?: Record<string, unknown>) =>
+      (options ? `${key}(${Object.values(options).join(',')})` : key)
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolLabel: (name, args) => readableToolName(translate, name, args),
+      toolSummary: (name, args) => readableToolSummary(translate, name, args),
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c9', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c9', toolName: 'make_artifact', isError: true,
+        text: 'The current target could not accept this action (surface_port_stale).\nNext: Reopen the page and try again.',
+        failure: { code: 'surface_port_stale' } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.summary).toBe('agentToolFailure.surface_port_stale')
+    expect(item.receipt.output).toBe('agentToolFailure.surface_port_stale')
+    expect(item.receipt.output).not.toContain('Next:')
+    expect(item.receipt.output).not.toContain('could not accept this action')
+  })
+
+  /** `isError` 就是失败：没有「看着不严重就放行」的旁路（那条 `waiting` 轴随付费卡改成功形状一起删了）。 */
+  it('工具失败照旧红——没有控制信号旁路', () => {
+    const translate = (key: string) => key
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c12', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c12', toolName: 'make_artifact', isError: true,
+        text: 'boom', failure: { code: 'tool_execution_failed' } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.status).toBe('output-error')
+  })
+
+  it('C5：码不在闭合集合里也说本地话，把码带出来给排查用——不退回模型正文', () => {
+    const translate = (key: string, options?: Record<string, unknown>) =>
+      (options ? `${key}(${Object.values(options).join(',')})` : key)
+    const display: LaneViewModelLabels = {
+      ...labels,
+      toolFailure: (text, failure) => (failure ? laneToolFailureSummary(translate, failure) : humanizeToolFailure(translate, text)),
+      toolFailureDetail: failure => laneToolFailureDetail(translate, failure),
+    }
+    next = 0
+    const model = laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 'c10', toolName: 'make_artifact', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c10', toolName: 'make_artifact', isError: true,
+        text: 'Some provider prose nobody translated.',
+        failure: { code: 'generation_pricing_unknown', allowed: ['a', 'b'] } }),
+    ]), display)
+    const item = model.items[0]
+    if (item.kind !== 'tool') throw new Error('missing receipt')
+    expect(item.receipt.summary).toBe('agentToolFailure.unknown(generation_pricing_unknown)')
+    expect(item.receipt.output).toContain('agentToolFailure.unknown(generation_pricing_unknown)')
+    expect(item.receipt.output).toContain('agentToolFailure.allowedValues(a、b)')
+    expect(item.receipt.output).not.toContain('provider prose')
   })
 
   it('任务卡：状态 / 进度 / 金额全部来自 join 出来的领域事实，卡本身只有两个 id', () => {
@@ -205,8 +290,8 @@ describe('laneViewModel', () => {
       part({ kind: 'user', text: 'Append a closing line.' }),
       part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'write_script', args: { where: 'end' }, running: false }),
       part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'write_script', isError: false,
-        text: `Applied append to the document. New revision 1.\nUser sees: ${userSees} (changeId=undo-1)`,
-        nextAction: { kind: 'none', userSees, changeId: 'undo-1' } }),
+        text: `Applied append to the document. New revision 1.\nUser sees: ${userSees} (undoToken=undo-1)`,
+        nextAction: { kind: 'none', userSees, undoToken: 'undo-1' } }),
     ]), labels)
     const tool = model.items[1]
     expect(tool.kind === 'tool' && tool.receipt.output).toBe('Applied append to the document. New revision 1.')
@@ -249,18 +334,30 @@ describe('laneViewModel', () => {
 
   it('技能随消息落盘：用户气泡带 chip，这一轮的回复头上带凭据', () => {
     next = 0
+    // 快照里的 `name` 是主进程按 SKILL.md 的 `name` 记的**标识**（与 skillKey 同值），不是显示名——
+    // 这里用真实形状，才看得出「把快照名当显示名印」那一族（2026-09-24：气泡印出 workbench-storyboard-planner）。
     const model = laneViewModel(projection([
-      { ...part({ kind: 'user', text: '拆分镜。' }), skillKey: 'workbench.storyboard.planner' } as LanePart,
+      { ...part({ kind: 'user', text: '拆分镜。' }), skillKey: 'workbench-storyboard-planner', skillSnapshot: { name: 'workbench-storyboard-planner', contentHash: 'hash-a' } } as LanePart,
       part({ kind: 'assistant-text', text: '好的。', streaming: false }),
       part({ kind: 'user', text: '再来一句。' }),
       part({ kind: 'assistant-text', text: '这轮没挂技能。', streaming: false }),
     ]), labels)
+    // 名字只从 `skillLabel`（= 技能库的 `skillDisplayTitle`）来：菜单里选的叫什么，发出去还叫什么。
     expect(model.items[0]).toEqual({ kind: 'user', text: '拆分镜。',
-      chips: [{ kind: 'skill', label: '[skill:workbench.storyboard.planner]' }] })
-    expect(model.items[1]).toMatchObject({ kind: 'assistant', skill: '[skill:workbench.storyboard.planner]' })
+      chips: [{ kind: 'skill', label: '[skill:workbench-storyboard-planner]' }] })
+    expect(model.items[1]).toMatchObject({ kind: 'assistant', skill: '[skill:workbench-storyboard-planner]' })
     // 没挂技能的那一轮**整行不出**：印一个空凭据等于说「用了个说不出名字的技能」。
     expect(model.items[2]).toEqual({ kind: 'user', text: '再来一句。' })
     expect(JSON.stringify(model.items[3])).not.toContain('skill')
+  })
+
+  it('S20: selected-only legacy skills keep their chip without claiming verified injection', () => {
+    const model = laneViewModel(projection([
+      { ...part({ kind: 'user', text: 'selected' }), skillKey: 'old-skill' } as LanePart,
+      part({ kind: 'assistant-text', text: 'reply', streaming: false }),
+    ]), labels)
+    expect(model.items[0]).toMatchObject({ chips: [{ kind: 'skill', label: '[skill:old-skill]' }] })
+    expect(model.items[1]).not.toHaveProperty('skill')
   })
 
   it('refuses a projection whose parts are out of order instead of quietly sorting them', () => {
@@ -288,10 +385,11 @@ describe('laneViewModel', () => {
   it('separates a policy denial from a broken tool — they are two different sentences', () => {
     next = 0
     const model = laneViewModel(projection([
-      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
-        data: { toolCallId: 'c1', toolName: 'append_to_end', decision: 'denied', reason: 'The document is locked.' } }),
+      // 同上：记录排在 toolResult **后面**，这是真实转录的顺序。
       part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'append_to_end', args: { content: 'x' }, running: false }),
       part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'append_to_end', text: 'The document is locked.', isError: true }),
+      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
+        data: { toolCallId: 'c1', toolName: 'append_to_end', decision: 'denied', reason: 'The document is locked.' } }),
       part({ kind: 'tool-call', toolCallId: 'c2', toolName: 'read_full_text', args: {}, running: false }),
       part({ kind: 'tool-result', toolCallId: 'c2', toolName: 'read_full_text', text: 'boom', isError: true }),
     ]), labels)
@@ -302,6 +400,29 @@ describe('laneViewModel', () => {
     const broken = model.items[1]
     expect(denied.kind === 'tool' && denied.receipt.status).toBe('output-denied')
     expect(broken.kind === 'tool' && broken.receipt.status).toBe('output-error')
+  })
+
+  // 2026-09-21 真机抓到的：用户点了 chip 把问题答了，而那一行写着「问你一个问题 ⚠ 失败」。
+  // 协议上那次确实是 `allow:false`（没有东西要执行），面板把「没跑」读成了「坏了」。
+  it('答完一张提问卡的那一行读作「已回答 · 他的原话」，不是「失败」', () => {
+    next = 0
+    const model = laneViewModel(projection([
+      // **顺序照真实转录摆**：记录是在 `before_tool` 里 append 的，而 pi 把 toolResult
+      // 排在它前面（2026-09-21 从真机 transcript 读出来的：assistant → toolResult →
+      // nomi.ui.approval → assistant）。以前的夹具按「先 note 后 result」摆，
+      // 那个顺序真实转录里从来不出现——于是单测全绿而真机上每一次都读成「失败」。
+      part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'ask_user',
+        args: { questions: [{ question: '要删哪一个？' }] }, running: false }),
+      // pi 那一侧这次调用是 `isError`——它没有跑。用户那一侧发生的却是「他回答了」。
+      part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'ask_user', text: '镜 2 · 推门', isError: true }),
+      part({ kind: 'host-note', noteType: LANE_APPROVAL_NOTE_TYPE,
+        data: { toolCallId: 'c1', toolName: 'ask_user', decision: 'answered', reason: '镜 2 · 推门' } }),
+    ]), labels)
+    const answered = model.items[0]
+    expect(answered.kind === 'tool' && answered.receipt.status).toBe('output-denied')
+    expect(answered.kind === 'tool' && answered.receipt.answered).toBe(true)
+    expect(answered.kind === 'tool' && answered.receipt.label).toBe(labels.answered)
+    expect(answered.kind === 'tool' && answered.receipt.summary).toBe('镜 2 · 推门')
   })
 
   it('does not turn a host note into a second bubble saying the same thing twice', () => {
@@ -517,4 +638,12 @@ describe('thinking content is not status metadata', () => {
     expect(model.items[1]).toEqual({ kind: 'thinking', label: '[thinking]', meta: '', text, streaming })
     expect(model.items.map((item) => item.kind)).toEqual(['user', 'thinking', 'assistant'])
   })
+})
+
+
+it('R03 preserves a tool row identity when its result settles', () => {
+  const call = { ...part({ kind: 'tool-call', toolCallId: 'stable-call', toolName: 'read_script', args: { scope: 'full' }, running: true }), entryId: 'native-assistant' } as LanePart
+  const result = part({ kind: 'tool-result', toolCallId: 'stable-call', toolName: 'read_script', text: 'read', isError: false })
+  expect(laneViewModel(projection([call, result]), labels).items[0].identity)
+    .toBe(laneViewModel(projection([call]), labels).items[0].identity)
 })

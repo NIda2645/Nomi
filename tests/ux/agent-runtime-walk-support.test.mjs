@@ -106,7 +106,11 @@ test.each(['agent-runtime-walk-support.mjs', 'agent-runtime-provider.walk.mjs'])
     if (ts.isCallExpression(node) && node.expression.getText(source) === 'launchNomiApp') {
       const options = node.arguments[0]
       const property = options.properties.find((item) => item.name?.getText(source) === 'env')
-      env = Object.fromEntries(property.initializer.properties.map((item) => [item.name.getText(source), item.initializer.text]))
+      // 只读**字面写死**的那几把钥匙：`env` 里后来多了按供应商展开的 `...(cond ? {…} : {…})`，
+      // 展开元素没有 `name`，原来的 `.map` 在它上面直接 TypeError——这条测试从那天起红的是自己，不是被测物。
+      env = Object.fromEntries(property.initializer.properties
+        .filter((item) => ts.isPropertyAssignment(item) && ts.isStringLiteralLike(item.initializer))
+        .map((item) => [item.name.getText(source), item.initializer.text]))
     }
     if (ts.isCallExpression(node) && node.expression.getText(source) === 'win.url().startsWith') {
       let parent = node.parent
@@ -229,7 +233,7 @@ test('every panel selector lives in the shared support module, not hand-copied i
   expect(support.COMPOSER_INPUT).toBe('[data-v4-control="input"]')
   expect(support.COMPOSER_SEND).toBe('[data-v4-control="send"]')
   expect(support.INTERVENTION_CONFIRM).toBe('[data-v4-control="confirm"]')
-  expect(support.INTERVENTION_REJECT).toBe('[data-v4-control="reject"]')
+  expect(support.INTERVENTION_REJECT).toBe('[data-v4-control="slot-dismiss"]')
   expect(support.INTERVENTION_CONFIRM_REJECT).toBe('[data-v4-control="confirm-reject"]')
   expect(support.COMPOSER_STOP).toContain('[data-mode="running"]')
   expect(typeof support.waitForV4TurnIdle).toBe('function')

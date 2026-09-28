@@ -1,9 +1,10 @@
 import { CANVAS_READ_CAPABILITY } from '../shared/agentCapabilities/canvasRead'
+import { MODEL_ONBOARDING_REMOVE_CAPABILITY, MODEL_ONBOARDING_SETUP_CAPABILITY } from '../shared/agentCapabilities/modelOnboarding'
 import { CANVAS_WRITE_CAPABILITY } from '../shared/agentCapabilities/canvasWrite'
 import { DOCUMENT_READ_CAPABILITY } from '../shared/agentCapabilities/documentRead'
 import { DOCUMENT_WRITE_CAPABILITY } from '../shared/agentCapabilities/documentWrite'
 import type { McpConnectionContext } from './mcpConnectionContext'
-import type { McpGenerationCapability, McpGenerationPolicy } from './mcpGenerationPolicy'
+import { MCP_GENERATION_CAPABILITIES, type McpGenerationCapability } from './mcpGenerationPolicy'
 import type {
   ProjectLeaseAuthority,
   ProjectLeaseExpectation,
@@ -47,7 +48,6 @@ export type ProjectSessionOpenResult = Readonly<{
 export type ProjectSessionAuthorityDeps = Readonly<{
   leaseAuthority: ProjectLeaseAuthority
   resolveProjectSelection: ProjectSelectionResolver
-  generationPolicy: McpGenerationPolicy
 }>
 
 export class ProjectSessionRequestError extends Error {
@@ -78,7 +78,7 @@ export function scopeForGenerationCapability(capability: McpGenerationCapability
 }
 
 /** The session bootstrap can only grant server-owned, non-submit scopes. */
-export function deriveProjectSessionScopes(policy: McpGenerationPolicy): readonly string[] {
+export function deriveProjectSessionScopes(): readonly string[] {
   // The same project session also authorizes the registered editing ports for the reversible project
   // surfaces: canvas, document and timeline. Each of those still has its own human gate one layer in
   // (canvas → plan confirm, document → `documentConfirmed`, timeline → `planConfirmed`, all minted
@@ -102,13 +102,20 @@ export function deriveProjectSessionScopes(policy: McpGenerationPolicy): readonl
     'layout:write',
     'export:read',
     'asset:read',
+    // 接模型（App 级能力，`nomi_model_setup` / `nomi_remove_provider`）。同样是「scope 是传输能力，
+    // 不是批准」：接一家的人闸在贴 key 页——**没有用户在那一页上粘贴并保存，这条路一步都走不完**，
+    // 而工具本身连地址都决定不了（§6.1）；删一家的人闸是宿主按 destructiveHint 弹的那一下，
+    // 外加「先读再删」的指纹（`ifUnchanged` 不符就什么都不删）。
+    // 不发这两个的后果不是多一道闸，而是把工具从 tools/list 上公开着、却谁都调不动
+    //（`timeline:write` 与两个 `layout:*` 已经栽过这一次）。
+    MODEL_ONBOARDING_SETUP_CAPABILITY.requiredScope,
+    MODEL_ONBOARDING_REMOVE_CAPABILITY.requiredScope,
   ])
-  const snapshot = policy.snapshot()
-  if (snapshot.flagEnabled) {
-    for (const capability of snapshot.effectiveScope) {
-      if (capability === 'start') continue
-      scopes.add(scopeForGenerationCapability(capability))
-    }
+  // 生成面的 scope 无条件发（2026-09-21 删掉 env flag 之后没有「这个面开没开」这个问题了）。
+  // `start` 仍然不发：提交是花钱边界，它要的是一张人证，不是一张租约。
+  for (const capability of MCP_GENERATION_CAPABILITIES) {
+    if (capability === 'start') continue
+    scopes.add(scopeForGenerationCapability(capability))
   }
   return Object.freeze([...scopes].sort())
 }
@@ -125,7 +132,7 @@ function normalizedProjectHint(value: string): string {
 }
 
 export function createProjectSessionAuthority(deps: ProjectSessionAuthorityDeps) {
-  const effectiveScope = deriveProjectSessionScopes(deps.generationPolicy)
+  const effectiveScope = deriveProjectSessionScopes()
 
   async function selectionFor(
     source: ProjectSelectionSource,

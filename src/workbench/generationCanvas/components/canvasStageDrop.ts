@@ -15,24 +15,25 @@ import {
 } from '../../assets/assetLibraryDrag'
 import { mediaImportRejectionMessages } from '../../assets/mediaImportMessage'
 import { importLocalMediaFilesToGenerationCanvas } from '../adapters/assetImportAdapter'
-import { assetBelongsToProject } from '../../assets/assetLibraryUsage'
+import { materializeAssetLibraryItems } from '../../assets/assetLibraryMaterialize'
 import { getGenerationNodeDefaultSize, getGenerationNodeFootprintSize } from '../model/generationNodeKinds'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import { CENTER_PLACEMENT_ANCHOR, placementOrigin } from '../model/canvasPlacement'
+import { CANVAS_RESULT_DRAG_MIME, createNodeFromDraggedResult, parseCanvasResultDrag } from './canvasResultDrag'
 import { reportCanvasFeedback } from './canvasFeedback'
-import { withProjectAction } from '../../project/projectCanvasReadSurface'
+import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
 import type { BrowserAssetCanvasImportItem } from '../../../ui/browser/overlay/globalAssetPopoverEvents'
 import type { TiptapDocJson } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
+import { computeMediaMetaPatch } from '../nodes/nodeSizing'
 
 export const BROWSER_ASSET_DRAG_MIME = 'application/x-nomi-assets'
 export const LEGACY_BROWSER_ASSET_DRAG_MIME = 'application/x-nomi-browser-assets'
 
 export type CanvasStageDropContext = {
   readOnly: boolean
-  /** Active project boundary for asset-library references. */
-  activeProjectId: string | null
-  offset: { x: number; y: number }
-  zoom: number
+  /** 屏幕坐标 → 画布坐标。只许由画布内核（React Flow screenToFlowPosition）提供，不在这里手算。 */
+  toCanvasPoint: (clientX: number, clientY: number) => { x: number; y: number }
   activeCategoryId?: string
 }
 
@@ -42,10 +43,6 @@ type BrowserAssetCanvasItem = {
   title: string
   url?: string
   prompt?: string
-}
-
-function clampNodePos(value: number): number {
-  return Math.max(40, Math.round(value))
 }
 
 function layoutColumns(count: number): number {
@@ -63,21 +60,17 @@ export function layoutBrowserAssetDropPositions(
   const cellWidth = footprint.width + 36
   const cellHeight = footprint.height + 36
   return Array.from({ length: count }, (_, index) => ({
-    x: clampNodePos(basePosition.x + (index % columns) * cellWidth),
-    y: clampNodePos(basePosition.y + Math.floor(index / columns) * cellHeight),
+    x: Math.round(basePosition.x + (index % columns) * cellWidth),
+    y: Math.round(basePosition.y + Math.floor(index / columns) * cellHeight),
   }))
 }
 
-export function resolveAssetLibraryDropPosition(
+/** 放下时光标该压在第一张卡的哪一点：素材库卡带着「抓在哪」就按它，其余来源（系统文件 / 文件树 / 浏览器素材盒）按卡中心。 */
+export function resolveDropOrigin(
   cursorPosition: { x: number; y: number },
-  dragAnchor?: AssetLibraryDragPayload['dragAnchor'],
+  dragAnchor: AssetLibraryDragPayload['dragAnchor'] = CENTER_PLACEMENT_ANCHOR,
 ): { x: number; y: number } {
-  if (!dragAnchor) return cursorPosition
-  const size = getGenerationNodeDefaultSize('asset')
-  return {
-    x: cursorPosition.x - size.width * dragAnchor.xRatio,
-    y: cursorPosition.y - size.height * dragAnchor.yRatio,
-  }
+  return placementOrigin({ point: cursorPosition, anchor: dragAnchor }, getGenerationNodeDefaultSize('asset'))
 }
 
 function cleanBrowserAssetTitle(value: unknown, fallback: string): string {
@@ -86,14 +79,6 @@ function cleanBrowserAssetTitle(value: unknown, fallback: string): string {
 
 function cleanBrowserAssetPrompt(value: unknown): string {
   return typeof value === 'string' ? value.trim() : ''
-}
-
-/** Structural guard shared by the drop handler and its contract tests. */
-export function isAssetLibraryDropAllowed(
-  asset: Pick<AssetLibraryDragPayload, 'origin'>,
-  activeProjectId: string | null,
-): boolean {
-  return assetBelongsToProject(asset, activeProjectId)
 }
 
 function tiptapDocFromPlainText(text: string): TiptapDocJson {
@@ -249,12 +234,61 @@ export function importBrowserAssetsToGenerationCanvas(
   }
 }
 
+/** 素材库条目（已是当前项目的引用）→ 画布素材卡，网格排开、整批选中。 */
+function addAssetLibraryNodes(items: readonly AssetLibraryDragPayload[], basePosition: { x: number; y: number }, categoryId?: string): void {
+  if (!items.length) return
+  const store = useGenerationCanvasStore.getState()
+  const positions = layoutBrowserAssetDropPositions(basePosition, items.length)
+  const nodeIds = items.map((assetDrag, index) => {
+    const node = store.addNode({
+      kind: 'asset',
+      title: assetDrag.name.replace(/\.[^.]+$/, '') || (assetDrag.kind === 'video' ? '参考视频' : '参考图片'),
+      prompt: '',
+      position: positions[index],
+      categoryId,
+      exactPosition: true,
+      select: false,
+    })
+    const result = {
+      id: `asset-ref-${node.id}-${Date.now()}`,
+      type: assetDrag.kind,
+      url: assetDrag.renderUrl,
+      // 画布挂落盘边界派生的预览；源留在 url 给编辑/导出/大图。跨项目复制来的条目由复制品的 DTO 重新派生，
+      // 不会带着别的项目的封面地址（见 assetLibraryMaterialize）。
+      ...(assetDrag.thumbUrl ? { thumbnailUrl: assetDrag.thumbUrl } : {}),
+      createdAt: Date.now(),
+    }
+    const originMeta =
+      assetDrag.origin.source === 'project'
+        ? { source: 'workspace-file', fileName: assetDrag.name, workspaceRelativePath: assetDrag.origin.relativePath }
+        : { source: 'asset-library', fileName: assetDrag.name, referencedNodeId: assetDrag.origin.nodeId }
+    const mediaMeta = assetDrag.dimensions
+      ? computeMediaMetaPatch({ resultType: result.type, meta: node.meta || {}, ...assetDrag.dimensions })?.meta
+      : undefined
+    store.updateNode(node.id, {
+      result,
+      history: [result],
+      status: 'success',
+      meta: { ...(node.meta || {}), ...originMeta, ...(mediaMeta || {}) },
+    })
+    return node.id
+  })
+  nodeIds.forEach((nodeId, index) => store.selectNode(nodeId, index > 0))
+}
+
 export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: CanvasStageDropContext): void {
   if (ctx.readOnly) return
-  const rect = event.currentTarget.getBoundingClientRect()
-  const basePosition = {
-    x: (event.clientX - rect.left - ctx.offset.x) / ctx.zoom,
-    y: (event.clientY - rect.top - ctx.offset.y) / ctx.zoom,
+  // 用户松手的那一点就是落点：由内核换算成画布坐标（负坐标同样合法，不钳制），卡片压在光标下。
+  const cursor = ctx.toCanvasPoint(event.clientX, event.clientY)
+  const dropOrigin = resolveDropOrigin(cursor)
+
+  // 0) 结果堆叠里 Alt/⌥ 拖出的某个版本：在松手点复制出一张独立素材卡（components/canvasResultDrag.ts）。
+  const resultDrag = parseCanvasResultDrag(event.dataTransfer.getData(CANVAS_RESULT_DRAG_MIME))
+  if (resultDrag) {
+    event.preventDefault()
+    event.stopPropagation()
+    createNodeFromDraggedResult(resultDrag, cursor, ctx.activeCategoryId)
+    return
   }
 
   // 1) 项目文件树拖入：文件已在项目里，直接用 nomi-local 协议引用，按 kind 建图片/视频 asset 节点。
@@ -269,8 +303,9 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
       kind: 'asset',
       title: workspaceDrag.name.replace(/\.[^.]+$/, '') || (kind === 'video' ? '本地视频' : '本地素材'),
       prompt: '',
-      position: { x: clampNodePos(basePosition.x), y: clampNodePos(basePosition.y) },
+      position: { x: Math.round(dropOrigin.x), y: Math.round(dropOrigin.y) },
       categoryId: ctx.activeCategoryId,
+      exactPosition: true,
     })
     const result = { id: `workspace-${node.id}-${Date.now()}`, type: kind, url, createdAt: Date.now() }
     store.updateNode(node.id, {
@@ -287,59 +322,27 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
     return
   }
 
-  // 2) 素材库拖入：只接受当前项目/当前画布的来源。跨项目卡片是浏览态，
-  // 不能靠伪造 drag payload 绕过当前项目写入边界。
+  // 2) 素材库拖入：画布只写当前项目自己的引用。别的项目的素材先由 materializeAssetLibraryItems
+  // 复制进当前项目再落卡（不引用别的项目的文件，也不在这里另判一次归属）。
   const assetDragItems = parseAssetLibraryDragItems(event.dataTransfer.getData(ASSET_LIBRARY_DRAG_MIME))
   if (assetDragItems.length) {
     event.preventDefault()
     event.stopPropagation()
-    const allowedItems = assetDragItems.filter((asset) => isAssetLibraryDropAllowed(asset, ctx.activeProjectId))
-    if (allowedItems.length < assetDragItems.length) {
-      reportCanvasFeedback(i18n.t('assetLibrary.externalAssetHint'), 'warning', { projectId: ctx.activeProjectId ?? '', identity: 'canvas-drop', reason: 'external-project' })
-    }
-    if (!allowedItems.length) return
-    const mediaItems = allowedItems.filter((asset) => asset.kind !== 'audio')
-    if (!mediaItems.length) {
-      reportCanvasFeedback(i18n.t('generationCommon.canvas.audioToTimeline'), 'info', { projectId: ctx.activeProjectId ?? '', identity: 'canvas-drop', reason: 'audio-target', workspaceMode: 'preview' })
-      return
-    }
-    const store = useGenerationCanvasStore.getState()
+    // 放下即动作起点：签发此刻打开的项目；复制回来时项目已经换了就什么都不写。
+    const project = withProjectAction((issued) => issued)
+    if (!project) return
     const dragAnchor = assetDragItems.find((asset) => asset.dragAnchor)?.dragAnchor
-    const anchoredPosition = resolveAssetLibraryDropPosition(basePosition, dragAnchor)
-    const positions = layoutBrowserAssetDropPositions(anchoredPosition, mediaItems.length)
-    const nodeIds: string[] = []
-    mediaItems.forEach((assetDrag, index) => {
-      const node = store.addNode({
-        kind: 'asset',
-        title: assetDrag.name.replace(/\.[^.]+$/, '') || (assetDrag.kind === 'video' ? '参考视频' : '参考图片'),
-        prompt: '',
-        position: positions[index],
-        categoryId: ctx.activeCategoryId,
-        exactPosition: true,
-        select: false,
-      })
-      const result = {
-        id: `asset-ref-${node.id}-${Date.now()}`,
-        type: assetDrag.kind,
-        url: assetDrag.renderUrl,
-        createdAt: Date.now(),
+    const anchoredPosition = resolveDropOrigin(cursor, dragAnchor)
+    const feedback = { projectId: project.binding.projectId, identity: 'canvas-drop' }
+    void materializeAssetLibraryItems(assetDragItems, project).then(({ items, failed }) => {
+      if (!isProjectExecutionContextCurrent(project)) return
+      if (failed > 0) reportCanvasFeedback(i18n.t('assetLibrary.copyIntoProjectFailed', { count: failed }), 'warning', { ...feedback, reason: 'copy-into-project-failed' })
+      const mediaItems = items.filter((asset) => asset.kind !== 'audio')
+      if (mediaItems.length < items.length) {
+        reportCanvasFeedback(i18n.t('generationCommon.canvas.audioToTimeline'), 'info', { ...feedback, reason: 'audio-target', workspaceMode: 'preview' })
       }
-      const originMeta =
-        assetDrag.origin.source === 'project'
-          ? { source: 'workspace-file', fileName: assetDrag.name, workspaceRelativePath: assetDrag.origin.relativePath }
-          : { source: 'asset-library', fileName: assetDrag.name, referencedNodeId: assetDrag.origin.nodeId }
-      store.updateNode(node.id, {
-        result,
-        history: [result],
-        status: 'success',
-        meta: { ...(node.meta || {}), ...originMeta },
-      })
-      nodeIds.push(node.id)
+      addAssetLibraryNodes(mediaItems, anchoredPosition, ctx.activeCategoryId)
     })
-    nodeIds.forEach((nodeId, index) => store.selectNode(nodeId, index > 0))
-    if (mediaItems.length < assetDragItems.length) {
-      reportCanvasFeedback(i18n.t('generationCommon.canvas.audioToTimeline'), 'info', { projectId: ctx.activeProjectId ?? '', identity: 'canvas-drop', reason: 'audio-target', workspaceMode: 'preview' })
-    }
     return
   }
 
@@ -359,7 +362,7 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
         prompt: asset.prompt,
       })),
       {
-        basePosition,
+        basePosition: dropOrigin,
         categoryId: ctx.activeCategoryId,
       },
     )
@@ -371,7 +374,8 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
   if (!files.length) return
   event.preventDefault()
   event.stopPropagation()
-  void importLocalFilesToGenerationCanvas(files, { basePosition, categoryId: ctx.activeCategoryId })
+  // 系统文件的卡面尺寸要读完文件才知道（图片按像素比例），锚点交给导入适配器按真实尺寸换算。
+  void importLocalFilesToGenerationCanvas(files, { basePosition: cursor, anchor: CENTER_PLACEMENT_ANCHOR, categoryId: ctx.activeCategoryId, exactPosition: true })
 }
 
 /**
@@ -381,7 +385,7 @@ export function handleCanvasStageDrop(event: DragEvent<HTMLDivElement>, ctx: Can
  */
 export function importLocalFilesToGenerationCanvas(
   files: readonly File[],
-  options: { basePosition: { x: number; y: number }; categoryId?: string },
+  options: { basePosition: { x: number; y: number }; categoryId?: string; exactPosition?: boolean; anchor?: { xRatio: number; yRatio: number } },
 ): Promise<void> {
   // 拖入 / 导入钮即动作起点：此刻签发原项目，下游全程只认它（没有打开的项目就什么都不做）。
   // 先同步签发、再挂 .catch：这个命令不会把拒绝丢给调用它的控件。

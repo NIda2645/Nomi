@@ -6,7 +6,7 @@ import { withProjectAction, type ProjectExecutionContext } from '../../project/p
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { PanoramaScreenshot } from './PanoramaViewer'
-import { mediaNodeSize } from './nodeSizing'
+import { computeMediaMetaPatch, mediaNodeSize } from './nodeSizing'
 
 /**
  * 全景节点的两个回调（上传换图 / 视口截图建节点）从 BaseGenerationNode 抽出（R9 防巨壳）。
@@ -75,6 +75,12 @@ export function useNodePanoramaHandlers(
           createdAt,
         }
         const screenshotSize = mediaNodeSize(dimensions.width, dimensions.height)
+        const mediaMeta = computeMediaMetaPatch({
+          resultType: result.type,
+          meta: screenshotNode.meta || {},
+          width: dimensions.width,
+          height: dimensions.height,
+        })?.meta
         updateNode(screenshotNode.id, {
           result,
           history: [result],
@@ -89,13 +95,11 @@ export function useNodePanoramaHandlers(
             : {}),
           meta: {
             ...(screenshotNode.meta || {}),
+            ...(mediaMeta || {}),
             source: screenshot.source || 'panorama-screenshot',
             sourceNodeId: node.id,
             localOnly: stored.localOnly,
             ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }),
-            imageWidth: dimensions.width,
-            imageHeight: dimensions.height,
-            imageAspectRatio: dimensions.width / Math.max(1, dimensions.height),
           },
         })
         connectNodes(node.id, screenshotNode.id, 'reference')

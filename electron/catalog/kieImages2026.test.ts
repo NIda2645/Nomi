@@ -58,21 +58,30 @@ const renderKie = (modelKey: string, taskKind: string, extras: Record<string, un
 const REFS = ["https://example.com/a.png", "https://example.com/b.png"];
 
 describe("kie 2026-08 图像模型 · 种子登记", () => {
-  it("五个新模型都进了 kie 的 curated 目录，且各带文生图+改图两条 mapping", () => {
+  it("本表登记的模型都进了 kie 的 curated 目录，且种下的 mapping 与各自声明的模式逐条一致", () => {
     const { state } = applyBuiltinSeeds(emptyCatalog(), "2026-08-26T00:00:00.000Z");
     const kieKeys = state.models.filter((m) => m.vendorKey === "kie").map((m) => m.modelKey);
     expect(kieKeys).toEqual(expect.arrayContaining([
       "nano-banana-2", "nano-banana-2-lite",
       "seedream/5-pro-text-to-image", "seedream/5-lite-text-to-image",
       "flux-2/pro-text-to-image",
+      // 2026-09-18 新增：GPT Image 2.5 两档 + Imagen 4 两档。
+      "gpt-image-2-5-flare-text-to-image", "gpt-image-2-5-sunburst-text-to-image",
+      "google/imagen4-fast", "google/imagen4-ultra",
     ]));
     // 老一代仍在（本轮是新增，不是替换）。
     expect(kieKeys).toEqual(expect.arrayContaining(["nano-banana", "seedream"]));
 
+    // 期望值**从表本身 derive**，不写死「每个都两条」——Imagen 4 是纯文生图（文档 input 里没有任何
+    // 图片字段），给它种一条 image_edit 就是造一个永远 400 的入口。写死会逼着后来人把 t2i-only 的
+    // 模型硬凑出改图 mapping 来过测试，正是这条断言要防的反面。
     for (const model of KIE_IMAGE_MODELS_2026) {
       const ids = state.mappings.filter((m) => m.vendorKey === "kie" && m.modelKey === model.modelKey).map((m) => m.taskKind).sort();
-      expect(ids, model.modelKey).toEqual(["image_edit", "text_to_image"]);
+      expect(ids, model.modelKey).toEqual([...model.mappings.map((m) => m.taskKind)].sort());
     }
+    // 但「纯文生图」必须是**明示的少数**：其余模型都得有改图。
+    const t2iOnly = KIE_IMAGE_MODELS_2026.filter((m) => m.mappings.length === 1).map((m) => m.modelKey).sort();
+    expect(t2iOnly).toEqual(["google/imagen4-fast", "google/imagen4-ultra"]);
   });
 
   it("每个新模型的 archetypeId 都指向真实存在的档案", () => {

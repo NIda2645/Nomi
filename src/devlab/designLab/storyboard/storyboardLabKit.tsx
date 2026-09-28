@@ -11,6 +11,10 @@ import {
 import { tableFrameMediaBox } from '../../../workbench/creation/storyboard/shotRow/shotFrameGeometry'
 import type { ShotRowExec } from '../../../workbench/creation/storyboard/exec/storyboardRowStatus'
 import type { ShotVariant } from '../../../workbench/creation/storyboard/shotRow/shotVariants'
+import { FRAME_COLUMN_WIDTH } from '../../../workbench/creation/storyboard/shotRow/shotFrameGeometry'
+import { REFERENCE_COLUMN_WIDTH } from '../../../workbench/creation/storyboard/shotRow/shotReferenceStackGeometry'
+import { missingRequiredSlots, resolveShotArchetypeMode } from '../../../workbench/creation/storyboard/shotRow/shotRowModel'
+import { findModelOptionByIdentifier } from '../../../config/modelOptionResolvers'
 import { LAB_ANCHORS, LAB_IMAGE_MODELS, LAB_VIDEO_MODELS, labExec, labPlan, labShot, NOOP } from './storyboardFixtures'
 
 /**
@@ -21,14 +25,27 @@ import { LAB_ANCHORS, LAB_IMAGE_MODELS, LAB_VIDEO_MODELS, labExec, labPlan, labS
  * 不是设计问题，基线上却看不出区别。
  */
 export const STAGE_WIDTH = 900
+
+/**
+ * 「装不下」那一档的取景宽度——**从行几何 derive，不是挑一个看着窄的数**。
+ *
+ * 行固定 68（行首 14 + 三个 `gap-3` 36 + `pl-1.5`/`pr-3` 18）+ 画面格列 + 参考列，
+ * 剩下的就是提示词列，也就是底栏的宽度。这里取「底栏 ≈ 389」那一档：
+ * 1280 视口 + Agent 面板展开 + 创作内容列收起时，真机量出来的就是这个数。
+ */
+export const NARROW_STAGE_WIDTH =
+  389 + 68 + FRAME_COLUMN_WIDTH + REFERENCE_COLUMN_WIDTH
 export const STAGE_HEIGHT = 260
 
 export function TableStage({
   height,
+  width,
   clip = true,
   children,
 }: {
   height?: number
+  /** 取景宽度。缺省 = `STAGE_WIDTH`；要照「装不下」那一档时传窄档宽。 */
+  width?: number
   /** 菜单/抽屉这类要溢出行外的形态取景时关掉裁剪，否则截出来是被切一半的菜单（假证据）。 */
   clip?: boolean
   children: React.ReactNode
@@ -36,7 +53,7 @@ export function TableStage({
   return (
     <div
       className={`rounded-nomi border border-nomi-line bg-nomi-paper${clip ? ' overflow-hidden' : ''}`}
-      style={{ width: STAGE_WIDTH, ...(height ? { height } : {}) }}
+      style={{ width: width ?? STAGE_WIDTH, ...(height ? { height } : {}) }}
       data-design-lab-stage="storyboard"
     >
       {children}
@@ -85,12 +102,16 @@ type RowOverrides = {
  * 一整行的取景：喂真组件（`StoryboardShotRow`）固定 props。
  * 所有回调是 no-op——实验室不改数据，它只负责"长成这样对不对"。
  */
-export function RowStage(overrides: RowOverrides & { clip?: boolean } = {}): JSX.Element {
+export function RowStage(overrides: RowOverrides & { clip?: boolean; width?: number; height?: number } = {}): JSX.Element {
   const shot = labShot({ index: 1, ...overrides.shot })
   const plan = labPlan({ shots: [shot], ...overrides.plan })
-  const exec = labExec(overrides.exec)
+  // 红格读 exec.missingSlots（与真机同一个 owner）：夹具不自己编「缺什么」，按这一行的模式问 missingRequiredSlots。
+  // 场景要演别的状态时（如 sb-row-05）照样可以整份覆盖。
+  const models = shot.shotKind === 'image' ? LAB_IMAGE_MODELS : LAB_VIDEO_MODELS
+  const mode = resolveShotArchetypeMode(findModelOptionByIdentifier(models, shot.modelKey, shot.modelVendor), shot.modeId)?.mode ?? null
+  const exec = labExec({ missingSlots: missingRequiredSlots(mode, shot, LAB_ANCHORS), ...overrides.exec })
   return (
-    <TableStage clip={overrides.clip ?? true}>
+    <TableStage clip={overrides.clip ?? true} width={overrides.width} height={overrides.height}>
       <StoryboardShotRow
         shot={shot}
         anchors={LAB_ANCHORS}

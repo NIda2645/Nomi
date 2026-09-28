@@ -10,7 +10,10 @@ const JOB_TRANSITIONS: Record<ProductionJobStatus, readonly ProductionJobStatus[
   authorization_required: ["authorized"],
   authorized: ["submit_intent_persisted", "needs_attention"],
   submit_intent_persisted: ["submitting", "needs_attention"],
-  submitting: ["provider_accepted", "submission_unknown"],
+  // `needs_attention`：出站层能**证明**这次请求一个字节都没写出去时，这是一个确定的失败态。
+  // 在这之前 `submitting` 只有「成了」和「不知道」两条出路，于是一次根本没发生过的提交
+  // 也只能被记成 `submission_unknown`（见 `submissionOutbox.markNotDispatched`）。
+  submitting: ["provider_accepted", "submission_unknown", "needs_attention"],
   provider_accepted: ["polling", "ready", "needs_attention", "cancel_requested"],
   polling: ["downloading", "ready", "retry_wait", "needs_attention", "cancel_requested"],
   retry_wait: ["polling", "needs_attention", "cancel_requested"],

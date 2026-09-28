@@ -167,6 +167,29 @@ const RULES = [
     },
   },
   {
+    id: 'ffmpeg-still-input-outside-owner',
+    label: '手写 ffmpeg `-loop 1` 静帧输入——`-t` 一旦取成时间轴全长，导出成本就随叠加条目数成倍涨',
+    hint: '静帧输入只由 electron/export/ffmpegGraphPrimitives.ts 的 loopedStillInput() 构造，'
+      + '`-t` 取**它自己的可见窗口**；enable 只挡混合、不挡上游生成。',
+    scan(code, file) {
+      // 判据按闸不按数（同 unguarded-fsync）：`-loop` 字面量只许出现在收口函数 loopedStillInput 里
+      // ——它一个入参就是「可见窗口」，写不出全片长。按计数会留洞：删掉收口那一处、别处新加一处，
+      // 计数不变、门岗照样绿。范围是门岗收集的全部 src/ + electron/：第一版只扫 electron/export/，
+      // 独立验收的变异测试当场打出洞（同样的违规放 electron/media/ 就漏网）。今天零误报。
+      // 事故经过与实测数字：docs/fixes/2026-09-21-export-text-overlay-cost.root-cause.json。
+      const hits = []
+      const lines = code.split('\n')
+      lines.forEach((line, i) => {
+        if (!/['"`]-loop['"`]/.test(line)) return
+        let start = i - 1
+        while (start >= 0 && !/^\}/.test(lines[start])) start -= 1
+        if (/function\s+loopedStillInput\b/.test(lines.slice(start + 1, i).join('\n'))) return
+        hits.push({ line: i + 1, text: line.trim().slice(0, 120), file })
+      })
+      return hits
+    },
+  },
+  {
     id: 'unguarded-fsync',
     label: '绕过落盘屏障直接 fsync——测试里关不掉，productionRun 的 flake 从这里长回来',
     hint: '文件 fd 用 fsyncIfDurable(fd)（electron/durability.ts）；'

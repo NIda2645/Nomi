@@ -4,6 +4,7 @@ import type { GenerationCanvasNode } from "../model/generationCanvasTypes";
 import { GENERATION_NODE_PLUGIN_BY_KIND } from "./registry";
 import { readNodeAspectRatio } from "./aspectRatio";
 import { isCardRenderKind, resolveNodeRenderKind } from "./resolveRenderKind";
+import { readGroupPort } from "../model/groupPort";
 
 export type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
@@ -34,78 +35,6 @@ export type NodeSizeBounds = {
     minHeight: number;
     maxHeight: number;
 };
-export type ComposerAttachmentSide = "top" | "bottom";
-
-/**
- * 比例切换会同时改节点尺寸和位置；这类同一用户动作不应顺带把 composer 翻到节点另一侧。
- * 首次挂载或比例未变时仍允许正常的视口避让逻辑决定连接侧。
- */
-export function shouldPreserveComposerAttachmentOnRatioChange(
-    previousRatio: string | null,
-    nextRatio: string,
-): boolean {
-    return previousRatio !== null && previousRatio !== "" && nextRatio !== "" && previousRatio !== nextRatio;
-}
-
-export type ComposerAvailableSpaceMeasurement = {
-    anchor: { width: number; height: number };
-    stage: { width: number; height: number };
-};
-
-type ComposerObstacleRect = {
-    left: number;
-    right: number;
-    top: number;
-    bottom: number;
-};
-
-/**
- * 返回 composer 朝下展开时真正可用的屏幕高度。
- * 折叠时间轴把手等浮层虽然不改变 stage 尺寸，却会盖住同一水平区间内的 composer；
- * 因此它们的顶边也必须成为下边界，不能只看 stage.bottom。
- */
-export function getUnobstructedComposerSpaceBelow(input: {
-    stage: ComposerObstacleRect;
-    node: ComposerObstacleRect;
-    composer: Pick<ComposerObstacleRect, "left" | "right">;
-    obstacles: ComposerObstacleRect[];
-}): number {
-    const boundary = input.obstacles.reduce((current, obstacle) => {
-        const isBelowNode = obstacle.top >= input.node.bottom;
-        const overlapsComposer = obstacle.left < input.composer.right && obstacle.right > input.composer.left;
-        return isBelowNode && overlapsComposer ? Math.min(current, obstacle.top) : current;
-    }, input.stage.bottom);
-
-    return Math.max(0, boundary - input.node.bottom);
-}
-
-/** composer 或舞台尺寸改变时，可用空间已经不同，必须解除比例切换期间的连接侧保持。 */
-export function didComposerAvailableSpaceChange(
-    previous: ComposerAvailableSpaceMeasurement,
-    next: ComposerAvailableSpaceMeasurement,
-): boolean {
-    return (
-        previous.anchor.width !== next.anchor.width ||
-        previous.anchor.height !== next.anchor.height ||
-        previous.stage.width !== next.stage.width ||
-        previous.stage.height !== next.stage.height
-    );
-}
-
-/** 比例切换只在边界完全没变时保持原连接侧；真实空间或浮层障碍变化必须重新避让。 */
-export function shouldAllowComposerAttachmentRecompute(input: {
-    preserveForRatioChange: boolean;
-    availableSpaceChanged: boolean;
-    obstacleChanged: boolean;
-    attachmentObstructed: boolean;
-}): boolean {
-    return (
-        !input.preserveForRatioChange ||
-        input.availableSpaceChanged ||
-        input.obstacleChanged ||
-        input.attachmentObstructed
-    );
-}
 // 非媒体节点（含 text）自由缩放时的 min/max。媒体（图/视频）走比例锁定分支，
 // 仍用上面的 MIN/MAX_NODE_*，故此处只为「自由拉伸」路径按 kind 取边界。
 export function getNodeSizeBounds(kind: GenerationCanvasNode["kind"]): NodeSizeBounds {
@@ -146,10 +75,19 @@ export const FOCUS_GENERATION_NODE_EVENT = "nomi-focus-generation-node";
  * 看着像还有个控件，其实一个也点不到（2026-08-26 win32 走查塌陷即此，卡片只剩 26px =
  * padding 12+12 + border 1+1，content box 归零）。
  *
- * 因此它同时是三处的**单一真相源**：卡片 CSS 的 min-height、「这一侧装不装得下」的判定下限、
- * 以及 maxHeight 的兜底下限。改这里三处一起动，别再各写各的魔数。
+ * 卡片 CSS 的 min-height 只读这一处。
  */
 export const COMPOSER_MIN_USABLE_HEIGHT = 150;
+
+/**
+ * 画布生成浮框的宽（**屏幕像素**，浮框反向缩放，任何缩放下都一样宽）与它离节点底边的间距（画布单位）。
+ *
+ * 2026-09-25 用户拍板「宽度固定、钉在节点正下方、被挡就挡」：宽度以前是 `w-max` 跟内容撑（360–880），
+ * 换模型 / 换语言 / 参数摘要变长都会变——那就是「长度老是变来变去」。560 = 最宽的视频节点底栏
+ * （模型 · 参数摘要 · 写提示词三颗 · ×N · 点数 · ↑）在英文下一行放得下的宽度；放不下时参数摘要自己截断。
+ */
+export const NODE_COMPOSER_WIDTH = 560;
+export const NODE_COMPOSER_GAP = 14;
 
 export function clampNumber(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
@@ -187,19 +125,18 @@ export function resolveAreaPreservingSize(
     };
 }
 
-/** 保持 composer 与节点相连的那条边的中心点不动。 */
+/**
+ * 比例切换后保持节点**底边中点**不动：生成浮框恒贴在节点正下方（2026-09-25 用户拍板，不再翻到上方），
+ * 底边不动 = 浮框不跳。
+ */
 export function anchorNodePosition(
     position: { x: number; y: number },
     current: { width: number; height: number },
     next: { width: number; height: number },
-    side: ComposerAttachmentSide,
 ): { x: number; y: number } {
     return {
         x: position.x + (current.width - next.width) / 2,
-        y:
-            side === "bottom"
-                ? position.y + current.height - next.height
-                : position.y,
+        y: position.y + current.height - next.height,
     };
 }
 
@@ -232,85 +169,88 @@ export function mediaNodeSize(
     )
         return null;
     const aspectRatio = width / height;
-    const nodeWidth = clampNumber(
-        preferredWidth || nodeWidthForAspectRatio(aspectRatio),
-        240,
-        680,
-    );
-    const previewHeight = clampNumber(
-        Math.round(nodeWidth / aspectRatio),
-        120,
-        520,
-    );
-    return {
-        width: nodeWidth,
-        height: previewHeight,
-        previewHeight,
-    };
+    const bounds = mediaAspectSizeBounds(aspectRatio, getNodeSizeBounds("image"));
+    const nodeWidth = clampNumber(preferredWidth || nodeWidthForAspectRatio(aspectRatio), bounds.minWidth, bounds.maxWidth);
+    const previewHeight = nodeWidth / aspectRatio;
+    return { width: nodeWidth, height: previewHeight, previewHeight };
 }
 
-export type MediaMetaPatch = {
-  size?: { width: number; height: number };
-  meta: Record<string, unknown>;
-};
+export type MediaMetaPatch = { meta: Record<string, unknown> };
 
-/** Runtime media measurement is derived from the loaded asset, not a user edit.
- * Keep it out of the durable project/event paths so viewport reveals cannot
- * schedule a full-project save for every image/video load. */
-export const MEDIA_DIMENSION_UPDATE_OPTIONS = {
-  persist: false,
-  emit: false,
-  history: false,
-} as const;
+/** Intrinsic dimensions supplied by an asset/result boundary. */
+export type MediaDimensions = { width: number; height: number };
 
-/**
- * 媒体（图片/视频）loadedmetadata 回填的纯计算：据真实 W/H（视频再带真实时长）算出
- * 节点尺寸 + meta 补丁；无变化返回 null（调用方不发空 update）。从 BaseGenerationNode 抽出
- * 保持壳瘦身（R9）+ 可裸测。视频回填 meta.videoDuration 是「拖入视频一律 5 秒」的 catch-all 修复键。
- */
+/** Decoded dimensions are derived state, not a user edit or a full-project save. */
+export const MEDIA_DIMENSION_UPDATE_OPTIONS = { persist: false, emit: false, history: false } as const;
+
+/** Only measure here; resolveNodeVisualSize owns geometry, including restored legacy sizes. */
 export function computeMediaMetaPatch(params: {
-  preserveSize?: boolean;
   resultType: string | undefined;
   meta: Record<string, unknown>;
-  currentSize: { width?: number; height?: number } | undefined;
   width: number;
   height: number;
   durationSeconds?: number;
 }): MediaMetaPatch | null {
-  const { resultType, meta, currentSize, width, height, durationSeconds } = params;
-  const nextSize = mediaNodeSize(width, height, currentSize?.width);
-  if (!nextSize) return null;
+  const { resultType, meta, width, height, durationSeconds } = params;
+  if (!readFiniteNumber(width) || !readFiniteNumber(height)) return null;
   const isVideo = resultType === "video";
-  const previousWidth = readFiniteNumber(meta.imageWidth ?? meta.videoWidth);
-  const previousHeight = readFiniteNumber(meta.imageHeight ?? meta.videoHeight);
-  const previousDuration = readFiniteNumber(meta.videoDuration);
-  const userResized = meta.userResized === true;
-  const nextDuration =
-    isVideo && Number.isFinite(durationSeconds) && (durationSeconds as number) > 0
-      ? Math.round((durationSeconds as number) * 1000) / 1000
-      : null;
-  const mediaPatch = isVideo
-    ? {
-        videoWidth: width,
-        videoHeight: height,
-        videoAspectRatio: width / height,
-        ...(nextDuration !== null ? { videoDuration: nextDuration } : {}),
-      }
-    : { imageWidth: width, imageHeight: height, imageAspectRatio: width / height };
-  const shouldPatchSize =
-    !params.preserveSize && !userResized &&
-    (currentSize?.width !== nextSize.width || currentSize?.height !== nextSize.height);
-  if (
-    previousWidth === width &&
-    previousHeight === height &&
-    (nextDuration === null || previousDuration === nextDuration) &&
-    !shouldPatchSize
-  )
-    return null;
-  return {
-    ...(shouldPatchSize ? { size: { width: nextSize.width, height: nextSize.height } } : {}),
-    meta: { ...meta, ...mediaPatch, previewHeight: params.preserveSize ? currentSize?.height ?? nextSize.previewHeight : nextSize.previewHeight },
-  };
+  const nextDuration = isVideo && readFiniteNumber(durationSeconds)
+    ? Math.round(durationSeconds! * 1000) / 1000 : null;
+  const previousWidth = readFiniteNumber(isVideo ? meta.videoWidth : meta.imageWidth);
+  const previousHeight = readFiniteNumber(isVideo ? meta.videoHeight : meta.imageHeight);
+  if (previousWidth === width && previousHeight === height &&
+      (nextDuration === null || readFiniteNumber(meta.videoDuration) === nextDuration)) return null;
+  return { meta: { ...meta, ...(isVideo
+    ? { videoWidth: width, videoHeight: height, videoAspectRatio: width / height,
+        ...(nextDuration !== null ? { videoDuration: nextDuration } : {}) }
+    : { imageWidth: width, imageHeight: height, imageAspectRatio: width / height }) } };
+}
+
+/** Validate an asset-side dimension pair without ever accepting preview geometry. */
+export function readMediaDimensions(width: unknown, height: unknown): MediaDimensions | null {
+    const parsedWidth = readFiniteNumber(width);
+    const parsedHeight = readFiniteNumber(height);
+    return parsedWidth && parsedHeight ? { width: parsedWidth, height: parsedHeight } : null;
+}
+
+/** Feasible ratio-locked bounds; extreme frames may have a short edge below the generic minimum. */
+function mediaAspectSizeBounds(ratio: number, bounds: NodeSizeBounds): NodeSizeBounds {
+    const maxWidth = Math.min(bounds.maxWidth, bounds.maxHeight * ratio);
+    const minWidth = Math.min(maxWidth, Math.max(bounds.minWidth, bounds.minHeight * ratio));
+    return { minWidth, maxWidth, minHeight: minWidth / ratio, maxHeight: maxWidth / ratio };
+}
+
+type VisualMediaNode = Pick<GenerationCanvasNode, "kind" | "size" | "renderKind" | "categoryId" | "meta" | "result">;
+
+export function readNodeMediaAspectRatio(node: VisualMediaNode): number | null {
+    // These nodes render an editor/table/viewer, not a frame-sized media surface.
+    if (node.kind === "clip" || node.kind === "shot_table" || node.kind === "panorama" ||
+        node.kind === "director" || node.kind === "text" || node.kind === "whiteboard" ||
+        node.kind === "audio" || node.kind === "model3d" || node.kind === "agent-artifact") return null;
+    if (!node.result?.url || (node.result.type !== "image" && node.result.type !== "video")) return null;
+    const video = node.result.type === "video";
+    const width = readFiniteNumber(video ? node.meta?.videoWidth : node.meta?.imageWidth);
+    const height = readFiniteNumber(video ? node.meta?.videoHeight : node.meta?.imageHeight);
+    const ratio = width && height ? width / height : null;
+    return ratio && Number.isFinite(ratio) ? ratio : null;
+}
+
+export function readNodeCardInfoHeight(node: VisualMediaNode): number {
+    const kind = resolveNodeRenderKind(node);
+    return kind === "character-card" || kind === "prop-card"
+        ? readFiniteNumber(node.meta?.cardInfoHeight) ?? 0 : 0;
+}
+
+function isImageGridSplit(node: VisualMediaNode): boolean {
+    return node.result?.type === "image" && typeof node.meta?.source === "string" && node.meta.source.startsWith("image-grid-split-");
+}
+
+export function getNodeResizeBounds(node: VisualMediaNode): NodeSizeBounds {
+    const bounds = getNodeSizeBounds(node.kind);
+    const ratio = readNodeMediaAspectRatio(node);
+    if (!ratio || isCardRenderKind(resolveNodeRenderKind(node))) return bounds;
+    if (isImageGridSplit(node)) return { ...bounds, minHeight: bounds.minWidth / ratio, maxHeight: bounds.maxWidth / ratio };
+    return mediaAspectSizeBounds(ratio, bounds);
 }
 
 // 卡片模式（角色/场景/道具/音轨卡）按 cards-design-v1 §4 的固定宽度；高度部分卡固定、部分动态。
@@ -393,6 +333,8 @@ const DEFAULT_VISUAL_SIZE = { width: 320, height: 360 };
 export function resolveNodeVisualSize(
     node: Pick<GenerationCanvasNode, "kind" | "size" | "renderKind" | "categoryId" | "meta" | "result">,
 ): { width: number; height: number } {
+    // 编组端口节点（model/groupPort.ts）覆盖的是框体 / 折叠卡本身，尺寸就是投影时给的那个，不走卡片规则。
+    if (node.size && readGroupPort(node)) return { width: node.size.width, height: node.size.height };
     if (node.kind === "shot_table") {
         const size = node.size ?? GENERATION_NODE_PLUGIN_BY_KIND.shot_table.defaultSize;
         const bounds = getNodeSizeBounds(node.kind);
@@ -414,10 +356,13 @@ export function resolveNodeVisualSize(
     const bounds = getNodeSizeBounds(node.kind);
     const { width: cardFixedWidth, height: cardFixedHeight } = cardFixedSize(renderKind, isCardKind);
     const hasResult = Boolean(node.result?.url);
-    const isImageGridSplitNode =
-        node.kind === "image" &&
-        typeof node.meta?.source === "string" &&
-        node.meta.source.startsWith("image-grid-split-");
+    const mediaAspect = readNodeMediaAspectRatio(node);
+    if (mediaAspect && (!isCardKind || (cardFixedWidth !== null && cardFixedHeight === null))) {
+        const mediaBounds = getNodeResizeBounds(node);
+        const width = cardFixedWidth ?? clampNumber(size.width, mediaBounds.minWidth, mediaBounds.maxWidth);
+        return { width, height: width / mediaAspect + readNodeCardInfoHeight(node) };
+    }
+    const isImageGridSplitNode = isImageGridSplit(node);
     const storedPreviewHeight =
         typeof node.meta?.previewHeight === "number" && Number.isFinite(node.meta.previewHeight)
             ? isImageGridSplitNode
@@ -449,7 +394,6 @@ export function buildAspectRatioNodePatch(
     node: GenerationCanvasNode,
     nextMeta: Record<string, unknown>,
     targetRatio: number | null,
-    side: ComposerAttachmentSide,
 ): Partial<GenerationCanvasNode> {
     if (!targetRatio || node.result?.url) return { meta: nextMeta };
     const current = resolveNodeVisualSize(node);
@@ -461,7 +405,7 @@ export function buildAspectRatioNodePatch(
     return {
         meta: nextMeta,
         size,
-        position: anchorNodePosition(node.position, current, size, side),
+        position: anchorNodePosition(node.position, current, size),
     };
 }
 

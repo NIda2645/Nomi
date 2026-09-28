@@ -14,7 +14,7 @@ export async function captureScenarioFailure(page, { directory, id, error }) {
         stage: document.querySelector('.generation-canvas-v2__stage')?.getBoundingClientRect().toJSON(),
         fx: count('[data-process-fx]'),
         fxCanvas: count('[data-process-fx] canvas'),
-        staticShells: count('[data-process-static-band]'),
+        staticShells: count('[data-process-static-grid]'),
         waiting: count('[data-generation-waiting]'),
         nodes: count('article[data-node-id]'),
         surfaces: [...document.querySelectorAll('[data-generation-waiting]')].map(surface => ({
@@ -22,7 +22,7 @@ export async function captureScenarioFailure(page, { directory, id, error }) {
           motion: surface.getAttribute('data-process-motion'),
           zoom: surface.getAttribute('data-process-zoom'),
           fx: surface.querySelectorAll('[data-process-fx]').length,
-          staticShells: surface.querySelectorAll('[data-process-static-band]').length,
+          staticShells: surface.querySelectorAll('[data-process-static-grid]').length,
         })),
       }
     })

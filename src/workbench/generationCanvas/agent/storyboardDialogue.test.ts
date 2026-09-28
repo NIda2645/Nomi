@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { ArchetypeMode } from '../../../config/modelArchetypes/types'
+import type { ArchetypeMode } from '../../../../electron/shared/modelArchetypes/types'
 import { buildDialoguePromptSuffix, modeGeneratesDialogue } from './storyboardDialogue'
 
 const mode: ArchetypeMode = {

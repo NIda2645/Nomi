@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { ProviderAdapterRun, ProviderAdapterRegistration } from "../providerAdapter/types";
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { resolveHostVendorKey } from "../catalog/connectionVendorKey";
 import { HttpProviderConnector } from "./httpConnector";
 import {
   ComfyUiConnector,
@@ -153,8 +153,11 @@ export class ConnectionCertificationService {
   }
 
   async startHttp(input: HttpStartInput): Promise<CanonicalHttpCertificationRun> {
-    const vendorKey =
-      String(input.connection.catalogVendorKey || "").trim() || deriveVendorKeyFromBaseUrl(input.connection.baseUrl);
+    // #831：同上 —— 认证启动只解析到 root，兄弟连接的落点由目录写入层决定。
+    const vendorKey = resolveHostVendorKey({
+      baseUrl: input.connection.baseUrl,
+      catalogVendorKey: input.connection.catalogVendorKey,
+    });
     const certification = contractBinding(
       canonicalHttpContract(vendorKey, input.connection.models),
       input.idempotencyKey,

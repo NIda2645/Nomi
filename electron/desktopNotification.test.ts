@@ -22,6 +22,7 @@ vi.mock('./attentionSoundPlayer', () => ({ playAttentionSound: mocks.play }))
 vi.mock('./settings/attentionSoundSettings', () => ({ readAttentionSoundSettings: mocks.read }))
 vi.mock('./settings/automationPolicySettings', () => ({ readAutomationPolicySettings: () => ({ systemNotifications: mocks.system }) }))
 import { showDesktopNotification } from './desktopNotification'
+import { createBackgroundIdleExit, setBackgroundIdleExitOwner } from './backgroundIdleExit'
 import { registerNotificationIpc } from './notificationIpc'
 import { createProductionNotificationsListener } from './productionRun/productionNotificationsDesktop'
 import type { ProductionRun, RunEvent } from './productionRun/productionRunTypes'
@@ -31,6 +32,7 @@ beforeEach(() => {
   vi.clearAllMocks()
   mocks.focused = false; mocks.visible = true; mocks.minimized = false; mocks.system = true; mocks.supported = true
   mocks.read.mockReturnValue(normalizeAttentionSound(null))
+  setBackgroundIdleExitOwner(null)
 })
 describe('one sound boundary for real notification producers', () => {
   it('off is silent, on in background plays once, and OS never adds its sound', () => {
@@ -62,6 +64,16 @@ describe('one sound boundary for real notification producers', () => {
     mocks.system = false
     showDesktopNotification({ ...input, event: 'slow' })
     expect(mocks.play).toHaveBeenCalledTimes(2)
+  })
+  it('background-unshown launches suppress system notifications until the window is shown', () => {
+    const owner = createBackgroundIdleExit({ hasInFlightWork: () => false, quit: vi.fn() })
+    setBackgroundIdleExitOwner(owner)
+    expect(showDesktopNotification(input)).toEqual({ ok: false, reason: 'background-unshown' })
+    expect(mocks.show).not.toHaveBeenCalled()
+    owner.markWindowShown()
+    expect(showDesktopNotification(input).ok).toBe(true)
+    owner.dispose()
+    setBackgroundIdleExitOwner(null)
   })
   it('renderer IPC uses the shared boundary and rereads settings', () => {
     registerNotificationIpc()

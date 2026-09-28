@@ -1,8 +1,11 @@
 import type { DesktopBridge } from '../../desktop/bridge'
+import { getDesktopBridge } from '../../desktop/bridge'
 import { unwrapAssetImportResult } from '../../../electron/shared/contracts/assetImportResult'
 import type { GenerationCanvasNode, GenerationNodeResult } from '../generationCanvas/model/generationCanvasTypes'
 import type { TimelineClip } from '../timeline/timelineTypes'
 import type { WorkbenchProjectRecordV1 } from './projectRecordSchema'
+import { assetDimensionsFromMetadata } from '../assets/assetTypes'
+import { computeMediaMetaPatch, readMediaDimensions, type MediaDimensions } from '../generationCanvas/nodes/nodeSizing'
 
 type BlobLikeRecord = {
   url?: string
@@ -196,6 +199,69 @@ export async function upgradeWorkbenchProjectMediaUrls(
       ...payload,
       generationCanvas: nextGenerationCanvas,
       timeline: nextTimeline,
+    },
+  }
+}
+
+type PersistedAsset = { id?: string; data?: Record<string, unknown> }
+
+function canvasNeedsMediaDimensionsBackfill(record: WorkbenchProjectRecordV1): boolean {
+  return record.payload.generationCanvas.nodes.some((node) => {
+    const resultType = node.result?.type
+    if (resultType !== 'image' && resultType !== 'video') return false
+    const dimensions = resultType === 'video'
+      ? readMediaDimensions(node.meta?.videoWidth, node.meta?.videoHeight)
+      : readMediaDimensions(node.meta?.imageWidth, node.meta?.imageHeight)
+    return !dimensions
+  })
+}
+
+/** Match an old result to the asset sidecar without decoding the media bytes. */
+export function findCanvasResultMediaDimensions(
+  result: GenerationNodeResult | undefined,
+  assets: readonly PersistedAsset[],
+): MediaDimensions | null {
+  if (!result || (result.type !== 'image' && result.type !== 'video')) return null
+  const asset = assets.find((candidate) => {
+    if (result.assetId && candidate.id === result.assetId) return true
+    const data = candidate.data || {}
+    return data.url === result.url || data.thumbnailUrl === result.thumbnailUrl
+  })
+  if (!asset) return null
+  return assetDimensionsFromMetadata(asset.data, result.type) || readMediaDimensions(asset.data?.width, asset.data?.height)
+}
+
+/** One-time hydration repair for legacy canvas nodes missing intrinsic dimensions. */
+export async function backfillCanvasMediaDimensions(
+  record: WorkbenchProjectRecordV1,
+  desktop: DesktopBridge | null = getDesktopBridge(),
+): Promise<WorkbenchProjectRecordV1> {
+  if (!canvasNeedsMediaDimensionsBackfill(record)) return record
+  const list = desktop?.assets?.list
+  if (!list) return record
+  const assets: PersistedAsset[] = []
+  let cursor: string | null = null
+  do {
+    const page = await list({ projectId: record.id, cursor, limit: 500 })
+    assets.push(...(page.items || []))
+    cursor = page.cursor || null
+  } while (cursor)
+  if (!assets.length) return record
+  let changed = false
+  const nodes = record.payload.generationCanvas.nodes.map((node) => {
+    const dimensions = findCanvasResultMediaDimensions(node.result, assets)
+    if (!dimensions) return node
+    const patch = computeMediaMetaPatch({ resultType: node.result?.type, meta: node.meta || {}, ...dimensions, durationSeconds: node.result?.durationSeconds })
+    if (!patch) return node
+    changed = true
+    return { ...node, meta: patch.meta }
+  })
+  if (!changed) return record
+  return {
+    ...record,
+    payload: {
+      ...record.payload,
+      generationCanvas: { ...record.payload.generationCanvas, nodes },
     },
   }
 }

@@ -287,7 +287,7 @@ describe('storyboard target identity across the shared proposal boundary', () =>
   })
 
   it('replaces the selected plan and patches that same plan without making duplicate designs', async () => {
-    const replacement: Extract<CanvasWriteInput, { operation: 'propose_storyboard_plan' }> = { operation: 'propose_storyboard_plan', title: plan.title,
+    const replacement: Extract<CanvasWriteInput, { operation: 'propose_storyboard_plan' }> = { operation: 'propose_storyboard_plan', title: plan.title, aspectRatio: '9:16',
       anchors: [{ id: 'hero', kind: 'character', name: 'Hero', description: 'Blue coat', carrier: 'text' }],
       shots: plan.shots.map(({ index, shotKind, durationSec, anchorIds, prompt }) => ({ index, shotKind, durationSec, anchorIds: ['hero'], prompt })),
     }
@@ -296,7 +296,7 @@ describe('storyboard target identity across the shared proposal boundary', () =>
     await executeCanvasWriteTarget(buildRequest(patch), readGenerationCanvasSnapshot)
     const designs = useWorkbenchStore.getState().storyboardDesignsByDocumentId['identity-doc']
     expect(designs).toHaveLength(1)
-    expect(designs[0]).toMatchObject({ id: 'identity-board', plan: { anchors: replacement.anchors,
+    expect(designs[0]).toMatchObject({ id: 'identity-board', plan: { aspectRatio: '9:16', anchors: replacement.anchors,
       shots: [{ prompt: 'Opening', anchorIds: ['hero'] }, { prompt: 'Night closing', anchorIds: ['hero'] }] } })
   })
 

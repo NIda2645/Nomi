@@ -1,4 +1,5 @@
 import { hasRealCharacterReferences, normalizeStoryboardAnchorDefaults, validateAnchorModelFit } from './storyboardAnchorPolicy'
+import { getUndoJournalGeneration } from '../events/canvasUndoJournal'
 import { captureCurrentProjectCanvasReadSurfaceBinding } from '../../project/projectCanvasReadSurface'
 import { SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
 import type {
@@ -15,11 +16,13 @@ import {
   type CreateGenerationNodeToolInput,
 } from './generationCanvasTools'
 import { listAvailableModelsForAgent } from './availableModels'
+import { getVendorPreference } from '../../api/vendorPreferenceApi'
 import { buildModelEntryIndex, buildPlannedNodeMeta } from './plannedNodeMeta'
 import { indexMaterializedNodes, materializationKey, readNodeInputStamp } from './materializationStamp'
 import { withCanvasGestureContext, type CanvasGestureContext } from '../events/canvasGestureContext'
 import { layoutPlannedNodes, layoutStoryboardNodes } from './trajectoryLayout'
-import { FOCUS_GENERATION_NODE_EVENT } from '../nodes/nodeSizing'
+import { resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { placeBlockInVisibleArea } from '../store/canvasVisibleArea'
 import { arrangeStoryboardToTimeline } from './sendStoryboardToTimeline'
 import { parseStoryboardPlan } from './storyboardPlanSchema'
 import type { StagingSpec, StagingCharacterSpec } from '../nodes/director/agent/stagingBuilder'
@@ -226,6 +229,7 @@ export async function applyCanvasToolCall(
   canWrite?: () => boolean,
   documentId?: string,
   storyboardId?: string,
+  assertTargetCurrent?: () => Promise<void>,
 ): Promise<unknown> {
   const assertWritable = () => {
     if (canWrite) assertTurnCanWrite(canWrite)
@@ -291,14 +295,25 @@ export async function applyCanvasToolCall(
   if (operation === 'propose_storyboard_plan') {
     // 规划写入唯一 owner 并同步表节点投影；不生成媒体。间接画布写也继承本提议的上下文。
     // 校验失败 throw → 调用方映射成 tool error,回喂 LLM 自我修正(与 gate deny 同语义)。
-    const parsedPlan = parseStoryboardPlan(record)
+    const before = useWorkbenchStore.getState()
+    const targetDocumentId = documentId ?? before.activeDocumentId
+    const sourceDocument = before.workbenchDocuments.find(document => document.id === targetDocumentId)
+    const sourceDesign = storyboardId ? before.storyboardDesignsByDocumentId[targetDocumentId]?.find(design => design.id === storyboardId) : undefined
+    const canvasGeneration = getUndoJournalGeneration()
+    // The command discriminator belongs to this boundary, not author content.
+    const { operation: _operation, ...authorPlan } = record
+    const parsedPlan = parseStoryboardPlan(authorPlan)
     const plan = hasRealCharacterReferences(parsedPlan)
-      ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent())
+      ? normalizeStoryboardAnchorDefaults(parsedPlan, await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
       : parsedPlan
     const store = useWorkbenchStore.getState()
-    // P4:按 documentId 存方案。documentId 由调用方在发起拆镜头时捕获，异步期间切文档不串稿。
-    // 缺 documentId（如旧调用方）回退 activeDocumentId，保证至少落到当前激活文档。
-    const targetDocumentId = documentId ?? store.activeDocumentId
+    const currentDocument = store.workbenchDocuments.find(document => document.id === targetDocumentId)
+    const currentDesign = storyboardId ? store.storyboardDesignsByDocumentId[targetDocumentId]?.find(design => design.id === storyboardId) : undefined
+    if (getUndoJournalGeneration() !== canvasGeneration
+      || (currentDocument && currentDocument !== sourceDocument)
+      || (currentDesign && currentDesign !== sourceDesign)) {
+      throw new SurfacePortWireError('capability_target_stale')
+    }
     if (!store.workbenchDocuments.some((document) => document.id === targetDocumentId)) {
       return {
         status: 'obsolete',
@@ -330,6 +345,18 @@ export async function applyCanvasToolCall(
 
   if (operation === 'create_canvas_nodes') {
     const requested = Array.isArray(record.nodes) ? record.nodes : []
+    // Finish all asynchronous reads before checking stamps. Lookup and creation
+    // must share one synchronous segment so concurrent retries see each other.
+    // 任一节点带 modelKey 才加载可用模型清单（校验+补全 agent 选的模型/参数，否则零 IPC）。
+    const needsModels = requested.some(
+      (raw) => raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).modelKey === 'string',
+    )
+    // 裸 modelKey（没带 vendor）落哪家：与模型框回显同一把尺，要用户排的供应商顺序（buildModelEntryIndex 注释）。
+    const entryByKey = needsModels
+      ? buildModelEntryIndex(await listAvailableModelsForAgent(), (await getVendorPreference()).orderedVendorKeys)
+      : buildModelEntryIndex([])
+    if (assertTargetCurrent) await assertTargetCurrent()
+    assertWritable()
     // 幂等（判据的唯一 owner 在这条写边界，不在调用方）：带物化章的节点，章已经在画布上就**不再建
     // 第二个**，直接把已有节点 id 回给调用方并登记进 clientId 注册表（后续连边/set_prompt 照样指得到）。
     // 此前 capabilityApplyHandler 与 multiShotCanvasLanding 各自手写了一份同样的去重（P1 违规）：
@@ -358,11 +385,6 @@ export async function applyCanvasToolCall(
       if (requestedAnchorCount !== null && index < requestedAnchorCount) retainedAnchorCount += 1
       return true
     })
-    // 任一节点带 modelKey 才加载可用模型清单（校验+补全 agent 选的模型/参数，否则零 IPC）。
-    const needsModels = incoming.some(
-      (raw) => raw && typeof raw === 'object' && typeof (raw as Record<string, unknown>).modelKey === 'string',
-    )
-    const entryByKey = buildModelEntryIndex(needsModels ? await listAvailableModelsForAgent() : [])
     const total = incoming.length
     // T4 轨迹分层布局：层由 kind 推导（参考/关键帧/视频三列），原点避让画布已有节点
     // 包围盒（修审计 bug D）；单层/不可推导退网格（同样避让）。忽略 LLM 像素坐标。
@@ -372,12 +394,6 @@ export async function applyCanvasToolCall(
     })
     // 分镜方案落画布（storyboardPlanToCreateNodesArgs 给 anchorCount）→ 参考行在上 + 镜头折行网格；
     // 其余（agent 直接建卡）→ 原轨迹分层布局。两者都从已有节点包围盒下方起、不压旧内容。
-    const existingCanvasNodes = readGenerationCanvasSnapshot().nodes
-    const storyboardAnchorCount = requestedAnchorCount === null ? null : retainedAnchorCount
-    const layout =
-      storyboardAnchorCount !== null
-        ? layoutStoryboardNodes(plannedKinds, storyboardAnchorCount, existingCanvasNodes)
-        : layoutPlannedNodes(plannedKinds, existingCanvasNodes)
     // 整批强制分类（分镜方案落画布用，用户拍板 A）：角色/场景/镜头落进同一分类，参考边
     // 同屏可见可连。仅程序化调用方（storyboardPlanToCreateNodesArgs）会设；agent 直接建卡
     // 不带 → 走 kind 默认。只认白名单分类，挡住脏值把节点丢进不存在的分类而消失。
@@ -385,6 +401,26 @@ export async function applyCanvasToolCall(
       typeof record.groupCategoryId === 'string' && (CATEGORY_IDS as readonly string[]).includes(record.groupCategoryId)
         ? (record.groupCategoryId as BuiltinCanvasCategoryId)
         : null
+    const existingCanvasNodes = readGenerationCanvasSnapshot().nodes
+    const storyboardAnchorCount = requestedAnchorCount === null ? null : retainedAnchorCount
+    const plannedLayout =
+      storyboardAnchorCount !== null
+        ? layoutStoryboardNodes(plannedKinds, storyboardAnchorCount, existingCanvasNodes)
+        : layoutPlannedNodes(plannedKinds, existingCanvasNodes)
+    // 整批尽量搬进用户此刻看得见的地方（块内相对位置不动）：以前整批落在「全部已有内容下方」、再请求
+    // 适应全图把画布挪过去——那一挪就是「闪一下、找不到」（2026-09-25）。装不下或会压到已有节点就留在
+    // 原处，由画布边缘提示指路。只在整批落同一个分类时搬（跨分类的批次各分类视口不同，没有同一个「可见区」）。
+    const plannedCategories = new Set(plannedKinds.map((kind) => groupCategoryId ?? getDefaultCategoryForNodeKind(kind)))
+    const layout = plannedCategories.size === 1
+      ? (() => {
+          const categoryId = [...plannedCategories][0]
+          const sizes = plannedKinds.map((kind) => resolveNodeVisualSize({ kind } as Parameters<typeof resolveNodeVisualSize>[0]))
+          const occupied = existingCanvasNodes
+            .filter((node) => (node.categoryId || 'shots') === categoryId && node.position)
+            .map((node) => ({ ...node.position!, ...resolveNodeVisualSize(node) }))
+          return placeBlockInVisibleArea(categoryId, plannedLayout.map((point, index) => ({ ...point, ...sizes[index] })), occupied)
+        })()
+      : plannedLayout
     // agent-artifact 交付：Agent 手写的内容必须先落盘为项目资产（nomi-local://）才能建节点——
     // 节点不塞内联源码（meta.artifact.url 引用资产文件）。落盘是纯 IO，先全部完成再进 store 事务，
     // 任一失败即整批中止（一个计划一次意志；不建「指向不存在文件」的半截节点）。
@@ -489,6 +525,7 @@ export async function applyCanvasToolCall(
         ...(meta ? { meta } : {}),
       }
     })
+    assertWritable()
     const created = inputs.length > 0 ? inCtx(() => generationCanvasTools.create_nodes(inputs)) : []
     // 复用的（本次没建、章已在画布上的）先进映射，再让本次真建的覆盖同名键。
     const clientIdToNodeId: Record<string, string> = { ...reusedByClientId }
@@ -510,54 +547,10 @@ export async function applyCanvasToolCall(
       connectedCount = outcome.connected
       skippedEdges = outcome.skipped
     }
-    // 图片+视频分镜：首帧图与所属视频共用镜号（同手动「转视频」桥的继承号语义，见 convertShotToVideo）。
-    // 首帧图带 meta.storyboardKeyframe 创建时不自动领号（shotNumbering 跳过），此处按计划里的
-    // first_frame 边把视频已领的编号写回 → 18 镜就是 1..18，角标与「镜头 N 首帧」标题一致。
-    const keyframeClientIds = new Set(
-      incoming
-        .filter((raw) => raw && typeof raw === 'object' && (raw as Record<string, unknown>).storyboardKeyframe === true)
-        .map((raw) => String((raw as Record<string, unknown>).clientId || '')),
-    )
-    if (keyframeClientIds.size) {
-      const canvasStore = useGenerationCanvasStore.getState()
-      const nodeById = new Map(canvasStore.nodes.map((node) => [node.id, node]))
-      for (const rawEdge of rawPlanEdges) {
-        const edge = rawEdge && typeof rawEdge === 'object' ? (rawEdge as Record<string, unknown>) : {}
-        if (edge.mode !== 'first_frame') continue
-        const sourceClientId = String(edge.sourceClientId || '')
-        if (!keyframeClientIds.has(sourceClientId)) continue
-        const keyframeId = clientIdToNodeId[sourceClientId]
-        const videoId = clientIdToNodeId[String(edge.targetClientId || '')]
-        const videoShotIndex = videoId ? nodeById.get(videoId)?.shotIndex : undefined
-        if (keyframeId && typeof videoShotIndex === 'number') {
-          canvasStore.updateNode(keyframeId, { shotIndex: videoShotIndex })
-        }
-      }
-    }
-    // 批量落节点后统一请求适应视图。AI 直接建卡、方案确认和示例引导都走这里，
-    // 避免调用方漏触发后只看到被视口裁断的一部分新节点。单节点不重排全局视口，
-    // 但要把刚创建的卡居中：布局原点在已有内容下方，若时间轴占据底部，单卡可能
-    // 被裁在视口外；保留当前视口并不等于让用户自己猜卡片去了哪里。
-    if (created.length > 1) {
-      const workbench = useWorkbenchStore.getState()
-      const categoryCounts = new Map<string, { count: number; firstIndex: number }>()
-      created.forEach((node, index) => {
-        const categoryId = node.categoryId || 'shots'
-        const current = categoryCounts.get(categoryId)
-        categoryCounts.set(categoryId, { count: (current?.count ?? 0) + 1, firstIndex: current?.firstIndex ?? index })
-      })
-      const fitCategoryId = categoryCounts.has(workbench.activeCategoryId)
-        ? workbench.activeCategoryId
-        : [...categoryCounts.entries()].sort(
-            ([leftId, left], [rightId, right]) =>
-              right.count - left.count ||
-              Number(rightId === 'shots') - Number(leftId === 'shots') ||
-              left.firstIndex - right.firstIndex,
-          )[0]?.[0]
-      workbench.requestCanvasFit(fitCategoryId)
-    } else if (created[0] && typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(FOCUS_GENERATION_NODE_EVENT, { detail: { nodeId: created[0].id } }))
-    }
+    // 首帧号由共享身份投影沿 first_frame 边读取视频 owner，不复制第二份编号。
+    // 建完**不挪画布、不切分类**（2026-09-25 用户拍板「程序不再主动平移 / 缩放画布」）：以前这里批量请求
+    // 适应全图、单节点派发聚焦事件（放大到 ≥100% 再居中），和付费卡落地那次适应全图叠在一起就是「闪一下」。
+    // 落在屏外 / 别的分类的新节点由画布边缘提示（CanvasArrivalHint）指路，点它才过去。
     return {
       createdNodeIds: created.map((node) => node.id),
       clientIdToNodeId,

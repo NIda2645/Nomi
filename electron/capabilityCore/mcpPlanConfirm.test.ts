@@ -263,8 +263,11 @@ describe('nomi-mcp · 画布方案确认：不声明 elicitation / headless → 
   })
 })
 
-// dispatch 层：planConfirmed 透传 → canvas.addNodes 预批准方案门（渲染层弹窗不再触发，免双问）。
-// 这补上协议层假 transport 覆盖不到的下游一段：真人在聊天 accept 后，App 侧网关 confirmPlan 不该再被调。
+// dispatch 层：planConfirmed 透传 → `canvas.write` 的 create_canvas_nodes 预批准方案门
+//（渲染层弹窗不再触发，免双问）。这补上协议层假 transport 覆盖不到的下游一段：真人在聊天 accept 后，
+// App 侧网关 confirmPlan 不该再被调。
+// 2026-09-21：原来打的是 legacy `canvas.addNodes`（无租约、裸 bearer 可达，已删）。同一段行为现在只在
+// 租约路上验——**预批准的是方案门，不是租约**：没有会话/租约，这两条都到不了 confirmPlan 那一步。
 describe('nomi-mcp · dispatch 层 planConfirmed 预批准方案门', () => {
   function spyGateway() {
     const planCalls: PlanConfirmInfo[] = []
@@ -286,29 +289,38 @@ describe('nomi-mcp · dispatch 层 planConfirmed 预批准方案门', () => {
         readArtifactProjection: vi.fn(), readFull: vi.fn(), command: vi.fn(),
       },
       origin: { host: 'external' as const },
+      // 租约是这条路的前提（legacy 无租约那条已删）：这里给一份已验证的会话，
+      // 好让断言落在 confirmPlan 上而不是停在 403。
+      projectSession: {
+        connection: { client: 'codex' },
+        authority: { verifyLease: async () => ({ projectId: 'proj-a', scope: 'canvas:write' }) },
+      },
       ...(planConfirmed ? { planConfirmed: true } : {}),
     }
   }
 
-  it('planConfirmed=true：≥2 节点批量 add 不再调 gateway.confirmPlan（App 弹窗被跳过），仍落节点', async () => {
+  const writeParams = {
+    leaseHandle: 'lease-a',
+    projectId: 'proj-a',
+    operation: 'create_canvas_nodes',
+    summary: '创建画布节点',
+    nodes: [
+      { clientId: 'c-1', kind: 'image', title: '镜 1', prompt: '镜头 1' },
+      { clientId: 'c-2', kind: 'image', title: '镜 2', prompt: '镜头 2' },
+    ],
+  }
+
+  it('planConfirmed=true：≥2 节点批量建节点不再调 gateway.confirmPlan（App 弹窗被跳过），仍落节点', async () => {
     const spy = spyGateway()
-    const result = await dispatch(
-      'canvas.addNodes',
-      { projectId: 'proj-a', nodes: [{ kind: 'image' }, { kind: 'image' }] },
-      ctxWith(spy.gateway, true) as never,
-    )
+    const result = await dispatch('canvas.write', { ...writeParams }, ctxWith(spy.gateway, true) as never)
     expect(spy.planCalls).toHaveLength(0) // 关键：confirmPlan 未被调 → 渲染层不弹卡
     expect(spy.getApplied()).toBe(1)
-    expect((result as { ids: string[] }).ids).toHaveLength(2)
+    expect((result as { affectedNodeIds: string[] }).affectedNodeIds).toHaveLength(2)
   })
 
-  it('planConfirmed 未设：≥2 节点批量 add 照常调 gateway.confirmPlan（老路径不变）', async () => {
+  it('planConfirmed 未设：≥2 节点批量建节点照常调 gateway.confirmPlan（老路径不变）', async () => {
     const spy = spyGateway()
-    await dispatch(
-      'canvas.addNodes',
-      { projectId: 'proj-a', nodes: [{ kind: 'image' }, { kind: 'image' }] },
-      ctxWith(spy.gateway, false) as never,
-    )
+    await dispatch('canvas.write', { ...writeParams }, ctxWith(spy.gateway, false) as never)
     expect(spy.planCalls).toHaveLength(1) // 未预批准 → 走原网关确认（App 弹窗 / headless 放行）
     expect(spy.planCalls[0]).toMatchObject({ nodeCount: 2, projectId: 'proj-a' })
   })

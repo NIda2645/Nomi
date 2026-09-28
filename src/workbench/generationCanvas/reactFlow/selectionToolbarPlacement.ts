@@ -1,4 +1,5 @@
 import type { Viewport } from '@xyflow/react'
+import { resolveUsableBottomAboveDocks } from '../../generation/workspaceBottomDocks'
 
 const VIEWPORT_GUTTER = 8
 const TOOLBAR_GAP = 16
@@ -71,40 +72,6 @@ export function expandSelectionBoundsToOwningFrame(
   }
 }
 
-/**
- * 浮条真正可以落到多低——**底部停靠区的上沿**，不是 stage 的下沿。
- *
- * 起因（2026-09-07 真机走查 `10-frame-moved.png`）：这个函数原来只拿 `stage.height` 当底，
- * 把「底部那一排常驻控件占着的地方」当成空地。于是选中一个几乎占满这一屏的框时，
- * 浮条被排到选区下方，正好压在底部居中的「时间轴」胶囊上——**「生成选中 N 个」被挡掉半截**，
- * 用户点下去要么点到时间轴、要么点了个看不全的按钮。
- *
- * 判据就是那条最朴素的：**浮条矩形不许和任何一块停靠区矩形相交**。
- * 只有横向真的压得上的那几块才算（左下的工具簇不该逼一个靠右的浮条往上跑），
- * 所以先按浮条这一次的横向跨度筛一遍，再取最高的那条上沿当底。
- *
- * 上下都塞不下时由下面的 clamp 收尾：`clamp` 的 min 大于 max 时返回 min，
- * 也就是把浮条贴到视口内侧的上边——宁可贴边，也不叠在别人身上。
- */
-function resolveUsableBottom(
-  stage: StageSize,
-  docks: readonly StageDockRect[],
-  toolbarLeft: number,
-  toolbarRight: number,
-): number {
-  let bottom = stage.height
-  for (const dock of docks) {
-    if (![dock.left, dock.top, dock.right, dock.bottom].every((value) => Number.isFinite(value))) continue
-    // 完全在这一屏之外的（例如时间轴展开后被顶出去的胶囊）不参与——它挡不住任何人。
-    if (dock.bottom <= 0 || dock.top >= stage.height) continue
-    // 横向压不上就撞不上：这正是「矩形相交」判据的另一半，少了它会为左下角的缩略图
-    // 把一个靠右的浮条无端往上顶一大截。
-    if (dock.right <= toolbarLeft || dock.left >= toolbarRight) continue
-    bottom = Math.min(bottom, dock.top)
-  }
-  return Math.max(0, bottom)
-}
-
 export function resolveSelectionToolbarPlacement(
   bounds: SelectionBounds,
   viewport: Viewport,
@@ -116,7 +83,12 @@ export function resolveSelectionToolbarPlacement(
   const minX = VIEWPORT_GUTTER + maxWidth / 2
   const maxX = stage.width - VIEWPORT_GUTTER - maxWidth / 2
   const x = maxX >= minX ? clamp(rawX, minX, maxX) : stage.width / 2
-  const usableBottom = resolveUsableBottom(stage, bottomDocks, x - maxWidth / 2, x + maxWidth / 2)
+  // 底部停靠区的让位判据只有一份（workspaceBottomDocks.ts）；浮框也读它。
+  const usableBottom = resolveUsableBottomAboveDocks({
+    viewport: { top: 0, bottom: stage.height },
+    span: { left: x - maxWidth / 2, right: x + maxWidth / 2 },
+    docks: bottomDocks,
+  })
 
   const boundsTop = bounds.minY * viewport.zoom + viewport.y
   const boundsBottom = (bounds.minY + bounds.height) * viewport.zoom + viewport.y

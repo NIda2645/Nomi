@@ -12,7 +12,7 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { test } from 'node:test';
 import { BACKGROUND_CONTEXT } from '@earendil-works/pi-agent-core/harness/context';
-import { createLaneSkillIndexSource } from '../../electron/agentLane/laneInstalledSkills.mjs';
+import { createLaneSkillIndexSource } from '../../electron/agentLane/laneSkillCatalog.mjs';
 import { createLaneCodingPaths } from '../../electron/agentLane/laneCodingPaths.mjs';
 import { openLaneNativeDesktop } from '../../electron/agentLane/laneNativeDesktop.mjs';
 import { createLaneFixture } from './laneFixture.mjs';
@@ -25,9 +25,9 @@ async function landSkill(root: string, name: string, extra: { scripts?: boolean;
   const body = extra.body ?? `---\nname: ${name}\ndescription: ${name} 的用途说明。\n---\n正文。`;
   const filePath = path.join(dir, 'SKILL.md');
   await writeFile(filePath, body);
-  return { name, directoryName: name, filePath, description: `${name} 的用途说明。`, body,
+  return { name, directoryName: name, filePath, packageDir: dir, description: `${name} 的用途说明。`, body, content: '正文。',
     manifest: null, origin: 'user', audience: 'internal', packageVersion: 'nomi-skill-v1',
-    contentHash: `hash-${name}-${body.length}` };
+    contentHash: `hash-${name}-${body.length}`, requiresCodingTools: extra.scripts === true };
 }
 
 async function skillsRoot(t: { after(fn: () => unknown): void }): Promise<string> {
@@ -91,10 +91,9 @@ test('索引源：第一个技能是半路导入的，渲染器那时才加载�
   assert.equal(loaded, 1, '第一个技能半路进来时才加载渲染器');
   assert.equal(source.current().promptSection, 'late-import');
 
-  // 用户在这一次扫描与校验之间把技能删了：它不在这一刻的索引里，但**不该让整个回合失败**。
-  const ghost = await landSkill(root, 'ghost');
-  records = [records[0]!, ghost];
-  await rm(path.join(root, 'ghost'), { recursive: true, force: true });
+  // 索引是记录集的纯投影：来源给什么就是什么（「扫描与校验之间被删掉」那一条现在由目录层 / pi 的
+  // read_failed 诊断兜住——见 skill-catalog-migration.test.mts S37）。
+  records = [records[0]!];
   await source.refresh();
   assert.deepEqual(source.current().entries.map((entry) => entry.name), ['late-import']);
 });

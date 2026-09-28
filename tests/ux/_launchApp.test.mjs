@@ -94,6 +94,8 @@ describe('buildNomiLaunchEnv', () => {
     expect(buildNomiLaunchEnv({ ...dirs, baseEnv: {} })).toEqual({
       NOMI_E2E: '1',
       NOMI_E2E_ALLOW_MULTI_INSTANCE: '1',
+      // 走查环境里主进程日志必须看得见（否则 CI 的 job 日志里一条 WARN 都没有）。
+      NOMI_LOG_STDERR: '1',
       NOMI_ELECTRON_USER_DATA_DIR: dirs.userDataDir,
       NOMI_SETTINGS_DIR: dirs.settingsDir,
       NOMI_PROJECTS_DIR: dirs.projectsDir,

@@ -175,3 +175,15 @@ export function replaceCustomCallConfig(
     .sort((left, right) => left.localeCompare(right))
     .map((name) => ({ name, hasValue: true }));
 }
+
+/**
+ * 明确的 custom-config 凭据写边界：先加密，再从 vendor.meta 移除旧明文。
+ * 全部 legacy 字段都清理完后，才在同一内存事务中升到 v9。
+ */
+export function applyPlainCustomConfigWrite(state: CatalogState, vendorKey: string, config: Record<string, string>): void {
+  applyPlainCustomConfig(state, vendorKey, config);
+  state.vendors = state.vendors.map((vendor) =>
+    vendor.key === vendorKey ? { ...vendor, meta: withoutLegacyCustomConfig(vendor.meta) } : vendor,
+  );
+  if (state.version === 8 && !state.vendors.some(hasLegacyCustomConfigField)) state.version = 9;
+}

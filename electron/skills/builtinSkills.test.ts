@@ -3,8 +3,10 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { parseSkillFrontmatter } from "./skillFrontmatter";
-import { parseSkillManifest, type SkillManifest } from "./skillManifestSchema";
-import { discoverSkillRecordsFromRoots, findSkillRecord, readSkillManifest } from "./skillStore";
+import { parseSkillManifest, readSkillManifest, type SkillManifest } from "./skillManifestSchema";
+import { findSkillRecord } from "./skillStore";
+// 目录来自 pi 的加载器（岛上、async）。
+import { discoverSkillRecords } from "../agentLane/laneSkillCatalog.mjs";
 
 // 内置 skill 回归门：仓库里 skills/<name>/SKILL.md 的 Nomi 扩展块（frontmatter 的
 // metadata.nomi）一旦写坏这里就红，防「改坏内置包没人发现」。
@@ -95,10 +97,8 @@ describe("built-in skill packs", () => {
 
     const top = new Set(manifest.tools);
     for (const stage of stages) {
+      // skill-refs 的存在性由下面那条全量测试覆盖（88 个包全扫），这里只留工具白名单。
       for (const tool of stage.tools) expect(top.has(tool)).toBe(true);
-      for (const skillRef of stage.skillRefs ?? []) {
-        expect(fs.existsSync(path.join(SKILLS_DIR, skillRef, "SKILL.md"))).toBe(true);
-      }
     }
   });
 
@@ -114,8 +114,8 @@ describe("built-in skill packs", () => {
   // 而查找归一只把 `.` 换成 `-`——所以归一后仍对不上目录名的那几个 skillKey 会**静默**
   // 失效：拿不到 manifest 就等于「不收窄能力、也不显示阶段」，CI 一片绿。这条断言把
   // 「代码里写死的 skillKey 必须指得到一个真实技能」变成机器判据（R28）。
-  it("every hardcoded launcher skillKey still resolves to a real skill record", () => {
-    const records = discoverSkillRecordsFromRoots([{ path: SKILLS_DIR, origin: "builtin" }]).records;
+  it("every hardcoded launcher skillKey still resolves to a real skill record", async () => {
+    const records = (await discoverSkillRecords([{ path: SKILLS_DIR, origin: "builtin" }])).records;
     const launcherKeys = [
       "workbench-generation",
       "workbench-storyboard-planner",
@@ -128,8 +128,8 @@ describe("built-in skill packs", () => {
     }
   });
 
-  it("still resolves the pre-convergence dotted keys that live in persisted data", () => {
-    const records = discoverSkillRecordsFromRoots([{ path: SKILLS_DIR, origin: "builtin" }]).records;
+  it("still resolves the pre-convergence dotted keys that live in persisted data", async () => {
+    const records = (await discoverSkillRecords([{ path: SKILLS_DIR, origin: "builtin" }])).records;
     for (const [legacyKey, directoryName] of [
       ["workbench.storyboard.planner", "workbench-storyboard-planner"],
       ["workbench.fixation.planner", "workbench-fixation-planner"],
@@ -139,5 +139,26 @@ describe("built-in skill packs", () => {
     ] as const) {
       expect(findSkillRecord(legacyKey, legacyKey, records)?.directoryName, legacyKey).toBe(directoryName);
     }
+  });
+  // 跨技能引用：`stages[].skill-refs`（解析后是 `skillRefs`）点名的是**另一个技能的目录名**。
+  // 此前只有 release-media-pack 那条用例顺带验了它自己那几条；其余技能的引用没有任何东西核。
+  // 这条不变量没有主人时的后果很安静：引用一个不存在的技能，加载时只是少拿到一份手艺参考，
+  // 既不抛也不警告——和 2026-09-18 挖出的那一整类「指向必须存在的东西却没人核」同形。
+  it("every stage skill-ref across all skill packs resolves to a real skill directory", () => {
+    let checked = 0;
+    for (const dir of dirs) {
+      for (const stage of manifestOf(dir).stages ?? []) {
+        for (const skillRef of stage.skillRefs ?? []) {
+          checked += 1;
+          expect(
+            fs.existsSync(path.join(SKILLS_DIR, skillRef, "SKILL.md")),
+            `${dir} 阶段「${stage.id}」的 skill-refs 指向不存在的技能「${skillRef}」`,
+          ).toBe(true);
+        }
+      }
+    }
+    // 断言不许是空的：键名写错（`skillRefs` vs `skill-refs`）会让上面整个循环一次都不进，
+    // 而那种失效看起来和真绿一模一样。2026-09-18 已经因此造出过两个空转的判据。
+    expect(checked, "一条 skill-ref 都没扫到——多半是键名对不上，不是真的没有引用").toBeGreaterThan(0);
   });
 });

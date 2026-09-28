@@ -1,4 +1,6 @@
-import type { ProductionGate } from "./productionRunTypes";
+import crypto from "node:crypto";
+import { productionGenerationJobId } from "./productionGenerationAuthorization";
+import type { ProductionGate, ProductionRun } from "./productionRunTypes";
 
 /**
  * P4 S4 — the anchor 亮相检查点 (plan §3.2). A FREE quality gate (not a spend gate) that pauses the
@@ -23,9 +25,9 @@ import type { ProductionGate } from "./productionRunTypes";
 
 const GATE_PREFIX = "gate-anchor-checkpoint-";
 
-/** The stable, per-run checkpoint gate id. One checkpoint per batch (anchors approved as a set). */
-export function anchorCheckpointGateId(runId: string): string {
-  return `${GATE_PREFIX}${runId}`;
+/** The stable, per-batch checkpoint gate id. One checkpoint per batch (anchors approved as a set). */
+export function anchorCheckpointGateId(runId: string, anchorJobIds: readonly string[]): string {
+  return `${GATE_PREFIX}${crypto.createHash("sha256").update(JSON.stringify([runId, anchorJobIds])).digest("hex")}`;
 }
 
 /** Widened to plain strings so projection gates (sanitized JSON) can be tested too, not only durable gates. */
@@ -51,7 +53,7 @@ export type BuildAnchorCheckpointGateInput = {
 export function buildAnchorCheckpointGate(input: BuildAnchorCheckpointGateInput): ProductionGate {
   const ttlMs = input.ttlMs ?? 24 * 60 * 60 * 1000;
   return {
-    gateId: anchorCheckpointGateId(input.runId),
+    gateId: anchorCheckpointGateId(input.runId, input.anchorJobIds),
     scope: "anchor_checkpoint",
     status: "waiting",
     planHash: input.planHash,
@@ -61,4 +63,13 @@ export function buildAnchorCheckpointGate(input: BuildAnchorCheckpointGateInput)
     createdAt: input.now,
     expiresAt: new Date(Date.parse(input.now) + ttlMs).toISOString(),
   };
+}
+
+/** Approval is reusable only for the exact same frozen anchor executions, including attempts. */
+export function currentAnchorCheckpointGate(run: ProductionRun): ProductionGate | undefined {
+  const jobIds = (run.generationPlan?.shots ?? []).filter(shot => shot.role === "anchor" && shot.included !== false && shot.contract)
+    .map(shot => productionGenerationJobId(run.runId, shot.contract!.contractHash, shot.attemptCount ?? 1, shot.shotId));
+  if (jobIds.length === 0) return undefined;
+  return run.gates.find(gate => gate.scope === "anchor_checkpoint" && gate.jobIds.length === jobIds.length
+    && gate.jobIds.every((jobId, index) => jobId === jobIds[index]));
 }

@@ -1,3 +1,4 @@
+import { isCardRenderKind, resolveNodeRenderKind } from '../nodes/resolveRenderKind'
 import React from 'react'
 import {
   BaseEdge,
@@ -7,7 +8,6 @@ import {
   Position,
   getBezierPath,
   useStore,
-  useViewport,
   type EdgeProps,
   type NodeProps,
 } from '@xyflow/react'
@@ -17,18 +17,22 @@ import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { getGenerationNodeComponentForNode } from '../nodes/renderRegistry'
 import { canvasPluginRegistry } from '../plugins/defaultCanvasPluginRegistry'
-import { getNodeSizeBounds, resolveNodeVisualSize } from '../nodes/nodeSizing'
+import { CARD_FIXED_WIDTH, getNodeResizeBounds, readNodeMediaAspectRatio, resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { availableEdgeModes } from '../components/edgeModeMenu'
 import { LightweightGenerationNode } from '../components/LightweightGenerationNode'
 import {
+  isLargeCanvas,
+  isZoomedOutForLightweight,
   retainLargeCanvasLightweightRendering,
   shouldRenderFullNodeContent,
   shouldUseLightweightNodeRenderingForSelection,
 } from '../components/canvasNodeLevelOfDetail'
 import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasReactFlowAdapter'
+import { selectFlowZoom } from './canvasViewportScale'
 import { GenerationFlowNodeScope } from './generationFlowNodeContext'
-import { resolveGenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
+import { readGroupPort } from '../model/groupPort'
+import { resolveGenerationFlowConnectionAffordance, type GenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
 import { edgeLabelTransform, useCanvasLiveZoom } from './canvasViewportScale'
 import type { CanvasPluginNodeState } from '../plugins/canvasPluginTypes'
 
@@ -63,7 +67,7 @@ function resetMagneticHandlePosition(event: React.PointerEvent<HTMLSpanElement>)
 type GenerationFlowConnectionHandleProps = {
   side: 'left' | 'right'
   type: 'source' | 'target'
-  affordance: 'dot' | 'magnetic' | 'hidden'
+  affordance: GenerationFlowConnectionAffordance
   active: boolean
   /** `null` = 没有连线在进行；`''` = 有连线但端点不在这张卡上；否则是这张卡上被吸住的把手 id。 */
   activeHandleId: string | null
@@ -99,7 +103,8 @@ function GenerationFlowConnectionHandle({
       data-active={active ? 'true' : undefined}
       data-snapped={snapped ? 'true' : undefined}
       // 拖拽中源把手让开：它和目标热区叠在同一条卡片边上，不让它抢走落点。
-      style={type === 'source' && connecting ? { pointerEvents: 'none' } : undefined}
+      // `hidden` 档（没选中的编组端口）同样不接指针：把手在，只为让挂在它上面的边画得出来。
+      style={type === 'source' && (connecting || affordance === 'hidden') ? { pointerEvents: 'none' } : undefined}
       className={cn(
         'generation-canvas-react-flow__handle',
         `generation-canvas-react-flow__handle--${type}`,
@@ -134,6 +139,15 @@ function GenerationFlowConnectionHandle({
   )
 }
 
+/**
+ * 卡片上只有显式标了 draggable 的元素（拖进时间轴的把手、版本托盘条目）能起原生拖放。文字选区、图片这类隐式拖放
+ * 一旦开始，浏览器就不再派发 pointerup / mouseup，React Flow 的节点拖动收不到松手（2026-09-25 粘鼠标实测）。
+ */
+function blockImplicitNativeDrag(event: React.DragEvent<HTMLDivElement>): void {
+  if (event.target instanceof Element && event.target.closest('[draggable="true"]')) return
+  event.preventDefault()
+}
+
 export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationFlowNode>): JSX.Element {
   const { t } = useTranslation()
   const node = data.generationNode
@@ -144,34 +158,35 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
     if (connection.fromHandle.nodeId === node.id) return connection.fromHandle.id ?? ''
     return connection.isValid && connection.toHandle?.nodeId === node.id ? connection.toHandle.id ?? '' : ''
   })
-  const collapsedGroupProxy = node.meta?.collapsedGroupProxy === true
+  // 编组端口节点（model/groupPort.ts）：不画卡面，只挂把手。左右收 / 发两对把手都要渲染——折叠编组的
+  // 聚合边就挂在它们上面，没有把手 React Flow 不画这条边；没选中时源把手只是不可见、不接指针（见下）。
+  const groupPort = Boolean(readGroupPort(node))
   const NodeComponent = getGenerationNodeComponentForNode(node)
   const size = resolveNodeVisualSize(node)
-  const bounds = getNodeSizeBounds(node.kind)
+  const bounds = getNodeResizeBounds(node)
+  const keepMediaAspect = Boolean(readNodeMediaAspectRatio(node)) && !isCardRenderKind(resolveNodeRenderKind(node))
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
   const captureHistory = useGenerationCanvasStore((state) => state.captureHistory)
   const commitPersistedChange = useGenerationCanvasStore((state) => state.commitPersistedChange)
-  const nodeCount = useGenerationCanvasStore((state) => state.nodes.length)
+  const largeCanvas = useGenerationCanvasStore((state) => isLargeCanvas(state.nodes.length))
   const pendingConnectionSourceId = useGenerationCanvasStore((state) => state.pendingConnectionSourceId)
   const multiSelectionActive = useStore((state) => state.multiSelectionActive && data.primarySelection)
-  const { zoom } = useViewport()
+  const zoomedOut = useStore((state) => isZoomedOutForLightweight(selectFlowZoom(state)))
   const primarySelection = data.primarySelection && !multiSelectionActive
   const retainedLightweightRef = React.useRef(false)
   retainedLightweightRef.current = retainLargeCanvasLightweightRendering({
     retained: retainedLightweightRef.current,
-    nodeCount,
+    largeCanvas,
     selected,
     primarySelection,
   })
   const lightweightMode = retainedLightweightRef.current || shouldUseLightweightNodeRenderingForSelection({
-    nodeCount,
-    zoom,
+    largeCanvas,
+    zoomedOut,
     selected,
     primarySelection,
   })
-  const connectionAffordance = collapsedGroupProxy
-    ? 'hidden'
-    : resolveGenerationFlowConnectionAffordance(node, primarySelection, pendingConnectionSourceId)
+  const connectionAffordance = resolveGenerationFlowConnectionAffordance(node, primarySelection, pendingConnectionSourceId)
   const isPendingConnectionSource = pendingConnectionSourceId === node.id
   const isPendingConnectionTarget = Boolean(pendingConnectionSourceId && !isPendingConnectionSource)
   const startConnectionLabel = t('generationCommon.node.startConnection')
@@ -191,16 +206,21 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
   return (
     <div
       className="generation-canvas-react-flow__node-shell"
+      onDragStart={blockImplicitNativeDrag}
+      // 卡面与自己把手的上下层由把手档位派生（见 generationCanvasReactFlow.css 的同名选择器）：
+      // 只有磁吸档才把卡面抬到带子之上，小圆点档的把手必须压在卡面上。
+      data-connection-affordance={connectionAffordance}
       style={{
         width: size.width,
         height: size.height,
-        pointerEvents: collapsedGroupProxy ? 'none' : undefined,
+        pointerEvents: groupPort ? 'none' : undefined,
         '--generation-flow-node-height': `${size.height}px`,
       } as React.CSSProperties}
-      aria-hidden={collapsedGroupProxy || undefined}
+      aria-hidden={groupPort || undefined}
     >
       <NodeResizer
-        isVisible={selected && !data.readOnly}
+        isVisible={selected && !data.readOnly && CARD_FIXED_WIDTH[resolveNodeRenderKind(node) ?? ''] === undefined}
+        keepAspectRatio={keepMediaAspect}
         minWidth={bounds.minWidth}
         minHeight={bounds.minHeight}
         maxWidth={bounds.maxWidth}
@@ -242,7 +262,7 @@ export function GenerationFlowNodeView({ data, selected }: NodeProps<GenerationF
           <GenerationFlowConnectionHandle activeHandleId={activeHandleId} side="right" type="target" affordance="hidden" active={isPendingConnectionTarget} label={targetConnectionLabel} />
         </>
       ) : null}
-      {!collapsedGroupProxy ? (
+      {!groupPort ? (
         <GenerationFlowNodeScope>
           {shouldRenderFullNodeContent({ lightweightMode, selected: primarySelection, focusFlash: data.focusFlash }) ? (
             // 节点渲染器按种类懒加载（renderRegistry 的 React.lazy）。第一次建某种节点时 chunk 还没到，

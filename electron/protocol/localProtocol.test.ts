@@ -180,9 +180,11 @@ describe("handleNomiLocalRequest", () => {
 describe("curated media protocol", () => {
   it("streams the actual declared media bytes independently of the renderer base URL", async () => {
     const store = await import("../skills/skillStore");
-    const records = store.discoverSkillRecordsFromRoots([{ path: path.resolve(__dirname, "../../skills"), origin: "builtin" }]).records;
+    const { discoverSkillRecords } = await import("../agentLane/laneSkillCatalog.mjs");
+    const records = (await discoverSkillRecords([{ path: path.resolve(__dirname, "../../skills"), origin: "builtin" }])).records;
     const record = records.find((item) => item.directoryName === "curated-multi-view")!;
-    const spy = vi.spyOn(store, "readSkillRecords").mockReturnValue(records);
+    // 协议层每次请求都 `await readSkillRecords()`（目录 async）；这里把桥换成真目录。
+    const spy = vi.spyOn(store, "readSkillRecords").mockResolvedValue(records);
     try {
       const response = await handleNomiLocalRequest(new Request("nomi-local://skill-preview/curated-multi-view"));
       expect(response.status).toBe(200);

@@ -23,6 +23,7 @@ import {
   type TranscriptSegment,
 } from "./shotTimeline";
 import { quantizeShotSeconds } from "../shared/canvas/shotTime";
+import type { ShotCutCoverage } from "../shared/canvas/shotTable";
 import { firstString, isJsonRecord, parseLooseJsonObject, trim } from "../jsonUtils";
 // main 上 chooseTextModel/resolveTextBrainKeys 已从 agentChatV2 抽到 textBrainResolver（1040 commit 间的重构）；
 // 旧分支从 agentChatV2 import 已失效，port 时改指真源（docs/ARCHITECTURE-NOW 的「文本大脑」判据同一处）。
@@ -78,6 +79,13 @@ export type DeconstructVideoPayload = {
   shotIndexes?: number[];
   /** 这次拆解挂在哪个画布节点上（分镜表节点）。付费令牌按节点记预算，traceVendorRequested 也按它归档。 */
   nodeId?: string;
+  /**
+   * 这次对白用**哪一条转写线**。缺省 = 沿用既有的自动解析（跟着文本大脑那家的音频线走）。
+   * 显式给 `local-speech` 那一行就是本地离线转写；显式给 `"cloud"` 就是**这次强制走云端**
+   * （本地跑挂之后那个「改用云端重试」按钮走的正是它——它必须是一个**显式的用户动作**，
+   * 不能由代码在失败时自己切，那样用户会在不知情的情况下花钱，也就再没人知道本地那条坏了）。
+   */
+  transcribe?: { vendorKey: string; modelKey: string } | "cloud";
 };
 
 /** 本次拆解会真正发出的付费调用之一。一行一次——报价、令牌预算、真实调用三者同一个计数。 */
@@ -114,7 +122,11 @@ type AnalyzedShot = {
 };
 
 export type DeconstructVideoOptions = {
-  onPhase?: (phase: 0 | 1 | 2) => void;
+  /**
+   * `detail` 是阶段内部那句更细的话（本地转写的下载/分段进度）。
+   * 只有会长时间停在一个阶段的路才会给它，云端那两条不给——**不按 vendor 分支**，谁报谁给。
+   */
+  onPhase?: (phase: 0 | 1 | 2, detail?: string) => void;
   authorizeSpend: DeconstructAuthorizeSpend;
 };
 
@@ -122,6 +134,13 @@ export type DeconstructVideoResult = {
   shots: DeconstructShot[];
   durationSeconds: number;
   hasAudio: boolean;
+  /**
+   * 这张表是不是整条片子。**必填**——这正是 2026-09-22 修的那条：
+   * 做成可选字段，读侧「忘了带」就又会变成一次静默截断，而编译器帮不上忙。
+   */
+  cutCoverage: ShotCutCoverage;
+  /** 整次失败的**类别**（机器可读）。`local-speech` = 本地离线转写那一路挂了，UI 据此给「改用云端重试」。 */
+  failureKind?: "local-speech";
   /** 画面分析失败的镜号（诚实回报，UI 据此提示「这几镜没读出来，可单独重试」）。 */
   failedShotIndexes: number[];
   /**
@@ -199,7 +218,8 @@ async function transcribeShots(
   projectId: string,
   boundaries: ShotBoundary[],
   leg: { vendorKey: string; modelKey: string; grantId: string; nodeId: string },
-): Promise<{ hasAudio: boolean; dialogues: ReturnType<typeof assignSegmentsToShots>; failureReason?: string }> {
+  onDetail?: (detail: string) => void,
+): Promise<{ hasAudio: boolean; dialogues: ReturnType<typeof assignSegmentsToShots>; failureReason?: string; failureKind?: "local-speech" }> {
   const empty = assignSegmentsToShots([], boundaries);
   // ⚠️ 这个函数**绝不能 reject**：调用方把它当悬空 promise 先起跑、几十秒后才 await，
   // 中间若抛出，Node 会判「未处理的 rejection」→ 主进程崩 → IPC 侧只看到
@@ -215,6 +235,29 @@ async function transcribeShots(
   // 没有音轨不是错误——广告片常是纯画面/纯音乐。对白列留空，拆解照跑。
   if (!track.hasAudio || !track.url) return { hasAudio: false, dialogues: empty };
 
+  // 本地转写那条线会在这几分钟里持续报进度（先下引擎与权重、再逐段推理）。云端那两条不报，
+  // 于是这个登记器对它们就是个空操作——**不按 vendor 分支**，谁报谁用（P4）。
+  const { registerLocalSpeechProgressSink } = await import("../localSpeech/localSpeechProgressBus");
+  const releaseSink = registerLocalSpeechProgressSink(leg.nodeId, (progress) => {
+    if (progress.phase === "starting") {
+      // 没有 GPU 加速时才说——有加速时这句话只会变成噪音（R2：没有行动价值的信息就删）。
+      if (!progress.gpuAccelerated) onDetail?.(desktopT("localSpeech.noGpuNotice", { minutes: progress.estimatedMinutes }));
+      return;
+    }
+    onDetail?.(
+      progress.phase === "downloading"
+        ? desktopT("localSpeech.progressDownload", {
+            done: Math.round(progress.doneBytes / 1_000_000),
+            total: Math.round(progress.totalBytes / 1_000_000),
+          })
+        : desktopT("localSpeech.progressChunk", {
+            index: progress.chunkIndex + 1,
+            count: progress.chunkCount,
+            done: Math.round(progress.doneSeconds),
+            total: Math.round(progress.totalSeconds),
+          }),
+    );
+  });
   try {
     const result = await runTask({
       vendor: leg.vendorKey,
@@ -245,7 +288,12 @@ async function transcribeShots(
     // 转写挂了不该毁掉整次拆解——画面那半仍然有价值。但**原因要带回去**：
     // 顶上一行说清「对白为什么是空的」，不再让用户对着空列猜（诊断「静默吞错门」第 2 行）。
     logError("tasks", "deconstruct.transcribe-failed", error, { projectId });
-    return { hasAudio: true, dialogues: empty, failureReason: messageOf(error) };
+    // 本地那条线的失败要**带上机器可读的类别**，UI 据此给出「改用云端重试」那个按钮。
+    // 认的是错误对象的 name，不是文案——文案会翻译、会改写，拿它当判据迟早静默失效。
+    const failureKind = error instanceof Error && error.name === "LocalSpeechError" ? ("local-speech" as const) : undefined;
+    return { hasAudio: true, dialogues: empty, failureReason: messageOf(error), ...(failureKind ? { failureKind } : {}) };
+  } finally {
+    releaseSink();
   }
 }
 
@@ -265,13 +313,25 @@ function messageOf(error: unknown): string {
 /**
  * 解出转写会用的那一行模型（与 runtime 用同一个解析器，报价才对得上真实扣费）。
  *
- * 2026-09-17 修：原来写的是 `findExecutableModel(brain.vendor, "", "audio")`——
+ * 显式指定优先：`{vendorKey,modelKey}` 就按它解；`"cloud"` 与缺省都走自动解析。
+ * **指定了却解不出来就返回 null**，不悄悄回落到别家——「我选了本地，它却偷偷走了云端
+ * 并且扣了钱」是这条路上最糟的失败。
+ *
+ * 自动那一半 2026-09-17 修过：原来写的是 `findExecutableModel(brain.vendor, "", "audio")`——
  * 只在**文本大脑那一家**里找 audio 模型。大脑是 Moonshot 时它必然找不到，用户拿到
  * 「没有可用的转写模型」，而 APIMart / 火山语音的转写模型就在隔壁启用着（09-17 真机实测）。
  * 「谁来做转写」和「谁来做文本」本来就是两件事，绑在一起是一个没人声明过的耦合。
  * 现在在所有已启用供应商里解，顺序按 #682 的供应商偏好。
  */
-function resolveTranscribeLeg(): { vendorKey: string; modelKey: string } | null {
+function resolveTranscribeLeg(requested?: DeconstructVideoPayload["transcribe"]): { vendorKey: string; modelKey: string } | null {
+  if (requested && requested !== "cloud") {
+    try {
+      const { vendor, model } = findExecutableModel(requested.vendorKey, requested.modelKey, "audio");
+      return { vendorKey: vendor.key, modelKey: model.modelKey };
+    } catch {
+      return null;
+    }
+  }
   const resolved = findExecutableModelAnyVendor("audio", readVendorPreferenceSettings().orderedVendorKeys);
   return resolved ? { vendorKey: resolved.vendor.key, modelKey: resolved.model.modelKey } : null;
 }
@@ -315,6 +375,17 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, options
     .map((cut) => cut.seconds);
   const boundaries = buildShotBoundaries(cutSeconds, durationSeconds);
   if (!boundaries.length) throw new DeconstructError("没能切出任何镜头");
+  // 「这张表是不是整条片子」跟着结果一路走到底。
+  //
+  // 2026-09-22 之前这一行不存在：`detectShotCuts` 早就把 `truncated` 算好了，而这里只取了 `cuts`，
+  // 于是 447 刀的片子拆出一张「看着齐、其实只覆盖到第 55 秒」的表，**一句提示都没有**。
+  // 用户自己的灵敏度过滤会让采用数再少一些，所以 `keptCuts` 以**这里**的实际条数为准，
+  // 不照抄检测层那个数——两个数不一致时，说谎的一定是照抄的那个。
+  const cutCoverage: ShotCutCoverage = {
+    ...detected.coverage,
+    keptCuts: cutSeconds.length,
+    coveredSeconds: cutSeconds.at(-1) ?? 0,
+  };
 
   const brain = resolveTextBrainKeys({ preferImageInput: true });
   if (!brain) throw new DeconstructError("还没有能读图的文本模型。去「接入模型」启用一个（如 Gemini 3.5 Flash）。");
@@ -328,7 +399,7 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, options
   const visionModel = findExecutableModel(brain.vendor, brain.modelKey, "text");
   const visionIdentity = { vendorKey: visionModel.vendor.key, modelKey: visionModel.model.modelKey };
   const visionParameters: Record<string, unknown> = { projectId, modelKey: brain.modelKey, temperature: 0.2, maxTokens: DECONSTRUCT_MAX_TOKENS };
-  const transcribeLeg = sourceHasAudio ? resolveTranscribeLeg() : null;
+  const transcribeLeg = sourceHasAudio ? resolveTranscribeLeg(payload.transcribe) : null;
   const plan: DeconstructSpendPlan = {
     projectId,
     nodeId,
@@ -347,8 +418,9 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, options
   // 声音那一路和画面那一路并行跑（互不依赖）。
   // `.catch` 是第二道保险：transcribeShots 已承诺不 reject，但悬空 promise 一旦破例
   // 就会崩主进程（见该函数头注释），这里再兜一层，代价为零。
-  const audioPromise = transcribeLeg
-    ? transcribeShots(videoUrl, projectId, boundaries, { ...transcribeLeg, grantId, nodeId }).catch((error: unknown) => ({
+  type AudioOutcome = Awaited<ReturnType<typeof transcribeShots>>;
+  const audioPromise: Promise<AudioOutcome> = transcribeLeg
+    ? transcribeShots(videoUrl, projectId, boundaries, { ...transcribeLeg, grantId, nodeId }, (detail) => onPhase?.(2, detail)).catch((error: unknown) => ({
         hasAudio: false,
         dialogues: assignSegmentsToShots([], boundaries),
         failureReason: messageOf(error),
@@ -446,7 +518,9 @@ export async function deconstructVideo(payload: DeconstructVideoPayload, options
     shots,
     durationSeconds: quantizeShotSeconds(durationSeconds),
     hasAudio,
+    cutCoverage,
     failedShotIndexes,
     ...(audio.failureReason ? { failureReason: audio.failureReason } : {}),
+    ...(audio.failureKind ? { failureKind: audio.failureKind } : {}),
   };
 }

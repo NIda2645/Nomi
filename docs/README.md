@@ -3,6 +3,19 @@
 > 查文档前先看这张表，按「我要找什么」跳到对应目录；索引仍有历史存量缺口，查不到时必须继续全量 grep。
 > 各目录若有自己的索引（如 plan/），表里直接给出。
 
+- [「等用户」只有一个 owner（花钱路状态机 · 门表 · 反方评审）](plan/2026-09-22-waiting-for-user-one-owner.md)
+- [全仓架构治理定稿：单一事实、单向投影、入口收敛（生命周期 · durable commit · 迁移矩阵）](plan/2026-09-26-architecture-single-owner-governance.md)
+- [架构方案质量清单与逐条审查](plan/2026-09-26-architecture-solution-quality-checklist.md)
+- [Phase 0：全仓架构账本与迁移准入](plan/2026-09-26-phase-zero-architecture-ledger.md)
+- [Phase 0 契约卫生账本](audit/2026-09-26-phase-zero-contract-hygiene.md)
+- [Phase 0 逐合同结构映射](audit/2026-09-26-phase-zero-contract-cluster-map.json)
+- [Phase 0 契约例外账](audit/2026-09-26-phase-zero-contract-exceptions.json)
+- [Phase 0 七簇施工卡](audit/2026-09-26-phase-zero-construction-cards.md)
+- [Phase 0 结构簇索引](audit/2026-09-26-phase-zero-cluster-index.md)
+- [Phase 0 依赖与迁移闸门](audit/2026-09-26-phase-zero-dependency-gates.md)
+- [Phase -1：真实对象与生命周期账本执行计划](plan/2026-09-26-phase-minus-one-lifecycle-ledger.md)
+- [Phase -1 审计收据：入口、生命周期、提交边界、对账与恢复探针](audit/2026-09-26-phase-minus-one-entrance-matrix.md)
+- [通用反问：模型自己能问用户一句话（一份契约 · 三振转提问）](plan/2026-09-21-ask-user-tool.md)
 - [交付流程去堵：评审单位、机器锁与合并队列方案](plan/2026-09-08-delivery-flow-unclog.md)
 - [Agent runtime 测试资源生命周期修复](plan/2026-09-08-agent-runtime-flakes.md)
 - [删除未接线的技能 playbook orchestrator](plan/2026-09-08-delete-playbook-orchestrator.md)
@@ -11,9 +24,9 @@
 
 | 我要找… | 去这里 |
 |---|---|
-| **接下来要做什么（唯一 TODO 真相源）** | [`roadmap/TODO.md`](roadmap/TODO.md) → **派工/出方案/开分支前先对照它**；用法与维护纪律见 [`roadmap/README.md`](roadmap/README.md) |
-| **某个设计到底落地没有** | [`roadmap/designs-not-yet-built.md`](roadmap/designs-not-yet-built.md)（逐面实扫，带 `file:line` 与基准 SHA）|
-| **用户当时到底怎么说的（原话 / 截图 / 原始调研）** | [`roadmap/sources/`](roadmap/sources/) → TODO 某条有疑问就回查这里 |
+| **接下来要做什么（唯一 TODO 真相源）** | 2026-09-28 起由维护者在私有位置维护，不在公开仓库；派工/出方案/开分支前找协调会话对照 |
+| **某个设计到底落地没有** | 设计落地对账由维护者私下维护（2026-09-28 起不在公开仓库），找协调会话 |
+| **用户当时到底怎么说的（原话 / 截图 / 原始调研）** | 原始资料由维护者私下维护（2026-09-28 起不在公开仓库），找协调会话 |
 | **某个功能的方案/执行计划** | [`plan/`](plan/) → 先读 [`plan/INDEX.md`](plan/INDEX.md)（按主题分组的查找表）|
 | **跨阶段总纲 / master plan** | [`superpowers/plans/`](superpowers/plans/) → 先读 [Nomi 统一 Agent 总体方案](superpowers/plans/2026-08-24-unified-agent-master-plan.md) |
 | **每个子系统现在真正跑的是什么**（防止把三个月前的方案当现状） | [`ARCHITECTURE-NOW.md`](ARCHITECTURE-NOW.md) |
@@ -36,6 +49,7 @@
 | **工作流方法论（如何走查/E2E/自主测试）** | [`workflow/`](workflow/) |
 | **多智能体编排（如何派工/收货/接力多个 Codex/Opus 执行体）** | [`engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)（CLAUDE.md R27 的 L2 详解）|
 | **做一次调研（模板 / 必查的信息面 / 自媒体来源怎么抓）** | [`research/TEMPLATE.md`](research/TEMPLATE.md) + [`engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md) §15；TikHub 接口契约在 [`research/tikhub-api-notes.md`](research/tikhub-api-notes.md) |
+| **全方位学习竞品 / 每 3 天复查产品与营销** | [`research/competitive/README.md`](research/competitive/README.md) → LibTV/TapNow 核心对标，来源登记、真实鼠标录屏、TikHub、视频拆解与 Nomi 决策；技能 [`nomi-competitive-radar`](../agent-skills/nomi-competitive-radar/SKILL.md) |
 | **当前哪些战线在途 / 哪些文件面被占道（动共享面前必查必登）** | [`engineering/active-lanes.md`](engineering/active-lanes.md) |
 | **Agent 运行时切换前的回放影子夜跑（怎么跑 / 报告在哪 / 7 天绿从哪天起算）** | [`engineering/agent-lane-replay-shadow.md`](engineering/agent-lane-replay-shadow.md) |
 | **本仓踩过的坑（走查假绿 / CI 红绿判读 / 分支合并 / 平台故障 / 产品判断）** | [`lessons/INDEX.md`](lessons/INDEX.md) — 按触发场景查，别通读 |
@@ -49,7 +63,7 @@
 
 | 目录 | 用途 |
 |---|---|
-| `roadmap/` | **后续迭代核心资料**：唯一 TODO（`TODO.md`）+ 设计落地对账（`designs-not-yet-built.md`）+ 原始资料（`sources/`，含微信原文与截图）|
+| `roadmap/` | 指引：待办、设计落地对账与原始资料 2026-09-28 起由维护者在私有位置维护 |
 | `plan/` | 方案/执行文档（**有 INDEX.md，但仍有历史存量缺口**）|
 | `superpowers/plans/` | 跨阶段总纲 / master plan |
 | `onboarding-trials/` | 模型接入实测产物 |

@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { writeJsonFileAtomic } from "../jsonFile";
+import { retryOnSharingViolation, writeJsonFileAtomic } from "../jsonFile";
 import {
   normalizeRecentWorkspaceEntry,
   type RecentWorkspaceEntry,
@@ -61,7 +61,9 @@ function withRegistryLock<T>(settingsRoot: string, fn: () => T): T {
   } finally {
     if (locked) {
       try {
-        fs.rmdirSync(lockDir);
+        // 杀毒 / 同步盘短暂开着这个目录时 Windows 删不掉（EPERM/EBUSY）：先短退避重试，
+        // 否则留下的 .lock 会让下一次注册表读写在主线程上干等 3 秒才夺锁。
+        retryOnSharingViolation(() => fs.rmdirSync(lockDir));
       } catch {
         /* 已释放 */
       }

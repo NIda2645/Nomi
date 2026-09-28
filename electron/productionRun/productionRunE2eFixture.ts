@@ -4,6 +4,15 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 
 export const PRODUCTION_E2E_FIXTURE_PROVIDER = 'nomi-e2e-fixture'
+
+/**
+ * 夹具模式下的花费上限（单位与账本一致）。
+ *
+ * **它不是「防止真花钱」那道保险**——那道是「出站只认回环」（见 `productionRunRuntime.ts` 的说明）。
+ * 它守的是另一件事：夹具里出现一个大得离谱的报价时当场红，而不是被一路放行。
+ * 取一个小的正数，好让「带价格的付款卡 → 确认 → 账本记同一价」这条链在真机走查里走得通。
+ */
+export const PRODUCTION_E2E_FIXTURE_MAX_SPEND = 100
 export const PRODUCTION_E2E_FIXTURE_MODEL = 'nomi-e2e-fixture-video'
 
 type FixtureEnvironment = Partial<Record<'NOMI_E2E' | 'NOMI_E2E_PRODUCTION_FIXTURE' | 'NOMI_E2E_PACKAGED_FIXTURE', string | undefined>>

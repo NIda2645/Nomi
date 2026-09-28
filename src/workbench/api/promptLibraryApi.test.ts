@@ -41,14 +41,14 @@ describe('promptLibraryApi', () => {
     ])
   })
 
-  it('returns an empty list for a failed or malformed desktop response', async () => {
+  it('rejects failed or malformed reads instead of disguising failure as an empty library', async () => {
     const { list, userList } = mountBridge()
     list.mockResolvedValueOnce({ ok: false, prompts: [], error: 'offline' }).mockResolvedValueOnce({ ok: true })
     userList.mockResolvedValue({ ok: false, prompts: [], error: 'offline' })
 
-    await expect(fetchPromptLibrary()).resolves.toEqual([])
-    await expect(fetchPromptLibrary()).resolves.toEqual([])
-    await expect(fetchUserPrompts()).resolves.toEqual([])
+    await expect(fetchPromptLibrary()).rejects.toThrow('offline')
+    await expect(fetchPromptLibrary()).rejects.toThrow()
+    await expect(fetchUserPrompts()).rejects.toThrow('offline')
   })
 
   it('filters by prompt type and searchable title/body/source without another data owner', () => {

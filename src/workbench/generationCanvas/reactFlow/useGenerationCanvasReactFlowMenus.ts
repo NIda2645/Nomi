@@ -1,11 +1,12 @@
 import React from 'react'
+import type { CanvasPlacementAnchor } from '../model/canvasPlacement'
 import type { OnConnectEnd, OnConnectStart } from '@xyflow/react'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import type { NodeContextMenuAction } from '../components/NodeContextMenu'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
-import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
+import { connectionCreateKindsForSource, connectionCreateKindsForSources, type ConnectionCreateKind } from '../agent/referenceEdgeCapability'
 import {
   useCanvasContextNodeMenu,
   type CanvasContextNodeMenu,
@@ -22,6 +23,27 @@ export type CanvasConnectionCreateMenu = {
   stageY: number
   canvasX: number
   canvasY: number
+  /** 这条线能接出的节点种类（connectionCreateKindsForSource 派生，非空）。 */
+  kinds: ConnectionCreateKind[]
+  /** 线从一张卡起，还是从编组的「+」起（model/groupPort.ts）——新建节点后按哪种起点接上。 */
+  sourceKind: 'node' | 'group'
+}
+
+type ConnectionStart = { nodeId: string; side: ConnectionSide; sourceKind: 'node' | 'group' }
+
+/**
+ * 松手在空白处时能新建哪几种节点。卡：看这张卡；编组：只有右侧（编组的输出）能接出新节点，
+ * 种类是组内成员能接出的并集；左侧（接进编组）在空白处没有「新建谁喂给这一组」的定义，取消。
+ */
+function createKindsForStart(started: ConnectionStart): ConnectionCreateKind[] {
+  const state = useGenerationCanvasStore.getState()
+  if (started.sourceKind === 'node') {
+    const source = state.nodes.find((node) => node.id === started.nodeId)
+    return source ? connectionCreateKindsForSource(source) : []
+  }
+  if (started.side !== 'right') return []
+  const memberIds = new Set(state.groups.find((group) => group.id === started.nodeId)?.nodeIds ?? [])
+  return connectionCreateKindsForSources(state.nodes.filter((node) => memberIds.has(node.id)))
 }
 
 type UseGenerationCanvasReactFlowMenusArgs = {
@@ -47,14 +69,14 @@ type UseGenerationCanvasReactFlowMenusArgs = {
   startConnection: (nodeId: string, side: ConnectionSide) => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
-  pasteNodes: (position: { x: number; y: number }) => void
+  pasteNodes: (position: { x: number; y: number }, anchor?: CanvasPlacementAnchor) => void
   groupSelectedNodes: () => void
   deleteSelectedNodes: () => void
   /** 画布指针层（useGenerationCanvasReactFlowPointer）的原始回调，菜单层在它们之前插一脚。 */
   handleCanvasPointerDownCapture: (event: React.PointerEvent<HTMLDivElement>) => void
   handleCanvasPointerDown: (event: React.PointerEvent<HTMLDivElement>) => void
   handleCanvasPointerMove: (event: React.PointerEvent<HTMLDivElement>) => void
-  handleCanvasPointerEnd: () => void
+  handleCanvasPointerEnd: (event?: React.PointerEvent<HTMLDivElement>) => void
   shouldSuppressContextMenu: () => boolean
   /** 右键落在框体上时改开框菜单（与头部 ⋯ 同一份）；由 useCanvasFrameActions 拥有那份状态。 */
   onFrameMenu?: (frameId: string, point: { x: number; y: number }) => void
@@ -122,9 +144,11 @@ export function useGenerationCanvasReactFlowMenus({
   handleImportContextFiles: (files: File[]) => void
   handleNodeContextAction: (action: NodeContextMenuAction) => void
   handleAddConnectedNode: (kind: GenerationNodeKind) => void
+  openAddNodeMenuAt: (clientX: number, clientY: number) => void
 } {
-  const connectionStartRef = React.useRef<{ nodeId: string; side: ConnectionSide } | null>(null)
+  const connectionStartRef = React.useRef<ConnectionStart | null>(null)
   const [connectionCreateMenu, setConnectionCreateMenu] = React.useState<CanvasConnectionCreateMenu | null>(null)
+  const startGroupConnection = useGenerationCanvasStore((state) => state.startGroupConnection)
 
   const ensureContextNodeSelected = React.useCallback((nodeId: string) => {
     const state = useGenerationCanvasStore.getState()
@@ -133,6 +157,7 @@ export function useGenerationCanvasReactFlowMenus({
   const {
     contextNodeMenu,
     setContextNodeMenu,
+    openBlankMenuAt,
     prepareContextMenuPointerDown,
     handleContextMenuPointerMove,
     finishContextMenuPointerUp,
@@ -189,7 +214,7 @@ export function useGenerationCanvasReactFlowMenus({
 
   const handleStagePointerEnd = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     const suppressContextMenu = event.button === 2 && shouldSuppressContextMenu()
-    handleCanvasPointerEnd()
+    handleCanvasPointerEnd(event)
     finishContextMenuPointerUp(event, suppressContextMenu)
   }, [finishContextMenuPointerUp, handleCanvasPointerEnd, shouldSuppressContextMenu])
 
@@ -223,6 +248,7 @@ export function useGenerationCanvasReactFlowMenus({
     setConnectionCreateMenu,
     addNode,
     startConnection,
+    startGroupConnection,
     copySelectedNodes,
     cutSelectedNodes,
     pasteNodes,
@@ -233,20 +259,17 @@ export function useGenerationCanvasReactFlowMenus({
   const handleConnectStart: OnConnectStart = React.useCallback((_event, params) => {
     if (readOnly || !params.nodeId || params.handleType !== 'source') return
     const side = params.handleId?.endsWith('-left') ? 'left' : 'right'
-    connectionStartRef.current = { nodeId: params.nodeId, side }
-    startConnection(params.nodeId, side)
-  }, [readOnly, startConnection])
+    // 编组的「+」挂在它的端口节点上（节点 id = 编组 id）：起的是编组线，走 store 现成的编组起线。
+    const fromGroup = useGenerationCanvasStore.getState().groups.some((group) => group.id === params.nodeId)
+    connectionStartRef.current = { nodeId: params.nodeId, side, sourceKind: fromGroup ? 'group' : 'node' }
+    if (fromGroup) startGroupConnection(params.nodeId, side)
+    else startConnection(params.nodeId, side)
+  }, [readOnly, startConnection, startGroupConnection])
 
   const handleConnectEnd: OnConnectEnd = React.useCallback((event, connectionState) => {
     const started = connectionStartRef.current
     connectionStartRef.current = null
     if (readOnly || !started || (connectionState.isValid && connectionState.toNode)) return
-    const sourceNode = nodeById.get(started.nodeId)
-    const canCreateMedia = sourceNode?.kind === 'text' || sourceNode?.kind === 'image' || Boolean(sourceNode && isImageLikeGenerationNodeKind(sourceNode.kind))
-    if (!canCreateMedia) {
-      cancelConnection()
-      return
-    }
     const point = 'changedTouches' in event
       ? event.changedTouches[0]
       : event
@@ -254,6 +277,8 @@ export function useGenerationCanvasReactFlowMenus({
       cancelConnection()
       return
     }
+    // 先看落在哪：落在卡上 / 编组上就连，跟「这个源能不能新建节点」无关——
+    // 此前先判能不能新建，接不出新节点的源（镜头笔记 / 输出）落到卡身上也被整条取消。
     const targetNodeId = resolveCanvasDropTargetFromDom({ clientX: point.clientX, clientY: point.clientY }, started.nodeId, hostRef.current, '.generation-canvas-v2-node[data-node-id]', 'data-node-id', new Set(nodeById.keys()))
     if (targetNodeId) {
       completeNodeConnection(targetNodeId)
@@ -261,7 +286,14 @@ export function useGenerationCanvasReactFlowMenus({
     }
     const targetGroupId = resolveCanvasDropTargetFromDom({ clientX: point.clientX, clientY: point.clientY }, '', hostRef.current, '[data-group-id]', 'data-group-id', new Set(visibleGroups.map((group) => group.id)))
     if (targetGroupId) {
-      handleConnectToGroup(targetGroupId)
+      // 编组连编组没有定义（N×M 条边谁也看不懂），只接卡 → 编组。
+      if (started.sourceKind === 'group') cancelConnection()
+      else handleConnectToGroup(targetGroupId)
+      return
+    }
+    const kinds = createKindsForStart(started)
+    if (kinds.length === 0) {
+      cancelConnection()
       return
     }
     const rect = hostRef.current?.getBoundingClientRect()
@@ -279,11 +311,14 @@ export function useGenerationCanvasReactFlowMenus({
       stageY: Math.max(8, Math.min(rect.height - 90, stageY)),
       canvasX: Math.round(canvasPoint.x),
       canvasY: Math.round(canvasPoint.y),
+      kinds,
+      sourceKind: started.sourceKind,
     })
   }, [cancelConnection, getCanvasPointFromClientPoint, handleConnectToGroup, hostRef, nodeById, readOnly, visibleGroups])
 
   const handlePendingGroupPointerUp = React.useCallback((event: React.PointerEvent<HTMLElement> | React.MouseEvent<HTMLElement> | PointerEvent | MouseEvent) => {
     if (readOnly || !pendingConnectionSourceId) return
+    if (useGenerationCanvasStore.getState().pendingConnectionSourceKind === 'group') return // 编组线不落到编组上
     const groupId = document.elementsFromPoint(event.clientX, event.clientY)
       .map((element) => element.closest<HTMLElement>('[data-group-id]')?.dataset.groupId || null)
       .find((candidate): candidate is string => Boolean(candidate && visibleGroups.some((group) => group.id === candidate)))
@@ -324,5 +359,6 @@ export function useGenerationCanvasReactFlowMenus({
     handleImportContextFiles,
     handleNodeContextAction,
     handleAddConnectedNode,
+    openAddNodeMenuAt: openBlankMenuAt,
   }
 }

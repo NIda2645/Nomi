@@ -270,6 +270,40 @@ test('阳性对照 · waiting on an approval does not spend the tool’s budget'
     'the tool ran and succeeded, so the 500ms the user spent deciding was not charged to its 300ms budget');
 });
 
+test('阳性对照 · waiting in the domain preflight (the priced card) does not spend the tool’s budget either', async (t) => {
+  // 2026-09-22 裁决 A：`generate` 等用户点那张报价卡，等在 `toolLifecycle.approved` 里（`before_tool`，闸放行之后）。
+  // 此前那次等待住在工具执行里，撞 60 秒写类预算——文稿方案的 generate 三轮实测一次没成过。
+  // 这条和上面那条是同一个仪器：预算 300ms 的工具、在预检里**故意等** 500ms、工具本身瞬时返回。
+  // 真机走查没法放「看卡 90 秒」的墙钟空等（`check:test-waits`），要证的不变量也不是 90 秒，是「这段等待不计时」。
+  const fixture = await createLaneFixture(t, [
+    { type: 'tool', calls: [{ id: 'call-held', name: 'held_in_preflight', arguments: {} }] },
+    { type: 'text', text: 'The user answered and it ran.' },
+  ], { hasUserInterface: true, policy: () => ({ mode: 'safe-auto', spend: 'confirm' }) });
+  let waitedInPreflight = false;
+  const lane = await fixture.openLane({
+    ...fixture.options,
+    tools: [stallingTool('held_in_preflight', 300, async () => {})],
+    toolLifecycle: {
+      prepare: async () => {},
+      approved: async (call, _record, host) => {
+        if (call.toolName !== 'held_in_preflight' || !host) return;
+        const wait = host.waitForUser();
+        setTimeout(() => { wait.settle({ kind: 'confirmed' }); }, 500);
+        assert.deepEqual(await wait.outcome, { kind: 'confirmed' });
+        waitedInPreflight = true;
+      },
+      settled: () => {},
+    },
+  });
+
+  await lane.execute({ kind: 'prompt', text: 'Use the tool.' });
+
+  assert.equal(waitedInPreflight, true, 'the preflight really held the call (otherwise this proves nothing)');
+  const [result] = toolResults(lane.projection());
+  assert.equal(result?.kind === 'tool-result' && result.isError, false,
+    'the 500ms spent waiting for the user in preflight was not charged to the tool’s 300ms budget');
+});
+
 test('a billable tool may not claim a long budget — it must submit and return an id', async (t) => {
   // 长任务形状（调研 #599 §长任务 L1）落成装配期不变量。违反它的工具**不会报错**，
   // 它只会很慢——而「很慢」在真机上和「模型在想事情」长得一模一样。
@@ -318,6 +352,26 @@ test('a suspended (deferred) operation projects as still running, and claims not
 });
 
 // ── 回合上限 ─────────────────────────────────────────────────────────────────
+
+test('缺省不设上限：同一回合连着调很多次工具，一次都不该被拦（2026-09-18 用户拍板去掉 24）', async (t) => {
+  // 为什么这条必须存在：去掉的是**缺省值**不是机制，而「缺省不设」这件事没有断言就会被下一个人
+  // 顺手加回来——加回来不报错，只是让活多的那一轮又被砍在半路。
+  // 阳性对照是上面那条（显式设了 1 就真的拦），两条一起才证明「机制在、缺省不拦」。
+  const call = (id: string) => ({ type: 'tool' as const, calls: [{ id, name: 'read_script', arguments: {} }] });
+  const steps = Array.from({ length: 30 }, (_, index) => call(`call-${index + 1}`));
+  const fixture = await createLaneFixture(t, [...steps, { type: 'text', text: 'All thirty ran.' }]);
+  // 注意：**不传 limits**。这就是产品缺省。
+  const lane = await fixture.openLane(fixture.options);
+
+  await lane.execute({ kind: 'prompt', text: 'Read the document thirty times.' });
+
+  const results = toolResults(lane.projection());
+  const blocked = results.filter((entry) => entry.kind === 'tool-result' && entry.isError
+    && /model-request limit/.test(entry.text));
+  assert.deepEqual(blocked, [], '缺省档不该有任何一次工具调用因为「回合上限」被拦');
+  assert.ok(fixture.http.requests.length > 24,
+    `24 这个旧缺省必须真的不再生效（实发 ${fixture.http.requests.length} 次请求）`);
+});
 
 test('a turn that reaches its model-request limit stops with a sentence, not with a step-limit code', async (t) => {
   const fixture = await createLaneFixture(t, [
@@ -462,7 +516,10 @@ test('阳性对照 · three failures that are not the same failure are not treat
     examples: [{ when: 'Call it with no arguments:', arguments: {} }],
   }, async () => {
     attempt += 1;
-    return { ok: false, failure: { code: 'varies', message: `Wall number ${attempt} is in the way.`,
+    // 一堵墙的身份是**失败码 + 出错字段**，不是正文（`laneWallKey`，2026-09-21：真实轨迹里同一堵墙的正文
+    // 每次都带着不同的 id / 镜头数，按正文认墙 = 熔断在真机上一次都没触发过）。所以「不同的失败」在这里
+    // 必须是不同的码——只换措辞、码不变，那就是同一堵墙，该拦。
+    return { ok: false, failure: { code: `varies_${attempt}`, message: `Wall number ${attempt} is in the way.`,
       nextAction: 'Try the next one.' } };
   });
   const call = (id: string) => ({ type: 'tool' as const, calls: [{ id, name: 'fails_differently', arguments: {} }] });

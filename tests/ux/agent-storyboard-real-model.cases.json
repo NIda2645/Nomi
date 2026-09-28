@@ -1,0 +1,30 @@
+{
+  "$comment": "「用户照着文稿让 Agent 出分镜」这件事的 23 句真实说法（R13 第二/三档）。2026-09-18 交接文档里那张「调工具 18/23、落画布 14/23」的表就是这 23 轮量出来的，但当时的剧本没进仓库——这份文件与 agent-storyboard-real-model.walk.mjs 一起把它补上。句子按真实用户的说法写（不是按界面面排 case）：新手/老手、中文/英文、明确/含糊、带参考图/不带各占一些。",
+  "expectedFirstTools": ["draft_shots", "read_script", "look_at_canvas", "list_models", "look_at_media"],
+  "cases": [
+    { "id": "S01", "who": "novice-zh", "text": "帮我把文稿拆成镜头放到画布上，先别生成。" },
+    { "id": "S02", "who": "novice-zh", "text": "照我写的这段，做一组分镜。" },
+    { "id": "S03", "who": "expert-zh", "text": "按文稿分 6 个镜头，先立两张角色/场景锚图，再排镜头，暂时不要生成。" },
+    { "id": "S04", "who": "novice-zh", "text": "我要一条一分钟的短片，镜头你来定，别急着花钱。" },
+    { "id": "S05", "who": "expert-zh", "text": "把文稿里「推门进来」那一段单独拆成两个镜头，一个中景一个特写。" },
+    { "id": "S06", "who": "novice-en", "text": "Turn my script into shots on the canvas. Don't generate anything yet." },
+    { "id": "S07", "who": "expert-en", "text": "Break the script into 5 shots, 4 seconds each, and set them up as video shots. No generation." },
+    { "id": "S08", "who": "novice-zh", "text": "先看看我画布上现在有什么，然后按文稿补齐缺的镜头。" },
+    { "id": "S09", "who": "expert-zh", "text": "用我素材库里那张图当参考，按文稿做三个镜头，别生成。" },
+    { "id": "S10", "who": "novice-zh", "text": "这个故事你觉得该怎么分镜？直接摆到画布上给我看。" },
+    { "id": "S11", "who": "expert-zh", "text": "分镜的时候把时长写上，视频镜头都按 5 秒，先不跑。" },
+    { "id": "S12", "who": "novice-zh", "text": "我想要四个画面，风格统一一点，先别生成。" },
+    { "id": "S13", "who": "expert-zh", "text": "你先读一遍文稿，再告诉我分几个镜头合适，然后就按你说的摆上去。" },
+    { "id": "S14", "who": "novice-en", "text": "Can you storyboard this for me? Just the shots, no rendering." },
+    { "id": "S15", "who": "expert-zh", "text": "把文稿拆成镜头，每个镜头写上标题，方便我后面挑。" },
+    { "id": "S16", "who": "novice-zh", "text": "帮我排一版竖屏的分镜，先不要生成。" },
+    { "id": "S17", "who": "expert-zh", "text": "按文稿出分镜，第一个镜头用图片，后面的用视频。先别开始生成。" },
+    { "id": "S18", "who": "novice-zh", "text": "我写好文稿了，接下来该干嘛？你直接帮我做吧，别花钱那一步先停下。" },
+    { "id": "S19", "who": "expert-zh", "text": "先看看有哪些模型能做视频，然后按文稿摆 4 个视频镜头，先别跑。" },
+    { "id": "S20", "who": "novice-zh", "text": "把这段文字变成一个个画面，放到生成画布上。" },
+    { "id": "S21", "who": "expert-en", "text": "Split the script into shots and name each one. Stop before spending anything." },
+    { "id": "S22", "who": "novice-zh", "text": "帮我做个分镜吧，我不太懂这些参数，你看着办。" },
+    { "id": "S23", "who": "expert-zh", "text": "按文稿分镜，把我素材库那张图挂到第一个镜头当参考，先不要生成。" }
+  ],
+  "script": "深夜十一点，巷口那家面馆的招牌灯还亮着。\n她把牛骨汤从锅里舀进碗，热气糊住镜头，面条一根根落下去，最后撒一把葱花。\n她端着碗坐到窗边，推门的风把帘子掀起来一角。\n她吸溜第一口，抬头看了一眼空掉的街。"
+}

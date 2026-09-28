@@ -21,6 +21,8 @@ export default tseslint.config(
       'node_modules/**',
       // Vite 预打包依赖缓存（vite.config cacheDir = .tmp/vite）——第三方 bundle，非源码，不 lint。
       '.tmp/**',
+      // 根目录 `wrangler dev` 的本地状态与打包产物（与 .gitignore 的 /.wrangler/ 同一件事）。
+      '.wrangler/**',
       'build/**',
       'public/**',
       // TypeScript compiler spillover in the renderer tree (the source of truth is .ts/.tsx;
@@ -45,6 +47,10 @@ export default tseslint.config(
       'skills/**',
       // 研究产物中的原型脚本（可独立运行的 ESM 采集/校验器）——非产品源码，不 lint。
       'docs/research/**/prototype/**',
+      // 归档的实测证据（docs/evidence/<日期>-<主题>/）：当时那次测量的**原件**，含可独立运行的
+      // .mjs 计时脚本（Node 全局、自带未用变量）。它们在仓库里的唯一价值是可核对——
+      // 按 lint 改一个字，它就不再是「当时那次运行的记录」了。非产品源码，不 lint。
+      'docs/evidence/**',
       // design-sync（组件库同步）：.ds-sync 是外部技能暂存的转换器脚本、ds-bundle 是它的构建产物、
       // .design-sync/support 是本地构建脚本+压平后的 CSS——三者都 gitignored，是构建工具不是产品源码，不 lint。
       // （.design-sync/previews/ 是手写的预览组合，走 tsx，保持被 lint。）
@@ -66,6 +72,12 @@ export default tseslint.config(
   },
   {
     files: ['tests/network/**/*.{cjs,mjs}'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    // agent-runtime 下的 .mjs 是 Node 脚本（实验分析器之类），和 tests/network 同类：
+    // 它们用 console / process / URL，不是页内代码。
+    files: ['tests/agent-runtime/**/*.mjs'],
     languageOptions: { globals: globals.node },
   },
   {
@@ -131,6 +143,14 @@ export default tseslint.config(
       'preserve-caught-error': 'warn',
       'prefer-const': 'warn',
     },
+  },
+  {
+    // 渲染层失败证据只有一个出口：src/desktop/rendererLog.ts（→ 主进程日志 → 诊断包）。
+    // console.error/warn 在打包版里没人接——2026-09-24 用户诊断包里看得到「保存失败」、看不到为什么，就是这么丢的。
+    // 硬零（存量 54 处已全部迁完）；log/info/debug 不是失败证据，放行。主进程那一半由 check:main-console 守。
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**', 'src/desktop/rendererLog.ts'],
+    rules: { 'no-console': ['error', { allow: ['log', 'info', 'debug'] }] },
   },
   prettier,
 )

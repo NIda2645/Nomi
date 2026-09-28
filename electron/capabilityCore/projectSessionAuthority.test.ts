@@ -9,7 +9,6 @@ import { CANVAS_WRITE_CAPABILITY } from '../shared/agentCapabilities/canvasWrite
 import { DOCUMENT_READ_CAPABILITY } from '../shared/agentCapabilities/documentRead'
 import { DOCUMENT_WRITE_CAPABILITY } from '../shared/agentCapabilities/documentWrite'
 import type { McpConnectionContext } from './mcpConnectionContext'
-import { createMcpGenerationPolicy } from './mcpGenerationPolicy'
 import { createProjectLeaseAuthority } from './projectLease'
 import { createProjectLeaseStore } from './projectLeaseStore'
 import {
@@ -42,7 +41,8 @@ const identity = {
   manifestDigest: 'manifest-audit-1',
 }
 
-function makeSession(options: { generationEnabled?: boolean } = {}) {
+// 2026-09-21：`generationEnabled` 这个开关随 env flag 一起消失——生成 scope 无条件发。
+function makeSession() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-project-session-'))
   tempDirs.push(dir)
   const verifyProjectIdentity = vi.fn(async () => ({
@@ -71,19 +71,12 @@ function makeSession(options: { generationEnabled?: boolean } = {}) {
     if (request.projectHint === identity.projectId) return identity
     throw new Error('selection denied')
   })
-  const generationPolicy = createMcpGenerationPolicy({
-    env: { NOMI_MCP_GENERATION_SINGLE_SHOT_V1: options.generationEnabled ? '1' : '' },
-    checkpoints: options.generationEnabled
-      ? { p0Passed: true, p2Passed: true, p3Passed: true }
-      : {},
-  })
   return {
     leaseAuthority,
     resolveProjectSelection,
     session: createProjectSessionAuthority({
       leaseAuthority,
       resolveProjectSelection,
-      generationPolicy,
     }),
   }
 }
@@ -129,7 +122,7 @@ describe('ProjectSessionAuthority', () => {
   })
 
   it('adds only server-derived non-submit generation scopes when rollout is enabled', async () => {
-    const { session } = makeSession({ generationEnabled: true })
+    const { session } = makeSession()
 
     const opened = await session.open({ bootstrap: { mode: 'current_project' } }, connection)
 

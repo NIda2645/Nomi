@@ -1,0 +1,158 @@
+{
+  "status": "passed",
+  "mode": "source-build",
+  "platform": "darwin",
+  "windows": "unverified",
+  "agentCost": "unknown",
+  "projectId": "project-1789848472106-kl5vbq",
+  "runId": "op-838ae87b-8ab6-4e89-b0eb-00a83c9a830a",
+  "results": [
+    {
+      "runId": "op-838ae87b-8ab6-4e89-b0eb-00a83c9a830a",
+      "nodeId": "gen-v2-image-mu8tkvb7-oj2t",
+      "resultId": "gen-v2-image-mu8tkvb7-oj2t-task_01M2XMH8T10DP1J194XDFKSMCE",
+      "taskId": "task_01M2XMH8T10DP1J194XDFKSMCE",
+      "cost": {
+        "amount": 0.1,
+        "currency": "credits",
+        "unit": "actual"
+      },
+      "costSource": "result.provenance.cost",
+      "type": "image"
+    },
+    {
+      "runId": "op-838ae87b-8ab6-4e89-b0eb-00a83c9a830a",
+      "nodeId": "gen-v2-image-mu931gr5-mv8m",
+      "resultId": "gen-v2-image-mu931gr5-mv8m-task_01M2Y3P5QCC0W3KAG0BHZQTNJG",
+      "taskId": "task_01M2Y3P5QCC0W3KAG0BHZQTNJG",
+      "cost": {
+        "amount": 0.1,
+        "currency": "credits",
+        "unit": "actual"
+      },
+      "costSource": "result.provenance.cost",
+      "type": "image"
+    },
+    {
+      "runId": "op-ca59d075-14d8-4735-8478-fa2b8b51aca9",
+      "nodeId": "gen-v2-image-mu93a6kr-l6sh",
+      "resultId": "gen-v2-image-mu93a6kr-l6sh-task_01M2Y42KSGCFH7R070YSHMG21S",
+      "taskId": "task_01M2Y42KSGCFH7R070YSHMG21S",
+      "cost": {
+        "amount": 0.1,
+        "currency": "credits",
+        "unit": "actual"
+      },
+      "costSource": "result.provenance.cost",
+      "type": "image"
+    },
+    {
+      "runId": "op-ca59d075-14d8-4735-8478-fa2b8b51aca9",
+      "nodeId": "gen-v2-video-mu93a6ks-x7m5",
+      "resultId": "gen-v2-video-mu93a6ks-x7m5-task_01M2Y42X15V1YE276FFK5ECCNJ",
+      "taskId": "task_01M2Y42X15V1YE276FFK5ECCNJ",
+      "cost": {
+        "amount": 1.5936,
+        "currency": "credits",
+        "unit": "actual"
+      },
+      "costSource": "result.provenance.cost",
+      "type": "video"
+    }
+  ],
+  "toolSuccessRate": {
+    "successful": 3,
+    "total": 3
+  },
+  "draftToolWriteRate": {
+    "successful": 2,
+    "total": 2
+  },
+  "roundSuccessRate": {
+    "successful": 2,
+    "total": 2
+  },
+  "startedAt": "2026-09-20T01:20:16.122Z",
+  "finishedAt": "2026-09-20T01:20:29.919Z",
+  "verification": "Existing paid outputs only: no new approval/generation; hot/cold recovery, reference identity and media decode checks.",
+  "totalMediaCredits": 1.8936,
+  "launches": [
+    {
+      "pid": 11408,
+      "packaged": false,
+      "buildStamp": {
+        "version": 1,
+        "head": "15195e2f9e516adfca52f9021f2b170a716d9e3c",
+        "tree": "30aaa144ea821efb0830997f9289798ec921de42",
+        "dirty": true
+      }
+    },
+    {
+      "pid": 11445,
+      "packaged": false,
+      "buildStamp": {
+        "version": 1,
+        "head": "15195e2f9e516adfca52f9021f2b170a716d9e3c",
+        "tree": "30aaa144ea821efb0830997f9289798ec921de42",
+        "dirty": true
+      }
+    },
+    {
+      "pid": 11464,
+      "packaged": false,
+      "buildStamp": {
+        "version": 1,
+        "head": "15195e2f9e516adfca52f9021f2b170a716d9e3c",
+        "tree": "30aaa144ea821efb0830997f9289798ec921de42",
+        "dirty": true
+      }
+    }
+  ],
+  "firstFrame": {
+    "runId": "op-ca59d075-14d8-4735-8478-fa2b8b51aca9",
+    "imageRunId": "op-838ae87b-8ab6-4e89-b0eb-00a83c9a830a",
+    "keyframeNodeId": "gen-v2-image-mu93a6kr-l6sh",
+    "videoNodeId": "gen-v2-video-mu93a6ks-x7m5",
+    "resolution": {
+      "requestedPreset": "480p",
+      "width": 864,
+      "height": 496,
+      "exactShortEdgeMatch": false,
+      "pixelMapping": "not-defined-in-provider-documentation",
+      "source": "https://docs.apimart.ai/en/api-reference/videos/seedance-2-0/generation.md",
+      "checkedAt": "2026-09-20"
+    }
+  },
+  "mediaMetadata": [
+    {
+      "projectId": "project-1789848472106-kl5vbq",
+      "filePath": "/private/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-core-a-paid-GjHmoK/projects/未命名项目 09_20 04_07-mu8tkfu6-3840cd13/assets/generated/2026-09-20/image-1789864797140.png",
+      "probe": {
+        "kind": "image",
+        "hasAudio": false,
+        "streamCount": 1,
+        "width": 1280,
+        "height": 720,
+        "videoCodec": "png",
+        "pixelFormat": "rgb24"
+      }
+    },
+    {
+      "projectId": "project-1789848472106-kl5vbq",
+      "filePath": "/private/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-core-a-paid-GjHmoK/projects/未命名项目 09_20 04_07-mu8tkfu6-3840cd13/assets/generated/2026-09-20/video-1789865106280.mp4",
+      "probe": {
+        "kind": "video",
+        "hasAudio": false,
+        "streamCount": 1,
+        "durationSeconds": 4.041667,
+        "width": 864,
+        "height": 496,
+        "fps": 24,
+        "videoCodec": "h264",
+        "pixelFormat": "yuv420p"
+      }
+    }
+  ],
+  "sourceReportSha256": "bfa9bcad89a13211732f86da815f8077093dee2f6337dea5766f0ab4ef550910",
+  "visualVerdict": "Functional recovery passed. EN row footer clipping/collision observed; original #808/baseline code unchanged, layout acceptance is not claimed."
+}

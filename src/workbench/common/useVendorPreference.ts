@@ -19,3 +19,5 @@ export async function saveVendorPreferenceOrder(next: readonly string[]): Promis
   order = value.orderedVendorKeys; loaded = true; notify()
 }
 export function vendorPreferenceLoaded(): boolean { return loaded }
+/** 非 React 的纯派生层读同一份缓存（与 useVendorPreferenceOrder 同源），用于「旧数据落哪家」的同一把尺。 */
+export function peekVendorPreferenceOrder(): readonly string[] { return order }

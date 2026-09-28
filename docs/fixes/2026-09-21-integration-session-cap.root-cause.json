@@ -1,0 +1,291 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-integration-session-cap",
+  "problem_type": "A persisted state declares limits that only the read side asserts, so the application writes a file it can no longer read or write back, and the failure lands on the startup path",
+  "symptom": "Launching Nomi does nothing: the main process logs main/start-failed and calls app.quit() before the first window exists, so the user sees a dock bounce and no window (exit code 0, ~1-2s). Two disk shapes reach it, both verified on real builds with fixtures built from the reporting user's own 101-session disk. (1) Record count: once the 101st session lands, validateState throws on read. origin/main exits in 2.04s; the fix survives 25s and heals 101 -> 100. (2) Byte size: size alone is NOT fatal - the read path does no byte check, and a 1.23 MB all-terminal disk starts fine on origin/main. It becomes fatal when an oversized disk meets a write the startup path cannot skip: 5 expired certifying sessions at 1.51 MB make resumeInterrupted()'s watchdog write throw CertificationPersistenceError('oversized'). origin/main exits in 1.36s; the fix survives 25s and heals 1.51 MB -> 0.6 MB. Both end at the same main.ts .catch, and the only known workaround for either was deleting integration-sessions.json by hand.",
+  "direct_cause": "Two entries into one death. Read: validateState threw whenever raw.sessions.length exceeded MAX_SESSIONS (100), and IntegrationSessionService.read() runs from the constructor inside registerIpc(), which runs synchronously in the app-ready chain. Write: installIntegrationSessionRuntime() calls resumeInterrupted() at startup; the watchdog sweep forces expired sessions terminal via failCertificationAsTimedOut -> persist() -> writeCertificationJsonAtomic, which rejects a payload over 1 MiB. Neither throw had a catch before electron/main.ts's start-failed handler, which logs and quits.",
+  "class_root": "This state's capacity had no owner on the axes that matter: 'it must always stay readable and writable back'. The limits existed only as read-side or write-side assertions, while the paths that grow the state - begin() appending a session, submitProposal storing an adapterDraft of up to 512 KiB - were bounded by nothing. A limit that nothing enforces is not a limit; it is a delayed self-inflicted corruption. Two aggravators made it fatal rather than annoying: the read side conflated 'too many records' with 'malformed file', leaving no self-healing path, and the startup path performs a write whose failure nobody catches, so a state the app itself produced takes the app down.",
+  "affected_population": [
+    "Every Nomi user whose machine accumulates more than 100 model-integration sessions; the reporting user's disk held 101 (99 completed, 2 failed, all terminal) and produced up to 36 in a single day",
+    "Every user whose sessions carry large declaration cards: a single adapterDraft may be 512 KiB, so three or four sessions can cross the 1 MiB write limit long before the 100-record limit",
+    "All three main-process entries that install the service - the GUI (electron/main.ts), the packaged MCP stdio server, and the one-shot CLI host - each dies the same way",
+    "All owner clients (codex, claude, cursor, pi, workbuddy, nomi): the limits are counted across owners, not per owner"
+  ],
+  "scope_paths": [
+    "electron/integrationCertification/integrationSessionRecord.ts",
+    "electron/integrationCertification/integrationSession.ts",
+    "electron/integrationCertification/integrationSessionTerminal.ts",
+    "electron/integrationCertification/certificationPersistence.ts"
+  ],
+  "scope_note": "The change also touches electron/shared/integrationContract.ts and electron/capabilityCore/mcpToolErrorResults.ts, by one line each: a new member on the canonical INTEGRATION_ERROR_CODES tuple and its registered zh/en recovery hint. They are listed under prevention.artifacts and in doors, but deliberately not in scope_paths, because scope_paths feeds the symptom-cluster module key (scripts/symptom-cluster-lib.mjs) and neither file is where this invariant lives, broke, or is enforced. Appending a member to the vocabulary owner is the intended use of that module, not evidence that its layer is structurally wrong; scoping it here would mean every fix that adds an error code joins the capabilityCore cluster. Neither file is on the high-risk list in scripts/root-cause-contracts.mjs.",
+  "entry_points": [
+    "readIntegrationSessionState - startup deserialization of integration-sessions.json in all three process entries",
+    "persistIntegrationSessionState - the single write boundary every session mutation funnels through",
+    "assertIntegrationSessionCapacity - the creation gate reached from IntegrationSessionService.begin",
+    "persistWatchdogTerminalWrite - the startup/periodic watchdog write in electron/integrationCertification/integrationSessionTerminal.ts"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The capacity contract of a Nomi-owned JSON state file is decided entirely by this repository: no third-party runtime, specification, or vendor document governs how many integration sessions may be retained or which ones may be evicted. The comparable prior art used to settle the eviction rule is in-repo (handoffQueue.ts, promotionJournal.ts, operationLedger.ts).",
+  "invariant_owner_layer": {
+    "layer": "electron/integrationCertification/integrationSessionRecord.ts",
+    "tests": [
+      "electron/integrationCertification/integrationSessionCap.test.ts",
+      "electron/integrationCertification/integrationSession.test.ts"
+    ],
+    "rationale": "The record module is the layer that already owns what a persisted session may look like (shape validation, retired-stage migration, deadline backfill). Capacity is the same kind of statement about the stored array, so it belongs here rather than in the service, and both the read boundary and the service's write boundary now call into it. Before this change the layer owned the assertion but not the enforcement, and it had no test at all covering the cap: grep for MAX_SESSIONS across the repository returned only the two production references."
+  },
+  "invariants": [
+    "The persisted session state never exceeds MAX_INTEGRATION_SESSIONS records as a result of anything Nomi itself writes",
+    "The persisted session state never exceeds INTEGRATION_SESSION_BYTE_BUDGET (80% of the writer's hard limit) as a result of anything Nomi itself writes, so the writer's oversized rejection stays a backstop rather than the thing users hit",
+    "Both axes are enforced by one function, so eviction policy cannot diverge between them",
+    "Eviction only ever removes terminal sessions (completed, partial, failed, cancelled), oldest first by updatedAt then createdAt; a session still in progress is never dropped to make room",
+    "An over-capacity but well-formed file loads, is trimmed in place, and is written back, so the user is never asked to delete a file by hand",
+    "A malformed session record still fails closed; too many records, too many bytes, and a broken shape are three separate outcomes with separate behavior",
+    "Trimming that really dropped records always leaves a diagnosable log line carrying aggregates and timestamps only - never ids, URLs or vendor fields",
+    "The watchdog's own write can never take down the process: it degrades to a logged, bounded retry, while a write made on behalf of a user action still fails loudly",
+    "When unfinished sessions alone fill either axis, creating another one is refused with integration_session_limit_reached rather than evicting live work or exceeding the limit"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "readIntegrationSessionState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "IntegrationSessionCapReport"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "MAX_INTEGRATION_SESSIONS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "CERTIFICATION_MAX_FILE_BYTES"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "adapterTerminalReasonCode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "persistIntegrationSessionState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "integrationStageFromAdapterRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "assertIntegrationSessionCapacity"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "persistWatchdogTerminalWrite"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "safeCertificationFailureCode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "capIntegrationSessions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "validateState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/certificationPersistence.ts",
+      "symbol": "writeCertificationJsonAtomic"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpToolErrorResults.ts",
+      "symbol": "INTEGRATION_ERROR_CODES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/integrationContract.ts",
+      "symbol": "INTEGRATION_ERROR_CODES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSessionTerminal.ts",
+      "symbol": "isTerminalIntegrationStage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSessionTerminal.ts",
+      "symbol": "persistWatchdogTerminalWrite"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 17,
+    "why_not": "The count grew, and that growth is the fix. Before, `node scripts/door-map.mjs electron/integrationCertification/integrationSessionRecord.ts` reported 4 write doors and 0 read doors: the capacity rule had exactly one enforcement site (validateState, read side) and the write side never consulted the module - which is why neither limit was enforced. The added doors are that missing enforcement, and they all funnel into one function: capIntegrationSessions owns both axes, and readIntegrationSessionState / persistIntegrationSessionState / assertIntegrationSessionCapacity are its three entries. The byte axis added exactly one new door pair rather than a second trimmer: CERTIFICATION_MAX_FILE_BYTES is read by the capacity owner from the module that writes the file, so 'how big may it be' and 'how big will it be' have one definition. The surviving doors each have to exist: adapterTerminalReasonCode, integrationStageFromAdapterRun and safeCertificationFailureCode are unrelated reason-code mappers sharing the module and touching no capacity state; validateState stays separate from capIntegrationSessions because shape validation must keep failing closed while capacity must not; writeCertificationJsonAtomic stays the fail-closed backstop below the budget, which is deliberately the looser of the two so the backstop is never what users hit; persistWatchdogTerminalWrite is separate from the user-action write path precisely because the two must fail differently; the two INTEGRATION_ERROR_CODES doors are the canonical error-code owner and its single consumer, a split C4 already settled by making mcpToolErrorResults spread the owner instead of copying it. The two integrationSessionTerminal.ts read doors are the terminal-stage vocabulary that capIntegrationSessions imports (one definition of 'terminal', not a second list) and the watchdog write helper itself, which lives beside the terminal guarantee it degrades rather than beside the capacity rule.",
+    "after_scan_command": "node scripts/door-map.mjs electron/integrationCertification/integrationSessionRecord.ts ; node scripts/door-map.mjs electron/integrationCertification/certificationPersistence.ts ; node scripts/door-map.mjs persistWatchdogTerminalWrite ; node scripts/door-map.mjs INTEGRATION_ERROR_CODES"
+  },
+  "generality_proof": "capIntegrationSessions is the single definition of both limits and of the eviction rule, and it is called from the only three places this state can change shape: readIntegrationSessionState (every load, in every process entry), persistIntegrationSessionState (every write, since all fifteen mutation sites funnel through persist()), and assertIntegrationSessionCapacity (the only path that appends a session). Enforcing at persist rather than at begin means a future caller that appends by another route is capped automatically. Putting both axes in one function means the record-count rule and the byte rule cannot disagree about which sessions may be evicted - the defect being fixed is exactly what happens when one rule has more than one home. The read side no longer throws on capacity at all, and the startup write can no longer be fatal, so both mechanisms that reached app.quit() are removed rather than made less likely. The only remaining startup throw is genuine shape corruption, which is a different class with a different, correct behavior.",
+  "shared_boundaries": [
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "capIntegrationSessions",
+      "responsibility": "Owns both capacity axes (record count and serialized bytes) and the single eviction policy: drop only terminal sessions, oldest first, and report overCapacity when unfinished sessions alone exceed either axis."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "readIntegrationSessionState",
+      "responsibility": "Read boundary: the only way this state is loaded. Validates shape and fails closed on a malformed record, delegates capacity to capIntegrationSessions, writes the trimmed result back, and logs what it dropped."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "persistIntegrationSessionState",
+      "responsibility": "Write boundary: every session mutation persists through it, so it applies the capacity owner before saving and logs any records it dropped."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "symbol": "assertIntegrationSessionCapacity",
+      "responsibility": "Creation boundary: refuses a new session with integration_session_limit_reached when unfinished sessions alone fill either axis - the one case eviction cannot resolve without destroying live work."
+    },
+    {
+      "path": "electron/integrationCertification/certificationPersistence.ts",
+      "symbol": "certificationJsonBytes",
+      "responsibility": "Owns how large a state will actually be on disk, in the exact serialization the writer uses, so the budget check cannot drift from the file it is protecting."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionTerminal.ts",
+      "symbol": "persistWatchdogTerminalWrite",
+      "responsibility": "Keeps the watchdog's own write off the process-fatal path: the in-memory session is already terminal, so a failed write degrades to a logged, bounded retry on the next launch instead of reaching main.ts's start-failed quit."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/integrationCertification/handoffQueue.ts",
+      "entry_point": "enqueueIntegrationHandoff",
+      "disposition": "not-affected",
+      "evidence": "Same module, same MAX_ENTRIES = 100 shape, same read-side rejection in readState. Its write side already splices the oldest entries out before persisting, so the read assertion can never fire on state it produced. This is the in-repo prior art the fix follows; it proves the paired shape was already understood here and simply missing from the session record."
+    },
+    {
+      "path": "electron/integrationCertification/promotionJournal.ts",
+      "entry_point": "PromotionJournal.mutate",
+      "disposition": "not-affected",
+      "evidence": "readState rejects entries/tombstones/archives over MAX_ENTRIES = 1000, but every mutate() runs compact() before persist(), which moves finalized entries to tombstones and archives overflow to segment files. Checked both sides: the read cap is paired with a write-side compaction."
+    },
+    {
+      "path": "electron/integrationCertification/operationLedger.ts",
+      "entry_point": "OperationLedger.mutate",
+      "disposition": "not-affected",
+      "evidence": "readState rejects operations/tombstones/archives over MAX_OPERATIONS = 1000, and mutate() calls compactOperationLedgerState with maxOperations before writing. Paired on both sides."
+    },
+    {
+      "path": "electron/shared/contracts/modelBoxPreference.ts",
+      "entry_point": "normalizeModelBoxPreference",
+      "disposition": "not-affected",
+      "evidence": "MODEL_BOX_PREFERENCE_MAX_ENTRIES = 1000 is applied by truncating during normalization (break at the limit), never by throwing, so an over-long stored value degrades instead of failing a read."
+    },
+    {
+      "path": "electron/settings/systemPromptsContract.ts",
+      "entry_point": "normalize custom prompts",
+      "disposition": "not-affected",
+      "evidence": "CUSTOM_PROMPT_MAX_COUNT = 50 truncates during normalization (break at the limit); the UI additionally derives its create-disabled reason from the same constant, so the limit has a single owner and a visible refusal."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "entry_point": "IntegrationSessionService.persist",
+      "disposition": "enforced",
+      "evidence": "Every session mutation in the service persists through this method; it now applies capIntegrationSessions before saving, which bounds the file regardless of which caller grew it."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "entry_point": "readIntegrationSessionState",
+      "disposition": "enforced",
+      "evidence": "The reported read entry. The whole read body moved out of the service into the record module; capacity is delegated to capIntegrationSessions, the trimmed result is written back and logged. Proven red-before-green on the user's real 101-session shape and on a <100-record, >1 MiB shape."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionRecord.ts",
+      "entry_point": "persistIntegrationSessionState",
+      "disposition": "enforced",
+      "evidence": "Every session mutation persists through it; it applies both axes before saving. Mutation-tested: removing the capacity call, and neutralising the byte budget, each turn the regression suite red."
+    },
+    {
+      "path": "electron/integrationCertification/integrationSessionTerminal.ts",
+      "entry_point": "persistWatchdogTerminalWrite",
+      "disposition": "enforced",
+      "evidence": "The startup write that an independent verifier reproduced as fatal. Now degrades to a logged retry; removing the tolerance turns the oversized-disk regression test red."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Both axes are crossed by ordinary use, not by unusual input: every finished model setup appends a record (up to 36 a day on the reporting machine) and every externally compiled setup may store a declaration card of up to 512 KiB, while nothing ever removed either. Any user, any owner client and all three process entries reach it on the same schedule, and a machine that crossed the line stays broken on every subsequent launch until the file is edited by hand. The byte axis is not hypothetical: an independent verifier reproduced the oversized throw out of resumeInterrupted() with a probe, and this branch's regression test reproduces it as a red before the fix.",
+    "same_class_scan": [
+      "grep -rn 'MAX_[A-Z_]*\\s*=\\s*[0-9_]' electron/ excluding tests - enumerated every numeric cap in the main process and separated byte caps from record-count caps",
+      "grep -rn '\\.length > MAX_\\|length > [A-Z_]{3,}' electron/ src/ excluding tests - isolated the caps that gate a stored array, then read the write side of each one",
+      "Read the write path of all four persisted capability-core states with a record cap (handoffQueue, promotionJournal, operationLedger, integrationSessionRecord) and both renderer-facing preference contracts (modelBoxPreference, systemPromptsContract); only integrationSessionRecord had a read-side cap with no write-side counterpart",
+      "grep -rn 'MAX_SESSIONS' across the repository - confirmed the constant had exactly two references, both in integrationSessionRecord.ts, and no test covered it",
+      "node scripts/door-map.mjs electron/integrationCertification/integrationSessionRecord.ts - 4 write doors, 0 read doors before the fix, confirming the write side never consulted the module",
+      "git log -S 'MAX_SESSIONS' - the cap arrived in 529188045 (2026-08-28) already unpaired; 13588c1ac (2026-09-11) only moved it between files",
+      "Traced the startup write path by hand and in test: installIntegrationSessionRuntime -> resumeInterrupted -> TerminalReaper.sweep -> failCertificationAsTimedOut -> persist -> writeCertificationJsonAtomic; confirmed no catch exists between it and electron/main.ts's start-failed handler",
+      "grep -rn 'MAX_FILE_BYTES' electron/integrationCertification/ - the 1 MiB writer limit is shared by integration-sessions, the operation ledger and the promotion journal; the latter two already compact against 0.8 of it, this state did not",
+      "grep -rn 'adapterDraft' electron/ src/ excluding tests - established both that a single record can reach 512 KiB and that session.adapterDraft is still read after a session is terminal (see residual_risks), which is why terminal records are not slimmed"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/integrationCertification/integrationSessionRecord.ts",
+    "invariant": "The persisted session state never exceeds MAX_INTEGRATION_SESSIONS records or INTEGRATION_SESSION_BYTE_BUDGET bytes because of a Nomi write; eviction never removes a session that is not in a terminal stage; and no write this state performs on the startup path can terminate the process.",
+    "failure_mode": "Over-capacity state produced by an older build is trimmed on read, written back, and logged. A write that would cross either axis evicts the oldest terminal sessions first. A creation request that cannot be satisfied without evicting unfinished work is refused with IntegrationRequestError integration_session_limit_reached, whose message and details name the axis that is full and the cancel action that frees it. The watchdog's own write degrades to a logged retry. A write made on behalf of a user action still throws, and a malformed record still throws.",
+    "exception_policy": "none",
+    "strategy": "One function owns both limits and the policy; the read boundary, the write boundary and the creation gate all call it, and the byte budget is derived from the writer's own limit and serialization rather than estimated separately. There is no second definition of either limit, no caller-side conditional, and no path that appends to the array without passing through persist(). Separately, the one write that sits on the startup path is explicitly marked as non-fatal, so this state can no longer reach main.ts's quit through either mechanism.",
+    "artifacts": [
+      "electron/integrationCertification/integrationSessionRecord.ts",
+      "electron/integrationCertification/integrationSession.ts",
+      "electron/integrationCertification/integrationSessionTerminal.ts",
+      "electron/integrationCertification/certificationPersistence.ts",
+      "electron/shared/integrationContract.ts",
+      "electron/capabilityCore/mcpToolErrorResults.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/integrationCertification/integrationSessionCap.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/integrationCertification/integrationSessionCap.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/integrationCertification/integrationSessionRecord.ts"
+    ],
+    "rationale": "The unpaired read-side count assertion (raw.sessions.length > MAX_SESSIONS throwing \"Invalid integration session state\") is deleted in the same change, and the private MAX_SESSIONS constant is replaced by the exported MAX_INTEGRATION_SESSIONS that the new owner function uses. No fallback keeps the old rejection reachable."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The invariant is entirely internal: a Nomi-authored JSON file, a Nomi-authored validator, and a Nomi-authored write path. No third-party runtime, version, or platform controls how many sessions are retained or when the file is read.",
+    "exit_criteria": []
+  },
+  "migration": "Existing over-capacity files migrate themselves on first read: readIntegrationSessionState trims to the newest records that fit both axes (keeping every unfinished session), writes the compacted state back, and logs from/to/dropped with the stage mix and the dropped records' time range. No user action, no manual file deletion, no separate migration script. A file whose unfinished sessions alone exceed an axis is loaded intact rather than trimmed, and is bounded afterwards by the begin() refusal; it converges as those sessions reach a terminal stage, whether by completing, being cancelled, or being timed out by the watchdog. A file that is already past the writer's hard 1 MiB limit is still loadable (the read path does no byte check) and the first watchdog write brings it back under budget; if that write itself cannot land, it is logged and retried on the next launch rather than taking the app down.",
+  "residual_risks": [
+    "CORRECTED 2026-09-21 after independent verification. An earlier revision of this contract called the 1 MiB write limit 'a second axis nobody owns' and implied it only surfaced on a user-facing write. That was wrong and it understated the risk: the verifier reproduced, and this branch's regression test now reproduces, CertificationPersistenceError('oversized') thrown out of resumeInterrupted() on the startup path, reaching electron/main.ts's start-failed catch and app.quit() - the same silent 'double-click does nothing' as the record-count bug. It is fixed here as part of the same class root, not deferred.",
+    "adapterDraft is deliberately NOT slimmed when a session reaches a terminal stage, even though that would be the cheapest way to keep the state small. Reason, from reading the code rather than assuming: IntegrationSessionService.start() checks owner and revision but has no WRITE_STAGES guard, so certification can be retried on a failed session, and that path reads session.adapterDraft (integrationSession.ts, the connection object passed to the provider adapter). Dropping the draft on terminal transition would silently break retry. Changing that is a data-retention decision with a user-visible consequence and is left to the user; the byte budget makes it unnecessary for safety.",
+    "Trimming does not retire handoff queue entries that point at an evicted session, so a dropped terminal session can leave a dead link that walks the user to an integration_session_not_found. Deliberately not fixed here: retireIntegrationHandoffs reads and writes a second persisted store whose readState throws on any corruption, and calling it from persist() would put that store's failures back onto the startup write path - the exact class this contract is closing. It needs its own root-cause pass with that constraint stated.",
+    "The read-side write-back moves the existing cross-process last-writer-wins window earlier: this layer has no CAS and writeCertificationJsonAtomic takes no lock, so a GUI instance healing an over-capacity file at startup can overwrite a session that a concurrently running stdio host just wrote. Pre-existing (any two writers already raced); this change adds a new moment at which it can happen. Not widened here; recorded so the next person sizing a lock for this directory has it.",
+    "Eviction order depends on updatedAt, falling back to createdAt and then to on-disk order. validateState does not type-check those fields, so a terminal record written without timestamps sorts as oldest and is evicted first even if it is recent. It only loses history, never live work, and non-terminal rows are excluded from the eviction pool entirely (verified by probe), but the ordering is counter-intuitive.",
+    "A malformed integration-sessions.json still throws during registerIpc() and still reaches the main.ts start-failed catch, so that class still shows the user a silent quit. Deliberately out of scope: the generic 'startup failure must be visible' mechanism is owned by a parallel session (the single-instance-lock line). This fix does not add a local swallow, because hiding genuine data corruption would trade a visible failure for an invisible one; it only removes capacity from the set of things that can trigger that path.",
+    "A session the watchdog just timed out can be evicted by the byte budget in the same startup. Measured (verifier fixture byteC): 5 sessions were forced to failed and 3 of them were then trimmed away. failCertificationAsTimedOut exists so the user and the driving agent can SEE certification_timed_out, and on an over-budget disk that intent is defeated at the moment it is recorded. The deletion is now always logged, so it is visible rather than silent, but the conclusion itself is still lost. The cheapest real fix is to slim a terminal session's adapterDraft (drop the body, keep the verdict) before evicting whole records - which is blocked on the retry-reads-adapterDraft finding above and is a data-retention decision for the user.",
+    "Memory and disk can diverge, and this branch only makes the divergence visible, not impossible. Measured (verifier fixture B2): the read-side self-heal dropped 2 terminal sessions from the returned state, its write-back still did not fit, so the process ran with 4 sessions in memory while the file kept all 6 at 1,214,411 bytes. Every such case now logs integration-sessions-compacted with outcome=memory-only plus the failure name, and a later successful write silently aligns the disk to memory. Closing the divergence itself (re-read before write-back, or a lock for this directory) is out of scope here and belongs with the cross-process last-writer-wins item above. Verified escape hatch: on that same over-budget disk, begin() refuses with integration_session_limit_reached while cancel() still writes successfully (1,202,703 -> 902,042 bytes), so the 'cancel one' recovery the error message offers is executable rather than advice.",
+    "The byte-axis eviction re-serializes the kept set once per evicted record. Now measured rather than assumed (verifier microbenchmark on the built output): a normal persist of 100 records (~265 KB) with no trimming is median 0.21 ms; the worst case, 100 records at ~1.2 MB trimmed down by 31, is median 34.24 ms and max 39.65 ms, and only on the single write that crosses the budget. Real-machine startup readiness stayed at 1.24-2.88 s against a 2.25 s origin/main baseline. Not a hot path; no optimisation taken."
+  ]
+}

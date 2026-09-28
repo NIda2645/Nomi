@@ -10,7 +10,7 @@
 //
 // modeSlotReach/SlotReach 从 archetypeMeta **转**进来而不是本文件直连 electron/：`src-no-import-electron`
 // 是棘轮门岗，archetypeMeta 那条越界已登记在基线里，新开文件直连会被判成新增违规（基线只减不增）。
-import type { ArchetypeMode, ModelArchetype } from '../../../../config/modelArchetypes'
+import type { ArchetypeMode, ModelArchetype } from '../../../../../electron/shared/modelArchetypes'
 import {
   currentArchetypeMode,
   modeSlotReach,

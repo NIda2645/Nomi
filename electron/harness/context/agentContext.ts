@@ -1,8 +1,5 @@
-import path from "node:path";
-
 import { readNestedRecord, trim, type JsonRecord } from "../../jsonUtils";
-import { skillMarkdownWithoutFrontmatter } from "../../skills/skillFrontmatter";
-import { findSkillRecord, type SkillRecord } from "../../skills/skillStore";
+import { findSkillRecord, readSkillRecords, type SkillRecord } from "../../skills/skillStore";
 import { sanitizeForBroadCompat } from "../../ai/promptSanitize";
 import { getDesktopLocale } from "../../desktopLocale";
 
@@ -43,6 +40,17 @@ export const NOMI_AGENT_IDENTITY = [
   // 面板上根本没有确认卡。旧版铁律写「所有写入/生成都要等用户在卡片上确认」，与运行时自相矛盾，模型据此
   // 把「建了草稿」说成「已提交生成，去右侧预览区看结果」，还让用户去找一张不存在的卡。规则必须如实描述
   // 两类动作的真实分界：不花钱的本地写入立刻生效，花钱的生成才等确认卡。
+  // 2026-09-21：这一条原来只有前半句「该调工具就调」。真实模型 16 句实测（investigate-askback.md
+  // §2.3/§3.3）显示它**恒赢**——含糊的话（「把那个删了」「改成竖的」）六成直接动手、猜错对象，
+  // 反问卡触发 0/16。修法不是把它改软（那会换来另一头的毛病：什么都先问一句），
+  // 而是把它说完整：默认动手，只有「猜错了代价高」那一档先问。
+  // **具体怎么判、用哪个工具问，只写在那个工具自己的说明书里**（`verbs/askVerbs.ts`），
+  // 这里不复述——同一条规矩两个地方写，迟早说得不一样。
+  // 2026-09-22：两条的**顺序**对调。ask_user 上线后第一轮真实模型实测「该问时问了」只有 3/12，
+  // 而仪器核过不是管道问题（工具在常驻表里、guideline 确实进了系统提示词）。同一段里先读到
+  // 「该调工具就调」再读到「但有三种情况先问」，前者天然是默认、后者是例外；对调之后读到的顺序是
+  // 「先判断要不要问，不用问就动手」。这是 run1 → run2 之间**唯一**动的提示词变量，好让那个数字说得清是谁的功劳。
+  "- 默认动手，不默认发问：能用合理默认就直接做，做完用一句话说明你按了哪个默认。但当用户的话指向好几个不同的东西、或缺一个会明显改变成品的关键信息、或下一步要花钱/撤不回时，先问一句再动手——那一刻猜错的代价比多问一句高得多。",
   "- 主动但不越权：该调工具就调。建草稿、改草稿这类不花钱的本地改动会立刻生效，不需要确认；只有付费生成要等用户在确认卡上点头之后才开始。",
   "- 建好草稿只能说「草稿已建好，模型和参数以确认卡为准」，绝不能说「已提交」「已开始生成」「去预览区看结果」——生成还没开始，预览区也不会有东西。",
   "- 如果模型是你替用户选的，要明说这是你选的、以及为什么这么选，别让用户以为是他自己定的。",
@@ -90,65 +98,18 @@ export function buildLanguageRule(): string {
       ].join("\n");
 }
 
-export function resolveRequestedSkill(payload: JsonRecord): SkillRecord | null {
-  const requested = readRequestedSkill(payload);
-  return requested.key || requested.name ? findSkillRecord(requested.key, requested.name) : null;
-}
-
 /**
- * 用户为**这一轮**挂的那条技能，注入成系统提示词的一段。**全仓唯一的技能注入点。**
+ * 用户为这一轮点的那条技能。目录每次现扫（pi 的加载器，async）：他刚导入的技能这一轮就找得到。
  *
- * ── 它在解决哪个真实摩擦（D6 ①）──
- *
- * 用户在 composer 里点了「电影分镜」，然后说「这段剧本帮我做成分镜」。在 2026-09-15 之前，
- * 这条技能是这样进提示词的（`laneDesktopRuntime.ts` 两处）：
- *
- *     systemPrompt: [next.systemPrompt, skill?.body].filter(Boolean).join('\n\n')
- *
- * 也就是把整份 `SKILL.md` 原文（含 frontmatter）拼在面板提示词后面，**一个字的交代都没有**。
- * 模型看到的是：一段画布工具说明，然后突然一块 `license: Apache-2.0` / `source:` / `preview:`，
- * 再然后一份标题叫「电影分镜」的 markdown。没有任何东西告诉它：
- *   ① 这是用户**为这一轮点的**，不是背景资料；
- *   ② 它规定的画幅/时长/模式要**写进工具入参**，不是在正文里说一句「用宽屏」就算；
- *   ③ 用户要在回复里**看得出**它被用了。
- *
- * 症状就是用户 2026-09-10 的原话：「用了一个电影分镜 skill，但他和我生成出来的东西提示词一看
- * 就不对，而且比例不对」。以及 2026-09-12 Agent 自述的「镜头语言规则用了、视觉锚引用没用上」。
- *
- * ── 要权衡的那一个东西（D6 ②）──
- *
- * 另一条路是「不注入正文，让模型自己用 `read` 去读」——`<available_skills>` 索引已经这么做了
- * （`laneSkillIndex.mts`，pi / Anthropic 的标准答案）。但那条路管的是**模型自己发现**技能；
- * 用户**亲手点了**一条技能是另一件事：让它再自己决定要不要去读，就是把一次明确的用户意图
- * 降级成一个建议。所以两条并存且分工明确：索引管发现，这里管「用户点了的那一条」。
- *
- * ── 为什么只有一个注入点 ──
- *
- * 数门（`node scripts/door-map.mjs resolveRequestedSkill`）当时是 3 扇：`laneDesktopRuntime`
- * 的 singleShot 与 configure 各自内联拼一次，第三扇是本文件里一个**零生产调用者**的
- * `buildSkillSystemPrompt`——它带着交代文案，而活着的那两扇没有。一份带交代的实现躺在旁边、
- * 生产上跑的是没交代的那份，正是 P1 说的并行版。现在正文只在这里生成一次，那个旧的已删。
+ * 它进提示词的那一段**不在这里拼**：唯一注入点是岛上的 `electron/agentLane/laneSkillPrompt.mts`
+ * （信封来自 pi 的 `formatSkillInvocation`，权威节走它的 `additionalInstructions`），CJS 侧经
+ * `laneNativeLoader.cts` 的桥调它。本文件被 `FORBIDDEN_OWNER_IMPORT` 钉死不许摸 pi，所以 2026-09-18
+ * 之前那份逐字手拼 pi 信封的 `buildSelectedSkillPrompt` 同 commit 删掉了（P1：不留并行版）。
  */
-export function buildSelectedSkillPrompt(skill: SkillRecord): string {
-  // frontmatter 不进提示词：它是打包清单（license / source / preview / 双语 label），不是方法。
-  // 实测 `curated-film-storyboard` 原文 1724 字里只有 305 字是方法——82% 的注入预算花在了元数据上。
-  // **这不是 Nomi 的发明**：pi 自己展开 `/skill:<name>` 时就是 `stripFrontmatter(content).trim()`
-  // （`pi-coding-agent/dist/core/agent-session.js:994`）。我们只是此前没走它那条路。
-  const method = skillMarkdownWithoutFrontmatter(skill.body);
-  // 信封逐字照 pi 的 `_expandSkillCommand`（同文件 :995）：`<skill name= location=>` +
-  // 「References are relative to …」+ 正文。R31：别人已经定了形状就不要自己再造一个——
-  // 这个形状还顺带把「技能目录里的相对路径指哪」说清楚了，而我们自己那版没有。
-  const envelope = `<skill name="${skill.name}" location="${skill.filePath}">\n`
-    + `References are relative to ${path.dirname(skill.filePath)}.\n\n${method}\n</skill>`;
-  return [
-    "本轮用户在输入框里挂了一条技能。它不是背景资料，是这一轮的作业规范：",
-    "- 照它的方法和约束做这一轮；与你自己的一般习惯冲突时以它为准。",
-    "- 它规定的画幅、时长、镜头数、生成模式这类**参数**，要真的写进你调用工具时的入参里；只在正文里说一句「用宽屏」不算照做。",
-    "- 回复里要让用户看得出它被用了：用一句话说清你照它做了哪一两条关键决定。不要复述整份技能。",
-    "- 它提到的外部 CLI、HTTP 或文件工具不会自动执行，除非当前对话确实提供了对应能力。",
-    "",
-    envelope,
-  ].join("\n");
+export async function resolveRequestedSkill(payload: JsonRecord): Promise<SkillRecord | null> {
+  const requested = readRequestedSkill(payload);
+  if (!requested.key && !requested.name) return null;
+  return findSkillRecord(requested.key, requested.name, await readSkillRecords());
 }
 
 /**

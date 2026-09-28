@@ -54,9 +54,12 @@ function recordFor(pkg: SkillPackage, directoryName = pkg.dirName): SkillRecord 
     name: SKILL_NAME,
     directoryName,
     filePath: `/tmp/${directoryName}/SKILL.md`,
+    packageDir: `/tmp/${directoryName}`,
     description: SKILL_DESCRIPTION,
+    content: pkg.files["SKILL.md"],
     body: pkg.files["SKILL.md"],
     manifest: manifest(),
+    requiresCodingTools: false,
     origin: "user",
     audience: "internal",
     packageVersion: "nomi-skill-v1",
@@ -73,7 +76,7 @@ describe("skill.write transport adapter", () => {
     let records: SkillRecord[] = [];
     const importer = vi.fn((pkg: SkillPackage): ImportSkillResult => {
       records = [recordFor(pkg)];
-      return { ok: true, dirName: pkg.dirName, skillName: SKILL_NAME };
+      return { ok: true, dirName: pkg.dirName, skillName: SKILL_NAME, manifest: null };
     });
     const adapter = createPiSkillWriteTransportAdapter({
       readRecords: () => records,
@@ -96,7 +99,7 @@ describe("skill.write transport adapter", () => {
     let records: SkillRecord[] = [];
     const importer = vi.fn((pkg: SkillPackage): ImportSkillResult => {
       records = [recordFor(pkg)];
-      return { ok: true, dirName: pkg.dirName, skillName: SKILL_NAME };
+      return { ok: true, dirName: pkg.dirName, skillName: SKILL_NAME, manifest: null };
     });
     const adapter = createPiSkillWriteTransportAdapter({ readRecords: () => records, importPackage: importer });
     const prepared = await adapter.prepare(call(), { target, preconditions }, signal());
@@ -138,6 +141,7 @@ describe("skill.write transport adapter", () => {
       ok: true,
       dirName: "creative-avatar",
       skillName: SKILL_NAME,
+      manifest: null,
     }));
     const adapter = createPiSkillWriteTransportAdapter({ readRecords: () => [], importPackage: importer });
     const prepared = await adapter.prepare(call(), { target, preconditions }, signal());

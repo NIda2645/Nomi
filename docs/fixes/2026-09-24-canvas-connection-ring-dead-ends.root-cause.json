@@ -1,0 +1,212 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-24-canvas-connection-ring-dead-ends",
+  "problem_type": "Canvas connection ring promises a drag-out that the card or the drop handler then refuses",
+  "symptom": "v0.22.0 user feedback: on a multi-version card the right + ring disappears and no connection can be dragged out; video cards (single or multi-version) show the ring but dragging to empty canvas does nothing.",
+  "direct_cause": "Three separate owners contradicted the ring: (1) BaseGenerationNode rendered a side timeline grip at right -42px, exactly on the right ring, whenever the version tray was open or the result was not image/video, and the magnetic card face sits above the ring; (2) handleConnectEnd only opened the create-next-node menu for text/image sources from a hard-coded kind list, cancelling video and audio drags silently; (3) completeNodeConnection reported the reference as full when the freshly created target had no model profile yet, so every create-and-connect showed a false warning.",
+  "class_root": "Since v0.22 every connectable card gets the same + ring from one owner (generationCanvasReactFlowVisualContract.ts), but the card surface and the drop handler kept their own older rules about who may use that edge and what can be created from it.",
+  "affected_population": [
+    "Users opening the version tray on a multi-result image or video card",
+    "Users dragging a connection out of a video, imported video asset or audio card onto empty canvas",
+    "Users creating a connected node from the drag-out menu"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+    "src/workbench/generationCanvas/nodes/NodeTimelineDragHandles.tsx",
+    "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+    "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowOverlays.tsx",
+    "src/workbench/generationCanvas/nodes/completeNodeConnection.ts",
+    "tests/ux/canvas-handles-alt-drag.walk.mjs",
+    "docs/fixes/2026-09-24-canvas-connection-ring-dead-ends.root-cause.json"
+  ],
+  "entry_points": [
+    "Drag from a card's + ring onto empty canvas",
+    "Pick a kind in the connection create menu",
+    "Open the version tray on a multi-result card"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Handle layering, the create menu and the reference-slot feedback are all application-owned; React Flow only reports connection start/end.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+    "tests": [
+      "src/workbench/generationCanvas/agent/referenceEdgeCapability.test.ts",
+      "src/workbench/generationCanvas/nodes/completeNodeConnection.test.ts",
+      "tests/ux/canvas-handles-alt-drag.walk.mjs"
+    ],
+    "why": "referenceEdgeCapability already owns which edges a target can consume; what the drag-out menu offers is derived there from the same slot table instead of a second kind list. The side edges of a card belong to the ring owner, and the walk now asserts the ring is the topmost element, not just styled visible."
+  },
+  "invariants": [
+    "Nothing on a card occupies the left or right ring slot; timeline drag uses the top notch only.",
+    "The drag-out create menu lists exactly the kinds whose model profiles can consume the source's output (text is prompt context).",
+    "A target without a model profile declares no slots and is never reported as full."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/shared/modelArchetypes/index.ts",
+      "symbol": "MODEL_ARCHETYPES"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+      "symbol": "MODEL_ARCHETYPES"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "symbol": "TimelineNotchDragHandle"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowOverlays.tsx",
+      "symbol": "CanvasConnectionCreateMenu"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "CanvasConnectionCreateMenu"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "setConnectionCreateMenu"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/canvasSelectionConnection.ts",
+      "symbol": "completeNodeConnection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+      "symbol": "completeNodeConnection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+      "symbol": "setConnectionCreateMenu"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/completeNodeConnection.ts",
+      "symbol": "connectToNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeTimelineDragHandles.tsx",
+      "symbol": "handleKeyboardAdd"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "completeNodeConnection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "connectToNode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "setConnectionCreateMenu"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "connectionCreateKindsForSource"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "completeNodeConnection"
+    }
+  ],
+  "door_reduction": {
+    "before": 16,
+    "after": 16,
+    "why_not": "Menu doors only open or close the menu and the one door deciding its content now reads connectionCreateKindsForSource; the completeNodeConnection callers are distinct gestures that already share one function where the fix lands; TimelineNotchDragHandle is now the single timeline affordance on the card."
+  },
+  "generality_proof": "The create menu kinds are derived from MODEL_ARCHETYPES slots and SLOT_ACCEPTS, so any new source kind or model profile is covered without editing a list; removing the side grip frees the ring slot for every card that renders through BaseGenerationNode, and the walk checks all GENERATION_NODE_KINDS plus the tray-open state for occlusion.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+      "symbol": "connectionCreateKindsForSource",
+      "responsibility": "Which node kinds a drag-out from this source can create and connect."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/completeNodeConnection.ts",
+      "symbol": "completeNodeConnection",
+      "responsibility": "Report only real slot overflow after a connection lands."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "entry_point": "version tray open / non image-video result",
+      "disposition": "enforced",
+      "evidence": "SideTimelineDragHandle is deleted; showTimelineNotch is the only timeline affordance."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "entry_point": "drop on empty canvas",
+      "disposition": "enforced",
+      "evidence": "handleConnectEnd reads connectionCreateKindsForSource and passes the kinds to the menu."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/CardStackPeeks.tsx",
+      "entry_point": "version count pill at right -42px, top 16px",
+      "disposition": "not-affected",
+      "evidence": "It sits above the ring's vertical centre; the walk's A1 and B3 topmost checks pass for the multi-version card."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new card decoration placed on a side edge, or any new source kind, would again show a ring that does nothing unless the edge and the menu read the shared owners.",
+    "same_class_scan": [
+      "rg -n \"right-\\[-|left-\\[-|left-\\[calc\\(100%|right-\\[calc\\(100%\" src/workbench/generationCanvas/nodes src/workbench/generationCanvas/components",
+      "rg -n \"kinds=\\{\\[\" src/workbench/generationCanvas",
+      "Stand-in run of tests/ux/canvas-handles-alt-drag.walk.mjs with the new topmost check: all 17 kinds plus tray-open pass"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+    "invariant": "The ring, the drop handler and the slot feedback agree on what a connection from this card can do.",
+    "failure_mode": "Unit tests fail if a video source gets no create kind or a fresh target reports full; the handles walk fails if anything on the canvas sits on top of a selected card's ring.",
+    "exception_policy": "none",
+    "strategy": "Derive create kinds from model slot declarations, keep the card's side edges exclusively for the ring, and assert topmost hit rather than computed visibility.",
+    "artifacts": [
+      "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+      "tests/ux/canvas-handles-alt-drag.walk.mjs"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/agent/referenceEdgeCapability.test.ts",
+    "src/workbench/generationCanvas/nodes/completeNodeConnection.test.ts",
+    "tests/ux/canvas-handles-alt-drag.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "tests/ux/canvas-handles-alt-drag.walk.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/nodes/NodeTimelineDragHandles.tsx",
+      "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowOverlays.tsx"
+    ],
+    "rationale": "SideTimelineDragHandle, the canCreateMedia kind list and the hard-coded menu kinds are removed from these files in the same change and replaced by the shared owners."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "React Flow behavior is unchanged; only application rules moved.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data changes.",
+  "residual_risks": [
+    "A video linked into a new video node lands as tail-frame relay in 图生视频; the first-frame slot shows empty until generation extracts the frame. Relay works at send time, but the display and the relay-versus-reference-video default need a product decision.",
+    "tests/ux/canvas-handles-alt-drag.walk.mjs needs NOMI_REAL_MEDIA_DIR; it was run here only with a stand-in clip, so the real-media rerun is still owed on the macOS machine."
+  ]
+}

@@ -1,0 +1,248 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-permission-tier-single-owner",
+  "problem_type": "One user decision is expressed in two vocabularies with no conversion between them, so every entry that speaks the second vocabulary silently answers the question itself",
+  "symptom": "用户在 Agent 面板把权限档切成「全自动」后，外部 MCP 宿主发起的生成与试跑仍然每一步停下来问人；反过来，用户选「每步都问」时，Run 这一侧也拿不到这个意思。刚打开项目、渲染层还没把档位推上来的那一小段时间里，主进程答的也是硬编码默认档。",
+  "direct_cause": "权限档只住在渲染层 workbenchStore.projectAgentApprovalPolicy，只经 Agent 面板 lane 的 composer 进主进程（laneDesktopRuntime）。Run 侧另有一套 TrustLevel，而 productionRunService 的默认 policyResolver 根本不产出 trustLevel，于是 normalizeTrustLevel(undefined) 恒给 key_confirm；两套词表之间没有任何转换函数。",
+  "class_root": "「Nomi 还问不问你」是一个用户决定，但它没有主进程侧的 owner。于是每条不经 Agent 面板的路要么读不到它（外部 MCP、全自动调度），要么只能由调用方在请求体里自报——而自报已被 2026-09-21 的 assertCallerDeclaredTrustLevel 堵死，堵完之后这个意思就再也表达不出来了。",
+  "affected_population": [
+    "外部 MCP 宿主发起的生成 / 试跑（Claude Code、Codex 等）",
+    "全自动 Run 与批量调度",
+    "刚打开项目、渲染层尚未推送档位的那一段时间里的 Agent 面板自己"
+  ],
+  "scope_paths": [
+    "electron/settings/agentApprovalPolicyContract.ts",
+    "electron/settings/agentApprovalPolicySettings.ts",
+    "electron/productionRun/productionRunTrustAuthority.ts",
+    "electron/productionRun/productionRunService.ts",
+    "electron/agentLane/laneDesktopRuntime.ts",
+    "electron/capabilityCore/residentGenerationAdapterFactory.ts"
+  ],
+  "entry_points": [
+    "Agent 面板切档（lane composer updatePolicy / configure）",
+    "Run 草稿创建（productionRunService.createDraft / createGenerationDraft）",
+    "常驻生成适配器（residentGenerationAdapterFactory.factory）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "两套词表都是本仓自己的产品词表（ProjectAgentApprovalPolicy 与 TrustLevel），没有任何外部规范裁决它们之间的映射；映射的依据是用户 2026-09-12 与 2026-09-21 的两次拍板，记录在 user-decisions.md。",
+  "invariants": [
+    "「用户选的权限档」在主进程有且只有一份权威值，读口与写口各一个",
+    "TrustLevel 只能由那份权威值派生，不得由调用方声明、也不得各处硬编码默认",
+    "认不出的持久化值一律回落到更常问的那一档，绝不静默放松"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "readAgentApprovalPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/residentGenerationAdapterFactory.ts",
+      "symbol": "readAgentApprovalPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "readAgentApprovalPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "writeAgentApprovalPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "trustLevelFromApprovalPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "assertCallerDeclaredTrustLevel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "spendDecidedByPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunDriverOps.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunGateIdentity.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/productionContractView.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/agentApprovalPolicySettings.ts",
+      "symbol": "normalizeAgentApprovalPolicySettings"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/agentApprovalPolicySettings.ts",
+      "symbol": "agentApprovalPolicySettingsPath"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunTrustAuthority.ts",
+      "symbol": "projectAgentApprovalPolicyOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/capabilityApprovalPolicy.ts",
+      "symbol": "projectAgentApprovalPolicyOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneApproval.ts",
+      "symbol": "projectAgentApprovalPolicyOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/settings/agentApprovalPolicyContract.ts",
+      "symbol": "DEFAULT_AGENT_APPROVAL_POLICY_SETTINGS"
+    }
+  ],
+  "door_reduction": {
+    "before": 20,
+    "after": 20,
+    "why_not": "写「用户选的档」这份状态的门本次收成 1 扇（writeAgentApprovalPolicy，只在 lane composer 那一处），读口 3 扇分别是三条真实入口（Agent 面板 / 常驻适配器 / Run 服务），它们读的是同一个函数同一个文件，不是三份实现。trustLevelOf 的 7 扇不是这份状态的门，而是**已经派生出来的那个值**在各自语义上的消费点（收据校验 / 逐镜门 / 门身份 / 投影 / reducer / service / 渲染层只读展示）——把它们合并等于把七件不同的事合成一件。spendDecidedByPolicy 的那一扇是「宿主该不该弹报价卡」的唯一判据，和 TrustLevel 回答的是不同的问题（2026-09-12 的注释已写明），本次只是让它在宿主缺席时读到同一份权威值。 projectAgentApprovalPolicyOf 的三扇是同一个归一化纯函数的调用点（词表 owner 自己、Run 侧那座桥、lane 审批），它们读的是同一份实现；归一化与路径解析的两扇门在新设置模块自身内部。"
+  },
+  "generality_proof": "档位从「某条 lane 的会话状态」升成「主进程持有的用户设置」，读口只有 readAgentApprovalPolicy 一个、写口只有 writeAgentApprovalPolicy 一个。任何入口——今天的三条、明天新增的——要么读这个函数，要么根本没有档位可读；而 TrustLevel 由纯函数 trustLevelFromApprovalPolicy 派生，三档 × 两条 spend 轴穷举有测试。调用方自报那条路仍然被 assertCallerDeclaredTrustLevel 堵着，而它现在比对的是**用户真的选过的那一档**，不是硬编码默认。",
+  "shared_boundaries": [
+    {
+      "path": "electron/settings/agentApprovalPolicySettings.ts",
+      "symbol": "readAgentApprovalPolicy / writeAgentApprovalPolicy",
+      "responsibility": "主进程侧「用户现在选的权限档」的唯一读写口；缺文件或读坏一律回落到更常问的默认档。"
+    },
+    {
+      "path": "electron/productionRun/productionRunTrustAuthority.ts",
+      "symbol": "trustLevelFromApprovalPolicy",
+      "responsibility": "两套词表之间唯一的那座桥：step→confirm_all、safe-auto→key_confirm、project→budget_only；spend 轴不参与（它今天没有预算撑着）。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "entry_point": "openWorkspace / updatePolicy / configure",
+      "disposition": "enforced",
+      "evidence": "开项目时 composer 从 readAgentApprovalPolicy() 起（不再是 DEFAULT_PROJECT_AGENT_APPROVAL_POLICY）；两个改档入口都经 writeAgentApprovalPolicy 落盘并用归一化后的值回填 composer。"
+    },
+    {
+      "path": "electron/productionRun/productionRunService.ts",
+      "entry_point": "默认 policyResolver → createDraft / createGenerationDraft",
+      "disposition": "enforced",
+      "evidence": "productionRunTrustFromSettings.test.ts：写「全自动」→ 新 Run 的 policy.trustLevel 是 budget_only；写「每步都问」→ confirm_all，且外部入口再要 budget_only 被拒。删掉那一行三条全红（实测）。"
+    },
+    {
+      "path": "electron/capabilityCore/residentGenerationAdapterFactory.ts",
+      "entry_point": "factory(binding, approvalPolicy?)",
+      "disposition": "enforced",
+      "evidence": "宿主没传档位时默认 readAgentApprovalPolicy（此前是 undefined → spendDecidedByPolicy 按默认档 → 照旧弹卡）。"
+    },
+    {
+      "path": "electron/productionRun/productionRunTrustAuthority.ts",
+      "entry_point": "assertCallerDeclaredTrustLevel",
+      "disposition": "enforced",
+      "evidence": "它比对的 userPolicy.trustLevel 现在有值了；改之前这个字段恒 undefined，等于「任何放松都拒」——安全但用户永远表达不了全自动。"
+    },
+    {
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "entry_point": "spendDecidedByPolicy",
+      "disposition": "not-affected",
+      "evidence": "它回答的是另一个问题（宿主该不该弹报价卡），判据本来就只有一个 owner（capabilityApprovalPolicy.ts，2026-09-12 拍板）。本次没有动它，只是让它的 deps.approvalPolicy 在宿主缺席时读到同一份权威值。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "任何新的生成入口（新的 MCP 宿主、新的调度器、未来的 Goal 模式）都会再问一次「用户让不让我自己跑」；没有主进程 owner 时，它们要么各自默认、要么接受调用方自报，两种都错过一次了。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs spendDecidedByPolicy → 1 扇（generationTransportAdapters.ts），确认「弹不弹卡」这一半早已收口",
+      "node scripts/door-map.mjs trustLevelOf → 7 扇，逐扇核过语义（收据 / 逐镜门 / 门身份 / 投影 / reducer / service / 渲染层只读展示），全是消费点不是第二个 owner",
+      "grep -rn \"approvalPolicy\" electron/ → 改前只有 lane 一条路把它递进主进程；generationTransportAdapters.ts:343 的原注释明写「外部 MCP 宿主那条路从来不传它」",
+      "grep -rn \"trustLevel\" electron/settings/ → 改前 0 命中：设置层压根没有这个概念"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/settings/agentApprovalPolicySettings.ts",
+    "invariant": "权限档在主进程有且只有一份权威值；TrustLevel 只由 trustLevelFromApprovalPolicy 从它派生。",
+    "failure_mode": "读不到 / 认不出 → 回落到更常问的默认档（safe-auto / key_confirm），永远不会因为读失败而变得更放松；调用方声明一个更松的档位 → HumanApprovalRequiredError 并指向那条会真的问人的路。",
+    "exception_policy": "none",
+    "strategy": "把「用户的决定」从某条 lane 的会话状态升成主进程持有的设置，再用一个穷举过的纯函数把它翻译成另一套词表。两套词表可以继续各自存在（它们描述的不是同一件事），但它们之间只有一条路。",
+    "artifacts": [
+      "electron/settings/agentApprovalPolicyContract.ts",
+      "electron/settings/agentApprovalPolicySettings.ts",
+      "electron/productionRun/productionRunTrustAuthority.ts",
+      "electron/productionRun/productionRunService.ts",
+      "electron/agentLane/laneDesktopRuntime.ts",
+      "electron/capabilityCore/residentGenerationAdapterFactory.ts"
+    ]
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/settings/agentApprovalPolicySettings.ts",
+    "tests": [
+      "electron/settings/agentApprovalPolicySettings.test.ts",
+      "electron/productionRun/productionRunTrustAuthority.test.ts",
+      "electron/productionRun/productionRunTrustFromSettings.test.ts"
+    ],
+    "notes": "设置层持有那份权威值并有直测；派生函数有三档 × 两轴的穷举测试；跨层那一格由 productionRunTrustFromSettings 钉住（删掉接线那一行三条全红，实测）。"
+  },
+  "regression_tests": [
+    "electron/settings/agentApprovalPolicySettings.test.ts",
+    "electron/productionRun/productionRunTrustAuthority.test.ts",
+    "electron/productionRun/productionRunTrustFromSettings.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/productionRun/productionRunTrustAuthority.test.ts",
+    "electron/productionRun/productionRunTrustFromSettings.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneDesktopRuntime.ts",
+      "electron/capabilityCore/residentGenerationAdapterFactory.ts"
+    ],
+    "rationale": "两处「档位缺席就用硬编码默认」的分支同 commit 删除：lane 开项目不再从 DEFAULT_PROJECT_AGENT_APPROVAL_POLICY 起，常驻适配器不再在 approvalPolicy 缺席时省略这一格。没有留 fallback，也没有新增设置界面或 IPC（走的是已有的 lane composer 那条）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "两套词表与它们的映射完全由本仓拥有，没有第三方运行时参与。",
+    "exit_criteria": []
+  },
+  "migration": "不需要迁移：设置文件不存在时读默认档，与今天的行为逐字相同；用户下一次切档即写入。删掉这个文件等于回到默认档。",
+  "residual_risks": [
+    "「全自动 → 外部 MCP 的生成直接跑、不弹卡」这条用户可见效果，本次只把档位送到了两个判据面前（Run 的创意/样片门与常驻适配器的报价卡）。钱门在任何档位都不跳（autoApproveGate 对 isSpendGate 硬抛），外部 MCP 单镜生成那条路的付费确认仍然走 Nomi 窗口——这是今天的设计，不是这次漏接；要不要让「全自动」也代答付费卡是产品决定，属步骤 B / 需要用户拍板。",
+    "渲染层 workbenchStore 里那份档位仍然是界面的本地真相源；它与主进程那份的一致性靠 lane composer 的写回维持，没有机器在核对。真正的收口是渲染层改成读主进程那份，属渲染层 lane。",
+    "spend 轴（confirm / within-budget）今天没有预算撑着，因此不参与派生。等硬预算回来时这条映射要重新裁决。"
+  ]
+}

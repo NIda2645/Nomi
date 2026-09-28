@@ -12,7 +12,7 @@ import { createProductionGenerationSubmission } from "../productionRun/productio
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
 import { createProductionRunService } from "../productionRun/productionRunService";
 import { createMultiShotBatchScheduler, type BatchOutcome } from "../productionRun/multiShotBatchScheduler";
-import { anchorCheckpointGateId } from "../productionRun/anchorCheckpoint";
+import { currentAnchorCheckpointGate } from "../productionRun/anchorCheckpoint";
 import { registerBatchSchedulerKicker } from "../productionRun/batchSchedulerKick";
 import { sealAndApproveProductionGeneration } from "../productionRun/productionGenerationAuthorizationTestUtils";
 import type { ProductionGenerationShot } from "../productionRun/productionRunTypes";
@@ -95,7 +95,7 @@ function setup(shots: ProductionGenerationShot[], provider: GenerationProvider) 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-checkpoint-e2e-"));
   roots.push(root);
   const repository = createProductionRunRepository({ projectDirResolver: (p) => (p === "project-1" ? root : null), now });
-  repository.createGenerationDraft({ operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 2 } });
+  repository.createGenerationDraft({ operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, shots, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 2 } });
   const top = shots[0].contract!;
   const approved = sealAndApproveProductionGeneration({
     repository,
@@ -174,7 +174,7 @@ describe("P4 §3.2 — anchor checkpoint approval through the REAL production en
       // Before this fix it threw 403 "must be decided in Nomi" — the deadlock this file guards against.
       tickClock();
       const projection = await dispatch("production.decide-gate", {
-        projectId: "project-1", runId: "op-batch", gateId: anchorCheckpointGateId("op-batch"), decision: "approved",
+        projectId: "project-1", runId: "op-batch", gateId: currentAnchorCheckpointGate(repository.read("project-1", "op-batch")!)!.gateId, decision: "approved",
       }, dispatcherContext(service) as never) as { gates?: Array<{ gateId: string; status: string }> };
 
       // The decide alone woke the batch: the service hook kicked the scheduler, no caller-side resume.
@@ -186,9 +186,9 @@ describe("P4 §3.2 — anchor checkpoint approval through the REAL production en
       expect(new Set(submits).size).toBe(submits.length); // ≤1 real submit per job
 
       run = repository.read("project-1", "op-batch")!;
-      expect(run.gates.find((g) => g.gateId === anchorCheckpointGateId("op-batch"))?.status).toBe("approved");
+      expect(run.gates.find((g) => g.gateId === currentAnchorCheckpointGate(repository.read("project-1", "op-batch")!)!.gateId)?.status).toBe("approved");
       expect(run.artifacts.filter((a) => a.kind === "video" && a.status === "ready")).toHaveLength(3);
-      expect(projection.gates?.find((g) => g.gateId === anchorCheckpointGateId("op-batch"))?.status).toBe("approved");
+      expect(projection.gates?.find((g) => g.gateId === currentAnchorCheckpointGate(repository.read("project-1", "op-batch")!)!.gateId)?.status).toBe("approved");
     } finally {
       await vendor.close();
     }
@@ -212,7 +212,7 @@ describe("P4 §3.2 — anchor checkpoint approval through the REAL production en
 
       tickClock();
       await dispatch("production.decide-gate", {
-        projectId: "project-1", runId: "op-batch", gateId: anchorCheckpointGateId("op-batch"), decision: "rejected",
+        projectId: "project-1", runId: "op-batch", gateId: currentAnchorCheckpointGate(repository.read("project-1", "op-batch")!)!.gateId, decision: "rejected",
       }, dispatcherContext(service) as never);
 
       // The rejection also ticks the machine (free re-derive): it rests at `rejected` — no shot dispatch,
@@ -223,7 +223,7 @@ describe("P4 §3.2 — anchor checkpoint approval through the REAL production en
       expect(rested.quiescent).toBe(true);
       expect(submits).toHaveLength(1); // nothing new paid for
       const run = repository.read("project-1", "op-batch")!;
-      expect(run.gates.find((g) => g.gateId === anchorCheckpointGateId("op-batch"))?.status).toBe("rejected");
+      expect(run.gates.find((g) => g.gateId === currentAnchorCheckpointGate(repository.read("project-1", "op-batch")!)!.gateId)?.status).toBe("rejected");
       const blockedShotJob = run.jobs.find((job) => job.metadata?.shotId === "shot-1");
       expect(blockedShotJob).toMatchObject({ status: "authorized" });
       expect(blockedShotJob?.providerTaskId).toBeUndefined();

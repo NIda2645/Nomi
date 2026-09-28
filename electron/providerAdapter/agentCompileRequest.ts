@@ -60,7 +60,12 @@ export function draftFromSuppliedContract(input: {
     };
   });
   return validateProviderAdapterDraft(
-    { provider: input.provider, sources: input.contract.sources, models },
+    // 卡**整份**带过去，只覆写 Nomi 锁死的那两样（provider 身份、模型的 label/kind）。
+    // 逐字段抄一遍的代价是：卡上加一格就得记得在这里也加一行，忘了就静默丢掉（§5 新增那四格
+    // 正是这么来的）。交件 schema 是 strict 的，所以「整份带过去」带不进它没声明的东西。
+    // **不许在这里给默认值**：`assetIngestion` 缺省就是「这张卡不合格」，补一个 `none`
+    // 等于替 Agent 做了它没做的声明——那由 schema 的必填拦，不由这里兜。
+    { ...input.contract, provider: input.provider, models },
     {
       providerBaseUrl: input.provider.baseUrl,
       selectedModelKeys: input.models.map((model) => model.modelKey),

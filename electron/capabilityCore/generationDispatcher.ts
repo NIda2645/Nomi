@@ -1,11 +1,18 @@
 import { hasGenerationBinding } from './generationBindingGuard'
-import {
-  createMcpGenerationPolicy,
-  type McpGenerationCapability,
-  type McpGenerationPolicy,
-} from './mcpGenerationPolicy'
+import { type McpGenerationCapability } from './mcpGenerationPolicy'
+
+/**
+ * 这一族错误的下一步动作。
+ *
+ * 2026-09-21 之前它是 `nomi://settings/automation?section=mcp-generation`——指向一个用来打开
+ * 生成面的设置开关，而**那个开关在界面上从来不存在**（面是由 env flag 关着的）。模型照着它去点，
+ * 点不到任何东西。flag 删掉之后剩下的每一个码说的都是同一类事：这次调用缺一张有效的项目租约
+ * 或人证。所以下一步动作换成真正能照做的那一句。
+ */
+const OPEN_PROJECT_SESSION_NEXT_ACTION = 'Open a new project session and retry'
 import type { HumanApprovalReceiptV1 } from './approvalReceipt'
 import type { ProjectLeaseV2 } from './projectLease'
+import { spendDecidedByPolicy } from '../shared/agentCapabilities/capabilityApprovalPolicy'
 import type { DispatchContext } from './dispatcher'
 import { RpcError, type RpcPolicyErrorCode, type RpcPolicyErrorDetails } from './rpcError'
 
@@ -54,24 +61,20 @@ function policyError(
   return new RpcError(message, 403, details)
 }
 
-function unavailableSemanticRoute(policy: McpGenerationPolicy, capability: McpGenerationCapability): RpcError {
-  const snapshot = policy.snapshot()
+function unavailableSemanticRoute(capability: McpGenerationCapability): RpcError {
   return policyError({
     code: 'not_ready',
-    nextAction: snapshot.nextAction,
-    phase: snapshot.phase,
+    nextAction: OPEN_PROJECT_SESSION_NEXT_ACTION,
     capability,
   }, `generation.single-shot ${capability} is not ready`)
 }
 
-export function guardLegacyGenerationRoute(policy: McpGenerationPolicy, route: string, params: Record<string, unknown>): void {
+export function guardLegacyGenerationRoute(route: string, params: Record<string, unknown>): void {
   if (!hasGenerationBinding(params)) return
-  const snapshot = policy.snapshot()
   const capability = LEGACY_ROUTE_CAPABILITY[route] ?? 'create'
   throw policyError({
     code: 'legacy_path_forbidden',
-    nextAction: snapshot.nextAction,
-    phase: snapshot.phase,
+    nextAction: OPEN_PROJECT_SESSION_NEXT_ACTION,
     capability,
   }, `Legacy route ${route} cannot carry generation.single-shot bindings`)
 }
@@ -105,20 +108,18 @@ function leaseScopeForCapability(capability: McpGenerationCapability): string {
   }
 }
 
-function policyDetails(policy: McpGenerationPolicy, capability: McpGenerationCapability, code: RpcPolicyErrorCode, nextAction = policy.snapshot().nextAction): RpcPolicyErrorDetails {
-  const snapshot = policy.snapshot()
-  return { code, nextAction, phase: snapshot.phase, capability }
+function policyDetails(capability: McpGenerationCapability, code: RpcPolicyErrorCode, nextAction = OPEN_PROJECT_SESSION_NEXT_ACTION): RpcPolicyErrorDetails {
+  return { code, nextAction, capability }
 }
 
 async function requireProjectLease(
   params: Record<string, unknown>,
   capability: McpGenerationCapability,
   ctx: DispatchContext,
-  policy: McpGenerationPolicy,
 ): Promise<{ params: Record<string, unknown>; lease: ProjectLeaseV2 }> {
   const token = typeof params.leaseHandle === 'string' ? params.leaseHandle.trim() : ''
-  if (!token) throw policyError(policyDetails(policy, capability, 'lease_required'), 'A verified project lease is required')
-  if (!ctx.projectSession) throw policyError(policyDetails(policy, capability, 'lease_required'), 'Project session authority is unavailable')
+  if (!token) throw policyError(policyDetails(capability, 'lease_required'), 'A verified project lease is required')
+  if (!ctx.projectSession) throw policyError(policyDetails(capability, 'lease_required'), 'Project session authority is unavailable')
   const expectedProjectId = typeof params.projectId === 'string' && params.projectId.trim()
     ? params.projectId.trim()
     : undefined
@@ -131,7 +132,7 @@ async function requireProjectLease(
     return { params: { ...params, projectId: lease.projectId }, lease }
   } catch (error) {
     const code = leaseFailureCode(error)
-    throw policyError(policyDetails(policy, capability, code), error instanceof Error ? error.message : 'Project lease is invalid')
+    throw policyError(policyDetails(capability, code), error instanceof Error ? error.message : 'Project lease is invalid')
   }
 }
 
@@ -140,15 +141,14 @@ function requireApprovalReceipt(
   lease: ProjectLeaseV2,
   capability: McpGenerationCapability,
   ctx: DispatchContext,
-  policy: McpGenerationPolicy,
 ): HumanApprovalReceiptV1 {
   const reject = (code: Extract<RpcPolicyErrorCode, 'human_approval_required' | 'receipt_invalid' | 'receipt_expired'>, message: string): never => {
-    throw policyError(policyDetails(policy, capability, code), message)
+    throw policyError(policyDetails(capability, code), message)
   }
   const authority = ctx.approvalReceiptAuthority
   if (!authority) {
     throw policyError(
-      policyDetails(policy, capability, 'human_approval_required'),
+      policyDetails(capability, 'human_approval_required'),
       'A main-process human approval receipt is required',
     )
   }
@@ -199,28 +199,19 @@ async function dispatchSemanticStub(
   route: Readonly<{ capability: McpGenerationCapability; contextRead?: boolean; requiresLease?: boolean; requiresReceipt?: boolean }>,
   params: Record<string, unknown>,
   ctx: DispatchContext,
-  policy: McpGenerationPolicy,
 ): Promise<unknown> {
-  const decision = policy.decide(route.capability)
-  if (decision.kind === 'blocked') {
-    throw policyError({
-      code: decision.code,
-      nextAction: decision.nextAction,
-      phase: decision.phase,
-      capability: decision.capability,
-    })
-  }
+  // 这里曾经先问一句「这个面开了吗」（env flag + 三段式 rollout）。2026-09-21 整条删除：
+  // 工具挂在 tools/list 上广告着、调用却被一个没有界面能开的环境变量打回去，那不是闸，是墙。
   if (route.contextRead && typeof ctx.generationContext !== 'function' && typeof ctx.generationPlanning !== 'function') {
-    throw unavailableSemanticRoute(policy, route.capability)
+    throw unavailableSemanticRoute(route.capability)
   }
   const leased = route.requiresLease === false
     ? { params, lease: undefined }
-    : await requireProjectLease(params, route.capability, ctx, policy)
+    : await requireProjectLease(params, route.capability, ctx)
   if (route.capability === 'gate_request') {
     if (!leased.lease) throw policyError({
       code: 'lease_required',
-      nextAction: policy.snapshot().nextAction,
-      phase: policy.snapshot().phase,
+      nextAction: OPEN_PROJECT_SESSION_NEXT_ACTION,
       capability: route.capability,
     })
     if (typeof ctx.requestGenerationGate === 'function') {
@@ -239,7 +230,11 @@ async function dispatchSemanticStub(
       }
       const verifiedProjectRevision = projectRevision as number
       const model = typeof value?.model === 'string' ? value.model : '当前模型'
+      // 「算不出价」不是 0 元：已知那部分记下来，未知的镜数单独带走（2026-09-21 开闸）。
       const maximumCost = typeof value?.maximumCost === 'number' && Number.isFinite(value.maximumCost) ? value.maximumCost : 0
+      const unknownShotCount = typeof value?.unknownShotCount === 'number' && Number.isSafeInteger(value.unknownShotCount) && value.unknownShotCount > 0
+        ? value.unknownShotCount
+        : 0
       const challenge = authority.requestChallenge({
         challengeKey: `generation.single-shot:${leased.lease.projectId}:${String(value?.operationId || '')}:${contractHash}`,
         immutableProjectUuid: leased.lease.immutableProjectUuid,
@@ -256,6 +251,7 @@ async function dispatchSemanticStub(
         reservationPreview: {
           currency: typeof value?.currency === 'string' ? value.currency : 'CNY',
           maximum: maximumCost,
+          ...(unknownShotCount > 0 ? { unknownJobCount: unknownShotCount } : {}),
         },
         display: {
           model,
@@ -266,6 +262,22 @@ async function dispatchSemanticStub(
           ...(value?.shots && typeof value.shots === 'object' && !Array.isArray(value.shots) ? { shots: value.shots as never } : {}),
         },
       })
+      // ── 「全自动」档：宿主当场替用户决门（2026-09-12 拍板的那一档，外部 MCP 这一侧 2026-09-21 补上）──
+      //
+      // 闸一步都没少，也没有第二条链：同一张挑战、同一个收据铸造口，只是那张 attestation 来自
+      // **用户此前选的档位**而不是他这一刻的手势（`generationSpendDecision.ts` 文档里的两种来源）。
+      // 判据仍只有一个 owner：`spendDecidedByPolicy`。宿主没递档位 → 读到 undefined → 按默认走，
+      // 绝不替用户花钱（下面那条 `policyDecided` 为 false 的路与改动前逐字相同）。
+      const policyDecided = spendDecidedByPolicy(ctx.approvalPolicy?.())
+      const policyReceipt = policyDecided
+        ? authority.mintReceipt(
+            challenge.token,
+            authority.createPolicyDecisionAttestation(challenge.token, {
+              policyMode: 'project',
+              policySurface: ctx.origin?.host ? `mcp:${ctx.origin.host}` : 'mcp',
+            }),
+          )
+        : undefined
       return {
         ...value,
         challengeId: challenge.challenge.challengeId,
@@ -273,26 +285,37 @@ async function dispatchSemanticStub(
         expiresAt: challenge.challenge.expiresAt,
         model,
         costScope: challenge.challenge.costScope,
-        maximumCost: challenge.challenge.reservationPreview.maximum,
+        maximumCost: unknownShotCount > 0 && maximumCost === 0 ? null : challenge.challenge.reservationPreview.maximum,
+        ...(unknownShotCount > 0 ? { unknownShotCount } : {}),
         currency: challenge.challenge.reservationPreview.currency,
-        handoff: { challengeToken: challenge.token, clientAttestation: true, contractHash, operationId: value?.operationId },
+        handoff: {
+          challengeToken: challenge.token,
+          clientAttestation: true,
+          contractHash,
+          operationId: value?.operationId,
+          ...(policyReceipt
+            ? {
+              receiptId: policyReceipt.receipt.receiptId,
+              receiptToken: policyReceipt.token,
+              decidedBy: policyReceipt.receipt.decidedBy,
+            }
+            : {}),
+        },
       }
     }
   }
   if (route.requiresReceipt) {
     if (!leased.lease) throw policyError({
       code: 'lease_required',
-      nextAction: policy.snapshot().nextAction,
-      phase: policy.snapshot().phase,
+      nextAction: OPEN_PROJECT_SESSION_NEXT_ACTION,
       capability: route.capability,
     })
-    const receipt = requireApprovalReceipt(leased.params, leased.lease, route.capability, ctx, policy)
+    const receipt = requireApprovalReceipt(leased.params, leased.lease, route.capability, ctx)
     if (ctx.authorizeGeneration) {
       const leaseToken = typeof leased.params.leaseHandle === 'string' ? leased.params.leaseHandle : ''
       if (!leaseToken || !ctx.projectSession) throw policyError({
         code: 'lease_required',
-        nextAction: policy.snapshot().nextAction,
-        phase: policy.snapshot().phase,
+        nextAction: OPEN_PROJECT_SESSION_NEXT_ACTION,
         capability: route.capability,
       })
       const upgraded = await ctx.projectSession.authority.authorizeGenerationSubmit(
@@ -315,7 +338,7 @@ async function dispatchSemanticStub(
     if (typeof ctx.generationPlanning === 'function' && route.capability === 'gate_decide') {
       const leaseToken = typeof leased.params.leaseHandle === 'string' ? leased.params.leaseHandle : ''
       if (!leaseToken || !ctx.projectSession) {
-        throw policyError(policyDetails(policy, route.capability, 'lease_required'), 'A verified project lease is required')
+        throw policyError(policyDetails(route.capability, 'lease_required'), 'A verified project lease is required')
       }
       const upgraded = await ctx.projectSession.authority.authorizeGenerationSubmit(
         leaseToken,
@@ -342,7 +365,7 @@ async function dispatchSemanticStub(
     && route.capability !== 'gate_decide') {
     return ctx.generationPlanning({ capability: route.capability, params: leased.params, lease: leased.lease, origin: ctx.origin })
   }
-  throw unavailableSemanticRoute(policy, route.capability)
+  throw unavailableSemanticRoute(route.capability)
 }
 
 export async function dispatchSemanticGeneration(
@@ -350,10 +373,9 @@ export async function dispatchSemanticGeneration(
   params: Record<string, unknown>,
   ctx: DispatchContext,
 ): Promise<unknown> {
-  const policy = ctx.generationPolicy ?? createMcpGenerationPolicy()
   const route = SEMANTIC_GENERATION_ROUTES[method]
   if (!route) return undefined
-  return dispatchSemanticStub(route, params, ctx, policy)
+  return dispatchSemanticStub(route, params, ctx)
 }
 
 export function isSemanticGenerationRoute(method: string): boolean {

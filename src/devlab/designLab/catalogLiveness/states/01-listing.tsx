@@ -22,6 +22,8 @@ function CatalogStage(): JSX.Element {
     const patches = modelListReconciliation(rows, 'apimart', { ok: true, models: list, statuses: [200] })
     return rows.map((model) => ({ ...model, ...patches.find((patch) => patch.modelKey === model.modelKey) }))
   })
+  // 字面量在这里是准确的：KNOWN_VENDORS 是**展示目录**，它的 vendorKey 恒为内置 key，
+  // 不是运行时 vendor 行（长不出兄弟连接）。已登记进门岗豁免名单并由断言验（#831）。
   const directory = KNOWN_VENDORS.find((vendor) => vendor.vendorKey === 'apimart')!
   const chips = projectModelSettingsCatalog(models as unknown as Array<Record<string, unknown>>).models
   return <div data-design-lab-stage className="bg-nomi-bg" style={{ width: 960, height: 720 }}>

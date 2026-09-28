@@ -15,7 +15,7 @@ const TimelinePanel = lazyWithChunkBoundary(
   () => import('../timeline/TimelinePanel'),
 )
 import { computeTimelineDuration } from '../timeline/timelineMath'
-import { resolveTimelineHandleLeft, type Interval } from './timelineHandlePlacement'
+import { resolveTimelineHandleLeft, type DockSpan } from './timelineHandlePlacement'
 import { collectBottomDockRects, resolveBottomDockScope } from './workspaceBottomDocks'
 
 /**
@@ -53,8 +53,10 @@ function useTimelineHandleLeft(
       const handleWidth = handle.offsetWidth
       if (!(width > 0) || !(handleWidth > 0)) return
       const canvasRect = canvas.getBoundingClientRect()
-      const docks: Interval[] = collectBottomDockRects(canvas, canvasRect, handle)
-      setLeft(resolveTimelineHandleLeft(width, docks, handleWidth))
+      const docks: DockSpan[] = collectBottomDockRects(canvas, canvasRect, handle)
+      const handleRect = handle.getBoundingClientRect()
+      const band = { top: handleRect.top - canvasRect.top, bottom: handleRect.bottom - canvasRect.top }
+      setLeft(resolveTimelineHandleLeft(width, docks, handleWidth, undefined, band))
     }
     const request = (): void => {
       if (frame) return

@@ -14,6 +14,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { screenshotSettled } from './_assert.mjs'
+import ffmpeg from '@ffmpeg-installer/ffmpeg'
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-cover-walk-'))
 const settingsDir = path.join(root, 'settings')
@@ -28,7 +29,7 @@ function assert(cond, label) {
   console.log(`  ✓ ${label}`)
 }
 
-const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+const ffmpegPath = ffmpeg.path
 function encodeFixture(args, label) {
   const run = spawnSync(ffmpegPath, ['-v', 'error', '-y', ...args], { timeout: 120_000 })
   if (run.status !== 0) throw new Error(`${label} 夹具编码失败: ${run.stderr?.toString().slice(-400)}`)

@@ -1,0 +1,115 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-validation-lane-level-downgrade",
+  "problem_type": "Risk classifier lane level depended on file order: a later lower-risk file overwrote a higher lane level",
+  "symptom": "PR #833 changed src/workbench/generationCanvas/reactFlow/ (connection handle stacking) yet its CI and main's CI at 5f17a7d17 skipped Canvas Acceptance (Linux); the regression surfaced only on the next PR (#834).",
+  "direct_cause": "classifyValidationPolicy assigned `policy.canvas = matchesAny(path, FULL_CANVAS_PATTERNS) ? 'full' : 'critical'` per file. The reactFlow files raised canvas to full, then later files (store/, styles/, tests/ux/canvas-*.walk.mjs) rewrote it to critical. Re-running the classifier on #833's diff returns canvas=critical (performance=true), so the canvas-acceptance job's `if: canvas == 'full'` was false.",
+  "class_root": "The only multi-level lane (canvas: none < critical < full) was written by plain assignment instead of a monotone max, so the result depended on diff ordering rather than on the riskiest file.",
+  "affected_population": [
+    "Every PR or main push whose diff mixes full-canvas paths with ordinary canvas paths sorted after them"
+  ],
+  "scope_paths": [
+    "scripts/validation-policy.mjs"
+  ],
+  "entry_points": [
+    "select-quality-gate-profile.mjs (CI scope job)",
+    "run-gates-tests.mjs (local gates tiering)"
+  ],
+  "internal_only_reason": "Internal CI risk-tier classifier; no external spec governs lane ordering.",
+  "invariants": [
+    "Each lane level is the maximum over all changed files; file order never lowers a lane."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "scripts/run-gates-tests.mjs",
+      "symbol": "classifyValidationPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/select-quality-gate-profile.mjs",
+      "symbol": "classifyValidationPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/validation-policy.mjs",
+      "symbol": "raiseCanvas"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "CI (select-quality-gate-profile) and local gates (run-gates-tests) are the two consumers of the one classifier; raiseCanvas is now the only writer of the canvas level inside it (three former direct assignments collapsed into it)."
+  },
+  "generality_proof": "All three writes of policy.canvas go through raiseCanvas, which only raises; the other lanes are booleans or 'full'-only strings already set monotonically. The node test runs the #833 shape in both orders and the full-walk/ordinary pair in both orders.",
+  "shared_boundaries": [
+    {
+      "path": "scripts/validation-policy.mjs",
+      "symbol": "raiseCanvas",
+      "responsibility": "Monotone max for the canvas lane level."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/validation-policy.mjs",
+      "entry_point": "performance-instrument / performance canvas writes",
+      "disposition": "enforced",
+      "evidence": "Both former `policy.canvas = 'full'` writes now call raiseCanvas."
+    },
+    {
+      "path": "scripts/validation-policy.mjs",
+      "entry_point": "unit/desktop/journeys/performance/package writes",
+      "disposition": "not-affected",
+      "evidence": "Only ever set to 'full' or true inside the loop; never lowered."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any mixed diff with an ordinary canvas file sorted after a reactFlow file skips full canvas acceptance.",
+    "same_class_scan": [
+      "rg \"policy\\.canvas\\s*=\" scripts: 3 writes before, 1 (inside raiseCanvas) after",
+      "Re-classified #833 diff (46b71c973..5f17a7d17): critical before, full after",
+      "node scripts/door-map.mjs classifyValidationPolicy raiseCanvas --roots=scripts: 3 doors"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/validation-policy.mjs",
+    "invariant": "Lane levels only rise across files.",
+    "failure_mode": "validation-policy.node-test.mjs 'lane levels only rise' goes red on any order-dependent downgrade (positive control: old classifier -> 1 failure).",
+    "exception_policy": "none",
+    "strategy": "Route every canvas-level write through one monotone helper.",
+    "artifacts": [
+      "scripts/validation-policy.mjs"
+    ]
+  },
+  "regression_tests": [
+    "scripts/validation-policy.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/validation-policy.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "scripts/validation-policy.mjs"
+    ],
+    "rationale": "The three direct assignments are replaced in the same change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency.",
+    "exit_criteria": []
+  },
+  "migration": "None; classification is computed per run.",
+  "residual_risks": [
+    "Other PRs merged while the bug existed may have skipped canvas acceptance; the next main push that touches reactFlow/ will re-run it."
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/validation-policy.mjs",
+    "tests": [
+      "scripts/validation-policy.node-test.mjs"
+    ],
+    "why": "分档只在这一个分类器里算；节点测试两种顺序都跑，阳性对照：旧分类器 1 条红。"
+  }
+}

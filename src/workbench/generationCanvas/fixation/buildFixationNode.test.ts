@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { buildFixationNodeSpec } from './buildFixationNode'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 function node(patch: Partial<GenerationCanvasNode>): GenerationCanvasNode {

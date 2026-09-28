@@ -91,7 +91,7 @@ async function auditStandardCase(browser, testCase) {
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     lang: document.documentElement.lang,
     h1Count: document.querySelectorAll('h1').length,
-    sections: ['cost', 'workflow', 'open', 'start', 'community'].every((id) => Boolean(document.getElementById(id))),
+    sections: ['price', 'features', 'open', 'community'].every((id) => Boolean(document.getElementById(id))),
     groupQrVisible: (() => {
       const qr = document.querySelector('#community-qr')
       if (!qr) return false
@@ -106,8 +106,12 @@ async function auditStandardCase(browser, testCase) {
     businessLink: Boolean(document.querySelector('a[href*="business_inquiry.yml"]')),
     discussionsLink: Boolean(document.querySelector('a[href*="/issues"]')),
     wechatText: (document.body.textContent || '').includes('TZ857886159'),
-    costTabs: document.querySelectorAll('[data-cost]').length,
-    workflowTabs: document.querySelectorAll('[data-step]').length,
+    filmPlayer: Boolean(document.querySelector('.hero video[data-film][controls][poster]')) && Boolean(document.querySelector('.hero [data-film-play]:not([hidden])')),
+    segments: Array.from(document.querySelectorAll('video[data-segment]')).map((video) => ({
+      start: Number(video.dataset.start),
+      end: Number(video.dataset.end),
+      poster: video.getAttribute('poster') || '',
+    })),
     downloadTriggers: document.querySelectorAll('[data-download-nomi]').length,
     directDownloadOptions: document.querySelectorAll('[data-direct-download]').length,
     heroGithub: (() => {
@@ -132,9 +136,8 @@ async function auditStandardCase(browser, testCase) {
           style.borderRadius === downloadStyle.borderRadius,
       )
     })(),
-    heroGenericEyebrow: Boolean(document.querySelector('.hero .eyebrow')),
     heroFilmTrigger: Boolean(document.querySelector('.hero [data-open-dialog="launch-film"]')),
-    heroContribution: Boolean(document.querySelector('.hero .hero-contribution')),
+    heroMeta: Boolean(document.querySelector('.hero .hero-meta')),
     macNoticeVisible: (() => {
       const notice = document.querySelector('.mac-download-note')
       return Boolean(notice && getComputedStyle(notice).display !== 'none' && notice.getBoundingClientRect().height > 0)
@@ -148,33 +151,11 @@ async function auditStandardCase(browser, testCase) {
       return Boolean(link && getComputedStyle(link).display !== 'none')
     })(),
     logoLoaded: (document.querySelector('.brand img')?.naturalWidth || 0) > 0,
-    productImagesLoaded: Array.from(
-      document.querySelectorAll('.product-shot img, .cost-evidence img, .workflow-visual img, .agent-image img'),
-    ).every((image) => image.naturalWidth > 0),
-    currentScreenshots: Array.from(document.querySelectorAll('img'))
-      .filter((image) => /screen-/.test(image.src))
-      .every((image) => /-2026-08-17\.png$/.test(image.src)),
-    mediaFrames: ['.product-shot', '.cost-evidence', '.workflow-image-frame', '.agent-image'].map((selector) => {
-      const frame = document.querySelector(selector)
-      const image = frame?.querySelector('img')
-      const frameRect = frame?.getBoundingClientRect()
-      const imageRect = image?.getBoundingClientRect()
-      return {
-        selector,
-        width: frameRect?.width || 0,
-        height: frameRect?.height || 0,
-        imageWidth: imageRect?.width || 0,
-        imageHeight: imageRect?.height || 0,
-      }
+    // 首屏片子窗口 + 六个功能段：都是 16:9 的有界画框，不让媒体霸占整屏。
+    mediaFrames: Array.from(document.querySelectorAll('.film, .node-frame')).map((frame) => {
+      const rect = frame.getBoundingClientRect()
+      return { width: rect.width, height: rect.height }
     }),
-    costBalance: Math.abs(
-      (document.querySelector('.cost-panel-copy')?.getBoundingClientRect().height || 0) -
-        (document.querySelector('.cost-evidence')?.getBoundingClientRect().height || 0),
-    ),
-    workflowBalance: Math.abs(
-      (document.querySelector('.workflow-tabs')?.getBoundingClientRect().height || 0) -
-        (document.querySelector('.workflow-visual')?.getBoundingClientRect().height || 0),
-    ),
   }))
   assert(facts.overflow <= 1, `${testCase.name}: no horizontal overflow`)
   assert(
@@ -183,7 +164,7 @@ async function auditStandardCase(browser, testCase) {
   )
   assert(facts.h1Count === 1 && facts.sections, `${testCase.name}: one H1 and complete information architecture`)
   assert(
-    facts.groupQrVisible && facts.groupQrSource === '/assets/group-wechat-2026-09-23.jpg',
+    facts.groupQrVisible && facts.groupQrSource === '/assets/group-wechat-2026-10-01.jpg',
     `${testCase.name}: current group QR is directly visible`,
   )
   assert(
@@ -194,9 +175,14 @@ async function auditStandardCase(browser, testCase) {
     facts.businessLink && facts.discussionsLink && facts.wechatText,
     `${testCase.name}: community and project fallbacks remain usable`,
   )
-  assert(facts.costTabs === 4 && facts.workflowTabs === 4, `${testCase.name}: cost and workflow controls exist`)
   assert(
-    facts.downloadTriggers === 3 &&
+    facts.filmPlayer &&
+      facts.segments.length === 6 &&
+      facts.segments.every((segment) => segment.start < segment.end && segment.end <= 90 && /\/assets\/promo-0\.22\/still-/.test(segment.poster)),
+    `${testCase.name}: hero film player and six film segments exist`,
+  )
+  assert(
+    facts.downloadTriggers === 2 &&
       facts.directDownloadOptions >= 3 &&
       facts.releasesListingLinks === 0 &&
       facts.localeLink &&
@@ -204,74 +190,66 @@ async function auditStandardCase(browser, testCase) {
     `${testCase.name}: direct download path and visible locale switch exist`,
   )
   assert(
-    facts.heroGithub && facts.heroContribution,
-    `${testCase.name}: hero GitHub CTA matches download sizing and has an invitation`,
+    facts.heroGithub && facts.heroMeta,
+    `${testCase.name}: hero GitHub CTA matches download sizing and platform facts sit under it`,
   )
-  assert(
-    !facts.heroGenericEyebrow && !facts.heroFilmTrigger,
-    `${testCase.name}: generic hero eyebrow and film trigger are removed`,
-  )
+  assert(!facts.heroFilmTrigger, `${testCase.name}: retired launch-film dialog trigger stays removed`)
   assert(facts.macNoticeVisible, `${testCase.name}: macOS signing warning is visible before download`)
+  assert(facts.logoLoaded, `${testCase.name}: logo renders`)
   assert(
-    facts.logoLoaded && facts.productImagesLoaded && facts.currentScreenshots,
-    `${testCase.name}: current product evidence renders`,
-  )
-  assert(
-    facts.mediaFrames.every(
-      (frame) =>
-        frame.width > frame.height &&
-        Math.abs(frame.width - frame.imageWidth) <= 2.1 &&
-        Math.abs(frame.height - frame.imageHeight) <= 2.1,
-    ),
-    `${testCase.name}: every product screenshot fills a bounded landscape frame`,
+    facts.mediaFrames.length === 7 &&
+      facts.mediaFrames.every((frame) => frame.width > frame.height && Math.abs(frame.width / frame.height - 16 / 9) < 0.02),
+    `${testCase.name}: film and every segment sit in a bounded 16:9 frame`,
   )
   const maxMediaHeight = Math.max(...facts.mediaFrames.map((frame) => frame.height))
   assert(
     maxMediaHeight <= (testCase.viewport.width <= 760 ? 360 : 620),
-    `${testCase.name}: product screenshots do not dominate the page vertically`,
+    `${testCase.name}: product media does not dominate the page vertically`,
   )
-  if (testCase.viewport.width > 760) {
-    assert(
-      facts.costBalance <= 2 && facts.workflowBalance <= 2,
-      `${testCase.name}: screenshot columns share a height baseline with their copy`,
-    )
-  }
   assert(browserErrors.length === 0, `${testCase.name}: no page errors`)
   await page.screenshot({ path: path.join(shotsDir, `home-${testCase.name}.png`), fullPage: true })
 
   assert(await page.locator('[data-github-hero]').count() === 1, `${testCase.name}: one hero GitHub CTA exists`)
 
   if (testCase.name === 'zh-desktop') {
-    const generationTab = page.locator('[data-cost="generation"]')
-    await generationTab.focus()
-    await generationTab.press('ArrowRight')
+    // 首屏整片：点了才出声播放；功能段：滚到眼前自己在对应秒数里循环。
+    // 点样张里那颗「播放宣传片（有声音）」：原生播放器开播，按钮自己消失。
+    await page.locator('[data-film-play]').click()
+    await page.waitForFunction(() => {
+      const video = document.querySelector('.film-video')
+      return Boolean(video && !video.paused && video.currentTime > 0.2)
+    })
+    assert(await page.locator('.film-video').evaluate((video) => !video.muted && video.controls), 'hero film plays with sound and controls once the user starts it')
+    assert((await page.locator('[data-film-play]').count()) === 0, 'the play pill steps aside once the film is playing')
+    await page.locator('.film-video').evaluate((video) => video.pause())
+    const storyboard = page.locator('[data-feature="storyboard"] video')
+    await storyboard.scrollIntoViewIfNeeded()
+    await page.waitForFunction(() => {
+      const video = document.querySelector('[data-feature="storyboard"] video')
+      return Boolean(video && !video.paused && video.currentTime >= Number(video.dataset.start))
+    })
+    const segmentTime = await storyboard.evaluate((video) => ({ t: video.currentTime, start: Number(video.dataset.start), end: Number(video.dataset.end), muted: video.muted }))
     assert(
-      (await page.locator('[data-cost="trial"]').getAttribute('aria-selected')) === 'true',
-      'cost tabs support arrow-key navigation',
-    )
-    assert(
-      (await page.locator('#cost-image').getAttribute('src')) === '/assets/screen-3d-2026-08-17.png',
-      'cost tab swaps current product evidence',
+      segmentTime.muted && segmentTime.t >= segmentTime.start && segmentTime.t <= segmentTime.end + 0.5,
+      'feature segment plays muted inside its own seconds of the film',
     )
 
-    await page.locator('[data-step="edit"]').click()
-    assert(
-      (await page.locator('#workflow-image').getAttribute('src')) === '/assets/screen-timeline-2026-08-17.png',
-      'workflow tab swaps current timeline evidence',
-    )
-
-    await page.getByRole('button', { name: '添加作者微信' }).click()
+    await page.getByRole('button', { name: '添加维护者微信' }).click()
     assert(await page.locator('#author-dialog').isVisible(), 'maintainer WeChat dialog opens')
     await page.locator('#author-dialog .dialog-close').click()
     assert(!(await page.locator('#author-dialog').isVisible()), 'maintainer WeChat dialog closes')
 
-    await page.locator("a[href='#community-qr']").click()
-    await page.waitForTimeout(300)
+    await page.locator('#nav-links a[href="#community"]').click()
+    // 平滑滚动：等二维码真的进了视口，而不是睡一段固定时间。
+    await page.waitForFunction(() => {
+      const rect = document.querySelector('#community-qr')?.getBoundingClientRect()
+      return Boolean(rect && rect.top < innerHeight && rect.bottom > 0)
+    })
     const qrInView = await page.locator('#community-qr').evaluate((element) => {
       const rect = element.getBoundingClientRect()
       return rect.top < innerHeight && rect.bottom > 0
     })
-    assert(qrInView && new URL(page.url()).hash === '#community-qr', 'closing CTA scrolls to the visible group QR')
+    assert(qrInView && new URL(page.url()).hash === '#community', 'community nav link scrolls to the visible group QR')
     await page.screenshot({ path: path.join(shotsDir, 'home-zh-desktop-community.png') })
   }
 
@@ -282,7 +260,7 @@ async function auditStandardCase(browser, testCase) {
       (await menu.getAttribute('aria-expanded')) === 'true' && (await page.locator('#nav-links').isVisible()),
       'mobile menu opens',
     )
-    await page.getByRole('link', { name: '社群与项目' }).click()
+    await page.getByRole('link', { name: '社区', exact: true }).first().click()
     assert((await menu.getAttribute('aria-expanded')) === 'false', 'mobile menu closes after navigation')
     await page.locator('#community-qr').scrollIntoViewIfNeeded()
     await page.screenshot({ path: path.join(shotsDir, 'home-zh-mobile-community.png') })
@@ -325,17 +303,18 @@ async function auditNoJavaScript(browser, pathName, locale, claim) {
   const releasesListing = await page.locator('a[href="https://github.com/aqm857886159/Nomi/releases/latest"]').count()
   const heroGithub = await page.locator('[data-github-hero]').count()
   const heroFilm = await page.locator('.hero [data-open-dialog="launch-film"]').count()
-  const heroContribution = await page.locator('.hero .hero-contribution').count()
+  const noScriptFilm = await page.locator('.hero video[data-film][controls]').count()
+  const noScriptPill = await page.locator('.hero [data-film-play]').isVisible()
   const qr = await page.locator('#community-qr img').getAttribute('src')
   const business = await page.locator('a[href*="business_inquiry.yml"]').count()
   const installGuide = (await page.locator('.download-fallback [data-mac-install-guide]').textContent()) || ''
   assert(h1.includes(claim), `${locale}: no-JS H1 remains`)
   assert(
-    downloadTriggers === 3 && directDownloads >= 3 && releasesListing === 0,
+    downloadTriggers === 2 && directDownloads >= 3 && releasesListing === 0,
     `${locale}: no-JS direct downloads remain without a Releases detour`,
   )
-  assert(heroGithub === 1 && heroFilm === 0 && heroContribution === 1, `${locale}: no-JS hero GitHub path remains without the film path`)
-  assert(qr === '/assets/group-wechat-2026-09-23.jpg' && business > 0, `${locale}: no-JS QR and project paths remain`)
+  assert(heroGithub === 1 && heroFilm === 0 && noScriptFilm === 1 && !noScriptPill, `${locale}: no-JS hero keeps the GitHub path and a playable native film`)
+  assert(qr === '/assets/group-wechat-2026-10-01.jpg' && business > 0, `${locale}: no-JS QR and project paths remain`)
   assert(
     installGuide.includes('xattr -dr com.apple.quarantine') && /official|官方/.test(installGuide),
     `${locale}: no-JS macOS recovery stays available and source-qualified`,
@@ -351,17 +330,17 @@ async function auditReducedMotion(browser) {
   })
   const page = await context.newPage()
   await page.goto(`${baseUrl}/`, { waitUntil: 'networkidle' })
+  // 减少动效档下页面根本不挂自动播放的观察器（client.mjs），滚过去立刻就能断言，不用等。
+  await page.locator('[data-feature="agent"] video').scrollIntoViewIfNeeded()
   const facts = await page.evaluate(() => ({
-    animations: Array.from(document.querySelectorAll('[data-reveal]')).map(
-      (element) => getComputedStyle(element).animationName,
-    ),
+    segments: Array.from(document.querySelectorAll('video[data-segment]')).map((video) => ({ paused: video.paused, controls: video.controls })),
     sectionHeights: Array.from(document.querySelectorAll('main section')).map(
       (section) => section.getBoundingClientRect().height,
     ),
   }))
   assert(
-    facts.animations.every((name) => name === 'none'),
-    'reduced motion: reveal animation is disabled',
+    facts.segments.length === 6 && facts.segments.every((segment) => segment.paused && segment.controls),
+    'reduced motion: feature segments never autoplay and offer their own controls',
   )
   assert(
     facts.sectionHeights.every((height) => height > 0),
@@ -385,11 +364,11 @@ async function auditBlockedMedia(browser) {
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
   }))
   assert(
-    facts.h1.includes('Bring the cost of AI video') && facts.download,
+    facts.h1.includes('Pro-grade AI video.') && facts.download,
     'blocked media: claim and primary action remain',
   )
   assert(
-    facts.qr === '/assets/group-wechat-2026-09-23.jpg' && facts.business,
+    facts.qr === '/assets/group-wechat-2026-10-01.jpg' && facts.business,
     'blocked media: community and project paths remain',
   )
   assert(facts.overflow <= 1, 'blocked media: layout remains stable')
@@ -421,7 +400,9 @@ async function auditDirectDownloads(browser) {
   assert(requestedWindowsUrl === windowsUrl, 'clicking Windows download requests the installer directly')
   await windowsContext.close()
 
-  const armContext = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1280, height: 800 } })
+  // 伪装 Mac 时连 userAgent 一起换：在 Windows 机器上跑时，真实 UA 里的 Windows 会先命中 Windows 分支。
+  const macUserAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
+  const armContext = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1280, height: 800 }, userAgent: macUserAgent })
   await armContext.addInitScript(() => {
     Object.defineProperty(navigator, 'platform', { configurable: true, get: () => 'MacIntel' })
     Object.defineProperty(navigator, 'userAgentData', {
@@ -439,7 +420,7 @@ async function auditDirectDownloads(browser) {
   )
   await armContext.close()
 
-  const ambiguousContext = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1280, height: 800 } })
+  const ambiguousContext = await browser.newContext({ locale: 'zh-CN', viewport: { width: 1280, height: 800 }, userAgent: macUserAgent })
   await ambiguousContext.addInitScript(() => {
     Object.defineProperty(navigator, 'platform', { configurable: true, get: () => 'MacIntel' })
     Object.defineProperty(navigator, 'userAgentData', { configurable: true, get: () => undefined })
@@ -501,8 +482,8 @@ async function auditLocalePreference(browser) {
 const browser = await chromium.launch({ headless: true })
 try {
   for (const testCase of cases) await auditStandardCase(browser, testCase)
-  await auditNoJavaScript(browser, '/', 'zh-CN', '把 AI 视频的成本')
-  await auditNoJavaScript(browser, '/en/', 'en-US', 'Bring the cost of AI video')
+  await auditNoJavaScript(browser, '/', 'zh-CN', '商业级体验，')
+  await auditNoJavaScript(browser, '/en/', 'en-US', 'Pro-grade AI video.')
   await auditReducedMotion(browser)
   await auditBlockedMedia(browser)
   await auditDirectDownloads(browser)

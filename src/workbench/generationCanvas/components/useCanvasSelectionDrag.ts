@@ -1,18 +1,32 @@
 import React from 'react'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
+import { getUndoJournalGeneration } from '../events/canvasUndoJournal'
+import { withProjectAction, type ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from './canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, beginCanvasDragging, type CanvasDragLease } from './canvasDraggingFlag'
 import type { GenerationCanvasState } from '../store/canvasStoreTypes'
 
 type DragRecord = {
+  project: ProjectExecutionContext
+  generation: number
+  pointerId: number
+  lease?: CanvasDragLease
   clientX: number
   clientY: number
   moved: boolean
   historyCaptured: boolean
 }
 
-type GroupDragRecord = DragRecord & { groupId: string }
+/**
+ * `duplicateOnMove`：按下时按着 Alt/⌥（LibTV「Option + 拖动」同款）。第一次真的移动时才复制——
+ * 只点一下不拖不会凭空多出一个框（tldraw Translating.startCloning / Excalidraw 同样在移动时才复制）。
+ */
+type GroupDragRecord = DragRecord & { groupId: string; duplicateOnMove: boolean }
 type Delta = { x: number; y: number }
+
+function isDragTargetCurrent(drag: DragRecord): boolean {
+  return !drag.project.signal.aborted && drag.generation === getUndoJournalGeneration()
+}
 
 type CanvasSelectionDragOptions = {
   readOnly: boolean
@@ -23,6 +37,8 @@ type CanvasSelectionDragOptions = {
   moveGroupNodes: GenerationCanvasState['moveGroupNodes']
   moveSelectedNodes: GenerationCanvasState['moveSelectedNodes']
   selectNodes: GenerationCanvasState['selectNodes']
+  /** 点中的框里没有可选的成员：框本身成为选区（交给框动作层记着，Delete / 菜单删它）。 */
+  onSelectEmptyFrame?: (groupId: string | null) => void
 }
 
 export function useCanvasSelectionDrag({
@@ -34,6 +50,7 @@ export function useCanvasSelectionDrag({
   moveGroupNodes,
   moveSelectedNodes,
   selectNodes,
+  onSelectEmptyFrame,
 }: CanvasSelectionDragOptions): {
   handleGroupFramePointerDown: (
     event: React.PointerEvent<HTMLDivElement>,
@@ -63,6 +80,8 @@ export function useCanvasSelectionDrag({
    */
   const flushPendingDragMove = React.useCallback(() => {
     dragMoveFrameRef.current = null
+    const drag = draggingGroupRef.current ?? draggingSelectionRef.current
+    if (!drag || !isDragTargetCurrent(drag)) return
     const groupDelta = pendingGroupDeltaRef.current
     const selectionDelta = pendingSelectionDeltaRef.current
     if (groupDelta) {
@@ -129,32 +148,56 @@ export function useCanvasSelectionDrag({
     flushPendingDragMove()
   }, [flushPendingDragMove])
 
-  React.useEffect(() => () => {
-    if (dragMoveFrameRef.current !== null) {
-      window.cancelAnimationFrame(dragMoveFrameRef.current)
-      dragMoveFrameRef.current = null
+  const settleDrag = React.useCallback(() => {
+    const group = draggingGroupRef.current
+    const selection = draggingSelectionRef.current
+    const drag = group ?? selection
+    group?.lease?.release()
+    selection?.lease?.release()
+    // These previews are already in the store, unlike React Flow's node draft.
+    // Interruptions settle the original graph, never a newly hydrated target.
+    if (drag?.moved && isDragTargetCurrent(drag)) {
+      flushScheduledDragMove()
+      if (group) emitGroupDragSettled(group.groupId)
+      else emitSelectionDragSettled()
+      commitPersistedChange()
     }
-  }, [])
+    draggingGroupRef.current = null
+    draggingSelectionRef.current = null
+    if (dragMoveFrameRef.current !== null) window.cancelAnimationFrame(dragMoveFrameRef.current)
+    dragMoveFrameRef.current = null
+    pendingGroupDeltaRef.current = null
+    pendingSelectionDeltaRef.current = null
+  }, [commitPersistedChange, emitGroupDragSettled, emitSelectionDragSettled, flushScheduledDragMove])
 
   React.useEffect(() => {
     if (readOnly) return undefined
     const handleMove = (event: PointerEvent) => {
       const drag = draggingGroupRef.current
+      const active = drag ?? draggingSelectionRef.current
+      if (active && !isDragTargetCurrent(active)) { settleDrag(); return }
       const scale = zoomRef.current || 1
       if (drag) {
+        if (event.pointerId !== drag.pointerId) return
         const delta = { x: (event.clientX - drag.clientX) / scale, y: (event.clientY - drag.clientY) / scale }
         if (delta.x === 0 && delta.y === 0) return
+        if (drag.duplicateOnMove) {
+          drag.duplicateOnMove = false
+          // 复制本身就是这次手势的撤销点（duplicateGroupForDrag 打了 barrier），后面的搬动不再另打。
+          const copyId = useGenerationCanvasStore.getState().duplicateGroupForDrag(drag.groupId)
+          if (copyId) Object.assign(drag, { groupId: copyId, historyCaptured: true })
+        }
         if (!drag.historyCaptured) {
           captureHistory()
           drag.historyCaptured = true
         }
         Object.assign(drag, { clientX: event.clientX, clientY: event.clientY, moved: true })
-        setCanvasDragging(null, true, CANVAS_DRAGGING_OWNER.group) // 拖组框 = 组里的节点在动：浮层与拖单个节点一样收起
+        drag.lease?.activate() // 拖组框 = 组里的节点在动：浮层与拖单个节点一样收起
         scheduleGroupMove(drag.groupId, delta)
         return
       }
       const selectionDrag = draggingSelectionRef.current
-      if (!selectionDrag) return
+      if (!selectionDrag || event.pointerId !== selectionDrag.pointerId) return
       const delta = {
         x: (event.clientX - selectionDrag.clientX) / scale,
         y: (event.clientY - selectionDrag.clientY) / scale,
@@ -165,39 +208,23 @@ export function useCanvasSelectionDrag({
         selectionDrag.historyCaptured = true
       }
       Object.assign(selectionDrag, { clientX: event.clientX, clientY: event.clientY, moved: true })
-      setCanvasDragging(null, true, CANVAS_DRAGGING_OWNER.selection)
+      selectionDrag.lease?.activate()
       scheduleSelectionMove(delta)
     }
-    const handleUp = () => {
-      const drag = draggingGroupRef.current
-      const selectionDrag = draggingSelectionRef.current
-      if (drag) setCanvasDragging(null, false, CANVAS_DRAGGING_OWNER.group)
-      if (selectionDrag) setCanvasDragging(null, false, CANVAS_DRAGGING_OWNER.selection)
-      if (drag?.moved || selectionDrag?.moved) flushScheduledDragMove()
-      if (drag) {
-        draggingGroupRef.current = null
-        if (drag.moved) {
-          emitGroupDragSettled(drag.groupId)
-          commitPersistedChange()
-        }
-      }
-      if (selectionDrag) {
-        draggingSelectionRef.current = null
-        if (selectionDrag.moved) {
-          emitSelectionDragSettled()
-          commitPersistedChange()
-        }
-      }
+    const handleUp = (event: PointerEvent) => {
+      const active = draggingGroupRef.current ?? draggingSelectionRef.current
+      if (!active || event.pointerId !== active.pointerId) return
+      settleDrag()
     }
     window.addEventListener('pointermove', handleMove)
     window.addEventListener('pointerup', handleUp)
-    window.addEventListener('blur', handleUp)
     return () => {
       window.removeEventListener('pointermove', handleMove)
       window.removeEventListener('pointerup', handleUp)
-      window.removeEventListener('blur', handleUp)
+      settleDrag()
     }
   }, [
+    settleDrag,
     captureHistory,
     commitPersistedChange,
     emitGroupDragSettled,
@@ -215,29 +242,42 @@ export function useCanvasSelectionDrag({
     options?: { selectMembers?: boolean },
   ) => {
     if (readOnly || event.button !== 0) return
+    const project = withProjectAction(project => project)
+    if (!project) return
     event.preventDefault()
     event.stopPropagation()
+    settleDrag()
     const state = useGenerationCanvasStore.getState()
     const group = state.groups.find((candidate) => candidate.id === groupId)
-    if (options?.selectMembers !== false && group?.nodeIds.length) {
+    if (options?.selectMembers !== false && group) {
       const groupNodeIds = new Set(group.nodeIds)
       const memberIds = state.nodes
         .filter((node) => groupNodeIds.has(node.id) && (node.categoryId || 'shots') === group.categoryId)
         .map((node) => node.id)
-      if (memberIds.length) selectNodes(memberIds)
+      // 空框：以前这里什么都不做，上一次的选区原样留着——点了空框再按 Delete，删掉的是别处的卡。
+      // 现在点空框 = 选中这个框本身（节点选区清空），Delete / 菜单「删除」删的就是它。
+      selectNodes(memberIds)
+      onSelectEmptyFrame?.(memberIds.length ? null : groupId)
+    } else if (group) {
+      // 折叠编组卡（selectMembers:false）：成员藏在卡里，选区就是这张卡本身——走框选中态，
+      // 于是出「+」圈（model/selectedGroup.ts）、Delete 删的是这个编组连同成员（一次撤销，2026-09-24 拍板）。
+      selectNodes([])
+      onSelectEmptyFrame?.(groupId)
     }
     // 新的一次拖动从零起账：上一次留下的亚像素余数不该跟着走（同一个框连拖两次时会）。
     pendingGroupDeltaRef.current = null
-    draggingGroupRef.current = { groupId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
-  }, [readOnly, selectNodes])
+    draggingGroupRef.current = { project, generation: getUndoJournalGeneration(), lease: beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.group, { pointerId: event.pointerId, active: false, onCancel: settleDrag }), pointerId: event.pointerId, groupId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false, duplicateOnMove: event.altKey }
+  }, [settleDrag, onSelectEmptyFrame, readOnly, selectNodes])
 
   const handleSelectionBoundsPointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (readOnly || event.button !== 0 || selectedNodeCount < 2) return
+    const project = withProjectAction(project => project)
+    if (!project) return
     event.preventDefault()
     event.stopPropagation()
-    pendingSelectionDeltaRef.current = null
-    draggingSelectionRef.current = { clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
-  }, [readOnly, selectedNodeCount])
+    settleDrag()
+    draggingSelectionRef.current = { project, generation: getUndoJournalGeneration(), lease: beginCanvasDragging(event.currentTarget, CANVAS_DRAGGING_OWNER.selection, { pointerId: event.pointerId, active: false, onCancel: settleDrag }), pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY, moved: false, historyCaptured: false }
+  }, [settleDrag, readOnly, selectedNodeCount])
 
   return { handleGroupFramePointerDown, handleSelectionBoundsPointerDown }
 }

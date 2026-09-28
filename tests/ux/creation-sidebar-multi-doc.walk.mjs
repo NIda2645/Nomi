@@ -15,6 +15,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from './_launchApp.mjs'
 import { clickOrFail, expectCount, expectText, expectVisible, screenshotSettled } from './_assert.mjs'
+import { ensureCreationResourceTree } from './_creationResourceTree.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-creation-sidebar-'))
@@ -102,6 +103,9 @@ async function closeAppHard(instance) {
  * 这条断言就是回归的红点——分镜模式下资源树整棵消失时，第一句就红。
  */
 async function expectResourceTreeReachable(win, where, { documents, storyboards, titles }) {
+  // 分镜页默认收起那一列（A-1 刀 1）：可达 = 最多一步。这一步走的是真界面上的展开钮，
+  // 展开钮都没有才是真的回不去（那才是 09-06 回归的相）。
+  await ensureCreationResourceTree(win, where)
   await expectVisible(win.locator('[data-creation-resource-tree="true"]'), `${where}：创作资源树不在场——点不到别的原稿/方案`)
   await expectCount(win.locator('[data-document-row]'), documents, `${where}：原稿行数应为 ${documents}`)
   await expectCount(win.locator('[data-storyboard-id]'), storyboards, `${where}：分镜方案行数应为 ${storyboards}`)

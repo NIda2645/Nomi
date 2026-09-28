@@ -3,10 +3,7 @@
 // reason 里：「在中立模块导出 as const tuple，再让各侧 derive」。2026-09-14 收敛于此。
 // 本文件不引 node 内置、不引 electron。
 //
-// 成员集与收敛前逐字相同（词表门岗要求收敛记录的成员与被退役的 debt 完全一致，才能证明它解释的是同一份
-// 词表；成员的增删是收敛落地之后的另一件事）。「配置指向别的 / 已删除 profile」归 launcher-stale：
-// launcher = Nomi 写下的那条**能启动这一个 Nomi 的**条目（command + args + NOMI_SETTINGS_DIR），三者任一
-// 对不上，这条启动的就不是当前这个 Nomi。
+// 损坏的启动器可自愈；仍然有效的另一份 Nomi / profile 只显示归属，由用户主动切换。
 
 /** 客户端配置里那条 nomi 条目相对当前 Nomi 的兼容性判定（mcpConfig.classifyMcpEntry 的唯一产出）。 */
 export const MCP_CONFIG_STATES = [
@@ -16,7 +13,8 @@ export const MCP_CONFIG_STATES = [
   'legacy-launcher',
   'stale-development',
   'auth-stale',
-  'launcher-stale',
+  'launcher-broken',
+  'launcher-elsewhere',
   'custom',
 ] as const
 export type McpConfigState = (typeof MCP_CONFIG_STATES)[number]

@@ -30,11 +30,11 @@ describe("cross-device continuation contract", () => {
     const imagePath = path.join(projectA, "assets", "imported", "hero.png");
     fs.mkdirSync(path.dirname(imagePath), { recursive: true });
     fs.writeFileSync(imagePath, "png-bytes", "utf8");
-    const initial = initializeWorkspace(projectA, { name: "Film One", payload: { canvas: { nodes: [{ id: "image-1", result: { type: "image", url: localAssetUrl("workspace-1", "assets/imported/hero.png") } }] } } });
+    const initial = initializeWorkspace(projectA, { id: "workspace-1", name: "Film One", payload: { canvas: { nodes: [{ id: "image-1", result: { type: "image", url: localAssetUrl("workspace-1", "assets/imported/hero.png") } }] } } });
     writeWorkspaceManifest(projectA, { ...initial, revision: 1, savedAt: Date.now(), updatedAt: Date.now() });
 
     mirror(projectA, projectB);
-    const report = inspectWorkspaceSync(projectB);
+    const report = inspectWorkspaceSync(projectB, initial.id);
     expect(report.status).toBe("ready");
     expect(report.referencedAssetCount).toBe(1);
     expect(report.missingAssetCount).toBe(0);
@@ -48,8 +48,8 @@ describe("cross-device continuation contract", () => {
     const projectB = path.join(machineB, "Film One");
     const initial = initializeWorkspace(projectA, { name: "Film One", payload: { title: "first" } });
     mirror(projectA, projectB);
-    const snapshot = inspectWorkspaceSync(projectB);
+    const snapshot = inspectWorkspaceSync(projectB, initial.id);
     writeWorkspaceManifest(projectA, { ...initial, revision: 1, savedAt: Date.now(), updatedAt: Date.now(), payload: { title: "second" } });
-    expect(inspectWorkspaceSync(projectA, { revision: snapshot.observedRevision ?? 0, contentHash: snapshot.contentHash ?? "" }).status).toBe("external-change");
+    expect(inspectWorkspaceSync(projectA, initial.id, { revision: snapshot.observedRevision ?? 0, contentHash: snapshot.contentHash ?? "" }).status).toBe("external-change");
   });
 });

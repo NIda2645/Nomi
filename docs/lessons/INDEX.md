@@ -4,7 +4,7 @@
 >
 > **谁读**：接手本仓任何工作的人或执行体（Claude / Codex / 协作者）。动手前不必通读——**按触发场景查**：写走查查 A 区、判测试红绿查 B 区、动分支/合并查 C 区、排查线上/平台故障查 D 区、做产品判断查 E 区。
 >
-> **和 `CLAUDE.md` 的分工**：`CLAUDE.md` 是**永远相关**的原则（P1–P5 / D1–D6 / 17 条 R 规则），必须每轮加载；本目录是**触发才查**的具体坑，可以有很多条、可以过期作废。原则升进 CLAUDE.md，细节留这里。规则详解在 [`../engineering-rules.md`](../engineering-rules.md)，编排纪律在 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)。
+> **和 `CLAUDE.md` 的分工**：`CLAUDE.md` 是**永远相关**的原则（P1–P5 / D1–D6 / 18 条 R 规则），必须每轮加载；本目录是**触发才查**的具体坑，可以有很多条、可以过期作废。原则升进 CLAUDE.md，细节留这里。规则详解在 [`../engineering-rules.md`](../engineering-rules.md)，编排纪律在 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)。
 
 ## 维护纪律
 
@@ -59,6 +59,7 @@
 
 - [删旧实现里的一道门之前，先问它在保证什么](migration-parity-needs-user-behavior.md) — 磁吸带子的「选中才出」不是实现细节，它保证的是「卡片之间的连线永远点得到」；删门前先把那条保证写成断言并验它会红
 - [跑批渲染必须一格一个浏览上下文，复用同一个到第 34 次就再也起不来](one-browser-context-per-render-or-the-batch-dies-midway.md) — 前几十格都好、从某一格起 `waitForFunction` 恒超时，而单独 `ONLY=` 跑那一格完全正常
+- [不在任何 CI 链里的走查会一批腐烂，而腐烂的走查会把真 bug 一起藏起来](unwired-walks-rot-as-a-batch.md) — 某个面多条走查同时红、要判「产品回归还是走查过期」时读；21 层过期里藏着 1 个真回归，附四条死法对照表与落盘取证法
 - [走查断言必须有真信号](walkthrough-assertions-need-a-real-signal.md) — 写/改走查前必读：用 `tests/ux/_assert.mjs`，假绿是框架缺陷不是手滑
 - [走查取点只信真实光标到位后的那一次](walkthrough-geometry-must-reverify-under-the-real-cursor.md) — stage 一变窄「点空白被磁性 + 吃掉 / 框选 autoPan 永不安定 / 连线点中心被卡拦」一起来；判据是白名单（最顶层元素就是 pane），单一 owner `tests/ux/_canvasHit.mjs`
 - [`waitForFunction` 配 async 判据 = 一个从不等待的等待](wait-for-function-with-async-predicate-never-waits.md) — 判据里有 `await` 就等于没等：Promise 被当 truthy，0ms 返回 null；下游那句 `Cannot read properties of null` 长得像业务 bug。换 `expect.poll`
@@ -72,7 +73,7 @@
 - [修过期走查先打探针，别读源码猜选择器](walkthrough-repair-probe-first.md) — 附画布 composer 已验证锚点与三个坑
 - [走查里别用 `win.reload()`](walkthrough-no-win-reload.md) — 原地刷新后活动项目恒 null，面板静默空掉，像极了真 bug
 - [走查默认跑隔离 profile，不是真实资料库](walkthrough-default-profile-is-isolated.md) — 要写真库得 `isolate:false`
-- [隔离实例的 key/设置组装三坑](iso-walkthrough-key-seeding-traps.md) — `hasApiKey=false` 不证解密失败；别手拷设置文件
+- [隔离实例的 key/设置组装五坑](iso-walkthrough-key-seeding-traps.md) — `hasApiKey=false` 不证解密失败；别手拷设置文件；Windows 上钥匙是 userData 的 `Local State`，目录备份也带密文（owner `tests/ux/_realProfile.mjs`）
 - [走查里种供应商：渲染层 bridge 种不出「能用」的那一家](walkthrough-cannot-seed-a-vendor-through-the-renderer.md) — 三个 sanitize 一律按下 `enabled`；「没钥匙 ⇒ 0 个可用」会以 `vendor_disabled` 的理由假绿，要逐字断言 reason
 - [断言计算色：别比字面串、翻主题先等 transition](walkthrough-computed-color-asserts.md) — oklch 序列化 + 插值帧两坑
 - [一个死选择器同时造假红和假绿](dead-selector-lies-both-ways.md) — 找到一处失效锚点就 grep 它的全部用法
@@ -84,10 +85,14 @@
 - [弹层被祖先 overflow 裁掉时三样证据同时失明](overlay-clipped-by-ancestor-overflow.md) — 浮层走查必查：`toBeVisible` / rect / 「点得动」全绿也可能用户点不到，改用 `expectOverlayReachable`
 
 - [固定等待三连坑](fixed-station-waits-three-incidents.md) — 视频、审批、点击统一用状态判据与预算上限；R18 拦固定等待
+- [付费验收挂住时，第一步是截图，不是读日志](paid-acceptance-hang-screenshot-before-logs.md) — 「等上游」和「屏幕上有个框在等人点」在日志里长得一样；四个付费 e2e 因不铸 grant 长期默认 SKIP 也是同一类盲区
 
+- [Windows 笔记本的真实可用画布是 1280×720](windows-laptops-are-1280x720.md) — 改浮框 / 停靠物 / 面板位置前；1920×1080@150% = 1280×720，面板全开时生成钮会被画面小窗盖住，用 elementFromPoint 验可点
+- [判定「这段从没生效过」之前，先顺着效果找一遍所有来源](dead-code-verdict-must-trace-the-effect.md) — 以「main 上没生效」为由删代码或说服用户改拍板之前；按效果（如 requestCanvasFit）数门，别只看要删的那个调用者
 ## B. 测试与 CI 的红绿判读
 
-- [CI 的 E2E 链是串行 fail-fast，本地 gates 一条都不含——push 前先本地跑完整条链](ci-e2e-is-fail-fast-so-run-the-whole-chain-locally-before-push.md) — 连红几轮但每轮红的是不同走查 = 发现被串行化，不是没到根因；正文门岗只读 push payload
+- [CI 的 E2E 链是串行 fail-fast，本地 gates 一条都不含——push 前先本地跑完整条链](ci-e2e-is-fail-fast-so-run-the-whole-chain-locally-before-push.md) — ✅ 已固化（`pnpm run test:e2e:ci-chain` + CI 汇总步 + 正文现取）；连红几轮但每轮红的是不同走查 = 发现被串行化，不是没到根因
+- [Release-critical 旅程必须一轮收齐失败](release-critical-must-collect-all-failures.md) — RC 的 Electron/MCP/性能链串行但不中断，最后统一判定并上传证据；防止一轮只暴露第一条红
 - [启动器默认值不能覆盖调用配置](launcher-defaults-must-not-override-env.md) — GUI 已起但 MCP resources/list 超时：先打印双方 capabilityDir；默认派生只能在显式参数与 env 都未配置时发生。
 - [测试目录必须等资源真正关闭后再删](fixture-teardown-must-await-resource-owners.md) — node:test 红后挂死、临时目录 ENOTEMPTY、kill-only 清理。
 - [停掉一个 agent ≠ 现场清空：子 agent 还在写、哨兵还在跑](stopping-an-agent-leaves-children-and-sentinels.md) — B · TaskStop 只停一个；先 ListAgents 停子 agent，再 pgrep 杀 until 循环，证明无写入后才派接力写手
@@ -116,7 +121,12 @@
 - [文档级对照拦不住代码级硬写](doc-level-conformance-misses-field-level-hardcoding.md) — 刚交完四列表/逐层对照就想说「这个框架接好了」；框架某个字段逐项可选而我们对所有实例写了同一个值，两份文档都看不见（字段裁决要机器化、门岗不许绑死某个框架）
 - [参考实现不拆开逐层对照 = 没研究](reference-implementation-not-dissected-is-not-research.md) — 上一条的第二半：四列表只覆盖「已经想到的能力」，照不出「压根没想到还有这一层」；框架自带 coding agent/官方 example 必须按九层拆开并排，判定 `一致`/`有意不同(理由须是领域约束)`/`没想到`，「没想到」清单是实施阶段前置门
 - [写死的墙钟上限会在工作量长大时把 CI 砍在半路](fixed-wall-clock-caps-break-when-work-grows.md) — `exceeded <N>ms and was terminated` 而每条断言都有结果 = 进程被砍不是断言红；上限要从「有多少活」派生，别把 20 改成 40
+- [门岗的 scope 指到不存在的目录，会安静地报绿](gate-scope-pointing-nowhere-passes-silently.md) — 依赖「登记表+scope+禁令」式门岗、刚搬过目录、或在给新禁令做阳性对照时；附「探针写成注释会被 stripComments 吃掉」一坑
 
+- [技能里的指令会跨代累积，模型服从的是过期那条](stale-directives-outlive-tool-renames.md) — Agent「只回文字不调工具」先翻这条；工具**名**过期有门岗，「该不该调用它」的祈使句过期没有任何机器看得见；删过期禁令要只删过期那半（「不许写画布」作废时「不许花钱」仍成立）
+- [走查手写的模型面调用没有类型，动词一改名它就静默失配](walkthrough-tool-args-are-a-compiler-blind-spot.md) — 改完动词字段名说「引用方都同步了」前；或走查报「某某没有落成」而你没动那条生产代码
+
+- [CI 门岗拿两个时间点比较，别人刚合的改动会算到你头上](ci-gates-compare-two-points-in-time.md) — Contracts 红在你没碰过的文件上、刚 rerun 或刚批准 fork 运行时；合 main 重推即可，别抬基线（根治 T-QA-33）
 ## C. Git 交付、分支与文档改动
 
 - [三点 diff 会掩盖过期分支的大回滚](three-dot-diff-hides-stale-branch-reverts.md) — 判断能不能合必须用两点 diff
@@ -126,6 +136,7 @@
 - [PR 攒到阶段边界再开](pr-cadence-batch-by-default.md) — 频繁 PR 的成本是墙钟：CI 排队 + 合并列车 + 门岗链冲突；**但前提是还有下一件活可搭车——手上空了要交回给用户就是边界，必须开 PR，否则活搁浅在一次性分支上永远合不进去**
 - [派任务只给分支名会撞车](dispatch-names-branch-not-path-causes-collisions.md) — 必须写死绝对目录 + 开工 `git worktree add`
 - [下否定式结论前先证明你在哪个 checkout](prove-which-checkout-before-negative-claims.md) — 「仓库里没有 X」多半是你站在一个陈旧分支上
+- [手写的状态账本没有时刻，读的人会把旧快照当现状](handwritten-status-ledger-goes-stale-silently.md) — 引用「盘点 / 台账 / inventory」下结论前先现查一遍；能机器派生的状态别手写
 - [改 baseline JSON 用文本级编辑，别整体重写](json-baselines-need-surgical-edits.md) — 短数组原文是单行，重写会炸出上千行假 diff
 - [方案讨论期别急着 commit/PR](discuss-before-committing-docs.md) — 聊透拍板再落 git；实施类不受限
 - [commit 阶段的绕口要拒绝，push 阶段才留痕审计](commit-bypass-must-be-blocked-not-audited.md) — 同一种绕过写法两阶段处置相反；判据是「拦错代价 / 放过代价 / 有无合法场景」，不是「哪个更严」
@@ -133,8 +144,14 @@
 - [闸门凭据要绑「哪棵树 + 哪个提交」](gate-stamps-must-be-keyed-to-tree-and-head.md) — 只认固定路径 + mtime 的 gates 戳会跨 worktree 互相顶用，同一天误放和误杀各栽一次
 - [git 的文件列表默认是转义过的，中文名一律「不像 docs/」](git-path-output-is-quoted-by-default.md) — ✅ 已由 `check:git-path-quoting` + `check:hook-behavior` 轴 C 接管；纯文档 PR 白等五门 / 门岗静默少扫文件，都是它；读 git 路径一律 `-z`
 - [合并后不立刻录交付收据，窗口就永久关闭](verify-merged-receipt-window-closes-fast.md) — `verify-merged` 要求 HEAD == `origin/main` == 目标 SHA；main 一前进就再也录不成，收据命令要自带重试
+- [RC 必须在 release 分支上触发，不能只把分支名填进 `ref` 输入](rc-must-be-dispatched-on-the-release-branch.md) — 手动触发 `Desktop Release Candidate` 时；漏了 `--ref`，RC 全绿、验收做完，发布却在最后一步报 `RC commit mismatch`
 
+- [Windows 上删 worktree 会顺着 junction 删掉目标](windows-worktree-remove-follows-junctions.md) — 删 / 归档任何含 mklink /J 的工作树前；先 rmdir 链接本身；测试成片「Cannot find package」时先看包目录是不是空的
 ## D. 排查与平台故障
+
+- [程序自己的簿记不许冒充「用户留下的事实」](program-bookkeeping-must-not-pose-as-user-facts.md) — 一个判断「有时生效、有时不生效」、换条路径复现结果就变时读；先数它读的每个事实的全部写口，挡掉同步回声 / 挂载 / 默认值兜底
+- [只在 Mac 上测，就是让 82% 的用户替我们测](mac-only-testing-ships-windows-blind.md) — 发版前；Windows 用户报卡死/点了没反应/保存或导入失败而 Mac 复现不了；「只在 Windows 红」的测试想当噪音跳过时。附同日五个 Windows 专属问题的机制对照表与「用 Electron 自带 Node 判红绿」
+- [手拼 `file://` 判断「我是不是入口」，Windows 上门岗静默零输出、退出码 0](main-guard-hand-built-file-url-is-silent-on-windows.md) — ✅ 已由 `check:main-guard` 接管；Windows 上某个门岗/脚本一行不打印就退出 0 时先读；入口判断只写 `pathToFileURL(process.argv[1]).href`
 - [修之前先数门：这份状态到底有几个入口](count-the-doors-before-fixing.md) — 判为 recurring、或同一模块这周又来一份合同时：先跑 `scripts/door-map.mjs` 把全部写/读入口摆出来再决定修在哪层；附 2026-09-11 三簇同根 bug 的 file:line
 - [长寿命对象不许揣短寿命名词当身份证](holder-must-not-keep-a-shorter-lived-noun.md) — `surface_port_stale` / `unavailable`、或合同写了「现抓」真机仍红时先读；冻点从 open 滑到 prepare 再滑到 execute 是同一类，不是结构改完；产品债 T-AG-16
 - [能力绑在组件挂载生命周期上，「不存在」就会被说成「过期」](capability-bound-to-component-lifecycle-reports-stale.md) — Agent/MCP 工具「时好时坏」、`*_stale` 一族错误码重试永远撞同一句、或你正要在 `.tsx` useEffect 里 `setXxxTools(api)` 发布能力时读；owner 上移到会话层、组件只做增强覆盖；门岗 `check:capability-lifecycle`
@@ -169,6 +186,7 @@
 - [批量产出要逐步冒出来 + 自动编组](batch-output-appears-progressively-and-grouped.md) — 一个动作产出多个节点时的既定交互
 - [「改不了 / 没有按钮」是可发现性问题](vendor-manage-is-a-discoverability-problem.md) — 功能一直在，根因是控件被 overflow 裁出视口
 - [用户说「坏了」多半是「找不到」](group-says-broken-usually-means-undiscoverable.md) — 先真机实测再信；扫到真 bug ≠ 那就是他的 bug
+- [拒绝话术只对人说，不对 Agent 说](refusal-text-must-also-tell-the-agent-a-path.md) — 工具错误写「请到设置里…」等于让程序去点按钮；人类面与模型面必须是两份文案
 - [盘上状态有第二个读者时，写方不派失效信号 =「导进来了却用不上」](imported-thing-invisible-to-the-second-reader.md) — 用户说「我加进去了但用不了」；或要给某份进程外列表加第二个读者
 - [中转平台的上限 ≠ 模型的上限](model-limits-first-party-over-reseller.md) — 参数上限要查一手厂商文档
 - [KIE 文件上传的实测契约](kie-file-upload-real-contract.md) — 官方文档三处与实测不符（响应字段 / 回链域名 / 有效期）
@@ -182,10 +200,13 @@
 - [一屏堆四颗文字按钮，是「规则缺席」不是「这四颗写错了」](text-buttons-pile-up-when-the-rule-is-missing.md) — 加第二颗文字按钮 / 给按钮想文案 / 纠结配什么 icon 之前；先问「它是不是主按钮的一个状态」
 - [连带面必须单独成题，不能埋在一句话里](coupled-face-must-be-its-own-question.md) — 出方案/grill 前先扫：改动会不会连带同一组件的另一个宿主；连带面单独开 Q、不许并进主题目的从句
 
+- [判据依赖的输入在现实里不存在，判据就是废话](a-rule-is-only-as-real-as-its-inputs.md) — 评审「按某个值决定行为」的规则前；先数那个值在真实数据里有几成存在（Nomi 目前不算价格）
+- [修一个「回归」之前，先问那个行为有没有人要](restoring-a-regression-needs-a-user-reason.md) — 老走查红了、准备把它当回归恢复之前；框架默认行为或无需求出处的，先交用户拍板（方向键微调那次）
 ## F. 多智能体编排
 
 > 编排纪律的主文档是 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)（`CLAUDE.md` R27 的 L2 详解）。本区只放**执行体自身的工具怪癖**——那不是编排原则，是踩过的具体坑。
 
+- [按目录派工的并行 lane，会在合并之前各自长出同一概念的第二份实现](parallel-lanes-split-concepts-before-merge.md) — 开两条以上 lane、或看到「两边改的文件不重叠，应该不冲突」时必读；R33 的来源实例（参数准入两份判据 / 供应商落家两份规则 / 渲染层替账本做决定 / 草稿键绑错身份）
 - [`codex exec` 后台派工要关 stdin](codex-exec-background-needs-stdin-closed.md) — 缺 `</dev/null` 会永久挂起等输入；会话内后台工人全随 App 死
 - [查不查不能靠记性：先看别人做了没必须机器逼](prior-art-check-cannot-rely-on-memory.md) — 派实施前先派反方出 prior-art 报告；系统只奖励「做出来」，提醒在高负载下必漏（`check:prior-art` 已接管）
 - [子 agent 起不来时的探针法](subagent-startup-400-probe-method.md) — 一次 harness 侧 400 故障的定位法与两次误诊，别照抄已过期的结论
@@ -197,5 +218,14 @@
 - [Docs Gate Autosync 必须有正式 CI](docs-autosync-cannot-push-protected-main.md) — GH006 与跳过 CI 是写回链故障；固定 action PR + 默认 token 防循环，CI 批准边界明确
 - [样张两条硬纪律：真字形、真比例](mockups-need-real-glyphs-and-true-proportions.md) — 图标从 @tabler 包抽真实路径；布局线框按 1680×842 真比例并自己看过
 
+- [省额度：重复的事写脚本，有界的机械活给 Codex，要判断的才用最贵的模型](save-quota-script-the-repeats-codex-the-mechanical.md) — 派工前三问（做过吗·有界有判官吗·上下文是不是太大了）；Codex 外发姿势与四条硬约束；哪些验收绝不能省
 - [实验夹具必须经过真实调用点的投影](lab-fixtures-must-mirror-real-callsites.md) — 模型目录、档位与 canonical 参数不可手写平行真相。
 - [真机走查里的失败先查自己这条分支的调用链，再怪环境](branch-failure-blame-your-own-call-chain-first.md) — #777 把自己造的 `generation_surface_unavailable` 写成凭据问题；错误码字面量先找产生点、环境归因必须带排除证据、修法加门岗不补名字
+
+- [协调会话运作手册](../engineering/agent-orchestration-playbook.md#19-协调会话运作手册用户只和一个会话说话2026-09-26-拍板) — 用户只和协调会话说话；总账与恢复例程、工人不建卡不直接问用户、合并加收据、归档、额度恢复后主动唤醒、发版前真实付费矩阵
+## 🤖 自动收录（待人工归位）
+
+> 这些链接由 `.github/workflows/docs-autosync.yml` 在 main 上自动补登，只保证「能被搜到」，
+> 不代表已归好类。顺手把某一行挪进上面对应主题的表里即可——挪走后本区自然变短。
+
+- [2026-09-09-feel-regression](2026-09-09-feel-regression.md)

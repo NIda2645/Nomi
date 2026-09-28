@@ -159,6 +159,27 @@ describe('importLocalMediaFilesToGenerationCanvas', () => {
     expect(useGenerationCanvasStore.getState().nodes[0].result?.url).toBe(asset.data.url)
   })
 
+  it('拖入锚点按真实卡面尺寸换算：竖图的可见卡面中心压在松手点（负坐标同样成立）', async () => {
+    const cursor = { x: -500, y: -300 }
+    await importLocalMediaFilesToGenerationCanvas([makeImageFile()], { projectContext: currentProject(),
+      basePosition: cursor,
+      anchor: { xRatio: 0.5, yRatio: 0.5 },
+      exactPosition: true,
+      capacity: null,
+      createObjectUrl: () => 'blob:portrait',
+      revokeObjectUrl: vi.fn(),
+      readImageDimensions: async () => ({ width: 1080, height: 1920 }),
+      uploadFile: async () => ({ id: 'asset-p', name: 'p', userId: 'local', createdAt: '', updatedAt: '', data: { url: 'nomi-local://asset/project-1/p.png' } }),
+      recoverFile: async () => null,
+    })
+    const node = useGenerationCanvasStore.getState().nodes[0]
+    const width = node.size?.width ?? 0
+    const height = Number(node.meta?.previewHeight)
+    expect(height).toBeGreaterThan(width)
+    expect(node.position.x + width / 2).toBeCloseTo(cursor.x, 0)
+    expect(node.position.y + height / 2).toBeCloseTo(cursor.y, 0)
+  })
+
   it('does not persist a data URL before the local asset import finishes', async () => {
     let resolveUpload: ((asset: WorkbenchAssetDto) => void) | null = null
     const uploadFile = vi.fn(() => new Promise<WorkbenchAssetDto>((resolve) => {

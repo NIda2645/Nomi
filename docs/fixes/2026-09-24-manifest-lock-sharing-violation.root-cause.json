@@ -1,0 +1,196 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-24-manifest-lock-sharing-violation",
+  "problem_type": "A transient Windows sharing violation turns a released project lock into a permanent self-owned lock",
+  "symptom": "With the project folder in a sync client or scanned by antivirus, after one save every later save, import, paste, generation-result localization, export and agent write waits 5 s and fails with 'WorkspaceManifestLockBusyError: Workspace manifest owner is still alive or cannot be verified'; the UI shows 项目保存失败，请检查本地磁盘权限 permanently and the user cannot go back to the library or close the window, so they force-quit and lose every edit since the first failure.",
+  "direct_cause": "releaseWorkspaceManifestLock renames .nomi/manifest-transaction.lock away; a foreign handle on the freshly written owner.json (opened with FileShare.Read, as sync clients and antivirus do) makes the rename fail with EPERM on Windows. Release threw Lost and left the directory in place; it records this process's own pid, process.kill(pid, 0) says alive, so every later acquire in this process is denied until the process exits.",
+  "class_root": "The lock module had no notion of 'held by an operation in this process'; it could only ask whether the recorded pid is alive, so a lock left behind by this process could never be told apart from one it is actively using. Around it, every directory operation treated a transient sharing violation as either lost ownership (release), a corrupt record (owner read), or a hard failure (cleanup), none of which is true on Windows.",
+  "affected_population": [
+    "Windows users whose projects folder is inside a sync client (坚果云, 微力同步, OneDrive — the cross-device guide recommends this) or is scanned by antivirus / search indexer",
+    "Every lock user in the process: project saves, asset import/paste, generation-result localization (the paid result stays only as a provider URL), export, agent lane writes, canvas read surfaces",
+    "A second machine syncing the same folder, which sees the leftover lock as 'owned on another host' and cannot save",
+    "macOS/Linux are not affected: POSIX allows renaming a directory whose files are open"
+  ],
+  "scope_paths": [
+    "electron/workspace/workspaceManifestLock.ts",
+    "electron/workspace/workspaceRegistry.ts",
+    "electron/jsonFile.ts"
+  ],
+  "entry_points": [
+    "saveWorkspaceProject -> withWorkspaceManifestStagedTransaction (debounced project save)",
+    "captureAssetWriteContext -> ensureWorkspaceProjectIdentity -> withWorkspaceManifestTransaction (import, paste, generation localization, frame extraction)",
+    "withWorkspaceManifestTransactionSync (readWorkspaceManifest locked read, initializeWorkspace, recovery)",
+    "withRegistryLock (recent-workspaces registry read-modify-write on every save and library list)"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/isaacs/node-graceful-fs/blob/main/polyfills.js",
+      "checked_at": "2026-09-24",
+      "purpose": "graceful-fs retries win32 rename on EACCES/EPERM/EBUSY with backoff: the established treatment of transient sharing violations, which the lock-dir operations did not apply."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilew",
+      "checked_at": "2026-09-24",
+      "purpose": "Without FILE_SHARE_DELETE in the other opener's share mode, delete/rename of the file (and therefore of its parent directory) fails while the handle is open; this is why the release rename returns EPERM only on Windows."
+    }
+  ],
+  "invariants": [
+    "A lock whose owner record is this host and pid and whose nonce is not held by any live in-process lease is abandoned and reclaimable immediately",
+    "Release never turns a transient sharing violation into lost ownership or a failed committed transaction; the lease is relinquished and the leftover directory is reaped in the background",
+    "An owner record that cannot be read because another program holds it open means 'busy, retry', never 'invalid, quarantine'",
+    "Cleanup of release, candidate and quarantine directories can never mask the primary error or block the next acquire indefinitely"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/workspace/workspaceManifestLock.ts",
+    "tests": [
+      "electron/workspace/workspaceManifestLock.transientRelease.test.ts",
+      "electron/workspace/workspaceManifestLock.test.ts",
+      "electron/workspace/workspaceRegistry.test.ts"
+    ],
+    "why": "Every caller acquires and releases through workspaceManifestTransaction into this module, so the lock module is the only layer that can know whether a lease is live in this process and how a directory operation failed; the registry's own lock gets the same retry through the shared jsonFile helper."
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/jsonFile.ts",
+      "symbol": "isSharingViolation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/jsonFile.ts",
+      "symbol": "retryOnSharingViolation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceManifestLock.ts",
+      "symbol": "retryOnSharingViolation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceManifestLock.ts",
+      "symbol": "isSharingViolation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceManifestTransaction.ts",
+      "symbol": "releaseWorkspaceManifestLock"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceManifestTransaction.ts",
+      "symbol": "tryAcquireWorkspaceManifestLock"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceManifestTransaction.ts",
+      "symbol": "acquireWorkspaceManifestLock"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceRegistry.ts",
+      "symbol": "retryOnSharingViolation"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 8,
+    "why_not": "All lock traffic already converges on workspaceManifestTransaction (sync, staged and async transactions), which is why the fix lives entirely inside the lock module; the remaining doors are the one retry-policy owner (jsonFile) and its two consumers (manifest lock, registry lock), which are different locks and must stay separate."
+  },
+  "generality_proof": "Saves, asset writes, sync reads and recovery all acquire and release through the three transaction doors into workspaceManifestLock, so the live-lease registry, the sharing-violation-aware owner read, the non-throwing release and the non-masking cleanup apply to every caller at once. The retry policy has one owner (retryOnSharingViolation in jsonFile.ts) shared by file renames, lock-directory renames/removals, owner reads and the registry lock.",
+  "shared_boundaries": [
+    {
+      "path": "electron/workspace/workspaceManifestLock.ts",
+      "symbol": "isOwnAbandonedRecord",
+      "responsibility": "Reclaims a lock or quarantine left by this process instance that no live in-process lease holds."
+    },
+    {
+      "path": "electron/workspace/workspaceManifestLock.ts",
+      "symbol": "releaseWorkspaceManifestLock",
+      "responsibility": "Relinquishes ownership even when the directory cannot be moved yet, schedules the background reap, and only reports Lost for genuine loss."
+    },
+    {
+      "path": "electron/jsonFile.ts",
+      "symbol": "retryOnSharingViolation",
+      "responsibility": "The single bounded backoff policy for EPERM/EBUSY/EACCES on synchronous file-system operations."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/workspace/workspaceManifestTransaction.ts",
+      "entry_point": "runTransactionSync / runTransactionAsync",
+      "disposition": "enforced",
+      "evidence": "Real-app held sweep (sync-client simulation) after the fix: no WorkspaceManifestLock errors, no 项目保存失败 banner, back-to-library works; before: 5181-8612 busy denials per run and every later save failed."
+    },
+    {
+      "path": "electron/assets/assetWriteContext.ts",
+      "entry_point": "captureAssetWriteContext",
+      "disposition": "enforced",
+      "evidence": "Imports and generation localization in the held sweep (drop, toolbar import, paste, generation reveal) all landed as nomi-local assets; previously 8 of 11 failures in the held run were generation-result localization."
+    },
+    {
+      "path": "electron/workspace/workspaceRegistry.ts",
+      "entry_point": "withRegistryLock",
+      "disposition": "enforced",
+      "evidence": "rmdir of the registry .lock now retries sharing violations, so a transient failure no longer leaves a lock that makes the next registry call spin 3 s on the main thread (workspaceRegistry.test.ts)."
+    },
+    {
+      "path": "electron/events/eventLogRepository.ts",
+      "entry_point": "appendEvents",
+      "disposition": "not-affected",
+      "evidence": "Best-effort by design: appends that hit EBUSY under the holder are dropped and logged, they never block or fail a user action; tracked as a residual risk rather than changed here."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every acquire writes a fresh owner.json, exactly the file sync clients and antivirus open on creation, so any Windows user with a synced or scanned projects folder hits it again on some save; the product's own cross-device guide tells users to put projects in a sync client.",
+    "same_class_scan": [
+      "door-map releaseWorkspaceManifestLock acquireWorkspaceManifestLock tryAcquireWorkspaceManifestLock retryOnSharingViolation isSharingViolation: 8 doors, all lock traffic through workspaceManifestTransaction",
+      "Instrumented held runs x3: exactly one release EPERM per run, then 5181 / 8612 / 5313 busy denials against the same self-owned ownerId",
+      "Stock Windows without the holder: 3000+3000 lock cycles in %TEMP% and Documents with Defender on showed zero lock failures but 2 EPERM on project.json replacement absorbed by renameSyncWithRetry, proving the transient exists naturally",
+      "rg rmSync|renameSync in workspaceManifestLock.ts: release, publish finally, quarantine and release cleanup all previously unguarded"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/workspace/workspaceManifestLock.ts",
+    "invariant": "A self-owned lock that no live in-process lease holds is reclaimable, and transient sharing violations never become lost ownership, corrupt records or masked errors",
+    "failure_mode": "Genuine loss (ENOENT, owner mismatch, another host) still fails closed; unreadable foreign records and failed cleanups report Busy so async callers retry instead of stealing or giving up",
+    "exception_policy": "none",
+    "strategy": "Track live leases per process at the lock boundary, route every lock-directory rename/remove and owner read through the shared sharing-violation retry, and make release relinquish ownership with a background reap instead of throwing.",
+    "artifacts": [
+      "electron/workspace/workspaceManifestLock.ts",
+      "electron/jsonFile.ts",
+      "electron/workspace/workspaceRegistry.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/workspace/workspaceManifestLock.transientRelease.test.ts",
+    "electron/workspace/workspaceRegistry.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/workspace/workspaceManifestLock.transientRelease.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/workspace/workspaceManifestLock.ts"
+    ],
+    "rationale": "The throwing release, the throw-on-cleanup-failure in removeReleasedLocks, the unguarded publish cleanup and the catch-all 'invalid owner' read were replaced in place; renameSyncWithRetry now delegates to retryOnSharingViolation instead of owning a second copy of the retry loop."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The lock protocol and its Windows handling are Nomi code on top of Node fs; no third-party runtime controls it.",
+    "exit_criteria": []
+  },
+  "migration": "No data migration. A lock orphaned by an older build is reclaimed on the next acquire once that older process has exited (pid dead), as before; locks orphaned by this build are reclaimed immediately in-process and reaped in the background.",
+  "residual_risks": [
+    "Another live Nomi process on the same machine (e.g. an MCP helper) still waits until this process reaps or reclaims its orphaned lock (reap retries at 0.25 s, 1 s, 4 s, 15 s and 60 s; a process that quits within that window leaves the directory for the next acquire).",
+    "A lock left by a crashed machine B in a synced folder still blocks machine A ('owned on another host'); cross-host stale-lock policy is unchanged and belongs to the multi-device design.",
+    "PID reuse by an unrelated live process after a crash still keeps a dead owner's lock alive; processStartedAtMs is recorded but not compared.",
+    "Event-log appends are still dropped (best-effort) while a holder has log-0.jsonl open.",
+    "Under an aggressive holder (every new file opened 300 ms) the main process can spend up to about 0.8 s in synchronous retries per operation; the renderer kept rendering (max frame gap 515 ms) but IPC replies are delayed during that time.",
+    "Not tested inside a real OneDrive/坚果云/NAS folder or with 360/火绒; the holder simulates their share mode."
+  ]
+}

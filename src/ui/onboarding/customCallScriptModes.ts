@@ -3,7 +3,7 @@ import {
   resolveArchetypeForModel,
   type ArchetypeReferenceSlot,
   type ArchetypeTransportTaskKind,
-} from '../../config/modelArchetypes'
+} from '../../../electron/shared/modelArchetypes'
 import type { ModelParameterControl } from '../../config/modelCatalogMeta'
 
 export type CustomCallCatalogModel = {

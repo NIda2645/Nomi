@@ -23,14 +23,12 @@
     {
       "kind": "write",
       "path": "Replace with a real file that writes the affected state (generate with scripts/door-map.mjs, never by hand)",
-      "line": 1,
-      "symbol": "Replace with the symbol that actually appears on that line"
+      "symbol": "Replace with the symbol that file still mentions — doors carry no line number"
     },
     {
       "kind": "read",
       "path": "Replace with a real file that reads the affected state",
-      "line": 1,
-      "symbol": "Replace with the symbol that actually appears on that line"
+      "symbol": "Replace with the symbol that file still mentions — doors carry no line number"
     }
   ],
   "door_reduction": {

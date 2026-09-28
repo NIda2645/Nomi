@@ -1,5 +1,6 @@
 import { getDesktopBridge } from '../../../desktop/bridge'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
+import { isVendorOfBuiltin } from '../../../../electron/shared/builtinVendorIdentity'
 
 const LOCAL_ASSET_PREFIX = 'nomi-local://'
 
@@ -77,8 +78,11 @@ export async function resolveAssetUploadConsent(
   const targetVendor = typeof node.meta?.modelVendor === 'string'
     ? node.meta.modelVendor
     : typeof node.meta?.vendor === 'string' ? node.meta.vendor : ''
+  // 本地运行时两家没有「地址 + Key」形态，长不出兄弟连接，字面量在这里是准确的（见门岗豁免名单）。
   if (/^comfyui-local/i.test(targetVendor) || targetVendor === 'codex-local') return { allowed: true, needsConfirmation: false, remember }
-  const kie = deps.listVendors().find((vendor) => vendor.key === 'kie')
+  // #831 最要紧的一处：认不出兄弟连接（`kie--x`）就会把本该走 Kie 通道的素材推去匿名图床。
+  const vendors = deps.listVendors()
+  const kie = vendors.find((vendor) => isVendorOfBuiltin(vendors, vendor.key, 'kie'))
   if (kie?.enabled && (kie.authType === 'none' || kie.hasApiKey)) return { allowed: true, needsConfirmation: false, remember }
   if (policy === 'allow') return { allowed: true, needsConfirmation: false, remember }
   return { allowed: true, needsConfirmation: true, remember }

@@ -14,6 +14,7 @@ import { useNodeUsageCount } from '../../hooks/useNodeRelationships'
 import { STRIPED_BG_CLASS, UsageDot, UploadFallback } from './CardCommon'
 import { useNodeImageUpload } from '../../adapters/useNodeImageUpload'
 import { EditableNodeTitle } from './EditableNodeTitle'
+import { useNodeMediaMeasurement } from '../useNodeMediaMeasurement'
 import { DeferredNodeImage } from '../DeferredNodeMedia'
 
 type Props = {
@@ -22,6 +23,7 @@ type Props = {
 
 function PropCardNodeImpl({ node }: Props): JSX.Element {
   const { t } = useTranslation()
+  const mediaMeasurement = useNodeMediaMeasurement(node)
   const meta = readPropMeta(node)
   const usageCount = useNodeUsageCount(node.id, node.title)
   const hasImage = Boolean(node.result?.url)
@@ -37,6 +39,7 @@ function PropCardNodeImpl({ node }: Props): JSX.Element {
         {hasImage ? (
           <DeferredNodeImage
             src={node.result!.url!}
+            onLoad={mediaMeasurement.onImageLoad}
             alt={node.title || ''}
             className="w-full h-full object-contain object-center select-none pointer-events-none"
           />
@@ -46,7 +49,7 @@ function PropCardNodeImpl({ node }: Props): JSX.Element {
       </div>
 
       {hasInfoArea ? (
-        <div className="shrink-0 px-3 py-2 flex flex-col gap-1">
+        <div ref={mediaMeasurement.infoRef} className="shrink-0 px-3 py-2 flex flex-col gap-1">
           <div className="flex items-center justify-between gap-2">
             <EditableNodeTitle
               nodeId={node.id}

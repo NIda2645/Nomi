@@ -1,0 +1,72 @@
+{
+  "id": "S03",
+  "bucket": "should",
+  "prompt": "角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。",
+  "acceptableSkills": [
+    "director-consistency"
+  ],
+  "outputRubric": "参考锚、稳定特征、跨镜状态",
+  "timedOut": false,
+  "trace": {
+    "schemaVersion": 1,
+    "sessionId": "01a0b6a4-eb4c-712e-ba30-b3f93fad64c8",
+    "turnId": "01a0b6a4-ecc4-712e-ba30-b3fcd5a08036",
+    "timestamp": 1789770656964,
+    "spanName": "invoke_agent Nomi",
+    "prompt": "角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。",
+    "response": "我来为你载入 Nomi 的一致性检查方法 skill。这个技能专门处理跨镜头角色换脸换衣服的问题。\n\n基于这份 skill，我来为你整理一套实操的一致性检查方法。核心是**三级锚定体系**和**五维一致性检查**。\n\n## 第一步：识别所有跨镜元素\n\n先读取你的画布，看看现有镜头里有哪些角色、场景、道具需要一致性锚定：\n\n\n\n画布是空的，说明你还没有生成镜头。这是好事——可以在生成前就把一致性机制建立好，避免事后修复。\n\n## 一致性五维检查方法\n\n解决「角色跨五个镜头老是换脸换衣服」的核心方法是：\n\n### 1. **建立视觉锚节点**\n为每个主要角色建一张**角色参考图**：\n- 生成一张**面部特写 + 全身三视图**\n- 姿势中性（正面、侧面、背面站立）\n- 背景干净，不带剧情动作\n- 固定发型、肤色、瞳色、体型\n\n### 2. **建立文本锚节点**\n为每个主要角色建一张**服装参考卡**：\n- 列出服装的版型、配色、材质、饰品\n- 锁定「纽扣数」「衣领样式」「图案细节」\n- 像这样：\n```\n角色A服装卡：\n- 深灰色立领制服\n- 左胸一枚银色徽章\n- 黑色皮腰带配铜扣\n- 袖口三颗黑扣\n```\n\n### 3. **引用机制**\n每个镜头引用对应的锚节点：\n- 角色A → 引用「角色A视觉锚」+「角色A服装卡」\n- 角色B → 引用「角色B视觉锚」+「角色B服装卡」\n- 镜头 prompt **不重复描述外貌**，只写这一镜的动作和运镜\n\n### 4. **状态表管理同场戏**\n同一场戏内的连续变化（伤口、服装破损、手持道具）用状态表锁定：\n\n| 镜号 | 角色A状态 | 道具状态 | 灯光 |\n|------|----------|----------|------|\n| 镜1 | 衣服整洁 | 手枪收起 | 日光 |\n| 镜2 | 衣服整洁 | 拔出枪 | 日光 |\n| 镜3 | 左肩弹孔+流血 | 开枪中 | 阴影增加 |\n| 镜4 | 左肩弹孔+流血 | 枪落地 | 阴影深 |\n\n**硬规则**：状态一旦出现（流血、衣破），后续所有同场镜必须继承。\n\n## 实操流程\n\n1. **先建锚后做镜头**：定妆定景参考图 → 各镜头引用\n2. **跨镜头引用同一个锚**：五个镜头都引用同一张「角色A」参考图\n3. **服装卡固定细节**：避免「同场戏换衣」「纽扣数变化」\n4. **段间承接**：相邻镜头用前一镜尾帧做后一镜首帧\n\n## 常见错误与纠正\n\n| 错误现象 | 原因 | 纠正 |\n|----------|------|------|\n| 同一角色脸不同 | 没建视觉锚，每镜重描外貌 | 建角色参考图，所有镜头引用它 |\n| 同场戏换衣服 | 服装细节没锁定 | 建服装文本锚，列出所有细节 |\n| 道具变形 | 道具没建锚 | 建道具参考图（多角度+比例参照） |\n| 光位乱跳 | 光源方向没固定 | 场景锚标注光位，每镜复述主光方向 |\n\n## 现在怎么做？\n\n如果你已经有剧本或分镜，我可以用这套方法为你：\n1. 识别所有需要一致性的角色/场景/道具\n2. 建立对应的视觉锚和文本锚节点\n3. 规划各镜头的引用关系\n4. 设计段间承接方案\n\n这样五个镜头生成出来，角色脸型、服装、发型都会一致。",
+    "models": [
+      {
+        "provider": "apimart",
+        "model": "deepseek-v3.2"
+      }
+    ],
+    "tokens": {
+      "input": 3919,
+      "cacheRead": 71424,
+      "cacheWrite": 0,
+      "output": 913
+    },
+    "estimatedCostUsd": null,
+    "pricing": "unpriced",
+    "durationMs": 24826,
+    "status": "completed",
+    "tools": [
+      {
+        "toolCallId": "call_5a32b663c89240c986a13072",
+        "name": "read_skill",
+        "spanName": "execute_tool read_skill",
+        "arguments": {
+          "name": "director-consistency"
+        },
+        "resultSummary": "{\"loaded\":true,\"name\":\"director-consistency\",\"directoryName\":\"director-consistency\",\"description\":\"治 AI 视频多镜头「同角色换脸 / 同道具换形 / 同场景换景」三大顽疾的方法论——五维一致性检查、参考图锚定、场内状态表、段间承接。Nomi 拆镜头与跨镜生成时参考：把每个跨镜元素落成画布 anchor 节点（角色/场景/道具/风格），镜头用 anchorIds 引用、系统连参考边，段间用首尾帧承接。\",\"body\":\"---\\nname: director-consistency\\ndescription: 治 AI 视频多镜头「同角色换脸 / 同道具换形 / 同场景换景」三大顽疾的方法论——五维一致性检查、参考图锚定、场内状态表、段间承接。Nomi 拆镜头与跨镜生成时参考：把每个跨镜元素落成画布 anchor 节点（角色/场景/道具/风格），镜头用 anchorIds 引用、系统连参考边，段间用首尾帧承接。\\nmetadata:\\n  nomi:\\n    selectable-in-workbench: true\\n    library:\\n      kind: skill\\n      title:\\n        zh-CN: 跨镜一致性\\n        en: Shot consistency\\n      summary:\\n        zh-CN: 治 AI 视频多镜头「同角色换脸 / 同道具换形 / 同场景换景」三大顽疾的方法论——五维一致性检查、参考图锚定、场内状态表、段间承接。Nomi 拆镜头与跨镜生成时参考：把每个跨镜元素落成画布 anchor 节点（角色/场景/道具/风格），镜头用\\n          anchorIds 引用、系统连参考边，段间用首尾帧承接。\\n        en: Preserve character, prop and location identity across shots.\\n      appliesTo:\\n      - text\\n      group:\\n        zh-CN: 导演\\n        en: Directing\\n      slots: []\\n      source:\\n        url: https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/director-consistency/SKILL.md\\n        revision: 7a072f12d4e35d1bf341403d942e5c0c702e6c7b\\n        author: Nomi contributors\\n        changes: Nomi adds library presentation metadata; the skill body is unchanged.\\n        evidence:\\n        - https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/director-consistency/SKILL.md\\n      preview:\\n        path: assets/cover.png\\n        type: image\\n        provenance: illustration\\n    version: 1.0.0\\n    tools: []\\n    required-providers: []\\nlicense: AGPL-3.0-only\\n---\\n\\n# 跨镜一致性方法论 (Consistency Engineering)\\n\\nAI 视频生成的头号敌人不是「画面不好看」，而是**同一个人看起来不像同一个人**。多镜头、多段的片子若不解决一致性，观众看两三镜就出戏。本文不发明技术，而是把业界已验证的一致性手段整理成拆镜头与生成时的强制动作。\\n\\n**在 Nomi 里落地的方式**：凡是「跨镜头要保持一致」的东西，都建成画布上的 **anchor 节点**（`kind`：`character` 角色 / `scene` 场景 / `prop` 道具 / `style` 风格）。视觉锚（`carrier: visual`）会先生成一张参考图锁住长相；文本锚（`carrier: text`）把特征词",
+        "durationMs": 66.65625,
+        "failed": false
+      },
+      {
+        "toolCallId": "call_8d5206edddd84135902566ee",
+        "name": "look_at_canvas",
+        "spanName": "execute_tool look_at_canvas",
+        "arguments": {},
+        "resultSummary": "画布当前为空。",
+        "durationMs": 113.85633299988694,
+        "failed": false
+      }
+    ],
+    "approvals": [
+      {
+        "toolCallId": "call_5a32b663c89240c986a13072",
+        "toolName": "read_skill",
+        "decision": "auto-granted"
+      },
+      {
+        "toolCallId": "call_8d5206edddd84135902566ee",
+        "toolName": "look_at_canvas",
+        "decision": "auto-granted"
+      }
+    ],
+    "errors": [],
+    "source": "/Users/aoqimin/Desktop/Nomi-skillreach-0919/.tmp/skillreach/profile-c/projects/未命名项目 09_19 06_30-mu7j8kxn-5a75880c/.nomi/agent-sessions/--nomi-lane-main--/01a0b6a4-eb4c-712e-ba30-b3f93fad64c8.trace/trace.jsonl"
+  },
+  "uiText": "Nomi\n20%\n\n角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。\n\n用了 2 个工具\n\n我来为你载入 Nomi 的一致性检查方法 skill。这个技能专门处理跨镜头角色换脸换衣服的问题。\n\n基于这份 skill，我来为你整理一套实操的一致性检查方法。核心是三级锚定体系和五维一致性检查。\n\n第一步：识别所有跨镜元素\n\n先读取你的画布，看看现有镜头里有哪些角色、场景、道具需要一致性锚定：\n\n画布是空的，说明你还没有生成镜头。这是好事——可以在生成前就把一致性机制建立好，避免事后修复。\n\n一致性五维检查方法\n\n解决「角色跨五个镜头老是换脸换衣服」的核心方法是：\n\n1. 建立视觉锚节点\n\n为每个主要角色建一张角色参考图：\n\n生成一张面部特写 + 全身三视图\n姿势中性（正面、侧面、背面站立）\n背景干净，不带剧情动作\n固定发型、肤色、瞳色、体型\n2. 建立文本锚节点\n\n为每个主要角色建一张服装参考卡：\n\n列出服装的版型、配色、材质、饰品\n锁定「纽扣数」「衣领样式」「图案细节」\n像这样：\n角色A服装卡：\n- 深灰色立领制服\n- 左胸一枚银色徽章\n- 黑色皮腰带配铜扣\n- 袖口三颗黑扣\n3. 引用机制\n\n每个镜头引用对应的锚节点：\n\n角色A → 引用「角色A视觉锚」+「角色A服装卡」\n角色B → 引用「角色B视觉锚」+「角色B服装卡」\n镜头 prompt 不重复描述外貌，只写这一镜的动作和运镜\n4. 状态表管理同场戏\n\n同一场戏内的连续变化（伤口、服装破损、手持道具）用状态表锁定：\n\n镜号\t角色A状态\t道具状态\t灯光\n镜1\t衣服整洁\t手枪收起\t日光\n镜2\t衣服整洁\t拔出枪\t日光\n镜3\t左肩弹孔+流血\t开枪中\t阴影增加\n镜4\t左肩弹孔+流血\t枪落地\t阴影深\n\n硬规则：状态一旦出现（流血、衣破），后续所有同场镜必须继承。\n\n实操流程\n先建锚后做镜头：定妆定景参考图 → 各镜头引用\n跨镜头引用同一个锚：五个镜头都引用同一张「角色A」参考图\n服装卡固定细节：避免「同场戏换衣」「纽扣数变化」\n段间承接：相邻镜头用前一镜尾帧做后一镜首帧\n常见错误与纠正\n错误现象\t原因\t纠正\n同一角色脸不同\t没建视觉锚，每镜重描外貌\t建角色参考图，所有镜头引用它\n同场戏换衣服\t服装细节没锁定\t建服装文本锚，列出所有细节\n道具变形\t道具没建锚\t建道具参考图（多角度+比例参照）\n光位乱跳\t光源方向没固定\t场景锚标注光位，每镜复述主光方向\n现在怎么做？\n\n如果你已经有剧本或分镜，我可以用这套方法为你：\n\n识别所有需要一致性的角色/场景/道具\n建立对应的视觉锚和文本锚节点\n规划各镜头的引用关系\n设计段间承接方案\n\n这样五个镜头生成出来，角色脸型、服装、发型都会一致。\n\nDeepSeek V3.2\nSkill\n自动改"
+}

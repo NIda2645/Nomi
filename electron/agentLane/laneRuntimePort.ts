@@ -10,15 +10,18 @@
 // 「先说什么后做什么」在数据里就不存在了；这道门送出去的是 `LaneProjection`，
 // 一串**有序的段**，顺序是记下来的不是推出来的。
 import type {
-  LaneHandle, LanePendingApproval, LaneProjection, LaneSkillIndexEntry, LaneTaskFacts, LaneWorkspaceHandle,
+  LaneApprovalDecision, LaneHandle, LanePendingApproval, LaneProjection, LaneSkillIndexEntry, LaneTaskFacts, LaneWorkspaceHandle,
 } from '../shared/agentLane/laneContracts'
 import { LaneDomainFailure } from '../shared/agentLane/laneToolContract'
 import type { LaneToolEffect, LaneToolFailureShape, LaneToolNextAction, LaneToolSpec } from '../shared/agentLane/laneToolContract'
 import type { RuntimeToolCall } from '../shared/agentCapabilities/transportContracts'
 import type { LaneComposerContext, LaneInputMessage } from '../shared/agentLane/laneDesktopContracts'
+import type { LaneHoldOutcome } from '../shared/agentLane/laneContracts'
 import type { NomiModelConfig } from '../shared/agentLane/laneModelConfig'
 import type { ProjectAgentApprovalPolicy, ProjectAgentWorkMode } from '../shared/agentCapabilities/capabilityApprovalPolicy';
 import type { LaneApprovalSubjectResolver } from '../shared/agentLane/laneApproval'
+import type { AgentModelEntry } from '../shared/agentCapabilities/availableModels'
+import type { ModelAvailabilityFacts } from '../shared/agentCapabilities/modelSpecProjection'
 import type { SkillRecord } from '../skills/skillStore'
 
 export type { LaneHandle, LaneProjection }
@@ -48,7 +51,29 @@ export type LaneToolOutcome =
  * 活着的领域 port。焊在一起的结果就是想扫一眼「模型看到了什么」都得先起半个 App——
  * 于是没人扫，于是 `z.record(z.unknown())` 活了半年。
  */
-export type LaneToolExecutionContext = { toolCallId: string; signal: AbortSignal }
+export type LaneToolExecutionContext = {
+  toolCallId: string
+  signal: AbortSignal
+  /**
+   * 这次调用**真的**是怎么过闸的（`laneApprovalGate.decisionFor`）。写回执时读它。
+   *
+   * 为什么回执需要它：闸跑在 `before_tool`，工具跑完再写回执——那一刻卡早就答完了。
+   * 一张静态表因此永远说不准「用户现在看到什么」：`edit_timeline` 原来无条件回
+   * 「一张复审卡正在问用户」，而三档里只有 `step`/`safe-auto` 真出过卡，且出过的那张也已经答完。
+   * 模型照着那句话让用户去点一张不存在的卡（2026-09-12「劈成两半」）。
+   *
+   * 缺席 = 这条 lane 没装闸（阶段 1 的影子夹具 / 单测）。那时回执只说做成了什么，不提卡。
+   */
+  approvalDecision?: LaneApprovalDecision
+  /**
+   * 用户回答这道题时的**原话**（只有 `approvalDecision === 'answered'` 才有）。
+   *
+   * `ask_user` 的 execute 读它，把这句话原样作为**成功形状**的 tool result 交回模型。
+   * 2026-09-22 之前「他答上了」走的是 `block`，而 pi 对 block 硬编码 `isError: true`——
+   * 模型收到的是一条「ask_user 失败了」，正文恰好是他那句答案（run4 六次全中）。
+   */
+  approvalAnswer?: string
+}
 
 export type LaneToolDescriptor = LaneToolSpec & {
   execute(args: unknown, context: LaneToolExecutionContext): Promise<LaneToolOutcome>
@@ -111,6 +136,18 @@ export interface LaneApprovalOptions {
   onPendingChange?(pending: LanePendingApproval | undefined): void
 }
 
+/**
+ * 领域端口在预检期能向宿主借的两样东西。等待的 owner 是审批闸（`laneApprovalGate.hold`）；
+ * 端口只说「替我等这一次」，拿回结局——它自己不 race signal、不管关窗。
+ */
+export type LaneToolPreflightHost = Readonly<{
+  signal: AbortSignal
+  /** 这条 lane 此刻有没有一个能问的人（没装闸 / MCP stdio / 后台批 = false）。 */
+  canAskUser: boolean
+  /** 开始替一张画在别处的卡等用户。`settle` 把那张卡上的结论递进来（只认第一次）。 */
+  waitForUser(): Readonly<{ outcome: Promise<LaneHoldOutcome>; settle(outcome: Exclude<LaneHoldOutcome, { kind: 'cancelled' }>): boolean }>
+}>
+
 export interface OpenLaneOptions {
   fetch: typeof globalThis.fetch
   /**
@@ -122,7 +159,13 @@ export interface OpenLaneOptions {
    * 给函数时每个回合重读一次（`laneInstalledSkills.mts` 的 `LaneSkillIndexSource`），
    * 模型看到的索引与 `read` 允许越出项目的技能根始终是同一份。
    */
-  native?: { settingsRoot: string; skills: readonly SkillRecord[] | (() => readonly SkillRecord[]) }
+  native?: { settingsRoot: string; skills: readonly SkillRecord[] | (() => readonly SkillRecord[] | Promise<readonly SkillRecord[]>) }
+  /**
+   * 模型可用性（keyStatus/usable/statusReason）的**只读查询**，由持有目录的装配层注入。
+   * lane 自己不 import 目录：那会把 catalogStore 的磁盘读拖进 agent 运行时的模块图（分层门岗会红）。
+   * 不注入 = 这三样不出现，**绝不编一个 usable:true 冒充**。
+   */
+  modelAvailability?: (entry: AgentModelEntry) => ModelAvailabilityFacts | undefined
   /** 项目目录。会话落在 `<project>/.nomi/agent-sessions/` 下。 */
   projectDir: string
   /** 一条 lane = 一条独立的对话轨。默认 `main`。 */
@@ -142,6 +185,7 @@ export interface OpenLaneOptions {
   /** Snapshot the composer per message; activate only after pi consumes that message. */
   input?: {
     capture(): LaneComposerContext
+    prepare?(context: LaneComposerContext): LaneComposerContext | Promise<LaneComposerContext>
     activate(context: LaneComposerContext): void
     rewritePayload(payload: unknown, api: string): unknown
     providerContent(message: LaneInputMessage, previous?: LaneComposerContext): Promise<string | Array<{ type: 'text'; text: string } | { type: 'image'; data: string; mimeType: string }>>
@@ -150,7 +194,11 @@ export interface OpenLaneOptions {
   /** Domain ports prepare before confirmation, then persist the accepted authority in the lane. */
   toolLifecycle?: {
     prepare(call: RuntimeToolCall, signal: AbortSignal): Promise<void>
-    approved(call: RuntimeToolCall, record: (type: string, data: Record<string, string | number>) => Promise<void>): Promise<void>
+    /**
+     * 闸放行之后、工具执行之前。它跑在 `before_tool` 里，所以**不计入工具超时**——需要等用户的那一步
+     * （`generate` 的报价卡）只许住在这里，不许住在 execute 里（2026-09-22 裁决 A）。
+     */
+    approved(call: RuntimeToolCall, record: (type: string, data: Record<string, string | number>) => Promise<void>, host?: LaneToolPreflightHost): Promise<void>
     settled(call: RuntimeToolCall): void
   }
   /**
@@ -178,7 +226,7 @@ export interface OpenLaneOptions {
    * 要么把慢的那条误杀，要么让快的那条卡满 90 秒。
    */
   watchdog?: { firstResponseMs?: number; idleMs?: number }
-  /** 一个回合最多几次模型请求。缺省 `LANE_MAX_MODEL_REQUESTS`。 */
+  /** 一个回合最多几次模型请求。**缺省不设**（见 `LANE_MAX_MODEL_REQUESTS` 的注释）；设了才拦。 */
   limits?: { maxModelRequests?: number; contextTokenBudget?: number }
 }
 
@@ -201,3 +249,14 @@ export type RunLaneSingleShot = (options: {
   input?: OpenLaneOptions['input']
   signal?: AbortSignal
 }) => Promise<LaneProjection>
+
+/**
+ * 「这条路真的拿不到目录」——**说出来的**那句话，不是一个省略号。
+ *
+ * 2026-09-22（对方会话 Ponytail 记的账）：可用性注入以前一路可选，于是
+ * `createLaneModelRead(resolve, availabilityOf?)` 里一个 `?.` 就把「装配漏接目录」
+ * 洗成了「这个模型没有可用性信息」——模型读到的每一行都没有 keyStatus/usable，
+ * 它以为所有模型都能用，然后带着一个没钥匙的模型去花钱。装配层现在**必传**；
+ * 只有这一个常量可以表示「没有目录」，而它在代码里是看得见的一句话。
+ */
+export const NO_CATALOG_MODEL_AVAILABILITY = (): ModelAvailabilityFacts | undefined => undefined

@@ -32,7 +32,7 @@ for (const file of files) {
 //   ③ 落地路径读的是 resolver 而不是裸 `shot.params`   ④ 供应商没有该控件时诚实缺席
 // 前两段可以机器验，第三段可以机器验（禁止裸铺），第四段由档案层保证（buildPlannedNodeMeta 丢未知键）。
 // 普查表与逐格证据：docs/plan/2026-09-12-storyboard-plan-defaults-passthrough.md
-const scopeOwner = path.join(sourceRoot, 'generationCanvas', 'agent', 'storyboardShotScope.ts')
+const scopeOwner = path.join(root, 'electron', 'shared', 'storyboard', 'storyboardShotScope.ts')
 const scopeSource = fs.readFileSync(scopeOwner, 'utf8')
 
 // 登记表是唯一真相源：从 FILM_DEFAULTS 里把 (paramKey, planKey) 对抽出来，不在这里手抄一份。
@@ -45,7 +45,7 @@ if (registry.length === 0) {
 // ② 每个登记的整片级键必须在两处 schema 里都有落脚点，否则规划师写的整片值会被静默丢掉：
 //    渲染层 parseStoryboardPlan（zod 默认丢未知键）与主进程工具 envelope（`.strict()` 直接拒收）。
 const schemaSurfaces = [
-  ['src/workbench/generationCanvas/agent/storyboardPlanSchema.ts', 'storyboardPlanSchema (parseStoryboardPlan)'],
+  ['electron/shared/storyboard/storyboardPlanSchema.ts', 'storyboardPlanSchema (parseStoryboardPlan)'],
   ['electron/shared/agentCapabilities/canvasWrite.ts', 'storyboardPlanActionInputSchema (propose_storyboard_plan)'],
 ]
 for (const [relative, label] of schemaSurfaces) {

@@ -2,7 +2,7 @@ import React from 'react'
 import { IconChevronRight } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import type { Mapping } from '../../../electron/catalog/types'
-import { parseCustomCapabilityContract } from '../../config/modelArchetypes'
+import { parseCustomCapabilityContract } from '../../../electron/shared/modelArchetypes'
 import type { ChipModel } from './ModelChipGroups'
 import { projectModelCapability } from './modelCapabilityProjection'
 

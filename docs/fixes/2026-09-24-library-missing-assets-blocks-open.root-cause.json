@@ -1,0 +1,157 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-24-library-missing-assets-blocks-open",
+  "problem_type": "Project library sync badge reports missing assets and then refuses to open the project",
+  "symptom": "v0.22.0 user feedback: the project card shows a missing-assets badge and clicking the card (continue creating) only opens the sync popover; the project can never be entered because re-checking cannot bring the files back.",
+  "direct_cause": "ProjectLibraryPage.openProject returned early for every status other than ready, and inspectWorkspaceSync resolved every nomi-local reference in the manifest against this folder, including assets that belong to another project (dragged in from All assets), so a borrowed asset was counted as missing forever.",
+  "class_root": "The library pre-check became a second owner of whether a project can open, and its asset count ignored the project id that every nomi-local URL carries as its ownership authority.",
+  "affected_population": [
+    "Users who dragged assets from another project into the current project through the All assets library",
+    "Users whose project folder genuinely lost one or more asset files",
+    "Users opening a project whose manifest needs backup recovery through the normal open flow"
+  ],
+  "scope_paths": [
+    "electron/workspace/workspaceSync.ts",
+    "electron/workspace/workspaceSyncIpc.ts",
+    "src/workbench/library/projectSyncFace.ts",
+    "src/workbench/library/ProjectLibraryPage.tsx",
+    "docs/fixes/2026-09-24-library-missing-assets-blocks-open.root-cause.json"
+  ],
+  "entry_points": [
+    "Project library card click (continue creating)",
+    "nomi:workspace:sync-inspect IPC for the library badge and the manual re-check"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Both the asset ownership rule (URL project id) and the open gate are application-owned; no third-party behavior decides them.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/library/projectSyncFace.ts",
+    "tests": [
+      "electron/workspace/workspaceSync.test.ts",
+      "tests/system/cross-device-continuation.contract.test.mjs"
+    ],
+    "why": "projectSyncFace already owns the status table (badge wording and tone); whether a status stops continue-creating now lives next to it as syncStatusBlocksOpen, and inspectWorkspaceSync owns which references belong to this folder."
+  },
+  "invariants": [
+    "Only references whose URL project id equals the inspected project are counted as this folder's assets.",
+    "Missing assets and unreadable manifests never block opening; the open flow and per-node media states own those.",
+    "Only external-change stops continue-creating, and its popover re-check adopts the new revision and releases the gate."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/workspace/workspaceSync.ts",
+      "symbol": "WorkspaceSyncInspection"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/bridge.ts",
+      "symbol": "WorkspaceSyncInspection"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/library/ProjectLibraryPage.tsx",
+      "symbol": "WorkspaceSyncInspection"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/library/ProjectSyncBadge.tsx",
+      "symbol": "WorkspaceSyncInspection"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/library/projectSyncFace.ts",
+      "symbol": "WorkspaceSyncInspection"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceSync.ts",
+      "symbol": "referencedAssetPaths"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceSyncIpc.ts",
+      "symbol": "inspectWorkspaceSync"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/library/ProjectLibraryPage.tsx",
+      "symbol": "syncStatusBlocksOpen"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 8,
+    "why_not": "The read doors only pass the inspection shape through; the write doors are distinct: the IPC is the only caller that inspects a folder, referencedAssetPaths is the only collector of owned references, and the library card is the only place that decides whether to stop before opening. Each now reads one owner."
+  },
+  "generality_proof": "The project id comes from the registry id the IPC already resolves, which is the same id the nomi-local protocol uses to find files, so every entry that creates a cross-project reference (drag from All assets, Agent import, paste) is covered without listing them.",
+  "shared_boundaries": [
+    {
+      "path": "electron/workspace/workspaceSync.ts",
+      "symbol": "referencedAssetPaths",
+      "responsibility": "Collect only this project's nomi-local references, decoded per segment like the protocol."
+    },
+    {
+      "path": "src/workbench/library/projectSyncFace.ts",
+      "symbol": "syncStatusBlocksOpen",
+      "responsibility": "Decide which sync statuses stop continue-creating."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/library/ProjectLibraryPage.tsx",
+      "entry_point": "project card click",
+      "disposition": "enforced",
+      "evidence": "openProject consults syncStatusBlocksOpen instead of status !== ready."
+    },
+    {
+      "path": "src/workbench/library/ProjectLibraryPage.tsx",
+      "entry_point": "sync badge re-check",
+      "disposition": "enforced",
+      "evidence": "The re-check still calls the same IPC, which now counts only owned references."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new way of referencing another project's asset, or any real file loss, would again lock the project behind a gate with no exit.",
+    "same_class_scan": [
+      "rg -n \"status !== 'ready'|syncInspect\" src electron",
+      "rg -n \"nomi-local://asset\" electron src --glob '!*.test.*'"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/library/projectSyncFace.ts",
+    "invariant": "The library never becomes a second owner of project openability.",
+    "failure_mode": "Unit tests fail if a borrowed asset is counted as missing; the real library walk (probe recorded in the PR) opens a project with a genuinely missing file.",
+    "exception_policy": "none",
+    "strategy": "Derive asset ownership from the URL project id and keep the open-gate rule in the status table.",
+    "artifacts": [
+      "electron/workspace/workspaceSync.ts",
+      "src/workbench/library/projectSyncFace.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/workspace/workspaceSync.test.ts",
+    "tests/system/cross-device-continuation.contract.test.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/workspace/workspaceSync.test.ts",
+    "tests/system/cross-device-continuation.contract.test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/library/ProjectLibraryPage.tsx"
+    ],
+    "rationale": "openProject's blanket status !== 'ready' gate is replaced by syncStatusBlocksOpen in the same change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency is involved.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted state changes; the sync baseline format is unchanged.",
+  "residual_risks": [
+    "A project whose borrowed asset's source project was deleted still shows that card as failed to load inside the canvas; that is honest per-node state, not a library gate."
+  ]
+}

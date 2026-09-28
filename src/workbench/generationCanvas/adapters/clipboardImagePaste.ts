@@ -19,6 +19,8 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import i18n from '../../../i18n'
 import type { ProjectExecutionContext } from '../../project/projectCanvasReadSurface'
 import { surfacePortFailure } from '../../../../electron/shared/surfacePortBinding'
+import { placementOrigin, type CanvasPlacementAnchor } from '../model/canvasPlacement'
+import { getGenerationNodeDefaultSize } from '../model/generationNodeKinds'
 
 const IMAGE_URL_EXTENSION = /\.(?:png|jpe?g|webp|gif|avif|bmp|svg)(?:[?#].*)?$/i
 const VIDEO_URL_EXTENSION = /\.(?:mp4|m4v|mov|webm|ogv|ogg|avi)(?:[?#].*)?$/i
@@ -52,6 +54,8 @@ export type ClipboardMediaPasteOptions = {
   /** 粘贴事件那一刻签发的原项目生命周期（必传）：转换、远程下载、落盘、落节点都只认它。 */
   projectContext: ProjectExecutionContext
   basePosition: { x: number; y: number }
+  /** basePosition 压在新卡的哪一点（比例）。不传 = 左上角。键盘粘贴传中心（model/canvasPlacement.ts）。 */
+  anchor?: CanvasPlacementAnchor
   categoryId?: string
   clipboardData?: DataTransfer | null
   fetchMedia?: typeof fetch
@@ -316,6 +320,7 @@ async function importMediaFiles(files: File[], options: ClipboardMediaPasteOptio
   const result = await importLocalMediaFilesToGenerationCanvas(files, {
     basePosition: options.basePosition,
     categoryId: options.categoryId,
+    anchor: options.anchor,
     ...options.importOptions,
     projectContext: options.projectContext,
     exactPosition: options.importOptions?.exactPosition ?? true,
@@ -344,14 +349,15 @@ function createClipboardMediaNodeShell(input: {
 }): string {
   const { options, titleUrl } = input
   const store = useGenerationCanvasStore.getState()
+  // 链接媒体下载前只有默认卡面尺寸可用；锚点按它换算（与拖入的非系统文件来源同一残留，见结构评审）。
+  const origin = options.anchor
+    ? placementOrigin({ point: options.basePosition, anchor: options.anchor }, getGenerationNodeDefaultSize('asset'))
+    : options.basePosition
   const node = store.addNode({
     kind: 'asset',
     title: titleFromUrl(titleUrl),
     prompt: '',
-    position: {
-      x: Math.round(options.basePosition.x),
-      y: Math.round(options.basePosition.y),
-    },
+    position: { x: Math.round(origin.x), y: Math.round(origin.y) },
     categoryId: options.categoryId,
     exactPosition: true,
   })

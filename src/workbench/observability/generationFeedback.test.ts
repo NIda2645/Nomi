@@ -60,3 +60,20 @@ it('「已保存到项目」是限时回执，不是节点的常驻状态', () =
   // 连 run 记录都没有（老项目）——同样不显示，而不是退回到常驻。
   expect(generationFeedback({ ...saved, id: 'd', runs: [] }, 19000)).toBeNull()
 })
+
+
+it('motion-reduced generation and import keep a static grid without a blue band or fabricated image', async () => {
+  const { GenerationWaitingSurface } = await import('../generationCanvas/nodes/GenerationWaitingSurface')
+  for (const props of [{ motion: 'reduced' as const }, { zoom: 0.39 }, { inViewport: false }, { motion: 'reduced' as const, progressReveal: { ratio: 0.42 } }]) {
+    const markup = renderToStaticMarkup(React.createElement(GenerationWaitingSurface, { previewLabel: '', ...props }))
+    expect(markup).toContain('data-process-static-grid')
+    expect(markup).not.toContain('data-process-static-band')
+    expect(markup).not.toContain('waiting-band')
+    expect(markup).not.toContain('<img')
+    expect(markup).not.toContain('data-process-progress')
+  }
+  const audio = renderToStaticMarkup(React.createElement(GenerationWaitingSurface, { audio: true, previewLabel: '' }))
+  expect(audio).toContain('data-process-audio-waiting')
+  expect(audio).not.toContain('data-process-static-grid')
+  expect(audio).not.toContain('data-process-static-band')
+})

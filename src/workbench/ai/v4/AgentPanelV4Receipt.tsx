@@ -11,7 +11,7 @@ import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'
 import { V4Row, V4Shimmer } from './AgentPanelV4Row'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
-import { ActionIcon, IconAlertTriangle, IconChevronRight, ToolStatusIcon } from './AgentPanelV4Icons'
+import { ActionIcon, IconAlertTriangle, IconCheck, IconChevronRight, ToolStatusIcon } from './AgentPanelV4Icons'
 import type { ToolReceipt, V4FlowItem } from './agentPanelV4Types'
 
 // The base :root :focus-visible selector is more specific than a utility class.
@@ -36,7 +36,10 @@ export function V4ToolReceipt({
   onUndo?: () => void
 }): JSX.Element {
   const expandable = Boolean(receipt.input || receipt.output)
-  const tone = STATUS_TONE[receipt.status] ?? 'text-nomi-accent'
+  // 答完的反问不红：协议上它是一次 `output-denied`（lane 只有准 / 不准），但用户没有拒绝
+  // 任何东西——他回答了一个问题。红色在这条面板上只说一件事「这里出问题了」，
+  // 给一次正常的作答打上它，等于每答一个问题就在历史里留一条假警报。
+  const tone = receipt.answered ? 'text-nomi-ink-60' : STATUS_TONE[receipt.status] ?? 'text-nomi-accent'
   const row = (
     <>
       <span className="shrink-0 text-nomi-ink-60">
@@ -45,7 +48,7 @@ export function V4ToolReceipt({
       <span className="shrink-0 font-medium text-nomi-ink-80">{receipt.label}</span>
       {receipt.summary ? <div className="min-w-0 line-clamp-1 text-micro text-nomi-ink-40"><AgentPanelV4Markdown text={receipt.summary} /></div> : null}
       <span className={cn('flex shrink-0 items-center gap-1 text-micro', tone)}>
-        <ToolStatusIcon status={receipt.status} />
+        {receipt.answered ? <IconCheck size={12} aria-hidden="true" /> : <ToolStatusIcon status={receipt.status} />}
         {receipt.trailing ?? statusLabel}
         {receipt.undoable && undoLabel ? (
           // `<details>` 的 summary 里点这个钮会连带把展开体折起来——那是浏览器默认行为，
@@ -78,6 +81,7 @@ export function V4ToolReceipt({
         className="min-h-7 rounded-nomi-sm px-2 text-caption text-nomi-ink-60"
         data-v4-block="tool"
         data-status={receipt.status}
+        {...(receipt.answered ? { 'data-answered': 'true' } : {})}
       >
         {row}
       </V4Row>
@@ -181,13 +185,17 @@ export function V4ToolGroup({
  * 定稿 ⑦「过程反馈按 Claude Code」：过程默认收起，只有**最终回答**摊开。
  * 平铺的时候它和最终回答一样宽、一样黑，用户得逐段读完才知道哪一段是给他的。
  */
-export function V4Process({ label, segments, running, elapsed, children }: {
-  label: string; segments: readonly string[]; running?: boolean; elapsed?: string; children?: React.ReactNode
+export function V4Process({ label, segments, running, elapsed, failed, retryNote, children }: {
+  label: string; segments: readonly string[]; running?: boolean; elapsed?: string; failed?: boolean; retryNote?: string; children?: React.ReactNode
 }): JSX.Element {
   const { t } = useTranslation()
   const bodyRef = React.useRef<HTMLDivElement>(null)
   const [long, setLong] = React.useState(false)
   const [expanded, setExpanded] = React.useState(false)
+  // 带着未解决失败的那一段**自己展开**：定稿要求「错误留在它那一行」，而收起的过程行会把
+  // 那一行连同它下面的红条一起藏掉。展开之后用户照样能手动收起（它仍是可控的 details）。
+  const [open, setOpen] = React.useState(Boolean(failed))
+  React.useEffect(() => { if (failed) setOpen(true) }, [failed])
   React.useEffect(() => {
     const body = bodyRef.current
     if (!body) return
@@ -201,7 +209,7 @@ export function V4Process({ label, segments, running, elapsed, children }: {
     return () => observer.disconnect()
   }, [children, segments])
   return (
-    <details key={running ? "running" : "settled"} className={cn(
+    <details key={running ? "running" : "settled"} open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className={cn(
       'group/process text-nomi-ink-60',
       // Neutral text belongs to the process; status colors, icons and elapsed time do not.
       '[&_:is(.text-nomi-ink,.text-nomi-ink-80,.text-nomi-ink-40):not(svg):not([data-process-elapsed])]:text-nomi-ink-60',
@@ -217,6 +225,9 @@ export function V4Process({ label, segments, running, elapsed, children }: {
       </V4Row>
       <div ref={bodyRef} className={cn("mt-1 flex flex-col gap-1.5 border-l border-nomi-line-soft py-1 pl-2.5 text-caption leading-relaxed", !expanded && "max-h-[12lh] overflow-hidden", long && !expanded && "[mask-image:linear-gradient(black_80%,transparent)]")} data-process-folded={long && !expanded}>
         {children ?? segments.map((segment, index) => <AgentPanelV4Markdown key={index} text={segment} />)}
+        {/* 「它还在自己修」——一句灰字，展开才看得见（2026-09-21 用户拍板②）。
+            摘要那一行已经说了「第 N 次尝试」，这里说的是**为什么**又来一次。 */}
+        {retryNote ? <p className="m-0 text-micro text-nomi-ink-40" data-v4-process-retry-note>{retryNote}</p> : null}
       </div>
       {long ? <button type="button" className="mt-1 text-micro text-nomi-ink-60" onClick={() => setExpanded(value => !value)}>{t(expanded ? 'agentPanelV4.collapse' : 'agentPanelV4.expand')}</button> : null}
     </details>

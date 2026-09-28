@@ -1,7 +1,7 @@
 // 「把一个 URL 加进目标节点的数组参考槽」的**统一写入入口**（拖入 / 连线共用，规则 1 / §2.4：
 // 不另开第 N 条写路径）。读 store 最新 meta（连续多次写时不丢前一次）→ appendArchetypeArrayValue
 // 单源去重/上限 → updateNode 单帧持久化。toast 由调用方按返回状态决定（UI 关注点不进这里）。
-import { useGenerationCanvasStore } from '../store/generationCanvasStore'
+import type { NodeWriteAccess } from './nodeWriteAccess'
 import { appendArchetypeArrayValue } from './controls/archetypeMeta'
 import { type AssetDropKind, findArraySlotForKind, resolveNodeArraySlots } from '../model/nodeAssetDrop'
 
@@ -16,9 +16,9 @@ export type AddAssetOutcome =
  * - `full`：到上限，调用方 toast。
  * - `added`：已写入。
  */
-export function addAssetUrlToNode(nodeId: string, kind: AssetDropKind, url: string): AddAssetOutcome {
-  const state = useGenerationCanvasStore.getState()
-  const node = state.nodes.find((n) => n.id === nodeId)
+export function addAssetUrlToNode(nodeId: string, kind: AssetDropKind, url: string, access: NodeWriteAccess): AddAssetOutcome {
+  if (access.canWrite?.() === false) return { status: 'empty' }
+  const node = access.latestNode(nodeId)
   if (!node) return { status: 'no-slot' }
   const meta = node.meta || {}
   const slot = findArraySlotForKind(resolveNodeArraySlots(meta), kind)
@@ -26,6 +26,6 @@ export function addAssetUrlToNode(nodeId: string, kind: AssetDropKind, url: stri
   const result = appendArchetypeArrayValue(meta, slot, url)
   if (result.status === 'full') return { status: 'full', max: result.max, label: slot.label }
   if (result.status !== 'added') return { status: result.status }
-  state.updateNode(nodeId, { meta: { ...meta, [slot.metaKey]: result.next } })
+  access.updateNode(nodeId, { meta: { ...meta, [slot.metaKey]: result.next } })
   return { status: 'added' }
 }

@@ -56,7 +56,7 @@ async function geometry(page) {
 async function reducedMotion(page) {
   const motion = await page.evaluate(() => {
     const dot = document.querySelector('[data-process-dot]')
-    const sheen = document.querySelector('[data-process-static-band]')
+    const sheen = document.querySelector('[data-process-static-grid], [data-process-audio-waiting]')
     return { opacity: getComputedStyle(dot).opacity, transform: getComputedStyle(sheen).transform,
       active: [...dot.getAnimations(), ...sheen.getAnimations()].filter((item) => item.playState === 'running').length }
   })

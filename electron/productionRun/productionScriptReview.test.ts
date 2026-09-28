@@ -56,7 +56,8 @@ describe('ProductionRun script review', () => {
     })
     expect(approved.run.artifacts.find((artifact) => artifact.kind === 'script')).toMatchObject({ status: 'adopted', reviewStatus: 'approved' })
     await waitFor(() => calls.includes('production.plan-storyboard'))
-    expect(service.readFull('project-1', 'run-script-review').artifacts.some((artifact) => artifact.kind === 'storyboard')).toBe(true)
+    // 分镜产物在阶段证据（技能目录，2026-09-18 起是 pi 的 async 加载器）落定之后才写：等它，不抢在它前面读。
+    await waitFor(() => service.readFull('project-1', 'run-script-review').artifacts.some((artifact) => artifact.kind === 'storyboard'))
     expect(fs.existsSync(path.join(root, '.nomi/runs/run-script-review/script-v1.json'))).toBe(true)
   })
 

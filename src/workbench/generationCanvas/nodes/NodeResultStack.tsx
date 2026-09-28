@@ -1,3 +1,4 @@
+import { nodeHasResultStack, productionMetaOf } from './useNodeResultHistory'
 import { notify } from '../../../ui/notificationPolicy'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
@@ -23,20 +24,17 @@ import { DeferredNodeVideo } from './DeferredNodeMedia'
 import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 import { useResultDownload } from './useResultDownload'
 import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
+import { getDesktopBridge } from '../../../desktop/bridge'
+import { computeMediaMetaPatch } from './nodeSizing'
+import { findCanvasResultMediaDimensions } from '../../project/projectMediaMigration'
 import { reworkProductionShot } from '../../production/productionShotActions'
 import { historyVideoTimeFromPointer, nudgeHistoryVideoTime } from './historyVideoScrub'
 import { resolveResultStackPlacement, type ResultStackPlacement } from './nodeResultStackPlacement'
 import { getGenerationNodeIcon } from './renderRegistry'
+import { CANVAS_RESULT_DRAG_MIME, encodeCanvasResultDrag } from '../components/canvasResultDrag'
+import { logRendererError } from '../../../desktop/rendererLog'
 
 const INITIAL_VISIBLE_RESULTS = 12
-
-function productionMetaOf(node: GenerationCanvasNode): { runId: string; shotId?: string } | null {
-  const meta = node.meta as Record<string, unknown> | undefined
-  const runId = typeof meta?.productionRunId === 'string' ? meta.productionRunId.trim() : ''
-  if (!runId) return null
-  const shotId = typeof meta?.productionShotId === 'string' ? meta.productionShotId.trim() : ''
-  return { runId, ...(shotId ? { shotId } : {}) }
-}
 
 /**
  * 版本堆叠伪卡上的媒体示能。复用 `getGenerationNodeIcon` 这个唯一出口，所以
@@ -199,6 +197,28 @@ function HistoryVideoThumb({
   )
 }
 
+/**
+ * 版本托盘里的一行：按着 Alt/⌥ 拖出去 → 在画布松手处复制出一张独立素材卡（落卡在舞台 onDrop，
+ * components/canvasResultDrag.ts）。不按 Alt 的拖动直接取消——托盘里的拖动原本就什么也不做，
+ * 点一下仍是「设为当前版本」。
+ */
+function startResultCopyDrag(event: React.DragEvent<HTMLElement>, nodeId: string, entry: GenerationNodeResult): void {
+  if (!event.altKey || !entry.url) {
+    event.preventDefault()
+    return
+  }
+  event.stopPropagation()
+  const thumb = event.currentTarget.querySelector('img')
+  const original = thumb && thumb.naturalWidth > 0 && thumb.getAttribute('src') === entry.url ? thumb : null
+  event.dataTransfer.effectAllowed = 'copy'
+  event.dataTransfer.setData(CANVAS_RESULT_DRAG_MIME, encodeCanvasResultDrag({
+    sourceNodeId: nodeId,
+    resultIdentity: resultIdentity(entry),
+    ...(original ? { width: original.naturalWidth, height: original.naturalHeight } : {}),
+  }))
+  if (thumb) event.dataTransfer.setDragImage(thumb, thumb.width / 2, thumb.height / 2)
+}
+
 function ResultThumb({
   result,
   title,
@@ -240,13 +260,15 @@ export function NodeResultStack({
   node,
   readOnly,
   selected,
+  open,
   onOpenChange,
 }: {
   onFeedback: (message: string) => void
   node: GenerationCanvasNode
   readOnly: boolean
   selected: boolean
-  onOpenChange?: (open: boolean) => void
+  open: boolean
+  onOpenChange: (open: boolean) => void
 }): JSX.Element | null {
   const feedbackOwnerRef = React.useRef<string | null>(node.id)
   feedbackOwnerRef.current = node.id
@@ -259,7 +281,7 @@ export function NodeResultStack({
 
   const { t } = useTranslation()
   const updateNode = useGenerationCanvasStore((state) => state.updateNode)
-  const [open, setOpen] = React.useState(false)
+  const selectNode = useGenerationCanvasStore((state) => state.selectNode)
   const [visibleCount, setVisibleCount] = React.useState(INITIAL_VISIBLE_RESULTS)
   const [hoveredId, setHoveredId] = React.useState('')
   const [preview, setPreview] = React.useState<GenerationNodeResult | null>(null)
@@ -270,16 +292,7 @@ export function NodeResultStack({
   const currentId = node.result ? resultIdentity(node.result) : ''
   const production = productionMetaOf(node)
   const showSingleProductionAction = Boolean(production && selected && entries.length === 1)
-  const showStack = entries.length >= 2 || showSingleProductionAction
-
-  React.useEffect(() => {
-    if (showStack) return
-    setOpen(false)
-  }, [showStack])
-
-  React.useEffect(() => {
-    onOpenChange?.(open)
-  }, [onOpenChange, open])
+  const showStack = nodeHasResultStack(node) && (selected || entries.length >= 2)
 
   React.useEffect(() => {
     if (!open) {
@@ -311,9 +324,34 @@ export function NodeResultStack({
 
   if (!showStack) return null
 
-  const switchTo = (entry: GenerationNodeResult): void => {
+  const switchTo = async (entry: GenerationNodeResult): Promise<void> => {
     if (readOnly || resultIdentity(entry) === currentId) return
-    updateNode(node.id, { result: entry, status: 'success', error: undefined })
+    const project = withProjectAction((loaded) => loaded)
+    let meta: Record<string, unknown> | undefined
+    if (project) {
+      try {
+        const assets = [] as Array<{ id?: string; data?: Record<string, unknown> }>
+        let cursor: string | null = null
+        do {
+          const desktop = getDesktopBridge()
+          if (!desktop?.assets?.list) break
+          const page = await desktop.assets.list({ projectId: project.binding.projectId, cursor, limit: 500 })
+          if (!page) break
+          assets.push(...page.items)
+          cursor = page.cursor || null
+        } while (cursor)
+        if (isProjectExecutionContextCurrent(project)) {
+          const dimensions = findCanvasResultMediaDimensions(entry, assets)
+          const patch = dimensions
+            ? computeMediaMetaPatch({ resultType: entry.type, meta: node.meta || {}, ...dimensions, durationSeconds: entry.durationSeconds })
+            : null
+          if (patch) meta = patch.meta
+        }
+      } catch {
+        // Result switching remains usable when an old sidecar cannot be read.
+      }
+    }
+    updateNode(node.id, { result: entry, ...(meta ? { meta } : {}), status: 'success', error: undefined })
   }
 
   const remove = async (entry: GenerationNodeResult): Promise<void> => {
@@ -341,7 +379,7 @@ export function NodeResultStack({
       const outcome = await deleteAssetResult(asset, loaded)
       if (outcome.failedFileCount > 0) reportFeedback(t('generationCommon.resultStack.deleteFileFailed'))
     } catch (error) {
-      console.error('delete node result failed', error)
+      logRendererError('node-result-delete-failed', error)
       reportFeedback(t('generationCommon.resultStack.deleteFailed'))
     }
   }
@@ -362,7 +400,10 @@ export function NodeResultStack({
         count={entries.length}
         label={t('generationCommon.resultStack.versionCount', { count: entries.length })}
         expanded={open}
-        onToggle={() => setOpen((value) => !value)}
+        onToggle={() => {
+          if (!open) selectNode(node.id, false)
+          onOpenChange(!open)
+        }}
         forceTrigger={showSingleProductionAction}
         mediaGlyph={<StackMediaGlyph kind={node.kind} />}
         mediaKind={node.kind}
@@ -418,6 +459,8 @@ export function NodeResultStack({
                     )}
                     data-result-stack-item={identity}
                     data-current={isCurrent ? 'true' : undefined}
+                    draggable={!readOnly}
+                    onDragStart={(event) => startResultCopyDrag(event, node.id, entry)}
                     onPointerEnter={() => setHoveredId(identity)}
                     onPointerLeave={(event) => {
                       if (event.currentTarget.contains(document.activeElement)) return

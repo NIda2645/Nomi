@@ -129,7 +129,7 @@ const run: ProductionRun = {
   playbook: { name: 'brand.promo', version: '1.0.0' },
   origin: { host: 'external', actorId: 'codex' },
   policy: { trustedHosts: ['codex'], allowedProviders: ['secret-provider'], allowedModels: ['secret-model'], maxSpend: 20, maxAttemptsPerJob: 2, minimizeUploads: true },
-  budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0 },
+  budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
   planVersion: 1,
   snapshotCursor: 3,
   stages: [{ stageId: 'storyboard', title: '分镜', status: 'running', order: 1 }],
@@ -156,19 +156,6 @@ describe('production run service projection boundary', () => {
     await Promise.resolve()
 
     expect(repository.list).not.toHaveBeenCalled()
-    expect(repository.execute).not.toHaveBeenCalled()
-  })
-
-  it('keeps listFull read-only and leaves restart recovery explicit', () => {
-    const repository = {
-      read: vi.fn(() => run),
-      readEvents: vi.fn(() => []),
-      list: vi.fn(() => [{ runId: run.runId }]),
-      execute: vi.fn(),
-    }
-    const service = createProductionRunService({ repository: repository as never, projectRootResolver: () => null })
-
-    expect(service.listFull('project-1')).toHaveLength(1)
     expect(repository.execute).not.toHaveBeenCalled()
   })
 

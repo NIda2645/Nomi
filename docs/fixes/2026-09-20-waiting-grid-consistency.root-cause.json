@@ -1,0 +1,124 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-waiting-grid-consistency",
+  "problem_type": "Generation waiting visual diverges by admission path",
+  "symptom": "Generating cards display a middle blue band instead of the chosen pixel animation.",
+  "direct_cause": "A four-owner quota and motion/zoom/viewport gating select a CSS blue sweeping band.",
+  "class_root": "Shared waiting presentation permits an unrelated fallback visual and an unmeasured instance-count threshold.",
+  "affected_population": [
+    "Image/video generation, imports, reduced-motion and non-WebGL renderers"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx"
+  ],
+  "entry_points": [
+    "NodeGeneratingOverlay",
+    "NodeImportingOverlay"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Application-owned admission and placeholder policy; installed img-fx source/API examined without changing its runtime.",
+  "invariants": [
+    "All eligible visible image/video waiting surfaces use the existing img-fx animation without a four-owner quota.",
+    "Ineligible surfaces never show the removed blue band or run a fallback animation.",
+    "Existing viewport/zoom/motion constraints, honest progress and final cleanup stay enforced."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+      "symbol": "ProgressRevealCanvas"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGeneratingOverlay.tsx",
+      "symbol": "GenerationWaitingSurface"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeImportingOverlay.tsx",
+      "symbol": "GenerationWaitingSurface"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "Generation and import need separate state producers (indeterminate wait versus byte progress), both already converge on one visual boundary. The shared boundary also retains the sole byte-progress reveal consumer."
+  },
+  "generality_proof": "Every generation kind and import feeds the same waiting component; deleting quota and band there removes both mechanisms across callers.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+      "symbol": "GenerationWaitingSurface",
+      "responsibility": "Own animation eligibility and static presentation for all consumers."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeGeneratingOverlay.tsx",
+      "entry_point": "NodeGeneratingOverlay",
+      "disposition": "enforced",
+      "evidence": "Direct consumer found by node scripts/door-map.mjs GenerationWaitingSurface; both pass real viewport and zoom to the boundary."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeImportingOverlay.tsx",
+      "entry_point": "NodeImportingOverlay",
+      "disposition": "enforced",
+      "evidence": "Direct consumer found by node scripts/door-map.mjs GenerationWaitingSurface; both pass real viewport and zoom to the boundary."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any fifth node, reduced-motion renderer, zoomed-out or offscreen node reaches the blue band.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx: two read doors",
+      "rg static-band|waiting-band src tests: shared CSS plus performance/visual/import consumers",
+      "Read NodeGeneratingOverlay and NodeImportingOverlay wrappers; image/video/audio and byte-progress populations checked."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+    "invariant": "Eligible nodes reuse the grid effect; ineligible nodes have no blue band or independent sweeping animation.",
+    "failure_mode": "Unavailable GPU/reduced motion/low zoom/offscreen uses a motionless grid; audio uses its existing bars.",
+    "exception_policy": "none",
+    "strategy": "Delete slot ownership and sweeping-band path at their sole owner; retain capability and lifecycle guards.",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/observability/generationFeedback.test.ts",
+    "tests/ux/canvas-perf/waitingFxScenario.mjs",
+    "tests/ux/process-feedback-imgfx.e2e.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/observability/generationFeedback.test.ts",
+    "tests/ux/canvas-perf/waitingFxScenario.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+      "src/workbench/generationCanvas/nodes/generationWaitingSurface.css"
+    ],
+    "rationale": "Remove four-slot registry and middle-band DOM/CSS; no duplicate animation implementation retained."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "img-fx runtime is unchanged; defect lies in the application quota/placeholder policy, not library behavior. Existing upstream renderer/pause/reveal APIs are reused.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data changes; selectors in active tests and diagnostics follow the renamed static shell.",
+  "residual_risks": [
+    "Performance beyond measured visible-node counts and on other physical devices is not inferred from this machine."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+    "tests": [
+      "src/workbench/observability/generationFeedback.test.ts",
+      "tests/ux/canvas-perf/waitingFxScenario.mjs",
+      "tests/ux/process-feedback-imgfx.e2e.mjs"
+    ],
+    "why": "The single visual owner enforces eligibility and static presentation for both producers."
+  }
+}

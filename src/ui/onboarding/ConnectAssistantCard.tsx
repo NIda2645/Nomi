@@ -66,14 +66,13 @@ const REASON_I18N: Partial<Record<McpVerifyReason, string>> = {
 
 /**
  * Nomi 自己写过、如今已过时的四种配置形状：读回配置就能判死，不必 spawn 去问；直接按形状说人话 + 给「升级接入」。
- * launcher-stale 含「命令签名都对、但 NOMI_SETTINGS_DIR 指向别的/已删除 profile」——2026-09-13 本机 5 个
- * 客户端全是这种「握手能过、连上的却是空白 Nomi」的假绿。
+ * 有效的另一份 Nomi 单独显示归属，不当作失效，也不自动启动它。
  */
 const STALE_CONFIG_I18N: Partial<Record<McpConfigState, string>> = {
   'legacy-launcher': 'legacyLauncher',
   'stale-development': 'staleDevelopment',
   'auth-stale': 'authStale',
-  'launcher-stale': 'launcherStale',
+  'launcher-broken': 'launcherBroken',
 }
 
 const REFUSAL_I18N: Record<McpWriteRefusal, string> = {
@@ -139,8 +138,9 @@ export function ConnectAssistantCard({
   const verifyBridge = capability?.verifyMcp
   const targetInstalled = info?.clients[target]?.installed === true
   const targetStaleShape = info?.clients[target] ? STALE_CONFIG_I18N[info.clients[target].configState] ?? null : null
+  const elsewhere = info?.clients[target]?.configState === 'launcher-elsewhere'
   React.useEffect(() => {
-    if (!verifyBridge || !targetInstalled || targetStaleShape) {
+    if (!verifyBridge || !targetInstalled || targetStaleShape || elsewhere) {
       setVerify(null)
       return
     }
@@ -158,7 +158,7 @@ export function ConnectAssistantCard({
     return () => {
       alive = false
     }
-  }, [verifyBridge, target, targetInstalled, targetStaleShape, checkNonce])
+  }, [verifyBridge, target, targetInstalled, targetStaleShape, elsewhere, checkNonce])
 
   // 加载中 / 老 preload（无 capability.mcpInfo）：整卡不显，避免坏入口。
   if (!capability?.mcpInfo || !info) return null
@@ -230,7 +230,9 @@ export function ConnectAssistantCard({
   const { broken, hostApprovalPending, trusted } = activation
   const statusLabel = !hasTarget
     ? t('onboardingProviders.assistant.status.notDetected')
-    : !client.installed
+    : elsewhere
+      ? t('onboardingProviders.assistant.elsewhereStatus')
+      : !client.installed
       ? info.tokenReady
         ? t('onboardingProviders.assistant.status.ready')
         : t('onboardingProviders.assistant.status.notReady')
@@ -306,24 +308,28 @@ export function ConnectAssistantCard({
             data={detected.map((key) => ({ label: CLIENT_LABEL[key], value: key }))}
           />
 
-          {client.installed && broken ? (
+          {client.installed && (broken || elsewhere) ? (
             <>
               {/* 过时形状 / 实连失败：不再显示绿色「已写入配置」，如实说坏在哪 + 给唯一出路（重写成当前启动方式）。 */}
               <div
-                data-assistant-broken={staleShape ? client.configState : verify?.reason ?? 'broken'}
+                data-assistant-broken={elsewhere ? undefined : staleShape ? client.configState : verify?.reason ?? 'broken'}
+                data-assistant-elsewhere={elsewhere || undefined}
                 className={cn(
                   'flex items-start gap-2 rounded-nomi-sm px-3 py-2.5',
-                  staleShape ? 'bg-nomi-ink-05' : 'bg-[var(--workbench-danger-soft)]',
+                  staleShape || elsewhere ? 'bg-nomi-ink-05' : 'bg-[var(--workbench-danger-soft)]',
                 )}
               >
-                <IconAlertTriangle size={17} className={cn('shrink-0 mt-0.5', staleShape ? 'text-nomi-warning' : 'text-workbench-danger')} />
+                <IconAlertTriangle size={17} className={cn('shrink-0 mt-0.5', elsewhere ? 'text-nomi-ink-60' : staleShape ? 'text-nomi-warning' : 'text-workbench-danger')} />
                 <div className="min-w-0">
-                  <div className="text-body-sm font-semibold text-nomi-ink">{t('onboardingProviders.assistant.brokenTitle')}</div>
-                  <div className="text-caption text-nomi-ink-60 mt-0.5 leading-relaxed">
-                    {staleShape
+                  <div className="text-body-sm font-semibold text-nomi-ink">{t(elsewhere ? 'onboardingProviders.assistant.elsewhereTitle' : 'onboardingProviders.assistant.brokenTitle')}</div>
+                  <div className="text-caption text-nomi-ink-60 mt-0.5 leading-relaxed break-all">
+                    {elsewhere ? client.configuredCommand : staleShape
                       ? t(`onboardingProviders.assistant.staleConfig.${staleShape}`, { client: label })
                       : t(`onboardingProviders.assistant.reason.${REASON_I18N[verify?.reason ?? 'ok'] || 'handshakeFailed'}`, { client: label })}
                   </div>
+                  {elsewhere && client.configuredSettingsDir ? (
+                    <div className="text-caption text-nomi-ink-60 mt-0.5 leading-relaxed break-all">{client.configuredSettingsDir}</div>
+                  ) : null}
                 </div>
               </div>
               <button
@@ -337,7 +343,7 @@ export function ConnectAssistantCard({
                 )}
               >
                 <IconRefresh size={15} stroke={1.8} />
-                {t(staleShape ? 'onboardingProviders.assistant.upgrade' : 'onboardingProviders.assistant.repair', { client: label })}
+                {t(elsewhere ? 'onboardingProviders.assistant.switchHere' : staleShape ? 'onboardingProviders.assistant.upgrade' : 'onboardingProviders.assistant.repair', { client: label })}
               </button>
               <button
                 type="button"

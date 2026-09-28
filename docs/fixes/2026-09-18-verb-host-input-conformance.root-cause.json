@@ -1,0 +1,450 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-verb-host-input-conformance",
+  "problem_type": "The model-facing verb declaration and the host contract are two independently authored schemas joined by a hand-written translator, and nothing checks the composition",
+  "symptom": "Real run 2026-09-18: a user asked the Agent to turn a script into a shot table; draft_shots was refused three times in a row with generation_input_invalid and the turn timed out. The sweep that followed found the same shape on other verbs: look_at_media with a single frame index, read_script with no scope on the external MCP face, arrange_canvas with no arguments, and several fields the translator threw away without any error at all. Rebasing onto c25f6c4bc (which threaded the model-authored shot title through to the canvas label and the spend card) immediately turned the new gate red again: title reaches the revise-a-draft entrance, whose candidatePatch is strict and has no title, so renaming a shot was refused with a message naming a field the model could not place.",
+  "direct_cause": "draftShotToPlanShot emitted per-shot fields (title, a renamed durationSeconds, a bare {assetId} reference) that generationPlanInputSchema's strict shots[] does not accept, and dropped others (per-shot candidate, top-level taskKind/candidate) that it does.",
+  "class_root": "A verb's schema says what the model may send; a capability contract's inputSchema says what the host accepts; between them sits hand-written translation (verbToTransportCall, VerbDeclaration.semanticInputOf). Nothing in the repository ever evaluated that composition, so every drift between the two ends stayed invisible until a paid run hit it. The external MCP face already had the sibling gate (check-mcp-operation-constructible: every advertised operation must be constructible); the internal verb face had none, which is exactly why these defects clustered there. The same invariant has a second half that the schema composition cannot see: after the host accepts an input, the value still has to survive every downstream projection, and each hand-written field list is a silent drop point — that is how the shot title died five times in one chain on the same day.",
+  "affected_population": [
+    "Every Agent turn that asks for a shot table, since a storyboard shot naturally carries a title and a duration",
+    "Every draft_shots call carrying a reference image, including anchor reuse, because contentHash and version are not returned by any read verb",
+    "Every draft_shots call that names a provider or model, which was silently ignored and fell back to the user's default model on a spending path",
+    "Every external MCP host calling nomi_document_read without a scope",
+    "Every look_at_media or read_timeline call giving one end of a range",
+    "Every arrange_canvas call with no arguments"
+  ],
+  "scope_paths": [
+    "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+    "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+    "electron/shared/agentCapabilities/verbs/verbSemanticInput.ts",
+    "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+    "electron/agentLane/laneVerbTransport.ts",
+    "electron/agentLane/laneDocumentTools.ts",
+    "electron/capabilityCore/semanticGenerationCandidate.ts",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/capabilityCore/mcpStdioServer.ts",
+    "electron/assets/projectAssetStore.ts",
+    "scripts/check-verb-host-conformance.mjs",
+    "electron/capabilityCore/dispatcher.ts"
+  ],
+  "entry_points": [
+    "Agent panel turn calling any of the 20 model-facing verbs",
+    "External MCP host calling any capability projected to the mcp profile"
+  ],
+  "invariants": [
+    "Every call the model is told it may make must be accepted by the host: the composition verb schema -> translation -> capability inputSchema holds for the minimal instance, for every pair of optional fields, and for the fully saturated instance",
+    "A field the model fills either reaches the host or is registered by name with the reason it was consumed; it is never dropped silently",
+    "A constraint the host enforces is declared on the verb, so the model is refused at its own face in its own field names instead of receiving a host message about a field it never wrote",
+    "Identity the model cannot obtain (candidate wiring, a reference's contentHash and version) is resolved by the host, never demanded from the model",
+    "A default value belongs to the declaration, which both profiles share, never to one executor",
+    "A field that reaches the host must also survive every downstream projection: an envelope type with an exhaustive key list is spread through its own helper, never rebuilt by hand"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 36,
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 64,
+      "symbol": "VerbTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 77,
+      "symbol": "verbToTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 113,
+      "symbol": "exportJobTransportCall"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/projectAssetStore.ts",
+      "line": 308,
+      "symbol": "CopyAssetFileOptions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/assets/projectAssetStore.ts",
+      "line": 751,
+      "symbol": "listProjectAssets"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 105,
+      "symbol": "copyProjectAsset"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/assetsIpc.ts",
+      "line": 132,
+      "symbol": "importRemoteAsset"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "line": 187,
+      "symbol": "McpStdioServerOptions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "line": 236,
+      "symbol": "McpStdioServerOptions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "line": 248,
+      "symbol": "createMcpStdioDirectInvoker"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "line": 263,
+      "symbol": "createDefaultMcpProposalReceiptResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 25,
+      "symbol": "SemanticGenerationCandidateParams"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "line": 27,
+      "symbol": "SemanticGenerationDefault"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 160,
+      "symbol": "semanticCandidateFromParams"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 295,
+      "symbol": "isLongFormGenerationRequest"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 75,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+      "line": 85,
+      "symbol": "generationCandidateSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 90,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 107,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "line": 116,
+      "symbol": "generationPlanInputSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 64,
+      "symbol": "READ_GUIDELINES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 75,
+      "symbol": "READ_GUIDELINES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "line": 15,
+      "symbol": "readVerbs"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbSemanticInput.ts",
+      "line": 56,
+      "symbol": "DOCUMENT_WRITE_OPERATION_BY_WHERE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbSemanticInput.ts",
+      "line": 57,
+      "symbol": "DOCUMENT_WRITE_OPERATION_BY_WHERE"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 103,
+      "symbol": "assetReadInputOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 103,
+      "symbol": "timelineReadInputOf"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "line": 151,
+      "symbol": "draftShotSchema"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "line": 15,
+      "symbol": "writeVerbs"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDocumentTools.ts",
+      "line": 19,
+      "symbol": "DocumentLanePort"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "line": 106,
+      "symbol": "createDocumentLaneTools"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 60,
+      "symbol": "SealedMultiShotEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 92,
+      "symbol": "StoryboardShotDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 287,
+      "symbol": "draftShotFromPlan"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "line": 370,
+      "symbol": "draftShotFromStoryboard"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 107,
+      "symbol": "GenerationOperationState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 113,
+      "symbol": "GenerationOperationShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "line": 326,
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "line": 720,
+      "symbol": "coldstartEtaForGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 120,
+      "symbol": "DispatchContext"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "line": 146,
+      "symbol": "RpcError"
+    }
+  ],
+  "door_reduction": {
+    "before": 40,
+    "after": 42,
+    "why_not": "The count is what `node scripts/door-map.mjs` reports for every file this change touches; the change adds no door and removes one (the dead modelSetup lane branch). Merging them would merge things that are genuinely different: toSemanticInput is already the single shared call point for the internal lane and the external MCP projection, verbToTransportCall is the single translation for deferred-group verbs, and semanticCandidateFromParams keeps its N=1 and N>=2 call sites on purpose — collapsing those two arities into one is exactly what previously let the multi-shot path diverge. What was missing was never fewer doors but a check that every door's output is accepted on the other side, which the new gate now performs across all of them in one pass."
+  },
+  "generality_proof": "The gate enumerates VERB_DECLARATIONS rather than a hand-written list, derives instances from each verb's own published JSON Schema, and validates against the same *InputForAlias / plan-schema functions the transport adapters call. A new verb, a new field on an existing verb, a rename in the translator, or an upstream change to a host schema is covered without anyone remembering to add a case; the fail-closed count check (fewer than 20 verbs scanned is red) stops the gate from silently scanning nothing.",
+  "shared_boundaries": [
+    {
+      "path": "scripts/check-verb-host-conformance.mjs",
+      "symbol": "checkVerb",
+      "responsibility": "Evaluate the composition verb schema -> translation -> host bridge for every verb, on both faces, and refuse any field that disappears without a registered reason"
+    },
+    {
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "resolveProjectAssetReferenceIdentity",
+      "responsibility": "Resolve an assetId to its referable identity (contentHash + version) — the single place that computes it, now shared by agent attachments and generation plan references"
+    },
+    {
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "symbol": "semanticCandidateFromParams",
+      "responsibility": "Turn the semantic fields a model can write into a full plan candidate, including resolving reference identity the model cannot know"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "entry_point": "look_at_media",
+      "disposition": "enforced",
+      "evidence": "Half-open ranges and mutually exclusive read modes are now cross-field constraints on the verb; the translator no longer fabricates a zero endpoint"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "entry_point": "read_timeline",
+      "disposition": "enforced",
+      "evidence": "Same range refinement; giving one end is refused at the model face with the model's own field names"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "entry_point": "read_script",
+      "disposition": "enforced",
+      "evidence": "The full default moved into semanticInputOf, which both profiles share; the hand-written fallback in laneDocumentTools that hid the defect on the internal face only is deleted"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "entry_point": "arrange_canvas",
+      "disposition": "enforced",
+      "evidence": "links and tidy are now declared mutually exclusive, so an argument-less call is a declared refusal instead of a bare Error thrown inside canvasWriteInputOf"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "entry_point": "draft_shots",
+      "disposition": "enforced",
+      "evidence": "Per-shot candidate and top-level taskKind/candidate now reach the host; shots[] accepts the moduleId/providerId its own synthesizer already reads; shotId without draftId is refused instead of silently creating a new draft; references carry only assetId and the host pins the identity"
+    },
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "start_model_setup",
+      "disposition": "enforced",
+      "evidence": "The modelSetup branch was dead: the verb is resident, so it never reaches this translator, and laneExtendedDesktopPorts has no modelSetup case, so reaching it would have produced generation_surface_unavailable. Deleted rather than adapted (P1)"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationToolCatalog.ts",
+      "entry_point": "nomi_operation_plan (external MCP face)",
+      "disposition": "not-affected",
+      "evidence": "Its transport schema is derived from generationPlanInputSchema.options[1] rather than hand-written, so it moved with the host schema; the reference relaxation and the new shots[] fields reached it without a second edit"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "entry_point": "write_script, make_artifact, stage_shot, edit_timeline, undo, delete_from_canvas, export_video, generate, save_skill",
+      "disposition": "not-affected",
+      "evidence": "The new gate runs the minimal, pairwise and saturated instances of each through its lane and they are accepted with no field dropped"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "entry_point": "draft_shots revise-a-draft entrance (title)",
+      "disposition": "enforced",
+      "evidence": "Caught by the new gate the moment the title chain landed: the candidate patch has no place for an envelope field, so the verb now refuses title alongside draftId with a message that says what to do instead of letting the host answer with Unrecognized key"
+    },
+    {
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "entry_point": "persisted shot projection",
+      "disposition": "enforced",
+      "evidence": "R5 now refuses any object literal that rebuilds the shot envelope by hand while omitting a key; reintroducing the hand-written field list at line 350 turns the gate red, which is how the title used to disappear here"
+    },
+    {
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "entry_point": "nomi_canvas_edit create_canvas_nodes on the headless MCP route",
+      "disposition": "enforced",
+      "evidence": "The same sweep found this route rebuilding a planned node into the seven-field NodeSpec, which has no artifact slot: an external host authoring an SVG/HTML/Markdown artifact received applied:true and a real node id while the body evaporated unrecoverably. The body cannot be delivered on this route at all (there is no headless equivalent of deliverAgentArtifact), so the call is now refused with capability_unsupported naming the clientId, instead of creating an empty shell and reporting success. Carrying the remaining hint fields (categoryId, modeId, variantId, params, metadata, referenceSheet, storyboardKeyframe) is separate work reported but not done."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Two schemas written by different people at different times, joined by hand-written translation, drift every time either end changes. It had already recurred at least four times on this seam (#777's generation_surface_unavailable, the multi-shot candidate demand, the title/durationSec rejection, and the reference identity demand) and it will keep recurring while nothing evaluates the composition.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs verbToTransportCall toSemanticInput semanticCandidateFromParams",
+      "Ran a saturating probe over all 20 verbs on both faces before writing any fix, then kept it as the gate rather than throwing it away",
+      "Read every *InputForAlias bridge (8 domains) and compared it against the verb that translates into it"
+    ]
+  },
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/check-verb-host-conformance.mjs",
+    "invariant": "For every declared verb, on every profile it projects to, the minimal instance, every pair of optional fields, and the fully saturated instance all survive translation and are accepted by the host bridge, with no model-supplied value disappearing unregistered. In addition, no file outside the envelope module may rebuild an envelope-typed object by listing its keys: projections spread the module's own helper, so a newly added key cannot be forgotten by a projection that predates it.",
+    "failure_mode": "The gate names the verb, the rule, the lane, the host message and the payload, and says whether to pass the field through or register it.",
+    "exception_policy": "none",
+    "strategy": "Evaluate the composition instead of each end separately, and put every constraint on the earliest layer that can state it: cross-field constraints on the verb declaration (so the model is refused at its own face, in its own field names), identity resolution on the host (so the model is never asked for what it cannot obtain), and shared defaults on the declaration rather than inside one executor. The gate has no off switch and no per-verb skip: TRANSLATOR_CONSUMED is a required declaration, not a waiver — a path listed there still has to pass every host-acceptance rule, and listing it only records, by exact path and in one sentence, which part of the translation absorbs that field.",
+    "artifacts": [
+      "scripts/check-verb-host-conformance.mjs",
+      "package.json"
+    ]
+  },
+  "regression_tests": [
+    "scripts/check-verb-host-conformance.node-test.mjs",
+    "electron/agentLane/laneVerbTransport.test.ts",
+    "electron/capabilityCore/semanticGenerationCandidate.test.ts",
+    "tests/agent-runtime/lane-tool-contract.test.mts"
+  ],
+  "class_regression_tests": [
+    "scripts/check-verb-host-conformance.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneVerbTransport.ts",
+      "electron/agentLane/laneDocumentTools.ts",
+      "electron/shared/agentCapabilities/verbs/verbSemanticInput.ts"
+    ],
+    "rationale": "The dead modelSetup lane branch, the hand-written scope default in the document lane tool, the shotId strip on the single-shot create path, and the fabricated zero endpoints in both range translators are all deleted. No parallel path remains."
+  },
+  "migration": "No persisted data changes. A generation plan reference may now arrive with only an assetId; already-pinned references are parsed byte-identically, and the stored candidate still carries the full pinned shape.",
+  "residual_risks": [
+    "A real paid generation carrying a reference image was not run in this batch; reference identity resolution is covered by unit tests plus the gate, not by a live provider call.",
+    "The gate probes pairs of top-level optional fields and the fully saturated instance; a defect that needs exactly three specific fields and is absent from the saturated instance would still escape.",
+    "assertReferencesResolvable, the project-ownership guard for reused anchors, is still not wired in production (only in an e2e test). Reference identity is now resolved against the project's own asset index, which rejects foreign ids as a side effect, but the explicit guard remains unwired and is reported separately.",
+    "R5 recognises an envelope rebuild by its identity key appearing in the same object literal as another envelope key; a projection that splits the rebuild across several statements would not be seen.",
+    "The headless MCP canvas route still drops categoryId, modeId, variantId, params, metadata, referenceSheet and storyboardKeyframe when rebuilding a planned node into NodeSpec (electron/capabilityCore/dispatcher.ts, electron/capabilityCore/canvasGraph.ts NodeSpec/factorySpecs). Only the unrecoverable loss (artifact body) is refused here; the rest still default silently and want the plannedNodeEnvelopeOf treatment plus a meta/categoryId slot on NodeSpec.",
+    "stage_shot's customBlocking is dropped whenever characters is also supplied (src/workbench/generationCanvas/agent/applyCanvasToolCall.ts:573,577 and parseStagingSpec at :159); the verb, the contract and the model guidance all invite sending both. Reported, not fixed — it sits in the renderer executor rather than on the input face."
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/check-verb-host-conformance.mjs",
+    "has_tests": true,
+    "tests": [
+      "scripts/check-verb-host-conformance.node-test.mjs"
+    ],
+    "rationale": "The invariant is about the composition of two layers, so it cannot live inside either one; it belongs to a gate that reads both. The gate carries its own positive controls (selfCheck) so a broken ruler fails closed instead of passing everything, and eight mutations of production code back to the old behaviour were each confirmed to turn it red."
+  },
+  "internal_only_reason": "Which fields a Nomi verb offers and which fields a Nomi capability accepts are both facts about this repository; no external specification governs the mapping between them.",
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency is involved.",
+    "exit_criteria": []
+  }
+}

@@ -10,11 +10,17 @@ import { canvasWriteSemanticInputSchema, type CanvasWriteInput } from "../canvas
 import type { DocumentWriteInput } from "../documentWrite";
 import { TIMELINE_READ_ALIASES, type TimelineReadInput } from "../timelineRead";
 
-/** `read_timeline` 参数 → 契约语义输入。范围齐全才是 range 读；只给一半按契约的跨字段约束拒。 */
+/**
+ * `read_timeline` 参数 → 契约语义输入。两端齐全才是 range 读，否则读全量。
+ *
+ * **不再替模型编造缺省端点**（2026-09-18）：过去只给一端时这里补 `?? 0`，于是宿主拒收的是一个
+ * 模型没写过的 `endFrame: 0`，报错也说不出它该给什么。「两端要么都给要么都不给」现在是动词自己的
+ * 跨字段约束（`readVerbs.ts` 的 `rangeRefinement`），到这里两端只可能同时在或同时不在。
+ */
 export function timelineReadInputOf(args: unknown): TimelineReadInput {
   const { startFrame, endFrame } = args as { startFrame?: number; endFrame?: number };
-  if (startFrame === undefined && endFrame === undefined) return { operation: TIMELINE_READ_ALIASES.read } as TimelineReadInput;
-  return { operation: TIMELINE_READ_ALIASES.inspectRange, startFrame: startFrame ?? 0, endFrame: endFrame ?? 0 } as TimelineReadInput;
+  if (startFrame === undefined || endFrame === undefined) return { operation: TIMELINE_READ_ALIASES.read } as TimelineReadInput;
+  return { operation: TIMELINE_READ_ALIASES.inspectRange, startFrame, endFrame } as TimelineReadInput;
 }
 
 /**
@@ -28,8 +34,9 @@ export function assetReadInputOf(args: unknown): AssetReadInput {
     waveform?: { startSeconds?: number; endSeconds?: number; buckets?: number };
   };
   if (assetId && waveform) return { operation: ASSET_READ_ALIASES.waveform, assetId, ...waveform } as AssetReadInput;
-  if (assetId && (startFrame !== undefined || endFrame !== undefined)) {
-    return { operation: ASSET_READ_ALIASES.inspectRange, assetId, startFrame: startFrame ?? 0, endFrame: endFrame ?? 0 } as AssetReadInput;
+  // 同 `timelineReadInputOf`：两端齐全才是范围读，不替模型编造缺省端点。
+  if (assetId && startFrame !== undefined && endFrame !== undefined) {
+    return { operation: ASSET_READ_ALIASES.inspectRange, assetId, startFrame, endFrame } as AssetReadInput;
   }
   if (assetId) return { operation: ASSET_READ_ALIASES.inspect, assetId } as AssetReadInput;
   return {
@@ -61,13 +68,13 @@ type StageArgs = { shotId: string; staging?: Record<string, unknown>; cameraMove
 export function canvasWriteInputOf(verb: string, args: unknown): CanvasWriteInput {
   let semantic: unknown;
   if (verb === "arrange_canvas") {
-    const { links, tidy, categoryId } = args as ArrangeArgs;
+    const { links, categoryId } = args as ArrangeArgs;
+    // 「links 与 tidy 恰好一个」由动词声明的 superRefine（writeVerbs.ts `arrangeCanvas`）在这之前保证，
+    // 模型收到的是那条说得清的拒绝；这里不再有第二份判据（P1：同一条不变量只住一层）。
     if (links && links.length > 0) {
       semantic = { operation: "connect_canvas_edges", edges: links.map((link) => ({ sourceClientId: link.fromId, targetClientId: link.toId, ...(link.role ? { mode: link.role } : {}) })) };
-    } else if (tidy) {
-      semantic = { operation: "tidy_canvas", ...(categoryId ? { categoryId } : {}) };
     } else {
-      throw new Error("arrange_canvas needs links to connect or tidy: true");
+      semantic = { operation: "tidy_canvas", ...(categoryId ? { categoryId } : {}) };
     }
   } else if (verb === "make_artifact") {
     const { fileType, title, content } = args as ArtifactArgs;

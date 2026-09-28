@@ -27,9 +27,24 @@ const HEALTH_PATH = "/api/v1/health/check";
 /** 探测超时：健康请求要快；慢/挂当作不可达，别拖住连接体验。 */
 const PROBE_TIMEOUT_MS = 6_000;
 
-/** connector 偏好里存线路的键。 */
+/** connector 偏好里存线路的键。**只有 mode**——sticky 不进盘，理由见下。 */
 const PREF_KEY_MODE = "routeMode";
-const PREF_KEY_STICKY = "stickyHost";
+
+/**
+ * 本次进程的 sticky 线路（C3，2026-09-18）。
+ *
+ * 以前它写在 `connector-prefs.json` 里，而写它的是 `resolveTikhubHost`／`failoverTikhubHost`
+ * ——**两个 `resolve*` 前缀的读路径**。后果不是多写了个文件：用户把线路设成「自动」，
+ * 某一刻 .io 恰好探不通，我们就**悄悄**把 .dev 钉进了他的盘上偏好，高级设置的「线路」
+ * 从此显示 .dev，而且 .io 恢复了也不会变回来——他没做任何动作，偏好却被改了。
+ *
+ * 同形状的教训 09-14 已经有一条（`docs/lessons/mcp-read-path-must-not-write-host-configs.md`，
+ * 当时修在 `readMcpInfo`），只是那次没变成门岗，于是又在 connector 路由里长了一份。
+ * 现在归位成**进程内缓存**：不再探两次的好处保住了（健康探测免费、不计费），
+ * 而「盘上偏好」只由用户显式动作（`setTikhubRouteMode`）改。
+ * 代价是每次开 App 多一次免费探测——比「偷改用户设置」便宜得多。
+ */
+let sessionStickyHost: string | null = null;
 
 function hostForForcedMode(mode: TikhubRouteMode): string | null {
   if (mode === "io") return TIKHUB_HOST_PRIMARY;
@@ -49,10 +64,15 @@ function normalizeStickyHost(value: unknown): string | null {
   return (TIKHUB_HOSTS as readonly string[]).includes(raw) ? raw : null;
 }
 
-/** 读当前线路偏好（mode + sticky）。 */
+/**
+ * 读当前线路偏好。`mode` 来自盘（用户显式设的），`stickyHost` 来自本次进程的探测结果。
+ *
+ * 存量装机盘上可能还留着旧版写的 `stickyHost`：**刻意不读它**。读了就等于让一次旧的、
+ * 用户从没同意过的自动选路继续钉着他——那正是这次要拆掉的东西（P1：不留旧路）。
+ */
 export function readTikhubRoutePrefs(): { mode: TikhubRouteMode; stickyHost: string | null } {
   const prefs = readConnectorPrefs(TIKHUB_CONNECTOR_ID);
-  return { mode: normalizeMode(prefs[PREF_KEY_MODE]), stickyHost: normalizeStickyHost(prefs[PREF_KEY_STICKY]) };
+  return { mode: normalizeMode(prefs[PREF_KEY_MODE]), stickyHost: normalizeStickyHost(sessionStickyHost) };
 }
 
 /**
@@ -120,7 +140,8 @@ export async function resolveTikhubHost(deps: TikhubRouteDeps = {}): Promise<str
 
   for (const host of orderedCandidateHosts(locale)) {
     if (await probe(host)) {
-      writeConnectorPrefs(TIKHUB_CONNECTOR_ID, { [PREF_KEY_STICKY]: host });
+      // C3：选路结果只留在本次进程里。写盘 = 替用户改了他没动过的偏好。
+      sessionStickyHost = host;
       return host;
     }
   }
@@ -140,7 +161,7 @@ export async function failoverTikhubHost(failedHost: string, deps: TikhubRouteDe
   const alternate = TIKHUB_HOSTS.find((h) => h !== failedHost);
   if (!alternate) return null;
   if (await probe(alternate)) {
-    writeConnectorPrefs(TIKHUB_CONNECTOR_ID, { [PREF_KEY_STICKY]: alternate });
+    sessionStickyHost = alternate; // 同上：切换是本次出站的事实，不是用户的偏好。
     return alternate;
   }
   return null;
@@ -149,9 +170,8 @@ export async function failoverTikhubHost(failedHost: string, deps: TikhubRouteDe
 /** 存手动线路模式（用户在高级设置里切）。切到 auto 时清掉 sticky，让下次连接重新实测。 */
 export function setTikhubRouteMode(mode: unknown): TikhubRouteMode {
   const next = normalizeMode(mode);
-  const patch: Record<string, unknown> = { [PREF_KEY_MODE]: next };
-  if (next === "auto") patch[PREF_KEY_STICKY] = undefined; // 回自动：忘掉上次结果，重新赛跑
-  writeConnectorPrefs(TIKHUB_CONNECTOR_ID, patch);
+  if (next === "auto") sessionStickyHost = null; // 回自动：忘掉上次结果，重新赛跑
+  writeConnectorPrefs(TIKHUB_CONNECTOR_ID, { [PREF_KEY_MODE]: next });
   return next;
 }
 

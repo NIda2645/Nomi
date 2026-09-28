@@ -11,7 +11,12 @@ import {
   readExtraHeaders,
   upstreamErrorText,
 } from "./modelListProbe";
-import { normalizeProviderKind } from "../../catalog/catalogStore";
+import { normalizeProviderKind, readCatalog } from "../../catalog/catalogStore";
+import { connectionAuthSpec } from "../../catalog/vendorAuthSpec";
+import type { VendorAuthSpec } from "../requestPipeline";
+import { credentialProbePlan } from "../../catalog/credentialProbePolicy";
+import { directKeyProbeModelId } from "../../catalog/directKeyCredential";
+import { quoteSpendLine } from "../../spendQuote";
 import { checkVendorHealth } from "./vendorHealth";
 import { createExplicitProxyDispatcher } from "../../systemProxy";
 
@@ -32,6 +37,14 @@ type ProtocolProbe = { ok: boolean; status?: number; error?: string; mismatch?: 
  *  - openai-responses : {baseUrl}/responses，bearer，{input, max_output_tokens}（非 messages！）
  *  - openai-compatible: {baseUrl}/chat/completions，bearer，{messages, max_tokens}
  */
+/**
+ * 探测这条地址时该用哪份鉴权说法：全新接入 = 没有已保存的连接 → 按协议缺省；
+ * 重测一条已存在的连接 → 用它声明的那份（方案词只住在那里，向导上没有填它的格子）。
+ */
+function savedConnectionAuth(baseUrl: string, kind: AiSdkProviderKind): VendorAuthSpec {
+  return connectionAuthSpec({ baseUrl, authType: kind === "anthropic" ? "x-api-key" : "bearer" });
+}
+
 async function probeOneProtocol(
   kind: AiSdkProviderKind,
   rawBaseUrl: string,
@@ -40,9 +53,10 @@ async function probeOneProtocol(
   extraHeaders: Record<string, string>,
   signal: AbortSignal,
   proxyUrl?: string,
+  auth?: VendorAuthSpec,
 ): Promise<ProtocolProbe> {
   let url: string;
-  const headers = mergeHeadersCaseInsensitive({ "content-type": "application/json" }, buildAuthHeaders(kind, apiKey, extraHeaders));
+  const headers = mergeHeadersCaseInsensitive({ "content-type": "application/json" }, buildAuthHeaders(kind, apiKey, extraHeaders, auth));
   let body: Record<string, unknown>;
   if (kind === "anthropic") {
     const root = (rawBaseUrl || "https://api.anthropic.com").replace(/\/v1$/i, "");
@@ -76,6 +90,18 @@ export function registerOnboardingIpc(): void {
     assertTrustedSender(event);
     try { return { ok: true, value: await upsertRendererCatalogVendorApiKey(vendorKey, payload) }; }
     catch (error) { return { ok: false, error: error instanceof Error ? error.message : String(error) }; }
+  });
+
+  // 「这家验一次 key 要不要花钱」——接入页的按钮文案读它（T-MO-10，用户 2026-09-22 拍板）。
+  // 判据不在渲染层第二次成立：这里只是把主进程那份唯一策略（credentialProbePolicy）投影出去，
+  // 于是「界面说免费、实际扣了钱」在结构上讲不出来。金额走同一个报价 owner quoteSpendLine。
+  ipcMain.handle("nomi:model-catalog:credential-probe-plan", async (event, vendorKey: string) => {
+    assertTrustedSender(event);
+    const key = String(vendorKey || "").trim();
+    const plan = credentialProbePlan(key);
+    if (plan.cost === "free") return { cost: "free" as const, amount: null };
+    const modelKey = directKeyProbeModelId(readCatalog(), key);
+    return { cost: "paid" as const, amount: modelKey ? quoteSpendLine({ vendorKey: key, modelKey }).amount : null };
   });
 
   // 「AI 读文档」接入路径已下线（Issue #8：改为中转拉取式接入图片/视频/文本）。
@@ -131,7 +157,9 @@ export function registerOnboardingIpc(): void {
     if (reachabilityOnly) {
       if (!/^https?:\/\//i.test(rawBaseUrl)) return { ok: false, failureKind: "invalid_response", error: "接入地址需以 http:// 或 https:// 开头" };
       const kind = forcedKind ?? "openai-compatible";
-      const headers = buildAuthHeaders(kind, apiKey, extraHeaders);
+      // 已保存的那条连接可能声明了方案词（Higgsfield 的 `Key id:secret`）。不带它探，
+      // 得到的 401 说的是「我们头拼错了」，用户读到的却是「你的 key 不对」。
+      const headers = buildAuthHeaders(kind, apiKey, extraHeaders, savedConnectionAuth(rawBaseUrl, kind));
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 12_000);
       try {
@@ -171,7 +199,7 @@ export function registerOnboardingIpc(): void {
       for (const kind of candidates) {
         // openai-* 没地址就跳过（避免 fetch 无效 URL）。
         if (kind !== "anthropic" && !/^https?:\/\//i.test(rawBaseUrl)) continue;
-        const r = await probeOneProtocol(kind, rawBaseUrl, apiKey, modelId, extraHeaders, controller.signal, proxyUrl);
+        const r = await probeOneProtocol(kind, rawBaseUrl, apiKey, modelId, extraHeaders, controller.signal, proxyUrl, savedConnectionAuth(rawBaseUrl, kind));
         if (r.ok) return { ok: true, status: r.status, detectedKind: kind };
         // 留住「最该报给用户」的错：非 mismatch（鉴权/请求错，可操作）优先于 mismatch（换协议）。
         if (!best || (best.mismatch && !r.mismatch)) best = { ...r, kind };
@@ -197,7 +225,7 @@ export function registerOnboardingIpc(): void {
     if (!/^https?:\/\//i.test(baseUrl)) return { ok: false, failureKind: "invalid_response", error: "接入地址需以 http:// 或 https:// 开头" };
     const extraHeaders = readExtraHeaders(payload?.headers);
     const proxyUrl = typeof payload?.proxyUrl === "string" ? payload.proxyUrl : undefined;
-    const headers = buildAuthHeaders(providerKind, apiKey, extraHeaders);
+    const headers = buildAuthHeaders(providerKind, apiKey, extraHeaders, savedConnectionAuth(baseUrl, providerKind));
     // 发送前请求头守卫（同 test-connection）：自带裸 fetch 绕过发送闸，脏 key 先拦+说人话，不发 fetch。
     const headerProblem = findIllegalHeader(headers);
     if (headerProblem) return { ok: false, failureKind: "auth", error: describeIllegalHeader(headerProblem).message };

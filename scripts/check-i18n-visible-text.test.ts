@@ -50,7 +50,7 @@ function localeNeutralVendorNames(): string[] {
  * · electron 基线 —— 空对象即可（语料里没有主进程可见文案）
  */
 function makeCorpus(root: string): void {
-  for (const dir of ['src/i18n/locales', 'src/config/modelArchetypes', 'electron/catalog', 'electron/localRuntime', 'scripts']) {
+  for (const dir of ['src/i18n/locales', 'electron/shared/modelArchetypes', 'electron/catalog', 'electron/localRuntime', 'scripts']) {
     fs.mkdirSync(path.join(root, dir), { recursive: true })
   }
   fs.writeFileSync(
@@ -94,10 +94,10 @@ function makeCorpus(root: string): void {
     `${imports.join('\n')}\n\nexport const BUILTIN_VENDOR_SEEDS = [\n${entries.join('\n')}\n]\n`,
   )
 
-  fs.writeFileSync(path.join(root, 'src/config/modelArchetypes/klingArchetype.ts'), `export const KLING = { id: 'k3', labelZh: '可灵 3.0' }\n`)
+  fs.writeFileSync(path.join(root, 'electron/shared/modelArchetypes/klingArchetype.ts'), `export const KLING = { id: 'k3', labelZh: '可灵 3.0' }\n`)
   // comfyuiLocal.ts 在门岗的 EXCLUDED_FILES 里，语料沿用真名字，好让下面那条
   //「EXCLUDED_FILES 里的档案其 labelZh 仍受约束」验的是真过滤器而不是别的文件。
-  fs.writeFileSync(path.join(root, 'src/config/modelArchetypes/comfyuiLocal.ts'), `export const COMFY = { id: 'ct2i', labelZh: '本地 · 文生图' }\n`)
+  fs.writeFileSync(path.join(root, 'electron/shared/modelArchetypes/comfyuiLocal.ts'), `export const COMFY = { id: 'ct2i', labelZh: '本地 · 文生图' }\n`)
   fs.writeFileSync(path.join(root, 'scripts/i18n-electron-baseline.json'), '{}\n')
 }
 

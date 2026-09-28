@@ -1,0 +1,154 @@
+{
+  "schema_version": 3,
+  "external_sources": [],
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "本批改的是本仓自己的交付流水线（本地脚本 + GitHub Actions 的内置语义），没有第三方依赖决定这条不变量。",
+    "exit_criteria": []
+  },
+  "id": "2026-09-18-pr-body-gate-reads-a-stale-payload",
+  "problem_type": "门岗读的是事件快照而不是被判对象的当前状态",
+  "symptom": "PR 正文里明明写着方案/合同的链接，check:prior-art / check:door-map 仍报「PR 正文没有引用」。唯一修法是空提交重推刷新事件，一轮 40 分钟。2026-09-17 PR #804 因为正文比 push 晚 19 秒白烧一轮；最近 40 次 quality-gate 里 Contracts 红 7 次（door-map 4、prior-art 2）。",
+  "direct_cause": "两个门岗在 CI 里都读 `github.event.pull_request.body`（由 PRIOR_ART_PR_BODY / DOOR_MAP_PR_BODY 注入）——那是 **push 那一刻**的正文快照，不是 job 运行时的正文。",
+  "class_root": "判据的输入取自「触发时的事件负载」而不是「被判对象的当前状态」时，重跑这个 job 不可能变绿，于是门岗事实上在惩罚一件与代码正确性无关的事：改正文的时机。",
+  "affected_population": [
+    "所有改 src/ 或 electron/ 超过 300 行的 PR；所有带 recurring 根因合同的 PR"
+  ],
+  "scope_paths": [
+    "scripts/lib/prBody.mjs",
+    "scripts/check-prior-art.mjs",
+    "scripts/check-door-map.mjs",
+    "scripts/check-pr-body-gates.mjs",
+    "scripts/install-git-hooks.cjs",
+    ".github/workflows/quality-gate.yml"
+  ],
+  "entry_points": [
+    "scripts/check-prior-art.mjs（--pr / pull_request 事件）",
+    "scripts/check-door-map.mjs（同上）",
+    "scripts/check-pr-body-gates.mjs（pre-push 钩子）"
+  ],
+  "internal_only_reason": "「正文该现取还是取快照」是本仓门岗自己的取证纪律；gh CLI 的 `pr view --json body` 与 GITHUB_TOKEN 的 pull-requests:read 权限按官方用法使用。",
+  "invariants": [
+    "PR 正文只有一个取法：scripts/lib/prBody.mjs 的 resolvePullRequestBody，一律现取",
+    "pull_request 事件里取不到正文 = 红，不是跳过",
+    "正文侧判据在 push 之前先在本地跑一遍（pre-push），本地拿不到正文只算「今天没查成」不拦人"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "scripts/check-door-map.mjs",
+      "symbol": "resolvePullRequestBody"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/check-pr-body-gates.mjs",
+      "symbol": "resolvePullRequestBody"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/check-prior-art.mjs",
+      "symbol": "resolvePullRequestBody"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/pr-body-gates.node-test.mjs",
+      "symbol": "resolvePullRequestBody"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 4,
+    "why_not": "四扇全是**读**同一个取法：两个门岗各自判自己的判据、本地半场把正文喂给它们、回归测试钉死行为。取法本体已经只有一份（本次正是把两份各自的 pullRequestBody() 合并成它）；把两个门岗合并成一个则会让「先查别人」和「数门」互相绑定，那是两条独立的规则。"
+  },
+  "generality_proof": "两个门岗此前各写一份 pullRequestBody()，各自决定「取不到算不算通过」。收敛成一个 owner 之后，取证纪律（现取、fail-closed、本地只报不拦）对每一个调用方同时成立，再加一个正文侧门岗也自动继承。",
+  "shared_boundaries": [
+    {
+      "path": "scripts/lib/prBody.mjs",
+      "symbol": "resolvePullRequestBody",
+      "responsibility": "PR 正文的唯一取法与「什么时候必查、取不到算什么」的唯一判据。"
+    },
+    {
+      "path": "scripts/check-pr-body-gates.mjs",
+      "symbol": "GATES",
+      "responsibility": "push 前在本地跑同一批正文判据，用同一份正文。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/check-prior-art.mjs",
+      "entry_point": "resolvePullRequestBody",
+      "disposition": "enforced",
+      "evidence": "自带的 pullRequestBody() 已删除，改为引用共用取法；取不到且 required 时 push 进 errors。"
+    },
+    {
+      "path": "scripts/check-door-map.mjs",
+      "entry_point": "resolvePullRequestBody",
+      "disposition": "enforced",
+      "evidence": "同上；受管合同存在而正文取不到时报红。"
+    },
+    {
+      "path": "scripts/check-root-cause-contracts.mjs",
+      "entry_point": "baseline",
+      "disposition": "not-affected",
+      "evidence": "它判的是合同文件本身与 base diff，从不读 PR 正文，不属于本失败类。"
+    },
+    {
+      "path": "scripts/check-ponytail-deferred.mjs",
+      "entry_point": "PONYTAIL",
+      "disposition": "not-affected",
+      "evidence": "Ponytail 表态写在 PR 正文里，但它的门岗核的是本地收据文件，不读事件负载。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "只要还有第三条「判 PR 正文」的规则要加，作者就会照着现成的写法再抄一份 env 注入——这正是前两次的来历。",
+    "same_class_scan": [
+      "git grep -n 'github.event.pull_request.body' .github/：改动后全仓 0 处。",
+      "git grep -n 'pr view --json body'：只剩 scripts/lib/prBody.mjs 一处。",
+      "grep 全部 workflow 的 env：确认 PRIOR_ART_PR_BODY / DOOR_MAP_PR_BODY 已无残留。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/lib/prBody.mjs",
+    "invariant": "正文一律现取；pull_request 事件里取不到正文的调用方必须报红。",
+    "failure_mode": "gh 失败 → { available:false, required:true }，调用方把它变成一条 error；CI 因此红而不是静默放行。",
+    "exception_policy": "none",
+    "strategy": "把取证方式收进一个 owner，并把「取不到 = 红」写进它的返回值形状，让调用方无法误当成跳过。",
+    "artifacts": [
+      "scripts/lib/prBody.mjs",
+      "scripts/check-pr-body-gates.mjs",
+      ".github/workflows/quality-gate.yml",
+      "scripts/install-git-hooks.cjs"
+    ]
+  },
+  "regression_tests": [
+    "scripts/pr-body-gates.node-test.mjs",
+    "scripts/check-quality-gate-workflow.node-test.mjs",
+    "scripts/ponytail-review-hook.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/pr-body-gates.node-test.mjs",
+    "scripts/ponytail-review-hook.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "scripts/check-prior-art.mjs",
+      "scripts/check-door-map.mjs",
+      ".github/workflows/quality-gate.yml"
+    ],
+    "rationale": "这三处各自删掉的是旧取法：两个脚本里各一份 pullRequestBody()（读 *_PR_BODY 事件负载），工作流里两条注入那份快照的 env。文件本身继续存在，被删的是它们里面那条旧路径（P1：同 commit 删，不留并行版）。回归测试显式断言 contracts.env.PRIOR_ART_PR_BODY / DOOR_MAP_PR_BODY 已是 undefined，加回去当场红。"
+  },
+  "migration": "无数据迁移。工作流需要新增 pull-requests:read 权限与 GH_TOKEN/GH_REPO/NOMI_PR_NUMBER 三个 env（已在同一次改动里给上）；本地 pre-push 多跑一次 gh 调用，没有 gh 或没有 PR 时安静跳过。",
+  "residual_risks": [
+    "CI 侧现在依赖 gh CLI 与 GITHUB_TOKEN 的 pull-requests:read：真实 PR 上尚未跑过一轮（本分支不开 PR），这一条记为 unverified，第一条走本流程的 PR 要核对 contracts job 日志里的「PR 侧已查」。",
+    "fork PR 的 token 权限更受限；若出现取不到正文的红，判据是 fail-closed 的（会红而不是放行），处置是补权限而不是改回读快照。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/lib/prBody.mjs",
+    "tests": [
+      "scripts/pr-body-gates.node-test.mjs"
+    ]
+  }
+}

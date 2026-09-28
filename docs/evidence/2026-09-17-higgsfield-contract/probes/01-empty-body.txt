@@ -1,0 +1,20 @@
+=== POST /higgsfield-ai/dop/standard  body={}
+{"detail":[{"type":"missing","loc":["body","prompt"],"msg":"Field required","input":{}},{"type":"missing","loc":["body","image_url"],"msg":"Field required","input":{}}]}
+[HTTP 422]
+
+=== POST /higgsfield-ai/dop/turbo  body={}
+{"detail":[{"type":"missing","loc":["body","prompt"],"msg":"Field required","input":{}},{"type":"missing","loc":["body","image_url"],"msg":"Field required","input":{}}]}
+[HTTP 422]
+
+=== POST /higgsfield-ai/soul/cinema  body={}
+{"detail":[{"type":"missing","loc":["body","prompt"],"msg":"Field required","input":{}}]}
+[HTTP 422]
+
+=== POST /marketing-studio/image  body={}
+{"detail":": 'prompt' is a required property"}
+[HTTP 400]
+
+=== POST /soul-id  body={}
+{"detail":"not_enough_credits"}
+[HTTP 403]
+

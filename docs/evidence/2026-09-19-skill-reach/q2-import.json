@@ -1,0 +1,47 @@
+[
+  {
+    "name": "brand-guidelines",
+    "text": "Nomi\n项目库\n›\n未命名项目 09/19 06:15\n创作\n生成\n预览\n1/4\n素材库\n分组\n提示词\n技能\n流程\n技能库\n我的技能\nNomi 内置\n全部\n技能\n提示词\n效果\n导入文件\nAI 新建\n用 AI 新建\nbrand-guidelines\nApplies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.\n\n别人发来的技能：把 SKILL.md、zip 包或整个技能文件夹拖进这块面板，也可以点上面「导入文件」。\n\n这里还没有画面\n添加第一个节点开始创作，之后可以拖动、分组、跨分组复制。\n+ 新建画面\n时间轴\n0 段 · 0:00\nNomi\n—\nNomi 能看画布、排生成、拆一条参考片\n生成选中\n拆参考片\n检查画布\n选择模型\nSkill\n自动改",
+    "files": [
+      "brand-guidelines"
+    ]
+  },
+  {
+    "name": "internal-comms",
+    "text": "Nomi\n项目库\n›\n未命名项目 09/19 06:15\n创作\n生成\n预览\n1/4\n素材库\n分组\n提示词\n技能\n流程\n技能库\n我的技能\nNomi 内置\n全部\n技能\n提示词\n效果\n导入文件\nAI 新建\n用 AI 新建\nbrand-guidelines\nApplies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.\ninternal-comms\nA set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).\n\n别人发来的技能：把 SKILL.md、zip 包或整个技能文件夹拖进这块面板，也可以点上面「导入文件」。\n\n这里还没有画面\n添加第一个节点开始创作，之后可以拖动、分组、跨分组复制。\n+ 新建画面\n时间轴\n0 段 · 0:00\nNomi\n—\nNomi 能看画布、排生成、拆一条参考片\n生成选中\n拆参考片\n检查画布\n选择模型\nSkill\n自动改",
+    "files": [
+      "brand-guidelines",
+      "internal-comms"
+    ]
+  },
+  {
+    "name": "pdf",
+    "text": "Nomi\n项目库\n›\n未命名项目 09/19 06:15\n创作\n生成\n预览\n1/4\n素材库\n分组\n提示词\n技能\n流程\n技能库\n我的技能\nNomi 内置\n全部\n技能\n提示词\n效果\n导入文件\nAI 新建\n用 AI 新建\nbrand-guidelines\nApplies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.\ninternal-comms\nA set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).\npdf\nUse this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.\n\n别人发来的技能：把 SKILL.md、zip 包或整个技能文件夹拖进这块面板，也可以点上面「导入文件」。\n\n这里还没有画面\n添加第一个节点开始创作，之后可以拖动、分组、跨分组复制。\n+ 新建画面\n时间轴\n0 段 · 0:00\nNomi\n—\nNomi 能看画布、排生成、拆一条参考片\n生成选中\n拆参考片\n检查画布\n选择模型\nSkill\n自动改",
+    "files": [
+      "brand-guidelines",
+      "internal-comms",
+      "pdf"
+    ]
+  },
+  {
+    "name": "semgrep-rule-creator",
+    "text": "Nomi\n项目库\n›\n未命名项目 09/19 06:15\n创作\n生成\n预览\n1/4\n素材库\n分组\n提示词\n技能\n流程\n技能库\n我的技能\nNomi 内置\n全部\n技能\n提示词\n效果\n导入文件\nAI 新建\n\n已导入 · semgrep-rule-creator（跳过 1 个非文本文件）\n\n用 AI 新建\nbrand-guidelines\nApplies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.\ninternal-comms\nA set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).\npdf\nUse this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.\n\n别人发来的技能：把 SKILL.md、zip 包或整个技能文件夹拖进这块面板，也可以点上面「导入文件」。\n\n这里还没有画面\n添加第一个节点开始创作，之后可以拖动、分组、跨分组复制。\n+ 新建画面\n时间轴\n0 段 · 0:00\nNomi\n—\nNomi 能看画布、排生成、拆一条参考片\n生成选中\n拆参考片\n检查画布\n选择模型\nSkill\n自动改",
+    "files": [
+      "brand-guidelines",
+      "internal-comms",
+      "pdf",
+      "semgrep-rule-creator"
+    ]
+  },
+  {
+    "name": "transformers-js",
+    "text": "Nomi\n项目库\n›\n未命名项目 09/19 06:15\n创作\n生成\n预览\n1/4\n素材库\n分组\n提示词\n技能\n流程\n技能库\n我的技能\nNomi 内置\n全部\n技能\n提示词\n效果\n导入文件\nAI 新建\n用 AI 新建\nbrand-guidelines\nApplies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.\ninternal-comms\nA set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).\npdf\nUse this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.\nsemgrep-rule-creator\nCreates custom Semgrep rules for detecting security vulnerabilities, bug patterns, and code patterns. Use when writing Semgrep rules or building custom static analysis detections.\ntransformers-js\nUse Transformers.js to run state-of-the-art machine learning models directly in JavaScript/TypeScript. Supports NLP (text classification, translation, summarization), computer vision (image classification, object detection), audio (speech recognition, audio classification), and multimodal tasks. Works in browsers and server-side runtimes (Node.js, Bun, Deno) with WebGPU/WASM using pre-trained models from Hugging Face Hub.\n\n别人发来的技能：把 SKILL.md、zip 包或整个技能文件夹拖进这块面板，也可以点上面「导入文件」。\n\n这里还没有画面\n添加第一个节点开始创作，之后可以拖动、分组、跨分组复制。\n+ 新建画面\n时间轴\n0 段 · 0:00\nNomi\n—\nNomi 能看画布、排生成、拆一条参考片\n生成选中\n拆参考片\n检查画布\n选择模型\nSkill\n自动改",
+    "files": [
+      "brand-guidelines",
+      "internal-comms",
+      "pdf",
+      "semgrep-rule-creator",
+      "transformers-js"
+    ]
+  }
+]

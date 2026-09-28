@@ -30,7 +30,7 @@ import type { ModelParameterControl } from "../videoCapabilities/types";
  * 即一个音效模型对外宣称自己会配音。
  *
  * 依赖方向（分层纪律 R26）：**catalog 可以 import shared；shared 永远不 import catalog；
- * src/ 只可以 import `electron/shared/`。** 音频档案住 `src/config/modelArchetypes/`、
+ * src/ 只可以 import `electron/shared/`。** 音频档案住 `electron/shared/modelArchetypes/`、
  * 传输归一器住 `electron/catalog/`——两侧唯一都够得着的中立地就是 `electron/shared/`。
  * 两个消费者：
  *   1. 能力面：各音频档案的 params 由本文件的 `*Params()` **构建**（不重打字面量），UI 只给得出合法值；

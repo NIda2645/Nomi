@@ -42,9 +42,11 @@ const blockedRegistry = createModuleRegistry([{
   inputKinds: ["image"],
   outputKinds: ["image"],
   modes: ["text-to-image"],
-  parameterSchema: {},
+  // 这份夹具要测的是「供应商只会提交、不会查询」的恢复能力，不是参数表。它的参数表必须像真目录那样
+  // 声明这条 wire 认得的键（候选带 seed），否则合同编译会先一步以「未声明的参数」拒掉，测的就不是这件事了。
+  parameterSchema: { seed: { type: "any" } },
   assetInputSchema: { references: { kind: "asset" } },
-  providers: [{ providerId: "blocked-provider", models: [{ modelId: "blocked-model", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: false, query: false, reconcile: false, cancel: false } }] }],
+  providers: [{ providerId: "blocked-provider", models: [{ modelId: "blocked-model", modes: ["text-to-image"], parameterSchema: { seed: { type: "any" } }, capabilities: { submitIdempotency: false, query: false, reconcile: false, cancel: false } }] }],
 }]);
 
 const videoRegistry = createModuleRegistry([{
@@ -496,6 +498,42 @@ describe("semantic MCP generation tools", () => {
     await expect(handler({ capability: "start", params: { operationId }, lease })).resolves.toMatchObject({ nextAction: "provider_not_configured" });
   });
 
+  it("projects the node's @ mentions before the prompt is sealed into a contract", async () => {
+    // A5 的入口级回归：@ 过参考图的镜头交给 Agent／外部 MCP 生成时，供应商此前收到的是字面
+    // `@[asset:nomi-local%3A%2F%2F…]`。投影必须发生在**合同编译**这一刻——卡上给用户看的、
+    // 密封进授权信封的、最后发给供应商的，是同一句话。
+    const url = "nomi-local://project-1/assets/hero.png";
+    const handler = createGenerationPlanningHandler({
+      registry,
+      operations: createInMemoryGenerationOperationStore(),
+      now: () => "2026-08-23T00:00:00.000Z",
+      resolveStoryboardReferenceUrl: () => url,
+    });
+    const created = await handler({ capability: "create", params: { candidate: candidate({
+      mode: "image-to-image",
+      prompt: `画面里 @[asset:${encodeURIComponent(url)}] 走过来`,
+      references: [{ assetId: "hero", contentHash: "h".repeat(64), version: 1, kind: "image" }],
+    }) }, lease }) as { operation: { operationId: string } };
+    const preview = await handler({ capability: "preview", params: { operationId: created.operation.operationId }, lease }) as { contract: { prompt: string } };
+    expect(preview.contract.prompt).toBe("画面里 @image1 走过来");
+  });
+
+  it("refuses to seal a mention it cannot project instead of leaking the marker", async () => {
+    const url = "nomi-local://project-1/assets/hero.png";
+    const handler = createGenerationPlanningHandler({
+      registry,
+      operations: createInMemoryGenerationOperationStore(),
+      now: () => "2026-08-23T00:00:00.000Z",
+    });
+    const created = await handler({ capability: "create", params: { candidate: candidate({
+      mode: "image-to-image",
+      prompt: `画面里 @[asset:${encodeURIComponent(url)}] 走过来`,
+      references: [{ assetId: "hero", contentHash: "h".repeat(64), version: 1, kind: "image" }],
+    }) }, lease }) as { operation: { operationId: string } };
+    await expect(handler({ capability: "preview", params: { operationId: created.operation.operationId }, lease }))
+      .rejects.toThrow(/@ 内联引用/);
+  });
+
   it("allows a submit-only provider while making recovery limits explicit", async () => {
     const operations = createInMemoryGenerationOperationStore();
     const handler = createGenerationPlanningHandler({
@@ -586,14 +624,19 @@ describe("semantic MCP generation tools", () => {
         .resolves.toMatchObject({ maximumCost: 14, costKnown: true, currency: "CNY", nextAction: "confirm" });
     });
 
-    it("fails closed instead of authorizing an unpriced model", async () => {
+    // 2026-09-21 用户拍板：价格未知不许挡住生成（内置 204 个模型一条 pricing 都没有）。
+    // 这条从前钉的是 `rejects generation_pricing_unknown`；今天钉的是「门照开、价照实说」。
+    it("opens the gate for an unpriced model and reports the cost as unknown, never ¥0", async () => {
       const operations = createInMemoryGenerationOperationStore();
       const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z" });
       const created = await handler({ capability: "create", params: { candidate: candidate() }, lease });
       const operationId = (created as { operation: { operationId: string } }).operation.operationId;
-      await expect(handler({ capability: "gate_request", params: { operationId }, lease }))
-        .rejects.toMatchObject({ code: "generation_pricing_unknown", shotId: "candidate-1" });
-      expect((await operations.read("project-1", operationId))?.state).toBe("draft");
+      const gate = await handler({ capability: "gate_request", params: { operationId }, lease }) as
+        { maximumCost: number | null; costKnown: boolean; unknownShotCount?: number; nextAction: string };
+      expect(gate).toMatchObject({ maximumCost: null, costKnown: false, unknownShotCount: 1, nextAction: "confirm" });
+      // 绝不把「算不出」写成 0：这是三种可能里唯一会被读成「这次免费」的那一种。
+      expect(gate.maximumCost).not.toBe(0);
+      expect((await operations.read("project-1", operationId))?.state).toBe("sealed");
     });
   });
 
@@ -607,7 +650,7 @@ describe("semantic MCP generation tools", () => {
 
     /** A store whose operation carries multi-shot `shots` (anchor + 2 video shots), already sealed. */
     function multiShotStore() {
-      const sealedContract = { schemaVersion: 1 as const, candidateId: "candidate-1", candidateRevision: 1, moduleId: "generation.single-shot", moduleVersion: "1.0.0", providerId: "fixture-provider", modelId: "fixture-model", mode: "text-to-image", prompt: "p", parameters: { aspectRatio: "1:1" }, references: [], contractHash: "hash-top", warnings: [], droppedFields: [] };
+      const sealedContract = { schemaVersion: 1 as const, candidateId: "candidate-1", candidateRevision: 1, moduleId: "generation.single-shot", moduleVersion: "1.0.0", providerId: "fixture-provider", modelId: "fixture-model", mode: "text-to-image", prompt: "p", parameters: { aspectRatio: "1:1" }, references: [], contractHash: "hash-top", warnings: [] };
       const shotContract = (id: string, hash: string, prompt: string) => ({ ...sealedContract, candidateId: id, prompt, contractHash: hash });
       const shots = [
         { shotId: "anchor-1", role: "anchor" as const, candidate: { ...candidate({ candidateId: "cand-anchor", prompt: "主角 阿雨 定妆" }) }, contract: shotContract("cand-anchor", "hash-anchor", "主角 阿雨 定妆") },
@@ -623,6 +666,7 @@ describe("semantic MCP generation tools", () => {
         approve: () => ({ ...operation, approvedReceiptId: "r" }),
         cancel: () => ({ ...operation, state: "cancelled" as const }),
         present: () => operation,
+        withdraw: () => ({ ...operation, state: "draft" as const, cardHidden: true }),
       };
     }
 
@@ -828,3 +872,62 @@ describe("semantic MCP generation tools", () => {
     });
   });
 });
+
+// 2026-09-18 单一账本：Agent 改多镜草稿里的一镜走 Run 账本（shots[i].candidate），不碰顶层候选、不碰其它镜。
+describe("plan patch addressed to one shot of a multi-shot draft", () => {
+  function shotFrom(shotId: string, prompt: string, title?: string) {
+    return { shotId, role: "shot" as const, ...(title ? { title } : {}), candidate: candidate({ candidateId: `cand-${shotId}`, prompt }) };
+  }
+
+  it("changes only that shot's candidate and reports the changeset against that shot", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-09-18T00:00:00.000Z" });
+    await handler({ capability: "create", params: { operationId: "op-shot", shots: [shotFrom("shot-1", "一", "开场"), shotFrom("shot-2", "二", "转折"), shotFrom("shot-3", "三")] }, lease });
+    const result = await handler({ capability: "plan", params: { operationId: "op-shot", shotId: "shot-2", patch: { prompt: "逆光侧脸" } }, lease }) as { operation: GenerationOperation; changeset?: unknown };
+    expect(result.changeset).toBeUndefined();
+    expect(result.operation.shots?.map((shot) => shot.candidate.prompt)).toEqual(["一", "逆光侧脸", "三"]);
+    expect(result.operation.candidate.prompt).toBe("一");
+    // 信封整只搬：模型拟的标题不许死在草稿店的 create 里（它曾是逐字段手写、没列 title）。
+    expect(result.operation.shots?.map((shot) => shot.title ?? null)).toEqual(["开场", "转折", null]);
+  });
+
+  it("rejects an unknown shotId instead of silently patching the top-level candidate", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-09-18T00:00:00.000Z" });
+    await handler({ capability: "create", params: { operationId: "op-shot", shots: [shotFrom("shot-1", "一"), shotFrom("shot-2", "二")] }, lease });
+    await expect(handler({ capability: "plan", params: { operationId: "op-shot", shotId: "shot-9", patch: { prompt: "x" } }, lease })).rejects.toThrow(/shot-9/);
+    const after = await operations.read("project-1", "op-shot");
+    expect(after?.shots?.map((shot) => shot.candidate.prompt)).toEqual(["一", "二"]);
+  });
+});
+
+it('a document-admitted draft saves its author body into that document\'s plan, keeping the draft id as the plan id', async () => {
+  const operations=createInMemoryGenerationOperationStore()
+  const saved:Array<{op:string;payload:Record<string,unknown>}>=[]
+  const requestRenderer=async(op:string,payload:unknown)=>{saved.push({op,payload:payload as Record<string,unknown>});return {status:'saved',designId:(payload as {designId:string}).designId}}
+  const handler=createGenerationPlanningHandler({registry,operations,requestRenderer})
+  const authored={anchorIds:[]}
+  const input={candidate:{candidateId:'execution-id',revision:1,moduleId:'generation.single-shot',providerId:'fixture-provider',modelId:'fixture-model',mode:'text-to-image',prompt:'Original',parameters:{},references:[]},storyboard:authored}
+  for(const multi of [false,true]){
+    saved.length=0
+    const result=await handler({capability:'create',lease,origin:{host:'nomi',sourceDocument:{documentId:'doc',revision:1,contentHash:'hash'}},params:{operation:'create',...(multi ? {shots:[{...input,shotId:'execution-id'}]} : input)}}) as {operation:GenerationOperation}
+    expect(saved).toHaveLength(1)
+    expect(saved[0].op).toBe('storyboard.upsert-design')
+    expect(saved[0].payload.designId).toBe(result.operation.operationId)
+    expect(saved[0].payload.documentId).toBe('doc')
+    const plan=saved[0].payload.plan as {shots:Array<{shotId:string;prompt:string}>}
+    expect(plan.shots[0].shotId).toBe('execution-id')
+    expect(plan.shots[0].prompt).toBe('Original')
+    // The Run keeps no second copy of the author body — the document's plan is the only one.
+    expect(result.operation).not.toHaveProperty('editorial')
+    expect(result.operation.sourceDocumentId).toBe('doc')
+  }
+})
+
+it('refuses a document-admitted draft when the renderer that owns plans is unreachable', async () => {
+  const operations=createInMemoryGenerationOperationStore()
+  const handler=createGenerationPlanningHandler({registry,operations})
+  await expect(handler({capability:'create',lease,origin:{host:'nomi',sourceDocument:{documentId:'doc',revision:1,contentHash:'hash'}},
+    params:{operation:'create',candidate:{candidateId:'c',revision:1,moduleId:'generation.single-shot',providerId:'fixture-provider',modelId:'fixture-model',mode:'text-to-image',prompt:'Original',parameters:{},references:[]}}}))
+    .rejects.toThrow('storyboard_renderer_required')
+})

@@ -4,6 +4,9 @@ import path from 'node:path'
 import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
+import { gitNameStatus } from './lib/gitPaths.mjs'
+import { classifyValidationPolicy, CORE_SMOKE_ADVISORY_CHECK_NAMES, CORE_SMOKE_BLOCKING_CHECK_NAMES } from './validation-policy.mjs'
+
 export const DEFAULT_FETCH_TIMEOUT_MS = 45_000
 export const DEFAULT_CI_EVIDENCE_TIMEOUT_MS = 30 * 60_000
 export const DEFAULT_CI_POLL_INTERVAL_MS = 10_000
@@ -324,14 +327,40 @@ function receiptCheck(check) {
   }
 }
 
-export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGED_CHECKS) {
+/**
+ * 这个 merge SHA 要哪些 check（2026-09-22，核心冒烟第三道防线）。
+ * 与 CI 同一个分类器、同一个 diff（相对第一父提交，也就是 main push 的 before..after）：
+ * 只要不是纯文档，**阻断档**的核心冒烟（当前只有 empty）就必须是 success——skipped / neutral /
+ * 缺席一律拒绝，否则「上一个合入没验过 main」会被一张写着「跳过」的收据掩盖过去。
+ * 非阻断档（当前是 used）**记进收据但不判**：它的结论照抄下来供人看，红了不拦收据。
+ * 名单的唯一 owner 在 validation-policy.mjs，CI 与这里从同一处派生。
+ */
+export function mergedCheckRequirement({ cwd, commitSha }) {
+  const parents = gitOutput(cwd, ['rev-list', '--parents', '-n', '1', commitSha]).split(/\s+/).slice(1)
+  const entries = parents.length > 0 ? gitNameStatus(['diff', '--name-status', parents[0], commitSha], { cwd }) : []
+  const policy = classifyValidationPolicy(entries, { eventName: 'push' })
+  return policy.coreSmoke
+    ? {
+        names: [...REQUIRED_MERGED_CHECKS, ...CORE_SMOKE_BLOCKING_CHECK_NAMES],
+        successOnly: [...CORE_SMOKE_BLOCKING_CHECK_NAMES],
+        advisory: [...CORE_SMOKE_ADVISORY_CHECK_NAMES],
+        coreSmoke: { required: true, reason: policy.reason },
+      }
+    : { names: [...REQUIRED_MERGED_CHECKS], successOnly: [], advisory: [], coreSmoke: { required: false, reason: policy.reason } }
+}
+
+/** 同名 check 取最新一条（必需档与非阻断档共用同一条取法）。 */
+function latestCheck(checkRuns, name) {
+  return checkRuns.filter((check) => check?.name === name).sort((left, right) => checkOrder(right) - checkOrder(left))[0]
+}
+
+export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGED_CHECKS, { successOnly = [], advisory = [] } = {}) {
   const checks = []
   const missing = []
   const pending = []
   const failed = []
   for (const name of requiredNames) {
-    const candidates = checkRuns.filter((check) => check?.name === name).sort((left, right) => checkOrder(right) - checkOrder(left))
-    const check = candidates[0]
+    const check = latestCheck(checkRuns, name)
     if (!check) {
       missing.push(name)
       continue
@@ -339,14 +368,22 @@ export function evaluateRequiredChecks(checkRuns, requiredNames = REQUIRED_MERGE
     const projected = receiptCheck(check)
     checks.push(projected)
     if (check.status !== 'completed') pending.push(projected)
-    else if (!ACCEPTED_CHECK_CONCLUSIONS.has(check.conclusion)) failed.push(projected)
+    else if (successOnly.includes(name) && check.conclusion !== 'success') {
+      failed.push({ ...projected, rejection: `${name} 必须是 success（实际 ${check.conclusion}）：核心冒烟没真跑过的 merge 不发收据` })
+    } else if (!ACCEPTED_CHECK_CONCLUSIONS.has(check.conclusion)) failed.push(projected)
   }
+  // 非阻断档：只把结论抄进收据，不进 state 的任何一支。缺席就写 missing，不算红。
+  const advisoryChecks = advisory.map((name) => {
+    const check = latestCheck(checkRuns, name)
+    return check ? { ...receiptCheck(check), advisory: true } : { name, conclusion: 'missing', advisory: true }
+  })
   return {
     state: failed.length > 0 ? 'failed' : missing.length > 0 || pending.length > 0 ? 'pending' : 'passed',
     checks,
     missing,
     pending,
     failed,
+    advisoryChecks,
   }
 }
 
@@ -389,6 +426,8 @@ export async function waitForRequiredChecks({
   requestTimeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
   pollIntervalMs = DEFAULT_CI_POLL_INTERVAL_MS,
   requiredNames = REQUIRED_MERGED_CHECKS,
+  successOnly = [],
+  advisory = [],
   listCheckRuns = listCommitCheckRuns,
   nowMs = () => Date.now(),
   sleep = (durationMs) => new Promise((resolve) => setTimeout(resolve, durationMs)),
@@ -399,10 +438,11 @@ export async function waitForRequiredChecks({
   const deadline = nowMs() + timeoutMs
   while (true) {
     const checkRuns = await listCheckRuns({ repository, commitSha, timeoutMs: requestTimeoutMs })
-    const evaluation = evaluateRequiredChecks(checkRuns, requiredNames)
+    const evaluation = evaluateRequiredChecks(checkRuns, requiredNames, { successOnly, advisory })
     if (evaluation.state === 'passed') return evaluation
     if (evaluation.state === 'failed') {
-      throw new DeliveryError('required_checks_failed', `Required checks failed for ${commitSha}`, evaluation)
+      const reasons = evaluation.failed.map((check) => check.rejection ?? `${check.name}=${check.conclusion}`).join('; ')
+      throw new DeliveryError('required_checks_failed', `Required checks failed for ${commitSha}: ${reasons}`, evaluation)
     }
     const remainingMs = deadline - nowMs()
     if (remainingMs <= 0) {
@@ -503,6 +543,7 @@ export async function verifyMergedDelivery({
   await fetchRemote({ cwd, remote, base, timeoutMs })
   const state = assertMergedState(inspectDeliveryState({ cwd, remote, base }), { expectedSha, cwd })
   const receiptPath = receiptPathFor(state, expectedSha)
+  const requirement = mergedCheckRequirement({ cwd, commitSha: expectedSha })
   const existing = readReceipt(receiptPath)
   if (
     existing &&
@@ -510,7 +551,7 @@ export async function verifyMergedDelivery({
     existing.tip === state.remoteCommit &&
     existing.relation === state.verificationRelation &&
     existing.treeSha === gitOutput(cwd, ['rev-parse', `${expectedSha}^{tree}`]) &&
-    evaluateRequiredChecks(existing.checks).state === 'passed'
+    evaluateRequiredChecks(existing.checks, requirement.names, { successOnly: requirement.successOnly }).state === 'passed'
   ) {
     return { state, receiptPath, receipt: existing, reused: true }
   }
@@ -524,6 +565,9 @@ export async function verifyMergedDelivery({
       timeoutMs: ciTimeoutMs,
       requestTimeoutMs: timeoutMs,
       pollIntervalMs,
+      requiredNames: requirement.names,
+      successOnly: requirement.successOnly,
+      advisory: requirement.advisory,
       listCheckRuns,
       ...(sleep ? { sleep } : {}),
     })
@@ -537,7 +581,11 @@ export async function verifyMergedDelivery({
       relation: state.verificationRelation,
       repository: resolvedRepository,
       observedAt: now().toISOString(),
-      requiredChecks: [...REQUIRED_MERGED_CHECKS],
+      requiredChecks: requirement.names,
+      coreSmoke: requirement.coreSmoke.required
+        // advisory 抄结论不判红：红了也发收据，但收据上看得见它红过（2026-09-22 用户拍板，升阻断条件见方案）。
+        ? { required: true, checks: requirement.successOnly, advisory: evidence.advisoryChecks ?? [] }
+        : { required: false, reason: requirement.coreSmoke.reason },
       checks: evidence.checks,
     }
     writeReceipt(receiptPath, receipt)

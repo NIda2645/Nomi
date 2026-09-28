@@ -11,6 +11,7 @@ import type { RuntimeToolCall, RuntimeToolDecision } from '../shared/agentCapabi
 import type { CanvasWriteResult } from '../shared/agentCapabilities/canvasWrite'
 import type { DocumentWriteResult } from '../shared/agentCapabilities/documentWrite'
 import { LaneDomainFailure, type OpenLaneOptions } from './laneRuntimePort'
+import { laneFailureFromDecision } from '../shared/agentLane/laneFailureFromDecision'
 import { createDocumentLaneTools } from './laneDocumentTools'
 import { createCanvasLaneTools } from './laneCanvasTools'
 import { createTimelineLaneTools } from './laneTimelineTools'
@@ -28,6 +29,7 @@ import { requestRenderer } from '../capabilityCore/rendererBridge'
 import type { PiGenerationTransportAdapter } from '../capabilityCore/generationTransportAdapters'
 import { createLaneExtendedDesktopPorts } from './laneExtendedDesktopPorts'
 import { toSemanticInput } from '../shared/agentCapabilities/modelFacingTools'
+import { createAskUserLaneTools } from './laneAskUserTool'
 import { specsForCapability } from '../shared/agentCapabilities/modelFacingToolRegistry'
 import { bindLaneTool } from './laneRuntimePort'
 import { LANE_RECEIPT_AUTHORITY_NOTE } from '../shared/agentLane/laneReceiptAuthority'
@@ -36,16 +38,31 @@ import type { ProjectAgentProposalReceiptService } from '../capabilityCore/proje
 import type { ResidentGenerationAdapterFactory } from '../capabilityCore/residentGenerationAdapterFactory'
 import { documentProposalReceiptFor, prepareDocumentProposalReceipt, commitDocumentProposalReceipt, abandonDocumentProposalReceipt } from '../capabilityCore/projectAgentDocumentReceipt'
 
-function resultOf(decision: RuntimeToolDecision | null): unknown {
+/**
+ * 判决 → 结果，失败就抛成模型看得懂的那种失败。
+ *
+ * 2026-09-18：这里原本写的是 `message: advice?.message ?? decision?.message ?? '…'`，
+ * **少了一道判断**——兄弟出口 `laneExtendedTools.ts` 有 `decision.message !== decision.code`，
+ * 认出裸码就丢掉；这里没有。于是当它不是 surface-port 失败（拿不到 advice）、而 `decision.message`
+ * 恰好是裸码时（传输适配器里有 9 处写着 `message: code`），**裸码原样抵达模型**。
+ * 文档 / 画布 / 时间轴三条 lane 走的正是这个出口。
+ *
+ * 同一件事修在一个调用点、兄弟调用点没跟上，而且两边都不报错——这是 09-18 当天撞见的第三次同一形状。
+ * 所以两个出口现在都收敛到 `laneFailureFromDecision`，判断只有一份。
+ */
+function resultOf(decision: RuntimeToolDecision | null, toolName: string): unknown {
   if (!decision?.ok) {
     const failure = parseSurfacePortFailure(decision)
     const advice = failure ? surfacePortFailureAdvice(failure) : undefined
-    throw new LaneDomainFailure({
-      code: decision?.code ?? 'capability_unsupported',
-      message: advice?.message ?? decision?.message ?? 'The selected surface could not complete this action.',
-      nextAction: advice?.nextAction ?? 'Review the requested action and select a supported capability before trying again.',
+    throw new LaneDomainFailure(laneFailureFromDecision({
+      toolName,
+      code: decision?.code,
+      message: decision?.message,
+      fallbackCode: 'capability_unsupported',
+      ...(advice ? { advice } : {}),
+      nextAction: 'Review the requested action and select a supported capability before trying again.',
       ...(failure?.reason ? { reason: failure.reason } : {}),
-    })
+    }))
   }
   return decision.result
 }
@@ -90,7 +107,7 @@ export function createDesktopLaneTools(input: {
     ...createDocumentLaneTools({
       read: async (scope, context) => resultOf(await documentRead.tryExecute({
         toolCallId: context.toolCallId, toolName: 'nomi_document_read', args: { scope },
-      }, input.context().documentId ?? '', context.signal)),
+      }, input.context().documentId ?? '', context.signal), 'read_script'),
       write: async (_value, context) => {
         const prepared = preparedDocuments.get(context.toolCallId)
         const receipt = documentReceipts.get(context.toolCallId)
@@ -102,7 +119,7 @@ export function createDesktopLaneTools(input: {
         if (!decision.ok && decision.code !== 'capability_receipt_unresolved') {
           abandonDocumentProposalReceipt(input.receipts, receipt.prepared, receipt.proposal, receipt.approvalId)
         }
-        const result = resultOf(decision) as DocumentWriteResult
+        const result = resultOf(decision, 'write_script') as DocumentWriteResult
         commitDocumentProposalReceipt(input.receipts, receipt.prepared, receipt.proposal, receipt.approvalId)
         return result
       },
@@ -110,7 +127,7 @@ export function createDesktopLaneTools(input: {
     ...createCanvasLaneTools({
       read: async (context) => resultOf(await canvasRead.tryExecute({
         toolCallId: context.toolCallId, toolName: CANVAS_READ_CAPABILITY.aliases.pi, args: {},
-      }, context.signal)),
+      }, context.signal), 'look_at_canvas'),
       write: async (_value, context) => {
         const prepared = preparedCanvases.get(context.toolCallId)
         const approval = approvals.get(context.toolCallId)
@@ -120,13 +137,15 @@ export function createDesktopLaneTools(input: {
         if (decision.ok && !committedProjectAgentReceiptMatchesApproval(input.binding, input.receipts.read(), approval)) {
           throw new Error('capability_receipt_unresolved')
         }
-        return resultOf(decision) as CanvasWriteResult
+        return resultOf(decision, 'canvas write') as CanvasWriteResult
       },
     }),
     ...createTimelineLaneTools({ read: async ({ operation, ...args }, context) => resultOf(await timelineRead.tryExecute({
       // The alias transport owns operation binding; its strict args exclude that semantic field.
       toolCallId: context.toolCallId, toolName: operation, args,
-    }, context.signal)) }),
+    }, context.signal), operation) }),
+    // `ask_user`：执行那一半住 `laneAskUserTool.ts`（用户答上了 = 成功形状，理由写在那里）。
+    ...createAskUserLaneTools(),
     // `start_model_setup`：只打开「设置 · 模型」面板并预填供应商；密钥永远由用户在面板里输入。
     ...specsForCapability('model.setup.open').map(spec => bindLaneTool(spec, async (args) => {
       const provider = typeof (args as { provider?: unknown }).provider === 'string' ? (args as { provider: string }).provider : undefined
@@ -196,13 +215,13 @@ export function createDesktopLaneTools(input: {
         generation = factory?.(input.binding, input.approvalPolicy)
       }
       return generation
-    }, onTaskCreated: input.onTaskCreated,
+    }, onTaskCreated: input.onTaskCreated, context: input.context,
   })
   return {
     tools: [...tools, ...extended.tools],
     toolLifecycle: {
       prepare: async (call, signal) => { await toolLifecycle.prepare(call, signal); await extended.toolLifecycle.prepare(call, signal) },
-      approved: async (call, record) => { await toolLifecycle.approved(call, record); await extended.toolLifecycle.approved(call, record) },
+      approved: async (call, record, host) => { await toolLifecycle.approved(call, record, host); await extended.toolLifecycle.approved(call, record, host) },
       settled: (call) => { toolLifecycle.settled(call); extended.toolLifecycle.settled(call) },
     } satisfies NonNullable<OpenLaneOptions['toolLifecycle']>,
     dispose: () => {

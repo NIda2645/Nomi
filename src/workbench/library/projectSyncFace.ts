@@ -24,6 +24,19 @@ export const SYNC_TONE_CLASS: Record<SyncTone, string> = {
   danger: 'text-workbench-danger',
 }
 
+/**
+ * 「继续创作」要不要先停在详情浮层——只有**停下来有用、而且浮层里有一条路走出去**的状态才拦：
+ *
+ * - `external-change`：另一台电脑刚写过，同步工具可能还在传。先停一下、点「重新检查」认下新版本就放行。
+ * - `missing-assets`：**不拦**。缺的素材在画布上各自显示成缺失，项目其余部分照常能编辑；拦下来时浮层只有
+ *   「重新检查 / 打开目录」，素材补不回来就永远进不去（2026-09-24 用户反馈：提示缺少素材后项目进不去了）。
+ * - 清单读不下去（conflict / corrupt-manifest）：**不拦**。能不能打开、怎么从备份恢复归打开流程管
+ *   （projectHydrationRecovery.ts 的 diagnose → recover），项目库再拦一道等于把恢复入口也堵死。
+ */
+export function syncStatusBlocksOpen(status: WorkspaceSyncInspection['status']): boolean {
+  return status === 'external-change'
+}
+
 /** 状态 → 这一枚角标的全部长相。一个 switch，别在 JSX 里铺四层三元。 */
 export function syncFaceOf(
   inspection: WorkspaceSyncInspection,

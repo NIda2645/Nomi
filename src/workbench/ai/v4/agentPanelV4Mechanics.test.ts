@@ -34,7 +34,7 @@ describe('B2a mechanics', () => {
     expect(markup).toContain('line 7')
   })
   it('C33 queue cancel is an accessible icon', () => {
-    const markup = html(React.createElement(V4Queue, { rows: [{ title: '继续', status: 'queued', destructiveAction: '取消这条指令' }], labels: { queued: '', running: '', complete: '' } }))
+    const markup = html(React.createElement(V4Queue, { rows: [{ title: '继续', status: 'queued', destructiveAction: '取消这条指令' }], labels: { draft: '', queued: '', running: '', complete: '' } }))
     expect(markup).toContain('aria-label="取消这条指令"')
     expect(markup).toContain('<svg')
     expect(markup).not.toContain('>取消这条指令</button>')

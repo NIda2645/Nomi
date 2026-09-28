@@ -1,0 +1,175 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-canvas-frame-has-no-delete-door",
+  "problem_type": "Canvas entity with no reachable delete action",
+  "symptom": "The user reports the frame cannot be deleted. Clicking a frame and pressing Delete removes the nodes inside but leaves an empty frame. An empty frame cannot be selected at all, so Delete does nothing, or deletes whatever was selected before. The frame menu has no delete item.",
+  "direct_cause": "Frame selection was modelled only as 'select all members' (useCanvasSelectionDrag). deleteSelectedNodes removed nodes but never groups. For an empty frame the click left the previous selection untouched, and FrameContextMenu offered only dissolve.",
+  "class_root": "The frame (NodeGroup with frameBounds) is a first-class canvas entity, but no delete door reached it from the canvas. Deletion existed only in the sidebar CategoryTree (deleteGroup) and in store internals.",
+  "affected_population": [
+    "Every canvas user with frames; every empty frame (user's real project has one: '组 1', 0 members)"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+    "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+    "src/workbench/generationCanvas/components/useCanvasFrameActions.ts",
+    "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+    "src/workbench/generationCanvas/components/FrameContextMenu.tsx",
+    "src/workbench/generationCanvas/components/GroupFrame.tsx",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx"
+  ],
+  "entry_points": [
+    "Click frame + Delete/Backspace",
+    "Click empty frame + Delete/Backspace",
+    "Frame ⋯ / right-click menu"
+  ],
+  "internal_only_reason": "Internal selection and deletion semantics of Nomi's own frame entity; no external standard decides them. The behaviour mirrors the existing derived rule selectedGroupIds (a frame whose members are all selected counts as selected).",
+  "invariants": [
+    "Deleting a selection that covers every member of a frame deletes that frame in the same undo step",
+    "Clicking an empty frame selects the frame itself and clears node selection",
+    "The frame menu's delete and the Delete key produce the same result"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "symbol": "deleteSelectedNodes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+      "symbol": "deleteSelectedNodes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowMenus.ts",
+      "symbol": "deleteSelectedNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+      "symbol": "deleteSelectedNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "symbol": "deleteSelectedNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "deleteSelectedNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasFrameActions.ts",
+      "symbol": "deleteGroup"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "symbol": "onSelectEmptyFrame"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/FrameContextMenu.tsx",
+      "symbol": "FrameContextMenuAction"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/GroupFrame.tsx",
+      "symbol": "selectedGroupId"
+    }
+  ],
+  "door_reduction": {
+    "before": 7,
+    "after": 10,
+    "why_not": "Keyboard Delete, the node context menu and the menu-action builder are distinct user entries that all converge on the single store action deleteSelectedNodes, and that action is where the frame rule now lives. So every entry inherits it without its own copy. Three doors are new: frame-selection write (useSelectionDrag → frame actions), menu delete, and the selected-frame read in GroupFrame. Empty frames need a selection that node selection cannot express."
+  },
+  "generality_proof": "The frame rule lives in the store action every canvas delete entry calls (deleteSelectedNodes). Keyboard, context menu and future callers all get it. Empty frames, which have no member selection, get an explicit frame selection owned by useCanvasFrameActions. Its delete goes through the same store deleteGroup the sidebar uses.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "deleteSelectedNodes",
+      "responsibility": "Removes frames fully covered by the deleted selection in the same undo snapshot"
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasFrameActions.ts",
+      "symbol": "deleteSelectedFrame",
+      "responsibility": "Owns the empty-frame selection and its delete, plus the menu delete action"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasShortcuts.ts",
+      "entry_point": "Backspace/Delete branch",
+      "disposition": "enforced",
+      "evidence": "walkthrough F1/F2 red on 195bf3a2c, green after fix"
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/useCanvasMenuActions.ts",
+      "entry_point": "node context menu delete",
+      "disposition": "enforced",
+      "evidence": "Calls deleteSelectedNodes, so it inherits the frame rule (store unit test)"
+    },
+    {
+      "path": "src/workbench/sidebar/CategoryTree.tsx",
+      "entry_point": "sidebar group delete",
+      "disposition": "not-affected",
+      "evidence": "Already calls deleteGroup(groupId, true) after confirm; unchanged"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every frame in every project is affected, and an empty frame could only be removed through the dissolve item, which users do not read as delete.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs deleteSelectedNodes → 5 doors",
+      "node scripts/door-map.mjs deleteGroup → sidebar + frame actions + workbenchStore",
+      "FrameContextMenu actions before fix: edit/generate/timeline/collapse/dissolve (no delete)"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+    "invariant": "A delete that empties a frame of all its members removes the frame",
+    "failure_mode": "The frame is removed together with its members; one ⌘Z restores all of them",
+    "exception_policy": "none",
+    "strategy": "The frame rule lives in the single store delete action; the empty-frame selection is explicit state with the same delete path",
+    "artifacts": [
+      "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "src/workbench/generationCanvas/components/useCanvasFrameActions.ts",
+      "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
+      "src/workbench/generationCanvas/components/FrameContextMenu.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
+    "tests/ux/node-params-and-version-pill.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/store/generationCanvasStore.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts"
+    ],
+    "rationale": "Clicking an empty frame used to silently keep the previous selection; that branch is removed"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Pure Nomi store/UI semantics; no third-party runtime involved.",
+    "exit_criteria": []
+  },
+  "migration": "None: existing empty frames become selectable and deletable; persisted shape unchanged.",
+  "residual_risks": [
+    "Marquee-selecting every member of a frame and deleting also removes the frame (the same derived rule the selection toolbar already uses to count selected groups); one undo restores it. This is a deliberate choice, flagged in the PR."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+    "tests": [
+      "src/workbench/generationCanvas/store/generationCanvasStore.test.ts",
+      "tests/ux/node-params-and-version-pill.walk.mjs"
+    ],
+    "why": "The single store delete action owns 'a delete that empties a frame removes it'. The store tests fail before the fix and pass after it, and walkthrough F1–F3 cover keyboard, empty frame and menu."
+  }
+}

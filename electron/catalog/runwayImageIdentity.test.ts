@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { RUNWAY_OFFICIAL_MODELS } from "./runwayOfficial";
 import { modeSlotReach } from "./referenceReachability";
-import { MODEL_ARCHETYPES, specializeArchetypeForVendor } from "../../src/config/modelArchetypes";
+import { MODEL_ARCHETYPES, specializeArchetypeForVendor } from "../shared/modelArchetypes";
 import {
   RUNWAY_IMAGE_RATIO_ENUMS,
   RUNWAY_IMAGE_REFERENCE_MAX,

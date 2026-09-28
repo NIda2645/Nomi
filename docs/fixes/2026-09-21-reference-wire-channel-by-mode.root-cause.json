@@ -1,0 +1,166 @@
+{
+ "schema_version": 3,
+ "id": "2026-09-21-reference-wire-channel-by-mode",
+ "problem_type": "Two paths answer 'which wire channel carries this reference' from two different sources, and the wrong one guesses from the request template instead of the user's declared mode",
+ "symptom": "同一张参考图、同一个模型（Seedance 2.5 图生视频）、同一次提交：在画布节点上按生成，供应商收到 image_urls:[url]；同一镜交给 Agent 付款卡 / 外部 MCP / 提交执行计划 / 全自动 / 续批，供应商收到的是 image_with_roles:[{url}]。两条互斥通道在官方那边意味着不同的生成语义（首尾帧族 vs 全能参考族），用户看到的是「同一张图，Agent 跑出来的东西不一样」。",
+ "direct_cause": "apimartGenerationProjection.projectReferenceUrls 旧代码用 `channels.has(\"image_with_roles\")` 决定通道——`channels` 来自 `bodyReferencedParamKeys(mapping.create.body)`。Seedance / Wan 的 i2v body 同时声明 image_urls 与 image_with_roles（官方互斥，由模式区分），所以这个判据对这些模型恒为真，任何参考图都被塞进 image_with_roles。",
+ "class_root": "「参考素材走哪条线缆通道」有两个真相源：渲染层读档案模式的 combineSlotsInto（archetypeMeta.buildArchetypeInputParams），Run 路径读 mapping 的 body 键。body 答不出这个问题——它把互斥的两条都声明着，正是因为区分它们的是模式。一个本该由声明回答的问题被改成了从模板反推，于是在声明了两条通道的模型上必然答错，而且不报错。",
+ "affected_population": [
+  "内置目录里 create body 同时声明 image_urls 与 image_with_roles 的模型：Seedance 2.0 / 2.5（apimart）、Wan 2.7、Wan 3.0——在 Agent 付款卡 / 外部 MCP nomi_start_generation / 提交执行计划 / 全自动 Run / 续批五个入口上全部走错通道",
+  "画布节点与分镜行那条路不受影响（渲染层 buildArchetypeInputParams 一直读模式声明）",
+  "用户自写能力契约（customCapabilityContract）声明 combineSlotsInto 的模型同样适用：本次把它一起收进同一个 owner"
+ ],
+ "scope_paths": [
+  "electron/shared/videoCapabilities/referenceChannels.ts",
+  "electron/capabilityCore/apimartGenerationProjection.ts",
+  "electron/capabilityCore/apimartGenerationProvider.ts",
+  "src/workbench/generationCanvas/nodes/controls/archetypeMeta.ts"
+ ],
+ "entry_points": [
+  "Agent 付款卡确认（appIntegrationSpendConfirm → generationRuntimeAdapter）",
+  "分镜表提交执行计划（mcpGenerationTools.createGenerationPlanningHandler）",
+  "外部 MCP nomi_start_generation（mcpStdioServer）",
+  "全自动 / 批量 Run（productionGenerationSubmission、multiShotBatchScheduler）",
+  "画布节点 / 分镜行（catalogTaskActions → runtime.runTask）"
+ ],
+ "external_sources": [],
+ "internal_only_reason": "本次改的是「谁来回答通道」这个**内部 owner** 问题，不是对外契约：image_urls 与 image_with_roles 互斥这条官方事实早已逐字段对账并落在 electron/catalog/apimartVideos.ts 的 Seedance 2.5（2026-08-12）与 Wan 3.0（2026-08-27）注释里，本轮没有改动任何 wire 键、取值或端点，因此本会话没有重新抓取官方文档（R5⑤ 的外部依据由那两条既有对账承担；若将来要改 wire 键本身，必须重抓并在这里补 external_sources）。",
+ "invariants": [
+  "参考素材落哪条 wire 通道，由用户选的那一档档案模式（combineSlotsInto）回答；mapping body 只能否决（没引用那个键就发不出去），不能替它作答",
+  "没有模式 = 不合并 = 扁平族键（image_urls / video_urls / audio_urls），与 headless 手动路 projectReferencesOntoBodyKeys 跳过对象形态键的口径逐字相同",
+  "mode.combineSlotsInto 只有一个读点：combineChannelForMode"
+ ],
+ "doors": [
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+   "symbol": "projectReferenceUrls"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+   "symbol": "referenceCombineChannelFor"
+  },
+  {
+   "kind": "write",
+   "path": "electron/shared/videoCapabilities/referenceChannels.ts",
+   "symbol": "combineChannelForMode"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/nodes/controls/archetypeMeta.ts",
+   "symbol": "combineChannelForMode"
+  },
+  {
+   "kind": "write",
+   "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+   "symbol": "buildArchetypeInputParams"
+  },
+  {
+   "kind": "write",
+   "path": "electron/capabilityCore/apimartGenerationProjection.ts",
+   "symbol": "projectReferenceUrls"
+  }
+ ],
+ "door_reduction": {
+  "before": 7,
+  "after": 6,
+  "why_not": "改动前「谁决定参考通道」有两份各自实现的判断：apimartGenerationProjection 的 channels.has(\"image_with_roles\")（按 body 猜）与 archetypeMeta 的 mode.combineSlotsInto 直读（按模式）。本次删掉前者、把后者收成 combineChannelForMode 一份实现，两边都调用它（door-map combineChannelForMode = 2 处调用 / 1 份实现）。剩下的 6 扇都必须继续存在：referenceChannels.ts 是 owner 自己；apimartGenerationProjection 与 apimartGenerationProvider 是 Run 路把通道用出去的两步（投影 + 解析模式）；archetypeMeta 与 catalogTaskActions 是手动路把它用出去的两步。它们不能再合并，因为两台发动机本身还没合并——那是同批次的下一刀（BL-1）。"
+ },
+ "generality_proof": "判据不再依赖「这条 mapping 的 body 碰巧声明了哪几个键」，而是「用户选的模式声明合并到哪个键」。因此任何模型（内置、自助接入、AI 直填的用户契约）都自动正确：新模型只要在档案/契约里写 combineSlotsInto 就生效，不写就是扁平族键；没有第二处需要有人记得同步的表。",
+ "shared_boundaries": [
+  {
+   "path": "electron/shared/videoCapabilities/referenceChannels.ts",
+   "symbol": "combineChannelForMode",
+   "responsibility": "mode.combineSlotsInto 的唯一读点：答「这一档模式把参考合并进哪个键、是不是扁平数组」。"
+  },
+  {
+   "path": "electron/shared/videoCapabilities/referenceChannels.ts",
+   "symbol": "referenceCombineChannelFor",
+   "responsibility": "按模型 meta（用户契约优先、其次内置档案）+ modeId 解析出模式，再用这条 mapping 的 create body 否决发不出去的合并槽。"
+  }
+ ],
+ "same_class_entry_points": [
+  {
+   "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+   "entry_point": "buildRequest → projectionRequest（Agent 付款卡 / 提交执行计划 / 外部 MCP / 全自动 / 续批共用的唯一 provider 出口）",
+   "disposition": "enforced",
+   "evidence": "electron/parity/referenceChannelByMode.test.ts 的三条行为对照（first→image_with_roles、omni→image_urls、无模式→image_urls）；后两条在改动前实测为红（scratchpad/B-redproof-NEW1.log）。"
+  },
+  {
+   "path": "src/workbench/generationCanvas/nodes/controls/archetypeMeta.ts",
+   "entry_point": "buildArchetypeInputParams 的合并槽段（画布节点 / 分镜行）",
+   "disposition": "enforced",
+   "evidence": "改成调用同一个 combineChannelForMode；src/config/modelArchetypes 与 src/workbench/generationCanvas/nodes 全套 1203 条测试绿，行为逐字不变（flat 默认 false 同构）。"
+  },
+  {
+   "path": "electron/catalog/taskParams.ts",
+   "entry_point": "projectReferencesOntoBodyKeys（headless 手动路）",
+   "disposition": "not-affected",
+   "evidence": "taskParams.ts:620 一直显式跳过对象形态键（image_with_roles / *_contents），即「没有模式就不填合并槽」。本次让 Run 路答出同一个答案，没有改它。"
+  },
+  {
+   "path": "electron/catalog/referenceReachability.ts",
+   "entry_point": "modeSlotReach(slots, body, combineKey)",
+   "disposition": "not-affected",
+   "evidence": "可达性判据本来就把 combineKey 当入参（由调用方给），不自己猜；它与本次的 owner 同一套词汇，没有第二份判断。"
+  }
+ ],
+ "recurrence": {
+  "classification": "recurring",
+  "reason": "任何一个「同一条 mapping 声明了两条互斥参考通道」的模型都会撞上，而这种模型只会变多（Seedance、Wan 已经各两个，官方新模型普遍用 roles 数组做多族参考）。判据在 body 上就永远答不出模式的问题。",
+  "same_class_scan": [
+   "node scripts/door-map.mjs projectReferenceUrls → 1 扇（apimartGenerationProvider.ts:287）",
+   "node scripts/door-map.mjs combineChannelForMode → 2 扇调用、1 份实现（referenceChannels.ts / archetypeMeta.ts）",
+   "node scripts/door-map.mjs buildArchetypeInputParams → 1 扇（catalogTaskActions.ts:210）",
+   "grep -rn \"image_with_roles\" electron src --include=*.ts --include=*.tsx | grep -v test → 命中全部落在档案声明、别名表与本次的 owner 上，没有第二处「按 body 猜模式」的判断"
+  ]
+ },
+ "prevention": {
+  "kind": "centralized-boundary",
+  "enforcement_path": "electron/shared/videoCapabilities/referenceChannels.ts",
+  "invariant": "参考通道 = 档案模式声明的 combineSlotsInto ∩ 这条 mapping body 真引用的键；没有模式就没有合并槽。",
+  "failure_mode": "模式声明了合并槽但 body 不引用它 → 退回扁平族键（发得出去的那条），而不是把请求发成一个供应商读不到的形状；两条路因此永远给出同一个答案，对等矩阵上任何漂移当场报差异字段。",
+  "exception_policy": "none",
+  "strategy": "把「谁来回答通道」从模板反推改回声明查询，并让两条路共用同一个纯函数——分歧从此不可能以「各自猜」的形式出现。",
+  "artifacts": [
+   "electron/shared/videoCapabilities/referenceChannels.ts",
+   "electron/parity/referenceChannelByMode.test.ts",
+   "electron/parity/known-splits.json"
+  ]
+ },
+ "regression_tests": [
+  "electron/parity/referenceChannelByMode.test.ts",
+  "electron/parity/generationParity.matrix.test.ts",
+  "electron/capabilityCore/apimartGenerationProvider.test.ts"
+ ],
+ "class_regression_tests": [
+  "electron/parity/generationParity.matrix.test.ts",
+  "electron/parity/referenceChannelByMode.test.ts"
+ ],
+ "legacy_paths": {
+  "status": "removed",
+  "removed_paths": [
+   "electron/capabilityCore/apimartGenerationProjection.ts"
+  ],
+  "rationale": "`channels.has(\"image_with_roles\")` 那条按 body 猜模式的分支同 commit 删除，没有开关、没有 fallback；`channels` 只剩首/尾帧那两条「body 引用了才发」的否决判据。"
+ },
+ "dependency_lifecycle": {
+  "decision": "not-applicable",
+  "rationale": "不变量完全由本仓的档案声明与目录模板决定，没有第三方运行时参与。",
+  "exit_criteria": []
+ },
+ "migration": "不需要迁移：通道是每次 buildRequest 时派生的，不落盘。已授权但未提交的旧合同若带 modeId 会按模式重新投影；不带 modeId 的按扁平族键投影——与手动路一致，也与这些合同最初被批准时用户在画布上看到的一致。",
+ "residual_risks": [
+  "modeId 今天只有经 normalizeVideoCandidate 的视频候选路径会写进合同（mcpGenerationVideoResolve.ts:240）。图像模型的档案模式暂时没有对应的 modeId 通道，但图像 mapping 里没有声明合并槽的，所以现状无害；一旦有图像模型声明 combineSlotsInto，必须先把 modeId 接进图像候选解析。",
+  "本合同只证到出站请求体这一层，没有在真实供应商上跑过首尾帧模式；真机验证走 loopback 夹具。"
+ ],
+ "invariant_owner_layer": {
+  "layer": "electron/shared/videoCapabilities/referenceChannels.ts",
+  "tests": [
+   "electron/parity/referenceChannelByMode.test.ts",
+   "electron/parity/generationParity.matrix.test.ts"
+  ],
+  "notes": "「参考走哪条通道」从此只由这一层回答，两条路都调用它。三条行为断言里的两条在改动前实测为红（omni 与无模式），红证留在 scratchpad/B-redproof-NEW1.log。"
+ }
+}

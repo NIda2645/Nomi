@@ -1,5 +1,5 @@
 import type { BillingModelKind } from '../../../electron/catalog/types'
-import type { ArchetypeReferenceSlotKind } from '../../config/modelArchetypes'
+import type { ArchetypeReferenceSlotKind } from '../../../electron/shared/modelArchetypes'
 import type { CustomCallScriptMode } from './customCallScriptModes'
 
 export type CustomCallTestReferences = Partial<Record<ArchetypeReferenceSlotKind, string[]>>

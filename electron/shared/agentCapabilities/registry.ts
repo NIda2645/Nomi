@@ -1,3 +1,4 @@
+import { AGENT_ASK_CAPABILITY } from "./askUser";
 import { ASSET_READ_CAPABILITY } from "./assetRead";
 import { CANVAS_DELETE_CAPABILITY } from "./canvasDelete";
 import { CANVAS_READ_CAPABILITY } from "./canvasRead";
@@ -16,6 +17,7 @@ import {
   GENERATION_RUN_READ_CAPABILITY,
   GENERATION_CONTROL_CAPABILITY,
 } from "./generation";
+import { MODEL_ONBOARDING_REMOVE_CAPABILITY, MODEL_ONBOARDING_SETUP_CAPABILITY, MODEL_ONBOARDING_TRY_CAPABILITY } from "./modelOnboarding";
 import { MODEL_SETUP_OPEN_CAPABILITY } from "./modelSetup";
 import {
   PRODUCTION_ARTIFACT_WRITE_CAPABILITY,
@@ -24,6 +26,7 @@ import {
 } from "./productionRun";
 import { SKILL_WRITE_CAPABILITY } from "./skillWrite";
 import { SKILL_READ_CAPABILITY } from "./skillRead";
+import { MCP_READ_TOOL_NAME } from "./mcpTransportNames";
 import type { CapabilityContract, CapabilityEffectClass, CapabilityProjectionSurface } from "./capabilityContract";
 
 type AnyCapabilityContract = CapabilityContract<unknown, unknown>;
@@ -36,6 +39,7 @@ export type ContractOnlyRegistry<Contracts extends readonly AnyCapabilityContrac
 };
 
 const REGISTERED_CONTRACTS = [
+  AGENT_ASK_CAPABILITY,
   ASSET_READ_CAPABILITY,
   CANVAS_DELETE_CAPABILITY,
   CANVAS_READ_CAPABILITY,
@@ -60,9 +64,26 @@ const REGISTERED_CONTRACTS = [
   GENERATION_RUN_READ_CAPABILITY,
   GENERATION_CONTROL_CAPABILITY,
   MODEL_SETUP_OPEN_CAPABILITY,
+  MODEL_ONBOARDING_SETUP_CAPABILITY,
+  MODEL_ONBOARDING_TRY_CAPABILITY,
+  MODEL_ONBOARDING_REMOVE_CAPABILITY,
 ] as const satisfies readonly CapabilityContract<unknown, unknown>[];
 
 export const CAPABILITY_CONTRACTS: ContractOnlyRegistry<typeof REGISTERED_CONTRACTS> = REGISTERED_CONTRACTS;
+
+/**
+ * 对外 `tools/list` 上的全部工具名：契约自己声明的 `aliases.mcp`，加上不挂契约的那几个
+ * （`nomi_read` 是收编 10 个读工具后的统一读入口）。
+ *
+ * 动词装配期用它判「说明书里点名的工具存在吗」（`assembleVerbDeclarations` 的 `mcpToolNames`）。
+ * 生产装配与它的阳性对照测试读的是**同一个函数**——这段以前在两处各抄了一遍同样的
+ * cast + flatMap（Ponytail 2026-09-18）。
+ */
+export function mcpToolNames(): readonly string[] {
+  const fromContracts = (CAPABILITY_CONTRACTS as readonly { aliases: { mcp?: string } }[])
+    .flatMap((contract) => (contract.aliases.mcp ? [contract.aliases.mcp] : []));
+  return Object.freeze([...fromContracts, MCP_READ_TOOL_NAME]);
+}
 
 function aliasEntriesFor<Contract extends AnyCapabilityContract>(contract: Contract) {
   const contractView: AnyCapabilityContract = contract;
@@ -101,13 +122,6 @@ export function capabilityContractById(contractId: string): AnyCapabilityContrac
   return CAPABILITY_CONTRACTS.find((contract) => contract.id === contractId);
 }
 
-/** True when the descriptor says its payload is a plan the user must read first. */
-export function capabilityRequiresPlanReview(toolName: string, args?: unknown): boolean {
-  const contract = resolveCapabilityAlias(toolName)?.contract as AnyCapabilityContract | undefined;
-  const operation = args && typeof args === "object" && !Array.isArray(args) ? (args as Record<string, unknown>).operation : undefined;
-  return capabilityPlanReviewOf(contract, { operation: typeof operation === "string" ? operation : toolName }).requiresPlanReview;
-}
-
 /** Review facts belong to the capability and operation, independently of a model-facing tool name. */
 export function capabilityPlanReviewOf(contract: AnyCapabilityContract | undefined, args?: unknown): Readonly<{
   requiresPlanReview: boolean;
@@ -134,14 +148,6 @@ export function capabilityEffectClassOf(
       : contract.effectClass;
   }
   return contract.effectClass;
-}
-
-/** Resolve side-effect policy from the descriptor and its explicit operation map. */
-export function resolveCapabilityEffectClass(
-  toolName: string,
-  args?: unknown,
-): CapabilityEffectClass | undefined {
-  return capabilityEffectClassOf(resolveCapabilityAlias(toolName)?.contract, args);
 }
 
 export function capabilityAliasesFor(contractId: string, surface: string): readonly string[] {

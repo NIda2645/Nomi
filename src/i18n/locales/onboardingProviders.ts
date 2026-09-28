@@ -376,6 +376,24 @@ export const zhOnboardingProviders = {
     loading: '加载中…',
     bridgeMissingTitle: '暂时连不上 Nomi 后台',
     bridgeMissingBody: '应用后台可能还在启动。点下面重试；若多次无效，请重启 Nomi。',
+    readOnlyNewerTitle: '这份配置来自更新版本的 Nomi，当前只能看不能改',
+    readOnlyNewerBody: '你的配置一条都没丢，只是盘上这份是用 v{{diskVersion}} 写的，而现在跑的是 v{{appVersion}}——旧版本改它会把新版本才有的设置弄坏。升级回新版 Nomi 就能照常编辑。',
+    unreadableTitle: '配置文件现在打不开，界面上这份可能不是最新的',
+    unreadableBody: '你的原文件一个字节都没动，已原样留在 {{path}}。常见原因是被别的程序锁着（同步盘、杀毒、另一个 Nomi）；关掉它们再重启 Nomi 即可。',
+    loadErrorTitle: '这一次没读到配置，屏幕上显示的是上一次读到的那份',
+    loadErrorBody: '你的配置没有被清空，也没有被改写。原因：{{detail}}',
+    configPackageHint: '把这台机器上的模型配置存成一份文件，换机或重装时导回来。导出的包不含密钥，导入后逐个补；导入默认保留本机已有的，不覆盖。',
+    exportConfig: '导出配置',
+    importConfig: '导入配置',
+    exportFailedTitle: '导出没成',
+    importFailedTitle: '导入没成，本机配置未改动',
+    importDoneTitle: '导入完成',
+    importDoneBody: '接入了 {{vendors}} 家、{{models}} 个模型、{{mappings}} 条映射。',
+    importConflictTitle: '有 {{count}} 条同名但内容不同',
+    importConflictKept: '默认保留本机已有的这几条，包里的那份不写进来：',
+    importConflictReplaceToggle: '改用包里的覆盖本机已有的（这一次）',
+    importConflictConfirm: '按上面的处理',
+    importNeedsKey: '导入的连接还缺密钥，逐条补上才能用——包里从不带密钥。',
   },
   keyOnly: {
     offlineTitle: '已保存 · 未验证',
@@ -406,6 +424,12 @@ export const zhOnboardingProviders = {
     // 「这台机器上到底存没存住这把 key」——从状态派生，不是一条文案分支（2026-09-17，W-17）。
     storedYes: '这台机器上已经存着 {{name}} 的密钥。',
     storedNo: '这台机器上还没有存 {{name}} 的密钥。',
+    // 「点这一下会发什么、花不花钱」——料源是主进程那份唯一的探测策略（T-MO-10，09-22 拍板）。
+    // 不知道就说不知道：**不许**在问不到的时候默认说「免费验证」。
+    probeCostFree: '保存时会用这把密钥发一次免费的验证请求（只查额度/权限，不生成内容，不花钱）。',
+    probeCostPaid: '这家没有免费的验证端点：保存时会发一次最小的真实请求来验密钥，预计消耗 {{amount}} 额度。发之前会再问你一次。',
+    probeCostPaidUnpriced: '这家没有免费的验证端点：保存时会发一次最小的真实请求来验密钥，会消耗额度（这家还没填价，具体多少说不准）。发之前会再问你一次。',
+    probeCostUnknown: '暂时读不到这家的验证方式；保存前 Nomi 会先告诉你这一下花不花钱。',
   },
   knownVendors: {
     apimart: {
@@ -426,6 +450,15 @@ export const zhOnboardingProviders = {
       tagline: '一个 key，解锁内置模型',
       promoText: '如果你愿意，可以用我们的链接注册；不愿意也可以直接去官方注册。',
       promoCta: '用我们的链接',
+    },
+    higgsfield: {
+      tagline: '官方原生 · Soul 2 图片与 DoP 运镜视频',
+      credentialPlaceholder: '粘贴 Higgsfield 的 id:secret',
+      credentialHint:
+        '在 Higgsfield 控制台创建 API 凭据，粘贴时把 id 和 secret 用冒号连成一串（形如 abc123:xyz789）。凭证本地加密存储。',
+      promoText:
+        'Higgsfield 官方 API。Nomi 只接它自研的三个旗舰模型（Soul 2、Soul Cinema、DoP）；它转售的 Kling / Seedance 等你在 Nomi 里已经能直连原厂，不必多绕一层。',
+      promoCta: '打开 Higgsfield 控制台',
     },
     modelscope: {
       tagline: '官方原生 · 绑定阿里云每天免费额度',
@@ -551,7 +584,7 @@ export const zhOnboardingProviders = {
       mcp: 'MCP 配置片段',
     },
     promptBody:
-      '用 nomi-add-model 这个技能，帮我把 <模型名，或厂商文档页链接> 接进 Nomi。\n如果你的助手有技能目录，把下面那份 SKILL.md 存进去；没有就直接照它做。\n接完跑一次最小样例确认真能出东西，再告诉我它在模型列表里叫什么。',
+      '用 nomi-add-model 这个技能，帮我把 <模型名，或厂商文档页链接> 接进 Nomi。\n如果你的助手有技能目录，把下面那份 SKILL.md 存进去；没有就直接照它做。\n先读这家的官方 API 文档再动手，凭记忆填等于没查。\n密钥默认由我本人在 Nomi 自己的页面里粘贴：不要向我索要、不要打印、不要写进文件或提交。除非我主动把密钥交给你并要求你代填——那时才用 set_key，填完告诉我它绑到了哪个地址。轮到我操作时停下来告诉我该点哪里。\n没有真跑成一次、拿到产物之前，不要说「接好了」；跑不成就直说卡在哪一步、对方回了什么。\n最后告诉我它在模型列表里叫什么。',
     mcpNote: '只有「其它」要手动粘这段；上面三家由 Nomi 一键写入。',
     otherOneClickHint: 'Nomi 也能替 {{clients}} 一键写好配置。',
     steps: {
@@ -626,6 +659,9 @@ export const zhOnboardingProviders = {
       configUnreadable: '{{client}} 的配置文件现在不是合法 JSON，Nomi 不会覆盖它。请先修好那个文件再接入。',
     },
     brokenTitle: '接入配置需要更新',
+    elsewhereStatus: '指向另一份',
+    elsewhereTitle: '该客户端当前指向另一份 Nomi：',
+    switchHere: '切到这一份',
     upgrade: '升级接入 {{client}}',
     repair: '修复接入 {{client}}',
     developmentConnection: '这是当前开发目录的临时接入；目录删除或依赖重装后会失效。安装正式版后再升级为稳定接入。',
@@ -642,7 +678,7 @@ export const zhOnboardingProviders = {
       legacyLauncher: '{{client}} 里连的还是 Nomi 旧版本的启动脚本，那个脚本已经不在了。升级接入会换成当前版本的启动方式。',
       staleDevelopment: '{{client}} 仍指向一个已经删除的 Nomi 开发目录。升级接入会换成稳定启动方式。',
       authStale: '这份旧配置缺少当前版本的客户端身份凭据，能列工具但不能安全推进制作。升级接入即可。',
-      launcherStale: '{{client}} 里的配置指向的不是当前这个 Nomi（旧的安装位置，或另一份 / 已删除的资料库）——连上的会是一个空白 Nomi。升级接入即可指回当前这份。',
+      launcherBroken: '{{client}} 里的 Nomi 启动器已不存在、不可执行，或资料库已删除。重新接入即可指回当前这份。',
     },
     name: 'AI 助手',
     subtitle: '让 Claude Code / Claude Desktop / Codex / Cursor / WorkBuddy 帮你建项目、出图',
@@ -703,9 +739,14 @@ export const zhOnboardingProviders = {
     modelsSection: '模型',
     addressLabel: '接入地址',
     editAddress: '修改',
+    fieldLossTitle: '这家的两项声明可能在旧版本里丢了',
+    fieldLossBody:
+      '旧版本每次保存连接都会抹掉「本地素材怎么上传」和「Authorization 方案词」。内置供应商的已经自动补回来了；这家是你自己接入的，我们没有出处补不了。如果你当初是用接入包接的它，重新导入一次那份包就能恢复——手动接入的连接不受影响（那两项本来就只有内置种子和接入包写得了）。',
   },
   modelControls: {
-    unlisted: '供应商已不再列出',
+    // 「已不再」断言了永久性，而清单抖动是常态（鉴权降级 / 网关抖动 / 上游改分页形状都会
+    // 回一份不完整的清单）。2026-09-21 起后台对账不会因此停用它，措辞也要跟着说实话。
+    unlisted: '供应商清单里暂时没有它',
     more: '更多',
     kind: {
       text: '文本',
@@ -1594,6 +1635,24 @@ export const enOnboardingProviders = {
     loading: 'Loading…',
     bridgeMissingTitle: 'Cannot reach the Nomi backend yet',
     bridgeMissingBody: 'The app backend may still be starting. Retry below; if it keeps failing, restart Nomi.',
+    readOnlyNewerTitle: 'This configuration was written by a newer Nomi — read-only for now',
+    readOnlyNewerBody: 'Nothing was lost. The file on disk was written by v{{diskVersion}} and you are running v{{appVersion}}; editing it from the older version would break settings only the newer one understands. Upgrade Nomi and it becomes editable again.',
+    unreadableTitle: 'The configuration file cannot be opened right now, so this list may be out of date',
+    unreadableBody: 'Your original file was not touched — it is still at {{path}}. Usually something else is holding it open (a sync client, antivirus, another Nomi). Close those and restart Nomi.',
+    loadErrorTitle: 'This read failed — you are looking at the last configuration that loaded',
+    loadErrorBody: 'Nothing was cleared and nothing was rewritten. Reason: {{detail}}',
+    configPackageHint: 'Save this machine\'s model setup to a file and bring it back after a reinstall or on a new machine. The exported package never contains keys — add them again after importing. Importing keeps what you already have and does not overwrite it.',
+    exportConfig: 'Export configuration',
+    importConfig: 'Import configuration',
+    exportFailedTitle: 'Export failed',
+    importFailedTitle: 'Import failed — nothing on this machine was changed',
+    importDoneTitle: 'Import complete',
+    importDoneBody: 'Added {{vendors}} providers, {{models}} models and {{mappings}} mappings.',
+    importConflictTitle: '{{count}} entries have the same name but different contents',
+    importConflictKept: 'These are kept as they are on this machine; the versions in the package are not written:',
+    importConflictReplaceToggle: 'Use the package\'s versions instead, just this once',
+    importConflictConfirm: 'Do that',
+    importNeedsKey: 'The imported connections still need their keys — add them one by one. Packages never carry keys.',
   },
   keyOnly: {
     offlineTitle: 'Saved · Not verified',
@@ -1620,6 +1679,10 @@ export const enOnboardingProviders = {
     saveFailed: 'Could not save: {{message}}',
     storedYes: 'A {{name}} key is stored on this machine.',
     storedNo: 'No {{name}} key is stored on this machine yet.',
+    probeCostFree: 'Saving sends one free verification request with this key (it checks quota and access only — nothing is generated, nothing is charged).',
+    probeCostPaid: 'This provider has no free verification endpoint: saving sends one minimal real request to check the key, costing about {{amount}} in credits. You are asked once more before it goes out.',
+    probeCostPaidUnpriced: 'This provider has no free verification endpoint: saving sends one minimal real request to check the key, which spends credits (no price is on file, so the amount is unknown). You are asked once more before it goes out.',
+    probeCostUnknown: 'Nomi cannot read this provider’s verification method right now; it will tell you whether the check costs anything before sending it.',
   },
   knownVendors: {
     apimart: {
@@ -1640,6 +1703,15 @@ export const enOnboardingProviders = {
       tagline: 'One key unlocks built-in models',
       promoText: 'You can register with our link if you like, or go directly to the official website.',
       promoCta: 'Use our link',
+    },
+    higgsfield: {
+      tagline: 'Official access · Soul 2 images and DoP camera-move video',
+      credentialPlaceholder: 'Paste your Higgsfield id:secret',
+      credentialHint:
+        'Create API credentials in the Higgsfield console, then paste the id and secret joined by a colon (like abc123:xyz789). Credentials are encrypted locally.',
+      promoText:
+        'Higgsfield official API. Nomi seeds only its three in-house flagships (Soul 2, Soul Cinema, DoP). The Kling and Seedance models it resells are already available in Nomi straight from their original vendors, so there is no need to route through another layer.',
+      promoCta: 'Open Higgsfield console',
     },
     modelscope: {
       tagline: 'Official access · Daily free quota with an Alibaba Cloud account',
@@ -1769,7 +1841,7 @@ export const enOnboardingProviders = {
       mcp: 'MCP config snippet',
     },
     promptBody:
-      'Use the nomi-add-model skill to connect <model name, or a link to the vendor API docs> to Nomi.\nIf your assistant has a skills directory, save the SKILL.md below into it; otherwise just follow it directly.\nRun one minimal sample to prove it really produces output, then tell me what it is called in the model list.',
+      'Use the nomi-add-model skill to connect <model name, or a link to the vendor API docs> to Nomi.\nIf your assistant has a skills directory, save the SKILL.md below into it; otherwise just follow it directly.\nRead the provider\'s official API docs first — working from memory counts as not having checked.\nBy default the key is pasted by me, on Nomi\'s own page: never ask me for it, never print it, never write it into a file or a commit. Only if I hand you the key myself and ask you to fill it in should you use set_key — then tell me which origin it was bound to. When it is my turn, stop and tell me exactly what to click.\nDo not tell me it works until you have actually generated something with it; if a run fails, say so plainly and name the step it stopped at.\nFinally, tell me what it is called in the model list.',
     mcpNote: 'Only "Other" needs this pasted by hand; Nomi writes it for the three hosts above.',
     otherOneClickHint: 'Nomi can also write the config for {{clients}} in one click.',
     steps: {
@@ -1840,6 +1912,9 @@ export const enOnboardingProviders = {
       configUnreadable: 'The {{client}} configuration file is not valid JSON right now, so Nomi will not overwrite it. Fix that file first, then connect.',
     },
     brokenTitle: 'Connection configuration needs an update',
+    elsewhereStatus: 'Another Nomi',
+    elsewhereTitle: 'This client currently points to another Nomi:',
+    switchHere: 'Switch to this Nomi',
     upgrade: 'Upgrade {{client}} connection',
     repair: 'Repair {{client}} connection',
     developmentConnection:
@@ -1859,7 +1934,7 @@ export const enOnboardingProviders = {
       legacyLauncher: '{{client}} still points at the launch script of an older Nomi, and that script no longer exists. Upgrading the connection switches to the current launcher.',
       staleDevelopment: '{{client}} still points at a deleted Nomi development folder. Upgrading the connection switches to the stable launcher.',
       authStale: 'This older configuration lacks the client identity proof required for safe production. Upgrade the connection to fix it.',
-      launcherStale: 'The {{client}} configuration does not point at this Nomi (an old install location, or a different or deleted library), so it would open a blank Nomi. Upgrade the connection to point it back here.',
+      launcherBroken: 'The Nomi launcher in {{client}} is missing or not executable, or its library was deleted. Reconnect to use this Nomi.',
     },
     name: 'AI agents',
     subtitle: 'Let Claude Code, Claude Desktop, Codex, Cursor, or WorkBuddy create projects and generate images',
@@ -1920,9 +1995,12 @@ export const enOnboardingProviders = {
     modelsSection: 'Models',
     addressLabel: 'Address',
     editAddress: 'Edit',
+    fieldLossTitle: 'Two settings on this provider may have been lost',
+    fieldLossBody:
+      'An older version wiped "how local assets are uploaded" and the Authorization scheme word every time a connection was saved. Built-in providers have been restored automatically. This one you added yourself, and we have no source to restore it from. If you added it from a connection package, re-import that package to get the settings back — connections added by hand are unaffected (only built-in seeds and connection packages could ever set those two).',
   },
   modelControls: {
-    unlisted: 'No longer listed by provider',
+    unlisted: "Not in the provider's list right now",
     more: 'More',
     kind: {
       text: 'Text',

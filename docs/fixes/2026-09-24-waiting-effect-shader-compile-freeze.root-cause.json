@@ -1,0 +1,155 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-24-waiting-effect-shader-compile-freeze",
+  "problem_type": "A GPU program with unbounded compile cost is admitted onto the renderer thread",
+  "symptom": "Windows v0.22.0 user: right after importing images into a new project (and earlier while an image generation was waiting) the whole Nomi window froze with high CPU for over a minute; after several freezes the canvas showed 'React Flow 画布加载失败'. Reproduced on Windows 11 / RTX 4060 / Electron 43: the first image drop blocked the renderer 92-100 s, then the GPU process exited (exit_code=2) and later WebGL context creation was refused.",
+  "direct_cause": "img-fx@0.5.1 compiles one fragment shader that contains all 26 effects behind a runtime `u_effect` switch and calls that switch 5 times for blur. ANGLE translates it to HLSL for the Direct3D11 compiler, which inlines everything; three.js checks link status synchronously on the first draw, so the renderer main thread waits for the whole compile (100,168 ms measured in a bare Electron page) and the GPU watchdog kills the GPU process.",
+  "class_root": "The waiting effect's GPU program contained every effect the library ships instead of only the effect of the active preset, so its compile cost was unbounded on backends whose shader compiler flattens dynamic branches (ANGLE/D3D11, the Windows default). No boundary owned 'the program compiled for a preset contains only that preset'.",
+  "affected_population": [
+    "Every Windows user on the default ANGLE/Direct3D11 backend, on the first waiting/importing card of each app session and again after every GPU context loss",
+    "Both generation waiting (NodeGeneratingOverlay) and import reveal (NodeImportingOverlay) because both mount the same GenerationWaitingSurface",
+    "macOS/Metal and SwiftShader users are not affected by the freeze (fast compilers) and see no visual change"
+  ],
+  "scope_paths": [
+    "patches/img-fx@0.5.1.patch",
+    "package.json"
+  ],
+  "entry_points": [
+    "GenerationWaitingSurface mounts img-fx ImageGeneration for generation waiting",
+    "NodeImportingOverlay mounts the same surface for byte-progress import reveal (drop, toolbar import, paste, asset library)",
+    "Design lab process-feedback states mount BaseGenerationNode with pixels-organic / pixels-mechanic presets"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/Jakubantalik/img-fx/issues/3",
+      "checked_at": "2026-09-24",
+      "purpose": "Upstream report of the same Windows ANGLE-D3D11 freeze with the monolithic 25-effect shader; suggested fixes (keep only used effects, per-effect programs, async compile); still open, no release after 0.5.1."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://threejs.org/docs/#api/en/materials/ShaderMaterial.defines",
+      "checked_at": "2026-09-24",
+      "purpose": "ShaderMaterial.defines become #define directives in both shaders; changing them requires material.needsUpdate so the renderer picks the program for the new key (same pattern as three.js examples/jsm/csm/CSM.js _updateUniforms)."
+    }
+  ],
+  "invariants": [
+    "The fragment program compiled for an img-fx preset contains exactly that preset's effect body and no runtime effect dispatch",
+    "Every bundled preset theme mode has exactly one compile-time branch, so switching presets selects a cached per-effect program instead of recompiling a monolith",
+    "Rendered pixels for any effect are identical to the unpatched shader"
+  ],
+  "invariant_owner_layer": {
+    "layer": "patches/img-fx@0.5.1.patch",
+    "tests": [
+      "src/workbench/generationCanvas/nodes/waitingEffectShaderProgram.test.ts"
+    ],
+    "why": "The GPU program is built inside img-fx, so the only place that can decide which effect bodies it contains is the dependency itself; the patch owns it and the test reads the installed module (both ES and CJS builds) so a missing or reverted patch turns red."
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+      "symbol": "ImageGeneration"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGeneratingOverlay.tsx",
+      "symbol": "GenerationWaitingSurface"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeImportingOverlay.tsx",
+      "symbol": "GenerationWaitingSurface"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "GenerationWaitingSurface is already the single place that mounts img-fx; the two overlays are distinct user states (generation waiting vs byte-progress import) that intentionally share it. The fix sits below all three doors, inside the one GPU program they share, so no door needed to move."
+  },
+  "generality_proof": "All three doors reach the GPU only through img-fx's single shared ShaderMaterial. The patch makes that material's program a function of the preset's effect index (compile-time #if chain + defines synced in the preset-apply function), so any preset, any caller, any backend compiles only one effect body. Pixel hashes of unpatched vs patched shaders are identical for effects 0, 7, 11, 18, 22 and 25 under SwiftShader.",
+  "shared_boundaries": [
+    {
+      "path": "patches/img-fx@0.5.1.patch",
+      "symbol": "IMG_FX_EFFECT",
+      "responsibility": "Turns the runtime effect switch into a compile-time selection and keeps the shared material's define in sync with the active preset, for both the ES and CJS builds."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/GenerationWaitingSurface.tsx",
+      "entry_point": "WaitingEffect",
+      "disposition": "enforced",
+      "evidence": "Mounts ImageGeneration with the default sweep-gradient preset (effect 25); patched program measured at 185 ms first compile on the same D3D11 machine vs 100,168 ms."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeImportingOverlay.tsx",
+      "entry_point": "NodeImportingOverlay",
+      "disposition": "enforced",
+      "evidence": "Renders GenerationWaitingSurface with progressReveal; real-app drop/import/paste of 8 real images in a CJK project folder: max renderer frame gap 273 ms, zero GPU process exits (was a 92-100 s block and canvas crash)."
+    },
+    {
+      "path": "src/devlab/designLab/processFeedback/processFeedbackLabKit.tsx",
+      "entry_point": "ProcessFeedbackFxStage",
+      "disposition": "enforced",
+      "evidence": "Lab states use pixels-organic (effect 22) and pixels-mechanic (11); per-effect programs compile in 1.3 s / 1.9 s on D3D11 instead of the 100 s monolith. Production never uses these presets."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/director/scene/capture/directorCapture.ts",
+      "entry_point": "directorCapture",
+      "disposition": "not-affected",
+      "evidence": "Director/3D and Model3DViewer compile three.js built-in materials, not the img-fx program; their D3D11 compile cost was not measured in this change and is recorded as a residual risk."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every Windows session re-enters the compile on the first waiting or importing card and again after each GPU context loss; any future img-fx upgrade or preset change could reintroduce a monolithic program.",
+    "same_class_scan": [
+      "door-map ImageGeneration GenerationWaitingSurface: 3 doors (surface + generation overlay + import overlay)",
+      "rg WebGLRenderer|ShaderMaterial in src: only directorCapture (three built-ins) besides img-fx",
+      "rg 'from img-fx': GenerationWaitingSurface, NodeGeneratingOverlay, NodeImportingOverlay, BaseGenerationNode, processMotionCapability (type only), processFeedbackLabKit",
+      "Standalone Electron probe: monolith 100,168 ms; 26 effects x1 call 13,965 ms; effect 25 x5 calls 211 ms; x1 call 69 ms"
+    ]
+  },
+  "prevention": {
+    "kind": "dependency-upgrade",
+    "enforcement_path": "patches/img-fx@0.5.1.patch",
+    "invariant": "The GPU program for a preset contains only that preset's effect",
+    "failure_mode": "pnpm refuses to install if the patch no longer applies to the pinned img-fx version; waitingEffectShaderProgram.test.ts fails if the shipped shader regains a runtime u_effect dispatch or loses the per-preset define sync",
+    "exception_policy": "none",
+    "strategy": "Patch the dependency at its single shared material instead of adding a platform branch or a second shader, and pin the invariant with a test that reads the installed module.",
+    "artifacts": [
+      "patches/img-fx@0.5.1.patch",
+      "package.json"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/nodes/waitingEffectShaderProgram.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/nodes/waitingEffectShaderProgram.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The monolithic shader lived only inside the dependency; the patch replaces it in place and no application code path selected effects at runtime."
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "current": "img-fx 0.5.1 with patches/img-fx@0.5.1.patch (per-effect compile-time programs)",
+    "target": "An upstream img-fx release that fixes Jakubantalik/img-fx#3 (per-effect programs or async compilation) so the patch can be deleted",
+    "rationale": "0.5.1 is the latest published version and upstream #3 has been open since 2026-06-18. Replacing img-fx would violate the registered framework boundary (the waiting visual is bought, not rebuilt); the patch keeps the public API, visuals and version unchanged.",
+    "exit_criteria": [
+      "An img-fx release no longer ships a runtime effect dispatch in its fragment shader (waitingEffectShaderProgram.test.ts passes without the patch).",
+      "On a Windows ANGLE/D3D11 machine the first waiting card compiles in under 500 ms without the patch, measured with the scratchpad shader probe or the real-app sweep.",
+      "patchedDependencies entry and patches/img-fx@0.5.1.patch are deleted in the same change that upgrades."
+    ]
+  },
+  "migration": "No persisted data involved. pnpm applies the patch at install time; existing installs pick it up on the next pnpm install and packaged builds bundle the patched module.",
+  "residual_risks": [
+    "Per-effect compile time on Intel/AMD D3D11 drivers was not measured (the D3D compiler runs on the CPU, so vendor should not matter, but unverified).",
+    "Lab-only presets 22 and 11 still take 1.3-1.9 s to compile on D3D11; production uses effect 25 (185 ms).",
+    "Director 3D and Model3DViewer WebGL compile costs on Windows are unmeasured.",
+    "macOS post-patch timing was not re-measured on this Windows machine; the change can only shrink the program."
+  ]
+}

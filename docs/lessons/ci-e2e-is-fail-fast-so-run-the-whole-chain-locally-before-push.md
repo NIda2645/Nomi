@@ -1,6 +1,11 @@
 # CI 的 E2E 链是串行 fail-fast，本地 gates 一条都不含——不先在本地跑完整条链，每轮 CI 只学到一件事
 
-> 📎 教训 · 首次记录 2026-09-17 · 状态：🟡 待固化（候选：把 CI E2E 七步做成一个本地脚本 `test:e2e:ci-chain`，并让派工模板把它列为 push 前硬步骤）
+> 📎 教训 · 首次记录 2026-09-17 · 状态：✅ 已固化（2026-09-18）——三条候选全部落地：
+> `pnpm run test:e2e:ci-chain` 按 CI 同序跑完七步（`scripts/run-ci-e2e-chain.mjs`，只持一次 gates 锁，红了继续跑）；
+> CI 的 E2E job 改成七步 `continue-on-error` + 末尾汇总步下结论（不再 fail-fast 吞掉后面的发现）；
+> 正文门岗不再读 push 事件负载，改为 `gh` 现取（`scripts/lib/prBody.mjs`）并在 pre-push 本地先跑一遍。
+> 三份根因合同：`docs/fixes/2026-09-18-ci-e2e-chain-not-runnable-locally.root-cause.json`、
+> `…-e2e-job-fail-fast-serializes-findings…`、`…-pr-body-gate-reads-a-stale-payload…`。
 > **触发场景**：一条分支 CI 连红两轮以上，每轮红的却是**不同**的走查；或者你准备 push 一条碰了用户可见面 / MCP / Agent 面的集成分支。
 
 **结论**：`quality-gate.yml` 的 `E2E Walkthroughs (Linux)` job 是 **7 步串行、第一步红整个 job 退出**（`test:feel:browser → test:e2e → test:journeys → test:mcp-journey → test:mcp-elicitation → test:real-user-journeys:ci → test:canvas:critical`），而本地 `pnpm run gates`（含 full 档）**一步都不跑它们**。于是「本地 gates 五次全绿」和「CI 会绿」之间没有任何关系：CI 变成了第一次跑走查的地方，而且每 40 分钟只暴露排在最前面的那一个红。另加一条同一天撞的：`check:prior-art` / `check:door-map` 只读 push 事件 payload 里的 PR 正文，正文编辑晚于 push 哪怕 19 秒都算旧正文。
@@ -33,7 +38,10 @@
 
 ## 怎么用
 
-- **push 前（尤其集成分支 / 碰用户可见面 / MCP / Agent 面）**：按 CI 同样顺序把 7 条走查在本地全跑一遍，**红了继续跑后面的**，把全部红一次收齐再修，再 push 一次。mac 上不用 xvfb，直接 `pnpm run <script>`；跑 Electron 前 `pgrep -fl Electron` 确认没别的实例，一次一个。
-- **正文门岗**：正文定稿 → `node scripts/check-prior-art.mjs --pr && node scripts/check-door-map.mjs --pr` 本地绿 → 再 push；push 之后不许再编辑正文（要改就得再 push 一个 commit）。
+- **push 前（尤其集成分支 / 碰用户可见面 / MCP / Agent 面）**：`pnpm run test:e2e:ci-chain`——一条命令按 CI 同序跑完七步，
+  红了继续跑，最后一张汇总表（每步 exit / 时长 / 日志路径），退出码 = 任一红。跑之前要先 `pnpm run build`（CI 也是先 build）。
+  跑 Electron 前 `pgrep -fl Electron` 确认没别的实例。
+- **正文门岗**：2026-09-18 起正文由 `gh` **现取**，所以「push 后改正文」不再造成假红——改完正文**重跑那个 job** 就能变绿，
+  不必空提交重推。pre-push 钩子会在本地先跑一遍同样的判据（没装 gh / 这条分支还没 PR 时安静跳过）。
 - **派工任务书**：以上两条写成 push 前的硬步骤，不写「跑 gates 后 push」这种会被字面执行的话。
 - **判断 CI 连红是不是「没找到核心问题」**：先看每轮红的是不是同一条。同一条反复红 = 没修到根因；每轮不同条 = 发现被串行化了，去补本地整链，别再一轮一轮喂 CI。

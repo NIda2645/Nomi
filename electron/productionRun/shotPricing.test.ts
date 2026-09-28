@@ -286,6 +286,28 @@ describe("checkSealAffordability", () => {
     // a=20 ≤ 25 fits; b unknown (0 toward cap) still fits; c pushes to 40 > 25 → 2 shots affordable.
     expect(result).toEqual({ ok: false, maxAffordableShots: 2, knownSubtotal: 40, maxSpend: 25 });
   });
+
+  it("admits an exact-cap decimal prefix and rejects the first real overage", () => {
+    const hundred = Array.from({ length: 100 }, (_, index) => ({
+      shotId: `shot-${index + 1}`,
+      price: price(0.3),
+    }));
+
+    expect(checkSealAffordability({ shots: hundred, maxSpend: 30 })).toEqual({
+      ok: true,
+      hasUnknownPrice: false,
+    });
+    const overage = checkSealAffordability({
+      shots: [...hundred, { shotId: "shot-101", price: price(0.3) }],
+      maxSpend: 30,
+    });
+    expect(overage).toMatchObject({
+      ok: false,
+      maxAffordableShots: 100,
+      maxSpend: 30,
+    });
+    if (!overage.ok) expect(overage.knownSubtotal).toBeCloseTo(30.3, 12);
+  });
 });
 
 describe("P4 S4 buildMultiShotGateProjection (the real display.shots for the confirmation card)", () => {

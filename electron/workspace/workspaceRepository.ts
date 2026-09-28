@@ -1,3 +1,4 @@
+import { assertProjectAgentBinding, sameProjectAgentBinding, type ProjectBinding } from "../shared/projectBinding";
 import fs from "node:fs";
 import crypto from "node:crypto";
 import path from "node:path";
@@ -353,6 +354,12 @@ export async function saveWorkspaceProject(
     const existing = context.current;
     if (!existing || existing.id !== projectId) {
       throw new Error(`Workspace project not found: ${projectId}`);
+    }
+    const expectedBinding = record && typeof record === "object" ? (record as { expectedBinding?: ProjectBinding }).expectedBinding : undefined;
+    if (expectedBinding !== undefined) {
+      assertProjectAgentBinding(expectedBinding);
+      if (!sameProjectAgentBinding(expectedBinding, { projectId: existing.id,
+        immutableProjectUuid: existing.immutableProjectUuid ?? "", projectGeneration: existing.projectGeneration ?? 0 })) throw new Error("project_binding_stale");
     }
     const now = Date.now();
     const next = normalizeWorkspaceProjectRecord({

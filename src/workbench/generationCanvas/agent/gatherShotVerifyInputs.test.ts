@@ -55,4 +55,18 @@ describe('gatherShotVerifyInputs', () => {
   it('未知 id 跳过', () => {
     expect(gatherShotVerifyInputs(['nope'], [], [])).toEqual([])
   })
+
+  it('首帧从所属视频派生镜号，并以跳号前镜的 owner 提示词作连贯对照', () => {
+    const prev = node({ id: 'prev', kind: 'video', shotIndex: 2, prompt: '前镜：角色走向门口' })
+    const prevFrame = node({ id: 'prev-frame', kind: 'image', meta: { storyboardKeyframe: true }, prompt: '仅首帧构图' })
+    const current = node({ id: 'current', kind: 'video', shotIndex: 5, prompt: '本镜：打开门' })
+    const frame = withResult('frame', 'image', 'nomi-local://frame.png', { meta: { storyboardKeyframe: true } })
+    const anchor = node({ id: 'anchor', kind: 'image', shotIndex: 4, meta: { referenceSheet: true }, prompt: '参考卡不作前镜' })
+    const edges: GenerationCanvasEdge[] = [
+      { id: 'previous-frame', source: prevFrame.id, target: prev.id, mode: 'first_frame' },
+      { id: 'current-frame', source: frame.id, target: current.id, mode: 'first_frame' },
+    ]
+    const out = gatherShotVerifyInputs([frame.id], [prev, prevFrame, current, frame, anchor], edges)
+    expect(out[0].previousShotPrompt).toBe(prev.prompt)
+  })
 })

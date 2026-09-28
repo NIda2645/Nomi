@@ -1,3 +1,5 @@
+import { transportTaskKindForModeId } from "../shared/videoCapabilities";
+import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import type { PlanCandidate } from "./executionContract";
 
@@ -34,7 +36,16 @@ export type SemanticGenerationCandidateDeps = Readonly<{
    * experience or spend policy.
    */
   allowRegistryFallback?: boolean;
+  /**
+   * assetId → 可引用身份（内容哈希 + 版本）。生产装配点绑 `resolveProjectAssetReferenceIdentity`
+   * 并把 projectId 闭进去。未注入 = 只接受已经带着身份来的参考（逐字节等同接线前），缺身份的当场
+   * 拿到人话拒绝，而不是候选 schema 的 `Required`。
+   */
+  resolveAssetReferenceIdentity?: ResolveAssetReferenceIdentity;
 }>;
+
+/** 一份素材的可引用身份。真解析器住 `electron/assets/projectAssetStore.ts`（全仓唯一算它的地方）。 */
+export type ResolveAssetReferenceIdentity = (assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined;
 
 const TASK_KINDS = new Set<GenerationDefaultTaskKind>([
   "text_to_image",
@@ -103,25 +114,63 @@ function isTaskKind(value: unknown): value is GenerationDefaultTaskKind {
 
 function record(value: unknown, label: string): Record<string, unknown> {
   if (value === undefined) return {};
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error(`${label} must be an object`);
+  if (!value || typeof value !== "object" || Array.isArray(value)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, `${label} must be an object`);
   return { ...(value as Record<string, unknown>) };
 }
 
-function references(value: unknown): unknown[] {
+/**
+ * 参考素材：模型给的是 `assetId`，**身份由宿主补**。
+ *
+ * 2026-09-18 根因：以前这里只是原样拷一遍，于是缺 `contentHash`/`version` 的那条直接撞上候选
+ * schema 的 `Required`——而那两个字段模型根本拿不到。已经带着身份来的（外部宿主、面板自己那条路）
+ * 逐字节不变；缺身份又没接解析器时，报的是人话而不是一个模型看不懂的字段名。
+ */
+/**
+ * 一条参考素材的身份补齐。**全仓唯一的那一份**。
+ *
+ * 2026-09-22 之前这条规则有两份实现：create 走这里，patch 走 `mcpGenerationTools.pinReference`——
+ * 逐字一样的两段，连那句中文提示都抄了一遍。它们一起被 adapter 的兜底吃掉时，我只改了其中一份，
+ * 回归测试当场报出另一份还在（这正是「同一个语义有几份定义」那一族缺陷的长相）。现在 patch 那条
+ * 调的就是这个函数，改措辞只有一个地方。
+ */
+export function pinAssetReference(item: unknown, resolve?: ResolveAssetReferenceIdentity): unknown {
+  if (!item || typeof item !== "object") return item;
+  const reference = { ...(item as Record<string, unknown>) };
+  if (typeof reference.contentHash === "string" && reference.contentHash && reference.version !== undefined) return reference;
+  const assetId = text(reference.assetId);
+  if (!assetId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "参考素材需要 assetId（来自 look_at_media）");
+  const identity = resolve?.(assetId);
+  if (!identity) {
+    // 模型最常见的两种错法，分开说：给了一个**镜头 id**（说明书曾经说这里收镜头 id，见 writeVerbs 的
+    // `references`），和给了一个**根本不在库里的 assetId**。两种的下一步不一样，合成一句话等于两种都没说清。
+    refuseToModel(GENERATION_ARGUMENT_REFUSAL, /^(gen-v2-|shot-)/.test(assetId)
+      ? `${assetId} 看起来是画布上的一个镜头/节点 id，不是素材库里的文件。references 只收 look_at_media 给出的 assetId；要复用另一镜的形象，把它写进 storyboard.anchorIds。`
+      : `参考素材 ${assetId} 不在这个项目的素材库里，请先用 look_at_media 找到它的 assetId`);
+  }
+  return { ...reference, contentHash: identity.contentHash, version: identity.version };
+}
+
+function references(value: unknown, resolve?: ResolveAssetReferenceIdentity): unknown[] {
   if (value === undefined) return [];
-  if (!Array.isArray(value)) throw new Error("references must be an array");
-  return value.map((item) => (item && typeof item === "object" ? { ...(item as Record<string, unknown>) } : item));
+  if (!Array.isArray(value)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "references must be an array of asset ids.");
+  return value.map((item) => pinAssetReference(item, resolve));
 }
 
 /** Infer only the semantic task family; model/mode selection remains catalog-owned. */
 export function inferGenerationTaskKind(params: SemanticGenerationCandidateParams): GenerationDefaultTaskKind {
   const explicit = params.taskKind;
   if (explicit !== undefined) {
-    if (!isTaskKind(explicit)) throw new Error("taskKind must be text_to_image, image_edit, text_to_video or image_to_video");
+    if (!isTaskKind(explicit)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "taskKind must be text_to_image, image_edit, text_to_video or image_to_video");
     return explicit;
   }
   const mode = normalized(params.mode);
   if (isTaskKind(mode)) return mode;
+  // 模型明说了模式，就别再去猜种类——模式定了，种类就定了（`transportTaskKindForModeId` 从档案扫出来，
+  // 不手抄）。2026-09-22 之前这里直接跳到下面的提示词启发式：模型写了 `modeId: "i2v"`，我们猜了
+  // `text_to_video`，再拿自己猜的那个去和它明说的模式比对，然后把冲突算在它头上
+  // （run2 A3/A6 三次，正文写着「this shot asks for text_to_video」——模型一个字都没这么说）。
+  const declaredByModeId = transportTaskKindForModeId(text(params.modeId));
+  if (declaredByModeId && isTaskKind(declaredByModeId)) return declaredByModeId;
   const prompt = text(params.prompt).toLowerCase();
   const hasReferences = Array.isArray(params.references) && params.references.length > 0;
   const videoIntent = /(视频|短片|镜头|分镜|动画|video|clip|film|animate|motion)/i.test(prompt);
@@ -184,15 +233,58 @@ function fallbackFromSnapshot(
 }
 
 /**
+ * 显式点名的模型在目录里属于谁。Agent 照 `list_models` 给出 `modelKey`（宿主面 `modelId`）时，providerId/moduleId
+ * 本来就是目录里那一行的事实，不该要求用户另外「保存过默认模型」才能带出来（2026-09-18 金路径真机红：
+ * 三镜都指名了图片模型，宿主仍答「没有配置可用的图片模型」）。只认目录里真有的行：查不到就返回
+ * undefined，让下面那条拒绝照旧成立——绝不替它编一个供应商。给了 providerId 就只在那家里找。
+ */
+function identityForNamedModel(
+  deps: SemanticGenerationCandidateDeps,
+  modelId: string,
+  providerId: string,
+  taskKind: GenerationDefaultTaskKind,
+): SemanticGenerationDefault | undefined {
+  let loose: SemanticGenerationDefault | undefined;
+  for (const manifest of deps.registry?.snapshot?.() ?? []) {
+    if (!manifest || typeof manifest !== "object") continue;
+    const moduleId = text((manifest as { moduleId?: unknown }).moduleId);
+    const providers = (manifest as { providers?: unknown }).providers;
+    if (!moduleId || !Array.isArray(providers)) continue;
+    for (const provider of providers) {
+      if (!provider || typeof provider !== "object") continue;
+      const candidateProviderId = text((provider as { providerId?: unknown }).providerId);
+      if (!candidateProviderId || (providerId && candidateProviderId !== providerId)) continue;
+      const models = (provider as { models?: unknown }).models;
+      if (!Array.isArray(models)) continue;
+      const model = models.find((candidate) => candidate && typeof candidate === "object" && text((candidate as { modelId?: unknown }).modelId) === modelId) as { modes?: unknown } | undefined;
+      if (!model) continue;
+      const modes = Array.isArray(model.modes) ? model.modes.filter((candidate): candidate is string => typeof candidate === "string") : [];
+      const mode = modes.find((candidate) => normalized(candidate) === normalized(taskKind));
+      const identity = { moduleId, providerId: candidateProviderId, modelId, mode: mode ?? modes[0] ?? taskKind };
+      // 声明了这个任务模式的那一行优先；同名模型别家只声明了别的模式时才退到它（仍是目录事实）。
+      if (mode) return identity;
+      loose ??= identity;
+    }
+  }
+  return loose;
+}
+
+/**
  * Build the canonical candidate for a short semantic create request.  An
  * explicit `candidate` is still authoritative and is parsed unchanged; the
  * short path only fills omitted identity fields from saved Workbench defaults
  * or the live module registry.
  */
 export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDeps): PlanCandidate {
-  if (deps.params.candidate !== undefined) return deps.candidateFrom(deps.params.candidate);
+  if (deps.params.candidate !== undefined) {
+    // 显式候选也走同一条参考解析：否则「给了 candidate」这条路又变成一份不补身份的平行版（P1）。
+    const explicit = record(deps.params.candidate, "candidate");
+    return deps.candidateFrom(explicit.references === undefined
+      ? explicit
+      : { ...explicit, references: references(explicit.references, deps.resolveAssetReferenceIdentity) });
+  }
   const prompt = text(deps.params.prompt);
-  if (!prompt) throw new Error("prompt is required when candidate is omitted");
+  if (!prompt) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "prompt is required when candidate is omitted");
 
   const taskKind = inferGenerationTaskKind(deps.params);
   const configured = deps.defaultModelForTaskKind?.(taskKind);
@@ -200,11 +292,21 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
   // catalog row order. The only implicit identity is the saved Workbench
   // default; registry fallback is opt-in for no-provider unit fixtures only.
   const fallback = configured ?? (deps.allowRegistryFallback ? fallbackFromSnapshot(deps, taskKind) : undefined);
-  const moduleId = text(deps.params.moduleId) || fallback?.moduleId;
-  const providerId = text(deps.params.providerId) || fallback?.providerId;
-  const modelId = text(deps.params.modelId) || fallback?.modelId;
+  // 显式点名的模型：它的供应商/模块是目录事实，从目录里取；只有没点名时才落到保存的默认。
+  const namedModelId = text(deps.params.modelId);
+  const named = namedModelId && (!text(deps.params.providerId) || !text(deps.params.moduleId))
+    ? identityForNamedModel(deps, namedModelId, text(deps.params.providerId), taskKind)
+    : undefined;
+  const moduleId = text(deps.params.moduleId) || named?.moduleId || fallback?.moduleId;
+  const providerId = text(deps.params.providerId) || named?.providerId || fallback?.providerId;
+  const modelId = namedModelId || fallback?.modelId;
   if (!moduleId || !providerId || !modelId) {
-    throw new Error(`没有配置可用的${taskKind.includes("video") ? "视频" : "图片"}模型，请先在设置中选择模型`);
+    // 这句话有两个读者，得同时说得通（2026-09-18 真机实测）：用户能去设置里选，**而 Agent 不能**。
+    // 只写「请先在设置中选择模型」时，DeepSeek 连着调了 6 次 `draft_shots`、每次收到同一句话，
+    // 它看得见 `list_models` 里那个能用的模型却不知道自己可以点名它——一条本可恢复的路被说成了死路。
+    const kind = taskKind.includes("video") ? "视频" : "图片";
+    refuseToModel(GENERATION_ARGUMENT_REFUSAL, `没有配置可用的${kind}模型。请在设置里选一个默认${kind}模型；`
+      + `或者在这次调用里直接点名要用的模型（candidate: { providerId, modelId }，取自 list_models）。`);
   }
   // A saved mode/variant belongs to the saved provider+model identity.  If the
   // user explicitly chooses another model, carrying those fields across can
@@ -237,6 +339,6 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
     ...(selected.variantId ? { variantId: selected.variantId } : {}),
     prompt,
     parameters: record(deps.params.parameters, "parameters"),
-    references: references(deps.params.references),
+    references: references(deps.params.references, deps.resolveAssetReferenceIdentity),
   });
 }

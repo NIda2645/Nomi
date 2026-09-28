@@ -20,6 +20,7 @@ export function ConfirmDialogHost(): JSX.Element {
   const { t } = useTranslation()
   const [active, setActive] = React.useState<DialogRequest | null>(null)
   const [inputValue, setInputValue] = React.useState('')
+  const [toggleOn, setToggleOn] = React.useState(false)
   const pendingRef = React.useRef<DialogRequest[]>([])
 
   React.useEffect(() => {
@@ -39,6 +40,8 @@ export function ConfirmDialogHost(): JSX.Element {
 
   React.useEffect(() => {
     setInputValue(active?.kind === 'prompt' ? (active.initialValue ?? '') : '')
+    // 勾选项每次都从「没勾」开始：它表达的是「这一次要不要覆盖」，不是一条会被记住的偏好。
+    setToggleOn(false)
   }, [active])
 
   // E2E 专用桥（同 NomiStudioApp/CameraMoveCaptureHost 既有写法）：仅当 localStorage['__nomiE2E']==='1'
@@ -106,6 +109,18 @@ export function ConfirmDialogHost(): JSX.Element {
             ) : null}
           </div>
         ) : null}
+        {active?.toggle ? (
+          <label className={cn('flex cursor-pointer items-start gap-2 text-caption text-nomi-ink-80')}>
+            <input
+              type="checkbox"
+              checked={toggleOn}
+              data-confirm-dialog-toggle="true"
+              className={cn('mt-0.5 size-3.5 shrink-0 accent-[var(--nomi-ink)]')}
+              onChange={(event) => setToggleOn(event.target.checked)}
+            />
+            <span className="min-w-0 flex-1">{active.toggle.label}</span>
+          </label>
+        ) : null}
         {active?.kind === 'prompt' ? (
           <input
             autoFocus
@@ -142,7 +157,9 @@ export function ConfirmDialogHost(): JSX.Element {
                 : 'bg-nomi-ink text-nomi-paper hover:bg-nomi-accent',
             )}
             data-confirm-dialog-confirm="true"
-            onClick={() => settle(active?.kind === 'prompt' ? inputValue : true)}
+            onClick={() => settle(
+              active?.kind === 'prompt' ? inputValue : active?.toggle ? (toggleOn ? 'toggle-on' : 'toggle-off') : true,
+            )}
           >
             {active?.confirmLabel ??
               (active?.kind === 'alert' ? t('runtime.design.gotIt') : t('runtime.design.confirm'))}

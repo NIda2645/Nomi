@@ -12,8 +12,9 @@ import type { MultiShotContractProjection } from './productionContractView'
 
 // 付费生成确认对话框（单一收口，挂一次于工作区根）。极简：标题 + 一句人话 + 取消/确认。
 // 三种来源共用这一个对话框（不另造并行卡，P1）：
-// - 用户直发（light）：多一个「本会话不再提示」。
-// - agent 受理（不 light）：每次必确认。
+// - 用户直发：只有一下跑 ≥2 个 / 首次托管告知时才走到这里（判据 spendConfirmationRequirement；
+//   用户自己点的单个生成直接开始）。「本会话不再提示」2026-09-09 已删。
+// - agent 受理：每次必确认。
 // - 外部 AI 助手（MCP，source='agent'）：换机器人图标 + 明细行。
 // 审批卡**永不因空闲超时**（2026-09-11 用户拍板）：没有倒计时、没有到点自动决定。钱的闸只有真人能决，
 // 等多久都行——外部调用方那头的超时是它自己的事，不该由我们替用户按下「未确认」。
@@ -278,7 +279,9 @@ export function SpendConfirmDialog() {
         ) : null}
 
         <div className={cn('flex items-center justify-end gap-2')}>
-          <WorkbenchButton className={cn('h-8 px-4 cursor-pointer')} onClick={() => resolvePending(false)}>
+          {/* 走查/工具的稳定锚点，与卡本体的 `data-spend-confirm-dialog` 同理：这两颗钮的文案
+              随调用方走（「生成 N 镜」「再想想」「忽略」…），按文案找就是易碎选择器。 */}
+          <WorkbenchButton data-spend-confirm-action="cancel" className={cn('h-8 px-4 cursor-pointer')} onClick={() => resolvePending(false)}>
             {pending.cancelLabel || (isAgent ? t('generationCommon.spend.ignore') : t('generationCommon.spend.cancel'))}
           </WorkbenchButton>
           {incompletePolicy ? (
@@ -294,6 +297,7 @@ export function SpendConfirmDialog() {
             </WorkbenchButton>
           ) : (
             <WorkbenchButton
+              data-spend-confirm-action="confirm"
               className={cn(
                 'h-8 px-4 cursor-pointer bg-nomi-ink text-nomi-paper border-nomi-ink hover:bg-nomi-accent hover:text-nomi-paper',
               )}

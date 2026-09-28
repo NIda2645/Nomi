@@ -1,5 +1,5 @@
 import path from "node:path";
-import { readJsonFile, writeJsonFileAtomic } from "../jsonFile";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 import { getSettingsRoot } from "./settingsRoot";
 
 const PROJECT_LOCATION_FILE = "project-location.json";
@@ -32,12 +32,8 @@ function normalizeAbsolutePath(value: unknown): string | null {
 }
 
 export function readProjectLocationSettings(): ProjectLocationSettings {
-  try {
-    const stored = readJsonFile(settingsPath()) as { projectsRoot?: unknown } | null;
-    return { projectsRoot: normalizeAbsolutePath(stored?.projectsRoot) };
-  } catch {
-    return { projectsRoot: null };
-  }
+  const stored = readConfigFileOrDefault<{ projectsRoot?: unknown } | null>(settingsPath(), () => null);
+  return { projectsRoot: normalizeAbsolutePath(stored?.projectsRoot) };
 }
 
 export function writeProjectsRoot(projectsRoot: string | null): ProjectLocationSettings {
@@ -46,6 +42,6 @@ export function writeProjectsRoot(projectsRoot: string | null): ProjectLocationS
     throw new Error("Project location must be an absolute path");
   }
   const next = { projectsRoot: normalized };
-  writeJsonFileAtomic(settingsPath(), next);
+  writeConfigFileAtomic(settingsPath(), next);
   return next;
 }

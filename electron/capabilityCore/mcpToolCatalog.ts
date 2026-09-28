@@ -17,9 +17,8 @@ import { listProductionPlaybookNames } from '../productionRun/productionPlaybook
 import { CANVAS_READ_CAPABILITY } from '../shared/agentCapabilities/canvasRead'
 import { MCP_CAPABILITY_RESOLVER, immutableSchemaSnapshot } from './mcpCapabilityProjection'
 import { MCP_GENERATION_TOOL_CATALOG } from './mcpGenerationToolCatalog'
-import { MCP_INTEGRATION_TOOL, INTEGRATION_METHOD_BY_ACTION } from './mcpIntegrationTools'
-import { MCP_INTEGRATION_MANAGEMENT_TOOL } from './mcpIntegrationManagementTools'
 import { MCP_PROJECT_SESSION_TOOL } from './mcpProjectSessionTool'
+import { MCP_READ_TOOL_NAME } from '../shared/agentCapabilities/mcpTransportNames'
 
 const str = (value: unknown): string => (typeof value === 'string' ? value : '')
 
@@ -74,6 +73,9 @@ const SEMANTIC_EDITING_TOOL_TITLES = {
   nomi_media_query: { 'zh-CN': '查询媒体与波形', en: 'Query media and waveforms' },
   nomi_layout_read: { 'zh-CN': '读取工作区布局', en: 'Read workspace layout' },
   nomi_layout_write: { 'zh-CN': '调整工作区布局', en: 'Change workspace layout' },
+  nomi_model_setup: { 'zh-CN': '接入或调整模型', en: 'Set up or adjust a model connection' },
+  nomi_try_model: { 'zh-CN': '试跑一次（会花钱）', en: 'Try this model once (spends credit)' },
+  nomi_remove_provider: { 'zh-CN': '永久删除连接或模型', en: 'Permanently delete a connection or model' },
 } as const
 /** M2 语义编辑工具名单（真相源），供测试派生完整目录范围而非手抄排除规则。 */
 export const SEMANTIC_EDITING_TOOL_NAMES = Object.freeze(SEMANTIC_EDITING_TOOLS.map((t) => t.name))
@@ -91,13 +93,23 @@ const READ_METHOD_BY_TARGET: Record<string, string> = {
   canvas: CANVAS_READ_METHOD,
   projects: 'project.list',
   models: 'models.list',
+  // 分级披露第二档：选定之后再查那一个的说明书（模式/参数/取值/参考槽/变体）。
+  // 走 target 扩展而不是新增工具——`tools/list` 的总字节有只减不增的棘轮。
+  model: 'models.read',
   generation_context: 'nomi_get_generation_context',
   operation: 'nomi_operation_read',
   run: 'production.get',
   run_events: 'production.events',
   artifact: 'production.artifact',
   artifact_content: 'production.artifact.read',
-  integration: 'integration.get',
+  // 「接到哪一步了」。旧名 `integration` 与旧工具 `nomi_integration` 一起退役（#754）：
+  // 那条路上模型要同时学「integration 是名词还是动词」，而它其实只是一次**接入**的状态。
+  setup: 'integration.get',
+  // 「写一份配置需要的东西」。**无任何前置**：schema、撰写规范、两份实测过的样例卡，
+  // 三样都是进程常量、零用户数据、零凭据。2026-09-21 之前它们挂在会话的 `compileRequest` 上，
+  // 而那要等 `credentialStatus=ready` —— AI 在人贴 key 之前一件事都做不了，实测四个模型
+  // 一个都没走到「声明」那一步。让它们等 key 从来没换来任何安全。
+  onboarding_kit: 'model.onboarding.kit',
 }
 /** nomi_read 的 target 集合（供 mcpProtocol 判 widget/canonical 投影时复用，真相单一）。 */
 export const READ_TARGETS = Object.freeze(Object.keys(READ_METHOD_BY_TARGET))
@@ -105,7 +117,9 @@ export const READ_TARGETS = Object.freeze(Object.keys(READ_METHOD_BY_TARGET))
 export const READ_RUN_DATA_TARGETS = Object.freeze(['run', 'run_events', 'artifact'])
 
 const READ_TOOL = {
-  name: 'nomi_read',
+  // 名字的 owner 在 shared/agentCapabilities/mcpTransportNames.ts：只投对外 profile 的动词
+  // 要在说明书里点名它，装配期得认得出来（见那份文件的文件头）。
+  name: MCP_READ_TOOL_NAME,
   title: '读取项目与制作状态',
   description: '按 target 读取只读投影；不改状态、不花钱。\n'
     + 'For target=canvas only (canvas reads use this tool with target=canvas):\n'
@@ -113,13 +127,17 @@ const READ_TOOL = {
   inputSchema: {
     type: 'object',
     properties: {
-      target: { type: 'string', enum: READ_TARGETS, description: '读取：canvas/projects/models/generation_context/operation/run/run_events/artifact/artifact_content/integration。target=projects 每行带一个短 projectSelectionHandle，原样喂给 nomi_session_open 即续接该项目。' },
+      // 对外 payload 有只减不增的棘轮（check:mcp-payload）。两条 lane 各写了一版这段散文，2026-09-22 总合并
+      // 把两版的**事实**合起来、话压到最短：合法值本来就在 `enum` 里，散文里再抄一遍是纯重复。
+      target: { type: 'string', enum: READ_TARGETS, description: '模型分两档：models 薄名单；model + modelId 取那一个的说明书（参数/取值/参考槽/变体），别为拿参数拉整份名单。projects 每行带 projectSelectionHandle，喂给 nomi_session_open 续接。' },
+      modelId: { type: 'string', description: 'target=model 必填：薄名单里的 modelId。' },
+      vendor: { type: 'string', description: 'target=model 可选：同名模型多家时指定哪家。' },
       projectId: { type: 'string' },
       leaseHandle: { type: 'string', description: 'target=canvas/generation_context/operation 必填。' },
       runId: RUN_EVENT_FIELDS.runId,
       operationId: { type: 'string', description: 'target=operation 必填。' },
       artifactId: ARTIFACT_FIELDS.artifactId,
-      sessionId: { type: 'string', description: 'target=integration：不填=列出你的接入会话。' },
+      setupId: { type: 'string', description: 'target=setup：不填=列出你的接入会话。' },
       afterCursor: { ...RUN_EVENT_FIELDS.afterCursor, default: 0 },
       waitMs: { ...RUN_EVENT_FIELDS.waitMs, default: 0 },
       page: { type: 'integer', minimum: 0 },
@@ -142,7 +160,10 @@ const READ_TOOL = {
         return { projectId: a.projectId, leaseHandle: a.leaseHandle, operationId: a.operationId }
       case 'projects':
       case 'models':
+      case 'onboarding_kit':
         return {}
+      case 'model':
+        return { modelId: a.modelId, ...(typeof a.vendor === 'string' ? { vendor: a.vendor } : {}) }
       case 'run':
         return { projectId: a.projectId, runId: a.runId }
       case 'run_events':
@@ -150,8 +171,9 @@ const READ_TOOL = {
       case 'artifact':
       case 'artifact_content':
         return { projectId: a.projectId, runId: a.runId, artifactId: a.artifactId }
-      case 'integration':
-        return { sessionId: a.sessionId }
+      case 'setup':
+        // 「查一眼 vs 等到好」用同一个长轮询习语（与 target=run_events 逐字相同），模型不用学第二种等法。
+        return { ...(typeof a.setupId === 'string' ? { setupId: a.setupId } : {}), waitMs: a.waitMs ?? 0 }
       default:
         return {}
     }
@@ -257,7 +279,9 @@ const RUN_START_TOOL = {
       trustLevel: {
         type: 'string',
         enum: ['key_confirm', 'budget_only', 'confirm_all'],
-        description: '信任档位：key_confirm 默认（停方向/样片门）；budget_only 跳过创意/样片门、只管钱；confirm_all 每镜确认。要求直接出时用 budget_only。',
+        // 2026-09-21：原话是「要求直接出时用 budget_only」——而 `nomi_run_start` 从那天起**不再收**
+        // 更松的档位（调用方自报的值不是用户的决定）。照旧话做的助手会撞 403，然后以为是自己填错了。
+        description: '信任档位：key_confirm 默认（停方向/样片门）；budget_only 跳过创意/样片门、只管钱；confirm_all 每镜确认。这里只收默认或更严的档；budget_only 要用户授权：先建 Run，再 nomi_run_control action=set_trust（会在 Nomi 里弹一次确认）。',
       },
     },
     required: ['projectId', 'playbook', 'brief'],
@@ -313,8 +337,6 @@ export const MCP_TOOL_CATALOG = [
   RUN_CONTROL_TOOL, // T11
   ARTIFACT_REVIEW_TOOL, // T12（吸收 review + script/storyboard revision）
   RUN_GATE_TOOL, // T13（吸收 decide_gate + materialize）
-  MCP_INTEGRATION_TOOL, // T14（接入状态机 5 个确定性缝）
-  MCP_INTEGRATION_MANAGEMENT_TOOL, // T14 supplemental（已接入连接管理）
   PROJECT_CREATE_TOOL, // T15
   ...SEMANTIC_EDITING_TOOLS_WITH_TITLES, // M2 语义编辑（含中英文人话标题）
 ] as const
@@ -342,7 +364,7 @@ export function assertMcpToolTitles(tools: readonly McpToolDefinition[]): void {
 }
 
 // 再导出整族路由映射，供测试逐条 assert 「旧 name 的 method+params ≡ 新 name 某枚举分支的 build 输出」。
-export { READ_METHOD_BY_TARGET, INTEGRATION_METHOD_BY_ACTION }
+export { READ_METHOD_BY_TARGET }
 
 const MCP_TOOL_SNAPSHOT = Object.freeze(MCP_TOOL_CATALOG.map((tool) => {
   const annotations = 'annotations' in tool && tool.annotations

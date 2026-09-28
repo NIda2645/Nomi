@@ -1,6 +1,6 @@
 import React from 'react'
 import { createPortal } from 'react-dom'
-import { NOMI_OVERLAY_Z_INDEX } from './overlayLayers'
+import { NOMI_OVERLAY_Z_INDEX, hasOpenDialogAbove, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
 import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './anchoredPopoverPlacement'
 
 /**
@@ -27,9 +27,13 @@ import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign } from './an
  * 别再写一句新的「全站唯一」，写清楚**判据**。
  *
  * ## 全仓浮层定位现有四套（2026-09-08 复核）
- *   ① 本组件 —— 生产侧 3 个消费者（`workbench/timeline/TimelineTransitionPicker.tsx`、
- *      `workbench/assets/AssetPickerPopover.tsx`、`workbench/library/ProjectSyncBadge.tsx`
- *      ——最后这个是 2026-09-12 从 ④ 那类「原地 absolute」收编过来的），外加设计实验室的 3 处陈列；
+ *   ① 本组件 —— 生产侧 4 个消费者（`workbench/timeline/TimelineTransitionPicker.tsx`、
+ *      `workbench/assets/AssetPickerPopover.tsx`、`workbench/library/ProjectSyncBadge.tsx`、
+ *      `workbench/creation/storyboard/shotRow/ShotComposerBar.tsx`
+ *      ——后两个分别是 2026-09-12 与 2026-09-17 从 ④ 那类「原地 absolute」收编过来的；
+ *      2026-09-21 又收编了 `generationCanvas/components/CanvasControlsHelpPopover.tsx`：它在画布导航竖列里
+ *      原地 absolute，被困在竖列 z-8 的层叠上下文里，底部浮着的 Agent 收起坞与批量生成条都盖得住它），
+ *      外加设计实验室的 3 处陈列；
  *   ② Radix —— `src/design/tooltip.tsx`（tooltip 一族）**与 `src/design/menu.tsx`（菜单一族，
  *      2026-09-08 刀 1 起：`timeline/TimelineContextMenu.tsx`、
  *      `generationCanvas/components/NodeContextMenu.tsx`）**。刀 1 没有引进第五套定位库，
@@ -116,26 +120,53 @@ export function AnchoredPopover({
     }
   }, [reposition])
 
+  const dismissOnEscape = React.useCallback((event: KeyboardEvent) => {
+    if (!onClose || event.key !== 'Escape') return false
+    const pop = popRef.current
+    if (!pop || hasOpenPopupAbove(pop)) return false
+    // The content may declare this popover's own dialog; it is not a layer above us.
+    if (hasOpenDialogAbove(pop.querySelector<HTMLElement>('[role="dialog"]') ?? pop)) return false
+    if (event.isComposing || event.defaultPrevented) return true
+    event.preventDefault()
+    event.stopPropagation()
+    onClose()
+    return true
+  }, [onClose])
+
   React.useEffect(() => {
     if (!onClose) return undefined
-    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    // 「关掉我」这件事有两条路（Esc / 点外面），两条都必须给**我自己弹出来的那一层**让位：
+    // 下拉和菜单 Portal 到 body，DOM 上不在我里面，不让位就会出现「浮层里的选择器改不了值」
+    // 和「Esc 本想收下拉却把整个浮层关了」。判据走 overlayLayers 那一份，两条路同一套。
+    const onKey = (event: KeyboardEvent) => {
+      // Internal controls receive Escape first, then the portal's React bubble handler.
+      // External focus (e.g. the trigger) still needs capture before React Flow unselects it.
+      if (event.target instanceof Node && popRef.current?.contains(event.target)) return
+      dismissOnEscape(event)
+    }
     const onDown = (event: MouseEvent) => {
       const target = event.target as globalThis.Node
       const anchor = anchorRef?.current ?? fallbackAnchorRef.current
       if (popRef.current?.contains(target) || anchor?.contains(target)) return
+      if (popRef.current && isInsidePopupAbove(popRef.current, event.target)) return
       onClose()
     }
-    document.addEventListener('keydown', onKey)
+    document.addEventListener('keydown', onKey, true)
     document.addEventListener('mousedown', onDown)
     return () => {
-      document.removeEventListener('keydown', onKey)
+      document.removeEventListener('keydown', onKey, true)
       document.removeEventListener('mousedown', onDown)
     }
-  }, [anchorRef, onClose])
+  }, [anchorRef, dismissOnEscape, onClose])
 
   const layer = (
     <div
       ref={popRef}
+      // 浮层让位给自己弹出的下拉/菜单时不会 stopPropagation，那一下 Escape 会继续走到
+      // React Flow 的 NodeWrapper 并取消选中 —— 节点的 composer 连同这张浮层一起消失。
+      // `.nokey` 是 @xyflow/system `isInputDOMNode` 认的排除边界：声明在**自己**的 Portal
+      // 根上（不写进调用方锚点的 className，那会被调用方下一次渲染冲掉）。
+      className="nokey"
       style={{
         position: 'fixed',
         top: placement?.top ?? -9999,
@@ -144,6 +175,12 @@ export function AnchoredPopover({
         visibility: placement ? 'visible' : 'hidden',
       }}
       onPointerDown={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (!onClose || event.key !== 'Escape' || !event.currentTarget.contains(event.target as Node)) return
+        // A child may prevent dismissal without stopping propagation. Keep even that
+        // Escape inside this portal; it must not cancel the ancestor node's selection.
+        if (dismissOnEscape(event.nativeEvent)) event.stopPropagation()
+      }}
     >
       {children}
     </div>

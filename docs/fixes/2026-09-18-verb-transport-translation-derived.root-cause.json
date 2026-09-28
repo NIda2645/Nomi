@@ -1,0 +1,269 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-18-verb-transport-translation-derived",
+  "problem_type": "The translation between the model-facing verb and the host contract was hand-written, so the correspondence it carries had no owner and nothing could check it; and the table said where a field goes without ever saying where the model gets it",
+  "symptom": "Same day, same seam, twice: durationSec was hand-renamed to a top-level durationSeconds the host does not have (every shot carrying a duration was refused outright), and modelKey plus the per-shot candidate.providerId/modelId were simply not listed in the destructure, so a model naming a catalog model had that choice silently replaced by the user's default on a spending path.",
+  "direct_cause": "draftShotToPlanShot and the draft_shots branch in verbToTransportCall enumerated field names by hand; a field the author forgot was dropped with no error, and a target name the author invented was rejected only by the host at runtime.",
+  "class_root": "A capability was restated four times — verb declaration, translation, contract schema, handler and its downstream projections. Two of those restatements have to exist: the model needs names that suit it (modelKey, durationSec) and the host needs its internal names behind a cross-process, spend-gated admission check. The third carries nothing but the correspondence between the first two, yet it was code, so the correspondence had no machine-checkable form: neither completeness (every verb field has a destination) nor validity (every destination exists on the host) could be stated, let alone enforced. The first half of the invariant (what the host requires, the verb must have told the model) does not imply the second: adding contentHash to the verb declaration would satisfy it while leaving the tool just as unusable, because no read verb returns contentHash. A correspondence that states only the destination cannot express that, so the table carries a provenance for every field as well.",
+  "affected_population": [
+    "Every deferred-group verb call: 10 of the 11 transported verbs went through hand-enumerated field lists",
+    "Every draft_shots call carrying a duration, a catalog model choice, or a reference image",
+    "Every future field added to any of those verbs, which had to be remembered in a second place with nothing to remind the author"
+  ],
+  "scope_paths": [
+    "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+    "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+    "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+    "electron/shared/agentCapabilities/verbs/verbDualDomain.ts",
+    "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+    "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+    "electron/shared/agentCapabilities/verbDeclarations.ts",
+    "electron/agentLane/laneVerbTransport.ts"
+  ],
+  "entry_points": [
+    "Agent panel turn calling any deferred-group verb",
+    "check_job / cancel_job falling through to the export domain"
+  ],
+  "invariants": [
+    "The correspondence between a verb field and a host field is data, and the translation function is executed from it rather than written beside it",
+    "Every verb field has a declared destination; a field with no relation fails assembly instead of disappearing at runtime",
+    "Every declared destination exists on the host shape it targets, or is registered per target with an explicit disposition (refuse or drop) and a reason",
+    "A field the model filled that cannot reach the host on this path is refused, never silently skipped; dropping is allowed only where it is declared as deliberate with a reason",
+    "A lossy correspondence (shape changes, the host completes the value) is declared as such and can never look like a same-name passthrough",
+    "Two relations competing for one destination must declare which wins; ordering in the source file decides nothing",
+    "Source and target field lists are read from the schemas that own them, never transcribed",
+    "Every field that carries a value declares where the model obtains it — one of model-authored, from-read:<verb>.<field>, host-resolved, derived:<field> — and a from-read claim is resolved against that verb's own declared output schema"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 77,
+      "symbol": "verbToTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 113,
+      "symbol": "exportJobTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "line": 150,
+      "symbol": "exportJobTransportCall"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 87,
+      "symbol": "withDraftShotsDefaults"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 97,
+      "symbol": "draftShotsPatchEnvelope"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 97,
+      "symbol": "draftShotToCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 106,
+      "symbol": "draftShotToFlatCreate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 119,
+      "symbol": "checkJobGenerationArgs"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 121,
+      "symbol": "cancelJobGenerationArgs"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "line": 130,
+      "symbol": "editTimelinePlanId"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbDeclarations.ts",
+      "line": 25,
+      "symbol": "assertVerbFieldProvenance"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "line": 237,
+      "symbol": "editTimelinePlanId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/writeVerbs.ts",
+      "line": 217,
+      "symbol": "generateModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/readVerbs.ts",
+      "line": 80,
+      "symbol": "readScriptModelSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "line": 135,
+      "symbol": "DraftShotsArgs"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "line": 186,
+      "symbol": "PROVENANCE_UNVERIFIABLE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/verbDualDomain.ts",
+      "line": 31,
+      "symbol": "generationStatusInputSchema"
+    }
+  ],
+  "door_reduction": {
+    "before": 16,
+    "after": 17,
+    "why_not": "Sixteen doors before, seventeen after — and the one extra is the point, not a regression. 2026-09-18 morning: four of the sixteen were reads of the correspondence table itself (verbFieldMap's relation types, verbTransportRoutes' maps). 2026-09-18 evening the table is gone, so those four are gone; what replaced them are reads of a verb's own model-facing schema, which is now literally the host contract schema minus the fields the host fills, plus one new read of the generation status schema inside verbDualDomain — the single place a rename still exists, now standing alone where anyone can see it instead of being one row in a 353-line table. Merging the remaining doors would merge the lane transport with the declaration layer, and that boundary is exactly what lets the host keep its own independent, cross-process, spend-gated admission check — the one thing neither pass touched."
+  },
+  "generality_proof": "The mechanism is schema-driven end to end: assembleVerbFieldMap takes source keys from the verb's own schema and target keys from the host's own schema via objectFieldKeys, so a field added to either side changes the check without anyone editing the check. Ten of the eleven transported verbs are declared this way, including the export-domain fallback half of check_job/cancel_job; the eleventh (look_at_media) is excluded for a stated reason, not by omission.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "symbol": "HostFill",
+      "responsibility": "The compile-time gate of the whole mechanism: the type of what the host fills is the set difference host-face minus model-face, so hiding a host field nobody fills, or filling it with the wrong literal, is a tsc error rather than a runtime surprise"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "symbol": "draftShotToPlanShot",
+      "responsibility": "The one structurally lossy projection left in the repo — the only place a verb argument changes shape on its way to the host (nesting level, flattening, reference identity), with every model field destructured so an unhandled new field is a tsc error"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbDualDomain.ts",
+      "symbol": "checkJobGenerationArgs",
+      "responsibility": "The one rename left: two dual-domain verbs whose two host domains keep two different directory names for the same id; the return type comes from the host schema, so renaming it there is a compile error here"
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "symbol": "assertVerbFieldProvenance",
+      "responsibility": "Where the model gets each value — the one axis a projection cannot carry, checked at assembly against the named read verb's declared output"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneVerbTransport.ts",
+      "entry_point": "generate, undo, edit_timeline, export_video, delete_from_canvas, read_skill, save_skill, read_script, start_model_setup, check_job, cancel_job",
+      "disposition": "enforced",
+      "evidence": "Each one's model-facing schema is now its host contract schema minus the fields the host fills (verbProjections.ts); the transport does nothing but parse the arguments with that same schema. There is no correspondence left to get wrong, and a host rename is a tsc error at the projection."
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "entry_point": "draft_shots",
+      "disposition": "enforced",
+      "evidence": "The only verb whose shape really changes. Every model field is destructured, the remainder lands in Record<string, never>, and each target type comes from the host schema — so a new verb field with nobody handling it, or a host field renamed, is a compile error. The three structural moves (nesting level, flattening, reference identity) are each one line with the reason above it."
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationToolCatalog.ts",
+      "entry_point": "nomi_operation_plan (external MCP face)",
+      "disposition": "enforced",
+      "evidence": "buildOperationCreateParams no longer hand-copies the create branch field by field; the list comes from generationPlanInputSchema.options[1]. check:mcp-operation-constructible additionally refuses any required field nobody can say where an external caller gets."
+    },
+    {
+      "path": "electron/shared/agentCapabilities/verbs/verbSemanticInput.ts",
+      "entry_point": "write_script, read_timeline, look_at_media, arrange_canvas, make_artifact, stage_shot",
+      "disposition": "not-affected",
+      "evidence": "These six construct a host branch rather than project one (a value remap for where->operation, a mode derived from which parameters are present, whole node structures for the canvas writes). A projection cannot express them and this pass did not pretend otherwise; they remain covered by check:verb-host-conformance R1/R2/R2b/R3, which is why those rules were kept instead of deleted with the table."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Two schemas maintained by different people, joined by a hand-written third statement, drift every time either side changes; this seam had already produced four such defects in one day before the translation stopped being hand-written.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs laneVerbTransport.ts verbTransportRoutes.ts verbFieldMap.ts writeVerbs.ts",
+      "Read every case of verbToTransportCall and classified it as correspondence (declared) or dispatch (kept as a function), with the one exclusion named in same_class_entry_points",
+      "Counted the remaining field-name references in laneVerbTransport.ts: three, all branch selection"
+    ]
+  },
+  "prevention": {
+    "kind": "schema-validation",
+    "enforcement_path": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+    "invariant": "The model-facing schema of a single-domain verb is not written; it is the host contract schema this verb already declares, minus the fields the host fills, with descriptions overridden. What the host fills is an explicit constant whose type is the set difference host-face minus model-face, so a hidden field nobody fills — or a filled value the host no longer accepts — is a compile error. Three things a projection cannot carry keep their own owners: the structurally lossy transform for draft_shots (typed against the host schema), the one rename between two host domains that keep two directory names for the same id, and the provenance axis (where the model gets each value), which still runs at assembly and still machine-checks from-read claims against the named verb's declared output. Changes to the published tool face are refused by check:model-face-frozen unless the baseline is updated on purpose.",
+    "failure_mode": "tsc fails naming the field and the schema it came from; assembly throws for a provenance claim nobody can satisfy and the app does not start; check:model-face-frozen exits non-zero naming every tool whose published face moved.",
+    "exception_policy": "none",
+    "strategy": "Stop writing the third statement. Declare the correspondence as data, read both field lists from the schemas that own them, and generate the translator from the table — while leaving the host's own admission check completely untouched, because it is a cross-process, spend-gated boundary that must keep validating independently of whatever produced its input.",
+    "artifacts": [
+      "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+      "electron/shared/agentCapabilities/verbs/draftShotsProjection.ts",
+      "electron/shared/agentCapabilities/verbs/verbFieldProvenance.ts",
+      "scripts/check-verb-host-conformance.node-test.mjs",
+      "scripts/check-model-face-frozen.node-test.mjs"
+    ]
+  },
+  "regression_tests": [
+    "electron/shared/agentCapabilities/verbs/verbProjections.test.ts",
+    "electron/shared/agentCapabilities/verbs/draftShotsProjection.test.ts",
+    "electron/agentLane/laneVerbTransport.test.ts",
+    "scripts/check-verb-host-conformance.node-test.mjs",
+    "scripts/check-model-face-frozen.node-test.mjs",
+    "scripts/check-mcp-operation-constructible.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/shared/agentCapabilities/verbs/verbProjections.test.ts",
+    "scripts/check-verb-host-conformance.node-test.mjs",
+    "scripts/check-model-face-frozen.node-test.mjs",
+    "scripts/check-mcp-operation-constructible.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneVerbTransport.ts",
+      "electron/shared/agentCapabilities/verbs/verbFieldMap.ts",
+      "electron/agentLane/verbTransportRoutes.ts",
+      "electron/agentLane/verbTransportRoutes.test.ts",
+      "electron/shared/agentCapabilities/verbs/cancelJobProjection.ts",
+      "electron/shared/agentCapabilities/verbs/cancelJobProjection.test.ts"
+    ],
+    "rationale": "Two removals, six months apart in intent but one day apart in time. (1) 2026-09-18 morning: draftShotToPlanShot's destructure, withDraftDefaults, the per-verb hand-built argument objects and the whole-args forwarding were deleted in the same commit as the declared table. (2) 2026-09-18 evening, branch feat/tool-projection-rollout-20260918: the declared table itself is deleted. Eleven of the twenty verbs now take their model-facing schema as a projection of the host contract schema they already declare (electron/shared/agentCapabilities/verbs/verbProjections.ts), so the field names are identical on both sides and there is no correspondence left to declare; draft_shots is a twelfth, projected but structurally lossy. The remaining eight could not be projected and the pass says so rather than pretending: six construct a host branch (a value remap, a method derived from which parameters are present, whole node structures), and two declare their capability inputSchema as z.unknown(), so there is nothing to project from. What the table carried that a projection cannot is kept, not dropped: the structurally lossy transform for draft_shots moved to verbs/draftShotsProjection.ts, the one genuinely dual-domain rename moved to verbs/verbDualDomain.ts, and the from: provenance axis moved to verbs/verbFieldProvenance.ts where it still runs at assembly. cancelJobProjection.ts was the one-verb prototype; it was folded into verbProjections.ts rather than left as a second home for the same idea."
+  },
+  "migration": "No persisted data changes and no model-visible changes. The published tool face of all twenty verbs is byte-identical to origin/main (sha256 70a4c04633887cde44bd4ce9534851d467b3fad150fe124825794cf5070c3087, evidence in docs/plan/tool-projection-rollout-evidence/README.md); wire payloads are pinned by draftShotsProjection.test.ts (duration merged into parameters, catalog identity beating the flat modelId, reference shells, envelope routing, folded defaults) and by laneVerbTransport.test.ts.",
+  "residual_risks": [
+    "look_at_media's five-in-one dispatch is still a function; a new read mode there is covered only by the conformance gate's cases, not by an assembly-time completeness check. It is one of the seven verbs the 2026-09-18 evening projection rollout could NOT convert, because its model face is constructed from five host branches rather than projected from one.",
+    "The branch selection inside draft_shots (has operationId / single shot / carries an envelope) still reads three field names. It is routing rather than correspondence, but a fourth branch added carelessly would still not be caught.",
+    "RETIRED 2026-09-18 evening: the table checked that a destination exists on the host shape, not that it means the same thing. With the table gone, eleven verbs cannot express a destination at all; draft_shots' three structural moves are now typed against the host schema (the transform's return type comes from it), so a rename is a compile error. What remains is the same semantic hole in the narrow case where the wrong host field has the same type — still caught only when check:verb-host-conformance feeds a real value.",
+    "NEW 2026-09-18 evening: a projection makes every host field the model's problem by default. A required field added to a host contract now flows straight onto the model face, where the model may not be able to fill it. Two lines catch it: HostFill is a compile-time set difference (a hidden field nobody fills is tsc red) and check:model-face-frozen refuses any change to the published tool face without an explicit baseline update. Neither of them can judge whether the new field is a good idea — that is still a human reading the diff.",
+    "Five verbs declare their capability outputSchema as z.unknown() (list_models, draft_shots, generate, edit_timeline, export_video), so a from-read claim against them cannot be resolved. They are listed by name in PROVENANCE_UNVERIFIABLE with a reason and pinned by a ratchet test; tightening any of those outputSchemas removes an entry and turns the check on for it. list_models is the sharpest of the five: the real shape exists as agentModelEntrySchema but the contract never names it, so 'where does the model learn a modelKey' is true but unverifiable today.",
+    "The provenance check proves the field name appears somewhere in that verb's output, not that the same value is reachable from the same call — a name collision between two nested shapes would satisfy it."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/agentCapabilities/verbs/verbProjections.ts",
+    "tests": [
+      "electron/shared/agentCapabilities/verbs/verbProjections.test.ts",
+      "scripts/check-verb-host-conformance.node-test.mjs",
+      "scripts/check-model-face-frozen.node-test.mjs"
+    ],
+    "rationale": "The correspondence between two layers cannot be owned by either of them — that was the 2026-09-18 morning answer, and it cost a 353-line relation DSL to say. The evening answer is that there is no correspondence to own: there is one schema, and the model-facing side is its projection. The owner is therefore the projection module, and its ruler is three machine checks that each had to be proved red first — a table-driven test that every projection's model keys plus declared host fill equal the host keys exactly, the conformance gate's mutations on the three verbs where a real transform still exists, and the frozen model face, which catches the one thing a projection makes easier to do by accident: growing the model's contract because the host grew."
+  },
+  "internal_only_reason": "Which names a Nomi verb offers the model and which names a Nomi capability accepts are both facts about this repository; no external specification governs the mapping between them.",
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency is involved.",
+    "exit_criteria": []
+  }
+}

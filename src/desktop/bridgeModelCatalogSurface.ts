@@ -17,6 +17,11 @@ export type DesktopModelCatalogSurface = CustomCallBridge & {
   deleteVendor: (key: string) => void
   upsertVendorApiKey: (vendorKey: string, payload: unknown) => Promise<unknown>
   clearVendorApiKey: (vendorKey: string) => unknown
+  /**
+   * 「验这家的 key 要不要花钱、大概多少」。旧 preload 没有这个方法 → 可选，调用方须兜住
+   * undefined（兜不住时按「说不准」显示，**不许**默认显示「免费验证」）。
+   */
+  credentialProbePlan?: (vendorKey: string) => Promise<{ cost: 'free' | 'paid'; amount: number | null }>
   upsertModel: (payload: unknown) => unknown
   /**
    * 改类型 = 改 kind + 按新 kind 重建调用通道（单事务，见 electron/catalog/modelRetype.ts）。
@@ -28,8 +33,10 @@ export type DesktopModelCatalogSurface = CustomCallBridge & {
   deleteModels: (targets: { vendorKey: string; modelKey: string }[]) => void
   upsertMapping: (payload: unknown) => unknown
   deleteMapping: (id: string) => void
-  exportPackage: (params?: unknown) => unknown
-  importPackage: (payload: unknown) => unknown
+  /** 导出一份配置包；**不收参数**——密钥永远不跟着包走。 */
+  exportPackage: () => unknown
+  /** 导入；第二个参数是冲突处置（缺省 = 保留本机已有）。旧 preload 会忽略它。 */
+  importPackage: (payload: unknown, options?: unknown) => unknown
   testMapping: (id: string, payload: unknown) => Promise<unknown>
   fetchDocs: (payload: unknown) => Promise<unknown>
   probeComfyui: (baseUrl?: string) => Promise<
@@ -47,7 +54,7 @@ export type DesktopModelCatalogSurface = CustomCallBridge & {
         serverReachable: boolean
         unknownNodeTypes: string[]
         missingEnumValues: Array<{ nodeId: string; classType: string; title?: string; inputKey: string; value: string }>
-        enumOptions?: Array<{ classType: string; inputKey: string; options: string[] }>
+        enumOptions?: Array<{ classType: string; inputKey: string; options: Array<string | number | boolean> }>
         /** 没见过的 combo 外壳（node class + input key + 原始 spec），供「反馈给 Nomi」诊断用。旧 preload 可能没有 → UI 兜住 undefined。 */
         unknownComboShapes?: Array<{ classType: string; inputKey: string; spec: unknown }>
       }
@@ -65,7 +72,7 @@ export type DesktopModelCatalogSurface = CustomCallBridge & {
                 serverReachable: boolean
                 unknownNodeTypes: string[]
                 missingEnumValues: Array<{ nodeId: string; classType: string; title?: string; inputKey: string; value: string }>
-                enumOptions?: Array<{ classType: string; inputKey: string; options: string[] }>
+                enumOptions?: Array<{ classType: string; inputKey: string; options: Array<string | number | boolean> }>
                 unknownComboShapes?: Array<{ classType: string; inputKey: string; spec: unknown }>
               }
             | { ok: false; error: string }
@@ -90,7 +97,7 @@ export type DesktopModelCatalogSurface = CustomCallBridge & {
         uiWorkflowText: string
         unknownNodeTypes: string[]
         missingEnumValues: Array<{ nodeId: string; classType: string; title?: string; inputKey: string; value: string }>
-        enumOptions: Array<{ classType: string; inputKey: string; options: string[] }>
+        enumOptions: Array<{ classType: string; inputKey: string; options: Array<string | number | boolean> }>
         serverReachable: boolean
       }
     | { error: string }

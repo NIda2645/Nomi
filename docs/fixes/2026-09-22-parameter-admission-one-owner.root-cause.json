@@ -1,0 +1,197 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-parameter-admission-one-owner",
+  "problem_type": "Two lanes fixed the same value-layer admission rule at the same time, so the merged tree carried two tables, two rejection shapes and two compile points for one concept",
+  "symptom": "追平 main 之后，「一个参数键合不合法」这件事在树里有**两份判据**：① `GENERATION_PLANNING_HINTS`（#837，六个键 + 类型，值类型不对就拒）与 `GENERATION_PLANNING_PARAMETER_KEYS`（打捞分支，十个键、只有键名、命中就记进 `droppedFields` 放行）各自登记「Nomi 自己消费、不上 wire」的那撮键——同一个键在两张表里有两种待遇，而且两张表谁也不知道对方多了哪几个键；② 拒绝形状两套（`ParameterRejection` 七码 × `droppedFields` 两 reason），模型收到哪一套取决于它走的是哪条路；③ `compileExecutionContract` 有三扇门（`mcpGenerationTools`、`generationPlanPatch`、对拍 harness），其中 `generationPlanPatch` 那扇是「只想校验参数」却把整份合同（含提示词 @ 投影）编了一遍——于是任何一份 prompt 里带 `@[asset:…]` 的草稿只要改一次参数，就会被「投影不出 @image1」打回，而用户改的明明是分辨率。",
+  "direct_cause": "两条 lane 在 09-21/09-22 同时碰了「参数准入」这一个概念：视频拆解会话在 main 上把未知键从「静默丢弃」改成「当场拒 + 带出路」，并新建 `GENERATION_PLANNING_HINTS`；打捞分支在自己树上把同一件事改成「登记表 + droppedFields」，并新建 `generationPlanningParameters.ts`。两边各自绿、各自有测试，合并时 git 只报了三处文本冲突——两张表分别住在两个文件里，文本上不冲突，语义上是同一件事的第二个写口。`generationPlanPatch` 那扇门是 main 侧引入的：它要的是「点名那一刻就拒」，手边最近的函数是 `compileExecutionContract`，于是把提示词投影一起拖了进来。",
+  "class_root": "**概念的 owner 先于目录（R33）**：同一时段同一概念落进两条 lane，就必然长出第二份判据——而句法门岗看不见它（两个不同的常量名、两个不同的文件、两套都有测试）。第二个写口不是靠评审发现的，是靠「这个概念的唯一 owner 在哪个文件的哪个符号」这张表先写出来、合并时逐行核对才发现的。同族的第二半是「**要一件事的时候顺手把整趟都跑了**」：`generationPlanPatch` 只需要准入那一趟，却调了包含投影与封装的整份编译，于是一件事的前置条件（`referenceSourceUrls`）缺席就拦下了另一件事。",
+  "affected_population": [
+    "每一个通过外部 MCP 或 Agent 面板改参数的调用方：同一个填错的键在 plan 与 preview 两条路上会收到不同形状的拒绝（或一边拒、一边放行）",
+    "每一份提示词里带 `@[asset:…]` 内联参考的草稿：在 `nomi_operation_plan` 里改任意一个参数都会被「投影不出 @image1」打回（本次修复前，合并树上的真行为）",
+    "不受影响：手动画布那条路（它从来只走渲染层的参数面板，不经能力核的准入层）"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/executionContract.ts",
+    "electron/capabilityCore/generationPlanningParameters.ts",
+    "electron/capabilityCore/generationPlanPatch.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts",
+    "electron/parity/generationParityTestUtils.ts"
+  ],
+  "entry_points": [
+    "外部 MCP `nomi_operation_plan`（改参数 → 点名那一刻的准入）",
+    "外部 MCP `nomi_operation_preview` / `nomi_operation_gate_request`（出价前的整份编译）",
+    "多镜密封 `sealMultiShotFor`（每一镜各编一份子合同）",
+    "Agent 面板 generate（同一条能力核路径）",
+    "执行器对拍 harness（`electron/parity/generationParityTestUtils.ts`）"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://modelcontextprotocol.io/specification/2025-11-25/server/tools",
+      "checked_at": "2026-09-22",
+      "purpose": "确认 input validation errors 属 tool execution errors、须交给模型自纠——这正是 ParameterRejection 必须带合法键与合法取值的依据（#837 引入时查的那一条，本次合并沿用同一依据）"
+    }
+  ],
+  "invariants": [
+    "「一个参数键合不合法」只有一份判据：`compileParameters`；它的合法键集按三档派生——① 档案 `mode.params`（`videoCompileOptions` / `archetypeCompileOptions` 给的 `options.parameterSchema`）→ ② 那条 mapping 的 create op 派生（`moduleCatalogBootstrap.modelParameterSchema` 走 `wireReferencedParamKeys` + `consumedCanonicalKeys` + 档案 wire 默认）→ ③ 两者都拿不到时**放行 + warning**，绝不静默丢。",
+    "「Nomi 自己消费、不上 wire」的意图键只有一张表：`generationPlanningParameters.GENERATION_PLANNING_HINTS`（键 + 类型）。`executionContract` 只 re-export，不再自己写一份；键名集合由类型表派生，不许存在第二个 Set。",
+    "拒绝形状只有一套：`ParameterRejection`（七个码 + allowedKeys/closestKey/expectedType/allowedValues/min/max/allowedVariantIds）。没有读者的 `droppedFields` 账本已随 #837 删除，不许以任何形式回来。",
+    "准入那一趟（身份 → 变体 → 参数）与提示词投影是两件事：`admitPlanCandidate` 只做前者，`compileExecutionContract` 在它之上再做投影与封装。要校验参数的调用方走前者，不许为了校验参数把投影的前置条件也扛上。",
+    "意图键表里的每个键都必须真有读者（`videoRecommendationInput` 或 `requestedVideoDurationSeconds`）——表和读者漂开就红。"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "compileParameters"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "admitPlanCandidate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "symbol": "admitPlanCandidate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "compileExecutionContract"
+    },
+    {
+      "kind": "write",
+      "path": "electron/parity/generationParityTestUtils.ts",
+      "symbol": "compileExecutionContract"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationPlanningParameters.ts",
+      "symbol": "GENERATION_PLANNING_HINTS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "compileContract"
+    }
+  ],
+  "door_reduction": {
+    "before": 9,
+    "after": 7,
+    "why_not": "`node scripts/door-map.mjs compileExecutionContract` 合并当时是 3 扇（`mcpGenerationTools` / `generationPlanPatch` / 对拍 harness），`GENERATION_PLANNING_*` 两张表各一扇读口，`compileParameters` 一扇，`isGenerationPlanningParameter` 一扇 —— 合计 8，再加多镜那扇注入 seam `compileContract`（它是「不自己编」这件事的门，必须记在表上）共 9。本次真收掉两扇（9 → 7）：① 两张意图键表并成一张（`generationPlanningParameters.ts` 是唯一读口，`executionContract` 改成 re-export，door-map 对 `GENERATION_PLANNING_HINTS` 现在只报那一个文件里的三处）；② `generationPlanPatch` 那扇从 `compileExecutionContract` 降到 `admitPlanCandidate`，于是「编一份完整合同」的门从 3 扇变 2 扇。剩下的都点名过：`compileParameters` 是判据本体（1 扇，所有路最终都汇到它）；`admitPlanCandidate` 的 2 扇是「plan 只准入」与「preview/gate 先准入再投影」两个生命周期时刻，后者由前者实现，不是两份判据；`mcpGenerationTools.contractFor` 是生产侧唯一的整份编译点（多镜 `sealMultiShotFor` 通过注入的 `compileContract` seam 复用它，**刻意不自己调**）；`electron/parity/generationParityTestUtils.ts` 那扇是对拍 harness——它的职责就是不经生产装配直接编一份合同再和渲染层那条路比字节，让它复用 `contractFor` 等于让对拍去测自己的夹具。",
+    "owner": "electron/capabilityCore/executionContract.ts"
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/executionContract.ts",
+    "tests": [
+      "electron/capabilityCore/parameterAdmission.class.test.ts",
+      "electron/capabilityCore/generationPlanningParameters.test.ts",
+      "electron/capabilityCore/executionContract.test.ts"
+    ],
+    "notes": "判据本体 `compileParameters` 在这一层；意图键表这一小块的 owner 下沉到 `generationPlanningParameters.ts`（它同时被准入层与两位读者认领，放在合同文件里会让 `executionContract.ts` 继续长）。两者一起构成「参数准入」这一个概念的唯一 owner，`docs/engineering/concept-owners.json` 里按这一条登记。"
+  },
+  "generality_proof": "把两份判据并成一份之后，「这个键合不合法」的答案只由一条派生链给出，而那条链对**全部 kind** 成立：视频走 `videoCompileOptions`（含 vendor 特化与变体反查），其余 kind 走 `archetypeCompileOptions`（档案搬进 electron/shared 之后主进程才够得着），两者都拿不到声明时统一落到「放行 + warning」。于是这一族的推演路——外部 MCP 猜错键名、付款卡上改了个这个模型没有的参数、多镜里某一镜换了模型之后旧参数残留、对拍矩阵里两侧参数表不一致——全都由同一条不变量覆盖，而不是逐条打补丁。反向也成立：意图键（Nomi 自己读、从不上 wire）仍然放行，但**类型照判**，所以「垃圾值被无声吞掉」这条旧路也没有从意图键那一侧回来。",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "compileParameters",
+      "responsibility": "参数值层准入的**唯一**判据：五种填错方式一律当场拒，并在 `ParameterRejection` 里带上模型下一次写对所需的全部事实。"
+    },
+    {
+      "path": "electron/capabilityCore/executionContract.ts",
+      "symbol": "admitPlanCandidate",
+      "responsibility": "准入那一趟（身份 → 变体 → 参数）的唯一入口；`compileExecutionContract` 在它之上加提示词投影与封装。"
+    },
+    {
+      "path": "electron/capabilityCore/generationPlanningParameters.ts",
+      "symbol": "GENERATION_PLANNING_HINTS",
+      "responsibility": "「Nomi 自己消费、永远不上 wire」的意图键 + 它们的类型——全仓唯一那一张表。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "contractFor",
+      "responsibility": "生产侧编译执行合同的唯一那一处（preview / gate_request / 多镜密封共用），负责把 `videoCompileOptions` 与 `referenceSourceUrls` 两个输入合在一起。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "entry_point": "nomi_operation_plan 改参数时的即时准入",
+      "disposition": "enforced",
+      "evidence": "改调 `admitPlanCandidate`：判据与 preview/gate_request 同一趟，但不再要求 `referenceSourceUrls`。`nomiMcpGenerationPlanning.test.ts`「recomputes shared recommendations when a user replaces references and edits a model parameter」钉住「点名 trajectory 当场拒 + 拒了不落盘 + 改对之后同一条路放行」。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "多镜密封逐镜编译子合同",
+      "disposition": "enforced",
+      "evidence": "依赖注入的 `compileContract` seam（由 `mcpGenerationTools.contractFor` 提供），**刻意不自己调 `compileExecutionContract`**；`mcpGenerationMultiShotSemantic.test.ts` 的夹具注入的是同一个实现的最小版本，不重写第二份参数表。"
+    },
+    {
+      "path": "electron/parity/generationParityTestUtils.ts",
+      "entry_point": "执行器对拍 harness",
+      "disposition": "not-affected",
+      "evidence": "对拍的职责就是绕开生产装配自己编一份再比字节；复用 `contractFor` 会让它变成测自己的夹具，所以它**不受**「生产侧只有一个编译点」这条约束。判据本体（compileParameters）两边共用，因此它测到的仍是同一份准入规则。`droppedFields` 那本账随本次一起从它的 notes 里删掉——差异现在以 `failure.code` 出现。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "「同一个概念被两条 lane 同时碰」在并行开发下是常态，而句法门岗看不见它：两份判据用两个常量名、住两个文件、各带一套绿测试。只要任务书不先写出「这一刀碰哪几个概念、每个概念的唯一 owner 在哪个符号」，下一次合并还会在别的概念上重演一遍。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs compileExecutionContract（修后 2 扇：生产侧 contractFor + 对拍 harness）",
+      "node scripts/door-map.mjs admitPlanCandidate（2 扇：合同编译 + plan 即时准入）",
+      "node scripts/door-map.mjs compileParameters（1 扇：判据本体）",
+      "node scripts/door-map.mjs GENERATION_PLANNING_HINTS（1 扇读口，全在 owner 文件里）",
+      "docs/engineering/concept-owners.json：本刀碰到的四个概念逐行核「有没有多出第二个 owner」"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/executionContract.ts",
+    "invariant": "参数值层的准入判据、意图键表、拒绝形状各只有一份；要校验参数的调用方走 `admitPlanCandidate`，要整份合同的走 `compileExecutionContract`，两者是同一趟检查的两个深度，不是两份判据。",
+    "failure_mode": "有人为了「这条路也要拦一下填错的参数」在新入口里再写一份键集合或再调一次整份编译，于是同一个键在两条路上有两种待遇；或者反过来，为了绕开某条路缺失的前置条件（如 `referenceSourceUrls`）而在那条路上放宽判据——用户看到的是「同样的参数，从面板改就行、从 MCP 改就被拒」。",
+    "exception_policy": "none",
+    "strategy": "判据收敛成一处并由门表钉住（评审时跑上面 `same_class_scan` 里的四条 door-map）；意图键表由 `generationPlanningParameters.test.ts` 与 `parameterAdmission.class.test.ts` 两条**活判据**正面钉住——逐个键真喂进去看有没有读者，并断言键名集合由类型表派生。两条都做过变异验证：往表里加一个没人读的键 `nobodyReadsThis`，两条当场红（2026-09-22 实跑）。",
+    "gate": "electron/capabilityCore/parameterAdmission.class.test.ts",
+    "artifacts": [
+      "electron/capabilityCore/executionContract.ts",
+      "electron/capabilityCore/generationPlanningParameters.ts",
+      "electron/capabilityCore/generationPlanPatch.ts",
+      "electron/capabilityCore/mcpGenerationTools.ts",
+      "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "electron/parity/generationParityTestUtils.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/parameterAdmission.class.test.ts",
+    "electron/capabilityCore/generationPlanningParameters.test.ts",
+    "electron/capabilityCore/executionContract.test.ts",
+    "electron/capabilityCore/nomiMcpGenerationPlanning.test.ts",
+    "electron/capabilityCore/mcpGenerationMultiShotSemantic.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/parameterAdmission.class.test.ts",
+    "electron/capabilityCore/generationPlanningParameters.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/executionContract.ts",
+      "electron/capabilityCore/generationPlanningParameters.ts",
+      "electron/parity/generationParityTestUtils.ts"
+    ],
+    "rationale": "没有开关、没有兼容分支，删的是三处**模块内的旧形状**：① `executionContract.ts` 里本地定义的 `GENERATION_PLANNING_HINTS`（改为从 owner re-export，本文件不再有第二张表）；② `generationPlanningParameters.ts` 里独立维护的 `GENERATION_PLANNING_PARAMETER_KEYS` Set（改为由类型表派生，`generationPlanningParameters.test.ts` 有一条断言钉住这件事，谁再写一个独立 Set 就红）；③ `generationParityTestUtils.ts` 对拍 notes 里的 `droppedFields`（该字段在 #837 里已从 `ExecutionContractV1` 上摘掉，这是最后一个引用）。旧合同里存过 `droppedFields` 字段的不影响读取——没有任何地方读它。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有第三方运行时或协议版本参与；MCP 的错误语义是既有约束，不是本次引入的依赖。",
+    "exit_criteria": []
+  },
+  "migration": "无存储形状变化。`nomi_read{target:\"model\"}` 与 `nomi_operation_plan` 的对外形状一个字节没动（拒绝形状本来就是 #837 已经合入 main 的那一套）；打捞分支上那套 `droppedFields` 形状从未进过 main，用户端没有旧数据。",
+  "residual_risks": [
+    "`electron/parity/generationParityTestUtils.ts` 仍然是第二个 `compileExecutionContract` 调用点（对拍 harness 的固有形状）。它不进生产包，但如果将来有人照着它写一个生产调用点，门表会在 door-map 里显出第三扇——评审时按 `same_class_scan` 那条命令核。",
+    "`archetypeCompileOptions` / `modelAdmissionSchema.ts` 本刀**刻意没碰**（任务书裁决：对方会话的地盘，合入后单开一刀）。三档判据的第一档因此仍住在那份文件里；它和本刀的判据不冲突（它只产出 `options.parameterSchema`，不自己判），但「档案认不出就返回 {}」那条退路是否该细分成「认不出档案」与「认不出模式」两档，留给那一刀。",
+    "意图键表里 `aspectRatio` / `durationSeconds` 两个 camelCase 别名与 wire 上的 snake_case 同名参数并存：一个模型如果真的在档案里声明了名为 `aspectRatio` 的 wire 参数，它会先命中 `module.parameterSchema` 那一档（真参数优先），行为正确；但这件事今天没有测试正面钉住，记为已知缺口。"
+  ]
+}

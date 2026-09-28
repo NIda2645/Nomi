@@ -5,6 +5,7 @@ import type {
   ModelParameterControl,
 } from "./types";
 import type { VideoModelCandidate } from "./recommendation";
+import { resolveArchetypeVariant } from "../modelArchetypes/variantResolution";
 import { AGNES_VIDEO_ARCHETYPE } from "./agnesVideo";
 import { AGNES_VIDEO_25_ARCHETYPE, AGNES_VIDEO_25_FLASH_ARCHETYPE } from "./agnesVideo25";
 import { DREAMINA_MULTIFRAME_ARCHETYPE } from "./dreaminaMultiframe";
@@ -19,6 +20,7 @@ import { MINIMAX_H3_ARCHETYPE } from "./minimaxH3";
 import { MINIMAX_H3_MAX_ARCHETYPE } from "./minimaxH3Max";
 import { MINIMAX_H3_APIMART_ARCHETYPE } from "./minimaxH3Apimart";
 import { MINIMAX_H3_REGENERATION_ARCHETYPE } from "./minimaxH3Regeneration";
+import { HIGGSFIELD_DOP_ARCHETYPE } from "./higgsfieldDop";
 import { OMNI_FLASH_EXT_ARCHETYPE } from "./omniFlashExt";
 import { RUNNINGHUB_SEEDANCE_ARCHETYPE } from "./runninghubSeedance";
 import { RUNNINGHUB_VIDEO_ARCHETYPES } from "./runninghubVideoArchetypes";
@@ -84,6 +86,7 @@ const SOURCE_BACKED_PROFILES: readonly ModelArchetype[] = [
   HAILUO_2_3_ARCHETYPE,
   OMNI_FLASH_EXT_ARCHETYPE,
   MINIMAX_H3_REGENERATION_ARCHETYPE,
+  HIGGSFIELD_DOP_ARCHETYPE,
   SEEDANCE_VOLCENGINE_ARCHETYPE,
   SEEDANCE_VOLCENGINE_2_5_ARCHETYPE,
   DREAMINA_SEEDANCE_ARCHETYPE,
@@ -224,9 +227,9 @@ function specializeForProvider(archetype: ModelArchetype, provider: string): Mod
   };
 }
 
+/** 这条目录行默认跑哪个变体——问唯一 owner。基础行（如 `doubao-seedance-2.0`）是默认变体，不是反推出的 standard。 */
 function variantFor(model: VideoCatalogModel, archetype: ModelArchetype): string | undefined {
-  return archetype.variants?.find((variant) => variant.modelKey === model.modelKey)
-    ?.id ?? archetype.defaultVariantId;
+  return resolveArchetypeVariant(archetype, { modelId: model.modelKey })?.id;
 }
 
 /**
@@ -234,6 +237,32 @@ function variantFor(model: VideoCatalogModel, archetype: ModelArchetype): string
  * list changes when the user changes provider/model; no provider-name branch
  * or fixed candidate list is required by the recommender.
  */
+/**
+ * 一个**模式 id**（`t2v` / `i2v` / `omni` / `firstlast` …）决定了它的任务种类吗？
+ *
+ * 决定得了：逐档案扫过全部 `modes`，同一个 id 在全仓从来没有映到两个不同的 `transportTaskKind`
+ * （有的档案不声明，那就是它的默认，不算分歧）。这个函数**扫出来**这件事，不手抄一张表——
+ * 上游新增一个档案、给同一个 id 换了种类，它会当场返回 undefined 而不是给出一个过期答案。
+ *
+ * 为什么要它（2026-09-22）：模型写了 `modeId: "i2v"` 却没写 `taskKind` 时，我们按提示词**猜**了一个
+ * `text_to_video`，然后拿自己猜的那个去和模型**明说**的模式比对，再把冲突算在模型头上
+ * （run2 A3/A6 三次，错误正文是「this shot asks for text_to_video」——而模型一个字都没这么说）。
+ * 两个字段是同一件事实的两种写法，能 derive 就不该让模型两个都填。
+ */
+export function transportTaskKindForModeId(modeId: string): string | undefined {
+  const wanted = modeId.trim().toLowerCase();
+  if (!wanted) return undefined;
+  const kinds = new Set<string>();
+  for (const archetype of SOURCE_BACKED_PROFILES) {
+    for (const mode of archetype.modes ?? []) {
+      if (mode.id.trim().toLowerCase() !== wanted) continue;
+      const declared = mode.transportTaskKind?.trim();
+      if (declared) kinds.add(declared);
+    }
+  }
+  return kinds.size === 1 ? [...kinds][0] : undefined;
+}
+
 export function buildVideoModelCandidates(models: readonly VideoCatalogModel[]): VideoModelCandidate[] {
   return models
     .filter((model) => model.provider.trim() && model.modelKey.trim())

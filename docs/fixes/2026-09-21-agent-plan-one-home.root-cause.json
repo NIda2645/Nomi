@@ -1,0 +1,571 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-agent-plan-one-home",
+  "problem_type": "One semantic, two storages: a storyboard plan had a second home for agent-made plans",
+  "symptom": "在创作区让 Agent 拆镜头，侧栏多出一条看起来和普通方案一模一样、却不能改名、不能删除、没有徽标的行；每轮对话还会再多一条；对话里说「画张海报」也会多一条。",
+  "direct_cause": "应用内创作区的 draft_shots 把作者正文写进 Run 的 generationPlan.editorial，而侧栏靠 1.5s 轮询 productionRunApi.list 把它画成第二种行；用户手建的方案走的是项目记录里的 storyboardDesign。两份存储永不同步、也永不互建。",
+  "class_root": "同一个语义（一份分镜方案）没有唯一的 owner。第二个家不是被设计出来的，是因为应用内 lane 的 20 个动词里没有一个够得到已有的那个家（propose_storyboard_plan → setStoryboardPlan 在 main 上现役，外部 MCP 宿主天天走），于是在旁边盖了一个。只要一个语义没有主人，下一个够不到它的调用方还会再盖一个。",
+  "affected_population": [
+    "每一位在创作区让 Agent 拆分镜的用户",
+    "PR head 上所有文稿来源的 Agent 产出"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts",
+    "electron/capabilityCore/mcpGenerationOperationMemoryStore.ts",
+    "electron/capabilityCore/generationTransportAdapters.ts",
+    "electron/shared/agentCapabilities/generationInvocationContext.ts",
+    "electron/shared/storyboard/storyboardSubjectAdapter.ts",
+    "electron/productionRun/canvasLandingHost.ts",
+    "electron/productionRun/multiShotCanvasLanding.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts",
+    "electron/productionRun/productionRunRepository.ts",
+    "electron/productionRun/productionRunReducer.ts",
+    "electron/productionRun/productionRunIpc.ts",
+    "electron/productionRun/productionRunTypes.ts",
+    "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+    "src/workbench/capability/storyboardPresent.ts",
+    "src/workbench/capability/capabilityApplyHandler.ts",
+    "src/workbench/capability/multiShotCanvasLanding.ts",
+    "src/workbench/creation/DocumentListSidebar.tsx",
+    "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+    "src/workbench/workbenchDocumentSlice.ts",
+    "src/workbench/ai/v4/useAgentPanelV4Actions.ts"
+  ],
+  "entry_points": [
+    "创作区 Agent 对话（draft_shots，文稿准入）",
+    "画布 Agent composer（draft_shots，无文稿准入）",
+    "外部 MCP 宿主 nomi_canvas_plan（propose_storyboard_plan）",
+    "用户手建方案 / 复制方案（侧栏）",
+    "分镜编辑器逐字段编辑"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "分镜方案是 Nomi 自己的项目记录结构，没有外部格式或协议参与；模型可见面（draft_shots schema）一字未改。",
+  "invariants": [
+    "一篇文稿的分镜方案只有一份存储：项目记录里的 storyboardDesign。",
+    "模型手里的 draft id 就是用户侧栏那一行的 id——同一个身份，不存在两套编号。",
+    "文稿来源的方案永不自动落画布；落画布是用户在方案里自己点的动作。",
+    "模型改哪一份方案由它自己指名；宿主只拒绝不属于这篇文稿的 id，绝不替它挑一份。"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/openShotTableRow.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardNudge.tsx",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/canvasWriteTarget.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/projectNormalize.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/workbenchProjectSession.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/workbenchDocumentSlice.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/workbenchStore.ts",
+      "symbol": "storyboardDesignsByDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "addStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "addStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+      "symbol": "addStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/workbenchDocumentSlice.ts",
+      "symbol": "addStoryboardDesign"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopInput.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/canvasWriteTarget.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/proposalTxn.ts",
+      "symbol": "storyboardTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopInput.ts",
+      "symbol": "sourceDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "sourceDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "sourceDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "sourceDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "sourceDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "sourceDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/generationInvocationContext.ts",
+      "symbol": "sourceDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "symbol": "sourceDocumentId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "landDraftOnCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "landDraftOnCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "landDraftOnCanvas"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/canvasLandingHost.ts",
+      "symbol": "landCanvasForRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "upsertStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "storyboardSubjectFromCandidate"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "handleMultiShotCanvasLandingOp"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationOperationMemoryStore.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "saveDocumentPlan"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "presentStoryboardAuthoring"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "patchStoryboardAuthoring"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSeal.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "buildMaterializeShotsPayload"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "applyProductionCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createGenerationDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "createGenerationDraft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "createGenerationDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "createGenerationDraft"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "createGenerationDraft"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+      "symbol": "patchStoryboardSubject"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "materializeShots"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "storyboardReferenceSlot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/storyboard/storyboardSubjectAdapter.ts",
+      "symbol": "storyboardReferenceSlot"
+    }
+  ],
+  "door_reduction": {
+    "before": 94,
+    "after": 79,
+    "why_not": "这 79 扇门覆盖「一份分镜方案」从模型入参到落盘的全部读写口。合并发生在最重要的那一处：作者正文的**写**口从两组收成一组——项目记录的 setStoryboardPlan / addStoryboardDesign，两者同住 workbenchDocumentSlice.ts。删掉的 17 扇是 Run 侧那份存储专有的（useCreationRunPlans / useStoryboardRunHost / storyboardRunDraftSession / productionStoryboardAuthoring / generation.save_storyboard 的 ipc·reducer·repository 三段 / mcpGenerationTools 四条 editorial 分叉 / materialize-shots 的 authorContentToken 分叉）。剩下的不能再合，理由是它们不是同一件事的重复：Run 那组门管的是**执行与钱**（候选、契约、封印、作业），项目记录那组管的是**作者正文**；渲染层那些读口是真实存在的不同产品入口（侧栏、编辑器、画布表节点、外部 MCP、项目载入归一化），共用同一个 owner 正是本次要达到的状态。"
+  },
+  "generality_proof": "判据不是「哪个供应商 / 哪个模型 / 哪条对话」，而是「这份方案属于哪篇文稿」。任何来源的分镜产出——应用内 Agent、外部 MCP 宿主、用户手建、复制——落到同一个 action 上；再多一个调用方也只会多一扇通向同一个 owner 的门，不会多一份存储。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/workbenchDocumentSlice.ts",
+      "symbol": "setStoryboardPlan",
+      "responsibility": "分镜方案的唯一持久化 owner（建、改、删、编号、揭示）"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+      "symbol": "upsertAgentStoryboardDesign",
+      "responsibility": "把主进程手里一次性的作者载荷交给那个 owner，并校验项目身份与方案身份"
+    },
+    {
+      "path": "electron/shared/storyboard/storyboardSubjectAdapter.ts",
+      "symbol": "storyboardSubjectFromCandidate",
+      "responsibility": "候选 ↔ 编辑器主体形状之间的纯适配，不持有任何存储"
+    },
+    {
+      "path": "electron/productionRun/canvasLandingHost.ts",
+      "symbol": "createCanvasLandingHost",
+      "responsibility": "文稿来源的 Run 不自动落画布——这条闸没有绕行参数"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "entry_point": "propose_storyboard_plan",
+      "disposition": "enforced",
+      "evidence": "main 上就走 setStoryboardPlan(createNew)，本次一字未改，正是被接回的那个家"
+    },
+    {
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "entry_point": "addStoryboardDesign",
+      "disposition": "enforced",
+      "evidence": "手建方案与 Agent 方案共用同一个 action 与同一种行"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "entry_point": "setStoryboardPlan",
+      "disposition": "enforced",
+      "evidence": "画布分镜表改行同样经唯一 owner"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "saveDocumentPlan",
+      "disposition": "enforced",
+      "evidence": "文稿准入的 create 只把载荷交给渲染层 owner，不再往 Run 写 editorial"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "patchStoryboardAuthoring",
+      "disposition": "enforced",
+      "evidence": "改一镜也经同一个 owner；宿主侧不再留一份可被改写的方案副本"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "「一个语义没有主人 ⇒ 够不到它的调用方各自再造一份」这个形状在本仓出现过不止一次（见 memory 的 structural-shape-unowned-semantics-20260918）。分镜方案只是其中一份。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs storyboardDesignsByDocumentId（17 扇读口，写口只经 slice 的两个 action）",
+      "node scripts/door-map.mjs setStoryboardPlan（5 扇写口，全在同一层）",
+      "node scripts/door-map.mjs addStoryboardDesign（2 扇写口）",
+      "git grep 'editorial' / 'save_storyboard' / 'activeCreationRunId'：生产码 0 命中",
+      "git show origin/main：editorial 与 generation.save_storyboard 从未进过 main，磁盘上不可能有历史记录"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/workbenchDocumentSlice.ts",
+    "invariant": "分镜方案的写入只有 setStoryboardPlan / addStoryboardDesign 两个口，且两者都在同一个 slice 里",
+    "failure_mode": "方案不存在 / 已被删除 / 不属于这篇文稿 → action 返回 null，调用方抛出，绝不新建一份顶替",
+    "exception_policy": "none",
+    "strategy": "主进程不再持有第二份方案；它只能通过两个窄 RPC（storyboard.upsert-design / storyboard.patch-design）请求那个 owner 写，且回执被逐字校验，静默失败不成立。",
+    "artifacts": [
+      "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+      "src/workbench/workbenchDocumentSlice.ts",
+      "electron/capabilityCore/mcpGenerationMultiShot.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "electron/capabilityCore/mcpGenerationTools.test.ts",
+    "electron/productionRun/legacyEditorialRecord.test.ts",
+    "electron/productionRun/productionGenerationOperationStore.test.ts",
+    "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+    "src/workbench/capability/storyboardPresent.test.ts",
+    "src/workbench/creation/storyboard/agentStoryboardDesign.test.ts",
+    "tests/ux/core-a-creation-plans.e2e.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "electron/productionRun/productionGenerationOperationStore.test.ts",
+    "src/workbench/ai/v4/useAgentPanelV4Actions.test.ts",
+    "tests/ux/core-a-creation-plans.e2e.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "第二个家（generationPlan.editorial、generation.save_storyboard、productionStoryboardAuthoring、useCreationRunPlans、useStoryboardRunHost、storyboardRunDraftSession、storyboardEditorHost）**从未进过 main**：它整个活在 PR #828 这条分支上。相对本合同的基线（merge-base(HEAD, origin/main)）没有任何旧路径可以删除——这些文件在基线上并不存在。它们在本分支上被同 commit 整刀删除（c50b0ce66），不留 fallback、不留逃生口；基线上确实存在、并被本次改写的那条路是 canvasLandingHost 的来源闸，它保留且删掉了绕行参数。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有第三方依赖参与",
+    "exit_criteria": []
+  },
+  "migration": "generationPlan.editorial 与 generation.save_storyboard 从未进过 main（git show origin/main 两处均 0 命中），所以没有任何发布过的构建写过这个字段。Run 记录读路径是宽松 JSON.parse，没有 strict schema：一条历史记录里若带 editorial，读得进、不崩、字段被忽略；已落画布的节点住在项目记录里，不受影响。写路径不再产生该字段。",
+  "residual_risks": [
+    "「给已有方案再补两镜」仍不支持（draft_shots 带 operationId 只能改一镜）——与 PR head、与 main 同样不支持，本次未回归也未修复，已记 TODO。",
+    "外部 MCP 宿主读这份方案仍只能经 nomi_read 的画布投影，没有按方案 id 的读口——用户 09-21 拍板这轮不动。",
+    "创作区发一句「画张海报」仍会产生一条 1 镜方案（与 PR head 同）；是否该按镜数或意图分流，留给体验档。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/workbenchDocumentSlice.ts",
+    "tests": [
+      "src/workbench/creation/storyboard/storyboardPlanLifecycle.test.ts",
+      "src/workbench/creation/storyboard/agentStoryboardDesign.test.ts"
+    ]
+  }
+}

@@ -1,4 +1,4 @@
-import type { ArchetypeMode, ModelArchetype } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode, ModelArchetype } from '../../../../../electron/shared/modelArchetypes/types'
 import type { ModelParameterControl } from '../../../../config/modelCatalogMeta'
 
 /**

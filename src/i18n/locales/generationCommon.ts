@@ -107,6 +107,15 @@ export const zhGenerationCommon = {
   },
   canvas: {
     aria: 'AI 影像创作画布',
+    // 画布边缘提示（新东西落在屏外 / 别的分类时，点它才过去）。一个 / 多个分开写：中文没有单复数，
+    // 「1 个新节点在右侧」读着别扭，单个就不带数。
+    arrival: {
+      one: { right: '新节点在右侧', left: '新节点在左侧', up: '新节点在上方', down: '新节点在下方' },
+      many: { right: '{{count}} 个新节点在右侧', left: '{{count}} 个新节点在左侧', up: '{{count}} 个新节点在上方', down: '{{count}} 个新节点在下方' },
+      categoryOne: '新节点在「{{category}}」里',
+      categoryMany: '{{count}} 个新节点在「{{category}}」里',
+      go: '前往查看',
+    },
     noImportableAssets: '没有可导入画布的素材',
     importedOne: '已导入画布',
     importedMany: '已导入 {{count}} 个素材到画布',
@@ -146,7 +155,8 @@ export const zhGenerationCommon = {
         selection: '选择',
         pan: '移动画布',
         zoom: '缩放',
-        node: '节点操作',
+        create: '创作',
+        node: '编辑',
       },
       shortcuts: {
         blankDrag: '空白左拖',
@@ -161,6 +171,19 @@ export const zhGenerationCommon = {
         modWheel: '{{mod}} + 滚轮',
         modA: '{{mod}} A',
         modCopyPaste: '{{mod}} C / {{mod}} V',
+        altDrag: '{{alt}} + 拖动',
+        modPlusMinus: '{{mod}} + / {{mod}} −',
+        tab: 'Tab',
+        modEnter: '{{mod}} Enter',
+        modL: '{{mod}} L',
+        modD: '{{mod}} D',
+        modG: '{{mod}} G',
+        modShiftG: '{{mod}} {{shift}} G',
+        frameKey: 'F',
+        optShiftF: '{{opt}} {{shift}} F',
+        modX: '{{mod}} X',
+        modZ: '{{mod}} Z',
+        modShiftZ: '{{mod}} {{shift}} Z',
         delete: 'Delete / Backspace',
         escape: 'Escape',
       },
@@ -171,7 +194,20 @@ export const zhGenerationCommon = {
         pan: '平移',
         zoom: '缩放',
         selectAll: '全选',
-        copyPaste: '复制 / 粘贴',
+        copyPaste: '复制 / 粘贴到鼠标处',
+        duplicateDrag: '拖出副本',
+        zoomStep: '放大 / 缩小',
+        addNode: '在鼠标处新建节点',
+        generateSelection: '生成所选',
+        connect: '连线（选中两个）',
+        duplicate: '复制节点和连线',
+        group: '成组',
+        ungroup: '解组',
+        frame: '画框',
+        tidy: '整理画布',
+        cut: '剪切',
+        undo: '撤销',
+        redo: '重做',
         deleteSelection: '删除所选',
         cancel: '取消当前操作',
       },
@@ -190,8 +226,6 @@ export const zhGenerationCommon = {
       collapsedAria: '已收起分组「{{name}}」· {{count}} 个节点',
       nodeStackCount: '{{count}} 节点',
       dragWhole: '拖动整体',
-      connectInput: '连接到整组',
-      connectOutput: '从整组连接',
       aggregateInput: '编组输入',
       aggregateOutput: '编组输出',
       disconnectAggregate: '断开整条编组连接',
@@ -210,6 +244,8 @@ export const zhGenerationCommon = {
       menuCollapse: '折叠成卡',
       menuDissolve: '解散',
       menuDissolveHint: '框没了，节点和连线都留着',
+      menuDelete: '删除',
+      menuDeleteHint: '框和里面的节点一起删',
       countPreview: '{{from}} → {{to}}',
       joinPreview: '松手后「{{name}}」有 {{count}} 个',
       leavePreview: '松手后离开「{{name}}」，还剩 {{count}} 个',
@@ -309,6 +345,10 @@ export const zhGenerationCommon = {
         reason: '这个素材太大，传不上去',
         hint: '本机素材要先换成公网地址才能给服务商用，而这个文件超过了所有可用上传通道的大小上限（HTTP 413），Nomi 每条通道都试过了。重试没用——同一个文件每次都会被同一个上限挡回来。请把它压缩或裁短一点再放进来（视频尤其常见），或在「模型接入」接一个上传上限更高的通道。具体是哪个素材、多大，见下方技术详情。',
       },
+      assetInvalid: {
+        reason: '参考素材本身有问题',
+        hint: '这张参考素材没通过发送前的本机检查：文件读不到、认不出类型，或者内容不是真正的图片/视频（比如把网页存成了 .png）。请求还没发出去，不扣额度。同一个文件重试结果不会变——请在画布上换一张参考素材，或重新导入原文件，再点重试。具体是哪个文件，见下方技术详情。',
+      },
       outboundBlocked: {
         reason: '取片被 Nomi 自己的安全策略拦下了',
         hint: '这不是服务商的故障，也不是你的生成失败了——任务多半已经在服务商那边跑完了，钱已经付过，产物还在。是 Nomi 在下载产物时把目标地址判成了内网并拒绝下载。最常见的原因是你开着 Clash / Surge / sing-box 的 TUN（fake-ip）模式：所有域名都会被解析成 198.18.x 这类合成地址。请到「模型接入 → 网络」看那一行有没有写「检测到本地代理」；确认后回到这里用「重新拉取结果」免费取回，**不要重新生成**（那会再扣一次钱）。具体是哪个地址，见下方技术详情。',
@@ -316,6 +356,10 @@ export const zhGenerationCommon = {
       outboundBlockedSubmit: {
         reason: '这次生成没发出去，Nomi 自己的安全策略先拦下了',
         hint: '请求一个字节都没有离开你的电脑，所以服务商没被请求到，**这次没有扣费**。原因是 Nomi 把接入地址判成了内网：最常见的是你开着 Clash / Surge / sing-box 的 TUN（fake-ip）模式，所有域名都会被解析成 198.18.x 这类合成地址，而 Nomi 这次没能确认那确实是代理。请到「模型接入 → 网络」看那一行有没有写「检测到本地代理」，确认后直接重新生成即可（不用找回，也没有东西可找回）。如果这是你自己的本地后端，请把它的完整地址配成供应商接入地址。具体是哪个地址，见下方技术详情。',
+      },
+      outboundBlockedCredentialOrigin: {
+        reason: '这次生成没发出去：密钥要去的地址不是你保存它时确认过的那个',
+        hint: '请求一个字节都没有离开你的电脑，服务商没被请求到，**这次没有扣费**。Nomi 在你保存密钥的那一刻把这把密钥和当时那个接入地址绑在了一起，而这次请求要去的是另一个地址——密钥只会去你亲眼确认过的地方。如果你确实换了这家供应商的接入地址，请到「模型接入」找到这条连接，重新保存一次密钥（保存那一下就是新的确认）；如果你并没有改过地址，就更要先看一眼：下方技术详情里写着绑定的是哪个地址、这次要去哪个。',
       },
       server: { reason: '服务商故障', hint: '服务商服务异常，请稍后重试，或换一个模型。' },
       input: {
@@ -392,6 +436,8 @@ export const zhGenerationCommon = {
   },
   shotConversion: {
     shot: '镜头 {{index}}',
+    firstFrame: '首帧图',
+    video: '视频',
   },
   clipNode: {
     addMaterial: '添加素材',
@@ -423,6 +469,7 @@ export const zhGenerationCommon = {
     outputClipTitle: '剪辑片段 {{index}}',
     exporting: '导出中…',
     exportDownloadComplete: '已导出 {{count}} 个视频文件。',
+    exportToCanvasComplete: '已向画布导出 {{count}} 个视频节点。',
     exportFailed: '导出失败，请重试。',
     uploadFailed: '素材复制失败，请重试导入。',
     retryUpload: '重试导入',
@@ -501,7 +548,7 @@ export const zhGenerationCommon = {
       evenFrames: '均匀抽 {{count}} 帧',
       filteredOut: '当前灵敏度太高，这段的切点都被筛掉了。',
       relaxAction: '放宽到 {{count}} 个',
-      truncated: '切点太多，只取了前 {{count}} 个',
+      capped: '这段片子切点太密（{{detected}} 个），已自动把灵敏度提到 {{threshold}}，取了其中 {{kept}} 个——整条片子都在，只是保留了变化最强的那些。想要更细就把滑杆往左拉。',
       sensitivity: '灵敏度',
       hintMany: '偏多 · 会切进运镜',
       hintFew: '偏少 · 只留硬切',
@@ -531,9 +578,6 @@ export const zhGenerationCommon = {
     },
   },
   spend: {
-    estimatedAmount: '预计金额',
-    catalogUnpriced: '目录未标价',
-    catalogCredits: '{{amount}} 点（目录报价）',
     agentNotice: '经 AI 助手驱动 · 需你确认花费',
     agentNoticePlan: '经 AI 助手驱动 · 需你确认生成',
     ignore: '忽略',
@@ -578,6 +622,10 @@ export const zhGenerationCommon = {
     // 「未试跑」：自检只证明了地址、密钥与调用形状对，没证明这个模型点了一定能出片。
     // 第一次真实生成就是试跑（钱的闸在提交处看报价确认）。
     untried: '未试跑',
+    // 模型框里那一行后面的短限定语：供应商最近一次给的清单里没有它。
+    // 设置页那条是整句（要解释「所以我没动你的开关」），下拉里只放得下这几个字——
+    // 长一点就会把模型名挤没（2026-09-06 实测）。同一件事、两个长度，不是两份判据。
+    unlisted: '暂未列出',
     noVendorConnected: '还没接入供应商',
     connectVendorAction: '去接入',
     // 模型框底部脚注：列表变短了要说出来，否则「我藏的」和「坏了」在屏幕上长得一样。
@@ -648,7 +696,7 @@ export const zhGenerationCommon = {
   // A 类（决定出什么/花多少）留底栏；B 类（帮我写提示词）收成提示词框右上角一簇纯 icon；锁回节点浮条。
   composerBarV1: {
     promptTools: '写提示词',
-    effects: '效果与提示词库',
+    effects: '提示词预设',
     seconds: '{{value}}s',
   },
   composer: {
@@ -678,6 +726,8 @@ export const zhGenerationCommon = {
     // 「张」只对图片成立；同一个通用件现在也管视频/音频/3D（2026-09-10 反馈 #11），
     // 用用户自己的说法「生成几个」，不按媒体分叉出四套文案。
     variantCountAria: '每次生成几个',
+    expandPrompt: '展开提示词',
+    collapsePrompt: '收起提示词',
     variantCountTitle: '每次生成 {{count}} 个',
     variantCountOption: '{{count}} 个',
     generate: '生成',
@@ -927,6 +977,22 @@ export const zhGenerationCommon = {
     aria: '用 Nomi 优化提示词',
     running: '优化中…',
   },
+  translator: {
+    intro: '把下面三引号里的图像/视频生成提示词翻译成{{target}}，保留原意与画面细节，专有名词与参数（如 8k、--ar 16:9）照抄。',
+    targetEnglish: '英文',
+    targetChinese: '中文',
+    placeholderRule: '形如 {{example}} 的占位符代表参考素材，必须原样保留、一个不多一个不少，放在译文里语义对应的位置。',
+    outputRule: '保留原文的换行；原文末尾没有句号就不要补句号（它可能只是句子里的一段）。只输出译文本身，不要解释、不要加引号、不要加三引号。',
+    aria: '翻译提示词（中英互译，选中一段只翻那段）',
+    running: '翻译中…（再点取消）',
+    emptyReason: '先写点提示词再翻译',
+    nothingToTranslate: '选中的内容里没有可翻译的文字',
+    emptyResult: '没拿到译文，提示词没改',
+    failed: '翻译失败，提示词没改',
+    failedWithReason: '翻译失败（{{reason}}），提示词没改',
+    placeholderMismatch: '译文里的素材引用对不上，为免丢参考图，提示词没改',
+    promptChanged: '翻译期间提示词被改动了，没替换',
+  },
   videoToolbar: {
     aria: '视频操作',
     fullscreen: '全屏预览',
@@ -1144,6 +1210,7 @@ export const zhGenerationCommon = {
       scriptReady: '剧本草稿已准备好，等待你的审核',
       storyboardReady: '分镜方案已准备好，等待你的确认',
       contractDeclined: '已拒绝这批生成',
+      cancelled: '这次制作已取消',
     },
     description: {
       submissionUnknown: '请求可能已经到达供应商；再次提交可能重复扣费，后续任务已停在安全边界。',
@@ -1166,8 +1233,14 @@ export const zhGenerationCommon = {
       scriptReady: '先审阅并确认剧本；确认前不会生成分镜，也不会调用付费模型。',
       storyboardReady: '先审阅并确认分镜，确认后 Nomi 才会把它落到画布并开始生成并计费。',
       contractDeclined: '本次决定已记录；没有提交生成任务，也没有产生支出。调整分镜或制作范围后可再确认一批新的生成。',
+      cancelled: '不会再提交新的任务；已完成的产物仍保存在当前本地项目中。',
     },
-    runTone: { working: '制作中', attention: '等待确认', danger: '需要处理', success: '已完成', neutral: '草稿' },
+    // 制作流程与阶段的人话名（身份串 generation.single-shot / brand.promo、阶段 id 不上屏）。
+    playbook: { shotGeneration: '镜头生成', brandPromo: '品牌宣传片', unknown: '制作流程' },
+    stage: {
+      brief: '制作摘要', direction: '创意方向', script: '剧本', storyboard: '分镜', build: '搭画布',
+      generate: '生成', qa: '审片', assemble: '粗剪', export: '导出', unknown: '其他阶段',
+    },
     origin: { nomi: 'Nomi', external: '外部客户端' },
     runPanel: {
       aria: '当前制作状态',
@@ -1201,7 +1274,7 @@ export const zhGenerationCommon = {
     },
     runDetails: {
       stages: '阶段进度',
-      stageCount: '{{completed}} / {{total}} 已完成',
+      stageCount: '{{completed}} / {{total}} 个阶段已完成',
       authorized: '已授权',
       reserved: '已预留',
       actual: '已结算',
@@ -1346,8 +1419,9 @@ export const zhGenerationCommon = {
       ignore: '忽略',
       confirm: '生成 {{count}} 镜',
     },
-    // P4 S5 画布落地：占位节点三态 + 进度通知 + 组名 + 补齐文案。
+    // P4 S5 画布落地：制作节点的排队 / 已停小标 + 组名 + 补齐文案（生成中 / 失败走普通生成那一套）。
     canvasLanding: {
+      groupName: '分镜组·{{name}}',
       groupFallbackName: '分镜组',
       shotFallbackTitle: '镜头 {{shot}}',
       queued: '排队中',
@@ -1356,9 +1430,6 @@ export const zhGenerationCommon = {
       stoppedManual: '已停止剩余镜头。想继续可从这里接着拍。',
       raiseBudget: '提额续拍',
       continueRemaining: '继续剩余',
-      failedTitle: '这一镜没生成出来',
-      failedFallback: '生成未成功。可稍后重拍这一镜。',
-      retry: '重拍这镜',
       // P4 S6 返工/续拍的人话反馈（按结构化结果 code 翻译，禁拼串穿透 i18n 门）。
       rework: {
         noPriorAttempt: '这一镜还没生成过，先让它正常开拍',
@@ -1411,13 +1482,6 @@ export const zhGenerationCommon = {
     stillUpstream: '任务仍在上游进行，请稍后再次拉取。',
   },
   agentRuntime: {
-    unsupportedOperation: '不支持的操作「{{operation}}」',
-    lockedNode: '节点「{{node}}」已被你锁定，AI 不能{{action}}（点节点上的锁标可一键解锁）',
-    editPrompt: '改写它的提示词',
-    deleteNode: '删除它',
-    regenerateNode: '重新生成它',
-    addIncomingEdge: '给它接入新的参考',
-    approvalRequired: '该操作需用户在确认面板批准后才能执行（自动放行路径已禁用）',
     shotTitle: '镜头 {{index}}',
     shotKeyframeTitle: '镜头 {{index}} 首帧',
     textModelHint: '通过设置里的文本模型流式生成',
@@ -1542,6 +1606,13 @@ export const enGenerationCommon = {
   },
   canvas: {
     aria: 'AI visual creation canvas',
+    arrival: {
+      one: { right: 'New node to the right', left: 'New node to the left', up: 'New node above', down: 'New node below' },
+      many: { right: '{{count}} new nodes to the right', left: '{{count}} new nodes to the left', up: '{{count}} new nodes above', down: '{{count}} new nodes below' },
+      categoryOne: 'New node in “{{category}}”',
+      categoryMany: '{{count}} new nodes in “{{category}}”',
+      go: 'Go there',
+    },
     noImportableAssets: 'No assets can be imported to the canvas',
     importedOne: 'Imported to canvas',
     importedMany: 'Imported {{count}} assets to the canvas',
@@ -1581,7 +1652,8 @@ export const enGenerationCommon = {
         selection: 'Selection',
         pan: 'Move canvas',
         zoom: 'Zoom',
-        node: 'Node actions',
+        create: 'Create',
+        node: 'Edit',
       },
       shortcuts: {
         blankDrag: 'Drag empty space',
@@ -1596,6 +1668,19 @@ export const enGenerationCommon = {
         modWheel: '{{mod}} + wheel',
         modA: '{{mod}} A',
         modCopyPaste: '{{mod}} C / {{mod}} V',
+        altDrag: '{{alt}} + drag',
+        modPlusMinus: '{{mod}} + / {{mod}} −',
+        tab: 'Tab',
+        modEnter: '{{mod}} Enter',
+        modL: '{{mod}} L',
+        modD: '{{mod}} D',
+        modG: '{{mod}} G',
+        modShiftG: '{{mod}} {{shift}} G',
+        frameKey: 'F',
+        optShiftF: '{{opt}} {{shift}} F',
+        modX: '{{mod}} X',
+        modZ: '{{mod}} Z',
+        modShiftZ: '{{mod}} {{shift}} Z',
         delete: 'Delete / Backspace',
         escape: 'Escape',
       },
@@ -1606,7 +1691,20 @@ export const enGenerationCommon = {
         pan: 'Pan',
         zoom: 'Zoom',
         selectAll: 'Select all',
-        copyPaste: 'Copy / paste',
+        copyPaste: 'Copy / paste at cursor',
+        duplicateDrag: 'Drag a copy',
+        zoomStep: 'Zoom in / out',
+        addNode: 'New node at the pointer',
+        generateSelection: 'Generate selected',
+        connect: 'Connect two selected',
+        duplicate: 'Duplicate nodes and links',
+        group: 'Group',
+        ungroup: 'Ungroup',
+        frame: 'Draw a frame',
+        tidy: 'Tidy canvas',
+        cut: 'Cut',
+        undo: 'Undo',
+        redo: 'Redo',
         deleteSelection: 'Delete selection',
         cancel: 'Cancel current action',
       },
@@ -1625,8 +1723,6 @@ export const enGenerationCommon = {
       collapsedAria: 'Collapsed group “{{name}}” · {{count}} nodes',
       nodeStackCount: '{{count}} nodes',
       dragWhole: 'Drag group',
-      connectInput: 'Connect into the whole group',
-      connectOutput: 'Connect from the whole group',
       aggregateInput: 'Group input',
       aggregateOutput: 'Group output',
       disconnectAggregate: 'Disconnect the whole group relationship',
@@ -1645,6 +1741,8 @@ export const enGenerationCommon = {
       menuCollapse: 'Collapse into a card',
       menuDissolve: 'Dissolve',
       menuDissolveHint: 'The frame goes; nodes and edges stay',
+      menuDelete: 'Delete',
+      menuDeleteHint: 'Removes the frame and everything in it',
       countPreview: '{{from}} → {{to}}',
       joinPreview: 'Release to make “{{name}}” hold {{count}}',
       leavePreview: 'Release to leave “{{name}}”, {{count}} remaining',
@@ -1741,6 +1839,10 @@ export const enGenerationCommon = {
         reason: 'This asset is too large to upload',
         hint: 'Local assets must first be turned into a publicly reachable URL, and this file exceeds the size limit of every available upload channel (HTTP 413) — Nomi tried them all. Retrying will not help: the same file hits the same ceiling every time. Compress or trim it (videos especially) and add it again, or connect a channel with a higher upload limit under Model Access. The technical details below name the asset and its size.',
       },
+      assetInvalid: {
+        reason: 'The reference asset itself is invalid',
+        hint: 'This reference asset failed the local check before sending: the file could not be read, its type could not be identified, or its content is not a real image or video (for example, a web page saved as .png). Nothing was sent and nothing was charged. Retrying the same file will not change the result — replace the reference on the canvas or re-import the original file, then retry. The technical details below name the file.',
+      },
       outboundBlocked: {
         reason: "Nomi's own network policy blocked the download",
         hint: 'This is not a provider outage and your generation did not fail — it most likely finished upstream, you already paid for it, and the result is still there. Nomi classified the download address as a private network and refused to fetch it. The usual cause is Clash / Surge / sing-box running in TUN (fake-IP) mode, where every domain resolves to a synthetic address like 198.18.x. Check Model Access > Network for a "Local proxy detected" line, then come back and use "Re-fetch result" to retrieve it for free. Do NOT regenerate — that charges you again. The technical details below name the address.',
@@ -1748,6 +1850,10 @@ export const enGenerationCommon = {
       outboundBlockedSubmit: {
         reason: "This generation was never sent - Nomi's own network policy stopped it first",
         hint: 'Not a single byte left your machine, so the provider was never called and **nothing was charged**. Nomi classified the endpoint as a private network. The usual cause is Clash / Surge / sing-box running in TUN (fake-IP) mode, where every domain resolves to a synthetic address like 198.18.x and Nomi could not confirm a proxy was running. Check Model Access > Network for a "Local proxy detected" line, then simply generate again - there is nothing to recover. If this is your own local backend, configure its full address as a provider endpoint. The technical details below name the address.',
+      },
+      outboundBlockedCredentialOrigin: {
+        reason: 'This generation was never sent: the key was about to go somewhere you did not confirm',
+        hint: 'Not a single byte left your machine, the provider was never called and **nothing was charged**. When you saved this key, Nomi bound it to the endpoint you confirmed at that moment, and this request was headed somewhere else - a key only ever goes where you have seen it go. If you really did change this provider\'s endpoint, open Model Access, find this connection and save the key again (that save is the new confirmation). If you did not change anything, look closer first: the technical details below name the bound address and the one this request tried.',
       },
       server: {
         reason: 'Provider error',
@@ -1826,6 +1932,8 @@ export const enGenerationCommon = {
   },
   shotConversion: {
     shot: 'Shot {{index}}',
+    firstFrame: 'First frame',
+    video: 'Video',
   },
   clipNode: {
     addMaterial: 'Add material',
@@ -1857,6 +1965,7 @@ export const enGenerationCommon = {
     outputClipTitle: 'Edited clip {{index}}',
     exporting: 'Exporting…',
     exportDownloadComplete: 'Exported {{count}} video files.',
+    exportToCanvasComplete: 'Exported {{count}} video nodes to canvas.',
     exportFailed: 'Export failed. Try again.',
     uploadFailed: 'The material could not be copied. Try importing it again.',
     retryUpload: 'Retry import',
@@ -1934,7 +2043,7 @@ export const enGenerationCommon = {
       evenFrames: 'Grab {{count}} Frames',
       filteredOut: 'Sensitivity is too high — every cut in this clip is filtered out.',
       relaxAction: 'Show {{count}}',
-      truncated: 'Too many cuts; kept the first {{count}}',
+      capped: 'This clip cuts fast ({{detected}} changes). Sensitivity was raised to {{threshold}} automatically, keeping the {{kept}} strongest — the whole clip is still covered. Drag the slider left for finer detail.',
       sensitivity: 'Sensitivity',
       hintMany: 'High · catches camera moves',
       hintFew: 'Low · hard cuts only',
@@ -1964,9 +2073,6 @@ export const enGenerationCommon = {
     },
   },
   spend: {
-    estimatedAmount: 'Estimated amount',
-    catalogUnpriced: 'Not priced in catalog',
-    catalogCredits: '{{amount}} credits (catalog quote)',
     agentNotice: 'Started by an AI assistant · Your approval is required before spending',
     agentNoticePlan: 'Started by an AI assistant · Your approval is required before generating',
     ignore: 'Ignore',
@@ -2004,6 +2110,8 @@ export const enGenerationCommon = {
     panel: 'Generation parameters panel',
     provider: 'Provider',
     untried: 'not tried yet',
+    // EN 串长 1.5–2 倍：'not listed now' 在这个下拉里实测被截成「not listed…」（zh/en 双轨真截图）。
+    unlisted: 'unlisted',
     noVendorConnected: 'No provider connected yet',
     connectVendorAction: 'Connect',
     hiddenModels: '{{count}} hidden · bring back in Settings',
@@ -2070,7 +2178,7 @@ export const enGenerationCommon = {
   },
   composerBarV1: {
     promptTools: 'Prompt helpers',
-    effects: 'Effects & prompt library',
+    effects: 'Prompt presets',
     seconds: '{{value}}s',
   },
   composer: {
@@ -2099,6 +2207,8 @@ export const enGenerationCommon = {
     generateReferencesFirst: 'Generate references before this shot',
     regenerate: 'Regenerate',
     variantCountAria: 'Outputs per run',
+    expandPrompt: 'Expand prompt',
+    collapsePrompt: 'Collapse prompt',
     variantCountTitle: 'Generate {{count}} per run',
     variantCountOption: '{{count}} outputs',
     generate: 'Generate',
@@ -2346,6 +2456,22 @@ export const enGenerationCommon = {
     aria: 'Optimize prompt with Nomi',
     running: 'Optimizing…',
   },
+  translator: {
+    intro: 'Translate the image/video generation prompt inside the triple quotes into {{target}}. Keep the meaning and every visual detail; copy proper nouns and parameters (such as 8k or --ar 16:9) as-is.',
+    targetEnglish: 'English',
+    targetChinese: 'Simplified Chinese',
+    placeholderRule: 'Placeholders like {{example}} stand for reference media. Keep each one exactly once, unchanged, at the matching place in the translation.',
+    outputRule: 'Keep the original line breaks. If the source does not end with a period, do not add one (it may be a fragment of a sentence). Output only the translation, with no explanation, quotation marks, or triple quotes.',
+    aria: 'Translate prompt (Chinese ↔ English; select text to translate only that part)',
+    running: 'Translating… (click to cancel)',
+    emptyReason: 'Write a prompt first',
+    nothingToTranslate: 'The selection has no text to translate',
+    emptyResult: 'No translation came back. The prompt was not changed.',
+    failed: 'Translation failed. The prompt was not changed.',
+    failedWithReason: 'Translation failed ({{reason}}). The prompt was not changed.',
+    placeholderMismatch: 'Media references in the translation did not match, so the prompt was left unchanged to keep your references.',
+    promptChanged: 'The prompt changed during translation, so nothing was replaced.',
+  },
   videoToolbar: {
     aria: 'Video actions',
     fullscreen: 'Fullscreen preview',
@@ -2564,6 +2690,7 @@ export const enGenerationCommon = {
       scriptReady: 'The script draft is ready for your review',
       storyboardReady: 'The storyboard is ready for your review',
       contractDeclined: 'This batch of generation was declined',
+      cancelled: 'This production was cancelled',
     },
     description: {
       submissionUnknown: 'The request may have reached the provider. Retrying could charge twice, so later work is paused at a safe boundary.',
@@ -2586,8 +2713,13 @@ export const enGenerationCommon = {
       scriptReady: 'Review and confirm the script first. No storyboard or paid model call starts before approval.',
       storyboardReady: 'Review and confirm the storyboard first. Once you confirm, Nomi lays it out and starts generating and billing.',
       contractDeclined: 'This decision is recorded. No generation task was submitted and no spend occurred. Revise the storyboard or scope to confirm a new batch of generation.',
+      cancelled: 'Nothing new will be submitted; finished outputs stay in this local project.',
     },
-    runTone: { working: 'Producing', attention: 'Approval needed', danger: 'Needs attention', success: 'Complete', neutral: 'Draft' },
+    playbook: { shotGeneration: 'Shot generation', brandPromo: 'Brand promo', unknown: 'Production' },
+    stage: {
+      brief: 'Brief', direction: 'Direction', script: 'Script', storyboard: 'Storyboard', build: 'Canvas',
+      generate: 'Generate', qa: 'Review', assemble: 'Rough cut', export: 'Export', unknown: 'Other stage',
+    },
     origin: { nomi: 'Nomi', external: 'external client' },
     runPanel: {
       aria: 'Current production status',
@@ -2621,7 +2753,7 @@ export const enGenerationCommon = {
     },
     runDetails: {
       stages: 'Stage progress',
-      stageCount: '{{completed}} / {{total}} complete',
+      stageCount: '{{completed}} / {{total}} stages done',
       authorized: 'Authorized',
       reserved: 'Reserved',
       actual: 'Settled',
@@ -2766,8 +2898,9 @@ export const enGenerationCommon = {
       ignore: 'Ignore',
       confirm: 'Generate {{count}} Shots',
     },
-    // P4 S5 canvas landing: placeholder three states + progress toast + group name + reconcile copy.
+    // P4 S5 canvas landing: queued / stopped badges for production nodes + group name + reconcile copy (generating / failed use the ordinary generation surfaces).
     canvasLanding: {
+      groupName: 'Shot group · {{name}}',
       groupFallbackName: 'Shot group',
       shotFallbackTitle: 'Shot {{shot}}',
       queued: 'Queued',
@@ -2776,9 +2909,6 @@ export const enGenerationCommon = {
       stoppedManual: 'Remaining shots stopped. Continue filming from here.',
       raiseBudget: 'Raise budget',
       continueRemaining: 'Continue remaining',
-      failedTitle: 'This shot didn\'t generate',
-      failedFallback: 'Generation failed. You can re-film this shot later.',
-      retry: 'Re-film shot',
       // P4 S6 rework/resume plain-language feedback (translated by structured result code — never a raw string).
       rework: {
         noPriorAttempt: 'This shot hasn\'t been generated yet — let it film first',
@@ -2830,13 +2960,6 @@ export const enGenerationCommon = {
     stillUpstream: 'The task is still running upstream. Try retrieving it again later.',
   },
   agentRuntime: {
-    unsupportedOperation: 'Unsupported operation “{{operation}}”',
-    lockedNode: '“{{node}}” is locked, so AI cannot {{action}}. Select the lock icon on the node to unlock it.',
-    editPrompt: 'edit its prompt',
-    deleteNode: 'delete it',
-    regenerateNode: 'generate it again',
-    addIncomingEdge: 'attach a new incoming reference',
-    approvalRequired: 'This operation requires approval in the confirmation panel; automatic approval is disabled.',
     shotTitle: 'Shot {{index}}',
     shotKeyframeTitle: 'Shot {{index}} keyframe',
     textModelHint: 'Stream text with the model connected in Settings',

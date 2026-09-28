@@ -1,0 +1,1877 @@
+{
+  "verbCount": 20,
+  "tools": [
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "canvas.read",
+      "description": "Read everything on the generation canvas: every node (id, kind, title, prompt, model, status), the reference links and groups, and the selection. Before any change to shots, links or groups, and whenever the user asks what is on the canvas or what is still waiting on them. Do not use it to read the script (read_script), the timeline (read_timeline) or the media library (look_at_media). It never changes anything. Takes no arguments. Every id you pass to a write verb comes from here; inventing an id is the most common way an edit fails. Nothing changes; it only reads.",
+      "effect": "read",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {},
+          "when": "Always call it with no arguments:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "look_at_canvas",
+      "nextAction": "none",
+      "profileReason": null,
+      "profiles": null,
+      "promptGuidelines": [
+        "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork."
+      ],
+      "promptSnippet": "Read everything on the generation canvas: every node (id, kind, title, prompt, model, status), the reference links and groups, and the selection.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "document.read",
+      "description": "Read the creation document as plain text: the whole document, or only the text the user has selected. Before editing the script, when splitting it into shots, and whenever the user says \"this\" or \"here\" (use scope selection — it is the only way to resolve those words). Not for shots or canvas content (look_at_canvas). An empty selection means ask, not guess. scope is full (default) or selection. Long text is truncated to the first 2000 lines or 50KB; the result says so when that happens. Nothing changes; it only reads.",
+      "effect": "read",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {},
+          "when": "Read the whole document:"
+        },
+        {
+          "arguments": {
+            "scope": "selection"
+          },
+          "when": "Resolve \"this part\":"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": {
+        "documentId": {
+          "description": "Which document to act on. Omit to use the project's active creation document.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "name": "read_script",
+      "nextAction": "none",
+      "profileReason": null,
+      "profiles": null,
+      "promptGuidelines": [
+        "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork."
+      ],
+      "promptSnippet": "Read the creation document as plain text: the whole document, or only the text the user has selected.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "description": "full (default) reads the whole document; selection reads only what the user selected.",
+            "enum": [
+              "full",
+              "selection"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "timeline.read",
+      "description": "Read the project timeline: fps, duration, playhead, every track, clip, text overlay and transition, plus the revision every edit must carry. Before edit_timeline, and when the user talks about a moment (\"the part around 0:30\" — pass startFrame and endFrame to read only that range). Not for canvas shots that are not on the timeline yet (look_at_canvas). Frames, not seconds: convert with the fps this verb returns. startFrame and endFrame are optional integer frames at the project fps; give both to read one range, neither to read the whole timeline (which is the only call that returns the revision). Nothing changes; it only reads.",
+      "effect": "read",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {},
+          "when": "Read the whole timeline and its revision:"
+        },
+        {
+          "arguments": {
+            "endFrame": 180,
+            "startFrame": 120
+          },
+          "when": "Look at the fourth to sixth second at 30fps:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "read_timeline",
+      "nextAction": "none",
+      "profileReason": null,
+      "profiles": null,
+      "promptGuidelines": [
+        "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork."
+      ],
+      "promptSnippet": "Read the project timeline: fps, duration, playhead, every track, clip, text overlay and transition, plus the revision every edit must carry.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "endFrame": {
+            "description": "Last frame of the range (exclusive), greater than startFrame.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "startFrame": {
+            "description": "First frame of the range, at the project fps.",
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "asset.read",
+      "description": "Search the project's media library, or read bounded technical facts (record, codec, frame-range usage, waveform buckets) about one asset. The user asks whether a kind of footage exists, or you need an asset id for a reference or a timeline edit. It reports container facts only and never describes what is visible or audible. Not for canvas nodes (look_at_canvas) or timeline clips (read_timeline). Give query, kinds and limit to search; give assetId alone to read one asset's record and facts; add startFrame and endFrame to validate a source-frame range; add waveform to read amplitude buckets for a seconds range. Nothing changes; it only reads.",
+      "effect": "read",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "kinds": [
+              "video"
+            ],
+            "query": "雨天"
+          },
+          "when": "Find rainy footage:"
+        },
+        {
+          "arguments": {
+            "assetId": "asset-1"
+          },
+          "when": "Read one asset's record and container facts:"
+        },
+        {
+          "arguments": {
+            "assetId": "asset-1",
+            "endFrame": 120,
+            "startFrame": 0
+          },
+          "when": "Validate source frames 0-120 of a clip:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": "media",
+      "mcpTransportFields": null,
+      "name": "look_at_media",
+      "nextAction": "none",
+      "profileReason": null,
+      "profiles": null,
+      "promptGuidelines": [
+        "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork."
+      ],
+      "promptSnippet": "Search the project's media library, or read bounded technical facts (record, codec, frame-range usage, waveform buckets) about one asset.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "assetId": {
+            "description": "Stable asset id from a look_at_media search, a canvas read or a timeline read — never a filename or path.",
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "endFrame": {
+            "description": "With assetId: last source frame (exclusive), greater than startFrame.",
+            "minimum": 1,
+            "type": "integer"
+          },
+          "kinds": {
+            "description": "Narrow a search to these media kinds.",
+            "items": {
+              "enum": [
+                "image",
+                "video",
+                "audio"
+              ],
+              "type": "string"
+            },
+            "maxItems": 3,
+            "type": "array"
+          },
+          "limit": {
+            "description": "Maximum search results; the host enforces a default and a cap.",
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "query": {
+            "description": "Free-text search over the media library.",
+            "maxLength": 200,
+            "type": "string"
+          },
+          "startFrame": {
+            "description": "With assetId: first source frame of the range to validate (asset frame rate, not project fps).",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "waveform": {
+            "additionalProperties": false,
+            "description": "With assetId: read peak and RMS amplitude buckets for one audio range.",
+            "properties": {
+              "buckets": {
+                "description": "How many amplitude buckets to return.",
+                "maximum": 256,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "endSeconds": {
+                "description": "End of the audio range, seconds; greater than startSeconds.",
+                "exclusiveMinimum": 0,
+                "type": "number"
+              },
+              "startSeconds": {
+                "description": "Start of the audio range, seconds from the asset start.",
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "generation.context.read",
+      "description": "Read the models the user has connected: each model's modes, parameters with allowed values, and reference slots. Before choosing a modelId or any parameter in draft_shots, and when the user asks which models can do something. It cannot connect a model or take an API key (start_model_setup). Never invent a modelId — use the exact strings returned here. kind (image, video or audio) narrows the catalog; modelId returns one model in full. Nothing changes; it only reads.",
+      "effect": "read",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "kind": "video"
+          },
+          "when": "Which models can make video:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": "models",
+      "mcpTransportFields": null,
+      "name": "list_models",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork."
+      ],
+      "promptSnippet": "Read the models the user has connected: each model's modes, parameters with allowed values, and reference slots.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "Only models that produce this kind of media.",
+            "enum": [
+              "image",
+              "video",
+              "audio"
+            ],
+            "type": "string"
+          },
+          "modelId": {
+            "description": "Catalog id of one model to read in full — the same modelId this verb returns and draft_shots takes.",
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": [
+        "export.read"
+      ],
+      "contractId": "generation.run.read",
+      "description": "Read one generation or export job: its stage, progress, result reference and what it has cost so far. The user asks whether something is done, what is still running, or what it cost; before cancel_job. It never starts, retries or reconciles provider work. Not for stopping a job (cancel_job). If a job id is unknown, say so — do not resubmit. jobId comes from the result of generate or export_video, or from look_at_canvas. Nothing changes; it only reads.",
+      "effect": "read",
+      "effectGroups": [
+        "job-status-cancel"
+      ],
+      "examples": [
+        {
+          "arguments": {
+            "jobId": "op-1"
+          },
+          "when": "Check a running job:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": "generation",
+      "mcpTransportFields": null,
+      "name": "check_job",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork."
+      ],
+      "promptSnippet": "Read one generation or export job: its stage, progress, result reference and what it has cost so far.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "jobId": {
+            "description": "The job id returned by generate or export_video, or shown on a canvas node.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "skill.read",
+      "description": "Read one installed skill's body so you can follow its method. The user names a skill, or the skills index in this prompt matches the task. Loading a skill grants no tool permission and runs nothing; to store a new one use save_skill. name is the skill name from the skills index. Nothing changes; it only reads.",
+      "effect": "read",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "name": "ugc-ad"
+          },
+          "when": "Load the UGC ad skill:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 30000
+      },
+      "internalGroup": "skills",
+      "mcpTransportFields": null,
+      "name": "read_skill",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Read one installed skill's body so you can follow its method.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "description": "Skill name exactly as listed in the skills index.",
+            "maxLength": 240,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "document.write",
+      "description": "Write finished prose into the creation document — at the cursor, in place of the selection, or at the end. The user asks you to write, rewrite, tighten or extend script text. Never write a diff, a summary of the change, or a plan to write later. Not for shot prompts (draft_shots). Read the selection first (read_script) unless the user told you exactly what to replace. content is the exact text; where is cursor, selection or end. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "content": "The rain had not stopped for three days.",
+            "where": "end"
+          },
+          "when": "Append a closing line:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": {
+        "documentId": {
+          "description": "Which document to act on. Omit to use the project's active creation document.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "name": "write_script",
+      "nextAction": "none",
+      "profileReason": null,
+      "profiles": null,
+      "promptGuidelines": [
+        "Write finished prose into the document, never a diff, a summary of your change, or a plan to write it later."
+      ],
+      "promptSnippet": "Write finished prose into the creation document — at the cursor, in place of the selection, or at the end.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "The exact text to write. Plain prose or Markdown, never a diff or a summary of the change.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "where": {
+            "description": "cursor inserts at the user's cursor; selection replaces the selected text; end appends to the document.",
+            "enum": [
+              "cursor",
+              "selection",
+              "end"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "content",
+          "where"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "generation.plan",
+      "description": "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots. Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create. It does not start generation and shows the user no card — call generate for that, unless the user said not to generate yet. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot). shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; ids from look_at_canvas. Pass operationId to revise a draft you already created; the host clamps values to the model's real limits and reports every clamp. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": [
+        "canvas-node-creation"
+      ],
+      "examples": [
+        {
+          "arguments": {
+            "shots": [
+              {
+                "candidate": {
+                  "modelId": "image-1",
+                  "providerId": "apimart"
+                },
+                "prompt": "sunrise over the sea, wide shot, warm light",
+                "taskKind": "text_to_image",
+                "title": "Opening"
+              }
+            ]
+          },
+          "when": "One opening still:"
+        },
+        {
+          "arguments": {
+            "operationId": "op-1",
+            "shots": [
+              {
+                "prompt": "夜景，霓虹灯下的街道",
+                "shotId": "shot-3"
+              }
+            ]
+          },
+          "when": "Change one existing shot's prompt:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": "generation",
+      "mcpTransportFields": null,
+      "name": "draft_shots",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork.",
+        "High-quality generation prompt, in the SAME language as the user (Chinese user → Chinese prompt). Write it as a STRUCTURED skeleton, not a run-on sentence:\n- character/scene reference card: stable appearance/environment description + unified style keywords (neutral full-body pose for a character, empty wide establishing shot for a scene; no plot action).\n- image / keyframe shot: scene·time·light → subject·action·expression → shot language (wide / close-up / low-angle…) → style keywords.\n- video shot: camera move (push / pull / pan / track…) → on-screen action progression → rhythm & duration feel; do NOT restate the static keyframe description.\nKeep the same subject's appearance description consistent across shots. agent-artifact nodes carry no prompt: send an empty string."
+      ],
+      "promptSnippet": "Create or update draft shots on the canvas. This is the only verb that creates image, video, audio or 3D shots.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "candidate": {
+            "additionalProperties": true,
+            "description": "Default catalog candidate for these shots.",
+            "properties": {
+              "modelId": {
+                "description": "Model id from list_models.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "providerId": {
+                "description": "Provider id from list_models.",
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "providerId",
+              "modelId"
+            ],
+            "type": "object"
+          },
+          "operationId": {
+            "description": "The operationId an earlier draft_shots call returned, when updating its shots.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "shots": {
+            "description": "The shots to create or update.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "candidate": {
+                  "additionalProperties": true,
+                  "description": "Catalog candidate identity when known.",
+                  "properties": {
+                    "modelId": {
+                      "description": "Model id from list_models.",
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "providerId": {
+                      "description": "Provider id from list_models.",
+                      "minLength": 1,
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "providerId",
+                    "modelId"
+                  ],
+                  "type": "object"
+                },
+                "durationSec": {
+                  "description": "Video clip length in seconds; omit for stills.",
+                  "exclusiveMinimum": 0,
+                  "maximum": 600,
+                  "type": "number"
+                },
+                "modeId": {
+                  "description": "Mode id of that model from list_models.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "modelId": {
+                  "description": "Catalog model id from list_models; omit for the user's default.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "parameters": {
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ]
+                  },
+                  "description": "Parameter values the model's profile declares; the host clamps them to real limits and reports every clamp.",
+                  "type": "object"
+                },
+                "prompt": {
+                  "description": "Generation prompt in the user's language (Chinese user → Chinese prompt).",
+                  "maxLength": 8000,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "references": {
+                  "description": "Asset ids (from look_at_media) or shot ids (from look_at_canvas or this call) used as references.",
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "maxItems": 30,
+                  "type": "array"
+                },
+                "role": {
+                  "description": "anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot.",
+                  "enum": [
+                    "anchor",
+                    "shot"
+                  ],
+                  "type": "string"
+                },
+                "shotId": {
+                  "description": "Pass an existing shot id to update that draft; omit to create a new shot.",
+                  "maxLength": 160,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "taskKind": {
+                  "description": "What to produce; omit to infer from prompt, references and durationSec.",
+                  "enum": [
+                    "text_to_image",
+                    "image_edit",
+                    "text_to_video",
+                    "image_to_video"
+                  ],
+                  "type": "string"
+                },
+                "title": {
+                  "description": "Short human title for this shot (e.g. \"日落前的一分钟\"). Shown on the canvas node and on the spend confirmation line — write it in the user's language.",
+                  "maxLength": 120,
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "prompt"
+              ],
+              "type": "object"
+            },
+            "maxItems": 40,
+            "minItems": 1,
+            "type": "array"
+          },
+          "taskKind": {
+            "description": "What to produce for every shot; omit to infer per shot.",
+            "enum": [
+              "text_to_image",
+              "image_edit",
+              "text_to_video",
+              "image_to_video"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "shots"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "generation.plan",
+      "description": "Put the named draft shots in front of the user as one priced confirmation card. Generation starts only when the user approves the card in Nomi. Right after draft_shots, when the user asked to generate; or when they ask to generate existing drafts (\"run all six\"). Never to get a price — look_at_canvas already carries unit prices. Never when the user said \"don't generate yet\". It cannot approve, start, or spend anything itself; to change a shot first use draft_shots. operationId is the id returned by draft_shots; shotIds optionally limits the card to some of its shots. The draft lands on the canvas and Nomi shows the user a priced confirmation card in its own panel; nothing is generated and nothing is spent until the user approves it there. Never say generation has started — say what the card shows.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "operationId": "op-1"
+          },
+          "when": "Show the card for a draft:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": "generation",
+      "mcpTransportFields": null,
+      "name": "generate",
+      "nextAction": "user_sees_spend_card",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Put the named draft shots in front of the user as one priced confirmation card. Generation starts only when the user approves the card in Nomi.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "operationId": {
+            "description": "The operationId returned by draft_shots.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "shotIds": {
+            "description": "Only these shots of the draft; omit for all.",
+            "items": {
+              "maxLength": 160,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 40,
+            "type": "array"
+          }
+        },
+        "required": [
+          "operationId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "canvas.write",
+      "description": "Change how existing nodes relate and sit on the canvas: connect reference links or tidy the layout. The user asks to connect, link or tidy. It cannot create shots or any generating node — such a request is rejected and draft_shots is named instead. Not for hand-authored artifacts (make_artifact) or staging and camera references (stage_shot). links[] (fromId, toId, role) connect existing nodes; tidy true re-lays out the canvas (optionally one categoryId). All ids from look_at_canvas. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": [
+        "canvas-node-creation"
+      ],
+      "examples": [
+        {
+          "arguments": {
+            "links": [
+              {
+                "fromId": "node-char",
+                "role": "character_ref",
+                "toId": "node-shot-2"
+              }
+            ]
+          },
+          "when": "Use the character sheet as a reference for a shot:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "arrange_canvas",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "Read before you write: every id you pass to a write verb comes from a read in this conversation, never from memory or guesswork.",
+        "Every canvas write is a reversible local edit: describe what changed in your reply using the returned userSees line rather than claiming more."
+      ],
+      "promptSnippet": "Change how existing nodes relate and sit on the canvas: connect reference links or tidy the layout.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "categoryId": {
+            "description": "With tidy: only this canvas category.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "links": {
+            "description": "Reference links to add between existing nodes.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "fromId": {
+                  "description": "Source node id.",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "role": {
+                  "description": "Reference-slot semantics: character_ref (cast sheet feeds keyframe), style_ref (scene/style feeds keyframe), composition_ref, first_frame (keyframe image feeds the video's first frame; when the source is a VIDEO node this means last-frame relay and must be opted-in by the user), last_frame, reference (generic). Omit for a generic reference edge. Only connect a reference the TARGET model actually supports — see each model's per-mode reference slots in the available-models list; text/shot/output nodes cannot be a reference source. Unsupported edges are skipped and reported back in skippedEdges.",
+                  "enum": [
+                    "reference",
+                    "first_frame",
+                    "last_frame",
+                    "style_ref",
+                    "character_ref",
+                    "composition_ref"
+                  ],
+                  "type": "string"
+                },
+                "toId": {
+                  "description": "Target node id.",
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "fromId",
+                "toId"
+              ],
+              "type": "object"
+            },
+            "maxItems": 48,
+            "type": "array"
+          },
+          "tidy": {
+            "description": "Re-lay out the canvas.",
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "canvas.write",
+      "description": "Put a hand-authored artifact on the canvas — SVG, HTML, Markdown, a table or plain text you wrote yourself. The user wants a chart, table, mood board, comparison sheet or diagram that you can author directly without a generation model. Not for images or video that need a model (draft_shots), not for links or layout (arrange_canvas), not for staging references (stage_shot). fileType, title and content; the content is the whole file. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": [
+        "canvas-node-creation"
+      ],
+      "examples": [
+        {
+          "arguments": {
+            "content": "| Shot | Content |\n|---|---|\n| 1 | Opening |",
+            "fileType": "table",
+            "title": "Shot comparison"
+          },
+          "when": "A shot comparison table:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "make_artifact",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "Every canvas write is a reversible local edit: describe what changed in your reply using the returned userSees line rather than claiming more."
+      ],
+      "promptSnippet": "Put a hand-authored artifact on the canvas — SVG, HTML, Markdown, a table or plain text you wrote yourself.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "The whole artifact content.",
+            "minLength": 1,
+            "type": "string"
+          },
+          "fileType": {
+            "description": "Which kind of file the content is.",
+            "enum": [
+              "svg",
+              "html",
+              "markdown",
+              "table",
+              "text"
+            ],
+            "type": "string"
+          },
+          "title": {
+            "description": "Node title in the user's language.",
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "fileType",
+          "title",
+          "content"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "canvas.write",
+      "description": "Attach a staging (blocking) or camera-move reference to one shot; Nomi renders a gray 3D reference for it. The user asks for a push-in, a two-shot, a specific blocking, or \"show me the camera move\". It does not generate the shot itself and it is not a prompt edit (draft_shots). Not for links (arrange_canvas) or hand-made artifacts (make_artifact). shotId from look_at_canvas or draft_shots; exactly one of staging (characters, layout, camera, environment, customBlocking) or cameraMove (move, customMove, speed, subjectPose). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": [
+        "canvas-node-creation"
+      ],
+      "examples": [
+        {
+          "arguments": {
+            "cameraMove": {
+              "move": "push_in"
+            },
+            "shotId": "shot-4"
+          },
+          "when": "Push in on a shot:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "stage_shot",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "shotClientId: this turn's create_canvas_nodes clientId or existing shot/keyframe/video id. Render connects as composition_ref; omit id for standalone reference.",
+        "Stage 1–6 characters using precise 3D vocabulary, or supply customBlocking. Default pose standing; squat=deep squat, crouch=upright half-crouch, single-knee=proposal kneel, cheer=arms up; hands-on-hips, point and wave are literal poses.",
+        "layout: side-by-side=shoulder-to-shoulder row; line=front-to-back queue; facing=two facing each other; behind=one ahead of another; circle=around a center.",
+        "sceneTemplate supplies a gray backdrop: street has roads/lane lines/sidewalk/buildings/trees/lamps/cars; room has three walls/bed/table/sofa/ceiling light. Use it for environment and scale; street needs environment=day for a lit sky. Props are individual objects; prefer sceneTemplate for whole backdrops. Positions are [x,z] ground meters relative to characters at origin; omitted props auto-spread to their right.",
+        "For out-of-vocabulary multi-tier/over-the-shoulder/prop-relative/reference-image compositions, use customBlocking film terms, never a wrong layout/pose. It injects a KEYFRAME IMAGE prompt directive, not a 3D render, and is less precise. With customBlocking, characters/layout/camera may be omitted; never omit both characters and customBlocking.",
+        "shotClientId: this turn's clientId or existing VIDEO id. Render attaches as video reference; model copies camera path, not gray content.",
+        "Use one dominant move: orbit_left/right circles ~300°; push_in/pull_out dollies toward/away; crane_up/down booms; track_left/right tracks laterally; arc_left/right arcs ~90°; zoom_in/out changes FOV with camera static; dolly_zoom pulls back while zooming in, keeping subject size constant as background stretches (Hitchcock/vertigo).",
+        "Use enum move only when it matches the intent. For whip-pan, handheld follow, compound/sequenced moves (push then whip to window) or reference-video matching, omit move and describe customMove with film terms. This injects a video-prompt cinematography directive, not a 3D render, and is less precise. Set move OR customMove for the same intent.",
+        "Subject pose defaults standing (also sit/walk). street/room sceneTemplate: gray backdrop; camera moves around subject at origin. props: individual objects. Prop [x,z] is ground meters; omission auto-spreads right of subject."
+      ],
+      "promptSnippet": "Attach a staging (blocking) or camera-move reference to one shot; Nomi renders a gray 3D reference for it.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "cameraMove": {
+            "additionalProperties": false,
+            "description": "Camera-motion reference: move or customMove is required.",
+            "properties": {
+              "customMove": {
+                "description": "Out-of-vocabulary cinematography, injected into video prompt; excludes move.",
+                "minLength": 1,
+                "type": "string"
+              },
+              "move": {
+                "description": "One dominant vocabulary camera move; otherwise use customMove.",
+                "enum": [
+                  "orbit_left",
+                  "orbit_right",
+                  "push_in",
+                  "pull_out",
+                  "crane_up",
+                  "crane_down",
+                  "track_left",
+                  "track_right",
+                  "arc_left",
+                  "arc_right",
+                  "zoom_in",
+                  "zoom_out",
+                  "dolly_zoom"
+                ],
+                "type": "string"
+              },
+              "props": {
+                "description": "Placed gray-model props; use sceneTemplate for a full backdrop.",
+                "items": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "kind": {
+                      "description": "Gray-model prop kind.",
+                      "enum": [
+                        "car",
+                        "building",
+                        "tree",
+                        "streetlamp",
+                        "wall",
+                        "suv",
+                        "bus",
+                        "bicycle",
+                        "scooter",
+                        "sofa",
+                        "diningTable",
+                        "fridge",
+                        "washingMachine",
+                        "trashBins",
+                        "atm",
+                        "backpack"
+                      ],
+                      "type": "string"
+                    },
+                    "position": {
+                      "description": "Ground [x,z] meters, relative to the subject at origin.",
+                      "items": {
+                        "type": "number"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "type": "array"
+                    },
+                    "rotationY": {
+                      "description": "Yaw in degrees.",
+                      "type": "number"
+                    },
+                    "scale": {
+                      "description": "Uniform scale (0.1–10, default 1).",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 12,
+                "type": "array"
+              },
+              "sceneTemplate": {
+                "description": "Gray backdrop: street or room; environment=day lights the street.",
+                "enum": [
+                  "street",
+                  "room"
+                ],
+                "type": "string"
+              },
+              "shot": {
+                "description": "Framing of the move (wide / medium / close). Default medium.",
+                "enum": [
+                  "wide",
+                  "medium",
+                  "close"
+                ],
+                "type": "string"
+              },
+              "speed": {
+                "description": "Move speed → clip duration (slow≈8s, medium≈5s, fast≈3s). Default medium.",
+                "enum": [
+                  "slow",
+                  "medium",
+                  "fast"
+                ],
+                "type": "string"
+              },
+              "subjectPose": {
+                "description": "Subject body-pose preset; default standing.",
+                "enum": [
+                  "standing",
+                  "t-pose",
+                  "walk",
+                  "run",
+                  "sit",
+                  "squat",
+                  "crouch",
+                  "single-knee",
+                  "double-knee",
+                  "hands-on-hips",
+                  "point",
+                  "wave",
+                  "cheer"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "shotId": {
+            "description": "The shot to attach the reference to.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "staging": {
+            "additionalProperties": false,
+            "description": "Blocking reference: characters or customBlocking is required.",
+            "properties": {
+              "camera": {
+                "additionalProperties": true,
+                "properties": {
+                  "angle": {
+                    "description": "Reference camera angle.",
+                    "enum": [
+                      "front",
+                      "three-quarter",
+                      "side",
+                      "back"
+                    ],
+                    "type": "string"
+                  },
+                  "height": {
+                    "description": "low = low-angle look up; high = high-angle look down; overhead = top-down.",
+                    "enum": [
+                      "eye",
+                      "low",
+                      "high",
+                      "overhead"
+                    ],
+                    "type": "string"
+                  },
+                  "shot": {
+                    "description": "Reference framing.",
+                    "enum": [
+                      "wide",
+                      "medium",
+                      "close"
+                    ],
+                    "type": "string"
+                  }
+                },
+                "type": "object"
+              },
+              "characters": {
+                "description": "1–6 staged characters, or use customBlocking.",
+                "items": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "facing": {
+                      "description": "Facing direction. toward = face the partner / circle center.",
+                      "enum": [
+                        "toward",
+                        "away",
+                        "camera",
+                        "left",
+                        "right"
+                      ],
+                      "type": "string"
+                    },
+                    "name": {
+                      "description": "Character label in the user's language (e.g. '林夏' / '角色A').",
+                      "type": "string"
+                    },
+                    "pose": {
+                      "description": "Body-pose preset; default standing.",
+                      "enum": [
+                        "standing",
+                        "t-pose",
+                        "walk",
+                        "run",
+                        "sit",
+                        "squat",
+                        "crouch",
+                        "single-knee",
+                        "double-knee",
+                        "hands-on-hips",
+                        "point",
+                        "wave",
+                        "cheer"
+                      ],
+                      "type": "string"
+                    }
+                  },
+                  "type": "object"
+                },
+                "maxItems": 6,
+                "type": "array"
+              },
+              "crowd": {
+                "additionalProperties": true,
+                "description": "Optional background crowd grid behind the main characters.",
+                "properties": {
+                  "columns": {
+                    "description": "Crowd column count.",
+                    "type": "integer"
+                  },
+                  "rows": {
+                    "description": "Crowd row count.",
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "rows",
+                  "columns"
+                ],
+                "type": "object"
+              },
+              "customBlocking": {
+                "description": "Composition outside the vocabulary, injected into the keyframe prompt.",
+                "type": "string"
+              },
+              "environment": {
+                "enum": [
+                  "studio",
+                  "day",
+                  "night"
+                ],
+                "type": "string"
+              },
+              "layout": {
+                "description": "Layout: side-by-side is a row; line is a front-to-back queue.",
+                "enum": [
+                  "solo",
+                  "facing",
+                  "side-by-side",
+                  "line",
+                  "behind",
+                  "circle"
+                ],
+                "type": "string"
+              },
+              "props": {
+                "description": "Placed gray-model props; use sceneTemplate for a full backdrop.",
+                "items": {
+                  "additionalProperties": true,
+                  "properties": {
+                    "kind": {
+                      "description": "Gray-model prop kind.",
+                      "enum": [
+                        "car",
+                        "building",
+                        "tree",
+                        "streetlamp",
+                        "wall",
+                        "suv",
+                        "bus",
+                        "bicycle",
+                        "scooter",
+                        "sofa",
+                        "diningTable",
+                        "fridge",
+                        "washingMachine",
+                        "trashBins",
+                        "atm",
+                        "backpack"
+                      ],
+                      "type": "string"
+                    },
+                    "position": {
+                      "description": "Ground [x,z] meters, relative to the subject at origin.",
+                      "items": {
+                        "type": "number"
+                      },
+                      "maxItems": 2,
+                      "minItems": 2,
+                      "type": "array"
+                    },
+                    "rotationY": {
+                      "description": "Yaw in degrees.",
+                      "type": "number"
+                    },
+                    "scale": {
+                      "description": "Uniform scale (0.1–10, default 1).",
+                      "type": "number"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "type": "object"
+                },
+                "maxItems": 12,
+                "type": "array"
+              },
+              "sceneTemplate": {
+                "description": "Gray backdrop: street or room; environment=day lights the street.",
+                "enum": [
+                  "street",
+                  "room"
+                ],
+                "type": "string"
+              }
+            },
+            "type": "object"
+          }
+        },
+        "required": [
+          "shotId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "timeline.write",
+      "description": "Apply one transaction of timeline operations (move, trim, split, ripple, transition, text, audio) against the revision you read. The user asks to cut, trim, reorder, or add captions or transitions on the timeline. Not without a fresh read_timeline — a stale revision is rejected and resending it cannot succeed. Not for shot content (draft_shots). To revert use undo. baseRevision from read_timeline, a one-line summary, and 1-128 operations in frames. Valid operation kinds: move, remove, split, trim, source-window, ripple, transition, text, audio. The user sees the plan highlighted with a review card before it applies (in full-auto mode it applies and the result says so). The edit is reversible.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "baseRevision": "revision-1",
+            "operations": [
+              {
+                "clipId": "clip-1",
+                "kind": "move",
+                "startFrame": 0
+              }
+            ],
+            "summary": "Move the opening clip"
+          },
+          "when": "Move the opening clip to the start:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": "timeline",
+      "mcpTransportFields": null,
+      "name": "edit_timeline",
+      "nextAction": "user_sees_review_card",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": [
+        "Frames, not seconds: every timeline position and duration is an integer frame count at the fps read_timeline returns.",
+        "Always plan against a fresh revision: read the timeline, build the plan from what you just read, and pass that same revision back as baseRevision."
+      ],
+      "promptSnippet": "Apply one transaction of timeline operations (move, trim, split, ripple, transition, text, audio) against the revision you read.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "baseRevision": {
+            "description": "The revision returned by read_timeline; the edit applies only if it is still current.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "operations": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "action": {
+                  "description": "[for transition, text]",
+                  "enum": [
+                    "set",
+                    "remove",
+                    "add",
+                    "edit",
+                    "style",
+                    "time"
+                  ],
+                  "type": "string"
+                },
+                "atFrame": {
+                  "description": "[for split]",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "audio": {
+                  "additionalProperties": false,
+                  "description": "[for clip-audio]",
+                  "properties": {
+                    "fadeInFrames": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "fadeOutFrames": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "gainDb": {
+                      "type": "number"
+                    },
+                    "muted": {
+                      "type": "boolean"
+                    }
+                  },
+                  "type": "object"
+                },
+                "clipId": {
+                  "description": "[for move, remove, split, trim, source-window, text, clip-audio]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "clipIds": {
+                  "description": "[for remove]",
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "deltaFrame": {
+                  "description": "[for trim, ripple]",
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "durationFrames": {
+                  "description": "[for transition]",
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "edge": {
+                  "description": "[for trim]",
+                  "enum": [
+                    "left",
+                    "right"
+                  ],
+                  "type": "string"
+                },
+                "endFrame": {
+                  "description": "[for text]",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "fromClipId": {
+                  "description": "[for transition]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "fromFrame": {
+                  "description": "[for ripple]",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "id": {
+                  "description": "[for text]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "includeText": {
+                  "description": "[for ripple]",
+                  "type": "boolean"
+                },
+                "kind": {
+                  "description": "Action; field annotations identify applicable values.",
+                  "enum": [
+                    "move",
+                    "remove",
+                    "split",
+                    "trim",
+                    "source-window",
+                    "ripple",
+                    "transition",
+                    "text",
+                    "clip-audio"
+                  ],
+                  "type": "string"
+                },
+                "rightClipId": {
+                  "description": "[for split]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "ripple": {
+                  "description": "[for remove]",
+                  "type": "boolean"
+                },
+                "sourceEndFrame": {
+                  "description": "[for source-window]",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "sourceNodeId": {
+                  "description": "[for text]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "sourceStartFrame": {
+                  "description": "[for source-window]",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "startFrame": {
+                  "description": "[for move, text]",
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "style": {
+                  "description": "[for text]",
+                  "enum": [
+                    "caption",
+                    "title"
+                  ],
+                  "type": "string"
+                },
+                "targetTrackId": {
+                  "description": "[for move]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "text": {
+                  "description": "[for text]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "toClipId": {
+                  "description": "[for transition]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "trackId": {
+                  "description": "[for ripple]",
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": {
+                  "description": "[for transition]",
+                  "enum": [
+                    "cut",
+                    "dissolve",
+                    "fade",
+                    "match_cut",
+                    "whip_pan"
+                  ],
+                  "type": "string"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
+            "maxItems": 128,
+            "minItems": 1,
+            "type": "array"
+          },
+          "summary": {
+            "maxLength": 500,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "baseRevision",
+          "summary",
+          "operations"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "timeline.write",
+      "description": "Revert one timeline change you made, by the undoToken its result returned. The user says undo, go back, or that the last change was wrong. It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here. undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "expectedRevision": "revision-2",
+            "undoToken": "undo-1"
+          },
+          "when": "Revert the last plan:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": "timeline",
+      "mcpTransportFields": null,
+      "name": "undo",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Revert one timeline change you made, by the undoToken its result returned.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "expectedRevision": {
+            "description": "Current timeline revision from read_timeline.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "undoToken": {
+            "description": "The undoToken returned by the write you are reverting.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "undoToken",
+          "expectedRevision"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "canvas.delete",
+      "description": "Delete exact nodes (shots, artifacts, director references) from the canvas. The user names what to delete. Never to clean up on your own initiative (arrange_canvas tidies without removing); never for nodes you did not read in look_at_canvas. nodeIds are exact current ids from look_at_canvas; locked nodes and stale ids are rejected. The user always sees a confirmation card first, in every approval mode; once applied it cannot be undone by Nomi.",
+      "effect": "irreversible",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "nodeIds": [
+              "node-a",
+              "node-b"
+            ]
+          },
+          "when": "Delete two nodes the user pointed at:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": "maintenance",
+      "mcpTransportFields": null,
+      "name": "delete_from_canvas",
+      "nextAction": "user_sees_confirm_card",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Delete exact nodes (shots, artifacts, director references) from the canvas.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "nodeIds": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "maxItems": 24,
+            "minItems": 1,
+            "type": "array"
+          },
+          "reason": {
+            "maxLength": 300,
+            "type": "string"
+          }
+        },
+        "required": [
+          "nodeIds"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "export.write",
+      "description": "Start exporting the timeline to an MP4 file at one exact revision. The user asks to export, render out or save the video. Not before reading the current timeline (read_timeline); stale revisions and empty timelines are rejected. To stop a running export use cancel_job; to follow it use check_job. expectedRevision from read_timeline; outputName, aspectRatio, resolution and quality are optional. After the user confirms, the job runs and can be followed with the matching status tool; it cannot be undone.",
+      "effect": "irreversible",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "expectedRevision": "revision-3",
+            "resolution": "1080p"
+          },
+          "when": "Export at 1080p:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": "media",
+      "mcpTransportFields": null,
+      "name": "export_video",
+      "nextAction": "job_running",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Start exporting the timeline to an MP4 file at one exact revision.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "aspectRatio": {
+            "description": "Output aspect ratio.",
+            "enum": [
+              "16:9",
+              "9:16",
+              "1:1",
+              "4:5",
+              "3:4",
+              "4:3",
+              "21:9"
+            ],
+            "type": "string"
+          },
+          "expectedRevision": {
+            "description": "The timeline revision from read_timeline.",
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "outputName": {
+            "description": "File name without extension.",
+            "maxLength": 120,
+            "minLength": 1,
+            "type": "string"
+          },
+          "quality": {
+            "description": "Encoding quality preset.",
+            "enum": [
+              "small",
+              "standard",
+              "high"
+            ],
+            "type": "string"
+          },
+          "resolution": {
+            "description": "Output resolution.",
+            "enum": [
+              "720p",
+              "1080p"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "expectedRevision"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": [
+        "generation.control"
+      ],
+      "contractId": "export.write",
+      "description": "Cancel one running generation or export job. The user asks to stop it. Not for drafts (delete_from_canvas) and not for cards (the user closes them). Read it first with check_job; credit already spent is not refunded. jobId from generate, export_video, check_job or look_at_canvas. The user always sees a confirmation card first, in every approval mode; once applied it cannot be undone by Nomi.",
+      "effect": "irreversible",
+      "effectGroups": [
+        "job-status-cancel"
+      ],
+      "examples": [
+        {
+          "arguments": {
+            "jobId": "export-1"
+          },
+          "when": "Stop a running export:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": "media",
+      "mcpTransportFields": null,
+      "name": "cancel_job",
+      "nextAction": "user_sees_confirm_card",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Cancel one running generation or export job.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "jobId": {
+            "description": "The job to cancel.",
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "jobId"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "skill.write",
+      "description": "Save a validated skill package to the user's library. The user asks to save this way of working as a skill. Not for one-off instructions; to follow an existing skill use read_skill. dirName is an ASCII slug; skillMarkdown is the whole SKILL.md (frontmatter plus body). The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). Nothing is generated and nothing is spent.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "dirName": "talking-head-cut",
+            "skillMarkdown": "---\nname: talking-head-cut\ndescription: Cut a talking head.\n---\n1. Read the transcript."
+          },
+          "when": "Save a skill:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": "skills",
+      "mcpTransportFields": null,
+      "name": "save_skill",
+      "nextAction": "none",
+      "profileReason": "mcpHandwrittenTransport",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Save a validated skill package to the user's library.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "dirName": {
+            "description": "Directory slug for the skill (ASCII letters, digits, . _ -).",
+            "maxLength": 160,
+            "minLength": 1,
+            "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$",
+            "type": "string"
+          },
+          "skillMarkdown": {
+            "description": "The complete SKILL.md content, frontmatter included.",
+            "maxLength": 1048576,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "dirName",
+          "skillMarkdown"
+        ],
+        "type": "object"
+      }
+    },
+    {
+      "aliasBoundInput": null,
+      "alsoCovers": null,
+      "contractId": "model.setup.open",
+      "description": "Open Nomi's model settings for one provider so the user can connect it. The user asks to connect, add or set up a model or provider. It never accepts, asks for, or stores an API key; keys are typed by the user in that panel only. To see what is already connected use list_models. provider is an optional hint (free text is fine). A Nomi panel opens for the user; this call stores nothing by itself.",
+      "effect": "reversible_local",
+      "effectGroups": null,
+      "examples": [
+        {
+          "arguments": {
+            "provider": "DeepSeek"
+          },
+          "when": "Connect DeepSeek:"
+        }
+      ],
+      "execution": {
+        "timeoutMs": 60000
+      },
+      "internalGroup": null,
+      "mcpTransportFields": null,
+      "name": "start_model_setup",
+      "nextAction": "user_sees_panel",
+      "profileReason": "headlessHost",
+      "profiles": [
+        "internal"
+      ],
+      "promptGuidelines": null,
+      "promptSnippet": "Open Nomi's model settings for one provider so the user can connect it.",
+      "publishedJsonSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "provider": {
+            "description": "Provider name hint, e.g. DeepSeek or Anthropic.",
+            "maxLength": 80,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      }
+    }
+  ]
+}

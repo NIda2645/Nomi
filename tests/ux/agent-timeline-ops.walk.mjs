@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 // R13/R16 · 设计合同 §2.6：剪辑面里「让 Nomi 改时间轴」的完整闭环，走真实 loopback Agent 链——
 // 选中片段 → Agent 提计划 → 时间轴高亮（尚未落盘）→ 介入槽审批卡「应用这次」→ 收据 toast → 撤销。
+//
+// 2026-09-18（T-ED-02）：模型可见动词早就收敛成 20 个（`edit_timeline` / `undo`），而这条走查还在
+// 断言 `propose_edit_plan` / `apply_edit_plan` 那套**传输层方法名**——于是它一直红在第一步，
+// 「剪辑面的 Agent 能不能改时间轴」实际上没人在看。锚点跟着真实工具面走，并顺手钉住那条回执：
+// 卡答完、改动落盘之后，模型收到的 `User sees: …` 必须说「已经应用」，不许再说「一张复审卡在问用户」
+// ——后者正是 2026-09-12 用户撞到的那句（「它说要确认卡、卡没出现、也没劈」）。
 // 三类新 op（transition / text / audio）在第二轮同一条 propose→apply→undo 链上一起验。
 // 零额度：文本模型是本机 loopback fixture，无生成、无解码、隔离 profile。
 // Run: pnpm run build && node tests/ux/agent-timeline-ops.walk.mjs
@@ -128,12 +134,14 @@ async function proposePlan({ prompt, readToolId, planToolId, plan, doneText }) {
   await input.fill(prompt)
   await clickOrFail(win.locator(`${PREVIEW_PANEL} ${COMPOSER_SEND}`), `发送剪辑指令：${prompt}`)
   const readWire = await recorded(readCall.received, `${planToolId} read_timeline request`)
+  // 模型面是 20 个动词：改时间轴叫 `edit_timeline`，撤回叫 `undo`。
+  // `propose_edit_plan` / `apply_edit_plan` / `undo_timeline_edit` 是**传输层**的方法词表，模型看不到它们。
   expect((readWire.body.tools ?? []).map((tool) => tool.function.name), 'The preview surface must advertise the timeline write chain')
-    .toEqual(expect.arrayContaining(['read_timeline', 'propose_edit_plan', 'apply_edit_plan', 'undo_timeline_edit']))
+    .toEqual(expect.arrayContaining(['read_timeline', 'edit_timeline', 'undo']))
   const planWire = await recorded(planCall.received, `${planToolId} plan request`)
   planCall.release({
-    type: 'tool', id: planToolId, name: 'apply_edit_plan',
-    args: { ...plan, baseRevision: revisionFromToolResult(planWire.body, readToolId) },
+    type: 'tool', id: planToolId, name: 'edit_timeline',
+    args: { summary: plan.summary, operations: plan.operations, baseRevision: revisionFromToolResult(planWire.body, readToolId) },
   })
   return settled
 }
@@ -163,9 +171,9 @@ try {
   const timelinePanel = win.locator('.workbench-preview .workbench-timeline').first()
   await expect(timelinePanel, '预览时间轴未出现').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
   const agent = win.locator(PREVIEW_PANEL)
-  // 收起态叫回 Nomi 的唯一入口是最右侧图标条（合同 §2.1）；旧的浮动胶囊已删。
-  const assistantRail = win.locator('[data-testid="editing-surface-assistant"] .workbench-panel-rail')
-  if (await assistantRail.count()) await clickOrFail(assistantRail, '从图标条展开 Nomi')
+  // 收起态叫回 Nomi 的唯一入口是顶栏角标（09-01 定稿 §11.2；与它重复的右侧竖条 2026-09-25 已删）。
+  const topbarBadge = win.locator('[data-agent-topbar-badge="true"]')
+  if (await topbarBadge.count()) await clickOrFail(topbarBadge.first(), '从顶栏角标展开 Nomi')
   await expect(agent, '剪辑面常驻 Agent 未挂载').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
   await chooseAssistantModel(win, FIXTURE_TEXT_MODEL_LABEL, PREVIEW_PANEL)
 
@@ -186,11 +194,22 @@ try {
     prompt: '把这段结尾收紧一点',
     readToolId: 'walk-read-1',
     planToolId: 'walk-trim-1',
-    plan: { planId: 'walk-plan-trim', summary: '把「推门近景」的结尾收紧 1 秒', operations: [{ kind: 'trim', clipId: 'clip-b', edge: 'right', deltaFrame: -30 }] },
+    plan: { summary: '把「推门近景」的结尾收紧 1 秒', operations: [{ kind: 'trim', clipId: 'clip-b', edge: 'right', deltaFrame: -30 }] },
     doneText: 'WALK_TRIM_DONE：已按计划把结尾收紧。',
   })
   const approval = agent.locator(APPROVAL_CARD).first()
   const approvalProof = await proveProbe(approval, '剪辑计划的介入槽必须可见')
+  // ⚠️ 2026-09-18 实测：这条断言现在真的红，而且**是产品问题，不是锚点过期**。
+  //
+  // 把上面那三个早已退役的传输层方法名（`propose_edit_plan` / `apply_edit_plan` / `undo_timeline_edit`）
+  // 换成模型面真正有的 `edit_timeline` 之后，这条走查第一次走到了这里——卡确实出现了，
+  // 但它是**通用的能力审批卡**（「调整时间线 / 把调整写入当前时间线」），既没有逐条人话摘要、
+  // 时间轴上也没有 `[data-timeline-plan-preview]` 高亮带。也就是说：走 20 动词那条路的时间轴编辑，
+  // 用户看到的卡说不出「它到底要改什么」。
+  //
+  // 这是另一条根因（卡的内容/计划预览没跟着动词面迁移），不属于 T-ED-02（回执派生）那条，
+  // 而且改卡长什么样要先出样张（P5/R8）。它在这里保持**红**，不许靠删断言清账——
+  // 删掉它，这条走查就会退回「什么都没在看」的状态，而这正是它刚从里面爬出来的坑。
   await expect(approval, '介入槽必须逐条给出人话摘要，而不是一串 operation JSON').toContainText('收紧')
   // v4：可逆 / 不可逆写在槽的 data-kind 上（时间轴计划带 planLines 时 kind 是 plan，
   // 否则可逆改动是 approval-reversible）。两者都必须**不是** irreversible。
@@ -231,7 +250,6 @@ try {
     readToolId: 'walk-read-2',
     planToolId: 'walk-ops-2',
     plan: {
-      planId: 'walk-plan-three-ops',
       summary: '加叠化 · 改字幕 · 降音量并淡出',
       operations: [
         { kind: 'transition', action: 'set', fromClipId: 'clip-b', toClipId: 'clip-c', type: 'dissolve', durationFrames: 15 },
@@ -275,17 +293,17 @@ try {
   await expect(dock, '收起后仍留一根图标条').toBeVisible()
   await expect(win.locator(`${COLLAPSED_SHELL} ${COMPOSER_INPUT}`), '收起后输入框必须落到预览下沿（对话不中断）').toHaveCount(1)
   await expect(win.locator(COMPOSER_INPUT), '收起不该多造一个 composer').toHaveCount(1)
-  // 一功能一个家：叫回 Nomi 只有右侧 32px 图标条这一个入口，且它带运行状态点。
+  // 一功能一个家：叫回 Nomi 只有顶栏角标这一个入口，且它带运行状态（data-agent-dock-status）。
   // 数的是「界面上有几个能把 Nomi 叫回来的控件」——这是个**计数**断言，多一个入口就红；
-  // 写成「旧胶囊不存在」那种缺席断言只会恒真（旧选择器已随组件一起删）。
-  const collapsedRail = win.locator('[data-testid="editing-surface-assistant"] .workbench-panel-rail')
-  await expect(collapsedRail, '收起后必须留下右侧图标条这一个入口').toHaveCount(1)
-  await expect(collapsedRail.locator('[data-panel-rail-status="true"]'), '图标条要带运行状态点').toHaveCount(1)
+  // 写成「旧竖条不存在」那种缺席断言只会恒真（旧选择器已随组件一起删）。
+  const topbarEntry = win.locator('[data-agent-topbar-badge="true"]')
+  await expect(topbarEntry, '收起后必须留下顶栏角标这一个入口').toHaveCount(1)
+  await expect(topbarEntry, '顶栏角标要带运行状态').toHaveAttribute('data-agent-dock-status', /.+/)
   const recallEntries = await win.evaluate(() => [...document.querySelectorAll('button, [role="button"]')]
     .filter((node) => node.getBoundingClientRect().width > 0)
     .map((node) => `${node.getAttribute('aria-label') || ''} ${node.getAttribute('title') || ''}`)
     .filter((name) => /展开 Nomi|叫回 Nomi/.test(name)).length)
-  expect(recallEntries, '收起态「叫回 Nomi」的入口必须只有一个（图标条），不许再浮第二个').toBe(1)
+  expect(recallEntries, '收起态「叫回 Nomi」的入口必须只有一个（顶栏角标），不许再有第二个').toBe(1)
   // 量的是**预览列**（`.workbench-preview-player`），不是早已不存在的 `.workbench-preview__stage`
   // ——T1 把剪辑面迁到面板系统后那个类名就没了，而 querySelector 拿到 null 只会在
   // getBoundingClientRect 那一行炸，看起来像产品坏了。锚点跟着真实结构走。

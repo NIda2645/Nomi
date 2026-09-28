@@ -19,11 +19,11 @@ export type PiSkillReadTransportAdapter = Readonly<{
 }>;
 
 type SkillReadDependencies = Readonly<{
-  readRecords?: () => SkillRecord[];
+  readRecords?: () => readonly SkillRecord[] | Promise<readonly SkillRecord[]>;
   readContent?: (
     key: string,
     audience: "internal",
-    records: SkillRecord[],
+    records: readonly SkillRecord[],
     expected?: Readonly<{ packageVersion: string; contentHash: string }>,
   ) => SkillContent | null;
 }>;
@@ -63,7 +63,7 @@ export function createPiSkillReadTransportAdapter(
       const input = readInput(call);
       if (!input) return failure("capability_input_invalid", "Invalid Skill name or content hash");
       try {
-        const records = readRecords();
+        const records = await readRecords();
         const content = readContent(
           input.name,
           "internal",

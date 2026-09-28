@@ -6,8 +6,7 @@
 // 绝不落这里。落在 settings root 下的独立 JSON，读写走既有原子写工具（P1：不另起持久化管线）。
 import path from "node:path";
 import { getSettingsRoot } from "../settings/settingsRoot";
-import { readJson } from "../runtimePaths";
-import { writeJsonFileAtomic } from "../jsonFile";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 import { isJsonRecord, trim, type JsonRecord } from "../jsonUtils";
 
 const CONNECTOR_PREFS_FILE = "connector-prefs.json";
@@ -23,7 +22,7 @@ function prefsPath(): string {
 }
 
 function readPrefsFile(): ConnectorPrefsFile {
-  const raw = readJson<unknown>(prefsPath(), null);
+  const raw = readConfigFileOrDefault<unknown>(prefsPath(), () => null);
   if (!isJsonRecord(raw) || !isJsonRecord(raw.byConnector)) {
     return { version: 1, byConnector: {} };
   }
@@ -56,5 +55,5 @@ export function writeConnectorPrefs(connectorId: string, patch: JsonRecord): voi
     else next[k] = v;
   }
   file.byConnector[id] = next;
-  writeJsonFileAtomic(prefsPath(), file);
+  writeConfigFileAtomic(prefsPath(), file);
 }

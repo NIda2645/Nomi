@@ -71,11 +71,9 @@ try {
       // + NOMI_E2E_PACKAGED_FIXTURE) so the export driver uses the fixture path
       // instead of assertDraftFilmReady against the renderer timeline state.
       ...(mcpRuntime ? { NOMI_E2E_PACKAGED_FIXTURE: '1' } : {}),
-      NOMI_E2E_APIMART_BASE_URL: provider.origin,
-      NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
-      NOMI_E2E_APIMART_API_KEY: 'mcp-l2-loopback-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
+      NOMI_E2E_FIXTURE_BASE_URL: provider.origin,
+      NOMI_E2E_FIXTURE_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
+      NOMI_E2E_FIXTURE_API_KEY: 'mcp-l2-loopback-key',
     },
     args: ['--disable-gpu', '--disable-software-rasterizer'], settleMs: 0, syntheticCredentialStorage: true,
     ...(mcpRuntime ? { executablePath: mcpRuntime.executablePath } : {}),
@@ -107,11 +105,9 @@ try {
     env: {
       NOMI_APP_NAME: 'nomi',
       NOMI_E2E_PRODUCTION_FIXTURE: '1',
-      NOMI_E2E_APIMART_BASE_URL: provider.origin,
-      NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
-      NOMI_E2E_APIMART_API_KEY: 'mcp-l2-loopback-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
+      NOMI_E2E_FIXTURE_BASE_URL: provider.origin,
+      NOMI_E2E_FIXTURE_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
+      NOMI_E2E_FIXTURE_API_KEY: 'mcp-l2-loopback-key',
     }, syntheticCredentialStorage: true,
   })
   const initialized = await mcp.initialize()
@@ -136,17 +132,21 @@ try {
 
   // C7-T14: the Agent handles provider variance, while Nomi owns only the
   // secure credential handoff, proposal persistence gate, and paid two-phase.
-  const integrationStarted = await call(mcp, 'nomi_integration', {
-    action: 'begin', kind: 'http-api-provider', name: 'C7 relay proposal', baseUrl: provider.origin,
-    authType: 'bearer', authHeader: 'Authorization', docs: `${provider.origin}/docs`,
+  const integrationStarted = await call(mcp, 'nomi_model_setup', {
+    action: 'connect_provider',
+    name: 'C7 relay proposal',
+    suggestedBaseUrl: provider.origin,
+    docs: `${provider.origin}/docs`,
   })
   const integrationStartData = resultTextJson(integrationStarted)
-  const integrationSessionId = integrationStartData.id || resultData(integrationStarted).id
-  const credentialHandoff = await call(mcp, 'nomi_integration', {
-    action: 'open_credentials', sessionId: integrationSessionId, expectedRevision: integrationStartData.revision,
-  })
-  check(resultTextJson(credentialHandoff).stage === 'needs_credential', 'C7 T14 open_credentials 只打开 Nomi 安全页')
-  // open_credentials 现在还有一个 GUI 副作用：把 Nomi 叫到前台并停在「设置 → 模型 → 添加一个 AI 模型」，
+  const integrationSessionId = integrationStartData.setupId || resultData(integrationStarted).setupId
+  // 句柄拿不到就当场说清楚——传一个 undefined 下去只会在三跳之后以
+  // 「integration_session_not_found」的形式冒出来，那时已经看不出是哪一步丢的。
+  check(typeof integrationSessionId === 'string' && integrationSessionId.length > 0,
+    'C7 T14 connect_provider 返回可用的 setupId', JSON.stringify(integrationStartData).slice(0, 200))
+  // 2026-09-18（#754）：贴 key 页由上面那一跳打开，不再有第二个动词。
+  check(integrationStartData.state?.stage === 'needs_credential', 'C7 T14 connect_provider 只打开 Nomi 安全页')
+  // connect_provider 还有一个 GUI 副作用：把 Nomi 叫到前台并停在「设置 → 模型 → 添加一个 AI 模型」，
   // 供应商名从持久 handoff 还原。这是 PR #528 要证明的那件事，所以在这里正面断言它，
   // 而不是让它以「后面某个点击被模态挡住」的形式暴露出来。
   const settingsOverlay = win.locator('[data-settings-overlay="true"]')
@@ -174,29 +174,90 @@ try {
   // 密钥落地后，那条持久「去填 key」请求必须由写它的那层收走。留着它 = 用户下次打开设置→模型
   // 又被拽回一个已经接好的供应商的添加页（走查里这条 fixture 原本自己 ack 掉，把这个缺口盖住了）。
   check(credentialSaved.queued === 0, 'C7 T14 密钥落地后持久凭据 handoff 被收走')
-  const afterCredential = await call(mcp, 'nomi_read', { target: 'integration', sessionId: integrationSessionId })
-  const afterCredentialData = resultTextJson(afterCredential)
-  const rejectedProposal = await mcp.callTool('nomi_integration', {
-    action: 'propose', sessionId: integrationSessionId, expectedRevision: afterCredentialData.revision,
-    proposal: { candidates: [{ modelKey: 'relay-image', kind: 'image' }], selections: [{ modelKey: 'missing-model' }] },
+  // 2026-09-21：交卡不再走会话，卡**自带 `provider` 块**（地址 + 鉴权放法），连接 id 由 baseUrl 派生。
+  // 但用户刚才把 key 存进去的是**这一条已经存在的连接**，所以卡上要带它的 `vendorKey` —— 不带就会
+  // 另派生一个 id，登记成第二条没有 key 的连接，而用户以为自己已经填过了。
+  // 连接 id 从真实目录读，不从 baseUrl 反推：反推等于在测试里重写一遍生产的派生规则。
+  const declaredVendorKey = await win.evaluate(async (origin) => {
+    const vendors = await window.nomiDesktop?.modelCatalog?.listVendors?.() || []
+    const hit = vendors.find((vendor) => String(vendor.baseUrlHint || '').startsWith(origin))
+    return hit ? hit.key : JSON.stringify(vendors.map((vendor) => [vendor.key, vendor.baseUrlHint])).slice(0, 300)
+  }, provider.origin)
+  check(typeof declaredVendorKey === 'string' && declaredVendorKey.length > 0,
+    'C7 T14 存完 key 之后目录里有这条连接', String(declaredVendorKey))
+  // 2026-09-21：交卡**不再带 `setupId`**。那一格随「先开会话、再交卡」的顺序墙一起删了
+  // （`submit_declaration` 现在是无前置的整份覆盖），留着它会被 `.strict()` 当场按「多了一个字段」
+  // 打回——于是下面那条「打回原因要落到具体字段上」断言的就不再是我们想判的那个字段。
+  // 先正面钉住这条新契约，再走真正的用例。
+  const staleShaped = await mcp.callTool('nomi_model_setup', {
+    action: 'submit_declaration',
+    setupId: integrationSessionId,
+    declaration: JSON.stringify({ sources: [], assetIngestion: { strategy: 'none' }, models: [] }),
   })
-  check(rejectedProposal.isError && /proposal\.selections|candidate/i.test(parseToolResult(rejectedProposal).text), 'C7 T14 propose 返回字段级可读打回原因')
-  const proposed = await call(mcp, 'nomi_integration', {
-    action: 'propose', sessionId: integrationSessionId, expectedRevision: afterCredentialData.revision,
-    proposal: { candidates: [{ modelKey: 'relay-image', kind: 'image' }], selections: [{ modelKey: 'relay-image' }] },
+  check(staleShaped.isError || resultTextJson(staleShaped)?.ok === false,
+    'C7 T14 旧形状（带 setupId）交卡被拒', parseToolResult(staleShaped).text.slice(0, 160))
+
+  // 一张**写坏的**卡：字段级打回，并且带着卡上自己声明的出处（不是我们猜的那条）。
+  const rejectedProposal = await mcp.callTool('nomi_model_setup', {
+    action: 'submit_declaration',
+    vendorKey: declaredVendorKey,
+    declaration: JSON.stringify({
+      provider: { baseUrl: provider.origin, authType: 'bearer', authHeader: 'Authorization' },
+      sources: [{ url: `${provider.origin}/docs`, evidence: 'POST /images' }],
+      assetIngestion: { strategy: 'none', sourceUrl: `${provider.origin}/docs` },
+      models: [{
+        modelKey: 'relay-image',
+        labelZh: 'Relay Image',
+        kind: 'image',
+        // 声明成异步却不给 query —— 这是「我们缺一条 query」，不是用户填错了。
+        modes: [{
+          taskKind: 'text_to_image',
+          delivery: 'asynchronous',
+          create: { method: 'POST', path: '/images', body: { prompt: '{{request.prompt}}' }, response_mapping: { image_url: 'data.0.url' } },
+          sourceUrls: [`${provider.origin}/docs`],
+        }],
+      }],
+    }),
+  })
+  const rejectedText = parseToolResult(rejectedProposal).text
+  check(rejectedProposal.isError || resultTextJson(rejectedProposal)?.ok === false,
+    'C7 T14 写坏的声明卡被打回', rejectedText.slice(0, 160))
+  check(/query|asynchronous|declaration/i.test(rejectedText), 'C7 T14 打回原因落到具体字段上', rejectedText.slice(0, 160))
+
+  const proposed = await call(mcp, 'nomi_model_setup', {
+    action: 'submit_declaration',
+    vendorKey: declaredVendorKey,
+    declaration: JSON.stringify({
+      provider: { baseUrl: provider.origin, authType: 'bearer', authHeader: 'Authorization' },
+      sources: [{ url: `${provider.origin}/docs`, evidence: 'POST /images returns data[0].url' }],
+      assetIngestion: { strategy: 'none', sourceUrl: `${provider.origin}/docs` },
+      models: [{
+        modelKey: 'relay-image',
+        labelZh: 'Relay Image',
+        kind: 'image',
+        modes: [{
+          taskKind: 'text_to_image',
+          create: { method: 'POST', path: '/images', body: { prompt: '{{request.prompt}}' }, response_mapping: { image_url: 'data.0.url' } },
+          sourceUrls: [`${provider.origin}/docs`],
+        }],
+      }],
+    }),
   })
   const proposedData = resultTextJson(proposed)
-  check(proposedData.stage === 'ready_to_certify', 'C7 T14 propose 通过强 schema 落库门')
+  check(proposedData.ok === true, 'C7 T14 合格的声明卡一跳过校验 + 自检 + 登记', JSON.stringify(proposedData).slice(0, 200))
+  // 自检过了也消不掉这一条：只有用户真跑一次才能。
+  check((proposedData.unverified || []).some((entry) => entry.claim === 'model_produces_output'),
+    'C7 T14 信封仍把 model_produces_output 标为无证据')
   // 接模型没有付费验证，所以 propose 与 start 之间没有 confirm 这一跳（2026-09-12 拍板）。
   // 仍然要证的是「这一跳不会花钱」：自检跑完，供应商的付费生成端点一次都没被碰过。
-  const staleStart = await mcp.callTool('nomi_integration', {
-    action: 'start', sessionId: integrationSessionId, expectedRevision: proposedData.revision - 1,
-    idempotencyKey: 'c7-t14-stale-revision',
-  })
-  check(staleStart.isError === true && resultData(staleStart).errorCode === 'integration_revision_stale', `C7 T14 start 仍按 expectedRevision 把关; actual=${JSON.stringify(staleStart)}`)
+  // 2026-09-18（#754）：`expectedRevision` 不再是模型入参（会话指纹由执行层现读现填），
+  // 所以这里不再有「陈旧 revision 被拒」这一条。换成新面自己的那条撤不回闸：
+  // 删除必须带 `nomi_read target=models` 给的指纹，不符就什么都不删。
+  const staleDelete = await mcp.callTool('nomi_remove_provider', { vendorKey: 'apimart', ifUnchanged: 'models-000000000000' })
+  check(resultTextJson(staleDelete)?.code === 'stale_fingerprint', `C7 T14 陈旧指纹的删除被拒; actual=${JSON.stringify(staleDelete)}`)
   check(provider.hits.filter((hit) => /^\/v1\/(images|videos)\/generations$/.test(hit.url || '')).length === 0, 'C7 T14 自检不提交供应商付费任务')
-  const proxyOff = await call(mcp, 'nomi_integration_manage', { action: 'set_proxy', vendorKey: 'apimart', enabled: false })
-  check(resultTextJson(proxyOff).enabled === false, 'C7 管理动词可关闭单连接代理')
+  const proxyOff = await call(mcp, 'nomi_model_setup', { action: 'connect_provider', vendorKey: 'apimart', proxyEnabled: false })
+  check(resultTextJson(proxyOff).ok === true, 'C7 代理开关并进 connect_provider（同格合并，不再另开一个管理工具）')
 
   const fourNodes = [0, 1, 2, 3].map((index) => ({ clientId: `c8-shot-${index + 1}`, kind: 'shot', title: `镜头 ${index + 1}`, prompt: `湖边纸船镜头 ${index + 1}`, position: { x: index * 380, y: 0 } }))
   declinedClient = spawnMcpStdioClient({ ...dirs, tracePath: trace('C8-decline'), capabilities: { elicitation: {} }, elicitationAction: 'decline', syntheticCredentialStorage: true, runtime: mcpRuntime, env: { NOMI_APP_NAME: 'nomi' } })
@@ -422,11 +483,9 @@ try {
     env: {
       NOMI_APP_NAME: 'nomi',
       NOMI_E2E_PRODUCTION_FIXTURE: '1',
-      NOMI_E2E_APIMART_BASE_URL: provider.origin,
-      NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
-      NOMI_E2E_APIMART_API_KEY: 'mcp-l2-loopback-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
+      NOMI_E2E_FIXTURE_BASE_URL: provider.origin,
+      NOMI_E2E_FIXTURE_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
+      NOMI_E2E_FIXTURE_API_KEY: 'mcp-l2-loopback-key',
     },
   })
   await c9bClient.initialize()
@@ -496,11 +555,9 @@ try {
     env: {
       NOMI_APP_NAME: 'nomi',
       NOMI_E2E_PRODUCTION_FIXTURE: '1',
-      NOMI_E2E_APIMART_BASE_URL: provider.origin,
-      NOMI_E2E_APIMART_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
-      NOMI_E2E_APIMART_API_KEY: 'mcp-l2-loopback-key',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_V1: '1',
-      NOMI_MCP_GENERATION_SINGLE_SHOT_E1_V1: '1',
+      NOMI_E2E_FIXTURE_BASE_URL: provider.origin,
+      NOMI_E2E_FIXTURE_REFERENCE_URL: `${provider.origin}/fixture/image.png`,
+      NOMI_E2E_FIXTURE_API_KEY: 'mcp-l2-loopback-key',
     },
   })
   await c10Client.initialize()
@@ -662,6 +719,24 @@ try {
   console.log(`MCP-L2 PASS: ${passed} assertions; mode=${mcpRuntime ? 'packaged' : 'development'}; artifacts=${artifactDir}`)
 } catch (error) {
   console.error(error?.stack || error)
+  // 断言红了就得看见服务端自己的诊断：主连接的 stderr 一直在 `captureStderr` 里攒着，
+  // 从前只在 `call()` 返回 isError 时才打。**断言**红（服务端没报错、只是状态不对）是最需要
+  // 它的那一档——2026-09-18 的 C9 终态红就是这么丢掉了唯一一条 `logWarn` 现场。
+  for (const [label, client] of [['mcp', mcp], ['c9b', c9bClient], ['c10', c10Client]]) {
+    const text = typeof client?.stderrText === 'function' ? client.stderrText() : ''
+    if (text.trim()) console.error(`  --- ${label} server stderr (tail) ---\n${text.split('\n').slice(-200).join('\n')}`)
+  }
+  // GUI 主进程那半同样是现场：多镜批次的驱动可能跑在能力核这一侧，它的 WARN 只会出现在这里。
+  const guiTail = typeof gui?.mainLogTail === 'function' ? gui.mainLogTail() : []
+  if (guiTail.length) console.error(`  --- gui main log (tail) ---\n${guiTail.slice(-200).join('\n')}`)
+  // 供应商那半边的账本：哪些请求**真的到了**、连接什么时候开的关的。
+  // 「出站报 fetch failed」在调用方只是一句话，能分清「请求压根没发出去」和「发了但连接断了」
+  // 的只有这一侧。
+  if (provider) {
+    console.error(`  --- fixture vendor ledger (keepAliveTimeout=${provider.keepAliveTimeoutMs}ms) ---`)
+    console.error(`  hits:\n${(provider.hits || []).map((hit) => `    ${hit.at || ''} ${hit.method} ${hit.url}`).join('\n')}`)
+    console.error(`  sockets:\n${(provider.socketEvents || []).map((line) => `    ${line}`).join('\n')}`)
+  }
   process.exitCode = 1
 } finally {
   await declinedClient?.terminate().catch(() => undefined)

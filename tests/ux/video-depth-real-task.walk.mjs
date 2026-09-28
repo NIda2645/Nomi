@@ -36,6 +36,7 @@ import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { launchNomiApp, repoRoot } from './_launchApp.mjs'
 import { addCanvasNodeFromRail } from './_canvasRail.mjs'
+import { findConnectionStartPoint } from './_canvasHit.mjs'
 import { clickOrFail, expect, expectAbsent, expectVisible, proveProbe, screenshotSettled } from './_assert.mjs'
 
 const require = createRequire(import.meta.url)
@@ -401,7 +402,8 @@ try {
   await win.waitForTimeout(900)
   await derivedCard.click({ position: { x: 36, y: 16 } })
   await win.waitForTimeout(500)
-  const handleBox = await derivedCard.locator('.generation-canvas-react-flow__handle[data-side="right"]').last().boundingBox()
+  // 起点按人按的地方：卡外那颗「+」圈，不是 1px 测量锚点（见 _canvasHit.mjs findConnectionStartPoint）。
+  const startPoint = await findConnectionStartPoint(win, { handleSelector: `.react-flow__node[data-id="${derivedNodeId}"] .generation-canvas-react-flow__handle--source[data-side="right"]` })
   // 落点必须是目标节点的**左输入端**，不是它的正中央：本仓没有覆写 `connectionMode`
   // （React Flow 默认 Strict），松手必须命中一个握把，落在节点身上什么都不会发生。
   // 2026-09-07 实测就是这么静默失败的，而失败的样子（少了这条边）和
@@ -410,8 +412,8 @@ try {
     .locator(`.react-flow__node[data-id="${videoNodeId}"] .generation-canvas-react-flow__handle[data-side="left"]`)
     .last()
     .boundingBox()
-  if (!handleBox || !targetHandleBox) throw new Error('连接握把量不到（fail-closed）')
-  await win.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + handleBox.height / 2)
+  if (!startPoint || !targetHandleBox) throw new Error('连接握把量不到（fail-closed）')
+  await win.mouse.move(startPoint.x, startPoint.y)
   await win.mouse.down()
   await win.mouse.move(targetHandleBox.x + targetHandleBox.width / 2, targetHandleBox.y + targetHandleBox.height / 2, { steps: 14 })
   await win.waitForTimeout(300)

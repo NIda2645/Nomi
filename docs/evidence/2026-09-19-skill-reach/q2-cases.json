@@ -1,0 +1,26 @@
+[
+  {
+    "id": "Q2-internal-comms",
+    "skill": "internal-comms",
+    "prompt": "请按挂上的技能写一份 3P 周报：我们是 Nomi 团队，本周修好了技能导入，下周做触发评测，现在缺外部兼容性数字。直接给适合发团队的正文。",
+    "rubric": "读取 examples/3p-updates.md，使用 Progress/Plans/Problems 且事实准确"
+  },
+  {
+    "id": "Q2-pdf",
+    "skill": "pdf",
+    "prompt": "请在这个项目目录里做一页 PDF，文件名 welcome.pdf，内容是英文标题 Welcome to Nomi 和三条英文创作步骤：Write, Generate, Export。我要真实文件，不是只给代码。",
+    "rubric": "项目内真实有效 PDF，可提取到标题与三步骤"
+  },
+  {
+    "id": "Q2-semgrep",
+    "skill": "semgrep-rule-creator",
+    "prompt": "请写一个 Semgrep 规则检测 Python 的 eval(...) 调用，包含危险与安全的测试例子，并运行测试；文件放当前项目里。",
+    "rubric": "规则与正反测试真实落盘，实际 semgrep 测试通过"
+  },
+  {
+    "id": "Q2-transformers",
+    "skill": "transformers-js",
+    "prompt": "给我一个用 Transformers.js 在 Node.js 做英文情感分类的最小可运行示例，包含安装命令和 I love this film 的调用。不下载模型，不运行，直接在聊天中给代码。",
+    "rubric": "正确包名、pipeline API、情感分析任务、模型/输入、安装运行命令"
+  }
+]

@@ -1,0 +1,447 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-19-pi-history-read-side",
+  "problem_type": "Runtime working-set mistaken for durable conversation history",
+  "symptom": "Compaction hides original user, assistant and skill rows.",
+  "direct_cause": "pi reducer truncates snapshot transcript at compaction; UI reads that snapshot.",
+  "class_root": "History, runtime and model context share an input contract despite different lifetimes.",
+  "affected_population": [
+    "All pi lanes after compaction or late IPC deliveries"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneCommandCodec.ts",
+    "electron/agentLane/laneContextBudget.mts",
+    "electron/agentLane/laneHistory.mts",
+    "electron/agentLane/laneHost.mts",
+    "electron/shared/agentLane/laneContracts.ts",
+    "electron/shared/agentLane/laneProjection.ts",
+    "src/workbench/ai/ProjectAgentResidentShell.tsx",
+    "src/workbench/ai/lane/laneClient.ts",
+    "src/workbench/ai/lane/laneViewModel.ts",
+    "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+    "src/workbench/ai/v4/agentPanelV4Collapse.ts",
+    "src/workbench/ai/v4/agentPanelV4Types.ts",
+    "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+    "electron/agentLane/laneHistoryPage.mts",
+    "electron/agentLane/laneInputIntent.mts"
+  ],
+  "entry_points": [
+    "Active lane watch projection",
+    "Read-only lane restoration",
+    "Renderer workspace reconnect"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/earendil-works/pi/tree/v0.85.1/packages/agent/src/harness",
+      "checked_at": "2026-09-19",
+      "purpose": "Installed 0.85.1 branch queries, reducer and buffered watcher semantics"
+    }
+  ],
+  "invariants": [
+    "Original current-branch entries remain reachable through paged UI history.",
+    "History does not enter the model working set or grant authority.",
+    "Read projection ownership follows the current mounted consumer identity; late request settlement cannot change another project or conversation UI state.",
+    "A completed pagination ACK does not release single-flight ownership until its pending rendered cursor is committed; filtered pages that advance the cursor without changing the visible first row release ownership without scroll compensation."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneCommandCodec.ts",
+      "symbol": "LaneCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneCommandCodec.ts",
+      "symbol": "LaneCommandError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "symbol": "isLaneInputMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneHistoryPage.mts",
+      "symbol": "LANE_HISTORY_PAGE_SIZE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "isLaneInputMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "LaneCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneIpc.ts",
+      "symbol": "LaneCommandError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneWorkspace.mts",
+      "symbol": "LaneCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneComposerIntent.ts",
+      "symbol": "LaneCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneContracts.ts",
+      "symbol": "LanePart"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneContracts.ts",
+      "symbol": "LaneCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneDesktopContracts.ts",
+      "symbol": "LaneCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "LanePart"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/creationColumns/CreationColumnsStage.tsx",
+      "symbol": "laneClient"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/v4/agentPanelV4LabHost.tsx",
+      "symbol": "LanePart"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/v4/agentPanelV4LabHost.tsx",
+      "symbol": "laneClient"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/v4/agentPanelV4LabKit.tsx",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/v4/b2cFormFixtures.tsx",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/v4/b2cFormFixtures.tsx",
+      "symbol": "AgentPanelV4Panel"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/v4/states/03-flow.tsx",
+      "symbol": "AgentPanelV4Panel"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/agentLoopMode.ts",
+      "symbol": "laneClient"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneReceiptClient.ts",
+      "symbol": "laneClient"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneReceiptUndo.ts",
+      "symbol": "LanePart"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneViewModel.ts",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneViewModel.ts",
+      "symbol": "LanePart"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "AgentPanelV4Panel"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/agentPanelV4Collapse.ts",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Receipt.tsx",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/agentPanelV4Types.ts",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Actions.ts",
+      "symbol": "laneClient"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "V4FlowItem"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "laneClient"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/proposalUndo.ts",
+      "symbol": "laneClient"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "laneClient"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "symbol": "laneCompactionSettings"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "symbol": "isLaneInputMessage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHistory.mts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "isLaneInputMessage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "laneCompactionSettings"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "laneInputIntent"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneInputIntent.mts",
+      "symbol": "isLaneInputMessage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneLegacyMigration.mts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneTrace.mts",
+      "symbol": "isLaneInputMessage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneInputMessage.ts",
+      "symbol": "isLaneInputMessage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "isLaneInputMessage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/v4/b2cFormFixtures.tsx",
+      "symbol": "collapseV4Flow"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/v4/laneDrivenFixtures.ts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneClient.ts",
+      "symbol": "createLaneClient"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "useAgentPanelV4Data"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "collapseV4Flow"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "flowScrollMemoryFor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "loadOlder"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "onLoadOlder"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "onLoadOlder"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "loadOlder"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "setHistoryError"
+    }
+  ],
+  "door_reduction": {
+    "before": 60,
+    "after": 60,
+    "why_not": "Existing sidebar/editor and resident/data/panel consumers retain distinct UI responsibilities; project refresh and panel request lifecycle enforce ownership centrally for all of them."
+  },
+  "generality_proof": "Branch ancestry and original IDs apply independently of provider, model and compaction count.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "projectLaneSnapshot",
+      "responsibility": "Separate runtime accounting from historical rows"
+    },
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "AgentPanelV4Panel",
+      "responsibility": "Bind pagination tokens, anchors and errors to workspace/lane/session lifecycle; immediately release prior-session paging without accepting late settlements."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneHost.mts",
+      "entry_point": "openLane",
+      "disposition": "enforced",
+      "evidence": "Compaction lifecycle test covers live projection"
+    },
+    {
+      "path": "electron/agentLane/laneHistory.mts",
+      "entry_point": "openLaneHistory",
+      "disposition": "enforced",
+      "evidence": "Same branch reader used on reopen"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every compaction repeats the same truncation.",
+    "same_class_scan": [
+      "rg projectLaneSnapshot electron src",
+      "Inspected laneHistory, laneHost, laneClient and pi reducer",
+      "2026-09-20 door-map onLoadOlder/loadOlder/setHistoryError/flowScrollMemoryFor plus laneClient→laneIpc→laneWorkspace→laneHistoryPage: admission identity protects history data, but late UI settlement requires a Panel lifecycle token; ordinary session switches, A-B-A, workspace reopens and unmount share this boundary."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/agentLane/laneProjection.ts",
+    "invariant": "Original current-branch entries remain reachable through paged UI history. Pagination errors, locks and anchors belong to one mounted workspace/lane/session lifecycle.",
+    "failure_mode": "Missing branch or stale cursor fails explicitly.",
+    "exception_policy": "none",
+    "strategy": "Require explicit history read view independently from runtime snapshot. Panel identity transitions invalidate old request tokens before passive loading, allowing the new short list to load immediately. Shell returns the live host cursor after ACK; unchanged cursor proves empty prepend, while changed cursor retains the anchor until the actual projection commits. Retain the request lock across ACK-to-render gaps; rendered cursor advancement consumes even an invisible page, and settlement releases only its own consumed anchor. If React commits a filtered short page before ACK, completion schedules the original short-list effect only after proven cursor advancement; unchanged-cursor responses cannot cause an automatic retry loop.",
+    "artifacts": [
+      "electron/agentLane/laneHost.mts",
+      "electron/agentLane/laneHistory.mts",
+      "electron/shared/agentLane/laneProjection.ts",
+      "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "src/workbench/ai/ProjectAgentResidentShell.tsx"
+    ]
+  },
+  "regression_tests": [
+    "tests/agent-runtime/lane-history-compaction.test.mts",
+    "tests/agent-runtime/lane-pi-reuse.test.mts",
+    "src/workbench/ai/lane/laneClient.test.ts",
+    "electron/shared/agentLane/laneProjection.test.ts",
+    "src/workbench/ai/v4/asyncReadIdentity.test.ts"
+  ],
+  "class_regression_tests": [
+    "tests/agent-runtime/lane-history-compaction.test.mts",
+    "tests/agent-runtime/lane-pi-reuse.test.mts",
+    "src/workbench/ai/lane/laneClient.test.ts",
+    "src/workbench/ai/v4/asyncReadIdentity.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/agentLane/laneHost.mts",
+      "electron/agentLane/laneHistory.mts"
+    ],
+    "rationale": "Replace snapshot-only history and unbounded read-only scan at existing callers."
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "current": "pi-agent-core 0.85.1",
+    "target": "pi-agent-core 0.85.1 public Session/Branch and watch APIs",
+    "rationale": "Required history and watch primitives exist; thin host read adapter is missing.",
+    "exit_criteria": [
+      "Reconsider adapter only when upstream publishes UI history pagination with the same original-ID semantics."
+    ]
+  },
+  "migration": "No storage migration. All records retain original pi IDs and owner.",
+  "residual_risks": [
+    "Real paid model and Electron visual/platform acceptance not run.",
+    "Input intent quote is bounded to 16000 characters and eight recent consumed inputs plus the original prompt; larger instructions are excerpts and are not complete task memory.",
+    "Terminated retry intent must be supplied through explicit original input references by T5; no terminated operation metadata is revived."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/agentLane/laneProjection.ts",
+    "tests": [
+      "tests/agent-runtime/lane-history-compaction.test.mts"
+    ]
+  }
+}

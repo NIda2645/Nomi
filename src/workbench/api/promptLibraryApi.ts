@@ -71,7 +71,7 @@ function toPrompt(raw: unknown): LibraryPrompt | null {
 export async function fetchPromptLibrary(): Promise<LibraryPrompt[]> {
   const desktop = requireDesktopRuntime('prompt library')
   const res = await desktop.promptLibrary!.list()
-  if (!res?.ok || !Array.isArray(res.prompts)) return []
+  if (!res?.ok || !Array.isArray(res.prompts)) throw new Error(res?.error || i18n.t('runtime.promptLibrary.loadFailed'))
   return res.prompts.map(toPrompt).filter((p): p is LibraryPrompt => p !== null)
 }
 
@@ -84,7 +84,9 @@ function mapUserPrompts(res: { ok?: boolean; prompts?: unknown[] } | undefined):
 
 export async function fetchUserPrompts(): Promise<LibraryPrompt[]> {
   const desktop = requireDesktopRuntime('my prompt library')
-  return mapUserPrompts(await desktop.promptLibrary!.userList())
+  const res = await desktop.promptLibrary!.userList()
+  if (!res?.ok || !Array.isArray(res.prompts)) throw new Error(res?.error || i18n.t('runtime.promptLibrary.loadFailed'))
+  return mapUserPrompts(res)
 }
 
 export async function addUserPrompt(input: {

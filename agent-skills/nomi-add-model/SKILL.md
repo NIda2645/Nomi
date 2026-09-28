@@ -1,59 +1,65 @@
 ---
 name: nomi-add-model
-description: 把一个生成模型（文本 / 图片 / 视频 / 音频 / 3D）接进本机 Nomi 并真跑一次验证。当用户说「帮我把 X 接进 Nomi」「在 Nomi 里加个模型」「给 Nomi 接一下这家中转站」时使用。需要宿主已连上 Nomi 的 MCP server（工具名 nomi_integration）。
-compatibility: 需要宿主已接入 Nomi 的 MCP server，并能调用 nomi_integration 工具。
+description: 把一个生成模型（文本 / 图片 / 视频 / 音频 / 3D）接进本机 Nomi，并真跑一次验证。当用户说「帮我把 X 接进 Nomi」「在 Nomi 里加个模型」「给 Nomi 接一下这家中转站」时使用。需要宿主已连上 Nomi 的 MCP server（工具名 nomi_read / nomi_model_setup / nomi_try_model）。
+compatibility: 需要宿主已接入 Nomi 的 MCP server，并能调用 nomi_read、nomi_model_setup、nomi_try_model。
 metadata:
   nomi-audience: external-host
-  nomi-contract: electron/capabilityCore/mcpIntegrationTools.ts
+  nomi-contract: electron/capabilityCore/modelOnboarding/
 ---
 
 # 把模型接进 Nomi
 
-Nomi 通过 MCP 暴露 `nomi_integration` 这**一个**工具，六个 action 走完全程。
+**三步，没有句柄，没有阶段，不必先有 Key。**
 
-**任何时候都不要把 API Key 写进工具参数。** Nomi 会自己弹出本机安全页向用户要，你看不到，也不需要看到。
-参数里只允许出现 header / query 的**名字**（`authHeader` / `authQueryParam`），不允许出现它们的值。
+1. **读套件** — `nomi_read` with `{"target": "onboarding_kit"}`。
+   一次拿到三样：声明卡的 JSON Schema、撰写规范、两份可以照着改的样例卡（一份同步、一份异步轮询）。
+   这一步**没有任何前置**：不需要会话，不需要密钥，也不需要用户先做什么。
 
-每一步都带 `expectedRevision`——它是会话状态指纹。拿到的返回里有新的 `revision`，下一步就用新的那个；
-对不上说明会话被别人动过，重新 `get` 一次再继续，不要重试旧的。
+2. **交整份卡** — `nomi_model_setup` with `{"action": "submit_declaration", "declaration": "<整张卡的 JSON 文本>"}`。
+   卡自带 `provider` 块（地址与鉴权放法），连接 id 由它的 baseUrl 派生；已存在的连接就带上 `vendorKey`。
+   提交是**整份覆盖**，不是打补丁——改一个字段就把整张卡再交一次。
+   被拒时返回里带着**字段路径、合法值，以及你自己在卡上声明的那条文档 URL**。照它改，别整包重猜。
 
-## 六步
+3. **试跑一次** — `nomi_try_model` with `{"vendorKey": "…", "modelKey": "…"}`。
+   它跑的是一次**真实生成**，会花用户的钱，所以 Nomi 会在自己的窗口里请用户确认；
+   返回里带着**供应商自己的响应原文**（已脱敏）。失败就读那段原文——它和开发者看到的是同一段。
 
-1. **`begin`** — 说清要接什么，拿到 `sessionId` 与 `revision`。
-   必填 `kind`（`http-api-provider` 或 `comfyui-workflow`）与 `name`。
-   把用户给的接口文档一并递进来：`baseUrl`、`docs`（文档正文，或每行一个 URL 的列表，≤64KB）、
-   `authType`（`none` / `bearer` / `x-api-key` / `query`）。文档是这一步最值钱的输入——递进来的会被直接采信，
-   不递就只能靠猜域名去找文档站。
+密钥另有一步，**任何时候都能做**，见下。
 
-2. **`open_credentials`** — Nomi 弹出本机安全页，用户在那儿贴 Key。
-   这一步返回后会话停在 `needs_credential`，等用户贴完才继续。别在这里替用户想办法。
+## 先读官方文档，再动手
 
-3. **`propose`** — 先传**空 proposal** 让 Nomi 去探对方的 `/models`。
-   探不到就把候选手填进 `proposal.candidates`（每项 `{ modelKey, kind }`，`kind` ∈ text / image / video / audio / model3d）。
-   用户选定哪几个，写进 `proposal.selections`。
-   ComfyUI 走的是 `proposal.workflow`（工作流 JSON 文本）。
+写卡之前先抓这家供应商的**官方** API 文档，逐项对账：真实的 endpoint id、鉴权头的形状、
+入参名与取值域、异步任务的轮询路径与终态词。**凭记忆填等于没查**——记错一个字段名，
+第 3 步会以一次真实的失败告终，而那次失败是花了钱的。
 
-   **如果 propose 返回了 `compileRequest`**：这台机器上没有可用来读文档写说明卡的文本模型，
-   所以这活儿交给你。`compileRequest` 里带着目标 `contractSchema`（JSON Schema）与 `instructions`（撰写规则）。
-   照它写出 `{"sources":[...],"models":[...]}` 的 JSON 文本，放进 `proposal.adapterDraft` 再 `propose` 一次。
-   供应商身份、模型 id、显示名与计费类别由 Nomi 锁定，**不要在 adapterDraft 里重复它们**。
+卡上每条 mode 都要写 `sourceUrls`，每个数字尽量写 `sourceUrl`：它们必须出现在卡的 `sources` 里。
+这不是形式——Nomi 拒绝你的时候，回给你的就是**你自己声明的那条出处**。
 
-4. **`confirm`** — 带 `expectedRevision` 与 `idempotencyKey` 请用户确认。
-   要花钱的话 Nomi 自己会弹付费确认卡，不用你另外问。
+## 密钥纪律（硬的）
 
-5. **`start`** — 真跑一次最小样例。
-   **跑通了模型才会出现在用户的「模型」列表里**——没有 `start` 就没有 `completed`，没有捷径。
+- 密钥的**默认**入口是用户自己：`nomi_model_setup` with `{"action": "connect_provider", "vendorKey": "…"}`
+  会在 Nomi 里打开它自己的凭证页，用户在那里粘贴。那一页不经过你，也不进你的上下文。
+- 只有在**用户主动把密钥交给你、并要求你代填**时，才用 `{"action": "set_key"}`（字段名以工具 schema 为准）。
+- 永远不要主动向用户索要密钥；不要从文件或环境变量里读；不要打印回去；不要写进任何文件或提交。
+- Nomi **不会**把已经存下的密钥还给你——任何返回、任何错误信息里都不会有。想知道存没存，读
+  `nomi_read` `{"target": "models"}`，它只回答「有 / 没有」。
+- 密钥发往哪里由**用户在 Nomi 的凭证页上按下保存**那一刻决定。一张卡改不了一条已经绑过密钥的连接的地址；
+  真要改，只能请用户回那一页重存一次。
 
-6. **`cancel`** — 卡住就取消，把原始错误**原样**报给用户（错误码 + 原文），不要自己编原因。
-   常见的两个：`402 insufficient_balance` 是余额不够（Key 已经存下了，充值后重试即可）、
-   `401` 是 Key 或 auth 方式不对（回到第 2 步重贴）。
+## 没跑通，就不许说接好了
 
-## 先查真实文档
+- 只有第 3 步返回了产物，才算接好。返回里的 `unverified` 列表是机器版的同一句话：
+  里面还留着「这个模型产出过东西吗」，就说明还没有。
+- 跑失败、被取消、被内容审核拒了，**如实说**：卡在哪一步、供应商原话是什么。
+  不要把「卡登记成功了」说成「模型能用了」——它们之间隔着一次真实生成。
 
-写请求前先抓供应商的**官方** API 文档逐项对账：端点路径、请求体字段名、鉴权放在 header 还是 query、
-异步任务是不是要轮询。不要凭记忆填字段——记错一个字段名，第 5 步会以一次真实调用失败告终。
+## 卡表达不了这家怎么办
+
+如果 Nomi 回 `no_generic_contract`，说明这家要的东西声明卡表达不了（请求签名 / 非 HTTP /
+只有 SDK / 比「(上传初始化 →) create → query → result」更多的步骤 / 自定义编码）。
+这时**不要**去套任何内置模板——每一次都会撞在同一堵墙上。出口写在那条返回的 `nextAction` 里：
+在 Nomi 里给那个模型手写一段调用脚本。
 
 ## 做完告诉用户什么
 
-一句话说清三件：接进来的是哪几个模型、它们在 Nomi 的模型列表里叫什么名字、试跑产出了什么。
-没接成就直说没接成、卡在第几步、对方返回了什么——不要把「提案已提交」说成「已经接好了」。
+一句话说清三件：接进来的是哪几个模型、它们在 Nomi 的模型列表里叫什么、试跑产出了什么。

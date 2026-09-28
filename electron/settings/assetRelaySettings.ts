@@ -1,7 +1,7 @@
 import path from "node:path";
 import { safeStorage } from "electron";
 
-import { readJsonFile, writeJsonFileAtomic } from "../jsonFile";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "../configFileStore";
 import { setAssetRelayRuntimeConfig } from "../catalog/assetRelayRuntimeConfig";
 import { getSettingsRoot } from "./settingsRoot";
 
@@ -49,17 +49,13 @@ function decryptToken(record: EncryptedToken | undefined): string {
 }
 
 function readStored(): StoredSettings {
-  try {
-    const raw = readJsonFile(settingsPath()) as Partial<StoredSettings>;
-    return {
-      schemaVersion: 1,
-      enabled: raw.enabled === true,
-      endpoint: normalizedEndpoint(raw.endpoint),
-      token: raw.token?.enc === "safeStorage" && typeof raw.token.value === "string" ? raw.token : undefined,
-    };
-  } catch {
-    return { schemaVersion: 1, enabled: false, endpoint: "" };
-  }
+  const raw = readConfigFileOrDefault<Partial<StoredSettings>>(settingsPath(), () => ({}));
+  return {
+    schemaVersion: 1,
+    enabled: raw.enabled === true,
+    endpoint: normalizedEndpoint(raw.endpoint),
+    token: raw.token?.enc === "safeStorage" && typeof raw.token.value === "string" ? raw.token : undefined,
+  };
 }
 
 function applyRuntime(stored: StoredSettings): void {
@@ -95,7 +91,7 @@ export function writeAssetRelaySettings(input: AssetRelaySettingsInput): AssetRe
     }
   }
   const next: StoredSettings = { schemaVersion: 1, enabled, endpoint, ...(token ? { token } : {}) };
-  writeJsonFileAtomic(settingsPath(), next);
+  writeConfigFileAtomic(settingsPath(), next);
   applyRuntime(next);
   return { enabled: next.enabled, endpoint: next.endpoint, hasToken: Boolean(decryptToken(next.token)) };
 }

@@ -1,6 +1,6 @@
 import type { AssetSlot } from '../../../assets/AssetReference'
 import type { AssetKind } from '../../../assets/assetTypes'
-import type { ArchetypeMode, ArchetypeReferenceSlot } from '../../../../config/modelArchetypes/types'
+import type { ArchetypeMode, ArchetypeReferenceSlot } from '../../../../../electron/shared/modelArchetypes/types'
 import type { PlanReferenceBinding, PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
 import {
   referenceSlotAccept,

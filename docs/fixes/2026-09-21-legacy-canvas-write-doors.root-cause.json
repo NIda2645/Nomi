@@ -1,0 +1,183 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-legacy-canvas-write-doors",
+  "problem_type": "Project content write authorization owner",
+  "symptom": "任何读得到 <NOMI_CAPABILITY_DIR>/instance*.json 的本机进程，只带裸 bearer 调 canvas.addNodes / canvas.connect / canvas.setPrompt / canvas.deleteNodes 就能在别人的项目里加节点、改提示词、连边、删节点：真机探针四条全 200，磁盘 payload.generationCanvas.nodes 落成 []，全项目目录里零个 undoToken；同一件事走 canvas.write / canvas.delete 是 403。",
+  "direct_cause": "dispatcher.ts 的这四个 case 直接 ctx.makeGateway(projectIdOf(params))，既不取租约（leasedProject）也不要确认、不铸 undoToken；而 localProjectSessionTransportPolicy 的 PROJECT_SESSION_ONLY_METHODS 名单里没有它们。",
+  "class_root": "同一条不变量（『没有验证过的项目会话或租约，谁也改不了用户的项目内容』）由一张**「需要会话的方法」白名单**守着，而 assertLocalBearerProjectSessionRoute 对名单外的方法直接 return —— 名单式白名单在语义上是 fail-open：新长出来的 case 默认无人把关，谁也不会收到红灯。与 docs/fixes/2026-09-11-legacy-spend-door.root-cause.json 的 class_root 同形（一条不变量由两扇证据标准不同的门守着，弱的那扇接受调用方自己的话），这是它在画布写这一格的第二个实例。",
+  "affected_population": [
+    "本机上任何能读到 <NOMI_CAPABILITY_DIR>/instance*.json 的进程（该文件权限 -rw-------，即当前用户的任何程序）",
+    "所有本机项目：这条路只认 params.projectId，不受项目隔离约束",
+    "项目没打开时尤其重（走 disk/hybrid 网关，渲染层 undo 栈收不到这次改动，Cmd+Z 撤不回）"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/dispatcher.ts",
+    "electron/capabilityCore/localProjectSessionTransportPolicy.ts",
+    "electron/capabilityCore/dispatcherRouteClosure.test.ts",
+    "scripts/nomi.mjs",
+    "docs/guide/capability-core-cli-mcp.md"
+  ],
+  "entry_points": [
+    "POST /rpc method=canvas.addNodes（裸 bearer）",
+    "POST /rpc method=canvas.connect（裸 bearer）",
+    "POST /rpc method=canvas.setPrompt（裸 bearer）",
+    "POST /rpc method=canvas.deleteNodes（裸 bearer）",
+    "scripts/nomi.mjs canvas add/connect/prompt/delete（同一条裸 bearer 传输的 CLI 包装）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是本仓自己的传输授权边界，判据来自 2026-09-21 在隔离数据副本上的真机探针（四条 legacy 方法 200、canvas.write/canvas.delete 403 作阳性对照）。同类的外部规范依据（MCP 2025-06-18 elicitation 不是授权边界、2025-11-25 security best practices 的 confused-deputy 与 token passthrough、RFC 8252 loopback 对端不可认证）已在 docs/fixes/2026-09-11-legacy-spend-door.root-cause.json 里逐条查过并列出，本次是同一条边界的第二个实例，没有新的外部规范要对。",
+  "invariants": [
+    "没有验证过的项目会话与该会话签发的租约，任何传输路径都改不了用户项目里的画布节点、连线、提示词与文稿",
+    "dispatcher 的每一个 case 都必须被显式点名：要么在 PROJECT_SESSION_ONLY_METHODS 里，要么在 LOCAL_BEARER_ROUTE_REGISTER 里写清『这一格靠什么把关』"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "addProjectNodes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "connectProjectNodes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "setProjectNodePrompt"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "deleteProjectNodes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "writeProjectDocument"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/localProjectSessionTransportPolicy.ts",
+      "symbol": "PROJECT_SESSION_ONLY_METHODS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "symbol": "assertLocalBearerProjectSessionRoute"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/host.ts",
+      "symbol": "assertLocalBearerProjectSessionRoute"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 8,
+    "why_not": "门的身份是 path+symbol，而 legacy 四个 case 和语义面四个 case 住在同一个文件（dispatcher.ts）调同一批执行符号——按门表它们本来就算同一扇门，这正是这条 bug 能藏住的原因：数门看不出『同一扇门有两条通道，其中一条没闸』。所以这次减的不是门数，是**通道数**：node scripts/door-map.mjs 在修前数到 12 处调用点、修后 8 处（addProjectNodes 2→1、connectProjectNodes 3→2、setProjectNodePrompt 2→1、deleteProjectNodes 2→1）。剩下的 8 扇必须各自存在：5 扇是项目内容的执行符号（画布三写 + 删 + 文稿写），它们已经全部关在 leasedProject 后面；3 扇是会话策略本身的读/用点（策略表一份、rpcServer 与 host 两个传输入口各调一次），合并它们等于把传输判定塞进策略模块，反而多一层。让『同一扇门长出第二条没闸的通道』这件事会报错的机器判据，是 dispatcherRouteClosure.test.ts 的 PROJECT_CONTENT_MUTATORS × leasedProject 扫描。"
+  },
+  "generality_proof": "修完之后，dispatcher 里能走到 PROJECT_CONTENT_MUTATORS（addProjectNodes / connectProjectNodes / setProjectNodePrompt / deleteProjectNodes / writeProjectDocument）的 case 只剩 canvas.write、canvas.delete、document.write 三个，三个都以 leasedProject(ctx, params, scope) 开头，且三个都在 PROJECT_SESSION_ONLY_METHODS 里。dispatcherRouteClosure.test.ts 机械枚举 dispatcher 的全部字面量 case（switch 是字面量分发，无反射、无按名字查表，可穷尽），逐条断言：① 每个 case 都被两张表之一点名；② 两张表不许同时点名同一个；③ 登记表里不许有陈旧行；④ 每条登记都写了判词；⑤ 凡是正文里出现 PROJECT_CONTENT_MUTATORS 任一符号的 case，正文里必须出现 leasedProject(；⑥ 四个 legacy 名字不许长回来。新加一个 case 而不登记，或登记了却不取租约，都在①⑤上红。",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "leasedProject",
+      "responsibility": "项目内容写的唯一授权前置：没有 ctx.projectSession 与该会话签发的 leaseHandle 就 403（lease_required），不接受裸 projectId。"
+    },
+    {
+      "path": "electron/capabilityCore/localProjectSessionTransportPolicy.ts",
+      "symbol": "LOCAL_BEARER_ROUTE_REGISTER",
+      "responsibility": "裸 bearer 够得到的方法必须被逐条点名并写清靠什么把关；这张表连同 PROJECT_SESSION_ONLY_METHODS 把『名单外默认放行』变成『名单外即红』。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "entry_point": "case canvas.addNodes / canvas.connect / canvas.setPrompt / canvas.deleteNodes",
+      "disposition": "not-affected",
+      "evidence": "本次同 commit 删除（P1，不留『旧方法加个闸』的并行版）；dispatcherRouteClosure.test.ts 钉死四个名字不许回来。"
+    },
+    {
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "entry_point": "case canvas.write / canvas.delete / document.write / document.read",
+      "disposition": "enforced",
+      "evidence": "四个都以 leasedProject 开头，且都在 PROJECT_SESSION_ONLY_METHODS 里；canvas.delete 另要 confirmation===true 并铸 undoToken。"
+    },
+    {
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "entry_point": "其余 27 个 case（ping / project.* / models.list / skills.* / production.* / brief.intake / asset.import / integration.* / model.onboarding.*）",
+      "disposition": "enforced",
+      "evidence": "逐条登记进 LOCAL_BEARER_ROUTE_REGISTER 并写明靠什么把关；其中没有一个走到 PROJECT_CONTENT_MUTATORS（由测试⑤机械核对）。"
+    },
+    {
+      "path": "scripts/nomi.mjs",
+      "entry_point": "canvas add / connect / prompt / delete 四个子命令",
+      "disposition": "not-affected",
+      "evidence": "唯一现役调用者。裸 bearer 拿不到租约，迁不到语义面，因此同 commit 删除子命令并在文件头与 docs/guide/capability-core-cli-mcp.md 写清写路只在 nomi_canvas_edit / nomi_canvas_maintenance 上。canvas read 保留（只读）。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpToolCatalog.ts",
+      "entry_point": "对外 MCP tools/list",
+      "disposition": "not-affected",
+      "evidence": "四个 legacy 方法早已不在目录里（mcpSurfaceCollapse.test.ts 的 T3 逐条断言 MCP_TOOL_RESOLVER.list() 不含这四个 method），所以删 case 不改变任何外部宿主看得见的面。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一形状第二次发生：2026-09-11 是付费放行长出第二扇弱门，这次是项目内容写长出第四扇无闸门。两次的机制一样——判据表是『要管的』白名单，没被点名的默认放行，于是新入口默认无人把关。只要还有人往 dispatcher 里加 case，它就会再来。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs addProjectNodes / connectProjectNodes / setProjectNodePrompt / deleteProjectNodes / writeProjectDocument，逐扇门核它是不是关在 leasedProject 后面",
+      "grep -n \"^    case '\" electron/capabilityCore/dispatcher.ts，把全部 case 与 PROJECT_SESSION_ONLY_METHODS ∪ LOCAL_BEARER_ROUTE_REGISTER 对账（dispatcherRouteClosure.test.ts 已把这一步机器化）",
+      "rg 'PROJECT_SESSION_ONLY|_ONLY_METHODS|new Set\\(\\[' electron/capabilityCore 找其它『名单式白名单』判据表，逐张问它名单外是放行还是拒绝"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/localProjectSessionTransportPolicy.ts",
+    "invariant": "没有验证过的项目会话与租约，任何传输路径都改不了用户项目里的画布节点、连线、提示词与文稿",
+    "failure_mode": "Stop and show actionable feedback",
+    "exception_policy": "none",
+    "strategy": "把『名单外默认放行』换成『名单外即红』：dispatcher 的 case 全集必须被 PROJECT_SESSION_ONLY_METHODS ∪ LOCAL_BEARER_ROUTE_REGISTER 完全覆盖，且凡能走到项目内容执行符号的 case 必须取租约。判据从源码机械枚举，不靠人 grep，也不靠注释。",
+    "artifacts": [
+      "electron/capabilityCore/dispatcherRouteClosure.test.ts",
+      "electron/capabilityCore/localProjectSessionTransportPolicy.ts",
+      "electron/capabilityCore/dispatcher.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/dispatcherRouteClosure.test.ts",
+    "electron/capabilityCore/rpcServer.test.ts",
+    "electron/capabilityCore/mcpPlanConfirm.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/dispatcherRouteClosure.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/dispatcher.ts",
+      "scripts/nomi.mjs"
+    ],
+    "rationale": "四个 case 与 projectIdOf（删完后零引用）同 commit 删除，不留 fallback、不留 flag、不留『旧方法加个闸』的并行版。唯一现役调用者 scripts/nomi.mjs 的四个子命令一并删除——它拿的是裸 bearer，迁到语义面也只会 403，留着就是留一条骗人的路。测试里把 canvas.addNodes 当脚手架的三处（rpcServer.test.ts 两处、mcpPlanConfirm.test.ts 两条）改打租约路；其中一处顺手改成正面断言（legacy 404 + 语义面裸 bearer 403）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "内部传输授权边界，不涉及第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "对用户无迁移。外部 MCP 宿主不受影响：四个方法早已不在 tools/list 里，宿主一直走 nomi_canvas_edit / nomi_canvas_maintenance。本机脚本若曾用 `node scripts/nomi.mjs canvas add|connect|prompt|delete`，改走 MCP 语义面（需要 nomi_session_open 拿 leaseHandle）。",
+  "residual_risks": [
+    "assertLocalBearerProjectSessionRoute 的运行时判据仍是『需要会话的方法』白名单（名单外 return）。本次没有把它整张反转成免会话白名单：那会同时改变 27 个方法与 MCP_GENERATION_ROUTES 的行为，且 unknown method 的 404 会变成 403（rpcServer.test.ts 有三条钉死 404 的断言）。fail-closed 现在由 dispatcherRouteClosure.test.ts 在门岗层保证，不是由运行时保证——门岗跑不到的地方（比如有人绕过 dispatcher 另起一张路由表）仍然看不见。反转运行时判据应作为独立一刀。",
+    "LOCAL_BEARER_ROUTE_REGISTER 里 production.start / asset.import / integration.* / model.onboarding.* 写的是『它们的门在自己那一层』。这份判词本身没有机器核对——同一次横扫里的 production.start trustLevel=budget_only 审批旁路就是这类判词不成立的例子（另一份合同 2026-09-21-external-trust-level-gate-bypass 修它）。",
+    "canvas.read 在 rpcServer.ts:195 被 isCanvasRead 显式跳过会话断言（只读，走 verified internal adapter）。本次未动。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/localProjectSessionTransportPolicy.ts",
+    "tests": [
+      "electron/capabilityCore/dispatcherRouteClosure.test.ts",
+      "electron/capabilityCore/localProjectSessionTransportPolicy.test.ts",
+      "electron/capabilityCore/rpcServer.test.ts"
+    ],
+    "note": "两张判据表住这里；它们守的执行点是 dispatcher.ts 的 leasedProject。"
+  }
+}

@@ -1,0 +1,84 @@
+import type { StoryboardAuthorFields } from '../agentCapabilities/generationPlanSchemas'
+import { modelKindForTaskKind } from '../capabilityModeManifest'
+import type { PlanCandidate } from '../../capabilityCore/executionContract'
+import type { PlanAnchor, PlanShot, StoryboardPlan } from './storyboardPlan'
+import { planAnchorSchema, planShotSchema } from './storyboardPlanSchema'
+
+/**
+ * 一个 Agent 草稿镜头 ↔ 原编辑器契约（`StoryboardPlan`）之间的**纯适配层**。
+ *
+ * 这里没有存储：一份文稿来源的分镜方案只有一个家——项目记录里的 `storyboardDesign`，
+ * 和用户手建的那种完全同一份。本文件只负责把一个已准入的候选翻成编辑器认的主体形状。
+ */
+
+function shotKindOf(candidate: PlanCandidate): Pick<PlanShot, 'shotKind'> {
+  const kind = modelKindForTaskKind(candidate.mode)
+  return kind === 'image' || kind === 'video' ? { shotKind: kind } : {}
+}
+
+function candidateFields(candidate: PlanCandidate) {
+  return {
+    ...(candidate.modelId ? { modelKey: candidate.modelId } : {}),
+    ...(candidate.providerId ? { modelVendor: candidate.providerId } : {}),
+    ...(candidate.modeId ? { modeId: candidate.modeId } : {}),
+    ...(Object.keys(candidate.parameters).length ? { params: structuredClone(candidate.parameters) } : {}),
+  }
+}
+
+/** Adapt an admitted Agent subject into the existing editor contract exactly once, at author creation. */
+export function storyboardSubjectFromCandidate(input: {shotId: string; role?: 'anchor' | 'shot'; title?: string; candidate: PlanCandidate}, index: number,
+  authored?: StoryboardAuthorFields, referenceUrls: Readonly<Record<string, string>> = {}): PlanAnchor | PlanShot {
+  const candidate = input.candidate
+  const fields = candidateFields(candidate)
+  const referenceBindings: Record<string, Array<{url:string}>> = {}
+  for (const reference of candidate.references) {
+    const url = referenceUrls[reference.assetId]
+    if (!url) throw new Error('storyboard_reference_preview_unavailable')
+    ;(referenceBindings[storyboardReferenceSlot(reference)] ??= []).push({url})
+  }
+  if (authored?.referenceBindings && candidate.references.length) throw new Error('storyboard_author_reference_fields_conflict')
+  const common = {...fields,...(candidate.references.length ? {referenceBindings} : {})}
+  if (input.role === 'anchor') {
+    if (!authored?.kind || !authored.carrier) throw new Error('storyboard_anchor_editorial_required: provide storyboard.kind and storyboard.carrier')
+    return planAnchorSchema.parse({...authored,...common,id:input.shotId,kind:authored.kind,carrier:authored.carrier,name:input.title ?? candidate.prompt,description:candidate.prompt})
+  }
+  if (authored?.kind || authored?.carrier) throw new Error('storyboard_subject_role_mismatch')
+  return planShotSchema.parse({durationSec:typeof candidate.parameters.duration === 'number' ? candidate.parameters.duration : 0,anchorIds:[],prompt:candidate.prompt,...shotKindOf(candidate),...authored,...common,shotId:input.shotId,index})
+
+}
+
+export function patchStoryboardSubject(plan: StoryboardPlan, shotId: string, patch: Record<string, unknown>, references?: Record<string, Array<{url: string}>>): PlanAnchor | PlanShot {
+  const subject = plan.anchors.find(anchor => anchor.id === shotId) ?? plan.shots.find(shot => shot.shotId === shotId)
+  if (!subject) throw new Error('Storyboard shot not found')
+  const authored=patch.storyboard as StoryboardAuthorFields | undefined
+  const duration = (patch.parameters as Record<string, unknown> | undefined)?.duration
+  const merged = {...subject,...authored,
+    ...(!('description' in subject) && patch.prompt !== undefined && patch.prompt !== subject.prompt
+      && authored?.promptSegments === undefined ? {promptSegments:undefined} : {}),
+    // Match creation: an explicit author duration overrides the candidate parameter.
+    ...(!('description' in subject) && authored?.durationSec === undefined && typeof duration === 'number'
+      ? {durationSec:duration} : {}),
+    ...(!('description' in subject) && authored?.keyframe ? {keyframe:{...subject.keyframe,...authored.keyframe,
+      ...(authored.keyframe.params ? {params:{...subject.keyframe?.params,...authored.keyframe.params}} : {})}} : {}),
+    ...(patch.prompt !== undefined ? {['description' in subject ? 'description' : 'prompt']:patch.prompt} : {}),
+    ...(patch.modelId !== undefined ? {modelKey:patch.modelId} : {}),
+    ...(patch.providerId !== undefined ? {modelVendor:patch.providerId} : {}),
+    ...(patch.modeId !== undefined ? {modeId:patch.modeId} : {}),
+    ...(patch.parameters !== undefined ? {params:patch.parameters} : {}),
+    ...(references ? {referenceBindings:references} : {}),
+  } as PlanAnchor | PlanShot
+  if (patch.taskKind !== undefined && !('description' in merged)) merged.shotKind = String(patch.taskKind).includes('video') ? 'video' : 'image'
+  return 'description' in subject ? planAnchorSchema.parse(merged) : planShotSchema.parse(merged)
+}
+
+/** Map pinned execution reference roles to the original storyboard slot vocabulary. */
+export function storyboardReferenceSlot(reference: PlanCandidate['references'][number]): string {
+  switch (reference.role) {
+    case 'first_frame': case 'last_frame': return reference.role
+    case 'character': return 'image_ref'
+    case 'audio': return 'audio_ref'
+    case 'reference': case undefined:
+      return reference.kind === 'video' ? 'video_ref' : reference.kind === 'audio' ? 'audio_ref' : 'image_ref'
+    default: throw new Error('storyboard_reference_role_invalid')
+  }
+}

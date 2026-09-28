@@ -1,4 +1,10 @@
-/** Structured error boundary shared by the local RPC client and MCP transport. */
+/**
+ * Structured error boundary shared by the local RPC client and MCP transport.
+ *
+ * 2026-09-21：`phase` 这一格随 env flag 与三段式 rollout 一起删除。序列化那一半在主进程 lane
+ * 就已经不再写它，这里是解码那一半——留着等于永远收不到、也永远读不出来的一个字段，而下一个人
+ * 会照着它以为「阶段」还是一个 Nomi 回答得出来的问题。
+ */
 import { RpcError } from './rpcError'
 import { buildToolErrorOutcome } from './mcpToolErrorResults'
 
@@ -7,7 +13,6 @@ export type RpcErrorWireDetails = Readonly<{
   code?: string
   errorCode?: string
   nextAction?: string
-  phase?: string
   capability?: string
 }>
 
@@ -17,7 +22,6 @@ export class RpcTransportError extends Error {
   readonly code?: string
   readonly errorCode?: string
   readonly nextAction?: string
-  readonly phase?: string
   readonly capability?: string
 
   constructor(message: string, details: RpcErrorWireDetails) {
@@ -26,7 +30,6 @@ export class RpcTransportError extends Error {
     this.code = details.code
     this.errorCode = details.errorCode ?? details.code
     this.nextAction = details.nextAction
-    this.phase = details.phase
     this.capability = details.capability
   }
 }
@@ -46,7 +49,6 @@ export function rpcErrorWirePayload(error: unknown): RpcErrorWirePayload {
     message,
     code: error.code,
     nextAction: error.nextAction,
-    phase: error.phase,
     capability: error.capability,
   }
 }
@@ -65,7 +67,7 @@ export function rpcErrorFromPayload(body: unknown, status: number): Error {
   const message = typeof rawError === 'string'
     ? rawError
     : details?.message || `RPC ${status}`
-  if (details && (details.code || details.errorCode || details.nextAction || details.phase || details.capability)) {
+  if (details && (details.code || details.errorCode || details.nextAction || details.capability)) {
     return new RpcTransportError(message, details)
   }
   return new Error(message)

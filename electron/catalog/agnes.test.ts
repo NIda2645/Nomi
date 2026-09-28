@@ -8,7 +8,7 @@ import { applyParamMap, agnesVideoWidth, agnesVideoHeight, agnesVideoNumFrames }
 import { buildHttpRequest, buildTemplateContext } from "../ai/requestPipeline";
 import { taskTemplateParams, applyHeadlessParamDefaults } from "./taskParams";
 import { applyRequestTransform, validateRequestTransform } from "../tasks/requestTransforms";
-import { getArchetypeById, resolveArchetypeForModel } from "../../src/config/modelArchetypes";
+import { getArchetypeById, resolveArchetypeForModel } from "../shared/modelArchetypes";
 import { buildArchetypeInputParams, currentArchetypeMode, ensureArchetypeNodeMeta } from "../../src/workbench/generationCanvas/nodes/controls/archetypeMeta";
 import { bodyReferenceSupport } from "./referenceReachability";
 import type { HttpOperation } from "./types";

@@ -65,6 +65,8 @@ function fieldCountOf(binding: WorkflowBinding | undefined): number {
 export type WorkflowCatalog = {
   /** False until this backend's local catalog has loaded; an empty loaded catalog is still ready. */
   ready: boolean
+  /** 这一次读目录为什么失败；非空时 `backends`/`workflows` 仍是上一次读到的那份，不是空的。 */
+  loadError: string | null
   backends: BackendRow[]
   workflows: WorkflowRow[]
   /** 选中这台的工作流原始 JSON + 已存绑定。 */
@@ -84,6 +86,7 @@ export function useWorkflowCatalog(vendorKey: string, refreshToken: number): Wor
   const [reconciles, setReconciles] = React.useState<Map<string, WorkflowReconcile>>(new Map())
   const [probes, setProbes] = React.useState<Map<string, boolean>>(new Map())
   const [loadedVendorKey, setLoadedVendorKey] = React.useState<string | null>(null)
+  const [loadError, setLoadError] = React.useState<string | null>(null)
 
   const refresh = React.useCallback(() => setVersion((v) => v + 1), [])
 
@@ -121,10 +124,11 @@ export function useWorkflowCatalog(vendorKey: string, refreshToken: number): Wor
           })),
       )
       setMappings(catalog.listMappings({ vendorKey }) as Array<Record<string, unknown>>)
-    } catch {
-      setVendors([])
-      setModels([])
-      setMappings([])
+      setLoadError(null)
+    } catch (error) {
+      // 读失败**不清空**：清空等于替用户断言「你没有这些」，而真相只是「这一次没读到」。
+      // 上一份留在屏上 + 一条说得出原因的错（同形横扫，2026-09-21 配置不许静默消失）。
+      setLoadError(error instanceof Error ? error.message : String(error))
     } finally {
       setLoadedVendorKey(vendorKey)
     }
@@ -233,6 +237,7 @@ export function useWorkflowCatalog(vendorKey: string, refreshToken: number): Wor
 
   return {
     ready: loadedVendorKey === vendorKey,
+    loadError,
     backends,
     workflows,
     draftOf,

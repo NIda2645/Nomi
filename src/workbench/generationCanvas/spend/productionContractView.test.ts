@@ -17,7 +17,7 @@ function run(overrides: Partial<ProductionRun> = {}): ProductionRun {
       trustedHosts: ['codex'], allowedProviders: ['tapcanvas'], allowedModels: ['seedance-1.0'],
       maxSpend: 60, maxAttemptsPerJob: 2, minimizeUploads: true,
     },
-    budget: { currency: 'CNY', authorized: 60, reserved: 0, actual: 0, unsettled: 0 },
+    budget: { currency: 'CNY', authorized: 60, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     planVersion: 4,
     snapshotCursor: 3,
     stages: [],
@@ -88,7 +88,7 @@ describe('production contract view', () => {
 
   it('keeps unknown cost explicit instead of fabricating an estimate', () => {
     const unknown = gate({ contract: { ...gate().contract!, estimatedCost: undefined } })
-    expect(buildProductionContractView(run({ budget: { currency: 'USD', authorized: 0, reserved: 0, actual: 0, unsettled: 0 } }), unknown).cost).toEqual({
+    expect(buildProductionContractView(run({ budget: { currency: 'USD', authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 } }), unknown).cost).toEqual({
       known: false,
       currency: 'USD',
       minimum: null,

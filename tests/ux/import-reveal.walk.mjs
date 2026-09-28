@@ -82,15 +82,17 @@ try {
   const probe = () => win.evaluate(() => {
     const q = (s) => Array.from(document.querySelectorAll(s))
     const reveals = q('[data-progress-reveal]')
-    const band = q('[data-process-static-band]')
+    const grid = q('[data-process-static-grid]')
     return {
       nodes: q('[data-node-id]').length,
       waiting: q('[data-generation-waiting]').length,
       importing: q('[data-generating-placement="import"]').length,
       generating: q('[data-generating-placement="surface"]').length,
-      band: band.length,
-      bandBg: band[0] ? getComputedStyle(band[0]).backgroundImage.slice(0, 60) : null,
-      bandRect: band[0] ? (({ width, height, top }) => ({ w: Math.round(width), h: Math.round(height), y: Math.round(top) }))(band[0].getBoundingClientRect()) : null,
+      grid: grid.length,
+      blueBand: q('[data-process-static-band]').length,
+      gridMask: grid[0] ? getComputedStyle(grid[0]).maskImage : null,
+      gridAnimations: grid[0] ? grid[0].getAnimations({ subtree: true }).length : 0,
+      gridRect: grid[0] ? (({ width, height, top }) => ({ w: Math.round(width), h: Math.round(height), y: Math.round(top) }))(grid[0].getBoundingClientRect()) : null,
       progressLine: q('[data-process-progress]').length,
       reveal: reveals.map((e) => ({
         ratio: Number(e.getAttribute('data-reveal-ratio')),
@@ -136,8 +138,8 @@ try {
   const ratios = withReveal.map((f) => Math.max(...f.reveal.map((r) => r.ratio)))
   const verdict = {
     neverWoreGenerationOverlay: timeline.every((f) => f.generating === 0),
-    noSolidBandWithGpu: reduced ? 'n/a（本趟就是无 GPU 兜底）' : timeline.every((f) => f.band === 0),
-    fallbackBandIsGradient: reduced ? timeline.some((f) => f.band > 0 && /gradient/.test(f.bandBg || '')) : 'n/a',
+    noBlueBand: timeline.every((f) => f.blueBand === 0),
+    staticGridWithoutMotion: reduced ? timeline.some((f) => f.grid > 0 && /repeating-linear-gradient/.test(f.gridMask || '') && f.gridAnimations === 0) : 'n/a',
     noProgressLineEver: timeline.every((f) => f.progressLine === 0),
     revealRatioMonotonic: [...perCard.values()].every((series) => series.every((r, i) => i === 0 || r >= series[i - 1])),
     revealCellsTrackRatio: withReveal.every((f) => f.reveal.every((r) => !r.total || Math.abs(r.cells - Math.round(r.ratio * r.total)) <= 1)),

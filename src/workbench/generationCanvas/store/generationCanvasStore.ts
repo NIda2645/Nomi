@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 import { create } from 'zustand'
 import { immer } from 'zustand/middleware/immer'
 import { subscribeWithSelector } from 'zustand/middleware'
@@ -19,10 +20,13 @@ import {
 } from './canvasClipboard'
 import { resolveGroupInsertionDelta } from './resolveInsertionPosition'
 import { normalizeStoreSnapshot } from './canvasSnapshotNormalizer'
+import { convergeDeconstructionNodes } from '../nodes/shotTable/deconstructionLifecycle'
 import { createDefaultGenerationCanvasSnapshot } from './generationCanvasDefaults'
-import { isShotNumberedNode, nextShotIndex } from '../model/shotNumbering'
+import { assignClonedShotIndexes } from '../model/shotNumbering'
+import { placementOrigin } from '../model/canvasPlacement'
+import { resolveNodeVisualSize } from '../nodes/nodeSizing'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
-import { applyCanvasEvent } from '../events/canvasEventReducer'
+import { replayCanvasEvents } from '../events/canvasEventReducer'
 import { withCanvasWriteBoundary } from '../events/canvasWriteBoundary'
 import type { GenerationCanvasState } from './canvasStoreTypes'
 import { createCanvasNodeActions } from './canvasNodeActions'
@@ -30,6 +34,20 @@ import { createCanvasGraphActions } from './canvasGraphActions'
 import { createCanvasRunActions } from './canvasRunActions'
 
 export { __resetCanvasUndoJournalForTests as __resetGenerationCanvasHistoryForTests } from '../events/canvasUndoJournal'
+
+/**
+ * 复制类动作（拖动复制 / Cmd+D）借用剪贴板走 pasteNodes，这样复制与粘贴只有一条落地路径；
+ * 借完必须还——用户刚 ⌘C 的内容不能被一次复制悄悄换掉。
+ */
+function pasteThroughBorrowedClipboard<T>(payload: NonNullable<ReturnType<typeof getClipboard>>, run: () => T): T {
+  const previousClipboard = getClipboard()
+  try {
+    setClipboard(payload)
+    return run()
+  } finally {
+    setClipboard(previousClipboard)
+  }
+}
 
 export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscribeWithSelector(immer((set, get, store) => withCanvasWriteBoundary({
   isReady: false,
@@ -47,7 +65,6 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   canUndo: false,
   canRedo: false,
   hasClipboard: false,
-  markReady: () => set({ isReady: true }),
   captureHistory: () => {
     pushUndoSnapshot(get())
     set((state) => {
@@ -71,17 +88,20 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   duplicateNodesForDrag: (nodeIds) => {
     const payload = buildSelectedClipboard({ ...get(), selectedNodeIds: nodeIds })
     if (!payload) return new Map()
-    const previousClipboard = getClipboard()
-    try {
-      setClipboard(payload)
+    return pasteThroughBorrowedClipboard(payload, () => {
       get().pasteNodes({ x: Math.min(...payload.nodes.map((node) => node.position.x)), y: Math.min(...payload.nodes.map((node) => node.position.y)) })
       const copies = get().selectedNodeIds
       const mapping = new Map(payload.nodes.map((node, index) => [node.id, copies[index]]))
       for (const original of payload.nodes) get().moveNode(mapping.get(original.id)!, original.position)
       return mapping
-    } finally {
-      setClipboard(previousClipboard)
-    }
+    })
+  },
+  duplicateSelectedNodes: () => {
+    // Cmd/Ctrl+D：所选节点 + 它们**之间**的边原地偏移复制（LibTV「复制节点和连线」）。
+    // 与拖动复制同一套原语：借剪贴板走 pasteNodes（一个撤销点、镜头领新号、整簇避让），用完把用户的 ⌘C 还回去。
+    const payload = buildSelectedClipboard(get())
+    if (!payload) return
+    pasteThroughBorrowedClipboard(payload, () => get().pasteNodes())
   },
   copySelectedNodes: () => {
     const nextClipboard = buildSelectedClipboard(get())
@@ -106,28 +126,33 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
     })
     emitCanvasGesture(removedIds.map((nodeId) => ({ type: 'canvas.node.removed', payload: { nodeId } })))
   },
-  pasteNodes: (basePosition) => {
+  pasteNodes: (basePosition, anchor) => {
     const currentState = get()
     const clipboardPayload = getClipboard()
     if (!clipboardPayload) return
     const cloned = cloneClipboardPayload(clipboardPayload)
     if (!cloned.nodes.length) return
     // 粘贴产物是新身份：镜头节点逐个领新编号，不复制原号（编号唯一，审计 A2）。
-    let nextIndex = nextShotIndex(currentState.nodes)
-    const numberedNodes = cloned.nodes.map((node) =>
-      isShotNumberedNode(node) ? { ...node, shotIndex: nextIndex++ } : node,
-    )
+    const numberedNodes = assignClonedShotIndexes(currentState.nodes, cloned.nodes)
     const positionedNodes = basePosition
       ? (() => {
           const minX = Math.min(...numberedNodes.map((node) => node.position.x))
           const minY = Math.min(...numberedNodes.map((node) => node.position.y))
-          const dx = Math.round(basePosition.x - minX)
-          const dy = Math.round(basePosition.y - minY)
+          // 锚点按粘贴簇**看得见的**外接盒算（卡面尺寸唯一真相源 resolveNodeVisualSize），
+          // 「中心压在光标下」才是真的中心，不是按默认尺寸猜的。
+          const origin = anchor
+            ? placementOrigin({ point: basePosition, anchor }, {
+                width: Math.max(...numberedNodes.map((node) => node.position.x + resolveNodeVisualSize(node).width)) - minX,
+                height: Math.max(...numberedNodes.map((node) => node.position.y + resolveNodeVisualSize(node).height)) - minY,
+              })
+            : basePosition
+          const dx = Math.round(origin.x - minX)
+          const dy = Math.round(origin.y - minY)
           return numberedNodes.map((node) => ({
             ...node,
             position: {
-              x: Math.max(40, Math.round(node.position.x + dx)),
-              y: Math.max(40, Math.round(node.position.y + dy)),
+              x: Math.round(node.position.x + dx),
+              y: Math.round(node.position.y + dy),
             },
           }))
         })()
@@ -245,9 +270,11 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
     // reducer 全 case 幂等,重看快照内已有事件安全。
     if (!events.length) return
     const state = get()
-    let projection = { nodes: state.nodes, edges: state.edges, groups: state.groups }
-    for (const event of events) projection = applyCanvasEvent(projection, event)
-    set({ nodes: projection.nodes, edges: projection.edges, groups: projection.groups })
+    const projection = replayCanvasEvents(events, { nodes: state.nodes, edges: state.edges, groups: state.groups })
+    // 拆解进度的每一下写都走 canvas.node.updated 进了事件日志，重放会把 `status: 'running'`
+    // 原样写回来——快照那一步的收敛因此等于没发生（T-ED-06 的重启卡死正是这一下）。
+    // 终态判定的 owner 只有一份，重放完再问它一次；已终态的表它原样返回，幂等。
+    set({ nodes: convergeDeconstructionNodes(projection.nodes), edges: projection.edges, groups: projection.groups })
   },
   applyExternalGraph: (snapshot) => {
     // A 模式实时桥:外部 MCP 改动经主进程算好整张快照,这里应用进运行中 store。
@@ -276,3 +303,54 @@ export const useGenerationCanvasStore = create<GenerationCanvasState>()(subscrib
   ...createCanvasGraphActions(set, get, store),
   ...createCanvasRunActions(set, get, store),
 }))))
+
+/**
+ * C1 寿命声明 + 释放（原来是 `releaseWorkbenchProjectSession.ts` 里那份 10/13 的手写清单）。
+ *
+ * 三个原来没被清的字段，各有各的理由：
+ * - `persistRevision`：落盘计数，进程级。切项目把它归零会让「有没有未保存改动」的判断出错。
+ * - `workflowTemplates`：ComfyUI 工作流模板是**装机级**目录数据，不是项目内容。
+ * - `pendingConnectionSourceKind`：和它的两个同伴（`...Id` / `...Side`）是一次连线手势的三个
+ *   分量，原清单只清了两个——**这正是手写清单的典型漏法**：同一件事的三个字段，漏一个。
+ */
+export const generationCanvasStoreLifetime = declareStoreLifetime({
+  store: 'useGenerationCanvasStore',
+  fields: {
+    persistRevision: 'process',
+    workflowTemplates: 'process',
+    // 画布内容本体：项目就是它。
+    nodes: 'project',
+    edges: 'project',
+    groups: 'project',
+    isReady: 'project',
+    selectedNodeIds: 'project',
+    pendingConnectionSourceId: 'project',
+    pendingConnectionSourceSide: 'project',
+    pendingConnectionSourceKind: 'project',
+    generationAiDraft: 'project',
+    generationAiMessages: 'project',
+    generationAiCollapsed: 'project',
+    canUndo: 'project',
+    canRedo: 'project',
+    hasClipboard: 'project',
+  },
+  releaseProject: () => {
+    const empty = createDefaultGenerationCanvasSnapshot()
+    useGenerationCanvasStore.setState({
+      isReady: false,
+      nodes: empty.nodes,
+      edges: empty.edges,
+      groups: empty.groups,
+      selectedNodeIds: [],
+      pendingConnectionSourceId: '',
+      pendingConnectionSourceSide: 'right',
+      pendingConnectionSourceKind: 'node',
+      generationAiDraft: '',
+      generationAiMessages: [],
+      generationAiCollapsed: true,
+      canUndo: false,
+      canRedo: false,
+      hasClipboard: false,
+    })
+  },
+})

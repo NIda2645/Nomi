@@ -1,3 +1,4 @@
+import { resolveStoryboardOverride } from './exec/storyboardOverrideActions'
 import React from 'react'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +20,7 @@ import {
   updateShotPrompt,
   updateShotAt,
   type SceneGroup,
+  type PlanShotPatch,
 } from '../../generationCanvas/agent/storyboardPlanEdits'
 import type { AnchorCardRuntime, StoryboardRowRuntime } from './exec/storyboardRowStatus'
 import { useShotMentionSource } from './shotRow/useShotMentionSource'
@@ -342,6 +344,7 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
                     frameBox: tableBox,
                     aspectOverridden: isAspectOverridden(plan, shot),
                     aspectOptions: ASPECT_OPTIONS,
+                    onResolveOverride: runtime?.exec.node ? (field: string, action: 'adopt' | 'discard') => resolveStoryboardOverride(runtime.exec.node!.id, field, action, { plan, shot, change: onChange }) : undefined,
                     onChangeAspect: (next: string | null) => onChange(setShotAspectOverride(plan, pos, next)),
                     skipped: skippedShotIds?.has(shotKey) ?? false,
                     onToggleSkip: onToggleSkip ? () => onToggleSkip(shotKey) : undefined,
@@ -386,7 +389,7 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
                       setDragIndex(null); setOverIndex(null)
                     },
                     onDragEnd: () => { setDragIndex(null); setOverIndex(null) },
-                    onUpdate: (patch: Partial<typeof shot>) => {
+                    onUpdate: (patch: PlanShotPatch) => {
                       if (typeof patch.prompt !== 'string') {
                         onChange(updateShotAt(plan, pos, patch))
                         return

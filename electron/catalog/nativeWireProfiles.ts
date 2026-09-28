@@ -18,7 +18,7 @@ import type { HttpOperation, ProfileKind } from "./types";
 // ---------------------------------------------------------------------------
 
 export type NativeWireProfile = {
-  /** 命中哪个档案（src/config/modelArchetypes 的 archetype.id）。 */
+  /** 命中哪个档案（electron/shared/modelArchetypes 的 archetype.id）。 */
   archetypeId: string;
   /** 拼进 mapping.name 的渠道名（与内置种子的中文 name 同性质，非 UI 文案）。 */
   wireName: string;

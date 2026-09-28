@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { taskReferenceSchema } from './taskReference';
+import { resolveShotIdentities } from "../canvas/shotNumbering";
 import { generationNodeStatusSchema, parseGenerationNodeStatus } from "../canvas/generationNodeStatus";
 import type { CapabilityContract } from "./capabilityContract";
 
@@ -41,10 +43,29 @@ const canvasReadNodeSchema = z
     status: generationNodeStatusSchema,
     position: canvasReadPositionSchema,
     locked: z.boolean(),
-    shotIndex: nonnegativeSafeIntegerSchema.optional(),
+    shotIndex: z.number().int().positive().safe().optional(),
+    shotRole: z.enum(["first_frame", "video", "image"]).optional(),
+    shotOwnerNodeIds: z.array(trimmedNonEmptyStringSchema).optional(),
     hasResult: z.boolean(),
     currentResultId: opaqueResultIdSchema.optional(),
     resultIds: z.array(opaqueResultIdSchema).optional(),
+    taskRef: taskReferenceSchema.optional(),
+    /**
+     * 这个节点挂着的模型身份（只有标识，不含参数——参数按需去 `nomi_read{target:"model"}` 查，
+     * 那是分级披露的详情那一档；整张画布每个节点都拖着一份参数表会把回合上下文撑爆）。
+     *
+     * 修复前这份投影**一个模型字段都不返回**：写路径又不校验模型键，于是外部宿主写错一个
+     * modelKey，既拦不住也读不回来——错误完全不可观测。
+     */
+    model: z
+      .object({
+        modelKey: trimmedNonEmptyStringSchema,
+        vendor: trimmedNonEmptyStringSchema.optional(),
+        variantId: trimmedNonEmptyStringSchema.optional(),
+        modeId: trimmedNonEmptyStringSchema.optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -146,6 +167,12 @@ export const canvasReadResultSchema = z
       }
     });
     result.nodes.forEach((node, nodeIndex) => {
+      for (const ownerIndex of duplicateIndexes(node.shotOwnerNodeIds ?? [])) {
+        context.addIssue({ code: "custom", message: "Shot owner IDs must be unique", path: ["nodes", nodeIndex, "shotOwnerNodeIds", ownerIndex] });
+      }
+      node.shotOwnerNodeIds?.forEach((ownerId, ownerIndex) => {
+        if (!nodeIds.has(ownerId)) context.addIssue({ code: "custom", message: "Shot owner must reference a node", path: ["nodes", nodeIndex, "shotOwnerNodeIds", ownerIndex] });
+      });
       for (const resultIndex of duplicateIndexes(node.resultIds ?? [])) {
         context.addIssue({
           code: "custom",
@@ -195,6 +222,24 @@ function stableResultIds(node: UnknownRecord): string[] {
   return ids;
 }
 
+/**
+ * 节点 meta 里的模型身份。读的键与解析器读的是**同一组**（`canvasNodeFactory.bindModelIdentity`
+ * 写的那四件 + 变体/模式）——读写不许各认一套键，否则「读得回来」只是看起来读得回来。
+ */
+function projectNodeModel(meta: UnknownRecord | undefined): CanvasReadNode["model"] | undefined {
+  const modelKey = nonEmptyString(meta?.modelKey) ?? nonEmptyString(meta?.modelAlias);
+  if (!modelKey) return undefined;
+  const vendor = nonEmptyString(meta?.modelVendor) ?? nonEmptyString(meta?.vendor);
+  const variantId = nonEmptyString(meta?.variantId);
+  const modeId = nonEmptyString(meta?.modeId);
+  return {
+    modelKey,
+    ...(vendor ? { vendor } : {}),
+    ...(variantId ? { variantId } : {}),
+    ...(modeId ? { modeId } : {}),
+  };
+}
+
 function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefined {
   const node = asRecord(value);
   const id = nonEmptyString(node?.id);
@@ -212,10 +257,11 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
   };
   const rawStatus = nonEmptyString(node.status);
   const status = parseGenerationNodeStatus(rawStatus) ?? "idle";
-  const shotIndex = node.shotIndex;
   const currentResultId = resultId(node.result);
   const resultIds = stableResultIds(node);
   const prompt = typeof node.prompt === "string" ? node.prompt : "";
+  const runId = nonEmptyString(asRecord(node.meta)?.productionRunId);
+  const model = projectNodeModel(asRecord(node.meta));
 
   return {
     id,
@@ -225,10 +271,11 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
     status,
     position,
     locked: node.locked === true,
-    ...(isNonnegativeSafeInteger(shotIndex) ? { shotIndex } : {}),
     hasResult: asRecord(node.result) !== undefined,
     ...(currentResultId ? { currentResultId } : {}),
     ...(resultIds.length ? { resultIds } : {}),
+    ...(runId ? { taskRef: { domain: 'generation' as const, jobId: runId } } : {}),
+    ...(model ? { model } : {}),
   };
 }
 
@@ -297,16 +344,27 @@ export function projectCanvasRead(source: unknown): CanvasReadResult {
     const node = asRecord(value);
     return typeof node?.prompt === "string" && node.prompt.length > 8_192;
   });
+  const identityInputs: Array<Parameters<typeof resolveShotIdentities>[0][number]> = [];
   const seenNodeIds = new Set<string>();
   const nodes = (Array.isArray(canvas?.nodes) ? canvas.nodes : []).flatMap((value): CanvasReadNode[] => {
     const node = projectNode(value, seenNodeIds);
-    return node ? [node] : [];
+    if (!node) return [];
+    const raw = asRecord(value)!;
+    identityInputs.push({
+      id: node.id, kind: node.kind, position: node.position,
+      ...(typeof raw.categoryId === "string" ? { categoryId: raw.categoryId } : {}),
+      ...(typeof raw.shotIndex === "number" ? { shotIndex: raw.shotIndex } : {}),
+      meta: asRecord(raw.meta),
+    });
+    return [node];
   });
   const survivingNodeIds = new Set(nodes.map((node) => node.id));
+  const edges = projectEdges(canvas?.edges, survivingNodeIds);
+  const identities = resolveShotIdentities(identityInputs, edges);
 
   return canvasReadResultSchema.parse({
-    nodes,
-    edges: projectEdges(canvas?.edges, survivingNodeIds),
+    nodes: nodes.map((node) => ({ ...node, ...identities.get(node.id) })),
+    edges,
     groups: projectGroups(canvas?.groups, survivingNodeIds),
     selectedNodeIds: survivingReferences(canvas?.selectedNodeIds, survivingNodeIds),
     ...(truncated ? { truncated: true } : {}),

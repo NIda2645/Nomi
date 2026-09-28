@@ -7,8 +7,8 @@
 // 这里只管「用户选了什么」；「实际生效的是什么」由 systemProxy 探测后决定（两者可能不同：
 // 选了跟随系统但系统压根没代理 / 选了自定义但地址填错）。
 import path from "node:path";
-import { writeJsonFileAtomic } from "./jsonFile";
-import { ensureDir, getSettingsRoot, readJson } from "./runtimePaths";
+import { readConfigFileOrDefault, writeConfigFileAtomic } from "./configFileStore";
+import { ensureDir, getSettingsRoot } from "./runtimePaths";
 
 const PREFS_FILE = "proxy-prefs.json";
 
@@ -47,14 +47,14 @@ function prefsPath(): string {
 }
 
 export function readProxyPrefs(): ProxyPrefs {
-  return normalizeProxyPrefs(readJson<unknown>(prefsPath(), DEFAULT_PROXY_PREFS));
+  return normalizeProxyPrefs(readConfigFileOrDefault<unknown>(prefsPath(), () => DEFAULT_PROXY_PREFS));
 }
 
 export function writeProxyPrefs(prefs: ProxyPrefs): ProxyPrefs {
   const normalized = normalizeProxyPrefs(prefs);
   try {
     ensureDir(getSettingsRoot());
-    writeJsonFileAtomic(prefsPath(), normalized);
+    writeConfigFileAtomic(prefsPath(), normalized);
   } catch {
     /* best-effort：写失败只是下次启动回退默认，不影响本次已生效的 dispatcher */
   }

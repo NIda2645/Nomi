@@ -1,0 +1,157 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-storyboard-delete-undo",
+  "problem_type": "Unowned keyboard reverse actions overwrite unrelated later editing",
+  "symptom": "Hidden storyboard or Redo restores deleted rows; later edits are overwritten; legacy restoration pops unrelated canvas history.",
+  "direct_cause": "Window listener omits event ownership and restores whole plan plus N current global undo barriers. Moving ownership to the editor root initially left focus at body when deletion removed the focused menu button.",
+  "class_root": "Reverse actions lack surface ownership and mutation-scoped authority.",
+  "affected_population": [
+    "Legacy and Run original storyboard hosts; single/multi-row deletion, delayed confirmation and later author edits"
+  ],
+  "scope_paths": [
+    "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "src/workbench/creation/storyboard/storyboardDeleteUndo.ts"
+  ],
+  "entry_points": [
+    "Original row menu and multi-selection deletion",
+    "Original editor keyboard Undo"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Reuses installed React DOM event boundary, original canvas input predicate and original graph compensation; no new framework API.",
+  "invariants": [
+    "Only an unconsumed ordinary Undo from the visible editor DOM may reverse deletion.",
+    "Deletion restoration preserves later plan fields and existing graph identities/results.",
+    "Ambiguous legacy row correspondence or changed deletion target fails visibly.",
+    "After deletion removes the focused editor control, restore editor focus only while focus remains unowned on body; never steal a live sibling or input focus."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "symbol": "StoryboardPlanEditor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/storyboardDeleteUndo.ts",
+      "symbol": "restoreGraph"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/proposalUndo.ts",
+      "symbol": "restoreGraph"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 9,
+    "why_not": "Original workspace host mounts, editor writes, canvas override edits, Agent tool application, shot-table edits and onboarding are distinct authorized producers. Existing proposal compensation and local storyboard deletion reuse restoreGraph for different domains; event ownership and reverse semantics converge in the editor/helper rather than deleting these necessary callers."
+  },
+  "generality_proof": "Both storage hosts mount the same editor and both deletion UI doors converge on its identity-checked local reverse action.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "StoryboardPlanEditor",
+      "responsibility": "Own keyboard event ancestry and exact delayed deletion target."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/storyboardDeleteUndo.ts",
+      "symbol": "restoreStoryboardDeletion",
+      "responsibility": "Apply only the original deletion inverse to the latest plan and graph."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "entry_point": "Legacy StoryboardPlanEditor",
+      "disposition": "enforced",
+      "evidence": "Original component handles delete/Undo for legacy store."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/StoryboardWorkspace.tsx",
+      "entry_point": "RunStoryboardHost",
+      "disposition": "enforced",
+      "evidence": "Run adapter renders the same editor with original host.change."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Both hosts preserve mounted editing state across workspace changes and allow edits after deletion.",
+    "same_class_scan": [
+      "door-map StoryboardPlanEditor and setStoryboardPlan; StoryboardShotTable row/multi delete callbacks; useCanvasShortcuts event ownership; canvasUndoJournal and restoreGraph/moveNodeToGroup."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "invariant": "Only the actual visible editor consumes Undo; local inverse cannot rewind unrelated content.",
+    "failure_mode": "Ignore foreign shortcut; report original inline failure on stale or ambiguous deletion target.",
+    "exception_policy": "none",
+    "strategy": "Remove global listener and whole-snapshot restoration, reuse domain graph compensation with one transaction barrier.",
+    "artifacts": [
+      "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "src/workbench/creation/storyboard/storyboardDeleteUndo.ts"
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/storyboard-delete-undo.test.mjs",
+    "src/workbench/creation/storyboard/storyboardDeleteUndo.test.ts"
+  ],
+  "class_regression_tests": [
+    "tests/ux/storyboard-delete-undo.test.mjs",
+    "src/workbench/creation/storyboard/storyboardDeleteUndo.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx"
+    ],
+    "rationale": "Removes window undo listener, old complete-plan snapshot and blind canvasSteps pop loop."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Application shortcut and deletion ownership, no third-party defect or new API.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted schema or legacy stable-ID migration; ambiguous legacy correspondence is rejected.",
+  "residual_risks": [
+    "Full Electron shell/cold persistence verification pending."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "tests": [
+      "tests/ux/storyboard-delete-undo.test.mjs",
+      "src/workbench/creation/storyboard/storyboardDeleteUndo.test.ts"
+    ],
+    "rationale": "The original editor is the common mutation and event boundary for both storage hosts."
+  }
+}

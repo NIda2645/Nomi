@@ -1,4 +1,5 @@
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
+import { CENTER_PLACEMENT_ANCHOR, type CanvasPlacementAnchor } from '../model/canvasPlacement'
 import { importLocalFilesToGenerationCanvas } from './canvasStageDrop'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
@@ -20,6 +21,8 @@ type CanvasMenuActionsInput = {
     sourceSide: ConnectionAnchorSide
     canvasX: number
     canvasY: number
+    /** 线从卡起还是从编组的「+」起；编组起的线新建节点后，组内每个成员各连一条（store.connectToGroup）。 */
+    sourceKind: 'node' | 'group'
   } | null
   setConnectionCreateMenu: (menu: null) => void
   addNode: (input: {
@@ -30,9 +33,10 @@ type CanvasMenuActionsInput = {
     select?: boolean
   }) => { id: string }
   startConnection: (nodeId: string, side: ConnectionAnchorSide) => void
+  startGroupConnection: (groupId: string, side: ConnectionAnchorSide) => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
-  pasteNodes: (position: { x: number; y: number }) => void
+  pasteNodes: (position: { x: number; y: number }, anchor?: CanvasPlacementAnchor) => void
   groupSelectedNodes: () => void
   deleteSelectedNodes: () => void
 }
@@ -71,14 +75,14 @@ export function buildCanvasMenuActions(input: CanvasMenuActionsInput): {
     input.setContextNodeMenu(null)
     if (action === 'copy') input.copySelectedNodes()
     else if (action === 'cut') input.cutSelectedNodes()
-    else if (action === 'paste') input.pasteNodes(pastePosition)
+    else if (action === 'paste') input.pasteNodes(pastePosition, CENTER_PLACEMENT_ANCHOR)
     else if (action === 'group') input.groupSelectedNodes()
     else if (action === 'delete') input.deleteSelectedNodes()
   }
 
   const handleAddConnectedNode = (kind: GenerationNodeKind) => {
     if (!input.connectionCreateMenu) return
-    const { sourceNodeId, sourceSide, canvasX, canvasY } = input.connectionCreateMenu
+    const { sourceNodeId, sourceSide, sourceKind, canvasX, canvasY } = input.connectionCreateMenu
     const created = input.addNode({
       kind,
       position: { x: canvasX, y: canvasY },
@@ -86,7 +90,8 @@ export function buildCanvasMenuActions(input: CanvasMenuActionsInput): {
       exactPosition: true,
       select: true,
     })
-    input.startConnection(sourceNodeId, sourceSide)
+    if (sourceKind === 'group') input.startGroupConnection(sourceNodeId, sourceSide)
+    else input.startConnection(sourceNodeId, sourceSide)
     completeNodeConnection(created.id)
     input.setConnectionCreateMenu(null)
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { archetypeForNode, isTextPromptEdge, referenceAssetKindForNode, validateReferenceEdge, partitionConnectableEdges, resolveTargetModeForEdge } from './referenceEdgeCapability'
-import { resolveArchetypeForModel } from '../../../config/modelArchetypes'
+import { archetypeForNode, isTextPromptEdge, referenceAssetKindForNode, validateReferenceEdge, partitionConnectableEdges, resolveTargetModeForEdge, selectConnectionEdgeMode } from './referenceEdgeCapability'
+import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { GENERATION_NODE_KINDS, getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
 
@@ -197,10 +197,33 @@ describe('resolveTargetModeForEdge — 连线后目标自动切到能消费这�
   it('目标未声明档案(未知/未设模型) → null(无从派生，P4 通用回退)', () => {
     expect(resolveTargetModeForEdge(node('a', 'image'), node('b', 'image'), 'reference')).toBeNull()
   })
+  it('Seedance 2.0 APIMart t2v + image defaults to the declared reference mode, even for a first-frame edge', () => {
+    const target = nodeWithMode('target', 'video', 'seedance-2-apimart', 't2v')
+    const mode = selectConnectionEdgeMode(node('source', 'image'), target, [])
+    expect(mode).toBe('character_ref')
+    expect(resolveTargetModeForEdge(node('source', 'image'), target, mode)).toBe('omni')
+  })
+
+  it('Wan 3.0 APIMart t2v + image defaults to its declared reference mode', () => {
+    const target = nodeWithMode('target', 'video', 'wan-3.0-apimart', 't2v')
+    const mode = selectConnectionEdgeMode(node('source', 'image'), target, [])
+    expect(mode).toBe('character_ref')
+    expect(resolveTargetModeForEdge(node('source', 'image'), target, mode)).toBe('ref')
+  })
+
+  it('a profile without a reference mode falls back to its first-frame mode', () => {
+    expect(resolveTargetModeForEdge(node('source', 'image'), nodeWithMode('target', 'video', 'hailuo-2.3', 't2v'), 'first_frame')).toBe('i2v')
+  })
+
+  it('an explicitly selected first-last mode stays unchanged for its first and last frame edges', () => {
+    const target = nodeWithMode('target', 'video', 'seedance-2-apimart', 'firstlast')
+    expect(resolveTargetModeForEdge(node('first', 'image'), target, 'first_frame')).toBeNull()
+    expect(resolveTargetModeForEdge(node('last', 'image'), target, 'last_frame')).toBeNull()
+  })
 })
 
 import { findVideoRefMode, resolveModeForConnectedReferences } from './referenceEdgeCapability'
-import { getArchetypeById } from '../../../config/modelArchetypes'
+import { getArchetypeById } from '../../../../electron/shared/modelArchetypes'
 import type { GenerationCanvasEdge } from '../model/generationCanvasTypes'
 
 describe('resolveModeForConnectedReferences — 按活边对账「生成方式」(提交/换模型兜底)', () => {
@@ -218,6 +241,18 @@ describe('resolveModeForConnectedReferences — 按活边对账「生成方式�
     const source = imageAsset('s')
     const target = { ...node('t', 'image', 'seedream'), meta: { archetype: { id: 'seedream', modeId: 't2i' } } } as GenerationCanvasNode
     expect(resolveModeForConnectedReferences(target, [source, target], [edge('s', 't', 'reference')])).toBe('edit')
+  })
+
+  it('文生视频 + 视频参考边 → 落「全能参考」（参考视频），不落排在前面、只能拿它做首帧接力的图生视频（2026-09-24 拍板）', () => {
+    const source = videoAsset('s')
+    const target = { ...node('t', 'video', 'dreamina-seedance-2'), meta: { archetype: { id: 'dreamina-seedance-2', modeId: 't2v' } } } as GenerationCanvasNode
+    expect(resolveModeForConnectedReferences(target, [source, target], [edge('s', 't', 'reference')])).toBe('multimodal')
+  })
+
+  it('视频边明确是首帧接力（first_frame）→ 仍落图生视频', () => {
+    const source = videoAsset('s')
+    const target = { ...node('t', 'video', 'dreamina-seedance-2'), meta: { archetype: { id: 'dreamina-seedance-2', modeId: 't2v' } } } as GenerationCanvasNode
+    expect(resolveModeForConnectedReferences(target, [source, target], [edge('s', 't', 'first_frame')])).toBe('i2v')
   })
 
   it('当前已是 edit（能收）→ null（幂等，尊重现状）', () => {
@@ -311,5 +346,31 @@ describe('archetypeForNode 与发送路径同源（2026-09-08 Agnes 2.1 根因�
   it('没有 modelKey 时退化成「只认 meta 里的显式 id」（旧行为不变）', () => {
     const bare = { ...legacyNode, meta: { archetype: { id: 'seedream', modeId: '' } } } as unknown as GenerationCanvasNode
     expect(archetypeForNode(bare)?.id).toBe('seedream')
+  })
+})
+
+import { connectionCreateKindsForSource } from './referenceEdgeCapability'
+
+describe('connectionCreateKindsForSource — 从「+」圈拖到空白处能接出什么（2026-09-24 视频拖不出下一个节点）', () => {
+  it('文本 / 图片源可接出图片与视频节点', () => {
+    expect(connectionCreateKindsForSource(node('t', 'text'))).toEqual(['image', 'video'])
+    expect(connectionCreateKindsForSource(node('i', 'image'))).toEqual(['image', 'video'])
+  })
+
+  it('视频源至少能接出视频节点（参考视频 / 尾帧接力），不再被整条取消', () => {
+    expect(connectionCreateKindsForSource(node('v', 'video'))).toContain('video')
+  })
+
+  it('导入的视频素材按产物类型判，与视频节点同口径', () => {
+    const asset = { ...node('a', 'asset'), result: { id: 'r', type: 'video', url: 'nomi-local://asset/p/a.mp4', createdAt: 1 } } as GenerationCanvasNode
+    expect(connectionCreateKindsForSource(asset)).toEqual(connectionCreateKindsForSource(node('v', 'video')))
+  })
+
+  it('不产出可参考资产的源（镜头笔记 / 输出）接不出任何节点', () => {
+    for (const kind of GENERATION_NODE_KINDS) {
+      const source = node(`s-${kind}`, kind)
+      if (kind === 'text' || referenceAssetKindForNode(source)) continue
+      expect(connectionCreateKindsForSource(source), kind).toEqual([])
+    }
   })
 })

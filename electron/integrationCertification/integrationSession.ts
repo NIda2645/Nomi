@@ -1,5 +1,4 @@
 import crypto from "node:crypto";
-import fs from "node:fs";
 import path from "node:path";
 import { capabilityCoreDir, type CapabilityOriginHost } from "../capabilityCore/security";
 import { writeCertificationJsonAtomic } from "./certificationPersistence";
@@ -20,6 +19,7 @@ import {
   createIntegrationSessionReaper,
   integrationCertifyingDeadlineAt,
   isTerminalIntegrationStage,
+  persistWatchdogTerminalWrite,
 } from "./integrationSessionTerminal";
 import type { TerminalReaper } from "../providerAdapter/terminalGuarantee";
 import { adapterDraftFromProposal, compileRequestFor } from "./integrationAdapterContract";
@@ -27,7 +27,7 @@ import type { IntegrationHandoff } from "./handoffQueue";
 import { enqueueIntegrationHandoff, retireIntegrationHandoffs } from "./handoffQueue";
 import { mutateCatalog, readCatalog, normalizeProviderKind } from "../catalog/catalogStore";
 import { decryptApiKeyRecord } from "../catalog/secrets";
-import { deriveVendorKeyFromBaseUrl } from "../catalog/catalogCommit";
+import { sessionVendorKey } from "./sessionVendorKey";
 import type { ProfileKind } from "../catalog/types";
 import { runComfyCandidateTest } from "../tasks/comfyCandidateTest";
 import { isComfyuiVendor, COMFYUI_VENDOR_KEY } from "../catalog/types";
@@ -42,9 +42,11 @@ import {
 } from "./integrationProposalValidation";
 import {
   adapterTerminalReasonCode,
+  assertIntegrationSessionCapacity,
   integrationStageFromAdapterRun,
+  persistIntegrationSessionState,
+  readIntegrationSessionState,
   safeCertificationFailureCode,
-  validateState,
 } from "./integrationSessionRecord";
 import {
   assertRecord,
@@ -90,14 +92,9 @@ export type IntegrationProposal = {
  * 「Nomi 自己编不动，请你来编」的结构化交底（B 路，见 providerAdapter/agentCompileRequest.ts）。
  * 落盘的只有这几个小字段；目标 schema 与撰写规则是常量，在投影时现加，不占会话文件。
  */
-export type IntegrationCompileRequest = {
-  schemaVersion: 1;
-  reasonCode: "adapter_contract_required";
-  field: "proposal.adapterDraft";
-  provider: { baseUrl: string; authType: AdapterAuthType; providerKind?: string };
-  models: Array<{ modelKey: string; kind: string }>;
-  docs: { provided: boolean; bytes: number };
-};
+// 这个类型跟着**产生它的那条判据**住（R9：巨壳只减不增，且类型该在它的生产者旁边）。
+import type { IntegrationCompileRequest } from "./integrationAdapterContract";
+export type { IntegrationCompileRequest };
 export type IntegrationSession = {
   schemaVersion: 1;
   id: string;
@@ -144,6 +141,7 @@ export type IntegrationSession = {
   /** 驱动 Agent 交回并已通过 validateProviderAdapterDraft 的说明卡。 */
   adapterDraft?: ProviderAdapterDraft;
 };
+
 export type IntegrationSessionProjection = Omit<
   IntegrationSession,
   "config" | "credentialRef" | "adapterDraft" | "compileRequest"
@@ -207,9 +205,9 @@ export function createRuntimeIntegrationSessionService(
     new OperationLedger(path.join(capabilityCoreDir(), "integration-comfy-operations.json"));
   const resolveCredential = (session: IntegrationSession): string | undefined => {
     if (session.kind !== "http-api-provider" || !session.config.baseUrl) return undefined;
-    const vendorKey = deriveVendorKeyFromBaseUrl(session.config.baseUrl);
-    if (!vendorKey) return undefined;
-    return decryptApiKeyRecord(readCatalog().apiKeysByVendor[vendorKey]) || undefined;
+    const catalog = readCatalog();
+    const vendorKey = sessionVendorKey(session, catalog.vendors);
+    return vendorKey ? decryptApiKeyRecord(catalog.apiKeysByVendor[vendorKey]) || undefined : undefined;
   };
   const runTask = input.runTask;
   const fetchTaskResult = input.fetchTaskResult;
@@ -604,20 +602,13 @@ export class IntegrationSessionService {
     session.revision += 1;
     session.updatedAt = (this.deps.now || (() => new Date().toISOString()))();
     this.state.revision += 1;
-    this.persist();
+    persistWatchdogTerminalWrite(() => this.persist());
   }
   private read(): PersistedState {
-    if (!fs.existsSync(this.filePath)) return { version: 1, revision: 0, sessions: [] };
-    let raw: unknown;
-    try {
-      raw = JSON.parse(fs.readFileSync(this.filePath, "utf8"));
-    } catch {
-      throw new Error("Integration session storage is corrupt");
-    }
-    return validateState(raw);
+    return readIntegrationSessionState(this.filePath, (state) => this.save(this.filePath, state));
   }
   private persist(): void {
-    this.save(this.filePath, this.state);
+    persistIntegrationSessionState(this.state, (state) => this.save(this.filePath, state));
   }
   /**
    * A submitted ComfyUI prompt is never safe to create again. When a durable
@@ -685,7 +676,7 @@ export class IntegrationSessionService {
     if (!found)
       throw new IntegrationRequestError(
         "integration_session_not_found",
-        "Integration session not found. List the open sessions with nomi_read target=integration (no sessionId) instead of guessing an id",
+        "Integration session not found. List the open setups with nomi_read target=setup (no setupId) instead of guessing an id",
       );
     return found;
   }
@@ -928,6 +919,8 @@ export class IntegrationSessionService {
     } else if (input.kind === "http-api-provider") {
       session.stage = "needs_credential";
     }
+    // 容量闸：persist 会挤掉最旧的终态会话，但**挤不动非终态**；全是没做完的活时只能当场拒绝。
+    assertIntegrationSessionCapacity(this.state.sessions, session);
     this.state.sessions.push(session);
     this.state.revision += 1;
     this.persist();
@@ -989,9 +982,9 @@ export class IntegrationSessionService {
     if (session.kind !== "http-api-provider" || !session.config.baseUrl)
       throw new Error("Credential is only valid for an HTTP provider");
     const clean = text(apiKey, "apiKey", 8 * 1024);
-    const vendorKey = deriveVendorKeyFromBaseUrl(session.config.baseUrl);
-    if (!vendorKey) throw new Error("Unable to derive a provider id from the API base URL");
-    const existing = readCatalog().vendors.find((vendor) => vendor.key === vendorKey);
+    const catalogVendors = readCatalog().vendors;
+    const vendorKey = sessionVendorKey(session, catalogVendors);
+    const existing = catalogVendors.find((vendor) => vendor.key === vendorKey);
     // A credential write creates only a disabled/configured vendor. Promotion by the
     // canonical certification run is the sole path that can make it selectable.
     // Vendor metadata and encrypted credential are one Catalog transaction. A
@@ -1189,7 +1182,7 @@ export class IntegrationSessionService {
     if (session.kind === "comfyui-workflow" && this.deps.comfyOperationLedger) {
       const contractDigest = integrationContractDigest(session, normalizedIdempotencyKey);
       const runId = `integration-${session.id}-${digest(normalizedIdempotencyKey).slice(0, 24)}`;
-      const sourceVendorKey = deriveVendorKeyFromBaseUrl(session.config.baseUrl || "") || COMFYUI_VENDOR_KEY;
+      const sourceVendorKey = session.config.baseUrl ? sessionVendorKey(session, readCatalog().vendors) : COMFYUI_VENDOR_KEY;
       comfyReservation = this.deps.comfyOperationLedger.begin({
         runId,
         contractDigest,

@@ -70,9 +70,9 @@ describe('buildToolOutcome (A2 结果重写：转述原材料 + 参数回显)', 
 describe('nomi_read target=models 转述（交付1：只有 keyStatus=ok 说可用 + 参考能力 + locale）', () => {
   const modelsResult = {
     models: [
-      { vendor: 'apimart', modelKey: 'seedream', label: 'Seedream', kind: 'image', keyStatus: 'ok', statusReason: '已接入且可用', references: { image: true, video: false, audio: false, multiImage: true, referenceModes: ['image_edit'] } },
-      { vendor: 'kie', modelKey: 'kie-x', label: 'Kie X', kind: 'video', keyStatus: 'missing', statusReason: '未配置 Kie 的 API Key；请先在 Nomi 应用的模型接入里填入', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } },
-      { vendor: 'volcengine', modelKey: 'volc-y', label: '火山 Y', kind: 'image', keyStatus: 'locked', statusReason: '火山 的 API Key 已保存但当前宿主身份解不开；请在 Nomi 应用里重新保存该 Key', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } },
+      { vendor: 'apimart', modelId: 'seedream', label: 'Seedream', kind: 'image', keyStatus: 'ok', statusReason: '已接入且可用', accepts: { image: true, video: false, audio: false, multiImage: true }, modeIds: ['image_edit'] },
+      { vendor: 'kie', modelId: 'kie-x', label: 'Kie X', kind: 'video', keyStatus: 'missing', statusReason: '未配置 Kie 的 API Key；请先在 Nomi 应用的模型接入里填入', accepts: { image: false, video: false, audio: false, multiImage: false }, modeIds: [] },
+      { vendor: 'volcengine', modelId: 'volc-y', label: '火山 Y', kind: 'image', keyStatus: 'locked', statusReason: '火山 的 API Key 已保存但当前宿主身份解不开；请在 Nomi 应用里重新保存该 Key', accepts: { image: false, video: false, audio: false, multiImage: false }, modeIds: [] },
     ],
   }
 
@@ -109,7 +109,7 @@ describe('nomi_read target=models 转述（交付1：只有 keyStatus=ok 说可�
 
   it('全部无 key：明说去配 + nextActions=configure_api_key', () => {
     const { text, outcome } = buildToolOutcome('nomi_read', { target: 'models' }, {
-      models: [{ vendor: 'kie', modelKey: 'x', label: 'X', kind: 'image', keyStatus: 'missing', statusReason: '未配置', references: { image: false, video: false, audio: false, multiImage: false, referenceModes: [] } }],
+      models: [{ vendor: 'kie', modelId: 'x', label: 'X', kind: 'image', keyStatus: 'missing', statusReason: '未配置', accepts: { image: false, video: false, audio: false, multiImage: false }, modeIds: [] }],
     })
     expect(text).toContain('无——请先配置 API Key')
     expect(outcome).toMatchObject({ usable: 0, nextActions: ['configure_api_key'] })
@@ -170,14 +170,25 @@ describe('buildToolErrorOutcome (A6 错误契约)', () => {
   })
 
   it('preserves typed generation policy codes in structured MCP outcomes', () => {
-    const error = Object.assign(new Error('generation.single-shot phase_not_ready'), {
-      code: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+    // 2026-09-21：`phase_not_ready` 与 `phase` 随 env flag / 三段式 rollout 一起删除，
+    // 换成仍在册的策略码。**同时新增一条阳性对照**：已删除的码不许再被当成策略码放行，
+    // 否则删了一半（抛的那半没了、认的这半还在）会长出一份失真的清单。
+    const error = Object.assign(new Error('generation.single-shot lease_required'), {
+      code: 'lease_required', nextAction: 'Open a new project session and retry', capability: 'start',
     })
     const { outcome } = buildToolErrorOutcome('nomi_start_generation', error)
     expect(outcome).toMatchObject({
-      kind: 'error', errorCode: 'phase_not_ready', nextAction: 'finish P0', phase: 'schema_only', capability: 'start',
+      kind: 'error', errorCode: 'lease_required', nextAction: 'Open a new project session and retry', capability: 'start',
     })
   })
+
+  it.each(['feature_disabled', 'phase_not_ready'])(
+    '已删除的 %s 不再被当成策略码（它抛不出来了，认它只会留下一份失真的清单）', (code) => {
+      const error = Object.assign(new Error('some private cause'), { code, nextAction: 'x', capability: 'start' })
+      const { outcome } = buildToolErrorOutcome('nomi_start_generation', error)
+      expect(outcome).toMatchObject({ kind: 'error', errorCode: null })
+      expect(outcome).not.toHaveProperty('phase')
+    })
 
   it.each([
     'capability_invocation_unverified',
@@ -224,7 +235,7 @@ describe('buildToolErrorOutcome (A6 错误契约)', () => {
       code: 'human_approval_required', nextAction: 'nomi://settings/automation', phase: 'e1_paid', capability: 'gate_decide',
     })
     const { text, outcome } = buildToolErrorOutcome('nomi_decide_generation_gate', error)
-    expect(text).toContain('请在 Nomi 确认这次生成')
+    expect(text).toContain('这一步要你本人在 Nomi 里确认一次')
     expect(text).not.toContain('human_approval_required')
     expect(outcome).toMatchObject({ errorCode: 'human_approval_required', nextActions: ['in_nomi'], nextAction: 'nomi://settings/automation' })
   })

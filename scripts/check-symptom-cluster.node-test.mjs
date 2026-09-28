@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   contractDate,
+  countsAsSymptom,
   evaluateClusters,
   findClusters,
   moduleKey,
@@ -120,4 +121,31 @@ test('同一模块多个重叠窗口只报最密的一条（刷屏的门岗没�
   const errors = evaluateClusters({ clusters, audits: [] })
   assert.equal(errors.length, 1)
   assert.match(errors[0], /已有 5 份根因合同/)
+})
+
+// 2026-09-22：这道门数的单位是**纠正性修复**。`change_kind: "structural"` 的合同按 schema 就没有
+// symptom / direct_cause / class_root（结构性合同声明的是「行为逐字不变」），把它算进症状簇，
+// 等于让一次纯搬家或纯删死代码去要求一份**没有证据的结构评审**——而那正是这道门想防的东西。
+// 触发实例：`2026-09-22-catalog-listing-dead-imports`（删两个没人读的 import），它一进来就把
+// `electron/catalog` 顶过了阈值。
+test('结构性合同不算一次「这一层又被修了」', () => {
+  const structural = { change_kind: 'structural', scope_paths: ['electron/catalog/modelCatalogListing.ts'] }
+  assert.deepEqual(modulesOf(structural), [], '结构性合同不该贡献任何模块键')
+  assert.equal(countsAsSymptom(structural), false)
+
+  // 阳性对照一：同一份合同去掉 change_kind（= 纠正性）就照常计数——放行的是**那一档**，不是这个模块。
+  assert.deepEqual(modulesOf({ scope_paths: structural.scope_paths }), ['electron/catalog'])
+  assert.equal(countsAsSymptom({ change_kind: 'corrective' }), true)
+
+  // 阳性对照二：两份纠正性 + 一份结构性 **不**成簇；把结构性那份换成纠正性就成簇。
+  const corrective = (file) => contract(file, ['electron/catalog/x.ts'])
+  const withStructural = [
+    corrective('docs/fixes/2026-09-20-a.root-cause.json'),
+    corrective('docs/fixes/2026-09-21-b.root-cause.json'),
+    { file: 'docs/fixes/2026-09-22-c.root-cause.json', date: '2026-09-22',
+      modules: modulesOf({ change_kind: 'structural', scope_paths: ['electron/catalog/y.ts'] }) },
+  ]
+  assert.deepEqual(findClusters({ contracts: withStructural }), [])
+  const allCorrective = [...withStructural.slice(0, 2), corrective('docs/fixes/2026-09-22-c.root-cause.json')]
+  assert.equal(findClusters({ contracts: allCorrective }).length, 1, '三份纠正性仍然照常成簇')
 })

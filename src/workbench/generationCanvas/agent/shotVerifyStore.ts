@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../../project/storeLifetime'
 // 镜级 verify 的状态层 + 编排入口(渲染层单一真相源)。
 // 方案:docs/plan/2026-06-28-storyboard-closed-loop-verify.md（Stage 1 实时编排 + Stage 2 半自动封顶）。
 //
@@ -217,3 +218,17 @@ export function buildContentFixMessage(deviations: readonly ReconcileDeviation[]
     '不要动其它已经正常的镜头。',
   ].join('\n')
 }
+
+/**
+ * C1 寿命声明：审片结果与在途 judge 全是当前项目的事实——它自己甚至存着 `projectId`
+ * 与一个自增的 `requestId`，就是为了让迟到的回执认不出旧项目。
+ * 释放走它**自己的** `clear()`（它要递增 requestId，不是简单置空）。
+ */
+export const shotVerifyStoreLifetime = declareStoreLifetime({
+  store: 'useShotVerifyStore',
+  fields: {
+    status: 'project', deviations: 'project', budget: 'project',
+    projectId: 'project', requestId: 'project', exhausted: 'project',
+  },
+  releaseProject: () => useShotVerifyStore.getState().clear(),
+})

@@ -30,7 +30,41 @@ git clone https://github.com/aqm857886159/Nomi.git
 
 ## 1. 接一个自定义 / 中转站供应商（OpenAI 兼容 / Anthropic / Responses）
 
-**适用**：任何暴露标准接口的服务——DeepSeek、通义、你公司自建的 vLLM、任意「API 中转站」。对照源码 `src/ui/onboarding/CustomVendorCard.tsx` 与 `src/ui/onboarding/VendorBaseUrlField.tsx`。
+**适用**：任何暴露标准接口的服务——DeepSeek、通义、你公司自建的 vLLM、任意「API 中转站」，
+以及任何「Nomi 还没内置」的生成模型（文生图 / 图生视频 / 语音 / 3D）。
+
+### 1.0 主线：你自己经 MCP 交一份声明（不用带用户点界面）
+
+**如果你已经接上了 Nomi 的 MCP server**（§3 讲怎么接），这件事你自己就能做完，用户只需要做两件：
+粘一次密钥、同意一次花钱。三步：
+
+| 步 | 调什么 | 拿到什么 |
+|---|---|---|
+| ① 读套件 | `nomi_read` `{"target": "onboarding_kit"}` | 声明卡的 JSON Schema + 撰写规范 + **两份可照抄的样例卡**（一份同步、一份异步轮询）。**无任何前置**：不需要会话、不需要密钥 |
+| ② 交整份卡 | `nomi_model_setup` `{"action": "submit_declaration", "declaration": "<整张卡的 JSON 文本>"}` | 校验 + 登记 + 免费自检一跳走完。被拒时带**字段路径、合法值、你自己声明的那条文档 URL** |
+| ③ 试跑一次 | `nomi_try_model` `{"vendorKey": "…", "modelKey": "…"}` | 一次**真实生成**，回来的是**供应商自己的响应原文**（已脱敏）。它是唯一能证明「接好了」的东西 |
+
+密钥另有一步、**任何时候都能做**，两个入口并存：
+
+- **默认**：`nomi_model_setup` `{"action": "connect_provider", "vendorKey": "…"}` → Nomi 在自己的窗口里打开凭证页，用户在那儿粘。那一页不经过你，也不进你的上下文。
+- **用户主动交给你时**：`{"action": "set_key"}`（字段名以工具 schema 为准）。同一份存储、同一扇写门、同一套 origin 绑定；Nomi 会在那张连接卡上留一行「这把 key 由你的 AI 填入」。
+
+**三条硬规矩**（它们不是建议）：
+
+1. **先读官方文档再写卡。** 凭记忆填等于没查；记错一个字段名，第 ③ 步会以一次**花了钱的**失败告终。
+2. **密钥只由用户本人粘**，除非他明确要你代填。永远不要主动索要、不要从文件或环境变量里读、不要打印、不要提交。Nomi **不会**把已存的密钥还给你——任何返回、任何错误里都没有。
+3. **没跑通不许说接好了。** 返回里的 `unverified` 列表就是机器版的这句话：里面还留着「这个模型产出过东西吗」，就说明还没有。
+
+> 卡表达不了这家（请求签名 / 非 HTTP / 只有 SDK / 比「(上传初始化 →) create → query → result」更多的步骤）时，
+> Nomi 回 `no_generic_contract`。**不要去套任何内置模板**——每一次都会撞在同一堵墙上。出口写在那条返回的
+> `nextAction` 里：在 Nomi 里给那个模型手写一段调用脚本。
+
+完整的技能包（可以直接存进你的技能目录）：`agent-skills/nomi-add-model/SKILL.md`。
+用户也能在 **设置 → 模型 → 「用 AI 帮我接入」** 那张卡上一键复制同一份内容发给你。
+
+### 1.1 备选：带用户在界面上手接
+
+没有 MCP、或用户就想自己点的时候走这条。对照源码 `src/ui/onboarding/CustomVendorCard.tsx` 与 `src/ui/onboarding/VendorBaseUrlField.tsx`。
 
 **带用户这样做：**
 

@@ -1,0 +1,124 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-24-video-reference-default",
+  "problem_type": "A video dragged into a new video node lands as a tail-frame relay the user cannot see",
+  "symptom": "After #858 made video drag-out work, the new video node opened in 图生视频 with an empty first-frame slot: the video was only used as a hidden tail-frame relay, so it looked unconnected. 2026-09-24 product decision: default to the reference-video mode (全能参考).",
+  "direct_cause": "resolveModeForReferenceDemand picked the first mode that could accept the demand. For a generic reference edge from a video, first_frame accepts video (tail-frame relay), so 图生视频, declared first, won over 全能参考 with video_ref. Slot placement (assignEdgeToSlot) already preferred video_ref, so the two owners disagreed.",
+  "class_root": "Slot preference was written twice: once as a hard-coded list in slot placement and once implicitly as mode declaration order in mode resolution.",
+  "affected_population": [
+    "Users dragging a video card out to create the next video node",
+    "Users connecting a video to a video node still in 文生视频"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+    "src/workbench/generationCanvas/runner/referenceSlots.ts",
+    "docs/fixes/2026-09-24-video-reference-default.root-cause.json"
+  ],
+  "entry_points": [
+    "Connect a video to a video node whose current mode has no slot for it",
+    "Model change or submit-time mode reconciliation"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Which slot a connection prefers is an application rule over the model profiles; no provider behavior decides it.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+    "tests": [
+      "src/workbench/generationCanvas/agent/referenceEdgeCapability.test.ts"
+    ],
+    "why": "EDGE_MODE_SLOTS is ordered by preference and preferredSlotKinds derives from it; both slot placement and mode resolution read it."
+  },
+  "invariants": [
+    "Mode resolution keeps the rule \"the mode that accepts the most demands wins\" and uses slot preference only to break ties.",
+    "A generic video reference prefers video_ref, then source_video, then first_frame relay; an explicit first_frame edge still relays."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+      "symbol": "resolveModeForReferenceDemand"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "resolveModeForReferenceDemand"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/referenceSlots.ts",
+      "symbol": "preferredSlotKinds"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "Both readers now consume the same ordered list; the composer reader is unchanged."
+  },
+  "generality_proof": "Preference is derived from EDGE_MODE_SLOTS and SLOT_ACCEPTS for every model profile, so any model with a reference-video slot gets the same default without listing models.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+      "symbol": "preferredSlotKinds",
+      "responsibility": "One ordered slot preference per edge semantic and asset."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/runner/referenceSlots.ts",
+      "entry_point": "assignEdgeToSlot generic branch",
+      "disposition": "enforced",
+      "evidence": "Reads preferredSlotKinds instead of its own hard-coded list."
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+      "entry_point": "resolveModeForReferenceDemand tie-break",
+      "disposition": "enforced",
+      "evidence": "Ties between modes are broken by the rank of the accepting slot in the demand order (EDGE_MODE_SLOTS), covered by the new multimodal and first_frame tests."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "entry_point": "composer mode reconciliation reader",
+      "disposition": "enforced",
+      "evidence": "Calls the same resolveModeForReferenceDemand, so the composer and the connect path pick the same mode."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new slot kind or asset kind would otherwise need to be ordered in two places that can drift apart.",
+    "same_class_scan": [
+      "rg -n \"video_ref.*source_video.*first_frame|image_ref.*first_frame.*last_frame\" src/workbench/generationCanvas"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+    "invariant": "Slot preference lives only in EDGE_MODE_SLOTS order.",
+    "failure_mode": "referenceEdgeCapability tests fail if a video reference no longer lands in multimodal, or if an explicit first-frame edge stops relaying.",
+    "exception_policy": "none",
+    "strategy": "Derive the preference from one ordered table and use it for tie-breaks.",
+    "artifacts": [
+      "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/agent/referenceEdgeCapability.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/agent/referenceEdgeCapability.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/runner/referenceSlots.ts"
+    ],
+    "rationale": "The hard-coded order list in assignEdgeToSlot is removed and replaced by preferredSlotKinds in the same change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency changes.",
+    "exit_criteria": []
+  },
+  "migration": "Existing nodes keep their current mode; the rule only applies when a mode has to be chosen.",
+  "residual_risks": [
+    "Nodes already in 图生视频 with a video relay keep relaying; only new choices use the new default."
+  ]
+}

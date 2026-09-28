@@ -1,0 +1,67 @@
+[
+  {
+    "name": "brand-guidelines",
+    "repo": "https://github.com/anthropics/skills",
+    "commit": "34040c9c568585f6929bedeaad110ad08f079624",
+    "path": "skills/brand-guidelines",
+    "sha256": "1120b3769e2985cefb3d25be981b1f914abeba57ae079b83c20c666c164fa9fe",
+    "zipSha256": "cc27af340aa0a9f65ac69d580f667c8a38a6a45c6906a0b7175c653ee9d39ae2",
+    "fileCount": 2,
+    "scripts": false,
+    "headers": "\nname: brand-guidelines\ndescription: Applies Anthropic's official brand colors and typography to any sort of artifact that may benefit from having Anthropic's look-and-feel. Use it when brand colors or style guidelines, visual formatting, or company design standards apply.\nlicense: Complete terms in LICENSE.txt\n",
+    "installedSha256": "1120b3769e2985cefb3d25be981b1f914abeba57ae079b83c20c666c164fa9fe",
+    "exactFrontmatterAndBodyPreserved": true
+  },
+  {
+    "name": "internal-comms",
+    "repo": "https://github.com/anthropics/skills",
+    "commit": "34040c9c568585f6929bedeaad110ad08f079624",
+    "path": "skills/internal-comms",
+    "sha256": "067b7587a344a928fc6534ef66b1bcd591fc7c26d207ea7ca3334aeb678d6475",
+    "zipSha256": "9ffb5d0c719430d66941a0c6e1fb6ed0d1a46e8a20dc4545d2b78d5265597147",
+    "fileCount": 6,
+    "scripts": false,
+    "headers": "\nname: internal-comms\ndescription: A set of resources to help me write all kinds of internal communications, using the formats that my company likes to use. Claude should use this skill whenever asked to write some sort of internal communications (status reports, leadership updates, 3P updates, company newsletters, FAQs, incident reports, project updates, etc.).\nlicense: Complete terms in LICENSE.txt\n",
+    "installedSha256": "067b7587a344a928fc6534ef66b1bcd591fc7c26d207ea7ca3334aeb678d6475",
+    "exactFrontmatterAndBodyPreserved": true
+  },
+  {
+    "name": "pdf",
+    "repo": "https://github.com/anthropics/skills",
+    "commit": "34040c9c568585f6929bedeaad110ad08f079624",
+    "path": "skills/pdf",
+    "sha256": "9f78b8359fbd4943ad260a7a1e436e5a96503406d6c34e99f69223d647d85b9c",
+    "zipSha256": "d3fae4517dc9541b911ea5d798a5ac97fc30aedc4b174a41b8ed0a24e3725ed2",
+    "fileCount": 12,
+    "scripts": true,
+    "headers": "\nname: pdf\ndescription: Use this skill whenever the user wants to do anything with PDF files. This includes reading or extracting text/tables from PDFs, combining or merging multiple PDFs into one, splitting PDFs apart, rotating pages, adding watermarks, creating new PDFs, filling PDF forms, encrypting/decrypting PDFs, extracting images, and OCR on scanned PDFs to make them searchable. If the user mentions a .pdf file or asks to produce one, use this skill.\nlicense: Proprietary. LICENSE.txt has complete terms\n",
+    "installedSha256": "9f78b8359fbd4943ad260a7a1e436e5a96503406d6c34e99f69223d647d85b9c",
+    "exactFrontmatterAndBodyPreserved": true
+  },
+  {
+    "name": "semgrep-rule-creator",
+    "repo": "https://github.com/trailofbits/skills",
+    "commit": "123037ec8aed26f0d86327cc39137ee5043e5deb",
+    "path": "plugins/semgrep-rule-creator/skills/semgrep-rule-creator",
+    "sha256": "6ca2e3b8520ed20af1b0879b7cab318832fcbe89c19c17a9fa347a45a9f28913",
+    "zipSha256": "fc3d2a99d881a08c5f36e639f8a13a483dfbbb111ae9b0c4ee3a1031a7cd26c8",
+    "fileCount": 5,
+    "scripts": false,
+    "headers": "\nname: semgrep-rule-creator\ndescription: Creates custom Semgrep rules for detecting security vulnerabilities, bug patterns, and code patterns. Use when writing Semgrep rules or building custom static analysis detections.\nallowed-tools: Bash Read Write Edit Glob Grep WebFetch\n",
+    "installedSha256": "6ca2e3b8520ed20af1b0879b7cab318832fcbe89c19c17a9fa347a45a9f28913",
+    "exactFrontmatterAndBodyPreserved": true
+  },
+  {
+    "name": "transformers-js",
+    "repo": "https://github.com/huggingface/skills",
+    "commit": "abc20ae526d8b4c0e4dff89f904adce28a4a0eb6",
+    "path": "skills/transformers-js",
+    "sha256": "241ef15a39acbdf1d610acab683c0f76500d7c021c9c0303e6bb2c751ac3d395",
+    "zipSha256": "d626bc61048fbec764e52553b27c26d122a3c6ca8de09ad8a68ffeb60f778c1c",
+    "fileCount": 8,
+    "scripts": false,
+    "headers": "\nname: transformers-js\ndescription: Use Transformers.js to run state-of-the-art machine learning models directly in JavaScript/TypeScript. Supports NLP (text classification, translation, summarization), computer vision (image classification, object detection), audio (speech recognition, audio classification), and multimodal tasks. Works in browsers and server-side runtimes (Node.js, Bun, Deno) with WebGPU/WASM using pre-trained models from Hugging Face Hub.\nlicense: Apache-2.0\nmetadata:\n  author: huggingface\n  version: \"4.x\"\n  category: machine-learning\n  repository: https://github.com/huggingface/transformers.js\ncompatibility: Requires Node.js 18+ (or compatible Bun/Deno runtime) or modern browser with ES modules support. WebGPU requires runtime and hardware support; WASM is the broad fallback. Internet access is needed for downloading models from Hugging Face Hub (optional if using local models).\n",
+    "installedSha256": "241ef15a39acbdf1d610acab683c0f76500d7c021c9c0303e6bb2c751ac3d395",
+    "exactFrontmatterAndBodyPreserved": true
+  }
+]

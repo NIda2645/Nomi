@@ -70,6 +70,18 @@ const SEMANTIC_OWNER_TOKENS = new Set([
   'outcome',
   'outcomes',
 ])
+/**
+ * 线上错误码的 canonical owner（C4，2026-09-18）。
+ *
+ * 为什么是「读文件」而不是在这里再列一遍码：这条规则本身就是治「同一套码手抄 15 份」的，
+ * 门岗自己抄第 16 份是最没资格的那一份。owner 加一个码、拆一个码，扫描器当场跟上。
+ */
+const CANONICAL_ERROR_CODE_OWNERS = [
+  ['electron/shared/surfacePortBinding.ts', 'SURFACE_PORT_WIRE_ERROR_CODE_LIST'],
+  ['electron/shared/integrationContract.ts', 'INTEGRATION_ERROR_CODES'],
+  ['electron/shared/agentLane/laneErrorCodes.ts', 'LANE_ERROR_CODES'],
+]
+
 const TYPE_SELECTOR_ARGUMENTS = new Map([
   ['Exclude', new Set([1])],
   ['Extract', new Set([1])],
@@ -338,6 +350,62 @@ function isLifecycleVocabulary(members) {
   return members.filter((member) => LIFECYCLE.has(member.toLowerCase())).length >= 2
 }
 
+/**
+ * 从 owner 文件里读出 canonical 码集合。只认「顶层 const <名字> = <数组或 new Set([数组])>」，
+ * 且数组必须整条都是字符串字面量——owner 自己都不是字面量时，这条规则没有判据可依。
+ */
+export function collectCanonicalErrorCodes(repoRoot, owners = CANONICAL_ERROR_CODE_OWNERS) {
+  const codes = new Set()
+  for (const [relativeFile, declarationName] of owners) {
+    const fullPath = path.join(repoRoot, relativeFile)
+    if (!fs.existsSync(fullPath)) continue
+    const sourceFile = ts.createSourceFile(
+      relativeFile,
+      fs.readFileSync(fullPath, 'utf8'),
+      ts.ScriptTarget.Latest,
+      true,
+      scriptKind(relativeFile),
+    )
+    const resolver = createStaticResolver(sourceFile)
+    const visit = (node) => {
+      if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.name.text === declarationName &&
+        node.initializer
+      ) {
+        const candidate = candidateAt(unwrapStaticExpression(node.initializer))
+        const members = candidate?.members ?? resolver.strings(node.initializer)
+        for (const member of members ?? []) codes.add(member)
+        return
+      }
+      ts.forEachChild(node, visit)
+    }
+    visit(sourceFile)
+  }
+  return codes
+}
+
+/**
+ * C4：这个字面量集合是不是「又一份手抄的线上错误码表」。
+ *
+ * 判据只有一条：**整条都是字面量**且其中 ≥2 个是 canonical owner 已经定义过的码。
+ * 用 spread 从 owner 派生的那些（`new Set([...SURFACE_PORT_WIRE_ERROR_CODES, 'x'])`）压根
+ * 走不到这里——`stringLiteralMembers` 碰到 SpreadElement 就返回 null。这不是巧合，是本规则的
+ * 出口设计：**派生即隐身，手抄才现形**。想让门岗别红你，办法就是从 owner 派生。
+ *
+ * 为什么按「≥2 个已知码」而不是按名字（*_CODES）：今天这 15 份里叫 PUBLIC_FAILURE_CODES、
+ * POLICY_CODES、SAFE_CANVAS_READ_CODES、PUBLIC_CODES 的都有，按名字扫必然漏。码本身才是身份。
+ */
+function isWireErrorCodeVocabulary(members, canonicalCodes) {
+  if (!canonicalCodes || canonicalCodes.size === 0) return false
+  let hits = 0
+  for (const member of members) {
+    if (canonicalCodes.has(member) && (hits += 1) >= 2) return true
+  }
+  return false
+}
+
 function isSemanticOwner(owner) {
   const ownerDeclaration = owner.at(-1)
   if (!ownerDeclaration) return false
@@ -353,6 +421,7 @@ function isSemanticOwner(owner) {
 
 export function scanRepository(repoRoot, roots = DEFAULT_ROOTS) {
   const vocabularies = []
+  const canonicalCodes = collectCanonicalErrorCodes(repoRoot)
   for (const root of roots) {
     for (const file of walk(path.join(repoRoot, root))) {
       const relativeFile = path.relative(repoRoot, file).split(path.sep).join('/')
@@ -369,7 +438,13 @@ export function scanRepository(repoRoot, roots = DEFAULT_ROOTS) {
         const candidate = candidateAt(node)
         const owner = candidate ? declarationPath(node, sourceFile) : []
         const members = candidate?.members ? normalizeMembers(candidate.members) : []
-        if (candidate && members.length >= 2 && (isLifecycleVocabulary(members) || isSemanticOwner(owner))) {
+        if (
+          candidate &&
+          members.length >= 2 &&
+          (isLifecycleVocabulary(members) ||
+            isSemanticOwner(owner) ||
+            isWireErrorCodeVocabulary(members, canonicalCodes))
+        ) {
           const baseSite = `${relativeFile}::${[...owner, candidate.kind].join('/')}`
           const occurrence = (baseSiteCounts.get(baseSite) ?? 0) + 1
           baseSiteCounts.set(baseSite, occurrence)

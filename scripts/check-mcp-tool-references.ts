@@ -11,6 +11,8 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { MCP_TOOL_RESOLVER } from '../electron/capabilityCore/mcpToolCatalog'
 import { LANE_MODEL_TOOL_CATALOG, LANE_DEFERRED_TOOL_CATALOG } from '../electron/agentLane/laneToolCatalog'
+import { LANE_NATIVE_TOOL_CATALOG } from '../electron/agentLane/laneToolCatalog'
+import { LANE_CODING_TOOL_NAMES } from '../electron/agentLane/laneCodingTools.mts'
 import { LANE_TOOL_REQUEST_TOOL_NAME } from '../electron/agentLane/laneToolGroups.mts'
 import { collectFiles, scanCallArgumentKeys, scanFile } from './check-mcp-tool-references-lib.mjs'
 
@@ -92,4 +94,65 @@ if (offenders.length > 0) {
   process.exit(1)
 }
 
-console.log(`✅ MCP 工具名引用一致：${referenceCount} 处调用点全部命中目录里的 ${declared.size} 个工具；入参形状：${argCallCount} 处字面量调用的顶层键全部在已发布 schema 里`)
+
+// ── 技能里的工具名（2026-09-18 加）────────────────────────────────────────────
+//
+// 为什么这一段必须在这个门岗里、而不是另起一个：技能是**纯文本**引用代码里的名字，
+// 编译器看不见。2026-09-14 那次「37 个内部名 → 20 个动词」的破坏性改名（afe85411d，
+// 提交里明写「不留任何旧别名」）**一个技能文件都没改**，四天后由一次真实用户场景暴露：
+// 分镜规划师照着 `propose_storyboard_plan` 这类旧名字调，调不到，于是只写文字不落表。
+// 判据与上面同源（同一份目录），所以放在同一个门岗里——两份判据必然各漂各的。
+const laneToolNames = new Set<string>([
+  ...LANE_MODEL_TOOL_CATALOG.map(tool => tool.name),
+  ...LANE_DEFERRED_TOOL_CATALOG.map(tool => tool.name),
+  ...LANE_NATIVE_TOOL_CATALOG.map(tool => tool.name),
+  ...LANE_CODING_TOOL_NAMES,
+  LANE_TOOL_REQUEST_TOOL_NAME,
+  'read',
+])
+const everyToolName = new Set<string>([...laneToolNames, ...declared])
+const retiredToolNames: readonly string[] = JSON.parse(
+  fs.readFileSync(path.join(repoRoot, 'scripts/retired-tool-names.json'), 'utf8'),
+).retired
+const skillOffenders: string[] = []
+let skillDeclarationCount = 0
+const skillsDir = path.join(repoRoot, 'skills')
+const skillFiles = fs.existsSync(skillsDir)
+  ? fs.readdirSync(skillsDir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(skillsDir, entry.name, 'SKILL.md'))
+      .filter(file => fs.existsSync(file))
+  : []
+for (const file of skillFiles) {
+  const relative = path.relative(repoRoot, file).split(path.sep).join('/')
+  const source = fs.readFileSync(file, 'utf8')
+  // ①「声明」：frontmatter 的 `tools:` 列表——技能自己说它要用哪些工具，必须真实存在。
+  const declaredBlock = /^\s*tools:\s*$((?:\s*-\s*\S+\s*$)+)/m.exec(source)
+  for (const name of declaredBlock ? [...declaredBlock[1].matchAll(/-\s*(\S+)/g)].map(match => match[1]) : []) {
+    skillDeclarationCount += 1
+    if (everyToolName.has(name)) continue
+    const line = source.slice(0, declaredBlock!.index).split('\n').length
+    skillOffenders.push(`${relative}:${line} 声明了不存在的工具 ${name}`)
+  }
+  // ②「正文」：退役名单里的名字出现在哪儿都是错的（判据来自 git 证据，不是形状猜测，
+  //    所以不会把 `prompt` / `first_frame` 这类字段名误伤成工具名）。
+  for (const [index, text] of source.split('\n').entries()) {
+    for (const retired of retiredToolNames) {
+      if (!new RegExp(`\\b${retired}\\b`).test(text)) continue
+      skillOffenders.push(`${relative}:${index + 1} 正文写着已退役的工具 ${retired}`)
+    }
+  }
+}
+
+if (skillOffenders.length > 0) {
+  console.error(`✖ ${skillOffenders.length} 处技能引用了不存在或已退役的工具名：`)
+  for (const offender of skillOffenders) console.error(`  ${offender}`)
+  console.error('')
+  console.error('  技能是纯文本，改工具名时编译器拦不住它——模型照着旧名字调，调不到就只写文字不干活，')
+  console.error('  症状要等真实用户撞上才出现（2026-09-18：Agent 出不来分镜表，0/5 轮可用）。')
+  console.error('  退役一个工具就往 scripts/retired-tool-names.json 里加一个名字。')
+  console.error(`  当前模型可见工具（${everyToolName.size} 个）：${[...everyToolName].sort().join(', ')}`)
+  process.exit(1)
+}
+
+console.log(`✅ 工具名引用一致：${referenceCount} 处调用点命中目录里的 ${declared.size} 个 MCP 工具；${argCallCount} 处字面量调用的顶层键都在已发布 schema 里；${skillFiles.length} 个技能的 ${skillDeclarationCount} 条工具声明与正文均无已退役/不存在的名字`)

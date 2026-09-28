@@ -1,0 +1,2139 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-unknown-price-blocks-generation",
+  "problem_type": "An absent price was encoded as a refusal because the authorization envelope had no way to say \"unknown\"",
+  "symptom": "On a clean install every Run-owned paid path refuses to generate: the Agent panel card shows 「暂时算不出价格 / 仍要生成」 and the button always fails, the storyboard plan submission, the external MCP gate, full-auto, rework and continuation all raise generation_pricing_unknown, and the external MCP confirmation silently answers surface:none so the user never even sees a prompt.",
+  "direct_cause": "assertKnownShotPrice threw GenerationPricingUnavailableError at five call sites (mcpGenerationTools gate_request x2, prepareProductionGenerationAuthorization first-wave/rework/continuation), submissionOutbox threw unknown-cost when costCeiling was null, appIntegrationSpendConfirm added an outer refusal mislabelled generation_quote_changed, and mcpGateConfirmation refused to ask at all when every shot price was unknown.",
+  "class_root": "The paid authorization envelope encodes an amount and its absence in the same in-band number (jobs[].price.maximum / budget.maximum / budget.ledgerCeiling are all bare `number`). With only one channel, an unknown price can only be written as 0 (a lie that reads as \"free\") or not written at all (a refusal). Every downstream refusal is a patch over that missing channel, not an independent policy. Same class as 2026-09-07-absent-number-printed-as-zero.",
+  "affected_population": [
+    "Every user on a clean install: 0 of 204 built-in generation models carry a catalog pricing row and no UI can add one, so 100% of Run-owned generations were refused.",
+    "Every user who connects their own provider or a local zero-cost runtime (ComfyUI), which likewise has no pricing row."
+  ],
+  "scope_paths": [
+    "electron/productionRun/productionGenerationAuthorization.ts",
+    "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+    "electron/productionRun/productionGenerationAuthorizationState.ts",
+    "electron/productionRun/productionGenerationSubmission.ts",
+    "electron/productionRun/submissionOutbox.ts",
+    "electron/productionRun/batchScheduleDerivation.ts",
+    "electron/productionRun/multiShotBatchScheduler.ts",
+    "electron/productionRun/budgetLedger.ts",
+    "electron/productionRun/productionRunTypes.ts",
+    "electron/productionRun/productionRunReducer.ts",
+    "electron/productionRun/productionRunRepository.ts",
+    "electron/productionRun/productionRunTrustGrant.ts",
+    "electron/productionRun/shotPricing.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/capabilityCore/mcpGateConfirmation.ts",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "electron/capabilityCore/appIntegrationAuthorities.ts",
+    "electron/capabilityCore/approvalReceipt.ts",
+    "electron/capabilityCore/generationDispatcher.ts",
+    "electron/capabilityCore/generationTransportAdapters.ts",
+    "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+    "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+    "src/workbench/capability/capabilityApplyHandler.ts",
+    "src/i18n/locales/runtime.ts"
+  ],
+  "entry_points": [
+    "Agent panel spend card 「仍要生成」 (appIntegrationSpendConfirm.confirmPendingSpend)",
+    "External MCP nomi_request_generation_gate / nomi_generate (mcpGenerationTools gate_request + mcpGateConfirmation)",
+    "Storyboard 「提交执行计划」 and full-auto policy answer (generationTransportAdapters.decideByPolicyAfterDraft)",
+    "Run rework and capped-batch continuation (appIntegrationProductionActions -> prepareProductionGeneration{Re,Continuation}Authorization)"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The authorization envelope is a Nomi-internal signed contract shape; no external party reads or writes it. The catalog pricing row it derives from is also ours. There is no published standard for \"a spend envelope that can say it does not know the price\", so R5.5 has no规范 to align to; the shape reuses this repo own already-shipped precedent (spendGrant unknownRemaining).",
+  "invariants": [
+    "An unknown price is never written or computed as 0 anywhere: envelope, gate, receipt, ledger, card, MCP confirmation text.",
+    "budget.maximum / budget.ledgerCeiling / approval.maxSpend cover KNOWN prices only, and the known part of a mixed batch is still capped exactly as before.",
+    "Unknown-price jobs never enter a budget comparison: not in checkSealAffordability, not in the batch dispatch accumulator, not in the ledger reserve ceiling check.",
+    "budget.unknownJobCount always equals the number of jobs whose price.maximum is null (derived, and rejected if a caller passes a different number).",
+    "An unknown-price job may only dispatch because a human (or the full-auto policy) approved the envelope that contains it, never because its amount compared favourably to a ceiling.",
+    "The trust downgrade (以后 ¥X 内不再问) stays fail-closed for unknown prices: that gate exists only to name X.",
+    "A price of 0 still means free (ComfyUI), and is never conflated with unknown."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "buildActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "CANDIDATE_ID"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createApprovalReceiptAuthority"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createMultiShotBatchScheduler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createPiGenerationTransportAdapter"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createProductionGenerationSubmission"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "createRunOwnedGenerationGateAuthority"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "harness"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "ModelPricing"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "OPERATION_ID"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "PRICING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "PROJECT_ID"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "registry"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createDefaultAuthorities"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createMultiShotBatchScheduler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createProductionGenerationSubmission"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createRunOwnedGenerationGateAuthority"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "installPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "prepareProductionGenerationAuthorizationWithReferences"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationAuthorities.ts",
+      "symbol": "createDefaultAuthorities"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "prepareProductionGenerationContinuationAuthorization"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "prepareProductionGenerationReauthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationRunObservation.ts",
+      "symbol": "createProductionGenerationSubmission"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "ApprovalReceiptAuthority"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "createPendingSpendActions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "GenerationReviseInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "ModelPricing"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendActionDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "PendingSpendSurfaceUnavailableError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "ProductionActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "RendererGestureTarget"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "APPROVAL_DECIDED_BY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "ApprovalDecidedBy"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "approvalDecidedByOf"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "ApprovalReceiptAuthorityDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "ClientElicitationAttestationV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "createApprovalReceiptAuthority"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "GestureAttestationV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "HUMAN_APPROVAL_ALGORITHM"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "HUMAN_APPROVAL_AUDIENCE"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "HUMAN_APPROVAL_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "HumanApprovalChallengeInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "HumanApprovalChallengeV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "HumanApprovalDisplay"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "HumanApprovalReceiptV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "HumanApprovalRequiredError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "MainProcessGestureAttestationV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "MultiShotGateProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "PolicyDecisionAttestationV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "ReceiptExpiredError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "ReceiptReplayResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/approvalReceipt.ts",
+      "symbol": "ReceiptScopeError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/approvalReceiptRuntime.ts",
+      "symbol": "createApprovalReceiptAuthority"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationDispatcher.ts",
+      "symbol": "HumanApprovalReceiptV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationDispatcher.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "ApprovalReceiptAuthority"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "GenerationLeaseFactory"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "GenerationTransportAdapterDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "HumanApprovalReceiptV1"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "PiGenerationTransportAdapter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "ProductionGenerationAuthorizationError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "spendDecidedByPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGateConfirmation.ts",
+      "symbol": "GenerationGateChallengeProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGateConfirmation.ts",
+      "symbol": "GenerationGateConfirmation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGateConfirmation.ts",
+      "symbol": "GenerationGateConfirmationDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGateConfirmation.ts",
+      "symbol": "GenerationGateVerificationResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGateConfirmation.ts",
+      "symbol": "MultiShotGateProjection"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGateConfirmation.ts",
+      "symbol": "spendConfirmationMessage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationPreview.ts",
+      "symbol": "projectMultiShotPreview"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "buildMultiShotGateProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "coldstartEtaForGate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "deriveShotPrice"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationAuthorizationPreparation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationDraftShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationPlanningHandler"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationPlanningHandlerDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationReviseInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "ModelPricing"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "MultiShotGateProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "ProductionGenerationAuthorizationEnvelopeV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "registry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "ShotPrice"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "StoryboardPlanResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createDefaultAuthorities"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createGenerationPlanningHandler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createMultiShotBatchScheduler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createProductionGenerationSubmission"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createRunOwnedGenerationGateAuthority"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "prepareProductionGenerationAuthorizationWithReferences"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/productionTrustGrantChallenge.ts",
+      "symbol": "readTrustGrantBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/residentGenerationAdapterFactory.ts",
+      "symbol": "createPiGenerationTransportAdapter"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "ApprovalReceiptAuthority"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "assertReceiptMatchesAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "GenerationAuthorizationProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "HumanApprovalDisplay"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "HumanApprovalReceiptV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "PreparedProductionGenerationAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "ProductionGenerationAuthorizationEnvelopeV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "BatchDerivationInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "BatchDerivationResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "BatchProgress"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "BudgetHalt"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "CheckpointState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "CheckpointStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "createBudgetAmountAccumulator"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "DispatchTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "productionGenerationJobId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "ShotPrice"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "BudgetLedger"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "BudgetLedgerEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "createBudgetAmountAccumulator"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/budgetLedger.ts",
+      "symbol": "summarizeBudgetLedger"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/catalogPricingResolver.ts",
+      "symbol": "deriveShotPrice"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/generationSubmission.ts",
+      "symbol": "createSubmissionOutbox"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "BatchDerivationResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "BatchOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "BatchSchedulerDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "BatchSchedulerOptions"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "BudgetExhaustedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "BudgetHalt"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "CheckpointState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "createMultiShotBatchScheduler"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "deriveBatchPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "DispatchTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "ProductionGenerationSubmission"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "ProductionRunRepository"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "ShotPrice"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "countUnknownJobPrices"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "createProductionGenerationAuthorizationEnvelope"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "GenerationAuthorizationProjectIdentity"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "nextGenerationAttempt"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "PreparedProductionGenerationAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "PreparedProductionGenerationContinuationAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "PreparedProductionGenerationReauthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "PRODUCTION_GENERATION_AUTHORIZATION_VERSION"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "productionGenerationAuthorizationDigest"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "ProductionGenerationAuthorizationEnvelopeV1"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "productionGenerationJobId"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "productionGenerationProviderIdempotencyKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "REWORKABLE_JOB_STATUSES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "ShotPrice"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "sumKnownJobCeilings"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "UNSUBMITTED_AUTHORIZATION_STATUSES"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "countUnknownJobPrices"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "createProductionGenerationAuthorizationEnvelope"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "PRODUCTION_GENERATION_AUTHORIZATION_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "ProductionGenerationAuthorizationEnvelopeInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "ProductionGenerationAuthorizationEnvelopeV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "ProductionGenerationAuthorizationError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "ProductionGenerationAuthorizationJobV1"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "productionGenerationJobId"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "productionGenerationPayloadHash"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "ProductionGenerationTargetEvidence"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "stableAuthorizationJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "stableAuthorizationJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "sumKnownJobCeilings"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ContinuedGenerationState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "createProductionGenerationAuthorizationEnvelope"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "GenerationAuthorizationGateDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "nextGenerationAttempt"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "productionGenerationAuthorizationDigest"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionGenerationAuthorizationEnvelopeV1"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "productionGenerationJobId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "productionGenerationProviderIdempotencyKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ReauthorizedGenerationState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "REWORKABLE_JOB_STATUSES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "SealedGenerationAuthorizationState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "stableAuthorizationJson"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "UNSUBMITTED_AUTHORIZATION_STATUSES"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationTestUtils.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "createProductionGenerationSubmission"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "createSubmissionOutbox"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationMaterializationError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationMaterializationUnsupportedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationSubmissionMaterializeResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationSubmissionPollResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationSubmissionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationSubmissionResumeResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "GenerationSubmissionStartInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "productionGenerationJobId"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "productionGenerationProviderIdempotencyKey"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "ProductionGenerationSubmissionDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "ProductionRunRepository"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "SubmissionNotDispatchedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "SubmissionReconciliationRequiredError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "deriveShotPrice"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "readTrustGrantBinding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunDesktopLifecycle.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "applyGenerationAuthorizationGateDecision"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "assertStoryboardSourceApproved"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "canAdoptArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "checkSealAffordability"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "deriveGenerationContinuationAuthorizationState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "deriveGenerationReauthorizationState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "deriveSealedGenerationAuthorizationState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "markDerivedArtifactsStale"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionCommandEffect"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionDirectionCandidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionJobStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "ProductionStage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "SealBudgetExceededError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "trustLevelOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "applyBudgetEntry"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "applyProductionCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "Approval"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "BudgetLedger"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "BudgetLedgerEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "createBudgetLedger"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "CreateProductionRunInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "draft"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "PRODUCTION_RUN_SCHEMA_VERSION"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionCommandEffect"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionRunParseError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionRunRepositoryDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionRunRevisionConflictError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "ProductionRunSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "RunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "RunCommandResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "summarizeBudgetLedger"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "createProductionRunRepository"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTrustGrant.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTrustGrant.ts",
+      "symbol": "TrustGrantBinding"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTrustGrant.ts",
+      "symbol": "TrustGrantShotLine"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTrustGrant.ts",
+      "symbol": "TrustGrantUnavailableError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "AutomationPolicy"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "BudgetLedgerSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "DEFAULT_TRUST_LEVEL"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "normalizeTrustLevel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionArtifact"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionBrief"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionContract"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionDirectionCandidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGateStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGenerationAuthorizationEnvelopeV1"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGenerationPlan"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionGenerationShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionJobStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionRunDraftSummary"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionStage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionStageStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "RunEvent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "TrustLevel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "budgetExceeds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "BuildMultiShotGateProjectionInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "CheckSealAffordabilityInput"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "createBudgetAmountAccumulator"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "deriveShotPrice"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "DurationEstimate"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "GateShotInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "MultiShotGateProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "MultiShotGateShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "MultiShotPreviewProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "MultiShotPreviewTotal"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "PreviewShotInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "PreviewShotProjection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "PricingResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "ProjectMultiShotPreviewInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "SealAffordabilityResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "SealAffordabilityShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "ShotDegradation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "ShotPrice"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/shotPricing.ts",
+      "symbol": "sumBudgetAmounts"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "createSubmissionOutbox"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "lease"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "ProductionJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "ProductionRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "ProductionRunRepository"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "ProviderDispatchInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "ProviderDispatchResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "SubmissionAuthorizationError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "SubmissionNotDispatchedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "SubmissionOutboxDependencies"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "SubmissionOutboxRequest"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "SubmissionOutboxResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "SubmissionReceiptUnknownError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "SubmissionReconciliationRequiredError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/spendQuote.ts",
+      "symbol": "deriveShotPrice"
+    },
+    {
+      "kind": "read",
+      "path": "src/i18n/locales/runtime.ts",
+      "symbol": "zhRuntime"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardEstimate.ts",
+      "symbol": "deriveShotPrice"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "candidate"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "handleCapabilityApply"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "now"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/spend/planCostEstimate.ts",
+      "symbol": "deriveShotPrice"
+    }
+  ],
+  "door_reduction": {
+    "before": 397,
+    "after": 393,
+    "why_not": "19 扇门曾各自回答「价格未知能不能花这笔钱」，现在只剩一扇：授权信封的形状（electron/productionRun/productionGenerationAuthorization.ts）。jobs[].price.maximum 变成 number | null 之后，下游每一处求和/比较都会被编译器拦住；budget.unknownJobCount 由 jobs[] 在同一处派生，调用方报一个不一样的数就抛。四条纯粹为「信封写不出未知」而存在的拒绝（五处 assertKnownShotPrice、submissionOutbox 的 unknown-cost、appIntegrationSpendConfirm 的外层重复拒绝、mcpGateConfirmation 的 surface:none）同 commit 删除（P1，不留并行版）——门表因此净减 4 扇。表里剩下的 393 扇是本次改动涉及模块的机器门表（写/读入口），不是「有几处回答这个问题」：那个数是 1。"
+  },
+  "generality_proof": "The unknown axis lives on the envelope every Run-owned paid path must mint, so first wave, rework, continuation, external MCP, full-auto and the Agent panel all inherit it from one place; the e2e tests exercise the panel and full-auto through the real seal/receipt/gate/ledger chain with a loopback vendor, and the unit tests exercise rework and continuation. The renderer spend door (electron/spendGrant.ts assertAndConsumeQuotedSpend) already carried the identical unknownRemaining quota, so both money doors now answer the same question the same way.",
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/productionGenerationAuthorization.ts",
+      "symbol": "createProductionGenerationAuthorizationEnvelope",
+      "responsibility": "唯一能说出「这一镜算不出价」的地方：price.maximum 可空 + budget.unknownJobCount 由 jobs[] 派生并校验；所有 Run 侧付费路径都必须经它铸信封。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/spendGrant.ts",
+      "entry_point": "assertAndConsumeQuotedSpend",
+      "disposition": "not-affected",
+      "evidence": "渲染层那条钱闸早就给未知价留了独立名额位 unknownRemaining（既不当 0 也不拒绝），本次不动它——它正是本次搬到 Run 侧的那个形状的现成实现，两条闸从此对同一个问题给同一个答案。"
+    },
+    {
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "entry_point": "prepareProductionGenerationAuthorization / prepareProductionGenerationReauthorization / prepareProductionGenerationContinuationAuthorization",
+      "disposition": "enforced",
+      "evidence": "首波、重拍、续批三处 assertKnownShotPrice 同 commit 删除，改为 jobPriceCeiling() 回 null；续批的「已经覆盖了」判据补上未知那根轴。覆盖：electron/productionRun/unknownPriceOpenGate.test.ts 三条。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "gate_request",
+      "disposition": "enforced",
+      "evidence": "逐镜与单镜两处抛点删除，maximumCost 改成 number | null 并带 unknownShotCount。覆盖：electron/capabilityCore/mcpGenerationTools.test.ts「opens the gate for an unpriced model」。"
+    },
+    {
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "entry_point": "deriveBatchPlan",
+      "disposition": "enforced",
+      "evidence": "删掉 price.known ? amount : 0；未知不进 addLiability、不触发 halt、单列 unknownDispatchCount。覆盖：electron/productionRun/batchScheduleDerivation.test.ts 三条（含 authorized=0 的全未知批次与混合批次仍然 halt 已知那一镜）。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGateConfirmation.ts",
+      "entry_point": "resolveGenerationConfirmation",
+      "disposition": "enforced",
+      "evidence": "删掉「全批未知 → surface:none」；文案改成三种说法（全未知 / 混合 / 全已知），信任降档那一支保留 fail-closed。覆盖：electron/capabilityCore/mcpGenerationConfirmation.test.ts 三条。"
+    },
+    {
+      "path": "electron/productionRun/productionRunTrustGrant.ts",
+      "entry_point": "readTrustGrantBinding",
+      "disposition": "not-affected",
+      "evidence": "「以后 ¥X 内不再问」给不出 X 就不许问——这条对未知价的拒绝是故意保留的，并改成对 budget.unknownJobCount 的显式判据。覆盖：unknownPriceOpenGate.test.ts 最后一条。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every generation on a clean install hits it, on every path, for every one of the 204 built-in models; and any newly connected provider without a catalog price reproduces it immediately.",
+    "same_class_scan": [
+      "Scanned for `known ? amount : 0` and `?? 0` applied to prices across electron/ and src/: batchScheduleDerivation.priceAmount (the unreachable silent door — fixed), mcpGenerationTools maximumCost fallback (fixed), generationDispatcher maximumCost fallback (fixed), capabilityApplyHandler maximumCost fallback (fixed).",
+      "checkSealAffordability and projectMultiShotPreview keep `known ? amount : 0` deliberately — there it means \"unknown adds no money\", and the unknown itself is reported separately (hasUnknownPrice / unknownShotCount). Comments added so the next reader does not misread them.",
+      "Other refuse-on-missing-metadata gates surveyed (listed in the report for the main session to triage): provider capability readiness, cross-field parameter validation, duration/aspect declarations. None changed here."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/productionRun/productionGenerationAuthorization.ts",
+    "invariant": "信封能说出「这一镜算不出价」，而且只有信封决定一次决策覆盖多少笔未知——没有第二处回答这个问题。唯一保留的显式拒绝是信任降档（以后 ¥X 内不再问），那不是这条不变量的例外：它问的是另一个问题（X 是多少），而 X 在未知时根本不存在。",
+    "failure_mode": "createProductionGenerationAuthorizationEnvelope throws when a caller states an unknownJobCount that does not match its jobs; every arithmetic use of price.maximum is a compile error until the caller handles null.",
+    "exception_policy": "none",
+    "strategy": "Give the absent number its own channel at the earliest shared boundary (the signed envelope), then delete every downstream refusal that existed only because that channel was missing.",
+    "artifacts": [
+      "electron/productionRun/productionGenerationAuthorization.ts",
+      "docs/plan/2026-09-21-unknown-price-open-gate.md",
+      "electron/productionRun/unknownPriceOpenGate.test.ts",
+      "electron/capabilityCore/unknownPriceSpendConfirm.e2e.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/productionRun/unknownPriceOpenGate.test.ts",
+    "electron/capabilityCore/unknownPriceSpendConfirm.e2e.test.ts",
+    "electron/productionRun/batchScheduleDerivation.test.ts",
+    "electron/productionRun/budgetLedger.test.ts",
+    "electron/productionRun/shotPricingWiring.test.ts",
+    "electron/capabilityCore/mcpGenerationTools.test.ts",
+    "electron/capabilityCore/mcpGenerationConfirmation.test.ts",
+    "src/workbench/ai/v4/agentPanelSpendCard.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/productionRun/budgetLedger.test.ts",
+    "src/workbench/ai/v4/agentPanelSpendCard.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/productionRun/shotPricing.ts",
+      "electron/productionRun/submissionOutbox.ts",
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "electron/capabilityCore/mcpGateConfirmation.ts",
+      "electron/capabilityCore/generationTransportAdapters.ts"
+    ],
+    "rationale": "shotPricing 的 assertKnownShotPrice / GenerationPricingUnavailableError（含 generation_pricing_unknown 错误码与 generationTransportAdapters 里对它的分类）、submissionOutbox 的 costCeiling===null→unknown-cost、appIntegrationSpendConfirm 的 unknownShotCount>0→generation_quote_changed（错误码本身是假话）、mcpGateConfirmation 的全未知→surface:none：四条存在的唯一理由都是「信封写不出未知」。信封能写之后它们没有剩余的合法用途，留任何一条都是同一个问题的第二个答案（P1）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No framework owns the Nomi spend envelope shape.",
+    "exit_criteria": []
+  },
+  "migration": "Additive only. Envelopes sealed before this change carry no unknownJobCount; the field is derived from jobs[] on construction and is 0 for them (an unknown price could not be sealed before). Ledgers written before this change have numeric reserve amounts; BudgetLedgerSummary.unknownInFlight derives to 0. No stored digest is recomputed for an existing Run, so no in-flight authorization is invalidated.",
+  "residual_risks": [
+    "How many unknown-price jobs a decision covers is bounded by the job set in the envelope, not by a separate quota counter. A defect that minted jobs outside an envelope would not be caught by an amount comparison — but such a job cannot reach dispatch, because dispatch requires a durable job in status authorized which only the envelope creates.",
+    "A provider may charge more than the user expected on an unknown-price job; that is the tradeoff the user explicitly accepted on 2026-09-21 (「花多少事后才知道」), surfaced in the approved card copy and in the MCP confirmation text.",
+    "Full-auto now runs unknown-price shots without a per-shot prompt (user ruling, overriding the investigation recommendation of \"auto only when unknown count is 0\"). The ledger records them as unknown so the spend is still auditable after the fact."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/productionGenerationAuthorization.ts",
+    "tests": [
+      "electron/productionRun/unknownPriceOpenGate.test.ts"
+    ],
+    "structural_ticket": "docs/plan/2026-09-21-unknown-price-open-gate.md"
+  }
+}

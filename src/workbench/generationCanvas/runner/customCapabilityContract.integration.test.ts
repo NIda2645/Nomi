@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { ModelOption } from '../../../config/models'
-import { parseCustomCapabilityContract } from '../../../config/modelArchetypes'
+import { parseCustomCapabilityContract } from '../../../../electron/shared/modelArchetypes'
 import { createGenerationNode } from '../model/graphOps'
 import { applyArchetypeModeSwitch } from '../nodes/controls/archetypeMeta'
 import { buildNodeModelChangePatch } from '../nodes/buildNodeModelChangePatch'

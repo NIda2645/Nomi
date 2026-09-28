@@ -1,0 +1,319 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-deconstruction-node-terminal-state",
+  "problem_type": "a liveness-derived state persisted as a plain field, converged by one read path and silently un-converged by the next one in the same hydrate",
+  "symptom": "视频拆解跑到一半把 app 关掉再打开，分镜表节点**永久停在「本地找切点 / 0 镜」**：空白一片、不报错、不续跑、不提示可重试，看起来和「正在跑」一模一样。行级重试在代码里有（ShotTableNode.tsx 的 onRetry），但这个卡死态走不到那一层——footer 的重试钮只认 failed/idle，而它停在 running。第二形态：项目被换走（关窗、切项目、A→B→A）之后同一张表也永久焊在 running，且当时有一条单测正把这个行为钉住。第三形态：整条链上**没有「取消」这个动作**，等不下去的用户只能关 app——而关 app 正是第一形态的入口。",
+  "direct_cause": "① `factBridge.writeTable` 每写一次进度都走 `store.updateNode(..., { history: false })`；`history:false` 只关撤销栈，不关事件发射（`shouldEmitCanvasMutation` 只看 `emit`），于是每一下 `status:'running'` 都作为 `canvas.node.updated` 进了事件日志。② hydrate 的顺序是 `restoreSnapshot`（2026-09-10 在 `canvasSnapshotNormalizer` 加过一句 `running → idle` 的收敛）**先**，`applyEventTail`（重放快照之后的事件尾巴）**后**；重放把 `running` 原样写回来，收敛等于没发生。③ `deconstructToShotTable` 对 `running` 直接早退，footer 重试钮的判据是 `status === 'failed' || status === 'idle'`——两条合起来让这一格既不会自己恢复也点不动。④ 项目被换走那条：引擎结果被 `canWrite()` 正确挡住（这一条是对的），但挡住之后**没有人负责把表从 running 挪走**。",
+  "class_root": "一份**由活性派生**的状态被当成普通字段落了盘，而它的收敛判据挂在「哪一趟读路径」上，不挂在「这件事本身」上。`running` 的真值条件是「此刻有一次活着的调用」——这件事只有攥着 promise 的那个渲染进程知道；磁盘上那个字段只是它的影子照片。于是同一个概念有了两个主人（快照归一化说一句真话，事件重放随后说一句过期的话），**而且执行顺序决定谁赢**：后说话的赢，因为它在后面。只要判据还挂在读路径上，就永远差一条读路径没盖到。",
+  "affected_population": [
+    "任何在视频拆解跑完之前关掉 app / app 崩溃 / 机器休眠断电的用户——拆解要跑几分钟，这是常态不是边缘",
+    "任何在拆解跑着时切到别的项目再切回来的用户（A→B→A）",
+    "任何等得不耐烦想中止的用户：今天没有取消，唯一的出口是关 app，而关 app 会把节点变成永久卡死",
+    "已落盘的项目：磁盘上停在 running 的表，在本次修复之前每次重开都会原样复活成「正在跑」"
+  ],
+  "scope_paths": [
+    "electron/shared/canvas/shotTable.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+    "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+    "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+    "src/i18n/locales/shotTable.ts",
+    "scripts/vocabularies-baseline.json"
+  ],
+  "entry_points": [
+    "视频节点浮条「拆解」（NodeVideoFrameToolbar → deconstructToShotTable）",
+    "分镜表节点 footer「重新拆解」（ShotTableNode → deconstructToShotTable）",
+    "分镜表节点 footer「取消拆解」（ShotTableNode → cancelDeconstruction，本次新增）",
+    "重开项目（workbenchProjectSession → restoreSnapshot → applyEventTail）",
+    "外部 MCP 改图（applyExternalGraph → normalizeStoreSnapshot）"
+  ],
+  "invariants": [
+    "每张拆解分镜表必须落到 idle / ready / failed / interrupted / cancelled 之一；`running` 是唯一非终态，且**只在这个渲染进程真有一次在飞调用时**才成立",
+    "任何一条把画布读回内存的路径，在它**最后一步之后**都要问一次终态 owner——收敛不许只发生在其中一趟",
+    "终态必须带一个用户看得见的下一步：ready 看结果、failed 看原因重试、interrupted / cancelled 有「重新拆解」入口",
+    "中断 / 取消**不是失败**：不进错误通道、不带 role=alert、不记进拆解成功率",
+    "用户可见的界面文案不许落盘：中断那句话由 status 在渲染时按当前语言取，`errorMessage` 只存供应商 / ffmpeg 的原话"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+      "symbol": "convergeDeconstructionTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+      "symbol": "isDeconstructionRunLive"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "symbol": "convergeDeconstructionNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "symbol": "convergeDeconstructionNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "registerDeconstructionRun"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "releaseDeconstructionRun"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "settleInterruptedDeconstructions"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "convergeDeconstructionTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "markDeconstructionCancelled"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "isDeconstructionRunCancelled"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "canRestartDeconstruction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "canRestartDeconstruction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "deconstructionNoticeKey"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "cancelDeconstruction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "deconstructToShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeVideoFrameToolbar.tsx",
+      "symbol": "deconstructToShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/ensureStoryboardShotTable.ts",
+      "symbol": "readShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "symbol": "normalizeShotTableMeta"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/workbenchPersistence.ts",
+      "symbol": "normalizeShotTableMeta"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "deconstructionShotTableSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "shotTableDocumentSchema"
+    },
+    {
+      "kind": "write",
+      "path": "src/i18n/locales/shotTable.ts",
+      "symbol": "zhShotTable"
+    },
+    {
+      "kind": "write",
+      "path": "src/i18n/locales/shotTable.ts",
+      "symbol": "enShotTable"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 28,
+    "why_not": "本次真正要合并的那扇门**已经合掉了**：修复前「拆解表的终态由谁判」有两个主人（`canvasSnapshotNormalizer` 里那句 running→idle，和随后把它盖掉的 `applyEventTail`），现在两处都调同一个 `convergeDeconstructionTable`，判据只剩一份，写口从 2 变 1。门表里剩下的 24 条是这个 owner 的**纯函数在各调用点的读点**（`canRestartDeconstruction` / `deconstructionNoticeKey` / `isDeconstructionRunLive` 都是无状态判据，调多少处都不构成第二个真相源），加上 `readShotTable` / `normalizeShotTableMeta` 这两扇**上一刀（#837）已经收好的**持久化门——本次一个字没动它们，列在这里只是因为 door-map 按符号扫会把同族读点一并列出。在飞登记 `liveRuns` 是模块级单例，只有 `registerDeconstructionRun` / `releaseDeconstructionRun` / `markDeconstructionCancelled` 三个写口，且全部集中在 `deconstructToShotTable` 一个函数的 try/finally 里。"
+  },
+  "generality_proof": "把「这次拆解还有没有可能完成」从「每条读路径各自判一次」提升为**一个 owner 模块 + 一份与渲染进程同寿命的在飞登记**。于是：① 任何读路径要把画布读回内存，收敛都是同一个 `convergeDeconstructionNodes(nodes)` 调用，不存在「这一趟忘了收敛」——今天的三条（快照恢复 / 事件尾巴重放 / 外部图应用）全部走它；② 「能不能再起一次」「是不是终态」「要说哪句话」三个判据收成三个纯函数（`canRestartDeconstruction` / `isDeconstructionTerminal` / `deconstructionNoticeKey`），JSX 与 store 都不再手列状态词，新增一个状态时编译器会在 `DeconstructionStatus` 上逼它们表态；③ 在飞登记是模块级单例，**进程没了它自然全空**——这正是「重启后每一张 running 都该判为中断」这条语义的机械保证，不依赖任何人记得写收敛代码。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+      "symbol": "convergeDeconstructionTable",
+      "responsibility": "「这次拆解不可能再完成了」这个判断的唯一 owner：纯函数，活性由在飞登记注入。所有读路径共用它，节点只投影结论、不自己算"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+      "symbol": "canRestartDeconstruction",
+      "responsibility": "「这一格能不能再起一次拆解」的唯一判据：引擎入口与 footer 找回钮共用，杜绝 JSX 里再手列一遍状态词（原来的 `failed || idle` 正是这么漏掉 interrupted 的）"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+      "symbol": "deconstructionNoticeKey",
+      "responsibility": "中断 / 取消要说的那句话的 i18n key（不是那句话本身）：保证界面文案不被冻进落盘数据，切语言时跟着变"
+    },
+    {
+      "path": "electron/shared/canvas/shotTable.ts",
+      "symbol": "deconstructionShotTableSchema",
+      "responsibility": "拆解表状态词表的唯一那一份（本次只加两个成员）：新增状态必须同时过 zod strict 与语义词表门岗"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "entry_point": "normalizeStoreSnapshot",
+      "disposition": "enforced",
+      "evidence": "2026-09-10 在这里加过一句 `running → idle`，方向是对的但位置不够：它只盖住快照那一趟，随后的事件尾巴重放把 running 写了回来。现在删掉那句本地判断，改调唯一 owner。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "entry_point": "applyEventTail",
+      "disposition": "enforced",
+      "evidence": "本次的失败入口：它照抄事件日志，包括抄回 `running`，而且它**在收敛之后执行**。现在重放完再问一次 owner（幂等）。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "entry_point": "applyExternalGraph",
+      "disposition": "enforced",
+      "evidence": "外部 MCP 算好整张快照应用进来，走 `normalizeStoreSnapshot` → 同一个收敛。在飞登记保证「本进程正跑着的那张表」不会被外部图误判成中断。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "entry_point": "convergeStuckMidFlightNode",
+      "disposition": "not-affected",
+      "evidence": "生成节点那条路**早就做对了**：有 taskId → `recoverable`（免费续查），无 → `idle`，progress 一律清空。09-17 走查 §5.2 H 当场点名它和拆解那条形成鲜明对比。本次不动它——它的续跑方式（拿 taskId 免费重拉）拆解没有，所以不能共用同一套语义，只共用同一种诚实。"
+    },
+    {
+      "path": "electron/video/detectShotCuts.ts",
+      "entry_point": "runFfmpegCapture",
+      "disposition": "not-affected",
+      "evidence": "ffmpeg 子进程死掉这条**本来就落终态**：`child.on('close')` 把非零退出码变成 ShotCutError → IPC reject → factBridge catch → `failed` + 原话。新测第 4 条钉住它不回退，本次一个字没改。"
+    },
+    {
+      "path": "electron/video/deconstructVideo.ts",
+      "entry_point": "analyzeShot",
+      "disposition": "not-affected",
+      "evidence": "供应商 / 本地模型超时这条也本来就落终态：逐镜 `visionFailed` + 整批 `ready`，失败被如实逐镜报出（09-17 走查 §6.3 实证）。本次不碰——#837 刚动过这个文件，那一刀的判据（cutCoverage 必填）与本刀方向一致，不重叠。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationQueueStore.ts",
+      "entry_point": "QueueEntryState",
+      "disposition": "not-affected",
+      "evidence": "生成队列早就把 `cancelled` 与 `error` 分开记。本次给拆解补上 `cancelled` 是对齐它——「用户不要了」记成失败会在成功率里留假数据，这个判断队列那边已经做过一次。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一个形状在这条链上**已经出现两次**：2026-09-10 那句 `running → idle` 是第一次尝试，它漏在「只盖住一条读路径」；而漏掉的那条（事件尾巴重放）本身就是后加的。只要「收敛在哪儿做」还跟着读路径走，下一条读路径（未来的协作同步、增量 patch、另一种 hydrate）会以完全相同的方式再漏一次。把判据收给一个与进程同寿命的 owner，是唯一能让「新读路径」默认正确的形状。",
+    "same_class_scan": [
+      "grep -rn \"status === 'running'\" src/workbench/generationCanvas —— 逐条判过：拆解表这一处是本次修的；生成节点的 running 由 convergeStuckMidFlightNode 收敛（做对了）；generationQueueStore 的 running 是纯内存队列态，不落盘所以不存在跨进程复活",
+      "grep -rn 'applyEventTail\\|replayCanvasEvents' src/ —— 事件重放只有一个消费点（workbenchProjectSession 的 hydrate 尾部），本次在 applyEventTail 内收敛即全覆盖；没有第二条重放路径",
+      "grep -rn 'history: false' src/workbench/generationCanvas/ —— 全仓 history:false 的写点里，只有拆解进度这一族把**运行态**写进了会落盘的 meta；其余（选区、视口、锁）要么不进 meta 要么本身就是用户意图。这解释了为什么只有这一条被事件日志复活",
+      "grep -rn 'errorMessage' src/workbench/generationCanvas/nodes/shotTable/ —— 走查抓到的第二条：界面文案被 i18n.t() 译好写进落盘字段。扫过同族的 progressDetail（主进程按用户语言生成后下发，不落盘、随进度刷新，不构成同一问题）与 failureKind（机器可读，本来就是为「不拿文案当判据」加的）"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+    "invariant": "`running` 只在这个渲染进程真有一次在飞调用时成立；任何把画布读回内存的路径在最后一步之后都调 `convergeDeconstructionNodes`，节点不自己判终态",
+    "failure_mode": "新增一个状态而没在三个纯函数里表态 → `DeconstructionStatus` 联合类型让 TypeScript 报错；新增状态词而没登记 → `check:vocabularies` 报 members changed；新读路径漏掉收敛 → 单测「重启（快照 + 事件尾巴重放）后不是 running」与真机走查同时红",
+    "exception_policy": "none",
+    "strategy": "把「活性」这件事交给一个与渲染进程同寿命的模块级登记，而不是交给磁盘上的一个字段。进程没了登记自然全空——「重启后每一张 running 都是中断」因此是机械成立的，不依赖任何人记得在新读路径上补一句收敛。三个判据（是不是终态 / 能不能再起 / 要说哪句话）收成纯函数，让编译器在新增状态时逼所有读侧表态。",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+      "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "src/workbench/generationCanvas/store/generationCanvasStore.ts",
+      "electron/shared/canvas/shotTable.ts",
+      "scripts/vocabularies-baseline.json"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/nodes/shotTable/deconstructionTerminalState.test.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/factBridge.test.ts",
+    "tests/ux/deconstruction-interrupted-recovery.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/nodes/shotTable/deconstructionTerminalState.test.ts",
+    "tests/ux/deconstruction-interrupted-recovery.walk.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts"
+    ],
+    "rationale": "2026-09-10 那句就地的 `running → idle` 收敛（连同它在这个文件里的 readShotTable import）同 commit 删除，没有留并行版——收敛判据现在只有 `deconstructionLifecycle` 一份。footer 里原本两颗职责重叠的重试钮也合成一颗。`status` 的四个旧成员一个没删，老项目读回来照常。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不变量完全在应用层：ffmpeg 与供应商的行为没有变，变的是「我们这边还有没有人在等这次调用」这份状态归谁。不涉及任何外部依赖的版本或行为假设。",
+    "exit_criteria": []
+  },
+  "migration": "磁盘上停在 `running` 的老表**不需要迁移脚本**：本次修复本身就是迁移——重开项目时那条读路径会把它收敛成 `interrupted` 并给出「重新拆解」入口，用户点一下就能继续。`status` 的两个新成员对旧版 Nomi 是未知值，旧版读到会 zod parse 失败而整张表拒绝加载；这与仓库既有的「未来字段 fail closed」一致（`normalizeShotTableMeta` 的既定语义），且只影响「新版写过、再用旧版打开」这种降级场景。",
+  "residual_risks": [
+    "在飞登记只存在于渲染进程。若将来拆解改成主进程常驻任务（例如后台队列化），这份登记必须跟着上移，否则渲染层刷新一次就会把一个真在跑的任务判成中断——这条要随那次改动一起做，不能只挪代码。",
+    "取消**不打断主进程那次调用**：IPC invoke 没有取消口，本地切点那几秒可能仍跑完，只是结果不再写回。真正的中断要给 deconstructVideo 加一条取消通道（例如 AbortSignal 经 IPC 下发 + 子进程 kill），本次未做。因此「取消」今天省下的是后续的付费调用，不是已经开始的那一次本地计算。",
+    "真机走查用 store seam 摆出「磁盘上留着一张 running 的表」这个前置现场，而不是真的跑一次拆解再杀进程——后者要一次付费拆解。断言全落在重启后的真实 hydrate 与真实界面上，但「引擎真跑到一半被杀」这条端到端路径本身仍未在真机上走过。",
+    "中断文案不落盘这条只修了拆解这一族。全仓是否还有别处把 i18n.t() 的结果写进持久化字段，本次只扫了 shotTable 这一族（progressDetail / failureKind 判过，不构成同一问题），没有做全仓普查。",
+    "`interrupted` 与 `cancelled` 在分镜表**行级**状态（ShotRowStatus）里没有对应投影——今天中断态下表里本来就没有行，所以看不出问题；若将来支持「拆了一半的表保留已拆出的行」，行级状态词表要同步判一次。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/nodes/shotTable",
+    "owner_path": "src/workbench/generationCanvas/nodes/shotTable/deconstructionLifecycle.ts",
+    "owner_symbol": "convergeDeconstructionTable",
+    "has_tests": true,
+    "tests": [
+      "src/workbench/generationCanvas/nodes/shotTable/deconstructionTerminalState.test.ts",
+      "tests/ux/deconstruction-interrupted-recovery.walk.mjs"
+    ],
+    "why": "终态判定必须住在**攥着 promise 的那一层**，也就是渲染进程。视频拆解不是任务表里的一行：它没有 taskId、没有可轮询的上游（查过 electron/tasks，那套终态是给可轮询的供应商任务用的，拆解不走它），重启后没有任何东西能替它续跑——所以「还有没有可能完成」这件事，除了发起它的那个进程没有第二个人知道。放在 shared 契约层没有意义（主进程答不出这个问题），放在快照归一化那一层就是它原来出事的样子（判据挂在读路径上，换条读路径就漏）。该层有测试：单测钉住四种中断各自的落点与 owner 的纯函数判据，真机走查钉住冷重启后用户真正看到的那一屏。"
+  },
+  "internal_only_reason": "本次是仓库内部一条读路径的顺序缺陷：收敛在事件尾巴重放之前做，重放又把 running 写了回来。「进程重启时在飞的活该落到哪一格」这个问题的答案，**同一个 app 里已经有一份做对了的先例**——生成节点的 convergeStuckMidFlightNode（有 taskId → recoverable 免费续查，无 → idle，progress 清空），2026-09-17 付费走查 §5.2 H 当场点名它与拆解那条形成鲜明对比。取消与失败分开记也已有先例（generationQueueStore 的 QueueEntryState 里 cancelled 与 error 是两格）。外部产品的做法在这里给不出更好的答案：它们的「中断恢复」都建立在有可轮询的服务端任务之上，而本地 ffmpeg + 一次 IPC invoke 的编排没有那个东西，照抄反而会引出一个假 taskId。因此本次以仓库内既有先例为准绳，不新引外部依据。"
+}

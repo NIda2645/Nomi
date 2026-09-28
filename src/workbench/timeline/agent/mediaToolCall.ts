@@ -170,15 +170,16 @@ function loadElementMetadata(asset: ProjectMediaAsset): Promise<MediaTechnicalMe
   if (asset.kind === 'image') {
     return new Promise((resolve) => {
       const image = document.createElement('img')
-      let timeout: number | undefined
+      // 闹钟在 `finish` 之后声明：`finish` 只会被闹钟或事件回调调用，那时它早就赋好了值。
+      // 这样它就是 const，也不用再写一句「有没有闹钟」的判断（prefer-const）。
       const finish = (extra: MediaTechnicalMetadata = {}) => {
-        if (timeout !== undefined) window.clearTimeout(timeout)
+        window.clearTimeout(timeout)
         image.onload = null
         image.onerror = null
         image.removeAttribute('src')
         resolve({ ...stored, ...extra })
       }
-      timeout = window.setTimeout(() => finish(), 10_000)
+      const timeout = window.setTimeout(() => finish(), 10_000)
       image.onload = () => finish({ width: image.naturalWidth, height: image.naturalHeight })
       image.onerror = () => finish()
       image.src = asset.renderUrl
@@ -186,16 +187,16 @@ function loadElementMetadata(asset: ProjectMediaAsset): Promise<MediaTechnicalMe
   }
   return new Promise((resolve) => {
     const media = document.createElement(asset.kind === 'video' ? 'video' : 'audio')
-    let timeout: number | undefined
+    // 同上：闹钟在 `finish` 之后声明，于是它是 const。
     const finish = (extra: MediaTechnicalMetadata = {}) => {
-      if (timeout !== undefined) window.clearTimeout(timeout)
+      window.clearTimeout(timeout)
       media.onloadedmetadata = null
       media.onerror = null
       media.removeAttribute('src')
       media.load()
       resolve({ ...stored, ...extra })
     }
-    timeout = window.setTimeout(() => finish(), 10_000)
+    const timeout = window.setTimeout(() => finish(), 10_000)
     media.preload = 'metadata'
     media.onloadedmetadata = () => finish({
       ...(Number.isFinite(media.duration) && media.duration > 0 ? { durationSeconds: media.duration } : {}),

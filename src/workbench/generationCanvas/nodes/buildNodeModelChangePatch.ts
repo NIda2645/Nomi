@@ -3,7 +3,7 @@ import { findModelOptionByIdentifier } from '../adapters/modelOptionsAdapter'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { isImageLikeGenerationNodeKind, isVideoLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import { resolveModeForConnectedReferences } from '../agent/referenceEdgeCapability'
-import { replaceCustomCapabilityContractMeta } from '../../../config/modelArchetypes'
+import { replaceCustomCapabilityContractMeta } from '../../../../electron/shared/modelArchetypes'
 import {
   buildModelControls,
   defaultPatchForControls,

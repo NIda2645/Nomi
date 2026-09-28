@@ -1,0 +1,138 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-22-card-face-over-own-ports",
+  "problem_type": "Card surface stacked above its own connection ports because the z-order rule keyed on selection instead of on the port affordance",
+  "symptom": "PR #834 CI Canvas Acceptance (run 35620768326) red on main-merged code: group-reference-direction.walk.mjs:190 never gets the second reference thumbnail (drag from the target's left port created no edges, target stayed t2i) and canvas-batch-production.walk.mjs:312 '真实点击建立依赖边' (Linux only). Reproduced locally: group-reference-direction red on 5f17a7d17 (main) and d25af98f1 (#834 head), green on 46b71c973 (main before #833). Probe on main: multi-selected card's visible 14px dot — its centre and inner half hit the card preview, not the handle.",
+  "direct_cause": "PR #833 added `.node-shell .generation-canvas-v2-node[data-selected='true'] { z-index: 9 }` so the version pill/tray sticking out of a selected card beat its magnetic band (z 8). data-selected is true for every card in a multi-selection and for the pending-connection source, whose ports are dots riding on the card edge; the raised card face now covers the dot's centre and inner half. On a single selection it also takes the 1px React Flow anchor on the card edge (left side deterministic, right side by sub-pixel layout, hence Linux-only for batch-production).",
+  "class_root": "Which of a card's own layers sits on top (card face vs its ports) was decided by a second vocabulary (data-selected) instead of by the connection-affordance owner that decides what the ports are. Selection and affordance diverge (multi-select, pending source), so the stacking rule silently contradicted the port geometry.",
+  "affected_population": [
+    "Every canvas user who multi-selects cards and presses a connection dot (the ×2 multi-connect gesture), and every walkthrough that pressed the 1px handle anchor on a selected card"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+    "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css"
+  ],
+  "entry_points": [
+    "React Flow node shell of every canvas card (GenerationFlowNodeView) and its source handles (GenerationFlowConnectionHandle)"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_positioned_layout/Stacking_context",
+      "checked_at": "2026-09-22",
+      "purpose": "The card uses `isolate`, so its overflowing pill/tray cannot escape its stacking context; only the card's own z-index versus the sibling handle's z-index decides who owns the overlap."
+    }
+  ],
+  "invariants": [
+    "A card face is raised above its own ports only when its affordance is magnetic (sole primary selection): then the band is entirely outside the card and the pill/tray must win.",
+    "When the affordance is dot, the whole visible dot (centre and both halves) is owned by the handle, never by the card face."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "resolveGenerationFlowConnectionAffordance"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "data-connection-affordance"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css",
+      "symbol": "data-connection-affordance"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "GenerationCanvasReactFlowNodes.tsx reads the owner (resolveGenerationFlowConnectionAffordance) and publishes it as data-connection-affordance; the stylesheet is the one writer of the card-over-band z-order and now reads only that attribute (door-map does not scan CSS, so this door is added by hand with the same symbol). Before, the same CSS door read data-selected instead; count unchanged, vocabulary unified."
+  },
+  "generality_proof": "The stacking selector now reads only data-connection-affordance, which is written from resolveGenerationFlowConnectionAffordance — the single decision for every card kind. Any selection state that yields dot (multi-select, pending source, unselected) therefore keeps ports above the face, and any future kind inherits the rule without a list.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "data-connection-affordance",
+      "responsibility": "Publishes the owner's affordance on the node shell."
+    },
+    {
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css",
+      "symbol": "generation-canvas-react-flow__node-shell[data-connection-affordance='magnetic']",
+      "responsibility": "Card face above its bands only in the magnetic tier."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "entry_point": "data-[selected=true]:z-[5]",
+      "disposition": "not-affected",
+      "evidence": "z 5 stays below the handle z 8; only matters for sibling cards, verified by 01-unselected-dots and 05 in canvas-magnetic-handle.walk.mjs."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/CollapsedGroupCard.tsx",
+      "entry_point": "MagneticConnectionHandle",
+      "disposition": "not-affected",
+      "evidence": "Projection-layer card, not inside a React Flow node shell; affordance for its proxy is hidden."
+    },
+    {
+      "path": "tests/ux/_canvasHit.mjs",
+      "entry_point": "findConnectionStartPoint",
+      "disposition": "enforced",
+      "evidence": "Walkthroughs that pressed the 1px anchor (group-reference-direction, canvas-batch-production, group-ports, video-depth-real-task) now press the visible ring/dot and fail closed if that point is not owned by the handle."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any card in a multi-selection or pending connection exposes the dot under the raised face; every future z-order tweak keyed on selection would reintroduce it.",
+    "same_class_scan": [
+      "rg \"data-selected='true'\\]|data-\\[selected=true\\]:z-\" src: 2 hits (flow CSS rule fixed here, BaseGenerationNode z-5 not affected)",
+      "rg \"generation-canvas-react-flow__handle\\[data-side\" tests/ux: 4 walks pressed the 1px anchor; all moved to findConnectionStartPoint",
+      "node scripts/door-map.mjs resolveGenerationFlowConnectionAffordance data-connection-affordance: 2 doors, one file"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+    "invariant": "Card-face stacking derives from the connection affordance owner, never from selection.",
+    "failure_mode": "canvas-magnetic-handle.walk.mjs task 05 goes red if a multi-selected card's dot centre or inner half is owned by anything but the handle, or if the magnetic card's inner edge is owned by the band (positive control: task 05 red on main 5f17a7d17, green here).",
+    "exception_policy": "none",
+    "strategy": "Publish the affordance on the node shell and key the only card-over-band rule on it.",
+    "artifacts": [
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css"
+    ]
+  },
+  "regression_tests": [
+    "tests/ux/canvas-magnetic-handle.walk.mjs",
+    "tests/ux/group-reference-direction.walk.mjs",
+    "tests/ux/canvas-batch-production.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "tests/ux/canvas-magnetic-handle.walk.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlow.css"
+    ],
+    "rationale": "The data-selected-keyed z-index rule is replaced in the same change; no selection-keyed variant remains."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No dependency behaviour involved; @xyflow/react handle geometry unchanged.",
+    "exit_criteria": []
+  },
+  "migration": "No data migration; presentational stacking only.",
+  "residual_risks": [
+    "video-depth-real-task.walk.mjs was moved to the shared start-point helper but not re-run (needs real provider credits); marked unverified.",
+    "The magnetic seam (1px anchor on the card edge) belongs to the card by design; any future walk pressing the anchor instead of the ring will fail closed via findConnectionStartPoint only if it uses the helper."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowVisualContract.ts",
+    "tests": [
+      "tests/ux/canvas-magnetic-handle.walk.mjs"
+    ],
+    "why": "卡面与自己把手谁在上，由把手档位 owner 派生；task 05 用真实 elementFromPoint 验两档，阳性对照：main 上红、修复后绿。"
+  }
+}

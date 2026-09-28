@@ -5,6 +5,10 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { load } from 'js-yaml'
 
+import { CI_E2E_CHAIN } from './run-ci-e2e-chain.mjs'
+import { CORE_SMOKE_ADVISORY_CHECK_NAMES, CORE_SMOKE_ADVISORY_FIXTURES, CORE_SMOKE_BLOCKING_CHECK_NAMES, CORE_SMOKE_BLOCKING_FIXTURES, CORE_SMOKE_CHECK_NAMES, CORE_SMOKE_FIXTURES, coreSmokeCheckName } from './validation-policy.mjs'
+import { REQUIRED_MERGED_CHECKS } from './git-delivery.mjs'
+import { CORE_SMOKE_SCENARIOS } from '../tests/ux/core-smoke/scenarios.mjs'
 import { PROFILES, STAGES } from '../tests/system/profiles.mjs'
 import { assertFullCanvasShardPartition, FULL_CANVAS_SHARDS } from '../tests/ux/canvas-real-suite.mjs'
 
@@ -12,6 +16,16 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const workflow = load(fs.readFileSync(path.join(repoRoot, '.github/workflows/quality-gate.yml'), 'utf8'))
 const packageJson = JSON.parse(fs.readFileSync(path.join(repoRoot, 'package.json'), 'utf8'))
 const runCommands = (job) => job.steps?.flatMap((step) => (typeof step.run === 'string' ? [step.run] : [])) ?? []
+
+test('the unit lane provisions Chromium before either browser integration test entry', () => {
+  const steps = workflow.jobs.unit.steps
+  const install = steps.findIndex(step => step.run === 'pnpm exec playwright install --with-deps chromium')
+  assert.ok(install >= 0, 'Unit runs real browser integration tests and must provision Chromium')
+  assert.equal(steps[install].if, undefined, 'Both focused and full lanes need the browser')
+  for (const command of ['pnpm run test:system:unit', 'pnpm run test:system:focused']) {
+    assert.ok(steps.findIndex(step => step.run === command) > install, `${command} must run after browser installation`)
+  }
+})
 
 test('quality gate runs for pull requests and real main before/after pushes', () => {
   assert.deepEqual(workflow.on, {
@@ -40,7 +54,8 @@ test('quality gate runs for pull requests and real main before/after pushes', ()
     group: 'quality-gate-${{ github.event.pull_request.number || github.sha }}',
     'cancel-in-progress': true,
   })
-  assert.deepEqual(workflow.permissions, { actions: 'read', checks: 'read', contents: 'read' })
+  // pull-requests: read 是正文侧门岗现取 PR 正文所需（2026-09-18，C 件）。
+  assert.deepEqual(workflow.permissions, { actions: 'read', checks: 'read', contents: 'read', 'pull-requests': 'read' })
 
   const scopeEnvironment = workflow.jobs.scope.steps.find((step) => step.id === 'profile').env
   assert.equal(scopeEnvironment.NOMI_BASE_SHA, "${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || '' }}")
@@ -49,6 +64,7 @@ test('quality gate runs for pull requests and real main before/after pushes', ()
 
 test('scope exposes every independent validation surface from the shared classifier', () => {
   assert.deepEqual(workflow.jobs.scope.outputs, {
+    core_smoke: '${{ steps.profile.outputs.core_smoke }}',
     unit: '${{ steps.profile.outputs.unit }}',
     desktop: '${{ steps.profile.outputs.desktop }}',
     journeys: '${{ steps.profile.outputs.journeys }}',
@@ -68,9 +84,9 @@ test('quality gate uses Node 24-native actions without a forced runtime shim', (
     (job) => job.steps?.flatMap((step) => (typeof step.uses === 'string' ? [step.uses] : [])) ?? [],
   )
 
-  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 8)
-  assert.equal(actionUses.filter((uses) => uses === 'pnpm/action-setup@v6').length, 6)
-  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 7)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 9)
+  assert.equal(actionUses.filter((uses) => uses === 'pnpm/action-setup@v6').length, 7)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 8)
   assert.ok(actionUses.includes('actions/upload-artifact@v7'))
   assert.ok(actionUses.every((uses) => !/@v4$/.test(uses)))
   for (const job of Object.values(workflow.jobs)) {
@@ -87,10 +103,21 @@ test('contracts always run and unit alone chooses focused or full coverage', () 
     contracts.env.ROOT_CAUSE_BASE_REF,
     '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}',
   )
-  // check:prior-art 的 PR 侧判据靠这两个 env 才看得见 PR 正文与 base；少了它们，大改一律静默放行。
-  assert.equal(contracts.env.PRIOR_ART_PR_BODY, '${{ github.event.pull_request.body }}')
+  // 2026-09-18：正文**不再从事件负载里拿**。那份正文是 push 那一刻的快照，push 后补正文
+  // 会被判成没写，只能空提交重推换一轮 40 分钟（PR #804）。现在由 scripts/lib/prBody.mjs
+  // 用 gh 现取，所以这里钉死的是「取正文要用的三样」，并且钉死旧 env 已经消失。
+  assert.equal(contracts.env.PRIOR_ART_PR_BODY, undefined)
+  assert.equal(contracts.env.DOOR_MAP_PR_BODY, undefined)
+  assert.equal(contracts.env.GH_TOKEN, '${{ github.token }}')
+  assert.equal(contracts.env.GH_REPO, '${{ github.repository }}')
+  assert.equal(contracts.env.NOMI_PR_NUMBER, '${{ github.event.pull_request.number }}')
+  assert.equal(contracts.env.GITHUB_EVENT_NAME, '${{ github.event_name }}')
   assert.equal(
     contracts.env.PRIOR_ART_BASE_REF,
+    '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}',
+  )
+  assert.equal(
+    contracts.env.DOOR_MAP_BASE_REF,
     '${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}',
   )
 
@@ -123,6 +150,7 @@ test('Linux walkthrough job builds once and keeps only smoke, journey, and criti
       selectedSteps['MCP L1 handshake journey'].run,
       selectedSteps['MCP elicitation-first journey'].run,
       selectedSteps['Real user loopback journey gate'].run,
+      selectedSteps['Golden path (Agent storyboard lands on canvas)'].run,
       selectedSteps['Critical canvas acceptance'].run,
     ],
     [
@@ -131,14 +159,43 @@ test('Linux walkthrough job builds once and keeps only smoke, journey, and criti
       'xvfb-run -a pnpm run test:mcp-journey',
       'xvfb-run -a pnpm run test:mcp-elicitation',
       'xvfb-run -a pnpm run test:real-user-journeys:ci',
+      'xvfb-run -a pnpm run test:golden',
       'xvfb-run -a pnpm run test:canvas:critical',
     ],
   )
+  // 2026-09-18（B 件）：七步一律 continue-on-error，job 的结论交给末尾那一步。
+  // 串行 fail-fast 让每轮 CI 只暴露一条红（#804 连三轮各红一条不同走查）。
+  const chainSteps = [
+    'Browser feel mechanism', 'Electron smoke', 'CI-safe user journeys', 'MCP L1 handshake journey',
+    'MCP elicitation-first journey', 'Real user loopback journey gate', 'Critical canvas acceptance',
+  ]
+  for (const name of chainSteps) {
+    assert.equal(selectedSteps[name]['continue-on-error'], true, `${name} 必须 continue-on-error，否则后面几条又被吞掉`)
+    assert.ok(selectedSteps[name].id, `${name} 必须有 id，汇总步靠它读 outcome`)
+  }
+  const summary = desktop.steps.find((step) => step.name === 'E2E chain summary')
+  assert.equal(summary.if, 'always()')
+  assert.equal(summary.run, 'node scripts/summarize-e2e-chain.mjs')
+  assert.equal(summary['continue-on-error'], undefined, '汇总步本身不许 continue-on-error——它就是 job 的结论')
+  // 汇总必须**每一步都读到**：漏掉一个 id，那条走查就悄悄失去了决定 job 红绿的能力。
+  for (const name of chainSteps) {
+    assert.match(summary.env.CHAIN, new RegExp(`${selectedSteps[name].id}:\\$\\{\\{ steps\\.${selectedSteps[name].id}\\.outcome \\}\\}`))
+  }
+
+  // 本地那条链（pnpm run test:e2e:ci-chain）必须和这个 job **同序同命令**——
+  // 两份清单各写各的，就是下一个「本地全绿 CI 连红三轮」。
+  assert.deepEqual(CI_E2E_CHAIN.map((step) => step.id), chainSteps.map((name) => selectedSteps[name].id))
+  assert.deepEqual(
+    CI_E2E_CHAIN.map((step) => step.script),
+    chainSteps.map((name) => /pnpm run ([\w:-]+)/.exec(selectedSteps[name].run)[1]),
+  )
+
   assert.equal(selectedSteps['Electron smoke'].if, "needs.scope.outputs.desktop == 'true'")
   assert.equal(selectedSteps['CI-safe user journeys'].if, "needs.scope.outputs.journeys == 'true'")
   assert.equal(selectedSteps['MCP L1 handshake journey'].if, "needs.scope.outputs.journeys == 'true'")
   assert.equal(selectedSteps['MCP elicitation-first journey'].if, "needs.scope.outputs.journeys == 'true'")
   assert.equal(selectedSteps['Real user loopback journey gate'].if, "needs.scope.outputs.journeys == 'true'")
+  assert.equal(selectedSteps['Golden path (Agent storyboard lands on canvas)'].if, "needs.scope.outputs.journeys == 'true'")
   assert.equal(selectedSteps['Critical canvas acceptance'].if, "needs.scope.outputs.canvas == 'critical'")
   assert.equal(runCommands(desktop).filter((command) => command === 'pnpm run build').length, 1)
   // full/performance 面已拆到并行 job；本 job 不得再串行执行它们（那是 22 分钟关键路径的根因）。
@@ -185,6 +242,47 @@ test('canvas performance budget runs as its own parallel job with an untouched i
   assert.match(evidence.with.path, /tests\/ux\/perf-results\/canvas-\*\.json/)
 })
 
+test('core flow smoke runs on every non-docs change as a two-fixture matrix derived from the single fixture owner', () => {
+  const smoke = workflow.jobs['core-smoke']
+  assert.equal(smoke.needs, 'scope')
+  // 唯一开关是分类器的 core_smoke（= 非纯文档）；不许再挂任何别的路径条件。
+  assert.equal(smoke.if, "needs.scope.outputs.core_smoke == 'true'")
+  assert.deepEqual(smoke.strategy, { 'fail-fast': false, matrix: { fixture: [...CORE_SMOKE_FIXTURES] } })
+  // check 名由 matrix 值展开；合后收据按 coreSmokeCheckName 找它们——两边字面必须对得上。
+  assert.equal(smoke.name, 'Core Flow Smoke (${{ matrix.fixture }})')
+  assert.equal(coreSmokeCheckName('${{ matrix.fixture }}'), smoke.name)
+  assert.deepEqual(CORE_SMOKE_CHECK_NAMES, CORE_SMOKE_FIXTURES.map(coreSmokeCheckName))
+  // 核心冒烟 check 不进「skipped 也算过」的常规名单：阻断档在 git-delivery 里是 success-only。
+  for (const name of CORE_SMOKE_CHECK_NAMES) assert.equal(REQUIRED_MERGED_CHECKS.includes(name), false)
+
+  // 阻断 / 非阻断的唯一 owner 是分类器，CI 的 continue-on-error 必须逐字从它派生。
+  // 现状（2026-09-22 用户拍板）：empty 阻断，used 非阻断。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES], ['empty'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_FIXTURES], ['used'])
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_CHECK_NAMES], ['Core Flow Smoke (empty)'])
+  assert.deepEqual([...CORE_SMOKE_ADVISORY_CHECK_NAMES], ['Core Flow Smoke (used)'])
+  // 两档互斥且合起来正好是全集——不许有哪个夹具既不阻断也不在非阻断名单里（那就是没人管）。
+  assert.deepEqual([...CORE_SMOKE_BLOCKING_FIXTURES, ...CORE_SMOKE_ADVISORY_FIXTURES].sort(), [...CORE_SMOKE_FIXTURES].sort())
+  // 非阻断那一格挂 continue-on-error，阻断那一格绝不能挂——挂了 empty 就等于没有必过门。
+  assert.equal(smoke['continue-on-error'], "${{ matrix.fixture != 'empty' }}")
+  for (const fixture of CORE_SMOKE_FIXTURES) {
+    const blocking = CORE_SMOKE_BLOCKING_FIXTURES.includes(fixture)
+    assert.equal(smoke['continue-on-error'].includes(`!= '${fixture}'`), blocking, `${fixture} 的阻断档与 continue-on-error 表达式不一致`)
+  }
+
+  const commands = runCommands(smoke)
+  assert.equal(commands.filter((command) => command === 'pnpm run build').length, 1)
+  assert.ok(commands.includes('xvfb-run -a pnpm run test:core-smoke -- --fixture ${{ matrix.fixture }}'))
+  assert.equal(packageJson.scripts['test:core-smoke'], 'python3 scripts/with-gates-lock.py -- node tests/ux/core-smoke/run.mjs')
+  assert.ok(CORE_SMOKE_SCENARIOS.some((scenario) => scenario.script === 'tests/ux/node-params-and-version-pill.walk.mjs'))
+  assert.ok(CORE_SMOKE_SCENARIOS.some((scenario) => scenario.script === 'tests/ux/canvas-drag-pan-gestures.walk.mjs'))
+
+  const evidence = smoke.steps.find((step) => step.uses === 'actions/upload-artifact@v7')
+  assert.equal(evidence.if, 'always()')
+  assert.equal(evidence.with.name, 'core-smoke-evidence-${{ matrix.fixture }}')
+  assert.match(evidence.with.path, /outputs\/core-smoke\/\*\*/)
+})
+
 test('macOS package is selected independently and retains build, package, and signature checks', () => {
   const macPackage = workflow.jobs['mac-package']
   assert.equal(macPackage.needs, 'scope')
@@ -226,12 +324,16 @@ test('package scripts expose canonical separated profiles and classifier contrac
     scripts['test:mcp-elicitation'],
     'python3 scripts/with-gates-lock.py --command "pnpm run check:electron-install && node tests/ux/mcp-generation-elicitation-first.e2e.mjs"',
   )
+  // A 件（2026-09-18）：本地一条命令按 CI 同序跑完七步。必须**只持一次 gates 锁**——
+  // 七个 test:* 各自套锁，不在最外层套一次就会逐个重新排队（本机常有 20+ worktree）。
+  assert.equal(scripts['test:e2e:ci-chain'], 'python3 scripts/with-gates-lock.py -- node scripts/run-ci-e2e-chain.mjs')
   assert.equal(scripts['test:system:canvas:critical'], 'python3 scripts/with-gates-lock.py -- node scripts/test-system.mjs ci-canvas-critical')
   assert.equal(scripts['test:system:canvas:full'], 'python3 scripts/with-gates-lock.py -- node scripts/test-system.mjs ci-canvas-full')
   assert.equal(scripts['test:system:performance'], 'python3 scripts/with-gates-lock.py -- node scripts/test-system.mjs ci-performance')
   assert.equal(scripts['test:canvas:performance'], 'python3 scripts/with-gates-lock.py -- node tests/ux/canvas-real-suite.mjs performance')
-  // 棘轮只减不增：2026-09-06 v4 接线删掉旧面板后降到 81。调高需要理由，调低直接改这一行。
-  assert.equal(scripts['lint:ci'], 'eslint . --max-warnings=81')
+  // 棘轮只减不增：2026-09-06 v4 接线删掉旧面板后降到 81；2026-09-22 总合并清完合并带来的
+  // 未用 import 与两处 prefer-const 后降到 79。调高需要理由，调低直接改这一行。
+  assert.equal(scripts['lint:ci'], 'eslint . --max-warnings=79')
   assert.match(scripts['check:quality-gate-workflow'], /validation-policy\.node-test\.mjs/)
   assert.match(scripts['check:quality-gate-workflow'], /real-user-test-gates\.node-test\.mjs/)
 })
@@ -242,6 +344,7 @@ test('Quality Gate requires mandatory jobs and every risk-selected optional surf
     'scope',
     'contracts',
     'unit',
+    'core-smoke',
     'desktop-linux',
     'canvas-acceptance',
     'canvas-performance',
@@ -275,6 +378,9 @@ test('Quality Gate requires mandatory jobs and every risk-selected optional surf
   assert.match(command, /needs\['canvas-acceptance'\]\.result/)
   assert.match(command, /needs\['canvas-performance'\]\.result/)
   assert.match(command, /needs\['mac-package'\]\.result/)
+  // 核心冒烟 fail-closed：skipped 只在 core_smoke=false 且 reason=docs_only 时放行，其余一律要 success。
+  const coreSmokeBlock = /if \[ "\$\{\{ needs\.scope\.outputs\.core_smoke \}\}" = "false" \]; then\n\s*test "\$\{\{ needs\.scope\.outputs\.reason \}\}" = "docs_only"\n\s*test "\$\{\{ needs\['core-smoke'\]\.result \}\}" = "skipped"\n\s*else\n\s*test "\$\{\{ needs\['core-smoke'\]\.result \}\}" = "success"\n\s*fi/
+  assert.match(command, coreSmokeBlock)
 })
 
 /**
@@ -320,7 +426,9 @@ test('browser feel fixtures run in the Chromium-equipped desktop lane, never Uni
   const run = commands.indexOf('pnpm run test:feel:browser')
   assert.ok(install >= 0 && run > install)
   for (const [name, job] of Object.entries(workflow.jobs)) {
-    if (/unit/i.test(name)) assert.doesNotMatch(runCommands(job).join('\n'), /playwright install|test:feel:browser/)
+    // Feel's node:test fixtures stay in desktop. Unit also has Vitest browser
+    // integration suites, which need Chromium without running Feel twice.
+    if (/unit/i.test(name)) assert.doesNotMatch(runCommands(job).join('\n'), /test:feel:browser/)
   }
   for (const name of ['_feel', '_feel-observer']) {
     assert.ok(!fs.existsSync(path.join(repoRoot, `tests/ux/${name}.test.mjs`)))

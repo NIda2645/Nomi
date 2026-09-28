@@ -1,0 +1,81 @@
+{
+  "prompt": "角色跨五个镜头老是换脸换衣服，给我一套一致性检查方法。",
+  "baseline": {
+    "round": "S03",
+    "readTarget": 1,
+    "allTools": 2,
+    "status": "completed",
+    "outputPassed": true
+  },
+  "ablated": {
+    "round": "S03-ablated",
+    "readTarget": 0,
+    "allTools": 10,
+    "status": "aborted",
+    "observationWindowSeconds": 180,
+    "behavior": "未读任何技能；创建角色草稿和检查清单节点，工具参数反复出错，超时停止。已有部分内容，不算正常完成。"
+  },
+  "checks": [
+    {
+      "request": "143-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "144-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "145-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "146-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "147-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "148-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "149-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "150-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "151-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    },
+    {
+      "request": "152-S03-ablated",
+      "removedEntries": 1,
+      "onlyTargetEntryChanged": true,
+      "targetAbsentFromSentSystem": true
+    }
+  ],
+  "limit": "不同空项目/会话导致project id/context id等元数据不同；单次配对、未锁seed，不声称统计因果或纯文本能力完全来自技能。索引删掉后选择行为确实从1变0。"
+}

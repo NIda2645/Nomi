@@ -96,6 +96,8 @@ it('keeps runtime progress out of user undo steps', async () => {
   expect(useGenerationCanvasStore.getState().nodes.some(node => node.id === sourceId)).toBe(true)
 })
 
+// 迟到的结果照旧不许写回；改变的只是**表停在哪一格**——T-ED-06 之前它停在非终态，
+// 用户既看不到原因也点不动重试。现在它落 `interrupted`（中断，可找回）。
 it('rejects an old completion when the same project canvas is restored', async () => {
   const sourceId = source()
   bridge.deconstruct.mockImplementation(async () => {
@@ -104,7 +106,7 @@ it('rejects an old completion when the same project canvas is restored', async (
     return evidence
   })
   const id = await deconstructToShotTable(sourceId, originProject())
-  expect(readShotTable(useGenerationCanvasStore.getState().nodes.find(node => node.id === id)?.meta)?.source).toMatchObject({ status: 'idle' })
+  expect(readShotTable(useGenerationCanvasStore.getState().nodes.find(node => node.id === id)?.meta)?.source).toMatchObject({ status: 'interrupted' })
 })
 
 
@@ -153,10 +155,11 @@ it('defers an async result until an unrelated proposal releases the canvas', asy
   expect(readShotTable(useGenerationCanvasStore.getState().nodes.find(node => node.id === id)?.meta)?.source).toMatchObject({ status: 'ready' })
 })
 
+// 同上：迟到的结果被挡住这件事不变，变的是表不再被永久焊在 `running`（T-ED-06）。
 it('never writes a late engine result after the originating project was replaced, even A to B to A', async () => {
   const sourceId = source()
   const id = ensureDeconstructionShotTable(sourceId)!
   bridge.deconstruct.mockImplementation(async () => { project.controller.abort(); project.controller = new AbortController(); return evidence })
   await deconstructToShotTable(sourceId, originProject())
-  expect(readShotTable(useGenerationCanvasStore.getState().nodes.find(node => node.id === id)?.meta)?.source).toMatchObject({ status: 'running' })
+  expect(readShotTable(useGenerationCanvasStore.getState().nodes.find(node => node.id === id)?.meta)?.source).toMatchObject({ status: 'interrupted' })
 })

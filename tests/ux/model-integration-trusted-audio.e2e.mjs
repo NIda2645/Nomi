@@ -101,28 +101,21 @@ async function run() {
   const dirs = makeIsolatedRoot('nomi-model-integration-trusted-audio-')
   const provider = await startProvider()
   const runtime = devRuntime()
-  let sessionId = ''
-  let revision = 0
+  let setupId = ''
   try {
     await withMcp(dirs, runtime, async (mcp) => {
-      const begin = parseToolResult(await mcp.callTool('nomi_integration', {
-        action: 'begin',
-        kind: 'http-api-provider',
+      // 2026-09-18（#754）：`connect_provider` **一跳**就是「开会话 + 打开贴 key 页」——
+      // `open_credentials` 作为独立动词已经不存在了。返回的是 §4.3 信封：句柄在 `setupId`，
+      // 会话投影在 `state`。
+      const begin = parseToolResult(await mcp.callTool('nomi_model_setup', {
+        action: 'connect_provider',
         name: 'Trusted audio journey',
-        baseUrl: provider.baseUrl,
-        providerKind: 'openai-compatible',
-        authType: 'bearer',
-        clientRequestId: 'trusted-audio-j1',
+        suggestedBaseUrl: provider.baseUrl,
       }))
-      assert(!begin.isError && begin.json?.stage === 'needs_credential', 'MCP creates an unverified audio session')
-      sessionId = begin.json.id
-      revision = begin.json.revision
-      const handoff = parseToolResult(await mcp.callTool('nomi_integration', {
-        action: 'open_credentials',
-        sessionId,
-        expectedRevision: revision,
-      }))
-      assert(!handoff.isError && handoff.json?.stage === 'needs_credential', 'MCP requests the credential handoff')
+      assert(!begin.isError && begin.json?.ok === true, 'MCP creates an unverified audio session')
+      assert(begin.json?.state?.stage === 'needs_credential', 'the session is waiting for the user to paste a key')
+      assert(begin.json?.nextAction?.kind === 'user_sees_key_page', 'MCP opens the credential page in the same hop')
+      setupId = begin.json.setupId
     })
 
     await withTrustedRenderer(dirs, async (win) => {
@@ -136,23 +129,38 @@ async function run() {
           apiKey: 'isolated-fixture-key',
         })
         return result
-      }, { id: sessionId })
+      }, { id: setupId })
       assert(saved?.credentialStatus === 'ready' && saved?.stage === 'draft', 'trusted renderer stores the credential')
       assertNoCredentialMaterial(saved, 'trusted credential projection')
     })
 
     await withMcp(dirs, runtime, async (mcp) => {
-      const current = parseToolResult(await mcp.callTool('nomi_read', { target: 'integration', sessionId }))
-      const proposed = parseToolResult(await mcp.callTool('nomi_integration', {
-        action: 'propose',
-        sessionId,
-        expectedRevision: current.json.revision,
-        proposal: {
-          candidates: [{ modelKey: 'tts-journey-audio', kind: 'audio', evidence: ['docs', 'manual'], classification: 'supported' }],
-          selections: [{ modelKey: 'tts-journey-audio' }],
-        },
+      // 2026-09-18（#754）：候选/选择不再单独一跳——卡上的 `models[]` 就是选择，
+      // 收卡一跳做完「形状校验 + 同源 + 免费自检 + 登记」。
+      const proposed = parseToolResult(await mcp.callTool('nomi_model_setup', {
+        action: 'submit_declaration',
+        setupId,
+        declaration: JSON.stringify({
+          sources: [{ url: 'https://docs.journey.example/tts', evidence: 'POST /audio/speech' }],
+          assetIngestion: { strategy: 'none', sourceUrl: 'https://docs.journey.example/tts' },
+          models: [{
+            modelKey: 'tts-journey-audio',
+            labelZh: 'TTS Journey Audio',
+            kind: 'audio',
+            modes: [{
+              taskKind: 'text_to_audio',
+              create: {
+                method: 'POST',
+                path: '/audio/speech',
+                body: { input: '{{request.prompt}}' },
+                response_mapping: { audio_url: 'data.0.url' },
+              },
+              sourceUrls: ['https://docs.journey.example/tts'],
+            }],
+          }],
+        }),
       }))
-      assert(!proposed.isError && proposed.json?.stage === 'ready_to_certify', `MCP accepts the audio proposal: ${proposed.text}`)
+      assert(!proposed.isError && proposed.json?.ok === true, `MCP accepts the audio declaration: ${proposed.text}`)
     })
 
     // 接模型没有付费验证，也就没有花费确认：可信 UI 这一跳整个不存在了（2026-09-12 拍板）。
@@ -165,7 +173,7 @@ async function run() {
       const handoffs = await win.evaluate(
         async () => (await window.nomiDesktop?.onboarding?.integrationHandoffList?.()) || [],
       )
-      const mine = handoffs.filter((item) => item.sessionId === sessionId)
+      const mine = handoffs.filter((item) => item.sessionId === setupId)
       const verification = mine.filter((item) => item.target === 'verification')
       // 阳性对照：这条会话确实有交接单（凭据那张），所以「没有 verification」不是因为列表恒空。
       if (mine.length === 0) throw new Error('handoff list returned nothing for this session — the probe itself is dead')
@@ -174,14 +182,11 @@ async function run() {
     })
 
     await withMcp(dirs, runtime, async (mcp) => {
-      const ready = parseToolResult(await mcp.callTool('nomi_read', { target: 'integration', sessionId }))
+      const ready = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
       assert(ready.json?.stage === 'ready_to_certify', `session waits for start, not for a person: ${ready.text}`)
       assertNoCredentialMaterial(ready.json, 'ready-to-certify projection')
-      let state = parseToolResult(await mcp.callTool('nomi_integration', {
+      let state = parseToolResult(await mcp.callTool('nomi_model_setup', {
         action: 'start',
-        sessionId,
-        expectedRevision: ready.json.revision,
-        idempotencyKey: 'trusted-audio-certification',
       }, 60_000))
       assert(
         !state.isError && (state.json?.stage === 'certifying' || state.json?.stage === 'completed'),
@@ -190,7 +195,7 @@ async function run() {
       const deadline = Date.now() + 30_000
       while (state.json?.stage === 'certifying' && Date.now() < deadline) {
         await new Promise((resolve) => setTimeout(resolve, 100))
-        state = parseToolResult(await mcp.callTool('nomi_read', { target: 'integration', sessionId }))
+        state = parseToolResult(await mcp.callTool('nomi_read', { target: 'setup', setupId }))
       }
       let adapterEvidence = null
       try {

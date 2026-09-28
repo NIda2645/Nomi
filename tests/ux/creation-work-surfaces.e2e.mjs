@@ -6,6 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, expectAbsent, expectVisible, proveProbe, screenshotSettled } from './_assert.mjs'
+import { ensureCreationResourceTree } from './_creationResourceTree.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-creation-surfaces-'))
@@ -158,6 +159,9 @@ try {
   await expectVisible(thirdDocumentRow.getByText('原稿 C · 产品短片修订', { exact: true }), '第三篇原稿无法通过资源菜单重命名')
 
   await win.locator('[data-storyboard-id="sb-a1"]').click()
+  // 分镜页默认收起「创作内容」列（A-1 刀 1）：这里像真人一样点一次展开钮把它要回来，
+  // 之后这条走查后半程都在树上操作，偏好记住即可，不必每步再点。
+  await ensureCreationResourceTree(win, '打开原稿 A 的第一份分镜后')
   await expect(win.getByLabel('镜 1 提示词'), '没有打开原稿 A 的第一份分镜').toHaveValue('PLAN_A1_SENTINEL：手持追拍。')
   assert(!(await win.getByText('ORIGINAL_A_SENTINEL', { exact: false }).isVisible().catch(() => false)), '分镜编辑器与原稿编辑器发生重叠')
 

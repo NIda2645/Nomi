@@ -29,7 +29,7 @@ import { describe, expect, it } from "vitest";
 import { selectTaskMapping, type Mapping } from "../catalog/types";
 import { wireReferencedParamKeys } from "../catalog/paramTranslate";
 import { archetypeModeIsVisible, type ModeChannelBody } from "../../src/workbench/generationCanvas/nodes/controls/channelModeReach";
-import { GPT_IMAGE_2_ARCHETYPE } from "../../src/config/modelArchetypes/gptImage2";
+import { GPT_IMAGE_2_ARCHETYPE } from "../shared/modelArchetypes/gptImage2";
 
 const VENDOR = "self-hosted-relay";
 const MODEL = "gpt-image-2";

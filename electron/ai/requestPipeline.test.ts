@@ -43,27 +43,30 @@ describe("extractTaskId", () => {
 
 describe("authHeaders", () => {
   it("bearer", () => {
-    expect(authHeaders("bearer", "KEY")).toEqual({ Authorization: "Bearer KEY" });
+    expect(authHeaders({ authType: "bearer" }, "KEY")).toEqual({ Authorization: "Bearer KEY" });
   });
   it("x-api-key with custom header name", () => {
-    expect(authHeaders("x-api-key", "KEY", "X-Custom")).toEqual({ "X-Custom": "KEY" });
+    expect(authHeaders({ authType: "x-api-key", headerName: "X-Custom" }, "KEY")).toEqual({ "X-Custom": "KEY" });
   });
   it("x-api-key default header name", () => {
-    expect(authHeaders("x-api-key", "KEY")).toEqual({ "X-API-Key": "KEY" });
+    expect(authHeaders({ authType: "x-api-key" }, "KEY")).toEqual({ "X-API-Key": "KEY" });
   });
   it("none/query carry no header", () => {
-    expect(authHeaders("none", "KEY")).toEqual({});
-    expect(authHeaders("query", "KEY")).toEqual({});
+    expect(authHeaders({ authType: "none" }, "KEY")).toEqual({});
+    expect(authHeaders({ authType: "query" }, "KEY")).toEqual({});
   });
   it("no key → no header (avoids `Authorization: Bearer ` empty)", () => {
-    expect(authHeaders("bearer", "")).toEqual({});
+    expect(authHeaders({ authType: "bearer" }, "")).toEqual({});
+  });
+  it("declared scheme replaces Bearer (Higgsfield 的 `Key id:secret`)", () => {
+    expect(authHeaders({ authType: "bearer", scheme: "Key" }, "id:secret")).toEqual({ Authorization: "Key id:secret" });
   });
 });
 
 describe("authQueryParams", () => {
   it("only emits for query auth", () => {
-    expect(authQueryParams("query", "KEY", "api_key")).toEqual({ api_key: "KEY" });
-    expect(authQueryParams("bearer", "KEY")).toEqual({});
+    expect(authQueryParams({ authType: "query", queryParam: "api_key" }, "KEY")).toEqual({ api_key: "KEY" });
+    expect(authQueryParams({ authType: "bearer" }, "KEY")).toEqual({});
   });
 });
 

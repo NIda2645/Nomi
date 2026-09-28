@@ -1,3 +1,4 @@
+import { declareStoreLifetime } from '../project/storeLifetime'
 import { create } from 'zustand'
 import type { V4DockStatus } from './v4/agentPanelV4DockStatus'
 
@@ -54,3 +55,18 @@ export const useResidentActivityStore = create<ResidentActivityStore>((set) => (
       : { dockStatus, dockPendingCount, dockUnreadCount }
   )),
 }))
+
+/**
+ * C1 寿命声明：常驻 Agent 的活动指示（点、文案、坞状态、待办/未读数）全是**当前项目**
+ * 那条 lane 的事实。切项目不清，新项目的坞上会挂着上一个项目的「3 条未读」。
+ */
+export const residentActivityStoreLifetime = declareStoreLifetime({
+  store: 'useResidentActivityStore',
+  fields: {
+    dotClassName: 'project', label: 'project', dockStatus: 'project',
+    dockPendingCount: 'project', dockUnreadCount: 'project',
+  },
+  releaseProject: () => useResidentActivityStore.setState({
+    dotClassName: '', label: '', dockStatus: null, dockPendingCount: 0, dockUnreadCount: 0,
+  }),
+})

@@ -16,6 +16,7 @@ import { toCatalogModelOptions } from './modelOptionMappers'
 import { resolveCatalogKind } from './modelCatalogStatus'
 
 export const MODEL_REFRESH_EVENT = 'nomi-models-refresh'
+export type ModelQueryMode = ProfileKind | 'any-published'
 
 type RefreshDetail = 'openai' | 'anthropic' | 'all' | undefined
 
@@ -128,7 +129,7 @@ function defaultPublishedMode(kind?: NodeKind): ProfileKind {
 
 async function getCatalogModelOptions(
   kind?: NodeKind,
-  requiredMode = defaultPublishedMode(kind),
+  requiredMode: ModelQueryMode = defaultPublishedMode(kind),
 ): Promise<ModelOption[]> {
   const catalogKind = resolveCatalogKind(kind)
   const cacheKey = `${catalogKind}:${requiredMode}`
@@ -143,7 +144,8 @@ async function getCatalogModelOptions(
       // 「能不能用」判一次（主进程给的 availability）；这里额外要的只是**模式级**匹配：
       // 同一个模型可能文生图发布了、改图那条没发布，节点问的是「这个模式能用吗」。
       const usableRows = keepUsableModelRows(Array.isArray(rows) ? rows : []).filter(
-        (row) => Array.isArray(row.publishedModes) && row.publishedModes.includes(requiredMode),
+        (row) => Array.isArray(row.publishedModes) && (requiredMode === 'any-published'
+          ? row.publishedModes.length > 0 : row.publishedModes.includes(requiredMode)),
       )
       const normalized = toCatalogModelOptions(usableRows)
       const annotated = normalized.map((opt) => {
@@ -187,7 +189,7 @@ export function seedModelCatalogForTests(
 
 export async function preloadModelOptions(
   kind?: NodeKind,
-  requiredMode?: ProfileKind,
+  requiredMode?: ModelQueryMode,
 ): Promise<ModelOption[]> {
   const catalogOptions = await getCatalogModelOptions(kind, requiredMode)
   return filterHiddenOptionsByKind(catalogOptions, kind)

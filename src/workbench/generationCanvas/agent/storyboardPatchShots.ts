@@ -1,7 +1,7 @@
 import { validateAnchorModelFit, type AnchorModelFitIssue } from './storyboardAnchorPolicy'
 import type { CanvasWriteInput } from '../../../../electron/shared/agentCapabilities/canvasWrite'
 import type { PlanShot, StoryboardPlan } from './storyboardPlan'
-import { updateShotAt } from './storyboardPlanEdits'
+import { updateShotAt, type PlanShotPatch } from './storyboardPlanEdits'
 
 export type StoryboardPatchShotsInput = Extract<CanvasWriteInput, { operation: 'patch_shots' }>
 
@@ -42,8 +42,8 @@ function selectedPositions(plan: StoryboardPlan, input: StoryboardPatchShotsInpu
   return positions
 }
 
-function patchShot(shot: PlanShot, patch: StoryboardPatchShotsInput['patch']): Partial<PlanShot> {
-  const next: Partial<PlanShot> = {}
+function patchShot(shot: PlanShot, patch: StoryboardPatchShotsInput['patch']): PlanShotPatch {
+  const next: Omit<Partial<PlanShot>, 'modelKey' | 'modelVendor'> = {}
   if (patch.promptAppend !== undefined) {
     next.prompt = `${shot.prompt}${shot.prompt ? '，' : ''}${patch.promptAppend}`
     next.promptSegments = undefined
@@ -55,12 +55,10 @@ function patchShot(shot: PlanShot, patch: StoryboardPatchShotsInput['patch']): P
   if (patch.shotKind !== undefined) next.shotKind = patch.shotKind
   if (patch.durationSec !== undefined) next.durationSec = patch.durationSec
   if (patch.aspectRatio !== undefined) next.params = { ...(shot.params ?? {}), aspect_ratio: patch.aspectRatio }
-  if (patch.modelKey !== undefined) {
-    next.modelKey = patch.modelKey
-    next.modelVendor = patch.modelVendor
-    // A model identity change cannot reuse a mode chosen for the previous model.
-    next.modeId = undefined
-  }
+  // The capability schema already requires modelKey and modelVendor together; the pair is written as one
+  // value here too (PlanShotPatch forbids a lone half). A model identity change cannot reuse a mode chosen
+  // for the previous model; params stay because aspectRatio may arrive in the same patch.
+  if (patch.modelKey !== undefined) return { ...next, modelKey: patch.modelKey, modelVendor: patch.modelVendor, modeId: undefined }
   return next
 }
 

@@ -483,6 +483,13 @@ export const ARCHETYPE_WIRE_DEFAULTS_VIDEO: Record<string, Record<string, Record
       }
     }
   },
+  "higgsfield-dop": {
+    "image_to_video": {
+      "*": {
+        "enhance_prompt": true
+      }
+    }
+  },
   "volcengine-seedance-2": {
     "text_to_video": {
       "*": {

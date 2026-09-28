@@ -19,12 +19,10 @@ export function CanvasGroupProjectionLayer({
   cards,
   readOnly,
   pendingConnection,
-  pendingConnectionSourceId,
   pendingConnectionSourceKind,
   pendingConnectionSide,
   onPointerDown,
   onConnectToGroup,
-  onStartGroupConnection,
   onSetCollapsed,
   frame,
   drawPreview,
@@ -33,12 +31,10 @@ export function CanvasGroupProjectionLayer({
   cards: readonly CollapsedGroupCardProjection[]
   readOnly: boolean
   pendingConnection: boolean
-  pendingConnectionSourceId: string
   pendingConnectionSourceKind: 'node' | 'group'
   pendingConnectionSide: ConnectionAnchorSide
   onPointerDown: GroupPointerDown
   onConnectToGroup: (groupId: string) => void
-  onStartGroupConnection: (event: React.PointerEvent<HTMLElement>, groupId: string, side: ConnectionAnchorSide) => void
   onSetCollapsed: (groupId: string, collapsed: boolean) => void
   frame?: CanvasFrameInteraction
   /** 正在拖出来的那个框（画布坐标）。和框体同一层渲染，所以缩放/平移天然对齐。 */
@@ -72,16 +68,9 @@ export function CanvasGroupProjectionLayer({
           key={card.groupId}
           card={card}
           readOnly={readOnly}
-          pendingConnection={
-            pendingConnection
-            && (pendingConnectionSourceKind === 'node' || pendingConnectionSourceId === card.groupId)
-          }
-          pendingConnectionSource={pendingConnectionSourceKind === 'group' && pendingConnectionSourceId === card.groupId}
-          pendingConnectionSide={pendingConnectionSide}
+          selected={frame?.selectedGroupId === card.groupId}
           onPointerDown={(event, groupId) => onPointerDown(event, groupId, { selectMembers: false })}
           onExpand={(groupId) => onSetCollapsed(groupId, false)}
-          onStartConnection={onStartGroupConnection}
-          onCompleteConnection={onConnectToGroup}
         />
       ))}
     </>

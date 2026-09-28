@@ -1,0 +1,52 @@
+[
+  {
+    "id": "effect-camera-01",
+    "title": "空镜转场",
+    "nodePrompt": "Slow drift across an empty {场景}, no subject in frame; hold, then the next shot opens on a matching color/tone",
+    "nodePromptSha256": "b250ba93280dc7ec700f880f7baa641ef162ee670576a183247529cc59b2d56e",
+    "projectionSha256": "b250ba93280dc7ec700f880f7baa641ef162ee670576a183247529cc59b2d56e",
+    "equal": true,
+    "shot": "shots/q4-effect-camera-01-applied.png",
+    "mediaGenerated": false
+  },
+  {
+    "id": "effect-camera-13",
+    "title": "焦点转换",
+    "nodePrompt": "Rack focus from the foreground {object} to the figure behind it",
+    "nodePromptSha256": "49755b0c2ceab0a60a05e1ba4d534fe548848fcf96b92eb7f5b06875e4d52208",
+    "projectionSha256": "49755b0c2ceab0a60a05e1ba4d534fe548848fcf96b92eb7f5b06875e4d52208",
+    "equal": true,
+    "shot": "shots/q4-effect-camera-13-applied.png",
+    "mediaGenerated": false
+  },
+  {
+    "id": "effect-camera-27",
+    "title": "声音转场",
+    "nodePrompt": "Carry the next scene's sound in before the picture cuts",
+    "nodePromptSha256": "ef0615cfea3a94e238a12e503a6e0dcd31ffe60b756b49c841be24c33f4846ef",
+    "projectionSha256": "ef0615cfea3a94e238a12e503a6e0dcd31ffe60b756b49c841be24c33f4846ef",
+    "equal": true,
+    "shot": "shots/q4-effect-camera-27-applied.png",
+    "mediaGenerated": false
+  },
+  {
+    "id": "effect-expression-grid",
+    "title": "表情九宫格",
+    "nodePrompt": "以{角色名}为同一角色，参照姿势图生成九种表情的九宫格。保持发型、面部比例和服装一致，每格一种表情，纯色背景，无文字。",
+    "nodePromptSha256": "8707224777fc834a6d718f5bbf5e5134ad94e1f50d489ebd13ad0a8e1d973680",
+    "projectionSha256": "8707224777fc834a6d718f5bbf5e5134ad94e1f50d489ebd13ad0a8e1d973680",
+    "equal": true,
+    "shot": "shots/q4-effect-expression-grid-applied.png",
+    "mediaGenerated": false
+  },
+  {
+    "id": "effect-fill-outpaint",
+    "title": "自然扩图",
+    "nodePrompt": "为参考中的{主体}补齐画面外部空白。保持原构图内的身份、比例和光线；让新区域自然衔接纹理、颗粒、焦点和透视，不加入额外主体或文字。",
+    "nodePromptSha256": "ce0971da4d1508055e2748f4b7c0c7f740b52d80b171def83878fed2f1e1ea1b",
+    "projectionSha256": "ce0971da4d1508055e2748f4b7c0c7f740b52d80b171def83878fed2f1e1ea1b",
+    "equal": true,
+    "shot": "shots/q4-effect-fill-outpaint-applied.png",
+    "mediaGenerated": false
+  }
+]

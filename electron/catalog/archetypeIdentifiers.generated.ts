@@ -152,6 +152,12 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "minimax-h3-regeneration": [
     "MiniMax-H3-Regeneration"
   ],
+  "higgsfield-dop": [
+    "higgsfield-ai/dop/standard",
+    "higgsfield-ai/dop/turbo",
+    "higgsfield-dop-standard",
+    "higgsfield-dop-turbo"
+  ],
   "volcengine-seedance-2": [
     "doubao-seedance-2-0-260128",
     "doubao-seedance-2-0-fast-260128",
@@ -248,10 +254,12 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "muse_image"
   ],
   "grok-imagine-image-2": [
-    "grok_imagine_image_2"
+    "grok_imagine_image_2",
+    "grok-imagine-2.0-ext"
   ],
   "gemini-image-3-pro": [
-    "gemini_image3_pro"
+    "gemini_image3_pro",
+    "gemini-3-pro-image-preview"
   ],
   "gemini-image-3.1-flash": [
     "gemini_image3.1_flash"
@@ -438,5 +446,39 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   ],
   "agnes-image-2.1": [
     "agnes-image-2.1-flash"
+  ],
+  "nomi-local-speech": [
+    "whisper-cpp-local",
+    "nomi-local-speech"
+  ],
+  "higgsfield-soul-2": [
+    "higgsfield-ai/soul/v2/standard",
+    "higgsfield-soul-2",
+    "soul-2"
+  ],
+  "higgsfield-soul-cinema": [
+    "higgsfield-ai/soul/cinema",
+    "higgsfield-soul-cinema",
+    "soul-cinema"
+  ],
+  "gpt-image-2.5-flare": [
+    "gpt-image-2.5-flare",
+    "gpt-image-2-5-flare-text-to-image",
+    "gpt-image-2-5-flare-image-to-image"
+  ],
+  "gpt-image-2.5-sunburst": [
+    "gpt-image-2.5-sunburst",
+    "gpt-image-2-5-sunburst-text-to-image",
+    "gpt-image-2-5-sunburst-image-to-image"
+  ],
+  "imagen-4-fast": [
+    "google/imagen4-fast",
+    "imagen4-fast",
+    "imagen-4-fast"
+  ],
+  "imagen-4-ultra": [
+    "google/imagen4-ultra",
+    "imagen4-ultra",
+    "imagen-4-ultra"
   ]
 };

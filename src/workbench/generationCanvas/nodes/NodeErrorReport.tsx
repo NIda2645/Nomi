@@ -15,6 +15,7 @@ import { classifyGenerationError } from '../runner/generationRunController'
 import { narrateErrorActionLabel, narrateModelKind, type GenerationErrorAction } from '../../observability/narrate'
 import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 import { stageForGenerationError } from '../../../ui/community/feedbackTypes'
+import { builtinVendorKeyOfKey } from '../../../../electron/shared/builtinVendorIdentity'
 
 const ACTION_ICON: Record<GenerationErrorAction, typeof IconRefresh> = {
   retry: IconRefresh,
@@ -58,8 +59,12 @@ export function NodeErrorReport({
   const customCallTarget = React.useMemo(() => {
     const { modelKey, vendorKey } = nodeSelectedModelAddress(meta)
     if (!modelKey || !vendorKey || !CUSTOM_CALL_HINT_KINDS.has(report.kind)) return null
-    if (isKnownVendor(vendorKey)) return null
-    if (vendorKey === 'dreamina' || vendorKey === 'codex-local' || isComfyuiVendorKey(vendorKey)) return null
+    // #831：兄弟连接（`apimart--mini`）也是内置家，先解析回 root 再问「认不认得」——
+    // 不解析的话，APIMart 特价组报错时会多冒一个「自定义调用」入口（它根本没有自定义脚本）。
+    const rootVendorKey = builtinVendorKeyOfKey(vendorKey)
+    if (isKnownVendor(rootVendorKey)) return null
+    // 本地运行时两家没有「地址 + Key」形态，长不出兄弟连接（见门岗豁免名单）。
+    if (rootVendorKey === 'dreamina' || rootVendorKey === 'codex-local' || isComfyuiVendorKey(vendorKey)) return null
     return { vendorKey, modelKey, label: modelKey }
   }, [meta, report.kind])
 

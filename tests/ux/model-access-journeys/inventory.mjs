@@ -108,7 +108,7 @@ function providerPresetClasses(presets) {
 }
 
 function archetypeModeShapes(repoRoot) {
-  const dir = path.join(repoRoot, 'src/config/modelArchetypes')
+  const dir = path.join(repoRoot, 'electron/shared/modelArchetypes')
   const source = fs.readdirSync(dir)
     .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts') && name !== 'types.ts')
     .map((name) => fs.readFileSync(path.join(dir, name), 'utf8'))

@@ -41,7 +41,7 @@ describe("P4 §3.2 — anchor checkpoint decide re-kicks the batch scheduler (se
     registerBatchSchedulerKicker(kicker);
     await service.command("project-1", runId, {
       commandId: `decide-${status}`, expectedRevision: run.revision, type: "gate.decide",
-      payload: { gateId: anchorCheckpointGateId(runId), status }, issuedAt: now(),
+      payload: { gateId: anchorCheckpointGateId(runId, ["job-anchor-1"]), status }, issuedAt: now(),
     });
     expect(kicker).toHaveBeenCalledExactlyOnceWith("project-1", runId);
   });
@@ -69,9 +69,9 @@ describe("P4 §3.2 — anchor checkpoint decide re-kicks the batch scheduler (se
 
     await service.command("project-1", runId, {
       commandId: "decide-orphan", expectedRevision: run.revision, type: "gate.decide",
-      payload: { gateId: anchorCheckpointGateId(runId), status: "approved" }, issuedAt: now(),
+      payload: { gateId: anchorCheckpointGateId(runId, ["job-anchor-1"]), status: "approved" }, issuedAt: now(),
     });
-    const decided = repository.read("project-1", runId)!.gates.find((item) => item.gateId === anchorCheckpointGateId(runId));
+    const decided = repository.read("project-1", runId)!.gates.find((item) => item.gateId === anchorCheckpointGateId(runId, ["job-anchor-1"]));
     expect(decided?.status).toBe("approved");
   });
 });

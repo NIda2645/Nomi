@@ -1,3 +1,4 @@
+import type { CanvasPlacementAnchor } from '../model/canvasPlacement'
 import type { StateCreator } from 'zustand'
 import type { CanvasFrameRect } from '../model/canvasFrameBounds'
 import type {
@@ -15,6 +16,7 @@ import type { CanvasWorkflowTemplate } from '../plugins/canvasWorkflowTemplates'
 import type { WorkbenchAiMessage } from '../../ai/workbenchAiTypes'
 import type { EdgeCapabilityResult } from '../agent/referenceEdgeCapability'
 import type { CanvasMutationOptions } from './canvasGuards'
+import type { MediaDimensions } from '../nodes/nodeSizing'
 import type { NodeProgressInput, NodeRunRecordInput, NodeRunRecordPatch } from './runRecordHelpers'
 
 export type ConnectionAnchorSide = 'left' | 'right'
@@ -93,6 +95,11 @@ export type CanvasGraphActions = {
   /** 单槽编辑解除该编组输入关系、保留其它槽；缺省仍按线菜单语义整组断开。 */
   disconnectEdge: (edgeId: string, options?: { scope: 'parameter' }) => void
   moveGroupNodes: (groupId: string, delta: { x: number; y: number }, options?: CanvasMutationOptions) => void
+  /**
+   * Alt/⌥ 拖框：在原地复制一个框（成员 + 成员之间的连线 + 框自己的矩形），返回新框 id。
+   * 一次撤销点；随后的拖动只搬新框（useCanvasSelectionDrag）。空框也能复制。
+   */
+  duplicateGroupForDrag: (groupId: string) => string | null
   createGroup: (categoryId: string, name?: string, options?: { materializationOperationId?: string; nodeIds?: string[]; frameBounds?: CanvasFrameRect }) => NodeGroup | null
   /**
    * 画一个**空框**（框工具第一档）：边界就是用户拖出来的那个矩形，成员为空。
@@ -122,11 +129,16 @@ export type CanvasRunActions = {
   setNodeProgress: (nodeId: string, progress?: NodeProgressInput) => void
   appendNodeRun: (nodeId: string, run: NodeRunRecordInput) => GenerationNodeRunRecord
   trackNodeRun: (nodeId: string, runId: string, patch: NodeRunRecordPatch) => void
-  addNodeResult: (nodeId: string, result: GenerationNodeResult) => void
+  addNodeResult: (nodeId: string, result: GenerationNodeResult, mediaDimensions?: MediaDimensions) => void
   rollbackHistory: (nodeId: string, resultId: string) => void
 }
 
 export type GenerationCanvasState = {
+  /**
+   * 这个项目的画布内容已经载入。唯一置 true 的是 restoreSnapshot（打开项目时 restoreWorkbenchProjectPayload 调它），
+   * releaseProject 复位。「打开时适应一次」判的就是它——画布组件挂载不是「载入完」，不许在挂载时写它
+   * （挂载若先于内容，适应会看到「ready 了、画布是空的」而放弃；2026-09-26 删掉了挂载时那一处写入）。
+   */
   isReady: boolean
   persistRevision: number
   nodes: GenerationCanvasNode[]
@@ -143,16 +155,21 @@ export type GenerationCanvasState = {
   canUndo: boolean
   canRedo: boolean
   hasClipboard: boolean
-  markReady: () => void
   captureHistory: () => void
   setGenerationAiDraft: (draft: string) => void
   setGenerationAiMessages: (messages: WorkbenchAiMessage[] | ((messages: WorkbenchAiMessage[]) => WorkbenchAiMessage[])) => void
   setGenerationAiCollapsed: (collapsed: boolean) => void
   resetGenerationAiConversation: () => void
   duplicateNodesForDrag: (nodeIds: string[]) => Map<string, string>
+  /** Cmd/Ctrl+D：所选节点及其之间的边原地偏移复制，一个撤销点，不动用户剪贴板。 */
+  duplicateSelectedNodes: () => void
   copySelectedNodes: () => void
   cutSelectedNodes: () => void
-  pasteNodes: (basePosition?: { x: number; y: number }) => void
+  /**
+   * 粘贴剪贴板里的节点。`basePosition` = 画布坐标点；`anchor` = 这一点压在粘贴簇外接盒的哪一处（比例），
+   * 不传 = 左上角（旧约定，右键菜单之外的调用方都应传 anchor，见 model/canvasPlacement.ts）。
+   */
+  pasteNodes: (basePosition?: { x: number; y: number }, anchor?: CanvasPlacementAnchor) => void
   undo: () => void
   redo: () => void
   readSnapshot: () => GenerationCanvasSnapshot

@@ -3,28 +3,10 @@
   "maxDebtDays": 30,
   "debts": [
     {
-      "id": "canvas-performance-real-media",
-      "class": "canvas-performance",
-      "why": "现有基准用 tests/ux/fixtures/canvas-performance-fixture.mjs 的合成素材（testsrc2 色块 PNG + 2 秒 crf-35 720p），且直接写 project.json 快照，导入链路零覆盖；换成真实 4K 素材是 canvas-media-rework 分支在做的事",
-      "plan": "canvas-performance-fixture 改为从 NOMI_REAL_MEDIA_DIR 取素材、几何从文件探测而非硬写；cold-open 一档用真实 48 件素材重新量预算",
-      "owner": "canvas-media-rework",
-      "registeredAt": "2026-09-14",
-      "due": "2026-10-14"
-    },
-    {
       "id": "import-real-media",
       "class": "import",
       "why": "导入链路今天一条自动化测试都没走过——夹具绕过导入直接写快照。用户 2026-09-14 撞到的第一件事（视频和图片导入不了画布）正落在这条路上",
       "plan": "先按 P2 跑 node scripts/door-map.mjs 数清素材进画布的全部门（拖拽 / 文件选择 / 素材库 / Agent 工具 / MCP 导入），门表进根因合同的 doors；再建 tests/ux/real-media-import.walk.mjs 用真实 4K 素材走真实导入入口",
-      "owner": "canvas-media-rework",
-      "registeredAt": "2026-09-14",
-      "due": "2026-10-14"
-    },
-    {
-      "id": "export-real-media",
-      "class": "export",
-      "why": "导出类走查用的是 640×360 / 2 秒的 lavfi 合成片（tests/ux/agent-runtime-video-export.walk.mjs:24），证明不了真实 4K 10-bit 素材的导出成本与编码路径",
-      "plan": "导出走查改用登记素材；至少一条跑到用户真正拿到 MP4",
       "owner": "canvas-media-rework",
       "registeredAt": "2026-09-14",
       "due": "2026-10-14"
@@ -36,6 +18,15 @@
       "plan": "J4（参考图驱动生成）与 J5（改旧节点并导出）改用登记素材跑一遍，记录冷开耗时",
       "owner": "canvas-media-rework",
       "registeredAt": "2026-09-14",
+      "due": "2026-10-14"
+    },
+    {
+      "id": "local-speech-english-real-media",
+      "class": "transcription-english",
+      "why": "本地转写的验收要「中文 / 英文 / 中英混各一段」真素材。本机 NOMI_REAL_MEDIA_DIR 下逐条实测语言（2026-09-17，用 whisper 自己的 detect）只有中文与中英混，**一段真实英文口播都没有**（唯一一条非中文素材整段只有背景噪声，检出 english 0.38）。英文那条只能由用户提供——合成 TTS 不算：它没有口音、没有连读、没有真实录音环境，正是本地小模型最容易在上面假装很行的那种输入",
+      "plan": "向用户要一段真实英文口播（≥60 秒，有正常环境声），登记进 tests/ux/real-media-fixtures.json 的 transcription 覆盖，再跑一次 scripts/local-speech-live-check.ts 记 CER",
+      "owner": "用户提供素材",
+      "registeredAt": "2026-09-17",
       "due": "2026-10-14"
     }
   ]

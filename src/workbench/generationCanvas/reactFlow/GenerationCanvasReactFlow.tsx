@@ -1,4 +1,3 @@
-import { withCanvasGestureContext } from '../events/canvasGestureContext'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import React from 'react'
 import {
@@ -10,6 +9,7 @@ import {
   type OnNodeDrag,
   type OnEdgesDelete,
   type OnNodesChange,
+  type Viewport,
 } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import './generationCanvasReactFlow.css'
@@ -26,16 +26,20 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useStableCategoryNodes } from './useStableCategoryNodes'
 import { getCanvasGroupBoxes, getSelectedBounds } from '../components/generationCanvasGeometry'
 import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM, unionCanvasFitBounds } from '../model/canvasFitBounds'
-import { useCollapsedGroupConnectionSource } from '../components/useCollapsedGroupConnectionSource'
 import { projectCollapsedGroups } from '../model/canvasCardStackModel'
 import { useCanvasSelectionDrag } from '../components/useCanvasSelectionDrag'
 import { useCanvasGroupActions } from '../components/useCanvasGroupActions'
 import { measuredRectFromInternalNode } from './canvasMeasuredNodeRect'
+import { useCanvasPastePlacement } from './useCanvasPastePlacement'
+import { CANVAS_RESULT_DRAG_MIME } from '../components/canvasResultDrag'
 import { useCanvasFrameTool } from '../components/useCanvasFrameTool'
 import { useCanvasFrameMembership } from '../components/useCanvasFrameMembership'
 import { useCanvasFrameActions } from '../components/useCanvasFrameActions'
+import { resolveSelectedGroupId } from '../model/selectedGroup'
+import { projectGroupConnectionPorts } from './groupConnectionPorts'
 import type { CanvasFrameInteraction } from '../components/GroupFrame'
 import { useCanvasShortcuts } from '../components/useCanvasShortcuts'
+import { connectSelectedCanvasNodes } from '../components/canvasSelectionConnection'
 import { useCanvasScreenshotCapture } from '../components/useCanvasScreenshotCapture'
 import { useCanvasProductionActions } from '../components/useCanvasProductionActions'
 import { useCanvasBatchDockVisibility } from '../components/useCanvasBatchDockVisibility'
@@ -43,14 +47,13 @@ import { useCanvasFitSignal } from '../components/useCanvasFitSignal'
 import { useTidyCanvas } from '../components/useTidyCanvas'
 import { useNodeAppearTracking } from '../components/useNodeAppearTracking'
 import { useAutoFitOnLoad } from '../components/useAutoFitOnLoad'
-import { useCreatedNodeVisibilityPan } from '../components/useCreatedNodeVisibilityPan'
+import { useCanvasArrivalHint } from './useCanvasArrivalHint'
+import { visibleInsertionPoint } from '../store/canvasVisibleArea'
 import { useReactFlowViewportAnimation } from './useReactFlowViewportAnimation'
 import { useBatchPlanPreviewStore } from '../components/batchPlanPreview'
-import { buildCanvasMenuActions } from '../components/useCanvasMenuActions'
 import { hasPendingDirectorCameraMoveCapture, hasPendingDirectorStagingCapture } from '../components/directorCaptureHostActivation'
-import { isImageLikeGenerationNodeKind } from '../model/generationNodeKinds'
 import CanvasToolbar from '../components/CanvasToolbar'
-import { CANVAS_DRAGGING_OWNER, setCanvasDragging } from '../components/canvasDraggingFlag'
+import { CANVAS_DRAGGING_OWNER, beginCanvasDragging, type CanvasDragLease } from '../components/canvasDraggingFlag'
 import {
   BROWSER_ASSET_DRAG_MIME,
   LEGACY_BROWSER_ASSET_DRAG_MIME,
@@ -58,8 +61,9 @@ import {
 } from '../components/canvasStageDrop'
 import {
   collectFlowPositionChanges,
-  collectFlowSelectionChanges,
+  nextSelectionFromFlowChanges,
   flowViewportFromCanvas,
+  canvasViewportFromFlow,
   type GenerationFlowEdge,
   toGenerationFlowNode,
   type GenerationFlowNode,
@@ -68,14 +72,14 @@ import {
   applyCanvasDragKernelPositionChanges,
   applyCanvasDragPositionChanges,
   overlayCanvasDragDraft,
-  restoreCanvasDragKernelOwnership,
 } from './canvasDragDraft'
-import { commitCanvasNodeDragStop } from './canvasDragWriteback'
+import { cancelCanvasNodeDrag, commitCanvasKeyboardPositions, endKernelNodeDrag, finishCanvasNodeDrag, isKeyboardMoveBatch, keyboardMoveScope, restoreDisownedKernelPositions } from './canvasDragWriteback'
 import { GenerationCanvasReactFlowOverlays } from './GenerationCanvasReactFlowOverlays'
 import { GenerationCanvasReactFlowViewport } from './GenerationCanvasReactFlowViewport'
 import { useGenerationCanvasReactFlowPointer } from './useGenerationCanvasReactFlowPointer'
 import { useGenerationCanvasReactFlowProjection } from './useGenerationCanvasReactFlowProjection'
 import { useGenerationCanvasReactFlowMenus } from './useGenerationCanvasReactFlowMenus'
+import { useDockCollapsed } from '../../generation/useDockCollapsed'
 import {
   useBrowserAssetImportEffects,
   useGenerationCanvasReactFlowHostEffects,
@@ -96,12 +100,16 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const hostRef = React.useRef<HTMLDivElement>(null)
   const duplicateDragIdsRef = React.useRef(new Map<string, string>())
   const draggingRef = React.useRef(false)
+  // 方向键挪节点的授权：按下方向键时记下那批选中节点，键抬起作废（keyboardMoveScope）。原来的「微任务后清掉」布尔
+  // 在真实按键下早于 React Flow 落位置就被清掉，移动被当成外部改动撤回（2026-09-25）。
+  const keyboardMoveScopeRef = React.useRef<ReadonlySet<string> | null>(null)
+  const dragLeaseRef = React.useRef<CanvasDragLease | null>(null)
   const dragDraftNodesRef = React.useRef<GenerationFlowNode[]>([])
   const dragStartPositionsRef = React.useRef<Map<string, { x: number; y: number }>>(new Map())
   const [selectedEdgeId, setSelectedEdgeId] = React.useState<string | null>(null)
   const [focusFlashNodeId, setFocusFlashNodeId] = React.useState<string | null>(null)
   const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 })
-  const [minimapVisible, setMinimapVisible] = React.useState(true)
+  const [minimapCollapsed, setMinimapCollapsed] = useDockCollapsed('canvasMinimap') // 默认收起、开合记住（09-26 拍板）
   // #5 minimap 拖动中冻结门（纯渲染，只翻两次、不碰 RF 写入路径；冻结逻辑见 useStableCategoryNodes）。
   const [nodeDragActive, setNodeDragActive] = React.useState(false)
   const activeCategoryId = useWorkbenchStore((state) => state.activeCategoryId)
@@ -179,18 +187,21 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     }])),
     [collapsedProjection],
   )
-  const flowProjectionNodes = React.useMemo(() => {
-    if (collapsedProjection.cards.length === 0) return collapsedProjection.visibleNodes
-    const proxyNodes = collapsedProjection.cards.flatMap((card) => {
-      const proxy = collapsedProjection.edgeNodeById.get(card.groupId)
-      if (!proxy) return []
-      return [{
-        ...proxy,
-        meta: { ...(proxy.meta || {}), collapsedGroupProxy: true },
-      }]
-    })
-    return [...collapsedProjection.visibleNodes, ...proxyNodes]
-  }, [collapsedProjection])
+  const groupBoxes = React.useMemo(
+    () => getCanvasGroupBoxes(visibleGroups.filter((group) => !group.collapsed), collapsedProjection.visibleNodes),
+    [collapsedProjection.visibleNodes, visibleGroups],
+  )
+  const frameActions = useCanvasFrameActions({ readOnly, stageRef: hostRef })
+  const selectedGroupId = React.useMemo(() => resolveSelectedGroupId({
+    selectedFrameId: frameActions.selectedFrameId, selectedNodeIds, groups: visibleGroups, existingNodeIds: visibleNodeIds,
+  }), [frameActions.selectedFrameId, selectedNodeIds, visibleGroups, visibleNodeIds])
+  const flowProjectionNodes = React.useMemo(() => projectGroupConnectionPorts({
+    visibleNodes: collapsedProjection.visibleNodes,
+    cards: collapsedProjection.cards,
+    edgeNodeById: collapsedProjection.edgeNodeById,
+    boxes: readOnly ? [] : groupBoxes,
+    selectedGroupId: readOnly ? null : selectedGroupId,
+  }), [collapsedProjection, groupBoxes, readOnly, selectedGroupId])
   const { selectedSet, nodeById, flowNodes, flowEdges } = useGenerationCanvasReactFlowProjection({
     nodes: flowProjectionNodes,
     edges: projectedEdges,
@@ -206,11 +217,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     if (!draggingRef.current || dragDraftNodesRef.current.length === 0) return flowNodes
     return overlayCanvasDragDraft(flowNodes, dragDraftNodesRef.current)
   }, [flowNodes])
-  const groupBoxes = React.useMemo(
-    () => getCanvasGroupBoxes(visibleGroups.filter((group) => !group.collapsed), collapsedProjection.visibleNodes),
-    [collapsedProjection.visibleNodes, visibleGroups],
-  )
-  const collapsedGroupConnection = useCollapsedGroupConnectionSource(readOnly)
+  const pendingConnectionSourceKind = useGenerationCanvasStore((state) => state.pendingConnectionSourceKind)
   const selectedGroupIds = React.useMemo(() => {
     return visibleGroups
       .filter((group) => {
@@ -231,13 +238,22 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   zoomRef.current = liveViewport.zoom
   offsetRef.current = { x: liveViewport.x, y: liveViewport.y }
 
-  const {
-    animateViewportTo,
-    readViewportTarget,
-    readLastAutoTarget,
-    cancelViewportAnimation,
-    healViewport,
-  } = useReactFlowViewportAnimation({ flow, zoomRef, offsetRef })
+  // 定位动画走完时记一次视口（动画中间帧 onMoveEnd 不写，见 GenerationCanvasReactFlowViewport）。
+  const { animateViewportTo, cancelViewportAnimation, isViewportAnimating, healViewport } = useReactFlowViewportAnimation({
+    flow, zoomRef, offsetRef,
+    onAnimationSettled: (settled) => { setLiveViewport(settled); rememberCategoryViewport(activeCategoryId, canvasViewportFromFlow(settled)) },
+  })
+
+  // 下面这段同步把 store 的视口推给 React Flow；React Flow 随后回一次**没有来源事件**的 onMoveEnd。那是回声：
+  // 值本来就出自 store——或者 store 里没有这个分类的记忆时，出自上一行的 1:1 兜底。回声不许再被记成「用户留下的视角」：
+  // 2026-09-26 离开项目时 categoryViewports 清空，画布还停在上个项目的 0.26，同步把它推回兜底 1:1，回声把 1:1 记进了
+  // 新 store；重开时「打开时适应」看到「有记住的视角、里面也有卡」就按设计保留了它——从项目库重开从此不再摆全貌。
+  const storeSyncEchoRef = React.useRef<Viewport | null>(null)
+  const isStoreSyncEcho = React.useCallback((next: Viewport) => {
+    const echo = storeSyncEchoRef.current
+    storeSyncEchoRef.current = null
+    return Boolean(echo) && Math.abs(echo!.x - next.x) < 0.5 && Math.abs(echo!.y - next.y) < 0.5 && Math.abs(echo!.zoom - next.zoom) < 1e-3
+  }, [])
 
   React.useEffect(() => {
     const nextKey = `${activeCategoryId}:${viewport.x}:${viewport.y}:${viewport.zoom}`
@@ -249,6 +265,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     const current = flow.getViewport()
     if (Math.abs(current.x - viewport.x) < 0.5 && Math.abs(current.y - viewport.y) < 0.5 && Math.abs(current.zoom - viewport.zoom) < 1e-3) return
     cancelViewportAnimation()
+    storeSyncEchoRef.current = viewport
     void flow.setViewport(viewport, { duration: 0 })
   }, [activeCategoryId, cancelViewportAnimation, flow, viewport])
 
@@ -284,6 +301,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     zoomRef,
   })
 
+  const selectCanvasFrame = frameActions.selectFrame
   const { handleGroupFramePointerDown } = useCanvasSelectionDrag({
     readOnly,
     selectedNodeCount: selectedNodeIds.length,
@@ -293,6 +311,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     moveGroupNodes,
     moveSelectedNodes,
     selectNodes,
+    onSelectEmptyFrame: frameActions.selectFrame,
   })
   const {
     handleGroupSelectedNodes,
@@ -321,15 +340,11 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     getNodeRect: getMeasuredNodeRect,
   })
   const frameMembership = useCanvasFrameMembership({ readOnly, frameBoxes: groupBoxes, getNodeRect: getMeasuredNodeRect })
-  const frameActions = useCanvasFrameActions({ readOnly, stageRef: hostRef })
   const renameGroup = useGenerationCanvasStore((state) => state.renameGroup)
   const setGroupDescription = useGenerationCanvasStore((state) => state.setGroupDescription)
 
-  const getInsertionPosition = React.useCallback(() => {
-    const rect = hostRef.current?.getBoundingClientRect()
-    if (!rect) return { x: 240, y: 240 }
-    return flow.screenToFlowPosition({ x: rect.left + rect.width * 0.38, y: rect.top + rect.height * 0.28 })
-  }, [flow])
+  // 工具条新建 / 截图 / 浏览器素材落点：与 addNode 默认落点同一个 owner（store/canvasVisibleArea）。
+  const getInsertionPosition = React.useCallback(() => visibleInsertionPoint(activeCategoryId) ?? { x: 240, y: 240 }, [activeCategoryId])
   // 「适应视图」框住的是**节点 ∪ 框**，不只是节点：框的标签带比成员外接盒高 52px，
   // 只按节点 fit 会把用户刚起的框名切在舞台外（裁决与理由见 model/canvasFitBounds.ts）。
   // 缩放上下限（0.2 / 3）与留白（0.12）逐字沿用 flow.fitView 那一版，这次只换了外接盒。
@@ -361,6 +376,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   const getCanvasPointFromClientPoint = React.useCallback((clientX: number, clientY: number) => {
     return flow.screenToFlowPosition({ x: clientX, y: clientY })
   }, [flow])
+  const { getPastePlacement, getStageClientPoint } = useCanvasPastePlacement(hostRef, getCanvasPointFromClientPoint)
   const {
     contextNodeMenu,
     closeContextNodeMenu,
@@ -379,6 +395,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     handleImportContextFiles,
     handleNodeContextAction,
     handleAddConnectedNode,
+    openAddNodeMenuAt,
   } = useGenerationCanvasReactFlowMenus({
     readOnly,
     hostRef,
@@ -409,18 +426,19 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   })
 
   useAutoFitOnLoad({
+    ready: isReady,
     nodes,
-    selectedNodeIds,
     activeCategoryId,
     categoryViewports,
     fitView,
     stageRef: hostRef,
     zoomRef,
     offsetRef,
+    hasFlowNode: (id) => flowStore.getState().nodeLookup.has(id),
   })
   useCanvasFitSignal(fitView)
-  // 「新建即可见」：避让把新卡推出视口时最小平移露出它（见 useCreatedNodeVisibilityPan 的头注释）。
-  useCreatedNodeVisibilityPan({ nodes, animateViewportTo, readViewportTarget, readLastAutoTarget, stageRef: hostRef })
+  // 新东西落在屏外 / 别的分类：边缘提示，点了才过去（程序不再为「露出」主动挪画布，2026-09-25）。
+  const arrival = useCanvasArrivalHint({ ready: isReady, allNodes, activeCategoryId, liveViewport, stageSize, animateViewportTo })
   const { isTidying, tidy } = useTidyCanvas(activeCategoryId)
   const production = useCanvasProductionActions({ activeCategoryId, selectedNodeIds })
   const frameInteraction: CanvasFrameInteraction = React.useMemo(() => ({
@@ -430,7 +448,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     onRename: renameGroup,
     onDescribe: setGroupDescription,
     onOpenMenu: frameActions.openFrameMenu,
+    selectedGroupId: frameActions.selectedFrameId,
   }), [
+    frameActions.selectedFrameId,
     frameActions.editingFrameId,
     frameActions.openFrameMenu,
     frameActions.setEditingFrameId,
@@ -460,27 +480,17 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     if (duplicateDragIdsRef.current.size) changes = changes.map((change) => change.type === 'position' && duplicateDragIdsRef.current.has(change.id)
       ? { ...change, id: duplicateDragIdsRef.current.get(change.id)! } : change)
     const positionChanges = collectFlowPositionChanges(changes)
-    if (positionChanges.length) {
+    if (positionChanges.length && draggingRef.current) {
       const draftNodes = dragDraftNodesRef.current.length ? dragDraftNodesRef.current : flowNodes
       dragDraftNodesRef.current = applyCanvasDragPositionChanges(draftNodes, changes)
       applyCanvasDragKernelPositionChanges(flowStore, changes)
+    } else if (positionChanges.length && !commitCanvasKeyboardPositions(positionChanges, !readOnly && isKeyboardMoveBatch(positionChanges, keyboardMoveScopeRef.current))) {
+      restoreDisownedKernelPositions(flowStore, positionChanges)
     }
 
-    const selectionChanges = collectFlowSelectionChanges(changes)
-    if (selectionChanges.length === 0) return
-    const selected = new Set(useGenerationCanvasStore.getState().selectedNodeIds)
-    for (const change of selectionChanges) {
-      if (change.selected) selected.add(change.nodeId)
-      else selected.delete(change.nodeId)
-    }
-    const nextSelection = [...selected]
-    const currentSelection = useGenerationCanvasStore.getState().selectedNodeIds
-    if (
-      nextSelection.length === currentSelection.length &&
-      nextSelection.every((nodeId, index) => nodeId === currentSelection[index])
-    ) return
-    selectNodes(nextSelection)
-  }, [flowNodes, flowStore, selectNodes])
+    const nextSelection = nextSelectionFromFlowChanges(changes, useGenerationCanvasStore.getState().selectedNodeIds)
+    if (nextSelection) selectNodes(nextSelection)
+  }, [flowNodes, flowStore, readOnly, selectNodes])
 
   // React Flow's selection store is internal while the persisted selection lives
   // in Zustand. Syncing on every internal selection notification causes a
@@ -509,13 +519,28 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     setSelectedEdgeId(null)
   }, [disconnectEdge, readOnly, selectedEdgeId])
 
+  // 收尾住 canvasDragWriteback（与正常松手同一个家）：这个壳只负责把自己的 ref 递过去。
+  const cancelNodeDrag = React.useCallback(() => cancelCanvasNodeDrag({
+    dragLeaseRef, draggingRef, dragStartPositionsRef, dragDraftNodesRef, duplicateDragIdsRef,
+    setNodeDragActive, cancelFramePreview: frameMembership.cancelPreview, flowStore,
+    restoreFlowNodes: () => flowStore.getState().setNodes(flowNodes),
+  }), [flowNodes, flowStore, frameMembership])
+  const cancelNodeDragRef = React.useRef(cancelNodeDrag)
+  cancelNodeDragRef.current = cancelNodeDrag
+  React.useEffect(() => () => cancelNodeDragRef.current(), [activeCategoryId, readOnly])
+  React.useEffect(() => {
+    if (draggingRef.current && [...dragStartPositionsRef.current.keys()].some(id => !allNodes.some(node => node.id === id))) cancelNodeDragRef.current()
+  }, [allNodes])
+
   const handleNodeDragStart: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode) => {
     if (readOnly) return
     draggingRef.current = true
     setNodeDragActive(true) // #5：冻结 minimap（纯渲染门，不碰写入路径）
     dragDraftNodesRef.current = flowNodes
     flowStore.setState({ hasDefaultNodes: false })
-    setCanvasDragging(hostRef.current, true, CANVAS_DRAGGING_OWNER.reactFlowNode)
+    dragLeaseRef.current?.release()
+    // 取消：先还原位置再结束内核拖动（否则回来时节点仍跟着光标）；松手丢了：当作在最后位置松手，走正常收尾。
+    dragLeaseRef.current = beginCanvasDragging(hostRef.current, CANVAS_DRAGGING_OWNER.reactFlowNode, { onCancel: (lastPoint) => { cancelNodeDragRef.current(); endKernelNodeDrag(lastPoint) }, onReleaseLost: endKernelNodeDrag, ...('pointerId' in event && typeof event.pointerId === 'number' ? { pointerId: event.pointerId } : {}) })
     const originalIds = selectedSet.has(draggedNode.id) ? selectedNodeIds : [draggedNode.id]
     duplicateDragIdsRef.current = 'altKey' in event && event.altKey
       ? useGenerationCanvasStore.getState().duplicateNodesForDrag(originalIds) : new Map()
@@ -542,47 +567,54 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
 
   // 拖动中算「松手会发生什么」——进框/出框的反馈就在这里产生（只写本地预览，不碰 store）。
   const handleNodeDrag: OnNodeDrag<GenerationFlowNode> = React.useCallback((_event, draggedNode, draggedNodes) => {
-    if (readOnly) return
+    if (readOnly || !draggingRef.current) return
     frameMembership.handleNodeDrag((draggedNodes.length ? draggedNodes : [draggedNode])
       .map((node) => ({ ...node, id: duplicateDragIdsRef.current.get(node.id) ?? node.id })))
   }, [frameMembership, readOnly])
 
   const handleNodeDragStop: OnNodeDrag<GenerationFlowNode> = React.useCallback((event, draggedNode, draggedNodes) => {
     if (readOnly || !draggingRef.current) {
-      frameMembership.cancelPreview()
+      cancelNodeDrag()
       return
     }
-    setNodeDragActive(false) // #5：解冻 minimap（在所有退出路径之前，含时间轴投放早退；draggingRef 由 writeback 清）
-    commitCanvasNodeDragStop({
+    finishCanvasNodeDrag({
       event,
       draggedNode: { ...draggedNode, id: duplicateDragIdsRef.current.get(draggedNode.id) ?? draggedNode.id },
       draggedNodes: draggedNodes.map((node) => ({ ...node, id: duplicateDragIdsRef.current.get(node.id) ?? node.id })),
-      readOnly,
-      t,
-      hostRef,
-      draggingRef,
-      dragStartPositionsRef,
-      dragDraftNodesRef,
-      moveNode,
-      commitPersistedChange,
+      readOnly, t, draggingRef, dragStartPositionsRef, dragDraftNodesRef, moveNode, commitPersistedChange,
+      dragLeaseRef, duplicateDragIdsRef, setNodeDragActive, commitFrameMembership: frameMembership.commitMembership, flowStore,
     })
-    // 位置写回之后才提交归属变更：先改成员再移动会让框在同一帧里既缩又长，看着像抖了一下。
-    withCanvasGestureContext({ source: 'user', txnId: crypto.randomUUID(), suppressUndoBarriers: true }, () => frameMembership.commitMembership())
-    duplicateDragIdsRef.current.clear()
-    // 还原拖动内核关掉的 hasDefaultNodes，恢复 RF 对选择/投影变更的自应用（机制见 helper JSDoc）。
-    restoreCanvasDragKernelOwnership(flowStore)
-  }, [commitPersistedChange, flowStore, frameMembership, moveNode, readOnly, t])
+  }, [cancelNodeDrag, commitPersistedChange, flowStore, frameMembership, moveNode, readOnly, t])
 
   const handleConnect = React.useCallback((connection: { source: string | null; target: string | null; sourceHandle?: string | null }) => {
     if (readOnly || !connection.source || !connection.target) return
+    if (connection.source === connection.target) { cancelConnection(); return } // 编组端口拖回自己的收线口
     const side = connection.sourceHandle === 'source-left' ? 'left' : 'right'
-    startConnection(connection.source, side)
-    completeNodeConnection(connection.target)
-  }, [readOnly, startConnection])
+    // 松手时重新起一次线不是多余的：按下把手那一刻若有菜单开着，同一次 pointerdown 会让菜单关闭并清掉待连态。
+    // 所以按连线的**起点是谁**重起，而不是看待连态——编组的「+」（端口节点 id = 编组 id）重起编组线。
+    const state = useGenerationCanvasStore.getState()
+    const isGroup = (id: string) => state.groups.some((group) => group.id === id)
+    if (isGroup(connection.source)) state.startGroupConnection(connection.source, side)
+    else startConnection(connection.source, side)
+    // 落在折叠编组的收线把手上（端口节点 id = 编组 id）= 连进这个编组，不是连一张叫这个 id 的卡。
+    if (isGroup(connection.target)) handleConnectToGroupFromFlow(connection.target)
+    else completeNodeConnection(connection.target)
+  }, [cancelConnection, handleConnectToGroupFromFlow, readOnly, startConnection])
 
   const handlePaneClick = React.useCallback(() => {
-    if (!readOnly && !canvasPanMovedRef.current) clearSelection()
-  }, [canvasPanMovedRef, clearSelection, readOnly])
+    if (readOnly || canvasPanMovedRef.current) return
+    clearSelection()
+    selectCanvasFrame(null)
+  }, [canvasPanMovedRef, clearSelection, readOnly, selectCanvasFrame])
+
+  // ⌘D：副本落在屏外时由边缘提示指路，不再替用户挪画布（2026-09-25）。
+  const duplicateSelectedNodes = React.useCallback(() => { useGenerationCanvasStore.getState().duplicateSelectedNodes() }, [])
+  const handleTidy = React.useCallback(() => tidy(stageSize.width / Math.max(1, stageSize.height)), [stageSize, tidy])
+  // Tab 新建：与 Cmd+V 同一个落点判据（鼠标在舞台里 → 那一点；否则舞台中央）。
+  const openAddNodeMenu = React.useCallback(() => {
+    const point = getStageClientPoint()
+    if (point) openAddNodeMenuAt(point.x, point.y)
+  }, [getStageClientPoint, openAddNodeMenuAt])
 
   useCanvasShortcuts({
     readOnly,
@@ -592,6 +624,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     activeCategoryId,
     setActiveEdge: () => setSelectedEdgeId(null),
     deleteActiveEdge,
+    deleteActiveFrame: frameActions.deleteSelectedFrame,
     cancelConnection,
     deleteSelectedNodes,
     groupSelectedNodes: handleGroupSelectedNodes,
@@ -599,15 +632,20 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
     copySelectedNodes,
     cutSelectedNodes,
     pasteNodes,
-    getPastePosition: getInsertionPosition,
+    getPastePlacement,
     zoomByStep: handleZoomByStep,
     undo,
     redo,
+    duplicateSelectedNodes,
+    connectSelectedNodes: connectSelectedCanvasNodes,
+    generateSelectedNodes: production.generate,
+    openAddNodeMenu,
+    tidyCanvas: handleTidy,
   })
 
   const handleDragOver = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
     if (readOnly) return
-    const droppableTypes = ['Files', WORKSPACE_FILE_DRAG_MIME, ASSET_LIBRARY_DRAG_MIME, BROWSER_ASSET_DRAG_MIME, LEGACY_BROWSER_ASSET_DRAG_MIME]
+    const droppableTypes = ['Files', WORKSPACE_FILE_DRAG_MIME, ASSET_LIBRARY_DRAG_MIME, BROWSER_ASSET_DRAG_MIME, LEGACY_BROWSER_ASSET_DRAG_MIME, CANVAS_RESULT_DRAG_MIME]
     if (droppableTypes.some((type) => event.dataTransfer.types.includes(type))) {
       event.preventDefault()
       event.dataTransfer.dropEffect = 'copy'
@@ -615,25 +653,25 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
   }, [readOnly])
 
   const handleDrop = React.useCallback((event: React.DragEvent<HTMLDivElement>) => {
-    const currentViewport = flow.getViewport()
     handleCanvasStageDrop(event, {
       readOnly,
-      // 放下即动作起点：签发此刻打开的项目作为素材归属边界。
-      activeProjectId: withProjectAction((project) => project.binding.projectId) ?? null,
-      offset: { x: currentViewport.x, y: currentViewport.y },
-      zoom: currentViewport.zoom,
+      toCanvasPoint: getCanvasPointFromClientPoint,
       activeCategoryId,
     })
-  }, [activeCategoryId, flow, readOnly])
+  }, [activeCategoryId, getCanvasPointFromClientPoint, readOnly])
 
   return (
     <section
       ref={hostRef}
       className={cn('generation-canvas-react-flow', 'generation-canvas-v2__stage', 'group/canvas', 'relative w-full h-full min-w-0 min-h-0 bg-workbench-bg text-workbench-ink')}
       aria-label={t('generationCommon.canvas.aria')}
+      data-shortcut-surface="canvas"
       data-ready={isReady ? 'true' : undefined}
       data-tidying={isTidying ? 'true' : undefined}
       data-nomi-generation-canvas-import-target={!readOnly ? 'true' : undefined}
+      // 微任务跑在这一轮派发之后、下一帧之前：React Flow 的键盘移动就在这一轮里发 position change。
+      onKeyDownCapture={(event) => { keyboardMoveScopeRef.current = keyboardMoveScope(event, useGenerationCanvasStore.getState().selectedNodeIds) }}
+      onKeyUpCapture={() => { keyboardMoveScopeRef.current = null }}
       onPointerDownCapture={handleStagePointerDownCapture}
       onPointerMoveCapture={handleCanvasPointerMoveCapture}
       onWheelCapture={handleCanvasWheelCapture}
@@ -681,6 +719,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         activeCategoryId={activeCategoryId}
         rememberCategoryViewport={rememberCategoryViewport}
         healViewport={healViewport}
+        isViewportAnimating={isViewportAnimating}
+        isStoreSyncEcho={isStoreSyncEcho}
+        cancelViewportAnimation={cancelViewportAnimation}
         groupBoxes={groupBoxes}
         frame={frameInteraction}
         frameDrawPreview={frameTool.drawPreview}
@@ -688,11 +729,9 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         collapsedGroupCards={collapsedProjection.cards}
         onGroupFramePointerDown={handleGroupFramePointerDown}
         pendingConnection={Boolean(pendingConnectionSourceId)}
-        pendingConnectionSourceId={collapsedGroupConnection.pendingConnectionSourceId}
-        pendingConnectionSourceKind={collapsedGroupConnection.projectionProps.pendingConnectionSourceKind}
+        pendingConnectionSourceKind={pendingConnectionSourceKind}
         pendingConnectionSide={pendingConnectionSourceSide}
         onConnectToGroup={handleConnectToGroupFromFlow}
-        onStartGroupConnection={collapsedGroupConnection.projectionProps.onStartGroupConnection}
         onSetGroupCollapsed={setGroupCollapsed}
         selectedBounds={selectedBounds}
         selectedNodeIds={selectedNodeIds}
@@ -717,14 +756,7 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         screenshotOverlay={screenshotOverlay}
         contextNodeMenu={contextNodeMenu}
         connectionCreateMenu={connectionCreateMenu}
-        onCreateEmpty={() =>
-          useGenerationCanvasStore.getState().addNode({
-            kind: 'image',
-            position: { x: 240, y: 240 },
-            categoryId: activeCategoryId,
-            select: true,
-          })
-        }
+        onCreateEmpty={() => useGenerationCanvasStore.getState().addNode({ kind: 'image', categoryId: activeCategoryId, select: true })}
         onNodeContextAction={handleNodeContextAction}
         onCloseContextNodeMenu={closeContextNodeMenu}
         onAddContextNode={handleAddContextNode}
@@ -738,17 +770,22 @@ function GenerationCanvasReactFlowInner({ readOnly = false }: GenerationCanvasRe
         zoomPercent={Math.round(liveViewport.zoom * 100)}
         offset={{ x: liveViewport.x, y: liveViewport.y }}
         stageSize={stageSize}
-        minimapVisible={minimapVisible}
-        onToggleMinimap={() => setMinimapVisible((visible) => !visible)}
+        minimapVisible={!minimapCollapsed}
+        onToggleMinimap={() => setMinimapCollapsed(!minimapCollapsed)}
         onJumpToCanvasPoint={handleMinimapJump}
         onFitView={() => fitView(true)}
-        onResetView={() => void flow.setViewport({ x: 0, y: 0, zoom: 1 }, { duration: 200 })}
-        onTidy={() => tidy(stageSize.width / Math.max(1, stageSize.height))}
+        // 「重置视图」走我们自己的调度器，不走 React Flow 的 d3 过渡：紧接着「适应视图」点它时，
+        // fit 那 200ms 的 rAF 动画还在逐帧写视口，d3 过渡每一帧都被盖回去——滑块停在 fit 的 59% 而不是 100%
+        // （2026-09-18 金路径真机；与 fitView 零时长那条「先停掉在飞的动画」是同一类，#503 同款）。
+        onResetView={() => { cancelViewportAnimation(); animateViewportTo(1, { x: 0, y: 0 }, 200) }}
+        onTidy={handleTidy}
         onZoomTo={zoomTo}
         frameMenu={frameActions.frameMenu}
         onFrameMenuAction={frameActions.handleFrameMenuAction}
         frameToolArmed={frameTool.armed}
         onToggleFrameTool={frameTool.toggle}
+        arrivalHint={arrival.hint}
+        onGoToArrivals={arrival.goToArrivals}
       />
     </section>
   )

@@ -11,7 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { applyBuiltinSeeds } from "./seedBuiltins";
 import { selectTaskMapping } from "./types";
-import { resolveArchetypeForModel } from "../../src/config/modelArchetypes";
+import { resolveArchetypeForModel } from "../shared/modelArchetypes";
 import { modeTransportFor } from "../shared/videoCapabilities";
 import { applyParamMap, consumedCanonicalKeys, wireReferencedParamKeys } from "./paramTranslate";
 import { NEWAPI_IMAGE_CREATE_OP, NEWAPI_VIDEO_CREATE_OP } from "./newapiTransport";

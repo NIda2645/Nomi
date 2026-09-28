@@ -54,6 +54,64 @@ export type SurfacePortBindingWire = Readonly<{
   nonce: string;
 }>;
 
+/**
+ * 「这两份端口绑定是不是同一个」——**唯一**比对函数（C2，2026-09-18）。
+ *
+ * 在这之前这件事在三层各写了一遍，维度数是 13 / 13 / **7**：
+ * 主进程登记表 `canvasReadSurfaceRegistry.sameBindingWire` 与渲染层
+ * `projectCanvasReadSurface.sameBinding` 比全 13 维；而 **preload**
+ * （`surfacePortPreloadBridge.sameSurfaceAuthority`）只比 7 维——漏掉 `version`、
+ * `webContentsId`、`processId`、`frameRoutingId`、`origin`。
+ *
+ * 漏在 preload 尤其要命：它正是主进程与渲染层之间那道信任边界，「这条回复是不是发给我的」
+ * 要靠它答。两份绑定只在 `webContentsId` 上不同（同一个项目、另一个窗口）时，
+ * 它会说「是同一个」。#802 那次「少一个维度」就是这个形状。
+ *
+ * 维度的定义在类型 `SurfacePortBindingWire` 上，比对跟着类型走：上游加字段时，
+ * `check:identity-compare` 会因为「owner 之外又出现一个身份比对」报红，而不是让三层各自
+ * 决定要不要跟上。
+ */
+export function sameSurfacePortBindingWire(
+  left: SurfacePortBindingWire | null | undefined,
+  right: SurfacePortBindingWire | null | undefined,
+): boolean {
+  if (!left || !right || !left.binding || !right.binding) return false;
+  return left.version === right.version
+    && left.bindingId === right.bindingId
+    && left.binding.projectId === right.binding.projectId
+    && left.binding.immutableProjectUuid === right.binding.immutableProjectUuid
+    && left.binding.projectGeneration === right.binding.projectGeneration
+    && left.webContentsId === right.webContentsId
+    && left.processId === right.processId
+    && left.frameRoutingId === right.frameRoutingId
+    && left.origin === right.origin
+    && left.surfaceInstanceId === right.surfaceInstanceId
+    && left.portRevision === right.portRevision
+    && left.nonce === right.nonce;
+}
+
+/**
+ * 「这两条描述指的是同一个渲染帧吗」——**唯一**比对函数（C2，2026-09-18）。
+ *
+ * 它比的是「哪个 webContents / 哪个进程 / 哪个帧 / 哪个源」，不是端口绑定那一整套。
+ * 之前 `canvasReadSurfaceRegistry.ts` 与 `canvasReadCapturedSnapshotRegistry.ts` 各写了一遍
+ * 逐字相同的六维——两份副本今天一致，改一处就开始不一致，而它们一起决定
+ * 「这次快照能不能算数」。
+ *
+ * 入参用结构类型而不是 import 那两个登记表的具体类型：owner 模块不该反过来依赖消费者。
+ */
+export function sameSurfaceFrameOwner(
+  left: Readonly<{ contents: unknown; frame: unknown; webContentsId: number; processId: number; frameRoutingId: number; origin: string }>,
+  right: Readonly<{ contents: unknown; frame: unknown; webContentsId: number; processId: number; frameRoutingId: number; origin: string }>,
+): boolean {
+  return left.contents === right.contents
+    && left.frame === right.frame
+    && left.webContentsId === right.webContentsId
+    && left.processId === right.processId
+    && left.frameRoutingId === right.frameRoutingId
+    && left.origin === right.origin;
+}
+
 export type CanvasReadSurfaceRequestWire = Readonly<{
   requestId: string;
   binding: SurfacePortBindingWire;
@@ -320,21 +378,19 @@ export type CanvasReadSurfaceBridge = Readonly<{
   ) => () => void;
 }>;
 
-export type SurfacePortWireErrorCode =
-  | "capability_execution_failed"
-  | "capability_cancelled"
-  | "capability_input_invalid"
-  | "capability_receipt_unresolved"
-  | "capability_target_stale"
-  | "capability_unsupported"
-  | "project_identity_unavailable"
-  | "project_binding_stale"
-  | "surface_port_suspended"
-  | "surface_port_unavailable"
-  | "surface_port_stale"
-  | "surface_owner_mismatch";
-
-export const SURFACE_PORT_WIRE_ERROR_CODES: ReadonlySet<SurfacePortWireErrorCode> = new Set([
+/**
+ * 端口线上错误码的**唯一值源**（C4，2026-09-18）。
+ *
+ * 这一族码在仓库里曾有 15 份定义、8 个文件，其中 6 份是手抄——连这里自己都抄了两遍
+ * （一份联合类型 + 一份同样内容的 Set 字面量）。代价不是好看不好看：拆
+ * `surface_port_stale` 为「不存在 / 已过期」两码时，漏改任意一份，那条通道就把新码当未知码
+ * 吞掉，模型收到的是「读一遍再试」而不是真原因（`docs/audit/2026-09-17-ownership-lifetime-census.md` §4）。
+ *
+ * 现在只有这一条元组是手写的，类型和 Set 都从它 derive；下游 adapter 只许
+ * `new Set([...SURFACE_PORT_WIRE_ERROR_CODES, ...自己那几个])`，不许重列。
+ * `check:vocabularies` 的错误码一类看的就是「整条都是字面量」——**派生即隐身，手抄才现形**。
+ */
+export const SURFACE_PORT_WIRE_ERROR_CODE_LIST = [
   "capability_execution_failed",
   "capability_cancelled",
   "capability_input_invalid",
@@ -347,6 +403,43 @@ export const SURFACE_PORT_WIRE_ERROR_CODES: ReadonlySet<SurfacePortWireErrorCode
   "surface_port_unavailable",
   "surface_port_stale",
   "surface_owner_mismatch",
+] as const;
+
+export type SurfacePortWireErrorCode = (typeof SURFACE_PORT_WIRE_ERROR_CODE_LIST)[number];
+
+export const SURFACE_PORT_WIRE_ERROR_CODES: ReadonlySet<SurfacePortWireErrorCode> =
+  new Set(SURFACE_PORT_WIRE_ERROR_CODE_LIST);
+
+/**
+ * 端口码之上，传输层自己多出来的那几个「这一次调用本身没验过 / 没授权 / 策略过期 / 出参不合法 /
+ * 超时」的码。它们不属于端口身份，但每一个 transport adapter 的公开面都要放行。
+ */
+export const CAPABILITY_TRANSPORT_VERIFICATION_ERROR_CODE_LIST = [
+  "capability_invocation_unverified",
+  "capability_authority_invalid",
+  "capability_policy_stale",
+  "capability_output_invalid",
+  "capability_timeout",
+] as const;
+
+export type CapabilityTransportVerificationErrorCode =
+  (typeof CAPABILITY_TRANSPORT_VERIFICATION_ERROR_CODE_LIST)[number];
+
+/**
+ * 每个 transport adapter 公开面的**共同底座**：端口码 + 传输验证码。
+ *
+ * 在这之前，canvasRead / documentRead / documentWrite / phase4Surface / timeline 各自手抄了
+ * 一份「这 17 个码可以放行」，抄出来的结果是 15/14/15/16/20 五个不同的数——
+ * `documentRead` 少了 `capability_receipt_unresolved`，`timeline` 少了
+ * `project_identity_unavailable`，`canvasRead` 两个都少。少掉的那些不会报错，只会被
+ * 静默替换成 `capability_execution_failed`，于是模型收到的是「执行失败，读一遍再试」
+ * 而不是「项目身份取不到」——**它按那句话重试，永远修不好真问题**。
+ *
+ * adapter 只许 `new Set([...CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES, ...自己那几个])`。
+ */
+export const CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES: ReadonlySet<string> = new Set<string>([
+  ...SURFACE_PORT_WIRE_ERROR_CODE_LIST,
+  ...CAPABILITY_TRANSPORT_VERIFICATION_ERROR_CODE_LIST,
 ]);
 
 export type SurfacePortFailure = Readonly<{ code: SurfacePortWireErrorCode; reason?: MediaImportRejection["reason"] }>;

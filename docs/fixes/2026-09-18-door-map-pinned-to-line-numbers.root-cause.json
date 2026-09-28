@@ -1,0 +1,164 @@
+{
+  "schema_version": 3,
+  "external_sources": [],
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "本批改的是本仓自己的交付流水线（本地脚本 + GitHub Actions 的内置语义），没有第三方依赖决定这条不变量。",
+    "exit_criteria": []
+  },
+  "id": "2026-09-18-door-map-pinned-to-line-numbers",
+  "problem_type": "判据落在排版上而不是不变量上，于是长出一族没有信息量的维护提交",
+  "symptom": "门一扇没增没减，只要有人在同一个文件上方插了几行，`check:root-cause-contracts` 就报 `door does not resolve — path:line does not mention symbol`。批次 3 一次集成分支就修了 16 处这种漂移；这一族提交（「门表的行号跟上 xxx」）自 2026-09-11 起从未发现过一次真正的门增删。",
+  "direct_cause": "门的身份里钉着行号：`doors` 每条要求 `{kind, path, line, symbol}`，校验取 `source.split(\"\\n\")[line-1]` 那一行看有没有那个 symbol。行号不是这份状态的性质，是它此刻的排版。",
+  "class_root": "不变量的判据一旦绑上一个随无关改动漂移的量，门岗就从「拦住错误」退化成「教人红了就重跑一下工具」——而被教会无脑重跑的人，下一次真的门被删掉时也会照样重跑一下了事（R17：防线建错层）。",
+  "affected_population": [
+    "2026-09-11 之后每一份带门表的根因合同（43 份）；每一条会碰到同一批文件的集成分支"
+  ],
+  "scope_paths": [
+    "scripts/root-cause-contracts.mjs",
+    "scripts/door-map.mjs",
+    "docs/fixes/"
+  ],
+  "entry_points": [
+    "node scripts/door-map.mjs（生成门表）",
+    "scripts/check-root-cause-contracts.mjs（校验门表）"
+  ],
+  "internal_only_reason": "「门」这个概念是本仓自己的纪律（R21），没有外部规范；先查别人的部分记在 docs/plan/2026-09-11-door-map-rule.md（Single Writer Principle / narrow waist / Google LSC 的调用者枚举）。",
+  "invariants": [
+    "门的身份 = kind + path + symbol，不含行号；同一个文件里调同一个符号多次仍是一扇门",
+    "合同里再出现 line 一律红（不静默忽略——两套身份并存就是那族提交复活的地方）",
+    "门被删掉（该文件不再以整词提到该符号）必须红"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "scripts/check-door-map.node-test.mjs",
+      "symbol": "mapDoors"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/check-door-map.node-test.mjs",
+      "symbol": "mapDoorOccurrences"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/check-root-cause-contracts.mjs",
+      "symbol": "validateRootCauseChange"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/check-root-cause-contracts.node-test.mjs",
+      "symbol": "validateRootCauseChange"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/door-map.mjs",
+      "symbol": "mapDoorOccurrences"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/door-map.mjs",
+      "symbol": "mapDoors"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/new-root-cause-contract.node-test.mjs",
+      "symbol": "validateRootCauseChange"
+    }
+  ],
+  "door_reduction": {
+    "before": 7,
+    "after": 7,
+    "why_not": "七扇是「生成侧一份、校验侧一份、各自的回归测试若干」。生成与校验必须分开：让校验去调生成器，等于让门表自己证明自己（而门表存在的全部意义就是替代「我扫过了」这句话）。测试那几扇是刻意的——它们正是钉死这条不变量的东西。"
+  },
+  "generality_proof": "身份从「path + line」换成「path + symbol」之后，判据只对**门的集合**敏感：删一扇门必红（阳性对照已写成测试），而任何不改变入口集合的排版改动都不再红。这对所有 43 份历史合同与将来每一份同时成立，因为判据只有一处。",
+  "shared_boundaries": [
+    {
+      "path": "scripts/root-cause-contracts.mjs",
+      "symbol": "validateRootCauseChange",
+      "responsibility": "门表校验的唯一入口：path 存在、文件仍以整词提到 symbol、无重复、无行号。"
+    },
+    {
+      "path": "scripts/door-map.mjs",
+      "symbol": "mapDoors",
+      "responsibility": "门表生成的唯一入口：按 {kind, path, symbol} 去重，输出不含行号。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/door-map.mjs",
+      "entry_point": "mapDoorOccurrences",
+      "disposition": "enforced",
+      "evidence": "带行号的那份只服务 stderr 的人看摘要，回归测试断言进合同的 mapDoors 输出里不存在 line 键。"
+    },
+    {
+      "path": "scripts/check-door-map.mjs",
+      "entry_point": "evaluatePullRequest",
+      "disposition": "not-affected",
+      "evidence": "PR 侧只判「doors 非空 + 正文引用了合同」，从不解析行号，不属于本失败类。"
+    },
+    {
+      "path": "scripts/root-cause-contracts.mjs",
+      "entry_point": "validateDoorMap",
+      "disposition": "enforced",
+      "evidence": "唯一的行号消费点，本次删除；`line !== undefined` 改为硬红。"
+    },
+    {
+      "path": "scripts/check-root-cause-contracts.mjs",
+      "entry_point": "loadFileContent",
+      "disposition": "not-affected",
+      "evidence": "它只负责把 door.path 的正文装进 fileContents，不解析行号；改动后仍按 path 装载。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "每一条新合同、每一次集成合并都会重新撞上它；43 份合同 × 每次碰面 = 这一族提交会一直长出来。",
+    "same_class_scan": [
+      "grep 全仓 lineMentionsSymbol：改动后 0 处（唯一的行号消费点已删）。",
+      "grep scripts/door-map.mjs 的 stdout 输出形状：进合同那份（mapDoors）不含 line，回归测试断言它；带行号的 mapDoorOccurrences 只喂 stderr 摘要。",
+      "node 逐份读 docs/fixes 的 43 份带门表合同：全部 schema_version 3、都不在 scripts/root-cause-contract-v1-baseline.json 的 10 条哈希钉死名单里——它们仍带 line，但不在 diff 里所以不被校验（见 migration：机械迁移会被合同门禁自己挡住）。",
+      "grep .agents/skills/root-cause-remediation 与 docs/engineering-rules.md：模板、R21.3 条文、SKILL.md 的字段说明都已改成 {kind, path, symbol}，新写的合同不会再长出 line。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/root-cause-contracts.mjs",
+    "invariant": "门表里不许出现 line；每条 door 的 path 必须存在且该文件仍以整词提到该 symbol；同一身份不许出现两次。",
+    "failure_mode": "门没了 → `door does not resolve` 红；留着旧形状的 line → `must not carry a line number` 红；两者都给出「重跑 door-map.mjs」的一行修法。",
+    "exception_policy": "none",
+    "strategy": "把身份从排版（行号）改成事实（文件 + 符号），并用整词匹配堵住 `includes` 的假绿。",
+    "artifacts": [
+      "scripts/root-cause-contracts.mjs",
+      "scripts/door-map.mjs",
+      "docs/engineering-rules.md",
+      ".agents/skills/root-cause-remediation/references/contract-v3.template.json"
+    ]
+  },
+  "regression_tests": [
+    "scripts/check-root-cause-contracts.node-test.mjs",
+    "scripts/check-door-map.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/check-root-cause-contracts.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "scripts/root-cause-contracts.mjs",
+      "scripts/door-map.mjs"
+    ],
+    "rationale": "校验侧的 lineMentionsSymbol 与生成侧进合同那份输出里的 line 字段在同一次改动里删除，仓里不再有第二种门表形状可生成、可通过。行号只剩 door-map.mjs 给人看的 stderr 摘要里那一处（mapDoorOccurrences），它不进任何合同。"
+  },
+  "migration": "不批量改写历史合同——**改不了**，这是本次挖出的结构事实：validateRootCauseChange 只校验「本次 diff 里变化的合同」，而一份合同一旦进了 diff 就会被当成「此刻正在被引入」重新全量校验（它声明的每个 regression_test / prevention artifact / removed path 都必须也在本次 diff 里）。于是任何对历史合同的机械迁移都会触发几百条「was not changed in this diff」。实测 43 份跑过一遍迁移脚本后正是这个结果，随即整体还原。\n代价因此落在**在途 lane** 而不是历史：历史合同不在 diff 里 = 不被校验 = 不会红；在途分支里已写好的合同重跑一次 `node scripts/door-map.mjs <符号>` 即可（门数会因去重下降，例如 398 处出现→244 扇、108→22，door_reduction.after 跟着门数走）。",
+  "residual_risks": [
+    "整词匹配是文本级的：符号出现在注释或字符串里也算「门还在」。要做到 AST 级别需要让校验器也引入 TypeScript 编译器（目前只有生成器有），这一步没做，记在账上。",
+    "历史合同里仍留着 line（见 migration：机械迁移会被合同门禁自己挡住）。它们不在 diff 里所以不被校验；哪天谁真的去改其中一份，会同时撞上本条新规则与那份合同本来就无法再满足的「本次 diff」要求——那时的正解是重写那份合同，不是加回行号。",
+    "在途 20+ 个 worktree 里已写好、还没合的合同都带 line，合入时会红一次，处置是重跑 door-map.mjs。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/root-cause-contracts.mjs",
+    "tests": [
+      "scripts/check-root-cause-contracts.node-test.mjs"
+    ]
+  }
+}

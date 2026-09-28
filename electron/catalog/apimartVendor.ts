@@ -26,10 +26,33 @@ export const APIMART_VENDOR_SEED = {
   // 注释）——凭据经内置 Settings 卡直接生效，不走认证晋升。缺此字段则 isBuiltinDirectKeyVendor 恒 false、
   // assertDirectKeyContract 早退，认证占用守卫（cert-owned 连接必须走其认证传输）就哑火。
   credentialMode: "direct-key" as const,
+  /**
+   * 每周雷达的逐模型存活探针（`scripts/model-liveness.ts` 专用，一个模型一次、刻意付费）。
+   * **不要**拿它验 key —— 那是下面的 `credentialProbe`；2026-09-22 之前两者共用这一个字段，
+   * 于是用户点一次「保存验证」就替他跑了一遍这条付费探针（T-MO-10、09-11 群反馈）。
+   */
   livenessProbe: {
     request: { method: "POST", path: "/api/v1/chat/completions", body: { model: "{{model}}", messages: [{ role: "user", content: "Hi" }], max_tokens: 1, stream: false } },
     successPath: "choices.0",
     source: { url: "https://docs.apimart.ai/en/api-reference/texts/general/chat-completions-nostream.md", checkedAt: "2026-09-08" },
+  },
+  /**
+   * **免费**的 key 有效性探测：`GET /v1/balance`（查这把 token 的剩余/已用额度）。
+   *
+   * 实测对照组（2026-09-22，只发 GET、不生成）：
+   *   · 假 key    → HTTP 401 `{"error":{"message":"invalid API key",...,"type":"apimart_error"}}`
+   *   · 不带鉴权  → HTTP 401 同上
+   * 即它**按 key 判**（不是 apimart 全站对 `/v1/models` 恒 401 的那种无差别拒绝），
+   * 所以 401/403 → key 无效这条判据在这个端点上成立。
+   *
+   * 成功判据取 `remain_balance`：文档说 `message` 只在失败时出现，`remain_balance` 只在
+   * 成功时给；无限额度时它是 `-1`（仍非 null，照样判 verified）。
+   */
+  credentialProbe: {
+    request: { method: "GET", path: "/v1/balance" },
+    successPath: "remain_balance",
+    cost: "free" as const,
+    source: { url: "https://docs.apimart.ai/en/api-reference/account/token-balance.md", checkedAt: "2026-09-22" },
   },
 } as const;
 
@@ -43,7 +66,8 @@ export const APIMART_STATUS_MAPPING: Record<string, string[]> = {
 
 /**
  * 图片轮询 op（所有 apimart 图片模型共用）。task_id 走路径参数（path 会被模板渲染，见
- * requestPipeline.ts:239）；结果在 data.result.images[0].url[0]（url 本身是数组，已核验）。
+ * requestPipeline.ts:239）；结果通常在 data.result.images[0].url；旧响应里 url 是数组，新响应里也有
+ * 直接返回字符串的情况，所以映射保留两个候选路径，不能把 `.url.0` 写死。
  */
 export const APIMART_IMAGE_QUERY_OP: HttpOperation = {
   method: "GET",
@@ -52,17 +76,14 @@ export const APIMART_IMAGE_QUERY_OP: HttpOperation = {
   response_mapping: {
     task_id: "data.id",
     status: "data.status",
-    image_url: "data.result.images.0.url.0",
+    image_url: ["data.result.images.0.url.0", "data.result.images.0.url"],
     error_message: "data.error.message",
   },
 };
 
 /**
- * 视频轮询 op（所有 apimart 视频模型共用）。结果路径 data.result.videos.0.url.0 —— 与官方 status 文档化的
- * schema 一致（2026-06-30 核对 docs.apimart.ai/.../tasks/status：result.videos 与 result.images 平行、url 本身是数组），
- * 且 Seedance 真实 mp4 出片验证过（2026-06-16，见记忆 apimart-curated-onboarding）。
- * ⚠️ 官方未给「视频成品」的 verbatim 示例（只给图片示例 + 字段说明），故 url 若某模型返回裸字符串而非数组时此单路径会取空；
- *   transport-spike 的 apimart-ref.cjs 用 fallback 链 videos.0.url.0||videos.0.url||videos.0 兜底——生产侧若遇该情况再加链。
+ * 视频轮询 op（所有 apimart 视频模型共用）。结果通常在 data.result.videos[0].url；旧响应里 url 是数组，
+ * 新响应里也有直接返回字符串的情况，所以与图片一样保留两个候选路径。
  */
 export const APIMART_VIDEO_QUERY_OP: HttpOperation = {
   method: "GET",
@@ -71,7 +92,7 @@ export const APIMART_VIDEO_QUERY_OP: HttpOperation = {
   response_mapping: {
     task_id: "data.id",
     status: "data.status",
-    video_url: "data.result.videos.0.url.0",
+    video_url: ["data.result.videos.0.url.0", "data.result.videos.0.url"],
     error_message: "data.error.message",
   },
 };

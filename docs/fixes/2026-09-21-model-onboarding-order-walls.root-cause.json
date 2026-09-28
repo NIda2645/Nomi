@@ -1,0 +1,415 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-21-model-onboarding-order-walls",
+  "problem_type": "「写一份配置」被做成了「驱动一台有状态的协议机」，于是每多一个状态就多一道墙",
+  "symptom": "扮演用户自己的 AI 经 MCP 接入 Higgsfield 四个模型：tools/call 14 次、被拒 6 次、四个模型一个都没走到「声明」那一步、真实生成 0 次。第 1 次调用就被告知「This connection already holds a key」——而那条连接根本没有 key。",
+  "direct_cause": "声明卡的 contractSchema 挂在会话的 compileRequest 上，而 compileRequest 要等 credentialStatus=ready（integrationSession.ts 的投影分支）；submit_declaration 要求 setupId 且会话得处在对的阶段，顺序错误被标成 code:\"schema\" 并让 AI 去「修字段」；propose 在凭证未就绪时直接拒；connect_provider 的地址分支只判 vendorKey && suggestedBaseUrl，不判有没有绑定，message 却写死 already holds a key。",
+  "class_root": "接入这件事的可写单元（谁写、写什么）换过六代，**「怎么交给 Nomi」一次都没换过**：G8 起一直是同一台会话状态机。每一代新增的都是状态——句柄、阶段、凭证就绪——而每一个状态都是一个 AI 必须猜对的隐藏前置。schema / 规范 / 样例这三样是进程常量、零用户数据，把它们挂在会话状态上不换来任何安全，只换来「人贴 key 之前 AI 什么都做不了」。",
+  "migration": "旧路（setupId + 阶段 + 凭证就绪）在同一刀里删净：submit_declaration 的 setupId 从 schema 上移除（不是留成可选），提交不再经 integrationSession.propose/start，而是走 validateProviderAdapterDraft → registerDeclaredProvider（catalog 已有的 mutateCatalog 事务门）。会话底座本身保留，因为它仍是设置页那条「应用内 LLM 编译」路（生产者①）的驱动器——本刀只把 MCP 这条路（生产者②）从它的顺序耦合上摘下来，两条共用的是校验 / 自检 / 登记门 / 试跑四件，不是共用一台状态机。",
+  "affected_population": [
+    "每一个想用自己的 AI 接一家 Nomi 没内置的供应商的用户：2026-09-21 真机实测 0 个模型登记成功。",
+    "每一个被工具描述里那两个错 URL 带偏的宿主：真实品牌配错地址，用户一按保存就把密钥绑到了错的 origin。",
+    "每一个在 Nomi 没运行时经 MCP 接入的用户：收据说「已打开凭证页」，而他面前什么都没有。"
+  ],
+  "scope_paths": [
+    "electron/catalog/declaredProviderRegistration.ts",
+    "electron/capabilityCore/modelOnboarding/**"
+  ],
+  "entry_points": [
+    "nomi_read target=onboarding_kit → dispatcher.ts 'model.onboarding.kit'（本刀新开的无前置读口）",
+    "nomi_model_setup action=submit_declaration → modelOnboarding/submitDeclaration.ts submitDeclaration",
+    "nomi_model_setup action=connect_provider → modelOnboarding/dispatch.ts connectProvider",
+    "nomi_model_setup action=set_key → modelOnboarding/dispatch.ts setKey",
+    "nomi_try_model → modelOnboarding/tryModel.ts tryModel",
+    "设置 → 模型 → 「用 AI 帮我接入」复制出去的 agent-skills/nomi-add-model/SKILL.md（它曾整篇指向已退役的 nomi_integration）"
+  ],
+  "invariants": [
+    "写一份声明所需要的一切（schema / 撰写规范 / 样例卡）任何时候都拿得到：它们是进程常量，不挂在任何会话状态上。",
+    "整份提交不需要句柄、不需要阶段、不需要密钥；同一张卡交两次结果逐字节相同（整份覆盖，不是打补丁）。",
+    "已存密钥的去向只由用户在 Nomi 的凭证页上按下保存那一刻决定：一张未签名的卡改不了一条已绑定连接的地址。",
+    "Nomi 永不把已存密钥回显给 AI——工具返回、错误信息、nextAction、盘上文件四处都没有。",
+    "「接好了」只有一次真实生成能证明：信封里的 unverified 在试跑成功之前一直留着 model_produces_output。"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "DeclaredOriginRewriteError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/declaredProviderRegistration.ts",
+      "symbol": "DeclaredRegistrationInput"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/declaredProviderRegistration.ts",
+      "symbol": "DeclaredRegistrationResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/declaredProviderRegistration.ts",
+      "symbol": "DeclaredOriginRewriteError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "registerDeclaredProvider"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/declaredProviderRegistration.ts",
+      "symbol": "mappingRowFromDeclaredMode"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "OnboardingDispatchDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/onboardingVerbs.ts",
+      "symbol": "removeProvider"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "currentCatalogFingerprint"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "dispatchModelOnboarding"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "currentCatalogFingerprint"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "removeProvider"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "dispatchModelSetup"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "OnboardingFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "OnboardingResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "UNVERIFIED_CLAIMS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "UnverifiedClaim"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "OnboardingStateId"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "OnboardingNextActionKind"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "UnverifiedEntry"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "OnboardingChange"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "BlastRadius"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "OnboardingNextAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "OnboardingRejection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/envelope.ts",
+      "symbol": "OnboardingFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "OnboardingRejection"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "OnboardingFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "OnboardingResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "symbol": "OnboardingFailure"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "symbol": "OnboardingResult"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "unverified"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "noBlast"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "noGenericContractFailure"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "unverified"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "noBlast"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "freeRequests"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "symbol": "unverified"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "symbol": "billableRequests"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "symbol": "noBlast"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/kit.ts",
+      "symbol": "OnboardingKit"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "buildOnboardingKit"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/kit.ts",
+      "symbol": "declarationCardJsonSchema"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/kit.ts",
+      "symbol": "ONBOARDING_KIT_EXAMPLES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/kitExamples.ts",
+      "symbol": "OnboardingKitExample"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/onboardingVerbs.ts",
+      "symbol": "submitDeclaration"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "submitDeclaration"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "symbol": "rejectionsFromError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "TryModelDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "symbol": "TryModelDeps"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentCapabilities/verbs/onboardingVerbs.ts",
+      "symbol": "tryModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "tryModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "upsertModelCatalogVendorApiKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "upsertModelCatalogVendorApiKey"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/tikhubConnectorService.ts",
+      "symbol": "upsertModelCatalogVendorApiKey"
+    }
+  ],
+  "door_reduction": {
+    "before": 54,
+    "after": 54,
+    "why_not": "这 54 扇是**机器数出来的**，不是设计出来的：门表覆盖本合同 scope 内每一个被改过的文件，所以它同时包含了域内模块彼此之间的读/写引用。真正要合并的是两组：①「一张卡怎么变成目录里的行」——只有 registerDeclaredProvider 一扇写门（声明卡这条路上没有第二个写目录的地方；认证晋升那条的 mode→mapping 投影已抽成 mappingRowFromDeclaredMode 由两边共用）；②「密钥怎么写进去」——三个调用方（凭证页 rendererCatalogMutation、TikHub 连接器、本刀新加的 set_key）全部经 catalogStore.applyApiKeyUpsert 这**同一扇**写门，绑定因此不可能有第二个生成点。合并这三个调用方等于合并三个产品入口，而它们本来就只有一条写路，合并不增加任何保证。"
+  },
+  "regression_tests": [
+    "electron/capabilityCore/modelOnboarding/credentialInvariants.test.ts",
+    "electron/capabilityCore/modelOnboarding/kit.test.ts",
+    "electron/capabilityCore/mcpOnboardingDefects.test.ts",
+    "electron/capabilityCore/mcpSurfaceCollapse.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/modelOnboarding/credentialInvariants.test.ts",
+    "electron/capabilityCore/mcpOnboardingDefects.test.ts"
+  ],
+  "residual_risks": [
+    "登记还有两条路：本刀的声明卡登记门，与认证 run 晋升（providerAdapter/serviceCatalog.ts）。mode→mapping 的投影已抽成 mappingRowFromDeclaredMode 由两边共用，但「谁被允许登记、登记后 enabled 怎么算」仍各答一次；收成一个 owner 要连着认证 run 一起改，不在本刀范围（已写进报告交主会话裁决）。",
+    "Run 路径（Agent 面板 / 分镜 / 外部 MCP 单镜 / 全自动）今天只有 APIMart 一个 provider，所以自助接进来的模型在那几个入口仍然执行不了。试跑刻意走手动画布那条执行器正是为了不被它卡住；provider 统一是主进程 lane 的刀。",
+    "试跑会真花钱。钱闸是手动那条（spendGrant → 渲染层报价确认卡），纯 headless 宿主上它诚实失败而不是偷偷放行；但这意味着「一条命令接完并验完」在没有 Nomi 窗口的机器上走不完最后一步。"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://docs.higgsfield.ai/docs/llms-full.txt",
+      "checked_at": "2026-09-21",
+      "purpose": "取 Higgsfield 真实 endpoint id、鉴权头形状、异步轮询路径与终态词，用来写套件里那份异步样例卡，并证明声明语言表达得了它"
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://spec.openapis.org/oas/v3.1.0",
+      "checked_at": "2026-09-21",
+      "purpose": "对照 R5.5：OpenAPI 描述得了一次同步请求/响应，描述不了「提交→轮询→取产物」与终态语义，所以声明卡不套 OpenAPI（偏差与理由已登进 docs/engineering/standard-formats.json）"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一件事重写过六代（G1 表单 → G5 人写脚本 → G6 应用内 LLM → G8/G12 外部 AI 经状态机），每一代都换「谁写 / 写什么」，没有一代动过「怎么交」，于是每一代都长出新的顺序墙。2026-09-21 的 14/6/0 是这一代的读数，不是这一代独有的毛病。",
+    "same_class_scan": [
+      "全仓扫「模型可见的东西挂在会话状态上」：integrationSession.ts 的 projection 只在 rawCompileRequest 存在时才挂 contractSchema/instructions（已由无前置的 onboarding_kit 绕开，会话那份保留给设置页那条路）。",
+      "全仓扫「把顺序/前置错误标成字段错误」：modelOnboarding 域内只有 submitDeclaration 一处（本刀删除）；绑定不符现在有自己的码 credential_origin_mismatch，且判在校验之前。",
+      "全仓扫「枚举外的动词名出现在面向 AI 的文本里」：`open_credentials` 在 modelOnboarding/ 下已 0 命中（随旧 submitDeclaration 一起删）。",
+      "全仓扫写密钥的入口（node scripts/door-map.mjs upsertModelCatalogVendorApiKey）：3 扇，全部经 catalogStore.applyApiKeyUpsert 这一扇写门，绑定因此不可能有第二个生成点。"
+    ]
+  },
+  "generality_proof": "把「AI 要的四样东西」（schema / 例子 / 一次整份写入 / 一次能看到真话的试跑）分别落在四个**与会话无关**的边界上：进程常量（kit）、纯函数校验（validateProviderAdapterDraft）、目录唯一事务门（mutateCatalog）、手动画布同一条执行器（runTask）。四者都不读会话状态，所以下一代无论把「谁来写」换成什么，都不可能再长出一道顺序墙——没有状态可依附。反过来，任何人想再加一道前置，都得先把这四样之一搬回会话里，而那是一次显眼的结构改动，不是一行分支。",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/declaredProviderRegistration.ts",
+      "symbol": "registerDeclaredProvider",
+      "responsibility": "一张声明卡变成目录里的 vendor/model/mapping 只有这一扇门；它在写之前判「这条连接绑过密钥没有」，绑过就只许复述那个 origin。"
+    },
+    {
+      "path": "electron/capabilityCore/modelOnboarding/kit.ts",
+      "symbol": "buildOnboardingKit",
+      "responsibility": "把写一份配置需要的三样东西（schema / 撰写规范 / 样例卡）做成无前置的进程常量，任何会话状态都够不到它。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/modelOnboarding/submitDeclaration.ts",
+      "entry_point": "submitDeclaration",
+      "disposition": "enforced",
+      "evidence": "整份提交走 validateProviderAdapterDraft → registerDeclaredProvider；绑定不符在校验之前用自己的码拒。credentialInvariants.test.ts 第一条反向验过：拿掉判据当场红。"
+    },
+    {
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "entry_point": "upsertModelCatalogVendorApiKey",
+      "disposition": "not-affected",
+      "evidence": "凭证页那条路写的是密钥不是地址，地址来自用户在那一页上亲手确认的那一行；它与声明卡共用同一扇写门，绑定在门里生成，本刀没有改变它的任何一行。"
+    },
+    {
+      "path": "electron/providerAdapter/serviceCatalog.ts",
+      "entry_point": "register",
+      "disposition": "not-affected",
+      "evidence": "认证 run 晋升那条路的身份与地址由会话锁死（Agent 改不动），它是 check:credential-origin 早就登记的 owner；本刀没有经过它，mode→mapping 的投影已抽成共用纯函数以免两边各写一份。"
+    }
+  ],
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "electron/catalog/declaredProviderRegistration.ts",
+    "invariant": "声明卡只能在这条连接**还没有凭据绑定**时写地址与鉴权放法；已绑定的一律拒，改地址只有用户回贴 key 页重存一次密钥这一条路。",
+    "failure_mode": "判据被删 → check:credential-origin 规则 4 当场红（它核 readCredentialBinding( 与 throw new DeclaredOriginRewriteError( 还在）；判据被绕过 → credentialInvariants.test.ts 第一条红；真到了出站 → vendorOutboundGuard 的 judgeCredentialDestination 拒。",
+    "exception_policy": "none",
+    "strategy": "把「地址第一次能从一段未签名的数据里来」这件事的前提做成机器核得动的判据，而不是一条写在注释里的纪律。",
+    "artifacts": [
+      "electron/catalog/declaredProviderRegistration.ts",
+      "scripts/check-credential-origin.ts",
+      "electron/capabilityCore/modelOnboarding/credentialInvariants.test.ts"
+    ]
+  },
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "electron/shared/agentCapabilities/modelOnboarding.ts"
+    ],
+    "rationale": "P1：新路不与旧路并存。dispatch.ts 里经 integrationSession.propose/start 的那份 submitDeclaration（含 setupId 前置、阶段判据与漏出枚举的 open_credentials 文案）整段删除；modelOnboarding.ts 上 submit_declaration 的 setupId 字段从 schema 移除而**不是**留成可选——留成可选就是留一条会被宿主学去的旧形状；同刀删掉两个全仓无读取方的死字段 suggestedAuthNote / sourceUrl（schema 承诺会显示它们，而没有任何读取方）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "本刀不引入也不升级任何第三方依赖；zod-to-json-schema 是仓库既有的、agentCompileRequest.ts 已在用的同一份。",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/declaredProviderRegistration.ts",
+    "tests": [
+      "electron/capabilityCore/modelOnboarding/credentialInvariants.test.ts"
+    ],
+    "structural_ticket": "docs/plan/2026-09-21-mcp-model-onboarding-floor.md"
+  }
+}

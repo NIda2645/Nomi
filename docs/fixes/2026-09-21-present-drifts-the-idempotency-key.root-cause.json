@@ -1,0 +1,129 @@
+{
+ "schema_version": 3,
+ "id": "2026-09-21-present-drifts-the-idempotency-key",
+ "problem_type": "A pure visibility/scope command rewrites the identity other commands key their idempotency on, so a later distinct command is swallowed as a replay",
+ "symptom": "用户在生成卡上：改一版提示词 → 改勾选（取消一镜、留另一镜）→ 再改一版。**第二次改动什么都没发生**：草稿回到最早那一版，卡上印着旧参数、旧价格。按了没反应，也没有任何报错。",
+ "direct_cause": "顶层改草稿的幂等键是 `generation.patch:${operationId}:${current.candidate.revision}`（productionGenerationOperationStore.ts:127），而 `presentGenerationPlan`（productionGenerationPlanEdits.ts:233）会把**顶层候选**重写成「第一个被勾上的那一镜」的候选——那一镜自己的 revision 往往比刚改过的顶层候选低。于是改完勾选之后的下一条 patch 命令拿到一个**用过的**键，被命令存储当成重放，直接返回旧结果。",
+ "class_root": "「这条命令是不是同一条」这个判据被挂在一份**会被别的命令改写的**状态上。present 是一个纯粹的可见性/范围动作（用户只是勾了个框），它本不该改变任何一条键的身份；一旦身份可以被旁边的命令挪动，重放判定就会在用户完全没做错事的情况下误判——而且误判的方向是**静默吞掉**，不是报错。",
+ "affected_population": [
+  "所有多镜生成草稿：Agent 面板付款卡、分镜表提交执行计划、外部 MCP 建的多镜草稿——只要用户在改过草稿之后又动了勾选，下一次改草稿就会被吞",
+  "单镜草稿不受影响（没有 shots[]，present 不会改写顶层候选）"
+ ],
+ "scope_paths": [
+  "electron/productionRun/productionGenerationOperationStore.ts",
+  "electron/productionRun/productionGenerationPlanEdits.ts"
+ ],
+ "entry_points": [
+  "Agent 面板付款卡改勾选 / 改参数（generation.present / generation.patch）",
+  "分镜表提交执行计划后的草稿编辑",
+  "外部 MCP nomi_submit_generation_plan 的 plan 动词"
+ ],
+ "external_sources": [],
+ "internal_only_reason": "幂等键的构成是本仓自己的命令存储契约（`owner.command` 的 commandId 去重），没有外部规范参与；本次也没有改动任何对外可见的形状。",
+ "invariants": [
+  "一个纯粹的可见性/范围命令（present）不得改变任何其它命令幂等键的身份",
+  "顶层改草稿的幂等键必须同时锚在 planVersion 与候选 revision 上——present 必然 +1 planVersion，所以勾选变化之后的键必然是新的",
+  "重放判定只许在**确实是同一条命令**时命中；拿不准时宁可多执行一次可撤销的编辑，也不许静默吞掉用户的改动"
+ ],
+ "doors": [
+  {
+   "kind": "write",
+   "path": "electron/productionRun/productionGenerationOperationStore.ts",
+   "symbol": "generation.patch"
+  },
+  {
+   "kind": "write",
+   "path": "electron/productionRun/productionRunReducer.ts",
+   "symbol": "presentGenerationPlan"
+  },
+  {
+   "kind": "write",
+   "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+   "symbol": "presentGenerationPlan"
+  }
+ ],
+ "door_reduction": {
+  "before": 3,
+  "after": 3,
+  "why_not": "这两扇是同一条不变量的两端，必须都在：一端是「谁改写顶层候选」（present 的 reducer），另一端是「谁拿它当键」（顶层 patch 的 commandId）。本次修在**键的 owner**——因为顶层候选被改写成「第一个被勾上的那一镜」是这张卡的产品语义（卡上要展示一个真的会跑的镜），删掉它会改用户看到的东西；而键不该建在一份会被旁人挪动的身份上。两端合并成一扇就意味着让 present 不再碰候选，那是产品改动，不是这一刀。 第三扇是 `presentGenerationPlan` 的**定义处**（reducer 那扇是调用处）：同一条改写落在两个文件里，是拆分巨壳留下的形状，不是两份实现。"
+ },
+ "generality_proof": "修法不依赖「哪一镜被勾上」「有几镜」「哪个入口发的命令」：planVersion 由 present 自己无条件 +1，所以任何一次勾选变化都必然把顶层 patch 的键推进到新的一格。新增的入口、未来的勾选形态（试拍、分批）自动正确，不需要谁回来补判据。",
+ "shared_boundaries": [
+  {
+   "path": "electron/productionRun/productionGenerationOperationStore.ts",
+   "symbol": "generation.patch",
+   "responsibility": "顶层改草稿这条命令的幂等身份：锚在 planVersion + 候选 revision 上，勾选动不了它。"
+  }
+ ],
+ "same_class_entry_points": [
+  {
+   "path": "electron/productionRun/productionGenerationOperationStore.ts",
+   "entry_point": "patch（顶层，无 shotId）",
+   "disposition": "enforced",
+   "evidence": "productionGenerationOperationStore.test.ts 新增「改勾选之后再改草稿」一条；改动前实测红——第二次 patch 返回的是**最早那一版**（`A paper boat`），证明它被当成重放吃掉了。"
+  },
+  {
+   "path": "electron/productionRun/productionGenerationOperationStore.ts",
+   "entry_point": "patch（逐镜，带 shotId）",
+   "disposition": "not-affected",
+   "evidence": "逐镜键锚在那一镜自己的 candidate.revision 上，而 present 不改各镜的 revision（只改 included 标记），所以它本来就不漂。"
+  },
+  {
+   "path": "electron/productionRun/productionGenerationOperationStore.ts",
+   "entry_point": "seal / present / dismiss / cancel",
+   "disposition": "not-affected",
+   "evidence": "seal 与 cancel 的键已经带 planVersion；present 与 dismiss 的键锚在 run.revision 上，而 run.revision 每条命令必增，不会回跳。"
+  }
+ ],
+ "recurrence": {
+  "classification": "recurring",
+  "reason": "只要「幂等键锚在一份别的命令能改写的状态上」这个形状还在，任何新加的命令都可能踩同一个坑；而生成草稿正在长出更多勾选形态（试拍、分批、续批）。",
+  "same_class_scan": [
+   "node scripts/door-map.mjs presentGenerationPlan → 1 扇（productionRunReducer.ts:219）",
+   "node scripts/door-map.mjs createProductionGenerationOperationStore → 4 扇（三个宿主 + 自身），键的构造只在 store 内部一处",
+   "grep -rn 'commandId: `generation\\.' electron/productionRun --include=*.ts → 6 条：create / patch / present / dismiss / seal / cancel；逐条核过锚点，只有顶层 patch 锚在会被改写的那份身份上"
+  ]
+ },
+ "prevention": {
+  "kind": "centralized-boundary",
+  "enforcement_path": "electron/productionRun/productionGenerationOperationStore.ts",
+  "invariant": "顶层改草稿的幂等键 = operationId + planVersion + 候选 revision；present 每次必 +1 planVersion。",
+  "failure_mode": "谁把 planVersion 从键里拿掉、或让 present 不再 +1，`productionGenerationOperationStore.test.ts` 的「改勾选之后再改草稿」当场红：第二次编辑会退回更早的一版。",
+  "exception_policy": "none",
+  "strategy": "把键锚在一份**没有别的命令改得动**的身份上；顶层候选是不是「第一个被勾上的那一镜」属于卡的展示语义，与命令身份脱钩。",
+  "artifacts": [
+   "electron/productionRun/productionGenerationOperationStore.ts",
+   "electron/productionRun/productionGenerationOperationStore.test.ts"
+  ]
+ },
+ "regression_tests": [
+  "electron/productionRun/productionGenerationOperationStore.test.ts"
+ ],
+ "class_regression_tests": [
+  "electron/productionRun/productionGenerationOperationStore.test.ts"
+ ],
+ "legacy_paths": {
+  "status": "removed",
+  "removed_paths": [
+   "electron/productionRun/productionGenerationOperationStore.ts"
+  ],
+  "rationale": "旧的顶层键写法同 commit 改掉，没有兼容分支：命令存储里的键只用于同一进程/同一 Run 的去重，改键不会让任何历史记录失效。"
+ },
+ "dependency_lifecycle": {
+  "decision": "not-applicable",
+  "rationale": "不变量完全由本仓的命令存储契约决定，没有第三方运行时参与。",
+  "exit_criteria": []
+ },
+ "migration": "不需要迁移：commandId 只做去重，不落进任何对外契约。已有 Run 的事件日志原样可读；键换新之后最坏情况是一次**本该被去重**的重复编辑真的执行了两次——而编辑是可撤销、不花钱的，比静默吞掉用户的改动诚实得多。",
+ "residual_risks": [
+  "顶层候选仍然会被 present 改写成「第一个被勾上的那一镜」。本次只保证它不再污染幂等键；它对「多镜草稿里顶层合同该代表谁」的影响是产品语义问题，留给合并后的卡面复核（报告里已写明）。",
+  "本条只证到命令存储这一层，没有在真机上复现整条「改一版→改勾选→再改一版」的用户旅程；那条属于渲染层 lane 的付款卡走查。"
+ ],
+ "invariant_owner_layer": {
+  "layer": "electron/productionRun/productionGenerationOperationStore.ts",
+  "tests": [
+   "electron/productionRun/productionGenerationOperationStore.test.ts"
+  ],
+  "notes": "「顶层改草稿这条命令的身份」从此只由这一层回答，且锚在 present 必然推进的 planVersion 上。新断言在改动前实测为红（返回最早那一版）。"
+ }
+}

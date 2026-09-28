@@ -42,9 +42,17 @@ export type AutomationPolicy = {
 export type BudgetLedgerSummary = {
   currency: string;
   authorized: number;
+  /** 已知价的在途预留之和。价格未知的那几笔**不在这个数里**（它们在 `unknownInFlight`）。 */
   reserved: number;
   actual: number;
   unsettled: number;
+  /**
+   * 价格未知、已经派出去还没结清的笔数（2026-09-21 未知价开闸）。
+   *
+   * 为什么是笔数不是金额：我们不知道那个金额。把它当 0 加进 `reserved` 会让账本读起来像
+   * 「这几笔不花钱」，而那正是三种可能里唯一会骗人的那一种。旧账本没有这个数 → 0。
+   */
+  unknownInFlight: number;
 };
 
 export type ProductionRunStatus =
@@ -198,6 +206,11 @@ export type ProductionGenerationShot = {
   role?: "anchor" | "shot";
   /** Checkbox for 试拍/分批: a sealed contract only covers included shots. Absent → included. */
   included?: boolean;
+  /**
+   * 模型拟的短标题（给人看，不进 provider 请求）。画布节点标签与花钱确认卡那行都读它；
+   * 缺省时由**渲染层**用带 zh/en 的 i18n 兜底，主进程不再自己合成（那份是硬编码中文）。
+   */
+  title?: string;
   candidate: PlanCandidate;
   /** Sealed sub-contract for this shot; absent until the plan is sealed. */
   contract?: ExecutionContractV1;
@@ -294,6 +307,8 @@ export type ProductionGate = {
   costScope?: string;
   receiptId?: string;
   requestedSpend?: number;
+  /** 这道门里价格未知的 job 数（2026-09-21）。`requestedSpend` 只说已知的那部分。 */
+  requestedUnknownJobs?: number;
   jobIds: string[];
   title: string;
   summary: string;
@@ -337,6 +352,8 @@ export type ProductionArtifact = {
   skillEvidence?: Array<{ name: string; version: string; stageId: string }>;
   projectRelativePath?: string;
   thumbnailRelativePath?: string;
+  width?: number;
+  height?: number;
   createdAt: string;
   adoptedAt?: string;
 };
@@ -349,7 +366,7 @@ export type ProductionRun = {
   status: ProductionRunStatus;
   stageId: string;
   playbook: { name: string; version: string };
-  origin: { host: string; actorId?: string };
+  origin: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } };
   brief?: ProductionBrief;
   policy: AutomationPolicy;
   budget: BudgetLedgerSummary;
@@ -361,6 +378,8 @@ export type ProductionRun = {
   artifacts: ProductionArtifact[];
   /** Optional single-shot plan owned by this Run; legacy playbooks omit it. */
   generationPlan?: ProductionGenerationPlan;
+  /** Creative metadata only; editable shot content is owned by generationPlan. */
+  authoring?: { title: string };
   createdAt: string;
   updatedAt: string;
 };
@@ -400,8 +419,17 @@ export type ProductionRunSummary = Pick<
   ProductionRun,
   "runId" | "projectId" | "revision" | "status" | "stageId" | "playbook" | "origin" | "budget" | "updatedAt"
 > & {
+  authoring?: ProductionRun['authoring'];
   /** 计划仍是草稿时的候选摘要；已封存/已提交/无计划的 Run 省略。 */
   draft?: ProductionRunDraftSummary;
+  /**
+   * 生成计划的**在不在场**两个事实：状态，以及报价卡有没有摆到用户面前。
+   *
+   * 为什么进列表投影：Agent 拟好、还没出价（`cardHidden`）的草稿，和用户丢掉的计划（`cancelled`），
+   * Run 状态都还停在 `draft`——只看 Run 状态，它们就是任务面板里永远「等待开始」的那几行。
+   * 判「算不算一个任务」的规则住在渲染层（`isProductionRunTask`），它要的只是这两格。
+   */
+  generationPlan?: Pick<ProductionGenerationPlan, "state" | "cardHidden">;
 };
 
 /**
@@ -410,6 +438,7 @@ export type ProductionRunSummary = Pick<
  * 绝不含任何密钥；`code` 由渲染层 t() 翻译（不拼串穿透 i18n 门）。
  */
 export type ProductionActionResult = {
+  quoteId?: string;
   ok: boolean;
   code:
     | "reworked" // 返工已确认并派发
@@ -423,15 +452,29 @@ export type ProductionActionResult = {
     | "discarded" // 付费卡上按了 ×：这份草稿被丢弃
     | "spend_confirmed" // 付费卡上确认了：收据已签、门已批、已开跑
     | "unavailable" // 能力核未就绪 / provider 未配置
-    | "failed"; // 其它失败（人话原因在 message，供日志）
+    | "failed"; // 其它失败（账本事实在 message，语义码在 reason）
+  /**
+   * **账本事实**：这一笔到底有没有发起过。只有两个值有意义——`generation_not_started`
+   * （账本里没有任何提交意图，没花钱，改一下再按）与 `generation_execution_failed`
+   * （提交意图已落盘，供应商可能已经拿到这一笔，先去核对）。渲染层据它挑那两句话之一。
+   */
   message?: string;
+  /**
+   * **语义码**：到底哪一步不成（`generation_reference_identity_changed` 这一族）。
+   *
+   * 2026-09-21 分出来的第二个字段。此前这两件事挤在 `message` 一个格子里，于是
+   * 「参考图校验失败、一个字节都没出去」这类自家语义码**进不来**——把它写进 `message`
+   * 会让渲染层照着挑出「暂时无法确认结果」，比不说更糟（见 Pass 3c 第 4 条「没做的那半」）。
+   * 只放 Nomi 自己的码，供应商与凭据文本照旧只进主进程日志。
+   */
+  reason?: string;
 };
 
 export type CreateProductionRunInput = {
   runId?: string;
   projectId: string;
   playbook: { name: string; version: string };
-  origin: { host: string; actorId?: string };
+  origin: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } };
   brief?: ProductionBrief;
   policy?: Partial<AutomationPolicy>;
   currency?: string;

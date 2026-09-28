@@ -103,7 +103,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
     customCallScripts,
     dreaminaStatus,
     loaded,
-    bridgeMissing,
+    bridgeMissing, loadError, readOnly,
     reloadFromError,
     refresh,
   } = useOnboardingDrawerCatalog()
@@ -415,8 +415,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
         vendorKey={group.vendorKey}
         name={group.name}
         models={group.models}
-        baseUrl={meta?.baseUrl ?? ''}
-        hasApiKey={meta?.hasApiKey ?? true}
+        vendorMeta={meta}
         skipHealthProbe={Boolean(meta?.customCallOnly) && group.models.every((model) => model.hasCustomCall || model.customCallDraft)}
         onToggle={handleSetEnabled}
         onDelete={handleDelete}
@@ -748,7 +747,6 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       </ModelSettingsDetailBoundary>,
     )
   }
-
   return (
     <ModelSettingsHome
       connections={homeConnections}
@@ -756,6 +754,7 @@ export function OnboardingDrawer({ pageRequest = null }: { pageRequest?: ModelPa
       mappings={mappings}
       loaded={loaded}
       bridgeMissing={bridgeMissing}
+      loadError={loadError} readOnly={readOnly} onImported={refresh}
       taskCount={visibleAdapterTaskRuns.length}
       taskContent={
         <AdapterTaskList

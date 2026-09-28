@@ -41,6 +41,16 @@ export type AiSdkProviderKind = (typeof AI_SDK_PROVIDER_KINDS)[number];
 export type AssetMediaKind = (typeof ASSET_MEDIA_KINDS)[number];
 export type VendorAuthType = (typeof VENDOR_AUTH_TYPES)[number];
 
+/** 见 `catalog/credentialBinding.ts`。类型住这里，判据住那里（types.ts 不长逻辑）。 */
+export type CredentialBinding = {
+  origin: string;
+  authType?: string;
+  authHeader?: string;
+  authQueryParam?: string;
+  authScheme?: string;
+  confirmedAt: string;
+};
+
 export type AssetIngestion =
   | { strategy: "inline-base64"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
   | { strategy: "none"; accepts?: ReadonlyArray<AssetMediaKind>; visibility?: "provider-private"; ttlSeconds?: number }
@@ -157,6 +167,17 @@ export type AssetIngestion =
       initFileNameField?: string;
       initContentTypeField?: string;
       uploadUrlPath: string;
+      /**
+       * 初始化响应里「PUT 时必须原样带上的头」对象的点路径（如 Higgsfield 的 `upload_headers`）。
+       *
+       * 为什么不是写死一组头：预签名 URL 把哪些头算进签名是**供应商侧决定**的。Higgsfield 的
+       * `X-Amz-SignedHeaders = content-type;host;x-amz-tagging` —— 2026-09-17 实测，PUT 只带
+       * `Content-Type`（本策略在此之前的行为）会拿到 403 `SignatureDoesNotMatch`，带上响应给的
+       * `upload_headers` 才 200。把头从响应里读出来，就不用为每家猜一遍它签了什么
+       * （R5：别照二手资料写死，按供应商自己给的来）。
+       * 缺省 undefined ⇒ 仍只发 Content-Type，fal 等既有通道逐字节不变。
+       */
+      uploadHeadersPath?: string;
       urlPath: string;
       authType?: "bearer" | "key";
       accepts?: ReadonlyArray<AssetMediaKind>;
@@ -238,6 +259,23 @@ export type Vendor = {
   baseUrlHint?: string | null;
   authType?: VendorAuthType;
   authHeader?: string | null;
+  /**
+   * `Authorization` 头里 key 前面的**方案词**，缺省 `Bearer`。
+   *
+   * 为什么要它：`authType` 那张 enum（none/bearer/x-api-key/query）回答的是「key 放哪」，
+   * 回答不了「放进 Authorization 时前缀写什么词」。Higgsfield 要的是
+   * `Authorization: Key <id>:<secret>` —— 既不是 Bearer，也不是「换个头名字」，
+   * 而是同一个头里换一个方案词。
+   *
+   * 为什么不给 authType 加第五个值：那张 union 今天被**手抄在 15 处**
+   * （providerAdapter/types.ts、integrationCertification/httpConnector.ts、
+   *  mcpIntegrationTools.ts、src/api/desktopClient.ts …），加一个值要同时改 15 份副本，
+   * 且会撞上正在重写的认证面。方案词是正交的新概念，独立一个可选字段表达最省
+   * （R17：能在最早一层声明就别散进每条 mapping 的字面量）。
+   *
+   * 缺省 undefined ⇒ 行为与今天逐字节相同。
+   */
+  authScheme?: string | null;
   authQueryParam?: string | null;
   /**
    * Which Vercel AI SDK provider implementation to use for this vendor.
@@ -249,6 +287,14 @@ export type Vendor = {
   network?: { proxyUrl?: string; proxyEnabled?: boolean };
   /** R1:本地素材吞入策略。curated vendor 也可由代码注册表兜底(见 assetLocalization.curatedAssetIngestion)。 */
   assetIngestion?: AssetIngestion;
+  /**
+   * 用户按下「保存密钥」那一刻，这把 key 被绑在哪个 origin 上（catalog/credentialBinding.ts）。
+   *
+   * 顶层字段而不是塞进 `meta`：`meta` 是没有类型的杂物袋，一条**安全不变量**住在杂物袋里，
+   * 等于把它交给字符串键去维护。缺省 undefined ⇒ 没有绑定（旧装机 / curated 种子 / ComfyUI），
+   * 那时这条判据不成立、交回私网策略——不许把「不知道」当成「拒绝」。
+   */
+  credentialBinding?: CredentialBinding;
   meta?: unknown;
   createdAt: string;
   updatedAt: string;
@@ -390,7 +436,7 @@ export type HttpOperation = {
   request_transform?: string;
   /**
    * **wire 必填参数的兜底默认值**（headless/MCP 路专用）。UI 路由 NodeGenerationComposer 会按档案
-   * (src/config/modelArchetypes) 把用户选的 size/voice/model 等填进 request.params；但 MCP/CLI 的
+   * (electron/shared/modelArchetypes) 把用户选的 size/voice/model 等填进 request.params；但 MCP/CLI 的
    * `generate` 不经 UI、调用方也无从知道每家 vendor 的必填参数（nomi_generate 根本不暴露 params）。
    * 缺这些参数时 vendor 直接拒（实测：火山 Seedream 缺 size→HTTP 400；apimart TTS 缺 model→HTTP 500；
    * 豆包语音缺 voice→「未选择音色」）。runtime.runTask 解析出 mapping 后，把这里的默认值**合并到
@@ -458,6 +504,20 @@ export type HttpOperation = {
       /** mode=repeat 时的 flag 名（如 "--image"）。 */
       flag?: string;
     }>;
+  };
+  /**
+   * **本地引擎 transport 声明**（仅 audioTaskRunner 消费，P4 声明驱动不 hardcode vendor）。
+   * 当一条 mapping 的执行者不是远端 HTTP 端点、也不是一次性 CLI，而是**本机常驻 sidecar**
+   * （whisper.cpp 的 `whisper-server`）时，create op 声明 localEngine，runner 据此分流到
+   * `electron/localSpeech/` 的编排（装引擎 → 切段 → 逐段推理 → 折回全局时间轴），
+   * 出的结果与云端 whisper 的 `verbose_json` 同形状，因此上层解析器一份就够（P1）。
+   *  - kind      ：引擎选择子。将来同形状的第二个本地引擎声明各自的 kind 即复用这条路。
+   *  - tierParam ：`request.params` 里哪个键携带权重档位（值的白名单在 catalog/localSpeech.ts）。
+   * 可序列化（持久化进 catalog JSON）：纯数据声明。
+   */
+  localEngine?: {
+    kind: "whisper-cpp";
+    tierParam: string;
   };
   /**
    * **multipart/form-data transport 声明**（P4 声明驱动不 hardcode vendor）。当端点收的是二进制文件上传
@@ -639,7 +699,11 @@ export function billingKindForTaskKind(kind: ProfileKind): BillingModelKind {
  *  extraHeaders, which may carry Authorization) out of the plaintext vendor row into the existing
  *  safeStorage-backed vendor credential record. Legacy plaintext stays readable until an explicit
  *  vendor write migrates every secret atomically (mirrors the v8→v9 customConfig deferral). */
-export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12;
+/* v13 一次性修复上一版 upsert 抹掉的供应商声明（authScheme / assetIngestion）：内置家按
+ *  BUILTIN_VENDOR_SEEDS 补回「键整个不存在」的那两项（值不同=用户改过，一律不碰）；自建家没有
+ *  代码侧出处补不了，盖一条 meta 提示让界面明着告诉用户去重新导入接入包。写路径的类根因已由
+ *  upsertDraft.ts 在编译期闭合，故这是一次性的、不再重跑的修复。见 vendorFieldLossRepair.ts。 */
+export type CatalogVersion = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13;
 export const CURRENT_CATALOG_VERSION: CatalogVersion = catalogVersion.current as CatalogVersion;
 
 export type CatalogState = {

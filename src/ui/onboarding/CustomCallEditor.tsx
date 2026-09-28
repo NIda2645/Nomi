@@ -14,7 +14,7 @@ import {
   confirmDialog,
 } from '../../design'
 import { getDesktopBridge } from '../../desktop/bridge'
-import { resolveArchetypeForModel } from '../../config/modelArchetypes'
+import { resolveArchetypeForModel } from '../../../electron/shared/modelArchetypes'
 import { getTextBrain } from '../../workbench/api/promptLibraryApi'
 import { runWorkbenchTextTaskStream } from '../../workbench/api/taskApi'
 import { stripCodeFences } from './customCallIntent'

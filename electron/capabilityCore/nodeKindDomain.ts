@@ -66,9 +66,6 @@ const FALLBACK_SIZE = { width: 340, height: 280 }
 // 足迹自带余量即是间距，单插避让与批量布局共用同一足迹。
 export const NODE_RENDER_SAFETY = 64
 
-// 占镜号的 kind 集合（镜像 src shotNumbering SHOT_NUMBERED_KINDS）。
-const SHOT_NUMBERED_KINDS = new Set(['image', 'video', 'shot', 'keyframe'])
-
 /** per-kind 默认尺寸（缺省兜底）。 */
 export function nodeKindDefaultSize(kind: string): { width: number; height: number } {
   return NODE_KIND_DEFAULT_SIZE[kind] ?? FALLBACK_SIZE
@@ -105,22 +102,5 @@ export function nodeKindDefaultCategory(kind: string): string {
   }
 }
 
-/**
- * 是否占镜号（镜像 src isShotNumberedNode）：仅「shots 分类里的 image/video/shot/keyframe」占号，
- * 且排除参考卡（meta.referenceSheet）与首帧图（meta.storyboardKeyframe）——它们不领独立镜号。
- */
-export function nodeKindIsShotNumbered(node: { kind: string; categoryId?: string; meta?: Record<string, unknown> }): boolean {
-  const meta = node.meta as Record<string, unknown> | undefined
-  if (meta && meta.referenceSheet === true) return false
-  if (meta && meta.storyboardKeyframe === true) return false
-  return (node.categoryId ?? 'shots') === 'shots' && SHOT_NUMBERED_KINDS.has(node.kind)
-}
-
-/** 下一个可用镜号（max+1，1-based；镜像 src nextShotIndex）。 */
-export function nodeKindNextShotIndex(existing: readonly { shotIndex?: number }[]): number {
-  let max = 0
-  for (const node of existing) {
-    if (typeof node.shotIndex === 'number' && node.shotIndex > max) max = node.shotIndex
-  }
-  return max + 1
-}
+// Reuse the domain owner; headless creation must not mirror renderer numbering.
+export { isShotNumberedNode as nodeKindIsShotNumbered, nextShotIndex as nodeKindNextShotIndex } from '../shared/canvas/shotNumbering'

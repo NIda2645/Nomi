@@ -229,7 +229,7 @@ try {
   await expect.poll(() => boundEdges().length).toBe(references.length - 1)
   await win.locator('[data-node-id="target"]').first().hover()
   const beforeDrag = readProject().nodes.find((node) => node.id === 'target')
-  const handle = await win.locator('[data-node-id="target"] .generation-canvas-v2-node__handle--input').boundingBox()
+  const handle = await win.locator('.react-flow__node[data-id="target"] .generation-canvas-react-flow__handle--source[data-side="left"] .generation-canvas-react-flow__handle-icon').boundingBox()
   const source = await win.locator('[data-node-id="source-1"]').first().boundingBox()
   expect(handle).toBeTruthy()
   expect(source).toBeTruthy()

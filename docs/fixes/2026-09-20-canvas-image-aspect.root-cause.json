@@ -1,0 +1,315 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-20-canvas-image-aspect",
+  "problem_type": "Image geometry independent from intrinsic media ratio",
+  "symptom": "Generated canvas images show transparent bands above/below or get cropped in lightweight mode",
+  "direct_cause": "Generation result footprint and previewHeight stay frozen; contain letterboxes mismatching returned media",
+  "class_root": "Image geometry did not enforce intrinsic ratio across restoration, resize and both rendering modes",
+  "affected_population": [
+    "Generated/imported/restored image and video nodes, resized results, split assets and image cards"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+    "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+    "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+    "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+    "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+    "src/workbench/generationCanvas/nodes/render/CharacterCardNode.tsx",
+    "src/workbench/generationCanvas/nodes/render/SceneCardNode.tsx",
+    "src/workbench/generationCanvas/nodes/render/PropCardNode.tsx"
+  ],
+  "entry_points": [
+    "Image decode in full and lightweight canvas; stored project restoration; React Flow resize"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Internal state ownership; external references documented in the implementation plan.",
+  "invariants": [
+    "Media area follows measured intrinsic ratio; card footers add their measured content height",
+    "All geometry consumers share the same size; original media bytes and node positions remain unchanged",
+    "Only the decoded original image source may update original image dimensions; thumbnails and stale source events cannot write them."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/sendFrameToTimeline.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/components/generationCanvasGeometry.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/fixation/buildFixationNode.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/artifact/artifactNodeSlots.tsx",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ClipNode.tsx",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/DirectorNode.tsx",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/extractShotCutsToNodes.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/extractVideoFrameToNode.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/factBridge.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/generationCanvasReactFlowAdapter.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "LightweightGenerationNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "GenerationFlowNodeView"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "symbol": "GenerationFlowEdgeView"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "symbol": "nodeTypes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+      "symbol": "edgeTypes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowEffects.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/canvasGraphActions.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/canvasNodeActions.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/store/nodeRunOutcome.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/textEdit/buildTextEditNode.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "symbol": "resolveNodeVisualSize"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "symbol": "useNodeMediaMeasurement"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "symbol": "useNodeMediaMeasurement"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/CharacterCardNode.tsx",
+      "symbol": "useNodeMediaMeasurement"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/PropCardNode.tsx",
+      "symbol": "useNodeMediaMeasurement"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/SceneCardNode.tsx",
+      "symbol": "useNodeMediaMeasurement"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+      "symbol": "computeMediaMetaPatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+      "symbol": "computeNodeMediaMeasurementPatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+      "symbol": "mediaNodeSize"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+      "symbol": "mediaNodeSize"
+    }
+  ],
+  "door_reduction": {
+    "before": 35,
+    "after": 35,
+    "why_not": "Renderers require one shared measurement hook; geometry readers for RF, layout, selection, restoration, panorama and whiteboard require the same owner. No parallel geometry formula remains at the media measurement callers."
+  },
+  "generality_proof": "All image rendering and canvas geometry read resolveNodeVisualSize; RF bounds use the same image sizing rule. Both renderers decode dimensions through computeMediaMetaPatch.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+      "symbol": "resolveNodeVisualSize",
+      "responsibility": "Own intrinsic image geometry for all canvas consumers"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+      "symbol": "computeNodeMediaMeasurementPatch",
+      "responsibility": "Validate result identity, media kind and decoded image src before writing original dimensions."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "entry_point": "BaseGenerationNodeImpl",
+      "disposition": "enforced",
+      "evidence": "Calls shared useNodeMediaMeasurement for decoded media; geometry reads resolveNodeVisualSize."
+    },
+    {
+      "path": "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "entry_point": "LightweightGenerationNode",
+      "disposition": "enforced",
+      "evidence": "Image onLoad shares measurement boundary and contain rendering"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+      "entry_point": "handleImageGridSplit",
+      "disposition": "enforced",
+      "evidence": "Layout probes and asset tile result geometry share resolveNodeVisualSize"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/render/CharacterCardNode.tsx",
+      "entry_point": "CharacterCardNodeImpl",
+      "disposition": "enforced",
+      "evidence": "Image and footer measurements enter shared geometry owner; sibling Scene/Prop follow same path."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every mismatched image result, restored node or arbitrary resize can reproduce.",
+    "same_class_scan": [
+      "door-map computeMediaMetaPatch resolveNodeVisualSize and both renderer files",
+      "Reviewed nodeRunOutcome, rollbackNodeHistory, RF NodeResizer, grid asset creation and thumbnail scale filter",
+      "2026-09-20 audit: door-map computeMediaMetaPatch (1 writer) and useNodeMediaMeasurement (5 callers); LOD chooses thumbnailUrl, Base and dedicated cards choose result.url. NomiImage forwards src unchanged into the DOM; NodeVideoPlaybackGuard can heal playback URLs, so image source validation is image-specific."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+    "invariant": "Every decoded media area follows its intrinsic ratio; cards add measured footer height.",
+    "failure_mode": "Invalid or missing intrinsic sizes remain unmeasured until a successful current image decode; never invent aspect ratio.",
+    "exception_policy": "none",
+    "strategy": "Derive image sizes and resize limits at the shared geometry owner; use native RF ratio lock and feed LOD measurements to existing pure boundary.",
+    "artifacts": [
+      "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+      "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
+      "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx",
+      "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+      "src/workbench/generationCanvas/nodes/render/CharacterCardNode.tsx",
+      "src/workbench/generationCanvas/nodes/render/SceneCardNode.tsx",
+      "src/workbench/generationCanvas/nodes/render/PropCardNode.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/nodes/nodeSizing.visualSize.test.ts",
+    "src/workbench/generationCanvas/nodes/computeMediaMetaPatch.test.ts",
+    "tests/ux/canvas-image-aspect.walk.mjs",
+    "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/nodes/nodeSizing.visualSize.test.ts",
+    "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+      "src/workbench/generationCanvas/components/LightweightGenerationNode.tsx",
+      "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx"
+    ],
+    "rationale": "Remove generated-footprint freeze at measurement, independent media dimension clamps and LOD cover crop. Content cards retain fixed widths and measured footer content."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No runtime upgrade; React Flow installed NodeResizer already provides keepAspectRatio.",
+    "exit_criteria": []
+  },
+  "migration": "Pure geometry derivation repairs old stored previewHeight on render; current image decoding refreshes old dimensions. No source asset or project file rewrite.",
+  "residual_risks": [
+    "Source files with intentional alpha retain it; this fixes container letterboxing, not authored transparent pixels.",
+    "LOD with only a thumbnail and no original dimension metadata remains unmeasured until full source decoding; thumbnail rounding is not treated as original geometry."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+    "tests": [
+      "src/workbench/generationCanvas/nodes/nodeSizing.visualSize.test.ts"
+    ],
+    "why": "All node geometry consumers already converge here; caller-only CSS would disagree with edges and bounds."
+  }
+}

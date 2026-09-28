@@ -56,6 +56,11 @@ export const LANE_ERROR_CODES = [
   'agent_lane_model_unconfigured',
   /** 这条消息引用的技能已经不在了。 */
   'agent_skill_unavailable',
+  'agent_skill_version_changed',
+  'agent_lane_input_reference_invalid',
+  /** Stop cancelled this input before pi accepted it. The unsent draft remains editable. */
+  'agent_lane_input_cancelled',
+  'agent_lane_original_media_unavailable',
   /** 项目身份在命令飞行途中变了（切项目/重新绑定）。 */
   'project_binding_stale',
   /** 拿不到项目目录。 */
@@ -113,4 +118,3 @@ export function laneErrorCodeOf(error: unknown): LaneErrorCode {
   if (isLaneErrorCode(trimmed)) return trimmed
   return 'agent_lane_execute_failed'
 }
-

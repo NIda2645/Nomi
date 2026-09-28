@@ -107,6 +107,9 @@ export type GenerationErrorKind =
   | 'input-image-blocked'
   | 'asset-upload-failed'
   | 'asset-too-large'
+  // 参考素材本身有问题（上传前的本机检查没过）。与 asset-upload-failed 分开：那条是通道没通、
+  // 换网络或稍后重试可能就好；这条是**这个文件**不行，重试一万次都一样，得换素材。
+  | 'asset-invalid'
   // Nomi 自己的出站安全策略把取片拦下了（私网/回环/fake-ip 未确证）。与 network 分开，因为
   // 它的**真相和下一步都不同**：network = 上游或线路偶发，等一等重试可能就好；这条是**确定性**
   // 的自我拒绝（同一个 URL 重试一万次都是同一堵墙），而且任务**已经付过钱**——正确的动作是去
@@ -116,6 +119,9 @@ export type GenerationErrorKind =
   // 请求从未离开本机 → 没有计费、也没有可找回的 taskId，所以下一步是「修网络后重新生成」（免费），
   // 而不是「免费重新拉取」（那需要一个已经存在的任务）。
   | 'outbound-blocked-submit'
+  // 同族第三条：请求带着密钥，但目的地不是用户保存这把 key 时确认过的 origin。没有计费，
+  // 也没有网络要修——下一步是回接入页重新保存一次密钥（那一页是这条连接地址的唯一家）。
+  | 'outbound-blocked-credential-origin'
   | 'server'
   | 'input'
   | 'output-truncated'
@@ -138,8 +144,10 @@ const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   'input-image-blocked': 'inputImageBlocked',
   'asset-upload-failed': 'assetUploadFailed',
   'asset-too-large': 'assetTooLarge',
+  'asset-invalid': 'assetInvalid',
   'outbound-blocked': 'outboundBlocked',
   'outbound-blocked-submit': 'outboundBlockedSubmit',
+  'outbound-blocked-credential-origin': 'outboundBlockedCredentialOrigin',
   server: 'server',
   input: 'input',
   'output-truncated': 'outputTruncated',
@@ -157,8 +165,9 @@ export function narrateGenerationError(
 ): { reason: string; hint: string } {
   const key = ERROR_KEY_BY_KIND[kind]
   const reason = i18n.t(`generationCommon.observability.error.${key}.reason`, params)
-  // These two failures occur before the provider is called; never infer billing from a generic failure.
-  const uncharged = kind === 'outbound-blocked-submit' || kind === 'asset-upload-failed'
+  // These failures occur before the provider is called; never infer billing from a generic failure.
+  const uncharged = kind === 'outbound-blocked-submit' || kind === 'outbound-blocked-credential-origin'
+    || kind === 'asset-upload-failed' || kind === 'asset-invalid'
   return {
     reason: uncharged ? `${reason} · ${i18n.t('generationCommon.observability.progress.notCharged')}` : reason,
     hint: i18n.t(`generationCommon.observability.error.${key}.hint`, params),
@@ -213,12 +222,18 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorAction> = {
   // 文件传上去再被拒）。用户真正的路是「换/压缩这个素材」——素材就在画布上连着，不需要按钮，
   // 所以主动作给「换个模型」（换一家上限更高的通道也确实可能过），重试退到次动作。
   'asset-too-large': 'switch-model',
+  // 参考素材本身不行：换素材的地方就在画布上（连着的那个节点，不需要按钮），换好后点重试。
+  // 同「改提示词后重试」那两类的理由——按钮只给 retry，改的动作在画布上。
+  'asset-invalid': 'retry',
   // 「去模型接入」正是网络那一行的家（NetworkSection 就住在模型设置抽屉里）。绝不给 retry：
   // 重试 = 再生成 = 再扣一次钱，而这次的钱根本没丢，只是产物还没取回来。
   'outbound-blocked': 'open-model-access',
   // 同样把用户送去网络那一行（NetworkSection 就住在模型接入抽屉里）。这一条的次动作是 retry，
   // 而且这次的 retry 是**诚实的**：请求从未发出、没有计费，修好网络后重来一次不多花一分钱。
   'outbound-blocked-submit': 'open-model-access',
+  // 同样送去模型接入——但要做的是**重新保存密钥**，不是看代理（hint 里写清）。绝不给 retry 当主动作：
+  // 地址没改回来之前，重试一万次都是同一堵墙。
+  'outbound-blocked-credential-origin': 'open-model-access',
   quota: 'retry',
   'poll-timeout': 'retry',
   network: 'retry',

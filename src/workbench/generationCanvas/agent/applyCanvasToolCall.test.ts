@@ -31,23 +31,21 @@ describe('applyCanvasToolCall clientId 翻译', () => {
     useWorkbenchStore.setState({ activeCategoryId: 'shots', canvasFitNonce: 0, canvasFitCategoryId: null })
   })
 
-  it('批量创建节点后请求一次适应视图，单节点不打断当前视口', async () => {
-    await applyCanvasToolCall('create_canvas_nodes', {
-      nodes: [{ clientId: 'solo', kind: 'image', title: '单节点', prompt: 'p' }],
-    })
-    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(0)
-
+  // 2026-09-25 用户拍板「程序不再主动平移 / 缩放画布」：Agent 建卡（单个、批量、跨分类）一律不请求适应、
+  // 不派发聚焦、不切分类——屏外 / 别的分类的新节点由画布边缘提示指路。
+  it('reported case: creating nodes never moves the viewport, focuses a node, or switches category', async () => {
+    // 聚焦事件这一侧由 canvasViewportMovers.structure.test.ts 的名单守（这里是 node 环境，没有 window）。
+    await applyCanvasToolCall('create_canvas_nodes', { nodes: [{ clientId: 'solo', kind: 'image', title: '单节点', prompt: 'p' }] })
     await applyCanvasToolCall('create_canvas_nodes', {
       nodes: [
         { clientId: 'batch-1', kind: 'image', title: '批量 1', prompt: 'p1' },
         { clientId: 'batch-2', kind: 'video', title: '批量 2', prompt: 'p2' },
       ],
     })
-    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(1)
-    expect(useWorkbenchStore.getState().canvasFitCategoryId).toBe('shots')
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(0)
   })
 
-  it('批量节点不在当前分类时切到包含新节点的主分类再 fit', async () => {
+  it('class: nodes landing in another category leave the active category and viewport alone', async () => {
     useWorkbenchStore.getState().setActiveCategoryId('audio')
     await applyCanvasToolCall('create_canvas_nodes', {
       nodes: [
@@ -55,9 +53,8 @@ describe('applyCanvasToolCall clientId 翻译', () => {
         { clientId: 'shot-1', kind: 'video', title: '镜头', prompt: 'p2' },
       ],
     })
-    expect(useWorkbenchStore.getState().activeCategoryId).toBe('shots')
-    expect(useWorkbenchStore.getState().canvasFitCategoryId).toBe('shots')
-    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(1)
+    expect(useWorkbenchStore.getState().activeCategoryId).toBe('audio')
+    expect(useWorkbenchStore.getState().canvasFitNonce).toBe(0)
   })
 
   it('resetClientIdRegistry 清表后旧 clientId 不再解析到旧项目节点(P1 治跨项目串台)', async () => {
@@ -239,7 +236,7 @@ describe('applyCanvasToolCall canonical nomi_canvas_plan patch_shots', () => {
 })
 
 // 图片+视频分镜落画布的镜号语义：首帧图带 storyboardKeyframe 标记不自动领号，
-// 落地后按 first_frame 边共用所属视频的镜号（与手动「转视频」桥继承号同语义）——
+// 落地后 UI/Agent 按 first_frame 边共用所属视频的镜号，不存第二份号码——
 // 否则 N 镜领出 1..2N 交错编号，角标与「镜头 N 首帧」标题错位（A2 类编号 bug）。
 describe('applyCanvasToolCall 图片+视频分镜镜号', () => {
   beforeEach(resetCanvas)
@@ -268,8 +265,12 @@ describe('applyCanvasToolCall 图片+视频分镜镜号', () => {
     // 视频是镜位本体：连续 1..2，不被首帧图挤号
     expect([video1?.shotIndex, video2?.shotIndex]).toEqual([1, 2])
     // 首帧图与所属视频共用镜号；身份标记落进 meta（isShotNumberedNode 据此长期跳过）
-    expect(kf1?.shotIndex).toBe(1)
-    expect(kf2?.shotIndex).toBe(2)
+    expect(kf1?.shotIndex).toBeUndefined()
+    expect(kf2?.shotIndex).toBeUndefined()
+    const { projectCanvasRead } = await import('../../../../electron/shared/agentCapabilities/canvasRead')
+    const read = projectCanvasRead(useGenerationCanvasStore.getState())
+    expect(read.nodes.find(n => n.id === kf1?.id)).toMatchObject({ shotIndex: 1, shotRole: 'first_frame', shotOwnerNodeIds: [video1!.id] })
+    expect(read.nodes.find(n => n.id === kf2?.id)).toMatchObject({ shotIndex: 2, shotRole: 'first_frame', shotOwnerNodeIds: [video2!.id] })
     expect((kf1?.meta as Record<string, unknown>)?.storyboardKeyframe).toBe(true)
   })
 })

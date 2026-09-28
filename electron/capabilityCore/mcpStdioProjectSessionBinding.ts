@@ -1,4 +1,3 @@
-import type { McpGenerationPolicy } from './mcpGenerationPolicy'
 import { createMcpConnectionContext } from './mcpConnectionContext'
 import {
   createProductionProjectSessionRuntime,
@@ -15,15 +14,12 @@ import {
  * one binding; no lease authority, resolver, principal, or nonce is injectable
  * as an independent optional seam.
  */
-export function createProductionMcpStdioProjectSessionBinding(
-  generationPolicy: McpGenerationPolicy,
-): VerifiedProjectSessionBinding {
+export function createProductionMcpStdioProjectSessionBinding(): VerifiedProjectSessionBinding {
   const connection = createMcpConnectionContext({
     client: process.env[MCP_CLIENT_ENV],
     proof: process.env[MCP_CLIENT_PROOF_ENV],
   })
   const runtime = createProductionProjectSessionRuntime({
-    generationPolicy,
     getOpenProjectSelection: () => null,
     isServerAllowlisted: () => false,
   })

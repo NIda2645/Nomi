@@ -38,15 +38,22 @@ describe('MCP generation draft schema parity', () => {
     ]) expect(validateToolArguments(tool.name, tool.inputSchema, { leaseHandle: 'lease', ...args })).not.toBeNull()
   })
 
-  it('routes prompt-only shots from both surfaces to the same existing candidate rejection', async () => {
+  // 名字原本叫「…the same existing candidate rejection」——把「只给 prompt 的镜头会被拒」当成契约钉住了。
+  // 「existing」这个词是马脚：有人量到了那个拒绝，选择冻结它，而不是问它该不该存在。2026-09-18 查明那正是
+  // 缺陷本身（单镜早就允许只给 prompt，多镜不允许）。这条测试真正守得住的不变量是**两个入口结果一致**，
+  // 与结果是收是拒无关；那条留下，冻结的那半删掉（正面用例在 mcpMultiShotCreateEntrance.e2e.test.ts）。
+  it('routes prompt-only shots from both surfaces to the same outcome', async () => {
     const shot = { prompt: 'A sunrise' }
     const parsers = {
       record: (value: unknown) => value as Record<string, unknown>,
       candidateFrom: (value: unknown) => generationCandidateSchema.parse(value),
     }
     const binding = { projectId: 'project', immutableProjectUuid: '11111111-1111-4111-8111-111111111111', projectGeneration: 1 }
-    const planning = vi.fn(async ({ params }: { params: Record<string, unknown> }) =>
-      draftShotFromPlan((params.shots as unknown[])[0], 0, parsers))
+    let refusedOnTheLane: unknown
+    const planning = vi.fn(async ({ params }: { params: Record<string, unknown> }) => {
+      try { return draftShotFromPlan((params.shots as unknown[])[0], 0, parsers) }
+      catch (error) { refusedOnTheLane = error; throw error }
+    })
     const adapter = createPiGenerationTransportAdapter(binding, {
       planning, leaseFor: () => ({ ...binding } as ProjectLeaseV2),
     })
@@ -55,8 +62,25 @@ describe('MCP generation draft schema parity', () => {
         args: { operation: 'create', shots: [shot] } }, new AbortController().signal)
       const external = tool.build({ leaseHandle: 'lease', projectId: binding.projectId, shots: [shot] })
       expect(planning).toHaveBeenCalledWith(expect.objectContaining({ capability: 'create', params: expect.objectContaining({ shots: external.shots }) }))
-      expect(laneResult).toMatchObject({ ok: false, code: 'generation_execution_failed' })
-      expect(() => draftShotFromPlan((external.shots as unknown[])[0], 0, parsers)).toThrow(laneResult && !laneResult.ok ? laneResult.message : 'Expected shared failure')
+      // Parity 不是「两边各自失败」——那两条断言互不相干，删掉任意一条另一条照样绿。守得住的
+      // 不变量是**同一份入参在同一个 owner 上被同一个理由拒掉**：外部入口直接调用抛出来的那句话，
+      // 必须逐字等于 lane 这条路收敛成码之前拿到的那一句。
+      let refusedExternally: unknown
+      try { draftShotFromPlan((external.shots as unknown[])[0], 0, parsers) } catch (error) { refusedExternally = error }
+      expect(refusedExternally).toBeInstanceOf(Error)
+      expect((refusedExternally as Error).message).toMatch(/没有配置可用的图片模型/)
+      expect((refusedOnTheLane as Error).message).toBe((refusedExternally as Error).message)
+      // 2026-09-22 改判：这一句**不是**宿主内部异常文本，是我们自己写给模型的一句可行动的话
+      // （抛出点的注释写着它为什么这么写：DeepSeek 连调 6 次都不知道自己可以点名一个模型）。
+      // 旧断言把它当成「要收敛掉的内部文本」，于是运输边界只发一个裸码——run2 的轨迹里，
+      // 这一句正是 6 次「draft_shots failed inside Nomi」的真身。
+      //
+      // parity 因此更强了，不是更弱：lane 这条路发布的正文现在**逐字等于**外部入口抛出来的那一句，
+      // 两边连措辞都不再有分歧。真正要守的「不泄露」由 `transportFailure` 的另一条轴保证：
+      // 只有我们有意抛的 `ModelFacingRefusal` 才带正文，别人抛的一个字都不带
+      // （阳性对照在 `generationDomainRefusalReachesModel.test.ts`）。
+      expect(laneResult).toMatchObject({ ok: false, code: 'generation_input_invalid' })
+      expect((laneResult as { message?: string }).message).toBe((refusedExternally as Error).message)
     } finally { adapter.dispose() }
   })
 

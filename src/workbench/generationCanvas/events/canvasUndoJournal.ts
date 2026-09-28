@@ -4,7 +4,7 @@
 // 等价性:barrier 落点 = 原 pushUndoSnapshot 调用点(同名导出,调用方零改动)——
 // 撤销粒度与旧栈逐手势一致(addNode 后的默认参数 patch 不设 barrier,跟旧行为一样随上一 barrier 回退)。
 // 内存:HISTORY_LIMIT=80 维持;最老 barrier 被挤出时把前缀压进 base(紧凑化),journal 不无界。
-import { applyCanvasEvent, emptyCanvasProjection, type CanvasProjection } from './canvasEventReducer'
+import { replayCanvasEvents, emptyCanvasProjection, type CanvasProjection } from './canvasEventReducer'
 import { getActiveCanvasGestureContext } from './canvasGestureContext'
 import { interruptPendingCanvasWrite } from './canvasWriteBoundary'
 
@@ -19,11 +19,7 @@ let redoBarriers: number[] = []
 let generation = 0
 
 function replayTo(position: number): CanvasProjection {
-  let projection = base
-  for (let index = 0; index < position && index < journal.length; index += 1) {
-    projection = applyCanvasEvent(projection, journal[index])
-  }
-  return projection
+  return replayCanvasEvents(journal.slice(0, position), base)
 }
 
 /** 发射器同步喂(canvas 域全部事件,含 snapshot.restored)。 */
