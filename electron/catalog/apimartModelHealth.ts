@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { APIMART_AUDIO_MODELS } from "./apimartAudios";
 import { APIMART_IMAGE_MODELS } from "./apimartImages";
 import { APIMART_VIDEO_MODELS } from "./apimartVideos";
-import { modeTransportFor, resolveArchetypeForModel, specializeArchetypeForVariant } from "../shared/modelArchetypes";
+import { modeTransportFor, resolveArchetypeForModel } from "../shared/modelArchetypes";
 import type { HttpOperation, ProfileKind } from "./types";
 import type { ArchetypeMode, ArchetypeReferenceSlot } from "../shared/modelArchetypes/types";
 
@@ -127,13 +127,7 @@ function entryFor(model: CatalogModel, mapping: CatalogModel["mappings"][number]
   const taskKind = mapping.taskKind as GenerationTaskKind;
   const mode = modeFor(model.archetypeId, model.modelKey, taskKind, modeIndex);
   const references = referenceChannels(mode, mapping.create);
-  const archetype = resolveArchetypeForModel({ modelKey: model.modelKey, vendorKey: "apimart", meta: { archetypeId: model.archetypeId } });
-  const variantFacts = archetype?.variants?.map((variant) => {
-    const specialized = specializeArchetypeForVariant(archetype, variant.id);
-    const variantMode = specialized.modes.find((candidate) => candidate.id === mode?.id);
-    return { id: variant.id, modelKey: variant.modelKey, params: parameterRange(variantMode ?? null) };
-  }) ?? [];
-  const params = { mode: parameterRange(mode), variants: variantFacts };
+  const params = { mode: parameterRange(mode) };
   // `nomi-audio` is Nomi's combined catalog alias; the APIMart wire model is the
   // mode's declared modelEnum (for example gpt-4o-mini-tts). Inventory reports
   // the upstream identity so the health list never pretends the alias is vendor-owned.
