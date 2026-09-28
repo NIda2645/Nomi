@@ -1,0 +1,110 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-09-28T07:20:45.559Z",
+  "baseUrl": "https://nomiaqm.com",
+  "pages": [
+    {
+      "url": "https://nomiaqm.com/en/",
+      "checked": 10,
+      "failures": [
+        {
+          "rule": "META-DESCRIPTION",
+          "severity": "error",
+          "message": "META-DESCRIPTION check failed for https://nomiaqm.com/en/",
+          "evidence": "description",
+          "recommendation": "Add a page-specific 50–160 character meta description."
+        }
+      ]
+    },
+    {
+      "url": "https://nomiaqm.com/en/quickstart",
+      "checked": 10,
+      "failures": [
+        {
+          "rule": "META-DESCRIPTION",
+          "severity": "error",
+          "message": "META-DESCRIPTION check failed for https://nomiaqm.com/en/quickstart",
+          "evidence": "description",
+          "recommendation": "Add a page-specific 50–160 character meta description."
+        }
+      ]
+    }
+  ],
+  "sitemap": {
+    "checked": 5,
+    "entries": [
+      {
+        "url": "https://nomiaqm.com/",
+        "lastmod": "2026-09-27"
+      },
+      {
+        "url": "https://nomiaqm.com/en/",
+        "lastmod": "2026-09-27"
+      },
+      {
+        "url": "https://nomiaqm.com/quickstart",
+        "lastmod": "2026-09-27"
+      },
+      {
+        "url": "https://nomiaqm.com/en/quickstart",
+        "lastmod": "2026-09-27"
+      },
+      {
+        "url": "https://nomiaqm.com/handbook",
+        "lastmod": "2026-08-23"
+      }
+    ],
+    "failures": []
+  },
+  "robots": {
+    "checked": 2,
+    "failures": []
+  },
+  "performance": {
+    "status": "not_configured"
+  },
+  "summary": {
+    "pages": 2,
+    "checks": 27,
+    "failures": 5,
+    "networkFailures": 3,
+    "errors": 5
+  },
+  "failures": [
+    {
+      "rule": "NETWORK-PAGE",
+      "severity": "error",
+      "message": "Could not fetch https://nomiaqm.com/",
+      "evidence": "HTTP 403 for https://nomiaqm.com/",
+      "recommendation": "Retry the scheduled audit and investigate origin availability."
+    },
+    {
+      "rule": "NETWORK-PAGE",
+      "severity": "error",
+      "message": "Could not fetch https://nomiaqm.com/quickstart",
+      "evidence": "HTTP 403 for https://nomiaqm.com/quickstart",
+      "recommendation": "Retry the scheduled audit and investigate origin availability."
+    },
+    {
+      "rule": "NETWORK-PAGE",
+      "severity": "error",
+      "message": "Could not fetch https://nomiaqm.com/handbook",
+      "evidence": "HTTP 403 for https://nomiaqm.com/handbook",
+      "recommendation": "Retry the scheduled audit and investigate origin availability."
+    },
+    {
+      "rule": "META-DESCRIPTION",
+      "severity": "error",
+      "message": "META-DESCRIPTION check failed for https://nomiaqm.com/en/",
+      "evidence": "description",
+      "recommendation": "Add a page-specific 50–160 character meta description."
+    },
+    {
+      "rule": "META-DESCRIPTION",
+      "severity": "error",
+      "message": "META-DESCRIPTION check failed for https://nomiaqm.com/en/quickstart",
+      "evidence": "description",
+      "recommendation": "Add a page-specific 50–160 character meta description."
+    }
+  ]
+}
