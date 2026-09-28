@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { Group, Stack, Text } from '@mantine/core'
 import { IconCheck } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'

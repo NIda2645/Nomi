@@ -2,7 +2,7 @@ import { anchorsConsumedBy } from '../../../../../electron/shared/modelArchetype
 import { NodeGenerationStatus } from '../../../generationCanvas/nodes/NodeGenerationStatus'
 import { StoryboardOverrideBadge } from '../../../generationCanvas/nodes/StoryboardOverrideBadge'
 import { resolveStoryboardOverride } from '../exec/storyboardOverrideActions'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconAlertTriangle,

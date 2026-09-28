@@ -1,6 +1,6 @@
 import { AssistantPane } from '../AssistantPane'
 import { useWorkbenchStore } from '../workbenchStore'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 import WorkbenchEditor from './WorkbenchEditor'

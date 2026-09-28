@@ -8,7 +8,7 @@
  *        大球在真人尺寸下盖住肢体、根本点不准。手指 / 脚趾末端 / 头顶 End 骨不画。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { createPortal, useFrame, useThree } from '@react-three/fiber'
 import { useDirectorStore } from '../../DirectorEditorContext'

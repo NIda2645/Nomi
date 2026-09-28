@@ -5,7 +5,7 @@
  * 批量删除（2026-07-15 用户群反馈：462 个自定义模型只能逐个删=鸡肋）：进「选择删除」模式勾多行一次删；
  * 配合搜索可精准删某一类（搜 flux → 全选 → 删除选中）。数据结构零改动——enabled 字段与生成侧过滤都现成。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { isLegacyCatalogMeta } from '../../config/modelIdentity'
 import { useTranslation } from 'react-i18next'
 import { IconSearch, IconTrash, IconCheck, IconCode, IconEye, IconEyeOff } from '@tabler/icons-react'

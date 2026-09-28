@@ -5,7 +5,7 @@
  *        鼠标手势与漫游键不是 DIRECTOR_HOTKEYS 里的绑定（Orbit / useFrame 直接读键），用固定 kbd 文本列出。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DesignModal } from '../../../../../../design'
 import { DIRECTOR_HOTKEYS, formatHotkey, type DirectorHotkeyId } from '../../model/hotkeys'

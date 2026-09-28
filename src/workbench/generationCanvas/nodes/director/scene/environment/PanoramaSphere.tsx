@@ -6,7 +6,7 @@
  *        不打 editor-only（全景是出片的一部分）；url 变化重载，清空即卸。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useTranslation } from 'react-i18next'

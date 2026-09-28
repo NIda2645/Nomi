@@ -1,5 +1,5 @@
 // The real shell subscribes to the same lane client as the desktop app.
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { LanePart, LaneQueuedMessage, LaneWorkspaceProjection } from '../../../../electron/shared/agentLane/laneContracts'
 import { capabilityAliasesFor } from '../../../../electron/shared/agentCapabilities/registry'
 import { EMPTY_LANE_PROJECTION, laneClient } from '../../../workbench/ai/lane/laneClient'

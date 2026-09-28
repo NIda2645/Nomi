@@ -6,7 +6,7 @@
  *        就把对象升格为 character（走 CharacterEntity 的骨骼管线），否则原样静态渲染。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFBX, useGLTF } from '@react-three/drei'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'

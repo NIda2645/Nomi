@@ -258,6 +258,7 @@ async function checkC19GroupUndoAndFocus() {
   }) })
   await prompt.click()
   await expect(prompt).toBeFocused()
+  await expect.poll(() => prompt.evaluate(element => Boolean(element.editor && element.editor.view.dom === element))).toBe(true)
   await getWin().keyboard.press(process.platform === 'darwin' ? 'Meta+ArrowLeft' : 'Home')
   await getWin().keyboard.press('Shift+ArrowRight')
   await expect.poll(() => getWin().evaluate(() => window.getSelection()?.toString())).toBe('C')

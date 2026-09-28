@@ -6,7 +6,7 @@
  *        没接画布（开发入口）时按钮禁用并说明。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchIconButton } from '../../../../../../design'
 import { IconFolder, IconPhoto, IconSend2, IconTrash, IconVideo } from '../../../../../../vendor/tablerIcons'

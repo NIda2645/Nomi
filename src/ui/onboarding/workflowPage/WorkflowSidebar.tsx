@@ -7,7 +7,7 @@
  * 每行的缺件状态不是装饰：ComfyUI 工作流最常见的死法就是「这台机器上没装那个节点 / 没下那个模型」，
  * 用户点生成才 400。列表里当场标出来，是 D4「缺口明着标」的具体落法。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconAlertTriangle,

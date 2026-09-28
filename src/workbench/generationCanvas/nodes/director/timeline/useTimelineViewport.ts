@@ -9,7 +9,7 @@ import React from 'react'
 import { DIRECTOR_MAX_DURATION_SECONDS } from '../model/timeGrid'
 
 export type TimelineViewport = {
-  containerRef: React.RefObject<HTMLDivElement>
+  containerRef: React.RefObject<HTMLDivElement | null>
   pxPerSecond: number
   visibleWidth: number
   laneWidth: number

@@ -26,7 +26,7 @@ export type MentionSuggestionItem = {
 
 export type MentionSuggestionListRef = { onKeyDown: (args: { event: KeyboardEvent }) => boolean }
 
-export type MentionUploadControls = { openFilePicker: () => void; inputRef: React.RefObject<HTMLInputElement>; onInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void; isDragging: boolean }
+export type MentionUploadControls = { openFilePicker: () => void; inputRef: React.RefObject<HTMLInputElement | null>; onInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void; isDragging: boolean }
 type Props = { items: MentionSuggestionItem[]; command: (item: MentionSuggestionItem) => void; upload?: MentionUploadControls }
 
 function displayAsset(url: string, kind: AssetKind, name: string, thumbnailUrl?: string): AssetRef {

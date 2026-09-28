@@ -7,7 +7,7 @@ import { notify } from '../../../../ui/notificationPolicy'
  * - 转写文本（result.type='text'）：文本（clamp）+ 复制 + 生成字幕（SRT）
  * - 空：上传按钮（配音模式则由 composer 填台词生成）
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlayerPlay, IconPlayerPause, IconWaveSine, IconFileText, IconCopy, IconBadgeCc } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'

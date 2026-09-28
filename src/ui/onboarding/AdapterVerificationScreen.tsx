@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { Group, Stack, Text } from '@mantine/core'
 import { IconAlertTriangle, IconCheck, IconRefresh } from '@tabler/icons-react'

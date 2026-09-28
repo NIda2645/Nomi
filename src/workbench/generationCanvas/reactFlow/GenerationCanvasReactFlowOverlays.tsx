@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import { CanvasBatchGenerateDock } from '../components/CanvasBatchGenerateDock'
 import { CanvasEmptyState } from '../components/CanvasEmptyState'

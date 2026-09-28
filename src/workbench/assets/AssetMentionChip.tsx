@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'

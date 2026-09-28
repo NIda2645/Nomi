@@ -9,7 +9,7 @@ import { notify } from '../../../ui/notificationPolicy'
  * ⚠️ 配色一律 `--nomi-*`：本面板 Portal 到画布视口，`--workbench-*` 只在 `.workbench-shell` 作用域内有定义，
  * 够不到就会**静默退回继承色**（上一轮走查读到 rgb(201,201,201) 才发现，单测全绿）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconX } from '@tabler/icons-react'

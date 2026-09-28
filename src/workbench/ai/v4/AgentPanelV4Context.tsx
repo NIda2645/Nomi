@@ -11,7 +11,7 @@ import { resolveAnchoredPlacement } from '../../generationCanvas/nodes/anchoredP
 // 没有 `max` 就没有百分比可算——那时环画成整圈 ink-10（灰），钮上显示 `—` 而不是 `0%`。
 // `0%` 是一个断言（「你几乎没用上下文」），而我们那一刻其实是「不知道这个模型多大」。
 // 分项同理：宿主没给的行整行不渲染，不留 `0` 也不留 `—` 占位——空行是噪音。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../../../utils/cn'
 import { IconChevronDown } from './AgentPanelV4Icons'
 import type { ContextUsage } from './agentPanelV4Types'

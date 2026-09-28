@@ -14,7 +14,7 @@
 // 用途：design-sync 组件库预览卡（cfg.provider）、以及任何需要在 App 之外单独挂载设计
 // 系统组件的场景。
 
-import React from 'react'
+import React, { type JSX } from 'react'
 import { MantineProvider } from '@mantine/core'
 import { I18nextProvider } from 'react-i18next'
 import i18next, { type i18n as I18nInstance } from 'i18next'

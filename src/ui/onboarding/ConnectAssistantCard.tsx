@@ -12,7 +12,7 @@
  * 「连上后允许做什么」（可信发起方）不再是设置页里的独立一栏：它就是每个客户端卡里的第二个开关。
  * 主操作 = 写各客户端配置的 nomi 条目（合并 + 备份，mcpConfig）；读状态零写盘。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconTerminal2, IconPlugConnected, IconCopy, IconCheck, IconCircleCheck, IconExternalLink,

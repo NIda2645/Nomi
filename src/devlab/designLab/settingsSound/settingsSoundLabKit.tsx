@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { AttentionSoundSection } from '../../../workbench/settings/AttentionSoundSection'
 import { normalizeAttentionSound, type AttentionSoundBridge } from '../../../../electron/shared/contracts/attentionSound'
 

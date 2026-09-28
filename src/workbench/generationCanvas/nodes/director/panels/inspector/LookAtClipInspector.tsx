@@ -5,7 +5,7 @@
  * [POS]: director/panels/inspector 的视线片段卡：字段经 updateLookAtClip；求解在 scene/character/useCharacterRig。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSegmented, NomiSelect, WorkbenchButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

@@ -13,7 +13,7 @@ type FlowViewportApi = {
 
 type UseGenerationCanvasReactFlowPointerArgs = {
   readOnly: boolean
-  hostRef: React.RefObject<HTMLDivElement>
+  hostRef: React.RefObject<HTMLDivElement | null>
   flow: FlowViewportApi
   activeCategoryId: string
   rememberCategoryViewport: (categoryId: string, viewport: CanvasStoredViewport) => void

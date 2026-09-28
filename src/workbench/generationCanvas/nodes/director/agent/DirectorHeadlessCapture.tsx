@@ -8,7 +8,7 @@
  *        像素与全屏壳同一条 CaptureBinder 管线，出图 == 编辑器所见。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { FencedCanvas } from '../../fencedCanvas'

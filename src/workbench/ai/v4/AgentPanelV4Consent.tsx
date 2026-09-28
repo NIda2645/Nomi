@@ -14,7 +14,7 @@
 //
 // 「让他理解我们不是做坏事」这件事不是靠一句承诺做到的，是靠那两行清单**看得见**。
 // 所以这张卡上没有「我们非常重视您的隐私」这类句子，只有事实。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DesignButton } from '../../../design'
 import { getDesktopBridge } from '../../../desktop/bridge'

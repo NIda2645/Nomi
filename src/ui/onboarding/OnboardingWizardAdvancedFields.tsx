@@ -1,4 +1,4 @@
-import type React from 'react'
+import type { ChangeEvent, JSX } from 'react'
 import { ActionIcon, Anchor, Collapse, Group, Stack, Text } from '@mantine/core'
 import { IconCheck, IconChevronDown, IconChevronRight, IconPlus, IconTrash } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
@@ -97,7 +97,7 @@ export function OnboardingWizardAdvancedFields({
   /** 低频高级字段：这个连接单独走的代理（可选）。 */
   proxyUrl: string
   proxyUrlValid: boolean
-  onProxyUrlChange: (event: React.ChangeEvent<HTMLInputElement>) => void
+  onProxyUrlChange: (event: ChangeEvent<HTMLInputElement>) => void
 }): JSX.Element {
   const { t } = useTranslation()
   return (

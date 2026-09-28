@@ -16,7 +16,7 @@
 //     悬停触发的图标钮 + 短标签，禁用时还要外包一层 `<span className="inline-flex">`
 //     （禁用元素不触发 hover）。整句话那种得自己覆写 `whitespace-normal`，
 //     此前那格没覆写——照抄它会得到一条跑出屏幕的单行提示。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconDeviceFloppy, IconInfoCircle, IconX } from '@tabler/icons-react'
 
 import {

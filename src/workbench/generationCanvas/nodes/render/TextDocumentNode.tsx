@@ -10,7 +10,7 @@
  *
  * 复用唯一真相源 useNomiRichTextEditor。本组件只渲染 body，节点选中/拖动/缩放由 BaseGenerationNode 提供。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconGripVertical, IconWriting } from '@tabler/icons-react'
 import { EditorContent, useEditorState, type JSONContent } from '@tiptap/react'

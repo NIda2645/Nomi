@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconExternalLink, IconSparkles } from '@tabler/icons-react'
 import { ANTIGRAVITY_VENDOR_KEY, ANTIGRAVITY_IMAGE_MODEL_KEY } from '../../../electron/shared/antigravity'

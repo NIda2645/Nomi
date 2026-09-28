@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { cn } from '../../utils/cn'
 import { NomiImage } from '../../design/media'
 import { useLocalAssetPreview } from './useLocalAssetPreview'

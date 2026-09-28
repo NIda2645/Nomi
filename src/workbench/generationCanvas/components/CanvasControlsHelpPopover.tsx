@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconKeyboard } from '@tabler/icons-react'
 import { AnchoredPopover, Tooltip, TooltipContent, TooltipTrigger, WorkbenchButton } from '../../../design'

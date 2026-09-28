@@ -10,7 +10,7 @@
  * 长在那家自己的卡上；重填的入口（改地址 / 换 key / 重新导入包）也都在这一屏（§1.5 一功能一个家）。
  * 关掉走的是现成的 upsertVendor 写回 meta，不新造 IPC、不新造通知系统（P1）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconInfoCircle } from '@tabler/icons-react'
 

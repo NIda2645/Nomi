@@ -4,7 +4,7 @@
  * [POS]: director/panels/inspector 的几何体/组属性（清单 §4.4 I6）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'
 import type { DirectorObject } from '../../model/directorTypes'

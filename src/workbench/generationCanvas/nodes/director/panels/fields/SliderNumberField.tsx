@@ -4,7 +4,7 @@
  * [POS]: director/panels/fields 的数值字段原语（清单 §4 检查器通用：滑条 + 输入 + 滚轮微调）；沿用 V1 检查器的原生 range 先例。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../../../../../../utils/cn'
 import { useNumberDraft } from './useNumberDraft'
 

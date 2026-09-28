@@ -3,7 +3,7 @@
 // 自动 dismiss 导致删除链路永远测不到、Electron 下原生弹窗在 macOS 有焦点丢失史。
 // promise 风格 API（confirmDialog/alertDialog/promptDialog）在 confirmDialogStore.ts，
 // 谁写不可逆操作都走这里——原生三件套从此禁用（设计系统 §3.5）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconAlertTriangle, IconInfoCircle } from '@tabler/icons-react'
 import { DesignModal } from './overlays'
 import { WorkbenchButton } from './actions'

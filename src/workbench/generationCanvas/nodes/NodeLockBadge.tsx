@@ -7,7 +7,7 @@
 // 外挂组件:BaseGenerationNode 是白名单巨壳(R12),不往里塞实现(同 TechnicalReviewBadge)。
 //
 // 锁态自己从 store 读:浮条只知道 nodeId,再让它把 locked 一路传下来就是把同一个事实抄两份。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconLock, IconLockOpen } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'

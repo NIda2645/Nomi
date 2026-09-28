@@ -6,7 +6,7 @@
  * [POS]: director/panels/inspector 的路径片段卡：改时间走 updateClipTime（重叠即拒绝并 toast），裁切/分割复用时间轴命令层。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

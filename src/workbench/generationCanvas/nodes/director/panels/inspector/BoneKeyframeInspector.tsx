@@ -4,7 +4,7 @@
  * [POS]: director/panels/inspector 的骨骼关键帧卡：选中关键帧时骨骼页的把手 / 滑条都写进这一帧（storeCharacterActions.rotationTarget）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../../../../design'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'

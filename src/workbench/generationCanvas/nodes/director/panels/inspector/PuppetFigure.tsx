@@ -6,7 +6,7 @@
  *        选择态住 store.selection.ikTarget / boneKey；语义骨映射：spine → spine2、thigh → upLeg、shin → leg。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../../utils/cn'
 import type { IkHandleKey } from '../../model/ikChains'

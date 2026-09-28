@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import type { NomiBrowserAsset, NomiBrowserAssetTab } from '../assets/browserAssetData'
 import { dispatchBrowserAssetsImportToCanvas } from '../overlay/globalAssetPopoverEvents'

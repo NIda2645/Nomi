@@ -7,7 +7,7 @@
  *        与它自己的库 id 不相交、全部显示成「单帧姿态」，属实现瑕疵，这里按意图实现）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DesignModal, WorkbenchButton } from '../../../../../../design'
 import { IconLoader2, IconMoodConfuzed, IconRefresh, IconRun, IconSearch, IconUser, IconX } from '../../../../../../vendor/tablerIcons'

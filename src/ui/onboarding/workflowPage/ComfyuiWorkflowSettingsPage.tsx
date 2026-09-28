@@ -16,7 +16,7 @@
  *   改绑定/改字段/改名/删除 = 配置动作，全在这页。窄栏那套编辑态已同 commit 删除，不留并行版（P1）。
  */
 import { CatalogNoticeBanner } from '../ModelCatalogNotices'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Portal } from '@mantine/core'
 import { IconAlertTriangle, IconArrowLeft, IconTrash, IconX } from '@tabler/icons-react'

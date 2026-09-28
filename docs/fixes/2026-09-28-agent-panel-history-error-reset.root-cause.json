@@ -1,0 +1,109 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-agent-panel-history-error-reset",
+  "problem_type": "history pagination error state reset by callback identity churn",
+  "symptom": "After a history-page read fails, a same-session parent rerender with a newly allocated onLoadOlder callback hides the visible history error before the user retries.",
+  "direct_cause": "AgentPanelV4Panel reset historyError in a layout effect keyed by onLoadOlder, although the resident shell supplies that callback inline on every parent render.",
+  "class_root": "The panel treated callback identity as session identity instead of using historyIdentity for session resets and the explicit retry boundary for error dismissal.",
+  "affected_population": [
+    "Users viewing a V4 Agent panel whose host rerenders while history pagination has failed",
+    "Resident and devlab hosts that pass an inline or otherwise unstable onLoadOlder callback"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+    "src/workbench/ai/v4/asyncReadIdentity.test.ts"
+  ],
+  "entry_points": [
+    "AgentPanelV4Panel history pagination scroll handler",
+    "ProjectAgentResidentShell onLoadOlder host callback",
+    "devlab V4 Agent panel fixtures"
+  ],
+  "internal_only_reason": "The invariant is local application lifecycle behavior; no external specification decides when a user-visible pagination error may be cleared.",
+  "invariants": [
+    "historyError remains true across same-historyIdentity rerenders until a new retry begins or the history identity changes.",
+    "Only the history identity reset and the explicit pagination retry clear a prior history error."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "historyError"
+    }
+  ],
+  "door_reduction": {
+    "before": 1,
+    "after": 1,
+    "why_not": "The state is owned and rendered inside one panel symbol; all host callbacks converge on that single state owner, so there is no second read/write door to merge."
+  },
+  "generality_proof": "Every host supplies historyIdentity and onLoadOlder to the same AgentPanelV4Panel state owner. Removing callback-identity resets preserves the error for every equivalent host while the existing identity reset and retry path continue to clear it at their shared boundaries.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/ai/v4",
+    "tests": [
+      "src/workbench/ai/v4/asyncReadIdentity.test.ts"
+    ],
+    "why": "The panel owns pagination lifecycle state and the test evaluates the actual frozen hook body with the installed React renderer."
+  },
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "AgentPanelV4Panel",
+      "responsibility": "Own historyError lifecycle and clear it only on history identity changes or explicit retry."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "entry_point": "inline onLoadOlder passed to AgentPanelV4Panel",
+      "disposition": "enforced",
+      "evidence": "The host allocates the callback during parent renders; the panel now ignores that identity churn for error lifecycle."
+    },
+    {
+      "path": "src/devlab/designLab/v4/states/03-flow.tsx",
+      "entry_point": "devlab AgentPanelV4Panel fixture",
+      "disposition": "enforced",
+      "evidence": "The fixture consumes the same panel implementation and therefore the same historyError owner."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any parent rerender that creates a new callback identity can reproduce the lost error while the session remains unchanged.",
+    "same_class_scan": [
+      "Ran rg for setHistoryError and onLoadOlder across src/workbench/ai/v4 and its hosts; all historyError writes converge in AgentPanelV4Panel.",
+      "Ran node scripts/door-map.mjs historyError; it found the single rendered state door in AgentPanelV4Panel.",
+      "Checked ProjectAgentResidentShell and devlab V4 panel consumers for unstable callback allocation."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+    "invariant": "Callback identity changes cannot clear historyError; only session identity changes and a new retry do so.",
+    "failure_mode": "A stale error remains visible until the user retries or the panel changes history identity, preserving the failure signal.",
+    "exception_policy": "none",
+    "strategy": "Keep lifecycle reset keyed to the semantic history identity and keep retry dismissal at the scroll admission boundary.",
+    "artifacts": [
+      "src/workbench/ai/v4/AgentPanelV4Panel.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/ai/v4/asyncReadIdentity.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/v4/asyncReadIdentity.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/ai/v4/AgentPanelV4Panel.tsx"
+    ],
+    "rationale": "The callback-identity reset was the obsolete behavior that caused the regression and is deleted in the same change."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The defect is caused by local React hook dependencies, not by a third-party dependency lifecycle.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted state or external contract changes; existing mounted panels use the semantic identity and retry boundaries on their next render.",
+  "residual_risks": [
+    "The full Electron host journey is not exercised by this unit test; host callback wiring is covered by the repository source scan and the shared panel hook test."
+  ]
+}

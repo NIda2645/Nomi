@@ -8,7 +8,7 @@
  *        右键把「哪一行 / 哪个片段 / 什么时刻」上报给 DirectorTimeline 出菜单。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../utils/cn'
 import { IconPlus } from '../../../../../vendor/tablerIcons'

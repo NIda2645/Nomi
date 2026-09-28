@@ -1,7 +1,7 @@
 // 系统提示词编辑器的两套底部动作。分两个组件而不是一个带 if 的大组件：
 // 它们的语义完全不同（内置有默认值可回退，自定义没有默认值只能删），共用一个壳只会
 // 让「哪些 props 在哪种情况下有效」变成一笔糊涂账。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconRotate, IconTrash } from '@tabler/icons-react'
 

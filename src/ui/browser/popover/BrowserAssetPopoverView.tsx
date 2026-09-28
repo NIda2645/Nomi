@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useTranslation } from 'react-i18next'
 import { ScrollArea } from '@mantine/core'

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../../../utils/cn'
 import { getCardStackRearLayerCount } from '../model/canvasCardStackModel'
 import { GROUP_VISUAL_CLASS } from './groupVisualContract'

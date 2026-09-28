@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useStore } from '@xyflow/react'
 import { selectFlowZoom, shotTableDensityForZoom } from '../../reactFlow/canvasViewportScale'
 import { useGenerationFlowNodeManagedDrag } from '../../reactFlow/generationFlowNodeContext'

@@ -6,7 +6,7 @@
  *        useTimelinePlayback 直接写到 Object3D（求值层），这里只负责静止位姿与树结构，避免每帧 React 重渲染。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useDirectorStore } from '../../DirectorEditorContext'
 import type { DirectorModelDisplayMode, DirectorObject } from '../../model/directorTypes'

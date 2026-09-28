@@ -1,7 +1,7 @@
 import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM } from '../model/canvasFitBounds'
 // 画布左下角导航竖列（navigation-stack）：小地图 + 缩放条 + 显隐开关，从 GenerationCanvas 抽出
 // 以守住外壳 ≤800 行（R9）。容器负责定位（absolute left-4 bottom-3），minimap 改 relative 靠它定位。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconEyeOff, IconFocusCentered, IconFrame, IconLayoutGrid, IconMap, IconRotate } from '@tabler/icons-react'
 import { TooltipProvider } from '../../../design'

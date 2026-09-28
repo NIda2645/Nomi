@@ -10,7 +10,7 @@
  * 兜底（图放不下时）：几十上百个节点的图，缩到能看全就糊成灰条了。给一个「显示完整节点列表」——
  * 同样能点、同样能指定角色，只是不画位置。**不是降级提示，是等价的第二条路**。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 // 图/列表这对图标取「同一份东西的两个视图」的隐喻（board ↔ list），且都已在
 // src/vendor/tablerIcons.ts 那份精选清单里——不为一个切换钮往控包体的白名单里加新图标。
