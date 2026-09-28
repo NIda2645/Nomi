@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { APIMART_IMAGE_QUERY_OP, APIMART_STATUS_MAPPING } from "./apimartVendor";
 import { buildApimartHealthInventory, buildApimartRecordingStatus, contractFingerprint, stableSerialize } from "./apimartModelHealth";
-import { firstMappedString, mappingCandidates, providerMetaFromResponse, resolveTaskStatus } from "../tasks/responseParsing";
+import { firstMappedString, providerMetaFromResponse, resolveTaskStatus } from "../tasks/responseParsing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const FIXTURE_DIR = resolve(process.cwd(), "tests/fixtures/apimart-model-health");
-const fixture = (relative: string) => JSON.parse(readFileSync(resolve(FIXTURE_DIR, relative), "utf8")) as { raw: unknown; synthetic?: boolean; contractFingerprint?: string };
+const fixture = (relative: string) => JSON.parse(readFileSync(resolve(FIXTURE_DIR, relative), "utf8")) as { raw: unknown; contractFingerprint?: string };
 
 describe("APIMart model health inventory", () => {
   it("derives every generation model × mode from catalog, without a count constant", () => {
@@ -48,12 +48,13 @@ describe("APIMart model health inventory", () => {
     }
   });
 
-  it("replays the synthetic scalar shape only when the declared scalar fallback exists", () => {
-    const recording = fixture("synthetic/nano-banana-2-string.json");
-    expect(recording.synthetic).toBe(true);
-    const candidates = mappingCandidates(APIMART_IMAGE_QUERY_OP.response_mapping ?? null, "image_url");
-    expect(candidates.some((candidate) => candidate.endsWith(".url"))).toBe(true);
-    expect(firstMappedString(recording.raw, APIMART_IMAGE_QUERY_OP.response_mapping ?? null, "image_url")).toMatch(/^https:\/\/cdn\.example\.com\/apimart-result-/);
+  it("still reads the scalar result URL shape that v0.22.4 fixed (derived from a real recording)", () => {
+    // No scalar-shaped response has been recorded yet; derive it from the real array
+    // recording so every other field keeps its real shape. Not counted as a recording.
+    const scalar = structuredClone(fixture("recordings/nano-banana-2-array.json").raw) as { data: { result: { images: { url: unknown }[] } } };
+    const image = scalar.data.result.images[0]!;
+    image.url = (image.url as string[])[0];
+    expect(firstMappedString(scalar, APIMART_IMAGE_QUERY_OP.response_mapping ?? null, "image_url")).toBe("https://cdn.example.com/apimart-result-nano-banana-2.jpg");
   });
 
   it("derives recorded, stale, and pending-L3 statuses for all inventory entries", () => {
