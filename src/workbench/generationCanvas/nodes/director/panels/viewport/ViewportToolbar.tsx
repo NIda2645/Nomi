@@ -8,7 +8,7 @@
  *        编辑模式提示不在这里，住检查器「空间变换」卡。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSegmented } from '../../../../../../design'
 import { IconArrowsMove, IconPencil, IconPointer, IconResize, IconRotate, IconRoute } from '../../../../../../vendor/tablerIcons'

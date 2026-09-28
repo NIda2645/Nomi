@@ -1,7 +1,7 @@
 import { notify } from '../../../ui/notificationPolicy'
 import { normalizeConditionalParameters } from '../../../../electron/shared/videoCapabilities/crossFieldConstraints'
 import { nodeReferenceCapacity } from './controls/nodeCrossFieldConstraints'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import { useOpenProjectId } from '../../project/useOpenProjectId'

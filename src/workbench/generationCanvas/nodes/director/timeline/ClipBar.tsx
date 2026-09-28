@@ -4,7 +4,7 @@
  * [POS]: director/timeline 的片段条视觉单一实现，交互（拖移 / 拖边）由 TrackLanes 通过 onPointerDown(zone) 接管。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../../../../../utils/cn'
 import type { TimelineClipView } from '../model/timelineTracks'
 import { clipToneClass, type ClipDragZone } from './clipTone'

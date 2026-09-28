@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconArrowLeft } from '@tabler/icons-react'
 import { IconActionButton } from '../../design'
 import { cn } from '../../utils/cn'

@@ -6,7 +6,7 @@
  *
  * 芯片行的样式与选中态照抄同页 [[ScreenshotHotkeySection]]，不另发明一套控件（P4/设计一致性）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 import {

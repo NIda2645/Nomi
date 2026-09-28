@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { DesktopExistingConnectionSummary } from '../../desktop/onboardingBridgeTypes'

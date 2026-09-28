@@ -10,7 +10,7 @@
  *        簇与簇之间留 gap 而不是分隔线：§1.5.3 要求分段要有名字或可见边界，浮起来的独立胶囊本身就是边界。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../../utils/cn'
 import { WorkbenchIconButton } from '../../../../../../design'

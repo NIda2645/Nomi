@@ -10,7 +10,7 @@
 //
 // 默认提示词的真相源仍是 creationAiModes.ts；本组件只写「覆盖层 + 自定义清单」
 // （systemPromptOverrides.ts）。chip 清单一律 derive 自 listCreationAiModes()，不手写。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { confirmDialog } from '../../../design'

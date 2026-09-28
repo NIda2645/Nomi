@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { NomiImage } from '../../../design/media'
 
 /** 参考区第二层预览：短暂悬停后出现，尺寸克制且从 tile 下方展开，不常驻遮挡表格。 */

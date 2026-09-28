@@ -15,7 +15,7 @@
  *   可读性本来就是这一版最大的风险（卡点表 ①），一秒多的系统级延迟会把它变成真问题。
  *   因此按钮显式传 `title=""` 压掉 WorkbenchIconButton 默认挂的原生 title，否则两个气泡叠着出。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, WorkbenchIconButton } from '../../../design'
 
 /** 簇容器：一个有名字的分组（§1.5.3「分段要有名字」），走查按这个属性找它。 */

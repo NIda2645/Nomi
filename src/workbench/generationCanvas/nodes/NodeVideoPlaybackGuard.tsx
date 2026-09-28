@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../../../utils/cn'
 import { useVideoPlaybackHeal } from '../../../media/useVideoPlaybackHeal'
 import { VideoPlaybackStatusOverlay } from '../../../media/VideoPlaybackStatusOverlay'
@@ -42,7 +42,7 @@ const PLAYER_LEAVE_GRACE_MS = 800
 const DRAG_RECHECK_MS = 250
 
 /** 意图持续 enter 毫秒且画布不在拖动才成立；意图消失后再保持 leave 毫秒。 */
-function useSettledIntent(intent: boolean, hostRef: React.RefObject<HTMLElement>): boolean {
+function useSettledIntent(intent: boolean, hostRef: React.RefObject<HTMLElement | null>): boolean {
   const [settled, setSettled] = React.useState(false)
   React.useEffect(() => {
     let timer = 0

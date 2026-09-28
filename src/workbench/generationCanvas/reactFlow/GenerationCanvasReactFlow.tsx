@@ -1,5 +1,5 @@
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   ReactFlowProvider,
   getNodesBounds,

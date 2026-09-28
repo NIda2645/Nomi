@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconBrain, IconChevronDown, IconPin, IconPinFilled, IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { useTranslation } from 'react-i18next'

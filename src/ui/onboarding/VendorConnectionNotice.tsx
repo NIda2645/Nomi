@@ -7,7 +7,7 @@
  * 这里**不**放「改地址」按钮：地址编辑已经有它的家（下面那支铅笔），
  * 同一动作只保留一个规范入口（设计系统 §1.5.2 硬规则 1）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconAlertCircle, IconInfoCircle, IconRefresh } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

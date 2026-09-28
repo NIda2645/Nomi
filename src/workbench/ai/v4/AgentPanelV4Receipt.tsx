@@ -5,7 +5,7 @@
 // 技能载入、附件读取、布局改动都是它，**内联在发生的位置、不置顶**（用户点名 + 实验室 D1）。
 // 失败留在原行变红 + 一句话原因，**不弹窗不 toast**（Process 板时刻 5）——
 // 错误发生在哪一行就留在哪一行，用户回看时能对上。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { projectToolOutput } from './agentPanelV4ToolOutput'
 import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'
 import { V4Row, V4Shimmer } from './AgentPanelV4Row'

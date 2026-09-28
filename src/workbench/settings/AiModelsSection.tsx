@@ -1,5 +1,5 @@
 import { IconAlertTriangle, IconCheck } from '@tabler/icons-react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { TFunction } from 'i18next'
 import { useTranslation } from 'react-i18next'
 

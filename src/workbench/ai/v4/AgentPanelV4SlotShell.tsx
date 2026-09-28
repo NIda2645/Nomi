@@ -21,7 +21,7 @@
  * 两者的差别是**有意的**，理由写在 `AgentPanelV4AskCard.tsx` 的对照表里；
  * 而外框、圆角、内边距、按钮族这些「一眼看出是不是一家人」的东西，从此只有一份。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSegmented, WorkbenchIconButton } from '../../../design'
 import { cn } from '../../../utils/cn'

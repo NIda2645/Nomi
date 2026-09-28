@@ -7,7 +7,7 @@
  *        入口是视口右下显示模式开关旁的齿轮（一功能一个家）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DesignModal, NomiSegmented, WorkbenchButton, WorkbenchIconButton } from '../../../../../../design'
 import { IconHelp, IconRefresh } from '../../../../../../vendor/tablerIcons'

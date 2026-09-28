@@ -7,7 +7,7 @@
  * 胶囊语义：**连不上压倒一切**。参数适配验证（adapterProviderState）得再漂亮，
  * 地址/key 通不了也生成不出东西，所以 unreachable 时红字覆盖 adapter 状态。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { IconStack2 } from '@tabler/icons-react'

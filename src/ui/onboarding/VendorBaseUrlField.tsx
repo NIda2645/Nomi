@@ -10,7 +10,7 @@
  *
  * 保存成功不在这里重探连接：地址一改，useVendorHealth 的 fingerprint 就变，effect 自动重探。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPencil } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

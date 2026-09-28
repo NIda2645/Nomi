@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useResidentActivityStore } from '../../workbench/ai/residentActivity'
 import { useWorkbenchStore, type WorkspaceMode } from '../../workbench/workbenchStore'

@@ -7,7 +7,7 @@
  * [POS]: director/panels/dialogs 的预览小场景：与主视口互不相干（自己的 Canvas / 相机 / 灯），采样与套骨走和角色实体同一套 poseClipLibrary / poseSnapshot，所见即成片。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { FencedCanvas } from '../../../fencedCanvas'

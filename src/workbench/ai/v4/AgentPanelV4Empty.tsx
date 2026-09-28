@@ -15,7 +15,7 @@
 // 原样。放在 chip 行下方而不是上方——起手 chip 是他打开面板要做的事，同意书不是。
 //
 // 布局复用 `DesignEmptyState`（设计系统 §3.3 全仓统一空态），不另写一份居中结构。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DesignEmptyState } from '../../../design'
 import { starterChipsForSurface, V4_EMPTY_TITLE_KEY } from './agentPanelV4EmptyState'

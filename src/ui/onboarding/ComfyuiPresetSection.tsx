@@ -10,7 +10,7 @@
  * 检测复用 Tier-1 的 reconcileComfyWorkflow（/object_info 对账）；提交统一进入
  * integration session handoff，不直接启用 Catalog。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconMovie, IconCheck, IconX, IconCopy, IconExternalLink, IconRefresh, IconAlertTriangle } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

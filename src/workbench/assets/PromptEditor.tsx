@@ -1,5 +1,5 @@
-import React from 'react'
-import { useEditor, EditorContent, type Editor, type JSONContent } from '@tiptap/react'
+import React, { type JSX } from 'react'
+import { EditorContent, type Editor, type JSONContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
 import { Extension } from '@tiptap/core'
@@ -12,6 +12,7 @@ import { createAssetMentionSuggestion } from './AssetMentionSuggestion'
 import type { MentionSuggestionItem, MentionUploadControls } from './AssetMentionSuggestionList'
 import { promptToContent } from './promptEditorContent'
 import { createControlledEditorSync } from '../common/controlledEditorSync'
+import { useNomiTiptapEditor } from '../common/useNomiRichTextEditor'
 import { encodeMention } from './promptMentions'
 import { promptRangeToDocRanges, promptRunsFromDocument, type PromptEditorSegment } from './promptEditorSkeleton'
 
@@ -158,7 +159,7 @@ export default function PromptEditor({ value, onChange, placeholder, ariaLabel, 
     [ariaLabel],
   )
 
-  const editor = useEditor({
+  const editor = useNomiTiptapEditor({
     extensions,
     content: initialContentRef.current,
     editable: editable !== false,

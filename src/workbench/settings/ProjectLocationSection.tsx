@@ -1,5 +1,5 @@
 import type { ToastType } from '../../ui/toast'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconCircleCheck, IconFolderOpen, IconRefresh, IconSettings } from '@tabler/icons-react'
 import { DesignButton } from '../../design'

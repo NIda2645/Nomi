@@ -29,7 +29,7 @@
  *
  * 我们在骨架上只加两样：选项第二行 `description`、「推荐」标（推荐项排第一）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { WorkbenchButton } from '../../../design'
 import { cn } from '../../../utils/cn'
 import { V4Row } from './AgentPanelV4Row'

@@ -5,7 +5,7 @@
  *        对齐 Nomi TimelineResizeHandle 的手感（指针捕获、方向键微调、Home/End 极值），不引第三方分栏库。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../utils/cn'
 

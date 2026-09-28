@@ -4,7 +4,7 @@
  * 完成后高亮展示「改了哪些」(diff),用户确认再应用到提示词(creator control:不擅自覆盖)。
  * 复用现成文本流式管线(runWorkbenchTextTaskStream + prompt_refine),不新建改写通道。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'

@@ -8,7 +8,7 @@
  *        路标小球带 userData 标记，点选由 useViewportPicking 统一处理。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useDirectorStore } from '../DirectorEditorContext'

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconBox, IconPlugConnected } from '@tabler/icons-react'
 import { cn } from '../utils/cn'
 import { VendorLogoImage } from './vendorLogoImage'

@@ -11,7 +11,7 @@
  *
  * 一屏一个主动作：主动作是「复制指引」。分段控件是它的参数、折叠行是证据、末行是出口。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconCheck, IconChevronDown, IconCopy, IconExternalLink, IconInfoCircle, IconRobot,

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import i18n from '../../../i18n'
 import { IconCheck, IconPhoto, IconPlayerPlayFilled, IconVideo } from '../../../vendor/tablerIcons'

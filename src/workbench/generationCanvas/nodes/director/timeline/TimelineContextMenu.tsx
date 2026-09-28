@@ -5,7 +5,7 @@
  *        时间轴折得很矮时菜单不能被自己的容器裁掉；菜单项由 DirectorTimeline 按上下文拼。挂 data-nomi-escape-layer 让编辑器的 Esc 归属链先关它。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { BodyPortal, NOMI_OVERLAY_Z_INDEX } from '../../../../../design'
 import { cn } from '../../../../../utils/cn'
 

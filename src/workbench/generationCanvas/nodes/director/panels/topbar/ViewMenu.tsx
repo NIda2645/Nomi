@@ -7,7 +7,7 @@
  *        骨骼把手原被误放在底栏（它是视口显示开关，不是角色属性）。三处都是低频项，按设计系统 §1.5.3 收进一个 ▾。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSegmented, WorkbenchIconButton } from '../../../../../../design'
 import { IconAdjustments, IconContrast, IconHelp } from '../../../../../../vendor/tablerIcons'

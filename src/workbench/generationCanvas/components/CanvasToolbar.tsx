@@ -1,6 +1,6 @@
 import { CanvasAddPreferenceActions } from './CanvasAddPreferenceActions'
 import { useCanvasMenuPreferenceStore } from '../store/canvasMenuPreferenceStore'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import { cn } from '../../../utils/cn'

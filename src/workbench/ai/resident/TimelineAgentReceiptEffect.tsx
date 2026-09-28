@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import i18n from '../../../i18n'
 import { showUndoToast } from '../../../utils/showUndoToast'
 import { useWorkbenchStore } from '../../workbenchStore'

@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { ShotIdentity } from '../../../../electron/shared/canvas/shotNumbering'
 import { useTranslation } from 'react-i18next'
 

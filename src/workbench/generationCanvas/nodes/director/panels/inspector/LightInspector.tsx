@@ -4,7 +4,7 @@
  * [POS]: director/panels/inspector 的灯光属性（清单 §4.3 I5）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'
 import type { DirectorLight } from '../../model/directorTypes'

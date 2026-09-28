@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconMoonStars, IconSun } from '../../vendor/tablerIcons'
 import { cn } from '../../utils/cn'
 import { useNomiColorScheme } from '../../theme/colorScheme'

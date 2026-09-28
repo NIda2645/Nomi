@@ -15,7 +15,7 @@
 //
 // 夹具灌 store 用 `useMemo` 而不是 `useEffect`：晚一帧灌会先渲染一次空态，
 // 截图捕到那一帧就成了「面板是空的」的假证据（同 agentPanelKit.ShellStage 的理由）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useWorkbenchStore } from '../../../workbench/workbenchStore'
 import { EDITING_PANEL_DEFAULTS } from '../../../workbench/preview/panelLayout'
 import { labTimeline } from './editingFixtures'
@@ -131,7 +131,7 @@ export function AnchoredStage({
   width: number
   height: number
   anchorLabel: string
-  render: (anchorRef: React.RefObject<HTMLButtonElement>) => React.ReactNode
+  render: (anchorRef: React.RefObject<HTMLButtonElement | null>) => React.ReactNode
 }): JSX.Element {
   // 锚点和浮层同一次 commit 挂载：ref 在 layout effect 之前就已绑好，
   // AnchoredPopover 首帧量得到 rect，不需要延后一帧。

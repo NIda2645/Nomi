@@ -5,7 +5,7 @@
  * [POS]: director/panels/inspector 的角色姿态页：清单与动作库同一份（T-Pose + 9 个 FBX）；当前项按别名解析，体形当前项按缩放匹配。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../../utils/cn'
 import { IconCheck } from '../../../../../../vendor/tablerIcons'

@@ -10,7 +10,7 @@
  * 缺件闸复用既有 reconcile；提交统一进入 integration session handoff，
  * 不直接写入 Catalog 或绕过 canonical certification。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconBooks, IconCheck, IconX, IconExternalLink, IconRefresh, IconAlertTriangle, IconSearch } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
