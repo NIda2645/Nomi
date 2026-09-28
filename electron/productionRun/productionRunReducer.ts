@@ -632,7 +632,11 @@ export function applyProductionCommand(
         ? current.jobs.map((job) => currentGate.jobIds.includes(job.jobId) && job.status === "authorization_required"
           ? transitionJob(job, "authorized", now)
           : job)
-        : current.jobs;
+        : currentGate.authorizationDigest && currentGate.costScope?.startsWith("generation.rework:")
+          ? current.jobs.map((job) => currentGate.jobIds.includes(job.jobId) && ["authorization_required", "authorized"].includes(job.status)
+            ? { ...transitionJob(job, "detached", now), errorCode: "production_gate_rejected", errorMessage: "Production authorization was rejected", updatedAt: now }
+            : job)
+          : current.jobs;
       const approvesDirection = status === "approved" && current.status === "awaiting_direction"
         && currentGate.scope === "stage" && gateId.startsWith("gate-direction-");
       const approvesBuild = status === "approved" && current.status === "awaiting_contract"

@@ -18,6 +18,8 @@
     "electron/productionRun/productionRunState.ts",
     "electron/productionRun/productionRunTypes.ts",
     "electron/runtime.ts",
+    "electron/productionRun/productionRunRuntime.ts",
+    "electron/productionRun/productionRunServiceRegistry.ts",
     "electron/capabilityCore/appIntegration.ts",
     "electron/productionRun/productionGenerationSubmission.ts",
     "electron/productionRun/productionShotDispatchGuard.ts",
@@ -166,6 +168,26 @@
       "symbol": "createProductionShotDispatchGuard"
     },
     {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "getRegisteredProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/runtime.ts",
+      "symbol": "getRegisteredProductionRunService"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "registerProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunServiceRegistry.ts",
+      "symbol": "registered"
+    },
+    {
       "kind": "write",
       "path": "electron/productionRun/productionRunReducer.ts",
       "symbol": "decideShotClaim"
@@ -288,7 +310,7 @@
   ],
   "door_reduction": {
     "before": 43,
-    "after": 45,
+    "after": 49,
     "why_not": "门表仍保留多个入口：decideShotClaim 是共享判定边界，Run reducer 是唯一持久化写口，runtime 是画布提交闸，beforeDispatch 是生产派发闸，IPC/runTask 是通用任务入口；它们各自服务不同生命周期，合并会扩大权限边界。门表已用 node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch 重新生成并在交付验证中复核。"
   },
   "generality_proof": "Single-shot and multi-shot plans now share productionShotJobs for correspondence, decideShotClaim for ownership, and reducer persistence for claims; scheduler and runtime callers therefore see the same attempt-scoped result.",

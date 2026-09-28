@@ -15,6 +15,7 @@ import { traceVendorCompleted, traceVendorRequested } from "./events/vendorCallT
 import { localizeTaskAsset } from "./assets/localizeTaskAsset";
 export { localizeTaskAsset };
 import { localizedTaskAssetFileName } from "./assets/localizedAsset";
+import { getRegisteredProductionRunService } from './productionRun/productionRunServiceRegistry'
 import { authHeaders as buildAuthHeaders, extractTaskId as extractTaskIdShared } from "./ai/requestPipeline"; import { vendorAuthSpec } from "./catalog/vendorAuthSpec";
 import { assertCanonicalAntigravityOperation, executeProcessOperation, prepareAntigravityCreateOperation } from "./catalog/processOperation"; import type { AntigravityProcessStage } from "./catalog/antigravityCatalog";
 import { executeTextTask } from "./textTaskRunner";
@@ -322,8 +323,7 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   // durably claimed the bound shot. Ordinary canvas nodes have no run/shot
   // binding and keep the normal path.
   if (projectId && productionRunId && productionShotId) {
-    const { getProductionRunService } = await import('./productionRun/productionRunRuntime');
-    const service = getProductionRunService();
+    const service = getRegisteredProductionRunService();
     for (let attempt = 0; attempt < 2; attempt += 1) {
       const current = service.repository.read(projectId, productionRunId);
       const decision = decideShotClaim(current, productionShotId, 'canvas');

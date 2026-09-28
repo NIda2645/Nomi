@@ -10,6 +10,7 @@ import {
   type GenerationErrorKind,
 } from './narrate'
 import { parseVendorErrorFromMessage, stripVendorErrorMarker } from '../generationCanvas/runner/vendorErrorIpc'
+import { shotClaimCopy } from './shotClaimCopy'
 import { matchNomiErrorCode, stripNomiErrorCode } from '../../../electron/shared/nomiErrorCodes'
 import i18n from '../../i18n'
 
@@ -542,13 +543,7 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
     }
   }
   const claimReason = structured?.code === 'production_shot_claimed' ? structured.reason : undefined
-  const claimCopy: Record<string, { key: 'queued' | 'awaitingConfirmation' | 'inFlight' | 'needsReconcile'; action: GenerationErrorAction }> = {
-    queued: { key: 'queued', action: 'view-task' },
-    awaiting_confirmation: { key: 'awaitingConfirmation', action: 'view-task' },
-    in_flight: { key: 'inFlight', action: 'view-task' },
-    needs_reconcile: { key: 'needsReconcile', action: 'reconcile' },
-  }
-  const copy = claimReason ? claimCopy[claimReason] : undefined
+  const copy = shotClaimCopy(claimReason as Parameters<typeof shotClaimCopy>[0])
   if (copy) {
     return {
       kind: 'unknown',

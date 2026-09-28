@@ -13,6 +13,9 @@ import { sealAndApproveProductionGeneration } from "./productionGenerationAuthor
 import { createProductionRunRepository } from "./productionRunRepository";
 import { createMultiShotBatchScheduler } from "./multiShotBatchScheduler";
 import { currentAnchorCheckpointGate } from "./anchorCheckpoint";
+import { createProductionShotDispatchGuard } from "./productionShotDispatchGuard";
+import { decideShotClaim } from "../shared/decideShotClaim";
+import { SubmissionReconciliationRequiredError } from "./submissionOutbox";
 import type { ProductionGenerationShot } from "./productionRunTypes";
 
 // P4 S4 — J1/J3 end-to-end over a REAL loopback vendor (zero quota). This drives the FULL durable chain:
@@ -98,7 +101,7 @@ function setup(shots: ProductionGenerationShot[]) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-batch-e2e-"));
   roots.push(root);
   const repository = createProductionRunRepository({ projectDirResolver: (p) => (p === "project-1" ? root : null), now });
-  repository.createGenerationDraft({ operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, shots, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 2 } });
+  repository.createGenerationDraft({ operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, shots, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 3 } });
   const top = shots[0].contract!;
   sealAndApproveProductionGeneration({
     repository,
@@ -129,7 +132,7 @@ function buildSubmission(root: string, repository: ReturnType<typeof createProdu
   // Sanity: the real adapter must accept this provider (proves we exercise the genuine adapter path).
   createGenerationRuntimeAdapter({ providers: [provider] });
   return createProductionGenerationSubmission({
-    repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+    repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
     intentMacKey: "test-intent-key", provider,
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
@@ -151,6 +154,112 @@ function scheduler(root: string, repository: ReturnType<typeof createProductionR
   const submission = buildSubmission(root, repository, origin, submits);
   return createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-batch", perShotPrice: () => ({ known: true, amount: 6 }), now, options });
 }
+
+async function dispatchCanvasOnce(repository: ReturnType<typeof createProductionRunRepository>, origin: string, shotId: string, submits: string[]) {
+  const run = repository.read("project-1", "op-batch")!;
+  const decision = decideShotClaim(run, shotId, "canvas");
+  if (!decision.granted) throw new Error(`canvas dispatch denied: ${decision.reason}`);
+  const provider = loopbackProvider(origin, submits);
+  await provider.submit({}, `canvas:${shotId}`);
+}
+
+describe("B3 production/canvas claim integration matrix", () => {
+  it("paused → canvas claim: scheduler submits zero and canvas submits exactly once", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot")]);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      const current = repository.read("project-1", "op-batch")!;
+      const running = repository.execute("project-1", "op-batch", { commandId: "running", expectedRevision: current.revision, type: "run.status", payload: { status: "running" }, issuedAt: now() }).run;
+      const pausing = repository.execute("project-1", "op-batch", { commandId: "pause", expectedRevision: running.revision, type: "run.status", payload: { status: "pausing" }, issuedAt: now() }).run;
+      const paused = repository.execute("project-1", "op-batch", { commandId: "pause-settle", expectedRevision: pausing.revision, type: "run.status", payload: { status: "paused" }, issuedAt: now() }).run;
+      repository.execute("project-1", "op-batch", { commandId: "canvas-claim", expectedRevision: paused.revision, type: "shot.claim", payload: { shotId: "shot-1", by: "canvas" }, issuedAt: now() });
+      expect(decideShotClaim(repository.read("project-1", "op-batch"), "shot-1", "production")).toMatchObject({ granted: false, holder: "canvas", reason: "canvas_claimed" });
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(0);
+      await dispatchCanvasOnce(repository, vendor.origin, "shot-1", submits);
+      expect(submits).toHaveLength(1);
+    } finally { await vendor.close(); }
+  });
+
+  it("submission_unknown/reconciling: canvas is rejected with needs_reconcile and provider receives zero new submits", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot")]);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      const provider = loopbackProvider(vendor.origin, submits);
+      provider.submit = async () => { submits.push("unknown"); throw new SubmissionReconciliationRequiredError(); };
+      const guarded = createProductionGenerationSubmission({
+        repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+        intentMacKey: "test-intent-key", provider,
+        materializeOutput: async ({ providerTaskId }) => ({ artifactId: providerTaskId, kind: "video" as const, contentHash: providerTaskId, projectRelativePath: `${providerTaskId}.png` }), now,
+      });
+      const before = repository.read("project-1", "op-batch")!;
+      const intent = repository.execute("project-1", "op-batch", { commandId: "mark-intent", expectedRevision: before.revision, type: "job.status", payload: { jobId: before.jobs[0].jobId, status: "submit_intent_persisted" }, issuedAt: now() }).run;
+      const submitting = repository.execute("project-1", "op-batch", { commandId: "mark-submitting", expectedRevision: intent.revision, type: "job.status", payload: { jobId: before.jobs[0].jobId, status: "submitting" }, issuedAt: now() }).run;
+      repository.execute("project-1", "op-batch", { commandId: "mark-unknown", expectedRevision: submitting.revision, type: "job.status", payload: { jobId: before.jobs[0].jobId, status: "submission_unknown" }, issuedAt: now() });
+      expect(repository.read("project-1", "op-batch")?.jobs[0]?.status).toBe("submission_unknown");
+      const decision = decideShotClaim(repository.read("project-1", "op-batch"), "shot-1", "canvas");
+      expect(decision).toMatchObject({ granted: false, holder: "production", reason: "needs_reconcile" });
+      expect(submits).toHaveLength(0);
+      await expect(guarded.start({ projectId: "project-1", operationId: "op-batch" })).rejects.toThrow();
+      expect(submits).toHaveLength(0);
+    } finally { await vendor.close(); }
+  });
+
+  it("confirmed rework dispatches one new provider submission and leaves sibling attempts untouched", async () => {
+    const shots = [shotEntry("shot-1", "a", "shot"), shotEntry("shot-2", "b", "shot")];
+    const { root, repository } = setup(shots);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      const before = repository.read("project-1", "op-batch")!;
+      const target = before.jobs.find((job) => job.metadata?.shotId === "shot-2")!;
+      const rework = prepareProductionGenerationReauthorization({ lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 0, run: before, shotId: "shot-2", providers: [loopbackProvider(vendor.origin, submits)], resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock() });
+      const requested = repository.execute("project-1", "op-batch", { commandId: "rework", expectedRevision: before.revision, type: "generation.reauthorize", payload: { shotId: "shot-2", authorization: rework }, issuedAt: now() }).run;
+      const approved = repository.execute("project-1", "op-batch", { commandId: "approve-rework", expectedRevision: requested.revision, type: "gate.decide", payload: { gateId: rework.envelope.gateId, status: "approved", receiptId: "receipt-rework", authorizationDigest: rework.authorizationDigest }, issuedAt: now() }).run;
+      repository.execute("project-1", "op-batch", { commandId: "submit-rework", expectedRevision: approved.revision, type: "generation.submit", payload: {}, issuedAt: now() });
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(3);
+      expect(repository.read("project-1", "op-batch")?.jobs.filter((job) => job.metadata?.shotId === "shot-1")).toHaveLength(1);
+      expect(repository.read("project-1", "op-batch")?.jobs.some((job) => job.parentJobId === target.jobId)).toBe(true);
+    } finally { await vendor.close(); }
+  });
+
+  it("canvasDetached after node deletion: scheduler submits zero", async () => {
+    const shots = [Object.assign(shotEntry("shot-1", "a", "shot"), { nodeId: "node-shot-1" })];
+    const { root, repository } = setup(shots);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      const current = repository.read("project-1", "op-batch")!;
+      const bound = repository.execute("project-1", "op-batch", { commandId: "bind", expectedRevision: current.revision, type: "plan.bind-shot-nodes", payload: { bindings: [{ shotId: "shot-1", nodeId: "node-shot-1" }] }, issuedAt: now() }).run;
+      const detached = repository.execute("project-1", "op-batch", { commandId: "detach", expectedRevision: bound.revision, type: "plan.detach-shot-nodes", payload: { nodeIds: ["node-shot-1"] }, issuedAt: now() }).run;
+      expect(decideShotClaim(detached, "shot-1", "production")).toMatchObject({ granted: false, holder: "canvas", reason: "canvas_detached" });
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(0);
+    } finally { await vendor.close(); }
+  });
+
+  it("rejected rework gate releases canvas once and allows a later rework attempt", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot")]);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      const run = repository.read("project-1", "op-batch")!;
+      const rework = prepareProductionGenerationReauthorization({ lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 0, run, shotId: "shot-1", providers: [loopbackProvider(vendor.origin, submits)], resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock() });
+      const requested = repository.execute("project-1", "op-batch", { commandId: "rework-rejected", expectedRevision: run.revision, type: "generation.reauthorize", payload: { shotId: "shot-1", authorization: rework }, issuedAt: now() }).run;
+      const rejected = repository.execute("project-1", "op-batch", { commandId: "reject-rework", expectedRevision: requested.revision, type: "gate.decide", payload: { gateId: rework.envelope.gateId, status: "rejected" }, issuedAt: now() }).run;
+      expect(decideShotClaim(rejected, "shot-1", "canvas")).toMatchObject({ granted: true, holder: "canvas", reason: "gate_rejected" });
+      await dispatchCanvasOnce(repository, vendor.origin, "shot-1", submits);
+      expect(submits).toHaveLength(2);
+      const second = prepareProductionGenerationReauthorization({ lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 0, run: rejected, shotId: "shot-1", providers: [loopbackProvider(vendor.origin, submits)], resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock() });
+      expect(second.attempt).toBeGreaterThan(rework.attempt);
+    } finally { await vendor.close(); }
+  });
+});
 
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); clock = NOW_BASE; });
 
@@ -377,7 +486,7 @@ describe("P4 slow provider — the batch waits (not spins) and still materialize
    * clock, no polling — the awaited runToQuiescence promise IS the synchronization). */
   function slowScheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, provider: GenerationProvider, options: Parameters<typeof createMultiShotBatchScheduler>[0]["options"] = {}) {
     const submission = createProductionGenerationSubmission({
-      repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+      repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
       intentMacKey: "test-intent-key", provider,
       materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
       now,
