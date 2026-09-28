@@ -34,6 +34,18 @@ export const RICH_TEXT_FEATURE_EXTENSIONS: AnyExtension[] = [
 const EMPTY_EXTENSIONS: AnyExtension[] = []
 
 /**
+ * The React adapter must keep one mounted TipTap instance as the owner of the
+ * ProseMirror view. React 19 can render a parent again while a native DOM
+ * selection is settling; allowing transaction-driven React renders or an
+ * implicit client/server mode to choose the lifecycle makes the DOM and the
+ * editor state diverge. Both rich-text surfaces consume this one contract.
+ */
+export const NOMI_TIPTAP_EDITOR_OPTIONS = {
+  immediatelyRender: true,
+  shouldRerenderOnTransaction: false,
+} as const
+
+/**
  * Shared Tiptap rich-text kernel — single source of truth for BOTH the creation
  * editor (WorkbenchEditor) and the canvas text node (TextDocumentNode). The
  * extension set, controlled-content sync (anti-feedback-loop), selection reading
@@ -108,20 +120,28 @@ export function useNomiRichTextEditor(options: {
   if (!syncRef.current) syncRef.current = createControlledEditorSync(JSON.stringify(content))
   const sync = syncRef.current
 
+  const extensions = React.useMemo(() => [
+    StarterKit,
+    Placeholder.configure({ placeholder: placeholder ?? '' }),
+    ...featureExtensions,
+    ...(persistentSelection ? [PersistentSelectionExtension] : []),
+  ], [featureExtensions, persistentSelection, placeholder])
+
+  const editorProps = React.useMemo(
+    () => ({
+      attributes: { class: 'workbench-editor__content' },
+      transformPastedHTML: sanitizePaste ? (html: string) => sanitizePastedHtml(html) : undefined,
+    }),
+    [sanitizePaste],
+  )
+
   const editor = useEditor(
     {
+      ...NOMI_TIPTAP_EDITOR_OPTIONS,
       editable,
-      extensions: [
-        StarterKit,
-        Placeholder.configure({ placeholder: placeholder ?? '' }),
-        ...featureExtensions,
-        ...(persistentSelection ? [PersistentSelectionExtension] : []),
-      ],
+      extensions,
       content,
-      editorProps: {
-        attributes: { class: 'workbench-editor__content' },
-        transformPastedHTML: sanitizePaste ? (html) => sanitizePastedHtml(html) : undefined,
-      },
+      editorProps,
       onUpdate: ({ editor: current }) => {
         const json = current.getJSON()
         if (sync.emit(JSON.stringify(json))) onChangeRef.current?.(json)

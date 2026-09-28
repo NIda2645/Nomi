@@ -1,0 +1,196 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-react19-tiptap-selection",
+  "problem_type": "React 19 TipTap/ProseMirror DOM-selection and editor-state divergence",
+  "symptom": "On the Linux Canvas Acceptance run, the browser selection after Home + Shift+ArrowRight was `C`, but the TipTap editor observed through the contenteditable reported a collapsed selection (`from: 15, to: 15` instead of `from: 1, to: 2`). The next Delete therefore acted on the wrong range. The same walkthrough passed on this Windows build, so the platform boundary is part of the affected population.",
+  "direct_cause": "The two TipTap React editor kernels did not share an explicit React-19 lifecycle contract. The common hook rebuilt its extension and editorProps collections on every render, while both calls relied on implicit `useEditor` defaults. The installed @tiptap/react 3.23.5 source compares these option identities and manages its editor through React's external-store lifecycle; option churn or transaction-driven React work can rebind/update the view while the browser is settling a native selection, leaving DOM selection and ProseMirror selection out of sync.",
+  "class_root": "Every TipTap surface must keep one stable mounted EditorView as the owner of the DOM selection and must prevent React transaction renders from competing with native selection reconciliation. That invariant was not declared once and enforced at the shared editor boundary.",
+  "affected_population": [
+    "React 19 renderer builds running the generation-canvas PromptEditor",
+    "Creation WorkbenchEditor and canvas TextDocumentNode surfaces using useNomiRichTextEditor",
+    "Linux/CI timing and future React/Tiptap versions where implicit lifecycle defaults or concurrent rendering expose the same selection race"
+  ],
+  "scope_paths": [
+    "src/workbench/common/useNomiRichTextEditor.ts",
+    "src/workbench/assets/PromptEditor.tsx",
+    "src/workbench/common/tiptapEditorLifecycle.test.ts",
+    "docs/plan/2026-09-28-react19-tiptap-selection.md"
+  ],
+  "entry_points": [
+    "Canvas generation prompt through PromptEditor",
+    "Creation document and canvas text node through useNomiRichTextEditor"
+  ],
+  "internal_only_reason": "Installed @tiptap/react 3.23.5 source is sufficient to establish the option-identity and external-store lifecycle behavior; no dependency version change is proposed and no external source is needed to choose the application invariant.",
+  "invariants": [
+    "Both editor kernels use the same explicit TipTap React lifecycle options: immediatelyRender=true and shouldRerenderOnTransaction=false.",
+    "The shared hook keeps extension and editorProps collections reference-stable between renders unless their actual lifecycle inputs change.",
+    "A focused editor's browser selection and ProseMirror selection remain reconciled through Home/Shift+ArrowRight/Delete without remounting the editor instance."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/common/useNomiRichTextEditor.ts",
+    "tests": [
+      "src/workbench/common/tiptapEditorLifecycle.test.ts",
+      "tests/ux/canvas-shortcuts.walk.mjs"
+    ],
+    "why": "These are the two production TipTap kernels and the real canvas walkthrough is the first boundary that can observe a stale EditorView/DOM selection pair. The focused source test protects the shared option contract; the walkthrough protects the mounted browser behavior."
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/PromptSkeletonSegments.tsx",
+      "symbol": "PromptEditor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "PromptEditor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/common/useNomiRichTextEditor.ts",
+      "symbol": "NomiRichTextTools"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/common/useNomiRichTextEditor.ts",
+      "symbol": "readSelectedText"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/common/useNomiRichTextEditor.ts",
+      "symbol": "RichTextApplyMode"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/assets/PromptEditor.tsx",
+      "symbol": "PromptEditor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/WorkbenchEditor.tsx",
+      "symbol": "RICH_TEXT_FEATURE_EXTENSIONS"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/project/documentSessionPort.ts",
+      "symbol": "RICH_TEXT_FEATURE_EXTENSIONS"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/common/richTextActions.tsx",
+      "symbol": "isEditorReady"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/common/useNomiRichTextEditor.ts",
+      "symbol": "isEditorReady"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/WorkbenchEditor.tsx",
+      "symbol": "useNomiRichTextEditor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/render/TextDocumentNode.tsx",
+      "symbol": "useNomiRichTextEditor"
+    }
+  ],
+  "door_reduction": {
+    "before": 11,
+    "after": 12,
+    "why_not": "The two PromptEditor callers and the shared hook's creation/text-node callers remain separate product surfaces, while the hook's helper reads/writes are internal doors that cannot be deleted without removing existing editor actions. All survive through the same lifecycle boundary rather than being replaced by a parallel editor."
+  },
+  "generality_proof": "The lifecycle options are exported from the shared rich-text kernel and consumed directly by PromptEditor, while the shared hook memoizes the same option-bearing collections for WorkbenchEditor and TextDocumentNode. Therefore every currently enumerated TipTap entry gets one stable EditorView policy; a future caller that reuses the hook inherits it automatically, and the source-level regression test fails if either current kernel drifts.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/common/useNomiRichTextEditor.ts",
+      "symbol": "NOMI_TIPTAP_EDITOR_OPTIONS",
+      "responsibility": "Own the explicit React-19 TipTap lifecycle policy shared by all Nomi editors."
+    },
+    {
+      "path": "src/workbench/common/useNomiRichTextEditor.ts",
+      "symbol": "useNomiRichTextEditor",
+      "responsibility": "Keep extension/editorProps identities stable and synchronize controlled content without rebuilding the editor for ordinary renders."
+    },
+    {
+      "path": "src/workbench/assets/PromptEditor.tsx",
+      "symbol": "PromptEditor",
+      "responsibility": "Apply the shared lifecycle policy to the canvas/storyboard prompt editor and keep its initial content/options stable."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "entry_point": "PromptEditor canvas prompt",
+      "disposition": "enforced",
+      "evidence": "This is the reported CI surface; PromptEditor now consumes NOMI_TIPTAP_EDITOR_OPTIONS and already keeps its extension/content/editorProps identities stable."
+    },
+    {
+      "path": "src/workbench/creation/storyboard/shotRow/PromptSkeletonSegments.tsx",
+      "entry_point": "PromptEditor storyboard prompt",
+      "disposition": "enforced",
+      "evidence": "It is the other PromptEditor caller found by door-map and receives the same direct boundary, including segment decorations and controlled-value synchronization."
+    },
+    {
+      "path": "src/workbench/creation/WorkbenchEditor.tsx",
+      "entry_point": "useNomiRichTextEditor creation document",
+      "disposition": "enforced",
+      "evidence": "The creation editor consumes the shared hook; its extension/editorProps churn is removed and the explicit lifecycle policy is applied."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/render/TextDocumentNode.tsx",
+      "entry_point": "useNomiRichTextEditor canvas text node",
+      "disposition": "enforced",
+      "evidence": "The canvas text node consumes the same hook and therefore the same stable EditorView boundary; no second editor kernel is introduced."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same selection race can recur on another TipTap caller, React render, platform, or dependency default whenever editor option identity and lifecycle ownership are implicit. The repository has two editor kernels and four product entry points, so a single Windows-green journey is not proof of one-off behavior.",
+    "same_class_scan": [
+      "rg -n useEditor|EditorContent|@tiptap in src found exactly two useEditor kernels: PromptEditor.tsx and useNomiRichTextEditor.ts.",
+      "node scripts/door-map.mjs src/workbench/assets/PromptEditor.tsx found PromptEditor callers in NodeGenerationComposer.tsx and PromptSkeletonSegments.tsx.",
+      "node scripts/door-map.mjs src/workbench/common/useNomiRichTextEditor.ts found WorkbenchEditor.tsx and TextDocumentNode.tsx as the two shared-hook consumers.",
+      "The existing creation-editor-mount walkthrough and canvas-shortcuts walkthrough cover the two real editor families; no other production useEditor call exists."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/common/useNomiRichTextEditor.ts",
+    "invariant": "Every Nomi TipTap React editor uses one explicit lifecycle policy and stable option identities so one mounted EditorView remains the selection owner.",
+    "failure_mode": "A future editor kernel that omits the shared options or recreates option collections will fail the lifecycle regression test and must not be merged; no platform or vendor exception is allowed.",
+    "exception_policy": "none",
+    "strategy": "Put the lifecycle policy in the shared kernel, spread it into the direct canvas prompt editor, memoize the common hook's option collections, and assert both consumers in a focused regression test.",
+    "artifacts": [
+      "src/workbench/common/useNomiRichTextEditor.ts",
+      "src/workbench/assets/PromptEditor.tsx",
+      "src/workbench/common/tiptapEditorLifecycle.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/common/tiptapEditorLifecycle.test.ts",
+    "tests/ux/canvas-shortcuts.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/common/tiptapEditorLifecycle.test.ts",
+    "tests/ux/canvas-shortcuts.walk.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/common/useNomiRichTextEditor.ts"
+    ],
+    "rationale": "The unstable option-construction path is removed in the same change. No fallback editor or platform-specific selection repair is left callable."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "@tiptap/react 3.23.5, @tiptap/core 3.23.5, and React 19.3.0 remain pinned by the current branch. The invariant is enforced at the application adapter boundary rather than by upgrading or branching on dependency versions.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data or serialized document format changes. Existing mounted editors pick up the explicit lifecycle policy on the next render; no user migration is required.",
+  "residual_risks": [
+    "This Windows host cannot reproduce the Linux-only CI timing, so the original failing Linux trace remains the platform evidence to be re-run in CI.",
+    "The real Electron walkthrough currently exposes element.editor selection through the existing harness but does not itself record editor instance identity across a React commit; the focused test guards the structural contract rather than adding a second production editor."
+  ]
+}

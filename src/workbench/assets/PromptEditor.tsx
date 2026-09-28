@@ -12,6 +12,7 @@ import { createAssetMentionSuggestion } from './AssetMentionSuggestion'
 import type { MentionSuggestionItem, MentionUploadControls } from './AssetMentionSuggestionList'
 import { promptToContent } from './promptEditorContent'
 import { createControlledEditorSync } from '../common/controlledEditorSync'
+import { NOMI_TIPTAP_EDITOR_OPTIONS } from '../common/useNomiRichTextEditor'
 import { encodeMention } from './promptMentions'
 import { promptRangeToDocRanges, promptRunsFromDocument, type PromptEditorSegment } from './promptEditorSkeleton'
 
@@ -159,6 +160,7 @@ export default function PromptEditor({ value, onChange, placeholder, ariaLabel, 
   )
 
   const editor = useEditor({
+    ...NOMI_TIPTAP_EDITOR_OPTIONS,
     extensions,
     content: initialContentRef.current,
     editable: editable !== false,
