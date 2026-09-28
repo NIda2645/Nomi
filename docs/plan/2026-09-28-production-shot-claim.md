@@ -41,6 +41,21 @@
 2. **调度器派发推导**（`batchScheduleDerivation` / `multiShotBatchScheduler`）：派发前经判据；被画布认领/取代的 job 不派。
 3. **`beforeDispatch`**：生产装配（`appIntegration.ts` 创建 submission 处）接上钩子，发往供应商前用最新 durable Run 再判一次（防竞态）。
 
+## 先查别人
+
+> 「他们怎么做 → 我们这批怎么做 → 判定」写在同一格；判定只有三种：一致 / 有意不同（附理由）/ 后续要改（附去处）。
+
+| 问 | 他们怎么做 → 我们这批怎么做 → 判定 | 出处 |
+|---|---|---|
+| 生态里已有？（会扣费的请求怎么不重复执行） | **他们**：Stripe 每个会扣费的请求带幂等键，同一个键重放只执行一次、返回同一结果。**我们**：制作派发用 `providerIdempotencyKey`（runId + contractHash + attempt + shotId），续批要求键不变，变了就拒（`electron/productionRun/prepareProductionGenerationAuthorization.ts:421-423`）。**一致**。 | https://docs.stripe.com/api/idempotent_requests |
+| 生态里已有？（一个任务同一时刻只归一个执行者） | **他们**：BullMQ 的 worker 取任务时拿锁（lock token + 过期时间），只有持锁者能完成任务；锁过期的「卡住任务」会被挪回队列。**我们**：一镜只有一个判定口 `decideShotClaim`（`electron/shared/decideShotClaim.ts:53`），画布认领按 attempt 持久化进 Run（reducer `shot.claim`），制作每次派发前再问一次（`productionShotDispatchGuard`）。**有意不同**：我们不做「过期自动转交」——可能已经花了钱的在途 / 待对账任务永远归制作（`NEEDS_RECONCILE` / `IN_FLIGHT`），超时不能把它转给画布再花一次，只能对账后决定。 | https://docs.bullmq.io/guide/workers/stalled-jobs |
+| 生态里已有？（会被重试的步骤怎么保证只生效一次） | **他们**：Temporal 的活动可能被重试，官方要求活动幂等；工作流状态靠事件历史重放。**我们**：Run 是事件溯源的，唯一写口是 `applyProductionCommand`（`electron/productionRun/productionRunReducer.ts`），认领是一条带固定 commandId 的命令（`shot.claim:<run>:<shot>`），重放不会认领两次。**一致**。 | https://docs.temporal.io/activity-definition |
+| 仓库里已有？ | **已有，但分散**：画布提交、Run reducer、批次调度器各自从 Run 状态的不同子集推断「这镜归谁」，没有按 attempt 落盘的认领记录（本方案根因合同的 direct_cause）；节点显示用的相位判定在 `electron/shared/productionShotPhase.ts:175`。**这批**：归属收成 `decideShotClaim` 一处，相位判定继续只管显示、改显示不许顺带改归属。 | `docs/fixes/2026-09-28-production-shot-claim.root-cause.json` |
+| 依赖里已有？ | 依赖里没有任务队列 / 工作流引擎（`package.json` 没有 BullMQ、Temporal 一类）；React Flow 与 Zustand 管画布和界面状态，不管跨进程的任务归属。**结论**：没有可直接用的依赖，按上面三家的模式自研判定口。 | `package.json` |
+| TikHub 自媒体里怎么说？ | **本轮未查**：这是内部的花钱边界，不是面向用户的产品能力，自媒体侧没有可比的一手经验——明着标出来，不冒充。 | — |
+
+**结论**：用业界已验证的三件套——单一判定口、持久化的认领记录、执行前复核 + 幂等键；实现自研，因为判据依赖 Nomi 的 Run / Plan 结构。和 BullMQ 的唯一有意不同是「不做过期自动转交」，理由见上。
+
 ## 4. 不动项
 画布普通节点（不属于制作流程）的生成路径；Agent/MCP 的授权卡流程本身；价格与预算规则；「画布付费生成整体收进制作流程」（下一块）。
 
