@@ -16,9 +16,9 @@
 **怎么用**：
 
 - 看见 `surface_port_*` 先问：**是谁把哪份短寿命东西揣进了比它活得更长的对象？** 不要先加 retry / 换钥匙文案 / 再抓一次。
-- 动手前读 [T-AG-16 来源全文](../roadmap/sources/2026-09-16-session-identity-window-plus-project.md)，不要只拿「窗口+项目」四个字开写。那里有冻点怎么滑、哪些绿是假的、换项目/切 tab 分别该怎样。
+- 动手前读 T-AG-16 来源全文（原始资料，2026-09-28 起在维护者的私有位置），不要只拿「窗口+项目」四个字开写。那里有冻点怎么滑、哪些绿是假的、换项目/切 tab 分别该怎样。
 - 长寿命对象（lane、session、adapter 工厂、transport）的构造函数不许收 `CapturedCanvasReadPort`。口只允许作为这一次 action 的参数，用完即弃。
 - 假对照自检：MCP 绿、mock port 绿、prepare 绿、文稿写绿，都不能证明生成面 execute 真 IPC 绿。Linux `resident-composer-receipt-fix` 才是真对照。
-- 产品结构债已经挂在 [T-AG-16](../roadmap/TODO.md)。#802 合入后立刻开独立 PR，不要再往列车里塞。
+- 产品结构债已经挂在 T-AG-16。#802 合入后立刻开独立 PR，不要再往列车里塞。
 
-**出处**：PR #802 Linux E2E `resident-composer-receipt-fix`；合同 `docs/fixes/2026-09-15-lane-canvas-write-live-port.root-cause.json`；上下文原料 [`docs/roadmap/sources/2026-09-16-session-identity-window-plus-project.md`](../roadmap/sources/2026-09-16-session-identity-window-plus-project.md)。
+**出处**：PR #802 Linux E2E `resident-composer-receipt-fix`；合同 `docs/fixes/2026-09-15-lane-canvas-write-live-port.root-cause.json`；上下文原料 T-AG-16 的原始资料（2026-09-28 起在维护者的私有位置）。

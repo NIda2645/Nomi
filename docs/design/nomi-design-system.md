@@ -717,7 +717,7 @@ className="transition-[background,color] duration-nomi-fast ease-nomi-fast"
 | 用户一下跑 ≥2 个（×N、多选、批量、先补参考）或首次匿名托管 | `SpendConfirmDialog` 居中弹窗，金币图标 | ✅ 现役 |
 | 人不在 Nomi，外部 MCP 驱动（`source: 'agent'`） | `SpendConfirmDialog` 居中弹窗 —— 这是唯一该「召唤注意力」的场景 | ✅ 现役 |
 
-确认卡**不印金额行**（2026-09-26 用户拍板：官方额度上线前隐藏价格维度；本版只去掉 ↑ 旁点数与确认框价格行，其它价格面归下一版「钱边界」）。
+确认卡**不印金额行**（2026-09-26 用户拍板：价格维度暂时对用户隐藏；本版只去掉 ↑ 旁点数与确认框价格行，其它价格面归下一版「钱边界」）。
 
 「要不要弹」只有一个判据：`spend/spendConfirm.ts` 的 `spendConfirmationRequirement`，只看事实：谁发起（Agent 必问）、一下跑几份（≥2 问）、首次匿名托管告知。**不看金额**，报价只用来铸令牌。各入口只报事实，不各判各的。
 
