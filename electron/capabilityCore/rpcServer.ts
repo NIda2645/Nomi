@@ -47,6 +47,8 @@ import { executeMcpDocumentWriteWithReceipt } from './mcpDocumentWriteReceipt'
 import { getDesktopLocale } from '../desktopLocale'
 
 export type RpcServerOptions = {
+  /** Called after an authenticated MCP RPC reaches the desktop boundary. */
+  onRpcActivity?: () => void
   /** 真实生成入口（runtime.runTask）。注入式：headless host 与 app 各自传同一份。 */
   runTask: RunTaskFn
   /** 异步任务轮询入口（runtime.fetchTaskResult）。图/视频异步生成等终态用。 */
@@ -160,6 +162,7 @@ export function startRpcServer(options: RpcServerOptions): Promise<RpcServerHand
         if (await handleArtifactPreviewHttpRequest(req, res, previewService)) return
         if (req.method !== 'POST' || req.url !== '/rpc') throw new RpcError('仅支持 POST /rpc', 404)
         if (!verifyToken(bearerToken(req))) throw new RpcError('鉴权失败：token 无效', 401)
+        options.onRpcActivity?.()
         const raw = await readBody(req)
         let parsed: { method?: unknown; params?: unknown; planConfirmed?: unknown; documentConfirmed?: unknown }
         try {

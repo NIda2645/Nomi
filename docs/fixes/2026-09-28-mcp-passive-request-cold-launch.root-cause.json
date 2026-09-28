@@ -1,0 +1,172 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-mcp-passive-request-cold-launch",
+  "problem_type": "Passive MCP discovery starts the desktop application",
+  "symptom": "On Windows, listing MCP resources or reconnecting a client can show the Nomi window; after closing it, the window returns later.",
+  "direct_cause": "The protocol resources/list handler calls invokeForRequest('skills.list'), and the launcher invoke path always calls ensureLiveInstance, which starts Nomi when no advertisement exists.",
+  "class_root": "Passive MCP discovery has no probe-only transport boundary; discovery and real work share a cold-starting invocation path.",
+  "affected_population": [
+    "Windows MCP clients using initialize/tools/list/resources/list/resources/templates/list/ping",
+    "Nomi instances with no live advertisement"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/mcpProtocol.ts",
+    "electron/capabilityCore/mcpPassiveDiscovery.ts",
+    "electron/capabilityCore/mcpNodeLauncher.ts",
+    "electron/main.ts",
+    "electron/backgroundLaunch.ts",
+    "electron/productionRun/productionRunDesktopLifecycle.ts",
+    "electron/backgroundIdleExit.ts",
+    "electron/runtime.ts",
+    "electron/tasks/taskCache.ts",
+    "electron/tasks/taskResultQuery.ts",
+    "electron/windowNavigation.ts"
+  ],
+  "entry_points": [
+    "MCP protocol discovery handlers",
+    "MCP launcher ensureLiveInstance/startNomi",
+    "Electron desktop createWindow and second-instance lifecycle"
+  ],
+  "internal_only_reason": "The invariant is an application-owned separation between passive discovery and cold-starting work; no third-party behavior determines it.",
+  "invariants": [
+    "Passive discovery never calls a cold-starting invoke path",
+    "Only real tool/work requests may start Nomi",
+    "A background window remains hidden until an explicit desktop open action",
+    "Idle exit is allowed only before the window has ever been shown and when the existing in-flight task owner reports no active task"
+  ],
+  "doors": [
+    { "kind": "read", "path": "electron/backgroundIdleExit.ts", "symbol": "BackgroundIdleExit" },
+    { "kind": "read", "path": "electron/backgroundIdleExit.ts", "symbol": "markWindowShown" },
+    { "kind": "read", "path": "electron/backgroundLaunch.ts", "symbol": "BackgroundIdleExit" },
+    { "kind": "read", "path": "electron/capabilityCore/mcpPassiveDiscovery.ts", "symbol": "buildSkillResources" },
+    { "kind": "read", "path": "electron/capabilityCore/mcpPassiveDiscovery.ts", "symbol": "buildSkillPrompts" },
+    { "kind": "read", "path": "electron/windowNavigation.ts", "symbol": "installWindowNavigation" },
+    { "kind": "read", "path": "electron/capabilityCore/mcpProtocol.ts", "symbol": "invokeForRequest" },
+    { "kind": "read", "path": "electron/main.ts", "symbol": "touchBackgroundActivity" },
+    { "kind": "read", "path": "electron/main.ts", "symbol": "createWindow" },
+    { "kind": "read", "path": "electron/main.ts", "symbol": "hasInFlightProductionWork" },
+    { "kind": "read", "path": "electron/runtime.ts", "symbol": "taskCache" },
+    { "kind": "read", "path": "electron/tasks/taskCache.ts", "symbol": "taskCache" },
+    { "kind": "read", "path": "electron/tasks/taskResultQuery.ts", "symbol": "taskCache" },
+    { "kind": "write", "path": "electron/backgroundLaunch.ts", "symbol": "markWindowShown" },
+    { "kind": "write", "path": "electron/backgroundLaunch.ts", "symbol": "hasInFlightTasks" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpDocumentConfirmation.ts", "symbol": "invokeForRequest" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpNodeLauncher.ts", "symbol": "startNomi" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpNodeLauncher.ts", "symbol": "ensureLiveInstance" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpProtocol.ts", "symbol": "invokeForRequest" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpTimelineConfirmation.ts", "symbol": "invokeForRequest" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpTrustDowngrade.ts", "symbol": "invokeForRequest" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "backgroundWindowOptions" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "installBackgroundWindowBehavior" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "createWindow" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "installBackgroundLifecycle" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "disposeBackgroundLifecycle" },
+    { "kind": "write", "path": "electron/mainWindowPresence.ts", "symbol": "createWindow" },
+    { "kind": "write", "path": "electron/productionRun/productionRunDesktopLifecycle.ts", "symbol": "deliverProductionDeepLink" }
+  ],
+  "door_reduction": {
+    "before": 10,
+    "after": 28,
+    "why_not": "The 28 doors are distinct protocol, launcher, task-cache, passive-discovery, navigation, and desktop lifecycle entry points. They converge on the probe-only transport or background lifecycle boundary but remain separate owners by responsibility; none can be merged without creating a second owner for protocol dispatch, launcher startup, task state, navigation, or window lifecycle."
+  },
+  "generality_proof": "All discovery methods are handled by the single MCP protocol dispatcher, while all launcher calls pass through the transport. Routing passive resources/list through invokeIfOpen prevents cold start for every client and library state; real tool calls retain ensureLiveInstance.",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/mcpProtocol.ts",
+      "symbol": "createMcpProtocol",
+      "responsibility": "Classify passive discovery and use probe-only invocation when an instance is already live."
+    },
+    {
+      "path": "electron/capabilityCore/mcpNodeLauncher.ts",
+      "symbol": "invokeIfOpen",
+      "responsibility": "Read the live advertisement and call RPC without spawning Nomi."
+    },
+    {
+      "path": "electron/backgroundIdleExit.ts",
+      "symbol": "createBackgroundIdleExit",
+      "responsibility": "Own the pre-display background idle timer and require both elapsed idle and no in-flight work before exit."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/mcpProtocol.ts",
+      "entry_point": "resources/list",
+      "disposition": "enforced",
+      "evidence": "This is the reported passive handler that previously called cold-starting invokeForRequest."
+    },
+    {
+      "path": "electron/capabilityCore/mcpProtocol.ts",
+      "entry_point": "tools/list",
+      "disposition": "enforced",
+      "evidence": "It remains static and is covered by the protocol discovery test class."
+    },
+    {
+      "path": "electron/capabilityCore/mcpProtocol.ts",
+      "entry_point": "resources/templates/list",
+      "disposition": "enforced",
+      "evidence": "It remains static and is covered by the protocol discovery test class."
+    },
+    {
+      "path": "electron/capabilityCore/mcpProtocol.ts",
+      "entry_point": "initialize/ping",
+      "disposition": "enforced",
+      "evidence": "Neither calls transport invocation; tests lock the passive set."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any MCP client can issue discovery repeatedly while Nomi is closed, so the shared invoke path can repeatedly relaunch the GUI.",
+    "same_class_scan": [
+      "rg for initialize/tools/list/resources/list/resources/templates/list/ping in mcpProtocol.ts",
+      "rg for ensureLiveInstance/startNomi/invoke in mcpNodeLauncher.ts",
+      "rg for createWindow/show/focus/second-instance in main.ts and productionRunDesktopLifecycle.ts"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/mcpProtocol.ts",
+    "invariant": "Passive discovery uses only an already-live RPC instance; cold start is reachable only from real work invocation.",
+    "failure_mode": "If no instance is advertised, passive discovery returns static resources and never spawns; real work keeps the existing explicit startup error/timeout behavior.",
+    "exception_policy": "none",
+    "strategy": "Separate probe-only invocation from ensureLiveInstance at the transport boundary and route the sole passive dynamic resource lookup through it.",
+    "artifacts": [
+      "electron/capabilityCore/mcpProtocol.ts",
+      "electron/capabilityCore/mcpNodeLauncher.ts",
+      "electron/capabilityCore/mcpPassiveDiscovery.ts",
+      "electron/windowNavigation.ts",
+      "electron/capabilityCore/mcpStdioServer.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/mcpNodeLauncher.test.ts",
+    "electron/capabilityCore/mcpProtocol.test.ts",
+    "electron/backgroundIdleExit.test.ts",
+    "electron/productionRun/productionRunDesktopLifecycle.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/mcpProtocol.test.ts",
+    "electron/capabilityCore/mcpNodeLauncher.test.ts",
+    "electron/backgroundIdleExit.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No file or entry point was deleted: the passive discovery handlers in mcpProtocol.ts were rerouted in place from the cold-starting invoke to the probe-only invokeIfOpen, and the moved main.ts code lives on in backgroundLaunch.ts and windowNavigation.ts."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency controls the lifecycle invariant.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data changes; existing clients receive static discovery results while Nomi is closed and dynamic skill resources when it is already live.",
+  "residual_risks": [
+    "Windows packaged real-machine walk is required to prove renderer startup and 10-minute process exit; unit tests cover the decision boundary."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/backgroundIdleExit.ts",
+    "tests": [
+      "electron/backgroundIdleExit.test.ts",
+      "electron/desktopNotification.test.ts"
+    ]
+  }
+}
