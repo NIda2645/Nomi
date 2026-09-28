@@ -437,7 +437,7 @@ export function applyProductionCommand(
       const jobs = current.jobs.map((job) => {
         const matches = jobsForShot(current, shotId).some((candidate) => candidate.jobId === job.jobId);
         return matches && pending.has(job.status)
-          ? { ...transitionJob(job, "detached", now), errorCode: "canvas_detached", errorMessage: "Canvas claimed this shot", updatedAt: now }
+          ? { ...transitionJob(job, "detached", now), errorCode: "canvas_claimed", errorMessage: "Canvas claimed this shot", updatedAt: now }
           : job;
       });
       const plan = current.generationPlan;

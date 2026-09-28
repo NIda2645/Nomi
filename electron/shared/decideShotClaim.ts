@@ -82,10 +82,16 @@ export function decideShotClaim(
   if (plan.state !== "submitted") {
     if (plan.cardHidden === true) return decision("canvas", "shot_excluded", requester);
     if (gateRejected) return decision("canvas", "gate_rejected", requester);
-    return decision("production", "awaiting_confirmation", requester);
+    return STOPPED_RUNS.has(run.status)
+      ? decision("canvas", "run_stopped", requester)
+      : decision("production", "awaiting_confirmation", requester);
   }
   if (gateRejected) return decision("canvas", "gate_rejected", requester);
-  if (gate && gate.status !== "approved") return decision("canvas", "awaiting_confirmation", requester);
+  if (gate && gate.status !== "approved") {
+    return STOPPED_RUNS.has(run.status)
+      ? decision("canvas", "run_stopped", requester)
+      : decision("production", "awaiting_confirmation", requester);
+  }
   if (job && terminalStatus(job.status)) return decision("canvas", "terminal", requester);
   if (job && (job.status === "authorization_required" || job.status === "authorized")) {
     return STOPPED_RUNS.has(run.status)

@@ -212,6 +212,15 @@ describe('decideShotClaim — 画布能不能再发这一镜', () => {
     expect(decideShotClaim(run({ status: 'running', shots }), 's1', 'canvas').holder).toBe('production')
     expect(decideShotClaim(run({ status: 'paused', shots }), 's1', 'canvas').holder).toBe('canvas')
   })
+
+  it('approval gate waiting follows the run stop state without mixing holder and reason', () => {
+    const waiting = run({ status: 'running', shots: [{ shotId: 's1' }] })
+    waiting.generationPlan!.authorizationGateId = 'gate-1'
+    waiting.gates.push({ gateId: 'gate-1', scope: 'budget_envelope', status: 'waiting', planHash: 'p', jobIds: [], title: '', summary: '', createdAt: NOW, expiresAt: NOW })
+    expect(decideShotClaim(waiting, 's1', 'canvas')).toMatchObject({ holder: 'production', reason: 'awaiting_confirmation', granted: false })
+    waiting.status = 'paused'
+    expect(decideShotClaim(waiting, 's1', 'canvas')).toMatchObject({ holder: 'canvas', reason: 'run_stopped', granted: true })
+  })
 })
 
 describe('decideShotClaim — durable matrix regressions', () => {
@@ -227,6 +236,7 @@ describe('decideShotClaim — durable matrix regressions', () => {
       payload: { shotId: 's1', by: 'canvas' }, issuedAt: NOW,
     }, NOW).run
     expect(claimed.jobs[0].status).toBe('detached')
+    expect(claimed.jobs[0].errorCode).toBe('canvas_claimed')
     expect(claimed.generationPlan?.shots?.[0].claim).toMatchObject({ by: 'canvas', attempt: 1 })
     const inFlight = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'polling')] })
     expect(() => applyProductionCommand(inFlight, {

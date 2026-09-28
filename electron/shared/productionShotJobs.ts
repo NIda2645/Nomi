@@ -1,5 +1,17 @@
 import type { ProductionJob, ProductionRun } from "../productionRun/productionRunTypes";
 
+/** Statuses that have not crossed the provider submission boundary yet. */
+export function isUnsubmittedJobStatus(status: ProductionJob["status"]): boolean {
+  switch (status) {
+    case "planned":
+    case "authorization_required":
+    case "authorized":
+      return true;
+    default:
+      return false;
+  }
+}
+
 /** Stable shot address for both multi-shot metadata and legacy single-shot plans. */
 export function productionShotId(run: ProductionRun, shotId: string): string | undefined {
   if (run.generationPlan?.shots?.length) return shotId;
