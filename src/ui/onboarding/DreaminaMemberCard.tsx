@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 即梦会员（dreamina 官方 CLI）接入卡。
  *

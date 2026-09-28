@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useFrame、react-i18next、@sparkjsdev/spark 的 SplatMesh、../../../../../../ui/toast、
  *          ../../DirectorEditorContext、../../model/directorTypes 的 DirectorObject、../environment/splatRevealDyno 的 createSplatReveal

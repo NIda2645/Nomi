@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设置 → 模型 → 数据源 → TikHub（分享链接直拆）。小 UI，照 CustomVendorManage 的凭证卡先例。
 // 2026-09-01 归位：从「AI 策略」tab 搬到「模型」tab 的数据源区——它是数据源接入（换来一路素材），
 // 不是 AI 策略（在已接入能力上定规则）。判据见 docs/design/nomi-design-system.md §1.7.2。

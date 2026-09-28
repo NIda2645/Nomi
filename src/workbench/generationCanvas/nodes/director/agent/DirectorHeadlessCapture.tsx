@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、@react-three/fiber 的 useThree、../../fencedCanvas 的 FencedCanvas、../DirectorEditorContext（DirectorStoreContext / useDirectorStoreApi）、
  *          ../model/directorStore 的 createDirectorStore、../model/exportSize 的 exportDimensions、../scene/{sceneRefs, SceneRegistryContext, ViewportApiContext, webglContextRecovery, useTimelinePlayback}、

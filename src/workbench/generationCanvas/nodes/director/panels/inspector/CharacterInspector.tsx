@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 NomiSegmented、../../DirectorEditorContext、../../model/directorTypes、../fields/FieldPrimitives、
  *          ./TransformSection、./PoseTab、./SkeletonTab

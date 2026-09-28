@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { deleteStoryboardRows, restoreStoryboardDeletion, type StoryboardDeletion } from './storyboardDeleteUndo'
 import { isCanvasTextEditingContext } from '../../generationCanvas/components/useCanvasShortcuts'

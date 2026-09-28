@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · 积木 ③ 一行收据（AI Elements Tool）
 //
 // 定稿 Vocabulary 板 ③：一行 28px = 对象 icon + 动作名 + 摘要 + 右侧状态。

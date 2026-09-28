@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 剪辑面（editing 屏）的取景台。
 //
 // 和 Agent 面板那屏的区别在于**这一族东西都是浮层**：转场选择器 Portal 到 body，

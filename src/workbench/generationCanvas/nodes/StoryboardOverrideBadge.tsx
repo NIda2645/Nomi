@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconCheck, IconX } from '../../../vendor/tablerIcons'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 懒加载容错域（审计 A5 根治）。
 // 此前全 app 只有 main.tsx 根上一层错误边界：任一懒加载 chunk 失败（构建竞态、
 // asar 损坏、增量更新中途、磁盘错误）都把整个工作台拖进根错误页；含 3D 节点的

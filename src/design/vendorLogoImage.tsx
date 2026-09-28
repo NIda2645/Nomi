@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { isMonochromeVendorLogo } from '../assets/vendor-logos'
 import { cn } from '../utils/cn'
 

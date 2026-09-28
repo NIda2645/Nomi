@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSegmented / WorkbenchButton）、../../../../../../utils/cn、../../DirectorEditorContext、../../model/directorTypes、
  *          ../../model/ikChains 的 IkHandleKey、../../model/rigs（boneName / jointAxisLabelKey / SemanticBone）、../../scene/ViewportApiContext、

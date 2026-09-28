@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import type { ReactElement } from 'react'
 

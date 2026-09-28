@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { NodeGenerationStatus } from '../nodes/NodeGenerationStatus'
 import { NodeLabelRow } from '../nodes/NodeLabelRow'

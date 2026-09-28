@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 比例分段选择器的**图形语言**：小宽高比矩形 + 组级双行 label。
 //
 // 这两个函数原本是 `InlineParameterBar.tsx` 的模块私有函数（2026-07-17 用户拍板的参数面板形态）。

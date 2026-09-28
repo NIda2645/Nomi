@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { CanvasAddPreferenceActions } from './CanvasAddPreferenceActions'
 import { useCanvasMenuPreferenceStore } from '../store/canvasMenuPreferenceStore'
 import React from 'react'

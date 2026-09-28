@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { V4Row, V4Shimmer } from './AgentPanelV4Row'
 // Agent 面板 v4 · 积木 ① 用户气泡 · ② 助手文本（含思考行）
 //

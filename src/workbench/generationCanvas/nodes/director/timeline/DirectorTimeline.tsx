@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../ui/toast、../DirectorEditorContext、../model/hotkeys 的 DirectorHotkeyScope、
  *          ../model/timelineTracks（buildTimelineTracks / ClipLabeler / TimelineTrack / TrackFamily）、../model/timelineClipboard 的 canPasteTo、

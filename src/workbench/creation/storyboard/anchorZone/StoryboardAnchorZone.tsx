@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconChevronUp, IconPlus } from '../../../../vendor/tablerIcons'

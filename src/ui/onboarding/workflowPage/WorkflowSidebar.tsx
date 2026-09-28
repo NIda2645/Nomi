@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 工作流设置整页的左栏：后端（多台 · 加/删/改地址）+ 这台的工作流列表。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md

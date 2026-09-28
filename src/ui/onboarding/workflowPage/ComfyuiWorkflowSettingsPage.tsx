@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * ComfyUI「工作流设置」整页。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * OnboardingWizard 的支撑模块：无状态展示子组件（R9 防巨壳，不含 wizard state）。
  *

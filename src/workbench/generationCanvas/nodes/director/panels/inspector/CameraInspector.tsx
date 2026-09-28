@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../DirectorEditorContext、../../model/directorTypes、
  *          ../../model/cameraLens（LENS_PRESETS / FOCAL_MM_MIN / FOCAL_MM_MAX / focalMmToFov）、../../../../../../utils/cn、../fields/*、./TransformSection

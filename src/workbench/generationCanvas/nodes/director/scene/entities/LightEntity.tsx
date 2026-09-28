@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber、../../model/directorTypes 的 DirectorLight、../../model/vec3 的 forwardFromAngles、
  *          ../sceneRefs 的 tagEntityObject / tagEditorOnly、../SceneRegistryContext 的 useSceneRegistry

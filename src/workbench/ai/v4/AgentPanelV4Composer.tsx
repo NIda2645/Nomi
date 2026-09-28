@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { LibraryPicker, type LibraryPickerRow } from '../../library/LibraryPicker'
 import { V4Row } from './AgentPanelV4Row'
 // Agent 面板 v4 · 积木 ⑧ composer（AI Elements PromptInput + MiniMax 底栏）

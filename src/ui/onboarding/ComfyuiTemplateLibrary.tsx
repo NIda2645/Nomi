@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * ComfyUI 模板库（T2 · 2026-08-02 拍板，四幕样张第①幕）。
  *

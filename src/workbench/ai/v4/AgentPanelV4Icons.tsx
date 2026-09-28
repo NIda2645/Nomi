@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · icon ↔ 动词的**唯一**映射（定稿 Process 板下半张表）。
 //
 // 规则（照抄定稿）：icon 标的是**动的那个对象**（文稿 / 时间轴 / 节点 / 图 / 视频 / 音频），

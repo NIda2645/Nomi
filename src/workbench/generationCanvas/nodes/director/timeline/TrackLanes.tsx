@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../../../../utils/cn、../DirectorEditorContext 的 useDirectorStore / useDirectorStoreApi、
  *          ../model/timelineTracks（TimelineClipView / TimelineMarkerView / TrackFamily）、../model/timelineSnap（collectSnapCandidates / snapTime / snapToleranceSeconds）、

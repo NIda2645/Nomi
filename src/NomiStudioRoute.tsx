@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { HashRouter } from 'react-router-dom'
 import NomiStudioApp from './workbench/NomiStudioApp'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { anchorsConsumedBy } from '../../../../../electron/shared/modelArchetypes/anchorPolicy'
 import { NodeGenerationStatus } from '../../../generationCanvas/nodes/NodeGenerationStatus'
 import { StoryboardOverrideBadge } from '../../../generationCanvas/nodes/StoryboardOverrideBadge'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（WorkbenchButton / NomiSelect）、../../DirectorEditorContext、../../model/directorTypes（DirectorObject / ActionClip）、
  *          ../../model/actionLibrary 的 ACTION_LIBRARY、../../model/timeGrid 的 secondsToFrame、../../timeline/timelineCommands 的 cutSelectedClip、../fields/FieldPrimitives、../fields/SliderNumberField

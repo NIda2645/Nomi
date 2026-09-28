@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 设置「隐私与诊断」那一格的四态。
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录里 `NN-*.tsx` 的文件名排序解析，汇总口

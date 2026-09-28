@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · primitive 陈列 · 输入族。
 //
 // `Design*` 输入件全部是 Mantine 原语外裹一层 token className（`src/design/forms.tsx`）。

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { Suspense } from 'react'
 import { NomiSkeleton } from '../../../design/status'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'

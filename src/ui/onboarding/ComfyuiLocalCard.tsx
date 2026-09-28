@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * ComfyUI 接入卡（无鉴权后端的「启用开关」，用户拍板形状②）。地址可填本机（默认 127.0.0.1:8188）
  * 或云平台 ComfyUI（cnb.cool、cloudstudio.net 等，Issue #43）——同一张卡、同一条「接入地址」，

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import type { ToastType } from '../../ui/toast'
 import React from 'react'
 import { useTranslation } from 'react-i18next'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/directorTypes（TimelineEntity / TrajectoryClip）、../../model/hotkeys（DIRECTOR_HOTKEYS / formatHotkey）、../../model/timeGrid 的 FRAME_SECONDS、

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { IconMoonStars, IconSun } from '../../vendor/tablerIcons'
 import { cn } from '../../utils/cn'

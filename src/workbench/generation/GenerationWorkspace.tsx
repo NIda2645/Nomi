@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { AssistantPane } from '../AssistantPane'
 import { assistantPaneWidth } from '../assistantWidthBounds'
 import React from 'react'

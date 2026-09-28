@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import type { ShotTableColumn } from '../../../../../electron/shared/canvas/shotTable'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../utils/cn'

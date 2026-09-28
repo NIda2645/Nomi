@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { Group, Stack, Text } from '@mantine/core'

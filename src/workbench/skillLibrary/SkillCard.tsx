@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { cn } from '../../utils/cn'
 import { SkillMedia } from './SkillMedia'
 import type { SkillGalleryEntry } from './skillGallery'

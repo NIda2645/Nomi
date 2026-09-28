@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 上手 4 步进度（被动指示，不带走查——引导走查归首页触发的 JourneyTour）。
  *

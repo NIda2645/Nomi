@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/drei 的 useGLTF / useFBX、../character/characterAsset 的 isFbxUrl / resolveCharacterModelUrl、three/examples/jsm/utils/SkeletonUtils 的 clone、
  *          ../character/mannequinAssets 的 MANNEQUIN_MODEL_URL、../character/mannequinSkeleton 的

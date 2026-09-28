@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber、@react-three/drei 的 GizmoHelper / GizmoViewcube、../../fencedCanvas 的 FencedCanvas、
  *          ./webglContextRecovery 的 attachWebGLContextRecovery、./SceneRegistryContext、./sceneRefs、

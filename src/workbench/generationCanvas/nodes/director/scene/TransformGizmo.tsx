@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/drei 的 TransformControls、../DirectorEditorContext、./SceneRegistryContext、./ViewportApiContext、./sceneRefs 的 tagEditorOnly、
  *          ../model/vec3 的 RAD_TO_DEG / wrapDeg

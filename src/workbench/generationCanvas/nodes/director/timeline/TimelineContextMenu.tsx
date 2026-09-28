@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../../../../design（BodyPortal / NOMI_OVERLAY_Z_INDEX）、../../../../../utils/cn
  * [OUTPUT]: 对外提供 TimelineMenuItem 类型与 TimelineContextMenu（按指针位置定位的右键菜单；外点 / Esc 关闭）

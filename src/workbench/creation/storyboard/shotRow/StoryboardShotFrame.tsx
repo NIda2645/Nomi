@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { shotPresentation } from '../shotPresentation'
 import React from 'react'
 import { useTranslation } from 'react-i18next'

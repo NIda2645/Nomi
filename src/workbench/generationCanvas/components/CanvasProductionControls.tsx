@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { IconPlayerPlay } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect, WorkbenchButton } from '../../../design'

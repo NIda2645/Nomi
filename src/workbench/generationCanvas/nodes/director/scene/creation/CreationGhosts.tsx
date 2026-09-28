@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useFrame、./useCharacterPlacement 的 PlacementGhostState、./useBoxDraw 的 BoxDrawGhostState、
  *          ../sceneTheme 的 PLACEMENT_RING_COLOR、../../model/vec3 的 DEG_TO_RAD、../sceneRefs 的 tagEditorOnly

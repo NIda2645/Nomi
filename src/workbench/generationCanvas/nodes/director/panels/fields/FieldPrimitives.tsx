@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../utils/cn、../../../../../vendor/tablerIcons 的 IconRefresh、../../scene/sceneTheme 的 CHARACTER_COLOR_PRESETS、./useNumberDraft
  * [OUTPUT]: 对外提供 SectionHeader（分区标题 + 可选重置）、Vec3Fields（XYZ 三数字输入）、ColorField（色板 + 自定义 + 清除）、

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import type { ShotLabelFixture } from '../shotLabelFixture'
 import type { LabState } from '../../labScreen'

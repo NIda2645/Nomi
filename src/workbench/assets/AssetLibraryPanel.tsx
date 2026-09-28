@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 素材库内容（唯一素材面 · 挂在左侧栏「素材库」tab）。
  *

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 介入槽那一格的**外壳**——卡族共用的那一件。
  *

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · primitive 陈列 · 浮层族。
 //
 // 这一族**全部** `capture: 'viewport'`：Modal / AnchoredPopover / Radix Tooltip

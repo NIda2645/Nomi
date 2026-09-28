@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useFrame、react-i18next、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/splatReveal 的 revealEaseOut、../../model/vec3 的 DEG_TO_RAD

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * GroupFrame —— 画布上每个框（Frame）的框体 + 拖动 handle。
  *

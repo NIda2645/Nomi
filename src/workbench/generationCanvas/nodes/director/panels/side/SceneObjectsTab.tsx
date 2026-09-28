@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../utils/cn、../../../../../vendor/tablerIcons、../../../../../design 的 promptDialog / confirmDialog、
  *          ../../DirectorEditorContext、../../model/directorTypes、../Popover

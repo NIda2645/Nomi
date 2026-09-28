@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useCanvasMenuPreferenceStore } from '../store/canvasMenuPreferenceStore'
 import { DEFAULT_CANVAS_MENU_PREFERENCE_SETTINGS } from '../../../../electron/shared/contracts/canvasMenuPreference'

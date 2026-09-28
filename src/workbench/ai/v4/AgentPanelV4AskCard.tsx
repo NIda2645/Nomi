@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 反问卡。**骨架**来自 Beautiful UI 的 Approval Card（MIT，见 `vendor/BEAUTIFUL-UI-LICENSE.md`），
  * **长相百分之百是 Nomi 的**（2026-09-22 用户：「卡族换壳，主要是要用我们的设计系统」）。

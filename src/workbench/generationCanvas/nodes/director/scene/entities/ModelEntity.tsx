@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/drei 的 useGLTF / useFBX、three/examples/jsm/utils/SkeletonUtils 的 clone、react-i18next、
  *          ../../../../../../ui/toast、../../DirectorEditorContext、../../model/directorTypes 的 DirectorObject、../character/characterAsset（isFbxUrl / hasMixamoRig）、../sceneTheme 的 CLAY_COLOR

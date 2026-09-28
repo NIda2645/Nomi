@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../scene/LabelProjector 的 ProjectedLabel、../../scene/creation 两个 hook 的 API 类型
  * [OUTPUT]: 对外提供 ViewportLabels（角色名标签层）、PlacementHud（放置/画框模式提示条）

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /** 自定义调用编辑器：材料辅助生成，脚本与供应商配置才是持久化内容。 */
 import React from 'react'
 import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'

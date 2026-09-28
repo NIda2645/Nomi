@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../../../../utils/cn、../model/timelineTracks 的 TimelineClipView、./clipTone（clipToneClass / ClipDragZone）
  * [OUTPUT]: 对外提供 ClipBar：片段条呈现（20px 高、顶部 3px、圆角、家族色带透明度、10px 等宽居中标签、选中时白边 + 两端 4px 拖柄）+ 左右把手命中区判定

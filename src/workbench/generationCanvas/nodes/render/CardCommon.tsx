@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 卡片渲染共用 helpers + 子组件。
  *

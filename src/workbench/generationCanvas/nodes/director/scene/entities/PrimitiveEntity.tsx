@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/drei 的 Edges、../../model/directorTypes 的 DirectorObject / DirectorModelDisplayMode、
  *          ../sceneTheme 的 CLAY_EDGE_COLOR、./primitiveMaterial 的 primitiveMaterialSpec

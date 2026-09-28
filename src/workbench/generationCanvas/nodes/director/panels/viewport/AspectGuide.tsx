@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../DirectorEditorContext 的 useDirectorStore、../../model/cameraLens（exportAspectRatio / frameGuideSize）、../../model/exportSize 的 exportDimensions、../../scene/pipCamera 的 PipRect
  * [OUTPUT]: 对外提供 AspectGuide：机位视角 + 画幅非 free 时的导出取景框（四周 80px 内边距装框、框外压暗、四角圆角括号、

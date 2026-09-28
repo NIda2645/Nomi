@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/directorTypes（TimelineEntity / Waypoint）、../../model/timeGrid（DIRECTOR_FPS / secondsToFrame）、../fields/FieldPrimitives、../fields/SliderNumberField

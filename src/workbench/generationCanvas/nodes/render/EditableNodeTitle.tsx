@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * v0.8: 节点标题 inline 编辑组件。
  *

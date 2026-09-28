@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { libraryGroup } from '../library/libraryGroups'
 // 常驻 Agent 面板的容器。
 //

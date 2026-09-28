@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../utils/cn、../../../../../../vendor/tablerIcons 的 IconCheck、../../DirectorEditorContext、
  *          ../../model/directorTypes 的 DirectorObject、../../model/actionLibrary（ACTION_LIBRARY / resolveActionAlias / T_POSE_ACTION_ID）、../../model/rigs 的 BODY_TYPE_PRESETS、../fields/FieldPrimitives

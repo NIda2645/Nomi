@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { Badge, Progress, type BadgeProps, type ProgressProps } from '@mantine/core'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../utils/cn'

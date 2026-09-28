@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../DirectorEditorContext、./CharacterInspector、./CameraInspector、./LightInspector、./PrimitiveInspector、./SceneLayerInspector
  * [OUTPUT]: 对外提供 ContextInspector：按选中类型切换检查器（时间轴片段 / 关键帧优先、整块替换；否则 角色 / 机位 / 灯 / 几何体·组；无选中 → 场景图层配置）

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 屏「画布加号收束」的取景台。
 //
 // 这一格渲染的是**现役组件本身**（`CanvasToolbar` / `NodeAddMenu`），不是照着它画的样张——

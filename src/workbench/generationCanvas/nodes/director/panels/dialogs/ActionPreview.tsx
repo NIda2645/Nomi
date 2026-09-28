@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber（useFrame）、../../../fencedCanvas 的 FencedCanvas（workbench 内禁裸 Canvas）、@react-three/drei（OrbitControls / useGLTF）、three/examples/jsm/utils/SkeletonUtils 的 clone、../../scene/character/mannequinAssets 的 MANNEQUIN_MODEL_URL、
  *          ../../scene/character/mannequinSkeleton（normalizeMannequinModel / applyMannequinSkeletonPose）、../../scene/character/poseClipLibrary（samplePoseClip / poseClipSourceBind / preloadPoseClips）、

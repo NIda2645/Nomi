@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 
 /** Optional shortcuts may shrink; clipped shortcuts must also leave the focus order. */

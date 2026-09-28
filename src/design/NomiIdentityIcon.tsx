@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { IconBox, IconPlugConnected } from '@tabler/icons-react'
 import { cn } from '../utils/cn'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSelect / NomiSegmented / WorkbenchButton）、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/directorTypes（DirectorObject / LookAtClip / LookAtTargetType / LookAtBodyPart）、../../model/hotkeys、../../timeline/timelineCommands、../fields/*

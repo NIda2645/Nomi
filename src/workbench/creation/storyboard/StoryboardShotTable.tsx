@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { resolveStoryboardOverride } from './exec/storyboardOverrideActions'
 import React from 'react'
 import { useWorkbenchStore } from '../../workbenchStore'

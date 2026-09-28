@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconChevronRight, IconCircleCheck, IconMap, IconMessage, IconPlayerPlay } from '@tabler/icons-react'

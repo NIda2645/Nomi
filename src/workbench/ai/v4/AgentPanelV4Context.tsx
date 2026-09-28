@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { V4Row } from './AgentPanelV4Row'
 import { formatV4Tokens } from './agentPanelV4UsageFormat'
 import { resolveAnchoredPlacement } from '../../generationCanvas/nodes/anchoredPlacement'

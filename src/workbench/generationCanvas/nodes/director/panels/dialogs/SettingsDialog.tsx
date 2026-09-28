@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 DesignModal / NomiSegmented / WorkbenchButton / WorkbenchIconButton、
  *          ../../../../../../vendor/tablerIcons 的 IconHelp / IconRefresh、../../scene/viewSettings（DEFAULT_VIEW_SETTINGS / VIEW_SETTING_RANGES / DirectorPreferences）、

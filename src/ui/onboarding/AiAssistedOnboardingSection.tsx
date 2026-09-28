@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「用 AI 帮我接入」卡在模型页上的接线层。
  *

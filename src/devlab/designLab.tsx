@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室（Design Lab）—— Agent 面板的可拍板真相源。
 //
 // 2026-09-06 用户拍板：**以后 UI 交付的定义 = 「实验室截图拍板 + 视觉基线绿」**，

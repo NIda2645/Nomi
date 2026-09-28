@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../DirectorEditorContext、../../model/directorTypes、
  *          ../fields/FieldPrimitives 的 InspectorCard / SectionHeader、../fields/SliderNumberField

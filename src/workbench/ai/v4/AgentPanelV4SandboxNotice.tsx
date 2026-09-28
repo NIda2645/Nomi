@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · 「命令沙箱没起来」的一行微字。
 //
 // 它住在 composer 上沿（`composerBanner` 插槽），和档位钮同一块地方——因为它说的正是

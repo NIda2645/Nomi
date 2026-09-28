@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { NomiBrand } from '../../../design/identity'
 // Agent 面板 v4 · 整块面板的装配壳
 //
@@ -285,6 +284,9 @@ export function AgentPanelV4Panel({
       }
     }
   }, [historyIdentity])
+  React.useLayoutEffect(() => {
+    setHistoryError(false)
+  }, [onLoadOlder])
   React.useLayoutEffect(() => {
     const node = scrollRef.current
     if (node && pageAnchor.current && (flow[0]?.identity !== pageAnchor.current.first || historyCursor !== pageAnchor.current.cursor)) {

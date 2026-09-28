@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · primitive 陈列三屏的共用取景台。
 //
 // 这三屏（primitives-actions / primitives-forms / primitives-surfaces）和别的屏不同：

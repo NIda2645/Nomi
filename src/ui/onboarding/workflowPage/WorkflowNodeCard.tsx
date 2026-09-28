@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 只读节点图里的一张节点卡。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md

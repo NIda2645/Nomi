@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { notify } from '../../../ui/notificationPolicy'
 import { normalizeConditionalParameters } from '../../../../electron/shared/videoCapabilities/crossFieldConstraints'
 import { nodeReferenceCapacity } from './controls/nodeCrossFieldConstraints'

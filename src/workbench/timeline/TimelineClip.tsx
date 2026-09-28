@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { TimelineGenerationFeedback } from './TimelineGenerationFeedback'
 import { useTranslation } from 'react-i18next'

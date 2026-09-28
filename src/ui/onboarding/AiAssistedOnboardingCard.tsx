@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「用 AI 帮我接入」——设置 →「模型」页顶部那张卡。
  *

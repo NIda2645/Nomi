@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { getDesktopBridge } from './desktop/bridge'
 import { notifyModelOptionsRefresh } from './config/modelCatalogCache'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 一行「推一下就删」——整件取自 Spectrum UI 的 **Swipe to Delete**
  * （`https://ui.spectrumhq.in/docs/swipe-to-delete`，源码页公开，本次任务已把它落盘到

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { IconAlertTriangle } from '@tabler/icons-react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'

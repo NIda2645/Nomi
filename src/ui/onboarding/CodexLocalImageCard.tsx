@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「Codex 本地生图」接入卡（无 key 的本机 provider，与 ComfyuiLocalCard / DreaminaMemberCard 同一模式）。
  *

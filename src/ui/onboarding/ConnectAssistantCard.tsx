@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 接入 AI 编程助手卡（见 docs/plan/2026-06-22-multi-client-mcp-connect.md
  * + docs/plan/2026-09-14-mcp-connection-truthfulness.md）。

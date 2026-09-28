@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * TextDocumentNode — `text`-kind 节点的可编辑 body（C5）。
  *

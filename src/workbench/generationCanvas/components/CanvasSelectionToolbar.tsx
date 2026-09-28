@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { IconFolderMinus, IconFolderPlus, IconLayoutGrid, IconRoute, IconX } from '../../../vendor/tablerIcons'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchIconButton } from '../../../design'

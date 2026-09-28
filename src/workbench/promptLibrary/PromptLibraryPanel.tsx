@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { groupLibraryItems, libraryGroup } from '../library/libraryGroups'
 /**
  * 提示词库面板。借鉴 infinite-canvas 的提示词库,但瘦身:库只管「靠封面挑起点 → 送上画布」,

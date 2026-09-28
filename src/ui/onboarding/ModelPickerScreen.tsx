@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 模型勾选第二屏（OnboardingWizard 的换屏，非新弹窗）。
  *

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../DirectorEditorContext、../../model/directorTypes、../../model/lights（色温预设 / 快捷朝向）、../fields/*
  * [OUTPUT]: 对外提供 LightInspector：名称；启用/视口可见/锁定；颜色 + 色温预设；强度；聚光锥角与柔化；有效距离；衰减；位置；照射朝向 + 4 快捷朝向

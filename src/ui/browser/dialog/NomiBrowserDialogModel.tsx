@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /* eslint-disable react-refresh/only-export-components */
 import React from 'react'
 import i18n from '../../../i18n'

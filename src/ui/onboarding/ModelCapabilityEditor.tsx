@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { IconChevronRight, IconDeviceFloppy, IconPlus, IconRefresh } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'

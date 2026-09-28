@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react-dom 的 createPortal、../fullscreenZIndex 的 FULLSCREEN_Z_INDEX、
  *          ../../../../ui/app-shell/windowChrome 的 currentFullscreenOverlayTopOffset、

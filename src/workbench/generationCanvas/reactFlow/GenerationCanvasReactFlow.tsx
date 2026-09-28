@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { completeNodeConnection } from '../nodes/completeNodeConnection'
 import React from 'react'
 import {

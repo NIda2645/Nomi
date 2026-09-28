@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton / WorkbenchIconButton、../../../../../../vendor/tablerIcons、
  *          ../../DirectorEditorContext、../../OutputsContext 的 useOutputs / DirectorOutput、../../model/hotkeys、../Popover

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「接入地址」字段行 —— 内置家卡（VendorOnboardCard）与自定义中转家卡（CustomVendorManage）
  * **共用同一份**。此前两边各写了一份逻辑与 markup 完全相同的编辑块（同样的 upsertVendor、

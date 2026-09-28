@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { notify } from '../../../../ui/notificationPolicy'
 /**
  * AudioStripNode body — 声音分类节点（spec §4.4，2026-06-15 升级）。

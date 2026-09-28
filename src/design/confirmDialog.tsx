@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 破坏性操作确认原语（审计 A7 根治）。
 // 此前全仓 11 处 window.confirm/alert/prompt：视觉脱离设计系统、Playwright 驱动
 // 自动 dismiss 导致删除链路永远测不到、Electron 下原生弹窗在 macOS 有焦点丢失史。

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconMusic, IconSubtitles } from '@tabler/icons-react'

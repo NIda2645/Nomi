@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · 积木 ⑦ 收起坞 —— **画面下沿那一坞**（我们独有，AI Elements / Beautiful UI 都没有）。
 //
 // 收起藏的是**对话流**，不是对话：同一个 composer 掉到画面下沿居中，介入槽跟着它一起。

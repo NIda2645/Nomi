@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「本地模型」接入卡（无鉴权本地文本端点的「发现 + 一键连」，仿 ComfyuiLocalCard / CodexLocalImageCard）。
  *

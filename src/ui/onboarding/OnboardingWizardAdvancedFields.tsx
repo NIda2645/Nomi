@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import type React from 'react'
 import { ActionIcon, Anchor, Collapse, Group, Stack, Text } from '@mantine/core'
 import { IconCheck, IconChevronDown, IconChevronRight, IconPlus, IconTrash } from '@tabler/icons-react'

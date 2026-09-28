@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { IconCheck, IconCircleCheck, IconLock } from '../../../vendor/tablerIcons'
 import { useTranslation } from 'react-i18next'

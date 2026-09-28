@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: react-i18next、NomiSelect、DirectorEditorContext。
  * [OUTPUT]: WaypointAimField：单/批路标共用看向目标下拉，只列其他非组对象。

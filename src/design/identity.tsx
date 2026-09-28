@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import type { CSSProperties, HTMLAttributes } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../utils/cn'

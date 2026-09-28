@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 模型设置面板的「网络」行（应用内代理设置 · 见 docs/plan/2026-08-01-in-app-proxy-setting.md）。
  *

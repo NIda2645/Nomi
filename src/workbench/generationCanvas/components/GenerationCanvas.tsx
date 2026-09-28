@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { lazyWithChunkBoundary } from '../../../ui/chunkBoundary'
 import '../styles/generationCanvas.css'

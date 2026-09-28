@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { Modal, type ModalProps } from '@mantine/core'
 import { cn } from '../utils/cn'
 import { NOMI_OVERLAY_Z_INDEX } from './overlayLayers'

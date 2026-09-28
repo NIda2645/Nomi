@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconDeviceFloppy, IconPencil, IconRoute, IconStar, IconStarFilled, IconX } from '@tabler/icons-react'

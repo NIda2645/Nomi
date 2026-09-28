@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../ui/toast、../../../store/generationCanvasStore、../../../model/generationCanvasTypes、../bridge/persistOutputs 的 persistDirectorFramesVideo、
  *          ../model/directorProject 的 normalizeDirectorProject、../model/directorIds 的 createOutputId、../model/directorNodeMeta 的 meta 键、../model/timeGrid 的 sceneContentEndSeconds、

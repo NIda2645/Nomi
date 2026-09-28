@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 节点锁徽标(harness S6-4,N11)。锁住=实心锁,一次点击解锁;未锁=描边锁,点击上锁。
 // AI 改锁住节点由 gate deny(硬禁);对用户永远是一键软门。
 //

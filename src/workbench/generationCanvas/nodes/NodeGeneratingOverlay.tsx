@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import React from 'react'
 import type { ImageGenerationPreset } from 'img-fx'
 import { useWorkbenchStore } from '../../workbenchStore'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 系统提示词的模式选择行：内置 chip → 分隔线 → 自定义 chip → 「＋ 新建」。
 //
 // 条目**全部 derive 自 listCreationAiModes()**（`modes` 由调用方传入），不手写清单：

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 模型 chip 列表（按 kind 分组）。替代旧的「逐行 + 重复状态」清单（密度问题根因）。
  * 规范：docs/plan/2026-06-07-onboarding-panel-redesign.md §5.2

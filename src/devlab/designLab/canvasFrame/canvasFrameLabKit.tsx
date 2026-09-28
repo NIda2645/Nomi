@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 屏「画布 · 框工具」的取景台与夹具。
 //
 // 这一格渲染的是**现役组件本身**（`GroupFrame` / `CollapsedGroupCard` / `FrameContextMenu`），

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 屏「设置 · 隐私与诊断」的取景台。
 //
 // 这一格和前两屏的差别：它渲染的组件**只在有 desktop bridge 时才出现**

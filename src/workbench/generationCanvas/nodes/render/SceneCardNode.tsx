@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * SceneCardNode body — 场景分类节点（v0.8 极简版）。
  *

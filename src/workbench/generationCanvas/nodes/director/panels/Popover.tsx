@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../../../../design 的 BodyPortal / NOMI_OVERLAY_Z_INDEX、../../../../../utils/cn
  * [OUTPUT]: 对外提供 Popover（锚定在触发器上方/下方/右侧的浮层：body 传送门 + fixed 定位、外点关闭、捕获期 Esc 关闭、标记 data-nomi-escape-layer 让编辑器的 Esc 让路）、PopoverItem

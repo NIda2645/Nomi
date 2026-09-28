@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · 「帮 Nomi 变好」首次询问卡（样张 A，用户 09-15 已拍板）+ 一键反馈卡（样张 B）。
 //
 // 这两格是 `component-only`，不是 `shell`，理由各自不同、都写清：

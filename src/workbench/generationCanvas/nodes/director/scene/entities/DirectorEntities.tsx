@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、../../DirectorEditorContext 的 useDirectorStore、../../model/directorTypes、../sceneRefs、../SceneRegistryContext、
  *          ./PrimitiveEntity、./CharacterEntity、./SplatEntity、./ModelEntity、./LightEntity、./CameraEntity、../../model/vec3 的 DEG_TO_RAD

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · 取景台与共用夹具
 //
 // **两种取景框，对应定稿画布的两种板**：
