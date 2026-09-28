@@ -423,10 +423,49 @@ describe("canonicalModelId（跨供应商去重键，2026-07-17）", () => {
     expect((seedream?.meta as Record<string, unknown>)?.canonicalModelId).toBe(norm);
   });
 
-  it("版本级不合并：Seedream 5.0/4.0（火山单家版本）不带 4.5 的 canonical", () => {
+  it("版本级不合并：Seedream 5.0 Lite / 4.0（火山）不带 4.5 的 canonical", () => {
     const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
-    expect(canonicalOf(state, "volcengine", "doubao-seedream-5-0-260128")).toBeUndefined();
+    // 5.0 Lite 自 2026-09-28 起与 kie / Runway 的 Lite 同组（组里有渠道行就每行显式填），仍是版本级、不是 4.5。
+    expect(canonicalOf(state, "volcengine", "doubao-seedream-5-0-260128")).toBe("seedream 5.0 lite");
     expect(canonicalOf(state, "volcengine", "doubao-seedream-4-0-250828")).toBeUndefined();
+  });
+
+  it("渠道行（fal / Runway）写模型本身的身份，不带渠道名（2026-09-28 合并）", () => {
+    const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
+    expect(canonicalOf(state, "fal", "bytedance/seedance-2.5")).toBe("seedance 2.5");
+    expect(canonicalOf(state, "runway", "seedance2_5")).toBe("seedance 2.5");
+    expect(canonicalOf(state, "kie", "bytedance/seedance-2-5")).toBe("seedance 2.5");
+    expect(canonicalOf(state, "runway", "hailuo3")).toBe("minimax h3");
+    expect(canonicalOf(state, "minimax", "MiniMax-H3")).toBe("minimax h3");
+    expect(canonicalOf(state, "runway", "gemini_image3.1_flash")).toBe("nano banana 2");
+    expect(canonicalOf(state, "fal", "fal-ai/nano-banana-2")).toBe("nano banana 2");
+    expect(canonicalOf(state, "runway", "gemini_2.5_flash")).toBe("nano banana");
+    expect(canonicalOf(state, "runway", "gpt_image_2")).toBe("gpt image 2");
+    expect(canonicalOf(state, "fal", "minimax/h3-max")).toBe("minimax h3-max");
+    expect(canonicalOf(state, "elevenlabs", "eleven_v3")).toBe("eleven v3");
+    expect(canonicalOf(state, "runway", "eleven_v3")).toBe("eleven v3");
+    // Runway 自家出品保留 Runway 身份；待定的（默认渠道会换家 / 变体行）这次不填。
+    expect(canonicalOf(state, "runway", "gen4.5")).toBeUndefined();
+    expect(canonicalOf(state, "fal", "openai/gpt-image-2")).toBeUndefined();
+    expect(canonicalOf(state, "runway", "seedance2_fast")).toBeUndefined();
+  });
+
+  it("老装机自愈：已落盘的 Runway 行下次启动补上模型身份，分档跟着模型走（gemini_2.5_flash = Nano Banana → legacy）", () => {
+    const first = applyBuiltinSeeds(emptyCatalog(), NOW).state;
+    const idx = first.models.findIndex((m) => m.vendorKey === "runway" && m.modelKey === "gemini_2.5_flash");
+    // 升级前的样子：没有 canonicalModelId、分档还是 flagship；用户改过名、关过它。
+    first.models[idx] = {
+      ...first.models[idx],
+      labelZh: "我的 Runway 香蕉",
+      enabled: false,
+      meta: { archetypeId: "nano-banana", catalogLifecycle: "flagship" },
+    };
+    const { state, changed } = applyBuiltinSeeds(first, "2026-09-28T00:00:00.000Z");
+    expect(changed).toBe(true);
+    const healed = state.models.find((m) => m.vendorKey === "runway" && m.modelKey === "gemini_2.5_flash");
+    expect(healed?.meta).toMatchObject({ canonicalModelId: "nano banana", catalogLifecycle: "legacy" });
+    expect(healed?.labelZh).toBe("我的 Runway 香蕉");
+    expect(healed?.enabled).toBe(false);
   });
 
   it("老装机自愈：已有条目缺 canonicalModelId → 再次 seed 补上（drift 对账），不动用户所有字段", () => {
