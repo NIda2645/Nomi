@@ -26,6 +26,7 @@ describe("APIMart official model IDs and Omni reference contract", () => {
     ["video", APIMART_VIDEO_QUERY_OP, "video_url", "videos", "mp4"],
   ] as const)("accepts both APIMart %s result URL shapes", (_kind, operation, mappingKey, resultKey, extension) => {
     const mapping = operation.response_mapping;
+    if (!mapping) throw new Error(`missing APIMart ${_kind} response mapping`);
     const arrayUrl = `https://cdn.example/array.${extension}`;
     const stringUrl = `https://cdn.example/string.${extension}`;
     expect(firstMappedString({ data: { result: { [resultKey]: [{ url: [arrayUrl] }] } } }, mapping, mappingKey)).toBe(arrayUrl);

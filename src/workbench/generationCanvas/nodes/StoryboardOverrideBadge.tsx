@@ -3,16 +3,14 @@ import { IconCheck, IconX } from '../../../vendor/tablerIcons'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { nodeShotField, overriddenShotFields } from '../model/storyboardOverrides'
 
-/** The same badge on the row and canvas card; resolution controls live on the row only. */
+/** Resolution controls for canvas edits in the storyboard row. */
 export function StoryboardOverrideBadge({ node, onResolve }: {
   node: GenerationCanvasNode
-  onResolve?: (field: string, action: 'adopt' | 'discard') => void
+  onResolve: (field: string, action: 'adopt' | 'discard') => void
 }): JSX.Element | null {
   const { t } = useTranslation()
   const fields = overriddenShotFields(node)
-  // Canvas nodes no longer show the low-value override indicator. The
-  // storyboard row still exposes the adopt/discard controls when requested.
-  if (!fields.length || !onResolve) return null
+  if (!fields.length) return null
   return (
     <div className="flex min-w-0 flex-col gap-1" data-storyboard-overrides={node.id}>
       {fields.map(field => {
