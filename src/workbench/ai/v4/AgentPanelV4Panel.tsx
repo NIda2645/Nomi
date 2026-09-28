@@ -285,9 +285,6 @@ export function AgentPanelV4Panel({
     }
   }, [historyIdentity])
   React.useLayoutEffect(() => {
-    setHistoryError(false)
-  }, [onLoadOlder])
-  React.useLayoutEffect(() => {
     const node = scrollRef.current
     if (node && pageAnchor.current && (flow[0]?.identity !== pageAnchor.current.first || historyCursor !== pageAnchor.current.cursor)) {
       // A reset/compaction is not a prepend. Only preserve an existing row's position.

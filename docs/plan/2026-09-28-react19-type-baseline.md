@@ -1,6 +1,5 @@
 # React 19 and Type Baseline Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 > 状态：🚧 React 19/type baseline 实施中
 
 **Goal:** Move Nomi from React 18.3 to React 19 with the smallest compatible runtime set, keeping the application behavior unchanged and leaving AI SDK and Tailwind upgrades for later phases.

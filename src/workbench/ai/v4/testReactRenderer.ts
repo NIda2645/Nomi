@@ -2,8 +2,7 @@ import { createRequire } from 'node:module'
 import React from 'react'
 
 const require = createRequire(import.meta.url)
-const fiberRequire = createRequire(require.resolve('@react-three/fiber'))
-const Reconciler = fiberRequire('react-reconciler')
+const Reconciler = require('react-reconciler')
 
 export type TestHostNode = { props: unknown }
 
