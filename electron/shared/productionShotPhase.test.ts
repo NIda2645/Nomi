@@ -8,6 +8,7 @@ import {
   productionShotIdForNode,
 } from './productionShotPhase'
 import { decideShotClaim } from './decideShotClaim'
+import { applyProductionCommand } from '../productionRun/productionRunReducer'
 import type { ProductionGenerationPlan, ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from '../productionRun/productionRunTypes'
 
 // 制作里「一镜在哪一段」的唯一判定：主进程的画布落地投影与渲染层的排队 / 已停小标读的是同一个函数。
@@ -214,6 +215,21 @@ describe('decideShotClaim — 画布能不能再发这一镜', () => {
 })
 
 describe('decideShotClaim — durable matrix regressions', () => {
+  it('canvas claim persists detached for a pending job and leaves paid work alone', () => {
+    const pending = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
+    const claimed = applyProductionCommand(pending, {
+      commandId: 'claim-s1', expectedRevision: pending.revision, type: 'shot.claim',
+      payload: { shotId: 's1', by: 'canvas' }, issuedAt: NOW,
+    }, NOW).run
+    expect(claimed.jobs[0].status).toBe('detached')
+    expect(claimed.jobs[0].errorCode).toBe('canvas_detached')
+    const inFlight = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'polling')] })
+    expect(() => applyProductionCommand(inFlight, {
+      commandId: 'claim-s1-paid', expectedRevision: inFlight.revision, type: 'shot.claim',
+      payload: { shotId: 's1', by: 'canvas' }, issuedAt: NOW,
+    }, NOW)).toThrow(/production_shot_claimed: in_flight/)
+  })
+
   it('unknown/reconciling remain production-owned', () => {
     for (const status of ['submission_unknown', 'reconciling'] as const) {
       const result = decideShotClaim(run({ status: 'needs_attention', shots: [{ shotId: 's1' }], jobs: [job('s1', status)] }), 's1', 'canvas')

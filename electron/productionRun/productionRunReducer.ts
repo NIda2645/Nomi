@@ -1,5 +1,6 @@
 import type { ArtifactReviewDecision } from "../shared/agentCapabilities/productionRun";
 import { transitionJob, transitionRun } from "./productionRunState";
+import { decideShotClaim } from "../shared/decideShotClaim";
 import { bindShotNodes, detachShotNodes } from "./productionRunCanvasLandingReducer";
 import type {
   BudgetLedgerSummary,
@@ -413,6 +414,45 @@ export function applyProductionCommand(
         run: { ...current, generationPlan: { ...currentPlan, state: "submitted", updatedAt: now }, updatedAt: now },
         eventType: "generation.plan.submitted",
         message: currentPlan.operationId,
+      };
+    }
+    case "shot.claim": {
+      const by = text(command.payload, "by");
+      if (by !== "canvas" && by !== "production") throw new Error("Invalid shot claim owner");
+      const shotId = text(command.payload, "shotId");
+      const decision = decideShotClaim(current, shotId, by);
+      const pending = new Set<ProductionJob["status"]>(["planned", "authorization_required", "authorized"]);
+      const hasPendingJob = current.jobs.some((job) => job.stageId === "generate"
+        && pending.has(job.status)
+        && (job.metadata?.shotId === shotId || (!current.generationPlan?.shots?.length && job.stageId === "generate")));
+      // A canvas retry may take back a queued, not-yet-paid production job. The
+      // claim itself is the durable cancellation boundary; paid/in-flight work
+      // still fails closed through decideShotClaim.
+      if (!decision.granted && !(by === "canvas" && hasPendingJob)) {
+        throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
+          code: "production_shot_claimed",
+          reason: decision.reason,
+        });
+      }
+      if (by === "production") {
+        return { run: current, eventType: "shot.claimed", message: shotId };
+      }
+      const jobs = current.jobs.map((job) => {
+        const matches = job.stageId === "generate"
+          && (job.metadata?.shotId === shotId || (!current.generationPlan?.shots?.length && job.stageId === "generate"));
+        return matches && pending.has(job.status)
+          ? { ...transitionJob(job, "detached", now), errorCode: "canvas_detached", errorMessage: "Canvas claimed this shot", updatedAt: now }
+          : job;
+      });
+      const plan = current.generationPlan;
+      const shots = plan?.shots?.map((shot) => shot.shotId === shotId ? { ...shot, canvasDetached: true, updatedAt: now } : shot);
+      const generationPlan = plan
+        ? { ...plan, ...(shots ? { shots } : {}), ...(shots ? {} : { canvasDetached: true }), updatedAt: now }
+        : plan;
+      return {
+        run: { ...current, jobs, ...(generationPlan ? { generationPlan } : {}), updatedAt: now },
+        eventType: "shot.claimed",
+        message: shotId,
       };
     }
     case "plan.bind-shot-nodes":

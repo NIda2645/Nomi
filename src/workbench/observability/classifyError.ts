@@ -541,6 +541,16 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       ...narrateGenerationErrorActions('unknown'),
     }
   }
+  const claimReason = /production_shot_claimed:\s*([a-z_]+)/.exec(raw)?.[1]
+  if (claimReason === 'in_flight' || claimReason === 'needs_reconcile') {
+    return {
+      kind: 'unknown',
+      reason: i18n.t(claimReason === 'in_flight' ? 'generationCommon.progress.inFlight' : 'generationCommon.progress.needsReconcile'),
+      hint: '',
+      raw,
+      ...narrateGenerationErrorActions('unknown'),
+    }
+  }
   const kind = detectLegacyErrorKind(raw)
   if (kind) return reportFor(kind, raw, undefined)
   // 兜底:抠 raw 可读首行当 reason,通用建议出自 narrate 的 unknown 词条。

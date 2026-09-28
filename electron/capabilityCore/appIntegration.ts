@@ -38,7 +38,7 @@ import {
 } from '../productionRun/prepareProductionGenerationAuthorization'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
 import { registerBatchSchedulerKicker } from '../productionRun/batchSchedulerKick'
-import type { ProductionActionResult } from '../productionRun/productionRunTypes'
+import type { ProductionActionResult, ProductionJob, ProductionRun } from '../productionRun/productionRunTypes'
 import { createCanvasLandingHost } from '../productionRun/canvasLandingHost'
 import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
@@ -70,6 +70,7 @@ export { listPendingSpendConfirmations, revisePendingSpendConfirmation, discardP
 import { repairStaleMcpConfigs } from './mcpConfig'
 import { logDevDetail, logError, logInfo, logWarn } from '../logging/logger'
 import { markResidentSurfaceInstallFailed, markResidentSurfaceReady, markResidentSurfaceStarting, markResidentSurfaceStopped, readResidentSurfaceLifecycle } from './residentSurfaceLifecycle'
+import { decideShotClaim } from '../shared/decideShotClaim'
 
 let handle: RpcServerHandle | null = null
 // P4 S5：打开/切换项目时的补齐钩子（startCapabilityCore 装配后设进来）——按 run.jobs[].nodeId × artifacts
@@ -217,6 +218,19 @@ export async function startCapabilityCore(
     })
     const landCanvasBestEffort = canvasLanding.landCanvasBestEffort
     landDraftOnCanvas = canvasLanding.landDraftOnCanvas
+    const assertProductionShotCanDispatch = ({ run, job }: { run: ProductionRun; job: ProductionJob }) => {
+      const durable = generationService.repository.read(run.projectId, run.runId) ?? run
+      const shotId = typeof job.metadata?.shotId === 'string' && job.metadata.shotId.trim()
+        ? job.metadata.shotId.trim()
+        : durable.generationPlan?.candidate?.candidateId
+      const decision = decideShotClaim(durable, shotId, 'production')
+      if (!decision.granted) {
+        throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
+          code: 'production_shot_claimed',
+          reason: decision.reason,
+        })
+      }
+    }
     // 画布节点跟着 Run 走：每一次耐久变化（派发 / 受理 / 出片落盘 / 失败 / 停）都经过仓库 execute 的事件旁路，
     // 跟随者据此把「生成中 / 结果 / 失败」写进节点自己的运行记录——与普通生成同一份状态、同一套画法。
     // 它取代了以前只在「出片」那一下投递结果的专用通道（一件事一个 owner：Run → 画布只有落地这一条路）。
@@ -253,6 +267,7 @@ export async function startCapabilityCore(
         projectRevision: record.revision,
         intentMacKey: ensureCapabilitySigningKey('generation-intent'),
         providers: providerBootstrap.providers,
+        beforeDispatch: assertProductionShotCanDispatch,
         materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
       })
     }
@@ -366,6 +381,7 @@ export async function startCapabilityCore(
             projectRevision: projectRecord.revision,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             providers: providerBootstrap.providers,
+            beforeDispatch: assertProductionShotCanDispatch,
             materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
           })
           // P4 S4: a multi-shot operation is driven by the durable batch scheduler (anchor → checkpoint →
@@ -435,6 +451,7 @@ export async function startCapabilityCore(
             projectRevision: projectRecord.revision,
             intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             providers: providerBootstrap.providers,
+            beforeDispatch: assertProductionShotCanDispatch,
             materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
           })
           try {

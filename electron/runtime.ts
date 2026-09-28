@@ -61,6 +61,7 @@ import { resolveCustomCallExecution } from "./catalog/customCallMode";
 import { certifyTaskOutputAndSettleComfyCandidate, materializeCertifiedComfyAssets, resolveComfyCandidateExecution } from "./catalog/comfyuiCandidateLifecycle";
 import { consumeTaskSpend } from "./tasks/taskSpend";
 import { desktopT } from "./i18n";
+import { decideShotClaim } from "./shared/decideShotClaim";
 export type {
   AiSdkProviderKind,
   BillingModelKind,
@@ -314,7 +315,36 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const { vendor, model, apiKey, customConfig } = stagedCandidate || findExecutableModel(vendorKey, modelKey, wantedKind);
   const projectId = trim(request.extras?.projectId);
   const nodeId = trim(request.extras?.nodeId);
+  const productionRunId = trim(request.extras?.runId || request.extras?.productionRunId);
+  const productionShotId = trim(request.extras?.shotId || request.extras?.productionShotId);
   const grantId = trim(request.extras?.grantId);
+  // Canvas generation is allowed to proceed only after the main process has
+  // durably claimed the bound shot. Ordinary canvas nodes have no run/shot
+  // binding and keep the normal path.
+  if (projectId && productionRunId && productionShotId) {
+    const { getProductionRunService } = await import('./productionRun/productionRunRuntime');
+    const service = getProductionRunService();
+    let run = service.repository.read(projectId, productionRunId);
+    const decision = decideShotClaim(run, productionShotId, 'canvas');
+    const pendingJob = run?.jobs.find((job) => job.stageId === 'generate'
+      && ['planned', 'authorization_required', 'authorized'].includes(job.status)
+      && (job.metadata?.shotId === productionShotId || !run.generationPlan?.shots?.length));
+    if (!decision.granted && !pendingJob) {
+      throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
+        code: 'production_shot_claimed',
+        reason: decision.reason,
+      });
+    }
+    if (run && (!decision.granted || decision.holder === 'none')) {
+      run = service.repository.execute(projectId, productionRunId, {
+        commandId: `shot.claim:${productionRunId}:${productionShotId}`,
+        expectedRevision: run.revision,
+        type: 'shot.claim',
+        payload: { shotId: productionShotId, by: 'canvas' },
+        issuedAt: new Date().toISOString(),
+      }).run;
+    }
+  }
   const taskId = `task-${crypto.randomUUID()}`;
   const effectiveVendorKey = vendor.key;
   const mapping = stagedCandidate?.mapping || findTaskMapping(effectiveVendorKey, kind, modelKey, modeId);

@@ -43,7 +43,9 @@ function latestJob(run: ProductionRun, shotId: string): ProductionJob | undefine
 }
 
 function decision(holder: ShotClaimHolder, reason: ShotClaimReason, requester: ShotClaimRequester): ShotClaimDecision {
-  return { granted: holder === requester, holder, reason };
+  // A canvas node with no production Run is an ordinary canvas generation. The
+  // absence of a production owner is therefore an explicit canvas grant.
+  return { granted: holder === requester || (holder === "none" && requester === "canvas"), holder, reason };
 }
 
 /** The single durable, read-only claim decision shared by canvas and production callers. */

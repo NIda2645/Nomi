@@ -282,7 +282,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // Stop semantics (plan §3.3/§4): a stopped run dispatches nothing NEW (未提交=不提交不扣费).
   // In-flight jobs still settle: they are already paid for, so `observe` keeps them pollable and the
   // orchestrator lands their results; completed jobs are preserved (both reflected in `progress`).
-  const stopped = input.runStatus === "pausing" || input.runStatus === "paused" || input.runStatus === "cancelled";
+  const stopped = input.runStatus === "pausing" || input.runStatus === "paused" || input.runStatus === "needs_attention" || input.runStatus === "cancelled";
   if (stopped) {
     return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress, unknownDispatchCount: 0 };
   }
