@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconRefresh } from '@tabler/icons-react'
 import { WorkbenchButton } from '../../../design'

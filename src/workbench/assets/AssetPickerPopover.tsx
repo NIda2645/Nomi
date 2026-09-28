@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { AnchoredPopover } from '../../design'
 
 // 素材选择器的浮层：定位/翻转/夹进视口/点外面关，全部由 design/AnchoredPopover 负责

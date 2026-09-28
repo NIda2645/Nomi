@@ -4,7 +4,7 @@
  * [POS]: 已选路标的 L2 检查器字段；动态跟踪仍由视线/特写片段负责。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect } from '../../../../../../design'
 import { useDirectorStore } from '../../DirectorEditorContext'

@@ -6,7 +6,7 @@
  *        换算成 target；灯具模型只在编辑器可见，出片隐藏。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import type { DirectorLight } from '../../model/directorTypes'
 import { DEG_TO_RAD, forwardFromAngles } from '../../model/vec3'

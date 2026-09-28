@@ -3,7 +3,7 @@
 // 方案：docs/plan/2026-08-02-task-center-queue.md，样张 2026-08-02 拍板。
 //
 // 按钮同时表达“任务列表入口”和当前状态：名称常显，有活时 accent + 数字徽标，失败时转提醒色。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconListDetails } from '@tabler/icons-react'
 import type { ProductionRunSummary } from '../../../electron/productionRun/productionRunTypes'

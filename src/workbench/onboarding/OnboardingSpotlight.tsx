@@ -13,7 +13,7 @@
  *
  * 渲染在 React 树内（不 BodyPortal，保 --nomi-* token 作用域）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconArrowRight } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

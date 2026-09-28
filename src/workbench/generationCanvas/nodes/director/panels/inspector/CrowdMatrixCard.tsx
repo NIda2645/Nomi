@@ -6,7 +6,7 @@
  *        属于设计系统 §1.5 的 L2 情境层，塞在常驻条上既占预算又永远是灰的（原底栏就是 disabled + tooltip 解释）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../../../../design'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'

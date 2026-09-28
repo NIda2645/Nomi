@@ -48,7 +48,7 @@ function createKindsForStart(started: ConnectionStart): ConnectionCreateKind[] {
 
 type UseGenerationCanvasReactFlowMenusArgs = {
   readOnly: boolean
-  hostRef: React.RefObject<HTMLDivElement>
+  hostRef: React.RefObject<HTMLDivElement | null>
   offsetRef: React.MutableRefObject<{ x: number; y: number }>
   zoomRef: React.MutableRefObject<number>
   activeCategoryId: string

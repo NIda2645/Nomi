@@ -7,7 +7,7 @@
 // - 工厂自动重试 2 次（指数退避，吃掉瞬时 IO/网络抖动）；
 // - 「重试」按钮重建 lazy 实例——React 18 的 lazy 一旦 reject 会永久缓存失败，
 //   仅靠 remount 无法恢复，必须换新实例重新 import。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../utils/cn'
 import i18n from '../i18n'
 import { reloadRendererWindow } from '../desktop/bridge'

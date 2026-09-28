@@ -9,7 +9,7 @@
  *        列宽自持久 nomi:director:sideWidth；上下两卡之间仍用 EditorSplit，比例键 director.side 不变，老用户的分栏记忆不丢。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand } from '../../../../../../vendor/tablerIcons'
 import { cn } from '../../../../../../utils/cn'

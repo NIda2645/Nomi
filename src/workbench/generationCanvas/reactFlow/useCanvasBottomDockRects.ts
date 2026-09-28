@@ -50,7 +50,7 @@ function sameRects(a: readonly StageDockRect[], b: readonly StageDockRect[]): bo
  * `active` 是省电闸：只有选择浮条真的在这一屏时才订阅、才量。
  */
 export function useCanvasBottomDockRects(
-  hostRef: React.RefObject<HTMLElement>,
+  hostRef: React.RefObject<HTMLElement | null>,
   active: boolean,
 ): readonly StageDockRect[] {
   const [layoutRevision, setLayoutRevision] = React.useState(0)

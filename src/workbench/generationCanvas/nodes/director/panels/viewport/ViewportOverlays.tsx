@@ -4,7 +4,7 @@
  * [POS]: director/panels/viewport 的叠加层（清单 §2.4 V6）：纯 DOM，绝对定位在视口之上，pointer-events 关闭不挡视口。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ProjectedLabel } from '../../scene/LabelProjector'
 import type { BoxDrawApi } from '../../scene/creation/useBoxDraw'

@@ -1,5 +1,5 @@
 import { IconAlertTriangle, IconCheck, IconChevronRight, IconPlayerPlayFilled } from '@tabler/icons-react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { NomiLoadingMark, WorkbenchButton } from '../../design'

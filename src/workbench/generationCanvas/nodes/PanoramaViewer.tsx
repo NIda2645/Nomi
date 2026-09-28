@@ -9,7 +9,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { notify } from '../../../ui/notificationPolicy'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { EquirectangularAdapter, Viewer, type PanoData, type ViewerConfig } from '@photo-sphere-viewer/core'
@@ -314,7 +314,7 @@ function PanoramaCaptureOverlay({
   captureRatio,
   frameSize,
 }: {
-  captureFrameRef: React.RefObject<HTMLDivElement>
+  captureFrameRef: React.RefObject<HTMLDivElement | null>
   captureRatio: PanoramaCaptureRatio
   frameSize: { width: number; height: number } | null
 }): JSX.Element {
@@ -351,7 +351,7 @@ function PanoramaDialogControls({
   onClose,
   onScreenshot,
 }: {
-  captureFrameRef: React.RefObject<HTMLDivElement>
+  captureFrameRef: React.RefObject<HTMLDivElement | null>
   captureRatioId: PanoramaCaptureRatioId
   onCaptureRatioChange: (ratioId: PanoramaCaptureRatioId) => void
   onClose: () => void

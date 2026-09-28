@@ -10,7 +10,7 @@
  *     `kind==='hot'` 的小标。哪些指标、什么顺序由主进程归一层决定（小红书收藏排点赞前面）。
  *  ③ **转译必须回显且可改**：不回显，用户不知道结果为什么长这样（卡点③b）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPhoto, IconTrendingUp, IconExternalLink, IconPlus } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

@@ -5,7 +5,7 @@
  * 但只在有名字 / mood / usage 且悬停或编辑标题时显现，常驻时不遮媒体。
  * 场景名 inline 可编辑。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../utils/cn'
 import type { GenerationCanvasNode } from '../../model/generationCanvasTypes'

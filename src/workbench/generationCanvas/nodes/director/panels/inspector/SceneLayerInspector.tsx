@@ -5,7 +5,7 @@
  * [POS]: director/panels/inspector 的图层配置（清单 §4.9 I13）：无选中时显示。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDirectorStore, useDirectorStoreApi } from '../../DirectorEditorContext'
 import { DEFAULT_SCENE_CONFIG } from '../../model/directorProject'

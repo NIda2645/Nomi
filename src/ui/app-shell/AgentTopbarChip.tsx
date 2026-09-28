@@ -7,7 +7,7 @@
 //
 // 这里只画，不判断：出不出、叠什么、tooltip 说什么，全由 `CollapsedAiChip` 按宿主真相算好传进来。
 // 分开的理由是设计实验室：那几格要能在没有宿主的情况下把各档状态一格一格截出来。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { NomiLogoMark, Tooltip, TooltipContent, TooltipTrigger, WorkbenchButton } from '../../design'
 import { cn } from '../../utils/cn'
 import { AGENT_TOPBAR_CHIP_SETTLE_MS, type AgentTopbarChipBadge } from './agentTopbarChipBadge'

@@ -13,7 +13,7 @@
  * 不留并行版（P1）。**别再把编辑态加回来**——同一件事两个长得不一样的界面正是要治的病。
  * 角色/参数互斥规则的单一真相源在 comfyuiWorkflowBinding.ts，两条路共用同一份。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconFileImport, IconWand, IconAlertTriangle, IconMovie, IconPhoto, IconPlus, IconTrash, IconX } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

@@ -11,7 +11,7 @@
 // 「宿主真相里一条 item 都没有」，喂 `flow={[]}` 只能证明「给它空数组它长这样」，
 // 证不了「宿主真的空的时候它会出现」。生成面这一格同时是原 `v4-wired-empty` 的证据
 // （上下文环写「—」不是「0%」——那一刻我们连模型多大都不知道）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { LabState } from '../../labScreen'
 import { ShellStage, labHostState } from '../agentPanelV4LabHost'
 

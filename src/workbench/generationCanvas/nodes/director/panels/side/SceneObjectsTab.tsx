@@ -6,7 +6,7 @@
  * [POS]: director/panels/side 的大纲（清单 §3.1 S1）：只发 store 意图；选择态与 3D 拾取共用 store.selection。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { confirmDialog } from '../../../../../../design'
 import { cn } from '../../../../../../utils/cn'

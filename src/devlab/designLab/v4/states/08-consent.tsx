@@ -11,7 +11,7 @@
 //
 // 提醒（`lab-fixtures-must-mirror-real-callsites` 那条教训）：这两格里渲染的都是**生产组件**，
 // props 只有一个 `forceVisible`/`request`，没有第二份编出来的数据。
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { LabState } from '../../labScreen'
 import { V4ConsentCard } from '../../../../workbench/ai/v4/AgentPanelV4Consent'
 import { FeedbackReportCard } from '../../../../ui/community/FeedbackReportCard'

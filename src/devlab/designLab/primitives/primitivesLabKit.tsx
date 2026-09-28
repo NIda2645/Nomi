@@ -12,7 +12,7 @@
 //   2. 有交互的件（开关/分段/下拉）挂**真状态**，不挂空 handler——空 handler 让陈列变成
 //      「看着能点、其实是张图」（`check:controls` 拦的正是那一族）。
 //   3. 不碰 `src/design/` 的源码。陈列的活儿是把「有什么、长什么样」摆出来，不是顺手改它。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import { cn } from '../../../utils/cn'
 
@@ -117,7 +117,7 @@ export function OpenPopoverStage({
   /** 舞台高度：要装得下展开后的浮层，否则按元素截图会把它悄悄截掉半截。 */
   height: number
   triggerSelector?: string
-  children: (portalTarget: React.RefObject<HTMLDivElement>) => React.ReactNode
+  children: (portalTarget: React.RefObject<HTMLDivElement | null>) => React.ReactNode
   width?: number
 }): JSX.Element {
   const stageRef = React.useRef<HTMLDivElement>(null)

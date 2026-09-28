@@ -17,7 +17,7 @@ import { V4Row } from './AgentPanelV4Row'
 // 接线后这个组件是**受控**的：文本、chip、弹层开关、权限档全部由宿主容器持有。
 // 早先它自己 `useState` 一个 value，`submit` 就是 `setValue('')`——长得像能发，
 // 按下去只是把框清空。受控之后「有东西可发」和「真的发出去了」是同一条路。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider, NomiSelect, type NomiSelectOption } from '../../../design'

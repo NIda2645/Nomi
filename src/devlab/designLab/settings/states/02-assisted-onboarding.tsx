@@ -6,7 +6,7 @@
 // 夹具喂的是**真实调用点的形状**（AiAssistedOnboardingSection 传下来的那三个 props），
 // 不是编出来的：info 用 McpInfo 的真类型，progress 由现役投影函数 projectAssistedProgress
 // 从真实 stage 算出来——「那一步该亮着还是灰着」不许由夹具作者拍脑袋决定。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import { AiAssistedOnboardingCard } from '../../../../ui/onboarding/AiAssistedOnboardingCard'
 import { projectAssistedProgress } from '../../../../ui/onboarding/assistedProgressProjection'

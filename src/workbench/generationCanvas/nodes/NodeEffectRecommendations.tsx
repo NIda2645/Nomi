@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 
 /** Optional shortcuts may shrink; clipped shortcuts must also leave the focus order. */
 export function NodeEffectRecommendations({ children }: { children: React.ReactNode }): JSX.Element {

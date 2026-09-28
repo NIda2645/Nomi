@@ -5,7 +5,7 @@
 // 每一段都有名字。三格分别钉住：常驻长什么样、「更多」展开长什么样、右键菜单列全是什么样。
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录里 `NN-*.tsx` 的文件名排序解析，汇总口按同样顺序拼接。
-import React from 'react'
+import React, { type JSX } from 'react'
 import CanvasToolbar, { NodeAddMenu } from '../../../../workbench/generationCanvas/components/CanvasToolbar'
 import { CanvasAddStage } from '../canvasAddMenuLabKit'
 import type { LabState } from '../../labScreen'

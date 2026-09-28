@@ -4,7 +4,7 @@
 // Main / Feasible / Sources / Process 四张板是**说明板**（文字卡、可行性表、来源对照表、时刻表），
 // 没有可对账的界面件——它们的界面内容已经拆进 Vocabulary / Composer 两组的单件状态里，
 // 不为它们再造一个「整块面板」状态充数。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconBrowser, IconSettings } from '../../../../vendor/tablerIcons'
 import { AgentPanelV4Panel } from '../../../../workbench/ai/v4/AgentPanelV4Panel'
 import { AgentPanelV4Composer } from '../../../../workbench/ai/v4/AgentPanelV4Composer'

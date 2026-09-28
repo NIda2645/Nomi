@@ -6,7 +6,7 @@
  *        没有机位或节目黑场时盖黑底「无信号」；位置/宽度/折叠持久到 localStorage。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect, WorkbenchButton, WorkbenchIconButton } from '../../../../../../design'
 import { IconChevronDown, IconChevronUp, IconVideo } from '../../../../../../vendor/tablerIcons'
@@ -50,7 +50,7 @@ function writeLayout(layout: PipLayout): void {
   }
 }
 
-export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.MutableRefObject<PipRect>; canvasHostRef: React.RefObject<HTMLDivElement> }): JSX.Element | null {
+export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.MutableRefObject<PipRect>; canvasHostRef: React.RefObject<HTMLDivElement | null> }): JSX.Element | null {
   const { t } = useTranslation()
   const store = useDirectorStoreApi()
   const cameras = useDirectorStore((state) => state.activeScene().cameras)

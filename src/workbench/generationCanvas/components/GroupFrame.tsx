@@ -12,7 +12,7 @@
  *  · 拖动中给**入组/退组反馈**：进框亮 accent，出框变虚线——颜色只做这一种临时反馈，
  *    框的常驻装饰仍然中性（groupVisualContract 的写死不动）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import type { NodeGroup } from '../model/generationCanvasTypes'

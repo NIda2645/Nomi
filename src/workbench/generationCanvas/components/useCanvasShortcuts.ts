@@ -55,7 +55,7 @@ export function canvasZoomShortcutDirection(input: CanvasZoomShortcutInput): -1 
 }
 
 type CanvasKeydownHandlerOptions = {
-  stageRef: React.RefObject<HTMLDivElement>
+  stageRef: React.RefObject<HTMLDivElement | null>
   selectedNodeCount: number
   selectedGroupCount: number
   activeCategoryId: string
@@ -109,7 +109,7 @@ export function tabBelongsToCanvas(activeElement: Element | null): boolean {
   return !activeElement.matches(INTERACTIVE_FOCUS_SELECTOR)
 }
 
-function shouldIgnoreCanvasShortcut(target: EventTarget | null, stageRef: React.RefObject<HTMLDivElement>): boolean {
+function shouldIgnoreCanvasShortcut(target: EventTarget | null, stageRef: React.RefObject<HTMLDivElement | null>): boolean {
   if (document.querySelector('[data-nomi-whiteboard-modal="true"]')) return true
   if (isCanvasTextEditingContext(target, document.activeElement)) return true
   // 画布藏起来了、或者同屏的另一面（时间轴）刚被按过：这一下不归画布（shortcutSurface.ts 唯一 owner）。
@@ -299,7 +299,7 @@ export function shouldPreferCanvasClipboard(
  */
 export function useCanvasShortcuts(opts: {
   readOnly: boolean
-  stageRef: React.RefObject<HTMLDivElement>
+  stageRef: React.RefObject<HTMLDivElement | null>
   selectedNodeCount: number
   selectedGroupCount: number
   activeCategoryId: string

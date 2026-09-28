@@ -6,7 +6,7 @@
  *        按下即 seek、拖动连续刷帧（播放中拖 = 暂停）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { DIRECTOR_FPS, DIRECTOR_MAX_DURATION_SECONDS } from '../model/timeGrid'
 import type { TimelineViewport } from './useTimelineViewport'
 

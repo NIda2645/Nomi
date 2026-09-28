@@ -7,7 +7,7 @@
 //
 // **面板里没有下拉这条路**（2026-09-11 13:00 用户真机拍板）：三种摆法都是摊开的可点项，
 // 选哪一种由 `parameterOptionLayout` 从**选项本身**判（几个 / 标签多长），不点名任何参数。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Slider } from '@mantine/core'
 import { cn } from '../../../../utils/cn'

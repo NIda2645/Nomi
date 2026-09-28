@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconLetterCase, IconMaximize, IconMinimize, IconPlayerPause, IconPlayerPlay, IconPlayerSkipBack, IconPlayerSkipForward, IconSubtitles, IconVolume, IconVolumeOff } from '@tabler/icons-react'
 import { WorkbenchButton, WorkbenchIconButton } from '../../design'
@@ -75,7 +75,7 @@ export type PreviewControlBarProps = {
   onVolumeChange: (volume: number) => void
   isFullscreen: boolean
   onToggleFullscreen: () => void
-  textMenuRef: React.RefObject<HTMLDivElement>
+  textMenuRef: React.RefObject<HTMLDivElement | null>
   textMenuOpen: boolean
   onTextMenuOpenChange: (open: boolean) => void
   onAddText: (style: 'caption' | 'title') => void

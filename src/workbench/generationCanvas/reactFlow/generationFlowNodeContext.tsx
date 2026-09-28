@@ -1,5 +1,5 @@
 /* eslint-disable react-refresh/only-export-components */
-import React from 'react'
+import React, { type JSX } from 'react'
 
 const GenerationFlowNodeContext = React.createContext(false)
 

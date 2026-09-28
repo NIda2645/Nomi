@@ -13,7 +13,7 @@
  * 地址行与内置家卡共用 VendorBaseUrlField（P1）；区别：自定义家凭证恒为单个 apiKey、
  * 地址恒可改、且可**整家删除**（内置家是 seed 的、只断 key 不删）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconKey, IconTrash } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

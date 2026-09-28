@@ -7,7 +7,7 @@ import { V4Row, V4Shimmer } from './AgentPanelV4Row'
 //
 // 思考行是 Process 板时刻 2：shimmer 文字 +「4s · esc 打断」。刻意**不用转圈**——
 // 转圈没有时间感，秒数才告诉用户「没死」。它是助手文本的一个状态，不是第九个积木。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'

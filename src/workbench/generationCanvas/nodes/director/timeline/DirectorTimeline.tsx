@@ -9,7 +9,7 @@
  *        全部打到命令层；被拒绝的操作统一 toast 原因。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '../../../../../ui/toast'
 import { useDirectorStore, useDirectorStoreApi } from '../DirectorEditorContext'

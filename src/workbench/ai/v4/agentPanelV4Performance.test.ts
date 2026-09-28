@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { AgentPanelV4Panel } from './AgentPanelV4Panel'
 import { useV4Labels } from './agentPanelV4Labels'

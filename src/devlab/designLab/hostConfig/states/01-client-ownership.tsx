@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { ConnectAssistantCard } from '../../../../ui/onboarding/ConnectAssistantCard'
 import type { McpInfo } from '../../../../desktop/mcpBridgeTypes'
 import type { LabState } from '../../labScreen'

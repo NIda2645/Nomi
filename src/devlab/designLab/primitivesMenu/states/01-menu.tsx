@@ -14,7 +14,7 @@
 // （labScreen.ts 的 capture 字段就是为这一族留的）。
 // 为什么 `open` 恒真、`point` 是写死的视口坐标：陈列要的是**展开后长什么样**，
 // 而截图必须确定性——点位一随机，基线每次都不一样。
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   IconClipboard,
   IconCopy,

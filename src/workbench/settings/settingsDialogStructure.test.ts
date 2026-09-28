@@ -56,7 +56,7 @@ const settingsDirectory = path.join(process.cwd(), 'src/workbench/settings')
 const APPROVED_NON_MODEL_SECTION_SHA256 = {
   // 2026-09-04：检查反馈 tone 改为从公共 toast 函数参数推导，避免重复词表 owner。
   // 2026-09-09：目录操作错误回现有status；保留共享tone类型，正向回归见下方local feedback。
-  'ProjectLocationSection.tsx': '6fdcf159d9a0e32e72637049fce6d0f9acaeee43369d0c8d2be46d3f7ec81c10',
+  'ProjectLocationSection.tsx': '8859c5bd425d82b8880c26d89218e36c274b1a7d6003b00a3e64de39bb535689',
   // 2026-09-02: AiModelsSection 按渲染边界收口供应商/模型展示名（translateModelDisplayText）。
   // B4: user explicitly removed the global budget setting; the positive absence assertion is below.
   // 2026-09-14：删「默认模型策略」整栏（说明文字 + 161 个白名单复选框 + 深链聚焦）；已接入即放行。
@@ -65,18 +65,18 @@ const APPROVED_NON_MODEL_SECTION_SHA256 = {
   //             就是这么来的。正向断言见下方 keeps the last catalog when a read fails。
   // 2026-09-22（#831）：「已接入 Kie」的判据从 key 字面量改成经 builtinVendorIdentity 解析身份，
   //             这样兄弟连接（`kie--x`）也认得出。两刀都只改判据，布局与文案一个字没动。
-  'AiModelsSection.tsx': '86943ed52df1c7fa0924940d232265d94bfd3ba32777c4c2c52cf3e43ab3a6b6',
+  'AiModelsSection.tsx': '97ebb8ee265bff40cdf8368c98dc056a2b08f6e3ed61ea697c0195d0bd44a54c',
   // 2026-09-03：toggleHost 参数类型从 SettingsHostKey（四值联合）泛化为 string（支持自定义 profile key）；
   // 新增 CustomMcpClientCard UI TODO 注释（底层能力已就绪，UI 面另排样张拍板）。
   // 2026-09-09：声音归通用设置的单一入口，移除这里的旧开关；下方断言保留系统通知策略。
   // 2026-09-14：删「默认制作模式」三段与「支出与风险边界」整栏（#781），并删掉独立的「可信发起方」栏——开关并进 MCP 连接页每张客户端卡（#783）。
-  'AutomationPermissionsSection.tsx': 'b17cbf04eb214de65677603dbe03dbe3ba9ae6323ef7f9d241bd298d94b48c7d',
-  'CanvasGestureSection.tsx': '6f6fbf6802c6daae381c83838b387623a78ac7de49ffb1e47ee6101db312c95d',
+  'AutomationPermissionsSection.tsx': '721c88e732d8c03887adf19b69e6795f048db08c73701033fd33dc3972e5d83e',
+  'CanvasGestureSection.tsx': '26dd136e2825d7c3758e10ffca5e690e8f9b94cbd1b25f75e53f5999d36afd4a',
   // 2026-09-15：两处非布局改动——① 那行注释原来提到 FeedbackShareDialog，而那份文件本次被删
   // （失败面那条路不再套带标题的 modal 外壳，直接呈现反馈卡）；② `FeedbackShareContent` 的
   // `variant` prop 只剩一个合法值，删掉之后这里的 `variant="embedded"` 也跟着去掉。
   // 布局、区块顺序、文案一个字没动。更新这颗钉子是因为它钉的是整份文件的内容。
-  'AboutSection.tsx': 'c4960a0171ae8ceae20c2fdfe92e9bc3984850a35030ea1e2c311f72da5dfdd7',
+  'AboutSection.tsx': 'f355cbcbd965dd5b49593b04b7044605f08efa5cc36df288b9d169d91d9c26b5',
 } as const
 
 describe('settings dialog structure', () => {

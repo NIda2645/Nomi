@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // Nomi 身份行的「单一渲染真相源」（P1）：以 Nomi 身份发言的卡片共用这一行，
 // 保证 logo + 文字规则不在各处漂。
 import { NomiLogoMark, NomiWordmark } from '../../design'

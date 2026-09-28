@@ -4,7 +4,7 @@
  * [POS]: director/timeline 的播放头呈现：单独订阅 currentTime，播放时每帧只重渲染这一个元素，泳道与轨道列不动。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useDirectorStore } from '../DirectorEditorContext'
 import type { TimelineViewport } from './useTimelineViewport'
 

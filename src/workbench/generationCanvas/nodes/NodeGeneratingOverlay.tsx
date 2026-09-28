@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { ImageGenerationPreset } from 'img-fx'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { GenerationTimingHint } from './GenerationTimingHint'

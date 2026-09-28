@@ -4,7 +4,7 @@
  * 注：Issue #8 删掉「AI 读文档抠参数」子系统时，配套的 milestone 数据 / 纯函数 / MilestoneRow
  * 一并删除（曾遗留为死代码，违 P1 加新必删旧）；当前只剩仍在用的 Field。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { Stack, Text } from '@mantine/core'
 
 export function Field({

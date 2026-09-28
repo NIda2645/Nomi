@@ -11,7 +11,7 @@
  *        解算与写回都在 useCharacterRig 的每帧管线里（拖动中逐帧写 boneRotations）。FK：旋转 gizmo 直接挂在骨上，偏移 = base⁻¹·当前。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { createPortal, useFrame, useThree } from '@react-three/fiber'
 import { TransformControls } from '@react-three/drei'
