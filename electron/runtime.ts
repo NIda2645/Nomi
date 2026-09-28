@@ -15,7 +15,7 @@ import { traceVendorCompleted, traceVendorRequested } from "./events/vendorCallT
 import { localizeTaskAsset } from "./assets/localizeTaskAsset";
 export { localizeTaskAsset };
 import { localizedTaskAssetFileName } from "./assets/localizedAsset";
-import { getRegisteredProductionRunService } from './productionRun/productionRunServiceRegistry'
+import { claimCanvasProductionShot } from "./productionRun/canvasShotClaim";
 import { authHeaders as buildAuthHeaders, extractTaskId as extractTaskIdShared } from "./ai/requestPipeline"; import { vendorAuthSpec } from "./catalog/vendorAuthSpec";
 import { assertCanonicalAntigravityOperation, executeProcessOperation, prepareAntigravityCreateOperation } from "./catalog/processOperation"; import type { AntigravityProcessStage } from "./catalog/antigravityCatalog";
 import { executeTextTask } from "./textTaskRunner";
@@ -63,7 +63,6 @@ import { resolveCustomCallExecution } from "./catalog/customCallMode";
 import { certifyTaskOutputAndSettleComfyCandidate, materializeCertifiedComfyAssets, resolveComfyCandidateExecution } from "./catalog/comfyuiCandidateLifecycle";
 import { consumeTaskSpend } from "./tasks/taskSpend";
 import { desktopT } from "./i18n";
-import { decideShotClaim } from "./shared/decideShotClaim";
 export type {
   AiSdkProviderKind,
   BillingModelKind,
@@ -314,42 +313,8 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   await revalidatePendingCredential(vendorKey);
   const stagedCandidate = resolveComfyCandidateExecution(request);
   const { vendor, model, apiKey, customConfig } = stagedCandidate || findExecutableModel(vendorKey, modelKey, wantedKind);
-  const projectId = trim(request.extras?.projectId);
-  const nodeId = trim(request.extras?.nodeId);
-  const productionRunId = trim(request.extras?.productionRunId);
-  const productionShotId = trim(request.extras?.productionShotId);
-  const grantId = trim(request.extras?.grantId);
-  // Canvas generation is allowed to proceed only after the main process has
-  // durably claimed the bound shot. Ordinary canvas nodes have no run/shot
-  // binding and keep the normal path.
-  if (projectId && productionRunId && productionShotId) {
-    const service = getRegisteredProductionRunService();
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const current = service.repository.read(projectId, productionRunId);
-      const decision = decideShotClaim(current, productionShotId, 'canvas');
-      if (!decision.granted) {
-        throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
-          code: 'production_shot_claimed', reason: decision.reason,
-        });
-      }
-      // Only the shared decision may grant a canvas-owned claim. A missing or
-      // mismatched shot is an ordinary canvas path and must never write a
-      // plan-level claim that can lock the whole single-shot run.
-      if (!current || decision.holder !== 'canvas' || decision.reason === 'canvas_claimed') break;
-      try {
-        service.repository.execute(projectId, productionRunId, {
-          commandId: `shot.claim:${productionRunId}:${productionShotId}`,
-          expectedRevision: current.revision,
-          type: 'shot.claim',
-          payload: { shotId: productionShotId, by: 'canvas' },
-          issuedAt: new Date().toISOString(),
-        });
-        break;
-      } catch (error) {
-        if (attempt === 1 || !/revision conflict/i.test(error instanceof Error ? error.message : String(error))) throw error;
-      }
-    }
-  }
+  const projectId = trim(request.extras?.projectId), nodeId = trim(request.extras?.nodeId), grantId = trim(request.extras?.grantId);
+  claimCanvasProductionShot(projectId, request.extras);
   const taskId = `task-${crypto.randomUUID()}`;
   const effectiveVendorKey = vendor.key;
   const mapping = stagedCandidate?.mapping || findTaskMapping(effectiveVendorKey, kind, modelKey, modeId);

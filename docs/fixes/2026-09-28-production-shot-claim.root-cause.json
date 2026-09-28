@@ -38,7 +38,8 @@
     "src/workbench/observability/narrate.ts",
     "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
     "src/i18n/locales/generationCommon.ts",
-    "electron/shared/productionShotPhase.ts"
+    "electron/shared/productionShotPhase.ts",
+    "electron/productionRun/canvasShotClaim.ts"
   ],
   "entry_points": [
     "canvas shot.claim",
@@ -175,11 +176,6 @@
       "symbol": "getRegisteredProductionRunService"
     },
     {
-      "kind": "read",
-      "path": "electron/runtime.ts",
-      "symbol": "getRegisteredProductionRunService"
-    },
-    {
       "kind": "write",
       "path": "electron/productionRun/productionRunRuntime.ts",
       "symbol": "registerProductionRunService"
@@ -198,11 +194,6 @@
       "kind": "write",
       "path": "electron/productionRun/submissionOutbox.ts",
       "symbol": "beforeDispatch"
-    },
-    {
-      "kind": "write",
-      "path": "electron/runtime.ts",
-      "symbol": "decideShotClaim"
     },
     {
       "kind": "write",
@@ -333,12 +324,37 @@
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
       "symbol": "deriveProductionShotState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/canvasShotClaim.ts",
+      "symbol": "getRegisteredProductionRunService"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/canvasShotClaim.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionShotDispatchGuard.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "symbol": "claimCanvasProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "decideShotClaim"
     }
   ],
   "door_reduction": {
     "before": 43,
-    "after": 54,
-    "why_not": "门表仍保留多个入口：decideShotClaim 是共享判定边界，Run reducer 是唯一持久化写口，runtime 是画布提交闸，beforeDispatch 是生产派发闸，IPC/runTask 是通用任务入口；它们各自服务不同生命周期，合并会扩大权限边界。门表已用 node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch 重新生成并在交付验证中复核。B3c 另用 node scripts/door-map.mjs deriveProductionShotState jobAwaitsHuman productionJobPhase --read=deriveProductionShotState,jobAwaitsHuman,productionJobPhase 补数了「一镜在哪一段」的读入口：画布占位的续拍按钮与主进程画布落地投影都读 deriveProductionShotState，同一个函数，不再有第二份判据。"
+    "after": 57,
+    "why_not": "门表仍保留多个入口：decideShotClaim 是共享判定边界，Run reducer 是唯一持久化写口，runtime 是画布提交闸，beforeDispatch 是生产派发闸，IPC/runTask 是通用任务入口；它们各自服务不同生命周期，合并会扩大权限边界。门表已用 node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch 重新生成并在交付验证中复核。B3c 另用 node scripts/door-map.mjs deriveProductionShotState jobAwaitsHuman productionJobPhase --read=deriveProductionShotState,jobAwaitsHuman,productionJobPhase 补数了「一镜在哪一段」的读入口：画布占位的续拍按钮与主进程画布落地投影都读 deriveProductionShotState，同一个函数，不再有第二份判据。画布提交闸的认领逻辑从 electron/runtime.ts 挪进 electron/productionRun/canvasShotClaim.ts（runtime.ts 在巨壳名单里只许减不许增），runTask 只调用 claimCanvasProductionShot；门表用 node scripts/door-map.mjs claimCanvasProductionShot decideShotClaim getRegisteredProductionRunService 重数。"
   },
   "generality_proof": "Single-shot and multi-shot plans now share productionShotJobs for correspondence, decideShotClaim for ownership, and reducer persistence for claims; scheduler and runtime callers therefore see the same attempt-scoped result.",
   "shared_boundaries": [

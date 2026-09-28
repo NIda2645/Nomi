@@ -2,7 +2,7 @@ import React, { type JSX } from 'react'
 import { GenerationStatusBar } from './GenerationStatusBar'
 import { MODEL_ACCESS_ENTRY } from '../../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
-import { IconChevronDown, IconChevronRight, IconRefresh, IconReplace, IconSettings, IconWand, IconX, IconClipboardCheck } from '@tabler/icons-react'
+import { IconChevronDown, IconChevronRight, IconListCheck, IconListDetails, IconRefresh, IconReplace, IconSettings, IconWand, IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { WorkbenchButton } from '../../../design'
 import { isKnownVendor } from '../../../config/knownVendors'
@@ -25,8 +25,9 @@ const ACTION_ICON: Record<GenerationErrorAction, typeof IconRefresh> = {
   'switch-model': IconReplace,
   'open-model-access': IconSettings,
   'fix-model-kind': IconWand,
-  reconcile: IconClipboardCheck,
-  'view-task': IconClipboardCheck,
+  // 「查看任务」去的是任务中心：和任务中心按钮同一个动作，用同一个图标。
+  reconcile: IconListCheck,
+  'view-task': IconListDetails,
 }
 
 /**
