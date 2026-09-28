@@ -5,7 +5,7 @@
  * [POS]: director/panels/inspector 的路标卡：帧改时走 updateWaypointTime（被相邻路标夹住时拒绝并 toast），数值改动前先快照。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

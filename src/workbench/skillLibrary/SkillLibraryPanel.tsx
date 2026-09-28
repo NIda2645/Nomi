@@ -6,7 +6,7 @@ import { groupLibraryItems } from '../library/libraryGroups'
  * 导入/导出纯走渲染层（FileReader 读包 / Blob 下载），不加系统对话框桥；创建只走 AI（复用创作区
  * 「让 AI 帮我写技能」），不做手填 manifest 表单（docs/plan/2026-06-23-skill-library-hub.md）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconBooks, IconUpload, IconWand, IconX } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

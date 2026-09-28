@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Combobox, useCombobox } from '@mantine/core'
 import { IconCheck, IconChevronDown, IconEyeOff } from '@tabler/icons-react'

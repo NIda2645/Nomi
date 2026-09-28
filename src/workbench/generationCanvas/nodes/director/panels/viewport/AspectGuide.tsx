@@ -6,7 +6,7 @@
  *        压暗层用 SVG mask 给画中画挖洞：画中画的画面是同一张 canvas 透过外壳看到的，DOM 压暗层压在中间会把它一起压黑。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useDirectorStore } from '../../DirectorEditorContext'
 import { exportAspectRatio, frameGuideSize } from '../../model/cameraLens'
 import { exportDimensions } from '../../model/exportSize'

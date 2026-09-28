@@ -1,6 +1,7 @@
 // 异步任务「续查」收口（从 runtime.ts 拆出，巨壳门岗·只减不增 R12）。
 // 单一真相：缓存命中与无状态重建共用同一段 query。与 runtime 是调用时（函数体内）的循环依赖——
 // ESM/CJS 都按 live binding 在调用时取值，加载期不触碰，安全。
+import { taskCache } from "./taskCache";
 import { trim, type JsonRecord } from "../jsonUtils";
 import type { Model, ProfileKind } from "../catalog/types";
 import { readCatalog } from "../catalog/catalogStore";
@@ -23,7 +24,6 @@ import {
   findExecutableModel,
   findTaskMapping,
   localizeTaskAsset,
-  taskCache,
 } from "../runtime";
 import { logWarn } from "../logging/logger";
 

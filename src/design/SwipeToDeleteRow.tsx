@@ -38,7 +38,7 @@
  * 这里的行住在 **240px** 的侧栏里，还要再缩进一层——96px 的删除区会吃掉半行标题。
  * 所以宽度做成入参、在调用处给值，组件自己不写死。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { motion, useAnimationControls, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform, type PanInfo } from 'framer-motion'
 import { IconTrash } from '@tabler/icons-react'
 import { cn } from '../utils/cn'

@@ -6,7 +6,7 @@
 // 提取是**移动**不是复制：`InlineParameterBar` 从这里 import，全仓只此一份定义。
 //
 // 两个都是纯函数、无副作用、不读 store，所以搬家不改任何视觉行为。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconAspectRatio } from '@tabler/icons-react'
 
 /** 比例文本（"16:9"）→ 宽高比小图形（描边矩形，最长边 18px）。

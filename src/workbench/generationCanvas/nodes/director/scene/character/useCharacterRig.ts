@@ -129,7 +129,7 @@ export function useCharacterRig({
   rig: DirectorRig
   root: THREE.Object3D
   skinned: THREE.SkinnedMesh | null
-  mountRef: React.RefObject<THREE.Group>
+  mountRef: React.RefObject<THREE.Group | null>
   // 挂载组基准高度（米）：静止姿态最低点贴地时挂载组的 y，骨盆偏移在此之上叠加
   mountBaseY: number
 }): CharacterRigApi {

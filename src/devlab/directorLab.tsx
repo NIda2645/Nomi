@@ -1,7 +1,7 @@
 // Director Lab —— 仅 dev：把导演台 V2 全屏壳脱离画布单独挂起来迭代（S0–S8 期间节点对用户隐藏，这里是开发入口）。
 // 引导方式与 src/main.tsx 一致（字体 / Mantine 局部样式 / 全局 CSS / 主题 / Providers），只换掉路由 App。
 // 工程存 localStorage（nomi:director-lab:project），关闭后可重开或重置。不进 prod 构建。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/inter/wght.css'
 import '@fontsource-variable/fraunces/wght.css'

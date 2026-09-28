@@ -96,13 +96,19 @@ export function installProductionRunDesktopLifecycle(args: InstallArgs): {
         if (deepLink) handleProductionDeepLink(deepLink);
         const [existing] = BrowserWindow.getAllWindows();
         if (!existing) {
-          void args.ensureMainWindow();
+          void Promise.resolve(args.ensureMainWindow()).then(() => {
+            const [created] = BrowserWindow.getAllWindows();
+            if (!created || created.isDestroyed()) return;
+            if (created.isMinimized()) created.restore();
+                    created.show();
+            created.focus();
+                  });
           return;
         }
         if (existing.isMinimized()) existing.restore();
-        existing.show(); // 窗口被隐藏时同样「打不开」，与 deliverProductionDeepLink 保持一致
+            existing.show(); // 窗口被隐藏时同样「打不开」，与 deliverProductionDeepLink 保持一致
         existing.focus();
-      });
+          });
     }
   }
 

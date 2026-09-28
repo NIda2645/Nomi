@@ -10,7 +10,7 @@
 // 按面各有一版起手，留在这里会和空态那三格完全重复（P1：不留并行版）。
 // 介入槽与七态收据不在这里——它们要一个活的待决登记表，那是真机走查（loopback 零额度）
 // 的活，截图证明不了「点下去发生了什么」。
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { LabState } from '../../labScreen'
 import {
   ShellStage,

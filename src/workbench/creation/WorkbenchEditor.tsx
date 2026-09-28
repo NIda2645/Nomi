@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { workspacePanelFrame, workspacePanelHeader } from '../WorkspacePanelFrame'
 import { CreationResourceTreeToggle } from './CreationResourceTreeToggle'
 import { useTranslation } from 'react-i18next'

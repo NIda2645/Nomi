@@ -7,7 +7,7 @@
  * [POS]: director/panels/viewport 的 POV 叠加层（清单 §2.4 V6 + §6 C1/C2/C4）：只在 activeCameraId ≠ free 时出现。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton, WorkbenchIconButton } from '../../../../../../design'
 import { IconDeviceGamepad2, IconX } from '../../../../../../vendor/tablerIcons'

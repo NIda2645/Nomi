@@ -1,7 +1,7 @@
 import { nodeHasResultStack } from './useNodeResultHistory'
 import { productionMetaOf } from '../model/productionMeta'
 import { notify } from '../../../ui/notificationPolicy'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconCheck,

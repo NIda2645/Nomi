@@ -4,7 +4,7 @@ import { groupLibraryItems, libraryGroup } from '../library/libraryGroups'
  * AI 优化下沉到节点 composer(不在库内重复)。居中大画廊 + 遮罩;点卡片 FLIP 放大浮到中央预览。
  * 双来源:Nomi 精选(外部公开仓库,主进程聚合+1h 缓存+打包快照兜底,只读)/ 我的库(用户级·跨项目,手写可改可删)。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { IconX, IconBulb, IconRefresh, IconPlus } from '@tabler/icons-react'

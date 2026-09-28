@@ -10,7 +10,7 @@
 //
 // 用 `useEffect` + rAF 而不是给组件加一个 `defaultOpen` 道具：多一个只有实验室用的开关就是
 // 第二条打开路径（P1 并行版），而且它证明不了真实那条能不能打开。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 export const CANVAS_ADD_CELL_WIDTH = 420
 export const CANVAS_ADD_CELL_HEIGHT = 460

@@ -13,7 +13,7 @@
 //
 // 为什么不做成第二个并排下拉：画布框选工具条实测已 713px、上限 760px，每个执行组再加一个 select
 // 会把主钮「生成选中 N 个」挤出视野（样张实测，R8）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ModelOption } from '../../config/models'
 import { NomiSelect } from '../../design'

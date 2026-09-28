@@ -7,7 +7,7 @@
  * 右侧浮动抽屉壳已删（2026-07-22 方案一重执行）：`nomi-open-asset-library` 事件全仓无发送方，
  * 是素材库 v1 纯抽屉时代的孤儿面——素材库唯一的门＝侧栏 tab（一个能力一个门）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { IconPhoto, IconX } from '@tabler/icons-react'

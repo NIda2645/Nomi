@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import { useGenerationFeedback } from '../observability/useGenerationFeedback'

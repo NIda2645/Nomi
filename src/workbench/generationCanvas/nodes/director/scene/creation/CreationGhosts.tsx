@@ -5,7 +5,7 @@
  * [POS]: director/scene/creation 的幽灵体渲染：不进 store、不触发 React 重渲染；全部 editor-only。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { DEG_TO_RAD } from '../../model/vec3'

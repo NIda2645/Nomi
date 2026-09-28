@@ -4,7 +4,7 @@
 // 分支就是它变巨壳的方式（R9/R12，门岗上限 713 行）。壳只该问「这个 kind 有没有给我 body /
 // 浮条」，不该知道产物有几种文件类型、复制的是哪段文本。所以这里对外只暴露两个插槽 + 一个
 // isArtifact 布尔，壳按插槽渲染，产物的事一律不出这个目录。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { lazyWithChunkBoundary } from '../../../../ui/chunkBoundary'
 import { canArtifactCopyText, readAgentArtifactMeta } from '../../model/artifactMeta'

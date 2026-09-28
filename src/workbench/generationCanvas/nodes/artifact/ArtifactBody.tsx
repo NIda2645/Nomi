@@ -9,7 +9,7 @@
 //
 // 安全：code/text/markdown 只展示不执行；html 是唯一"活内容"，在沙箱内跑。
 // 产物文件一律 nomi-local:// 落盘引用（meta.artifact.url 带真实扩展名），节点不塞内联源码。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconCode, IconCube, IconFileText, IconInfoCircle, IconMarkdown, IconTable, IconVector } from '@tabler/icons-react'
 import { lazyWithChunkBoundary } from '../../../../ui/chunkBoundary'

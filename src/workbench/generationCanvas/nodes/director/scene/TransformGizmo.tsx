@@ -7,7 +7,7 @@
  *        所以直接读 position/rotation/scale 回写；机位读 YXZ 欧拉得 yaw/pitch/roll；灯只允许平移。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { TransformControls } from '@react-three/drei'
 import { useDirectorStore, useDirectorStoreApi } from '../DirectorEditorContext'

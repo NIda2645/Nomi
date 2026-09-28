@@ -7,7 +7,7 @@
  *        一次只处理一个节点；结果处理失败也清标志，不让 Host 卡死。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../../../store/generationCanvasStore'

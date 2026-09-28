@@ -14,7 +14,7 @@ import { NomiBrand } from '../../../design/identity'
 // 所有交互都从 `handlers` 一个口进来。分散成二十几个 `onXxx` prop 时，容器那边就得逐个
 // 记住哪个还没接——而「没接」和「接了但没反应」在界面上长得一模一样。一个对象，
 // 缺哪个键就是那件事这里做不了，TypeScript 看得见。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useWorkspacePanelFrame, workspacePanelFrame, workspacePanelHeader } from '../../WorkspacePanelFrame'
 import type { LaneLegacyFacts } from '../../../../electron/shared/agentLane/laneLegacyNote'
 import { useTranslation } from 'react-i18next'

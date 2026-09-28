@@ -10,7 +10,7 @@
 //
 // 夹具文案一律走 i18n（R15）：实验室渲的是**现役组件**，组件里留硬编码中文会直接把
 // `check:i18n` 的欠账基线顶高——实验室不是法外之地。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type {

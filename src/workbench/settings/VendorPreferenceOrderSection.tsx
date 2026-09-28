@@ -12,7 +12,7 @@
 //
 // 只列**已配置**的家：没填 key 的家排进优先级没有意义（排第一也走不了），
 // 而且会让人误以为排了就能用。要多一家先去「模型」tab 接入。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconChevronDown, IconChevronUp } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 

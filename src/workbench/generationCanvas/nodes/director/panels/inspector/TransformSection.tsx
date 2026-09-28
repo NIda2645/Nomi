@@ -6,7 +6,7 @@
  * [POS]: director/panels/inspector 的空间变换分区：与 gizmo 走同一条 write*SpatialTransform 路径；机位位置 ↺ 回自由相机的家 (0, 1.7, 10)、朝向 ↺ 归零。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDirectorStore, useDirectorStoreApi } from '../../DirectorEditorContext'
 import type { DirectorCamera, DirectorObject, Vec3 } from '../../model/directorTypes'

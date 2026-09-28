@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { GenerationStatusBar } from './GenerationStatusBar'
 import { MODEL_ACCESS_ENTRY } from '../../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'

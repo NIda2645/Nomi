@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { ShotLabelFixture } from '../shotLabelFixture'
 import type { LabState } from '../../labScreen'
 import BaseGenerationNode from '../../../../workbench/generationCanvas/nodes/BaseGenerationNode'

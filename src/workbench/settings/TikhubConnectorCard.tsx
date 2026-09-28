@@ -6,7 +6,7 @@
 // 抖音/TikTok 分享链接解析成无水印直链、落成项目视频素材再用现有节点拆解。
 // key 走主进程 safeStorage 加密存储（与其它供应商同一条凭据边界），永不回传明文。
 // 语义/管线见 docs/plan/2026-09-01-tikhub-connector-v1.md。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconKey, IconExternalLink, IconChevronDown } from '@tabler/icons-react'
 

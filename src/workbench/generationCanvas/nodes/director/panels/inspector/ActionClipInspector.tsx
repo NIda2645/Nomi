@@ -6,7 +6,7 @@
  * [POS]: director/panels/inspector 的动作片段卡：开始 / 结束经 store.updateClipTime（同副轨争位置，失败保持原值）；裁剪打到命令层；分割在时间轴。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect, WorkbenchButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

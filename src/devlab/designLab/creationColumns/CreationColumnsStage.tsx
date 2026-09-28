@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import WorkbenchShell from '../../../workbench/WorkbenchShell'
 import { useWorkbenchStore } from '../../../workbench/workbenchStore'
 import { laneClient } from '../../../workbench/ai/lane/laneClient'

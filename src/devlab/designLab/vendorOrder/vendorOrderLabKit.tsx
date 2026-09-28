@@ -12,7 +12,7 @@
 // 「这个模型能不能用」不在这一层——它由主进程算好随行下发、在 `modelCatalogCache` 进入渲染层的
 // 第一处就把不可用的行滤掉了（证据 `modelCatalogCache.test.ts`）。所以本取景台收到的
 // `models` 永远是「目录层已放行的选项」，夹具用 `onlyFromVendors` 喂成那个样子。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import { NomiSelect } from '../../../design'
 import { dedupeModelOptions } from '../../../config/modelIdentity'

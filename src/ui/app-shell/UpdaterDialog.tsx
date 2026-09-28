@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconDownload, IconRefresh, IconX } from '@tabler/icons-react'
 import { NomiMarkdown } from '../../workbench/common/NomiMarkdown'

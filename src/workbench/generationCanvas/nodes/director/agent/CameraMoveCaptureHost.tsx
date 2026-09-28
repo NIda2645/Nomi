@@ -8,7 +8,7 @@
  *        只有 done / giveUp 才清标志。E2E 桥（__nomiCanvasStore / __nomiForceCameraMoveFail）只在 localStorage 打标时生效，生产永不暴露。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '../../../../../ui/toast'
 import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'

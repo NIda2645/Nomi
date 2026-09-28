@@ -18,7 +18,7 @@
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录里 `NN-*.tsx` 的文件名排序解析，汇总口按同样顺序拼接；
 // 接触表两列 → 每一行正好是同一态的光/暗一对。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import NodeVideoFrameToolbar from '../../../../workbench/generationCanvas/nodes/NodeVideoFrameToolbar'
 import type { GenerationCanvasNode } from '../../../../workbench/generationCanvas/model/generationCanvasTypes'

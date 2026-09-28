@@ -8,7 +8,7 @@
  *        关掉对话框不停服务，点「断开」才停；服务关闭态不摆空二维码 / 空链接，只留一句状态 + 「重新开启」。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DesignModal, WorkbenchButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

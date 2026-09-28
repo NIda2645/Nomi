@@ -8,7 +8,7 @@
  * 层级：L3 收纳（§1.5.1，一次点击可达），不占常驻预算。视觉与 NodeContextMenu 同款，
  * 用户不必学第二种菜单长相。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconLayersSubtract,

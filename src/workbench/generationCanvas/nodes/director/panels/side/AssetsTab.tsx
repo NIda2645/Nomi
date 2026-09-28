@@ -9,7 +9,7 @@
  *        上传走资产桥落盘只存句柄；无桌面运行时（devlab / 网页）退回 data / blob URL 并明说是临时的。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { hostedAssetUrl, importWorkbenchLocalAssetFile } from '../../../../../api/assetUploadApi'
 import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../../../project/projectCanvasReadSurface'

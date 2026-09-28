@@ -13,7 +13,7 @@
  *        整条点不动、窗口控件也埋在下面（2026-09-04，与 issue #58 同根，见 windowChrome）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { TooltipProvider, confirmDialog } from '../../../../design'

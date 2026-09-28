@@ -78,6 +78,8 @@ import { registerDevDiagnostics } from "./logging/devDiagnostics";
 import { registerRendererLogIpc } from "./logging/rendererLog";
 import { createProjectInteractionCapture } from "./assets/projectInteractionCapture";
 import { issueChildWindowProject } from "./assets/windowProjectCapture";
+import { installWindowNavigation } from "./windowNavigation";
+import { backgroundWindowOptions, disposeBackgroundLifecycle, hasInFlightProductionWork, installBackgroundLifecycle, installBackgroundWindowBehavior, isBackgroundLaunch, touchBackgroundActivity } from "./backgroundLaunch";
 // profile 重定向必须排在 installMainProcessLifecycle **之前**：崩溃处理与日志一装上就会写盘，
 // 晚一步重定向，这次会话的头几行（含会话表头）会落在被隔离掉的那个目录里。
 const configuredUserDataDir = String(process.env.NOMI_ELECTRON_USER_DATA_DIR || "").trim();
@@ -106,7 +108,12 @@ const isMcpStdio = process.env.NOMI_MCP_STDIO === "1";
 if (isMcpStdio && process.env.NOMI_APP_NAME) app.setName(process.env.NOMI_APP_NAME);
 const allowE2eMultiInstance = process.env.NOMI_E2E_ALLOW_MULTI_INSTANCE === "1";
 const hasSingleInstanceLock = isMcpStdio ? false : allowE2eMultiInstance ? true : app.requestSingleInstanceLock();
-const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({ isMcpStdio, allowE2eMultiInstance, hasSingleInstanceLock, ensureMainWindow: () => ensureMainWindow() });
+const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({
+  isMcpStdio,
+  allowE2eMultiInstance,
+  hasSingleInstanceLock,
+  ensureMainWindow: () => ensureMainWindow(),
+});
 if (isMcpStdio) {
   void app
     .whenReady()
@@ -179,6 +186,7 @@ async function startDesktopCapabilityCore(): Promise<void> {
     {
       canvasReadExecutionRuntime: desktopCanvasReadExecutionRuntime,
       proposalReceiptFor: createDesktopProposalReceiptResolver(),
+      onRpcActivity: touchBackgroundActivity,
     },
   );
   capabilityPortCache = core.getCapabilityPort();
@@ -240,18 +248,6 @@ function getRendererUrlWithRoute(currentUrl?: string): string {
   }
 }
 
-function isRendererEntryUrl(url: string, rendererUrl: string): boolean {
-  try {
-    const actual = new URL(url);
-    const expected = new URL(rendererUrl);
-    if (actual.protocol !== expected.protocol) return false;
-    if (actual.protocol === "file:") return actual.pathname === expected.pathname;
-    return actual.origin === expected.origin && actual.pathname === expected.pathname;
-  } catch {
-    return url === rendererUrl;
-  }
-}
-
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -297,7 +293,9 @@ async function createWindow(
       nodeIntegration: false,
       sandbox: false,
     },
+    ...backgroundWindowOptions(),
   });
+  installBackgroundWindowBehavior(mainWindow);
   setMainWindow(mainWindow); // 主窗口单一真相（registry）；closed 条件清理防窗口重建竞态误清新窗
   installMainWindowInteractions(mainWindow);
   mainWindow.on("closed", () => {
@@ -308,26 +306,12 @@ async function createWindow(
   mainWindow.on("maximize", () => mainWindow.webContents.send("nomi:window:maximized", true));
   mainWindow.on("unmaximize", () => mainWindow.webContents.send("nomi:window:maximized", false));
 
-  // External http(s) links (e.g. the "get your API key" link → provider console)
-  // open in the user's real browser, never as a new in-app Electron window.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (/^https?:\/\//i.test(url)) {
-      void shell.openExternal(url);
-    }
-    return { action: "deny" };
-  });
-
   const rendererUrl = options.rendererUrl || getRendererUrl();
+  installWindowNavigation(mainWindow, rendererUrl);
 
   // 纵深防御：setWindowOpenHandler 只拦新窗口，拦不住顶层框架自身被诱导导航
   // （window.location = 'http://evil'）。一旦发生，整个 app 会变成加载远端页面的浏览器。
   // 这里把任何「离开本地渲染入口」的顶层导航一律拦下；外链改走系统浏览器。
-  mainWindow.webContents.on("will-navigate", (event, url) => {
-    if (isRendererEntryUrl(url, rendererUrl)) return;
-    event.preventDefault();
-    if (/^https?:\/\//i.test(url)) void shell.openExternal(url);
-  });
-
   // 能力核 A 模式实时桥：登记当前窗口 webContents，让主进程把外部 MCP 的画布改动/付费确认
   // 转发进运行中的渲染层（所见即所得）。窗口销毁即清除，避免向死窗口发送。
   setRendererTarget(mainWindow.webContents);
@@ -371,7 +355,11 @@ function recreateMainWindowFromSender(sender: WebContents, options: { preserveRo
     session.defaultSession.clearCodeCaches({}).catch(() => undefined),
   ])
     .then(() => createWindow({ bounds, maximize, rendererUrl }))
-    .then((nextWindow) => nextWindow.focus())
+    .then((nextWindow) => {
+      // A renderer reload can also happen in the hidden MCP-launched process;
+      // never let that maintenance path surface the background window.
+      if (!isBackgroundLaunch) nextWindow.focus();
+    })
     .catch((error) => {
       logError("window", "recreate-window-failed", error, { reason: options.reason });
     })
@@ -656,6 +644,7 @@ if (hasSingleInstanceLock)
       }
       registerIpc(); void import('./telemetry/telemetryLifecycle').then(({ recordAppStarted }) => recordAppStarted());
       await createWindow();
+      installBackgroundLifecycle({ hasInFlightWork: hasInFlightProductionWork, quit: () => app.quit() });
       // 外部 capability RPC 不是首窗依赖，且它一旦 listen 就可能收到会解析凭据的 models/generation 请求。
       // 必须在窗口完成后才暴露；失败显式消化，不能反向拖垮已经可用的首窗。低内存模式仍默认跳过。
       if (!capabilityCoreDisabled) {
@@ -693,6 +682,7 @@ app.on("window-all-closed", () => {
 // abort → ffmpegRunner 监听 abort 后 kill 子进程。同步、不抛，绝不拖住退出。
 app.on("before-quit", () => {
   // 能力核退出清理：清实例广告 + 关 RPC，让外部探测立刻知道「app 已关」。同步、不抛。
+  disposeBackgroundLifecycle();
   stopDesktopCapabilityCore();
   void desktopLaneIpc?.dispose().catch((error) => logError("agent", "close-on-quit-failed", error));
   try {

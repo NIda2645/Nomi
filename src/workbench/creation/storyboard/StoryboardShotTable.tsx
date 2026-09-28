@@ -1,5 +1,5 @@
 import { resolveStoryboardOverride } from './exec/storyboardOverrideActions'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconChevronRight, IconPlayerPlay, IconPlus } from '@tabler/icons-react'

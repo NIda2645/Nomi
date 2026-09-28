@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconPackage } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'
 import { useRemoteExampleMedia } from '../../media/remoteExampleMedia'

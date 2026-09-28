@@ -12,7 +12,7 @@
  * 组头字号字色沿用面板既有的 section header 规格（text-micro / ink-40 + chevron），
  * 不另立视觉语言（P1）。（原文引用的 AvailableGroup.tsx 已于 2026-08-26 作为死代码删除。）
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

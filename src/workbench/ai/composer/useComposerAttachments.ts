@@ -35,7 +35,7 @@ function readAssetContentHash(asset: { data?: Record<string, unknown> }): string
 export type UseComposerAttachments = {
   isDragging: boolean
   openFilePicker: () => void
-  inputRef: React.RefObject<HTMLInputElement>
+  inputRef: React.RefObject<HTMLInputElement | null>
   onInputChange: (event: React.ChangeEvent<HTMLInputElement>) => void
   addFiles: (files: FileList | File[] | null | undefined) => void
   removeAttachment: (id: string) => void

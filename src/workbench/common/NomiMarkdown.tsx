@@ -1,4 +1,4 @@
-import { cloneElement, isValidElement, memo, useId, useMemo, type ReactElement } from 'react'
+import { type JSX, cloneElement, isValidElement, memo, useId, useMemo, type ReactElement } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPhoto } from '@tabler/icons-react'
 import { Streamdown, type Components, type PluginConfig } from 'streamdown'

@@ -6,7 +6,7 @@
 //
 // 明令禁用（定稿画的虚线框）：机器人头、闪光「AI」、芯片「模型」、纯转圈无文字、沙漏。
 // 这份表就是那条禁令的执行处——任何积木要 icon 都从这里取，不在组件里各写各的三元表达式。
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   IconAlertTriangle,
   IconArrowUp,

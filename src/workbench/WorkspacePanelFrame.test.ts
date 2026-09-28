@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { AgentPanelV4Panel } from './ai/v4/AgentPanelV4Panel'
 import { describe, expect, it } from 'vitest'

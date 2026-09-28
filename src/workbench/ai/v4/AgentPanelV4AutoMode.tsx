@@ -12,7 +12,7 @@
 //
 // 尺寸按「极小」拿：一条 h-6 的微字横条，靠 warning-soft 底 + 一颗点被眼睛抓到，
 // 不用 icon——设计定稿 ⑧ 禁用闪光/机器人头那一族，而「自动」正是最容易被画成闪电的地方。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { V4Row } from './AgentPanelV4Row'
 import { IconX } from './AgentPanelV4Icons'
 

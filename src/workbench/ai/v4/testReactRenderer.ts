@@ -2,8 +2,7 @@ import { createRequire } from 'node:module'
 import React from 'react'
 
 const require = createRequire(import.meta.url)
-const fiberRequire = createRequire(require.resolve('@react-three/fiber'))
-const Reconciler = fiberRequire('react-reconciler')
+const Reconciler = require('react-reconciler')
 
 export type TestHostNode = { props: unknown }
 
@@ -32,8 +31,8 @@ export function createReactTestRenderer<T extends TestHostNode = TestHostNode>(o
     detachDeletedInstance: () => undefined,
     finalizeInitialChildren: () => false,
     prepareUpdate: () => true,
-    // react-reconciler 0.27: (instance, updatePayload, type, oldProps, newProps)
-    commitUpdate: (instance: T, _payload: unknown, _type: string, _oldProps: Record<string, unknown>, props: Record<string, unknown>) => {
+    // react-reconciler 0.34: (instance, type, oldProps, newProps, internalHandle)
+    commitUpdate: (instance: T, _type: string, _oldProps: Record<string, unknown>, props: Record<string, unknown>) => {
       if (options.commitUpdate) options.commitUpdate(instance, props)
       else instance.props = props
     },
@@ -41,18 +40,31 @@ export function createReactTestRenderer<T extends TestHostNode = TestHostNode>(o
     scheduleTimeout: setTimeout,
     cancelTimeout: clearTimeout,
     noTimeout: -1,
-    getCurrentEventPriority: () => 16,
+    getCurrentEventPriority: () => 2,
+    setCurrentUpdatePriority: () => undefined,
+    getCurrentUpdatePriority: () => 2,
+    resolveUpdatePriority: () => 2,
+    resolveEventType: () => null,
+    resolveEventTimeStamp: () => -1,
+    trackSchedulerEvent: () => undefined,
+    shouldAttemptEagerTransition: () => false,
+    supportsMicrotasks: false,
   })
   const root = renderer.createContainer({}, 0, null, false, null, '', () => undefined, null)
   return {
     render(node: React.ReactElement | null) {
-      renderer.flushSync(() => renderer.updateContainer(node, root, null))
+      renderer.flushSyncFromReconciler(() => renderer.updateContainerSync(node, root, null, () => undefined))
+      renderer.flushSyncWork()
     },
     flushPassiveEffects() {
       renderer.flushPassiveEffects()
+      renderer.flushSyncWork()
+      renderer.flushPassiveEffects()
+      renderer.flushSyncWork()
     },
     close() {
-      renderer.flushSync(() => renderer.updateContainer(null, root, null))
+      renderer.flushSyncFromReconciler(() => renderer.updateContainerSync(null, root, null, () => undefined))
+      renderer.flushSyncWork()
       renderer.flushPassiveEffects()
     },
   }

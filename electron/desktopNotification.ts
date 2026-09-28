@@ -4,12 +4,14 @@ import { playAttentionSound } from './attentionSoundPlayer'
 import { readAttentionSoundSettings } from './settings/attentionSoundSettings'
 import { readAutomationPolicySettings } from './settings/automationPolicySettings'
 import type { AttentionSoundEvent } from './shared/contracts/attentionSound'
+import { isBackgroundWindowUnshown } from './backgroundIdleExit'
 
 /** Both notification producers converge here; OS sound is always disabled. */
 export function showDesktopNotification(input: {
   title: string; body: string; event: AttentionSoundEvent; onClick: () => void
 }): { ok: boolean; reason?: string } {
   try {
+    if (isBackgroundWindowUnshown()) return { ok: false, reason: 'background-unshown' }
     if (BrowserWindow.getAllWindows().some((win) => !win.isDestroyed() && win.isVisible() && !win.isMinimized() && win.isFocused())) {
       return { ok: false, reason: 'focused' }
     }

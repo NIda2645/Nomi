@@ -9,7 +9,7 @@
  *
  * 注：本组件**只渲染卡片 body**。节点拖动 / 选中 / 缩放 仍由 BaseGenerationNode 提供。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../utils/cn'
 import type { GenerationCanvasNode } from '../../model/generationCanvasTypes'

@@ -8,7 +8,7 @@
  *        这里只上报「在哪一行按了菜单 / 右键」。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchIconButton } from '../../../../../design'
 import {
