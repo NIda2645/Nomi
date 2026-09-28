@@ -1,7 +1,6 @@
-import type { JSX } from 'react'
 // Answers and actionable next steps remain visible. Process and user-message folding
 // have their own semantic boundaries; rendered height cannot classify importance.
-import React from 'react'
+import React, { type JSX } from 'react'
 import { NomiMarkdown } from '../../common/NomiMarkdown'
 import { useTranslation } from 'react-i18next'
 

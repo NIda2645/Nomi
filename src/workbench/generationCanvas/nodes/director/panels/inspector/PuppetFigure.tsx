@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../utils/cn、../../model/ikChains 的 IkHandleKey、../../model/rigs 的 SemanticBone
  * [OUTPUT]: 对外提供 PuppetFigure：2D 骨骼人偶（SVG viewBox 250×300）——17 段骨骼画成两半明暗菱形（FK 页可点选、悬停高亮），
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        选择态住 store.selection.ikTarget / boneKey；语义骨映射：spine → spine2、thigh → upLeg、shin → leg。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../../utils/cn'
 import type { IkHandleKey } from '../../model/ikChains'

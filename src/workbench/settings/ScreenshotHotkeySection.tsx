@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 设置 · 通用 · 全局截图热键。
  *
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
  * ② **权限没给要指路**——macOS 的屏幕录制权限**没法程序化申请**（askForMediaAccess 只支持
  *    microphone/camera），只能带用户去系统设置，并说清「改完要重开 Nomi」。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconAlertTriangle, IconExternalLink } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

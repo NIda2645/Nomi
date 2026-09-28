@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/drei 的 Edges、../../model/directorTypes 的 DirectorObject / DirectorModelDisplayMode、
  *          ../sceneTheme 的 CLAY_EDGE_COLOR、./primitiveMaterial 的 primitiveMaterialSpec
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        显示模式来自图层配置；辅助物体（isAuxiliary）只在主视口可见，出片/画中画由上层按标记隐藏。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { Edges } from '@react-three/drei'
 import type { DirectorModelDisplayMode, DirectorObject, DirectorPrimitiveType } from '../../model/directorTypes'

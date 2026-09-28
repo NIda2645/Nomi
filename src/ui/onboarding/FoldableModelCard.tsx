@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 折叠摘要卡外壳（模型接入面板方案 A）。
  *
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  * 默认折成一行（logo + 名/副标题 + 状态胶囊 + chevron），点 header 就地展开 body。
  * 样张：docs/design/mockups/onboarding-panel-A.html；规范：docs/plan/2026-06-07-onboarding-panel-redesign.md §5.1
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronDown, IconChevronRight } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

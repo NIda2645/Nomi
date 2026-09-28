@@ -1,6 +1,5 @@
-import type { JSX } from 'react'
 /* eslint-disable react-refresh/only-export-components */
-import React from 'react'
+import React, { type JSX } from 'react'
 import i18n from '../../../i18n'
 import { IconBrowser, IconBrush, IconPalette, IconWorld } from '../../../vendor/tablerIcons'
 import type { DesktopBrowserAssetOverlayCaptureRequest, DesktopBrowserPromptCaptureEvent, DesktopBrowserResourceCaptureEvent, DesktopBrowserViewBounds } from '../../../desktop/bridge'

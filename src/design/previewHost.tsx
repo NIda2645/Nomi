@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计系统「预览宿主」——给**不带 App 外壳**的渲染环境用的最小 provider。
 //
 // 为什么需要它：src/design 里有 5 个组件（NomiWordmark / NomiBrand / NomiLoadingMark /
@@ -15,7 +14,7 @@ import type { JSX } from 'react'
 // 用途：design-sync 组件库预览卡（cfg.provider）、以及任何需要在 App 之外单独挂载设计
 // 系统组件的场景。
 
-import React from 'react'
+import React, { type JSX } from 'react'
 import { MantineProvider } from '@mantine/core'
 import { I18nextProvider } from 'react-i18next'
 import i18next, { type i18n as I18nInstance } from 'i18next'

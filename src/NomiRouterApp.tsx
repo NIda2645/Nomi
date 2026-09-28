@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { getDesktopBridge } from './desktop/bridge'
 import { notifyModelOptionsRefresh } from './config/modelCatalogCache'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'

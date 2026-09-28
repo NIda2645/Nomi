@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useThree/useFrame、@react-three/drei 的 OrbitControls、
  *          ../model/vec3、../model/directorTypes、../model/cameraLens（exportAspectRatio / povVerticalFov）、./cameraMath（cameraQuaternion / THREE_CAMERA_FLIP）、
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
  *        录制运镜中不写回机位（录制器采样视口相机，停止时一次生成关键帧）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { OrbitControls } from '@react-three/drei'

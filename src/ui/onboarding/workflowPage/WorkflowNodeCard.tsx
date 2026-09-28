@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 只读节点图里的一张节点卡。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md
@@ -12,7 +11,7 @@ import type { JSX } from 'react'
  * 没有任何可绑输入、也没有可调标量的节点（CLIPLoader、VAELoader 这类），**渲染成非按钮**并挂
  * title 说清为什么点不了——不摆一个点下去什么都不发生的死按钮。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 import { NODE_HEIGHT, NODE_WIDTH, type PositionedNode } from '../comfyuiGraphGeometry'

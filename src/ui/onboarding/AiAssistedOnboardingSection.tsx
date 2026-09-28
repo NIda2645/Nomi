@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「用 AI 帮我接入」卡在模型页上的接线层。
  *
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
  * 进度**不新造状态机**：会话真相源是主进程（`integrationSessionGet` 的投影），
  * 这里只做「哪个会话是外部 Agent 在推」+「stage → 五步」两件事。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import { getDesktopBridge } from '../../desktop/bridge'
 import type { McpInfo } from '../../desktop/mcpBridgeTypes'

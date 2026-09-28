@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { libraryGroup } from '../library/libraryGroups'
 // 常驻 Agent 面板的容器。
 //
@@ -9,7 +8,7 @@ import { libraryGroup } from '../library/libraryGroups'
 // 之前这里是 760 行：投影、嗅探、弹层、队列行、审批按钮全在一个组件里，
 // 「宿主真相怎么变成一行收据」这件事只能靠截图证明。拆开之后那部分是纯函数、有单测；
 // 这里剩下的都是**只有真实运行时才有的东西**（DOM 尺寸、事件桥、文件选择器）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { openFeedbackFor } from '../../ui/community/FeedbackButton'
 import { withProjectAction } from '../project/projectCanvasReadSurface'
 import { useTranslation } from 'react-i18next'

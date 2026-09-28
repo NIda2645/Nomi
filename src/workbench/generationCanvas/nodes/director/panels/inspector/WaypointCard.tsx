@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/directorTypes（TimelineEntity / Waypoint）、../../model/timeGrid（DIRECTOR_FPS / secondsToFrame）、../fields/FieldPrimitives、../fields/SliderNumberField
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  * [POS]: director/panels/inspector 的路标卡：帧改时走 updateWaypointTime（被相邻路标夹住时拒绝并 toast），数值改动前先快照。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

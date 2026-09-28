@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../../../../design（BodyPortal / NOMI_OVERLAY_Z_INDEX）、../../../../../utils/cn
  * [OUTPUT]: 对外提供 TimelineMenuItem 类型与 TimelineContextMenu（按指针位置定位的右键菜单；外点 / Esc 关闭）
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  *        时间轴折得很矮时菜单不能被自己的容器裁掉；菜单项由 DirectorTimeline 按上下文拼。挂 data-nomi-escape-layer 让编辑器的 Esc 归属链先关它。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { BodyPortal, NOMI_OVERLAY_Z_INDEX } from '../../../../../design'
 import { cn } from '../../../../../utils/cn'
 

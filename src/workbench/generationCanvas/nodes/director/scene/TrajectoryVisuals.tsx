@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useFrame、../DirectorEditorContext 的 useDirectorStore、../model/clips 的 waypointsOfClip、
  *          ../model/directorTypes（TimelineEntity / TrajectoryClip / Waypoint）、../model/trajectoryEval 的 sampleWaypoints、../model/vec3 的 DEG_TO_RAD、
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  *        路标小球带 userData 标记，点选由 useViewportPicking 统一处理。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useDirectorStore } from '../DirectorEditorContext'

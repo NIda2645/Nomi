@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「这家的两项声明可能在旧版本里丢了」——一次性、可关掉的诚实交代（D4：缺口明着标，不藏）。
  *
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
  * 长在那家自己的卡上；重填的入口（改地址 / 换 key / 重新导入包）也都在这一屏（§1.5 一功能一个家）。
  * 关掉走的是现成的 upsertVendor 写回 meta，不新造 IPC、不新造通知系统（P1）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconInfoCircle } from '@tabler/icons-react'
 

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · **Vocabulary 板**（8 个积木 × 各自的状态）
 //
 // 取景框是 `Piece`：这一组每一格只渲**那一个积木**，因为定稿 Vocabulary 板画的就是
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录里 `NN-*.tsx` 的文件名排序解析，汇总口按同样顺序拼接，
 // 走查再拿活页面的 `window.__designLabStates` 与解析结果逐项比对——三者对不上当场红。
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { LaneSnapshot } from '@earendil-works/pi-agent-core'
 import { IconBrowser, IconSettings } from '../../../../vendor/tablerIcons'
 import { V4Intervention, V4Queue, V4TaskCard } from '../../../../workbench/ai/v4/AgentPanelV4Cards'

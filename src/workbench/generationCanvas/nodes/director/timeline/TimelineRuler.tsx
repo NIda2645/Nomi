@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、./useTimelineViewport 的 TimelineViewport、../model/timeGrid（DIRECTOR_FPS / DIRECTOR_MAX_DURATION_SECONDS）
  * [OUTPUT]: 对外提供 TimelineRuler（刻度标尺 + 拖拽刷帧）、RULER_HEIGHT
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        按下即 seek、拖动连续刷帧（播放中拖 = 暂停）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { DIRECTOR_FPS, DIRECTOR_MAX_DURATION_SECONDS } from '../model/timeGrid'
 import type { TimelineViewport } from './useTimelineViewport'
 

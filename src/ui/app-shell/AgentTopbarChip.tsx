@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 收起角标的**长相**（09-01 定稿 §11.2 缩小三档 · 收起态；样张「屏 E · 布局 · B①」）。
 //
 // 收起态的家是顶栏右簇「浏览器」与「设置」之间那一格，不是内容区右上角。理由在定稿里：
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
 //
 // 这里只画，不判断：出不出、叠什么、tooltip 说什么，全由 `CollapsedAiChip` 按宿主真相算好传进来。
 // 分开的理由是设计实验室：那几格要能在没有宿主的情况下把各档状态一格一格截出来。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { NomiLogoMark, Tooltip, TooltipContent, TooltipTrigger, WorkbenchButton } from '../../design'
 import { cn } from '../../utils/cn'
 import { AGENT_TOPBAR_CHIP_SETTLE_MS, type AgentTopbarChipBadge } from './agentTopbarChipBadge'

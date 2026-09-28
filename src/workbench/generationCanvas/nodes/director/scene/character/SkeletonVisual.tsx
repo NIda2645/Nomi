@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber（createPortal / useFrame / useThree）、../../DirectorEditorContext、../sceneRefs（isDirectorObjectVisible / tagEditorOnly / DIRECTOR_BONE_KEY / BoneTag）、
  *          ../sceneTheme 的 SKELETON_COLORS、../../model/rigs（FK_JOINTS / SemanticBone）、../../model/directorTypes 的 DirectorRig、./characterRig 的 findSemanticBone / BoneIndex
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  *        大球在真人尺寸下盖住肢体、根本点不准。手指 / 脚趾末端 / 头顶 End 骨不画。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { createPortal, useFrame, useThree } from '@react-three/fiber'
 import { useDirectorStore } from '../../DirectorEditorContext'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · **付费卡 v2 = 画布节点的生成框整件进介入槽** + 「全自动」档
 //
 // v1 被用户当场打回（2026-09-10 20:30）。原话：
@@ -27,7 +26,7 @@ import type { JSX } from 'react'
 //     认档案 / 算参数 / 渲染全部照常走），改模型是节点上那同一个下拉；
 //   · 提示词是 `PromptEditor` 本人，打字直接写回 `useGenerationCanvasStore`；
 //   · 参数改完，下面那行价格当场重算——因为它就是从同一份 meta 读出来的。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { V4Intervention } from '../../../../workbench/ai/v4/AgentPanelV4Cards'
 import { AgentPanelV4Panel } from '../../../../workbench/ai/v4/AgentPanelV4Panel'
 import { V4AutoModeBanner } from '../../../../workbench/ai/v4/AgentPanelV4AutoMode'

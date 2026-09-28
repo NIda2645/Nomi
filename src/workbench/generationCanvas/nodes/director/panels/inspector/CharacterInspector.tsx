@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 NomiSegmented、../../DirectorEditorContext、../../model/directorTypes、../fields/FieldPrimitives、
  *          ./TransformSection、./PoseTab、./SkeletonTab
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  * [POS]: director/panels/inspector 的角色属性：基础页（名称、颜色预设、空间变换）住这里，姿态页与骨骼页各自成文件；页签状态本地记忆。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSegmented } from '../../../../../../design'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'

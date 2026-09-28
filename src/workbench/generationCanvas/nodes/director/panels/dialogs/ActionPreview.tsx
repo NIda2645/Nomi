@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber（useFrame）、../../../fencedCanvas 的 FencedCanvas（workbench 内禁裸 Canvas）、@react-three/drei（OrbitControls / useGLTF）、three/examples/jsm/utils/SkeletonUtils 的 clone、../../scene/character/mannequinAssets 的 MANNEQUIN_MODEL_URL、
  *          ../../scene/character/mannequinSkeleton（normalizeMannequinModel / applyMannequinSkeletonPose）、../../scene/character/poseClipLibrary（samplePoseClip / poseClipSourceBind / preloadPoseClips）、
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
  * [POS]: director/panels/dialogs 的预览小场景：与主视口互不相干（自己的 Canvas / 相机 / 灯），采样与套骨走和角色实体同一套 poseClipLibrary / poseSnapshot，所见即成片。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { FencedCanvas } from '../../../fencedCanvas'

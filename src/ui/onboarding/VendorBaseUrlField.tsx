@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「接入地址」字段行 —— 内置家卡（VendorOnboardCard）与自定义中转家卡（CustomVendorManage）
  * **共用同一份**。此前两边各写了一份逻辑与 markup 完全相同的编辑块（同样的 upsertVendor、
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
  *
  * 保存成功不在这里重探连接：地址一改，useVendorHealth 的 fingerprint 就变，effect 自动重探。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPencil } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

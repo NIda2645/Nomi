@@ -1,6 +1,5 @@
-import type { JSX } from 'react'
 import { isCardRenderKind, resolveNodeRenderKind } from '../nodes/resolveRenderKind'
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   BaseEdge,
   EdgeLabelRenderer,

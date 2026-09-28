@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../ui/toast、../DirectorEditorContext、../model/hotkeys 的 DirectorHotkeyScope、
  *          ../model/timelineTracks（buildTimelineTracks / ClipLabeler / TimelineTrack / TrackFamily）、../model/timelineClipboard 的 canPasteTo、
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
  *        全部打到命令层；被拒绝的操作统一 toast 原因。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '../../../../../ui/toast'
 import { useDirectorStore, useDirectorStoreApi } from '../DirectorEditorContext'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 自定义 / 中转站供应商的「连接」组（改地址 / 换 key / 断开 / 删除整个供应商）。
  * 用户反馈（2026-07-04）：自定义接入的供应商卡此前只能删单个模型，没法改 BaseURL、换 key、
@@ -14,7 +13,7 @@ import type { JSX } from 'react'
  * 地址行与内置家卡共用 VendorBaseUrlField（P1）；区别：自定义家凭证恒为单个 apiKey、
  * 地址恒可改、且可**整家删除**（内置家是 seed 的、只断 key 不删）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconKey, IconTrash } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

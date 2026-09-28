@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber、../../model/directorTypes 的 DirectorLight、../../model/vec3 的 forwardFromAngles、
  *          ../sceneRefs 的 tagEntityObject / tagEditorOnly、../SceneRegistryContext 的 useSceneRegistry
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        换算成 target；灯具模型只在编辑器可见，出片隐藏。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import type { DirectorLight } from '../../model/directorTypes'
 import { DEG_TO_RAD, forwardFromAngles } from '../../model/vec3'

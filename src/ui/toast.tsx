@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { NotificationData } from '@mantine/notifications'
 import { notifications, notificationsStore } from '@mantine/notifications'
 import { IconAlertCircle, IconAlertTriangle, IconCircleCheck, IconInfoCircle } from '@tabler/icons-react'

@@ -1,10 +1,9 @@
-import type { JSX } from 'react'
 // 系统提示词的模式选择行：内置 chip → 分隔线 → 自定义 chip → 「＋ 新建」。
 //
 // 条目**全部 derive 自 listCreationAiModes()**（`modes` 由调用方传入），不手写清单：
 // 上一轮的根因就是选择器手写条目，7 个内置模式里 5 个在 UI 上根本不存在
 // （提示词写了、设置里能编辑、就是调不起来）。derive 之后新增模式自动出现。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlus } from '@tabler/icons-react'
 

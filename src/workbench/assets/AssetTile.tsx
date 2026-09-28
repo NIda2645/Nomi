@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { Icon3dCubeSphere, IconPlayerPlayFilled, IconPlus } from '@tabler/icons-react'

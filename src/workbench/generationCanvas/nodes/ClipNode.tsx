@@ -1,6 +1,5 @@
-import type { JSX } from 'react'
 import { notify } from '../../../ui/notificationPolicy'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { IconDownload, IconExternalLink, IconScissors } from '@tabler/icons-react'

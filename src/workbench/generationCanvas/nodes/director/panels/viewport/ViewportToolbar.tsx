@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 NomiSegmented、../../../../../../vendor/tablerIcons、
  *          ../../DirectorEditorContext、../../model/hotkeys（DIRECTOR_HOTKEYS / formatHotkey）、../../model/directorStore 的 TransformMode
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  *        编辑模式提示不在这里，住检查器「空间变换」卡。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSegmented } from '../../../../../../design'
 import { IconArrowsMove, IconPencil, IconPointer, IconResize, IconRotate, IconRoute } from '../../../../../../vendor/tablerIcons'

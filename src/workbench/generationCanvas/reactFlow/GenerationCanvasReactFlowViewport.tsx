@@ -1,7 +1,6 @@
-import type { JSX } from 'react'
 import { CANVAS_MIN_ZOOM, CANVAS_MAX_ZOOM } from '../model/canvasFitBounds'
 import { CanvasBatchConnectionLine } from './CanvasBatchConnectionLine'
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   ReactFlow,
   SelectionMode,

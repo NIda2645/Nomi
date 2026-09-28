@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 「新建卡片默认模型」设置区（用户 2026-08-18 看样张后拍板）。
 //
 // 解决的摩擦：新建一张卡时是「从池子里挑第一个健康的模型」，不分任务类型。
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
 // 这块管的是**新建时默认选哪个**（偏好）。两者同屏，名字必须区分得开，否则没人分得清。
 //
 // 默认值是「自动选择」= 今天的行为，没设过的人完全无感（D4：可选的加速器，不是必须学的配置）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { NomiSelect } from '../../design'

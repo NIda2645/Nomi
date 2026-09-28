@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * v0.8: 节点标题 inline 编辑组件。
  *
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  * - 失焦 / Enter → 保存。Escape → 撤销。
  * - 阻止外层 React Flow 节点拖动事件（pointer / mouse / click）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../utils/cn'
 import { useGenerationCanvasStore } from '../../store/generationCanvasStore'

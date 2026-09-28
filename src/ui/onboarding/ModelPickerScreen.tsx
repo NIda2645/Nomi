@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 模型勾选第二屏（OnboardingWizard 的换屏，非新弹窗）。
  *
@@ -13,7 +12,7 @@ import type { JSX } from 'react'
  * 见下方 useMemo），永远不会顶替发现结果。清单真的为空时，为什么为空由 statusHint 一句话说清
  * （上游 modelDiscovery.ts 的单一真相源），不给静默空态。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Stack, Group, Text } from '@mantine/core'
 import {

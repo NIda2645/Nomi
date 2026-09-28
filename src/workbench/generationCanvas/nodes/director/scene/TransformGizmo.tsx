@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/drei 的 TransformControls、../DirectorEditorContext、./SceneRegistryContext、./ViewportApiContext、./sceneRefs 的 tagEditorOnly、
  *          ../model/vec3 的 RAD_TO_DEG / wrapDeg
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
  *        所以直接读 position/rotation/scale 回写；机位读 YXZ 欧拉得 yaw/pitch/roll；灯只允许平移。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { TransformControls } from '@react-three/drei'
 import { useDirectorStore, useDirectorStoreApi } from '../DirectorEditorContext'

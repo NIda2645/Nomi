@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/drei 的 useGLTF / useFBX、../character/characterAsset 的 isFbxUrl / resolveCharacterModelUrl、three/examples/jsm/utils/SkeletonUtils 的 clone、
  *          ../character/mannequinAssets 的 MANNEQUIN_MODEL_URL、../character/mannequinSkeleton 的
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
  * [POS]: director/scene/entities 的角色渲染。资产与骨骼工具住 ../character/（mannequinAssets / mannequinSkeleton），不各自复制。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFBX, useGLTF } from '@react-three/drei'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'

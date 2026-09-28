@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 剪辑面 · 时间轴右键菜单（四种 target）
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录（screens/editing/）里 `NN-*.tsx` 的文件名排序解析，
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
 // 菜单接收视口坐标并 Portal 到 body；用格内真实锚点的 DOMRect 投影，不能传格内坐标。
 // 四种 target 各是一条独立分支（TimelineContextMenu.tsx:48/66/92/110），条目数和危险色都不同，
 // 一格看一条——把四种挤进一张图就没法逐项对账了。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { TimelineContextMenu, type TimelineContextTarget } from '../../../../workbench/timeline/TimelineContextMenu'
 import { LAB_TEXT_ID, LAB_VIDEO_A_ID, LAB_VIDEO_B_ID } from '../editingFixtures'
 import { FixedStage, NOOP, useLabTimeline } from '../editingLabKit'

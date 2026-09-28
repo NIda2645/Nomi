@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSelect / WorkbenchButton / WorkbenchIconButton）、../../../../../../vendor/tablerIcons、../../../../../../utils/cn、
  *          ../../DirectorEditorContext、../../scene/pipCamera（PipRect / pipCameraIdOf）、../../model/cameraLens 的 exportAspectRatio
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        没有机位或节目黑场时盖黑底「无信号」；位置/宽度/折叠持久到 localStorage。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect, WorkbenchButton, WorkbenchIconButton } from '../../../../../../design'
 import { IconChevronDown, IconChevronUp, IconVideo } from '../../../../../../vendor/tablerIcons'

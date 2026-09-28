@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useWorkspacePanelFrame } from './WorkspacePanelFrame'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../utils/cn'

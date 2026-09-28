@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // agent-artifact 节点的内容分发内核（v1）。壳统一（BaseGenerationNode 的 kind 专属分支），
 // 内层按 meta.artifact.fileType 挑子视图——浏览器按 MIME 挑应用的同款逻辑：
 //   svg        → <img> 图片管线（DeferredNodeImage 同源，可缩放、棋盘格、加载态）
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
 //
 // 安全：code/text/markdown 只展示不执行；html 是唯一"活内容"，在沙箱内跑。
 // 产物文件一律 nomi-local:// 落盘引用（meta.artifact.url 带真实扩展名），节点不塞内联源码。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconCode, IconCube, IconFileText, IconInfoCircle, IconMarkdown, IconTable, IconVector } from '@tabler/icons-react'
 import { lazyWithChunkBoundary } from '../../../../ui/chunkBoundary'

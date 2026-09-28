@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · 「全自动」档的常驻提醒（2026-09-10 用户拍板 · 增量 2）
 //
 // 为什么需要它：三档里只有「全自动」会让 Nomi 在**没有人看着**的时候连着做可撤销的改动。
@@ -13,7 +12,7 @@ import type { JSX } from 'react'
 //
 // 尺寸按「极小」拿：一条 h-6 的微字横条，靠 warning-soft 底 + 一颗点被眼睛抓到，
 // 不用 icon——设计定稿 ⑧ 禁用闪光/机器人头那一族，而「自动」正是最容易被画成闪电的地方。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { V4Row } from './AgentPanelV4Row'
 import { IconX } from './AgentPanelV4Icons'
 

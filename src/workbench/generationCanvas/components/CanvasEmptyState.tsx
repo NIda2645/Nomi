@@ -1,7 +1,6 @@
-import type { JSX } from 'react'
 // 画布空状态 CTA（E.2C-24，从 GenerationCanvas 抽出，R9/R12 防巨壳）。
 // 分类感知的引导按钮：根据当前分类显示「这里还没有 X / + 新建 X」，点一下落一个空节点。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../design'
 import { cn } from '../../../utils/cn'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // P4 S5 — 制作（Agent 付费卡 / 多镜批次）落到画布的节点上，**只属于制作**的两块小标：排队中 / 已停。
 //
 // 「生成中」与「失败」不在这里画（2026-09-25）：那两段写进节点自己的运行记录（主进程画布落地投影 →
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
 // 同一个函数，两端不会一个说在生成、一个说已停）。节点已有结果或自己在跑（普通生成 / 制作投影的生成中）时不画。
 //
 // 状态色一律根层 token（#128 后）：已停 = --nomi-warning（非 danger，预算/急停是可继续的中止，不是错误）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconClock, IconPlayerPause } from '@tabler/icons-react'
 

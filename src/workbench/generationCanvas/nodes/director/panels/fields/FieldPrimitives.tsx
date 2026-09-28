@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../utils/cn、../../../../../vendor/tablerIcons 的 IconRefresh、../../scene/sceneTheme 的 CHARACTER_COLOR_PRESETS、./useNumberDraft
  * [OUTPUT]: 对外提供 SectionHeader（分区标题 + 可选重置）、Vec3Fields（XYZ 三数字输入）、ColorField（色板 + 自定义 + 清除）、
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  *        **改这里等于改全部检查器** —— 角色 / 机位 / 灯光 / 几何体 / 场景图层 / 时间轴七卡都只拼装这些原语。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../../utils/cn'
 import { IconRefresh } from '../../../../../../vendor/tablerIcons'

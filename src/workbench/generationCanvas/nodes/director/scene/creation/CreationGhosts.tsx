@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useFrame、./useCharacterPlacement 的 PlacementGhostState、./useBoxDraw 的 BoxDrawGhostState、
  *          ../sceneTheme 的 PLACEMENT_RING_COLOR、../../model/vec3 的 DEG_TO_RAD、../sceneRefs 的 tagEditorOnly
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  * [POS]: director/scene/creation 的幽灵体渲染：不进 store、不触发 React 重渲染；全部 editor-only。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { DEG_TO_RAD } from '../../model/vec3'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 即梦会员（dreamina 官方 CLI）接入卡。
  *
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
  * 设备码 OAuth 登录：扫码确认 → 用会员积分生成。诚实标门槛：生成需「高级会员 / maestro vip」这一特定档
  * （非任意即梦会员，光充积分不行）——非会员明示，不让用户点了干等（D4 effect-first / 诚实交付）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { IconMovie, IconExternalLink, IconCircleCheck, IconQrcode, IconDownload, IconCopy, IconCheck } from '@tabler/icons-react'

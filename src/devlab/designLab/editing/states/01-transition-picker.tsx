@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 剪辑面 · 转场选择器
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录（screens/editing/）里 `NN-*.tsx` 的文件名排序解析，
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
 // 被轨道格的 `overflow-hidden` 裁成一条边，49 个采样点只命中 7 个，而 DOM 断言全绿
 // （见 src/design/AnchoredPopover.tsx 顶部）。裁切在 DOM 和 rect 上都看不出来，
 // 只有截图看得出来——所以它的回归防线只能是一张图。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { TimelineTransitionPicker } from '../../../../workbench/timeline/TimelineTransitionPicker'
 import { resolveTimelineTransitionFeedback } from '../../../../workbench/timeline/timelineVisualFeedback'
 import type { TimelineTransitionType } from '../../../../workbench/timeline/timelineTypes'

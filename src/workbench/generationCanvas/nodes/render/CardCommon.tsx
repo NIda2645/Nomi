@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 卡片渲染共用 helpers + 子组件。
  *
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
  * - 变体 chip
  * - 数据缺失时隐藏对应行（spec §3.4 Level 0）
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { isProjectExecutionContextCurrent, withProjectAction, type ProjectExecutionContext } from '../../../project/projectCanvasReadSurface'
 import { useTranslation } from 'react-i18next'
 import { Icon3dCubeSphere, IconBox, IconMusic, IconPhoto, IconPlayerStop, IconUpload, IconUser, IconVideo, IconMap } from '../../../../vendor/tablerIcons'

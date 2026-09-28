@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../ui/chunkBoundary 的 lazyWithChunkBoundary、../../../../utils/cn、
  *          ../../../../design 的 WorkbenchButton、@tabler/icons-react 图标、../../store/generationCanvasStore、
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
  *        模板参考 V1 Scene3DEditor（meta 读写、chunk 预热、关闭落盘），但作为顶层节点组件注册（不改 BaseGenerationNode）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconMaximize, IconMovie } from '@tabler/icons-react'
 import { WorkbenchButton } from '../../../../design'

@@ -1,10 +1,9 @@
-import type { JSX } from 'react'
 /**
  * 新手上手手册面板（App 内出口）。读唯一内容源 handbookContent，原生离线、跟随明暗 token。
  * 外壳对齐 SkillLibraryPanel：mantine Portal 居中模态 + 背板点击/ESC 关闭 + token-only，不另造弹层（P1）。
  * iconKey → 已登记 vendor 组件经 HANDBOOK_ICON 映射；marketing/handbook.html 共用同一份数据（另一出口）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Portal } from '@mantine/core'
 import {

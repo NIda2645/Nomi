@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { DesignTextInput } from '../../design'
 import { Field } from './onboardingWizardSupport'
 import { useTranslation } from 'react-i18next'

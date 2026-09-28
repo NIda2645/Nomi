@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室（Design Lab）—— Agent 面板的可拍板真相源。
 //
 // 2026-09-06 用户拍板：**以后 UI 交付的定义 = 「实验室截图拍板 + 视觉基线绿」**，
@@ -19,7 +18,7 @@ import type { JSX } from 'react'
 //
 // 不接 Host、不发网络：面板数据来自 `agentPanelFixtures.ts` 灌进 store，
 // Host IPC / 模型目录 / 技能列表在无桥环境下各自 catch 成空，面板照常渲染。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createRoot } from 'react-dom/client'
 import '@fontsource-variable/inter/wght.css'
 import '@fontsource-variable/fraunces/wght.css'

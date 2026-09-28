@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · primitive 陈列 · 输入族。
 //
 // `Design*` 输入件全部是 Mantine 原语外裹一层 token className（`src/design/forms.tsx`）。
@@ -14,7 +13,7 @@ import type { JSX } from 'react'
 // pf-04（DesignFileInput）于 2026-09-07 随组件删除：全仓零调用，而 App 里 13 处文件选择
 // 走的都是「隐藏 <input type="file"> + 自己的按钮」，与 Mantine 的可见文本框形态不是一回事。
 // 空号不补位（改 id 就要改基线文件名，会洗掉「同一格前后有没有变」这条线索）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   DesignCheckbox,
   DesignNumberInput,

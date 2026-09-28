@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · 积木 ⑦ 收起坞 —— **画面下沿那一坞**（我们独有，AI Elements / Beautiful UI 都没有）。
 //
 // 收起藏的是**对话流**，不是对话：同一个 composer 掉到画面下沿居中，介入槽跟着它一起。
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
 // 更早的两版都把它画在面板自己的地盘上——先是右侧一条满高 32px rail，后是内容区右上角一枚
 // logo——两版共同的毛病是**落点跟着面板走**：切一个面就换一个地方，用户每次都得重新找它。
 // 顶栏是唯一跨创作/分镜/生成/预览四个面常驻的 chrome，所以收起角标的家在那儿。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconX } from './AgentPanelV4Icons'
 import { WorkbenchIconButton } from '../../../design'

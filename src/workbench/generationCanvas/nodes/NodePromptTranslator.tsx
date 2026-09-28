@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 节点提示词的「翻译」按钮（2026-09-21 用户拍板）：B 簇里优化左边那颗。
  * 选中一段 → 只翻那段；没选中 → 翻整段。方向按中文/英文占比自动定，结果**原地替换**，
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  * 复用优化器同一条文本管线（getTextBrain + runWorkbenchTextTaskStream + prompt_refine），
  * 不新建通道、不新增 TaskKind（P1）。纯逻辑（方向/引用保护/指令）在 promptTranslate.ts。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconLanguage } from '@tabler/icons-react'
 import type { Editor } from '@tiptap/react'

@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 /**
  * 引导旅途的渲染器：纯订阅 journeyTourStore，渲染当前 beat（cinematic 气泡 / spotlight / finale）。
  *
  * 不持有运行状态——回放序列由 journeyTourStore 的模块级 runner 驱动（remount 安全）。这里只负责
  * 把当前 beat 画出来 + 把按钮接到 store 的 advance/skip/finish。挂在 studio 视图（NomiStudioApp）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconCheck, IconPlayerPlay } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

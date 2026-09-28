@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · **Composer 板**
 //
 // 这一组每一格只渲 **composer 本身**（或它的一个弹层），因为定稿 Composer 板画的就是它。
 // 高度三格（① 初始一行 · ② 自动增长 · ③ 封顶滚动）刻意用**同一个组件、只换喂进去的文本**——
 // 高度是 `useComposerHeight(panelHeight, mode)` 从内容 derive 的，不是三套写死的样式。
 // 上限档位（≥800 → 40%、640–800 → 30%、<640 → 6 行）靠喂不同的 panelHeight 走到。
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   AgentPanelV4Composer,
   V4ModelPopover,

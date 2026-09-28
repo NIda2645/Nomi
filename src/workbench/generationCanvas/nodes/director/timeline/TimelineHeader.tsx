@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../design（WorkbenchButton / WorkbenchIconButton / NomiSelect）、../../../../../vendor/tablerIcons、
  *          ../DirectorEditorContext、../model/timeGrid 的 secondsToFrame、../model/hotkeys（DIRECTOR_HOTKEYS / formatHotkey）、../OutputsContext、./timelineCommands、./useTimelineViewport
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  * [POS]: director/timeline 的头部工具条（不带簇名；产出与截图住视口底栏）；按钮全部打到命令层，不自己碰 store 细节。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect, WorkbenchButton, WorkbenchIconButton } from '../../../../../design'
 import {

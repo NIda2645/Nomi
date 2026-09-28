@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/drei 的 useGLTF / useFBX、three/examples/jsm/utils/SkeletonUtils 的 clone、react-i18next、
  *          ../../../../../../ui/toast、../../DirectorEditorContext、../../model/directorTypes 的 DirectorObject、../character/characterAsset（isFbxUrl / hasMixamoRig）、../sceneTheme 的 CLAY_COLOR
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        就把对象升格为 character（走 CharacterEntity 的骨骼管线），否则原样静态渲染。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFBX, useGLTF } from '@react-three/drei'
 import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'

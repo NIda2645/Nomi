@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 上手 4 步进度（被动指示，不带走查——引导走查归首页触发的 JourneyTour）。
  *
@@ -15,7 +14,7 @@ import type { JSX } from 'react'
  * 打勾单调持久（localStorage）。挂载位置按平台分流：win32 渲染在 WorkbenchShell 自绘标题栏内，
  * 非 win32（mac/Linux）渲染在 NomiAppBar 右簇内——两边都在 React 树内，保 --nomi-* token。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconCheck, IconChevronDown, IconListCheck, IconMap } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

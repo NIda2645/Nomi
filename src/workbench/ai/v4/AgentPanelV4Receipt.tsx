@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · 积木 ③ 一行收据（AI Elements Tool）
 //
 // 定稿 Vocabulary 板 ③：一行 28px = 对象 icon + 动作名 + 摘要 + 右侧状态。
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
 // 技能载入、附件读取、布局改动都是它，**内联在发生的位置、不置顶**（用户点名 + 实验室 D1）。
 // 失败留在原行变红 + 一句话原因，**不弹窗不 toast**（Process 板时刻 5）——
 // 错误发生在哪一行就留在哪一行，用户回看时能对上。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { projectToolOutput } from './agentPanelV4ToolOutput'
 import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'
 import { V4Row, V4Shimmer } from './AgentPanelV4Row'

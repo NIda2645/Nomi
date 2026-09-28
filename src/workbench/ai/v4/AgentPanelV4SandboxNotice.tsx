@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · 「命令沙箱没起来」的一行微字。
 //
 // 它住在 composer 上沿（`composerBanner` 插槽），和档位钮同一块地方——因为它说的正是
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
 // 这条是**交代**（这台机器少了一层保护，所以要你点头）。交代不该抢眼，
 // 所以用 ink-60 微字而不是 warning 底色，也没有任何按钮——用户在这里无事可做，
 // 给一颗按不出结果的钮只会更糟（§1.5 控件层级：没有动作就不要长出控件）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { V4Row } from './AgentPanelV4Row'
 
 export function V4SandboxNotice({ text }: { text: string }): JSX.Element {

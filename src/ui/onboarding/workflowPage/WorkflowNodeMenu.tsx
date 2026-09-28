@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 点中节点后弹的「这个节点在画布上当什么」菜单 —— 这页存在的理由就是它。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md
@@ -13,7 +12,7 @@ import type { JSX } from 'react'
  * 菜单**不进被 transform 的那层**：它跟着缩放一起缩就没法读了。故坐标由调用方按
  * 「节点位置 × zoom + 位移」换算成容器坐标传进来，菜单自己保持 1:1。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconCheck, IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'

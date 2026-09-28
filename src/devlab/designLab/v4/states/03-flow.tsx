@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · **整块面板**的板（Flow 创作 / 生成 / 预览 + Rendering + Dark + Collapsed）
 //
 // 只有这几张板在定稿里真的画了一整块面板，所以只有这几个状态渲整块。
 // Main / Feasible / Sources / Process 四张板是**说明板**（文字卡、可行性表、来源对照表、时刻表），
 // 没有可对账的界面件——它们的界面内容已经拆进 Vocabulary / Composer 两组的单件状态里，
 // 不为它们再造一个「整块面板」状态充数。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconBrowser, IconSettings } from '../../../../vendor/tablerIcons'
 import { AgentPanelV4Panel } from '../../../../workbench/ai/v4/AgentPanelV4Panel'
 import { AgentPanelV4Composer } from '../../../../workbench/ai/v4/AgentPanelV4Composer'

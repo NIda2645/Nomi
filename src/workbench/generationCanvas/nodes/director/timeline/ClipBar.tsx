@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../../../../utils/cn、../model/timelineTracks 的 TimelineClipView、./clipTone（clipToneClass / ClipDragZone）
  * [OUTPUT]: 对外提供 ClipBar：片段条呈现（20px 高、顶部 3px、圆角、家族色带透明度、10px 等宽居中标签、选中时白边 + 两端 4px 拖柄）+ 左右把手命中区判定
  * [POS]: director/timeline 的片段条视觉单一实现，交互（拖移 / 拖边）由 TrackLanes 通过 onPointerDown(zone) 接管。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../../../../../utils/cn'
 import type { TimelineClipView } from '../model/timelineTracks'
 import { clipToneClass, type ClipDragZone } from './clipTone'

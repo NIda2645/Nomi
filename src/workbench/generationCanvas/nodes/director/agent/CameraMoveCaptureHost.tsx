@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../ui/toast、../../../store/generationCanvasStore、../../../model/generationCanvasTypes、../bridge/persistOutputs 的 persistDirectorFramesVideo、
  *          ../model/directorProject 的 normalizeDirectorProject、../model/directorIds 的 createOutputId、../model/directorNodeMeta 的 meta 键、../model/timeGrid 的 sceneContentEndSeconds、
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  *        只有 done / giveUp 才清标志。E2E 桥（__nomiCanvasStore / __nomiForceCameraMoveFail）只在 localStorage 打标时生效，生产永不暴露。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from '../../../../../ui/toast'
 import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'

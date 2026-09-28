@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 批量「统一模型」选择器 —— 全仓唯一实现（画布框选工具条 + 分镜「全部镜头」批量条共用）。
 //
 // 为什么它必须独立于 useDedupedModelSelect（用户 2026-08-18 报「框选没办法选择不同供应商的模型
@@ -14,7 +13,7 @@ import type { JSX } from 'react'
 //
 // 为什么不做成第二个并排下拉：画布框选工具条实测已 713px、上限 760px，每个执行组再加一个 select
 // 会把主钮「生成选中 N 个」挤出视野（样张实测，R8）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { ModelOption } from '../../config/models'
 import { NomiSelect } from '../../design'

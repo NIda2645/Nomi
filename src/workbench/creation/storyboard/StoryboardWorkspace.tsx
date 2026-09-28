@@ -1,6 +1,5 @@
-import type { JSX } from 'react'
 import { AssistantPane } from '../../AssistantPane'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconMovie } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'

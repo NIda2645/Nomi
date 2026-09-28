@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 中转站/自定义模型的「就地内嵌编辑」：搜索 + 全选/全不选 + 按 kind 分组 + 逐模型勾选启停 + 计数 + 删除（单个/批量）。
  * 用户拍板（2026-07-04「就地内嵌」）。中转站一拉几十上百个模型，此前只能逐个 × 删（不可逆、要重拉）；
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  * 批量删除（2026-07-15 用户群反馈：462 个自定义模型只能逐个删=鸡肋）：进「选择删除」模式勾多行一次删；
  * 配合搜索可精准删某一类（搜 flux → 全选 → 删除选中）。数据结构零改动——enabled 字段与生成侧过滤都现成。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { isLegacyCatalogMeta } from '../../config/modelIdentity'
 import { useTranslation } from 'react-i18next'
 import { IconSearch, IconTrash, IconCheck, IconCode, IconEye, IconEyeOff } from '@tabler/icons-react'

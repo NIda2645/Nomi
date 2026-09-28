@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 屏「画布 · 节点生成浮框底栏」的取景台与夹具。
 //
 // 这一屏钉的是 2026-09-11 用户拍板、**已经上线**的底栏形态（v1.1）：
@@ -25,7 +24,7 @@ import type { JSX } from 'react'
 // 「配置模型」按钮，整屏就白画了。所以这里按 findReference 那一屏的既有手法装一个**只读桥**，
 // 喂真实档案认得的 modelKey（seedance-2 / gpt-image-2）；底栏上印什么值，
 // 因此全是档案 derive 出来的真货（比例 / 时长 / 清晰度），不是在这里手打的一句文案。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import BaseGenerationNode from '../../../workbench/generationCanvas/nodes/BaseGenerationNode'
 import InlineParameterBar from '../../../workbench/generationCanvas/nodes/InlineParameterBar'

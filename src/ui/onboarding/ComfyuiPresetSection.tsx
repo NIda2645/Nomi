@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * ComfyUI 预置模板区（S5 · 2026-08-01 拍板「做，带缺件闸」，样张已过）。
  * 形状：模板行（名字 + 就绪/缺件 chip）→ 展开逐文件清单（状态 ✓/缺 · 目录 · 复制名 · 官方下载链）→
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
  * 检测复用 Tier-1 的 reconcileComfyWorkflow（/object_info 对账）；提交统一进入
  * integration session handoff，不直接启用 Catalog。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconMovie, IconCheck, IconX, IconCopy, IconExternalLink, IconRefresh, IconAlertTriangle } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

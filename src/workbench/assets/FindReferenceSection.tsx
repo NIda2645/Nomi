@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「找参考」在素材库里的**外壳**：一条返回条 + 面板本体。
  *
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  * 接管而不是推开的由来见 docs/qa/2026-09-08-find-reference-walkthrough.md P0-1：
  * 素材库的常态是「一整片已有素材」，推开会让上下文全丢、加完也看不到刚加的那条。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronLeft } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

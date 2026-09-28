@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useWorkbenchStore } from '../../workbenchStore'
 
 /** Persistent metadata has one bounded home outside the media, below the action toolbar. */

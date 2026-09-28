@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 「模型框里显示哪些、排在哪」设置区（设置 → AI 策略，紧贴「默认走哪家」那张表下面）。
 //
 // 解决的摩擦（2026-09-11 用户原话）：模型框里天天撞见的是三件事——列表里有一堆我从来不用的、
@@ -13,7 +12,7 @@ import type { JSX } from 'react'
 // （能不能用，所有生成路径都认）。这里是**看不看得见**（纯展示层，不动已经用它生成过的旧节点）。
 // 两层语义不同，共用同一种控件形状会让用户以为自己关掉了那个模型（Open WebUI 把 Hide 和 Enabled
 // 分成两层，正是同一条经验）。眼睛/闭眼是公认图形，不是自造 icon。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconChevronDown, IconChevronUp, IconEye, IconEyeOff } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * ComfyUI 模板库（T2 · 2026-08-02 拍板，四幕样张第①幕）。
  *
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
  * 缺件闸复用既有 reconcile；提交统一进入 integration session handoff，
  * 不直接写入 Catalog 或绕过 canonical certification。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconBooks, IconCheck, IconX, IconExternalLink, IconRefresh, IconAlertTriangle, IconSearch } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

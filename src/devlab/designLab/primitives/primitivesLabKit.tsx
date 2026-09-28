@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · primitive 陈列三屏的共用取景台。
 //
 // 这三屏（primitives-actions / primitives-forms / primitives-surfaces）和别的屏不同：
@@ -13,7 +12,7 @@ import type { JSX } from 'react'
 //   2. 有交互的件（开关/分段/下拉）挂**真状态**，不挂空 handler——空 handler 让陈列变成
 //      「看着能点、其实是张图」（`check:controls` 拦的正是那一族）。
 //   3. 不碰 `src/design/` 的源码。陈列的活儿是把「有什么、长什么样」摆出来，不是顺手改它。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import { cn } from '../../../utils/cn'
 

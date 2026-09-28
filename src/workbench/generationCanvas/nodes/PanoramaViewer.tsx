@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 @photo-sphere-viewer/core 的 Viewer / EquirectangularAdapter、react-dom 的 createPortal、
  *          ../../../ui/app-shell/windowChrome 的 currentFullscreenOverlayTopOffset、../../../design 的 NomiImage / WorkbenchIconButton、
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { notify } from '../../../ui/notificationPolicy'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { EquirectangularAdapter, Viewer, type PanoData, type ViewerConfig } from '@photo-sphere-viewer/core'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、@react-three/fiber 的 useThree、../../fencedCanvas 的 FencedCanvas、../DirectorEditorContext（DirectorStoreContext / useDirectorStoreApi）、
  *          ../model/directorStore 的 createDirectorStore、../model/exportSize 的 exportDimensions、../scene/{sceneRefs, SceneRegistryContext, ViewportApiContext, webglContextRecovery, useTimelinePlayback}、
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  *        像素与全屏壳同一条 CaptureBinder 管线，出图 == 编辑器所见。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { FencedCanvas } from '../../fencedCanvas'

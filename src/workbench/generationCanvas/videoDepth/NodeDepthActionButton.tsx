@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 视频节点浮条上的「提取深度」。
  *
@@ -14,7 +13,7 @@ import type { JSX } from 'react'
  * 点一下、旁边长出一张卡、进度全在那张卡上。这里不存任何状态——**存了就会有第二份真相**，
  * 而按钮上那份必然先过时（用户点完随手点一下空白，浮条就卸载了）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconShadow } from '@tabler/icons-react'
 import { TOOLBAR_ICON as I, ToolbarButton } from '../nodes/NodeFloatingToolbar'

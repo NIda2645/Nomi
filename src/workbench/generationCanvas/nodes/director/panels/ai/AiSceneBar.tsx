@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSegmented / WorkbenchButton / WorkbenchIconButton）、../../../../../../vendor/tablerIcons、
  *          ../../../../../../ui/toast、../../useAiSceneBuilder、../../model/storeAiSceneActions 的 AiSceneTarget、../CanvasImagesContext、../imageFile 的 readFileAsDataUrl、../Popover
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        + 运行 / 取消 + 状态与秒表。只组合设计原语，编排在 useAiSceneBuilder。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSegmented, WorkbenchButton, WorkbenchIconButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

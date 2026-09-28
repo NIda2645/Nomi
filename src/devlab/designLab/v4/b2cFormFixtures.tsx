@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { V4_LAB_SLOT_HANDLERS } from './agentPanelV4LabKit'
 import type { GenerationModelDefaultMap } from '../../../workbench/generationCanvas/model/generationModelDefaults'
 import { useTranslation } from 'react-i18next'

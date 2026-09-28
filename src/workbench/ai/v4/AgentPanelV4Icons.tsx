@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · icon ↔ 动词的**唯一**映射（定稿 Process 板下半张表）。
 //
 // 规则（照抄定稿）：icon 标的是**动的那个对象**（文稿 / 时间轴 / 节点 / 图 / 视频 / 音频），
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
 //
 // 明令禁用（定稿画的虚线框）：机器人头、闪光「AI」、芯片「模型」、纯转圈无文字、沙漏。
 // 这份表就是那条禁令的执行处——任何积木要 icon 都从这里取，不在组件里各写各的三元表达式。
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   IconAlertTriangle,
   IconArrowUp,

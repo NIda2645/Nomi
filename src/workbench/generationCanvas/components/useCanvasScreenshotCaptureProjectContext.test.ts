@@ -1,6 +1,5 @@
-import type { JSX } from 'react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import type { ReactElement } from 'react'
+import type { JSX, ReactElement } from 'react'
 
 const fixture = vi.hoisted(() => ({
   state: [] as unknown[], setters: [] as Array<(value: unknown) => void>, effects: [] as Array<() => unknown>,

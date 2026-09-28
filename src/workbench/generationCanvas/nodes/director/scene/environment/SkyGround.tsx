@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useThree、@react-three/drei 的 Grid、../sceneTheme、../sceneRefs 的 tagEditorOnly、
  *          ../../DirectorEditorContext 的 useDirectorStore
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        主题（深邃黑 / Blender 灰）来自偏好设置，场景配置里的 skyColor / gridHeight / groundOpacity 来自图层。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { Grid } from '@react-three/drei'

@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 /**
  * PropCardNode body — 道具分类节点（v0.8 极简版）。
  *
  * - 信息区按内容条件渲染（空则 0px）。
  * - 道具名 inline 可编辑。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconLink } from '@tabler/icons-react'
 import { cn } from '../../../../utils/cn'

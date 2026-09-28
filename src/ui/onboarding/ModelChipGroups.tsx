@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 模型 chip 列表（按 kind 分组）。替代旧的「逐行 + 重复状态」清单（密度问题根因）。
  * 规范：docs/plan/2026-06-07-onboarding-panel-redesign.md §5.2
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  * 模型切换列表（节点下拉只取 enabled + 已连通厂商，见 modelCatalogCache），取消的不显示。
  * 传 onToggle 即开启交互（chip 变 button + aria-pressed）；不传保持纯展示（老用法零影响）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { ModelAvailability } from '../../../electron/shared/modelAvailability'
 import { isLegacyCatalogMeta } from '../../config/modelIdentity'
 import { useTranslation } from 'react-i18next'

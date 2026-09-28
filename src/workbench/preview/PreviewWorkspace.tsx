@@ -1,7 +1,6 @@
-import type { JSX } from 'react'
 import { AssistantPane } from '../AssistantPane'
 import { assistantPaneWidth } from '../assistantWidthBounds'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Group, Panel, Separator, usePanelRef, type PanelImperativeHandle } from 'react-resizable-panels'
 import { useWorkbenchStore } from '../workbenchStore'

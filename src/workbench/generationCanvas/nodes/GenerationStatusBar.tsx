@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useReducedProcessMotion } from './useReducedProcessMotion'
 import { cn } from '../../../utils/cn'
 import type { GenerationFeedback } from '../../observability/generationFeedback'

@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Icon3dCubeSphere, IconCheck, IconEye, IconEyeOff, IconFolder, IconMusic, IconPhoto, IconPlayerPlayFilled, IconTrash } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

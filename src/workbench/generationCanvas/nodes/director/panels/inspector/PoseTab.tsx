@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../utils/cn、../../../../../../vendor/tablerIcons 的 IconCheck、../../DirectorEditorContext、
  *          ../../model/directorTypes 的 DirectorObject、../../model/actionLibrary（ACTION_LIBRARY / resolveActionAlias / T_POSE_ACTION_ID）、../../model/rigs 的 BODY_TYPE_PRESETS、../fields/FieldPrimitives
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  * [POS]: director/panels/inspector 的角色姿态页：清单与动作库同一份（T-Pose + 9 个 FBX）；当前项按别名解析，体形当前项按缩放匹配。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../../utils/cn'
 import { IconCheck } from '../../../../../../vendor/tablerIcons'

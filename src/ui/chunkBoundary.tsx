@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 懒加载容错域（审计 A5 根治）。
 // 此前全 app 只有 main.tsx 根上一层错误边界：任一懒加载 chunk 失败（构建竞态、
 // asar 损坏、增量更新中途、磁盘错误）都把整个工作台拖进根错误页；含 3D 节点的
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
 // - 工厂自动重试 2 次（指数退避，吃掉瞬时 IO/网络抖动）；
 // - 「重试」按钮重建 lazy 实例——React 18 的 lazy 一旦 reject 会永久缓存失败，
 //   仅靠 remount 无法恢复，必须换新实例重新 import。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../utils/cn'
 import i18n from '../i18n'
 import { reloadRendererWindow } from '../desktop/bridge'

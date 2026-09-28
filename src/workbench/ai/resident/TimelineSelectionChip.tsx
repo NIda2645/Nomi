@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconTimelineEvent, IconX } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 

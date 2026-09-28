@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、../../model/directorTypes 的 DirectorCamera、../../model/vec3 的 DEG_TO_RAD、../cameraMath 的 cameraQuaternion、
  *          ../sceneRefs 的 tagEntityObject / tagEditorOnly、../SceneRegistryContext、../sceneTheme 的 CAMERA_STATE_COLORS / CAMERA_BODY_COLOR
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
  *        主视口正处于该机位视角时隐藏整组（activeCameraId 的 mesh / line / frustum 全不显示），showRayHelper 关掉射线与视锥；整体 editor-only（出片不渲染）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import type { DirectorCamera } from '../../model/directorTypes'
 import { DEG_TO_RAD } from '../../model/vec3'

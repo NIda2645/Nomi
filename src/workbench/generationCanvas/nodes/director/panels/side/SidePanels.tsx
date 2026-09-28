@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../utils/cn、./SceneObjectsTab、./AssetsTab、../inspector/ContextInspector、../EditorSplit、../topbar/topChrome
  * [OUTPUT]: 对外提供 SidePanels：视口右侧的浮起双卡 —— 上卡（场景对象 / 资产库 标签页）+ 下卡（属性检查器），中间可拖分栏，整列可拖宽
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
  *        列宽自持久 nomi:director:sideWidth；上下两卡之间仍用 EditorSplit，比例键 director.side 不变，老用户的分栏记忆不丢。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconLayoutSidebarRightCollapse, IconLayoutSidebarRightExpand } from '../../../../../../vendor/tablerIcons'
 import { cn } from '../../../../../../utils/cn'

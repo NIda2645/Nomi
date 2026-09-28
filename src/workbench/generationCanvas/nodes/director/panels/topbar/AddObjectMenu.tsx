@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../../../../../vendor/tablerIcons、../Popover 的 Popover / PopoverItem、
  *          ../../DirectorEditorContext、../CreationModeContext 的 useCreationMode、../../model/cameraPresets、../../model/directorIds、../../model/directorTypes、
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
  *        「往场景里加东西」一个心智，四个平铺竖条正是 §1.5.4 的反例）。只发意图，落地 / 画框仍由 scene/creation 的 hook 执行。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../../../../design'
 import { IconBulb, IconChevronDown, IconChevronRight, IconCube, IconMan, IconPhoto, IconPlus, IconUser, IconVideo, IconWoman } from '../../../../../../vendor/tablerIcons'

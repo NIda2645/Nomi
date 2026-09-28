@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 剪辑面 · 属性面板的四种对象态
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录（screens/editing/）里 `NN-*.tsx` 的文件名排序解析，
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
 // 决定面板显示整片、片段、字幕还是配乐（PreviewInspector.tsx:56-58）。
 // 所以夹具灌的是 store，而不是给组件喂四套假 props——喂假 props 只能证明组件会渲染，
 // 证明不了「选中这段之后面板真的会长成这样」。
-import React from 'react'
+import React, { type JSX } from 'react'
 import PreviewInspector from '../../../../workbench/preview/inspector/PreviewInspector'
 import { LAB_AUDIO_ID, LAB_TEXT_ID, LAB_VIDEO_A_ID } from '../editingFixtures'
 import { INSPECTOR_CLIP_HEIGHT, InspectorStage, NOOP, useLabTimeline } from '../editingLabKit'

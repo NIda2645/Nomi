@@ -50,7 +50,6 @@ export function createReactTestRenderer<T extends TestHostNode = TestHostNode>(o
     trackSchedulerEvent: () => undefined,
     shouldAttemptEagerTransition: () => false,
     supportsMicrotasks: false,
-    scheduleMicrotask: queueMicrotask,
   })
   const root = renderer.createContainer({}, 0, null, false, null, '', () => undefined, null)
   return {

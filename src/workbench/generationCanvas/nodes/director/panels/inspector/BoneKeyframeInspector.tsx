@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../DirectorEditorContext、../../model/directorTypes（DirectorObject / BoneKeyframe）
  * [OUTPUT]: 对外提供 BoneKeyframeInspector（清单 §4.7 I12：帧读数、提示去骨骼页改数值、删除）
  * [POS]: director/panels/inspector 的骨骼关键帧卡：选中关键帧时骨骼页的把手 / 滑条都写进这一帧（storeCharacterActions.rotationTarget）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../../../../design'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'

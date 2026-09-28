@@ -1,6 +1,5 @@
-import type { JSX } from 'react'
 import { notify } from '../../../ui/notificationPolicy'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { Editor } from '@tiptap/react'
 import { NomiLoadingMark, NomiSelect, WorkbenchIconButton } from '../../../design'

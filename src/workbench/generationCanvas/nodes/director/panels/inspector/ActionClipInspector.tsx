@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（WorkbenchButton / NomiSelect）、../../DirectorEditorContext、../../model/directorTypes（DirectorObject / ActionClip）、
  *          ../../model/actionLibrary 的 ACTION_LIBRARY、../../model/timeGrid 的 secondsToFrame、../../timeline/timelineCommands 的 cutSelectedClip、../fields/FieldPrimitives、../fields/SliderNumberField
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  * [POS]: director/panels/inspector 的动作片段卡：开始 / 结束经 store.updateClipTime（同副轨争位置，失败保持原值）；裁剪打到命令层；分割在时间轴。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect, WorkbenchButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

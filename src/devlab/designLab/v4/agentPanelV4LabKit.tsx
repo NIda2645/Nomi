@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · 取景台与共用夹具
 //
 // **两种取景框，对应定稿画布的两种板**：
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
 //
 // 夹具文案一律走 i18n（R15）：实验室渲的是**现役组件**，组件里留硬编码中文会直接把
 // `check:i18n` 的欠账基线顶高——实验室不是法外之地。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
 import type {

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 画布「加东西」这一族的三态（2026-09-06 拍板的第三档）。
 //
 // 拍板前后的差别一句话：左缘原来是 **9 个平铺**，两组之间只有一条 `w-px` 分隔线（真机上淡到
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
 // 每一段都有名字。三格分别钉住：常驻长什么样、「更多」展开长什么样、右键菜单列全是什么样。
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录里 `NN-*.tsx` 的文件名排序解析，汇总口按同样顺序拼接。
-import React from 'react'
+import React, { type JSX } from 'react'
 import CanvasToolbar, { NodeAddMenu } from '../../../../workbench/generationCanvas/components/CanvasToolbar'
 import { CanvasAddStage } from '../canvasAddMenuLabKit'
 import type { LabState } from '../../labScreen'

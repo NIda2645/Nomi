@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 一行「推一下就删」——整件取自 Spectrum UI 的 **Swipe to Delete**
  * （`https://ui.spectrumhq.in/docs/swipe-to-delete`，源码页公开，本次任务已把它落盘到
@@ -39,7 +38,7 @@ import type { JSX } from 'react'
  * 这里的行住在 **240px** 的侧栏里，还要再缩进一层——96px 的删除区会吃掉半行标题。
  * 所以宽度做成入参、在调用处给值，组件自己不写死。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { motion, useAnimationControls, useMotionValue, useMotionValueEvent, useReducedMotion, useTransform, type PanInfo } from 'framer-motion'
 import { IconTrash } from '@tabler/icons-react'
 import { cn } from '../utils/cn'

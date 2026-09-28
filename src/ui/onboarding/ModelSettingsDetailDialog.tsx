@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconX } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { confirmDialog, DesignModal, IconActionButton } from '../../design'

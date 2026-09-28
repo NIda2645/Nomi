@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 全局截图（默认关，设置里开）在画布这一侧的接线：
  * 热键抓完整屏 → 主进程落素材 → 这里收到事件、弹选区面板 → 框完落节点（见 ScreenshotCropOverlay）。
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  * 项目身份不由这里上报：主进程在抓屏前固定它已提交的项目面，事件带回那份绑定；
  * 这里只在它仍是当前项目面时接手，并把原项目的交互生命周期交给面板——换项目即关面板、不落节点。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { notify } from '../../../ui/notificationPolicy'
 import { getDesktopBridge } from '../../../desktop/bridge'

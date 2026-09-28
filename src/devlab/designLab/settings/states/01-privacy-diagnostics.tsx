@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 设置「隐私与诊断」那一格的四态。
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录里 `NN-*.tsx` 的文件名排序解析，汇总口
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
 // 为什么整块一起取景而不是只截导出那一行：这一格是**一格两半**——上半是
 // 「要不要往外发匿名计数」（#522 的遥测），下半是「出事时怎么把本机证据交出来」（诊断包）。
 // 拍板要看的正是这两半放在一起读不读得通，分开截就把那个判断删掉了。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { TelemetrySection } from '../../../../workbench/settings/TelemetrySection'
 import { DiagnosticsBundleSection } from '../../../../workbench/settings/DiagnosticsBundleSection'
 import { SettingsStage } from '../settingsLabKit'

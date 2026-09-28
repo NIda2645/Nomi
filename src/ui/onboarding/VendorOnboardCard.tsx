@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 供应商接入卡（apimart / kie 等已知供应商复用，P4 通用第一）。
  *
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  * 接入地址可就地编辑 → upsertVendor 只改 baseUrlHint（seed 存在即跳过，用户改动不被启动刷回）。
  * 样张：docs/design/mockups/onboarding-panel-A.html
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { MODEL_ACCESS_ENTRY } from '../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
 import { IconKey, IconExternalLink } from '@tabler/icons-react'

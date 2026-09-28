@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../DirectorEditorContext、./CharacterInspector、./CameraInspector、./LightInspector、./PrimitiveInspector、./SceneLayerInspector
  * [OUTPUT]: 对外提供 ContextInspector：按选中类型切换检查器（时间轴片段 / 关键帧优先、整块替换；否则 角色 / 机位 / 灯 / 几何体·组；无选中 → 场景图层配置）
  * [POS]: director/panels/inspector 的分发器（清单 §4 I1–I13；片段/路标检查器 S2 加入）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDirectorStore } from '../../DirectorEditorContext'
 import { CameraInspector } from './CameraInspector'

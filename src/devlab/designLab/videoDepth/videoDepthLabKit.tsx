@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 屏「画布 · 提取深度」的取景台与夹具。
 //
 // 这一屏渲染的是**现役组件本身**——浮条外壳与按钮（`NodeFloatingToolbar`）、
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
 // 但它的外壳类名（`generation-canvas-v2-node__preview` + ring/shadow/rounded 那一组）
 // 与现役卡**逐字相同**——这一屏要人回答的问题是「这几件东西看着是不是一家的」，
 // 卡的边框、圆角、阴影不对，那个问题就白问了。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import { GeneratingOverlay } from '../../../workbench/generationCanvas/nodes/render/CardCommon'
 import { cn } from '../../../utils/cn'

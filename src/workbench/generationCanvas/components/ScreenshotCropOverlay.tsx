@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 全局截图落地面板：热键抓完整屏 → 在这里拖一个区域 → 落成画布节点。
  *
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  *
  * 直接回车/点确认 = 要整屏（不框也是一种合法选择，别逼用户必须拖一下）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { IconX } from '@tabler/icons-react'

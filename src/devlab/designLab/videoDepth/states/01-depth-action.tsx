@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 「提取深度」四态（2026-09-07 用户两次拍板后的形态）。
 //
 // 拍板一：深度视频**不是一种节点**，是视频节点浮条上的一个动作。
@@ -19,7 +18,7 @@ import type { JSX } from 'react'
 //
 // 顺序有意义：`labStates.mjs` 按本屏目录里 `NN-*.tsx` 的文件名排序解析，汇总口按同样顺序拼接；
 // 接触表两列 → 每一行正好是同一态的光/暗一对。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import NodeVideoFrameToolbar from '../../../../workbench/generationCanvas/nodes/NodeVideoFrameToolbar'
 import type { GenerationCanvasNode } from '../../../../workbench/generationCanvas/model/generationCanvasTypes'

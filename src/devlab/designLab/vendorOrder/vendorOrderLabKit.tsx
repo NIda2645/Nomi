@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 供应商偏好屏的取景台。
 //
 // 这一屏要看的东西**是浮层里的内容**：模型下拉展开后那几行长什么样（模型名有没有被挤没、
@@ -13,7 +12,7 @@ import type { JSX } from 'react'
 // 「这个模型能不能用」不在这一层——它由主进程算好随行下发、在 `modelCatalogCache` 进入渲染层的
 // 第一处就把不可用的行滤掉了（证据 `modelCatalogCache.test.ts`）。所以本取景台收到的
 // `models` 永远是「目录层已放行的选项」，夹具用 `onlyFromVendors` 喂成那个样子。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import { NomiSelect } from '../../../design'
 import { dedupeModelOptions } from '../../../config/modelIdentity'

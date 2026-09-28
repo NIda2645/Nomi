@@ -1,10 +1,9 @@
-import type { JSX } from 'react'
 // 顶栏「任务」入口。住 NomiAppBar 右栏 —— 那是唯一跨创作/生成/预览三区常驻的 chrome，
 // 正是「切到创作页就看不见生成跑到哪了」的解药。
 // 方案：docs/plan/2026-08-02-task-center-queue.md，样张 2026-08-02 拍板。
 //
 // 按钮同时表达“任务列表入口”和当前状态：名称常显，有活时 accent + 数字徽标，失败时转提醒色。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconListDetails } from '@tabler/icons-react'
 import type { ProductionRunSummary } from '../../../electron/productionRun/productionRunTypes'

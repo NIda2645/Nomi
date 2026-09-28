@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSegmented / WorkbenchButton）、../../../../../../utils/cn、../../DirectorEditorContext、../../model/directorTypes、
  *          ../../model/ikChains 的 IkHandleKey、../../model/rigs（boneName / jointAxisLabelKey / SemanticBone）、../../scene/ViewportApiContext、
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
  *        滑条 / 快选写 setBoneRotation（写入落点由 store 决定）；双脚吸附走 ViewportApi 到 scene 侧两骨 IK。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSegmented, WorkbenchButton } from '../../../../../../design'
 import { cn } from '../../../../../../utils/cn'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSelect / WorkbenchButton / confirmDialog）、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/directorTypes（DirectorCamera / CloseupClip / CLOSEUP_MOTION_PRESETS 等）、../../model/closeupRig（DEFAULT_CUSTOM_ANCHOR / CLOSEUP_MIN_DISTANCE）、
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
  *        机位位姿由播放循环每帧按 closeupRig 求值；不提供「分割」按钮，custom 方位没有角度输入。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect, WorkbenchButton, confirmDialog } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

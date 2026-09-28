@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 屏「画布 · 框工具」的取景台与夹具。
 //
 // 这一格渲染的是**现役组件本身**（`GroupFrame` / `CollapsedGroupCard` / `FrameContextMenu`），
@@ -12,7 +11,7 @@ import type { JSX } from 'react'
 //     看清框与内容的关系（留白够不够、标题压不压到卡）。框本身的几何仍由现役
 //     `getCanvasGroupBoxes` 算出来，不是在这里手填 left/top/width/height——
 //     手填就等于把「框有多大」这件事在实验室里重新实现了一遍。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 import GroupFrame, { type CanvasFrameInteraction } from '../../../workbench/generationCanvas/components/GroupFrame'
 import {

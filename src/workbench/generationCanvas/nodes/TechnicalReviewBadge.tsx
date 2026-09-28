@@ -1,7 +1,6 @@
-import type { JSX } from 'react'
 // 技术自检 ⚠ 徽标(harness S4-2b)。只标记不裁决:tooltip 给人话原因,内容原样保留。
 // 外挂组件:BaseGenerationNode 是白名单巨壳(R12),不往里塞实现。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../utils/cn'
 

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「画布节点预览 · 实时」：这条工作流在生成画布上会长成什么样，当场画出来、可填、可试跑。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md
@@ -13,7 +12,7 @@ import type { JSX } from 'react'
  * 媒体槽（首帧/尾帧/源视频）试跑时不带素材——那需要先上传资产，属于画布的活；
  * 槽位仍然画出来，并明说「试跑不带素材」（D4：缺口明着标，不藏）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlayerPlay } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'

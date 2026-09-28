@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 「创作助手缺文本大脑」恢复卡（Issue #9 Part B）：替掉死胡同英文串
 // 「No local text model is configured」——后者只是一句报错、用户不知道怎么办。
 //
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
 // 找一个「供应商已配 key 但被禁用」的文本模型 → 一键启用它（读它自己的 labelZh）。
 // 找不到（只接了纯生成供应商）→ 只给「去模型设置」。Part A 已保证接 APIMart 即自动有大脑，
 // 故本卡是兜底安全网，常态下因 hasTextModel=true 根本不出现。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconBulb, IconCheck, IconSettings } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../vendor/tablerIcons、../../../../../ui/notificationPolicy、../../../../api/assetUploadApi（importWorkbenchLocalAssetFile / hostedAssetUrl）、
  *          ./panoramaImport（PANORAMA_IMPORT_MAX_BYTES）、./imageFile、../DirectorEditorContext
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  *        调用点把 status 摆在触发钮旁边。非 2:1 的「可能拉伸」是常驻提示，由检查器按贴图真实尺寸渲染，不在这里一次性通知。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconX } from '../../../../../vendor/tablerIcons'
 import { notify } from '../../../../../ui/notificationPolicy'

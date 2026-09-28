@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useFrame、react-i18next、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/splatReveal 的 revealEaseOut、../../model/vec3 的 DEG_TO_RAD
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        不打 editor-only（全景是出片的一部分）；url 变化重载，清空即卸。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useTranslation } from 'react-i18next'

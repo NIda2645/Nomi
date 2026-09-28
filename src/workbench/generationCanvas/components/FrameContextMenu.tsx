@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 框的操作菜单——头部那颗 ⋯ 和**框边右键**打开的是**同一份**。
  *
@@ -9,7 +8,7 @@ import type { JSX } from 'react'
  * 层级：L3 收纳（§1.5.1，一次点击可达），不占常驻预算。视觉与 NodeContextMenu 同款，
  * 用户不必学第二种菜单长相。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconLayersSubtract,

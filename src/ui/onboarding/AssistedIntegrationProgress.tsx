@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 /**
  * 外部 Agent 正在接模型时，模型页顶部那张卡的下半——五步进度与失败态。
  *
  * 只读投影：stage 来自主进程的接入会话（`integrationSessionGet`），这里一格状态都不自己存。
  * 设计定稿 docs/design/2026-09-11-ai-assisted-onboarding-entry.md §Progress。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconAlertCircle, IconAlertTriangle, IconCircleCheck, IconCircleDashed, IconLoader2 } from '@tabler/icons-react'
 

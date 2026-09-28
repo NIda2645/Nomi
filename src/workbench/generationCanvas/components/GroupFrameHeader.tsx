@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 框头部那颗胶囊：`● 标题 · 一句灰字说明 · 计数 · 折叠 · ⋯`（2026-09-06 拍板样张）。
  *
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
  *  · 计数在拖动中显示成 `3 → 2`。直接把结果写出来，不用箭头图标让人猜（D1 effect-first）；
  *    这正是实拍里缺的那条反馈——拖出去之前用户完全不知道会发生什么。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconDots, IconStack2 } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'

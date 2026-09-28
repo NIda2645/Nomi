@@ -1,7 +1,6 @@
-import type { JSX } from 'react'
 import { AssistantPane } from '../AssistantPane'
 import { assistantPaneWidth } from '../assistantWidthBounds'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconChevronUp, IconLayoutList } from '@tabler/icons-react'
 import { motion, useReducedMotion } from 'framer-motion'

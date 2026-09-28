@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { NodeGenerationStatus } from '../nodes/NodeGenerationStatus'
 import { NodeLabelRow } from '../nodes/NodeLabelRow'
 import { useShotIdentity } from '../hooks/useNodeRelationships'

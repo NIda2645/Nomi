@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../DirectorEditorContext、../../model/directorTypes（TimelineEntity / Waypoint）、../fields/FieldPrimitives
  * [OUTPUT]: 对外提供 BatchWaypointsCard（清单 §4.6 I8：范围、逐帧看向、独立俯仰/横滚微调和复位、批量删除）
  * [POS]: director/panels/inspector 的多选路标卡；同一批次经共享动作一次写入。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton, confirmDialog } from '../../../../../../design'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'

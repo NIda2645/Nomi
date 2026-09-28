@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../utils/cn'
 
 // 播放守卫的可视半边（与 useVideoPlaybackHeal 配套）：自愈中说「修复中」，修不了说人话原因。

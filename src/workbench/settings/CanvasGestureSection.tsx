@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 设置 · 通用 · 画布滚轮语义（需求 #832，2026-07-31 用户拍板 / 2026-08-03 补齐）。
  *
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *
  * 芯片行的样式与选中态照抄同页 [[ScreenshotHotkeySection]]，不另发明一套控件（P4/设计一致性）。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../utils/cn'
 import {

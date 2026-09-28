@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import StoryboardShotRow from '../../../workbench/creation/storyboard/shotRow/StoryboardShotRow'
 import { AssetPreviewDialog, type AssetPreviewSequenceItem } from '../../../workbench/assets/AssetPreviewDialog'
 import type { AssetRef } from '../../../workbench/assets/assetTypes'

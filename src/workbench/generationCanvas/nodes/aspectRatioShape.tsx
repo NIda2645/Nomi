@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 比例分段选择器的**图形语言**：小宽高比矩形 + 组级双行 label。
 //
 // 这两个函数原本是 `InlineParameterBar.tsx` 的模块私有函数（2026-07-17 用户拍板的参数面板形态）。
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
 // 提取是**移动**不是复制：`InlineParameterBar` 从这里 import，全仓只此一份定义。
 //
 // 两个都是纯函数、无副作用、不读 store，所以搬家不改任何视觉行为。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { IconAspectRatio } from '@tabler/icons-react'
 
 /** 比例文本（"16:9"）→ 宽高比小图形（描边矩形，最长边 18px）。

@@ -1,10 +1,9 @@
-import type { JSX } from 'react'
 // agent-artifact 节点的选中浮条动作。复用系统 NodeFloatingToolbar 的容器与按钮原子（不新造样式）：
 //   · 下载：文件已落盘（meta.artifact.url 带真实扩展名）→ bridge.assets.download 按 url 补全文件名。
 //   · 复制：text/markdown/html 取文本进剪贴板（可复制的内容才给"复制"）。
 //   · 固化为参考图：SVG 栅格化成 PNG → asset 节点（可被下游连线当参考）——「下游消费」的 UI 出口。
 // 只读预览节点不进编辑态；动作只在选中浮条（L2），不压内容。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconCopy, IconDownload, IconPhoto } from '@tabler/icons-react'
 import { getDesktopBridge } from '../../../../desktop/bridge'

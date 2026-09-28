@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../../../utils/cn'
 
 /** Content, metadata and disclosure share one flow; only explicit primary/danger actions may grow a spacer. */

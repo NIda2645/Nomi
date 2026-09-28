@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 屏「画布加号收束」的取景台。
 //
 // 这一格渲染的是**现役组件本身**（`CanvasToolbar` / `NodeAddMenu`），不是照着它画的样张——
@@ -11,7 +10,7 @@ import type { JSX } from 'react'
 //
 // 用 `useEffect` + rAF 而不是给组件加一个 `defaultOpen` 道具：多一个只有实验室用的开关就是
 // 第二条打开路径（P1 并行版），而且它证明不了真实那条能不能打开。
-import React from 'react'
+import React, { type JSX } from 'react'
 
 export const CANVAS_ADD_CELL_WIDTH = 420
 export const CANVAS_ADD_CELL_HEIGHT = 460

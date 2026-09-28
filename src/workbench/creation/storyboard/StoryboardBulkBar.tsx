@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconStack2 } from '@tabler/icons-react'
 import { NomiSelect } from '../../../design'

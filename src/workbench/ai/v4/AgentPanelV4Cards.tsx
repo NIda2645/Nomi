@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 import { V4Row } from './AgentPanelV4Row'
 // Agent 面板 v4 · 积木 ④ 任务卡 · ⑤ 介入槽 · ⑥ 队列行
 //
@@ -12,7 +11,7 @@ import { V4Row } from './AgentPanelV4Row'
 // （= 权限抬一档），不可逆的和花钱的永远逐次问；拒绝原因渐进披露（reject-reason kind）。
 //
 // ⑥ 队列行：只在「运行中还继续输入」时出现在 composer 顶上；完成的划掉；空队列不渲染。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { AgentPanelV4Markdown } from './AgentPanelV4Markdown'
 import { WorkbenchButton } from '../../../design'
 import { cn } from '../../../utils/cn'

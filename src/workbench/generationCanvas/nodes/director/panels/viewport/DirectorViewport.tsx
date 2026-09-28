@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../scene/DirectorCanvas、../../scene/ViewCamera 的 DEFAULT_VIEW_SETTINGS / ViewSettings、
  *          ../../scene/sceneTheme、../../scene/creation/usePathDraw、../../scene/LabelProjector 类型、./ViewportOverlays、
@@ -12,7 +11,7 @@ import type { JSX } from 'react'
  *        这里只剩内容与情境浮层（标签 / HUD / POV / 画中画 / AI 入口）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useDirectorStore } from '../../DirectorEditorContext'
 import { isDirectorKeyboardBlocked } from '../../useDirectorHotkeys'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 屏「设置 · 隐私与诊断」的取景台。
 //
 // 这一格和前两屏的差别：它渲染的组件**只在有 desktop bridge 时才出现**
@@ -12,7 +11,7 @@ import type { JSX } from 'react'
 // 灌桥用 `useMemo` 而不是 `useEffect`：晚一帧灌，组件第一次渲染时 bridge 还是 null，
 // 会先画一帧空片段——截图捕到那一帧就成了「这一格什么都没有」的假证据
 // （同 agentPanelKit.ShellStage / editingLabKit.useLabTimeline 的理由）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { DiagnosticsExportResult } from '../../../../electron/shared/contracts/diagnostics'
 
 /** 取景宽 = 设置弹窗内容区的实际可用宽（760 外框 − 196 侧栏 − 24×2 内边距）。 */

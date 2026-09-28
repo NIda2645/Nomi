@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · primitive 陈列「菜单」屏（2026-09-08，刀 1 随 `src/design/menu.tsx` 一起立）。
 //
 // 陈列的是 `WorkbenchMenu` **本体**（从 `src/design` 导出口进来），不是照着它另画一份。
@@ -15,7 +14,7 @@ import type { JSX } from 'react'
 // （labScreen.ts 的 capture 字段就是为这一族留的）。
 // 为什么 `open` 恒真、`point` 是写死的视口坐标：陈列要的是**展开后长什么样**，
 // 而截图必须确定性——点位一随机，基线每次都不一样。
-import React from 'react'
+import React, { type JSX } from 'react'
 import {
   IconClipboard,
   IconCopy,

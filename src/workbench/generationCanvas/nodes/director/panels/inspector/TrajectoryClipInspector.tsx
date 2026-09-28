@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/directorTypes（TimelineEntity / TrajectoryClip）、../../model/hotkeys（DIRECTOR_HOTKEYS / formatHotkey）、../../model/timeGrid 的 FRAME_SECONDS、
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  * [POS]: director/panels/inspector 的路径片段卡：改时间走 updateClipTime（重叠即拒绝并 toast），裁切/分割复用时间轴命令层。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchButton } from '../../../../../../design'
 import { toast } from '../../../../../../ui/toast'

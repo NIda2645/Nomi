@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import { modelToolShowsReviewCard, resolveModelToolCapabilityId } from '../../../../electron/shared/agentCapabilities/modelFacingToolRegistry'
 import { TIMELINE_WRITE_CAPABILITY } from '../../../../electron/shared/agentCapabilities/timelineWrite'

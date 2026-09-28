@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「本地模型」接入卡（无鉴权本地文本端点的「发现 + 一键连」，仿 ComfyuiLocalCard / CodexLocalImageCard）。
  *
@@ -14,7 +13,7 @@ import type { JSX } from 'react'
  * authType:'none' + 翻 enabled，再 upsertModel 一个 kind:'text' 的模型。运行时按 vendor.baseUrlHint /
  * providerKind / authType 直连 chat（见 electron/ai/vendorModelConnection.ts），不新造管线。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   IconServerBolt, IconPlugConnected, IconCircleCheck, IconAlertTriangle, IconRefresh,

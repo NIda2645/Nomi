@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * 「+ 再接一台 ComfyUI」（M 轨 · 2026-08-02 拍板四幕样张第④幕）。
  *
@@ -8,7 +7,7 @@ import type { JSX } from 'react'
  * 身份：第 2+ 台的 vendorKey = `comfyui-local-{slug}`（前缀判据见 electron/catalog/types.isComfyuiVendor）。
  * 起的名字直接当 vendor.name，卡头显示它，画布上模型名也带它——用户靠名字认机器。
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconPlus, IconServerBolt } from '@tabler/icons-react'
 import { cn } from '../../utils/cn'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber、@react-three/drei 的 GizmoHelper / GizmoViewcube、../../fencedCanvas 的 FencedCanvas、
  *          ./webglContextRecovery 的 attachWebGLContextRecovery、./SceneRegistryContext、./sceneRefs、
@@ -10,7 +9,7 @@ import type { JSX } from 'react'
  * [POS]: director/scene 的装配根：DOM 层只把 refs/回调传进来，three 世界的一切从这里长出去。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { GizmoHelper, GizmoViewcube } from '@react-three/drei'

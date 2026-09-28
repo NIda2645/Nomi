@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../DirectorEditorContext、../../model/directorTypes、
  *          ../../model/cameraLens（LENS_PRESETS / FOCAL_MM_MIN / FOCAL_MM_MAX / focalMmToFov）、../../../../../../utils/cn、../fields/*、./TransformSection
@@ -6,7 +5,7 @@ import type { JSX } from 'react'
  * [POS]: director/panels/inspector 的机位属性；fov 是真相，焦距是派生视图。进 / 出视角只住画中画，rig / 看向没有 UI（只读字段）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { cn } from '../../../../../../utils/cn'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'

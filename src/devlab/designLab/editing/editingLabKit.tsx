@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设计实验室 · 剪辑面（editing 屏）的取景台。
 //
 // 和 Agent 面板那屏的区别在于**这一族东西都是浮层**：转场选择器 Portal 到 body，
@@ -16,7 +15,7 @@ import type { JSX } from 'react'
 //
 // 夹具灌 store 用 `useMemo` 而不是 `useEffect`：晚一帧灌会先渲染一次空态，
 // 截图捕到那一帧就成了「面板是空的」的假证据（同 agentPanelKit.ShellStage 的理由）。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useWorkbenchStore } from '../../../workbench/workbenchStore'
 import { EDITING_PANEL_DEFAULTS } from '../../../workbench/preview/panelLayout'
 import { labTimeline } from './editingFixtures'

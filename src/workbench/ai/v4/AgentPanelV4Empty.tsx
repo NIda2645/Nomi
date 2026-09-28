@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // Agent 面板 v4 · 对话流为空时的那一格。
 //
 // 只在**对话流为空**时出现（有一条消息就再也不出现），所以它不是常驻件、不占预算。
@@ -16,7 +15,7 @@ import type { JSX } from 'react'
 // 原样。放在 chip 行下方而不是上方——起手 chip 是他打开面板要做的事，同意书不是。
 //
 // 布局复用 `DesignEmptyState`（设计系统 §3.3 全仓统一空态），不另写一份居中结构。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { DesignEmptyState } from '../../../design'
 import { starterChipsForSurface, V4_EMPTY_TITLE_KEY } from './agentPanelV4EmptyState'

@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 // 设置 → 模型 → 数据源 → TikHub（分享链接直拆）。小 UI，照 CustomVendorManage 的凭证卡先例。
 // 2026-09-01 归位：从「AI 策略」tab 搬到「模型」tab 的数据源区——它是数据源接入（换来一路素材），
 // 不是 AI 策略（在已接入能力上定规则）。判据见 docs/design/nomi-design-system.md §1.7.2。
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
 // 抖音/TikTok 分享链接解析成无水印直链、落成项目视频素材再用现有节点拆解。
 // key 走主进程 safeStorage 加密存储（与其它供应商同一条凭据边界），永不回传明文。
 // 语义/管线见 docs/plan/2026-09-01-tikhub-connector-v1.md。
-import React from 'react'
+import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconKey, IconExternalLink, IconChevronDown } from '@tabler/icons-react'
 

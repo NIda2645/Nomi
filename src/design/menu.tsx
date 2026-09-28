@@ -1,5 +1,4 @@
-import type { JSX } from 'react'
-import React from 'react'
+import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
 import * as DropdownMenuPrimitive from '@radix-ui/react-dropdown-menu'
 import { IconCheck } from '@tabler/icons-react'

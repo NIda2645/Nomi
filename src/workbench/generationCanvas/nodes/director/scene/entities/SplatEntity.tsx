@@ -1,4 +1,3 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useFrame、react-i18next、@sparkjsdev/spark 的 SplatMesh、../../../../../../ui/toast、
  *          ../../DirectorEditorContext、../../model/directorTypes 的 DirectorObject、../environment/splatRevealDyno 的 createSplatReveal
@@ -7,7 +6,7 @@ import type { JSX } from 'react'
  *        url 变化重建，名称 / 语言只刷新错误文案；卸载 dispose 并收黑幕。SparkRenderer 由 environment/SparkHost 提供。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import * as THREE from 'three'
 import { useFrame } from '@react-three/fiber'
 import { useTranslation } from 'react-i18next'

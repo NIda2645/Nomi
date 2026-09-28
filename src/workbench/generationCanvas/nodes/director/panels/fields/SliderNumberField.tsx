@@ -1,11 +1,10 @@
-import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、../../../../../../utils/cn、./useNumberDraft
  * [OUTPUT]: 对外提供 SliderNumberField：标签 + 滑条 + 数字输入；滚轮按 step 微调（wheelAdjust）；onChangeStart 给撤销快照用
  * [POS]: director/panels/fields 的数值字段原语（清单 §4 检查器通用：滑条 + 输入 + 滚轮微调）；沿用 V1 检查器的原生 range 先例。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import React from 'react'
+import React, { type JSX } from 'react'
 import { cn } from '../../../../../../utils/cn'
 import { useNumberDraft } from './useNumberDraft'
 
