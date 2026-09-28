@@ -1,4 +1,5 @@
 import { SKILL_URI_PREFIX, skillResourceUri, parseSkillResourceUri, skillFileMimeType, type SkillSummaryFrame, type SkillContentFrame } from './mcpSkillResources'
+import { buildSkillPrompts, buildSkillResources } from './mcpPassiveDiscovery'
 import { McpConnectionAuthenticationError } from './mcpConnectionContext'
 // 能力核 · MCP 协议层（传输注入，纯逻辑，可裸 node 单测）。
 //
@@ -639,12 +640,7 @@ export function createMcpProtocol(transport: McpTransport) {
       // Discovery is passive. A missing Nomi instance must not become visible as
       // a desktop window merely because a host refreshes its resource list.
       const res = await transport.invokeIfOpen?.('skills.list', {}) as { skills?: SkillSummaryFrame[] } | null | undefined
-      const skillResources = (res?.skills || []).flatMap((skill) => {
-        return (skill.filePaths ?? ['SKILL.md']).flatMap(filePath => {
-          const uri = skillResourceUri(skill, filePath)
-          return uri ? [{ uri, name: filePath === 'SKILL.md' ? skill.name : `${skill.name}/${filePath}`, description: skill.description, mimeType: skillFileMimeType(filePath) }] : []
-        })
-      })
+      const skillResources = buildSkillResources(res?.skills || [])
       // 活 widget 资源（MCP Apps）：宿主预取渲染生成结果与 production Run 投影的活面板。
       const uiResources = [{
         uri: NOMI_LIVE_DRAFT_UI_URI,
@@ -709,16 +705,7 @@ export function createMcpProtocol(transport: McpTransport) {
       // 版本/hash 一并返回：客户端可以把 prompt 绑定到与 resources 相同的内容快照，避免
       //「列表看到 A、get 却加载了后来写入的 B」的漂移。旧客户端仍可只传 name，get 会在
       // 同一次请求内解析当前元数据；显式传入身份时则严格校验。
-      const prompts = (res?.skills || []).map((s) => ({
-        name: s.directoryName,
-        title: s.name,
-        description: s.description,
-        arguments: [
-          { name: 'packageVersion', description: 'Package version from prompt metadata.', required: false },
-          { name: 'contentHash', description: 'Content hash from prompt metadata.', required: false },
-        ],
-        _meta: { packageVersion: s.packageVersion, contentHash: s.contentHash },
-      }))
+      const prompts = buildSkillPrompts(res?.skills || [])
       reply(id, { prompts })
       return
     }

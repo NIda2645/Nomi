@@ -11,13 +11,16 @@
   ],
   "scope_paths": [
     "electron/capabilityCore/mcpProtocol.ts",
+    "electron/capabilityCore/mcpPassiveDiscovery.ts",
     "electron/capabilityCore/mcpNodeLauncher.ts",
     "electron/main.ts",
+    "electron/backgroundLaunch.ts",
     "electron/productionRun/productionRunDesktopLifecycle.ts",
     "electron/backgroundIdleExit.ts",
     "electron/runtime.ts",
     "electron/tasks/taskCache.ts",
-    "electron/tasks/taskResultQuery.ts"
+    "electron/tasks/taskResultQuery.ts",
+    "electron/windowNavigation.ts"
   ],
   "entry_points": [
     "MCP protocol discovery handlers",
@@ -32,116 +35,39 @@
     "Idle exit is allowed only before the window has ever been shown and when the existing in-flight task owner reports no active task"
   ],
   "doors": [
-    {
-      "kind": "read",
-      "path": "electron/capabilityCore/mcpProtocol.ts",
-      "symbol": "invokeForRequest"
-    },
-    {
-      "kind": "read",
-      "path": "electron/main.ts",
-      "symbol": "createWindow"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpDocumentConfirmation.ts",
-      "symbol": "invokeForRequest"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpNodeLauncher.ts",
-      "symbol": "startNomi"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpNodeLauncher.ts",
-      "symbol": "ensureLiveInstance"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpProtocol.ts",
-      "symbol": "invokeForRequest"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpTimelineConfirmation.ts",
-      "symbol": "invokeForRequest"
-    },
-    {
-      "kind": "write",
-      "path": "electron/capabilityCore/mcpTrustDowngrade.ts",
-      "symbol": "invokeForRequest"
-    },
-    {
-      "kind": "write",
-      "path": "electron/main.ts",
-      "symbol": "createWindow"
-    },
-    {
-      "kind": "write",
-      "path": "electron/mainWindowPresence.ts",
-      "symbol": "createWindow"
-    },
-    {
-      "kind": "read",
-      "path": "electron/runtime.ts",
-      "symbol": "taskCache"
-    },
-    {
-      "kind": "read",
-      "path": "electron/tasks/taskCache.ts",
-      "symbol": "taskCache"
-    },
-    {
-      "kind": "read",
-      "path": "electron/tasks/taskResultQuery.ts",
-      "symbol": "taskCache"
-    },
-    {
-      "kind": "write",
-      "path": "electron/main.ts",
-      "symbol": "installProductionRunDesktopLifecycle"
-    },
-    {
-      "kind": "write",
-      "path": "electron/main.ts",
-      "symbol": "hasInFlightTasks"
-    },
-    {
-      "kind": "write",
-      "path": "electron/main.ts",
-      "symbol": "createBackgroundIdleExit"
-    },
-    {
-      "kind": "read",
-      "path": "electron/backgroundIdleExit.ts",
-      "symbol": "BackgroundIdleExit"
-    },
-    {
-      "kind": "read",
-      "path": "electron/backgroundIdleExit.ts",
-      "symbol": "markWindowShown"
-    },
-    {
-      "kind": "read",
-      "path": "electron/main.ts",
-      "symbol": "BackgroundIdleExit"
-    },
-    {
-      "kind": "write",
-      "path": "electron/main.ts",
-      "symbol": "markWindowShown"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/productionRunDesktopLifecycle.ts",
-      "symbol": "deliverProductionDeepLink"
-    }
+    { "kind": "read", "path": "electron/backgroundIdleExit.ts", "symbol": "BackgroundIdleExit" },
+    { "kind": "read", "path": "electron/backgroundIdleExit.ts", "symbol": "markWindowShown" },
+    { "kind": "read", "path": "electron/backgroundLaunch.ts", "symbol": "BackgroundIdleExit" },
+    { "kind": "read", "path": "electron/capabilityCore/mcpPassiveDiscovery.ts", "symbol": "buildSkillResources" },
+    { "kind": "read", "path": "electron/capabilityCore/mcpPassiveDiscovery.ts", "symbol": "buildSkillPrompts" },
+    { "kind": "read", "path": "electron/windowNavigation.ts", "symbol": "installWindowNavigation" },
+    { "kind": "read", "path": "electron/capabilityCore/mcpProtocol.ts", "symbol": "invokeForRequest" },
+    { "kind": "read", "path": "electron/main.ts", "symbol": "touchBackgroundActivity" },
+    { "kind": "read", "path": "electron/main.ts", "symbol": "createWindow" },
+    { "kind": "read", "path": "electron/main.ts", "symbol": "hasInFlightProductionWork" },
+    { "kind": "read", "path": "electron/runtime.ts", "symbol": "taskCache" },
+    { "kind": "read", "path": "electron/tasks/taskCache.ts", "symbol": "taskCache" },
+    { "kind": "read", "path": "electron/tasks/taskResultQuery.ts", "symbol": "taskCache" },
+    { "kind": "write", "path": "electron/backgroundLaunch.ts", "symbol": "markWindowShown" },
+    { "kind": "write", "path": "electron/backgroundLaunch.ts", "symbol": "hasInFlightTasks" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpDocumentConfirmation.ts", "symbol": "invokeForRequest" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpNodeLauncher.ts", "symbol": "startNomi" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpNodeLauncher.ts", "symbol": "ensureLiveInstance" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpProtocol.ts", "symbol": "invokeForRequest" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpTimelineConfirmation.ts", "symbol": "invokeForRequest" },
+    { "kind": "write", "path": "electron/capabilityCore/mcpTrustDowngrade.ts", "symbol": "invokeForRequest" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "backgroundWindowOptions" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "installBackgroundWindowBehavior" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "createWindow" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "installBackgroundLifecycle" },
+    { "kind": "write", "path": "electron/main.ts", "symbol": "disposeBackgroundLifecycle" },
+    { "kind": "write", "path": "electron/mainWindowPresence.ts", "symbol": "createWindow" },
+    { "kind": "write", "path": "electron/productionRun/productionRunDesktopLifecycle.ts", "symbol": "deliverProductionDeepLink" }
   ],
   "door_reduction": {
     "before": 10,
-    "after": 21,
-    "why_not": "The doors are distinct protocol, launcher, and desktop lifecycle entry points. They converge on the new probe-only transport or background lifecycle boundary but remain separate owners by responsibility."
+    "after": 28,
+    "why_not": "The 28 doors are distinct protocol, launcher, task-cache, passive-discovery, navigation, and desktop lifecycle entry points. They converge on the probe-only transport or background lifecycle boundary but remain separate owners by responsibility; none can be merged without creating a second owner for protocol dispatch, launcher startup, task state, navigation, or window lifecycle."
   },
   "generality_proof": "All discovery methods are handled by the single MCP protocol dispatcher, while all launcher calls pass through the transport. Routing passive resources/list through invokeIfOpen prevents cold start for every client and library state; real tool calls retain ensureLiveInstance.",
   "shared_boundaries": [
@@ -206,6 +132,8 @@
     "artifacts": [
       "electron/capabilityCore/mcpProtocol.ts",
       "electron/capabilityCore/mcpNodeLauncher.ts",
+      "electron/capabilityCore/mcpPassiveDiscovery.ts",
+      "electron/windowNavigation.ts",
       "electron/capabilityCore/mcpStdioServer.ts"
     ]
   },

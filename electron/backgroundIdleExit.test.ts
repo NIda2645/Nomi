@@ -51,7 +51,11 @@ describe('background idle exit', () => {
   })
   it('counts direct async generation entries as in-flight work', () => {
     const id = 'background-direct-task'
-    taskCache.set(id, {});
+    taskCache.set(id, {
+      vendor: 'test-vendor',
+      request: { kind: 'text_to_image', prompt: 'background task' },
+      raw: null,
+    })
     expect(hasInFlightTasks()).toBe(true)
     taskCache.delete(id)
     expect(hasInFlightTasks()).toBe(false)
