@@ -56,6 +56,7 @@ import {
 } from './assetUploadConsent'
 import type { HostingDisclosure } from '../spend/spendConfirm'
 import { buildDialoguePromptSuffix } from '../agent/storyboardDialogue'
+import type { MediaDimensions } from '../nodes/nodeSizing'
 
 function reportAuthorizationFailure(error: unknown, projectId: string, nodeId: string): void {
   const message = error instanceof Error && error.message ? error.message : i18n.t('generationCommon.batchPlan.authorizationFailed')
@@ -291,7 +292,8 @@ export async function runGenerationNode(
     const executor = options.executor ?? generationNodeExecutor
     const maxAttempts = normalizeRetryAttempts(options.retry?.maxAttempts)
     const baseDelayMs = normalizeBaseDelayMs(options.retry?.baseDelayMs)
-    let result: GenerationNodeResult | null = null
+  let result: GenerationNodeResult | null = null
+  let mediaDimensions: MediaDimensions | undefined
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       await options.assertAuthorCurrent?.()
       const savedGraph = await readRunGraph(target)
@@ -328,6 +330,7 @@ export async function runGenerationNode(
               ...(progress.taskId ? { taskId: progress.taskId } : {}),
             })
           },
+          onMediaDimensions: (dimensions) => { mediaDimensions = dimensions },
         })
         break
       } catch (error: unknown) {
@@ -346,7 +349,7 @@ export async function runGenerationNode(
     await progressDelivery
     if (progressDeliveryFailure) throw progressDeliveryFailure
     if (!result) throw new Error(describeOpaqueFailure(null))
-    const landedInOpenProject = await deliverRunOutcome(target, id, { kind: 'result', result })
+    const landedInOpenProject = await deliverRunOutcome(target, id, { kind: 'result', result, ...(mediaDimensions ? { mediaDimensions } : {}) })
     // 自动另存（集中设置页开启时）：新生成的图/视频静默复制一份到用户目录。fire-and-forget——不 await
     // （不拖慢生成收尾）、失败不冒泡（best-effort 全在主进程侧，关着/没设目录/失败都静默）。只对新生成，
     // 找回(recoverTaskActions)不触发、避免重复另存。

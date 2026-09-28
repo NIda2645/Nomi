@@ -120,7 +120,7 @@ export type ProductionGenerationSubmissionDependencies = {
     contract: ExecutionContractV1;
     providerTaskId: string;
     output: GenerationProviderOutput;
-  }) => Promise<Pick<ProductionArtifact, "artifactId" | "kind" | "contentHash" | "projectRelativePath" | "thumbnailRelativePath">>;
+  }) => Promise<Pick<ProductionArtifact, "artifactId" | "kind" | "contentHash" | "projectRelativePath" | "thumbnailRelativePath" | "width" | "height">>;
 };
 
 function stableJson(value: unknown): string {
@@ -613,6 +613,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
       contentHash,
       projectRelativePath,
       ...(receipt.thumbnailRelativePath ? { thumbnailRelativePath: receipt.thumbnailRelativePath } : {}),
+      ...(receipt.width && receipt.height ? { width: receipt.width, height: receipt.height } : {}),
       createdAt: now(),
     };
     run = command(run, "artifact.add", { artifact }, `materialize-artifact:${artifact.artifactId}`);

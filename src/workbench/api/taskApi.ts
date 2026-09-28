@@ -25,6 +25,9 @@ export type TaskAssetDto = {
   assetRefId?: string | null
   assetName?: string | null
   durationSeconds?: number
+  /** Intrinsic source dimensions from the desktop asset localization boundary. */
+  width?: number | null
+  height?: number | null
   /** 原始 CDN URL（https://...）。供后续生成直接用，任何 vendor 都能接受，无需上传或转 base64。 */
   providerUrl?: string | null
 }

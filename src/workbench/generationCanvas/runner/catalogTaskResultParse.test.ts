@@ -60,3 +60,17 @@ describe('normalizeCatalogTaskResult 空产物报错', () => {
     expect(result.text).toContain('integrated_multimodal_description')
   })
 })
+
+describe('normalizeCatalogTaskResult intrinsic dimensions', () => {
+  it('forwards source width/height without copying them onto the result', () => {
+    const dimensions: Array<{ width: number; height: number }> = []
+    const normalized = normalizeCatalogTaskResult({
+      ...succeeded('text_to_image'),
+      assets: [{ type: 'image', url: 'https://cdn.test/image.png', thumbnailUrl: 'https://cdn.test/image.preview.jpg', width: 1600, height: 900 }],
+    }, node, (value) => dimensions.push(value))
+
+    expect(dimensions).toEqual([{ width: 1600, height: 900 }])
+    expect(normalized).not.toHaveProperty('width')
+    expect(normalized).not.toHaveProperty('height')
+  })
+})

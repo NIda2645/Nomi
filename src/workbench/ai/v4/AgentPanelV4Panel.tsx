@@ -138,7 +138,7 @@ export type AgentPanelV4PanelProps = {
 }
 
 /** 对话流里的一条 = 一个积木；哪个积木由 kind 决定，壳不认识内容。 */
-export function V4FlowRow({
+function V4FlowRowImpl({
   item,
   index,
   darkMode,
@@ -208,6 +208,8 @@ export function V4FlowRow({
   )
 }
 
+export const V4FlowRow = React.memo(V4FlowRowImpl)
+
 export function AgentPanelV4Panel({
   flow,
   legacy,
@@ -238,6 +240,24 @@ export function AgentPanelV4Panel({
   const { t } = useTranslation()
   const workspaceFrame = useWorkspacePanelFrame()
   const labels = useV4Labels()
+  const flowHandlersRef = React.useRef(flowHandlers)
+  flowHandlersRef.current = flowHandlers
+  const flowHandlerKeys = flowHandlers
+    ? Object.keys(flowHandlers).filter((key) => typeof flowHandlers[key as keyof V4FlowHandlers] === 'function').sort().join('\u0000')
+    : ''
+  const stableFlowHandlers = React.useMemo(() => {
+    if (!flowHandlerKeys) return undefined
+    const stable: { -readonly [K in keyof V4FlowHandlers]?: V4FlowHandlers[K] } = {}
+    const stableByKey = stable as unknown as Record<string, ((...args: never[]) => void) | undefined>
+    for (const keyText of flowHandlerKeys.split('\u0000')) {
+      const key = keyText as keyof V4FlowHandlers
+      stableByKey[keyText] = (...args: never[]) => {
+        const latest = flowHandlersRef.current?.[key] as ((...values: never[]) => void) | undefined
+        latest?.(...args)
+      }
+    }
+    return stable
+  }, [flowHandlerKeys])
   const legacyNotice = legacy ? [t('agentPanelV4.legacyNotice'),
     ...(legacy.arrayOrder ? [t('agentPanelV4.legacyArrayOrder')] : []),
     ...(legacy.summaries ? [t('agentPanelV4.legacySummaries')] : []),
@@ -385,7 +405,7 @@ export function AgentPanelV4Panel({
             item={item}
             index={index}
             darkMode={darkMode}
-            handlers={flowHandlers}
+            handlers={stableFlowHandlers}
           />
         ))}
         {flowTail}

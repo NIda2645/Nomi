@@ -19,6 +19,7 @@ import { normalizeDirectorProject } from '../model/directorProject'
 import type { DirectorProject } from '../model/directorTypes'
 import { readStagingAutoCapture } from './createStagingReferenceNode'
 import { DirectorHeadlessCapture, type HeadlessCaptureResult } from './DirectorHeadlessCapture'
+import { computeMediaMetaPatch } from '../../../nodes/nodeSizing'
 
 const STILL_TIMES = [0]
 
@@ -73,6 +74,12 @@ export function StagingCaptureHost(): JSX.Element | null {
         })
         const size = imageNodeSize(capture.width, capture.height)
         const result = { id: `staging-shot-${imageNode.id}-${createdAt}`, type: 'image' as const, url: persisted.url, assetId: persisted.assetId, raw: persisted.raw, createdAt }
+        const mediaMeta = computeMediaMetaPatch({
+          resultType: result.type,
+          meta: imageNode.meta || {},
+          width: capture.width,
+          height: capture.height,
+        })?.meta
         store.updateNode(imageNode.id, {
           result,
           history: [result],
@@ -80,14 +87,12 @@ export function StagingCaptureHost(): JSX.Element | null {
           size: { width: size.width, height: size.height },
           meta: {
             ...(imageNode.meta || {}),
+            ...(mediaMeta || {}),
             source: 'director-camera',
             sourceNodeId: nodeId,
             // 站位构图图：被当 composition_ref 喂关键帧时触发「构图控制 + 写实重渲染」提示词后缀
             stagingComposition: true,
             localOnly: persisted.localOnly,
-            imageWidth: capture.width,
-            imageHeight: capture.height,
-            imageAspectRatio: capture.width / Math.max(1, capture.height),
             previewHeight: size.previewHeight,
           },
         })

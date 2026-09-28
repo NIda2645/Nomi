@@ -1,0 +1,189 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-27-site-media-byte-ranges",
+  "problem_type": "Static site media served without HTTP byte-range support",
+  "symptom": "On nomiaqm.com a `Range: bytes=0-1` request for /assets/video/nomi-0.22-film.mp4 returns 200 with the whole 7,962,929-byte file (with and without the local proxy); Safari and every iOS browser require 206 answers to play <video>, so the homepage film and its six feature loops cannot play there, and Chrome must download everything before the 58-second segment.",
+  "direct_cause": "wrangler.toml served marketing/ straight from Cloudflare's asset server, whose response path only produces 200/304/404; no request for media ever reached code that could answer Range.",
+  "class_root": "The site serving layer had no owner for the invariant 'every media file is served with byte ranges': the worker was never bound to ASSETS (its env.ASSETS branch was dead), no request was routed to it first, and nothing checked new media files against the routing. The same layer also let two _headers rules join into contradictory Cache-Control values and exported a plain value from the worker entry module, which workerd refuses to load.",
+  "affected_population": [
+    "Safari (macOS) and every iOS browser opening nomiaqm.com: the hero film, the six feature segments and the legacy /assets/demo.mp4, hero-loop.mp4 and launch-film-en.mp4 links",
+    "Chrome/Edge/Firefox visitors seeking into the film (full download before the seek point)",
+    "Any media file added to marketing/ later"
+  ],
+  "scope_paths": [
+    "worker/",
+    "wrangler.json",
+    "marketing/_headers"
+  ],
+  "entry_points": [
+    "GET/HEAD https://nomiaqm.com/**/*.mp4 (browsers' media element, Range probes and seeks)",
+    "Any request with no matching asset, which reaches the worker and is answered through ASSETS",
+    "POST /api/vendor-callbacks/kie/suno/ack (KIE/Suno callback sink in the same worker)"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/cloudflare/workers-sdk/blob/main/packages/workers-shared/asset-worker/src/handler.ts",
+      "checked_at": "2026-09-27",
+      "purpose": "Asset server only returns OkResponse/NotFoundResponse/NotModifiedResponse; no Range handling, so the worker must own ranges."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/cloudflare/workers-sdk/blob/main/packages/workers-shared/asset-worker/src/utils/headers.ts",
+      "checked_at": "2026-09-27",
+      "purpose": "attachCustomHeaders applies _headers rules in file order, unset before set, appending a header an earlier rule already set; also applies to env.ASSETS.fetch responses."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/cloudflare/workers-sdk/blob/main/packages/workers-shared/asset-worker/src/utils/rules-engine.ts",
+      "checked_at": "2026-09-27",
+      "purpose": "run_worker_first and _headers patterns are globs where * is .* anchored at both ends, so /*.mp4 matches media at any depth."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://developers.cloudflare.com/workers/runtime-apis/response/",
+      "checked_at": "2026-09-27",
+      "purpose": "Content-Length on a streamed body is ignored unless the body is a FixedLengthStream."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://developers.cloudflare.com/workers/cache/configuration/",
+      "checked_at": "2026-09-27",
+      "purpose": "Workers Cache would slice ranges for us but bills every static asset request as a Worker request (free plan 100k/day), rejected for the promo traffic window."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://www.rfc-editor.org/rfc/rfc9110#section-14",
+      "checked_at": "2026-09-27",
+      "purpose": "Range semantics: 206 with Content-Range, 416 with bytes */size, Range only defined for GET, If-Range strong comparison, ignoring unsupported range forms is allowed."
+    }
+  ],
+  "invariants": [
+    "Every audio/video file under marketing/ matches a run_worker_first pattern in wrangler.json, and the worker answers it through ASSETS with byte ranges.",
+    "A GET with a single satisfiable bytes range for a whole, unencoded asset gets 206 with the exact bytes, Content-Range with the real total and a fixed Content-Length.",
+    "Every file under marketing/ ends up with at most one Cache-Control value after _headers rules apply.",
+    "The worker entry module exports only its default handler."
+  ],
+  "invariant_owner_layer": {
+    "layer": "worker/byteRange.ts",
+    "tests": [
+      "electron/catalog/siteWorkerByteRange.test.ts",
+      "scripts/marketing/serving-contract.test.mjs"
+    ],
+    "why": "serveAssetWithRanges is the only producer of asset responses in the site worker; siteWorkerByteRange.test.ts drives the real worker entry with an ASSETS binding shaped like the runtime (no Content-Length header), and serving-contract.test.mjs checks wrangler.json routing and _headers against every file under marketing/."
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "worker/index.ts",
+      "symbol": "ASSETS"
+    },
+    {
+      "kind": "write",
+      "path": "worker/index.ts",
+      "symbol": "serveAssetWithRanges"
+    }
+  ],
+  "door_reduction": {
+    "before": 1,
+    "after": 2,
+    "why_not": "Both doors are the same call site: worker/index.ts reads the ASSETS binding and hands it to serveAssetWithRanges, which is the only producer of asset responses in the worker. Before the fix the single door was the dead `if (env.ASSETS)` branch; door-map counts the binding read and the serving call as two symbols on one line, not two entry points."
+  },
+  "generality_proof": "The invariant is enforced where every media request converges: run_worker_first sends every *.mp4 to the one worker entry, and serveAssetWithRanges answers every ASSETS response it proxies (media, and asset-less paths that come back 404 untouched). The class test scans every file under marketing/ by extension (mp4/m4v/mov/webm/ogv/mp3/m4a/aac/wav/ogg/oga/flac), so a media file of a new type or in a new folder fails until wrangler.json routes it; the same test evaluates _headers for every served file, so any future pair of rules that duplicates Cache-Control fails.",
+  "shared_boundaries": [
+    {
+      "path": "worker/byteRange.ts",
+      "symbol": "serveAssetWithRanges",
+      "responsibility": "Owns byte-range answers for everything the site worker proxies from ASSETS: parse, length by ETag, slice, FixedLengthStream, 206/416/200."
+    },
+    {
+      "path": "wrangler.json",
+      "symbol": "run_worker_first",
+      "responsibility": "Routes every media file to the worker first and binds ASSETS so the worker can answer through it."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "marketing/assets/video/nomi-0.22-film.mp4",
+      "entry_point": "homepage hero film and six #t= feature segments",
+      "disposition": "enforced",
+      "evidence": "Matches /*.mp4; wrangler dev returns 206 bytes 0-1/7962929, mid and tail ranges byte-identical to the file (cmp)."
+    },
+    {
+      "path": "marketing/assets/demo.mp4",
+      "entry_point": "legacy external links to /assets/demo.mp4",
+      "disposition": "enforced",
+      "evidence": "Matches /*.mp4; wrangler dev returns 206 bytes 0-1/3445672."
+    },
+    {
+      "path": "marketing/assets/video/launch-film-en.vtt",
+      "entry_point": "legacy subtitle tracks",
+      "disposition": "not-affected",
+      "evidence": "Text tracks are fetched whole by the media element; they stay on the direct asset path and the class test's media extension list excludes .vtt."
+    },
+    {
+      "path": "marketing/assets/promo-0.22/cover-zh-light.jpg",
+      "entry_point": "images and pages",
+      "disposition": "not-affected",
+      "evidence": "Images are never range-fetched by <img>; they stay on the direct asset path (wrangler dev: 200 with the one-year Cache-Control), which the class test pins."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every media file served from marketing/ — the current film, the legacy files still linked externally, and any future promo clip — hits the same asset server with the same missing Range support; a Cloudflare runtime update could also start rejecting the entry module's plain export.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs ASSETS serveAssetWithRanges --roots=worker,scripts,electron (output copied into doors)",
+      "find marketing -type f by media extension: nomi-0.22-film.mp4, hero-loop.mp4, launch-film-en.mp4, demo.mp4 — all covered by /*.mp4",
+      "git grep for wrangler.toml / worker/index / env.ASSETS across scripts, src, electron, tests: only kieSunoAckWorker.test.ts imports the worker",
+      "curl -H 'Range: bytes=0-1' on nomiaqm.com and nomi.2373272608.workers.dev: both 200 full; asset-worker handler.ts has no Range branch",
+      "Evaluated marketing/_headers for every file under marketing/: 9 files got two Cache-Control values before the fix"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "worker/byteRange.ts",
+    "invariant": "Every media request reaches serveAssetWithRanges, which answers a satisfiable single range with 206 and exact bytes; the class test fails when a media file is not routed to it or a served file gets two Cache-Control values.",
+    "failure_mode": "Unrouted media or duplicated Cache-Control fails scripts/marketing/serving-contract.test.mjs; a length mismatch between the counted asset and the served stream errors inside FixedLengthStream instead of sending wrong bytes; bytes that change while being counted fall back to the whole file.",
+    "exception_policy": "none",
+    "strategy": "Bind ASSETS, route media to the worker first by extension, own ranges in one module, and gate the routing and header rules against the actual files in marketing/.",
+    "artifacts": [
+      "worker/byteRange.ts",
+      "worker/index.ts",
+      "worker/kieSunoAck.ts",
+      "wrangler.json",
+      "marketing/_headers"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/siteWorkerByteRange.test.ts",
+    "scripts/marketing/serving-contract.test.mjs",
+    "electron/catalog/kieSunoAckWorker.test.ts"
+  ],
+  "class_regression_tests": [
+    "scripts/marketing/serving-contract.test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "wrangler.toml",
+      "worker/index.ts"
+    ],
+    "rationale": "wrangler.toml is replaced by wrangler.json (same keys plus binding and run_worker_first); worker/index.ts loses the unbound `Not Found` fallback and the ACK_PATH named export (moved to worker/kieSunoAck.ts)."
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "rationale": "Cloudflare's static asset server (workers-shared asset-worker) controls whether Range is honoured; we keep serving it and compensate in our worker until the platform answers ranges itself.",
+    "current": "Cloudflare Workers static assets (asset-worker handler.ts: 200/304/404 only), Workers Builds / wrangler 4.141",
+    "target": "Platform-native byte ranges for static assets, or Workers Cache once its per-request billing does not put the free-plan daily limit at risk",
+    "exit_criteria": [
+      "curl -H 'Range: bytes=0-1' against a direct (non-worker) asset on nomiaqm.com returns 206 with Content-Range",
+      "Then delete worker/byteRange.ts and the run_worker_first media patterns, keep scripts/marketing/serving-contract.test.mjs asserting 206 behaviour through a live probe"
+    ]
+  },
+  "migration": "No stored data. Deploy config moves from wrangler.toml to wrangler.json; both Workers Builds (`npx wrangler deploy`) and manual deploys auto-detect wrangler.json. Browsers holding the old contradictory Cache-Control for social previews revalidate within their cache lifetime.",
+  "residual_risks": [
+    "Real Safari/iOS playback has not been exercised from this Windows machine; the evidence is protocol-level (206 byte-exact on workerd and, after deploy, on nomiaqm.com).",
+    "Counting a file's length reads it once per ETag per isolate; CPU time on the free plan is expected to stay far below 10 ms (native stream reads) but is not measured in production yet.",
+    "Unknown paths now return an empty 404 instead of the text `Not Found`; a designed 404 page is a TODO that needs a mockup (R8)."
+  ]
+}

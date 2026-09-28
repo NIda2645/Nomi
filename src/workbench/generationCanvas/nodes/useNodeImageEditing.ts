@@ -10,7 +10,7 @@ import { removeBackgroundBlob } from '../../../lib/removeBackground'
 import { IMAGE_EDIT_PHASE, REMOVE_BACKGROUND_PHASE, removeBackgroundProgressMessage } from './localImageOpPhase'
 import { withCanvasGestureContext } from '../events/canvasGestureContext'
 // 尺寸上下界与"卡片实际渲染多大"都从 nodeSizing 拿——这里再抄一份就是布局错位的温床。
-import { MAX_NODE_WIDTH, MIN_NODE_WIDTH, resolveNodeVisualSize } from './nodeSizing'
+import { computeMediaMetaPatch, MAX_NODE_WIDTH, MIN_NODE_WIDTH, resolveNodeVisualSize } from './nodeSizing'
 import i18n from '../../../i18n'
 
 // 裁切 / 旋转 / 网格切分统一产 PNG **Blob**，落盘换 nomi-local:// 之后才写 store。
@@ -240,6 +240,12 @@ export function useNodeImageEditing(
               url: stored.url,
               createdAt,
             }
+            const mediaMeta = computeMediaMetaPatch({
+              resultType: result.type,
+              meta: created.meta || {},
+              width: tile.width,
+              height: tile.height,
+            })?.meta
             updateNode(created.id, {
               result,
               history: [result],
@@ -247,6 +253,7 @@ export function useNodeImageEditing(
               size: { width: slot.width, height: slot.height },
               meta: {
                 ...(created.meta || {}),
+                ...(mediaMeta || {}),
                 source: `image-grid-split-${grid}x${grid}`,
                 sourceNodeId: nodeId,
                 localOnly: stored.localOnly,
@@ -254,9 +261,6 @@ export function useNodeImageEditing(
                 gridSize: grid,
                 gridRow: cell.row,
                 gridColumn: cell.column,
-                imageWidth: tile.width,
-                imageHeight: tile.height,
-                imageAspectRatio: tile.width / Math.max(1, tile.height),
                 previewHeight: slot.height,
               },
             })
@@ -345,9 +349,15 @@ export function useNodeImageEditing(
             url: stored.url,
             createdAt,
           }
+          const latest = latestNodeSnapshot()
+          const mediaMeta = computeMediaMetaPatch({
+            resultType: result.type,
+            meta: latest.meta || {},
+            width: cropped.width,
+            height: cropped.height,
+          })?.meta
           const preferredWidth = clampNumber(visualWidth, MIN_NODE_WIDTH, MAX_NODE_WIDTH)
           const newSize = imageGridTileNodeSize(cropped.width, cropped.height, preferredWidth)
-          const latest = latestNodeSnapshot()
           updateNode(nodeId, {
             result,
             history: mergeNodeImageHistory(latest.result, latest.history, [result]),
@@ -359,12 +369,10 @@ export function useNodeImageEditing(
               : {}),
             meta: {
               ...(latest.meta || {}),
+              ...(mediaMeta || {}),
               source: 'image-crop',
               localOnly: stored.localOnly,
               ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }),
-              imageWidth: cropped.width,
-              imageHeight: cropped.height,
-              imageAspectRatio: cropped.width / Math.max(1, cropped.height),
               previewHeight: newSize?.previewHeight,
             },
           })
@@ -411,6 +419,12 @@ export function useNodeImageEditing(
             createdAt,
           }
           const latest = latestNodeSnapshot()
+          const mediaMeta = computeMediaMetaPatch({
+            resultType: result.type,
+            meta: latest.meta || {},
+            width: out.width,
+            height: out.height,
+          })?.meta
           updateNode(nodeId, {
             result,
             history: mergeNodeImageHistory(latest.result, latest.history, [result]),
@@ -421,12 +435,10 @@ export function useNodeImageEditing(
               : {}),
             meta: {
               ...(latest.meta || {}),
+              ...(mediaMeta || {}),
               source: `image-${op}`,
               localOnly: stored.localOnly,
               ...(stored.localOnly ? {} : { uploadStatus: 'uploaded' as const }),
-              imageWidth: out.width,
-              imageHeight: out.height,
-              imageAspectRatio: out.width / Math.max(1, out.height),
               previewHeight: newSize?.previewHeight,
             },
           })

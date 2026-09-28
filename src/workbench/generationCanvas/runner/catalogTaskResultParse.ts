@@ -10,6 +10,7 @@ import type {
   GenerationResultType,
 } from '../model/generationCanvasTypes'
 import { asFiniteNumber, asTrimmedString, selectedModelKey } from './catalogTaskResolve'
+import { readMediaDimensions, type MediaDimensions } from '../nodes/nodeSizing'
 
 // transcribe(Whisper) 也是「无 asset、文本在 raw」——同走文本支（raw.text 由 extractTextFromChatRaw 末尾捕获）。
 const TEXT_TASK_KINDS = new Set<TaskKind>(['chat', 'prompt_refine', 'image_to_prompt', 'transcribe'])
@@ -97,6 +98,7 @@ function readDurationSeconds(asset: { durationSeconds?: unknown } | null | undef
 export function normalizeCatalogTaskResult(
   result: TaskResultDto,
   node: GenerationCanvasNode,
+  onMediaDimensions?: (dimensions: MediaDimensions) => void,
 ): GenerationNodeResult {
   if (result.status === 'failed') {
     throw new Error(describeTaskFailure(result))
@@ -126,6 +128,10 @@ export function normalizeCatalogTaskResult(
   const asset = firstVideoAsset || firstImageAsset || firstAudioAsset || result.assets.find((item) => asTrimmedString(item.url))
   if (!asset) throw new Error(i18n.t(inferredType === 'video' ? 'generationCommon.error.noVideoUrl' : inferredType === 'audio' ? 'generationCommon.error.noAudio' : 'generationCommon.error.noImageUrl'))
   const type = (asset.type === 'video' || asset.type === 'image' || asset.type === 'audio') ? asset.type : inferredType
+  if (type === 'image' || type === 'video') {
+    const dimensions = readMediaDimensions(asset.width, asset.height)
+    if (dimensions) onMediaDimensions?.(dimensions)
+  }
   // E11: propagate provenance from electron TaskResult into the node result.
   const provenance = extractProvenanceFromTaskResult(result)
   return {

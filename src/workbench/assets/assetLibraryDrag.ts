@@ -2,7 +2,7 @@
 // 素材已在池里（画布产出 / 项目文件），拖到画布只需引用其 renderUrl 建 asset 节点，无需重新上传。
 // 与 workspaceFileDrag 同构，但携带 AssetRef 的 origin 线索，便于发送链解析「传输地址」（见 assetTypes.ts 文件头 R1）。
 
-import type { AssetKind, AssetOrigin } from './assetTypes'
+import type { AssetDimensions, AssetKind, AssetOrigin } from './assetTypes'
 
 export const ASSET_LIBRARY_DRAG_MIME = 'application/x-nomi-asset-ref'
 
@@ -13,6 +13,7 @@ export type AssetLibraryDragPayload = {
   renderUrl: string
   /** 落盘边界派生的画布预览（图片缩略 / 视频 poster）；落到画布的节点挂它而不是 renderUrl。 */
   thumbUrl?: string
+  dimensions?: AssetDimensions
   origin: AssetOrigin
   dragAnchor?: {
     xRatio: number
@@ -38,11 +39,18 @@ function normalizeAssetLibraryDragItem(value: unknown): AssetLibraryDragPayload 
         }
       : undefined
     const thumbUrl = typeof item.thumbUrl === 'string' ? item.thumbUrl.trim() : ''
+    const rawDimensions = item.dimensions
+    const dimensions = rawDimensions && typeof rawDimensions === 'object'
+      && Number.isFinite(Number(rawDimensions.width)) && Number(rawDimensions.width) > 0
+      && Number.isFinite(Number(rawDimensions.height)) && Number(rawDimensions.height) > 0
+      ? { width: Number(rawDimensions.width), height: Number(rawDimensions.height) }
+      : undefined
     return {
       kind,
       name: typeof item.name === 'string' ? item.name : '',
       renderUrl,
       ...(thumbUrl ? { thumbUrl } : {}),
+      ...(dimensions ? { dimensions } : {}),
       origin: item.origin as AssetOrigin,
       ...(dragAnchor ? { dragAnchor } : {}),
     }

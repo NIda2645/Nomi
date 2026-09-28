@@ -21,6 +21,8 @@ export default tseslint.config(
       'node_modules/**',
       // Vite 预打包依赖缓存（vite.config cacheDir = .tmp/vite）——第三方 bundle，非源码，不 lint。
       '.tmp/**',
+      // 根目录 `wrangler dev` 的本地状态与打包产物（与 .gitignore 的 /.wrangler/ 同一件事）。
+      '.wrangler/**',
       'build/**',
       'public/**',
       // TypeScript compiler spillover in the renderer tree (the source of truth is .ts/.tsx;

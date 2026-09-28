@@ -1,0 +1,123 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-27-release-tag-blocked-by-dev-hook",
+  "problem_type": "release promotion blocked by the developer pre-push receipt hook",
+  "symptom": "Desktop Release run 36325671938 for v0.22.2 failed at 'Create immutable tag': git push origin v0.22.2 was rejected by '[ponytail-receipt] BLOCKED: 没有可读的分支评审收据'. Nothing was published; the release only went through after the tag was created on a developer machine and the workflow was re-run.",
+  "direct_cause": "The promote job runs pnpm install, whose postinstall installs the repository pre-push hook into the runner. verifyPushReceipt then demanded a Ponytail receipt for the tag ref, and the runner never has one.",
+  "class_root": "verifyPushReceipt treated every non-deletion ref as new content needing review. It had no notion that a ref pointing at a commit already contained in a remote-tracking branch pushes no new content, so any push of already-published history (release tags on merged commits, re-pushing a reviewed commit under another name) was blocked wherever no receipt existed.",
+  "affected_population": [
+    "Every Desktop Release promotion (CI runner, no receipt) when the tag does not already exist",
+    "Developers pushing a tag or branch that points at commits already on origin"
+  ],
+  "scope_paths": [
+    "scripts/ponytail-review-branch.mjs"
+  ],
+  "entry_points": [
+    "scripts/ponytail-review-hook.mjs pre-push adapter calling verifyPushReceipt",
+    ".github/workflows/desktop-release.yml 'Create immutable tag' step (git push origin $RELEASE_TAG) via the installed hook"
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/ponytail-review-branch.mjs",
+    "tests": [
+      "scripts/ponytail-review-hook.node-test.mjs"
+    ],
+    "why": "verifyPushReceipt is the single place that decides which pushed refs need a receipt; the hook adapter only forwards Git's ref list."
+  },
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://git-scm.com/docs/githooks#_pre_push",
+      "checked_at": "2026-09-27",
+      "purpose": "Confirm pre-push receives <local ref> <local object name> <remote ref> <remote object name> lines, where the local object for an annotated tag is the tag object."
+    },
+    {
+      "kind": "official-doc",
+      "url": "https://git-scm.com/docs/git-for-each-ref#Documentation/git-for-each-ref.txt---containsltobjectgt",
+      "checked_at": "2026-09-27",
+      "purpose": "Confirm for-each-ref --contains lists refs whose history contains the given commit, peeling a tag object to its commit."
+    }
+  ],
+  "invariants": [
+    "A pushed ref needs a review receipt only if its object is not already contained in some remote-tracking branch; the exemption depends on whether the content is already on the remote, never on whether the ref is a tag.",
+    "Refs that do carry new content are still checked against the receipt tree and merge-base exactly as before, including in mixed pushes."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "scripts/ponytail-review-branch.mjs",
+      "symbol": "alreadyOnRemote"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/ponytail-review-hook.mjs",
+      "symbol": "verifyPushReceipt"
+    }
+  ],
+  "door_reduction": {
+    "before": 1,
+    "after": 2,
+    "why_not": "node scripts/door-map.mjs verifyPushReceipt alreadyOnRemote --roots=scripts: the hook adapter is the only caller of verifyPushReceipt, and alreadyOnRemote is the new predicate inside the same owner. No second decision point exists."
+  },
+  "generality_proof": "The rule applies to every ref kind and every caller of the hook (CI runner, developer machine) because it asks Git whether the object is already in remote-tracking history rather than special-casing release tags, CI environment variables, or workflow names.",
+  "shared_boundaries": [
+    {
+      "path": "scripts/ponytail-review-branch.mjs",
+      "symbol": "verifyPushReceipt",
+      "responsibility": "Decide which pushed refs carry new content and verify those against the receipt tree."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/ponytail-review-hook.mjs",
+      "entry_point": "pre-push adapter",
+      "disposition": "enforced",
+      "evidence": "Forwards Git's ref list to verifyPushReceipt and prints the exemption reason; no logic of its own."
+    },
+    {
+      "path": ".github/workflows/download-stats.yml",
+      "entry_point": "git push to stats-data",
+      "disposition": "not-affected",
+      "evidence": "The job never runs pnpm install, so no repository hook is installed on that runner."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every release promotion hits this path whenever the tag is new; it silently relied on the tag having been created by hand (the 0.22.1 run succeeded because the tag already existed).",
+    "same_class_scan": [
+      "Grep of .github/workflows for git push and pnpm install: only desktop-release.yml both installs dependencies and pushes; download-stats.yml pushes without installing.",
+      "node scripts/door-map.mjs verifyPushReceipt alreadyOnRemote --roots=scripts returned the two doors above."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/ponytail-review-branch.mjs",
+    "invariant": "Only refs whose content is not yet on the remote require a receipt.",
+    "failure_mode": "If the exemption is removed, the node-test that pushes an annotated tag on a remote-contained commit without a receipt fails; if the exemption keys on ref type instead of content, the test that pushes a tag on a new commit fails.",
+    "exception_policy": "none",
+    "strategy": "Ask Git (for-each-ref --contains over refs/remotes) per ref before loading the receipt; stale remote-tracking refs can only reduce exemptions.",
+    "artifacts": [
+      "scripts/ponytail-review-branch.mjs",
+      "scripts/ponytail-review-hook.node-test.mjs"
+    ]
+  },
+  "regression_tests": [
+    "scripts/ponytail-review-hook.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/ponytail-review-hook.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The existing verifier is corrected in place; no workflow bypass (--no-verify, core.hooksPath) is added."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Uses git for-each-ref only; no dependency changes.",
+    "exit_criteria": []
+  },
+  "migration": "None. Existing receipts and the release workflow are unchanged; the next promotion creates the tag without manual steps.",
+  "residual_risks": [
+    "If the runner's checkout has no remote-tracking refs (for example a shallow single-ref fetch), the exemption does not apply and the tag push is blocked again; desktop-release.yml currently fetches all branches."
+  ]
+}

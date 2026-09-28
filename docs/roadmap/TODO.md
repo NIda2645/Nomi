@@ -24,7 +24,9 @@
 | T-RL-08 | 拆解出来的秒数一堆小数 | done #795 | [原文 09-12](sources/2026-09-14-filehelper-transcript.md#09-12) | 已合（`shotTime.ts` 0.1s 量化是唯一 owner） |
 | T-RL-09 | 发版本身：0.21.0（8-27）仍是最新 release，主线积压三千多提交 | todo | 09-12 RC 切线拍板 | 列车合完打 RC；打包前置缺陷：`@anthropic-ai/sandbox-runtime` 原生二进制要 `asarUnpack` **且**显式递路径 |
 | T-RL-12 | v0.22.1 重打 RC：画布跟手（#871）+ Windows 修复（#862 #863 #864）+ 09-25 一批回归（#869 #870 #873 #874 #875 #876）+ 画布手感三改（#880） | doing | 用户 09-25 拍板「画布手感修完和 Windows 修复一起重打 RC」 | 协调会话推进：#880 合入 → release/0.22.1 并入 main → feel:nightly → RC → Windows 验收三项（卡顿巡检两遍 / Agent 三回合 / 打包沙箱）→ 用户 Mac 验收 → 点头再发；发版后回 #861 |
-
+| T-RL-13 | RC 从 main 触发、却把 release 分支填进 `ref` 输入：构建、验收全过，`Desktop Release` 到最后一步才报 `RC commit mismatch` 拒发 | todo（下一版） | 09-26 协调会话 v0.22.1 晋级被拦（Desktop Release run 36248271714；RC 36235580649 只能从同一提交重打成 36248506177） | 防线放在最早那一层（R17）：`.github/workflows/desktop-rc.yml` 的 validate 第一步比较 `github.sha` 与解析出来的 `inputs.ref`，不等就直接红（加规则先验它会红），`docs/release-process.md` §4 写明「Use workflow from 选 release 分支 / `--ref`」。另外 §5 的顺序要写清：release→main 的 PR 合并会触发 `delete_branch_on_merge` 删掉 release 分支，晋级前如果还要重打 RC，得先把分支推回原提交。教训见 `docs/lessons/rc-must-be-dispatched-on-the-release-branch.md` |
+| T-RL-14 | `Desktop Release` 在「Create immutable tag」失败：CI 上 `pnpm install` 的 postinstall（`scripts/install-git-hooks.cjs`）把开发者用的 pre-push 钩子也装上了，钩子要 Ponytail 收据，于是工作流自己往远端写版本标签被拦 | in-progress | 09-26 v0.22.1 晋级（run 36251951690 失败，本机先打同名标签后 run 36252239904 复用标签成功）；09-27 v0.22.2 同样被拦（run 36325671938，同法绕过后 run 36326044349 成功） | 改为在 `verifyPushReceipt` 判「内容在不在远端」：对象已在某条远端跟踪分支历史里＝推它没有新内容离开本机，不要收据；其余 ref 照旧校验。没采用原先「CI / GITHUB_ACTIONS 环境下不装钩子」：那是一个任何进程都能设的环境变量开关，本机设一下就绕过全部钩子；按内容判没有这个口子，还顺带放行开发者推已发布提交。node-test 覆盖已发布标签 / 新提交标签 / 混合推送 |
+| T-RL-15 | Agent 在跑时界面卡几分钟（渲染进程，行级 labels 每行每次重建 + 行未 memo） | done #904 | 09-27 用户反馈 + 主管 Windows 实测 | 已合 #904，随 v0.22.2 发布；修复前后同一 21 回合探针：最长连续卡顿 93s → 1.7s、>1s 卡顿 59 → 2 |
 ## B. Agent 质量
 
 > 用户 09-14 的验收句：「明显有问题的功能优化到可用 **+ Agent 优化到可用**」。
@@ -56,6 +58,16 @@
 | T-AG-28 | Agent 单张图生成完后，右上任务角标一直是 1（Run 转入「等粗剪 / 导出」） | todo（先问用户期望） | 09-26 协调会话收口 · 卡 task_a899deab | 单图意图的 Run 完成即结清，还是角标只数要人动手的 |
 | T-AG-29 | 画布写入与时间轴读取两条 lane 把描述 / 传输方法名（不是动词）交给失败措辞查表，可能对模型说「草稿可能已花钱」或报错工具名 | todo | 09-26 协调会话收口 · 卡 task_bbf12ce3 | 查表入参改为动词身份 |
 | T-AG-30 | 「生成全部」仍把 Agent 在跑的镜头算进去 | todo（先核实，多半已被 #875 修掉） | 09-26 协调会话收口 · 卡 task_3c59a3c1 | 真机核一遍，已修就改 done #875 |
+| T-AG-31 | 让 Agent「加一个图片节点，先别生成」：节点当场建好了，它却说「现在画布上还没有节点」 | todo（下一版） | 09-26 协调会话 v0.22.1 RC 安装包验收（Agent 三回合真对话，截图 `02-turn-create`） | 与 T-ED-02 同一族：**回执写死**。`electron/agentLane/laneExtendedTools.ts:82` 的 `nextActionFor` 在 `draft_shots` 成功时无条件回「Saving does not imply canvas placement」；可画布 Agent 的草稿每次改动都经 `productionGenerationOperationStore` 的 `onPlanChanged` → `canvasLandingHost.landDraftOnCanvas` 当场落成节点（项目开着就落），只有文稿来源的草稿才要用户点「放入画布」。模型照着回执说反话。修法照 T-ED-02：回执从真实落地结果派生（落没落、落成哪几个节点），不改一句静态文案了事；回归要带真实模型的工具写对率 / 回合成功率（R13）。0.22.0 就有，不是 0.22.1 的回归 |
+| T-AG-32 | 让 Agent「生成一张 16:9 横构图」：它把 `parameters: {aspect_ratio:"16:9", style, quality}` 写进了 `draft_shots`，存下来的候选参数却是 `{}`，卡上显示 1:1，出图也是 1:1——**没有任何报错回给模型**，它以为自己设好了 | todo（下一版） | 09-26 协调会话 v0.22.1 RC 安装包付费矩阵 T3（`agent-spend-real-image.paid.mjs`，截图 `01-paid-01-zh-spend-card-before-confirm`；工具轨迹里两次 `draft_shots` 都带 16:9） | 静默丢参数正是 `generationPlanningParameters.ts` 头注释要消灭的形状（「卡上选 2K、供应商收到 1k」那一族）：`executionContract.ts:263` 本来有 `unknown_parameter` 拒绝并给 `closestKey`，这次却没走到它。丢在哪一层还没数门（`draftShotsProjection.semanticsOf` 原样透传了 parameters，所以在宿主建候选那一侧）。修法：先 `node scripts/door-map.mjs` 数清候选参数的写入口，让不认识的键回到 `unknown_parameter` + 建议键（z-image-turbo 的画幅在档案里叫什么由目录派生），不许静默丢；全自动档没有卡给用户兜底，所以这条比有卡时更要紧。回归带真实模型写对率（R13）。是否 0.22.0 就有：未核 |
+| T-AG-33 | 「对话出片」最后一步断在导出：Agent 在画布面调不了 `export_video`（要导出面权限），回复里让用户「切到导出面或手动导出」 | todo（下一版） | 09-27 协调会话「一句话出片」付费验收（`tests/ux/shots/_promo-oneline.paid.mjs`，全自动档，deepseek-v3.2 + NB2 + Seedance 2.0，19 分钟 75 轮，截图 `09-t1023s`） | 先核实面权限是设计还是遗漏；定下来是「画布面也能导出」还是「回复里给一键导出」，别让用户自己找 |
+| T-AG-34 | Agent 生产运行出的 Seedance **视频**结果落进了 **image 类型**节点（`gen-v2-image-*`，`kind=image`、`result.type=video`） | todo（下一版，先查根因） | 同上（项目 `.nomi/project.json` 4 个 Seedance 节点全是 image） | `node scripts/door-map.mjs` 数生产运行物化节点的写口；视频镜头必须建 video 节点，查画布/时间轴有没有因此显示或导出异常 |
+| T-AG-35 | 全自动长任务中途反复停下，要追「继续」5 次才走完 | todo（下一版） | 同上（运行日志 `D:\tmp\promo-oneline.log` 的 running=false 段） | 看每次停下的原因（回合预算 / 等确认 / 模型自己收尾），分清是预算设计还是提前收工 |
+| T-AG-36 | 同一次任务里画布上建了两个「分镜表」节点 | todo（下一版） | 同上 | 分镜表物化要幂等（同一次操作复用已有节点） |
+| T-AG-37 | Agent 建了人物卡却没让后续镜头引用它，长相漂移（人物卡短发小孩 → 后几镜长发大人） | todo（下一版） | 同上（产出 `D:\Nomi-film-stage\public\film\oneline`） | 让 Agent 走分镜表「参考卡锁定」那条路；与「短片导演」技能一起设计 |
+| T-AG-38 | Windows 上面板提示「命令需逐条确认：命令沙箱这次没能启动」 | todo（先核实） | 同上（截图 `09-t1023s` 面板底部） | 真机核实沙箱为什么起不来，是否影响全自动档 |
+| T-QA-40 | 走查拍不到安定截图：Agent 长任务后界面几何持续变化 30 秒以上（`screenshotSettled` 拒绝截图） | todo（先核实） | 同上（`FAIL.png`，报错「没有未结束的动画，几何一直在变」） | 找出反复重排的浮层（疑似画面校验卡或「N 个新节点在下方」提示） |
+| T-AG-39 | 「对话出大片」丝滑化：「短片导演」技能 + Agent 空态入口 | todo（下一版，方案待拍板） | 09-27 用户想法（「用户是不是可以和你一样在对话里直接做」）+ 上面这次验收 | 技能替用户补上做法（先定人物、先关键帧后首帧视频、排进时间轴、导出）；空态加一个入口；T-AG-33~37 是它的验收清单 |
 
 ## C. 画布与节点
 
@@ -87,6 +99,7 @@
 | T-CV-24 | ComfyUI 参数行换绑节点后仍留旧的自动名与旧键（hiresFix 开关显示成「随机种子」） | todo | 09-26 协调会话收口 · 卡 task_69303d48 | 自动派生的名与键跟着节点走，手改过的保留 |
 | T-CV-25 | ComfyUI 导入面板自动建议的参数名没走 i18n（英文界面显示「随机种子」）；「检测到视频工作流」一行被挤折行 | todo | 09-26 协调会话收口 · 卡 task_28e66834 | 标签进 i18n + 修折行 |
 | T-CV-26 | ComfyUI 导入 IPC 的 enumOptions 形状在渲染层手抄 5 份，两处消毒的失败策略相反 | todo | 09-26 协调会话收口 · 卡 task_e6f1844d | 契约类型放共享层，一个判据 |
+| T-CV-27 | 生成图在节点里留白边：落地丢了原始宽高 + 画布显示缩略图测量被丢弃 | done | 09-27 用户反馈截图 | 已在 `claude/canvas-media-aspect-from-landing` 收口：共享结果落地、制作/恢复/历史、存量 sidecar 回填；聚焦 Vitest 与 typecheck 通过，详见 `docs/plan/2026-09-27-canvas-media-aspect-from-landing.md` |
 
 ## D. 设计落地（界面大改）
 
@@ -119,6 +132,7 @@
 | T-AG-21 | `useAgentUsageStore` 的 token 是跨项目累计的（六条 C 里显式标了 `process` 寿命） | todo | 09-18 批次 3 收尾 | 要一句拍板：默认改成「按项目 / 会话归零」还是保持全局累计。今天的写法让用户看到的数字不对应他正在做的这个项目 |
 | T-ED-06 | 拆解中断后分镜表节点**永久卡死不报错** | doing `fix/deconstruction-node-terminal-state-20260922` | [付费走查 09-17 §6.5](../audit/2026-09-17-post-804-walkthrough.md) · 09-22 用户拍板为发版前阻断 | 终态判定收成唯一 owner（`deconstructionLifecycle`），状态词表加 `interrupted` / `cancelled`，新增取消入口；五种中断逐条判过。方案 [`2026-09-22-deconstruction-node-terminal-state.md`](../plan/2026-09-22-deconstruction-node-terminal-state.md) · 合同 `docs/fixes/2026-09-22-deconstruction-node-terminal-state.root-cause.json` · 真机冷重启走查 `tests/ux/deconstruction-interrupted-recovery.walk.mjs`（零成本）。合入 main 后改 done |
 | T-ED-07 | `edit_timeline` 的卡说不清它要改什么：只有通用能力卡，没有逐条摘要与计划高亮带 | todo | 09-18 批次 3 收尾（F 块 lane 换锚点后暴露） | 产品问题不是 bug：按 R8 先出样张再改；`agent-timeline-ops.walk.mjs` 保持红，红在这条真需求上 |
+| T-ED-08 | 英文界面单复数整体没处理：底栏「Timeline 1 clips」、Agent 面板「1 tools」、分镜编辑器「Storyboard · 1 shots」「Changes here apply to all 1 shots」；另外分镜视频行最右的「Generate」按钮在英文下被裁掉一截 | todo | 09-26 协调会话 v0.22.1 RC 付费矩阵 T3 / T5 / T6 的英文截图 | 根因是写法族，不是某一句：en 包里 `{{count}} <复数名词>` 一律写死复数，至少 `generationCommon.ts`（:1514 `clipSummary`、:1936、:2030-2031）、`agentPanelV4.ts`（:623-624 `processSummary*`、:895-905 `spend*`）、`storyboardEditor.ts`（:536、:610）、`shotTable.ts`、`timelineEditor.ts` 五个文件。修法：全部改成 i18next 的 `_one` / `_other`（zh 不受影响），并给 `check:i18n` 加一条「en 串里出现 `{{count}}` 却没有 `_one` 变体」的规则（R17：加规则先验它会红），不然下一句还会写回去。「Generate」被裁照 R15 的 1.5–2 倍串长看一眼那一行的布局 |
 | T-DS-16 | 英文轨节点标签同时印「Shot 1」和「镜头 1」（R15） | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | 一处标签两个来源，其中一个绕过了 i18n **09-18 批次 3 收尾真机 EN 截图又撞到同族第二处**：画布节点标题行的种类角标在 English 下仍印「图片」（`closing-shots/model-box-open-en.png`，与它并排的 `Shot 1` 已经是英文）。同一行里一半翻了一半没翻，修的时候一起扫。 |
 | T-DS-17 | 拆解表画面六格失败时**一个字原因都没给** | todo | [付费走查 09-17](../audit/2026-09-17-post-804-walkthrough.md) | `visionFailed` 已经带着 `failureReason`，UI 没渲染它——不是没有原因，是没往外说 |
 | T-DS-18 | 分镜面多选浮条 `sticky bottom-2` **永不生效** | todo | 09-17 W-03 工人结构性发现 | 浮条住在 `[data-storyboard-rows]` 里，而那个容器是 `overflow-hidden` → sticky 没有可滚动的定位祖先，等于普通静态定位。批量选中后浮条不跟随，用户滚下去就看不见它了。与 T-DS-14 同一片区域，一起改 |
@@ -176,6 +190,7 @@
 | T-MO-27 | 自定义中转的「测试连接」/协议自动探测同样静默发真实 `POST /chat/completions` | todo | 09-22 T-MO-10 数门时发现 | 本概念（凭据验证/自检的付费边界）的第 5 扇门：`electron/ai/onboarding/onboardingIpc.ts` 的 `probeOneProtocol`。它要判的是「这个中转说哪套协议」，模型列表答不了这个问题，所以不能简单改免费。没随 T-MO-10 一起改的理由：在发版前阻断 lane 里给每一次「测试连接」加一张确认卡，而那张卡在渲染层不可达时 fail-closed，会把自定义供应商向导变成死路。做法待定：或者先探 `GET /models` 再只对真需要协议判别的那一步问、或者把这一下的费用如实写在按钮上并接进同一份探测策略。**09-22 用户拍板：发后修，本批已加提示**（`src/ui/onboarding/OnboardingWizard.tsx` 的 `modelSetup.testConnectionSpendHint`，中英两语，只加文案不改行为；接进 `credentialProbePolicy` 仍是 T-MO-27 本体）。 |
 | T-MO-26 | 跨字段约束没有家：散在档案注释、手写 `request_transform`、供应商报错三处；UI 仍把非法组合摆成可选 | todo | 09-18 批次 3 收尾 | 最早能拦住的那层是 UI 置灰（R17），那要给档案体系加「跨字段约束」这个声明位；今天只能在发请求前拦。与 `vendorParams` / `paramMap` 两套机制解决同一类问题、可合并那条一起做 |
 | T-MO-28 | 模型雷达 09-24 发现 13 个新模型待分诊；论文雷达 09-07 起静默停跑（本机没装 `nomi-model-radar` / `nomi-research-radar` 技能） | todo（发版后） | 09-26 协调会话收口 · 卡 task_56ac7b30 · 用户 09-26 拍板 | 先装回雷达技能；分诊挑 2–3 个出接入方案；节奏：每版最多接 1–2 个新模型 |
+| T-MO-29 | KIE/Suno 回调地址 `https://nomiaqm.com/api/vendor-callbacks/kie/suno/ack` 一个语义多份定义：`electron/catalog/kieSunoAudio.ts`、`electron/shared/modelArchetypes/sunoAudio.ts`（3 处）、生成文件 `archetypeWireDefaults.audio.generated.ts`，站点侧在 `worker/kieSunoAck.ts` | todo | 09-27 修 T-WB-06 时发现（R14.1 同一语义几份定义） | 定一个 owner（档案侧常量），其余引用它；worker 侧路径与之对等棘轮 |
 
 ## G. 生态与插件
 
@@ -248,6 +263,9 @@
 | T-QA-36 | **分镜批量生成完，程序自己再调一次文本模型审片（花用户的钱，没问）**：`batchPlanPreview.ts` 成功后 `verifyShotsAndReport` → `shotVerifyJudge` 发 `/v1/chat/completions`；开关 `isShotVerifyEnabled` 默认开 | doing（本版已改：批量后不再自动审片；设置开关下一版） | 09-26 协调会话：`core-a-creation-plans.e2e.mjs` 在 loopback 上抓到 1 次「计划外」的 chat 请求；N4 会话此前也报过「生成后的自动镜头审核会调用文本模型」 | 属花钱边界：用户点的是「生成」，没点「审片」。要定的是默认开还是关、开着时要不要在确认卡 / 设置里说清。走查那一步现在红在这里  **09-26 用户拍板**：只关「分镜表生成全部」之后那一次自动审片（`batchPlanPreview.ts` 的触发删掉）；Agent 做片流程里的审片阶段照旧（`capabilityApplyHandler.verifyShotsForProduction`）。设置开关（下一版）先出样张再做，届时自动审片挂在开关后面 |
 | T-QA-38 | 走查 `agent-inflight-shots-reload` 判不了「重开后底栏『生成全部』不算在跑的制作镜头」：场景里两镜都归制作 Run、没有别的可生成节点，底栏本来就不出现，原断言「不在或置灰」永远过，已删 | todo | 09-26 协调会话收尾 N3c 时 check:walkthroughs 抓到（absence-without-baseline） | 场景里加一张用户自己的闲置节点作阳性对照：重开后底栏在、数的是 1 不是 3。归属判据现由 #875 单测守 |
 | T-QA-37 | 三条走查与现状漂移，不在任何 CI 链里：`agent-runtime-production.walk.mjs`（内联拆镜后等批准卡，但夹具的批准策略是「自动改」，方案直接写进去了）、`process-feedback-electron.e2e.mjs`（页面中途没了，catch 里截图先炸、原始错误被吞）、`decompose-ui.walk.mjs`（依赖本机 `.tmp/decompose-fixture.jpg`，仓库里没有） | todo | 09-26 协调会话在 `claude/walks-single-run-no-card` 上逐条真跑（Windows） | 前两条在本分支改动之前就红；另有两条只能在 Mac 验：`agent-runtime-video-export`（写死 `/opt/homebrew/bin/ffmpeg`）、`canvas-shortcut-parity`（要 `NOMI_REAL_MEDIA_DIR` 下的 4K HEVC 真素材） |
+| T-QA-39 | `pnpm run feel:nightly` 是空跑：截的是 `tests/ux/journeys/catalog.json` 里手写的 HTML 片段，不是产品 | todo | 09-26 协调会话打 v0.22.1 RC 时按 release-process 跑它才发现 | `scripts/feel-nightly.mjs:52` 用 `page.setContent(state.html)` 渲染夹具，记录里自己也写着 `evidence: rendered-fixture-not-product-walkthrough`——接触表「没有未分诊的发现」证明不了产品手感。发版清单（`docs/release-process.md:174`「RC 前必须运行…接触表无未分诊体感发现」）却把它当一道验收门。要么让它驱动真实应用（复用 `tests/ux/_walkthrough.mjs` 的真实启动），要么从发版清单里拿掉、别再当证据；二选一，不留两份 |
+| T-QA-41 | 改了非代码文件（README、`marketing/_headers`、`wrangler.json`、docs）时，Unit 的「相关测试」一条都选不中：`scripts/test-focused.mjs` 只给 `.ts/.js` 源码找同名测试和 import 关联，而有一批测试是用 `fs.readFileSync` 直接读这些文件做契约的。#901 重写 README 丢了「24 MCP tools」，Unit 绿着合进 main；到 #903 碰了 eslint 配置升全量才被 `electron/capabilityCore/nomiMcpProductionRuns.test.ts` 抓到 | todo | 09-27 #903 CI 实查 | 选测时对改动的非代码文件，按「测试源码里出现该文件的仓库相对路径」补选（README.md / wrangler.json 等字面量），读不到字面量的（`path.join(dir, name)`）改成字面量；加一条「改 README 必选中文档契约测试」的自测 |
+| T-QA-42 | 参考图被当成「HTML/XML/SVG 文本」拒收：`assetLocalization` 在前 2KB 任意位置找 `<svg`/`<?xml`，GPT Image 等生成的 PNG 带 C2PA（`caBX` 块里有 SVG 图标）、XMP 元数据也会中招；错误没带码，错误卡甩锅「服务商故障」。同一判据仓库里三份定义，只这份没锚定开头 | in-progress | 0.22.1 用户群反馈 + 应用内反馈 NF-0927-0001（2026-09-27） | 收成 `mediaTypes.isMarkupMasquerade` 一个 owner（锚定开头、魔数优先）+ `asset-invalid` 机器码（未计费、提示换素材）→ 0.22.3 |
 
 ## J. 官网与发布
 
@@ -257,6 +275,9 @@
 | T-WB-02 | logo 与真实产品不一致 | done #788 | [原文 09-13 19:12](sources/2026-09-14-filehelper-transcript.md#09-13) | 已合 |
 | T-WB-03 | 产品发布会：PPT（对标 Apple）+ 逐字稿 + 图片/视频素材 + 特效 + 音乐 | hold | 09-08 用户加入，排最后 | **先写逐字稿**（逐字稿就是定位练习）；demo 段全部真机录屏，片子尽量用 Nomi 自己做 |
 | T-WB-04 | 每周 RC 的发版时钟；`docs-autosync` 从来没能开 PR（仓库设置禁止 Actions 建 PR），**债已经攒出来了**：09-14 实测 `origin/main` 上 `check:docs-index` 超基线 136 篇、`check:doc-status` 超基线 101 篇 | todo | 09-07 裁决 · 09-09 实核 · 09-14 实测 | 这两个门岗在 `gates:contracts` 里是 advisory 所以没人看见；**要么用户开「Actions 可建 PR」，要么手工 cherry-pick `docs/autosync-*` 分支补齐** |
+| T-WB-05 | 官网自动部署停了：Cloudflare 免费档每月 3000 构建分钟被**分支预览构建**烧光（9 月 624 个 PR，每推一次都装全套 Electron 依赖；官网构建本身零依赖），09-26 06:59 起所有构建失败，线上停在 0.22.0 | hold（等用户改后台） | 09-27 协调会话实查（Workers Builds 检查全红、`wrangler deploy --dry-run` 通过） | 用户在 Cloudflare 后台：分支控制关「Enable Preview Builds」、构建变量加 `SKIP_DEPENDENCY_INSTALL=1`；10 月额度重置前靠本机 `npx wrangler deploy`（09-27 已手动发布 #901） |
+| T-WB-06 | 官网视频不支持分段请求（Range 恒回 200 整份）：Safari / iPhone 播不了宣传片，Chrome 跳到第 58 秒要先下完前面 | done #903 | 09-27 部署后线上实测 | 已合 #903 并部署；09-27 线上核对 Range 206 与原文件逐字节一致、越界 416、功能段循环正常 |
+| T-WB-07 | 官网没有 404 页：不存在的路径回空白 404（此前是 worker 的纯文本 `Not Found`） | todo | 09-27 修 T-WB-06 时发现 | 新画一页，按 R8 先出样张，放 `marketing/404.html`（`not_found_handling = "404-page"` 已配） |
 
 ---
 
