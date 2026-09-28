@@ -11,7 +11,6 @@ export const zhStoryboardEditor = {
     capacityExceeded: '第 {{index}} 镜的参考槽无法容纳角色图或缺少必填输入。请调整参考或模型后重试。',
   },
   overrides: {
-    badge: '画布改的：{{value}}',
     effective: '按画布上的「{{value}}」生成',
     adopt: '采纳方案',
     discard: '丢弃',
@@ -379,7 +378,6 @@ export const enStoryboardEditor = {
     rowIgnored: 'Reference images will not be used',
   },
   overrides: {
-    badge: 'Canvas edit: {{value}}',
     effective: 'Generate using canvas value “{{value}}”',
     adopt: 'Adopt Plan',
     discard: 'Discard',
