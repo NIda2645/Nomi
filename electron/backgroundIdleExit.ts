@@ -11,40 +11,32 @@ export function createBackgroundIdleExit(options: {
   isBackground: boolean
   hasInFlightWork: () => boolean
   quit: () => void
-  now?: () => number
-  setTimer?: (callback: () => void, delay: number) => ReturnType<typeof setTimeout>
-  clearTimer?: (timer: ReturnType<typeof setTimeout>) => void
-  idleMs?: number
 }): BackgroundIdleExit {
-  const now = options.now ?? (() => Date.now())
-  const setTimer = options.setTimer ?? ((callback, delay) => setTimeout(callback, delay))
-  const clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer))
-  const idleMs = options.idleMs ?? BACKGROUND_IDLE_EXIT_MS
-  let lastActivityAt = now()
+  let lastActivityAt = Date.now()
   let windowShown = !options.isBackground
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const schedule = () => {
     if (!options.isBackground || windowShown) return
-    if (timer !== undefined) clearTimer(timer)
-    timer = setTimer(() => {
+    if (timer !== undefined) clearTimeout(timer)
+    timer = setTimeout(() => {
       timer = undefined
-      if (!windowShown && !options.hasInFlightWork() && now() - lastActivityAt >= idleMs) options.quit()
+      if (!windowShown && !options.hasInFlightWork() && Date.now() - lastActivityAt >= BACKGROUND_IDLE_EXIT_MS) options.quit()
       else schedule()
-    }, idleMs)
+    }, BACKGROUND_IDLE_EXIT_MS)
   }
 
-  const touch = (at = now()) => {
+  const touch = (at = Date.now()) => {
     lastActivityAt = at
     schedule()
   }
   const markWindowShown = () => {
     windowShown = true
-    if (timer !== undefined) clearTimer(timer)
+    if (timer !== undefined) clearTimeout(timer)
     timer = undefined
   }
   const dispose = () => {
-    if (timer !== undefined) clearTimer(timer)
+    if (timer !== undefined) clearTimeout(timer)
     timer = undefined
   }
 
