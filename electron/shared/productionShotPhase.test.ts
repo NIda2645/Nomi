@@ -224,6 +224,17 @@ describe('decideShotClaim — 画布能不能再发这一镜', () => {
 })
 
 describe('decideShotClaim — durable matrix regressions', () => {
+  it('does not persist a canvas claim for a mismatched shot on a single-shot plan', () => {
+    const single = run({ shots: undefined, jobs: [] })
+    const before = JSON.stringify(single)
+    const result = applyProductionCommand(single, {
+      commandId: 'claim-mismatched-single', expectedRevision: single.revision, type: 'shot.claim',
+      payload: { shotId: 'not-the-single-shot', by: 'canvas' }, issuedAt: NOW,
+    }, NOW)
+    expect(result.run).toEqual(single)
+    expect(JSON.stringify(result.run)).toBe(before)
+  })
+
   it('running canvas claim is rejected for a queued job; stopped runs release it', () => {
     const pending = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
     expect(() => applyProductionCommand(pending, {

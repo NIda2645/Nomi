@@ -542,13 +542,21 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
     }
   }
   const claimReason = /production_shot_claimed:\s*([a-z_]+)/.exec(raw)?.[1]
-  if (claimReason === 'in_flight' || claimReason === 'needs_reconcile') {
+  const claimCopy: Record<string, { key: 'queued' | 'awaitingConfirmation' | 'inFlight' | 'needsReconcile'; action: GenerationErrorAction }> = {
+    queued: { key: 'queued', action: 'view-task' },
+    awaiting_confirmation: { key: 'awaitingConfirmation', action: 'view-task' },
+    in_flight: { key: 'inFlight', action: 'view-task' },
+    needs_reconcile: { key: 'needsReconcile', action: 'reconcile' },
+  }
+  const copy = claimReason ? claimCopy[claimReason] : undefined
+  if (copy) {
     return {
       kind: 'unknown',
-      reason: i18n.t(claimReason === 'in_flight' ? 'generationCommon.progress.inFlight' : 'generationCommon.progress.needsReconcile'),
-      hint: '',
+      reason: i18n.t(`generationCommon.observability.error.shotClaimed.${copy.key}.reason`),
+      hint: i18n.t(`generationCommon.observability.error.shotClaimed.${copy.key}.hint`),
       raw,
-      ...narrateGenerationErrorActions('unknown'),
+      primary: copy.action,
+      secondary: copy.action === 'reconcile' ? 'retry' : 'reconcile',
     }
   }
   const kind = detectLegacyErrorKind(raw)

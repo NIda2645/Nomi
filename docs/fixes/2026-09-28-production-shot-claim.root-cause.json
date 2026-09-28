@@ -18,6 +18,7 @@
     "electron/productionRun/productionRunState.ts",
     "electron/productionRun/productionRunTypes.ts",
     "electron/runtime.ts",
+    "electron/capabilityCore/appIntegration.ts",
     "electron/shared/decideShotClaim.ts",
     "electron/shared/productionShotJobs.ts",
     "electron/shared/productionShotPhase.test.ts",
@@ -29,6 +30,10 @@
     "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
     "electron/vendor/vendorHttp.ts",
     "src/workbench/generationCanvas/runner/vendorErrorIpc.ts"
+    ,"src/workbench/observability/classifyError.ts"
+    ,"src/workbench/observability/narrate.ts"
+    ,"src/workbench/generationCanvas/nodes/NodeErrorReport.tsx"
+    ,"src/i18n/locales/generationCommon.ts"
   ],
   "entry_points": [
     "canvas shot.claim",
@@ -247,12 +252,32 @@
       "kind": "write",
       "path": "src/workbench/generationCanvas/runner/vendorErrorIpc.ts",
       "symbol": "parseVendorErrorFromMessage"
+    },
+    {
+      "kind": "write",
+      "path": "src/i18n/locales/generationCommon.ts",
+      "symbol": "shotClaimed"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/observability/narrate.ts",
+      "symbol": "GenerationErrorAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "symbol": "NodeErrorReport"
     }
   ],
   "door_reduction": {
-    "before": 39,
-    "after": 39,
-    "why_not": "?????????????????????????????????? decideShotClaim?Run reducer?runtime claim gate ? IPC ????????????????????"
+    "before": 43,
+    "after": 43,
+    "why_not": "门表仍保留多个入口：decideShotClaim 是共享判定边界，Run reducer 是唯一持久化写口，runtime 是画布提交闸，beforeDispatch 是生产派发闸，IPC/runTask 是通用任务入口；它们各自服务不同生命周期，合并会扩大权限边界。门表已用 node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch 重新生成并在交付验证中复核。"
   },
   "generality_proof": "Single-shot and multi-shot plans now share productionShotJobs for correspondence, decideShotClaim for ownership, and reducer persistence for claims; scheduler and runtime callers therefore see the same attempt-scoped result.",
   "shared_boundaries": [

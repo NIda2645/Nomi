@@ -61,6 +61,9 @@ export function decideShotClaim(
   if (plan.state === "cancelled") return decision("canvas", "plan_cancelled", requester);
 
   const single = !plan.shots?.length;
+  // A single-shot plan has one canonical identity: its candidate ID. Treat a
+  // different binding as missing instead of applying a plan-level claim to it.
+  if (single && shotId !== plan.candidate?.candidateId) return decision("none", "missing_shot", requester);
   const shot = single ? undefined : plan.shots?.find((candidate) => candidate.shotId === shotId);
   if (!single && !shot) return decision("none", "missing_shot", requester);
   if (shot?.included === false) return decision("canvas", "shot_excluded", requester);

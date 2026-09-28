@@ -332,7 +332,10 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
           code: 'production_shot_claimed', reason: decision.reason,
         });
       }
-      if (!current || decision.reason === 'canvas_claimed') break;
+      // Only the shared decision may grant a canvas-owned claim. A missing or
+      // mismatched shot is an ordinary canvas path and must never write a
+      // plan-level claim that can lock the whole single-shot run.
+      if (!current || decision.holder !== 'canvas' || decision.reason === 'canvas_claimed') break;
       try {
         service.repository.execute(projectId, productionRunId, {
           commandId: `shot.claim:${productionRunId}:${productionShotId}`,

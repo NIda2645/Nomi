@@ -2,7 +2,7 @@ import React from 'react'
 import { GenerationStatusBar } from './GenerationStatusBar'
 import { MODEL_ACCESS_ENTRY } from '../../../../electron/shared/contracts/modelAccessCapabilities'
 import { useTranslation } from 'react-i18next'
-import { IconChevronDown, IconChevronRight, IconRefresh, IconReplace, IconSettings, IconWand, IconX } from '@tabler/icons-react'
+import { IconChevronDown, IconChevronRight, IconRefresh, IconReplace, IconSettings, IconWand, IconX, IconClipboardCheck } from '@tabler/icons-react'
 import { cn } from '../../../utils/cn'
 import { WorkbenchButton } from '../../../design'
 import { isKnownVendor } from '../../../config/knownVendors'
@@ -16,12 +16,15 @@ import { narrateErrorActionLabel, narrateModelKind, type GenerationErrorAction }
 import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 import { stageForGenerationError } from '../../../ui/community/feedbackTypes'
 import { builtinVendorKeyOfKey } from '../../../../electron/shared/builtinVendorIdentity'
+import { revealNotificationTarget } from '../../../ui/notificationPolicy'
 
 const ACTION_ICON: Record<GenerationErrorAction, typeof IconRefresh> = {
   retry: IconRefresh,
   'switch-model': IconReplace,
   'open-model-access': IconSettings,
   'fix-model-kind': IconWand,
+  reconcile: IconClipboardCheck,
+  'view-task': IconClipboardCheck,
 }
 
 /**
@@ -119,6 +122,12 @@ export function NodeErrorReport({
     window.dispatchEvent(new CustomEvent('nomi-open-model-catalog'))
   }, [])
 
+  const handleReconcile = React.useCallback((event: React.MouseEvent) => {
+    event.stopPropagation()
+    const projectId = typeof meta?.projectId === 'string' ? meta.projectId : ''
+    void revealNotificationTarget({ projectId, taskCenter: true })
+  }, [meta])
+
   /**
    * 一键改对类型：改 kind 的同时按新 kind 重建调用通道（electron 侧 retypeModel 单事务），改完直接重跑。
    * 只有在**三个事实都齐**时才给这个按钮：模型地址（节点 meta 的双键）+ 错误里带出的目标类型。
@@ -166,6 +175,8 @@ export function NodeErrorReport({
     'switch-model': handleSwitchModel,
     'open-model-access': handleOpenModelAccess,
     'fix-model-kind': kindFixTarget ? handleFixModelKind : undefined,
+    reconcile: handleReconcile,
+    'view-task': handleReconcile,
   }
   const primaryAction = actionHandlers[report.primary] ? report.primary : 'open-model-access'
   const secondaryAction = report.secondary !== primaryAction && actionHandlers[report.secondary] ? report.secondary : null

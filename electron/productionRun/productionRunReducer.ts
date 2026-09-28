@@ -431,6 +431,10 @@ export function applyProductionCommand(
       if (by === "production") {
         return { run: current, eventType: "shot.claimed", message: shotId };
       }
+      // A canvas claim is only durable when the shared decision explicitly
+      // assigns ownership to canvas. `holder: none` covers missing/mismatched
+      // shot IDs and must remain a no-op, especially for single-shot plans.
+      if (decision.holder !== "canvas") return { run: current, eventType: "shot.claimed", message: shotId };
       const pending = new Set<ProductionJob["status"]>(["planned", "authorization_required", "authorized"]);
       const latest = latestJobForShot(current, shotId);
       const claim = { by: "canvas" as const, attempt: latest?.attempt ?? 1, claimedAt: now };
