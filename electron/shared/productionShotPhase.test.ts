@@ -245,6 +245,16 @@ describe('decideShotClaim — durable matrix regressions', () => {
     }, NOW)).toThrow(/production_shot_claimed: in_flight/)
   })
 
+  it('a canvas claim record never outranks a same-attempt job that may already be paid', () => {
+    const r = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'polling')] })
+    r.generationPlan!.shots![0].claim = { by: 'canvas', attempt: 1, claimedAt: NOW }
+    expect(decideShotClaim(r, 's1', 'canvas')).toMatchObject({ holder: 'production', reason: 'in_flight', granted: false })
+    r.jobs[0] = job('s1', 'reconciling')
+    expect(decideShotClaim(r, 's1', 'canvas')).toMatchObject({ holder: 'production', reason: 'needs_reconcile', granted: false })
+    r.jobs[0] = job('s1', 'detached')
+    expect(decideShotClaim(r, 's1', 'production')).toMatchObject({ holder: 'canvas', reason: 'canvas_claimed', granted: false })
+  })
+
   it('unknown/reconciling remain production-owned', () => {
     for (const status of ['submission_unknown', 'reconciling'] as const) {
       const result = decideShotClaim(run({ status: 'needs_attention', shots: [{ shotId: 's1' }], jobs: [job('s1', status)] }), 's1', 'canvas')

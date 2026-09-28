@@ -70,13 +70,14 @@ export function decideShotClaim(
   const gateRejected = gate?.status === "rejected" || gate?.status === "expired" || gate?.status === "revoked";
   const job = latestJobForShot(run, shotId);
   const claim = single ? plan.claim : shot?.claim;
+
+  // Money that may already be spent outranks every other signal, including a canvas claim record:
+  // a detached or claimed shot may finish an already-paid attempt, but never starts a new one.
+  if (job && NEEDS_RECONCILE.has(job.status)) return decision("production", "needs_reconcile", requester);
+  if (job && IN_FLIGHT.has(job.status)) return decision("production", "in_flight", requester);
   if (claim?.by === "canvas" && claim.attempt === (job?.attempt ?? 1)) {
     return decision("canvas", "canvas_claimed", requester);
   }
-
-  // A detached shot may finish an already-paid attempt, but never starts a new one.
-  if (job && NEEDS_RECONCILE.has(job.status)) return decision("production", "needs_reconcile", requester);
-  if (job && IN_FLIGHT.has(job.status)) return decision("production", "in_flight", requester);
   if (detached) return decision("canvas", "canvas_detached", requester);
 
   if (plan.state !== "submitted") {
@@ -93,7 +94,7 @@ export function decideShotClaim(
       : decision("production", "awaiting_confirmation", requester);
   }
   if (job && terminalStatus(job.status)) return decision("canvas", "terminal", requester);
-  if (job && (job.status === "authorization_required" || job.status === "authorized")) {
+  if (job && (job.status === "planned" || job.status === "authorization_required" || job.status === "authorized")) {
     return STOPPED_RUNS.has(run.status)
       ? decision("canvas", "run_stopped", requester)
       : decision("production", "queued", requester);
