@@ -231,9 +231,9 @@ describe("P4 S4 batch scheduler — budget halt", () => {
     const run = repository.read("project-1", "op-batch")!;
     // Run is halted (needs_attention) — a queryable stop, never silent over-spend.
     expect(run.status).toBe("needs_attention");
-    // The gate froze shot-c too, but the capped ledger prevents provider submission.
+    // The capped ledger prevents provider submission and returns shot-c to a fresh human authorization gate.
     const pendingShot = run.jobs.find((j) => j.metadata?.shotId === "shot-c");
-    expect(pendingShot).toMatchObject({ status: "authorized" });
+    expect(pendingShot).toMatchObject({ status: "authorization_required" });
     expect(pendingShot?.providerTaskId).toBeUndefined();
   });
 

@@ -428,7 +428,9 @@ export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
     const shot = plan.shots.find((candidate) => candidate.shotId === authorized.shotId);
     const contract = shot?.contract;
     const existing = input.run.jobs.find((job) => job.jobId === authorized.jobId);
-    if (!shot || !contract || !existing || existing.status !== "authorized" || existing.providerTaskId) {
+    const canvasClaimed = existing?.status === "detached" && existing.errorCode === "canvas_claimed";
+    const continuationPending = existing?.status === "authorization_required";
+    if (!shot || !contract || !existing || (!canvasClaimed && !continuationPending && existing.status !== "authorized") || existing.providerTaskId) {
       throw new Error(`Generation continuation job is not safely pending: ${authorized.shotId}`);
     }
     const expectedJobId = productionGenerationJobId(input.run.runId, contract.contractHash, authorized.attempt, shot.shotId);

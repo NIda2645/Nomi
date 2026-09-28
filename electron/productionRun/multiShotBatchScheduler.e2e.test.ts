@@ -7,11 +7,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { compileExecutionContract, type PlanCandidate } from "../capabilityCore/executionContract";
 import { createModuleRegistry } from "../capabilityCore/moduleRegistry";
 import { createGenerationRuntimeAdapter, type GenerationProvider } from "../capabilityCore/generationRuntimeAdapter";
-import { prepareProductionGenerationReauthorization } from "./prepareProductionGenerationAuthorization";
+import {
+  prepareProductionGenerationContinuationAuthorization,
+  prepareProductionGenerationReauthorization,
+} from "./prepareProductionGenerationAuthorization";
 import { createProductionGenerationSubmission } from "./productionGenerationSubmission";
 import { sealAndApproveProductionGeneration } from "./productionGenerationAuthorizationTestUtils";
 import { createProductionRunRepository } from "./productionRunRepository";
 import { createMultiShotBatchScheduler } from "./multiShotBatchScheduler";
+import { deriveBatchPlan } from "./batchScheduleDerivation";
 import { currentAnchorCheckpointGate } from "./anchorCheckpoint";
 import { createProductionShotDispatchGuard } from "./productionShotDispatchGuard";
 import { decideShotClaim } from "../shared/decideShotClaim";
@@ -97,7 +101,7 @@ function shotEntry(shotId: string, prompt: string, role: "anchor" | "shot"): Pro
   return { shotId, ...(role === "anchor" ? { role } : {}), candidate: { ...cand, sealedContractHash: contract.contractHash }, contract, approvedReceiptId: "receipt-plan", updatedAt: now() };
 }
 
-function setup(shots: ProductionGenerationShot[]) {
+function setup(shots: ProductionGenerationShot[], maximumSpend: number | null = null) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-batch-e2e-"));
   roots.push(root);
   const repository = createProductionRunRepository({ projectDirResolver: (p) => (p === "project-1" ? root : null), now });
@@ -120,6 +124,7 @@ function setup(shots: ProductionGenerationShot[]) {
     }],
     multiShot: { shots, planHash: "plan-hash-batch" },
     resolveShotPrice: () => ({ known: true, amount: 6 }),
+    maximumSpend,
     receiptId: "receipt-plan",
     now: now(),
   });
@@ -257,6 +262,66 @@ describe("B3 production/canvas claim integration matrix", () => {
       expect(submits).toHaveLength(2);
       const second = prepareProductionGenerationReauthorization({ lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 0, run: rejected, shotId: "shot-1", providers: [loopbackProvider(vendor.origin, submits)], resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock() });
       expect(second.attempt).toBeGreaterThan(rework.attempt);
+    } finally { await vendor.close(); }
+  });
+
+  it("budget-halted shot can be claimed by canvas once, then continuation approval does not resubmit it", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot"), shotEntry("shot-2", "b", "shot")], 6);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(1);
+      let run = repository.read("project-1", "op-batch")!;
+      expect(run.status).toBe("needs_attention");
+      expect(run.jobs.find((job) => job.metadata?.shotId === "shot-2")?.status).toBe("authorization_required");
+
+      const claimed = repository.execute("project-1", "op-batch", {
+        commandId: "canvas-claim-budget-halted", expectedRevision: run.revision, type: "shot.claim",
+        payload: { shotId: "shot-2", by: "canvas" }, issuedAt: now(),
+      }).run;
+      expect(decideShotClaim(claimed, "shot-2", "production")).toMatchObject({ granted: false, holder: "canvas", reason: "canvas_claimed" });
+      await dispatchCanvasOnce(repository, vendor.origin, "shot-2", submits);
+      expect(submits).toHaveLength(2);
+
+      const continuation = prepareProductionGenerationContinuationAuthorization({
+        lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 },
+        projectRevision: 0,
+        run: claimed,
+        providers: [loopbackProvider(vendor.origin, submits)],
+        resolveShotPrice: () => ({ known: true, amount: 6 }),
+        now: tickClock(),
+      });
+      run = repository.execute("project-1", "op-batch", {
+        commandId: "canvas-budget-continuation", expectedRevision: claimed.revision, type: "generation.continue_authorization",
+        payload: { authorization: continuation }, issuedAt: now(),
+      }).run;
+      expect(run.jobs.find((job) => job.metadata?.shotId === "shot-2")?.status).toBe("authorization_required");
+
+      run = repository.execute("project-1", "op-batch", {
+        commandId: "approve-budget-continuation", expectedRevision: run.revision, type: "gate.decide",
+        payload: { gateId: continuation.envelope.gateId, status: "approved", receiptId: "receipt-budget-continuation", authorizationDigest: continuation.authorizationDigest }, issuedAt: now(),
+      }).run;
+      run = repository.execute("project-1", "op-batch", {
+        commandId: "resume-budget-continuation", expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: now(),
+      }).run;
+      // The claim must remain authoritative even if continuation approval projects the pending job
+      // back into a dispatchable status; this projection keeps the derivation assertion independent
+      // from the reducer's detached-job side effect.
+      const claimProjection = {
+        ...claimed,
+        status: run.status,
+        jobs: claimed.jobs.map((job) => job.metadata?.shotId === "shot-2" ? { ...job, status: "authorized" as const } : job),
+      };
+      const resumedPlan = deriveBatchPlan({
+        run: claimProjection, runId: claimProjection.runId, runStatus: claimProjection.status, plan: claimProjection.generationPlan!, jobs: claimProjection.jobs, budget: claimProjection.budget,
+        perShotPrice: () => ({ known: true, amount: 6 }), anchorGate: currentAnchorCheckpointGate(claimProjection), now: now(),
+      });
+      expect(resumedPlan.shotDispatch).toEqual([]);
+      expect(resumedPlan.halt).toBeUndefined();
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(2);
+      expect(run.jobs.filter((job) => job.metadata?.shotId === "shot-1")).toHaveLength(1);
     } finally { await vendor.close(); }
   });
 });

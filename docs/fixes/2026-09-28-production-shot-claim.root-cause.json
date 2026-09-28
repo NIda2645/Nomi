@@ -20,6 +20,8 @@
     "electron/runtime.ts",
     "electron/productionRun/productionRunRuntime.ts",
     "electron/productionRun/productionRunServiceRegistry.ts",
+    "electron/productionRun/productionGenerationAuthorizationState.ts",
+    "electron/productionRun/prepareProductionGenerationAuthorization.ts",
     "electron/capabilityCore/appIntegration.ts",
     "electron/productionRun/productionGenerationSubmission.ts",
     "electron/productionRun/productionShotDispatchGuard.ts",
@@ -194,6 +196,36 @@
     },
     {
       "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "prepareProductionGenerationContinuationAuthorization"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "haltRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "deriveGenerationContinuationAuthorizationState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "applyProductionCommand"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "ContinuedGenerationState"
+    },
+    {
+      "kind": "write",
       "path": "electron/productionRun/submissionOutbox.ts",
       "symbol": "beforeDispatch"
     },
@@ -310,8 +342,8 @@
   ],
   "door_reduction": {
     "before": 43,
-    "after": 49,
-    "why_not": "门表仍保留多个入口：decideShotClaim 是共享判定边界，Run reducer 是唯一持久化写口，runtime 是画布提交闸，beforeDispatch 是生产派发闸，IPC/runTask 是通用任务入口；它们各自服务不同生命周期，合并会扩大权限边界。门表已用 node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch 重新生成并在交付验证中复核。"
+    "after": 55,
+    "why_not": "门表仍保留多个入口：decideShotClaim 是共享判定边界，Run reducer 是唯一持久化写口，runtime 是画布提交闸，beforeDispatch 是生产派发闸，IPC/runTask 是通用任务入口；预算 halt、续批准备、续批状态派生分别位于调度器、应用动作装配、reducer 与 repository 命令边界，不能合并而不扩大权限边界。门表已用 node scripts/door-map.mjs deriveGenerationContinuationAuthorizationState prepareProductionGenerationContinuationAuthorization applyProductionCommand haltRun 重新生成并在交付验证中复核。"
   },
   "generality_proof": "Single-shot and multi-shot plans now share productionShotJobs for correspondence, decideShotClaim for ownership, and reducer persistence for claims; scheduler and runtime callers therefore see the same attempt-scoped result.",
   "shared_boundaries": [
@@ -382,11 +414,13 @@
     "electron/shared/productionShotPhase.test.ts",
     "electron/productionRun/productionRunReducerCanvasLanding.test.ts",
     "electron/productionRun/batchScheduleDerivation.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
     "electron/tasks/taskIpcGuard.test.ts"
   ],
   "class_regression_tests": [
     "electron/shared/productionShotPhase.test.ts",
     "electron/productionRun/batchScheduleDerivation.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
     "electron/tasks/taskIpcGuard.test.ts"
   ],
   "legacy_paths": {
