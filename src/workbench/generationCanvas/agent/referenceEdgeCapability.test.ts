@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { archetypeForNode, isTextPromptEdge, referenceAssetKindForNode, validateReferenceEdge, partitionConnectableEdges, resolveTargetModeForEdge } from './referenceEdgeCapability'
+import { archetypeForNode, isTextPromptEdge, referenceAssetKindForNode, validateReferenceEdge, partitionConnectableEdges, resolveTargetModeForEdge, selectConnectionEdgeMode } from './referenceEdgeCapability'
 import { resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { GENERATION_NODE_KINDS, getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
@@ -196,6 +196,29 @@ describe('resolveTargetModeForEdge — 连线后目标自动切到能消费这�
 
   it('目标未声明档案(未知/未设模型) → null(无从派生，P4 通用回退)', () => {
     expect(resolveTargetModeForEdge(node('a', 'image'), node('b', 'image'), 'reference')).toBeNull()
+  })
+  it('Seedance 2.0 APIMart t2v + image defaults to the declared reference mode, even for a first-frame edge', () => {
+    const target = nodeWithMode('target', 'video', 'seedance-2-apimart', 't2v')
+    const mode = selectConnectionEdgeMode(node('source', 'image'), target, [])
+    expect(mode).toBe('character_ref')
+    expect(resolveTargetModeForEdge(node('source', 'image'), target, mode)).toBe('omni')
+  })
+
+  it('Wan 3.0 APIMart t2v + image defaults to its declared reference mode', () => {
+    const target = nodeWithMode('target', 'video', 'wan-3.0-apimart', 't2v')
+    const mode = selectConnectionEdgeMode(node('source', 'image'), target, [])
+    expect(mode).toBe('character_ref')
+    expect(resolveTargetModeForEdge(node('source', 'image'), target, mode)).toBe('ref')
+  })
+
+  it('a profile without a reference mode falls back to its first-frame mode', () => {
+    expect(resolveTargetModeForEdge(node('source', 'image'), nodeWithMode('target', 'video', 'hailuo-2.3', 't2v'), 'first_frame')).toBe('i2v')
+  })
+
+  it('an explicitly selected first-last mode stays unchanged for its first and last frame edges', () => {
+    const target = nodeWithMode('target', 'video', 'seedance-2-apimart', 'firstlast')
+    expect(resolveTargetModeForEdge(node('first', 'image'), target, 'first_frame')).toBeNull()
+    expect(resolveTargetModeForEdge(node('last', 'image'), target, 'last_frame')).toBeNull()
   })
 })
 

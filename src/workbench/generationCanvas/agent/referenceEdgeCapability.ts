@@ -218,19 +218,47 @@ export function selectConnectionEdgeMode(
   target: GenerationCanvasNode,
   existingEdgesToTarget: readonly GenerationCanvasEdge[],
 ): GenerationCanvasEdgeMode {
-  const sourceKind = referenceAssetKindForNode(source)
-  if (sourceKind === 'image' && target.kind === 'video') {
-    const archetype = archetypeForNode(target)
-    if (archetype) {
-      const mode = currentArchetypeMode(archetype, (target.meta || {}) as Record<string, unknown>)
-      const hasCharacterArray = mode.slots.some((slot) => slot.kind === 'image_ref' && Boolean(slot.characterIndexed))
-      if (hasCharacterArray) return 'character_ref'
-    }
-    // 单帧 i2v：首帧空位优先，再尾帧（与历史行为一致）。
-    if (!existingEdgesToTarget.some((e) => e.mode === 'first_frame')) return 'first_frame'
-    if (!existingEdgesToTarget.some((e) => e.mode === 'last_frame')) return 'last_frame'
-  }
+  if (referenceAssetKindForNode(source) === 'image' && target.kind === 'video') return preferredIncomingImageEdgeMode(target, existingEdgesToTarget)
   return 'reference'
+}
+
+function edgeModeForArchetypeMode(mode: ArchetypeMode, existingEdgesToTarget: readonly GenerationCanvasEdge[]): GenerationCanvasEdgeMode {
+  if (mode.slots.some((slot) => slot.kind === 'image_ref' && Boolean(slot.characterIndexed))) return 'character_ref'
+  if (mode.slots.some((slot) => slot.kind === 'first_frame')) {
+    if (!existingEdgesToTarget.some((edge) => edge.mode === 'first_frame')) return 'first_frame'
+    if (mode.slots.some((slot) => slot.kind === 'last_frame') && !existingEdgesToTarget.some((edge) => edge.mode === 'last_frame')) return 'last_frame'
+  }
+  return mode.slots.some((slot) => slot.kind === 'image_ref') ? 'reference' : 'first_frame'
+}
+
+const REFERENCE_WORKFLOW_INTENTS = ['reference', 'character', 'multimodal']
+
+/**
+ * The one ranking of which workflow an incoming image lands in: the model's declared reference
+ * workflows first, then other image-reference workflows, then first-frame workflows. Both the edge
+ * vocabulary (`preferredIncomingImageEdgeMode`, before the edge exists) and the mode switch
+ * (`resolveTargetModeForEdge`, after it exists) read this ranking; they differ only in what
+ * "this mode can take it" means. Intents and slots come from the archetype, never a model id.
+ */
+function preferredImageWorkflow(archetype: ModelArchetype, accepts: (mode: ArchetypeMode) => boolean): ArchetypeMode | undefined {
+  return archetype.modes.find((candidate) => REFERENCE_WORKFLOW_INTENTS.includes(String(candidate.intent)) && accepts(candidate))
+    ?? archetype.modes.find((candidate) => (
+      candidate.slots.some((slot) => slot.kind === 'image_ref')
+      && !['single', 'firstlast'].includes(String(candidate.intent))
+      && accepts(candidate)
+    ))
+    ?? archetype.modes.find((candidate) => candidate.slots.some((slot) => slot.kind === 'first_frame') && accepts(candidate))
+}
+
+const acceptsIncomingImage = (mode: ArchetypeMode): boolean => mode.slots.some((slot) => slot.kind === 'image_ref' || slot.kind === 'first_frame')
+
+function preferredIncomingImageEdgeMode(target: GenerationCanvasNode, existingEdgesToTarget: readonly GenerationCanvasEdge[]): GenerationCanvasEdgeMode {
+  const archetype = archetypeForNode(target)
+  if (!archetype) return 'first_frame'
+  const currentMode = currentArchetypeMode(archetype, (target.meta || {}) as Record<string, unknown>)
+  if (acceptsIncomingImage(currentMode)) return edgeModeForArchetypeMode(currentMode, existingEdgesToTarget)
+  const preferred = preferredImageWorkflow(archetype, acceptsIncomingImage)
+  return preferred ? edgeModeForArchetypeMode(preferred, existingEdgesToTarget) : 'reference'
 }
 
 /**
@@ -254,8 +282,18 @@ export function resolveTargetModeForEdge(
   if (!asset) return null
   const archetype = archetypeForNode(target)
   if (!archetype) return null
+  const currentMode = currentArchetypeMode(archetype, (target.meta || {}) as Record<string, unknown>)
+  const demand: ReferenceDemand = { slots: EDGE_MODE_SLOTS[mode ?? 'reference'], asset }
+  const rankOf = (candidate: ArchetypeMode): number =>
+    demand.slots.findIndex((kind) => SLOT_ACCEPTS[kind].includes(asset) && candidate.slots.some((slot) => slot.kind === kind))
+  // A newly connected image enters the same preferred workflow the edge vocabulary picked
+  // (one ranking, see preferredImageWorkflow), restricted to modes that can take this edge.
+  if (rankOf(currentMode) < 0) {
+    const preferred = preferredImageWorkflow(archetype, (candidate) => rankOf(candidate) >= 0)
+    if (preferred && preferred.id !== currentMode.id) return preferred.id
+  }
   return resolveModeForReferenceDemand(archetype, (target.meta || {}) as Record<string, unknown>, [
-    { slots: EDGE_MODE_SLOTS[mode ?? 'reference'], asset },
+    demand,
   ])
 }
 
