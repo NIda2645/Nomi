@@ -32,7 +32,7 @@
 
 ## 6. 实现拆分（交 Codex）
 
-- **M1（medium）**：✅ L0 清单导出（catalog 层唯一 owner）+ 契约指纹；✅ L1 文档页关联（复用模型雷达，支持 `--offline`）；✅ L2 回放框架 + 首批脱敏录音（Seedream 5.0 Pro、Nano Banana 2）。CLI：`pnpm run apimart:health -- --offline <样本目录>`。
+- **M1（medium）**：✅ L0 清单导出（catalog 层唯一 owner）+ 契约指纹；✅ L1 文档页关联（复用模型雷达，支持 `--offline`）；✅ L2 回放框架。录音目前只有 2 条真实的，且都是数组形状（Seedream 5.0 Pro、Nano Banana 2）；字符串形状是单独标注的合成夹具，没找到真实出处；其余 52 条待 L3。CLI：`pnpm run apimart:health -- --offline <样本目录>`。
 - **M2（medium）**：L1 缺必填字段探测（先单模型实测不扣费）；L3 付费矩阵（复用 `tests/ux/_paidRun.mjs` 的付费闸与真实资料拷贝；点控件前先把节点移进可见区——0.22.4 RC 实测被 Agent 面板挡住的「生成」时灵时不灵）；收据文件与发版闸门岗。
 - 两段都要变异校验：把 v0.22.4 的「字符串结果地址」兼容改回去，L2 必须红。
 

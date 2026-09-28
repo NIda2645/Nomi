@@ -1,18 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { APIMART_IMAGE_QUERY_OP, APIMART_VIDEO_QUERY_OP } from "./apimartVendor";
-import { buildApimartHealthInventory, contractFingerprint, stableSerialize } from "./apimartModelHealth";
-import { firstMappedString, providerMetaFromResponse, resolveTaskStatus } from "../tasks/responseParsing";
+import { APIMART_IMAGE_QUERY_OP, APIMART_STATUS_MAPPING } from "./apimartVendor";
+import { buildApimartHealthInventory, buildApimartRecordingStatus, contractFingerprint, stableSerialize } from "./apimartModelHealth";
+import { firstMappedString, mappingCandidates, providerMetaFromResponse, resolveTaskStatus } from "../tasks/responseParsing";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const FIXTURE_DIR = resolve(process.cwd(), "tests/fixtures/apimart-model-health");
-const fixture = (name: string) => JSON.parse(readFileSync(resolve(FIXTURE_DIR, name), "utf8")) as { raw: unknown };
+const fixture = (relative: string) => JSON.parse(readFileSync(resolve(FIXTURE_DIR, relative), "utf8")) as { raw: unknown; synthetic?: boolean; contractFingerprint?: string };
 
 describe("APIMart model health inventory", () => {
   it("derives every generation model × mode from catalog, without a count constant", () => {
     const entries = buildApimartHealthInventory();
     expect(entries.length).toBeGreaterThan(0);
     expect(new Set(entries.map((entry) => entry.kind))).toEqual(new Set(["image", "video", "audio"]));
+    expect(entries.some((entry) => entry.modelKey === "nomi-audio")).toBe(false);
+    expect(entries.some((entry) => entry.modelKey === "gpt-4o-mini-tts")).toBe(true);
     expect(entries.every((entry) => entry.contractFingerprint.length === 64)).toBe(true);
     expect(entries.some((entry) => entry.taskKind === "text_to_audio")).toBe(true);
     expect(entries.some((entry) => entry.taskKind === "transcribe")).toBe(false);
@@ -25,14 +27,43 @@ describe("APIMart model health inventory", () => {
     expect(contractFingerprint(first)).toBe(contractFingerprint(reordered));
   });
 
-  it("replays both APIMart result URL shapes through the production mapping parser", () => {
-    expect(APIMART_IMAGE_QUERY_OP.response_mapping?.image_url).toEqual(["data.result.images.0.url.0", "data.result.images.0.url"]);
-    expect(APIMART_VIDEO_QUERY_OP.response_mapping?.video_url).toEqual(["data.result.videos.0.url.0", "data.result.videos.0.url"]);
-    for (const name of ["seedream-5-0-pro-array.json", "nano-banana-2-string.json"]) {
+  it("changes the fingerprint when any create body value changes", () => {
+    const entry = buildApimartHealthInventory()[0]!;
+    const changed = structuredClone(entry.contract) as typeof entry.contract;
+    const body = changed.create && typeof changed.create === "object" && "body" in changed.create ? (changed.create as { body?: Record<string, unknown> }).body : null;
+    expect(body).toBeTruthy();
+    body!.prompt = "{{request.prompt.changed}}";
+    expect(contractFingerprint(entry.contract)).not.toBe(contractFingerprint(changed));
+  });
+
+  it("replays both real array recordings", () => {
+    expect(fixture("recordings/seedream-5-0-pro-array.json").raw).toMatchObject({ data: { result: { images: [{ url: ["https://cdn.example.com/apimart-result-seedream-5-0-pro.jpg"] }] } } });
+    expect(fixture("recordings/nano-banana-2-array.json").raw).toMatchObject({ data: { result: { images: [{ url: ["https://cdn.example.com/apimart-result-nano-banana-2.jpg"] }] } } });
+    for (const name of ["recordings/seedream-5-0-pro-array.json", "recordings/nano-banana-2-array.json"]) {
       const raw = fixture(name).raw;
-      expect(firstMappedString(raw, APIMART_IMAGE_QUERY_OP.response_mapping ?? null, "image_url")).toBe("https://cdn.example.com/apimart-result.asset");
-      expect(resolveTaskStatus(raw, APIMART_IMAGE_QUERY_OP.response_mapping ?? null, { succeeded: ["completed"] }, ["https://cdn.example.com/apimart-result.asset"]).status).toBe("succeeded");
-      expect(providerMetaFromResponse(raw, APIMART_IMAGE_QUERY_OP.response_mapping ?? null).task_id).toBe("task-fixture");
+      const url = firstMappedString(raw, APIMART_IMAGE_QUERY_OP.response_mapping ?? null, "image_url");
+      expect(url).toMatch(/^https:\/\/cdn\.example\.com\/apimart-result-/);
+      expect(resolveTaskStatus(raw, APIMART_IMAGE_QUERY_OP.response_mapping ?? null, APIMART_STATUS_MAPPING, [url]).status).toBe("succeeded");
+      expect(providerMetaFromResponse(raw, APIMART_IMAGE_QUERY_OP.response_mapping ?? null).task_id).toMatch(/^task_fixture_/);
     }
+  });
+
+  it("replays the synthetic scalar shape only when the declared scalar fallback exists", () => {
+    const recording = fixture("synthetic/nano-banana-2-string.json");
+    expect(recording.synthetic).toBe(true);
+    const candidates = mappingCandidates(APIMART_IMAGE_QUERY_OP.response_mapping ?? null, "image_url");
+    expect(candidates.some((candidate) => candidate.endsWith(".url"))).toBe(true);
+    expect(firstMappedString(recording.raw, APIMART_IMAGE_QUERY_OP.response_mapping ?? null, "image_url")).toMatch(/^https:\/\/cdn\.example\.com\/apimart-result-/);
+  });
+
+  it("derives recorded, stale, and pending-L3 statuses for all inventory entries", () => {
+    const entries = buildApimartHealthInventory();
+    const statuses = buildApimartRecordingStatus(entries, [
+      { modelKey: entries[0]!.modelKey, modeId: entries[0]!.modeId, taskKind: entries[0]!.taskKind, contractFingerprint: entries[0]!.contractFingerprint },
+      { modelKey: entries[1]!.modelKey, modeId: entries[1]!.modeId, taskKind: entries[1]!.taskKind, contractFingerprint: "stale" },
+    ]);
+    expect(statuses.filter((row) => row.status === "recorded")).toHaveLength(1);
+    expect(statuses.filter((row) => row.status === "recorded-stale")).toHaveLength(1);
+    expect(statuses.filter((row) => row.status === "pending-L3")).toHaveLength(entries.length - 2);
   });
 });

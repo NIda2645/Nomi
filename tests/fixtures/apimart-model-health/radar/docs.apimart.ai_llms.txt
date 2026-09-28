@@ -1,2 +1,71 @@
 # APIMart
-- [API Manual](https://docs.apimart.ai/_llms/en/api-manual.md): x
+
+- [API Manual (152 pages)](https://docs.apimart.ai/_llms/en/api-manual.md): Documentation for API Manual.
+
+## Integrations
+
+### Chat Applications
+
+- [Using APIMart in ChatBox](https://docs.apimart.ai/en/integrations/chat/chatbox.md): Detailed guide on how to configure and use APIMart API service in ChatBox desktop client. This guide will help you configure APIMart API in ChatBox to access rich AI model resources.
+- [Using APIMart in Cherry Studio](https://docs.apimart.ai/en/integrations/chat/cherry-studio.md): Detailed guide on how to configure and use APIMart API service in Cherry Studio desktop client. This guide will help you configure APIMart API in Cherry Studio to access rich AI model resources.
+- [Using APIMart in AnythingLLM](https://docs.apimart.ai/en/integrations/chat/anythingllm.md): Detailed guide on how to configure and use APIMart API service in AnythingLLM. This guide will help you configure APIMart API in AnythingLLM to build private AI knowledge bases and conversation systems.
+
+### Development Tools
+
+- [Using APIMart in Claude Code](https://docs.apimart.ai/en/integrations/dev-tool/claude-code.md): A detailed guide on configuring and using APIMart API services in Claude Code CLI, enabling you to access multiple AI models for assisted programming with simple configuration.
+- [Using APIMart in Cursor](https://docs.apimart.ai/en/integrations/dev-tool/cursor.md): Detailed guide on how to configure and use APIMart API service in Cursor AI code editor. This guide will help you configure APIMart API in Cursor to access rich AI model resources for code development.
+- [Integrate APIMart with Cline in VSCode](https://docs.apimart.ai/en/integrations/dev-tool/cline.md): A detailed guide on how to configure APIMart API service using the Cline extension in Visual Studio Code. This guide will help you use APIMart's AI models through Cline for code development, debugging, and optimization in VSCode.
+- [Using APIMart with Gemini CLI](https://docs.apimart.ai/en/integrations/dev-tool/gemini.md): Detailed guide on configuring APIMart API service in Gemini CLI command-line tool. Learn how to use APIMart’s AI models—including Gemini, GPT, and Claude series—from the terminal.
+- [Using APIMart in Codex CLI](https://docs.apimart.ai/en/integrations/dev-tool/codex-cli.md): A detailed guide on configuring and using APIMart API services in Codex CLI, enabling you to access multiple AI models for assisted programming with simple configuration.
+- [Using APIMart in CC-Switch](https://docs.apimart.ai/en/integrations/dev-tool/cc-switch.md): A detailed guide on configuring and using APIMart API services in CC-Switch, enabling you to access multiple AI models for assisted programming with simple configuration.
+
+### Application Platforms
+
+- [Using APIMart in Dify](https://docs.apimart.ai/en/integrations/platform/dify.md): Detailed guide on how to configure and use APIMart API service in Dify LLMOps platform. This guide will help you configure APIMart API in Dify to build powerful AI applications.
+- [Using APIMart in Immersive Translate](https://docs.apimart.ai/en/integrations/platform/immersive-translate.md): Detailed guide on how to configure and use APIMart API service in the Immersive Translate browser extension. This guide will help you set up APIMart API in Immersive Translate for high-quality AI translation services.
+
+## Guides
+
+### Getting started
+
+- [Quick Start](https://docs.apimart.ai/en/quickstart.md): Quickly start using our API services
+- [Development Guide](https://docs.apimart.ai/en/development.md): Integrate the API into your application
+
+## FAQs
+
+### Overview
+
+- [FAQs](https://docs.apimart.ai/en/faqs.md): Frequently Asked Questions about using APIMart
+- [Connection & Usage](https://docs.apimart.ai/en/faqs/connection-usage.md): Troubleshoot connection and usage issues with APIMart
+- [Account Management](https://docs.apimart.ai/en/faqs/account-management.md): Account usage and technical support inquiries
+- [Security & Configuration](https://docs.apimart.ai/en/faqs/security-configuration.md): API key management and security configuration guide
+- [Features & Capabilities](https://docs.apimart.ai/en/faqs/features.md): APIMart supported features and compatibility information
+- [Cost Optimization](https://docs.apimart.ai/en/faqs/cost-optimization.md): Practical tips for optimizing API call costs
+
+## OpenAPI Specs
+
+- [openapi](/api-reference/openapi.json)
+
+> The links below point to documentation indexes. Follow each `/_llms/` index recursively until you reach documentation pages.
+
+## Indexes
+
+- [English / API Manual (152 pages)](https://docs.apimart.ai/_llms/en/api-manual.md): Documentation for English / API Manual.
+- [Chinese (171 pages)](https://docs.apimart.ai/_llms/cn.md): Documentation for Chinese.
+- [Chinese / API 手册 (152 pages)](https://docs.apimart.ai/_llms/cn/api.md): Documentation for Chinese / API 手册.
+- [Japanese (171 pages)](https://docs.apimart.ai/_llms/ja.md): Documentation for Japanese.
+- [Japanese / APIマニュアル (152 pages)](https://docs.apimart.ai/_llms/ja/api.md): Documentation for Japanese / APIマニュアル.
+- [Korean (171 pages)](https://docs.apimart.ai/_llms/ko.md): Documentation for Korean.
+- [Korean / API 매뉴얼 (152 pages)](https://docs.apimart.ai/_llms/ko/api.md): Documentation for Korean / API 매뉴얼.
+- [Russian (171 pages)](https://docs.apimart.ai/_llms/ru.md): Documentation for Russian.
+- [Russian / Руководство API (152 pages)](https://docs.apimart.ai/_llms/ru/rukovodstvo-api.md): Documentation for Russian / Руководство API.
+- [German (171 pages)](https://docs.apimart.ai/_llms/de.md): Documentation for German.
+- [German / API-Handbuch (152 pages)](https://docs.apimart.ai/_llms/de/api-handbuch.md): Documentation for German / API-Handbuch.
+- [French (171 pages)](https://docs.apimart.ai/_llms/fr.md): Documentation for French.
+- [French / Manuel API (152 pages)](https://docs.apimart.ai/_llms/fr/manuel-api.md): Documentation for French / Manuel API.
+- [Portuguese (171 pages)](https://docs.apimart.ai/_llms/pt.md): Documentation for Portuguese.
+- [Portuguese / Manual da API (152 pages)](https://docs.apimart.ai/_llms/pt/manual-da-api.md): Documentation for Portuguese / Manual da API.
+- [Indonesian (171 pages)](https://docs.apimart.ai/_llms/id.md): Documentation for Indonesian.
+- [Indonesian / Panduan API (152 pages)](https://docs.apimart.ai/_llms/id/panduan-api.md): Documentation for Indonesian / Panduan API.
+- [Spanish (171 pages)](https://docs.apimart.ai/_llms/es.md): Documentation for Spanish.
+- [Spanish / Manual de la API (152 pages)](https://docs.apimart.ai/_llms/es/manual-de-la-api.md): Documentation for Spanish / Manual de la API.

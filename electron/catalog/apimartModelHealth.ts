@@ -22,6 +22,7 @@ export type ApimartHealthEntry = {
   modeId: string;
   taskKind: GenerationTaskKind;
   labelZh: string;
+  documentationKeys: string[];
   params: JsonValue;
   referenceChannels: JsonValue;
   contract: {
@@ -32,6 +33,18 @@ export type ApimartHealthEntry = {
     referenceChannels: JsonValue;
   };
   contractFingerprint: string;
+};
+
+export type ApimartRecordingMetadata = {
+  modelKey: string;
+  modeId: string;
+  taskKind: GenerationTaskKind;
+  contractFingerprint: string;
+  path?: string;
+};
+
+export type ApimartRecordingStatus = ApimartRecordingMetadata & {
+  status: "recorded" | "recorded-stale" | "pending-L3";
 };
 
 type CatalogModel = {
@@ -121,6 +134,14 @@ function entryFor(model: CatalogModel, mapping: CatalogModel["mappings"][number]
     return { id: variant.id, modelKey: variant.modelKey, params: parameterRange(variantMode ?? null) };
   }) ?? [];
   const params = { mode: parameterRange(mode), variants: variantFacts };
+  // `nomi-audio` is Nomi's combined catalog alias; the APIMart wire model is the
+  // mode's declared modelEnum (for example gpt-4o-mini-tts). Inventory reports
+  // the upstream identity so the health list never pretends the alias is vendor-owned.
+  const reportedModelKey = model.modelKey === "nomi-audio" ? (mode?.modelEnum ?? model.modelKey) : model.modelKey;
+  const documentationKeys = [
+    model.modelKey,
+    mode?.modelEnum,
+  ].filter((value): value is string => Boolean(value && !value.includes("{{")));
   const contract = {
     create: jsonValue(mapping.create),
     query: mapping.query ? jsonValue(mapping.query) : null,
@@ -129,7 +150,7 @@ function entryFor(model: CatalogModel, mapping: CatalogModel["mappings"][number]
     referenceChannels: references,
   };
   return {
-    vendor: "apimart", modelKey: model.modelKey, kind: model.kind, archetypeId: model.archetypeId,
+    vendor: "apimart", modelKey: reportedModelKey, kind: model.kind, archetypeId: model.archetypeId, documentationKeys: [...new Set(documentationKeys)],
     modeId: mode?.id ?? mapping.id, taskKind, labelZh: mapping.name, params, referenceChannels: references,
     contract, contractFingerprint: contractFingerprint(contract),
   };
@@ -144,5 +165,24 @@ export function buildApimartHealthInventory(): ApimartHealthEntry[] {
       const entry = entryFor(model, mapping, index);
       return entry ? [entry] : [];
     });
+  });
+}
+
+function healthKey(item: Pick<ApimartHealthEntry, "modelKey" | "modeId" | "taskKind">): string {
+  return `${item.modelKey}\u0000${item.modeId}\u0000${item.taskKind}`;
+}
+
+export function buildApimartRecordingStatus(
+  entries: readonly ApimartHealthEntry[],
+  recordings: readonly ApimartRecordingMetadata[],
+): ApimartRecordingStatus[] {
+  const byKey = new Map(recordings.map((recording) => [healthKey(recording), recording]));
+  return entries.map((entry) => {
+    const recording = byKey.get(healthKey(entry));
+    if (!recording) return { modelKey: entry.modelKey, modeId: entry.modeId, taskKind: entry.taskKind, contractFingerprint: entry.contractFingerprint, status: "pending-L3" as const };
+    return {
+      ...recording,
+      status: recording.contractFingerprint === entry.contractFingerprint ? "recorded" as const : "recorded-stale" as const,
+    };
   });
 }

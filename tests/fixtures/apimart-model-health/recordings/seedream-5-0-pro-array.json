@@ -1,0 +1,31 @@
+{
+  "modelKey": "doubao-seedream-5-0-pro",
+  "modeId": "t2i",
+  "taskKind": "text_to_image",
+  "contractFingerprint": "742fb1268df60cf5c0373ce6efa46338a13e9f33818854e98932993fd6690439",
+  "source": "D:/tmp/nomi-pi-rc-apimart-landing-u6L6KT/projects/*/.nomi/project.json",
+  "raw": {
+    "code": 200,
+    "data": {
+      "actual_time": 33,
+      "completed": 1790587691,
+      "cost": 0,
+      "created": 1790587658,
+      "credits_cost": 0,
+      "estimated_time": 60,
+      "id": "task_fixture_seedream_5_0_pro",
+      "progress": 100,
+      "result": {
+        "images": [
+          {
+            "expires_at": 1790674091,
+            "output_formats": ["jpeg"],
+            "sizes": ["2048x2048"],
+            "url": ["https://cdn.example.com/apimart-result-seedream-5-0-pro.jpg"]
+          }
+        ]
+      },
+      "status": "completed"
+    }
+  }
+}
