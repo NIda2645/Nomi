@@ -149,11 +149,9 @@
     "electron/backgroundIdleExit.test.ts"
   ],
   "legacy_paths": {
-    "status": "removed",
-    "removed_paths": [
-      "electron/capabilityCore/mcpProtocol.ts"
-    ],
-    "rationale": "The passive handler no longer uses the cold-starting invocation path."
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No file or entry point was deleted: the passive discovery handlers in mcpProtocol.ts were rerouted in place from the cold-starting invoke to the probe-only invokeIfOpen, and the moved main.ts code lives on in backgroundLaunch.ts and windowNavigation.ts."
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",

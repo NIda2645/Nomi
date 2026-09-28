@@ -1,4 +1,4 @@
-import type { CachedTask } from "../runtime";
+import type { CachedTask } from "../taskTypes";
 
 // 带 TTL + LRU 上限的内存缓存 —— 替换 runtime.ts 里裸的无界 Map（多维审计 P0-7）。
 // 裸 Map 会让永不被轮询/永远 stuck 的异步任务条目（含敏感数据）永久驻留、无上限。
