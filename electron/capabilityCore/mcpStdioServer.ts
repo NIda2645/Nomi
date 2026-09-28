@@ -499,16 +499,20 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
       ? { authorizeGeneration: authorities.authorizeGeneration ?? runOwnedGenerationAuthority!.authorizeGeneration }
       : {}),
   }
+  const invokeRequest = (method: string, params: Record<string, unknown>, options?: McpInvokeOptions) => invoke(
+    method,
+    params,
+    options,
+    generationAuthorities,
+    projectSession(),
+    canvasReadExecutionRuntime,
+  )
   const protocol = createMcpProtocol({
     send: (message) => process.stdout.write(JSON.stringify(message) + '\n'),
-    invoke: (method, params, options) => invoke(
-      method,
-      params,
-      options,
-      generationAuthorities,
-      projectSession(),
-      canvasReadExecutionRuntime,
-    ),
+    invoke: invokeRequest,
+    // This protocol instance is itself a live Nomi host. Its direct route does
+    // not cold-start another desktop process, so discovery may use it.
+    invokeIfOpen: invokeRequest,
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
     getAuthenticatedClient: () => projectSession().connection.authenticatedClient,
     onClientDetected: (name) => { recordDetectedMcpClient(name) },

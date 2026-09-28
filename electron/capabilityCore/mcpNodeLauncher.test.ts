@@ -41,6 +41,7 @@ import path from 'node:path'
 
 const capabilityDir = process.argv[2]
 fs.mkdirSync(capabilityDir, { recursive: true })
+fs.writeFileSync(path.join(capabilityDir, 'launch-env'), process.env.NOMI_LAUNCH_BACKGROUND || '')
 const lockPath = path.join(capabilityDir, 'fake-app.lock')
 let lock
 try {
@@ -516,5 +517,6 @@ describe('mcpNodeLauncher cold start', () => {
       expect(response.error).toBeUndefined()
       expect(JSON.stringify(response.result)).toContain('race-project')
     }
+    expect(fs.readFileSync(path.join(capabilityDir, 'launch-env'), 'utf8')).toBe('1')
   }, 15_000)
 })

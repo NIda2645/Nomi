@@ -40,7 +40,7 @@ class SkillsHarness {
   private queue: RpcMessage[] = []
   private waiters: Array<(msg: RpcMessage) => void> = []
 
-  constructor() {
+  constructor(live = true) {
     const transport: McpTransport = {
       send: (message) => {
         const msg = message as RpcMessage
@@ -49,6 +49,7 @@ class SkillsHarness {
         else this.queue.push(msg)
       },
       invoke: this.invoke,
+      invokeIfOpen: live ? this.invoke : async () => undefined,
       isAppOpen: () => false,
     }
     this.protocol = createMcpProtocol(transport)
@@ -108,6 +109,16 @@ describe('nomi-mcp · 技能库经 resources + prompts 暴露（渐进披露）'
     // 渐进披露：列表阶段只调 skills.list，绝不调 skills.read（不载正文）。
     expect(harness.invoke).toHaveBeenCalledWith('skills.list', {})
     expect(harness.invoke).not.toHaveBeenCalledWith('skills.read', expect.anything())
+  })
+
+  it('resources/list 与 prompts/list 在 Nomi 未打开时返回空且不冷启动', async () => {
+    harness = new SkillsHarness(false)
+    const resources = await harness.call(13, 'resources/list')
+    const prompts = await harness.call(14, 'prompts/list')
+    expect(resources.result).toMatchObject({ resources: expect.any(Array) })
+    expect((resources.result as { resources: unknown[] }).resources).toHaveLength(1)
+    expect(prompts.result).toEqual({ prompts: [] })
+    expect(harness.invoke).not.toHaveBeenCalled()
   })
 
   it('resources/read 按 uri 载入技能正文', async () => {
