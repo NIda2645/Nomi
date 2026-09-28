@@ -39,6 +39,8 @@ export function hasInFlightProductionWork(): boolean {
       ["ready", "running", "exporting", "pausing"].includes(String(run.status)),
     ));
   } catch {
+    // Unknown durable state must keep the process alive rather than risk
+    // terminating a provider job that the owner has not finished observing.
     return true;
   }
 }
