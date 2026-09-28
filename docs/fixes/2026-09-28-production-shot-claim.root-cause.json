@@ -1,0 +1,36 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-production-shot-claim",
+  "problem_type": "duplicate paid generation from split canvas/production ownership predicates",
+  "symptom": "Canvas can offer or start a shot while its production attempt is unknown, reconciling, or awaiting durable confirmation.",
+  "direct_cause": "productionShotOwnsGeneration derived ownership from display phase and omitted durable gate, current-attempt, and detached facts.",
+  "class_root": "Canvas and production callers lacked one fail-closed durable claim decision over the Run ledger.",
+  "affected_population": ["all canvas-bound production shots", "submission_unknown/reconciling and stopped-run states", "multi-shot excluded or detached shots"],
+  "scope_paths": ["electron/shared/decideShotClaim.ts", "electron/shared/productionShotPhase.ts", "src/workbench/production/productionShotOwnership.ts", "electron/shared/productionShotPhase.test.ts"],
+  "entry_points": ["canvas node ownership and batch eligibility", "production phase compatibility export"],
+  "invariant_owner_layer": {"layer":"electron/shared/decideShotClaim.ts","tests":["electron/shared/productionShotPhase.test.ts"]},
+  "internal_only_reason": "This invariant is internal durable Run state; no third-party behavior controls it.",
+  "invariants": ["A shot with an in-flight or reconcile-required current attempt remains production-owned.", "A rejected/excluded/detached shot with no paid attempt is canvas-owned.", "Canvas and production ask the same pure decision function."],
+  "doors": [
+    {"kind":"read","path":"electron/shared/decideShotClaim.ts","symbol":"decideShotClaim"},
+    {"kind":"read","path":"electron/shared/productionShotPhase.ts","symbol":"decideShotClaim"},
+    {"kind":"read","path":"src/workbench/production/productionShotOwnership.ts","symbol":"decideShotClaim"},
+    {"kind":"write","path":"src/workbench/production/productionShotOwnership.ts","symbol":"decideShotClaim"}
+  ],
+  "door_reduction": {"before": 4, "after": 4, "why_not": "The compatibility export and node adapter remain separate read/write doors while all decisions converge on decideShotClaim; the old implementation itself is removed."},
+  "generality_proof": "The decision reads only durable Run plan, gate, shot, current-attempt job, run status, and detached facts, so every canvas caller using the adapter receives identical results regardless of display projection.",
+  "shared_boundaries": [{"path":"electron/shared/decideShotClaim.ts","symbol":"decideShotClaim","responsibility":"Own the durable shot claim and fail closed for unknown/reconcile states."}],
+  "same_class_entry_points": [
+    {"path":"src/workbench/generationCanvas/components/canvasProductionScope.ts","entry_point":"eligibleGenerationNodeIds","disposition":"enforced","evidence":"Delegates through isNodeGenerationOwnedByProduction to decideShotClaim."},
+    {"path":"src/workbench/generationCanvas/runner/generationRunController.ts","entry_point":"canRunGenerationNode","disposition":"enforced","evidence":"Uses the same production-shot ownership adapter before dispatch."},
+    {"path":"electron/productionRun/multiShotBatchScheduler.ts","entry_point":"runToQuiescence","disposition":"not-affected","evidence":"Scheduler dispatch remains outside this canvas claim-only stage per task scope."}
+  ],
+  "recurrence": {"classification":"recurring","reason":"Multiple canvas entry points and durable job states can reproduce the split predicate; the report identified five independent state classes.","same_class_scan":["rg productionShotOwnsGeneration across src/electron", "door-map productionShotOwnsGeneration runTask beforeDispatch", "matrix tests for unknown/reconciling, stopped, rejected, detached"]},
+  "prevention": {"kind":"centralized-boundary","enforcement_path":"electron/shared/decideShotClaim.ts","invariant":"Only durable claim facts decide whether canvas or production owns generation.","failure_mode":"Unknown or reconcile-required attempts stay production-owned; missing identity returns none.","exception_policy":"none","strategy":"Replace the display-phase predicate with one pure shared decision and delete the old implementation.","artifacts":["electron/shared/decideShotClaim.ts","src/workbench/production/productionShotOwnership.ts"]},
+  "regression_tests":["electron/shared/productionShotPhase.test.ts"],
+  "class_regression_tests":["electron/shared/productionShotPhase.test.ts"],
+  "legacy_paths":{"status":"removed","removed_paths":["electron/shared/productionShotPhase.ts"],"rationale":"The display-derived ownership predicate is deleted from this changed module; phase derivation remains display-only."},
+  "dependency_lifecycle":{"decision":"not-applicable","rationale":"No third-party dependency controls the claim invariant.","exit_criteria":[]},
+  "migration":"No persisted schema migration is needed; legacy Runs are read with absent optional facts treated as no detached/excluded marker, while existing jobs remain durable evidence.",
+  "residual_risks":["Production scheduler and beforeDispatch wiring remain B-stage work and are intentionally not changed in this task."]
+}

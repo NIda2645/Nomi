@@ -13,6 +13,7 @@
 //
 // 真相源 = Run 的 jobs[] + status（纯派生，无第二份状态）。
 import type { ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from "../productionRun/productionRunTypes";
+export { decideShotClaim } from "./decideShotClaim";
 
 export type ProductionShotPhase = "queued" | "generating" | "stopped" | "failed" | "done";
 
@@ -94,20 +95,6 @@ export function isProductionJobInFlight(job: Pick<ProductionJob, "status" | "pro
  * - 已确认：排队 / 生成中 → 归；已停 / 失败 / 完成 → 不归；丢掉的计划、不在付费范围里的镜 → 不归。
  * （2026-09-25：Agent 起草的镜头卡片等确认时，底栏仍把它算进「生成全部」。）
  */
-export function productionShotOwnsGeneration(run: ProductionRun | null | undefined, shotId: string | undefined): boolean {
-  const plan = run?.generationPlan;
-  if (!run || !plan || !shotId || plan.state === "cancelled") return false;
-  if (plan.state !== "submitted") return plan.cardHidden !== true && planIncludesShot(run, shotId);
-  const phase = deriveProductionShotState(run, shotId)?.phase;
-  return phase === "queued" || phase === "generating";
-}
-
-function planIncludesShot(run: ProductionRun, shotId: string): boolean {
-  if (isSingleShotPlan(run)) return shotId === run.generationPlan?.candidate.candidateId;
-  const shot = run.generationPlan?.shots?.find((candidate) => candidate.shotId === shotId);
-  return Boolean(shot && shot.included !== false);
-}
-
 // 「已停」而非「失败」的 job 错因：预算触顶 / 急停到达这镜（可续拍，warning 非 danger）。provider 拒 = 真失败。
 const HALT_ERROR_CODES = new Set(["budget_exhausted", "budget_halt", "batch_stopped", "restart_recovery_required"]);
 

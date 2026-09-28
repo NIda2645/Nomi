@@ -6,8 +6,8 @@ import {
   jobAwaitsHuman,
   productionJobPhase,
   productionShotIdForNode,
-  productionShotOwnsGeneration,
 } from './productionShotPhase'
+import { decideShotClaim } from './decideShotClaim'
 import type { ProductionGenerationPlan, ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from '../productionRun/productionRunTypes'
 
 // 制作里「一镜在哪一段」的唯一判定：主进程的画布落地投影与渲染层的排队 / 已停小标读的是同一个函数。
@@ -198,17 +198,46 @@ describe('派出去了没有', () => {
   })
 })
 
-describe('productionShotOwnsGeneration — 画布能不能再发这一镜', () => {
+describe('decideShotClaim — 画布能不能再发这一镜', () => {
   it('报价卡等确认：付费范围里的镜归制作流程，不在范围里的不归', () => {
     const r = run({ status: 'awaiting_contract', shots: [{ shotId: 's1', nodeId: 'n1' }, { shotId: 's2', nodeId: 'n2', included: false }] })
     r.generationPlan!.state = 'sealed'
-    expect(productionShotOwnsGeneration(r, 's1')).toBe(true)
-    expect(productionShotOwnsGeneration(r, 's2')).toBe(false)
+    expect(decideShotClaim(r, 's1', 'canvas').holder).toBe('production')
+    expect(decideShotClaim(r, 's2', 'canvas').holder).toBe('canvas')
   })
 
   it('已确认：排队的镜归制作流程，已停的不归', () => {
     const shots = [{ shotId: 's1', nodeId: 'n1' }]
-    expect(productionShotOwnsGeneration(run({ status: 'running', shots }), 's1')).toBe(true)
-    expect(productionShotOwnsGeneration(run({ status: 'paused', shots }), 's1')).toBe(false)
+    expect(decideShotClaim(run({ status: 'running', shots }), 's1', 'canvas').holder).toBe('production')
+    expect(decideShotClaim(run({ status: 'paused', shots }), 's1', 'canvas').holder).toBe('canvas')
+  })
+})
+
+describe('decideShotClaim — durable matrix regressions', () => {
+  it('unknown/reconciling remain production-owned', () => {
+    for (const status of ['submission_unknown', 'reconciling'] as const) {
+      const result = decideShotClaim(run({ status: 'needs_attention', shots: [{ shotId: 's1' }], jobs: [job('s1', status)] }), 's1', 'canvas')
+      expect(result).toMatchObject({ holder: 'production', reason: 'needs_reconcile', granted: false })
+    }
+  })
+
+  it('authorization while stopped is released', () => {
+    const result = decideShotClaim(run({ status: 'needs_attention', shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorization_required')] }), 's1', 'canvas')
+    expect(result).toMatchObject({ holder: 'canvas', reason: 'run_stopped', granted: true })
+  })
+
+  it('rejected gate releases an unsubmitted shot', () => {
+    const r = run({ status: 'running', planState: 'sealed', shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
+    r.generationPlan!.authorizationGateId = 'gate-1'
+    r.gates.push({ gateId: 'gate-1', scope: 'budget_envelope', status: 'rejected', planHash: 'p', jobIds: [], title: '', summary: '', createdAt: NOW, expiresAt: NOW })
+    expect(decideShotClaim(r, 's1', 'canvas')).toMatchObject({ holder: 'canvas', reason: 'gate_rejected', granted: true })
+  })
+
+  it('detached cancels a waiting job but does not reclaim an in-flight attempt', () => {
+    const r = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
+    r.generationPlan!.shots![0].canvasDetached = true
+    expect(decideShotClaim(r, 's1', 'canvas').reason).toBe('canvas_detached')
+    r.jobs[0].status = 'polling'
+    expect(decideShotClaim(r, 's1', 'canvas').holder).toBe('production')
   })
 })
