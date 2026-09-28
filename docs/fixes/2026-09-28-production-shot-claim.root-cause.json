@@ -5,75 +5,346 @@
   "symptom": "A canvas shot can be regenerated while its production job is queued, in flight, or awaiting reconciliation; stopped runs can also be dispatched.",
   "direct_cause": "Reducer, claim decision, and scheduler each inferred shot ownership from different subsets of Run state, with no durable attempt-scoped claim record.",
   "class_root": "Every shot/job caller must use one attempt-scoped durable ownership decision and one shot-to-job correspondence.",
-  "affected_population": ["Production Runs with single-shot or multi-shot generation plans", "Canvas nodes bound to production shots", "Queued, stopped, detached, and reconciliation states"],
+  "affected_population": [
+    "Production Runs with single-shot or multi-shot generation plans",
+    "Canvas nodes bound to production shots",
+    "Queued, stopped, detached, and reconciliation states"
+  ],
   "scope_paths": [
-    "electron/shared/decideShotClaim.ts",
-    "electron/shared/productionShotJobs.ts",
-    "electron/productionRun/productionRunTypes.ts",
-    "electron/productionRun/productionRunReducer.ts",
-    "electron/productionRun/productionRunCanvasLandingReducer.ts",
     "electron/productionRun/batchScheduleDerivation.ts",
     "electron/productionRun/multiShotBatchScheduler.ts",
+    "electron/productionRun/productionRunCanvasLandingReducer.ts",
+    "electron/productionRun/productionRunReducer.ts",
+    "electron/productionRun/productionRunState.ts",
+    "electron/productionRun/productionRunTypes.ts",
     "electron/runtime.ts",
+    "electron/shared/decideShotClaim.ts",
+    "electron/shared/productionShotJobs.ts",
     "electron/shared/productionShotPhase.test.ts",
-    "electron/productionRun/productionRunState.ts"
+    "electron/tasks/taskIpcGuard.ts",
+    "electron/tasks/taskIpcHandlers.ts",
+    "src/workbench/generationCanvas/model/productionMeta.ts",
+    "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+    "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+    "electron/vendor/vendorHttp.ts",
+    "src/workbench/generationCanvas/runner/vendorErrorIpc.ts"
   ],
-  "entry_points": ["canvas shot.claim", "batch scheduler dispatch derivation", "beforeDispatch/runtime canvas submission guard"],
+  "entry_points": [
+    "canvas shot.claim",
+    "batch scheduler dispatch derivation",
+    "beforeDispatch/runtime canvas submission guard"
+  ],
   "external_sources": [],
   "internal_only_reason": "This is an application-level Run ledger invariant; no third-party dependency controls it.",
-  "invariant_owner_layer": {"layer":"electron/shared/decideShotClaim.ts","tests":["electron/shared/productionShotPhase.test.ts","electron/productionRun/batchScheduleDerivation.test.ts","electron/productionRun/productionRunReducerCanvasLanding.test.ts"],"why":"The shared decision owns the invariant and the reducer is the only durable writer; all scheduler and canvas callers consume those boundaries."},
-  "invariants": ["Only the current attempt may be claimed", "Canvas claims are persisted in the Run reducer", "Unsubmitted detached/claimed jobs never dispatch", "In-flight and reconciliation jobs remain production-owned"],
-  "doors": [
-    {"kind":"read","path":"electron/capabilityCore/appIntegration.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/capabilityCore/dispatcher.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/capabilityCore/host.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/capabilityCore/mcpStdioServer.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/capabilityCore/modelOnboarding/dispatch.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/capabilityCore/rpcServer.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/capabilityCore/shotVerifyDeps.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/integrationCertification/integrationSession.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/tasks/taskIpcHandlers.ts","symbol":"runTask"},
-    {"kind":"read","path":"src/workbench/generationCanvas/runner/catalogTaskActions.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/capabilityCore/modelOnboarding/tryModel.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/integrationCertification/integrationSession.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/integrationCertification/integrationSessionRuntimeInstall.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/main.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/parity/generationParityTestUtils.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/productionRun/productionGenerationSubmission.ts","symbol":"beforeDispatch"},
-    {"kind":"write","path":"electron/productionRun/submissionOutbox.ts","symbol":"beforeDispatch"},
-    {"kind":"write","path":"electron/tasks/comfyCandidateTest.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/tasks/taskIpcHandlers.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/video/deconstructVideo.ts","symbol":"runTask"},
-    {"kind":"write","path":"src/workbench/generationCanvas/runner/catalogTaskActions.ts","symbol":"runTask"},
-    {"kind":"write","path":"electron/shared/decideShotClaim.ts","symbol":"decideShotClaim"},
-    {"kind":"write","path":"electron/shared/productionShotJobs.ts","symbol":"jobsForShot"},
-    {"kind":"write","path":"electron/productionRun/productionRunTypes.ts","symbol":"ProductionShotClaim"},
-    {"kind":"write","path":"electron/productionRun/productionRunReducer.ts","symbol":"shot.claim"},
-    {"kind":"write","path":"electron/productionRun/productionRunCanvasLandingReducer.ts","symbol":"detachShotNodes"},
-    {"kind":"write","path":"electron/productionRun/batchScheduleDerivation.ts","symbol":"needsDispatch"},
-    {"kind":"write","path":"electron/productionRun/multiShotBatchScheduler.ts","symbol":"dispatchUnit"},
-    {"kind":"write","path":"electron/runtime.ts","symbol":"runTask"},
-    {"kind":"read","path":"electron/productionRun/productionRunState.ts","symbol":"transitionJob"}
+  "invariant_owner_layer": {
+    "layer": "electron/shared/decideShotClaim.ts",
+    "tests": [
+      "electron/shared/productionShotPhase.test.ts",
+      "electron/productionRun/batchScheduleDerivation.test.ts",
+      "electron/productionRun/productionRunReducerCanvasLanding.test.ts"
+    ],
+    "why": "The shared decision owns the invariant and the reducer is the only durable writer; all scheduler and canvas callers consume those boundaries."
+  },
+  "invariants": [
+    "Only the current attempt may be claimed",
+    "Canvas claims are persisted in the Run reducer",
+    "Unsubmitted detached/claimed jobs never dispatch",
+    "In-flight and reconciliation jobs remain production-owned"
   ],
-  "door_reduction": {"before": 30, "after": 30, "why_not": "These doors are independent generic task and production state entry points. They must remain separate, while all production-shot ownership decisions converge at decideShotClaim and the Run reducer."},
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/host.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/shotVerifyDeps.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/tasks/taskIpcHandlers.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionShotOwnership.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSessionRuntimeInstall.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/parity/generationParityTestUtils.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "beforeDispatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "beforeDispatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/comfyCandidateTest.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/taskIpcHandlers.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/deconstructVideo.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+      "symbol": "productionMetaOf"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
+      "symbol": "productionMetaOf"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/productionShotOwnership.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "dispatchUnit"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunCanvasLandingReducer.ts",
+      "symbol": "detachShotNodes"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunState.ts",
+      "symbol": "transitionJob"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/decideShotClaim.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "jobsForShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/model/productionMeta.ts",
+      "symbol": "productionMetaOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/taskIpcGuard.ts",
+      "symbol": "runTaskIpcGuard"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorHttp.ts",
+      "symbol": "encodeStructuredErrorMessage"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/vendorErrorIpc.ts",
+      "symbol": "parseVendorErrorFromMessage"
+    }
+  ],
+  "door_reduction": {
+    "before": 39,
+    "after": 39,
+    "why_not": "?????????????????????????????????? decideShotClaim?Run reducer?runtime claim gate ? IPC ????????????????????"
+  },
   "generality_proof": "Single-shot and multi-shot plans now share productionShotJobs for correspondence, decideShotClaim for ownership, and reducer persistence for claims; scheduler and runtime callers therefore see the same attempt-scoped result.",
   "shared_boundaries": [
-    {"path":"electron/shared/productionShotJobs.ts","symbol":"jobsForShot/latestJobForShot","responsibility":"Resolve every generation job belonging to a shot, including the legacy single-shot shape."},
-    {"path":"electron/shared/decideShotClaim.ts","symbol":"decideShotClaim","responsibility":"Exhaustively map durable Run/job/gate state to one requester decision."},
-    {"path":"electron/productionRun/productionRunReducer.ts","symbol":"shot.claim","responsibility":"Persist canvas claims and detach only unsubmitted jobs."},
-    {"path":"electron/productionRun/batchScheduleDerivation.ts","symbol":"needsDispatch","responsibility":"Refuse dispatch when the current attempt is canvas-owned or detached."}
+    {
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "jobsForShot/latestJobForShot",
+      "responsibility": "Resolve every generation job belonging to a shot, including the legacy single-shot shape."
+    },
+    {
+      "path": "electron/shared/decideShotClaim.ts",
+      "symbol": "decideShotClaim",
+      "responsibility": "Exhaustively map durable Run/job/gate state to one requester decision."
+    },
+    {
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "shot.claim",
+      "responsibility": "Persist canvas claims and detach only unsubmitted jobs."
+    },
+    {
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "needsDispatch",
+      "responsibility": "Refuse dispatch when the current attempt is canvas-owned or detached."
+    }
   ],
   "same_class_entry_points": [
-    {"path":"electron/productionRun/multiShotBatchScheduler.ts","entry_point":"dispatchUnit","disposition":"enforced","evidence":"All derived anchor/shot dispatch lists call needsDispatch with the durable Run."},
-    {"path":"electron/runtime.ts","entry_point":"runTask","disposition":"enforced","evidence":"Runtime canvas submission consults decideShotClaim before persisting shot.claim."},
-    {"path":"src/workbench/production/productionShotOwnership.ts","entry_point":"productionShotOwnsGeneration","disposition":"enforced","evidence":"Renderer ownership projection already delegates to decideShotClaim."}
+    {
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "entry_point": "dispatchUnit",
+      "disposition": "enforced",
+      "evidence": "All derived anchor/shot dispatch lists call needsDispatch with the durable Run."
+    },
+    {
+      "path": "electron/runtime.ts",
+      "entry_point": "runTask",
+      "disposition": "enforced",
+      "evidence": "Runtime canvas submission consults decideShotClaim before persisting shot.claim."
+    },
+    {
+      "path": "src/workbench/production/productionShotOwnership.ts",
+      "entry_point": "productionShotOwnsGeneration",
+      "disposition": "enforced",
+      "evidence": "Renderer ownership projection already delegates to decideShotClaim."
+    }
   ],
-  "recurrence": {"classification":"recurring","reason":"The same Run can be reached through canvas, scheduler, outbox, and generic task submission paths, and legacy single-shot data omits shot metadata.","same_class_scan":["node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch","rg for shot.claim, metadata.shotId, beforeDispatch, shotDispatch across electron and src"]},
-  "prevention": {"kind":"centralized-boundary","enforcement_path":"electron/shared/decideShotClaim.ts","invariant":"A requester is granted only when the current attempt and durable owner allow it.","failure_mode":"Reject with production_shot_claimed and a structured reason; scheduler omits the shot.","exception_policy":"none","strategy":"All callers reuse the same correspondence helper and decision; reducer is the only claim writer.","artifacts":["electron/shared/productionShotJobs.ts","electron/shared/decideShotClaim.ts","electron/productionRun/productionRunReducer.ts","electron/productionRun/batchScheduleDerivation.ts"]},
-  "regression_tests":["electron/shared/productionShotPhase.test.ts","electron/productionRun/productionRunReducerCanvasLanding.test.ts","electron/productionRun/batchScheduleDerivation.test.ts"],
-  "class_regression_tests":["electron/shared/productionShotPhase.test.ts","electron/productionRun/batchScheduleDerivation.test.ts"],
-  "legacy_paths":{"status":"removed","removed_paths":["electron/productionRun/productionRunReducer.ts","electron/productionRun/batchScheduleDerivation.ts"],"rationale":"The duplicate reducer and scheduler decision branches were deleted in these changed files; legacy Run records without claim remain readable through derived ownership."},
-  "dependency_lifecycle":{"decision":"not-applicable","rationale":"No third-party dependency controls this state invariant.","exit_criteria":[]},
-  "migration":"Claim is additive. Runs without a claim derive ownership from existing durable state; new canvas claims write the attempt-scoped record.",
-  "residual_risks":["The paid real-media acceptance path is intentionally out of scope for B1 and must be run by the coordinator."]
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same Run can be reached through canvas, scheduler, outbox, and generic task submission paths, and legacy single-shot data omits shot metadata.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch",
+      "rg for shot.claim, metadata.shotId, beforeDispatch, shotDispatch across electron and src"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/decideShotClaim.ts",
+    "invariant": "A requester is granted only when the current attempt and durable owner allow it.",
+    "failure_mode": "Reject with production_shot_claimed and a structured reason; scheduler omits the shot.",
+    "exception_policy": "none",
+    "strategy": "All callers reuse the same correspondence helper and decision; reducer is the only claim writer.",
+    "artifacts": [
+      "electron/shared/productionShotJobs.ts",
+      "electron/shared/decideShotClaim.ts",
+      "electron/productionRun/productionRunReducer.ts",
+      "electron/productionRun/batchScheduleDerivation.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/shared/productionShotPhase.test.ts",
+    "electron/productionRun/productionRunReducerCanvasLanding.test.ts",
+    "electron/productionRun/batchScheduleDerivation.test.ts",
+    "electron/tasks/taskIpcGuard.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/shared/productionShotPhase.test.ts",
+    "electron/productionRun/batchScheduleDerivation.test.ts",
+    "electron/tasks/taskIpcGuard.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/productionRun/productionRunReducer.ts",
+      "electron/productionRun/batchScheduleDerivation.ts"
+    ],
+    "rationale": "The duplicate reducer and scheduler decision branches were deleted in these changed files; legacy Run records without claim remain readable through derived ownership."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency controls this state invariant.",
+    "exit_criteria": []
+  },
+  "migration": "Claim is additive. Runs without a claim derive ownership from existing durable state; new canvas claims write the attempt-scoped record.",
+  "residual_risks": [
+    "The paid real-media acceptance path is intentionally out of scope for B1 and must be run by the coordinator."
+  ]
 }

@@ -315,8 +315,8 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   const { vendor, model, apiKey, customConfig } = stagedCandidate || findExecutableModel(vendorKey, modelKey, wantedKind);
   const projectId = trim(request.extras?.projectId);
   const nodeId = trim(request.extras?.nodeId);
-  const productionRunId = trim(request.extras?.runId || request.extras?.productionRunId);
-  const productionShotId = trim(request.extras?.shotId || request.extras?.productionShotId);
+  const productionRunId = trim(request.extras?.productionRunId);
+  const productionShotId = trim(request.extras?.productionShotId);
   const grantId = trim(request.extras?.grantId);
   // Canvas generation is allowed to proceed only after the main process has
   // durably claimed the bound shot. Ordinary canvas nodes have no run/shot
@@ -324,23 +324,27 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   if (projectId && productionRunId && productionShotId) {
     const { getProductionRunService } = await import('./productionRun/productionRunRuntime');
     const service = getProductionRunService();
-    const run = service.repository.read(projectId, productionRunId);
-    const decision = decideShotClaim(run, productionShotId, 'canvas');
-    if (!decision.granted) {
-      throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
-        code: 'production_shot_claimed',
-        reason: decision.reason,
-      });
-    }
-    if (run && decision.holder === 'canvas' && decision.reason !== 'canvas_claimed') {
-      const expectedRevision = run.revision;
-      void service.repository.execute(projectId, productionRunId, {
-        commandId: `shot.claim:${productionRunId}:${productionShotId}`,
-        expectedRevision,
-        type: 'shot.claim',
-        payload: { shotId: productionShotId, by: 'canvas' },
-        issuedAt: new Date().toISOString(),
-      }).run;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const current = service.repository.read(projectId, productionRunId);
+      const decision = decideShotClaim(current, productionShotId, 'canvas');
+      if (!decision.granted) {
+        throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
+          code: 'production_shot_claimed', reason: decision.reason,
+        });
+      }
+      if (!current || decision.reason === 'canvas_claimed') break;
+      try {
+        service.repository.execute(projectId, productionRunId, {
+          commandId: `shot.claim:${productionRunId}:${productionShotId}`,
+          expectedRevision: current.revision,
+          type: 'shot.claim',
+          payload: { shotId: productionShotId, by: 'canvas' },
+          issuedAt: new Date().toISOString(),
+        });
+        break;
+      } catch (error) {
+        if (attempt === 1 || !/revision conflict/i.test(error instanceof Error ? error.message : String(error))) throw error;
+      }
     }
   }
   const taskId = `task-${crypto.randomUUID()}`;

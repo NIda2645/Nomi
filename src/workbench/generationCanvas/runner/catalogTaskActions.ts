@@ -43,6 +43,7 @@ import {
   watchComfyuiProgress,
 } from './localTaskControl'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
+import { productionMetaOf } from '../model/productionMeta'
 import { RecoverableTimeoutError } from './recoverableTimeout'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
 import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
@@ -319,8 +320,11 @@ export function buildCatalogTaskRequest(
   const cfgScale = asFiniteNumber(meta.cfgScale)
   const seed = asFiniteNumber(meta.seed)
   const referenceExtras = buildReferenceExtras(meta, references)
+  const productionMeta = productionMetaOf(node)
   const extras = {
     ...meta,
+    ...(productionMeta?.runId ? { productionRunId: productionMeta.runId } : {}),
+    ...(productionMeta?.shotId ? { productionShotId: productionMeta.shotId } : {}),
     modelKey,
     modelAlias: asTrimmedString(meta.modelAlias) || modelKey,
     nodeId: node.id,
