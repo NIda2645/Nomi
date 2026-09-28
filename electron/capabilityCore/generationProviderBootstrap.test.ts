@@ -7,7 +7,7 @@ import { createGenerationProviderBootstrap } from "./generationProviderBootstrap
 import { createCatalogModuleRegistry } from "./moduleCatalogBootstrap";
 import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 import type { GenerationProviderRequestInputV1 } from "./generationRuntimeAdapter";
-import { APIMART_IMAGE_MODELS } from "../catalog/apimartImages";
+import { APIMART_IMAGE_MODELS, APIMART_IMAGE_QUERY, APIMART_IMAGE_STATUS } from "../catalog/apimartImages";
 import type { CatalogState } from "../catalog/types";
 import type { ProductionExecutionBinding } from "../productionRun/productionExecutionBinding";
 import type { ProductionRun } from "../productionRun/productionRunTypes";
@@ -65,13 +65,9 @@ function state(apiKey = ""): CatalogState {
       name: mapping.name,
       enabled: true,
       create: mapping.create,
-      query: {
-        method: "GET",
-        path: "/v1/tasks/{{providerMeta.task_id}}",
-        headers: { Authorization: "Bearer {{user_api_key}}" },
-        response_mapping: { task_id: "data.id", status: "data.status", image_url: "data.result.images.0.url.0", error_message: "data.error.message" },
-      },
-      statusMapping: { queued: ["submitted", "pending", "queued"], running: ["processing", "running"], succeeded: ["completed", "succeeded", "success"], failed: ["failed", "cancelled", "error"] },
+      // 轮询与状态取正式契约同一份常量（seedBuiltins 的 curated 契约就用它们）；抄一份字面量会在契约演进时静默漂移。
+      query: APIMART_IMAGE_QUERY,
+      statusMapping: APIMART_IMAGE_STATUS,
       createdAt: "now",
       updatedAt: "now",
     })),
