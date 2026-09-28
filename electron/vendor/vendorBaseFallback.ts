@@ -74,29 +74,22 @@ function normalizeOrigin(url: string): string {
   }
 }
 
-type ErrorDetail = { code?: string; message?: string };
-
-/** 沿 cause 链 + AggregateError.errors（happy-eyeballs 双栈失败的形态）收集错误信息。 */
-function collectErrorDetails(error: unknown, depth = 0): ErrorDetail[] {
-  if (depth > 5 || !error || typeof error !== "object") return [];
-  const item = error as { code?: unknown; message?: unknown; errors?: unknown; cause?: unknown };
-  const details: ErrorDetail[] = [{
-    ...(typeof item.code === "string" ? { code: item.code } : {}),
-    ...(typeof item.message === "string" ? { message: item.message } : {}),
-  }];
-  if (Array.isArray(item.errors)) for (const nested of item.errors) details.push(...collectErrorDetails(nested, depth + 1));
-  details.push(...collectErrorDetails(item.cause, depth + 1));
-  return details;
-}
-
 const PRE_TLS_ECONNRESET = /before secure TLS connection was established|disconnected before secure TLS/i;
+
+/** 沿 cause 链 + AggregateError.errors 查找安全的连接阶段错误，命中后立即停止遍历。 */
+function hasConnectPhaseError(error: unknown, depth = 0): boolean {
+  if (depth > 5 || !error || typeof error !== "object") return false;
+  const item = error as { code?: unknown; message?: unknown; errors?: unknown; cause?: unknown };
+  const code = typeof item.code === "string" ? item.code : "";
+  const message = typeof item.message === "string" ? item.message : "";
+  if (SAFE_RETRY_CODES.has(code) || (code === "ECONNRESET" && PRE_TLS_ECONNRESET.test(message))) return true;
+  if (Array.isArray(item.errors)) for (const nested of item.errors) if (hasConnectPhaseError(nested, depth + 1)) return true;
+  return hasConnectPhaseError(item.cause, depth + 1);
+}
 
 /** 连接从未建立（请求从未离开本机）→ 换线重发对任何方法都安全。 */
 export function isConnectPhaseError(error: unknown): boolean {
-  return collectErrorDetails(error).some((detail) =>
-    (detail.code ? SAFE_RETRY_CODES.has(detail.code) : false) ||
-    (detail.code === "ECONNRESET" && PRE_TLS_ECONNRESET.test(detail.message ?? "")),
-  );
+  return hasConnectPhaseError(error);
 }
 
 function persist(): void {
