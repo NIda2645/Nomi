@@ -324,21 +324,19 @@ export async function runTask(payload: unknown): Promise<TaskResult> {
   if (projectId && productionRunId && productionShotId) {
     const { getProductionRunService } = await import('./productionRun/productionRunRuntime');
     const service = getProductionRunService();
-    let run = service.repository.read(projectId, productionRunId);
+    const run = service.repository.read(projectId, productionRunId);
     const decision = decideShotClaim(run, productionShotId, 'canvas');
-    const pendingJob = run?.jobs.find((job) => job.stageId === 'generate'
-      && ['planned', 'authorization_required', 'authorized'].includes(job.status)
-      && (job.metadata?.shotId === productionShotId || !run.generationPlan?.shots?.length));
-    if (!decision.granted && !pendingJob) {
+    if (!decision.granted) {
       throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
         code: 'production_shot_claimed',
         reason: decision.reason,
       });
     }
-    if (run && (!decision.granted || decision.holder === 'none')) {
-      run = service.repository.execute(projectId, productionRunId, {
+    if (run && decision.holder === 'canvas' && decision.reason !== 'canvas_claimed') {
+      const expectedRevision = run.revision;
+      void service.repository.execute(projectId, productionRunId, {
         commandId: `shot.claim:${productionRunId}:${productionShotId}`,
-        expectedRevision: run.revision,
+        expectedRevision,
         type: 'shot.claim',
         payload: { shotId: productionShotId, by: 'canvas' },
         issuedAt: new Date().toISOString(),

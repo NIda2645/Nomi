@@ -1,4 +1,5 @@
-import type { ProductionJob, ProductionRun } from "../productionRun/productionRunTypes";
+import type { ProductionJob, ProductionJobStatus, ProductionRun } from "../productionRun/productionRunTypes";
+import { latestJobForShot } from "./productionShotJobs";
 
 export type ShotClaimRequester = "canvas" | "production";
 export type ShotClaimHolder = "canvas" | "production" | "none";
@@ -11,6 +12,7 @@ export type ShotClaimReason =
   | "awaiting_confirmation"
   | "gate_rejected"
   | "queued"
+  | "canvas_claimed"
   | "in_flight"
   | "needs_reconcile"
   | "run_stopped"
@@ -27,19 +29,18 @@ const IN_FLIGHT: ReadonlySet<ProductionJob["status"]> = new Set([
   "downloading", "validating_technical", "validating_content",
 ]);
 const NEEDS_RECONCILE: ReadonlySet<ProductionJob["status"]> = new Set(["submission_unknown", "reconciling"]);
-const TERMINAL: ReadonlySet<ProductionJob["status"]> = new Set([
-  "ready", "adopted", "needs_attention", "cancelled_remote", "detached", "too_late", "cancel_requested",
-]);
 const STOPPED_RUNS: ReadonlySet<ProductionRun["status"]> = new Set(["pausing", "paused", "needs_attention", "cancelled"]);
 
-function latestJob(run: ProductionRun, shotId: string): ProductionJob | undefined {
-  const single = !run.generationPlan?.shots?.length;
-  const jobs = run.jobs.filter((job) => {
-    if (job.stageId !== "generate") return false;
-    if (single) return true;
-    return job.metadata?.shotId === shotId;
-  });
-  return jobs.sort((a, b) => (b.attempt - a.attempt) || (Date.parse(b.createdAt) - Date.parse(a.createdAt)))[0];
+function terminalStatus(status: ProductionJobStatus): boolean {
+  switch (status) {
+    case "ready": case "adopted": case "needs_attention": case "cancelled_remote":
+    case "detached": case "too_late": case "cancel_requested": return true;
+    case "planned": case "authorization_required": case "authorized":
+    case "submit_intent_persisted": case "submitting": case "provider_accepted":
+    case "polling": case "retry_wait": case "downloading": case "validating_technical":
+    case "validating_content": case "submission_unknown": case "reconciling": return false;
+    default: return ((status: never) => status)(status);
+  }
 }
 
 function decision(holder: ShotClaimHolder, reason: ShotClaimReason, requester: ShotClaimRequester): ShotClaimDecision {
@@ -67,7 +68,11 @@ export function decideShotClaim(
   const detached = plan.canvasDetached === true || shot?.canvasDetached === true;
   const gate = plan.authorizationGateId ? run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId) : undefined;
   const gateRejected = gate?.status === "rejected" || gate?.status === "expired" || gate?.status === "revoked";
-  const job = latestJob(run, shotId);
+  const job = latestJobForShot(run, shotId);
+  const claim = single ? plan.claim : shot?.claim;
+  if (claim?.by === "canvas" && claim.attempt === (job?.attempt ?? 1)) {
+    return decision("canvas", "canvas_claimed", requester);
+  }
 
   // A detached shot may finish an already-paid attempt, but never starts a new one.
   if (job && NEEDS_RECONCILE.has(job.status)) return decision("production", "needs_reconcile", requester);
@@ -81,7 +86,7 @@ export function decideShotClaim(
   }
   if (gateRejected) return decision("canvas", "gate_rejected", requester);
   if (gate && gate.status !== "approved") return decision("canvas", "awaiting_confirmation", requester);
-  if (job && TERMINAL.has(job.status)) return decision("canvas", "terminal", requester);
+  if (job && terminalStatus(job.status)) return decision("canvas", "terminal", requester);
   if (job && (job.status === "authorization_required" || job.status === "authorized")) {
     return STOPPED_RUNS.has(run.status)
       ? decision("canvas", "run_stopped", requester)

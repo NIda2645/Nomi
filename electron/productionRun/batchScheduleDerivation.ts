@@ -6,10 +6,13 @@ import type {
   ProductionGenerationShot,
   ProductionJob,
   ProductionRunStatus,
+  ProductionRun,
 } from "./productionRunTypes";
 import type { ShotPrice } from "./shotPricing";
 import { productionGenerationJobId } from "./productionGenerationAuthorization";
 import { jobAwaitsHuman } from "../shared/productionShotPhase";
+import { decideShotClaim } from "../shared/decideShotClaim";
+import { jobsForShot } from "../shared/productionShotJobs";
 
 /**
  * P4 S4 — the pure batch derivation. This is the heart of "调度器无自有持久状态" (plan §1).
@@ -133,6 +136,8 @@ export type BatchDerivationInput = {
   /** The current anchor checkpoint gate, if one was opened. */
   anchorGate?: ProductionGate;
   now: string;
+  /** Full durable run when called by the orchestrator; tests may omit it. */
+  run?: ProductionRun;
 };
 
 export type BatchDerivationResult = {
@@ -178,7 +183,8 @@ function jobForShot(runId: string, shot: ProductionGenerationShot, jobs: Product
   const hash = shot.contract?.contractHash;
   if (!hash) return undefined;
   const jobId = productionGenerationJobId(runId, hash, currentAttemptOf(shot), shot.shotId);
-  return jobs.find((candidate) => candidate.jobId === jobId);
+  const syntheticRun = { runId, jobs, generationPlan: { shots: [shot] } } as ProductionRun;
+  return jobsForShot(syntheticRun, shot.shotId).find((candidate) => candidate.jobId === jobId);
 }
 
 function shotFinished(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[]): boolean {
@@ -202,8 +208,10 @@ function shotInFlight(runId: string, shot: ProductionGenerationShot, jobs: Produ
  * dispatchable for crash recovery because the outbox intent log proves at-most-once provider submission.
  */
 const DISPATCHABLE = new Set<ProductionJob["status"]>(["authorized", "submit_intent_persisted"]);
-function needsDispatch(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[]): boolean {
+function needsDispatch(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[], run?: ProductionRun): boolean {
   if (!shot.contract?.contractHash) return false;
+  if (run && !decideShotClaim(run, shot.shotId, "production").granted) return false;
+  if (!run && shot.claim?.by === "canvas" && shot.claim.attempt === currentAttemptOf(shot)) return false;
   const job = jobForShot(runId, shot, jobs);
   return Boolean(job && DISPATCHABLE.has(job.status));
 }
@@ -290,7 +298,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // Anchors go first. Any anchor still needing a job (fresh or a rejected-checkpoint re-attempt) is
   // dispatched now; while anchors are not all ready, or the checkpoint has not released, shots wait.
   const anchorDispatch = anchors
-    .filter((anchor) => needsDispatch(input.runId, anchor, input.jobs))
+    .filter((anchor) => needsDispatch(input.runId, anchor, input.jobs, input.run))
     .map((anchor) => toTask(input.runId, anchor));
   const checkpointReleased = checkpoint.status === "approved";
   if (anchors.length > 0 && !checkpointReleased) {
@@ -314,7 +322,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
 
   for (let i = 0; i < videoShots.length; i += 1) {
     const shot = videoShots[i];
-    if (!needsDispatch(input.runId, shot, input.jobs)) continue; // finished or in-flight → skip
+    if (!needsDispatch(input.runId, shot, input.jobs, input.run)) continue; // finished, claimed, or in-flight → skip
     const price = input.perShotPrice(shot.shotId);
     if (!price.known) {
       // 算不出价 → 这一镜不进金额比较，也不因为金额被 halt。它照常派（人已经在信封上批过它）。
@@ -345,7 +353,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
     let remaining = 0;
     for (let i = haltIndex; i < videoShots.length; i += 1) {
       const shot = videoShots[i];
-      if (needsDispatch(input.runId, shot, input.jobs)) remaining += 1;
+      if (needsDispatch(input.runId, shot, input.jobs, input.run)) remaining += 1;
     }
     halt = { ...halt, dispatchableCount, remainingCount: remaining };
   }

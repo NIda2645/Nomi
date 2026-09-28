@@ -330,6 +330,14 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
   });
 });
 
+describe("shot claim dispatch boundary", () => {
+  it("does not dispatch a current attempt claimed by canvas", () => {
+    const shots = [shot("shot-a", "a".repeat(64), { claim: { by: "canvas", attempt: 1, claimedAt: NOW } })];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs: [jobFor("shot-a", "a".repeat(64), "authorized")] }));
+    expect(result.shotDispatch).toEqual([]);
+  });
+});
+
 describe("P4 S4 deriveBatchPlan — stop semantics", () => {
   for (const status of ["pausing", "paused", "cancelled"] as const) {
     it(`dispatches nothing new when the run is ${status}`, () => {

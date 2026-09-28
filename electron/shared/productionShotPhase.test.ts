@@ -215,14 +215,19 @@ describe('decideShotClaim — 画布能不能再发这一镜', () => {
 })
 
 describe('decideShotClaim — durable matrix regressions', () => {
-  it('canvas claim persists detached for a pending job and leaves paid work alone', () => {
+  it('running canvas claim is rejected for a queued job; stopped runs release it', () => {
     const pending = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
-    const claimed = applyProductionCommand(pending, {
+    expect(() => applyProductionCommand(pending, {
       commandId: 'claim-s1', expectedRevision: pending.revision, type: 'shot.claim',
+      payload: { shotId: 's1', by: 'canvas' }, issuedAt: NOW,
+    }, NOW)).toThrow(/production_shot_claimed: queued/)
+    const stopped = run({ status: 'paused', shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
+    const claimed = applyProductionCommand(stopped, {
+      commandId: 'claim-s1-stopped', expectedRevision: stopped.revision, type: 'shot.claim',
       payload: { shotId: 's1', by: 'canvas' }, issuedAt: NOW,
     }, NOW).run
     expect(claimed.jobs[0].status).toBe('detached')
-    expect(claimed.jobs[0].errorCode).toBe('canvas_detached')
+    expect(claimed.generationPlan?.shots?.[0].claim).toMatchObject({ by: 'canvas', attempt: 1 })
     const inFlight = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'polling')] })
     expect(() => applyProductionCommand(inFlight, {
       commandId: 'claim-s1-paid', expectedRevision: inFlight.revision, type: 'shot.claim',

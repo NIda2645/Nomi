@@ -231,6 +231,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
       const anchorGate = currentAnchorCheckpointGate(run);
       const result = deriveBatchPlan({
+        run,
         runId: run.runId,
         runStatus: run.status,
         plan,
@@ -280,6 +281,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
               const finalRun = requireRun(deps);
               const finalGate = currentAnchorCheckpointGate(finalRun);
               const finalResult = deriveBatchPlan({
+                run: finalRun,
                 runId: finalRun.runId, runStatus: finalRun.status, plan: finalRun.generationPlan!, jobs: finalRun.jobs, budget: finalRun.budget,
                 perShotPrice: (shotId) => { const shot = (finalRun.generationPlan?.shots ?? []).find((c) => c.shotId === shotId); return shot ? deps.perShotPrice(shot) : { known: false }; },
                 anchorGate: finalGate, now: now(),

@@ -2,7 +2,11 @@
 // plan.bind-shot-nodes：确认即落 / 打开项目补齐建好占位后，把 shotId→nodeId 写进对应镜（+ 已建 job 继承）。
 // plan.detach-shot-nodes：用户把占位从画布删掉（整批 Cmd+Z / 手动删）→ 记 canvasDetached、清 nodeId（撤销事实优先）。
 import type { ProductionCommandEffect } from "./productionRunReducer";
-import type { ProductionRun, RunCommand } from "./productionRunTypes";
+import type { ProductionJob, ProductionRun, RunCommand } from "./productionRunTypes";
+import { transitionJob } from "./productionRunState";
+
+const NOT_SUBMITTED = new Set(["planned", "authorization_required", "authorized"] as const);
+const isNotSubmitted = (status: ProductionJob["status"]): boolean => NOT_SUBMITTED.has(status as never);
 
 /**
  * 把「shotId → 画布占位节点 id」写进对应镜。幂等：同 shotId 重复绑同一 nodeId 无实质改动（跑两次补齐不重复）。
@@ -93,14 +97,17 @@ export function detachShotNodes(current: ProductionRun, command: RunCommand, now
   let changed = false;
   if (currentPlan && (!currentPlan.shots || currentPlan.shots.length === 0)
     && currentPlan.nodeId && detached.has(currentPlan.nodeId)) {
-    changed = true;
     const nextPlan = { ...currentPlan, canvasDetached: true, updatedAt: now };
     delete (nextPlan as { nodeId?: string }).nodeId;
     const jobs = current.jobs.map((job) => {
       if (job.stageId !== "generate" || !job.nodeId) return job;
       const next = { ...job, updatedAt: now };
+      const cancelled = isNotSubmitted(job.status)
+        ? { ...transitionJob(job, "detached", now), errorCode: "canvas_detached", errorMessage: "Canvas node detached", updatedAt: now }
+        : next;
       delete (next as { nodeId?: string }).nodeId;
-      return next;
+      delete (cancelled as { nodeId?: string }).nodeId;
+      return cancelled;
     });
     return {
       run: { ...current, generationPlan: nextPlan, jobs, updatedAt: now },
@@ -118,7 +125,9 @@ export function detachShotNodes(current: ProductionRun, command: RunCommand, now
   const jobs = current.jobs.map((job) => {
     if (!job.nodeId || !detached.has(job.nodeId)) return job;
     changed = true;
-    const next = { ...job, updatedAt: now };
+    const next = isNotSubmitted(job.status)
+      ? { ...transitionJob(job, "detached", now), errorCode: "canvas_detached", errorMessage: "Canvas node detached", updatedAt: now }
+      : { ...job, updatedAt: now };
     delete (next as { nodeId?: string }).nodeId;
     return next;
   });
