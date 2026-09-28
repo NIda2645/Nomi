@@ -231,17 +231,34 @@ function edgeModeForArchetypeMode(mode: ArchetypeMode, existingEdgesToTarget: re
   return mode.slots.some((slot) => slot.kind === 'image_ref') ? 'reference' : 'first_frame'
 }
 
-/** Shared owner for the incoming-image preference and its edge vocabulary. */
-export function preferredIncomingImageEdgeMode(target: GenerationCanvasNode, existingEdgesToTarget: readonly GenerationCanvasEdge[]): GenerationCanvasEdgeMode {
+const REFERENCE_WORKFLOW_INTENTS = ['reference', 'character', 'multimodal']
+
+/**
+ * The one ranking of which workflow an incoming image lands in: the model's declared reference
+ * workflows first, then other image-reference workflows, then first-frame workflows. Both the edge
+ * vocabulary (`preferredIncomingImageEdgeMode`, before the edge exists) and the mode switch
+ * (`resolveTargetModeForEdge`, after it exists) read this ranking; they differ only in what
+ * "this mode can take it" means. Intents and slots come from the archetype, never a model id.
+ */
+function preferredImageWorkflow(archetype: ModelArchetype, accepts: (mode: ArchetypeMode) => boolean): ArchetypeMode | undefined {
+  return archetype.modes.find((candidate) => REFERENCE_WORKFLOW_INTENTS.includes(String(candidate.intent)) && accepts(candidate))
+    ?? archetype.modes.find((candidate) => (
+      candidate.slots.some((slot) => slot.kind === 'image_ref')
+      && !['single', 'firstlast'].includes(String(candidate.intent))
+      && accepts(candidate)
+    ))
+    ?? archetype.modes.find((candidate) => candidate.slots.some((slot) => slot.kind === 'first_frame') && accepts(candidate))
+}
+
+const acceptsIncomingImage = (mode: ArchetypeMode): boolean => mode.slots.some((slot) => slot.kind === 'image_ref' || slot.kind === 'first_frame')
+
+function preferredIncomingImageEdgeMode(target: GenerationCanvasNode, existingEdgesToTarget: readonly GenerationCanvasEdge[]): GenerationCanvasEdgeMode {
   const archetype = archetypeForNode(target)
   if (!archetype) return 'first_frame'
   const currentMode = currentArchetypeMode(archetype, (target.meta || {}) as Record<string, unknown>)
-  if (currentMode.slots.some((slot) => slot.kind === 'image_ref' || slot.kind === 'first_frame')) return edgeModeForArchetypeMode(currentMode, existingEdgesToTarget)
-  const referenceMode = archetype.modes.find((candidate) => ['reference', 'character', 'multimodal'].includes(String(candidate.intent)))
-    ?? archetype.modes.find((candidate) => candidate.slots.some((slot) => slot.kind === 'image_ref') && !['single', 'firstlast'].includes(String(candidate.intent)))
-  if (referenceMode) return edgeModeForArchetypeMode(referenceMode, existingEdgesToTarget)
-  const firstFrameMode = archetype.modes.find((candidate) => candidate.slots.some((slot) => slot.kind === 'first_frame'))
-  return firstFrameMode ? edgeModeForArchetypeMode(firstFrameMode, existingEdgesToTarget) : 'reference'
+  if (acceptsIncomingImage(currentMode)) return edgeModeForArchetypeMode(currentMode, existingEdgesToTarget)
+  const preferred = preferredImageWorkflow(archetype, acceptsIncomingImage)
+  return preferred ? edgeModeForArchetypeMode(preferred, existingEdgesToTarget) : 'reference'
 }
 
 /**
@@ -269,20 +286,11 @@ export function resolveTargetModeForEdge(
   const demand: ReferenceDemand = { slots: EDGE_MODE_SLOTS[mode ?? 'reference'], asset }
   const rankOf = (candidate: ArchetypeMode): number =>
     demand.slots.findIndex((kind) => SLOT_ACCEPTS[kind].includes(asset) && candidate.slots.some((slot) => slot.kind === kind))
-  // A newly connected image should enter the model's declared reference workflow
-  // before falling back to a frame workflow. This is capability driven: the intent
-  // labels and image_ref slots come from the archetype, never from a model/vendor id.
+  // A newly connected image enters the same preferred workflow the edge vocabulary picked
+  // (one ranking, see preferredImageWorkflow), restricted to modes that can take this edge.
   if (rankOf(currentMode) < 0) {
-    const referenceMode = archetype.modes.find((candidate) => (
-      ['reference', 'character', 'multimodal'].includes(String(candidate.intent))
-      && rankOf(candidate) >= 0
-    ))
-    if (referenceMode && referenceMode.id !== currentMode.id) return referenceMode.id
-    const firstFrameMode = archetype.modes.find((candidate) => (
-      candidate.slots.some((slot) => slot.kind === 'first_frame')
-      && rankOf(candidate) >= 0
-    ))
-    if (firstFrameMode && firstFrameMode.id !== currentMode.id) return firstFrameMode.id
+    const preferred = preferredImageWorkflow(archetype, (candidate) => rankOf(candidate) >= 0)
+    if (preferred && preferred.id !== currentMode.id) return preferred.id
   }
   return resolveModeForReferenceDemand(archetype, (target.meta || {}) as Record<string, unknown>, [
     demand,
