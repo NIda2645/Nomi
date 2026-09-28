@@ -15,13 +15,15 @@ export function loadSiteData() {
 }
 
 /**
- * 官网列哪些模型：认得的（有档案）、没退役、而且至少有一家能用 API Key 接。
+ * 官网列哪些模型：认得的（有档案）、没退役、至少有一家能用 API Key 接，而且**中英两份介绍都写好了**。
  * 即梦会员、本地 ComfyUI、Codex 登录额度这类本地桥接是「渠道」不是模型，不单独成页。
+ * 没写介绍的新模型不上官网（方案 §4 / §12）：每周同步把它们列进「缺介绍」清单，写好再上。
  */
 export function publicModels(data) {
   const tierOrder = { flagship: 0, value: 1, companion: 2 }
   return data.models
     .filter((model) => model.recognized && model.lifecycle !== 'legacy' && model.vendors.some((vendor) => vendor.authType !== 'none'))
+    .filter((model) => modelEditorial(model.slug, 'zh-CN') && modelEditorial(model.slug, 'en'))
     .map((model, index) => ({ model, index }))
     .sort((left, right) => (tierOrder[left.model.lifecycle] ?? 3) - (tierOrder[right.model.lifecycle] ?? 3) || left.index - right.index)
     .map(({ model }) => model)
@@ -36,7 +38,8 @@ export function modelEditorial(slug, locale) {
   if (!match) throw new Error(`模型介绍缺少前言：${path.relative(root, file)}`)
   // JSON_SCHEMA：日期保持字符串（默认 schema 会把 2026-07-31 变成带本机时区的 Date）。
   const front = yaml.load(match[1], { schema: yaml.JSON_SCHEMA })
-  for (const key of ['model', 'maker', 'released', 'checkedAt', 'headline', 'sources']) {
+  // released 可以不写：查不到官方发布日期就不写，页面上也就不显示（不许推测一个日期填进去）。
+  for (const key of ['model', 'maker', 'checkedAt', 'headline', 'sources']) {
     if (!front?.[key]) throw new Error(`模型介绍缺少 ${key}：${path.relative(root, file)}`)
   }
   return { ...front, body: match[2].trim() }

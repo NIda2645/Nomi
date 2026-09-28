@@ -190,7 +190,7 @@ export function renderModelDetail(locale, runtimeFacts, data, model) {
         <p class="eyebrow">${escapeText(editorial.maker)} · ${escapeText(copy.models.sections[model.kind])}</p>
         <h1 class="display model-title">${escapeText(name)}</h1>
         <p class="lede">${escapeText(editorial.headline)}</p>
-        <p class="model-dates">${escapeText(copy.model.released)} ${escapeText(editorial.released)} · ${escapeText(copy.model.checked)} ${escapeText(editorial.checkedAt)}</p>
+        <p class="model-dates">${editorial.released ? `${escapeText(copy.model.released)} ${escapeText(editorial.released)} · ` : ''}${escapeText(copy.model.checked)} ${escapeText(editorial.checkedAt)}</p>
         <div class="hero-actions">
           <a class="button primary" data-download-nomi href="#download-options">${escapeText(content.hero.download)}</a>
           ${tipsAnchor ? `<a class="button quiet" href="#${escapeAttr(tipsAnchor)}">${escapeText(copy.model.toTips)}</a>` : ''}
