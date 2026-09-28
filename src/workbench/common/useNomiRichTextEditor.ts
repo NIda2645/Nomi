@@ -1,5 +1,5 @@
 import React from 'react'
-import { useEditor, type Editor, type JSONContent } from '@tiptap/react'
+import { useEditor, type Editor, type JSONContent, type UseEditorOptions } from '@tiptap/react'
 import { markInputRule, markPasteRule, type AnyExtension } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -40,10 +40,19 @@ const EMPTY_EXTENSIONS: AnyExtension[] = []
  * implicit client/server mode to choose the lifecycle makes the DOM and the
  * editor state diverge. Both rich-text surfaces consume this one contract.
  */
-export const NOMI_TIPTAP_EDITOR_OPTIONS = {
+const NOMI_TIPTAP_EDITOR_OPTIONS = {
   immediatelyRender: true,
   shouldRerenderOnTransaction: false,
 } as const
+
+/**
+ * The only door to TipTap's `useEditor` (eslint `no-restricted-imports` bans it
+ * elsewhere): every Nomi editor gets the lifecycle policy above, and a caller
+ * cannot override it. Callers still own keeping their option collections stable.
+ */
+export function useNomiTiptapEditor(options: UseEditorOptions, deps?: React.DependencyList): Editor {
+  return useEditor({ ...options, ...NOMI_TIPTAP_EDITOR_OPTIONS }, deps)
+}
 
 /**
  * Shared Tiptap rich-text kernel — single source of truth for BOTH the creation
@@ -135,9 +144,8 @@ export function useNomiRichTextEditor(options: {
     [sanitizePaste],
   )
 
-  const editor = useEditor(
+  const editor = useNomiTiptapEditor(
     {
-      ...NOMI_TIPTAP_EDITOR_OPTIONS,
       editable,
       extensions,
       content,

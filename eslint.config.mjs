@@ -152,5 +152,16 @@ export default tseslint.config(
     ignores: ['src/**/*.test.{ts,tsx}', 'src/**/__tests__/**', 'src/desktop/rendererLog.ts'],
     rules: { 'no-console': ['error', { allow: ['log', 'info', 'debug'] }] },
   },
+  {
+    // TipTap 编辑器只有一扇门：useNomiTiptapEditor（固定 React 19 下的生命周期选项）。
+    // 直接用 useEditor 会绕开它——2026-09-28 画布提示词编辑器选区不同步就是两套默认值各自为政。
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/workbench/common/useNomiRichTextEditor.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [{ name: '@tiptap/react', importNames: ['useEditor'], message: '用 useNomiTiptapEditor（src/workbench/common/useNomiRichTextEditor.ts），它固定了编辑器生命周期选项。' }],
+      }],
+    },
+  },
   prettier,
 )
