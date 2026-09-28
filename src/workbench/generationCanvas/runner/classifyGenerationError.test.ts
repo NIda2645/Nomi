@@ -7,6 +7,7 @@ import { describeAgentError } from '../../../../electron/ai/agentError'
 import { vendorStallError } from '../../../../electron/ai/aiSdkVendorError'
 import { tagNomiError, stripNomiErrorCode } from '../../../../electron/shared/nomiErrorCodes'
 import { describeOutboundRefusal } from '../../../../electron/networkOutboundMessage'
+import { encodeStructuredErrorMessage } from '../../../../electron/vendor/vendorHttp'
 import i18n from '../../../i18n'
 
 describe('classifyGenerationError — 已知分类', () => {
@@ -18,7 +19,7 @@ describe('classifyGenerationError — 已知分类', () => {
       ['needs_reconcile', 'generationCommon.observability.error.shotClaimed.needsReconcile.reason', 'reconcile'],
     ] as const
     for (const [reason, key, action] of cases) {
-      const report = classifyGenerationError(`production_shot_claimed: ${reason}`)
+      const report = classifyGenerationError(encodeStructuredErrorMessage({ code: 'production_shot_claimed', reason }, `production_shot_claimed: ${reason}`))
       expect(report.reason).toBe(i18n.t(key))
       expect(report.reason).not.toContain('generationCommon.')
       expect(report.primary).toBe(action)

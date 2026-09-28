@@ -110,7 +110,7 @@ export type ProductionGenerationSubmissionDependencies = {
   now?: () => string;
   runtimeTaskId?: (input: { runId: string; contractHash: string; attempt?: number }) => string;
   afterProviderAcceptance?: (input: { providerTaskId: string; run: ProductionRun }) => void | Promise<void>;
-  beforeDispatch?: (input: { run: ProductionRun; job: ProductionJob }) => void | Promise<void>;
+  beforeDispatch: (input: { run: ProductionRun; job: ProductionJob }) => void | Promise<void>;
   /** Asset store owns bytes, identity and leases; the submission seam only commits its returned receipt. */
   materializeOutput?: (input: {
     projectId: string;

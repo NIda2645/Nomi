@@ -129,7 +129,7 @@ function buildSubmission(root: string, repository: ReturnType<typeof createProdu
   // Sanity: the real adapter must accept this provider (proves we exercise the genuine adapter path).
   createGenerationRuntimeAdapter({ providers: [provider] });
   return createProductionGenerationSubmission({
-    repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+    repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
     intentMacKey: "test-intent-key", provider,
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
@@ -377,7 +377,7 @@ describe("P4 slow provider — the batch waits (not spins) and still materialize
    * clock, no polling — the awaited runToQuiescence promise IS the synchronization). */
   function slowScheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, provider: GenerationProvider, options: Parameters<typeof createMultiShotBatchScheduler>[0]["options"] = {}) {
     const submission = createProductionGenerationSubmission({
-      repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+      repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
       intentMacKey: "test-intent-key", provider,
       materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
       now,

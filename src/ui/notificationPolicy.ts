@@ -43,6 +43,7 @@ export function notify(input: NotificationInput): Promise<boolean> | void {
  * and resolves only after its ordinary project hydration/permission path finishes. */
 export type NotificationTarget = {
   projectId: string
+  runId?: string
   workspaceMode?: 'preview' | 'generation'
   nodeIds?: string[]
   taskCenter?: boolean

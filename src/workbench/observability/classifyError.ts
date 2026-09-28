@@ -541,7 +541,7 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       ...narrateGenerationErrorActions('unknown'),
     }
   }
-  const claimReason = /production_shot_claimed:\s*([a-z_]+)/.exec(raw)?.[1]
+  const claimReason = structured?.code === 'production_shot_claimed' ? structured.reason : undefined
   const claimCopy: Record<string, { key: 'queued' | 'awaitingConfirmation' | 'inFlight' | 'needsReconcile'; action: GenerationErrorAction }> = {
     queued: { key: 'queued', action: 'view-task' },
     awaiting_confirmation: { key: 'awaitingConfirmation', action: 'view-task' },
@@ -556,7 +556,7 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       hint: i18n.t(`generationCommon.observability.error.shotClaimed.${copy.key}.hint`),
       raw,
       primary: copy.action,
-      secondary: copy.action === 'reconcile' ? 'retry' : 'reconcile',
+      secondary: copy.action,
     }
   }
   const kind = detectLegacyErrorKind(raw)

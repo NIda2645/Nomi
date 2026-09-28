@@ -17,6 +17,8 @@ import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 import { stageForGenerationError } from '../../../ui/community/feedbackTypes'
 import { builtinVendorKeyOfKey } from '../../../../electron/shared/builtinVendorIdentity'
 import { revealNotificationTarget } from '../../../ui/notificationPolicy'
+import { productionMetaOf } from '../model/productionMeta'
+import { withProjectAction } from '../../project/projectCanvasReadSurface'
 
 const ACTION_ICON: Record<GenerationErrorAction, typeof IconRefresh> = {
   retry: IconRefresh,
@@ -124,8 +126,10 @@ export function NodeErrorReport({
 
   const handleReconcile = React.useCallback((event: React.MouseEvent) => {
     event.stopPropagation()
-    const projectId = typeof meta?.projectId === 'string' ? meta.projectId : ''
-    void revealNotificationTarget({ projectId, taskCenter: true })
+    const runId = productionMetaOf({ meta })?.runId
+    withProjectAction((project) => {
+      void revealNotificationTarget({ projectId: project.binding.projectId, ...(runId ? { runId } : {}), taskCenter: true })
+    })
   }, [meta])
 
   /**

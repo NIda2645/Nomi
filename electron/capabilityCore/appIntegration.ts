@@ -38,7 +38,7 @@ import {
 } from '../productionRun/prepareProductionGenerationAuthorization'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
 import { registerBatchSchedulerKicker } from '../productionRun/batchSchedulerKick'
-import type { ProductionActionResult, ProductionJob, ProductionRun } from '../productionRun/productionRunTypes'
+import type { ProductionActionResult } from '../productionRun/productionRunTypes'
 import { createCanvasLandingHost } from '../productionRun/canvasLandingHost'
 import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
@@ -70,7 +70,7 @@ export { listPendingSpendConfirmations, revisePendingSpendConfirmation, discardP
 import { repairStaleMcpConfigs } from './mcpConfig'
 import { logDevDetail, logError, logInfo, logWarn } from '../logging/logger'
 import { markResidentSurfaceInstallFailed, markResidentSurfaceReady, markResidentSurfaceStarting, markResidentSurfaceStopped, readResidentSurfaceLifecycle } from './residentSurfaceLifecycle'
-import { decideShotClaim } from '../shared/decideShotClaim'
+import { createProductionShotDispatchGuard } from '../productionRun/productionShotDispatchGuard'
 
 let handle: RpcServerHandle | null = null
 // P4 S5：打开/切换项目时的补齐钩子（startCapabilityCore 装配后设进来）——按 run.jobs[].nodeId × artifacts
@@ -218,19 +218,9 @@ export async function startCapabilityCore(
     })
     const landCanvasBestEffort = canvasLanding.landCanvasBestEffort
     landDraftOnCanvas = canvasLanding.landDraftOnCanvas
-    const assertProductionShotCanDispatch = ({ run, job }: { run: ProductionRun; job: ProductionJob }) => {
-      const durable = generationService.repository.read(run.projectId, run.runId) ?? run
-      const shotId = typeof job.metadata?.shotId === 'string' && job.metadata.shotId.trim()
-        ? job.metadata.shotId.trim()
-        : durable.generationPlan?.candidate?.candidateId
-      const decision = decideShotClaim(durable, shotId, 'production')
-      if (!decision.granted) {
-        throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
-          code: 'production_shot_claimed',
-          reason: decision.reason,
-        })
-      }
-    }
+    const assertProductionShotCanDispatch = createProductionShotDispatchGuard({
+      readRun: (projectId, runId) => generationService.repository.read(projectId, runId) ?? undefined,
+    })
     // 画布节点跟着 Run 走：每一次耐久变化（派发 / 受理 / 出片落盘 / 失败 / 停）都经过仓库 execute 的事件旁路，
     // 跟随者据此把「生成中 / 结果 / 失败」写进节点自己的运行记录——与普通生成同一份状态、同一套画法。
     // 它取代了以前只在「出片」那一下投递结果的专用通道（一件事一个 owner：Run → 画布只有落地这一条路）。
@@ -239,6 +229,23 @@ export async function startCapabilityCore(
     // P4 S4/S5：构造一个 Run 的提交门面（submission）。lease 身份（immutableProjectUuid/projectGeneration）
     // 从工作区记录读——**耐久 binding 已冻住这些值**，恢复时无需新 lease。provider 集合按所有镜头合同和已有 job 推导。
     // 返回 null = provider 未配置 / 工程根不可达（调用方跳过，不驱动）。start 与恢复调度共用同一门槛（P1）。
+    const buildSubmission = (input: {
+      projectRoot: string
+      immutableProjectUuid: string
+      projectGeneration: number
+      projectRevision: number
+      providers: Parameters<typeof createProductionGenerationSubmission>[0]['providers']
+    }) => createProductionGenerationSubmission({
+      repository: generationService.repository,
+      projectRoot: input.projectRoot,
+      immutableProjectUuid: input.immutableProjectUuid,
+      projectGeneration: input.projectGeneration,
+      projectRevision: input.projectRevision,
+      intentMacKey: ensureCapabilitySigningKey('generation-intent'),
+      providers: input.providers,
+      beforeDispatch: assertProductionShotCanDispatch,
+      materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
+    })
     const buildSubmissionForRun = (run: {
       projectId: string
       generationPlan?: GenerationOperationProviderShape & { candidate?: { providerId?: unknown } }
@@ -259,17 +266,7 @@ export async function startCapabilityCore(
       const providerBootstrap = readProviderBootstrap()
       if (!hasGenerationOperationProviderReadiness(operationShape, providerBootstrap.providers, jobProviderIds)
         || !projectRoot || !record?.immutableProjectUuid || !record.projectGeneration || !Number.isInteger(record.revision)) return null
-      return createProductionGenerationSubmission({
-        repository: generationService.repository,
-        projectRoot,
-        immutableProjectUuid: record.immutableProjectUuid,
-        projectGeneration: record.projectGeneration,
-        projectRevision: record.revision,
-        intentMacKey: ensureCapabilitySigningKey('generation-intent'),
-        providers: providerBootstrap.providers,
-        beforeDispatch: assertProductionShotCanDispatch,
-        materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
-      })
+      return buildSubmission({ projectRoot, immutableProjectUuid: record.immutableProjectUuid, projectGeneration: record.projectGeneration, projectRevision: record.revision, providers: providerBootstrap.providers })
     }
     // P4 S5：re-kick 一个未完多镜批次的调度器（打开项目恢复用）。best-effort、不阻塞、异常只记 warn。
     // scheduler 无自有状态：从 jobs[]+ledger 纯派生「下一批」，已提交不重提、已完成不重扣（batchScheduleDerivation）。
@@ -373,16 +370,12 @@ export async function startCapabilityCore(
             || !projectRoot || !operation.contract || !projectRecord || !Number.isInteger(projectRecord.revision)) {
             return { operationId: operation.operationId, state: operation.state, nextAction: 'provider_not_configured' }
           }
-          const submission = createProductionGenerationSubmission({
-            repository: generationService.repository,
+          const submission = buildSubmission({
             projectRoot,
             immutableProjectUuid: lease.immutableProjectUuid,
             projectGeneration: lease.projectGeneration,
             projectRevision: projectRecord.revision,
-            intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             providers: providerBootstrap.providers,
-            beforeDispatch: assertProductionShotCanDispatch,
-            materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
           })
           // P4 S4: a multi-shot operation is driven by the durable batch scheduler (anchor → checkpoint →
           // shot batch, with budget halt + stop). A single-shot operation keeps the flat one-call start.
@@ -443,16 +436,12 @@ export async function startCapabilityCore(
           const projectRecord = readWorkspaceProject(lease.projectId, getWorkspaceRepositoryDeps())
           if (!provider || !projectRoot || !operation.contract || !projectRecord || !Number.isInteger(projectRecord.revision)) return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }
           if (!provider.query || !provider.capabilities.query) return { operationId: operation.operationId, outcome, nextAction: 'manual_review', recoveryNotice: '该供应商没有可用的任务查询；请到供应商核对。' }
-          const submission = createProductionGenerationSubmission({
-            repository: generationService.repository,
+          const submission = buildSubmission({
             projectRoot,
             immutableProjectUuid: lease.immutableProjectUuid,
             projectGeneration: lease.projectGeneration,
             projectRevision: projectRecord.revision,
-            intentMacKey: ensureCapabilitySigningKey('generation-intent'),
             providers: providerBootstrap.providers,
-            beforeDispatch: assertProductionShotCanDispatch,
-            materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
           })
           try {
             const polled = await submission.poll({ projectId: lease.projectId, operationId: operation.operationId })

@@ -102,6 +102,7 @@ describe("Run-owned semantic generation submission", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "provider-task-1", raw: { accepted: true } }));
     const first = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -130,6 +131,7 @@ describe("Run-owned semantic generation submission", () => {
     const restartedSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-2" }));
     const restarted = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -155,6 +157,7 @@ describe("Run-owned semantic generation submission", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "provider-task-1" }));
     const first = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -181,6 +184,7 @@ describe("Run-owned semantic generation submission", () => {
     const restartedSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-2" }));
     const restarted = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -205,6 +209,7 @@ describe("Run-owned semantic generation submission", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "provider-task-observe-only" }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -230,6 +235,7 @@ describe("Run-owned semantic generation submission", () => {
     const query = vi.fn(async (providerTaskId: string) => ({ status: "processing", raw: { taskId: providerTaskId, progress: 42 } }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -263,7 +269,7 @@ describe("Run-owned semantic generation submission", () => {
   it("a fresh submission (re-kick / reopen / restart) polls with the durable model identity, never re-submits", async () => {
     const { root, repository } = setup();
     const deps = {
-      repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+      repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
       intentMacKey: "test-intent-key", now: () => "2026-08-23T00:03:00.000Z",
     };
     const submit = vi.fn(async () => ({ providerTaskId: "provider-task-late" }));
@@ -296,6 +302,7 @@ describe("Run-owned semantic generation submission", () => {
     }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -343,6 +350,7 @@ describe("Run-owned semantic generation submission", () => {
     }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -381,6 +389,7 @@ describe("Run-owned semantic generation submission", () => {
     const materializeOutput = vi.fn();
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -431,6 +440,7 @@ describe("Run-owned semantic generation submission", () => {
     const secondSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-1" }));
     const resumed = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -453,6 +463,7 @@ describe("Run-owned semantic generation submission", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "should-not-run" }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -482,6 +493,7 @@ describe("Run-owned semantic generation submission", () => {
     };
     const first = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
@@ -513,7 +525,7 @@ describe("historical batch observation", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "historical-task" }));
     const materializeOutput = vi.fn(async (_input: { contract: unknown }) => ({ artifactId: "historic-artifact", kind: "image" as const, contentHash: "hash", projectRelativePath: "out.png" }));
     const submission = createProductionGenerationSubmission({
-      repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+      repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
       intentMacKey: "test-intent-key", now: () => "2026-08-23T00:00:00.000Z", materializeOutput,
       provider: { providerId: "fixture-provider", capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },
         buildRequest: input => input, submit, query: async () => ({ status: "succeeded", raw: {} }),
