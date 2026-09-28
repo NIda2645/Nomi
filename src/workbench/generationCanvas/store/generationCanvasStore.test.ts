@@ -122,6 +122,26 @@ describe('connectToNode — 连一张图进图片节点自动切到「参考图/
     return { id, kind: 'image', title: id, position: { x: 0, y: 0 }, prompt: '', categoryId: 'shots', meta: { archetype: { id: 'nano-banana', modeId } } }
   }
 
+  function archVideoNode(id: string, modeId: string): GenerationCanvasNode {
+    return { id, kind: 'video', title: id, position: { x: 0, y: 0 }, prompt: '', categoryId: 'shots', meta: { archetype: { id: 'seedance-2-apimart', modeId } } }
+  }
+
+  it('real connectToNode promotes Seedance to reference mode and records ordered character edges', () => {
+    useGenerationCanvasStore.getState().restoreSnapshot({
+      nodes: [node('src-1', 'shots'), archVideoNode('dst', 't2v')], edges: [], selectedNodeIds: [], groups: [],
+    })
+    const store = useGenerationCanvasStore.getState()
+    store.startConnection('src-1')
+    expect(store.connectToNode('dst').ok).toBe(true)
+    expect(useGenerationCanvasStore.getState().edges[0]?.mode).toBe('character_ref')
+    expect((useGenerationCanvasStore.getState().nodes.find((item) => item.id === 'dst')?.meta?.archetype as { modeId?: string } | undefined)?.modeId).toBe('omni')
+
+    const second = useGenerationCanvasStore.getState().addNode({ kind: 'image', title: 'src-2', position: { x: 0, y: 0 }, categoryId: 'shots' })
+    useGenerationCanvasStore.getState().startConnection(second.id)
+    expect(useGenerationCanvasStore.getState().connectToNode('dst').ok).toBe(true)
+    expect(useGenerationCanvasStore.getState().edges.map((edge) => edge.mode)).toEqual(['character_ref', 'character_ref'])
+  })
+
   it('源图 → 目标图片节点停在默认「文生图」(t2i,无参考槽) → 连线后 modeId 变 edit(改图)', () => {
     useGenerationCanvasStore.getState().restoreSnapshot({
       nodes: [node('src', 'shots'), archImageNode('dst', 't2i')],

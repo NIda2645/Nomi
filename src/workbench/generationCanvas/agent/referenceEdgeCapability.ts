@@ -218,19 +218,30 @@ export function selectConnectionEdgeMode(
   target: GenerationCanvasNode,
   existingEdgesToTarget: readonly GenerationCanvasEdge[],
 ): GenerationCanvasEdgeMode {
-  const sourceKind = referenceAssetKindForNode(source)
-  if (sourceKind === 'image' && target.kind === 'video') {
-    const archetype = archetypeForNode(target)
-    if (archetype) {
-      const mode = currentArchetypeMode(archetype, (target.meta || {}) as Record<string, unknown>)
-      const hasCharacterArray = mode.slots.some((slot) => slot.kind === 'image_ref' && Boolean(slot.characterIndexed))
-      if (hasCharacterArray) return 'character_ref'
-    }
-    // 单帧 i2v：首帧空位优先，再尾帧（与历史行为一致）。
-    if (!existingEdgesToTarget.some((e) => e.mode === 'first_frame')) return 'first_frame'
-    if (!existingEdgesToTarget.some((e) => e.mode === 'last_frame')) return 'last_frame'
-  }
+  if (referenceAssetKindForNode(source) === 'image' && target.kind === 'video') return preferredIncomingImageEdgeMode(target, existingEdgesToTarget)
   return 'reference'
+}
+
+function edgeModeForArchetypeMode(mode: ArchetypeMode, existingEdgesToTarget: readonly GenerationCanvasEdge[]): GenerationCanvasEdgeMode {
+  if (mode.slots.some((slot) => slot.kind === 'image_ref' && Boolean(slot.characterIndexed))) return 'character_ref'
+  if (mode.slots.some((slot) => slot.kind === 'first_frame')) {
+    if (!existingEdgesToTarget.some((edge) => edge.mode === 'first_frame')) return 'first_frame'
+    if (mode.slots.some((slot) => slot.kind === 'last_frame') && !existingEdgesToTarget.some((edge) => edge.mode === 'last_frame')) return 'last_frame'
+  }
+  return mode.slots.some((slot) => slot.kind === 'image_ref') ? 'reference' : 'first_frame'
+}
+
+/** Shared owner for the incoming-image preference and its edge vocabulary. */
+export function preferredIncomingImageEdgeMode(target: GenerationCanvasNode, existingEdgesToTarget: readonly GenerationCanvasEdge[]): GenerationCanvasEdgeMode {
+  const archetype = archetypeForNode(target)
+  if (!archetype) return 'first_frame'
+  const currentMode = currentArchetypeMode(archetype, (target.meta || {}) as Record<string, unknown>)
+  if (currentMode.slots.some((slot) => slot.kind === 'image_ref' || slot.kind === 'first_frame')) return edgeModeForArchetypeMode(currentMode, existingEdgesToTarget)
+  const referenceMode = archetype.modes.find((candidate) => ['reference', 'character', 'multimodal'].includes(String(candidate.intent)))
+    ?? archetype.modes.find((candidate) => candidate.slots.some((slot) => slot.kind === 'image_ref') && !['single', 'firstlast'].includes(String(candidate.intent)))
+  if (referenceMode) return edgeModeForArchetypeMode(referenceMode, existingEdgesToTarget)
+  const firstFrameMode = archetype.modes.find((candidate) => candidate.slots.some((slot) => slot.kind === 'first_frame'))
+  return firstFrameMode ? edgeModeForArchetypeMode(firstFrameMode, existingEdgesToTarget) : 'reference'
 }
 
 /**
@@ -254,8 +265,27 @@ export function resolveTargetModeForEdge(
   if (!asset) return null
   const archetype = archetypeForNode(target)
   if (!archetype) return null
+  const currentMode = currentArchetypeMode(archetype, (target.meta || {}) as Record<string, unknown>)
+  const demand: ReferenceDemand = { slots: EDGE_MODE_SLOTS[mode ?? 'reference'], asset }
+  const rankOf = (candidate: ArchetypeMode): number =>
+    demand.slots.findIndex((kind) => SLOT_ACCEPTS[kind].includes(asset) && candidate.slots.some((slot) => slot.kind === kind))
+  // A newly connected image should enter the model's declared reference workflow
+  // before falling back to a frame workflow. This is capability driven: the intent
+  // labels and image_ref slots come from the archetype, never from a model/vendor id.
+  if (rankOf(currentMode) < 0) {
+    const referenceMode = archetype.modes.find((candidate) => (
+      ['reference', 'character', 'multimodal'].includes(String(candidate.intent))
+      && rankOf(candidate) >= 0
+    ))
+    if (referenceMode && referenceMode.id !== currentMode.id) return referenceMode.id
+    const firstFrameMode = archetype.modes.find((candidate) => (
+      candidate.slots.some((slot) => slot.kind === 'first_frame')
+      && rankOf(candidate) >= 0
+    ))
+    if (firstFrameMode && firstFrameMode.id !== currentMode.id) return firstFrameMode.id
+  }
   return resolveModeForReferenceDemand(archetype, (target.meta || {}) as Record<string, unknown>, [
-    { slots: EDGE_MODE_SLOTS[mode ?? 'reference'], asset },
+    demand,
   ])
 }
 

@@ -287,6 +287,7 @@
 
 | ID | 一句话 | 状态 | 来源 | 下一步 |
 |---|---|---|---|---|
+| T-CV-28 | 连接参考图后默认进入档案声明的参考模式；没有参考模式时进入首帧模式 | doing | 用户 09-28 原话；[方案](../plan/2026-09-28-reference-default-mode.md) | 由 `referenceEdgeCapability.ts` 单一 owner 推导；补 Seedance 2.0 / Wan 3.0 APIMart 与仅首帧档案测试及真实走查 |
 | T-CR-01 | LibTV/TapNow 核心对标 + Higgsfield/MiniMax Design/RunningHub 扩展对标，每 3 天扫描、轮换深挖、汇总分析并对照 Nomi | doing | 用户 09-19 本会话；[方案](../plan/2026-09-19-competitive-learning-workflow.md) | 分支 `docs/competitive-research-workflow-20260919` 交付规则/skill/模板/本机调度；首轮真实执行另行记录，不提前标 done |
 | T-CR-02 | 表情/姿势自定义编辑的发现、精调、预览、保存复用完整旅程对标 | todo | 用户 09-19 本会话 | 先核实 Nomi 当前能力及已有任务，再按[旅程卡](../research/competitive/TEMPLATE.md)形成差距与设计验证任务 |
 | T-CR-03 | 插件/CLI/MCP 与 Blender 的官网及软件内呈现、安装引导、连接验证和结果回流对标 | todo | 用户 09-19 提供 [LibTV 插件](https://www.liblib.tv/plugin) / [Blender](https://www.liblib.tv/blender?entrySource=homepage_feature&entryItemKey=blender) | 不把 Nomi 的 MCP 等同插件/CLI 成品；先用真实路径比较，Blender 是否已有 Nomi 集成待核实；关联 T-EC-01，不替代插件宿主方案 |
