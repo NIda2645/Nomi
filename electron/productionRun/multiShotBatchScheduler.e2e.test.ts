@@ -15,10 +15,10 @@ import { createProductionGenerationSubmission } from "./productionGenerationSubm
 import { sealAndApproveProductionGeneration } from "./productionGenerationAuthorizationTestUtils";
 import { createProductionRunRepository } from "./productionRunRepository";
 import { createMultiShotBatchScheduler } from "./multiShotBatchScheduler";
-import { deriveBatchPlan } from "./batchScheduleDerivation";
 import { currentAnchorCheckpointGate } from "./anchorCheckpoint";
 import { createProductionShotDispatchGuard } from "./productionShotDispatchGuard";
 import { decideShotClaim } from "../shared/decideShotClaim";
+import { deriveProductionShotState } from "../shared/productionShotPhase";
 import { SubmissionReconciliationRequiredError } from "./submissionOutbox";
 import type { ProductionGenerationShot } from "./productionRunTypes";
 
@@ -265,63 +265,90 @@ describe("B3 production/canvas claim integration matrix", () => {
     } finally { await vendor.close(); }
   });
 
-  it("budget-halted shot can be claimed by canvas once, then continuation approval does not resubmit it", async () => {
-    const { root, repository } = setup([shotEntry("shot-1", "a", "shot"), shotEntry("shot-2", "b", "shot")], 6);
+  // 预算停批 → 画布接手其中一镜 → 提额续拍：续拍的报价只含制作还要生成的镜头，接手的那一镜不收钱、不复活、不再派。
+  const lease = { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 };
+  const shotJob = (run: ReturnType<ReturnType<typeof createProductionRunRepository>["read"]>, shotId: string) =>
+    run?.jobs.find((job) => job.metadata?.shotId === shotId);
+
+  it("budget halt → canvas takes shot-2 → continuation quotes and runs only shot-3", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot"), shotEntry("shot-2", "b", "shot"), shotEntry("shot-3", "c", "shot")], 6);
     const vendor = await startLoopbackVendor();
     try {
       const submits: string[] = [];
       await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
       expect(submits).toHaveLength(1);
-      let run = repository.read("project-1", "op-batch")!;
-      expect(run.status).toBe("needs_attention");
-      expect(run.jobs.find((job) => job.metadata?.shotId === "shot-2")?.status).toBe("authorization_required");
+      const halted = repository.read("project-1", "op-batch")!;
+      expect(halted.status).toBe("needs_attention");
+      // 停批不改授权：没发出去的镜头仍是 authorized（续拍前由预算上限拦住，不会被派）。
+      expect(shotJob(halted, "shot-2")?.status).toBe("authorized");
+      expect(shotJob(halted, "shot-3")?.status).toBe("authorized");
 
       const claimed = repository.execute("project-1", "op-batch", {
-        commandId: "canvas-claim-budget-halted", expectedRevision: run.revision, type: "shot.claim",
+        commandId: "canvas-claim-budget-halted", expectedRevision: halted.revision, type: "shot.claim",
         payload: { shotId: "shot-2", by: "canvas" }, issuedAt: now(),
       }).run;
-      expect(decideShotClaim(claimed, "shot-2", "production")).toMatchObject({ granted: false, holder: "canvas", reason: "canvas_claimed" });
+      expect(shotJob(claimed, "shot-2")).toMatchObject({ status: "detached", errorCode: "canvas_claimed" });
       await dispatchCanvasOnce(repository, vendor.origin, "shot-2", submits);
       expect(submits).toHaveLength(2);
 
       const continuation = prepareProductionGenerationContinuationAuthorization({
-        lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 },
-        projectRevision: 0,
-        run: claimed,
-        providers: [loopbackProvider(vendor.origin, submits)],
-        resolveShotPrice: () => ({ known: true, amount: 6 }),
-        now: tickClock(),
+        lease, projectRevision: 0, run: claimed, providers: [loopbackProvider(vendor.origin, submits)],
+        resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock(),
       });
-      run = repository.execute("project-1", "op-batch", {
+      // 报价：只有 shot-3 一镜，6；不是把画布已经生成的 shot-2 也算进去的 12。
+      expect(continuation.envelope.jobs.map((job) => job.shotId)).toEqual(["shot-3"]);
+      expect(continuation.envelope.budget.maximum).toBe(6);
+      expect(continuation.envelope.budget.ledgerCeiling).toBe(claimed.budget.actual + claimed.budget.reserved + claimed.budget.unsettled + 6);
+
+      let run = repository.execute("project-1", "op-batch", {
         commandId: "canvas-budget-continuation", expectedRevision: claimed.revision, type: "generation.continue_authorization",
         payload: { authorization: continuation }, issuedAt: now(),
       }).run;
-      expect(run.jobs.find((job) => job.metadata?.shotId === "shot-2")?.status).toBe("authorization_required");
-
       run = repository.execute("project-1", "op-batch", {
         commandId: "approve-budget-continuation", expectedRevision: run.revision, type: "gate.decide",
         payload: { gateId: continuation.envelope.gateId, status: "approved", receiptId: "receipt-budget-continuation", authorizationDigest: continuation.authorizationDigest }, issuedAt: now(),
       }).run;
-      run = repository.execute("project-1", "op-batch", {
+      // 批准后授权上限只为 shot-3 抬高一镜的钱（B3b 的写法会多抬 shot-2 那 6）。
+      expect(run.budget.authorized).toBe(continuation.envelope.budget.ledgerCeiling);
+      expect(run.budget.authorized - halted.budget.authorized).toBe(Math.max(0, claimed.budget.actual + claimed.budget.reserved + claimed.budget.unsettled + 6 - halted.budget.authorized));
+      // 批准续拍不会把画布接手的镜头复活成可派状态。
+      expect(shotJob(run, "shot-2")).toMatchObject({ status: "detached", errorCode: "canvas_claimed" });
+      repository.execute("project-1", "op-batch", {
         commandId: "resume-budget-continuation", expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: now(),
-      }).run;
-      // The claim must remain authoritative even if continuation approval projects the pending job
-      // back into a dispatchable status; this projection keeps the derivation assertion independent
-      // from the reducer's detached-job side effect.
-      const claimProjection = {
-        ...claimed,
-        status: run.status,
-        jobs: claimed.jobs.map((job) => job.metadata?.shotId === "shot-2" ? { ...job, status: "authorized" as const } : job),
-      };
-      const resumedPlan = deriveBatchPlan({
-        run: claimProjection, runId: claimProjection.runId, runStatus: claimProjection.status, plan: claimProjection.generationPlan!, jobs: claimProjection.jobs, budget: claimProjection.budget,
-        perShotPrice: () => ({ known: true, amount: 6 }), anchorGate: currentAnchorCheckpointGate(claimProjection), now: now(),
       });
-      expect(resumedPlan.shotDispatch).toEqual([]);
-      expect(resumedPlan.halt).toBeUndefined();
       await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
-      expect(submits).toHaveLength(2);
-      expect(run.jobs.filter((job) => job.metadata?.shotId === "shot-1")).toHaveLength(1);
+
+      const settled = repository.read("project-1", "op-batch")!;
+      // 三镜三次生成：制作 shot-1、画布 shot-2、制作 shot-3；shot-2 没有第二次。
+      expect(submits).toHaveLength(3);
+      expect(submits.filter((key) => key === "canvas:shot-2")).toHaveLength(1);
+      expect(shotJob(settled, "shot-3")?.status).toBe("ready");
+      expect(shotJob(settled, "shot-2")).toMatchObject({ status: "detached", errorCode: "canvas_claimed" });
+      // 制作这边只派了它真正要生成的两镜（shot-1、shot-3）。
+      expect(submits.filter((key) => !key.startsWith("canvas:"))).toHaveLength(2);
+    } finally { await vendor.close(); }
+  });
+
+  it("budget halt → canvas takes the only remaining shot → no continuation to offer and no resume card on it", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot"), shotEntry("shot-2", "b", "shot")], 6);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      const halted = repository.read("project-1", "op-batch")!;
+      expect(deriveProductionShotState(halted, "shot-2")).toMatchObject({ phase: "stopped", stoppedReason: "budget" });
+      const claimed = repository.execute("project-1", "op-batch", {
+        commandId: "canvas-claim-last", expectedRevision: halted.revision, type: "shot.claim",
+        payload: { shotId: "shot-2", by: "canvas" }, issuedAt: now(),
+      }).run;
+      // 节点上不再挂「已停 · 提额续拍」：制作不会再派这一镜。
+      expect(deriveProductionShotState(claimed, "shot-2")).toBeNull();
+      // 没有要续的镜头，就没有续拍报价（不是报一个 0 元或含已接手镜头的价）。
+      expect(() => prepareProductionGenerationContinuationAuthorization({
+        lease, projectRevision: 0, run: claimed, providers: [loopbackProvider(vendor.origin, submits)],
+        resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock(),
+      })).toThrow(/no unsubmitted jobs to continue/);
+      expect(submits).toHaveLength(1);
     } finally { await vendor.close(); }
   });
 });

@@ -80,6 +80,20 @@ describe('deriveProductionShotState', () => {
     expect(phaseOf(run({ status: 'paused', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'stopped' })
   })
 
+  it('预算停批后画布接手了这一镜（job 已脱离）→ null：节点上不再挂「已停 · 提额续拍」', () => {
+    const halted = run({ status: 'needs_attention', shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3' }], jobs: [job('s1', 'ready'), job('s2', 'authorized'), job('s3', 'authorized')] })
+    expect(phaseOf(halted, 's2')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+    const claimed = applyProductionCommand(halted, {
+      commandId: 'claim-s2', expectedRevision: halted.revision, type: 'shot.claim',
+      payload: { shotId: 's2', by: 'canvas' }, issuedAt: NOW,
+    }, NOW).run
+    expect(claimed.jobs.find((candidate) => candidate.metadata?.shotId === 's2')).toMatchObject({ status: 'detached', errorCode: 'canvas_claimed' })
+    // 画布接手的那一镜：制作不会再派它，按钮续的只会是别的镜头 → 不给它挂续拍入口。
+    expect(deriveProductionShotState(claimed, 's2')).toBeNull()
+    // 没被接手的那一镜照旧：已停，可以提额续拍。
+    expect(phaseOf(claimed, 's3')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+  })
+
   it('返工：同一镜多个 attempt 取最新那一次', () => {
     const old = job('s1', 'needs_attention', { jobId: 'job-s1-a1', errorCode: 'provider_task_failed', createdAt: '2026-08-25T00:00:00.000Z' })
     const fresh = job('s1', 'polling', { jobId: 'job-s1-a2', createdAt: '2026-08-25T00:10:00.000Z' })

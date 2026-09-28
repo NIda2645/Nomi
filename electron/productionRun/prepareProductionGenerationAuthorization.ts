@@ -408,9 +408,7 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
         : 1;
       const jobId = productionGenerationJobId(input.run.runId, contract.contractHash, attempt, shot.shotId);
       const existing = input.run.jobs.find((job) => job.jobId === jobId);
-      const canvasClaimed = existing?.status === "detached" && existing.errorCode === "canvas_claimed";
-      const continuationPending = existing?.status === "authorization_required";
-      if (!existing || (!canvasClaimed && !continuationPending && existing.status !== "authorized") || existing.providerTaskId) return [];
+      if (!existing || existing.status !== "authorized" || existing.providerTaskId) return [];
       const price = input.resolveShotPrice(contract);
       const providerIdempotencyKey = productionGenerationProviderIdempotencyKey(
         input.run.runId,

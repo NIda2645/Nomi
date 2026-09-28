@@ -195,7 +195,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
   function haltRun(run: ProductionRun): ProductionRun {
     if (run.status === "needs_attention") return run;
     if (run.status !== "running") return run;
-    return command(run, "run.status", { status: "needs_attention", reason: "budget_halt" }, "budget-halt");
+    return command(run, "run.status", { status: "needs_attention" }, "budget-halt");
   }
 
   async function runToQuiescence(): Promise<BatchOutcome> {

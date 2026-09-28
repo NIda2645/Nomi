@@ -20,8 +20,6 @@
     "electron/runtime.ts",
     "electron/productionRun/productionRunRuntime.ts",
     "electron/productionRun/productionRunServiceRegistry.ts",
-    "electron/productionRun/productionGenerationAuthorizationState.ts",
-    "electron/productionRun/prepareProductionGenerationAuthorization.ts",
     "electron/capabilityCore/appIntegration.ts",
     "electron/productionRun/productionGenerationSubmission.ts",
     "electron/productionRun/productionShotDispatchGuard.ts",
@@ -35,11 +33,12 @@
     "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
     "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
     "electron/vendor/vendorHttp.ts",
-    "src/workbench/generationCanvas/runner/vendorErrorIpc.ts"
-    ,"src/workbench/observability/classifyError.ts"
-    ,"src/workbench/observability/narrate.ts"
-    ,"src/workbench/generationCanvas/nodes/NodeErrorReport.tsx"
-    ,"src/i18n/locales/generationCommon.ts"
+    "src/workbench/generationCanvas/runner/vendorErrorIpc.ts",
+    "src/workbench/observability/classifyError.ts",
+    "src/workbench/observability/narrate.ts",
+    "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+    "src/i18n/locales/generationCommon.ts",
+    "electron/shared/productionShotPhase.ts"
   ],
   "entry_points": [
     "canvas shot.claim",
@@ -61,7 +60,8 @@
     "Only the current attempt may be claimed",
     "Canvas claims are persisted in the Run reducer",
     "Unsubmitted detached/claimed jobs never dispatch",
-    "In-flight and reconciliation jobs remain production-owned"
+    "In-flight and reconciliation jobs remain production-owned",
+    "A budget continuation quotes and re-authorizes only unsubmitted jobs production still owns; a shot the canvas has taken over is never quoted, never resurrected by the continuation, and never offered a production resume action"
   ],
   "doors": [
     {
@@ -196,36 +196,6 @@
     },
     {
       "kind": "write",
-      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
-      "symbol": "prepareProductionGenerationContinuationAuthorization"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/multiShotBatchScheduler.ts",
-      "symbol": "haltRun"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/productionRunReducer.ts",
-      "symbol": "deriveGenerationContinuationAuthorizationState"
-    },
-    {
-      "kind": "write",
-      "path": "electron/productionRun/productionRunRepository.ts",
-      "symbol": "applyProductionCommand"
-    },
-    {
-      "kind": "read",
-      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
-      "symbol": "prepareProductionGenerationAuthorization"
-    },
-    {
-      "kind": "read",
-      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
-      "symbol": "ContinuedGenerationState"
-    },
-    {
-      "kind": "write",
       "path": "electron/productionRun/submissionOutbox.ts",
       "symbol": "beforeDispatch"
     },
@@ -338,12 +308,37 @@
       "kind": "write",
       "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
       "symbol": "NodeErrorReport"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "jobAwaitsHuman"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "deriveProductionShotState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "productionJobPhase"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "jobAwaitsHuman"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+      "symbol": "deriveProductionShotState"
     }
   ],
   "door_reduction": {
     "before": 43,
-    "after": 55,
-    "why_not": "门表仍保留多个入口：decideShotClaim 是共享判定边界，Run reducer 是唯一持久化写口，runtime 是画布提交闸，beforeDispatch 是生产派发闸，IPC/runTask 是通用任务入口；预算 halt、续批准备、续批状态派生分别位于调度器、应用动作装配、reducer 与 repository 命令边界，不能合并而不扩大权限边界。门表已用 node scripts/door-map.mjs deriveGenerationContinuationAuthorizationState prepareProductionGenerationContinuationAuthorization applyProductionCommand haltRun 重新生成并在交付验证中复核。"
+    "after": 54,
+    "why_not": "门表仍保留多个入口：decideShotClaim 是共享判定边界，Run reducer 是唯一持久化写口，runtime 是画布提交闸，beforeDispatch 是生产派发闸，IPC/runTask 是通用任务入口；它们各自服务不同生命周期，合并会扩大权限边界。门表已用 node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch 重新生成并在交付验证中复核。B3c 另用 node scripts/door-map.mjs deriveProductionShotState jobAwaitsHuman productionJobPhase --read=deriveProductionShotState,jobAwaitsHuman,productionJobPhase 补数了「一镜在哪一段」的读入口：画布占位的续拍按钮与主进程画布落地投影都读 deriveProductionShotState，同一个函数，不再有第二份判据。"
   },
   "generality_proof": "Single-shot and multi-shot plans now share productionShotJobs for correspondence, decideShotClaim for ownership, and reducer persistence for claims; scheduler and runtime callers therefore see the same attempt-scoped result.",
   "shared_boundaries": [
@@ -414,14 +409,14 @@
     "electron/shared/productionShotPhase.test.ts",
     "electron/productionRun/productionRunReducerCanvasLanding.test.ts",
     "electron/productionRun/batchScheduleDerivation.test.ts",
-    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
-    "electron/tasks/taskIpcGuard.test.ts"
+    "electron/tasks/taskIpcGuard.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts"
   ],
   "class_regression_tests": [
     "electron/shared/productionShotPhase.test.ts",
     "electron/productionRun/batchScheduleDerivation.test.ts",
-    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
-    "electron/tasks/taskIpcGuard.test.ts"
+    "electron/tasks/taskIpcGuard.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -438,6 +433,7 @@
   },
   "migration": "Claim is additive. Runs without a claim derive ownership from existing durable state; new canvas claims write the attempt-scoped record.",
   "residual_risks": [
-    "The paid real-media acceptance path is intentionally out of scope for B1 and must be run by the coordinator."
+    "The paid real-media acceptance path is intentionally out of scope for B1 and must be run by the coordinator.",
+    "When every remaining shot of a budget-halted run is taken over by the canvas, the run stays in needs_attention with nothing left to continue. No resume card is offered for those shots, but settling such a run automatically is outside this fix."
   ]
 }

@@ -33,7 +33,8 @@ export type ProductionShotState = {
 /**
  * job.status → 这一镜落在哪一段。**穷尽**：ProductionJobStatus 新增一个状态而这里没给出归属，编译就过不去
  * （以前是三份手抄的 Set，新状态会静悄悄落进「排队中」）。
- * null = 这个状态本身说明不了什么（还没派发 / 身份待核 / 已脱离画布），交给 Run 状态判「排队中」还是「已停」。
+ * null = 这个状态本身说明不了什么（还没派发 / 身份待核），交给 Run 状态判「排队中」还是「已停」；
+ * 已脱离（detached）也是 null，但 deriveProductionShotState 会先把它排除——制作不再拥有这一镜。
  * failed 是候选：有预算/急停错因时再细分成 stopped（见下）。
  */
 export function productionJobPhase(status: ProductionJobStatus): ProductionShotPhase | null {
@@ -181,6 +182,9 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   const job = latestJob(jobsForShot(run, shotId));
   // 最新那次任务还停在人工门前（报价卡 / 返工·续拍待授权）：什么都还没发生。
   if (job && jobAwaitsHuman(job.status)) return null;
+  // 最新那次任务已脱离制作（画布认领了这一镜、计划被拒 / 脱离画布）：制作不会再派它，
+  // 节点上既不是「排队中」也不是「已停 · 提额续拍」——点那个按钮续的会是别的镜头。
+  if (job?.status === "detached") return null;
   const jobPhase = job ? productionJobPhase(job.status) : null;
 
   if (job && jobPhase === "done") return { phase: "done", job };

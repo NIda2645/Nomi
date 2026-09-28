@@ -200,14 +200,7 @@ export function applyProductionCommand(
   switch (command.type) {
     case "run.status": {
       const status = text(command.payload, "status") as ProductionRunStatus;
-      const budgetHalt = status === "needs_attention" && text(command.payload, "reason") === "budget_halt";
-      const haltedJobs = budgetHalt
-        ? current.jobs.map((job) => job.status === "authorized" && !job.providerTaskId
-          ? transitionJob(job, "authorization_required", now)
-          : job)
-        : current.jobs;
-      const next = { ...current, jobs: haltedJobs };
-      return { run: transitionRun(next, status, now), eventType: "run.status.changed", message: status };
+      return { run: transitionRun(current, status, now), eventType: "run.status.changed", message: status };
     }
     case "run.stage": {
       const stageId = text(command.payload, "stageId");
