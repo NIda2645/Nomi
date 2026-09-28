@@ -2,14 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { buildApimartHealthInventory, buildApimartRecordingStatus, type ApimartRecordingMetadata } from "../electron/catalog/apimartModelHealth.ts";
-import { collectApimart, associateCatalogDocs, offlineFileName, type RadarEntry } from "./model-radar.ts";
+import { collectApimart, associateCatalogDocs, offlineFetcher, type RadarEntry } from "./model-radar.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const RECORDING_DIR = path.join(ROOT, "tests/fixtures/apimart-model-health/recordings");
-
-function offlineFetcher(directory: string) {
-  return async (url: string): Promise<string> => fs.readFileSync(path.join(directory, offlineFileName(url)), "utf8");
-}
 
 function readRecordings(): ApimartRecordingMetadata[] {
   if (!fs.existsSync(RECORDING_DIR)) return [];

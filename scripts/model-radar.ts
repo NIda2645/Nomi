@@ -631,7 +631,7 @@ export function offlineFileName(url: string): string {
   return `${u.host}${u.pathname}`.replace(/\//g, "_");
 }
 
-function offlineFetcher(dir: string): FetchText {
+export function offlineFetcher(dir: string): FetchText {
   return async (url) => fs.readFileSync(path.join(dir, offlineFileName(url)), "utf8");
 }
 

@@ -62,18 +62,8 @@ const CATALOG_MODELS: CatalogModel[] = [
   ...APIMART_AUDIO_MODELS.map((m) => ({ ...m, kind: "audio" as const })),
 ];
 
-function jsonValue(value: unknown): JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "boolean" || typeof value === "number") return value;
-  if (Array.isArray(value)) return value.map(jsonValue);
-  if (value && typeof value === "object") {
-    const out: Record<string, JsonValue> = {};
-    for (const [key, item] of Object.entries(value)) {
-      if (typeof item !== "undefined" && typeof item !== "function") out[key] = jsonValue(item);
-    }
-    return out;
-  }
-  return null;
-}
+/** Catalog operations are plain data: a JSON round trip drops undefined fields exactly as the fingerprint expects. */
+const jsonValue = (value: unknown): JsonValue => JSON.parse(JSON.stringify(value ?? null)) as JsonValue;
 
 /** Canonical JSON: object key order is irrelevant; array order remains meaningful. */
 export function stableSerialize(value: unknown): string {
