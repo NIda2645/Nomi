@@ -33,7 +33,7 @@ import { fileURLToPath } from "node:url";
 import { realNomiProfile } from "../tests/ux/_realProfile.mjs";
 import { MODEL_ARCHETYPES } from "../electron/shared/modelArchetypes/index.ts";
 import { applyBuiltinSeeds } from "../electron/catalog/seedBuiltins.ts";
-import { buildApimartHealthInventory } from "../electron/catalog/apimartModelHealth.ts";
+import { buildApimartHealthInventory, type ApimartHealthEntry } from "../electron/catalog/apimartModelHealth.ts";
 import { billingKindForTaskKind, type CatalogState, type Mapping } from "../electron/catalog/types.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -150,6 +150,17 @@ export function associateCatalogDocs(modelKeys: readonly string[], entries: read
       return !genericFamilyWords.has(slug) && isCovered(entry.slug, coverage);
     }),
   ]));
+}
+
+/** The one place that answers "which APIMart models we ship, and which documentation pages cover each". */
+export function apimartDocumentationCoverage(
+  entries: readonly RadarEntry[],
+  inventory: readonly ApimartHealthEntry[] = buildApimartHealthInventory(),
+): { modelKey: string; docs: RadarEntry[] }[] {
+  const modelKeys = [...new Set(inventory.map((entry) => entry.modelKey))];
+  const aliasesByModel = new Map(modelKeys.map((modelKey) => [modelKey, [...new Set(inventory.filter((entry) => entry.modelKey === modelKey).flatMap((entry) => entry.documentationKeys))]] as const));
+  const associations = associateCatalogDocs(modelKeys, entries, aliasesByModel);
+  return modelKeys.map((modelKey) => ({ modelKey, docs: associations.get(modelKey) ?? [] }));
 }
 
 function dedupe(entries: RadarEntry[]): RadarEntry[] {
@@ -671,11 +682,9 @@ async function main(): Promise<void> {
   const offlineDir = offlineIdx >= 0 ? args[offlineIdx + 1] : "";
 
   const { entries, failures } = await collectVendors(VENDORS, offlineDir ? offlineFetcher(offlineDir) : fetchIndex);
-  const apimartHealthInventory = buildApimartHealthInventory();
-  const apimartHealthModels = [...new Set(apimartHealthInventory.map((entry) => entry.modelKey))];
-  const apimartHealthAliases = new Map(apimartHealthModels.map((modelKey) => [modelKey, [...new Set(apimartHealthInventory.filter((entry) => entry.modelKey === modelKey).flatMap((entry) => entry.documentationKeys))]] as const));
-  const apimartDocAssociations = associateCatalogDocs(apimartHealthModels, entries.apimart ?? [], apimartHealthAliases);
-  const apimartDocumentationMissing = apimartHealthModels.filter((modelKey) => !(apimartDocAssociations.get(modelKey)?.length));
+  const apimartDocumentationMissing = apimartDocumentationCoverage(entries.apimart ?? [])
+    .filter((row) => row.docs.length === 0)
+    .map((row) => row.modelKey);
 
   // Offline fixtures never spend. Credentials are read only from the process environment here.
   if (!offlineDir) {
