@@ -8,7 +8,7 @@ describe('background idle exit', () => {
     vi.useFakeTimers()
     const quit = vi.fn()
     let active = true
-    const idle = createBackgroundIdleExit({ isBackground: true, hasInFlightWork: () => active, quit })
+    const idle = createBackgroundIdleExit({ hasInFlightWork: () => active, quit })
     vi.advanceTimersByTime(10 * 60 * 1000)
     expect(quit).not.toHaveBeenCalled()
     active = false
@@ -22,13 +22,13 @@ describe('background idle exit', () => {
   it('exits after ten idle minutes only if the background window was never shown', () => {
     vi.useFakeTimers()
     const quit = vi.fn()
-    const idle = createBackgroundIdleExit({ isBackground: true, hasInFlightWork: () => false, quit })
+    const idle = createBackgroundIdleExit({ hasInFlightWork: () => false, quit })
     vi.advanceTimersByTime(10 * 60 * 1000)
     expect(quit).toHaveBeenCalledTimes(1)
     idle.dispose()
 
     const shownQuit = vi.fn()
-    const shown = createBackgroundIdleExit({ isBackground: true, hasInFlightWork: () => false, quit: shownQuit })
+    const shown = createBackgroundIdleExit({ hasInFlightWork: () => false, quit: shownQuit })
     shown.markWindowShown()
     vi.advanceTimersByTime(10 * 60 * 1000)
     expect(shownQuit).not.toHaveBeenCalled()
@@ -39,7 +39,7 @@ describe('background idle exit', () => {
   it('resets the idle deadline after every MCP activity', () => {
     vi.useFakeTimers()
     const quit = vi.fn()
-    const idle = createBackgroundIdleExit({ isBackground: true, hasInFlightWork: () => false, quit })
+    const idle = createBackgroundIdleExit({ hasInFlightWork: () => false, quit })
     vi.advanceTimersByTime(9 * 60 * 1000)
     idle.touch()
     vi.advanceTimersByTime(9 * 60 * 1000)

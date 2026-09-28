@@ -692,12 +692,13 @@ if (hasSingleInstanceLock)
       }
       registerIpc(); void import('./telemetry/telemetryLifecycle').then(({ recordAppStarted }) => recordAppStarted());
       await createWindow();
-      backgroundIdleExit = createBackgroundIdleExit({
-        isBackground: isBackgroundLaunch,
-        hasInFlightWork: hasInFlightProductionWork,
-        quit: () => app.quit(),
-      });
-      setBackgroundIdleExitOwner(backgroundIdleExit);
+      if (isBackgroundLaunch) {
+        backgroundIdleExit = createBackgroundIdleExit({
+          hasInFlightWork: hasInFlightProductionWork,
+          quit: () => app.quit(),
+        });
+        setBackgroundIdleExitOwner(backgroundIdleExit);
+      }
       // 外部 capability RPC 不是首窗依赖，且它一旦 listen 就可能收到会解析凭据的 models/generation 请求。
       // 必须在窗口完成后才暴露；失败显式消化，不能反向拖垮已经可用的首窗。低内存模式仍默认跳过。
       if (!capabilityCoreDisabled) {

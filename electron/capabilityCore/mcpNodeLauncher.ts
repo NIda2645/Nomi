@@ -294,19 +294,28 @@ function launcherConnection(): McpConnectionContext {
   return connection
 }
 
+async function invokeLiveRpc(
+  instance: InstanceAdvertisement,
+  method: string,
+  params: Record<string, unknown>,
+  options?: McpInvokeOptions,
+): Promise<unknown> {
+  const requestSignal = (params as Record<PropertyKey, unknown>)[MCP_REQUEST_SIGNAL] as AbortSignal | undefined
+  return callViaRpc(instance, method, params, requestSignal ? { ...options, signal: requestSignal } : options)
+}
+
 const protocol = createMcpProtocol({
   send: (message) => process.stdout.write(`${JSON.stringify(message)}\n`),
   invoke: async (method, params, options) => {
     const requestSignal = (params as Record<PropertyKey, unknown>)[MCP_REQUEST_SIGNAL] as AbortSignal | undefined
     const instance = await ensureLiveInstance(requestSignal)
     await refreshLauncherLocale(instance)
-    return callViaRpc(instance, method, params, requestSignal ? { ...options, signal: requestSignal } : options)
+    return invokeLiveRpc(instance, method, params, options)
   },
   invokeIfOpen: async (method, params, options) => {
     const instance = readLiveInstance()
     if (!instance) return undefined
-    const requestSignal = (params as Record<PropertyKey, unknown>)[MCP_REQUEST_SIGNAL] as AbortSignal | undefined
-    return callViaRpc(instance, method, params, requestSignal ? { ...options, signal: requestSignal } : options)
+    return invokeLiveRpc(instance, method, params, options)
   },
   isAppOpen: () => Boolean(readLiveInstance()),
   getAuthenticatedClient: () => launcherConnection().authenticatedClient,

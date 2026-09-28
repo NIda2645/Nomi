@@ -8,16 +8,15 @@ export type BackgroundIdleExit = {
 }
 
 export function createBackgroundIdleExit(options: {
-  isBackground: boolean
   hasInFlightWork: () => boolean
   quit: () => void
 }): BackgroundIdleExit {
   let lastActivityAt = Date.now()
-  let windowShown = !options.isBackground
+  let windowShown = false
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const schedule = () => {
-    if (!options.isBackground || windowShown) return
+    if (windowShown) return
     if (timer !== undefined) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = undefined
@@ -41,7 +40,7 @@ export function createBackgroundIdleExit(options: {
   }
 
   schedule()
-  return { touch, markWindowShown, dispose, isWindowUnshown: () => options.isBackground && !windowShown }
+  return { touch, markWindowShown, dispose, isWindowUnshown: () => !windowShown }
 }
 
 

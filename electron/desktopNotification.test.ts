@@ -66,7 +66,7 @@ describe('one sound boundary for real notification producers', () => {
     expect(mocks.play).toHaveBeenCalledTimes(2)
   })
   it('background-unshown launches suppress system notifications until the window is shown', () => {
-    const owner = createBackgroundIdleExit({ isBackground: true, hasInFlightWork: () => false, quit: vi.fn() })
+    const owner = createBackgroundIdleExit({ hasInFlightWork: () => false, quit: vi.fn() })
     setBackgroundIdleExitOwner(owner)
     expect(showDesktopNotification(input)).toEqual({ ok: false, reason: 'background-unshown' })
     expect(mocks.show).not.toHaveBeenCalled()
