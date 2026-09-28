@@ -1,0 +1,926 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>对白设计：AI 视频编剧技能｜Nomi 技能库</title>
+<meta name="description" content="对白专家（David Mamet 方法论）——台词创作 / 潜台词设计 / 角色语言个性化 / 对白节拍分析 / 沉默设计。Nomi 创作区写剧本/对白时参考。" />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#faf9f6" />
+<link rel="canonical" href="https://nomiaqm.com/skills/writer-dialogue" />
+<link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-dialogue" />
+<link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-dialogue" />
+<link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-dialogue" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Nomi" />
+<meta property="og:locale" content="zh_CN" />
+<meta property="og:title" content="对白设计：AI 视频编剧技能｜Nomi 技能库" />
+<meta property="og:description" content="对白专家（David Mamet 方法论）——台词创作 / 潜台词设计 / 角色语言个性化 / 对白节拍分析 / 沉默设计。Nomi 创作区写剧本/对白时参考。" />
+<meta property="og:url" content="https://nomiaqm.com/skills/writer-dialogue" />
+<meta property="og:image" content="https://nomiaqm.com/assets/library/writer-dialogue-1280.webp" />
+<meta property="og:image:alt" content="对白设计" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="对白设计：AI 视频编剧技能｜Nomi 技能库" />
+<meta name="twitter:description" content="对白专家（David Mamet 方法论）——台词创作 / 潜台词设计 / 角色语言个性化 / 对白节拍分析 / 沉默设计。Nomi 创作区写剧本/对白时参考。" />
+<meta name="twitter:image" content="https://nomiaqm.com/assets/library/writer-dialogue-1280.webp" />
+<meta name="twitter:image:alt" content="对白设计" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/skills/writer-dialogue","url":"https://nomiaqm.com/skills/writer-dialogue","name":"对白设计：AI 视频编剧技能｜Nomi 技能库","description":"对白专家（David Mamet 方法论）——台词创作 / 潜台词设计 / 角色语言个性化 / 对白节拍分析 / 沉默设计。Nomi 创作区写剧本/对白时参考。","inLanguage":"zh-CN","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/library/writer-dialogue-1280.webp"},"breadcrumb":{"@id":"https://nomiaqm.com/skills/writer-dialogue#breadcrumbs"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.22.4","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"},{"@type":"BreadcrumbList","@id":"https://nomiaqm.com/skills/writer-dialogue#breadcrumbs","itemListElement":[{"@type":"ListItem","position":1,"name":"首页","item":"https://nomiaqm.com/"},{"@type":"ListItem","position":2,"name":"技能库","item":"https://nomiaqm.com/skills"},{"@type":"ListItem","position":3,"name":"编剧","item":"https://nomiaqm.com/skills#writing"},{"@type":"ListItem","position":4,"name":"对白设计","item":"https://nomiaqm.com/skills/writer-dialogue"}]},{"@type":"SoftwareSourceCode","@id":"https://nomiaqm.com/skills/writer-dialogue#skill","name":"对白设计","description":"对白专家（David Mamet 方法论）——台词创作 / 潜台词设计 / 角色语言个性化 / 对白节拍分析 / 沉默设计。Nomi 创作区写剧本/对白时参考。","license":"AGPL-3.0-only","codeRepository":"https://github.com/aqm857886159/Nomi/tree/main/skills/writer-dialogue","programmingLanguage":"Markdown","runtimePlatform":"Agent Skills (SKILL.md)","author":{"@type":"Organization","name":"Nomi contributors"}}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" />
+<style>
+:root {
+  --ground: #faf9f6;
+  --paper: #ffffff;
+  --ink: #1e1b17;
+  --ink-2: #4a463f;
+  --ink-3: #6b665e;
+  --ink-4: #a19b92;
+  --line: #e6e2db;
+  --line-soft: #efece6;
+  --dot: #e2ddd5;
+  --accent: #2e6cb4;
+  --accent-soft: #e9f0f9;
+  --shadow-node: 0 1px 2px rgb(30 27 23 / 0.05), 0 12px 32px rgb(30 27 23 / 0.07);
+  --shadow-window: 0 2px 4px rgb(30 27 23 / 0.05), 0 30px 70px rgb(30 27 23 / 0.13);
+  --font-en: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-zh: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-ui: "Inter", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+  --radius-lg: 16px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #151311;
+    --paper: #1d1b18;
+    --ink: #eeeae3;
+    --ink-2: #cdc7bd;
+    --ink-3: #a29b90;
+    --ink-4: #6f695f;
+    --line: #2f2c27;
+    --line-soft: #26231f;
+    --dot: #2a2723;
+    --accent: #78a6e0;
+    --accent-soft: #1e2a3a;
+    --shadow-node: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
+    --shadow-window: 0 2px 4px rgb(0 0 0 / 0.3), 0 30px 70px rgb(0 0 0 / 0.5);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background-color: var(--ground);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--font-zh);
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+html[lang="en"] body { font-family: var(--font-ui); }
+body.modal-open { overflow: hidden; }
+a { color: inherit; }
+img, video { max-width: 100%; display: block; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.skip-link { position: absolute; left: 16px; top: -48px; z-index: 50; background: var(--ink); color: var(--ground); padding: 8px 14px; border-radius: 8px; }
+.skip-link:focus { top: 12px; }
+.wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding-inline: 24px; }
+@media (max-width: 560px) { .wrap { padding-inline: 16px; } }
+
+.eyebrow { margin: 0; font-family: var(--font-ui); font-size: 13px; font-weight: 500; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; }
+.display { margin: 14px 0 0; font-weight: 900; letter-spacing: -0.01em; text-wrap: balance; font-size: clamp(40px, 5.4vw, 68px); line-height: 1.12; }
+.display em { font-style: normal; color: var(--accent); }
+html[lang="en"] .display { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.02em; line-height: 1.04; }
+.lede { margin: 22px 0 0; font-size: 19px; line-height: 1.75; color: var(--ink-2); max-width: 30em; }
+h2 { margin: 10px 0 0; font-weight: 900; font-size: clamp(30px, 3.6vw, 44px); line-height: 1.2; letter-spacing: -0.005em; text-wrap: balance; }
+html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.015em; }
+.body { margin: 16px 0 0; color: var(--ink-2); font-size: 17px; max-width: 34em; }
+
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-ui); font-weight: 600; font-size: 15px; line-height: 1;
+  padding: 13px 20px; border-radius: 999px; text-decoration: none; cursor: pointer; border: 1px solid transparent;
+  background: none; color: inherit;
+  transition: transform 140ms cubic-bezier(.2,.7,.3,1), background-color 140ms, border-color 140ms;
+}
+.button:active { transform: translateY(1px); }
+.button.primary { background: var(--ink); color: var(--ground); }
+.button.primary:hover { background: var(--ink-2); }
+.button.quiet { background: var(--paper); color: var(--ink); border-color: var(--line); }
+.button.quiet:hover { border-color: var(--ink-4); }
+.button.small { padding: 9px 15px; font-size: 14px; }
+
+.site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft); }
+.nav { display: flex; align-items: center; gap: 28px; height: 60px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.wordmark { font-family: var(--font-en); font-weight: 600; font-size: 24px; letter-spacing: -0.01em; line-height: 1; }
+.wordmark span { color: var(--accent); }
+.wordmark.small { font-size: 20px; }
+.nav-links { display: flex; gap: 22px; font-family: var(--font-ui); font-size: 14px; color: var(--ink-3); }
+.nav-links a { text-decoration: none; }
+.nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--ink); }
+.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.locale { font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; text-decoration: none; }
+.locale:hover { color: var(--ink); border-color: var(--ink-4); }
+.menu-toggle { display: none; font-family: var(--font-ui); font-size: 13px; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; color: var(--ink); cursor: pointer; }
+@media (max-width: 760px) {
+  .menu-toggle { display: inline-flex; }
+  .nav-links { display: none; position: absolute; top: 60px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--ground); border-bottom: 1px solid var(--line); padding: 8px 16px 16px; }
+  .nav-links.open { display: flex; }
+  .nav-links a { padding: 10px 0; font-size: 16px; }
+  .nav { gap: 12px; }
+}
+
+.block { padding-block: 72px; }
+@media (max-width: 760px) { .block { padding-block: 48px; } }
+.block-head { max-width: 44rem; }
+
+.footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+.footer a { text-decoration: none; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+.footer a:hover { color: var(--ink); }
+
+.download-options { display: grid; gap: 8px; margin-top: 14px; }
+.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); text-decoration: none; font-family: var(--font-ui); }
+.download-option:hover { border-color: var(--ink-4); }
+.download-option strong { display: block; font-size: 15px; }
+.download-option small { display: block; color: var(--ink-3); font-size: 12px; }
+.download-option > span:last-child { color: var(--accent); font-weight: 600; font-size: 13px; white-space: nowrap; }
+.mac-install-guide { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius); background: var(--line-soft); font-size: 14px; color: var(--ink-2); }
+.mac-install-guide p, .mac-install-guide ol { margin: 8px 0 0; }
+.mac-install-guide ol { padding-left: 20px; }
+.mac-install-command { display: block; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--paper); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.download-fallback { padding-block: 40px; }
+
+dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 0; background: var(--ground); color: var(--ink); box-shadow: var(--shadow-window); }
+dialog::backdrop { background: rgb(20 18 16 / 0.45); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); font-family: var(--font-ui); }
+.dialog-close { background: none; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--ink-3); padding: 4px 8px; }
+.dialog-body { padding: 16px 18px 20px; overflow-y: auto; }
+.dialog-body > p { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+.lib-hero { padding-block: 40px 8px; }
+.crumbs ol { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.crumbs li + li::before { content: "/"; margin-right: 6px; color: var(--ink-4); }
+.crumbs a { text-decoration: none; color: var(--ink-3); }
+.crumbs a:hover { color: var(--ink); }
+.lib-title { font-size: clamp(34px, 4.4vw, 56px); }
+.group-anchors { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; }
+.group-anchors a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-family: var(--font-ui); font-size: 14px; text-decoration: none; color: var(--ink-2); }
+.group-anchors a span { font-size: 12px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.group-anchors a:hover { border-color: var(--ink-4); color: var(--ink); }
+
+.lib-section { padding-block: 36px; scroll-margin-top: 64px; }
+.section-head { display: flex; align-items: baseline; gap: 12px; }
+.section-head h2 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); }
+.section-head .count { font-family: var(--font-ui); font-size: 14px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.section-note { margin: 10px 0 0; color: var(--ink-3); max-width: 44em; font-size: 15px; }
+.card-grid { margin-top: 26px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px 22px; }
+.card-grid.compact { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 22px 16px; }
+.measure { max-width: 760px; }
+
+/* 节点卡：标题在框外左上，框左右各一个连接点（和首页功能段、App 画布上的节点同一个样子）。 */
+.lib-card { display: flex; flex-direction: column; min-width: 0; }
+.lib-card .node-title { margin: 0 0 6px 2px; min-height: 18px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-frame { position: relative; flex: 1; display: flex; flex-direction: column; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-node); text-decoration: none; color: inherit; }
+.card-frame::before, .card-frame::after { content: ""; position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--paper); border: 1px solid var(--ink-4); }
+.card-frame::before { left: -5px; }
+.card-frame::after { right: -5px; }
+a.card-frame:hover { border-color: var(--ink-4); }
+a.card-frame:hover h3 { color: var(--accent); }
+.card-media { aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden; border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; background: var(--line-soft); }
+.card-media img { width: 100%; height: 100%; object-fit: cover; }
+.card-body { flex: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+.card-body h3 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.35; }
+html[lang="en"] .card-body h3 { font-family: var(--font-ui); font-weight: 600; }
+.card-subtitle { margin: 0; font-size: 13px; color: var(--ink-4); }
+.card-text { margin: 0; font-size: 14px; color: var(--ink-3); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.chips { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chips li { font-family: var(--font-ui); font-size: 12px; line-height: 1.5; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.card-meta { margin: auto 0 0; padding-top: 8px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); }
+
+/* 模型页：左边讲，右边一张档案卡（像 App 里的模型档案）。 */
+.model-hero { padding-block: 40px 24px; }
+.model-hero-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 48px; align-items: start; }
+@media (max-width: 900px) { .model-hero-grid { grid-template-columns: 1fr; gap: 28px; } }
+.model-title { font-size: clamp(40px, 5vw, 64px); }
+.model-dates { margin: 14px 0 0; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.hero-actions { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; }
+.spec-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-node); padding: 18px 20px 16px; }
+.spec-head { margin: 0 0 6px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.spec-rows { margin: 0; }
+.spec-rows div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.spec-rows div:first-child { border-top: 0; }
+.spec-rows dt { font-size: 14px; color: var(--ink-3); }
+.spec-rows dd { margin: 0; display: flex; flex-wrap: wrap; row-gap: 2px; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.spec-rows dd span { white-space: nowrap; }
+.spec-rows dd span:not(:last-child)::after { content: "·"; margin: 0 7px; color: var(--ink-4); }
+.spec-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-4); line-height: 1.6; }
+
+/* 正文排版：模型介绍与技能正文共用。 */
+.prose-wrap { max-width: 760px; }
+.prose { font-size: 17px; line-height: 1.8; color: var(--ink-2); min-width: 0; }
+.prose h2 { margin: 40px 0 12px; font-size: 26px; line-height: 1.3; color: var(--ink); scroll-margin-top: 80px; }
+.prose h2:first-child { margin-top: 0; }
+.prose h3 { margin: 28px 0 8px; font-size: 19px; color: var(--ink); scroll-margin-top: 80px; }
+.prose h4 { margin: 20px 0 6px; font-size: 17px; color: var(--ink); }
+.prose p, .prose ul, .prose ol { margin: 12px 0 0; }
+.prose ul, .prose ol { padding-left: 1.3em; }
+.prose li + li { margin-top: 6px; }
+.prose strong { color: var(--ink); }
+.prose a { color: var(--accent); }
+.prose code { font-family: var(--font-mono); font-size: 0.88em; background: var(--line-soft); padding: 1px 5px; border-radius: 5px; }
+.prose pre { margin: 16px 0 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prose pre code { background: none; padding: 0; font-size: inherit; }
+.prose table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; margin-top: 16px; font-size: 15px; }
+.prose th, .prose td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+.prose th { color: var(--ink); font-weight: 700; }
+.prose blockquote { margin: 16px 0 0; padding: 2px 0 2px 16px; border-left: 3px solid var(--accent); color: var(--ink-3); }
+.prose hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.source-list { font-size: 15px; }
+.prose .prompt-block { margin-top: 12px; }
+.prose pre.prompt-text { margin: 0; padding: 14px 16px 44px; background: var(--ground); border-color: var(--line); max-height: none; font-size: 14px; }
+
+/* 技能页：左侧目录吸顶，右侧正文。 */
+.skill-hero { padding-bottom: 0; }
+.hero-chips { margin-top: 18px; }
+.skill-use { padding-block: 28px 8px; }
+.use-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 760px) { .use-grid { grid-template-columns: 1fr; } }
+.use-box { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+.use-box h2 { margin: 0; font-family: var(--font-ui); font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.use-box p { margin: 6px 0 0; font-size: 15px; color: var(--ink-2); }
+.skill-preview { margin: 24px 0 0; }
+.skill-preview img { width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--line); }
+.skill-preview figcaption { margin-top: 8px; font-size: 13px; color: var(--ink-4); }
+.skill-body { padding-block: 32px; }
+.skill-layout { display: grid; grid-template-columns: 220px minmax(0, 760px); gap: 48px; justify-content: start; }
+.skill-layout.no-toc { grid-template-columns: minmax(0, 760px); }
+@media (max-width: 960px) { .skill-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; } .toc { position: static; } }
+.skill-main { min-width: 0; }
+.skill-main .attribution { margin-top: 36px; }
+.toc { position: sticky; top: 84px; align-self: start; font-family: var(--font-ui); font-size: 13px; }
+.toc p { margin: 0 0 8px; font-weight: 600; color: var(--ink-3); }
+.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+.toc li a { display: block; padding: 4px 0 4px 12px; color: var(--ink-3); text-decoration: none; line-height: 1.5; }
+.toc li a:hover { color: var(--ink); }
+
+/* 效果、表情预设、合集：一条一块，可复制。 */
+.effect-list { padding-block: 28px; }
+.effect-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 18px; }
+.effect-entry { display: flex; flex-direction: column; min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; scroll-margin-top: 80px; }
+.effect-entry:target { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.effect-media { aspect-ratio: 16 / 9; max-width: 100%; background: var(--line-soft); }
+.effect-media.square { aspect-ratio: 1 / 1; }
+.effect-media img { width: 100%; height: 100%; object-fit: cover; }
+.effect-body { flex: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.effect-body h3 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.4; }
+.alt-name { margin-left: 6px; font-family: var(--font-ui); font-size: 13px; font-weight: 400; color: var(--ink-4); }
+.effect-summary { margin: 0; font-size: 14px; color: var(--ink-3); }
+.prompt-block { position: relative; margin-top: auto; }
+.prompt-text { margin: 0; padding: 12px 14px 40px; background: var(--ground); border: 1px solid var(--line-soft); border-radius: 8px; font-family: var(--font-mono); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); max-height: 280px; overflow: auto; }
+.slot { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 0 3px; }
+.copy-button { position: absolute; right: 8px; bottom: 8px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-2); cursor: pointer; }
+.copy-button:hover { border-color: var(--ink-4); color: var(--ink); }
+.copy-done { display: none; }
+.copy-button[data-copied] .copy-idle { display: none; }
+.copy-button[data-copied] .copy-done { display: inline; color: var(--accent); }
+.collection-list { display: grid; gap: 18px; margin-top: 24px; }
+.collection-entry { scroll-margin-top: 80px; }
+.collection-entry h3 { margin: 0 0 8px; font-size: 16px; line-height: 1.4; }
+
+/* 出处与许可证。 */
+.attribution { margin-top: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; font-size: 14px; }
+.attribution dl { margin: 0; display: grid; gap: 6px; }
+.attribution dl div { display: grid; grid-template-columns: 8em minmax(0, 1fr); gap: 12px; }
+@media (max-width: 560px) { .attribution dl div { grid-template-columns: 1fr; gap: 0; } }
+.attribution dt { color: var(--ink-4); }
+.attribution dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.attribution a { color: var(--accent); }
+.attribution > a { display: inline-block; margin-top: 10px; font-family: var(--font-ui); font-size: 13px; }
+.license-text { margin-top: 10px; }
+.license-text summary { cursor: pointer; font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); }
+.license-text pre { margin: 8px 0 0; max-height: 240px; overflow: auto; font-size: 12px; white-space: pre-wrap; background: var(--ground); padding: 10px 12px; border-radius: 8px; }
+
+/* 页底下载条。 */
+.download-band { padding-block: 48px 24px; }
+.download-band-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; padding: 28px clamp(20px, 4vw, 40px); background: var(--ink); color: var(--ground); border-radius: var(--radius-lg); }
+.download-band h2 { margin: 0; font-size: clamp(22px, 2.4vw, 30px); color: var(--ground); }
+.download-band p { margin: 6px 0 0; font-size: 14px; color: color-mix(in srgb, var(--ground) 70%, transparent); }
+.download-band .button.primary { background: var(--ground); color: var(--ink); }
+.download-band .button.primary:hover { background: color-mix(in srgb, var(--ground) 86%, transparent); }
+</style>
+</head>
+<body class="page-skills">
+<a class="skip-link" href="#main">跳到主要内容</a>
+<header class="site-header">
+  <nav class="nav wrap" aria-label="主导航">
+    <a class="brand" href="/" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
+    <div class="nav-links" id="nav-links">
+      <a href="/features">功能</a>
+      <a href="/models">模型</a>
+      <a href="/prompts">提示词</a>
+      <a href="/skills" aria-current="page">技能</a>
+      <a href="/quickstart">上手</a>
+      <a href="/#community">社区</a>
+    </div>
+    <div class="nav-actions">
+      <a class="locale" href="/en/skills/writer-dialogue" data-locale-choice="en" aria-label="切换到英文">EN</a>
+      <a class="button primary small" data-download-nomi href="#download-options">下载</a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">菜单</button>
+    </div>
+  </nav>
+</header>
+<main id="main">
+<section class="lib-hero skill-hero">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="breadcrumb"><ol><li><a href="/">首页</a></li><li><a href="/skills">技能库</a></li><li><a href="/skills#writing">编剧</a></li><li><span aria-current="page">对白设计</span></li></ol></nav>
+    <p class="eyebrow">技能库 · 编剧</p>
+    <h1 class="display lib-title"><span>对白设计</span></h1>
+    <p class="lede">对白专家（David Mamet 方法论）——台词创作 / 潜台词设计 / 角色语言个性化 / 对白节拍分析 / 沉默设计。Nomi 创作区写剧本/对白时参考。</p>
+    <ul class="chips hero-chips"><li>适用：文字</li><li>许可证：AGPL-3.0-only</li></ul>
+  </div>
+</section>
+<section class="block skill-use">
+  <div class="wrap">
+    <div class="use-grid" aria-label="怎么用">
+      <div class="use-box"><h2>在 Nomi 里</h2><p>Agent 需要时会自己用；也可以在 Nomi 左侧「技能」里点开它，让 Agent 按这份方法来。</p></div>
+      <div class="use-box"><h2>在其他助手里</h2><p>这是标准的 SKILL.md 技能包。把整个文件夹放进支持技能的助手（如 Claude Code、Codex）的技能目录即可。</p></div>
+    </div>
+    
+  </div>
+</section>
+<section class="block skill-body">
+  <div class="wrap skill-layout">
+    <nav class="toc" aria-label="本页目录"><p>本页目录</p><ol><li><a href="#一-三条铁律">一、三条铁律</a></li><li><a href="#二-间接对白理论">二、间接对白理论</a></li><li><a href="#三-节拍-beat-理论">三、节拍（Beat）理论</a></li><li><a href="#四-省略美学">四、省略美学</a></li><li><a href="#五-沉默设计-mamet-pinter">五、沉默设计（Mamet + Pinter）</a></li><li><a href="#六-角色语言档案">六、角色语言档案</a></li><li><a href="#七-对白病症诊断">七、对白病症诊断</a></li><li><a href="#在-nomi-创作区怎么用">在 Nomi 创作区怎么用</a></li></ol></nav>
+    <div class="skill-main">
+      <article class="prose"><p>Nomi 创作区写剧本、写对白时用这套方法论。以 David Mamet（《拜金一族》《摇尾狗》）为核心蓝本，结合潜台词体系与信息克制原则。</p>
+<p><strong>核心理念：</strong> 对白不是表达，是<strong>行动</strong>。角色说每句话都是为了<strong>得到什么</strong>——请求、威胁、拒绝、引诱、逃避。如果一句台词不是一个动作，删掉它。</p>
+<hr>
+<h2 id="一-三条铁律">一、三条铁律</h2>
+<h3 id="铁律1-台词即动作">铁律1：台词即动作</h3>
+<p>每句台词必须是角色为达成目标而采取的一个<strong>动作</strong>：</p>
+<table>
+<thead>
+<tr>
+<th>台词动作类型</th>
+<th>示例</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>请求</td>
+<td>&quot;帮我看一下那个读数。&quot;</td>
+</tr>
+<tr>
+<td>威胁</td>
+<td>&quot;你有三十秒。&quot;</td>
+</tr>
+<tr>
+<td>拒绝</td>
+<td>&quot;不。&quot;</td>
+</tr>
+<tr>
+<td>引诱</td>
+<td>&quot;那个矿带我留了一半给你。&quot;</td>
+</tr>
+<tr>
+<td>逃避</td>
+<td>&quot;你问这个干什么？&quot;</td>
+</tr>
+<tr>
+<td>试探</td>
+<td>&quot;你的船是什么型号？&quot;</td>
+</tr>
+<tr>
+<td>伪装</td>
+<td>&quot;我没事。&quot;（实际不是没事）</td>
+</tr>
+</tbody></table>
+<p><strong>检查方法：</strong> 能不能在每句台词前面加一个动词？&quot;他<strong>威胁</strong>说：&#39;你有三十秒。&#39;&quot; 如果加不上动词，这句台词没有功能。</p>
+<p><strong>功能兜底清单（动词之外，每句台词至少占一项）：</strong></p>
+<ol>
+<li>揭示性格——让读者更了解这个人</li>
+<li>推进冲突——改变两人之间的关系张力</li>
+<li>埋下伏笔——一句话在后面有回响</li>
+<li>建立信息不对称——说一半留一半</li>
+</ol>
+<p>一项都不占，删掉它。</p>
+<h3 id="铁律2-删掉所有-quot-漂亮-quot-的台词">铁律2：删掉所有&quot;漂亮&quot;的台词</h3>
+<p>如果一句台词让你觉得&quot;写得真好&quot;，它很可能是在炫技。角色不会说漂亮话——他们只想达到目的。</p>
+<pre><code>❌ &quot;在这条路的尽头，或许我们能找到属于自己的答案。&quot;
+✅ &quot;还有十二跳。&quot;
+</code></pre>
+<h3 id="铁律3-不写情绪词">铁律3：不写情绪词</h3>
+<p>不写&quot;他愤怒地说&quot;。只写他说了什么、做了什么。读者自己判断。</p>
+<pre><code>❌ 林冬冷冷地说：&quot;你走吧。&quot;
+✅ 林冬看着扫描仪。&quot;你走吧。&quot; 她没有抬头。
+</code></pre>
+<hr>
+<h2 id="二-间接对白理论">二、间接对白理论</h2>
+<p><strong>核心技术：</strong> 角色越想要一样东西，越不会直接提到它。</p>
+<h3 id="间接对白三层">间接对白三层</h3>
+<table>
+<thead>
+<tr>
+<th>层</th>
+<th>内容</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>话题层</strong></td>
+<td>两人在谈论什么话题</td>
+<td>表面内容</td>
+</tr>
+<tr>
+<td><strong>策略层</strong></td>
+<td>角色用什么策略获取想要的东西</td>
+<td>台词动作</td>
+</tr>
+<tr>
+<td><strong>欲望层</strong></td>
+<td>角色真正想要什么</td>
+<td>从不直接说出</td>
+</tr>
+</tbody></table>
+<p><strong>示例：</strong></p>
+<pre><code>话题层：他们在讨论矿带的分配
+策略层：老陈在用沉默施压，林冬在用数据反驳
+欲望层：老陈想知道林冬是否信任他；林冬想证明自己不需要任何人
+</code></pre>
+<h3 id="潜台词设计三步法-动手顺序">潜台词设计三步法（动手顺序）</h3>
+<p>三层是结构，下面是动手时的顺序：</p>
+<ol>
+<li>先定<strong>欲望层</strong>——角色真正想说、却说不出口的那句话。</li>
+<li>找一个<strong>话题层</strong>——一个表面话题，让它与欲望产生关联但不直接。</li>
+<li>只写<strong>策略层</strong>给读者看——角色只说表层，读者自己感受到深层。</li>
+</ol>
+<h3 id="间接对白的禁忌">间接对白的禁忌</h3>
+<ul>
+<li>❌ 角色直接说出自己想要什么：&quot;我需要你信任我。&quot;</li>
+<li>❌ 角色解释自己的策略：&quot;我之所以这样说是因为……&quot;</li>
+<li>❌ 角色承认自己的真实感受：&quot;说实话，我害怕。&quot;</li>
+</ul>
+<hr>
+<h2 id="三-节拍-beat-理论">三、节拍（Beat）理论</h2>
+<p>对白不是句子的堆叠，而是<strong>节拍</strong>的序列。</p>
+<h3 id="节拍的定义">节拍的定义</h3>
+<p>一个节拍 = 一次&quot;想要 → 尝试 → 受阻&quot;的微型单元。</p>
+<p>当一个节拍结束（尝试失败），角色<strong>换策略</strong>，进入下一个节拍。</p>
+<h3 id="节拍分析模板">节拍分析模板</h3>
+<pre><code>{场景名} 对白节拍分析
+═══════════════════
+
+节拍1：{角色A} 策略：礼貌请求 → {角色B} 反应：拒绝
+节拍2：{角色A} 策略：引诱/交换 → {角色B} 反应：犹豫
+节拍3：{角色A} 策略：威胁     → {角色B} 反应：沉默
+节拍4：{角色B} 策略：反击     → {角色A} 反应：退让
+
+节拍转换检查：每次策略变化是否有触发原因？
+</code></pre>
+<h3 id="策略升级规则">策略升级规则</h3>
+<p>角色不会重复使用失败的策略。每次受阻后策略升级：</p>
+<pre><code>礼貌请求 → 诱惑 → 施压 → 威胁 → 沉默（最强策略）
+</code></pre>
+<hr>
+<h2 id="四-省略美学">四、省略美学</h2>
+<p>Mamet 的台词以极简著称。</p>
+<h3 id="权力编码">权力编码</h3>
+<ul>
+<li><p><strong>句子越短，权力越大。</strong></p>
+<ul>
+<li>指挥官：&quot;撤。&quot;（一个字＝绝对权力）</li>
+<li>新手：&quot;我觉得也许我们应该考虑撤退？&quot;（长句＝没有权力）</li>
+</ul>
+</li>
+<li><p><strong>省略越多，角色越强。</strong></p>
+<ul>
+<li>老手之间不互相解释：两个老兵不说&quot;我们需要让他们先进来，然后从侧翼包抄&quot;——他们只需要一个眼神。</li>
+<li>解释越多，角色越弱或越不信任对方。</li>
+</ul>
+</li>
+</ul>
+<h3 id="台词精简对照表">台词精简对照表</h3>
+<table>
+<thead>
+<tr>
+<th>病症</th>
+<th>原文</th>
+<th>Mamet 版</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>完整句</td>
+<td>&quot;我认为我们应该现在离开这里。&quot;</td>
+<td>&quot;走。&quot;</td>
+</tr>
+<tr>
+<td>礼貌用语</td>
+<td>&quot;可以请你帮我检查一下护盾吗？&quot;</td>
+<td>&quot;护盾。&quot;</td>
+</tr>
+<tr>
+<td>重复确认</td>
+<td>&quot;所以你是说，他们已经来了？&quot;</td>
+<td>删掉。直接写下一个动作。</td>
+</tr>
+<tr>
+<td>自我解释</td>
+<td>&quot;我之所以不同意，是因为……&quot;</td>
+<td>&quot;不行。&quot;</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="五-沉默设计-mamet-pinter">五、沉默设计（Mamet + Pinter）</h2>
+<h3 id="三种停顿">三种停顿</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>定义</th>
+<th>剧本写法</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Beat</strong></td>
+<td>节拍转换，策略切换</td>
+<td>（停顿。）</td>
+<td>角色在换策略</td>
+</tr>
+<tr>
+<td><strong>Pause</strong></td>
+<td>角色在处理信息</td>
+<td>（沉默。）</td>
+<td>角色在思考/感受</td>
+</tr>
+<tr>
+<td><strong>Silence</strong></td>
+<td>关系在变化</td>
+<td>两人都没有说话。</td>
+<td>关系发生了不可逆改变</td>
+</tr>
+</tbody></table>
+<h3 id="沉默密度标准">沉默密度标准</h3>
+<ul>
+<li>高张力场景：沉默应该比台词多</li>
+<li>日常场景：台词可以多于沉默</li>
+<li>转折时刻：关键决定前必须有 Silence</li>
+<li>冲突结束后：留一段纯环境的静默</li>
+</ul>
+<hr>
+<h2 id="六-角色语言档案">六、角色语言档案</h2>
+<p>给每个主要角色建一份语言档案，让不同角色开口就能被认出来。</p>
+<h3 id="语言档案模板">语言档案模板</h3>
+<pre><code>{角色名} 语言档案
+════════════════
+
+【Mamet 维度】
+台词平均长度：{X个字}（越短越有权力）
+主要台词动作类型：{指令型 / 试探型 / 逃避型 / …}
+策略升级路径：{从什么到什么}
+省略程度：{高 / 中 / 低}
+
+【词汇层】常用词汇 + 禁忌词 + 口头禅
+【句式层】句式偏好 + 思维模式
+【回避层】不说什么 + 绕开方式
+【节奏层】说话速度 + 停顿习惯 + 打断倾向
+【谎言层】说谎方式 + 说谎信号
+【情绪表达层】压力下的变化模式
+</code></pre>
+<hr>
+<h2 id="七-对白病症诊断">七、对白病症诊断</h2>
+<p>写完对白，逐句过这张表；命中就按 Mamet 修复法改。</p>
+<table>
+<thead>
+<tr>
+<th>病症</th>
+<th>症状</th>
+<th>Mamet 修复</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>解释动机</td>
+<td>&quot;我这样做是因为……&quot;</td>
+<td>删掉。用动作表达。</td>
+</tr>
+<tr>
+<td>描述情绪</td>
+<td>&quot;我现在很愤怒&quot;</td>
+<td>删掉。写一个具体动作。</td>
+</tr>
+<tr>
+<td>总结剧情</td>
+<td>&quot;所以你的意思是……&quot;</td>
+<td>删掉。直接推进。</td>
+</tr>
+<tr>
+<td>哲学宣言</td>
+<td>&quot;人生就是这样……&quot;</td>
+<td>删掉。用一个选择表达。</td>
+</tr>
+<tr>
+<td>过于顺畅</td>
+<td>A 问 B 答，完美配合</td>
+<td>加入节拍转换：打断、回避、误解</td>
+</tr>
+<tr>
+<td>信息倾倒</td>
+<td>一句话塞多个信息</td>
+<td>拆分到多场景，分层传递</td>
+</tr>
+<tr>
+<td>策略固定</td>
+<td>角色全程用同一策略说话</td>
+<td>每次受阻后必须换策略</td>
+</tr>
+<tr>
+<td>作者炫技</td>
+<td>&quot;漂亮&quot;的台词</td>
+<td>删掉。角色不说漂亮话。</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="在-nomi-创作区怎么用">在 Nomi 创作区怎么用</h2>
+<ul>
+<li><strong>建角色时</strong> — 先填一份角色语言档案（含 Mamet 维度），后面这个角色所有台词都对着档案写，保证语言个性化、不同角色不串味。</li>
+<li><strong>写场景对白时</strong> — 先定三层（欲望 / 话题 / 策略），只写策略层；再按节拍序列展开，每次受阻换策略、逐级升级；配合省略美学压短台词、按三种停顿铺沉默。</li>
+<li><strong>改稿时</strong> — 用「对白病症诊断」表逐句过，命中就按修复法改；再跑一遍节拍分析，确认每次策略切换都有触发原因；最后用台词精简对照表把还能砍的砍掉。</li>
+</ul>
+</article>
+      <aside class="attribution" aria-label="出处">
+  <dl>
+    <div><dt>出处</dt><dd><a href="https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/writer-dialogue/SKILL.md" target="_blank" rel="noreferrer">Nomi contributors</a> · <code>7a072f1</code></dd></div>
+    <div><dt>许可证</dt><dd>AGPL-3.0-only</dd></div>
+    <div><dt>Nomi 做的改动</dt><dd>Nomi adds library presentation metadata; the skill body is unchanged.</dd></div>
+  </dl>
+  <a href="https://github.com/aqm857886159/Nomi/tree/main/skills/writer-dialogue" target="_blank" rel="noreferrer">在 GitHub 看原文件 ↗</a>
+  
+</aside>
+    </div>
+  </div>
+</section>
+<section class="block lib-section" aria-labelledby="related-title">
+  <div class="wrap">
+    <div class="section-head"><h2 id="related-title">同组的其他技能</h2></div>
+    <div class="card-grid"><article class="lib-card linked">
+  <p class="node-title">文字</p>
+  <a class="card-frame" href="/skills/writer-adaptation">
+    <div class="card-media"><img src="/assets/library/writer-adaptation-640.webp" alt="改编顾问" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>改编顾问</h3>
+      
+      <p class="card-text">改编顾问——原著分析 / 改编策略 / 戏剧点提炼 / 结构映射 / 人物迁移。Nomi 创作区把小说/原著改编成剧本时参考。</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">文字</p>
+  <a class="card-frame" href="/skills/writer-behavior-psychology">
+    <div class="card-media"><img src="/assets/library/writer-behavior-psychology-640.webp" alt="角色行为心理" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>角色行为心理</h3>
+      
+      <p class="card-text">行为心理学编剧工具——把认知失调 / 依恋理论 / 防御机制 / 微表情等心理学工具转化为角色行为设计与观众心理操控。Nomi 创作区设计角色行为/心理转折时参考。</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">文字</p>
+  <a class="card-frame" href="/skills/writer-improv">
+    <div class="card-media"><img src="/assets/library/writer-improv-640.webp" alt="即兴对白" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>即兴对白</h3>
+      
+      <p class="card-text">即兴生台词——让角色在设定好的世界里即兴对戏，长出编剧预设不出的真实口语与情节；再把即兴原料按「剪水→留金→上结构→转场景」消化成可拍剧本。Nomi 创作区想要自然口语/真实关系张力时用。</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">文字</p>
+  <a class="card-frame" href="/skills/writer-incubation">
+    <div class="card-media"><img src="/assets/library/writer-incubation-640.webp" alt="创意孵化" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>创意孵化</h3>
+      
+      <p class="card-text">创意孵化——在有故事骨架之前，基于 Truby 有机结构 + 宋方金人物先于情节 + Kasdan 核心信念检验，通过多轮追问帮用户从碎片里长出故事的根系（主题/人物内核/核心信念/世界）。Nomi 创作区立项初期、还没想清楚要写什么时用。</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">文字</p>
+  <a class="card-frame" href="/skills/writer-novel-digester">
+    <div class="card-media"><img src="/assets/library/writer-novel-digester-640.webp" alt="小说消化" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>小说消化</h3>
+      
+      <p class="card-text">小说消化——把原著文本按 Truby/Mamet/McKee/Gilroy 方法论拆解，输出结构分析/对白范例/场景范例/叙事技法/本剧对标映射。Nomi 创作区改编或从原著取养分时参考，分层读取不必一次读完全本。</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">文字</p>
+  <a class="card-frame" href="/skills/writer-review">
+    <div class="card-media"><img src="/assets/library/writer-review-640.webp" alt="剧本审查" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>剧本审查</h3>
+      
+      <p class="card-text">剧本审查·导演视角——用视觉叙事/节奏把控/镜头语言/空间调度/情绪曲线等导演维度审一份剧本，找出「读着顺但拍不出/立不住」的问题。Nomi 创作区写完剧本回头检查时用。</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article></div>
+  </div>
+</section>
+<section class="download-band">
+  <div class="wrap download-band-inner">
+    <div>
+      <h2>商业级体验，模型按原价。</h2>
+      <p>macOS · Windows · AGPL-3.0 · 不用注册</p>
+    </div>
+    <a class="button primary" data-download-nomi href="#download-options">下载 Nomi</a>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <span class="wordmark small">No<span>mi</span></span>
+    <nav class="footer-links" aria-label="站内导航">
+      <a href="/features">功能</a>
+      <a href="/models">模型</a>
+      <a href="/prompts">提示词</a>
+      <a href="/skills">技能</a>
+      <a href="/quickstart">上手</a>
+    </nav>
+    <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">GitHub 源码</a>
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">AGPL-3.0 开源</a>
+    <a href="https://github.com/aqm857886159/Nomi/releases" target="_blank" rel="noreferrer">更新说明</a>
+    <a href="https://x.com/sdf297417627618" target="_blank" rel="noreferrer">X / Twitter</a>
+    <a href="/en/skills/writer-dialogue" data-locale-choice="en">English</a>
+    <span class="made">宣传片里的界面都是 Nomi 的真实组件，画面素材都由 Nomi 生成。</span>
+  </div>
+</footer>
+<dialog id="download-dialog" aria-labelledby="download-title">
+  <div class="dialog-head"><strong id="download-title">选择适合这台电脑的版本</strong><button class="dialog-close" type="button" aria-label="关闭">×</button></div>
+  <div class="dialog-body download-dialog-body"><p>能识别系统时会直接下载；无法可靠判断 Mac 芯片时，请选择对应安装包。</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe 安装包</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac Apple 芯片</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg 安装包</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac Intel 芯片</strong><small>macOS 12+ · Intel 处理器 · .dmg 安装包</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">macOS 第一次打开</strong>
+  <p>当前 macOS 安装包未使用 Apple Developer ID 签名，也未经过 Apple 公证。请只使用本页或 Nomi GitHub 官方仓库的下载链接。</p>
+  <ol><li>下载对应的 DMG，把 Nomi 拖到“应用程序”。</li><li>在 Finder 的“应用程序”中右键 Nomi，选择“打开”，再确认“打开”。</li><li>如果仍被拦截，打开“系统设置” → “隐私与安全”，找到 Nomi 后点击“仍要打开”。</li></ol>
+  <p>仅当 macOS 提示 Nomi“已损坏”时：先确认安装包来自上述官方链接，再打开“终端”运行：</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">不需要、也不要全局关闭 Gatekeeper。</p>
+</section></div>
+</dialog>
+<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>选择适合这台电脑的版本</h2><p>能识别系统时会直接下载；无法可靠判断 Mac 芯片时，请选择对应安装包。</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe 安装包</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac Apple 芯片</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg 安装包</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac Intel 芯片</strong><small>macOS 12+ · Intel 处理器 · .dmg 安装包</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">macOS 第一次打开</strong>
+  <p>当前 macOS 安装包未使用 Apple Developer ID 签名，也未经过 Apple 公证。请只使用本页或 Nomi GitHub 官方仓库的下载链接。</p>
+  <ol><li>下载对应的 DMG，把 Nomi 拖到“应用程序”。</li><li>在 Finder 的“应用程序”中右键 Nomi，选择“打开”，再确认“打开”。</li><li>如果仍被拦截，打开“系统设置” → “隐私与安全”，找到 Nomi 后点击“仍要打开”。</li></ol>
+  <p>仅当 macOS 提示 Nomi“已损坏”时：先确认安装包来自上述官方链接，再打开“终端”运行：</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">不需要、也不要全局关闭 Gatekeeper。</p>
+</section></div></section></noscript>
+<script>(() => {
+  const downloadUrls = {"windowsX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe","macArm64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg","macX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"}
+  const selectDownload = function selectDownload({ platform = '', userAgent = '', architecture = '' } = {}) {
+  const platformText = `${platform} ${userAgent}`.toLowerCase()
+  const architectureText = String(architecture).toLowerCase()
+
+  if (/\b(?:win32|win64|windows)\b/.test(platformText) && !/arm/.test(architectureText)) return downloadUrls.windowsX64
+  if (!/mac|darwin|iphone|ipad/.test(platformText)) return null
+  if (/arm|aarch64/.test(architectureText) || /arm64/.test(platformText)) return downloadUrls.macArm64
+  if (/x86|x64|intel/.test(architectureText)) return downloadUrls.macX64
+  return null
+}
+  const resolveDownloadRequest = function resolveDownloadRequest({ search = '', platform = '', userAgent = '', architecture = '' } = {}) {
+  const params = new URLSearchParams(search)
+  const requestedPlatform = params.get('platform') || ''
+  const requestedArchitecture = params.get('arch') || ''
+  const hasExplicitTarget = params.has('platform') || params.has('arch')
+  const url = hasExplicitTarget
+    ? selectDownload({ platform: requestedPlatform, architecture: requestedArchitecture })
+    : selectDownload({ platform, userAgent, architecture })
+
+  return {
+    autoDownload: params.get('download') === '1',
+    hasExplicitTarget,
+    url,
+  }
+}
+  const localeKey = 'nomi_locale'
+  document.querySelectorAll('[data-locale-choice]').forEach((link) => {
+    if (location.hash) {
+      const destination = new URL(link.href, location.href)
+      destination.hash = location.hash
+      link.href = destination.pathname + destination.search + destination.hash
+    }
+    link.addEventListener('click', () => {
+      try { localStorage.setItem(localeKey, link.dataset.localeChoice) } catch {}
+    })
+  })
+
+  const menuToggle = document.querySelector('.menu-toggle')
+  const navLinks = document.querySelector('#nav-links')
+  const closeMenu = () => {
+    navLinks?.classList.remove('open')
+    menuToggle?.setAttribute('aria-expanded', 'false')
+  }
+  menuToggle?.addEventListener('click', () => {
+    const open = navLinks?.classList.toggle('open') || false
+    menuToggle.setAttribute('aria-expanded', String(open))
+  })
+  navLinks?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu))
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && navLinks?.classList.contains('open')) {
+      closeMenu()
+      menuToggle?.focus()
+    }
+  })
+
+  // 库页面的「复制」：复制按钮指向的那块提示词原文；剪贴板被拒时退回「选中它」，让人自己按复制。
+  document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => {
+    const source = document.getElementById(button.dataset.copy)
+    if (!source) return
+    try {
+      await navigator.clipboard.writeText(source.innerText.trim())
+      button.dataset.copied = 'true'
+      setTimeout(() => { delete button.dataset.copied }, 1600)
+    } catch {
+      const range = document.createRange()
+      range.selectNodeContents(source)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  }))
+
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })
+    dialog.addEventListener('close', () => {
+      if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open')
+    })
+  })
+
+  const downloadDialog = document.querySelector('#download-dialog')
+  const showDownloadOptions = () => {
+    if (!downloadDialog || typeof downloadDialog.showModal !== 'function') return
+    downloadDialog.showModal()
+    document.body.classList.add('modal-open')
+  }
+  downloadDialog?.querySelectorAll('[data-direct-download]').forEach((link) => link.addEventListener('click', () => {
+    downloadDialog.close()
+  }))
+
+  const resolvePlatformDownload = async () => {
+    const platform = navigator.platform || ''
+    const userAgent = navigator.userAgent || ''
+    let architecture = ''
+    if (navigator.userAgentData?.getHighEntropyValues) {
+      try { architecture = (await navigator.userAgentData.getHighEntropyValues(['architecture'])).architecture || '' } catch {}
+    }
+    return resolveDownloadRequest({ search: location.search, platform, userAgent, architecture })
+  }
+  const applyPlatformDownload = (url) => {
+    if (!url) return
+    document.querySelectorAll('[data-download-nomi]').forEach((link) => {
+      link.href = url
+    })
+  }
+  document.querySelectorAll('[data-download-nomi]').forEach((link) => link.addEventListener('click', async (event) => {
+    event.preventDefault()
+    const request = await resolvePlatformDownload()
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  }))
+  void resolvePlatformDownload().then((request) => {
+    applyPlatformDownload(request.url)
+    if (!request.autoDownload) return
+    const cleanUrl = new URL(location.href)
+    for (const key of ['download', 'source', 'platform', 'arch']) cleanUrl.searchParams.delete(key)
+    history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  })
+})()</script>
+</body>
+</html>

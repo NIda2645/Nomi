@@ -2,6 +2,12 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { assertLocaleParity, locales, shared } from './marketing/content.mjs'
+import { assertFeaturesParity, featurePages } from './marketing/features.mjs'
+import { assertLibraryCopyParity } from './marketing/library/copy.mjs'
+import { loadSiteData } from './marketing/library/data.mjs'
+import { modelPages } from './marketing/library/models-pages.mjs'
+import { promptPages } from './marketing/library/prompts-pages.mjs'
+import { skillPages } from './marketing/library/skills-pages.mjs'
 import { renderHomepage, renderQuickstart } from './marketing/template.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -10,11 +16,18 @@ const runtimeFacts = Object.freeze({ ...shared, version: packageJson.version })
 const checkOnly = process.argv.includes('--check')
 
 assertLocaleParity()
+assertLibraryCopyParity()
+assertFeaturesParity()
 
-// 生成物：首页与快速上手，各一中一英。
+// 生成物：首页、快速上手、三个库（数据来自 marketing/data/site-data.json），各一中一英。
+const siteData = loadSiteData()
 const pages = [
   { render: renderHomepage, output: { 'zh-CN': 'marketing/index.html', en: 'marketing/en/index.html' } },
   { render: renderQuickstart, output: { 'zh-CN': 'marketing/quickstart.html', en: 'marketing/en/quickstart.html' } },
+  ...featurePages(),
+  ...modelPages(siteData),
+  ...promptPages(siteData),
+  ...skillPages(siteData),
 ]
 
 const outputs = pages.flatMap(({ render, output }) => locales.map((locale) => {

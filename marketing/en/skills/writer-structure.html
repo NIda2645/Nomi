@@ -1,0 +1,921 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Story structure: an AI video writing skill | Nomi</title>
+<meta name="description" content="Build causal story structure from character needs and opposition." />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#faf9f6" />
+<link rel="canonical" href="https://nomiaqm.com/en/skills/writer-structure" />
+<link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-structure" />
+<link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-structure" />
+<link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-structure" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Nomi" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:title" content="Story structure: an AI video writing skill | Nomi" />
+<meta property="og:description" content="Build causal story structure from character needs and opposition." />
+<meta property="og:url" content="https://nomiaqm.com/en/skills/writer-structure" />
+<meta property="og:image" content="https://nomiaqm.com/assets/library/writer-structure-1280.webp" />
+<meta property="og:image:alt" content="Story structure" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Story structure: an AI video writing skill | Nomi" />
+<meta name="twitter:description" content="Build causal story structure from character needs and opposition." />
+<meta name="twitter:image" content="https://nomiaqm.com/assets/library/writer-structure-1280.webp" />
+<meta name="twitter:image:alt" content="Story structure" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/en/skills/writer-structure","url":"https://nomiaqm.com/en/skills/writer-structure","name":"Story structure: an AI video writing skill | Nomi","description":"Build causal story structure from character needs and opposition.","inLanguage":"en","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/library/writer-structure-1280.webp"},"breadcrumb":{"@id":"https://nomiaqm.com/en/skills/writer-structure#breadcrumbs"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.22.4","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"},{"@type":"BreadcrumbList","@id":"https://nomiaqm.com/en/skills/writer-structure#breadcrumbs","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://nomiaqm.com/en/"},{"@type":"ListItem","position":2,"name":"Skills","item":"https://nomiaqm.com/en/skills"},{"@type":"ListItem","position":3,"name":"Writing","item":"https://nomiaqm.com/en/skills#writing"},{"@type":"ListItem","position":4,"name":"Story structure","item":"https://nomiaqm.com/en/skills/writer-structure"}]},{"@type":"SoftwareSourceCode","@id":"https://nomiaqm.com/en/skills/writer-structure#skill","name":"Story structure","description":"Build causal story structure from character needs and opposition.","license":"AGPL-3.0-only","codeRepository":"https://github.com/aqm857886159/Nomi/tree/main/skills/writer-structure","programmingLanguage":"Markdown","runtimePlatform":"Agent Skills (SKILL.md)","author":{"@type":"Organization","name":"Nomi contributors"}}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" />
+<style>
+:root {
+  --ground: #faf9f6;
+  --paper: #ffffff;
+  --ink: #1e1b17;
+  --ink-2: #4a463f;
+  --ink-3: #6b665e;
+  --ink-4: #a19b92;
+  --line: #e6e2db;
+  --line-soft: #efece6;
+  --dot: #e2ddd5;
+  --accent: #2e6cb4;
+  --accent-soft: #e9f0f9;
+  --shadow-node: 0 1px 2px rgb(30 27 23 / 0.05), 0 12px 32px rgb(30 27 23 / 0.07);
+  --shadow-window: 0 2px 4px rgb(30 27 23 / 0.05), 0 30px 70px rgb(30 27 23 / 0.13);
+  --font-en: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-zh: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-ui: "Inter", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+  --radius-lg: 16px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #151311;
+    --paper: #1d1b18;
+    --ink: #eeeae3;
+    --ink-2: #cdc7bd;
+    --ink-3: #a29b90;
+    --ink-4: #6f695f;
+    --line: #2f2c27;
+    --line-soft: #26231f;
+    --dot: #2a2723;
+    --accent: #78a6e0;
+    --accent-soft: #1e2a3a;
+    --shadow-node: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
+    --shadow-window: 0 2px 4px rgb(0 0 0 / 0.3), 0 30px 70px rgb(0 0 0 / 0.5);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background-color: var(--ground);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--font-zh);
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+html[lang="en"] body { font-family: var(--font-ui); }
+body.modal-open { overflow: hidden; }
+a { color: inherit; }
+img, video { max-width: 100%; display: block; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.skip-link { position: absolute; left: 16px; top: -48px; z-index: 50; background: var(--ink); color: var(--ground); padding: 8px 14px; border-radius: 8px; }
+.skip-link:focus { top: 12px; }
+.wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding-inline: 24px; }
+@media (max-width: 560px) { .wrap { padding-inline: 16px; } }
+
+.eyebrow { margin: 0; font-family: var(--font-ui); font-size: 13px; font-weight: 500; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; }
+.display { margin: 14px 0 0; font-weight: 900; letter-spacing: -0.01em; text-wrap: balance; font-size: clamp(40px, 5.4vw, 68px); line-height: 1.12; }
+.display em { font-style: normal; color: var(--accent); }
+html[lang="en"] .display { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.02em; line-height: 1.04; }
+.lede { margin: 22px 0 0; font-size: 19px; line-height: 1.75; color: var(--ink-2); max-width: 30em; }
+h2 { margin: 10px 0 0; font-weight: 900; font-size: clamp(30px, 3.6vw, 44px); line-height: 1.2; letter-spacing: -0.005em; text-wrap: balance; }
+html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.015em; }
+.body { margin: 16px 0 0; color: var(--ink-2); font-size: 17px; max-width: 34em; }
+
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-ui); font-weight: 600; font-size: 15px; line-height: 1;
+  padding: 13px 20px; border-radius: 999px; text-decoration: none; cursor: pointer; border: 1px solid transparent;
+  background: none; color: inherit;
+  transition: transform 140ms cubic-bezier(.2,.7,.3,1), background-color 140ms, border-color 140ms;
+}
+.button:active { transform: translateY(1px); }
+.button.primary { background: var(--ink); color: var(--ground); }
+.button.primary:hover { background: var(--ink-2); }
+.button.quiet { background: var(--paper); color: var(--ink); border-color: var(--line); }
+.button.quiet:hover { border-color: var(--ink-4); }
+.button.small { padding: 9px 15px; font-size: 14px; }
+
+.site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft); }
+.nav { display: flex; align-items: center; gap: 28px; height: 60px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.wordmark { font-family: var(--font-en); font-weight: 600; font-size: 24px; letter-spacing: -0.01em; line-height: 1; }
+.wordmark span { color: var(--accent); }
+.wordmark.small { font-size: 20px; }
+.nav-links { display: flex; gap: 22px; font-family: var(--font-ui); font-size: 14px; color: var(--ink-3); }
+.nav-links a { text-decoration: none; }
+.nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--ink); }
+.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.locale { font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; text-decoration: none; }
+.locale:hover { color: var(--ink); border-color: var(--ink-4); }
+.menu-toggle { display: none; font-family: var(--font-ui); font-size: 13px; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; color: var(--ink); cursor: pointer; }
+@media (max-width: 760px) {
+  .menu-toggle { display: inline-flex; }
+  .nav-links { display: none; position: absolute; top: 60px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--ground); border-bottom: 1px solid var(--line); padding: 8px 16px 16px; }
+  .nav-links.open { display: flex; }
+  .nav-links a { padding: 10px 0; font-size: 16px; }
+  .nav { gap: 12px; }
+}
+
+.block { padding-block: 72px; }
+@media (max-width: 760px) { .block { padding-block: 48px; } }
+.block-head { max-width: 44rem; }
+
+.footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+.footer a { text-decoration: none; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+.footer a:hover { color: var(--ink); }
+
+.download-options { display: grid; gap: 8px; margin-top: 14px; }
+.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); text-decoration: none; font-family: var(--font-ui); }
+.download-option:hover { border-color: var(--ink-4); }
+.download-option strong { display: block; font-size: 15px; }
+.download-option small { display: block; color: var(--ink-3); font-size: 12px; }
+.download-option > span:last-child { color: var(--accent); font-weight: 600; font-size: 13px; white-space: nowrap; }
+.mac-install-guide { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius); background: var(--line-soft); font-size: 14px; color: var(--ink-2); }
+.mac-install-guide p, .mac-install-guide ol { margin: 8px 0 0; }
+.mac-install-guide ol { padding-left: 20px; }
+.mac-install-command { display: block; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--paper); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.download-fallback { padding-block: 40px; }
+
+dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 0; background: var(--ground); color: var(--ink); box-shadow: var(--shadow-window); }
+dialog::backdrop { background: rgb(20 18 16 / 0.45); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); font-family: var(--font-ui); }
+.dialog-close { background: none; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--ink-3); padding: 4px 8px; }
+.dialog-body { padding: 16px 18px 20px; overflow-y: auto; }
+.dialog-body > p { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+.lib-hero { padding-block: 40px 8px; }
+.crumbs ol { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.crumbs li + li::before { content: "/"; margin-right: 6px; color: var(--ink-4); }
+.crumbs a { text-decoration: none; color: var(--ink-3); }
+.crumbs a:hover { color: var(--ink); }
+.lib-title { font-size: clamp(34px, 4.4vw, 56px); }
+.group-anchors { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; }
+.group-anchors a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-family: var(--font-ui); font-size: 14px; text-decoration: none; color: var(--ink-2); }
+.group-anchors a span { font-size: 12px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.group-anchors a:hover { border-color: var(--ink-4); color: var(--ink); }
+
+.lib-section { padding-block: 36px; scroll-margin-top: 64px; }
+.section-head { display: flex; align-items: baseline; gap: 12px; }
+.section-head h2 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); }
+.section-head .count { font-family: var(--font-ui); font-size: 14px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.section-note { margin: 10px 0 0; color: var(--ink-3); max-width: 44em; font-size: 15px; }
+.card-grid { margin-top: 26px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px 22px; }
+.card-grid.compact { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 22px 16px; }
+.measure { max-width: 760px; }
+
+/* 节点卡：标题在框外左上，框左右各一个连接点（和首页功能段、App 画布上的节点同一个样子）。 */
+.lib-card { display: flex; flex-direction: column; min-width: 0; }
+.lib-card .node-title { margin: 0 0 6px 2px; min-height: 18px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-frame { position: relative; flex: 1; display: flex; flex-direction: column; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-node); text-decoration: none; color: inherit; }
+.card-frame::before, .card-frame::after { content: ""; position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--paper); border: 1px solid var(--ink-4); }
+.card-frame::before { left: -5px; }
+.card-frame::after { right: -5px; }
+a.card-frame:hover { border-color: var(--ink-4); }
+a.card-frame:hover h3 { color: var(--accent); }
+.card-media { aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden; border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; background: var(--line-soft); }
+.card-media img { width: 100%; height: 100%; object-fit: cover; }
+.card-body { flex: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+.card-body h3 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.35; }
+html[lang="en"] .card-body h3 { font-family: var(--font-ui); font-weight: 600; }
+.card-subtitle { margin: 0; font-size: 13px; color: var(--ink-4); }
+.card-text { margin: 0; font-size: 14px; color: var(--ink-3); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.chips { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chips li { font-family: var(--font-ui); font-size: 12px; line-height: 1.5; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.card-meta { margin: auto 0 0; padding-top: 8px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); }
+
+/* 模型页：左边讲，右边一张档案卡（像 App 里的模型档案）。 */
+.model-hero { padding-block: 40px 24px; }
+.model-hero-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 48px; align-items: start; }
+@media (max-width: 900px) { .model-hero-grid { grid-template-columns: 1fr; gap: 28px; } }
+.model-title { font-size: clamp(40px, 5vw, 64px); }
+.model-dates { margin: 14px 0 0; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.hero-actions { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; }
+.spec-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-node); padding: 18px 20px 16px; }
+.spec-head { margin: 0 0 6px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.spec-rows { margin: 0; }
+.spec-rows div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.spec-rows div:first-child { border-top: 0; }
+.spec-rows dt { font-size: 14px; color: var(--ink-3); }
+.spec-rows dd { margin: 0; display: flex; flex-wrap: wrap; row-gap: 2px; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.spec-rows dd span { white-space: nowrap; }
+.spec-rows dd span:not(:last-child)::after { content: "·"; margin: 0 7px; color: var(--ink-4); }
+.spec-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-4); line-height: 1.6; }
+
+/* 正文排版：模型介绍与技能正文共用。 */
+.prose-wrap { max-width: 760px; }
+.prose { font-size: 17px; line-height: 1.8; color: var(--ink-2); min-width: 0; }
+.prose h2 { margin: 40px 0 12px; font-size: 26px; line-height: 1.3; color: var(--ink); scroll-margin-top: 80px; }
+.prose h2:first-child { margin-top: 0; }
+.prose h3 { margin: 28px 0 8px; font-size: 19px; color: var(--ink); scroll-margin-top: 80px; }
+.prose h4 { margin: 20px 0 6px; font-size: 17px; color: var(--ink); }
+.prose p, .prose ul, .prose ol { margin: 12px 0 0; }
+.prose ul, .prose ol { padding-left: 1.3em; }
+.prose li + li { margin-top: 6px; }
+.prose strong { color: var(--ink); }
+.prose a { color: var(--accent); }
+.prose code { font-family: var(--font-mono); font-size: 0.88em; background: var(--line-soft); padding: 1px 5px; border-radius: 5px; }
+.prose pre { margin: 16px 0 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prose pre code { background: none; padding: 0; font-size: inherit; }
+.prose table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; margin-top: 16px; font-size: 15px; }
+.prose th, .prose td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+.prose th { color: var(--ink); font-weight: 700; }
+.prose blockquote { margin: 16px 0 0; padding: 2px 0 2px 16px; border-left: 3px solid var(--accent); color: var(--ink-3); }
+.prose hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.source-list { font-size: 15px; }
+.prose .prompt-block { margin-top: 12px; }
+.prose pre.prompt-text { margin: 0; padding: 14px 16px 44px; background: var(--ground); border-color: var(--line); max-height: none; font-size: 14px; }
+
+/* 技能页：左侧目录吸顶，右侧正文。 */
+.skill-hero { padding-bottom: 0; }
+.hero-chips { margin-top: 18px; }
+.skill-use { padding-block: 28px 8px; }
+.use-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 760px) { .use-grid { grid-template-columns: 1fr; } }
+.use-box { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+.use-box h2 { margin: 0; font-family: var(--font-ui); font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.use-box p { margin: 6px 0 0; font-size: 15px; color: var(--ink-2); }
+.skill-preview { margin: 24px 0 0; }
+.skill-preview img { width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--line); }
+.skill-preview figcaption { margin-top: 8px; font-size: 13px; color: var(--ink-4); }
+.skill-body { padding-block: 32px; }
+.skill-layout { display: grid; grid-template-columns: 220px minmax(0, 760px); gap: 48px; justify-content: start; }
+.skill-layout.no-toc { grid-template-columns: minmax(0, 760px); }
+@media (max-width: 960px) { .skill-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; } .toc { position: static; } }
+.skill-main { min-width: 0; }
+.skill-main .attribution { margin-top: 36px; }
+.toc { position: sticky; top: 84px; align-self: start; font-family: var(--font-ui); font-size: 13px; }
+.toc p { margin: 0 0 8px; font-weight: 600; color: var(--ink-3); }
+.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+.toc li a { display: block; padding: 4px 0 4px 12px; color: var(--ink-3); text-decoration: none; line-height: 1.5; }
+.toc li a:hover { color: var(--ink); }
+
+/* 效果、表情预设、合集：一条一块，可复制。 */
+.effect-list { padding-block: 28px; }
+.effect-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 18px; }
+.effect-entry { display: flex; flex-direction: column; min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; scroll-margin-top: 80px; }
+.effect-entry:target { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.effect-media { aspect-ratio: 16 / 9; max-width: 100%; background: var(--line-soft); }
+.effect-media.square { aspect-ratio: 1 / 1; }
+.effect-media img { width: 100%; height: 100%; object-fit: cover; }
+.effect-body { flex: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.effect-body h3 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.4; }
+.alt-name { margin-left: 6px; font-family: var(--font-ui); font-size: 13px; font-weight: 400; color: var(--ink-4); }
+.effect-summary { margin: 0; font-size: 14px; color: var(--ink-3); }
+.prompt-block { position: relative; margin-top: auto; }
+.prompt-text { margin: 0; padding: 12px 14px 40px; background: var(--ground); border: 1px solid var(--line-soft); border-radius: 8px; font-family: var(--font-mono); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); max-height: 280px; overflow: auto; }
+.slot { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 0 3px; }
+.copy-button { position: absolute; right: 8px; bottom: 8px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-2); cursor: pointer; }
+.copy-button:hover { border-color: var(--ink-4); color: var(--ink); }
+.copy-done { display: none; }
+.copy-button[data-copied] .copy-idle { display: none; }
+.copy-button[data-copied] .copy-done { display: inline; color: var(--accent); }
+.collection-list { display: grid; gap: 18px; margin-top: 24px; }
+.collection-entry { scroll-margin-top: 80px; }
+.collection-entry h3 { margin: 0 0 8px; font-size: 16px; line-height: 1.4; }
+
+/* 出处与许可证。 */
+.attribution { margin-top: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; font-size: 14px; }
+.attribution dl { margin: 0; display: grid; gap: 6px; }
+.attribution dl div { display: grid; grid-template-columns: 8em minmax(0, 1fr); gap: 12px; }
+@media (max-width: 560px) { .attribution dl div { grid-template-columns: 1fr; gap: 0; } }
+.attribution dt { color: var(--ink-4); }
+.attribution dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.attribution a { color: var(--accent); }
+.attribution > a { display: inline-block; margin-top: 10px; font-family: var(--font-ui); font-size: 13px; }
+.license-text { margin-top: 10px; }
+.license-text summary { cursor: pointer; font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); }
+.license-text pre { margin: 8px 0 0; max-height: 240px; overflow: auto; font-size: 12px; white-space: pre-wrap; background: var(--ground); padding: 10px 12px; border-radius: 8px; }
+
+/* 页底下载条。 */
+.download-band { padding-block: 48px 24px; }
+.download-band-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; padding: 28px clamp(20px, 4vw, 40px); background: var(--ink); color: var(--ground); border-radius: var(--radius-lg); }
+.download-band h2 { margin: 0; font-size: clamp(22px, 2.4vw, 30px); color: var(--ground); }
+.download-band p { margin: 6px 0 0; font-size: 14px; color: color-mix(in srgb, var(--ground) 70%, transparent); }
+.download-band .button.primary { background: var(--ground); color: var(--ink); }
+.download-band .button.primary:hover { background: color-mix(in srgb, var(--ground) 86%, transparent); }
+</style>
+</head>
+<body class="page-skills">
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header">
+  <nav class="nav wrap" aria-label="Primary navigation">
+    <a class="brand" href="/en/" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
+    <div class="nav-links" id="nav-links">
+      <a href="/en/features">Features</a>
+      <a href="/en/models">Models</a>
+      <a href="/en/prompts">Prompts</a>
+      <a href="/en/skills" aria-current="page">Skills</a>
+      <a href="/en/quickstart">Get started</a>
+      <a href="/en/#community">Community</a>
+    </div>
+    <div class="nav-actions">
+      <a class="locale" href="/skills/writer-structure" data-locale-choice="zh-CN" aria-label="Switch to Chinese">中文</a>
+      <a class="button primary small" data-download-nomi href="#download-options">Download</a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    </div>
+  </nav>
+</header>
+<main id="main">
+<section class="lib-hero skill-hero">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="breadcrumb"><ol><li><a href="/en/">Home</a></li><li><a href="/en/skills">Skills</a></li><li><a href="/en/skills#writing">Writing</a></li><li><span aria-current="page">Story structure</span></li></ol></nav>
+    <p class="eyebrow">Skills · Writing</p>
+    <h1 class="display lib-title"><span>Story structure</span></h1>
+    <p class="lede">Build causal story structure from character needs and opposition.</p>
+    <ul class="chips hero-chips"><li>Works with: text</li><li>License: AGPL-3.0-only</li></ul>
+  </div>
+</section>
+<section class="block skill-use">
+  <div class="wrap">
+    <div class="use-grid" aria-label="How to use it">
+      <div class="use-box"><h2>In Nomi</h2><p>The agent uses it when a task calls for it. You can also open it under Skills on the left and ask the agent to follow it.</p></div>
+      <div class="use-box"><h2>In other assistants</h2><p>It is a standard SKILL.md package. Put the whole folder into the skills directory of an assistant that supports skills, such as Claude Code or Codex.</p></div>
+    </div>
+    
+  </div>
+</section>
+<section class="block skill-body">
+  <div class="wrap skill-layout">
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#一-有机结构论">一、有机结构论</a></li><li><a href="#二-对手网络设计">二、对手网络设计</a></li><li><a href="#三-二十二步结构-精简版">三、二十二步结构（精简版）</a></li><li><a href="#四-场景编织">四、场景编织</a></li><li><a href="#五-道德论证">五、道德论证</a></li><li><a href="#六-双轨节奏系统">六、双轨节奏系统</a></li><li><a href="#七-钩子编排">七、钩子编排</a></li><li><a href="#何时用这套方法">何时用这套方法</a></li></ol></nav>
+    <div class="skill-main">
+      <article class="prose" lang="zh-CN"><p>以 John Truby（《故事的解剖》The Anatomy of Story）为核心方法论蓝本，供 Nomi 创作 AI 在创作区帮用户写故事、写剧本时搭骨架用。</p>
+<p><strong>核心理念：</strong> 结构不是外部框架套在故事上，而是从角色的弱点和需求中<strong>有机生长</strong>出来。好的结构是因果链条，不是时间线上的节拍。写「因为 A 所以 B」的因果，不写「第几分钟该发生什么」。</p>
+<hr>
+<h2 id="一-有机结构论">一、有机结构论</h2>
+<h3 id="truby-的反模板立场">Truby 的反模板立场</h3>
+<p>Truby 明确反对把三幕结构当作模板填充。他的方法是让结构从角色内部长出来：</p>
+<pre><code>故事结构 = 角色弱点 → 产生欲望 → 遭遇对手 → 制定计划 → 计划破碎 → 战斗 → 自我揭示 → 新平衡
+</code></pre>
+<p>这不是&quot;第几分钟该发生什么&quot;，而是&quot;因为 A 所以 B&quot;的因果链。在 Nomi 创作区搭骨架时，先钉住角色的弱点与欲望，让后续每一步都由前一步逼出来。</p>
+<h3 id="七大结构要素">七大结构要素</h3>
+<table>
+<thead>
+<tr>
+<th>要素</th>
+<th>定义</th>
+<th>检查问题</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>弱点与需求</strong></td>
+<td>角色有心理弱点（伤害自己）和道德弱点（伤害他人）</td>
+<td>这两个弱点分别是什么？</td>
+</tr>
+<tr>
+<td><strong>欲望</strong></td>
+<td>外部目标，观众可以跟踪的具体事物</td>
+<td>观众能用一句话说出主角想要什么吗？</td>
+</tr>
+<tr>
+<td><strong>对手</strong></td>
+<td>追求同一目标的人，迫使主角面对弱点</td>
+<td>对手是否攻击主角的弱点？</td>
+</tr>
+<tr>
+<td><strong>计划</strong></td>
+<td>主角的策略</td>
+<td>计划在什么时候、为什么崩溃？</td>
+</tr>
+<tr>
+<td><strong>战斗</strong></td>
+<td>价值观的最终对决</td>
+<td>最终对决是关于什么价值观的？</td>
+</tr>
+<tr>
+<td><strong>自我揭示</strong></td>
+<td>主角意识到自己的真正弱点</td>
+<td>这个认知是主角自己发现的还是别人告诉他的？</td>
+</tr>
+<tr>
+<td><strong>新平衡</strong></td>
+<td>世界因改变而不同</td>
+<td>世界和角色与故事开始时有什么不同？</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="二-对手网络设计">二、对手网络设计</h2>
+<p>Truby 最独特的贡献：不是一个反派，而是一个<strong>对手网络</strong>。每个对手从不同角度逼主角面对自己的某一面弱点。</p>
+<h3 id="对手分类">对手分类</h3>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>功能</th>
+<th>设计规则</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>主要对手</strong></td>
+<td>攻击主角核心弱点，追求同一目标</td>
+<td>必须和主角在某方面相似</td>
+</tr>
+<tr>
+<td><strong>次要对手</strong></td>
+<td>攻击主角次要弱点</td>
+<td>从不同角度挑战主角</td>
+</tr>
+<tr>
+<td><strong>盟友型对手</strong></td>
+<td>表面帮助，实际制造障碍</td>
+<td>有自己的目标，与主角冲突</td>
+</tr>
+<tr>
+<td><strong>假盟友</strong></td>
+<td>看似站在主角一边</td>
+<td>后期揭示真实目的</td>
+</tr>
+</tbody></table>
+<h3 id="对手网络模板">对手网络模板</h3>
+<pre><code>{主角名} 对手网络
+═══════════════════
+
+核心弱点：{心理弱点}
+道德弱点：{道德弱点}
+欲望：{外部目标}
+
+主要对手：{名} — 攻击弱点：{核心弱点} — 共同目标：{什么}
+次要对手1：{名} — 攻击弱点：{次要弱点面向1}
+次要对手2：{名} — 攻击弱点：{次要弱点面向2}
+盟友型对手：{名} — 表面关系：{帮助} — 实际冲突：{自己的目标}
+
+网络检查：每个对手是否迫使主角面对自己的弱点？
+</code></pre>
+<hr>
+<h2 id="三-二十二步结构-精简版">三、二十二步结构（精简版）</h2>
+<p>Truby 的 22 步比三幕结构精细，把有机因果链拆成可落地的关键节点。以下是核心步骤：</p>
+<pre><code>1. Ghost/创伤 — 角色过去的创伤决定了他的弱点
+2. 弱点与需求 — 心理弱点（自伤）+ 道德弱点（伤人）
+3. 欲望 — 具体的外部目标
+4. 对手 — 追求同一目标，攻击主角弱点
+5. 计划 — 主角的策略
+6. 驱动力 — 推动主角离开舒适区的事件
+7. 第一次揭示与决定 — 获得新信息，做出承诺
+8. 对手的计划 — 对手也有策略，而且通常更好
+9. 进攻 — 主角主动出击
+10. 表面胜利/表面败 — 中点，表面变化
+11. 执念 — 主角执着于错误的方法
+12. 第二次揭示与决定 — 新信息迫使升级
+13. 观众知道主角不知道的 — 信息不对称
+14. 第三次揭示与决定 — 赌注最大化
+15. 门 — 进入最终战斗的不可逆时刻
+16. 战斗 — 价值观对决
+17. 自我揭示（心理）— 主角认识到自己的心理弱点
+18. 自我揭示（道德）— 主角认识到自己对他人的伤害
+19. 新平衡 — 世界因改变而不同
+</code></pre>
+<p><strong>与起承转合的对应</strong>（帮用户把 Truby 步骤映射到熟悉的段落结构）：</p>
+<table>
+<thead>
+<tr>
+<th>起承转合</th>
+<th>Truby 22步</th>
+<th>功能</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>起</td>
+<td>1-6</td>
+<td>建立弱点、欲望、对手</td>
+</tr>
+<tr>
+<td>承（前半）</td>
+<td>7-10</td>
+<td>主动出击，表面进展</td>
+</tr>
+<tr>
+<td>承（后半）</td>
+<td>11-14</td>
+<td>执念、揭示、赌注升级</td>
+</tr>
+<tr>
+<td>转</td>
+<td>15-16</td>
+<td>门 + 战斗</td>
+</tr>
+<tr>
+<td>合</td>
+<td>17-19</td>
+<td>自我揭示 + 新平衡</td>
+</tr>
+</tbody></table>
+<hr>
+<h2 id="四-场景编织">四、场景编织</h2>
+<p>Truby 的&quot;轨道&quot;（track）系统：多条线索交织并行，各自有自己的推进节奏。适合长篇/多集/多线剧本铺全局线。</p>
+<h3 id="轨道规划模板">轨道规划模板</h3>
+<pre><code>全局轨道编织
+════════════
+
+轨道A（主线）：{主角欲望线}
+轨道B（对手线）：{主要对手的计划和行动}
+轨道C（关系线）：{核心关系的变化}
+轨道D（主题线）：{道德论证的展开}
+
+     │ 段1 │ 段2 │ 段3 │ 段4 │ 段5 │ ...
+─────┼─────┼─────┼─────┼─────┼─────┤
+轨道A│  ●  │  ●  │  ●  │  ●  │  ●  │  每段必须推进
+轨道B│  ○  │  ●  │     │  ●  │  ○  │  间隔不超过2段
+轨道C│  ●  │  ○  │  ●  │     │  ●  │  每次出现必须改变关系
+轨道D│  ○  │     │  ○  │  ●  │     │  在关键段有重大呈现
+
+● = 重要推进  ○ = 轻触/铺垫  空 = 不出现（不超过2段）
+</code></pre>
+<hr>
+<h2 id="五-道德论证">五、道德论证</h2>
+<p><strong>Truby 的独特要求：</strong> 每个故事都是一个道德论证。不同角色代表对同一道德问题的不同回答，故事展示每种回答的代价。</p>
+<pre><code>道德论证设计
+════════════
+
+核心道德问题：{用一个问句，如&quot;为了保护家人，你可以伤害多少无辜的人？&quot;}
+
+角色代表的不同回答：
+- {主角}：{回答A}
+- {主要对手}：{回答B}
+- {盟友}：{回答C}
+- {次要对手}：{回答D}
+
+故事的论证方式：不是给出答案，是展示每个回答的代价。
+</code></pre>
+<hr>
+<h2 id="六-双轨节奏系统">六、双轨节奏系统</h2>
+<p>节奏不是一条线——它有两条平行运行的轨道，两者可以同步也可以错位。<strong>错位本身是强大的叙事工具。</strong></p>
+<h3 id="外部情节节奏">外部情节节奏</h3>
+<p>事件的密度和强度——场景中发生了多少事、冲突有多激烈、信息量有多大。</p>
+<ul>
+<li><strong>紧</strong>：高密度事件、快速切换、追逐、对峙、揭露</li>
+<li><strong>中</strong>：日常推进、对话为主、稳步前进</li>
+<li><strong>松</strong>：独处时刻、过渡、沉默、呼吸</li>
+</ul>
+<h3 id="内在情感节奏">内在情感节奏</h3>
+<p>角色情感状态的波动——角色经历了多大的情感起伏、观众被要求投入多少情感。</p>
+<ul>
+<li><strong>重</strong>：告白、背叛、失去、恐惧、绝望</li>
+<li><strong>中</strong>：日常关系互动、轻度紧张</li>
+<li><strong>轻</strong>：调侃、闲聊、小幽默、安静的陪伴</li>
+</ul>
+<h3 id="节奏错位-高级技法">节奏错位（高级技法）</h3>
+<p>最强大的场景往往是两条轨道错位的时刻：</p>
+<table>
+<thead>
+<tr>
+<th>组合</th>
+<th>效果</th>
+<th>典型场景</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>情节松 + 情感重</strong></td>
+<td>画面越平静，情感越重</td>
+<td>两人安静地吃饭，观众知道其中一个人明天要走</td>
+</tr>
+<tr>
+<td><strong>情节紧 + 情感轻</strong></td>
+<td>紧张事件被轻盈包裹</td>
+<td>激烈追逐配轻松配乐，角色在打趣</td>
+</tr>
+<tr>
+<td><strong>情节紧 + 情感重</strong></td>
+<td>全片顶点，不能持续太久</td>
+<td>高潮段——事件密集且情感炸裂</td>
+</tr>
+<tr>
+<td><strong>情节松 + 情感轻</strong></td>
+<td>纯粹的呼吸场景</td>
+<td>让观众休息，通常放在高潮前后</td>
+</tr>
+</tbody></table>
+<h3 id="节奏禁区">节奏禁区</h3>
+<ul>
+<li>两条线长时间同时低位 → 观众无事可看也无感可投</li>
+<li>两条线长时间同时高位 → 观众疲劳，高潮不再特别</li>
+<li>任何一条线单调上升无回落 → 没有呼吸感</li>
+<li>连续 3 场以上同一节奏状态 → 必须调整</li>
+</ul>
+<h3 id="节奏图谱-双轨版">节奏图谱（双轨版）</h3>
+<pre><code>第{N}段节奏图谱
+════════════════
+
+场景  │ 情节 │ 情感 │ 标注        │ Truby 步骤
+──────┼──────┼──────┼────────────┼──────────
+S01   │  紧  │  中  │ 🪝开场钩    │ 欲望确认
+S02   │  松  │  轻  │ 🟢呼吸      │ 计划制定
+S03   │  中  │  中  │ 🟡压力      │ 对手行动
+S04   │  松  │  重  │ 🪝中段钩    │ 第一次揭示    ← 错位：情节松+情感重
+S05   │  紧  │  重  │ 🔴高潮      │ 战斗
+S06   │  松  │  中  │ 🟢呼吸      │ 自我揭示
+S07   │  紧  │  重  │ ⚡🪝转折    │ 新平衡 + 结尾钩
+</code></pre>
+<p><strong>每段至少包含一个错位段落</strong>（情节松+情感重 或 情节紧+情感轻），这是最有味道的时刻。</p>
+<hr>
+<h2 id="七-钩子编排">七、钩子编排</h2>
+<p>钩子把观众留在故事里——每个段落收尾要留一个让人想继续的引子。</p>
+<p><strong>五种钩子类型：</strong> 信息钩、选择钩、反转钩、时间钩、关系钩。</p>
+<ul>
+<li><strong>信息钩</strong>：抛出一条新信息，制造未解的疑问。</li>
+<li><strong>选择钩</strong>：把角色逼到一个必须选的岔路口，选择悬而未决。</li>
+<li><strong>反转钩</strong>：颠覆此前的认知，事情不是原来那样。</li>
+<li><strong>时间钩</strong>：设一个逼近的期限，倒计时制造压力。</li>
+<li><strong>关系钩</strong>：改变两个角色的关系状态，留下张力。</li>
+</ul>
+<p><strong>轮换规则：</strong> 连续不超过 3 次使用同一类型，避免观众对同一种悬念钝化。关键段落收尾用强钩（反转钩 / 选择钩），呼吸段落之间可用轻钩（信息钩 / 关系钩）过渡。</p>
+<hr>
+<h2 id="何时用这套方法">何时用这套方法</h2>
+<p>在 Nomi 创作区帮用户写故事 / 写剧本时：</p>
+<ul>
+<li><strong>搭故事骨架</strong> — 有机结构（七要素）+ 对手网络 + 道德论证 + 全局弧线。</li>
+<li><strong>铺全局线索</strong> — 轨道编织 + 节奏图谱 + 钩子编排。</li>
+<li><strong>写单场景</strong> — 先定位它在 22 步中的位置，再定这场的张力目标与情节/情感节奏。</li>
+<li><strong>诊断已有稿子</strong> — 用七要素检查问题、对手网络检查、节奏禁区、钩子密度逐项排查，指出结构薄弱环节并给修法。</li>
+</ul>
+</article>
+      <aside class="attribution" aria-label="Source">
+  <dl>
+    <div><dt>Source</dt><dd><a href="https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/writer-structure/SKILL.md" target="_blank" rel="noreferrer">Nomi contributors</a> · <code>7a072f1</code></dd></div>
+    <div><dt>License</dt><dd>AGPL-3.0-only</dd></div>
+    <div><dt>Changes made by Nomi</dt><dd>Nomi adds library presentation metadata; the skill body is unchanged.</dd></div>
+  </dl>
+  <a href="https://github.com/aqm857886159/Nomi/tree/main/skills/writer-structure" target="_blank" rel="noreferrer">View the file on GitHub ↗</a>
+  
+</aside>
+    </div>
+  </div>
+</section>
+<section class="block lib-section" aria-labelledby="related-title">
+  <div class="wrap">
+    <div class="section-head"><h2 id="related-title">More in this group</h2></div>
+    <div class="card-grid"><article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/writer-adaptation">
+    <div class="card-media"><img src="/assets/library/writer-adaptation-640.webp" alt="Adaptation" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Adaptation</h3>
+      
+      <p class="card-text">Transform source material into a coherent dramatic screenplay.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/writer-behavior-psychology">
+    <div class="card-media"><img src="/assets/library/writer-behavior-psychology-640.webp" alt="Character psychology" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Character psychology</h3>
+      
+      <p class="card-text">Use psychological conflicts to design believable character behavior.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/writer-dialogue">
+    <div class="card-media"><img src="/assets/library/writer-dialogue-640.webp" alt="Dialogue" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Dialogue</h3>
+      
+      <p class="card-text">Write distinctive dialogue, subtext and purposeful silence.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/writer-improv">
+    <div class="card-media"><img src="/assets/library/writer-improv-640.webp" alt="Improvised dialogue" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Improvised dialogue</h3>
+      
+      <p class="card-text">Develop natural exchanges through character improvisation.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/writer-incubation">
+    <div class="card-media"><img src="/assets/library/writer-incubation-640.webp" alt="Story incubation" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Story incubation</h3>
+      
+      <p class="card-text">Grow fragments into themes, characters and a story premise.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/writer-novel-digester">
+    <div class="card-media"><img src="/assets/library/writer-novel-digester-640.webp" alt="Novel analysis" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Novel analysis</h3>
+      
+      <p class="card-text">Analyze source structure, dialogue and scenes for adaptation.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article></div>
+  </div>
+</section>
+<section class="download-band">
+  <div class="wrap download-band-inner">
+    <div>
+      <h2>Pro-grade AI video.Models at their real price.</h2>
+      <p>macOS · Windows · AGPL-3.0 · No account</p>
+    </div>
+    <a class="button primary" data-download-nomi href="#download-options">Download Nomi</a>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <span class="wordmark small">No<span>mi</span></span>
+    <nav class="footer-links" aria-label="Site navigation">
+      <a href="/en/features">Features</a>
+      <a href="/en/models">Models</a>
+      <a href="/en/prompts">Prompts</a>
+      <a href="/en/skills">Skills</a>
+      <a href="/en/quickstart">Get started</a>
+    </nav>
+    <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">Source on GitHub</a>
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">Open source · AGPL-3.0</a>
+    <a href="https://github.com/aqm857886159/Nomi/releases" target="_blank" rel="noreferrer">Release notes</a>
+    <a href="https://x.com/sdf297417627618" target="_blank" rel="noreferrer">X / Twitter</a>
+    <a href="/skills/writer-structure" data-locale-choice="zh-CN">简体中文</a>
+    <span class="made">Every screen in the film is Nomi’s real UI; every image and clip was generated with Nomi.</span>
+  </div>
+</footer>
+<dialog id="download-dialog" aria-labelledby="download-title">
+  <div class="dialog-head"><strong id="download-title">Choose the version for this computer</strong><button class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <div class="dialog-body download-dialog-body"><p>Nomi downloads directly when the platform is known. If the Mac chip cannot be detected reliably, choose the matching installer.</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>macOS 12+ · Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">First launch on macOS</strong>
+  <p>The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.</p>
+  <ol><li>Download the matching DMG and drag Nomi to Applications.</li><li>In Finder, right-click Nomi in Applications, choose Open, then confirm Open.</li><li>If it is still blocked, open System Settings → Privacy &amp; Security, find Nomi, and click Open Anyway.</li></ol>
+  <p>Only if macOS says Nomi is “damaged”: confirm the installer came from an official link above, then open Terminal and run:</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">You do not need to disable Gatekeeper globally, and should not do so.</p>
+</section></div>
+</dialog>
+<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>Choose the version for this computer</h2><p>Nomi downloads directly when the platform is known. If the Mac chip cannot be detected reliably, choose the matching installer.</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>macOS 12+ · Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">First launch on macOS</strong>
+  <p>The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.</p>
+  <ol><li>Download the matching DMG and drag Nomi to Applications.</li><li>In Finder, right-click Nomi in Applications, choose Open, then confirm Open.</li><li>If it is still blocked, open System Settings → Privacy &amp; Security, find Nomi, and click Open Anyway.</li></ol>
+  <p>Only if macOS says Nomi is “damaged”: confirm the installer came from an official link above, then open Terminal and run:</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">You do not need to disable Gatekeeper globally, and should not do so.</p>
+</section></div></section></noscript>
+<script>(() => {
+  const downloadUrls = {"windowsX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe","macArm64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg","macX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"}
+  const selectDownload = function selectDownload({ platform = '', userAgent = '', architecture = '' } = {}) {
+  const platformText = `${platform} ${userAgent}`.toLowerCase()
+  const architectureText = String(architecture).toLowerCase()
+
+  if (/\b(?:win32|win64|windows)\b/.test(platformText) && !/arm/.test(architectureText)) return downloadUrls.windowsX64
+  if (!/mac|darwin|iphone|ipad/.test(platformText)) return null
+  if (/arm|aarch64/.test(architectureText) || /arm64/.test(platformText)) return downloadUrls.macArm64
+  if (/x86|x64|intel/.test(architectureText)) return downloadUrls.macX64
+  return null
+}
+  const resolveDownloadRequest = function resolveDownloadRequest({ search = '', platform = '', userAgent = '', architecture = '' } = {}) {
+  const params = new URLSearchParams(search)
+  const requestedPlatform = params.get('platform') || ''
+  const requestedArchitecture = params.get('arch') || ''
+  const hasExplicitTarget = params.has('platform') || params.has('arch')
+  const url = hasExplicitTarget
+    ? selectDownload({ platform: requestedPlatform, architecture: requestedArchitecture })
+    : selectDownload({ platform, userAgent, architecture })
+
+  return {
+    autoDownload: params.get('download') === '1',
+    hasExplicitTarget,
+    url,
+  }
+}
+  const localeKey = 'nomi_locale'
+  document.querySelectorAll('[data-locale-choice]').forEach((link) => {
+    if (location.hash) {
+      const destination = new URL(link.href, location.href)
+      destination.hash = location.hash
+      link.href = destination.pathname + destination.search + destination.hash
+    }
+    link.addEventListener('click', () => {
+      try { localStorage.setItem(localeKey, link.dataset.localeChoice) } catch {}
+    })
+  })
+
+  const menuToggle = document.querySelector('.menu-toggle')
+  const navLinks = document.querySelector('#nav-links')
+  const closeMenu = () => {
+    navLinks?.classList.remove('open')
+    menuToggle?.setAttribute('aria-expanded', 'false')
+  }
+  menuToggle?.addEventListener('click', () => {
+    const open = navLinks?.classList.toggle('open') || false
+    menuToggle.setAttribute('aria-expanded', String(open))
+  })
+  navLinks?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu))
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && navLinks?.classList.contains('open')) {
+      closeMenu()
+      menuToggle?.focus()
+    }
+  })
+
+  // 库页面的「复制」：复制按钮指向的那块提示词原文；剪贴板被拒时退回「选中它」，让人自己按复制。
+  document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => {
+    const source = document.getElementById(button.dataset.copy)
+    if (!source) return
+    try {
+      await navigator.clipboard.writeText(source.innerText.trim())
+      button.dataset.copied = 'true'
+      setTimeout(() => { delete button.dataset.copied }, 1600)
+    } catch {
+      const range = document.createRange()
+      range.selectNodeContents(source)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  }))
+
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })
+    dialog.addEventListener('close', () => {
+      if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open')
+    })
+  })
+
+  const downloadDialog = document.querySelector('#download-dialog')
+  const showDownloadOptions = () => {
+    if (!downloadDialog || typeof downloadDialog.showModal !== 'function') return
+    downloadDialog.showModal()
+    document.body.classList.add('modal-open')
+  }
+  downloadDialog?.querySelectorAll('[data-direct-download]').forEach((link) => link.addEventListener('click', () => {
+    downloadDialog.close()
+  }))
+
+  const resolvePlatformDownload = async () => {
+    const platform = navigator.platform || ''
+    const userAgent = navigator.userAgent || ''
+    let architecture = ''
+    if (navigator.userAgentData?.getHighEntropyValues) {
+      try { architecture = (await navigator.userAgentData.getHighEntropyValues(['architecture'])).architecture || '' } catch {}
+    }
+    return resolveDownloadRequest({ search: location.search, platform, userAgent, architecture })
+  }
+  const applyPlatformDownload = (url) => {
+    if (!url) return
+    document.querySelectorAll('[data-download-nomi]').forEach((link) => {
+      link.href = url
+    })
+  }
+  document.querySelectorAll('[data-download-nomi]').forEach((link) => link.addEventListener('click', async (event) => {
+    event.preventDefault()
+    const request = await resolvePlatformDownload()
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  }))
+  void resolvePlatformDownload().then((request) => {
+    applyPlatformDownload(request.url)
+    if (!request.autoDownload) return
+    const cleanUrl = new URL(location.href)
+    for (const key of ['download', 'source', 'platform', 'arch']) cleanUrl.searchParams.delete(key)
+    history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  })
+})()</script>
+</body>
+</html>

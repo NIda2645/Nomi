@@ -95,6 +95,23 @@ export function homepageClientJs(downloadUrls, { segments: home = true } = {}) {
     }
   })
 
+  // 库页面的「复制」：复制按钮指向的那块提示词原文；剪贴板被拒时退回「选中它」，让人自己按复制。
+  document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => {
+    const source = document.getElementById(button.dataset.copy)
+    if (!source) return
+    try {
+      await navigator.clipboard.writeText(source.innerText.trim())
+      button.dataset.copied = 'true'
+      setTimeout(() => { delete button.dataset.copied }, 1600)
+    } catch {
+      const range = document.createRange()
+      range.selectNodeContents(source)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  }))
+
 ${homeOnly}  document.querySelectorAll('dialog').forEach((dialog) => {
     dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())
     dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })

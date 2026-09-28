@@ -1,0 +1,695 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Action choreography: an AI video directing skill | Nomi</title>
+<meta name="description" content="Plan clear physical action, movement and environmental interaction." />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#faf9f6" />
+<link rel="canonical" href="https://nomiaqm.com/en/skills/director-action" />
+<link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-action" />
+<link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-action" />
+<link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-action" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Nomi" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:title" content="Action choreography: an AI video directing skill | Nomi" />
+<meta property="og:description" content="Plan clear physical action, movement and environmental interaction." />
+<meta property="og:url" content="https://nomiaqm.com/en/skills/director-action" />
+<meta property="og:image" content="https://nomiaqm.com/assets/library/director-action-1280.webp" />
+<meta property="og:image:alt" content="Action choreography" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="Action choreography: an AI video directing skill | Nomi" />
+<meta name="twitter:description" content="Plan clear physical action, movement and environmental interaction." />
+<meta name="twitter:image" content="https://nomiaqm.com/assets/library/director-action-1280.webp" />
+<meta name="twitter:image:alt" content="Action choreography" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/en/skills/director-action","url":"https://nomiaqm.com/en/skills/director-action","name":"Action choreography: an AI video directing skill | Nomi","description":"Plan clear physical action, movement and environmental interaction.","inLanguage":"en","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/library/director-action-1280.webp"},"breadcrumb":{"@id":"https://nomiaqm.com/en/skills/director-action#breadcrumbs"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.22.4","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"},{"@type":"BreadcrumbList","@id":"https://nomiaqm.com/en/skills/director-action#breadcrumbs","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://nomiaqm.com/en/"},{"@type":"ListItem","position":2,"name":"Skills","item":"https://nomiaqm.com/en/skills"},{"@type":"ListItem","position":3,"name":"Directing","item":"https://nomiaqm.com/en/skills#directing"},{"@type":"ListItem","position":4,"name":"Action choreography","item":"https://nomiaqm.com/en/skills/director-action"}]},{"@type":"SoftwareSourceCode","@id":"https://nomiaqm.com/en/skills/director-action#skill","name":"Action choreography","description":"Plan clear physical action, movement and environmental interaction.","license":"AGPL-3.0-only","codeRepository":"https://github.com/aqm857886159/Nomi/tree/main/skills/director-action","programmingLanguage":"Markdown","runtimePlatform":"Agent Skills (SKILL.md)","author":{"@type":"Organization","name":"Nomi contributors"}}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" />
+<style>
+:root {
+  --ground: #faf9f6;
+  --paper: #ffffff;
+  --ink: #1e1b17;
+  --ink-2: #4a463f;
+  --ink-3: #6b665e;
+  --ink-4: #a19b92;
+  --line: #e6e2db;
+  --line-soft: #efece6;
+  --dot: #e2ddd5;
+  --accent: #2e6cb4;
+  --accent-soft: #e9f0f9;
+  --shadow-node: 0 1px 2px rgb(30 27 23 / 0.05), 0 12px 32px rgb(30 27 23 / 0.07);
+  --shadow-window: 0 2px 4px rgb(30 27 23 / 0.05), 0 30px 70px rgb(30 27 23 / 0.13);
+  --font-en: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-zh: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-ui: "Inter", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+  --radius-lg: 16px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #151311;
+    --paper: #1d1b18;
+    --ink: #eeeae3;
+    --ink-2: #cdc7bd;
+    --ink-3: #a29b90;
+    --ink-4: #6f695f;
+    --line: #2f2c27;
+    --line-soft: #26231f;
+    --dot: #2a2723;
+    --accent: #78a6e0;
+    --accent-soft: #1e2a3a;
+    --shadow-node: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
+    --shadow-window: 0 2px 4px rgb(0 0 0 / 0.3), 0 30px 70px rgb(0 0 0 / 0.5);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background-color: var(--ground);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--font-zh);
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+html[lang="en"] body { font-family: var(--font-ui); }
+body.modal-open { overflow: hidden; }
+a { color: inherit; }
+img, video { max-width: 100%; display: block; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.skip-link { position: absolute; left: 16px; top: -48px; z-index: 50; background: var(--ink); color: var(--ground); padding: 8px 14px; border-radius: 8px; }
+.skip-link:focus { top: 12px; }
+.wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding-inline: 24px; }
+@media (max-width: 560px) { .wrap { padding-inline: 16px; } }
+
+.eyebrow { margin: 0; font-family: var(--font-ui); font-size: 13px; font-weight: 500; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; }
+.display { margin: 14px 0 0; font-weight: 900; letter-spacing: -0.01em; text-wrap: balance; font-size: clamp(40px, 5.4vw, 68px); line-height: 1.12; }
+.display em { font-style: normal; color: var(--accent); }
+html[lang="en"] .display { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.02em; line-height: 1.04; }
+.lede { margin: 22px 0 0; font-size: 19px; line-height: 1.75; color: var(--ink-2); max-width: 30em; }
+h2 { margin: 10px 0 0; font-weight: 900; font-size: clamp(30px, 3.6vw, 44px); line-height: 1.2; letter-spacing: -0.005em; text-wrap: balance; }
+html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.015em; }
+.body { margin: 16px 0 0; color: var(--ink-2); font-size: 17px; max-width: 34em; }
+
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-ui); font-weight: 600; font-size: 15px; line-height: 1;
+  padding: 13px 20px; border-radius: 999px; text-decoration: none; cursor: pointer; border: 1px solid transparent;
+  background: none; color: inherit;
+  transition: transform 140ms cubic-bezier(.2,.7,.3,1), background-color 140ms, border-color 140ms;
+}
+.button:active { transform: translateY(1px); }
+.button.primary { background: var(--ink); color: var(--ground); }
+.button.primary:hover { background: var(--ink-2); }
+.button.quiet { background: var(--paper); color: var(--ink); border-color: var(--line); }
+.button.quiet:hover { border-color: var(--ink-4); }
+.button.small { padding: 9px 15px; font-size: 14px; }
+
+.site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft); }
+.nav { display: flex; align-items: center; gap: 28px; height: 60px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.wordmark { font-family: var(--font-en); font-weight: 600; font-size: 24px; letter-spacing: -0.01em; line-height: 1; }
+.wordmark span { color: var(--accent); }
+.wordmark.small { font-size: 20px; }
+.nav-links { display: flex; gap: 22px; font-family: var(--font-ui); font-size: 14px; color: var(--ink-3); }
+.nav-links a { text-decoration: none; }
+.nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--ink); }
+.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.locale { font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; text-decoration: none; }
+.locale:hover { color: var(--ink); border-color: var(--ink-4); }
+.menu-toggle { display: none; font-family: var(--font-ui); font-size: 13px; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; color: var(--ink); cursor: pointer; }
+@media (max-width: 760px) {
+  .menu-toggle { display: inline-flex; }
+  .nav-links { display: none; position: absolute; top: 60px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--ground); border-bottom: 1px solid var(--line); padding: 8px 16px 16px; }
+  .nav-links.open { display: flex; }
+  .nav-links a { padding: 10px 0; font-size: 16px; }
+  .nav { gap: 12px; }
+}
+
+.block { padding-block: 72px; }
+@media (max-width: 760px) { .block { padding-block: 48px; } }
+.block-head { max-width: 44rem; }
+
+.footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+.footer a { text-decoration: none; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+.footer a:hover { color: var(--ink); }
+
+.download-options { display: grid; gap: 8px; margin-top: 14px; }
+.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); text-decoration: none; font-family: var(--font-ui); }
+.download-option:hover { border-color: var(--ink-4); }
+.download-option strong { display: block; font-size: 15px; }
+.download-option small { display: block; color: var(--ink-3); font-size: 12px; }
+.download-option > span:last-child { color: var(--accent); font-weight: 600; font-size: 13px; white-space: nowrap; }
+.mac-install-guide { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius); background: var(--line-soft); font-size: 14px; color: var(--ink-2); }
+.mac-install-guide p, .mac-install-guide ol { margin: 8px 0 0; }
+.mac-install-guide ol { padding-left: 20px; }
+.mac-install-command { display: block; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--paper); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.download-fallback { padding-block: 40px; }
+
+dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 0; background: var(--ground); color: var(--ink); box-shadow: var(--shadow-window); }
+dialog::backdrop { background: rgb(20 18 16 / 0.45); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); font-family: var(--font-ui); }
+.dialog-close { background: none; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--ink-3); padding: 4px 8px; }
+.dialog-body { padding: 16px 18px 20px; overflow-y: auto; }
+.dialog-body > p { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+.lib-hero { padding-block: 40px 8px; }
+.crumbs ol { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.crumbs li + li::before { content: "/"; margin-right: 6px; color: var(--ink-4); }
+.crumbs a { text-decoration: none; color: var(--ink-3); }
+.crumbs a:hover { color: var(--ink); }
+.lib-title { font-size: clamp(34px, 4.4vw, 56px); }
+.group-anchors { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; }
+.group-anchors a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-family: var(--font-ui); font-size: 14px; text-decoration: none; color: var(--ink-2); }
+.group-anchors a span { font-size: 12px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.group-anchors a:hover { border-color: var(--ink-4); color: var(--ink); }
+
+.lib-section { padding-block: 36px; scroll-margin-top: 64px; }
+.section-head { display: flex; align-items: baseline; gap: 12px; }
+.section-head h2 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); }
+.section-head .count { font-family: var(--font-ui); font-size: 14px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.section-note { margin: 10px 0 0; color: var(--ink-3); max-width: 44em; font-size: 15px; }
+.card-grid { margin-top: 26px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px 22px; }
+.card-grid.compact { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 22px 16px; }
+.measure { max-width: 760px; }
+
+/* 节点卡：标题在框外左上，框左右各一个连接点（和首页功能段、App 画布上的节点同一个样子）。 */
+.lib-card { display: flex; flex-direction: column; min-width: 0; }
+.lib-card .node-title { margin: 0 0 6px 2px; min-height: 18px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-frame { position: relative; flex: 1; display: flex; flex-direction: column; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-node); text-decoration: none; color: inherit; }
+.card-frame::before, .card-frame::after { content: ""; position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--paper); border: 1px solid var(--ink-4); }
+.card-frame::before { left: -5px; }
+.card-frame::after { right: -5px; }
+a.card-frame:hover { border-color: var(--ink-4); }
+a.card-frame:hover h3 { color: var(--accent); }
+.card-media { aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden; border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; background: var(--line-soft); }
+.card-media img { width: 100%; height: 100%; object-fit: cover; }
+.card-body { flex: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+.card-body h3 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.35; }
+html[lang="en"] .card-body h3 { font-family: var(--font-ui); font-weight: 600; }
+.card-subtitle { margin: 0; font-size: 13px; color: var(--ink-4); }
+.card-text { margin: 0; font-size: 14px; color: var(--ink-3); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.chips { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chips li { font-family: var(--font-ui); font-size: 12px; line-height: 1.5; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.card-meta { margin: auto 0 0; padding-top: 8px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); }
+
+/* 模型页：左边讲，右边一张档案卡（像 App 里的模型档案）。 */
+.model-hero { padding-block: 40px 24px; }
+.model-hero-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 48px; align-items: start; }
+@media (max-width: 900px) { .model-hero-grid { grid-template-columns: 1fr; gap: 28px; } }
+.model-title { font-size: clamp(40px, 5vw, 64px); }
+.model-dates { margin: 14px 0 0; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.hero-actions { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; }
+.spec-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-node); padding: 18px 20px 16px; }
+.spec-head { margin: 0 0 6px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.spec-rows { margin: 0; }
+.spec-rows div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.spec-rows div:first-child { border-top: 0; }
+.spec-rows dt { font-size: 14px; color: var(--ink-3); }
+.spec-rows dd { margin: 0; display: flex; flex-wrap: wrap; row-gap: 2px; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.spec-rows dd span { white-space: nowrap; }
+.spec-rows dd span:not(:last-child)::after { content: "·"; margin: 0 7px; color: var(--ink-4); }
+.spec-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-4); line-height: 1.6; }
+
+/* 正文排版：模型介绍与技能正文共用。 */
+.prose-wrap { max-width: 760px; }
+.prose { font-size: 17px; line-height: 1.8; color: var(--ink-2); min-width: 0; }
+.prose h2 { margin: 40px 0 12px; font-size: 26px; line-height: 1.3; color: var(--ink); scroll-margin-top: 80px; }
+.prose h2:first-child { margin-top: 0; }
+.prose h3 { margin: 28px 0 8px; font-size: 19px; color: var(--ink); scroll-margin-top: 80px; }
+.prose h4 { margin: 20px 0 6px; font-size: 17px; color: var(--ink); }
+.prose p, .prose ul, .prose ol { margin: 12px 0 0; }
+.prose ul, .prose ol { padding-left: 1.3em; }
+.prose li + li { margin-top: 6px; }
+.prose strong { color: var(--ink); }
+.prose a { color: var(--accent); }
+.prose code { font-family: var(--font-mono); font-size: 0.88em; background: var(--line-soft); padding: 1px 5px; border-radius: 5px; }
+.prose pre { margin: 16px 0 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prose pre code { background: none; padding: 0; font-size: inherit; }
+.prose table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; margin-top: 16px; font-size: 15px; }
+.prose th, .prose td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+.prose th { color: var(--ink); font-weight: 700; }
+.prose blockquote { margin: 16px 0 0; padding: 2px 0 2px 16px; border-left: 3px solid var(--accent); color: var(--ink-3); }
+.prose hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.source-list { font-size: 15px; }
+.prose .prompt-block { margin-top: 12px; }
+.prose pre.prompt-text { margin: 0; padding: 14px 16px 44px; background: var(--ground); border-color: var(--line); max-height: none; font-size: 14px; }
+
+/* 技能页：左侧目录吸顶，右侧正文。 */
+.skill-hero { padding-bottom: 0; }
+.hero-chips { margin-top: 18px; }
+.skill-use { padding-block: 28px 8px; }
+.use-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 760px) { .use-grid { grid-template-columns: 1fr; } }
+.use-box { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+.use-box h2 { margin: 0; font-family: var(--font-ui); font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.use-box p { margin: 6px 0 0; font-size: 15px; color: var(--ink-2); }
+.skill-preview { margin: 24px 0 0; }
+.skill-preview img { width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--line); }
+.skill-preview figcaption { margin-top: 8px; font-size: 13px; color: var(--ink-4); }
+.skill-body { padding-block: 32px; }
+.skill-layout { display: grid; grid-template-columns: 220px minmax(0, 760px); gap: 48px; justify-content: start; }
+.skill-layout.no-toc { grid-template-columns: minmax(0, 760px); }
+@media (max-width: 960px) { .skill-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; } .toc { position: static; } }
+.skill-main { min-width: 0; }
+.skill-main .attribution { margin-top: 36px; }
+.toc { position: sticky; top: 84px; align-self: start; font-family: var(--font-ui); font-size: 13px; }
+.toc p { margin: 0 0 8px; font-weight: 600; color: var(--ink-3); }
+.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+.toc li a { display: block; padding: 4px 0 4px 12px; color: var(--ink-3); text-decoration: none; line-height: 1.5; }
+.toc li a:hover { color: var(--ink); }
+
+/* 效果、表情预设、合集：一条一块，可复制。 */
+.effect-list { padding-block: 28px; }
+.effect-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 18px; }
+.effect-entry { display: flex; flex-direction: column; min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; scroll-margin-top: 80px; }
+.effect-entry:target { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.effect-media { aspect-ratio: 16 / 9; max-width: 100%; background: var(--line-soft); }
+.effect-media.square { aspect-ratio: 1 / 1; }
+.effect-media img { width: 100%; height: 100%; object-fit: cover; }
+.effect-body { flex: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.effect-body h3 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.4; }
+.alt-name { margin-left: 6px; font-family: var(--font-ui); font-size: 13px; font-weight: 400; color: var(--ink-4); }
+.effect-summary { margin: 0; font-size: 14px; color: var(--ink-3); }
+.prompt-block { position: relative; margin-top: auto; }
+.prompt-text { margin: 0; padding: 12px 14px 40px; background: var(--ground); border: 1px solid var(--line-soft); border-radius: 8px; font-family: var(--font-mono); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); max-height: 280px; overflow: auto; }
+.slot { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 0 3px; }
+.copy-button { position: absolute; right: 8px; bottom: 8px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-2); cursor: pointer; }
+.copy-button:hover { border-color: var(--ink-4); color: var(--ink); }
+.copy-done { display: none; }
+.copy-button[data-copied] .copy-idle { display: none; }
+.copy-button[data-copied] .copy-done { display: inline; color: var(--accent); }
+.collection-list { display: grid; gap: 18px; margin-top: 24px; }
+.collection-entry { scroll-margin-top: 80px; }
+.collection-entry h3 { margin: 0 0 8px; font-size: 16px; line-height: 1.4; }
+
+/* 出处与许可证。 */
+.attribution { margin-top: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; font-size: 14px; }
+.attribution dl { margin: 0; display: grid; gap: 6px; }
+.attribution dl div { display: grid; grid-template-columns: 8em minmax(0, 1fr); gap: 12px; }
+@media (max-width: 560px) { .attribution dl div { grid-template-columns: 1fr; gap: 0; } }
+.attribution dt { color: var(--ink-4); }
+.attribution dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.attribution a { color: var(--accent); }
+.attribution > a { display: inline-block; margin-top: 10px; font-family: var(--font-ui); font-size: 13px; }
+.license-text { margin-top: 10px; }
+.license-text summary { cursor: pointer; font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); }
+.license-text pre { margin: 8px 0 0; max-height: 240px; overflow: auto; font-size: 12px; white-space: pre-wrap; background: var(--ground); padding: 10px 12px; border-radius: 8px; }
+
+/* 页底下载条。 */
+.download-band { padding-block: 48px 24px; }
+.download-band-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; padding: 28px clamp(20px, 4vw, 40px); background: var(--ink); color: var(--ground); border-radius: var(--radius-lg); }
+.download-band h2 { margin: 0; font-size: clamp(22px, 2.4vw, 30px); color: var(--ground); }
+.download-band p { margin: 6px 0 0; font-size: 14px; color: color-mix(in srgb, var(--ground) 70%, transparent); }
+.download-band .button.primary { background: var(--ground); color: var(--ink); }
+.download-band .button.primary:hover { background: color-mix(in srgb, var(--ground) 86%, transparent); }
+</style>
+</head>
+<body class="page-skills">
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header">
+  <nav class="nav wrap" aria-label="Primary navigation">
+    <a class="brand" href="/en/" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
+    <div class="nav-links" id="nav-links">
+      <a href="/en/features">Features</a>
+      <a href="/en/models">Models</a>
+      <a href="/en/prompts">Prompts</a>
+      <a href="/en/skills" aria-current="page">Skills</a>
+      <a href="/en/quickstart">Get started</a>
+      <a href="/en/#community">Community</a>
+    </div>
+    <div class="nav-actions">
+      <a class="locale" href="/skills/director-action" data-locale-choice="zh-CN" aria-label="Switch to Chinese">中文</a>
+      <a class="button primary small" data-download-nomi href="#download-options">Download</a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    </div>
+  </nav>
+</header>
+<main id="main">
+<section class="lib-hero skill-hero">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="breadcrumb"><ol><li><a href="/en/">Home</a></li><li><a href="/en/skills">Skills</a></li><li><a href="/en/skills#directing">Directing</a></li><li><span aria-current="page">Action choreography</span></li></ol></nav>
+    <p class="eyebrow">Skills · Directing</p>
+    <h1 class="display lib-title"><span>Action choreography</span></h1>
+    <p class="lede">Plan clear physical action, movement and environmental interaction.</p>
+    <ul class="chips hero-chips"><li>Works with: text</li><li>License: AGPL-3.0-only</li></ul>
+  </div>
+</section>
+<section class="block skill-use">
+  <div class="wrap">
+    <div class="use-grid" aria-label="How to use it">
+      <div class="use-box"><h2>In Nomi</h2><p>The agent uses it when a task calls for it. You can also open it under Skills on the left and ask the agent to follow it.</p></div>
+      <div class="use-box"><h2>In other assistants</h2><p>It is a standard SKILL.md package. Put the whole folder into the skills directory of an assistant that supports skills, such as Claude Code or Codex.</p></div>
+    </div>
+    
+  </div>
+</section>
+<section class="block skill-body">
+  <div class="wrap skill-layout">
+    <nav class="toc" aria-label="On this page"><p>On this page</p><ol><li><a href="#核心理念-ai-演不出抽象动作名">核心理念：AI 演不出抽象动作名</a></li><li><a href="#动作词汇表-把笼统词换成有身体力学的具体动作">动作词汇表（把笼统词换成有身体力学的具体动作）</a></li><li><a href="#环境交互-建筑元素-可用动作">环境交互：建筑元素 → 可用动作</a></li><li><a href="#动作节奏-把动作组织成有张力的序列">动作节奏（把动作组织成有张力的序列）</a></li><li><a href="#fpv-追拍-镜头与被追者的关系">FPV 追拍（镜头与被追者的关系）</a></li><li><a href="#身体力学约束-物理硬底线-超出必须交代">身体力学约束（物理硬底线，超出必须交代）</a></li><li><a href="#写给视频模型的额外注意-i2v-能力边界">写给视频模型的额外注意（i2v 能力边界）</a></li></ol></nav>
+    <div class="skill-main">
+      <article class="prose" lang="zh-CN"><p>这是一份<strong>方法论知识库</strong>，供你在为 Nomi 的动作戏镜头写 <code>shot.prompt</code>（视频分镜）时参考。产出经应用内 Seedance / 可灵等视频模型生成——<strong>不是外部工具，不定义提示词框架</strong>（时长/运镜/结构以故事板规划的方法论为准，本文只补「动作本身怎么写清楚」）。</p>
+<p>覆盖<strong>非对抗性动作序列</strong>：一个人跑、跳、翻、爬、坠落、被追。对抗性武打/格斗不在范围内（遇到就按物理动作直接描述）。</p>
+<h2 id="核心理念-ai-演不出抽象动作名">核心理念：AI 演不出抽象动作名</h2>
+<p>视频模型看不懂「帅气地翻过去」「敏捷地逃跑」这类抽象动作名——它只会给你一段软塌塌、没有身体力学的模糊运动。<strong>动作必须拆成可拍的物理动作序列</strong>：有名字、有出力方向、有身体部位、有落点。</p>
+<p>三条纲领：</p>
+<ol>
+<li><strong>物理化描述</strong>——用具体身体力学替代笼统词（「跳过去」→「双脚起跳，脚趾扣住窗台边缘，膝盖深屈吸震」）；超出物理约束的设计必须交代成「超人/非人」或给剧情内解释，否则观众出戏。</li>
+<li><strong>流线连续</strong>——动量不断流：每个动作的出力喂入下一个动作的入力，暂停 = 断流；<strong>环境决定用什么动作</strong>，不是反过来。</li>
+<li><strong>节奏成波 + 升级</strong>——序列像海浪，蓄力-高潮-呼吸成弧，每一波峰值更高；危险/筹码/代价在时间轴上持续加码。</li>
+</ol>
+<h2 id="动作词汇表-把笼统词换成有身体力学的具体动作">动作词汇表（把笼统词换成有身体力学的具体动作）</h2>
+<p>写 prompt 时不写「跳/跑/翻/爬」，而是从下表取一个具体动作 + 它的视觉特征，落成可拍的一句。</p>
+<p><strong>地面移动</strong>：跑酷步伐（连续跳跃式冲刺，每步瞄准落点）｜受身落地（前脚掌落地、膝髋深屈吸震、无声着地）｜肩滚翻（肩到对侧髋的对角线滚翻卸力）｜四足移动（手脚交替低姿爬行）｜猫式平衡（窄面上双臂展开缓慢精确移动）。</p>
+<p><strong>跳跃与精准着地</strong>：定点跳（双脚起跳、脚趾扣住边缘、膝盖吸震）｜跨越跳（全速飞越间隙、空中身体伸展、双腿前收准备着地）｜鹤立落地（单脚落窄点、另一腿后伸平衡）｜猫扑（跳向墙面、双脚先触墙、双手抓顶缘悬挂）｜踢墙跳（单脚蹬墙改变方向）。</p>
+<p><strong>翻越（Vault）</strong>：安全翻（一手撑同侧脚踩上跨过）｜速度翻（全速一手撑侧向飞过）｜懒人翻（侧向一手撑摆双腿横过）｜猴子翻（双手前撑、臀高抬、双腿从臂间穿过，蛙跳式）｜冲刺翻（脚先过、再双手撑推，脚先头后）｜弹跳翻（双脚踩顶、腿部弹射向上）。</p>
+<p><strong>墙面技术</strong>：垂直跑墙（冲刺后墙面跑 2-3 步、双手抓顶缘）｜水平跑墙（脚踩墙身体倾斜横向奔跑）｜攀上（从悬挂姿态拉身翻上墙顶）｜墙上后空翻（跑墙到峰值蹬离后空翻）｜爆发抓跳（从悬挂爆发向上抓更高把手）。</p>
+<p><strong>杆件/栏杆</strong>：摆荡释放（杆上摆荡、动量峰值释放飞向下一目标）｜穿杆（脚先/俯冲穿过横杆下间隙）｜引体翻上（引体过渡为撑体，一体动作从杆下升到杆上）｜栏杆定点（跳跃后精准落窄栏杆）｜栏杆滑行（沿栏杆表面滑行）。</p>
+<p><strong>空翻旋转</strong>（自由跑扩展）：后/前/侧空翻｜前冲后空翻（前向移动同时后翻的弧线轨迹）｜螺旋翻（后空翻 + 360° 扭转）｜蝴蝶踢（身体侧倾、双腿头顶水平扫过）。</p>
+<h2 id="环境交互-建筑元素-可用动作">环境交互：建筑元素 → 可用动作</h2>
+<p>先看这镜有什么障碍，再从对应动作里选——<strong>环境决定技术</strong>：</p>
+<ul>
+<li><strong>低墙（腰到胸高）</strong>：速度翻/猴子翻/冲刺翻/懒人翻/安全翻/弹跳翻。</li>
+<li><strong>高墙（&gt;2m）</strong>：垂直跑墙上墙抓缘 → 攀上翻顶；或猫扑到悬挂 → 攀上；踢墙跳改向。</li>
+<li><strong>楼间/平台间隙</strong>：跨越跳（全速飞跃）/定点跳（短距精准）/猫扑（远端太高够不到顶时抓缘）；大落差着地必接肩滚翻卸力。</li>
+<li><strong>栏杆/横杆</strong>：摆荡释放/穿杆/引体翻上/栏杆定点/栏杆滑行。</li>
+<li><strong>垂直墙面 / 窄巷</strong>：踢墙跳/双踢墙跳之字上升/墙上后空翻；窄巷可烟囱攀爬（背靠一墙、脚蹬对墙）。</li>
+</ul>
+<p><strong>常用流线</strong>（3-5 动作串成连贯段，写进一镜或跨几镜）：楼顶追逐 = 冲刺→跨越跳→肩滚翻→跑酷步伐→速度翻；巷道逃脱 = 冲刺→垂直跑墙→攀上→冲刺翻过女儿墙→下落→肩滚翻；伤痕挣扎 = 跨越跳（差点没够）→单臂抓缘→艰难攀上→跛行→勉强速度翻。<strong>自然接续</strong>：翻越落地（前向动量）接跑酷步伐；下落落地（下向动量）必接肩滚翻卸力；猫扑悬挂接攀上/踢墙跳离墙。</p>
+<h2 id="动作节奏-把动作组织成有张力的序列">动作节奏（把动作组织成有张力的序列）</h2>
+<ul>
+<li><strong>变速（Speed Ramp）</strong>：冲击瞬间/决策点/峰值危险/技术展示处<strong>减速</strong>看清物理细节；过渡移动/重复动作/动量积累处<strong>加速</strong>制造推力。写进 prompt 就是描述这一拍是「加速三步蹬地」还是「慢动作起跳、身体脱离楼沿」。</li>
+<li><strong>呼吸（Breath）</strong>：高速段之间插 0.5-2s 微暂停（反应特写/大冲击前的静止「尖叫前的吸气」/远景重建空间），让观众喘息、重新定位。</li>
+<li><strong>升级（Escalation）</strong>：五条轴上持续加码——环境危险（地面→楼顶→真空跨越）/个人筹码（为任务→为生存）/身体代价（生龙活虎→负伤挣扎）/选项收窄（多条逃路→死角）/对手能力。常见错误是每拍同强度 = 没有方向感。</li>
+<li><strong>三的法则</strong>：给角色三件事——第一次相对顺利（建立方法）、第二次出错（引入复杂度）、第三次要创造性即兴 + 最大筹码。</li>
+<li><strong>值得慢放的瞬间</strong>：首次重大撞击/优势翻转那一击/致命一击/出乎意料的技巧/环境破坏。连击只慢放第一下、标准位移不慢放。</li>
+</ul>
+<h2 id="fpv-追拍-镜头与被追者的关系">FPV 追拍（镜头与被追者的关系）</h2>
+<p>追拍是动作戏的常见镜头语言，写 prompt 时点明镜头与主体的位置关系：</p>
+<ul>
+<li><strong>位置</strong>：背后追踪（你是追猎者，最常见）｜前方反向（你在被追，展示面部恐惧/决心/疲惫）｜侧面并行（强调奔跑姿态）｜上方俯瞰（揭示路线与前方障碍）｜不可能角度（穿间隙/从腿下/窗洞穿越，超现实沉浸）。</li>
+<li><strong>距离定情绪</strong>：超近 0.5-1m = 恐慌无处可逃；近 1-3m = 标准动作追逐张力；中 3-8m = 语境与投入兼顾；远 8-15m = 渺小脆弱。</li>
+<li><strong>速度关系</strong>：速度匹配（主体钉在画面、世界移动，持续张力）｜镜头追近（威胁升级、不可避免感）｜镜头落后（主体拉开距离、逃脱感）｜镜头飞过（超越主体、揭示前方）。</li>
+<li><strong>第一人称 POV</strong> 描述法：在动作链里点明「胸前高度 POV、画面下沿可见角色背部局部（披风下摆/发尾/肩胛）」，把视角锚成第一人称追拍。</li>
+<li><strong>一镜到底</strong>：视频模型生成不出真正的一镜到底——拆成多镜，每镜<strong>结尾</strong>安排自然遮挡物（楼角/披风/柱子/蒸汽）完全盖满画面，下一镜<strong>开头</strong>从遮挡后揭示新画面，靠首尾帧承接、后期在遮挡帧硬切，观众感知为连续运动。</li>
+</ul>
+<h2 id="身体力学约束-物理硬底线-超出必须交代">身体力学约束（物理硬底线，超出必须交代）</h2>
+<p>违反这些观众会出戏；要突破就明确写成「超人/非人」或给剧情内解释。</p>
+<ul>
+<li><strong>跳跃距离</strong>：跑酷定点跳普通人 1.0-1.5m、训练者 2.0-2.5m、极限约 2.76m；助跑跳远训练者 5-7m。最佳起跳角 20-30°（不是 45°），水平速度比角度更重要；从高处往低处跳能多出 2-4m 水平距离。</li>
+<li><strong>跑墙</strong>：最大高度增益约 1.5 倍立定垂直跳，接触墙面 0.5-1.5s（2-3 步），接近角 30-60°；关键是<strong>先离地再触墙</strong>，水平动量靠向下蹬踏转成向上。</li>
+<li><strong>着地</strong>：0.6-1.0m 前脚掌屈膝精准着地；1.8m 以上<strong>必须</strong>肩滚翻卸力；安全最大着地高度约 3m，更高只限专业练习者。落差大不写卸力 = 假。</li>
+<li><strong>负重</strong>：每加 5kg 装备跳跃距离减 5-10%、冲击等比增加。叙事上重装角色用蛮力型移动（撞穿/翻越）、轻装角色用流畅型跑酷——这本身就是角色对比。</li>
+<li><strong>速度</strong>：普通人冲刺约 6.3 m/s、运动员 8-10 m/s；含障碍的跑酷比平地慢 30-50%（每个障碍都要减速-技术-再加速）。</li>
+<li><strong>体力四阶段衰减</strong>（按叙事节拍触发，不按时钟）：<strong>巅峰</strong>（流畅高效、路线最优）→ <strong>裂痕</strong>（经历 2-3 障碍后落地略重、可闻喘息、微停顿变长）→ <strong>退化</strong>（受伤后踉跄、选更简单路线、翻越从猴翻降级为安全翻、开始手滑踩偏）→ <strong>意志力</strong>（最后一搏、放弃技术直接硬爬硬跳）。阶段转换本身就是戏剧时刻（第一次踉跄 = 观众意识到他快撑不住）；可肾上腺素短暂回升再跌更深；追赶者也要编排衰减，否则悬念失真。短追逐只走「巅峰→裂痕」，长追逐走完四阶段。</li>
+</ul>
+<h2 id="写给视频模型的额外注意-i2v-能力边界">写给视频模型的额外注意（i2v 能力边界）</h2>
+<ul>
+<li><strong>表现好</strong>：走/跑/舞蹈/简单动作、慢到中速镜头运动、短片段、物理合理的单一运动。</li>
+<li><strong>容易翻车</strong>：快速动作偶发伪影、复杂物理（跑+抓物+镜头跟随同时）、多元素交互、遮挡关系、长片段时间一致性、参考图没展示的表面（从正面照推背面）。命中这些就简化动作、拆片段、或用道具特写单独锁。</li>
+<li><strong>每镜一个主要动作节拍</strong>——单次翻越/单次跳跃/单次镜头运动，别把一长串动作硬塞进一镜被压成糊。先用首帧图锁住角色姿态/光照/构图，视频只添加运动。</li>
+<li>动作中拼接最宽容（运动掩盖片段间的细微不一致）；在冲击瞬间、方向变化、遮挡时刻切镜。</li>
+</ul>
+</article>
+      <aside class="attribution" aria-label="Source">
+  <dl>
+    <div><dt>Source</dt><dd><a href="https://github.com/aqm857886159/Nomi/blob/7a072f12d4e35d1bf341403d942e5c0c702e6c7b/skills/director-action/SKILL.md" target="_blank" rel="noreferrer">Nomi contributors</a> · <code>7a072f1</code></dd></div>
+    <div><dt>License</dt><dd>AGPL-3.0-only</dd></div>
+    <div><dt>Changes made by Nomi</dt><dd>Nomi adds library presentation metadata; the skill body is unchanged.</dd></div>
+  </dl>
+  <a href="https://github.com/aqm857886159/Nomi/tree/main/skills/director-action" target="_blank" rel="noreferrer">View the file on GitHub ↗</a>
+  
+</aside>
+    </div>
+  </div>
+</section>
+<section class="block lib-section" aria-labelledby="related-title">
+  <div class="wrap">
+    <div class="section-head"><h2 id="related-title">More in this group</h2></div>
+    <div class="card-grid"><article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/director-art-design">
+    <div class="card-media"><img src="/assets/library/director-art-design-640.webp" alt="Art direction" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Art direction</h3>
+      
+      <p class="card-text">Design consistent character, costume, prop and environment references.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/director-cinematography">
+    <div class="card-media"><img src="/assets/library/director-cinematography-640.webp" alt="Cinematography" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Cinematography</h3>
+      
+      <p class="card-text">Choose framing, camera motion and lighting to support a scene.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/director-consistency">
+    <div class="card-media"><img src="/assets/library/director-consistency-640.webp" alt="Shot consistency" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Shot consistency</h3>
+      
+      <p class="card-text">Preserve character, prop and location identity across shots.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/director-guzhuang">
+    <div class="card-media"><img src="/assets/library/director-guzhuang-640.webp" alt="Period design" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Period design</h3>
+      
+      <p class="card-text">Check period costumes, architecture and staging for historical coherence.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/director-keyframe-review">
+    <div class="card-media"><img src="/assets/library/director-keyframe-review-640.webp" alt="Reference image review" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Reference image review</h3>
+      
+      <p class="card-text">Review character and location references before generating shots.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">text</p>
+  <a class="card-frame" href="/en/skills/director-performance">
+    <div class="card-media"><img src="/assets/library/director-performance-640.webp" alt="Performance direction" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Performance direction</h3>
+      
+      <p class="card-text">Translate emotion into visible gestures, gaze and physical behavior.</p>
+      
+      <p class="card-meta">AGPL-3.0-only</p>
+    </div>
+  </a>
+</article></div>
+  </div>
+</section>
+<section class="download-band">
+  <div class="wrap download-band-inner">
+    <div>
+      <h2>Pro-grade AI video.Models at their real price.</h2>
+      <p>macOS · Windows · AGPL-3.0 · No account</p>
+    </div>
+    <a class="button primary" data-download-nomi href="#download-options">Download Nomi</a>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <span class="wordmark small">No<span>mi</span></span>
+    <nav class="footer-links" aria-label="Site navigation">
+      <a href="/en/features">Features</a>
+      <a href="/en/models">Models</a>
+      <a href="/en/prompts">Prompts</a>
+      <a href="/en/skills">Skills</a>
+      <a href="/en/quickstart">Get started</a>
+    </nav>
+    <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">Source on GitHub</a>
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">Open source · AGPL-3.0</a>
+    <a href="https://github.com/aqm857886159/Nomi/releases" target="_blank" rel="noreferrer">Release notes</a>
+    <a href="https://x.com/sdf297417627618" target="_blank" rel="noreferrer">X / Twitter</a>
+    <a href="/skills/director-action" data-locale-choice="zh-CN">简体中文</a>
+    <span class="made">Every screen in the film is Nomi’s real UI; every image and clip was generated with Nomi.</span>
+  </div>
+</footer>
+<dialog id="download-dialog" aria-labelledby="download-title">
+  <div class="dialog-head"><strong id="download-title">Choose the version for this computer</strong><button class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <div class="dialog-body download-dialog-body"><p>Nomi downloads directly when the platform is known. If the Mac chip cannot be detected reliably, choose the matching installer.</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>macOS 12+ · Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">First launch on macOS</strong>
+  <p>The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.</p>
+  <ol><li>Download the matching DMG and drag Nomi to Applications.</li><li>In Finder, right-click Nomi in Applications, choose Open, then confirm Open.</li><li>If it is still blocked, open System Settings → Privacy &amp; Security, find Nomi, and click Open Anyway.</li></ol>
+  <p>Only if macOS says Nomi is “damaged”: confirm the installer came from an official link above, then open Terminal and run:</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">You do not need to disable Gatekeeper globally, and should not do so.</p>
+</section></div>
+</dialog>
+<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>Choose the version for this computer</h2><p>Nomi downloads directly when the platform is known. If the Mac chip cannot be detected reliably, choose the matching installer.</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>macOS 12+ · Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">First launch on macOS</strong>
+  <p>The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.</p>
+  <ol><li>Download the matching DMG and drag Nomi to Applications.</li><li>In Finder, right-click Nomi in Applications, choose Open, then confirm Open.</li><li>If it is still blocked, open System Settings → Privacy &amp; Security, find Nomi, and click Open Anyway.</li></ol>
+  <p>Only if macOS says Nomi is “damaged”: confirm the installer came from an official link above, then open Terminal and run:</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">You do not need to disable Gatekeeper globally, and should not do so.</p>
+</section></div></section></noscript>
+<script>(() => {
+  const downloadUrls = {"windowsX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe","macArm64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg","macX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"}
+  const selectDownload = function selectDownload({ platform = '', userAgent = '', architecture = '' } = {}) {
+  const platformText = `${platform} ${userAgent}`.toLowerCase()
+  const architectureText = String(architecture).toLowerCase()
+
+  if (/\b(?:win32|win64|windows)\b/.test(platformText) && !/arm/.test(architectureText)) return downloadUrls.windowsX64
+  if (!/mac|darwin|iphone|ipad/.test(platformText)) return null
+  if (/arm|aarch64/.test(architectureText) || /arm64/.test(platformText)) return downloadUrls.macArm64
+  if (/x86|x64|intel/.test(architectureText)) return downloadUrls.macX64
+  return null
+}
+  const resolveDownloadRequest = function resolveDownloadRequest({ search = '', platform = '', userAgent = '', architecture = '' } = {}) {
+  const params = new URLSearchParams(search)
+  const requestedPlatform = params.get('platform') || ''
+  const requestedArchitecture = params.get('arch') || ''
+  const hasExplicitTarget = params.has('platform') || params.has('arch')
+  const url = hasExplicitTarget
+    ? selectDownload({ platform: requestedPlatform, architecture: requestedArchitecture })
+    : selectDownload({ platform, userAgent, architecture })
+
+  return {
+    autoDownload: params.get('download') === '1',
+    hasExplicitTarget,
+    url,
+  }
+}
+  const localeKey = 'nomi_locale'
+  document.querySelectorAll('[data-locale-choice]').forEach((link) => {
+    if (location.hash) {
+      const destination = new URL(link.href, location.href)
+      destination.hash = location.hash
+      link.href = destination.pathname + destination.search + destination.hash
+    }
+    link.addEventListener('click', () => {
+      try { localStorage.setItem(localeKey, link.dataset.localeChoice) } catch {}
+    })
+  })
+
+  const menuToggle = document.querySelector('.menu-toggle')
+  const navLinks = document.querySelector('#nav-links')
+  const closeMenu = () => {
+    navLinks?.classList.remove('open')
+    menuToggle?.setAttribute('aria-expanded', 'false')
+  }
+  menuToggle?.addEventListener('click', () => {
+    const open = navLinks?.classList.toggle('open') || false
+    menuToggle.setAttribute('aria-expanded', String(open))
+  })
+  navLinks?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu))
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && navLinks?.classList.contains('open')) {
+      closeMenu()
+      menuToggle?.focus()
+    }
+  })
+
+  // 库页面的「复制」：复制按钮指向的那块提示词原文；剪贴板被拒时退回「选中它」，让人自己按复制。
+  document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => {
+    const source = document.getElementById(button.dataset.copy)
+    if (!source) return
+    try {
+      await navigator.clipboard.writeText(source.innerText.trim())
+      button.dataset.copied = 'true'
+      setTimeout(() => { delete button.dataset.copied }, 1600)
+    } catch {
+      const range = document.createRange()
+      range.selectNodeContents(source)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  }))
+
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })
+    dialog.addEventListener('close', () => {
+      if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open')
+    })
+  })
+
+  const downloadDialog = document.querySelector('#download-dialog')
+  const showDownloadOptions = () => {
+    if (!downloadDialog || typeof downloadDialog.showModal !== 'function') return
+    downloadDialog.showModal()
+    document.body.classList.add('modal-open')
+  }
+  downloadDialog?.querySelectorAll('[data-direct-download]').forEach((link) => link.addEventListener('click', () => {
+    downloadDialog.close()
+  }))
+
+  const resolvePlatformDownload = async () => {
+    const platform = navigator.platform || ''
+    const userAgent = navigator.userAgent || ''
+    let architecture = ''
+    if (navigator.userAgentData?.getHighEntropyValues) {
+      try { architecture = (await navigator.userAgentData.getHighEntropyValues(['architecture'])).architecture || '' } catch {}
+    }
+    return resolveDownloadRequest({ search: location.search, platform, userAgent, architecture })
+  }
+  const applyPlatformDownload = (url) => {
+    if (!url) return
+    document.querySelectorAll('[data-download-nomi]').forEach((link) => {
+      link.href = url
+    })
+  }
+  document.querySelectorAll('[data-download-nomi]').forEach((link) => link.addEventListener('click', async (event) => {
+    event.preventDefault()
+    const request = await resolvePlatformDownload()
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  }))
+  void resolvePlatformDownload().then((request) => {
+    applyPlatformDownload(request.url)
+    if (!request.autoDownload) return
+    const cleanUrl = new URL(location.href)
+    for (const key of ['download', 'source', 'platform', 'arch']) cleanUrl.searchParams.delete(key)
+    history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  })
+})()</script>
+</body>
+</html>

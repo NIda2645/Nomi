@@ -1,7 +1,7 @@
 // 官网样式：沿用 Nomi 软件本身的设计语言（纸色底、墨色字、Nomi 蓝做唯一强调色，
 // 英文 Fraunces、中文 Noto Sans SC；页面底是一张画布的点阵）。样张：https://claude.ai/artifact/UpqjKQGtiN9hMkrCpwqn6r
 /** 两页共用：设计 token、排版、按钮、顶栏、页脚、下载选项、弹窗。 */
-const baseCss = `
+export const baseCss = `
 :root {
   --ground: #faf9f6;
   --paper: #ffffff;
@@ -118,6 +118,7 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
 .footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
 .footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
 .footer a { text-decoration: none; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 10px 20px; }
 .footer a:hover { color: var(--ink); }
 
 .download-options { display: grid; gap: 8px; margin-top: 14px; }
@@ -238,8 +239,12 @@ const quickstartCss = `
 .faq summary::after { content: "+"; font-family: var(--font-ui); font-weight: 400; color: var(--ink-4); }
 .faq details[open] summary::after { content: "–"; }
 .faq p { margin: 10px 0 0; color: var(--ink-2); max-width: 44em; }
-.more { margin: 28px 0 0; color: var(--ink-3); font-size: 15px; }
-.more a { color: var(--accent); }
+.routes { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.route { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; scroll-margin-top: 80px; }
+.route h3 { margin: 0; font-size: 17px; line-height: 1.4; }
+.route p { margin: 6px 0 0; font-size: 15px; color: var(--ink-2); }
+.route a { display: inline-block; margin-top: 8px; font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.next-links { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
 `
 
 /** 每页只带自己用得到的样式（评审：快速上手曾把首页的样式整份带上）。 */
