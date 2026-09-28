@@ -1,0 +1,18 @@
+{
+  "modelKey": "gemini-3.1-flash-image-preview",
+  "taskKind": "text_to_image",
+  "raw": {
+    "code": 200,
+    "data": {
+      "id": "task-fixture",
+      "result": {
+        "images": [
+          {
+            "url": "https://cdn.example.com/apimart-result.asset"
+          }
+        ]
+      },
+      "status": "completed"
+    }
+  }
+}

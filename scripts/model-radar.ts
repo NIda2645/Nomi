@@ -134,6 +134,15 @@ export function parseApimart(text: string): RadarEntry[] {
   return dedupe(out);
 }
 
+/** Associate curated catalog identities with documentation pages without guessing a URL. */
+export function associateCatalogDocs(modelKeys: readonly string[], entries: readonly RadarEntry[]): Map<string, RadarEntry[]> {
+  const docs = entries.filter((entry) => entry.vendor === "apimart");
+  return new Map(modelKeys.map((modelKey) => [
+    modelKey,
+    docs.filter((entry) => isCovered(entry.slug, new Set([normalizeToken(modelKey)]))),
+  ]));
+}
+
 function dedupe(entries: RadarEntry[]): RadarEntry[] {
   const seen = new Set<string>();
   return entries.filter((e) => {

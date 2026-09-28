@@ -1,0 +1,3 @@
+- [Nano Banana 2](https://docs.apimart.ai/en/api-reference/images/gemini-3.1-flash/generation.md): x
+- [Seedream 5.0 Pro](https://docs.apimart.ai/en/api-reference/images/seedream-5-0-pro/generation.md): x
+- [Unused model](https://docs.apimart.ai/en/api-reference/images/retired-model/generation.md): x

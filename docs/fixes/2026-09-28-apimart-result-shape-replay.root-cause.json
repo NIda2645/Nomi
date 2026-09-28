@@ -1,0 +1,37 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-apimart-result-shape-replay",
+  "problem_type": "APIMart model health inventory drift",
+  "symptom": "The set of APIMart generation models and modes can drift away from the catalog without a zero-cost machine-readable inventory or replay evidence.",
+  "direct_cause": "No catalog-derived health export joined model modes, wire contracts, parameter ranges, reference channels, documentation pages, and sanitized response replays.",
+  "class_root": "The catalog had no shared health projection that could be checked without sending generation requests.",
+  "affected_population": ["all curated APIMart image, video, and audio generation modes", "historical APIMart image task responses used for parser replay"],
+  "scope_paths": ["electron/catalog/apimartModelHealth.ts", "electron/catalog/apimartModelHealth.test.ts"],
+  "entry_points": ["APIMart image, video, and audio catalog owners feed the health projection", "the CLI serializes the projection and documentation association"],
+  "external_sources": [],
+  "internal_only_reason": "This contract is about the application's catalog projection and replay inventory; no dependency behavior decides the invariant.",
+  "invariant_owner_layer": { "layer": "electron/catalog/apimartModelHealth.ts", "owner": "electron/catalog/apimartModelHealth.ts", "tests": ["electron/catalog/apimartModelHealth.test.ts"] },
+  "invariants": ["Every curated APIMart generation mapping appears exactly once in the derived inventory.", "Contract fingerprints are stable under unrelated object key order and replay tests use the production parser."],
+  "doors": [
+    { "kind": "read", "path": "electron/catalog/apimartModelHealth.ts", "symbol": "APIMART_GENERATION_TASK_KINDS" },
+    { "kind": "read", "path": "electron/catalog/apimartModelHealth.ts", "symbol": "ApimartHealthEntry" },
+    { "kind": "write", "path": "electron/catalog/apimartModelHealth.ts", "symbol": "stableSerialize" },
+    { "kind": "write", "path": "electron/catalog/apimartModelHealth.ts", "symbol": "contractFingerprint" }
+  ],
+  "door_reduction": { "before": 4, "after": 4, "why_not": "These four doors are the complete generated map for the new projection file; the two type/constant reads and two serialization writes are distinct responsibilities." },
+  "generality_proof": "The inventory is built only from all three APIMart catalog owners and filters generation task kinds from the shared ProfileKind union. Each emitted entry includes the mapping, query, status, parameter and reference contract, so adding a catalog row automatically expands the health set.",
+  "shared_boundaries": [{ "path": "electron/catalog/apimartModelHealth.ts", "symbol": "buildApimartHealthInventory", "responsibility": "Project every curated generation mapping into a zero-cost health entry with stable contract data." }],
+  "same_class_entry_points": [
+    { "path": "electron/catalog/apimartImages.ts", "entry_point": "APIMART_IMAGE_MODELS", "disposition": "enforced", "evidence": "The projection spreads image catalog rows and their mappings." },
+    { "path": "electron/catalog/apimartVideos.ts", "entry_point": "APIMART_VIDEO_MODELS", "disposition": "enforced", "evidence": "The projection spreads video catalog rows and their mappings." },
+    { "path": "electron/catalog/apimartAudios.ts", "entry_point": "APIMART_AUDIO_MODELS", "disposition": "enforced", "evidence": "The projection spreads audio catalog rows and filters non-generation transcription explicitly." }
+  ],
+  "recurrence": { "classification": "recurring", "reason": "The same inventory omission can affect another APIMart model, media kind, or newly added mode.", "same_class_scan": ["node scripts/door-map.mjs electron/catalog/apimartModelHealth.ts", "rg APIMART_(IMAGE|VIDEO|AUDIO)_MODELS electron/catalog/seedBuiltins.ts electron/catalog", "Replay tests cover APIMart image responses with both URL shapes through responseParsing."] },
+  "prevention": { "kind": "centralized-boundary", "enforcement_path": "electron/catalog/apimartModelHealth.ts", "invariant": "The exported inventory is derived from the catalog arrays and contains one entry for every generation mapping.", "failure_mode": "A catalog mapping that is not a supported generation kind is excluded explicitly; all supported kinds are emitted and tested.", "exception_policy": "none", "strategy": "Keep the provider catalog as the sole source and derive every health item at runtime.", "artifacts": ["electron/catalog/apimartModelHealth.ts", "electron/catalog/apimartModelHealth.test.ts"] },
+  "regression_tests": ["electron/catalog/apimartModelHealth.test.ts"],
+  "class_regression_tests": ["electron/catalog/apimartModelHealth.test.ts"],
+  "legacy_paths": { "status": "not-applicable", "removed_paths": [], "rationale": "No obsolete inventory or parser path existed; the health projection is a new catalog-derived view." },
+  "dependency_lifecycle": { "decision": "not-applicable", "rationale": "The invariant is owned by application catalog and parser code; no third-party dependency controls it.", "exit_criteria": [] },
+  "migration": "No persisted data migration is required. Existing task raw responses are replayed through the shared parser, and new recordings use sanitized fixtures.",
+  "residual_risks": ["M1 does not perform paid live generation; L3 remains a release-time responsibility in M2."]
+}

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   annotateDiff,
   annotateEntries,
+  associateCatalogDocs,
   apimartSubIndexUrls,
   collectApimart,
   collectVendors,
@@ -108,6 +109,12 @@ describe("apimart 索引解析", () => {
   it("texts / tasks / 首页不进", () => {
     expect(slugs.some((s) => s.includes("models"))).toBe(false);
     expect(slugs.some((s) => s.includes("status"))).toBe(false);
+  });
+
+  it("catalog model key 关联文档页，找不到的明确留空", () => {
+    const matched = associateCatalogDocs(["gemini-3.1-flash-image-preview", "retired-model"], parseApimart(APIMART_SAMPLE));
+    expect(matched.get("gemini-3.1-flash-image-preview")?.map((entry) => entry.slug)).toEqual(["gemini-3.1-flash"]);
+    expect(matched.get("retired-model")).toEqual([]);
   });
 });
 

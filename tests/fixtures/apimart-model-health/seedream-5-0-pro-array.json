@@ -1,0 +1,26 @@
+{
+  "modelKey": "doubao-seedream-5-0-pro",
+  "taskKind": "text_to_image",
+  "raw": {
+    "code": 200,
+    "data": {
+      "id": "task-fixture",
+      "result": {
+        "images": [
+          {
+            "output_formats": [
+              "jpeg"
+            ],
+            "sizes": [
+              "2048x2048"
+            ],
+            "url": [
+              "https://cdn.example.com/apimart-result.asset"
+            ]
+          }
+        ]
+      },
+      "status": "completed"
+    }
+  }
+}
