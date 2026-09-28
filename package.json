@@ -392,11 +392,18 @@
     "files": [
       "dist/**",
       "dist-electron/**",
-      "public/**",
       "resources/**",
       "skills/**",
       "build/icon.png",
-      "build/icon.ico"
+      "build/icon.ico",
+      "!**/*.map",
+      "!**/{__tests__,__fixtures__,fixtures}/**",
+      "!**/*.{test,spec}.{js,mjs,cjs,jsx,ts,mts,cts,tsx}",
+      "!dist-electron/**/tests/**",
+      "!**/.env",
+      "!**/.env.*",
+      "!**/node_modules/esbuild/**",
+      "!**/node_modules/@esbuild/**"
     ],
     "mac": {
       "target": [
@@ -426,7 +433,12 @@
         }
       ],
       "icon": "build/icon.png",
-      "identity": null
+      "identity": null,
+      "electronLanguages": [
+        "en",
+        "zh_CN",
+        "zh_TW"
+      ]
     },
     "win": {
       "icon": "build/icon.ico",
@@ -437,6 +449,11 @@
             "x64"
           ]
         }
+      ],
+      "electronLanguages": [
+        "en-US",
+        "zh-CN",
+        "zh-TW"
       ]
     },
     "nsis": {

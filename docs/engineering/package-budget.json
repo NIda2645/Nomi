@@ -1,21 +1,48 @@
 {
-  "_doc": "安装包身份与预算（docs/plan/2026-09-28-release-audit.md §3 A）。runtimeAllowlist 由 scripts/check-packaged-deps.mjs 读：主进程按路径加载二进制/资产的包，每条写 reason 与 evidence（指到加载它的那一行）。",
+  "_doc": "安装包身份与预算（docs/plan/2026-09-28-release-audit.md §3 A）。runtimeAllowlist 由 scripts/check-packaged-deps.mjs 读：主进程按路径加载二进制/资产的包。excludedModules：生产依赖里带进来、但我们的运行路径走不到、由 package.json build.files 排除出包的模块，每条写理由、出处与 import 它的文件名单。",
   "runtimeAllowlist": {
     "@anthropic-ai/sandbox-runtime": {
       "reason": "编码沙箱把 vendor/ 下的 srt-win.exe / apply-seccomp / java agent 交给别的进程执行，路径从包根拼出来；vendor/** 在 asarUnpack 里摊成真文件。",
-      "evidence": ["electron/agentLane/laneCodingSandbox.mts:179"]
+      "evidence": [
+        "electron/agentLane/laneCodingSandbox.mts:179"
+      ]
     },
     "@ffmpeg-installer/ffmpeg": {
       "reason": "导出、抽帧、转码都 spawn 随包的 ffmpeg 可执行文件；包只提供二进制路径（.path），平台子包在 asarUnpack 里摊成真文件。",
-      "evidence": ["electron/export/ffmpegRunner.ts:186"]
+      "evidence": [
+        "electron/export/ffmpegRunner.ts:186"
+      ]
     },
     "@ffprobe-installer/ffprobe": {
       "reason": "探测音轨与媒体信息时 spawn 随包的 ffprobe 可执行文件；包只提供二进制路径（.path）。",
-      "evidence": ["electron/export/mediaProbe.ts:403"]
+      "evidence": [
+        "electron/export/mediaProbe.ts:403"
+      ]
     },
     "onnxruntime-web": {
       "reason": "深度视频节点的推理 worker 从 nomi-local://runtime/ort/ 取 .wasm/.mjs，主进程用 require.resolve 定位包目录后按文件名伺服（打包态渲染层是 file://，不能 fetch 自己的资产）。",
-      "evidence": ["electron/protocol/localRuntimeAssets.ts:31"]
+      "evidence": [
+        "electron/protocol/localRuntimeAssets.ts:31"
+      ]
+    }
+  },
+  "excludedModules": {
+    "esbuild": {
+      "reason": "构建期打包器。进包是因为 @earendil-works/chord 把它写在 dependencies 里，但 chord 里 import 它的只有 dist/node/bundle.js，只经 chord/bundler 导出可达；我们随包的 pi-agent-core / pi-coding-agent 只 import chord/context（不可达 bundle.js）。importers 名单变了（上游多了一处 import），check:package-budget 会红，逼人重判。",
+      "evidence": [
+        "@earendil-works/chord/dist/node/bundle.js:4",
+        "@earendil-works/pi-agent-core/dist/harness/context.js"
+      ],
+      "importers": [
+        "@earendil-works/chord/dist/node/bundle.js"
+      ]
+    },
+    "@esbuild": {
+      "reason": "esbuild 的各平台原生子包（@esbuild/win32-x64 等，Windows 包里 11MB），随 esbuild 一起不进包。",
+      "evidence": [
+        "esbuild/package.json optionalDependencies"
+      ],
+      "importers": []
     }
   }
 }
