@@ -27,6 +27,8 @@
 | T-RL-13 | RC 从 main 触发、却把 release 分支填进 `ref` 输入：构建、验收全过，`Desktop Release` 到最后一步才报 `RC commit mismatch` 拒发 | todo（下一版） | 09-26 协调会话 v0.22.1 晋级被拦（Desktop Release run 36248271714；RC 36235580649 只能从同一提交重打成 36248506177） | 防线放在最早那一层（R17）：`.github/workflows/desktop-rc.yml` 的 validate 第一步比较 `github.sha` 与解析出来的 `inputs.ref`，不等就直接红（加规则先验它会红），`docs/release-process.md` §4 写明「Use workflow from 选 release 分支 / `--ref`」。另外 §5 的顺序要写清：release→main 的 PR 合并会触发 `delete_branch_on_merge` 删掉 release 分支，晋级前如果还要重打 RC，得先把分支推回原提交。教训见 `docs/lessons/rc-must-be-dispatched-on-the-release-branch.md` |
 | T-RL-14 | `Desktop Release` 在「Create immutable tag」失败：CI 上 `pnpm install` 的 postinstall（`scripts/install-git-hooks.cjs`）把开发者用的 pre-push 钩子也装上了，钩子要 Ponytail 收据，于是工作流自己往远端写版本标签被拦 | in-progress | 09-26 v0.22.1 晋级（run 36251951690 失败，本机先打同名标签后 run 36252239904 复用标签成功）；09-27 v0.22.2 同样被拦（run 36325671938，同法绕过后 run 36326044349 成功） | 改为在 `verifyPushReceipt` 判「内容在不在远端」：对象已在某条远端跟踪分支历史里＝推它没有新内容离开本机，不要收据；其余 ref 照旧校验。没采用原先「CI / GITHUB_ACTIONS 环境下不装钩子」：那是一个任何进程都能设的环境变量开关，本机设一下就绕过全部钩子；按内容判没有这个口子，还顺带放行开发者推已发布提交。node-test 覆盖已发布标签 / 新提交标签 / 混合推送 |
 | T-RL-15 | Agent 在跑时界面卡几分钟（渲染进程，行级 labels 每行每次重建 + 行未 memo） | done #904 | 09-27 用户反馈 + 主管 Windows 实测 | 已合 #904，随 v0.22.2 发布；修复前后同一 21 回合探针：最长连续卡顿 93s → 1.7s、>1s 卡顿 59 → 2 |
+| T-RL-16 | 花钱边界第一刀：制作镜头「认领」——同一镜画布与制作流程只能有一方花钱生成（收 T-AG-24 的几类重复扣费 + 返工被拒永久卡死） | doing | 用户 09-28 拍板（谁先认领谁生成 / 删节点取消未发出 / 返工被拒交还画布 / 本次只做认领）；方案 `docs/plan/2026-09-28-production-shot-claim.md`（分支 `claude/production-shot-claim`，含 #877） | B1 判据 + 独立认领记录 + reducer + 调度器已完成；B2a 画布入口接线进行中（渲染层原先没把制作镜头绑定带进主进程，主进程那道检查从未触发）；之后 B2b 文案与「去对账」、B3 集成场景 + 真机付费验收 |
+| T-RL-17 | 官方额度：用户登录即可用内置模型、按次扣 Nomi 余额，不用自己配一堆服务 | hold（先稳生产与花钱边界，再上收费） | 用户 09-24 / 09-28 拍板 | 服务端方案与实现只在私有服务端仓库推进；公开仓库只做客户端接入（登录、官方渠道、兑换码入口），先出样张 |
 ## B. Agent 质量
 
 > 用户 09-14 的验收句：「明显有问题的功能优化到可用 **+ Agent 优化到可用**」。
@@ -68,6 +70,7 @@
 | T-AG-38 | Windows 上面板提示「命令需逐条确认：命令沙箱这次没能启动」 | todo（先核实） | 同上（截图 `09-t1023s` 面板底部） | 真机核实沙箱为什么起不来，是否影响全自动档 |
 | T-QA-40 | 走查拍不到安定截图：Agent 长任务后界面几何持续变化 30 秒以上（`screenshotSettled` 拒绝截图） | todo（先核实） | 同上（`FAIL.png`，报错「没有未结束的动画，几何一直在变」） | 找出反复重排的浮层（疑似画面校验卡或「N 个新节点在下方」提示） |
 | T-AG-39 | 「对话出大片」丝滑化：「短片导演」技能 + Agent 空态入口 | todo（下一版，方案待拍板） | 09-27 用户想法（「用户是不是可以和你一样在对话里直接做」）+ 上面这次验收 | 技能替用户补上做法（先定人物、先关键帧后首帧视频、排进时间轴、导出）；空态加一个入口；T-AG-33~37 是它的验收清单 |
+| T-AG-40 | Agent 文本流被上游中断（`terminated`，中断前先空等约 60 秒）：自动重试已生效，但红色错误块仍留在对话里 | todo | 09-28 v0.22.4 RC「Agent 三回合」实测（APIMart DeepSeek V4 Flash） | 查空闲超时是否过长；恢复成功后这条错误还该不该给用户看（或收成可折叠的「已自动重试」） |
 
 ## C. 画布与节点
 
@@ -100,6 +103,8 @@
 | T-CV-25 | ComfyUI 导入面板自动建议的参数名没走 i18n（英文界面显示「随机种子」）；「检测到视频工作流」一行被挤折行 | todo | 09-26 协调会话收口 · 卡 task_28e66834 | 标签进 i18n + 修折行 |
 | T-CV-26 | ComfyUI 导入 IPC 的 enumOptions 形状在渲染层手抄 5 份，两处消毒的失败策略相反 | todo | 09-26 协调会话收口 · 卡 task_e6f1844d | 契约类型放共享层，一个判据 |
 | T-CV-27 | 生成图在节点里留白边：落地丢了原始宽高 + 画布显示缩略图测量被丢弃 | done | 09-27 用户反馈截图 | 已在 `claude/canvas-media-aspect-from-landing` 收口：共享结果落地、制作/恢复/历史、存量 sidecar 回填；聚焦 Vitest 与 typecheck 通过，详见 `docs/plan/2026-09-27-canvas-media-aspect-from-landing.md` |
+| T-CV-29 | 「几版」改成原地铺开的版本卡片（持久、可多开、盖住邻居时点中浮上来、和节点一样大、整排一张重拍卡、删除改撤销） | doing | 用户 09-27～28 原话 + 09-28 拍板 4 条；样张 `docs/design/mockups/2026-09-28-version-cards/`（分支 `claude/version-cards`） | 方案 `docs/plan/2026-09-28-version-cards.md`：V1 数据层（结果身份单一化、持久序号、铺开状态存盘、删除延后真删）→ V2 渲染 → V3 验收 |
+| T-CV-30 | 同一张图连两次到同一个视频节点：第二条被当重复去掉，提示却写「参考槽已满（最多 9 个）」 | todo | 09-28「连参考图默认参考模式」真机走查 | `nodes/completeNodeConnection.ts` 的「没落进槽 = 满」判据分不清「满」和「重复」；重复时应说这张图已经在参考里了 |
 
 ## D. 设计落地（界面大改）
 
@@ -192,6 +197,10 @@
 | T-MO-28 | 模型雷达 09-24 发现 13 个新模型待分诊；论文雷达 09-07 起静默停跑（本机没装 `nomi-model-radar` / `nomi-research-radar` 技能） | todo（发版后） | 09-26 协调会话收口 · 卡 task_56ac7b30 · 用户 09-26 拍板 | 先装回雷达技能；分诊挑 2–3 个出接入方案；节奏：每版最多接 1–2 个新模型 |
 | T-MO-31 | MCP 被动发现不应冷启动 Nomi；真实工具调用后台启动，窗口可手动拉回，未显示且无在途任务闲置 10 分钟退出 | doing | 09-27 用户群反馈 + 09-28 四条拍板 | 根因合同 `docs/fixes/2026-09-28-mcp-passive-request-cold-launch.root-cause.json`；计划 `docs/plan/2026-09-28-mcp-background-launch.md`；Windows 真机走查待主会话执行 |
 | T-MO-29 | KIE/Suno 回调地址 `https://nomiaqm.com/api/vendor-callbacks/kie/suno/ack` 一个语义多份定义：`electron/catalog/kieSunoAudio.ts`、`electron/shared/modelArchetypes/sunoAudio.ts`（3 处）、生成文件 `archetypeWireDefaults.audio.generated.ts`，站点侧在 `worker/kieSunoAck.ts` | todo | 09-27 修 T-WB-06 时发现（R14.1 同一语义几份定义） | 定一个 owner（档案侧常量），其余引用它；worker 侧路径与之对等棘轮 |
+| T-MO-32 | Nomi 没开时连上的 AI 工具看不到 Nomi 技能（#916 起被动发现在 Nomi 没开时回空，是有意取舍） | todo | #916 | Nomi 起来后 MCP 桥发 `notifications/prompts/list_changed` / `notifications/resources/list_changed`，让客户端自己刷新 |
+| T-MO-33 | APIMart 全模型体检：清单即代码（L0）+ 上游存活（L1）+ 真实响应回放（L2）+ 发版前每个模型 × 模式最小真生成（L3） | todo | 用户 09-28（换各种模型出图才撞出结果地址形态与建连重置两个问题） | 先做零花费层；L1 同时产出「建议删除的老模型」清单——**只出带证据的清单，用户逐个勾选后才删**，删时用过它的旧项目节点要能正常打开 |
+| T-MO-34 | 「Model not exist」被归成参数错误；应用内反馈缺模式 / 任务类型上下文 | todo | 应用内反馈 NF-0928-0001 | 错误分类加「模型不存在」；反馈上下文补 mode / taskKind（自建渠道仍按隐私设计不带模型名） |
+| T-MO-35 | 自建中转接入自检没真验参考通道：图生视频 0.07 秒就标 verified | todo | 应用内反馈 NF-0928-0002 | 声明了参考图的任务类型，自检要真发一次带图请求，做不到就标 unverified，不许只看配置 |
 
 ## G. 生态与插件
 
@@ -267,6 +276,13 @@
 | T-QA-39 | `pnpm run feel:nightly` 是空跑：截的是 `tests/ux/journeys/catalog.json` 里手写的 HTML 片段，不是产品 | todo | 09-26 协调会话打 v0.22.1 RC 时按 release-process 跑它才发现 | `scripts/feel-nightly.mjs:52` 用 `page.setContent(state.html)` 渲染夹具，记录里自己也写着 `evidence: rendered-fixture-not-product-walkthrough`——接触表「没有未分诊的发现」证明不了产品手感。发版清单（`docs/release-process.md:174`「RC 前必须运行…接触表无未分诊体感发现」）却把它当一道验收门。要么让它驱动真实应用（复用 `tests/ux/_walkthrough.mjs` 的真实启动），要么从发版清单里拿掉、别再当证据；二选一，不留两份 |
 | T-QA-41 | 改了非代码文件（README、`marketing/_headers`、`wrangler.json`、docs）时，Unit 的「相关测试」一条都选不中：`scripts/test-focused.mjs` 只给 `.ts/.js` 源码找同名测试和 import 关联，而有一批测试是用 `fs.readFileSync` 直接读这些文件做契约的。#901 重写 README 丢了「24 MCP tools」，Unit 绿着合进 main；到 #903 碰了 eslint 配置升全量才被 `electron/capabilityCore/nomiMcpProductionRuns.test.ts` 抓到 | todo | 09-27 #903 CI 实查 | 选测时对改动的非代码文件，按「测试源码里出现该文件的仓库相对路径」补选（README.md / wrangler.json 等字面量），读不到字面量的（`path.join(dir, name)`）改成字面量；加一条「改 README 必选中文档契约测试」的自测 |
 | T-QA-42 | 参考图被当成「HTML/XML/SVG 文本」拒收：`assetLocalization` 在前 2KB 任意位置找 `<svg`/`<?xml`，GPT Image 等生成的 PNG 带 C2PA（`caBX` 块里有 SVG 图标）、XMP 元数据也会中招；错误没带码，错误卡甩锅「服务商故障」。同一判据仓库里三份定义，只这份没锚定开头 | in-progress | 0.22.1 用户群反馈 + 应用内反馈 NF-0927-0001（2026-09-27） | 收成 `mediaTypes.isMarkupMasquerade` 一个 owner（锚定开头、魔数优先）+ `asset-invalid` 机器码（未计费、提示换素材）→ 0.22.3 |
+| T-QA-43 | 付费走查去点被右侧 Agent 面板挡住的控件，时灵时不灵（0.22.4 RC 第一次整跑，Nano Banana 2 那张没发出、没扣费） | todo | 09-28 v0.22.4 RC 付费验收 | 付费走查点节点控件前先把节点移进可见区（共用 helper）；RC 落地脚本收进仓库，作为 T-MO-33 L3 的起点 |
+| T-QA-44 | docs-autosync 机器人推送不触发 CI → 文档同步 PR（#887）永远缺必需检查、合不进 | todo | 09-28 协调会话 | autosync 推完用 workflow_dispatch 对该分支跑一次 Quality Gate（GITHUB_TOKEN 允许这样触发）；不走管理员强合 |
+| T-QA-45 | E2E `mcp-l2-journeys` C12 导出确认框偶发 20 秒不出现 | hold（观察） | #916 第一轮 CI：同一作业里先跑的一遍全过、后跑的一遍红；第二轮全过 | 再出现就查导出卡主按钮与确认框的时序 |
+| T-QA-46 | `electron/shared/modelArchetypes/anchorPolicy.structure.test.ts` 在 Windows 上 main 也红 | todo | 09-28 多个工作树实测 | 按「Windows 上 gates 走不完」那组已知原因排查（路径分隔符 / 盘符居多） |
+| T-QA-47 | 闪退留不下证据：日志只留当天、`nomi-crash.log` 最后一条停在 08-29、渲染进程崩溃（render-process-gone）没有处置 owner | todo | 用户 09-28「有时莫名闪退」 | 先补渲染进程死亡的处置与面包屑、日志保留策略，能留痕再谈修 |
+| T-QA-48 | 反馈雷达只看 GitHub，应用内反馈（Cloudflare R2 桶）要人手读 | todo | 09-28 协调会话 | `feedback:radar` 加 R2 渠道（只读、限速、401/429 立即停） |
+| T-QA-49 | React 19 升级评审顺带扫出、与升级无关的四处：SplashIntro 临时音频的 Web Audio 调度、OverlaySelectionBox 已 `setPointerCapture` 还挂窗口级监听、AutomationPermissionsSection 双份状态、两个设置区返回空片段 | todo | #910 Ponytail 第 2 轮 | 下次动这些文件时顺手收 |
 
 ## J. 官网与发布
 
