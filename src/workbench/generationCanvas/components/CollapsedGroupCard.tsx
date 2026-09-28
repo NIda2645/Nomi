@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { IconStack2 } from '@tabler/icons-react'

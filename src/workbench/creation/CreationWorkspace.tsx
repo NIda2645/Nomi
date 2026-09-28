@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { AssistantPane } from '../AssistantPane'
 import { useWorkbenchStore } from '../workbenchStore'
 import React from 'react'

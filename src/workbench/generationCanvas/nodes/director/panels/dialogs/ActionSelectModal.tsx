@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（DesignModal / WorkbenchButton）、../../../../../../vendor/tablerIcons、../../../../../../utils/cn、
  *          ../../model/actionLibrary（ACTION_LIBRARY / ActionLibraryEntry / resolveActionAlias）、../../scene/character/poseClipLibrary 的 poseClipInfo、./ActionPreview

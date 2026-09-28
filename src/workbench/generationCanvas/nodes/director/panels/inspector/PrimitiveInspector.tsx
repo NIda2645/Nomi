@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../DirectorEditorContext、../../model/directorTypes、../fields/*、./TransformSection
  * [OUTPUT]: 对外提供 PrimitiveInspector：名称、材质（颜色/粗糙度/金属度/透明度/线框/平面着色）、辅助物体开关、空间变换；组只有名称与变换

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · **整块面板**的板（Flow 创作 / 生成 / 预览 + Rendering + Dark + Collapsed）
 //
 // 只有这几张板在定稿里真的画了一整块面板，所以只有这几个状态渲整块。

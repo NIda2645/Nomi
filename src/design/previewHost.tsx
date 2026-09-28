@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 设计系统「预览宿主」——给**不带 App 外壳**的渲染环境用的最小 provider。
 //
 // 为什么需要它：src/design 里有 5 个组件（NomiWordmark / NomiBrand / NomiLoadingMark /

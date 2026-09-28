@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { ConnectAssistantCard } from '../../../../ui/onboarding/ConnectAssistantCard'
 import type { McpInfo } from '../../../../desktop/mcpBridgeTypes'

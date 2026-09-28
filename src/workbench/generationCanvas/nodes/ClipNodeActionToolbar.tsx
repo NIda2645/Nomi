@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { IconCopy, IconCut, IconTrash } from '@tabler/icons-react'
 import { useTranslation } from 'react-i18next'
 import { WorkbenchIconButton } from '../../../design'

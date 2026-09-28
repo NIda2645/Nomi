@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · **接线证据**（宿主快照 → 真面板）。
 //
 // 与前三组的区别：这一组一个 prop 都不喂给积木。它把一份 `ProjectAgentHostState`

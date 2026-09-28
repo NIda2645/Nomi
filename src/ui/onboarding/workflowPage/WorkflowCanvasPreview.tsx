@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 「画布节点预览 · 实时」：这条工作流在生成画布上会长成什么样，当场画出来、可填、可试跑。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md

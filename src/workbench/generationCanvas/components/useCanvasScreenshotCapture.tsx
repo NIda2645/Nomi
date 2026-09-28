@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 全局截图（默认关，设置里开）在画布这一侧的接线：
  * 热键抓完整屏 → 主进程落素材 → 这里收到事件、弹选区面板 → 框完落节点（见 ScreenshotCropOverlay）。

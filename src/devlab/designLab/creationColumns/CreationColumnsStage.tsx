@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import WorkbenchShell from '../../../workbench/WorkbenchShell'
 import { useWorkbenchStore } from '../../../workbench/workbenchStore'

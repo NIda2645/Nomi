@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { MantineProvider } from '@mantine/core'
 import { ModalsProvider } from '@mantine/modals'

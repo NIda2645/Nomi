@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import type { ConnectionAnchorSide } from '../store/canvasStoreTypes'
 import type { CanvasFrameInteraction, CanvasGroupBox } from './GroupFrame'

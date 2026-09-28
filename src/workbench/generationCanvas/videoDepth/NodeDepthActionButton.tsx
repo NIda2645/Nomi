@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 视频节点浮条上的「提取深度」。
  *

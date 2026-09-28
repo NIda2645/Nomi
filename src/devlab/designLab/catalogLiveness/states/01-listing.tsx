@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { APIMART_TEXT_MODELS } from '../../../../../electron/catalog/apimartTexts'
 import { curatedCatalogLifecycle } from '../../../../../electron/catalog/seedModelIdentity'

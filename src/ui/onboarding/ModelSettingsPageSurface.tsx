@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { IconArrowLeft } from '@tabler/icons-react'
 import { IconActionButton } from '../../design'

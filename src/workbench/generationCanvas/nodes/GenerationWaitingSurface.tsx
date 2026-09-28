@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { ImageGeneration, type ImageGenerationHandle, type ImageGenerationCycleEvent, type ImageGenerationPreset } from 'img-fx'
 import { cn } from '../../../utils/cn'

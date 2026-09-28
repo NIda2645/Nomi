@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../vendor/tablerIcons、../../../../../../ui/toast、../../../../../api/assetUploadApi（importWorkbenchLocalAssetFile / hostedAssetUrl）、
  *          ../../../../../../utils/cn、../../DirectorEditorContext、../../model/directorTypes、../../model/assetKinds（类型判定 / accept）、../../scene/creation/useCharacterPlacement 的 CHARACTER_MODEL_BY_GENDER、

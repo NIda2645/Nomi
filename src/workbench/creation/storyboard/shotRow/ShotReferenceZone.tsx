@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { isProjectExecutionContextCurrent, isProjectImportCancellation, withProjectAction } from '../../../project/projectCanvasReadSurface'
 import { useTranslation } from 'react-i18next'

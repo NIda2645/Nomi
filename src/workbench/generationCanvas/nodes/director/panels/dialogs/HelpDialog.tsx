@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 DesignModal、../../model/hotkeys（DIRECTOR_HOTKEYS / formatHotkey / DirectorHotkeyId）
  * [OUTPUT]: 对外提供 HelpDialog：四栏键位表（视口工具 / 视口操作 / 时间轴与轨道 / 视口漫游），键位全部从 model/hotkeys 单一来源实时格式化

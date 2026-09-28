@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react / react-dom 的 createPortal、react-i18next、../../../../design 的 confirmDialog / TooltipProvider、
  *          ../fullscreenZIndex 的 FULLSCREEN_Z_INDEX、../../../../ui/app-shell/windowChrome 的 currentFullscreenOverlayTopOffset、

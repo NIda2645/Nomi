@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { cn } from '../../utils/cn'
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '../../design'

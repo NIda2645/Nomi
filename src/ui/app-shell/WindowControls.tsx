@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from "react";
 import { IconMinus, IconSquare, IconX } from "@tabler/icons-react";
 import { cn } from "../../utils/cn";

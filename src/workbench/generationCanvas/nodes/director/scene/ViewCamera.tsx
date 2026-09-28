@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useThree/useFrame、@react-three/drei 的 OrbitControls、
  *          ../model/vec3、../model/directorTypes、../model/cameraLens（exportAspectRatio / povVerticalFov）、./cameraMath（cameraQuaternion / THREE_CAMERA_FLIP）、

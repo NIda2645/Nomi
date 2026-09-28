@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { NomiBrand } from '../../../design/identity'
 // Agent 面板 v4 · 整块面板的装配壳
 //

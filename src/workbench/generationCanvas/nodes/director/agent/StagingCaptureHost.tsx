@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../store/generationCanvasStore、../../../model/generationCanvasTypes、../bridge/persistOutputs 的 persistDirectorScreenshot、
  *          ../model/directorProject 的 normalizeDirectorProject、../model/directorIds 的 createOutputId、../model/directorNodeMeta 的 meta 键、./createStagingReferenceNode 的 readStagingAutoCapture、./DirectorHeadlessCapture

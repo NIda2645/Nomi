@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { workspacePanelFrame, workspacePanelHeader } from '../WorkspacePanelFrame'
 import { CreationResourceTreeToggle } from './CreationResourceTreeToggle'

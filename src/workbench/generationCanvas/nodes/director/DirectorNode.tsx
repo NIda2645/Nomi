@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../ui/chunkBoundary 的 lazyWithChunkBoundary、../../../../utils/cn、
  *          ../../../../design 的 WorkbenchButton、@tabler/icons-react 图标、../../store/generationCanvasStore、

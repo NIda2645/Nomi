@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 设计实验室 · Agent 面板 v4 · **Vocabulary 板**（8 个积木 × 各自的状态）
 //
 // 取景框是 `Piece`：这一组每一格只渲**那一个积木**，因为定稿 Vocabulary 板画的就是

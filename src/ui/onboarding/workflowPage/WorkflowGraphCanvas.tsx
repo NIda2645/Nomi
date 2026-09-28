@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 只读节点图画布：SVG 连线层 + 绝对定位的节点卡 + 缩放/适应 + 拖动平移。
  * plan: docs/plan/2026-08-12-model-settings-home-and-comfyui-workflow-page.md

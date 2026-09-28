@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 外部 Agent 正在接模型时，模型页顶部那张卡的下半——五步进度与失败态。
  *

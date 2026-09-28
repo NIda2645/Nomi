@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSelect / WorkbenchButton / confirmDialog）、../../../../../../ui/toast、../../DirectorEditorContext、
  *          ../../model/directorTypes（DirectorCamera / CloseupClip / CLOSEUP_MOTION_PRESETS 等）、../../model/closeupRig（DEFAULT_CUSTOM_ANCHOR / CLOSEUP_MIN_DISTANCE）、

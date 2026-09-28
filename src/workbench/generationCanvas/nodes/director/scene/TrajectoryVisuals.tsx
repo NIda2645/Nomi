@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber 的 useFrame、../DirectorEditorContext 的 useDirectorStore、../model/clips 的 waypointsOfClip、
  *          ../model/directorTypes（TimelineEntity / TrajectoryClip / Waypoint）、../model/trajectoryEval 的 sampleWaypoints、../model/vec3 的 DEG_TO_RAD、

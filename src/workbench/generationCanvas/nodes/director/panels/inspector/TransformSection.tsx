@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../DirectorEditorContext、../../model/directorTypes、../../model/editLayer、../../scene/viewSettings 的 FREE_CAMERA_HOME、
  *          ../fields/FieldPrimitives（InspectorCard / SectionHeader）、../fields/SliderNumberField

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { getBezierPath, useReactFlow, type ConnectionLineComponentProps } from '@xyflow/react'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 

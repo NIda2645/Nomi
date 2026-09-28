@@ -1,7 +1,7 @@
 import NodeGenerationComposer from './LazyNodeGenerationComposer'
 import { StoryboardOverrideBadge } from './StoryboardOverrideBadge'
 import { notify } from '../../../ui/notificationPolicy'
-import React from 'react'
+import React, { type JSX } from 'react'
 import type { ImageGenerationPreset } from 'img-fx'
 import { useTranslation } from 'react-i18next'
 import { IconCopy, IconDownload, IconMaximize, IconUpload } from '@tabler/icons-react'

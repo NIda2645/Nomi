@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { LibraryGroup } from '../library/LibraryGroup'
 import { groupLibraryItems } from '../library/libraryGroups'
 /**

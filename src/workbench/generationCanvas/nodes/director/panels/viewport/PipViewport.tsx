@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSelect / WorkbenchButton / WorkbenchIconButton）、../../../../../../vendor/tablerIcons、../../../../../../utils/cn、
  *          ../../DirectorEditorContext、../../scene/pipCamera（PipRect / pipCameraIdOf）、../../model/cameraLens 的 exportAspectRatio

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import { platformModifier } from '../../design/platformShortcut'
 import { useTranslation } from 'react-i18next'
 import { useWorkbenchStore } from '../workbenchStore'

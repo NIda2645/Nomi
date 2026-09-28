@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../utils/cn、../../model/ikChains 的 IkHandleKey、../../model/rigs 的 SemanticBone
  * [OUTPUT]: 对外提供 PuppetFigure：2D 骨骼人偶（SVG viewBox 250×300）——17 段骨骼画成两半明暗菱形（FK 页可点选、悬停高亮），

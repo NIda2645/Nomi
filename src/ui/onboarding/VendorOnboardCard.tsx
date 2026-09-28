@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * 供应商接入卡（apimart / kie 等已知供应商复用，P4 通用第一）。
  *

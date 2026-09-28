@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { PasswordInput } from '@mantine/core'
 import { IconCode } from '@tabler/icons-react'

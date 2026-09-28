@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 「创作助手缺文本大脑」恢复卡（Issue #9 Part B）：替掉死胡同英文串
 // 「No local text model is configured」——后者只是一句报错、用户不知道怎么办。
 //

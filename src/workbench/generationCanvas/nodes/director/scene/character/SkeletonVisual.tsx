@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、three、@react-three/fiber（createPortal / useFrame / useThree）、../../DirectorEditorContext、../sceneRefs（isDirectorObjectVisible / tagEditorOnly / DIRECTOR_BONE_KEY / BoneTag）、
  *          ../sceneTheme 的 SKELETON_COLORS、../../model/rigs（FK_JOINTS / SemanticBone）、../../model/directorTypes 的 DirectorRig、./characterRig 的 findSemanticBone / BoneIndex

@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 @photo-sphere-viewer/core 的 Viewer / EquirectangularAdapter、react-dom 的 createPortal、
  *          ../../../ui/app-shell/windowChrome 的 currentFullscreenOverlayTopOffset、../../../design 的 NomiImage / WorkbenchIconButton、

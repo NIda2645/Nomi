@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { AssetLibraryContent } from '../../../workbench/assets/AssetLibraryPanel'
 import { FindReferencePanel } from '../../../workbench/assets/FindReferencePanel'

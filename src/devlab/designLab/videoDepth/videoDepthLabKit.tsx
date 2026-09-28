@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 // 设计实验室 · 屏「画布 · 提取深度」的取景台与夹具。
 //
 // 这一屏渲染的是**现役组件本身**——浮条外壳与按钮（`NodeFloatingToolbar`）、

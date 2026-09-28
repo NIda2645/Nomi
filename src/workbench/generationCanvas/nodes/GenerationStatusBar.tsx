@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 import React from 'react'
 import { useReducedProcessMotion } from './useReducedProcessMotion'
 import { cn } from '../../../utils/cn'

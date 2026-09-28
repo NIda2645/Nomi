@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * PropCardNode body — 道具分类节点（v0.8 极简版）。
  *

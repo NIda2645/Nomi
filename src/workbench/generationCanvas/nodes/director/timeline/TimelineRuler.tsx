@@ -1,3 +1,4 @@
+import type { JSX } from 'react'
 /**
  * [INPUT]: 依赖 react、./useTimelineViewport 的 TimelineViewport、../model/timeGrid（DIRECTOR_FPS / DIRECTOR_MAX_DURATION_SECONDS）
  * [OUTPUT]: 对外提供 TimelineRuler（刻度标尺 + 拖拽刷帧）、RULER_HEIGHT
