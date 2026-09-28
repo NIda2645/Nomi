@@ -509,6 +509,16 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
       projectSession(),
       canvasReadExecutionRuntime,
     ),
+    // This protocol instance is itself a live Nomi host. Its direct route does
+    // not cold-start another desktop process, so discovery may use it.
+    invokeIfOpen: (method, params, options) => invoke(
+      method,
+      params,
+      options,
+      generationAuthorities,
+      projectSession(),
+      canvasReadExecutionRuntime,
+    ),
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
     getAuthenticatedClient: () => projectSession().connection.authenticatedClient,
     onClientDetected: (name) => { recordDetectedMcpClient(name) },

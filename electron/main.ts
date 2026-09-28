@@ -64,6 +64,7 @@ import { installIntegrationSessionRuntime } from "./integrationCertification/int
 import { registerProductionRunIpc } from "./productionRun/productionRunIpc";
 import { registerProductionActionIpc } from "./productionRun/productionActionIpc";
 import { installProductionRunDesktopLifecycle } from "./productionRun/productionRunDesktopLifecycle";
+import { getProductionRunService } from "./productionRun/productionRunRuntime";
 import { canvasReadSurfaceRuntime } from "./capabilityCore/canvasReadSurfaceRuntime";
 import { registerDesktopCanvasReadRuntime, type CanvasReadExecutionRuntime } from "./capabilityCore/canvasReadMainRuntime";
 import { registerAgentLaneIpc, type LaneIpcRegistration } from "./agentLane/laneIpc";
@@ -78,6 +79,8 @@ import { registerDevDiagnostics } from "./logging/devDiagnostics";
 import { registerRendererLogIpc } from "./logging/rendererLog";
 import { createProjectInteractionCapture } from "./assets/projectInteractionCapture";
 import { issueChildWindowProject } from "./assets/windowProjectCapture";
+import { createBackgroundIdleExit, setBackgroundIdleExitOwner, type BackgroundIdleExit } from "./backgroundIdleExit";
+import { hasInFlightTasks } from "./tasks/taskCache";
 // profile 重定向必须排在 installMainProcessLifecycle **之前**：崩溃处理与日志一装上就会写盘，
 // 晚一步重定向，这次会话的头几行（含会话表头）会落在被隔离掉的那个目录里。
 const configuredUserDataDir = String(process.env.NOMI_ELECTRON_USER_DATA_DIR || "").trim();
@@ -100,13 +103,19 @@ installMainProcessLifecycle(app);
 // 它会被判第二实例而自杀；也不开窗、不起 IPC，只跑进程内 stdio JSON-RPC（下方 GUI whenReady 由
 // hasSingleInstanceLock=false 自动跳过）。
 const isMcpStdio = process.env.NOMI_MCP_STDIO === "1";
+const isBackgroundLaunch = process.env.NOMI_LAUNCH_BACKGROUND === "1";
 // Dev/test MCP may load dist-electron/main.js directly, so Electron cannot read
 // package.json and otherwise identifies as "Electron". Match the GUI identity
 // before app ready or safeStorage ciphertext written by Nomi cannot be opened.
 if (isMcpStdio && process.env.NOMI_APP_NAME) app.setName(process.env.NOMI_APP_NAME);
 const allowE2eMultiInstance = process.env.NOMI_E2E_ALLOW_MULTI_INSTANCE === "1";
 const hasSingleInstanceLock = isMcpStdio ? false : allowE2eMultiInstance ? true : app.requestSingleInstanceLock();
-const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({ isMcpStdio, allowE2eMultiInstance, hasSingleInstanceLock, ensureMainWindow: () => ensureMainWindow() });
+const { ensureArtifactPreviewSecret, flushPendingProductionDeepLink } = installProductionRunDesktopLifecycle({
+  isMcpStdio,
+  allowE2eMultiInstance,
+  hasSingleInstanceLock,
+  ensureMainWindow: () => ensureMainWindow(),
+});
 if (isMcpStdio) {
   void app
     .whenReady()
@@ -137,6 +146,20 @@ const devRemoteDebuggingPort = process.env.NOMI_DESKTOP_REMOTE_DEBUGGING_PORT;
 const DEV_RENDERER_LOAD_ATTEMPTS = 20;
 const DEV_RENDERER_LOAD_RETRY_MS = 500;
 let isRecreatingMainWindow = false;
+let backgroundIdleExit: BackgroundIdleExit | undefined;
+
+function hasInFlightProductionWork(): boolean {
+  try {
+    const service = getProductionRunService();
+    return hasInFlightTasks() || listProjects().some((project) => service.repository.list(project.id).some((run) =>
+      ['ready', 'running', 'exporting', 'pausing'].includes(String(run.status)),
+    ));
+  } catch {
+    // Unknown durable state must keep the process alive rather than risk
+    // terminating a provider job that the owner has not finished observing.
+    return true;
+  }
+}
 const lowMemoryMode = process.env.NOMI_LOW_MEMORY_MODE === "1";
 // 「本会话起不起能力核」的判断与记录是同一件事（residentSurfaceLifecycle 是唯一 owner）：
 // 不起 = 常驻生成面按配置 disabled，lane 与付费卡读到的是这个相，而不是一个说不出原因的 undefined。
@@ -179,6 +202,7 @@ async function startDesktopCapabilityCore(): Promise<void> {
     {
       canvasReadExecutionRuntime: desktopCanvasReadExecutionRuntime,
       proposalReceiptFor: createDesktopProposalReceiptResolver(),
+      onRpcActivity: () => backgroundIdleExit?.touch(),
     },
   );
   capabilityPortCache = core.getCapabilityPort();
@@ -296,9 +320,17 @@ async function createWindow(
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
+      backgroundThrottling: !isBackgroundLaunch,
     },
+    show: !isBackgroundLaunch,
+  });
+  mainWindow.on("show", () => {
+    backgroundIdleExit?.markWindowShown();
+    mainWindow.webContents.setBackgroundThrottling(true);
+    if (process.platform === "darwin") app.dock?.show?.();
   });
   setMainWindow(mainWindow); // 主窗口单一真相（registry）；closed 条件清理防窗口重建竞态误清新窗
+  if (isBackgroundLaunch && process.platform === "darwin") app.dock?.hide();
   installMainWindowInteractions(mainWindow);
   mainWindow.on("closed", () => {
     if (getMainWindow() === mainWindow) setMainWindow(null);
@@ -371,7 +403,11 @@ function recreateMainWindowFromSender(sender: WebContents, options: { preserveRo
     session.defaultSession.clearCodeCaches({}).catch(() => undefined),
   ])
     .then(() => createWindow({ bounds, maximize, rendererUrl }))
-    .then((nextWindow) => nextWindow.focus())
+    .then((nextWindow) => {
+      // A renderer reload can also happen in the hidden MCP-launched process;
+      // never let that maintenance path surface the background window.
+      if (!isBackgroundLaunch) nextWindow.focus();
+    })
     .catch((error) => {
       logError("window", "recreate-window-failed", error, { reason: options.reason });
     })
@@ -656,6 +692,12 @@ if (hasSingleInstanceLock)
       }
       registerIpc(); void import('./telemetry/telemetryLifecycle').then(({ recordAppStarted }) => recordAppStarted());
       await createWindow();
+      backgroundIdleExit = createBackgroundIdleExit({
+        isBackground: isBackgroundLaunch,
+        hasInFlightWork: hasInFlightProductionWork,
+        quit: () => app.quit(),
+      });
+      setBackgroundIdleExitOwner(backgroundIdleExit);
       // 外部 capability RPC 不是首窗依赖，且它一旦 listen 就可能收到会解析凭据的 models/generation 请求。
       // 必须在窗口完成后才暴露；失败显式消化，不能反向拖垮已经可用的首窗。低内存模式仍默认跳过。
       if (!capabilityCoreDisabled) {
@@ -693,6 +735,8 @@ app.on("window-all-closed", () => {
 // abort → ffmpegRunner 监听 abort 后 kill 子进程。同步、不抛，绝不拖住退出。
 app.on("before-quit", () => {
   // 能力核退出清理：清实例广告 + 关 RPC，让外部探测立刻知道「app 已关」。同步、不抛。
+  setBackgroundIdleExitOwner(null);
+  backgroundIdleExit?.dispose();
   stopDesktopCapabilityCore();
   void desktopLaneIpc?.dispose().catch((error) => logError("agent", "close-on-quit-failed", error));
   try {

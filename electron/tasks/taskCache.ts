@@ -1,3 +1,5 @@
+import type { CachedTask } from "../runtime";
+
 // 带 TTL + LRU 上限的内存缓存 —— 替换 runtime.ts 里裸的无界 Map（多维审计 P0-7）。
 // 裸 Map 会让永不被轮询/永远 stuck 的异步任务条目（含敏感数据）永久驻留、无上限。
 // 泛型、无领域依赖、可注入 clock 便于测试。Map 兼容的 get/set/delete 接口。
@@ -60,3 +62,8 @@ export class TtlLruCache<V> {
     }
   }
 }
+
+
+/** Shared async-generation cache owner; a live entry represents work still awaiting a terminal result. */
+export const taskCache = new TtlLruCache<CachedTask>({ maxEntries: 200, ttlMs: 60 * 60 * 1000 });
+export function hasInFlightTasks(): boolean { return taskCache.size > 0; }

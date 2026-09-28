@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { CANVAS_READ_MCP_ADAPTER, createMcpCapabilityResolver } from './mcpCapabilityProjection'
 import { createMcpProtocol, type McpTransport } from './mcpProtocol'
@@ -83,5 +83,47 @@ describe('MCP L1 tools/list_changed notification', () => {
     } finally {
       protocol.dispose()
     }
+  })
+})
+
+describe('MCP passive discovery', () => {
+  const flush = async () => { await Promise.resolve(); await Promise.resolve() }
+  function makeTransport(overrides: Partial<McpTransport> = {}) {
+    const frames: unknown[] = []
+    const invoke = vi.fn(async () => ({ skills: [{ name: 'live-skill', description: 'live' }] }))
+    const value: McpTransport = { send: (frame) => frames.push(frame), isAppOpen: () => false, invoke, ...overrides }
+    return { frames, invoke, value }
+  }
+
+  it('does not cold-start through invoke when resources/list runs with no live instance', async () => {
+    const { frames, invoke, value } = makeTransport()
+    const protocol = createMcpProtocol(value)
+    protocol.handleIncoming({ jsonrpc: '2.0', id: 91, method: 'resources/list', params: {} })
+    await flush()
+    expect(invoke).not.toHaveBeenCalled()
+    expect((frames[0] as { result?: { resources?: unknown[] } }).result?.resources).toEqual(expect.arrayContaining([expect.objectContaining({ uri: 'ui://nomi/live-draft.html' })]))
+    protocol.dispose()
+  })
+
+  it('probes a live instance for dynamic skills without using cold-start invoke', async () => {
+    const probe = vi.fn(async () => ({ skills: [{ name: 'live-skill', directoryName: 'live-skill', packageVersion: '1.0.0', contentHash: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', description: 'live', filePaths: ['SKILL.md'] }] }))
+    const { frames, invoke, value } = makeTransport({ invokeIfOpen: probe })
+    const protocol = createMcpProtocol(value)
+    protocol.handleIncoming({ jsonrpc: '2.0', id: 92, method: 'resources/list', params: {} })
+    await flush()
+    expect(probe).toHaveBeenCalledWith('skills.list', {})
+    expect(invoke).not.toHaveBeenCalled()
+    expect((frames[0] as { result?: { resources?: Array<{ name?: string }> } }).result?.resources).toEqual(expect.arrayContaining([expect.objectContaining({ name: 'live-skill' })]))
+    protocol.dispose()
+  })
+
+  it.each(['initialize', 'tools/list', 'resources/list', 'resources/templates/list', 'prompts/list', 'ping'])('keeps %s passive', async (method) => {
+    const { frames, invoke, value } = makeTransport()
+    const protocol = createMcpProtocol(value)
+    protocol.handleIncoming({ jsonrpc: '2.0', id: 93, method, params: method === 'initialize' ? { protocolVersion: '2025-11-25' } : {} })
+    await flush()
+    expect(invoke).not.toHaveBeenCalled()
+    expect(frames).toHaveLength(1)
+    protocol.dispose()
   })
 })

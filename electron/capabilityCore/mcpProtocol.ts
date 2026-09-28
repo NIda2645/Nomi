@@ -66,6 +66,8 @@ const WIDGET_TOOL_NAMES = new Set(['nomi_run_start', 'nomi_read'])
 export interface McpTransport {
   send(message: unknown): void
   invoke(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown>
+  /** Probe an already-live instance without allowing the transport to cold-start Nomi. */
+  invokeIfOpen?(method: string, params: Record<string, unknown>, options?: McpInvokeOptions): Promise<unknown | undefined>
   /**
    * Nomi 是否开着（有活实例）= **「应用内确认卡这条问法还在不在」**，不是「用户注意力在不在 Nomi」。
    * 确认优先弹在调用方（客户端声明 elicitation 即可）；本标志只用于回答「客户端问不了时，还有谁能问」。
@@ -634,7 +636,9 @@ export function createMcpProtocol(transport: McpTransport) {
     }
 
     if (method === 'resources/list') {
-      const res = (await invokeForRequest('skills.list', {})) as { skills?: SkillSummaryFrame[] } | null
+      // Discovery is passive. A missing Nomi instance must not become visible as
+      // a desktop window merely because a host refreshes its resource list.
+      const res = await transport.invokeIfOpen?.('skills.list', {}) as { skills?: SkillSummaryFrame[] } | null | undefined
       const skillResources = (res?.skills || []).flatMap((skill) => {
         return (skill.filePaths ?? ['SKILL.md']).flatMap(filePath => {
           const uri = skillResourceUri(skill, filePath)
@@ -700,7 +704,7 @@ export function createMcpProtocol(transport: McpTransport) {
       return
     }
     if (method === 'prompts/list') {
-      const res = (await invokeForRequest('skills.list', {})) as { skills?: SkillSummaryFrame[] } | null
+      const res = (await transport.invokeIfOpen?.('skills.list', {})) as { skills?: SkillSummaryFrame[] } | null | undefined
       // name 用 directoryName（斜杠命令友好，如 CodeBuddy 会转成 /director-cinematography）。
       // 版本/hash 一并返回：客户端可以把 prompt 绑定到与 resources 相同的内容快照，避免
       //「列表看到 A、get 却加载了后来写入的 B」的漂移。旧客户端仍可只传 name，get 会在
