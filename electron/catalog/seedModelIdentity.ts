@@ -27,7 +27,10 @@ export type CatalogLifecycle = "flagship" | "value" | "companion" | "legacy";
  *  - **暂不合并**（对照 modelIdentity.channelMerge.test.ts 的待定名单，改这里之前先看那里写的理由）：
  *    ① Runway 把变体拆成多行的（seedance2 / _fast / _mini、veo3.1 / _fast）——选择器按供应商折叠，
  *       并进来后同一家只剩一行可选，用户选的变体与真正发出去的 modelKey 会对不上；
- *    ② 并进来会让部分用户的默认渠道换家的（fal 的 GPT Image 2、Kling V3 Pro：同档里「fal.ai」字母序排在 RunningHub 前）；
+ *    ② fal 的 GPT Image 2、Kling V3 Pro（2026-09-29 协调会话裁决 B：不并，各留一行）：并进来会让部分用户的默认渠道换家
+ *       （同档里「fal.ai」字母序排在 RunningHub 前）。要保住默认家就得在 vendorTier 里给 fal / Runway 单开第 3 档，
+ *       而那把尺同时排着 Agent 读的模型清单（laneModelRead 的 list_models 原样交给模型）——Agent 在没人看见的情况下
+ *       换家花钱，比下拉里多两行糟得多。
  *    ③ 出品方查不清的（Runway 的 seed_audio）。
  */
 export const CANONICAL_MODEL_IDS: Record<string, string> = {
@@ -88,7 +91,7 @@ export const CANONICAL_MODEL_IDS: Record<string, string> = {
   // Grok Imagine Image 2（Runway / apimart；apimart 侧只有文生图，合并不受影响——合并的是模型不是模式）
   "grok_imagine_image_2": "grok imagine image 2",
   "grok-imagine-2.0-ext": "grok imagine image 2",
-  // 可灵 3.0（kie / apimart / RunningHub）
+  // 可灵 3.0（kie / apimart / RunningHub）。fal 的 `fal-ai/kling-video/v3/pro` 不并：见文件头「暂不合并 ②」。
   "kling-3.0": "可灵 3.0",
   "kling-v3": "可灵 3.0",
   "kling-v3.0-pro": "可灵 3.0",

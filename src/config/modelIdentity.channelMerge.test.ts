@@ -61,7 +61,7 @@ const RUNWAY_NATIVE = new Set(['gen4.5', 'gen4_turbo', 'gen4_image', 'gen4_image
 
 /** 这次**不并**的渠道行 → 理由。并它们之前先把理由里的事解决掉（拍板默认渠道 / 变体桥接 / 查清出品方）。 */
 const PENDING: ReadonlyMap<string, string> = new Map([
-  ['fal:openai/gpt-image-2', '默认渠道：同档（vendorTier 2）里「fal.ai」字母序排在 RunningHub 前，只接了 RunningHub + fal 的用户默认家会从 RunningHub 变成 fal——待拍板'],
+  ['fal:openai/gpt-image-2', '2026-09-29 裁决 B：不并，单独一行。并进来默认渠道会换家（同档 vendorTier 2 里「fal.ai」字母序排在 RunningHub 前，只接了 RunningHub + fal 的用户默认家会从 RunningHub 变成 fal）；要保住默认家就得给 fal / Runway 单开第 3 档，而那会改掉 Agent 读的 list_models 顺序——Agent 在没人看见的情况下换家花钱，比下拉里多两行糟得多'],
   ['fal:fal-ai/kling-video/v3/pro', '同上（可灵 3.0 组里有 RunningHub 的 kling-v3.0-pro）'],
   ['runway:seedance2', '变体行：中转站是「一行 + 标准/快速/Mini 变体轴」，Runway 是每个变体一行；选择器按供应商折叠，并进来后 Runway 只剩一行可选'],
   ['runway:seedance2_fast', '变体行（同上）'],
@@ -146,7 +146,7 @@ describe('渠道行并进模型身份 · ② 钱走哪家不悄悄变', () => {
     expect(compared).toBeGreaterThanOrEqual(MERGED.length)
   })
 
-  it('fal 的 GPT Image 2 / Kling V3 Pro 为什么暂不并：并进来会让「只接了 RunningHub + fal」的用户默认家从 RunningHub 变成 fal', () => {
+  it('fal 的 GPT Image 2 / Kling V3 Pro 为什么不并（2026-09-29 裁决 B）：并进来会让「只接了 RunningHub + fal」的用户默认家从 RunningHub 变成 fal', () => {
     const simulate = { 'fal:openai/gpt-image-2': 'gpt image 2', 'fal:fal-ai/kling-video/v3/pro': '可灵 3.0' }
     const gpt = dropdown(state, 'image', simulate).find((group) => group.canonicalId === 'gpt image 2')!
     const kling = dropdown(state, 'video', simulate).find((group) => group.canonicalId === '可灵 3.0')!
