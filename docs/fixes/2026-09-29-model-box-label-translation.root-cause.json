@@ -1,0 +1,150 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-model-box-label-translation",
+  "problem_type": "英文界面的模型框里模型名还是中文：供应商名在模型框那一层翻了，模型名漏了",
+  "symptom": "2026-09-29 真机走查（英文界面）：图片模型框里是「Gemini 3 Pro 图像」，视频模型框里是「可灵 3.0」「可灵 3.0 Turbo」——翻译表 src/i18n/locales/modelDisplayText.ts 里明明有 'Gemini 3 Pro 图像' → 'Gemini 3 Pro Image'、'可灵 3.0' → 'Kling 3.0'。同一行的供应商 chip 却是英文（Volcengine Ark）。",
+  "direct_cause": "模型框的行数据由 src/workbench/common/useDedupedModelSelect.ts 的 buildModelSelectOptions（节点生成框 / 分镜镜头条 / 锚点行 / 行内参数条）与 buildVendorExplicitModelOptions（批量「统一模型」）、以及 src/workbench/settings/modelBoxOrder.ts 的 buildModelBoxRows（设置 → 模型框排序）拼出来。三处都直接用 DedupedModel.label（= 目录 labelZh 去掉能力后缀），没有经过 translateModelDisplayText；同一文件里的供应商名 modelProviderLabel 却经过了。",
+  "class_root": "「目录里的中文原名 → 当前语言的显示名」这一步只在各宿主自己记得时才做：Agent 面板（assistantModelIdentity.labelForModel）和接入页（ModelChipGroups / ModelEnableEditor）在显示时各自调了翻译，模型框这一层只给供应商名调了、模型名漏了。模型名又不能在更早的 dedupeModelOptions / toCatalogModelOptions 里翻——那里的 label 是身份的输入（没显式声明身份的行按 normalizeModelLabel(label) 归组，模型框偏好按 canonicalId 存），在那里翻，身份就随语言变。",
+  "affected_population": [
+    "英文界面的所有模型框：画布节点生成框、分镜镜头条与锚点行、行内参数条、批量「统一模型」、设置 → 模型框排序与隐藏",
+    "目录里 labelZh 是中文、翻译表里有英文的每一个 curated 模型（Gemini 3 Pro 图像、可灵 3.0 / 3.0 Turbo 等）"
+  ],
+  "scope_paths": [
+    "src/workbench/common/useDedupedModelSelect.ts",
+    "src/workbench/settings/modelBoxOrder.ts",
+    "src/workbench/settings/ModelBoxOrderSection.tsx"
+  ],
+  "entry_points": [
+    "src/workbench/common/useDedupedModelSelect.ts 的 buildModelSelectOptions（折叠版模型框，所有 useDedupedModelSelect 宿主）",
+    "src/workbench/common/useDedupedModelSelect.ts 的 buildVendorExplicitModelOptions（批量「统一模型」摊平版）",
+    "src/workbench/settings/modelBoxOrder.ts 的 buildModelBoxRows（设置 → 模型框排序与隐藏）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "渲染层内部的显示名问题；翻译表 src/i18n/locales/modelDisplayText.ts 是仓内现成的，不涉及外部协议。",
+  "invariants": [
+    "模型框里一个模型的显示名只有一个出处：useDedupedModelSelect.modelDisplayLabel（按当前语言走 translateModelDisplayText，与供应商名同一张表）；折叠版、批量摊平版（健康行与连败灰化行）、设置区行名都经它",
+    "翻译只进显示、不进身份：canonicalId（下拉的 value、模型框偏好的存键）两种语言一字不差，没显式声明身份、按 label 归组的行也一样",
+    "设置区的行名函数是 buildModelBoxRows 的必填参数，新宿主漏传就是类型错误，不会悄悄退回中文原名"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/common/useDedupedModelSelect.ts",
+    "tests": [
+      "src/workbench/common/useDedupedModelSelect.test.ts",
+      "src/workbench/settings/modelBoxOrder.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/common/useDedupedModelSelect.ts",
+      "symbol": "modelDisplayLabel"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/settings/ModelBoxOrderSection.tsx",
+      "symbol": "modelDisplayLabel"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/settings/ModelBoxOrderSection.tsx",
+      "symbol": "buildModelBoxRows"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/settings/modelBoxOrder.ts",
+      "symbol": "labelOfModel"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 4,
+    "why_not": "修前是三处各自直接读 DedupedModel.label（buildModelSelectOptions、buildVendorExplicitModelOptions、buildModelBoxRows）加设置区的调用点；修后显示名的出处收成一个（modelDisplayLabel），剩下的门各有职责：两个模型框行构建器与设置区行构建器是三种不同形状的下拉 / 列表，设置区把行名函数当必填参数注入（与既有的供应商名 labelOfProvider 同一写法），保持 modelBoxOrder 是可单测的纯 derive。门数不变，但「显示名怎么来」从三份写法变成一份。"
+  },
+  "generality_proof": "修在模型框的展示层 useDedupedModelSelect.ts——它本来就是供应商名 modelProviderLabel 的出处，所有模型框宿主（画布、分镜、行内参数条、批量、设置）都从这里拿行数据，不按模型、供应商、语言写特例：翻译表里有的都翻，没有的（用户自建的中文名）原样显示。测试在 zh / en 两种语言下核对显示名，并断言 canonicalId 不随语言变（含按 label 归组的「可灵 3.0」）。变异校验：四处调用（折叠版健康行 / 连败行、摊平版健康行 / 连败行）与设置区行名逐个改回原始 label，五个变异全部抓红。真机走查：英文界面视频框出现 Kling 3.0 / Kling 3.0 Turbo，图片框出现 Gemini 3 Pro Image，两个框里「仍是中文的行：无」。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/common/useDedupedModelSelect.ts",
+      "symbol": "modelDisplayLabel",
+      "responsibility": "模型框里模型显示名的唯一出处：按当前语言翻译，只进显示、不进身份。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/common/useDedupedModelSelect.ts",
+      "entry_point": "buildModelSelectOptions",
+      "disposition": "enforced",
+      "evidence": "useDedupedModelSelect.test「折叠版：英文界面显示英文名，value 两种语言相同」「最近连败、被灰化沉底的行：名字照样跟着语言走」。"
+    },
+    {
+      "path": "src/workbench/common/useDedupedModelSelect.ts",
+      "entry_point": "buildVendorExplicitModelOptions",
+      "disposition": "enforced",
+      "evidence": "useDedupedModelSelect.test「批量摊平版：同一个显示名函数」与连败行那一条。"
+    },
+    {
+      "path": "src/workbench/settings/modelBoxOrder.ts",
+      "entry_point": "buildModelBoxRows",
+      "disposition": "enforced",
+      "evidence": "modelBoxOrder.test「英文界面：行名走现成的翻译表；canonicalId 两种语言一字不差」；行名函数是必填参数。"
+    },
+    {
+      "path": "src/workbench/ai/assistantModelIdentity.ts",
+      "entry_point": "labelForModel",
+      "disposition": "not-affected",
+      "evidence": "Agent 面板的模型行早就在显示时调 translateModelDisplayText，不经过模型框这一层。"
+    },
+    {
+      "path": "src/config/modelIdentity.ts",
+      "entry_point": "dedupeModelOptions",
+      "disposition": "not-affected",
+      "evidence": "刻意不在这里翻：label 是身份的输入（normalizeModelLabel 归组、canonicalId 存偏好），在这里翻会让身份随语言变。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "每加一个新的模型框宿主或一种新的行形状，都要记得把目录中文原名翻成当前语言；此前靠各宿主自觉，模型框这一层就漏了。",
+    "same_class_scan": [
+      "rg translateModelDisplayText（src）：接入页（ModelChipGroups / ModelEnableEditor / ModelSettingsHome / OnboardingDrawer / workflowPage）、Agent 面板（assistantModelIdentity）、分镜参数（ShotParamControls）都在显示时翻；模型框这一层只翻了供应商名。",
+      "rg 'm.label|model.label'（src/workbench/common、src/workbench/settings）：模型框相关只有 buildModelSelectOptions ×2、buildVendorExplicitModelOptions ×2、buildModelBoxRows ×1 五处，本次全部改为经 modelDisplayLabel。",
+      "rg dedupeModelOptions 的其余消费方：Agent 可用模型（availableModels / plannedNodeMeta）面向模型、不面向人眼，保持目录原名，不在本次范围。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/common/useDedupedModelSelect.ts",
+    "invariant": "模型框里的模型显示名都经 modelDisplayLabel；身份不随语言变。",
+    "failure_mode": "任何一处行构建器改回直接读 DedupedModel.label，英文界面测试红；设置区漏传行名函数，类型检查红；有人把翻译挪进身份层，canonicalId 跨语言相等的断言红。",
+    "exception_policy": "none",
+    "strategy": "显示名收成一个函数，与供应商名放在同一个文件、用同一张翻译表；设置区沿用注入写法并改成必填。",
+    "artifacts": [
+      "src/workbench/common/useDedupedModelSelect.ts",
+      "src/workbench/settings/modelBoxOrder.ts",
+      "src/workbench/settings/ModelBoxOrderSection.tsx"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/common/useDedupedModelSelect.test.ts",
+    "src/workbench/settings/modelBoxOrder.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/common/useDedupedModelSelect.test.ts",
+    "src/workbench/settings/modelBoxOrder.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/common/useDedupedModelSelect.ts",
+      "src/workbench/settings/modelBoxOrder.ts"
+    ],
+    "rationale": "三处直接读原始 label 的写法在原处换成 modelDisplayLabel / 注入的行名函数，没有保留旧写法或开关。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "无数据迁移：只改显示；canonicalId、模型框偏好（排序 / 隐藏 / 记住的那家）一个字不动。",
+  "residual_risks": [
+    "翻译表里没有的中文名（用户自建渠道的模型、以后新接但没补翻译的 curated 模型）在英文界面仍显示中文；这次走查的两个模型框里没有这样的行（「仍是中文的行：无」），新接模型时要记得补表。"
+  ]
+}
