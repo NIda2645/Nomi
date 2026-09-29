@@ -50,11 +50,11 @@ test('dayOf 截取 ISO 时间戳的日期部分', () => {
 })
 
 test('extractFeedbackItem 取出报告要的那几格，缺字段兜底不抛', () => {
-  const item = extractFeedbackItem('feedback/2026-09-27/a.json', fakeFeedback({ key: 'feedback/2026-09-27/a.json', receivedAt: '2026-09-27T13:31:12.554Z', receipt: 'NF-0927-0001', summary: '占位：素材内容与扩展名不符', note: '占位留言' }).record)
+  const item = extractFeedbackItem('feedback/2026-01-01/a.json', fakeFeedback({ key: 'feedback/2026-01-01/a.json', receivedAt: '2026-01-01T08:00:00.000Z', receipt: 'NF-0101-0001', summary: '占位：素材内容与扩展名不符', note: '占位留言' }).record)
   assert.deepEqual(item, {
-    key: 'feedback/2026-09-27/a.json',
-    date: '2026-09-27',
-    id: 'NF-0927-0001',
+    key: 'feedback/2026-01-01/a.json',
+    date: '2026-01-01',
+    id: 'NF-0101-0001',
     version: '0.22.3',
     system: 'win32',
     locale: 'zh-CN',
@@ -77,7 +77,7 @@ test('extractFeedbackItem 对畸形 payload 兜底，不抛', () => {
 
 test('buildFeedbackItems 按日期新到旧排序', () => {
   const items = buildFeedbackItems([
-    fakeFeedback({ key: 'feedback/2026-09-27/a.json', receivedAt: '2026-09-27T00:00:00.000Z', receipt: 'NF-1' }),
+    fakeFeedback({ key: 'feedback/2026-01-01/a.json', receivedAt: '2026-09-27T00:00:00.000Z', receipt: 'NF-1' }),
     fakeFeedback({ key: 'feedback/2026-09-28/b.json', receivedAt: '2026-09-28T00:00:00.000Z', receipt: 'NF-2' }),
   ])
   assert.deepEqual(items.map((i) => i.id), ['NF-2', 'NF-1'])
@@ -209,7 +209,7 @@ test('tallyUpdateActions 按 action × result 计数', () => {
 
 test('buildIntakeReport 只把 newFeedbackKeys 里的键当"本次新增反馈"', () => {
   const feedbackRecords = [
-    fakeFeedback({ key: 'feedback/2026-09-27/old.json', receivedAt: '2026-09-27T00:00:00.000Z', receipt: 'NF-OLD' }),
+    fakeFeedback({ key: 'feedback/2026-01-01/old.json', receivedAt: '2026-09-27T00:00:00.000Z', receipt: 'NF-OLD' }),
     fakeFeedback({ key: 'feedback/2026-09-28/new.json', receivedAt: '2026-09-28T00:00:00.000Z', receipt: 'NF-NEW' }),
   ]
   const report = buildIntakeReport({
