@@ -9,22 +9,25 @@
 // `downloadAsset.fetchAssetBytes` 的注释早就写着「另存与生成本地化必须同一条线路、同一组上限」，
 // 那次只收了两处，第三处（付费卡）漏在外面——这就是「三份各写一遍、其中一份漂了」的形状。
 // 现在三处都调这里：线路、超时、上限只有一份。
+//
+// 时间与大小预算（2026-09-28）：以前是一个 60 秒墙钟，慢线路上的大视频注定超时、每次重来都一样；
+// 现在是「空闲时限 + 随声明大小放宽的总上限」，数字只在 `shared/assets/providerMediaRetrievalBudget.ts`
+// 一处（依据写在那里）——渲染层算「正在存到你电脑上」最长能停多久，读的是同一份。
 import type { HardenedFetchResult } from "../hardenedFetch";
 import { hardenedFetch } from "../hardenedFetch";
 import { providerDispatcher, type ProviderNetworkConfig } from "../providerNetwork";
+import {
+  PROVIDER_MEDIA_BYTE_CAP,
+  PROVIDER_MEDIA_IDLE_TIMEOUT_MS,
+  PROVIDER_MEDIA_RETRIEVAL_MAX_MS,
+  providerMediaRetrievalTotalMs,
+} from "../shared/assets/providerMediaRetrievalBudget";
 
-/** 一次取回的墙钟上限。视频成片比图大一个数量级，20 秒的通用缺省对它不够。 */
-export const PROVIDER_MEDIA_FETCH_TIMEOUT_MS = 60_000;
 /**
- * 单个产物的字节上限。沿用素材导入原来那一个数（本次只是把三处收成一处，不新增上限）；
- * 取回与「已经在内存里的 data: 产物」都问这里，不各带一个数字。
+ * 单个产物是否超过字节上限。取回与「已经在内存里的 data: 产物」都问这里，不各带一个数字。
  */
 export function exceedsProviderMediaCap(byteLength: number): boolean {
-  return byteLength > providerMediaCap();
-}
-
-function providerMediaCap(): number {
-  return 200 * 1024 * 1024;
+  return byteLength > PROVIDER_MEDIA_BYTE_CAP;
 }
 
 export type ProviderMediaFetchOptions = {
@@ -49,8 +52,12 @@ export async function fetchProviderMedia(url: string, options: ProviderMediaFetc
   const providerRoute = options.providerNetwork ? providerDispatcher({ network: options.providerNetwork }) : undefined;
   try {
     return await hardenedFetch(url, {
-      timeoutMs: PROVIDER_MEDIA_FETCH_TIMEOUT_MS,
-      maxBytes: providerMediaCap(),
+      // 响应头到达之前还不知道多大：总上限先按字节上限那一档给，到了再按声明大小重算；
+      // 线路一个字节都不来，空闲时限先拦住，不陪到总上限。
+      timeoutMs: PROVIDER_MEDIA_RETRIEVAL_MAX_MS,
+      idleTimeoutMs: PROVIDER_MEDIA_IDLE_TIMEOUT_MS,
+      timeoutForDeclaredSize: providerMediaRetrievalTotalMs,
+      maxBytes: PROVIDER_MEDIA_BYTE_CAP,
       ...(options.allowContentTypes === 'any' ? {} : { allowContentTypes: options.allowContentTypes ?? DEFAULT_MEDIA_CONTENT_TYPES }),
       ...(options.trustedPrivateOrigin ? { allowedPrivateOrigins: [options.trustedPrivateOrigin] } : {}),
       ...(providerRoute ? { dispatcher: providerRoute } : {}),
