@@ -9,7 +9,7 @@
 //   在 data.result.videos[0].url[0]，url 是嵌套数组）→ 共用 apimartVendor 的 APIMART_VIDEO_QUERY_OP。
 //
 // 字段名分歧（这正是每条 mapping 各自翻译的原因）：
-//   比例：aspect_ratio(sora/veo/kling) · size(seedance/wan) · 无(hailuo)
+//   比例：aspect_ratio(veo/kling) · size(seedance/wan) · 无(hailuo)
 //   清晰度：resolution(多数) · mode(kling)
 //   图生视频：image_urls 数组(多数) · first_frame_image 字符串(hailuo)
 //   音频：audio(kling) · generate_audio(seedance)
@@ -118,7 +118,7 @@ function videoModel(p: {
   return { modelKey: p.modelKey, labelZh: p.labelZh, archetypeId: p.archetypeId, mappings };
 }
 
-/** 11 个 apimart 视频模型（单源）。 */
+/** apimart 视频模型（单源）。 */
 export const APIMART_VIDEO_MODELS: ApimartVideoModel[] = [
   // Vidu Q3（2026-07-29）：参考生视频，1-7 张参考图必填、无纯文生 → 只种 i2v mapping。
   // 变体（标准 viduq3 / Mix viduq3-mix）→ body model 取 {{request.params.model}}。
@@ -148,13 +148,8 @@ export const APIMART_VIDEO_MODELS: ApimartVideoModel[] = [
     t2vBody: { size: SIZE, quality: QUALITY, duration: DURATION },
     i2vBody: { quality: QUALITY, duration: DURATION, image_urls: IMAGE_URLS },
   }),
-  // Sora 2：变体（标准 sora-2 / Pro sora-2-pro）→ body model 取 {{request.params.model}}。duration 离散枚举。
-  videoModel({
-    modelKey: "sora-2", labelZh: "Sora 2", archetypeId: "sora-2", modelRef: VARIANT_MODEL_REF,
-    t2vBody: { aspect_ratio: ASPECT, resolution: RESOLUTION, duration: DURATION },
-    i2vBody: { resolution: RESOLUTION, duration: DURATION, image_urls: IMAGE_URLS }, // i2v 时 aspect 由图自动决定
-    i2vDrops: ["aspect_ratio"],
-  }),
+  // Sora 2 已退役（2026-09-28，OpenAI 于 2026-09-24 关停 Sora 2 与 Videos API）：这里删掉的同时，
+  // seedBuiltins 的退役清单把老装机里已落盘的那一行摘掉——两处必须同删，否则启动时插回来来回抖。
   // Veo 3.1：变体（fast/quality/lite）→ {{request.params.model}}。i2v 含 generation_type（reference 参考图 /
   // frame 首尾帧，由 mode.fixedParams 注入）；duration 固定 8 不发（走 API 默认）。
   videoModel({

@@ -163,7 +163,7 @@ describe('custom capability contract catalog -> canvas -> request', () => {
         updatedAt: '',
       },
     ]
-    const models: ModelCatalogModelDto[] = [{
+    const successor: ModelCatalogModelDto = {
       modelKey: 'future-video-v1',
       vendorKey: 'replacement-relay',
       labelZh: 'Future Video V1',
@@ -175,11 +175,25 @@ describe('custom capability contract catalog -> canvas -> request', () => {
       meta: { customCapabilityContract: contract },
       createdAt: '',
       updatedAt: '',
-    }]
+    }
+    // 候选晋升（serviceCatalog.promote）只把前任那一行**停用**、不删：旧行还在，这是「供应商断开」，不是退役。
+    const predecessor: ModelCatalogModelDto = {
+      ...successor,
+      vendorKey: 'disconnected-relay',
+      enabled: false,
+      published: false,
+      availability: { usable: false, reason: 'model_disabled' },
+      publishedModes: [],
+    }
+    const models = [successor, predecessor]
 
     await expect(resolveExecutableNodeFromCatalog(node, {
       listCatalogVendors: async () => vendors,
-      listCatalogModels: async () => models,
+      // 按主进程 filterByParams 的语义作答：带了哪个条件就按哪个筛。
+      listCatalogModels: async (params) => models.filter((row) =>
+        (params.vendorKey === undefined || row.vendorKey === params.vendorKey)
+        && (params.kind === undefined || row.kind === params.kind)
+        && (params.enabled === undefined || row.enabled === params.enabled)),
     })).rejects.toThrow(/disconnected-relay/)
     expect(node.meta?.modelVendor).toBe('disconnected-relay')
 

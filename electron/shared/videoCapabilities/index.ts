@@ -29,7 +29,6 @@ export { SEEDANCE_2_5_APIMART_ARCHETYPE } from "./seedance25Apimart";
 export { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
 export { SEEDANCE_VOLCENGINE_ARCHETYPE } from "./seedanceVolcengine";
 export { SEEDANCE_VOLCENGINE_2_5_ARCHETYPE } from "./seedanceVolcengine25";
-export { SORA_2_ARCHETYPE } from "./sora2";
 export { VEO_3_1_ARCHETYPE } from "./veo31";
 export { VIDU_Q3_ARCHETYPE } from "./viduQ3";
 export { WAN_2_7_ARCHETYPE } from "./wan27";

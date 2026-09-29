@@ -423,10 +423,51 @@ describe("canonicalModelId（跨供应商去重键，2026-07-17）", () => {
     expect((seedream?.meta as Record<string, unknown>)?.canonicalModelId).toBe(norm);
   });
 
-  it("版本级不合并：Seedream 5.0/4.0（火山单家版本）不带 4.5 的 canonical", () => {
+  it("版本级不合并：Seedream 5.0 Lite / 4.0（火山）不带 4.5 的 canonical", () => {
     const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
-    expect(canonicalOf(state, "volcengine", "doubao-seedream-5-0-260128")).toBeUndefined();
+    // 5.0 Lite 自 2026-09-28 起与 kie / Runway 的 Lite 同组（组里有渠道行就每行显式填），仍是版本级、不是 4.5。
+    expect(canonicalOf(state, "volcengine", "doubao-seedream-5-0-260128")).toBe("seedream 5.0 lite");
     expect(canonicalOf(state, "volcengine", "doubao-seedream-4-0-250828")).toBeUndefined();
+  });
+
+  it("渠道行（fal / Runway）写模型本身的身份，不带渠道名（2026-09-28 合并）", () => {
+    const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
+    expect(canonicalOf(state, "fal", "bytedance/seedance-2.5")).toBe("seedance 2.5");
+    expect(canonicalOf(state, "runway", "seedance2_5")).toBe("seedance 2.5");
+    expect(canonicalOf(state, "kie", "bytedance/seedance-2-5")).toBe("seedance 2.5");
+    expect(canonicalOf(state, "runway", "hailuo3")).toBe("minimax h3");
+    expect(canonicalOf(state, "minimax", "MiniMax-H3")).toBe("minimax h3");
+    expect(canonicalOf(state, "runway", "gemini_image3.1_flash")).toBe("nano banana 2");
+    expect(canonicalOf(state, "fal", "fal-ai/nano-banana-2")).toBe("nano banana 2");
+    expect(canonicalOf(state, "runway", "gemini_2.5_flash")).toBe("nano banana");
+    expect(canonicalOf(state, "runway", "gpt_image_2")).toBe("gpt image 2");
+    expect(canonicalOf(state, "fal", "minimax/h3-max")).toBe("minimax h3-max");
+    expect(canonicalOf(state, "elevenlabs", "eleven_v3")).toBe("eleven v3");
+    expect(canonicalOf(state, "runway", "eleven_v3")).toBe("eleven v3");
+    // Muse Image 是 Meta 的模型（2026-07-07 发布），Runway 只是渠道：身份不带 Runway。
+    expect(canonicalOf(state, "runway", "muse_image")).toBe("muse image");
+    // Runway 自家出品保留 Runway 身份；待定的（默认渠道会换家 / 变体行）这次不填。
+    expect(canonicalOf(state, "runway", "gen4.5")).toBeUndefined();
+    expect(canonicalOf(state, "fal", "openai/gpt-image-2")).toBeUndefined();
+    expect(canonicalOf(state, "runway", "seedance2_fast")).toBeUndefined();
+  });
+
+  it("老装机自愈：已落盘的 Runway 行下次启动补上模型身份，分档跟着模型走（gemini_2.5_flash = Nano Banana → legacy）", () => {
+    const first = applyBuiltinSeeds(emptyCatalog(), NOW).state;
+    const idx = first.models.findIndex((m) => m.vendorKey === "runway" && m.modelKey === "gemini_2.5_flash");
+    // 升级前的样子：没有 canonicalModelId、分档还是 flagship；用户改过名、关过它。
+    first.models[idx] = {
+      ...first.models[idx],
+      labelZh: "我的 Runway 香蕉",
+      enabled: false,
+      meta: { archetypeId: "nano-banana", catalogLifecycle: "flagship" },
+    };
+    const { state, changed } = applyBuiltinSeeds(first, "2026-09-28T00:00:00.000Z");
+    expect(changed).toBe(true);
+    const healed = state.models.find((m) => m.vendorKey === "runway" && m.modelKey === "gemini_2.5_flash");
+    expect(healed?.meta).toMatchObject({ canonicalModelId: "nano banana", catalogLifecycle: "legacy" });
+    expect(healed?.labelZh).toBe("我的 Runway 香蕉");
+    expect(healed?.enabled).toBe(false);
   });
 
   it("老装机自愈：已有条目缺 canonicalModelId → 再次 seed 补上（drift 对账），不动用户所有字段", () => {
@@ -506,5 +547,66 @@ describe("Agnes complete catalog upgrade", () => {
       const query = state.mappings.find((m) => m.vendorKey === "agnes" && m.modelKey === modelKey)?.query;
       expect(query?.query).toEqual({ video_id: "{{providerMeta.video_id}}", model_name: "{{model.modelKey}}" });
     }
+  });
+});
+
+describe("Sora 2 退役（2026-09-28：OpenAI 2026-09-24 关停 Sora 2 与 Videos API，用户拍板撤下）", () => {
+  const SORA_ROWS = [
+    { vendorKey: "apimart", modelKey: "sora-2", archetypeId: "sora-2", mappingIds: ["seed-apimart-sora-2-text_to_video", "seed-apimart-sora-2-image_to_video"] },
+    { vendorKey: "runninghub", modelKey: "rhart-video-s-official", archetypeId: "rh-sora-2", mappingIds: ["seed-rh-sora2-t2v", "seed-rh-sora2-i2v"] },
+  ] as const;
+
+  /** 升级前的老装机：两家的 Sora 2 行与 mapping 都已落盘（用户改过名也一样要摘）。 */
+  function oldInstall(): CatalogState {
+    const seeded = applyBuiltinSeeds(emptyCatalog(), NOW).state;
+    const models = SORA_ROWS.map((row) => ({
+      vendorKey: row.vendorKey, modelKey: row.modelKey, labelZh: "我的 Sora", kind: "video", enabled: true,
+      meta: { archetypeId: row.archetypeId, canonicalModelId: "sora 2" }, createdAt: NOW, updatedAt: NOW,
+    }) as CatalogState["models"][number]);
+    const mappings = SORA_ROWS.flatMap((row) => row.mappingIds.map((id) => ({
+      id, vendorKey: row.vendorKey, taskKind: /i2v|image_to_video/.test(id) ? "image_to_video" : "text_to_video",
+      modelKey: row.modelKey, name: "Sora 2", enabled: true, create: { method: "POST", path: "/v1/videos/generations" },
+      createdAt: NOW, updatedAt: NOW,
+    }) as CatalogState["mappings"][number]));
+    return { ...seeded, models: [...seeded.models, ...models], mappings: [...seeded.mappings, ...mappings] };
+  }
+
+  it("新装机：两家都不再种出 Sora 2，同家其它视频模型不受连带", () => {
+    const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
+    for (const row of SORA_ROWS) {
+      expect(state.models.find((m) => m.vendorKey === row.vendorKey && m.modelKey === row.modelKey)).toBeUndefined();
+      for (const id of row.mappingIds) expect(state.mappings.find((mp) => mp.id === id)).toBeUndefined();
+    }
+    expect(state.models.find((m) => m.vendorKey === "apimart" && m.modelKey === "veo3.1-fast")).toBeTruthy();
+    expect(state.models.find((m) => m.vendorKey === "runninghub" && m.modelKey === "kling-v3.0-pro")).toBeTruthy();
+  });
+
+  it("老装机：已落盘的两家 Sora 2 行与 mapping 被摘掉，重复启动幂等", () => {
+    const first = applyBuiltinSeeds(oldInstall(), "2026-09-28T00:00:00.000Z");
+    expect(first.changed).toBe(true);
+    for (const row of SORA_ROWS) {
+      expect(first.state.models.find((m) => m.vendorKey === row.vendorKey && m.modelKey === row.modelKey)).toBeUndefined();
+      for (const id of row.mappingIds) expect(first.state.mappings.find((mp) => mp.id === id)).toBeUndefined();
+    }
+    const again = applyBuiltinSeeds(first.state, "2026-09-29T00:00:00.000Z");
+    expect(again.changed).toBe(false);
+    expect(again.state).toBe(first.state);
+  });
+
+  it("用户自建渠道里同名的 sora-2 不受影响（只摘我们种的那一行：按 vendor + 种子 id 精确命中）", () => {
+    const base = oldInstall();
+    const state: CatalogState = {
+      ...base,
+      vendors: [...base.vendors, { key: "my-relay", name: "我的中转", enabled: true, baseUrlHint: "https://relay.example/v1", authType: "bearer", createdAt: NOW, updatedAt: NOW } as CatalogState["vendors"][number]],
+      models: [...base.models, { vendorKey: "my-relay", modelKey: "sora-2", labelZh: "Sora 2（自建）", kind: "video", enabled: true, createdAt: NOW, updatedAt: NOW } as CatalogState["models"][number]],
+      mappings: [...base.mappings, {
+        id: "user-my-relay-sora", vendorKey: "my-relay", taskKind: "text_to_video", modelKey: "sora-2", name: "自建 Sora", enabled: true,
+        create: { method: "POST", path: "/videos" }, createdAt: NOW, updatedAt: NOW,
+      } as CatalogState["mappings"][number]],
+    };
+    const { state: next } = applyBuiltinSeeds(state, "2026-09-28T00:00:00.000Z");
+    expect(next.models.find((m) => m.vendorKey === "my-relay" && m.modelKey === "sora-2")).toMatchObject({ labelZh: "Sora 2（自建）", enabled: true });
+    expect(next.mappings.find((mp) => mp.id === "user-my-relay-sora")).toBeTruthy();
+    expect(next.models.find((m) => m.vendorKey === "apimart" && m.modelKey === "sora-2")).toBeUndefined();
   });
 });

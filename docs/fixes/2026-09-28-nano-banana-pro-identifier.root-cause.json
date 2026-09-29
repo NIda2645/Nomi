@@ -1,0 +1,125 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-nano-banana-pro-identifier",
+  "problem_type": "模型别名挂在别的模型的档案上：身份识别把一个模型认成另一个模型，拿到错的模式与参数面",
+  "symptom": "自建渠道里叫 nano-banana-pro 的模型（Gemini 3 Pro Image，即 Nano Banana Pro）被识别成第一代 Nano Banana 档案：模型框给它的是第一代的模式与参数（含第一代的格式控件），主进程的模式清单也按第一代出。",
+  "direct_cause": "识别串 \"nano-banana-pro\" 写在 electron/shared/modelArchetypes/nanoBanana.ts 的 NANO_BANANA_ARCHETYPE.identifierPatterns 里，生成器据此把它写进 archetypeIdentifiers.generated.ts 的 nano-banana 那一组；两侧解析器（渲染层 resolveArchetypeForModel 读档案、主进程 archetypeIdForModel 读生成表）于是都判成 nano-banana。",
+  "class_root": "「这个名字是哪个模型」这类身份事实只能按出处人工归位，没有机器能判语义；一旦写错档案，两侧解析器会一致地认错（它们共用同一份声明），错误不会自己暴露。",
+  "affected_population": [
+    "在自建渠道 / 中转里接入名为 nano-banana-pro（或 <前缀>/nano-banana-pro）的图片模型、且没有显式 archetypeId 的用户"
+  ],
+  "scope_paths": [
+    "electron/catalog/archetypeIdentifiers.generated.ts"
+  ],
+  "entry_points": [
+    "渲染层 resolveArchetypeForModel（模型框参数面、节点模式栏）",
+    "主进程 archetypeIdForModel（capabilityModeManifest 的模式清单、customCallDraft、relayNativeWireUpgrade）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "别名归属的依据是仓内已记录的官方文档摘录：runwayNativeImage.ts 的 gemini-image-3-pro 档案 sources 摘录 APIMart 文档「gemini-3-pro-image-preview（别名 nano-banana-pro-ext）/ -official（别名 nano-banana-pro）」，以及主管 2026-09-28 给出的 Google 官方口径（Gemini 3 Pro Image = Nano Banana Pro）。",
+  "invariants": [
+    "nano-banana-pro 只挂在 gemini-image-3-pro 档案上，两侧解析器都认成 gemini-image-3-pro；第一代 nano-banana 与原有别名解析不变",
+    "生成表只能由 gen:archetype-defaults 从档案生成（check:archetype-defaults 防漂移），渲染层与主进程读同一份声明"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/archetypeIdentifiers.generated.ts",
+    "tests": [
+      "electron/catalog/archetypeIdentity.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/catalog/archetypeIdentity.ts",
+      "symbol": "ARCHETYPE_IDENTIFIER_PATTERNS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/customCallDraft.ts",
+      "symbol": "archetypeIdForModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/relayNativeWireUpgrade.ts",
+      "symbol": "archetypeIdForModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/capabilityModeManifest.ts",
+      "symbol": "archetypeIdForModel"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 4,
+    "why_not": "四扇门是同一份生成表的不同读者：archetypeIdentity 做匹配，customCallDraft / relayNativeWireUpgrade / capabilityModeManifest 各自为接入草稿、中转原生报文升级、模式清单问身份。它们本来就共用一份声明，这次修的是声明内容而不是门的数量。"
+  },
+  "generality_proof": "改在唯一声明处（档案 identifierPatterns → 生成表），两侧解析器与四个主进程读者读到的是同一份更正后的数据；check:archetype-defaults 保证生成表与档案逐字一致，所以不存在「一侧改了、一侧没改」。类测试同时断言主进程 archetypeIdForModel、渲染层 resolveArchetypeForModel 与 archetypeParameterControls 的结果。变异校验：把识别串挪回第一代档案并重新生成，测试 2 红。",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/archetypeIdentifiers.generated.ts",
+      "symbol": "ARCHETYPE_IDENTIFIER_PATTERNS",
+      "responsibility": "档案身份表（由档案生成、check:archetype-defaults 守同步）：每个识别串只属于一个档案，主进程所有身份识别都读它。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/catalog/archetypeIdentity.ts",
+      "entry_point": "archetypeIdForModel",
+      "disposition": "enforced",
+      "evidence": "archetypeIdentity.test 断言 nano-banana-pro 与 google/nano-banana-pro 都认成 gemini-image-3-pro，nano-banana 仍是第一代。"
+    },
+    {
+      "path": "electron/shared/modelArchetypes/index.ts",
+      "entry_point": "resolveArchetypeForModel",
+      "disposition": "enforced",
+      "evidence": "同一测试断言渲染层对无显式 archetypeId 的自建行给出 gemini-image-3-pro，参数面等于 Gemini 3 Pro Image 默认模式的参数、不含第一代的 output_format。"
+    },
+    {
+      "path": "electron/catalog/nativeWireProfiles.ts",
+      "entry_point": "nativeWireProfileForArchetype",
+      "disposition": "not-affected",
+      "evidence": "原生报文配方只有火山 Seedance / Seedream，nano-banana 与 gemini-image-3-pro 都没有：中转行不会因此落显式 archetypeId，runtime 的缺参兜底（读显式 meta.archetypeId）不受影响。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "模型别名随供应商与营销名不断增加（Nano Banana / Nano Banana 2 / Nano Banana Pro 与 Gemini 2.5 / 3.1 Flash / 3 Pro Image 的对应就是一例），每加一个别名都要按出处归到正确档案；写错一次，两侧解析器会一致地认错而不报错。",
+    "same_class_scan": [
+      "全量扫 nano-banana-pro：档案识别串（nanoBanana.ts，已挪走）、生成表、静态显示表 src/config/models.ts（只查显示名，不参与身份）、提示词库合集名（不参与身份）。",
+      "同族别名核对：gemini-2.5-flash-image-preview / gemini_2.5_flash 在第一代档案（= Nano Banana，正确）；gemini-3.1-flash-image-preview 系在 nano-banana-2 档案（= Nano Banana 2，正确）；gemini_image3.1_flash 在 Runway 单产品档案（与 Nano Banana 2 同一模型，身份并入走 CANONICAL_MODEL_IDS，档案按渠道线缆分开是既有设计）。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/archetypeIdentifiers.generated.ts",
+    "invariant": "每个识别串只在它所指模型的档案里声明一次，生成表与档案逐字同步。",
+    "failure_mode": "识别串被挪回第一代档案 → 类测试红；只改档案不重新生成 → check:archetype-defaults 红。",
+    "exception_policy": "none",
+    "strategy": "识别串的唯一声明处是档案，生成表是它的机器投影；更正声明并重新生成，类测试钉住两侧解析结果与参数面。",
+    "artifacts": [
+      "electron/catalog/archetypeIdentifiers.generated.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/archetypeIdentity.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/archetypeIdentity.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有被替代的旧实现：只是把一个识别串从错误的档案挪到正确的档案。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "无需迁移：自建行不存显式 archetypeId，下次渲染 / 查询即按新身份解析；已存节点的模式 id 不属于新档案时由 ensureArchetypeNodeMeta 按新档案的默认模式重建。",
+  "residual_risks": [
+    "gemini-image-3-pro 档案的默认参数（非 APIMart / Runway 的渠道）取的是 Runway 线缆的像素比例；自建渠道叫 nano-banana-pro 的模型现在会看到这套比例（与今天叫 gemini-3-pro-image-preview 的自建行一致），这些比例对通用中转未必合适——属于档案默认参数的既有设计，未在本次改动。",
+    "APIMart 文档里的另一个别名 nano-banana-pro-ext 仍不在任何档案里（自建行叫这个名字时走通用参数面），未加，留给主管决定。"
+  ]
+}

@@ -184,7 +184,7 @@ export function NodeErrorReport({
     'view-task': handleReconcile,
   }
   const primaryAction = actionHandlers[report.primary] ? report.primary : 'open-model-access'
-  const secondaryAction = report.secondary !== primaryAction && actionHandlers[report.secondary] ? report.secondary : null
+  const secondaryAction = report.secondary && report.secondary !== primaryAction && actionHandlers[report.secondary] ? report.secondary : null
   // 「改成图片」要点出改成**哪个**类型，否则按钮只是「改类型」——用户还得自己再想一步。
   const actionLabelParams = kindFixTarget ? { kind: narrateModelKind(kindFixTarget.requested) } : undefined
 

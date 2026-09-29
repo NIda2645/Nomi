@@ -22,7 +22,8 @@ export type GenerationErrorReport = {
    * 偶发失败才给「重试」——以前一律「重试」，等于让用户对着确定失败的模型死磕。
    */
   primary: GenerationErrorAction
-  secondary: GenerationErrorAction
+  /** `null` = 这一类没有第二个有用的动作（如已下线：重试必然再撞同一张卡），错误卡不摆次按钮。 */
+  secondary: GenerationErrorAction | null
   /** Short human reason, e.g. 配额或限流. */
   reason: string
   /** Actionable suggestion sentence (empty for unknown errors). */
@@ -463,7 +464,10 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   // 归进上面那条会把用户送去查代理，而这台机器的网络一点毛病都没有。
   if (outboundCode === 'outbound-blocked-credential-origin') return reportFor('outbound-blocked-credential-origin', cleanRaw, '')
   // 已退役下线**最先**判：判据是 electron 抛的专用签名（确定性事实），不该被任何猜文案的检测抢走。
-  if (detectModelRetired(cleanRaw)) return reportFor('model-retired', cleanRaw, undefined)
+  // upstream 显式给 ''，与下面类型不符 / 缺文本大脑同理：这是我们自己的签名，服务商根本没被请求到。
+  // 给 undefined 会从 raw 抠出「Model is retired: sora-2」，以「服务商原话：」印在退役卡正文里——
+  // 一句英文，还栽赃给了没被请求的那家（2026-09-29 Sora 2 退役真机走查截图抓到）。
+  if (detectModelRetired(cleanRaw)) return reportFor('model-retired', cleanRaw, '')
   // 类型不符同理是专用签名，同层最先判。upstream 显式给 ''：这是**我们自己**的内部信号，
   // 不是服务商原话——落进「服务商说：」那个框里会是彻头彻尾的栽赃（那家根本没被请求到）。
   const kindMismatch = detectModelKindMismatch(cleanRaw)

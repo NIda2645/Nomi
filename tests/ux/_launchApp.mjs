@@ -102,6 +102,24 @@ app.once('session-created', (session) => {
 }
 
 /**
+ * 在 App 主入口之前加载的主进程模块（Node 的 `-r`），给走查装仪表用——例如
+ * `scripts/walkthrough-network-guard.cjs` 那道「只放行本机」的网络闸。
+ *
+ * 为什么不走 `NODE_OPTIONS=--require`：Playwright 的 Electron 启动器会 `delete env.NODE_OPTIONS`
+ *（它自己也是用 `-r loader.js` 注入的），经 env 传进去的 --require 会被静默丢掉——走查以为装了闸，
+ * 其实没装。`-r` 必须排在 App 入口（`.`）之前才对主进程生效，所以由启动器来拼。
+ * 只收**绝对路径且文件存在**：相对路径会被 Node 当成包名去 node_modules 里找（MODULE_NOT_FOUND）。
+ */
+export function mainRequireArgs(modules) {
+  if (!Array.isArray(modules) || modules.length === 0) return []
+  return modules.flatMap((file) => {
+    if (typeof file !== 'string' || !path.isAbsolute(file)) throw new TypeError(`mainRequire needs absolute module paths: ${file}`)
+    if (!fs.existsSync(file)) throw new Error(`mainRequire module does not exist: ${file}`)
+    return ['-r', file]
+  })
+}
+
+/**
  * 拼一套「窗口一定能起来」的 env。抽成纯函数是为了让那条不变量能被单测钉住
  * （见 _launchApp.test.mjs）：**必需 env 排在 extraEnv 之后，调用方覆盖不掉**。
  */
@@ -205,6 +223,7 @@ export function withPackagedPlaywrightOrigin(args, isPackaged) {
  * @param {number} [options.timeout]        等窗口上限（ms）
  * @param {number} [options.settleMs=1500]  domcontentloaded 后再等一会儿（渲染层挂载）
  * @param {Record<string,string>} [options.initialLocalStorage] Existing product preferences for an isolated dev fixture; omitted for first-run tests.
+ * @param {string[]} [options.mainRequire] 主进程入口前加载的模块（绝对路径，走查仪表专用；见 mainRequireArgs）
  * @param {(win: import('playwright').Page) => Promise<void>} [options.observeWindow] Optional measurement observer
  * @param {boolean} [options.syntheticCredentialStorage=false]  仅供隔离目录里的非秘密测试凭据；Linux CI 使用 basic 后端
  * @returns {Promise<{app: import('playwright').ElectronApplication, win: import('playwright').Page,
@@ -230,12 +249,18 @@ export async function launchNomiApp(options = {}) {
   if (syntheticCredentialStorage && !isolate) {
     throw new Error('syntheticCredentialStorage requires an isolated Nomi profile')
   }
+  if (options.mainRequire?.length && !isolate) {
+    throw new Error('mainRequire requires an isolated Nomi profile')
+  }
 
   // 开发 electron 二进制要靠 `.` 指到仓库根去加载 dist-electron；**打包好的 .app 自带产物**，
   // 再塞个 `.` 反而会被当成「要打开的路径」参数。所以这两件事都跟着「是不是开发构建」走。
   const isDevElectron = executablePath === require('electron')
   if (options.initialLocalStorage && !isDevElectron) {
     throw new Error('initialLocalStorage requires the development Electron executable')
+  }
+  if (options.mainRequire?.length && !isDevElectron) {
+    throw new Error('mainRequire requires the development Electron executable')
   }
   if (isDevElectron) {
     assertElectronBuildArtifacts(repoRoot)
@@ -268,6 +293,7 @@ export async function launchNomiApp(options = {}) {
     args: withLinuxNoSandbox(withLinuxSyntheticCredentialStorage(
       withPackagedPlaywrightOrigin([
         ...(options.initialLocalStorage ? prepareLocalStorageSeed(tempRoot, options.initialLocalStorage) : []),
+        ...mainRequireArgs(options.mainRequire),
         ...(isDevElectron ? ['.'] : []),
         ...(userDataDir ? [`--user-data-dir=${userDataDir}`] : []),
         ...extraArgs,

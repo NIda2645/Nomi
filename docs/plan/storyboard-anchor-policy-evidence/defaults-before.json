@@ -167,22 +167,6 @@
       "modeId": "i2v"
     }
   },
-  "sora-2/kie": {
-    "image": {},
-    "video": {
-      "modelKey": "sora-2",
-      "modelVendor": "kie",
-      "modeId": "i2v"
-    }
-  },
-  "sora-2/apimart": {
-    "image": {},
-    "video": {
-      "modelKey": "sora-2",
-      "modelVendor": "apimart",
-      "modeId": "i2v"
-    }
-  },
   "veo-3.1/kie": {
     "image": {},
     "video": {
@@ -603,22 +587,6 @@
     "image": {},
     "video": {
       "modelKey": "rh-hailuo-2.3",
-      "modelVendor": "apimart",
-      "modeId": "image"
-    }
-  },
-  "rh-sora-2/kie": {
-    "image": {},
-    "video": {
-      "modelKey": "rhart-video-s-official",
-      "modelVendor": "kie",
-      "modeId": "image"
-    }
-  },
-  "rh-sora-2/apimart": {
-    "image": {},
-    "video": {
-      "modelKey": "rhart-video-s-official",
       "modelVendor": "apimart",
       "modeId": "image"
     }

@@ -9,6 +9,7 @@ import { tagNomiError, stripNomiErrorCode } from '../../../../electron/shared/no
 import { describeOutboundRefusal } from '../../../../electron/networkOutboundMessage'
 import { encodeStructuredErrorMessage } from '../../../../electron/vendor/vendorHttp'
 import i18n from '../../../i18n'
+import { narrateGenerationErrorActions, type GenerationErrorKind } from '../../observability/narrate'
 
 describe('classifyGenerationError — 已知分类', () => {
   it('uses dedicated bilingual copy and a task-center action for production claim reasons', () => {
@@ -520,12 +521,50 @@ describe('每类错误都说得出「该干嘛」（2026-07-30 拍板：主按�
   })
 })
 
+describe('动作表：每类主 / 次动作都写在表里，改一类不许带动别的类', () => {
+  // 穷举：漏写一类 → check:test-types 红（Record 要求每个 kind 都在）。
+  const EVERY_KIND: Record<GenerationErrorKind, true> = {
+    auth: true, balance: true, quota: true, 'poll-timeout': true, network: true, 'model-config': true,
+    'model-kind-mismatch': true, 'model-not-open': true, 'model-unavailable-upstream': true, 'model-retired': true,
+    'image-route-disabled': true, 'account-gate': true, 'content-policy': true, 'input-image-blocked': true,
+    'asset-upload-failed': true, 'asset-too-large': true, 'asset-invalid': true, 'outbound-blocked': true,
+    'outbound-blocked-submit': true, 'outbound-blocked-credential-origin': true, server: true, input: true,
+    'output-truncated': true, unknown: true,
+  }
+
+  it('已下线以外的每一类，次动作都和改表前的规则一样（主动作是重试 / 一键改对 → 换个模型；其余 → 重试）', () => {
+    for (const kind of Object.keys(EVERY_KIND) as GenerationErrorKind[]) {
+      const { primary, secondary } = narrateGenerationErrorActions(kind)
+      const before = primary === 'retry' || primary === 'fix-model-kind' ? 'switch-model' : 'retry'
+      expect({ kind, secondary }).toEqual({ kind, secondary: kind === 'model-retired' ? null : before })
+    }
+  })
+})
+
 describe('模型已下线 ≠ 模型被停用（删模型不能变成坑换坑）', () => {
   it('退役签名 → 中文人话 + 换个模型，不是英文技术原话', () => {
     const report = classifyGenerationError('Model is retired: imagen-4.0-apimart')
     expect(report.reason).toBe('这个模型已经下线了')
     expect(report.primary).toBe('switch-model')
     expect(report.hint).not.toMatch(/稍等|稍后再试/)
+    // 这是我们自己的签名，服务商没被请求到：不许以「服务商原话：Model is retired: …」印进卡片正文。
+    expect(report.providerMessage).toBeUndefined()
+    // 技术详情里的原文照留（复制详情 / 反馈要用），只是不进可见正文。
+    expect(report.raw).toContain('Model is retired: imagen-4.0-apimart')
+  })
+
+  // 2026-09-29 协调会话裁决（撤 Sora 2 以后这张卡会被更多人看到）：
+  // 「仍要重试」对已下线必然再撞同一张卡，不摆；文案对任何下线原因都成立，不再说「在服务商那边一直失败」。
+  it('已下线：没有次动作，文案不替下线编原因（中英都查）', async () => {
+    const report = classifyGenerationError('Model is retired: sora-2')
+    expect(report.secondary).toBeNull()
+    for (const language of ['zh-CN', 'en']) {
+      await i18n.changeLanguage(language)
+      const localized = classifyGenerationError('Model is retired: sora-2')
+      expect(localized.hint).not.toMatch(/一直失败|服务商|kept failing|provider/i)
+      expect(localized.hint).toMatch(/换个模型|Switch to another model/)
+    }
+    await i18n.changeLanguage('zh-CN')
   })
 
   it('「被停用」仍归模型未配置 → 去模型接入（记录还在，那儿能开回来）', () => {
