@@ -42,14 +42,42 @@ if (!fs.existsSync(MOCKUP_DIR)) {
   process.exit(0);
 }
 
+// 样张有两种形态：单个 `<名>.html`，或一个文件夹 `<名>/`（里面一页或多页 .html，常带截图和 README）。
+// 2026-09-28 版本卡片样张是文件夹，门岗只认单文件 → 没被要求写契约、显示绿，实现和拍板差很远也没人红。
+// 只有截图、没有 .html 的文件夹是「改完后的样子」存档，不是可交互样张，不算。
 const mockups = fs
-  .readdirSync(MOCKUP_DIR)
-  .filter((f) => f.endsWith(".html"))
+  .readdirSync(MOCKUP_DIR, { withFileTypes: true })
+  .flatMap((e) => {
+    if (e.isFile() && e.name.endsWith(".html")) return [e.name];
+    if (e.isDirectory() && e.name !== "contracts"
+      && fs.readdirSync(path.join(MOCKUP_DIR, e.name)).some((f) => f.endsWith(".html"))) {
+      return [`${e.name}/`];
+    }
+    return [];
+  })
   .sort();
 
 const contracts = fs.existsSync(CONTRACT_DIR)
   ? fs.readdirSync(CONTRACT_DIR).filter((f) => /\.(intent|auto)\.mjs$/.test(f))
   : [];
+
+// 契约自己声明它机械化的是哪份样张（`mockup` 字段）——按这个身份认领，不靠文件名猜。
+const contractModules = new Map();
+for (const c of contracts) {
+  try {
+    contractModules.set(c, (await import(pathToFileURL(path.join(CONTRACT_DIR, c)).href)).default);
+  } catch (error) {
+    contractModules.set(c, { __loadError: error });
+  }
+}
+const claimedPaths = [...contractModules.values()]
+  .flatMap((contract) => [contract?.mockup, contract?.mechanizes?.doc])
+  .filter((p) => typeof p === "string" && p)
+  .map((p) => p.replaceAll("\\", "/"));
+const isClaimed = (mockup) => {
+  const full = `docs/design/mockups/${mockup}`;
+  return claimedPaths.some((p) => (mockup.endsWith("/") ? p.startsWith(full) : p === full));
+};
 
 // 走查全文（含子目录），用于判断契约有没有被引用。
 function walkFiles(dir, acc = []) {
@@ -68,10 +96,12 @@ const walkText = walkFiles(WALK_DIR)
 const missing = []; // 样张没有任何契约文件
 const unused = []; // 契约文件没被任何走查引用
 
-for (const html of mockups) {
-  const base = html.replace(/\.html$/, "");
-  const own = contracts.filter((c) => c.startsWith(`${base}.`));
-  if (own.length === 0) missing.push(html);
+for (const mockup of mockups) {
+  // 旧契约可能没写 mockup 字段：退回按文件名认领（单文件 `<名>.`，文件夹 `<名>.` 或 `<名>-<面>.`）。
+  const folder = mockup.endsWith("/");
+  const base = folder ? mockup.slice(0, -1) : mockup.replace(/\.html$/, "");
+  const named = contracts.some((c) => c.startsWith(`${base}.`) || (folder && c.startsWith(`${base}-`)));
+  if (!isClaimed(mockup) && !named) missing.push(mockup);
 }
 for (const c of contracts) {
   if (!walkText.includes(c) && !walkText.includes(c.replace(/\.mjs$/, ""))) unused.push(c);
@@ -94,12 +124,9 @@ const undated = []; // 没声明 mechanizes.migratedAt —— 等于没人说过
 const dangling = []; // mechanizes.doc 指向不存在的文件
 
 for (const c of contracts) {
-  const abs = path.join(CONTRACT_DIR, c);
-  let contract;
-  try {
-    contract = (await import(pathToFileURL(abs).href)).default;
-  } catch (error) {
-    dangling.push({ contract: c, why: `读不出来：${error.message}` });
+  const contract = contractModules.get(c);
+  if (contract?.__loadError) {
+    dangling.push({ contract: c, why: `读不出来：${contract.__loadError.message}` });
     continue;
   }
   const mechanizes = contract?.mechanizes;

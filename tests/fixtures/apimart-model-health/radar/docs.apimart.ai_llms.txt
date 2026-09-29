@@ -1,0 +1,71 @@
+# APIMart
+
+- [API Manual (152 pages)](https://docs.apimart.ai/_llms/en/api-manual.md)
+
+## Integrations
+
+### Chat Applications
+
+- [Using APIMart in ChatBox](https://docs.apimart.ai/en/integrations/chat/chatbox.md)
+- [Using APIMart in Cherry Studio](https://docs.apimart.ai/en/integrations/chat/cherry-studio.md)
+- [Using APIMart in AnythingLLM](https://docs.apimart.ai/en/integrations/chat/anythingllm.md)
+
+### Development Tools
+
+- [Using APIMart in Claude Code](https://docs.apimart.ai/en/integrations/dev-tool/claude-code.md)
+- [Using APIMart in Cursor](https://docs.apimart.ai/en/integrations/dev-tool/cursor.md)
+- [Integrate APIMart with Cline in VSCode](https://docs.apimart.ai/en/integrations/dev-tool/cline.md)
+- [Using APIMart with Gemini CLI](https://docs.apimart.ai/en/integrations/dev-tool/gemini.md)
+- [Using APIMart in Codex CLI](https://docs.apimart.ai/en/integrations/dev-tool/codex-cli.md)
+- [Using APIMart in CC-Switch](https://docs.apimart.ai/en/integrations/dev-tool/cc-switch.md)
+
+### Application Platforms
+
+- [Using APIMart in Dify](https://docs.apimart.ai/en/integrations/platform/dify.md)
+- [Using APIMart in Immersive Translate](https://docs.apimart.ai/en/integrations/platform/immersive-translate.md)
+
+## Guides
+
+### Getting started
+
+- [Quick Start](https://docs.apimart.ai/en/quickstart.md)
+- [Development Guide](https://docs.apimart.ai/en/development.md)
+
+## FAQs
+
+### Overview
+
+- [FAQs](https://docs.apimart.ai/en/faqs.md)
+- [Connection & Usage](https://docs.apimart.ai/en/faqs/connection-usage.md)
+- [Account Management](https://docs.apimart.ai/en/faqs/account-management.md)
+- [Security & Configuration](https://docs.apimart.ai/en/faqs/security-configuration.md)
+- [Features & Capabilities](https://docs.apimart.ai/en/faqs/features.md)
+- [Cost Optimization](https://docs.apimart.ai/en/faqs/cost-optimization.md)
+
+## OpenAPI Specs
+
+- [openapi](/api-reference/openapi.json)
+
+> The links below point to documentation indexes. Follow each `/_llms/` index recursively until you reach documentation pages.
+
+## Indexes
+
+- [English / API Manual (152 pages)](https://docs.apimart.ai/_llms/en/api-manual.md)
+- [Chinese (171 pages)](https://docs.apimart.ai/_llms/cn.md)
+- [Chinese / API 手册 (152 pages)](https://docs.apimart.ai/_llms/cn/api.md)
+- [Japanese (171 pages)](https://docs.apimart.ai/_llms/ja.md)
+- [Japanese / APIマニュアル (152 pages)](https://docs.apimart.ai/_llms/ja/api.md)
+- [Korean (171 pages)](https://docs.apimart.ai/_llms/ko.md)
+- [Korean / API 매뉴얼 (152 pages)](https://docs.apimart.ai/_llms/ko/api.md)
+- [Russian (171 pages)](https://docs.apimart.ai/_llms/ru.md)
+- [Russian / Руководство API (152 pages)](https://docs.apimart.ai/_llms/ru/rukovodstvo-api.md)
+- [German (171 pages)](https://docs.apimart.ai/_llms/de.md)
+- [German / API-Handbuch (152 pages)](https://docs.apimart.ai/_llms/de/api-handbuch.md)
+- [French (171 pages)](https://docs.apimart.ai/_llms/fr.md)
+- [French / Manuel API (152 pages)](https://docs.apimart.ai/_llms/fr/manuel-api.md)
+- [Portuguese (171 pages)](https://docs.apimart.ai/_llms/pt.md)
+- [Portuguese / Manual da API (152 pages)](https://docs.apimart.ai/_llms/pt/manual-da-api.md)
+- [Indonesian (171 pages)](https://docs.apimart.ai/_llms/id.md)
+- [Indonesian / Panduan API (152 pages)](https://docs.apimart.ai/_llms/id/panduan-api.md)
+- [Spanish (171 pages)](https://docs.apimart.ai/_llms/es.md)
+- [Spanish / Manual de la API (152 pages)](https://docs.apimart.ai/_llms/es/manual-de-la-api.md)

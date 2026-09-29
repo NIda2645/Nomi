@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import type { GenerationNodeResult } from '../model/generationCanvasTypes'
 import { isRemoteHttpUrl, localizeRemoteResultUrl } from './resultAssetLocalization'
+import { MEDIA_TRANSFER_STEP_MAX_MS } from './generationPhaseDeadline'
 
 vi.mock('../../../desktop/bridge', () => ({ getDesktopBridge: vi.fn() }))
 const mockedBridge = vi.mocked(getDesktopBridge)
@@ -87,6 +88,29 @@ describe('localizeRemoteResultUrl — 厂商临时 URL 落地结构闸', () => {
     mockedBridge.mockReturnValue(bridgeWithImport(importRemoteUrl))
     const result = videoResult('https://cdn.vendor/v.mp4')
     expect(await localizeRemoteResultUrl(result, 'proj-1', 'node-1')).toBe(result)
+  })
+
+  // 2026-09-28：主进程取回挂住时这次 IPC 永远不返回。「绝不阻断」必须对「永远不返回」也成立——
+  // 生成收尾、打开项目时的存量抢救都在等它。最多等一次媒体传输那么久，到点保持原样。
+  it('主进程一直没有回音 → 等满一次媒体传输的时限后原样返回，不陪它挂着', async () => {
+    vi.useFakeTimers()
+    try {
+      const importRemoteUrl = vi.fn(() => new Promise<never>(() => {}))
+      mockedBridge.mockReturnValue(bridgeWithImport(importRemoteUrl))
+      const result = videoResult('https://cdn.vendor/stuck.mp4')
+      let settled: GenerationNodeResult | undefined
+      const localizing = localizeRemoteResultUrl(result, 'proj-1', 'node-1').then((value) => {
+        settled = value
+      })
+      await vi.advanceTimersByTimeAsync(MEDIA_TRANSFER_STEP_MAX_MS - 1_000)
+      expect(settled).toBeUndefined()
+      await vi.advanceTimersByTimeAsync(2_000)
+      await localizing
+      expect(settled).toBe(result)
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('无桌面环境（bridge/importRemoteUrl 缺）→ 原样返回', async () => {

@@ -30,8 +30,18 @@ import { getAppDispatcher, isApplicationProxyActive } from "./systemProxy";
 export { isPrivateHost } from "./networkHostPolicy";
 
 export type HardenedFetchOptions = {
-  /** 超时（毫秒）。默认 20 秒。 */
+  /** 总时限（毫秒，从发请求算起）。默认 20 秒。给了 `timeoutForDeclaredSize` 时，它只管到响应头到达为止。 */
   timeoutMs?: number;
+  /**
+   * 空闲时限（毫秒）：连续这么久没有任何进展就中断——响应头到达、收到一块 body 都算进展。
+   * 它管的是「线路断了」（一个字节都不再来），与总时限管的「线路太慢」分开。不给 = 只有总时限。
+   */
+  idleTimeoutMs?: number;
+  /**
+   * 响应头到达后，按声明长度（Content-Length；没声明 = null）重算总时限（毫秒，从发请求算起）。
+   * 大文件在慢线路上合法地需要更久：总上限随大小放宽，而不是所有文件共用一个墙钟。
+   */
+  timeoutForDeclaredSize?: (declaredBytes: number | null) => number;
   /** 最大字节数。超过即中断并抛错。默认 50MB。 */
   maxBytes?: number;
   /** 允许的 content-type 前缀。空则不限。例如 ['image/', 'video/', 'application/json']。 */
@@ -150,9 +160,41 @@ export function createPinnedDispatcher(hostname: string, addresses: ResolvedHost
   return new Agent({ connect: { lookup } as never });
 }
 
+/** 「一串字节、没说是什么」的标准写法。调用方在白名单里写它 = 接受这种字节，类型交给下游按字节判。 */
+const OPAQUE_BYTES_TYPE = "application/octet-stream";
+/**
+ * 同一件事的别名。S3 等对象存储在上传时没给类型，就回 `binary/octet-stream`——它不是一个类型声明，
+ * 与 application/octet-stream、以及干脆不带 Content-Type 一样，只是「没说」。
+ */
+const OPAQUE_BYTES_ALIASES: ReadonlySet<string> = new Set(["binary/octet-stream"]);
+
+function mediaTypeOf(contentType: string): string {
+  return contentType.toLowerCase().split(";")[0]?.trim() || "";
+}
+
+function isOpaqueBytesType(contentType: string): boolean {
+  const type = mediaTypeOf(contentType);
+  return !type || type === OPAQUE_BYTES_TYPE || OPAQUE_BYTES_ALIASES.has(type);
+}
+
 function isAllowedContentType(contentType: string, allow: readonly string[]): boolean {
-  const lower = contentType.toLowerCase().split(";")[0]?.trim() || "";
-  return allow.some((prefix) => lower.startsWith(prefix.toLowerCase()));
+  const type = mediaTypeOf(contentType);
+  // 白名单收 application/octet-stream = 调用方接受「没说是什么的字节」，由下游字节校验判真伪
+  // （生成产物落盘：projectAssetStore 的 validatedGeneratedMeta）。同一件事的另外两种写法——缺类型、
+  // binary/octet-stream——也照收，不在这一步当成「类型不符」拒掉（2026-09-28：S3 缺省类型的成片被拒在门外）。
+  if (isOpaqueBytesType(type) && allow.some((prefix) => mediaTypeOf(prefix) === OPAQUE_BYTES_TYPE)) return true;
+  return Boolean(type) && allow.some((prefix) => type.startsWith(prefix.toLowerCase()));
+}
+
+/** 响应头声明的长度；没声明、不是正数都算「不知道多大」（null）。 */
+function declaredContentLength(response: Response): number | null {
+  const declared = Number(response.headers.get("content-length") || "0");
+  return Number.isFinite(declared) && declared > 0 ? declared : null;
+}
+
+/** 报给调用方的类型：别名统一成下游只认的那一种写法；缺类型仍是空串（下游各自按「没有声明」处理）。 */
+function reportedContentType(contentType: string): string {
+  return OPAQUE_BYTES_ALIASES.has(mediaTypeOf(contentType)) ? OPAQUE_BYTES_TYPE : contentType;
 }
 
 export type HardenedFetchResult = {
@@ -162,6 +204,81 @@ export type HardenedFetchResult = {
   finalUrl: string;
   truncated: boolean;
 };
+
+/** 这次取回走的是哪条路：直连 / 应用的系统代理 / 这家供应商单配的线路。 */
+export type RetrievalRoute = "direct" | "system-proxy" | "provider-route";
+
+/**
+ * 一次失败取回的形状（挂在抛出的错误上，`hardenedFetchDiagnostics` 读）。
+ * 只有排查要的东西：主机、路由、状态码、类型、大小、耗时——**没有 URL**：结果地址的查询串里常带签名，
+ * 拿到就能下载；主机已经足够定位是哪一家的 CDN。
+ */
+export type HardenedFetchDiagnostics = {
+  host: string;
+  route: RetrievalRoute;
+  status: number | null;
+  contentType: string | null;
+  declaredBytes: number | null;
+  receivedBytes: number;
+  elapsedMs: number;
+};
+
+const DIAGNOSTICS = Symbol("hardenedFetch.diagnostics");
+
+function attachDiagnostics(error: unknown, diagnostics: HardenedFetchDiagnostics): unknown {
+  if (error !== null && typeof error === "object" && Object.isExtensible(error)) {
+    Object.defineProperty(error, DIAGNOSTICS, { value: { ...diagnostics }, enumerable: false, configurable: true });
+  }
+  return error;
+}
+
+/** 从 hardenedFetch 抛出的错误上读诊断；不是它抛的（或诊断挂不上）返回 null。 */
+export function hardenedFetchDiagnostics(error: unknown): HardenedFetchDiagnostics | null {
+  if (error === null || typeof error !== "object") return null;
+  const value = (error as { [DIAGNOSTICS]?: HardenedFetchDiagnostics })[DIAGNOSTICS];
+  return value ?? null;
+}
+
+/**
+ * 放弃这个响应：丢掉 body（取消底层请求、把连接还回去），不读，也不等它。
+ *
+ * 为什么每条拒绝路径都必须先经过这里（2026-09-28「生成完了却一直停在『正在存到你电脑上』」的真因）：
+ * 响应头一到，我们就可能拒掉它（状态码 ≥400、类型不在白名单、声明超上限）。以前直接抛错、body 原封不动——
+ * 没人读的 body 把连接占着（服务端被背压顶住，自己也不会断），收尾那一步又在「优雅关闭」这次请求专用的
+ * 连接池、等在途请求走完：永远等不到。比流缓冲小的 body 会被一口气收进来，所以小响应不挂——
+ * 这就是它在几字节夹具的单测里一直绿、在真 CDN 的错误页 / 大文件上挂死的原因。
+ * 共享线路（系统代理）与供应商单配线路的连接池不归这里拆，那两条路上能释放连接的也只有这一步。
+ * 重定向那一跳早就这么做；现在它是唯一的「放弃响应」出口，所有拒绝路径都走它。
+ */
+function abandonResponse(response: Response, reader?: ReadableStreamDefaultReader<Uint8Array>): void {
+  try {
+    const released = reader ? reader.cancel() : response.body?.cancel();
+    void released?.catch(() => undefined);
+  } catch {
+    // body 已被锁住或已出错：没有剩下可释放的东西。
+  }
+}
+
+/**
+ * 拆掉这次请求专用的连接池（DNS pinning 为它建的，别人不会再用）。
+ *
+ * 用 destroy（立刻断开，不等任何在途 body），不用 close（优雅关闭：要等在途请求全部走完——被拒掉、
+ * 没人读的 body 永远走不完，这正是挂死点）。等它拆完再返回，但**不晚于本次请求自己的计时器**：
+ * 计时器到点会 abort，这一步随之结束——收尾不可能比请求本身活得更久。
+ */
+async function releaseRequestDispatchers(dispatchers: readonly Dispatcher[], deadline: AbortSignal): Promise<void> {
+  if (dispatchers.length === 0) return;
+  const destroyed = Promise.allSettled(dispatchers.map((dispatcher) => Promise.resolve().then(() => dispatcher.destroy())));
+  if (deadline.aborted) return;
+  await new Promise<void>((resolve) => {
+    const onDeadline = () => resolve();
+    deadline.addEventListener("abort", onDeadline, { once: true });
+    void destroyed.then(() => {
+      deadline.removeEventListener("abort", onDeadline);
+      resolve();
+    });
+  });
+}
 
 /**
  * 安全 fetch — 主流程：
@@ -182,14 +299,39 @@ export async function hardenedFetch(
   const allowedPrivateOrigins = [...(options.allowedPrivateOrigins || []), ...getLabTrustedPrivateOrigins()];
   const url = assertSafeUrl(rawUrl);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const idleTimeoutMs = options.idleTimeoutMs;
   const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
+  const startedAt = Date.now();
   // 可信本地服务只允许精确同源的一跳请求。禁止重定向，避免先访问重定向目标、事后才校验。
   const controller = new AbortController();
   const relayAbort = () => controller.abort(options.signal?.reason);
   if (options.signal?.aborted) relayAbort();
   else options.signal?.addEventListener("abort", relayAbort, { once: true });
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  // 我们自己的两个时限到点都只 abort，并记下是哪一个——报错要说清是「总时间到了」还是「线路停住了」。
+  let expired: "total" | "idle" | null = null;
+  let totalLimitMs = timeoutMs;
+  const expire = (which: "total" | "idle") => {
+    if (controller.signal.aborted) return;
+    expired = which;
+    controller.abort();
+  };
+  let totalTimer = setTimeout(() => expire("total"), totalLimitMs);
+  let idleTimer: ReturnType<typeof setTimeout> | undefined = idleTimeoutMs ? setTimeout(() => expire("idle"), idleTimeoutMs) : undefined;
+  const progressed = () => {
+    if (idleTimer === undefined) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(() => expire("idle"), idleTimeoutMs);
+  };
   const dispatchers: Dispatcher[] = [];
+  const diagnostics: HardenedFetchDiagnostics = {
+    host: url.hostname,
+    route: options.dispatcher ? "provider-route" : "direct",
+    status: null,
+    contentType: null,
+    declaredBytes: null,
+    receivedBytes: 0,
+    elapsedMs: 0,
+  };
   // When Nomi has committed an HTTP/SOCKS application proxy, resolving the
   // provider hostname locally is both unnecessary and actively harmful: fake-IP
   // proxies commonly answer with RFC 2544 (198.18/15), which must not be treated
@@ -263,6 +405,8 @@ export async function hardenedFetch(
       // 每一跳都问策略 owner——代理生效时也问，只是判据的对象换成名字（见
       // networkOutboundPolicy.authorizeOutboundDestination 的「为什么代理生效时不能整段跳过分类」）。
       const route: OutboundRouteKind = options.dispatcher || applicationProxyActive() ? "proxy" : "direct";
+      diagnostics.host = currentUrl.hostname;
+      diagnostics.route = options.dispatcher ? "provider-route" : route === "proxy" ? "system-proxy" : "direct";
       const authorization = await authorizeOutboundDestination({
         url: currentUrl,
         route,
@@ -283,9 +427,13 @@ export async function hardenedFetch(
         ...(dispatcher ? { dispatcher } : {}),
         ...(bodyInit !== undefined ? { body: bodyInit } : {}),
       });
+      progressed();
+      diagnostics.status = response.status;
+      diagnostics.contentType = response.headers.get("content-type");
+      diagnostics.declaredBytes = declaredContentLength(response);
       if (response.status < 300 || response.status >= 400) break;
       const location = response.headers.get("location");
-      try { await response.body?.cancel(); } catch { /* ignore */ }
+      abandonResponse(response);
       if (!allowRedirect || !location || hop === 5 || (method !== "GET" && method !== "HEAD")) {
         throw new Error("Redirect refused by hardened fetch policy");
       }
@@ -298,12 +446,15 @@ export async function hardenedFetch(
       currentUrl = nextUrl;
     }
     if (!response) throw new Error("Fetch failed");
+    // 以下每一条拒绝都先 abandonResponse 再抛：响应头到了、body 还在路上，不丢掉它就会把连接占住（见 abandonResponse）。
     if (!response.ok && options.throwOnNon2xx !== false) {
+      abandonResponse(response);
       throw new Error(`Fetch failed: HTTP ${response.status}`);
     }
 
     const contentType = response.headers.get("content-type") || "";
     if (options.allowContentTypes && !isAllowedContentType(contentType, options.allowContentTypes)) {
+      abandonResponse(response);
       throw new Error(
         `Unsupported content type: ${contentType || "<empty>"} (expected one of ${options.allowContentTypes.join(", ")})`,
       );
@@ -311,8 +462,16 @@ export async function hardenedFetch(
 
     // Content-Length 提前拦
     const declaredLength = Number(response.headers.get("content-length") || "0");
+    const declaredTotal = declaredContentLength(response);
     if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+      abandonResponse(response);
       throw new Error(`Response too large: declared ${declaredLength} bytes (limit ${maxBytes})`);
+    }
+    if (options.timeoutForDeclaredSize) {
+      // 响应头到了才知道多大：总上限按声明大小重算（仍从发请求那一刻算起，不是再给一整份）。
+      totalLimitMs = options.timeoutForDeclaredSize(declaredTotal);
+      clearTimeout(totalTimer);
+      totalTimer = setTimeout(() => expire("total"), Math.max(0, startedAt + totalLimitMs - Date.now()));
     }
 
     // 流式累计 — 超 maxBytes 立刻断
@@ -320,7 +479,6 @@ export async function hardenedFetch(
       throw new Error("Response has no body");
     }
     const sink = options.onChunk;
-    const declaredTotal = Number.isFinite(declaredLength) && declaredLength > 0 ? declaredLength : null;
     const chunks: Uint8Array[] = [];
     let total = 0;
     const reader = response.body.getReader();
@@ -329,17 +487,19 @@ export async function hardenedFetch(
       const { value, done } = await reader.read();
       if (done) break;
       if (!value) continue;
+      progressed();
       total += value.byteLength;
+      diagnostics.receivedBytes = total;
       if (total > maxBytes) {
         truncated = true;
-        try { await reader.cancel(); } catch { /* ignore */ }
+        abandonResponse(response, reader);
         throw new Error(`Response exceeded ${maxBytes} bytes`);
       }
       if (sink) {
         try {
           await sink(value, total, declaredTotal);
         } catch (sinkError) {
-          try { await reader.cancel(); } catch { /* ignore */ }
+          abandonResponse(response, reader);
           throw sinkError;
         }
       } else {
@@ -349,22 +509,27 @@ export async function hardenedFetch(
 
     return {
       bytes: sink ? Buffer.alloc(0) : Buffer.concat(chunks.map((c) => Buffer.from(c.buffer, c.byteOffset, c.byteLength)), total),
-      contentType,
+      contentType: reportedContentType(contentType),
       status: response.status,
       finalUrl: currentUrl.toString(),
       truncated,
     };
   } catch (error) {
+    diagnostics.elapsedMs = Date.now() - startedAt;
     if (error instanceof Error && error.name === "AbortError") {
-      const timeoutError = new Error(`Fetch timed out after ${timeoutMs}ms`);
+      const timeoutError = new Error(expired === "idle"
+        ? `Fetch stalled: no data for ${idleTimeoutMs}ms`
+        : `Fetch timed out after ${totalLimitMs}ms`);
       (timeoutError as Error & { cause?: unknown }).cause = error;
-      throw timeoutError;
+      throw attachDiagnostics(timeoutError, diagnostics);
     }
-    throw error;
+    throw attachDiagnostics(error, diagnostics);
   } finally {
-    clearTimeout(timer);
     options.signal?.removeEventListener("abort", relayAbort);
-    await Promise.allSettled(dispatchers.map((dispatcher) => dispatcher.close()));
+    // 收尾不晚于计时器：先在计时器仍在跑的时候拆掉这次请求专用的连接池，拆完（或计时器到点）才清计时器。
+    await releaseRequestDispatchers(dispatchers, controller.signal);
+    clearTimeout(totalTimer);
+    if (idleTimer !== undefined) clearTimeout(idleTimer);
   }
 }
 
