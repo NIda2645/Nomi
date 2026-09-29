@@ -573,6 +573,21 @@
       ],
       "since": "2026-09-26",
       "notes": "制作投影写进节点的那条运行记录（id 由 productionShotPhase.productionRunRecordId 生成、isProductionRunRecord 认）只归制作投影写：主进程 buildMaterializeShotsPayload 算出每镜的「生成中 / 失败 / 结束 / 出片」，渲染层 applyShotGeneration 落到节点上。画布自己的重开收敛（canvasSnapshotNormalizer.convergeStuckMidFlightNode）不许碰它——2026-09-26 真付费 T5：重开窗口后在跑的第 1 镜被当幽灵收成空闲，看着像没在跑（合同 docs/fixes/2026-09-26-inflight-shot-reload-display.root-cause.json）。"
+    },
+    {
+      "name": "安装包内容（随包依赖与包体预算）",
+      "owner": {
+        "path": "scripts/audit-package.mjs",
+        "symbol": "compareWithBudget"
+      },
+      "consumers": [
+        "scripts/check-packaged-deps.mjs",
+        "scripts/packaging/platform-binaries.cjs",
+        "scripts/after-pack-mac.cjs",
+        ".github/workflows/desktop-rc.yml"
+      ],
+      "since": "2026-09-28",
+      "notes": "「包里允许有什么」只有一份判据：大小与身份基线、禁带文件、运行时闭包由 scripts/audit-package.mjs 判，数据住 docs/engineering/package-budget.json（只许 --update-baseline 改写）。dependencies 与主进程证据的对账由 check-packaged-deps.mjs 判，它读同一份文件的 runtimeAllowlist；「这个二进制能不能在目标平台跑」只在 scripts/packaging/native-binaries.cjs，afterPack 裁剪与审计共用，不许再写第二份平台判据。"
     }
   ]
 }

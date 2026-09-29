@@ -6,6 +6,8 @@
 > - 「去构建一下」
 >
 > 本方案先建 A（包体审计）和 F（回归测试必须会咬人），其余几层按 §4 的顺序接上。
+>
+> 2026-09-28 进展：A 已在分支 `claude/release-audit` 本地实现并验证（Windows），记录见 §8；macOS 基线等下一次 desktop-rc。F 未开始。
 
 ## 1. 为什么会漏：我们只检查仓库里的代码
 
@@ -101,6 +103,66 @@
 ## 7. 回滚
 
 各自独立回滚：删门岗脚本、从 `desktop-rc.yml` 拿掉那一步、`package.json` 依赖分组还原。依赖只是挪分组，不删功能代码。
+
+## 8. A 的实施记录（2026-09-28，分支 `claude/release-audit`，本地提交未推送）
+
+### 8.1 瘦身前后（Windows x64，同一棵树本机各打一次 NSIS）
+
+「前」= 并入 origin/main 后、挪依赖之前的树；「后」= 本分支。两次都是 `pnpm run build` + `electron-builder --win nsis --x64 --publish never`，用 `scripts/audit-package.mjs` 量。
+
+| 项 | 前 | 后 | 变化 |
+|---|---:|---:|---:|
+| 安装包 `Nomi-win-x64.exe` | 333.8MB | 272.4MB | −18.4% |
+| 装完（win-unpacked 全部文件） | 1189.9MB | 769.9MB | −35.3% |
+| `app.asar` | 670.2MB | 312.9MB | −53.3% |
+| `app.asar.unpacked` | 162.6MB | 144.9MB | −10.9% |
+| 语言包 | 55 个 / 46.6MB | 3 个（en-US zh-CN zh-TW）/ 1.6MB | −96.5% |
+| 包里的 npm 包 | 659 个 | 266 个 | −393 |
+| 禁带文件 | 14,910 处（source map 14,705 个 187.7MB、测试 161、夹具 7、`.env` 1、public 重复 30、别的平台二进制 6） | 0 | |
+| 运行时闭包断链 | 4 处（@mantine/hooks、@leafer-in/resize 两个 peer 没装） | 0 | |
+
+界面产物 `dist/` 前后 540 个文件逐个 sha256 相同：挪依赖只改了「装不装进包」，没改 Vite 打出来的东西。
+安装包只降 18%、装完降 35%，是因为 NSIS 压缩对重复的 JS 很有效；剩下的大头见 8.6。
+
+### 8.2 依赖：挪了 47 个，留下 28 个
+
+`check:packaged-deps` 在挪之前红，列出 47 个找不到主进程运行时证据的包，全部挪进 `devDependencies`（lockfile 只搬分组，版本一个没变，`pnpm install --frozen-lockfile` 通过）：
+@fontsource-variable/fraunces、@fontsource-variable/inter、@imgly/background-removal、@leafer-in/editor、@leafer-in/export、@mantine/core、@mantine/modals、@mantine/notifications、@photo-sphere-viewer/core、@radix-ui/react-dropdown-menu、@radix-ui/react-switch、@radix-ui/react-tooltip、@react-three/drei、@react-three/fiber、@sparkjsdev/spark、@streamdown/cjk、@streamdown/code、@tabler/icons-react、@tanstack/react-virtual、@tiptap/core、@tiptap/extension-highlight、@tiptap/extension-list、@tiptap/extension-placeholder、@tiptap/extension-table、@tiptap/pm、@tiptap/react、@tiptap/starter-kit、@tiptap/suggestion、@xyflow/react、clsx、framer-motion、i18next、img-fx、immer、leafer-ui、perfect-freehand、react-dom、react-i18next、react-resizable-panels、react-router-dom、scheduler、streamdown、swr、tailwind-merge、three、use-sync-external-store、zustand。
+
+留下的 28 个，门岗逐个打印证据：24 个主进程真 import（如 electron-updater ← `dist-electron/update/autoUpdater.js`，zod 58 处）；4 个按路径加载、进 `runtimeAllowlist`（ffmpeg、ffprobe、sandbox-runtime、onnxruntime-web，各写理由与出处）；react 是 `ai` 带进来的 @ai-sdk/react 与 swr 的非可选 peer（electron-builder 不跟 peer，必须由我们的 dependencies 提供）。
+
+### 8.3 查用途的结论
+
+- **public/**：Vite 的 publicDir 已把 public 下每个文件拷进 dist（逐个比对过），页面按 `dist/index.html` 的相对路径取；主进程没有任何地方按 `app.asar/public` 读文件（`electron/assets/assetsIpc.ts` 的注释早就写了「进包两份」）。从 `build.files` 去掉。
+- **source map**：运行时没人读——没有 `process.setSourceMapsEnabled`、`--enable-source-maps`、`source-map-support`；崩溃日志记原始栈帧，Crashpad 记原生 minidump。`!**/*.map` 排除（绝大多数在 node_modules 里）。
+- **esbuild**（解包目录 11MB）：由 @earendil-works/chord 的 dependencies 带进来；chord 里只有 `dist/node/bundle.js` import 它，只经 `chord/bundler` 导出可达，而我们随包的 pi-agent-core / pi-coding-agent 只 import `chord/context`。用 `!**/node_modules/esbuild/**`、`!**/node_modules/@esbuild/**` 排除，在 `package-budget.json` 的 `excludedModules` 登记理由和「谁 import 它」名单；上游多一处 import，`check:package-budget` 就红，逼人重判。
+- **语言包**：Chromium 的 .lproj 命名是 en-US → en、其余把 `-` 换成 `_`；electron-builder 26.15.3 按文件名字面匹配（master 才加了 `-`/`_` 等价），所以 Windows 写 `en-US zh-CN zh-TW`，macOS 写 `en zh_CN zh_TW`。留 zh-TW 的原因：`app.getLocale()` 只报包里有语言包的语言，首启界面语言由它经 `normalizeDesktopLocale` 决定（zh-* → 中文，其余 → 英文）。本机探针（拷一份 Electron 运行时、只换语言包、打印 `app.getLocale()`）：留 en-US zh-CN zh-TW 时 `--lang=zh-TW`/`zh-HK` 都解析成 zh-TW；只留 en-US zh-CN 时解析成了 zh-CN——那是因为本机系统语言是简体中文，Chromium 回落到了系统语言，繁体系统上没有这条回落，会落到 en-US 变成英文界面。多留 0.8MB 换繁体用户首启仍是中文。同一探针里，包里没有的语言（ja、tr、de）会回落到系统首选语言中第一个包里有的，都没有才是 en-US；对非中文系统结果和以前一样是英文界面。
+- **测试、夹具、.env**：第三方包自带的 `*.test.*` / `*.spec.*` / `__tests__`（zod、tiptap、entities…）、`dist/fixtures`（只给设计实验室用）、编进 dist-electron 的 `providerAdapter/tests` 竞争夹具、@ffmpeg-installer/ffmpeg 里的 `.env`，一并排除。
+- **别的平台二进制**：0.22.4 的 Windows 包里还有 6 个跑不起来的原生文件（sandbox-runtime 的 Linux apply-seccomp 两个、srt-win arm64，pi-tui 的 darwin 两个与 win32-arm64）。afterPack 原先只认 ffmpeg/ffprobe 的子包名，现在按包的 `os`/`cpu` 与文件头判断，判据与审计共用 `scripts/packaging/native-binaries.cjs`。
+
+### 8.4 门岗、基线与接线
+
+- `check:packaged-deps`（contracts）：用 build:electron 的两份 tsconfig 在内存里 emit 主进程（不读盘上可能过期的 dist-electron），扫全部 1,122 个产物的 require / import / import() / resolve / createRequire 别名；另算 allowlist 与随包包的非可选 peer。
+- `check:package-budget`（contracts）：审计脚本单测、平台二进制单测（此前没有任何流程跑它）、预算文件自检（形状、macOS 欠账到期、excludedModules 与 build.files 同步、排除模块的 importers 名单）。
+- `scripts/audit-package.mjs`：量产物、出 JSON 报告和人读摘要；大小超预算（基线 × 1.05）、npm 包或语言包多一个、禁带文件、运行时闭包断链、ffmpeg/ffprobe 目标不对，任一条红。基线只许 `--update-baseline` 显式改，变大要 `--allow-growth "<理由>"` 记进 history；有毛病的包不许当基线。`pnpm run audit:package-size` 现在跑它。
+- `desktop-rc.yml`：Windows 与 macOS 作业在 MCP 冒烟之后、候选包上传之前各跑一次审计，红了作业就红；报告不论红绿都上传（`package-audit-windows` / `package-audit-macos`），摘要写进作业 summary。原「Verify packaged media target(s)」步骤并进审计。
+- 基线：win32-x64 已按本机瘦身后的包登记；darwin-arm64 / darwin-x64 登记为带到期日（2026-10-12）的欠账，下一次 desktop-rc 跑完用 `node scripts/audit-package.mjs --from-report <报告> --update-baseline` 登记。
+
+### 8.5 验证
+
+- 打包版冒烟（Windows，瘦身后的 `release/win-unpacked/Nomi.exe`）：
+  - `tests/ux/packaged-mcp-smoke.e2e.mjs`（desktop-rc 同款）通过：24 个工具、165 个资源、四个签名客户端建项目与起 run、未签名写入被拒。
+  - 核心冒烟清单三个场景（node-params-and-version-pill、canvas-drag-pan-gestures、spend-confirm 两例）在空项目与用过的项目两种夹具下全过；外加一条本地走查覆盖「新建项目 → 画布渲染 → 预览导出 MP4（ffprobe 验出 1920×1080 视频流）」。
+  - `test:core-smoke` 本身不支持打包版（`initialLocalStorage` 靠开发版才认的 `-r` 预加载），上面是用一个不入库的本机外壳把清单场景指向打包版跑的：偏好改为首个文档后写入再刷新，其余夹具、依赖、断言原样复用。
+  - 所有主进程输出、App 自己的日志目录、走查输出里 `Cannot find module` / `MODULE_NOT_FOUND` 命中 0 处。
+- 变异校验：把 @tabler/icons-react 挪回 dependencies → `check:packaged-deps` 红；把 asar / 装完预算临时调到 300MB / 700MB → 审计红；从基线里删掉 ws 与 zh-TW → 审计红（「多了 1 个 npm 包」「语言包多了」）；拿登记好的基线审「前」那个包 → 大小、393 个多出的包、52 个多出的语言包、禁带文件、4 处断链全部报红。
+
+### 8.6 发现但本次没做
+
+- **导出按钮的静默吞点击**：切到预览页后，顶栏「导出 MP4」比预览里的导出监听器早约 80ms 可点，这一瞬间的点击派发给 0 个监听器、没有任何反馈（打包版两次实测）。与本次改动无关（界面产物逐字节相同），交协调会话排期。
+- **下一批包体大头**：`skills/` 在 asar 里 110MB（精选技能的预览大图，单张 2–4MB）；onnxruntime-web 70MB，而运行时只伺服深度 worker 用的 jsep 那一份 wasm/mjs。两项都要先查清用途再动，本次不做。
+- **macOS**：本机没有 mac，mac 包的对比表、基线与「在 CI 里能启动」要等下一次 desktop-rc（quality-gate 的 mac-package 作业也会在本 PR 上打 mac 目录包并跑打包版 MCP 冒烟）。
+- **Nomi Preview**：继承了同一套 `build` 配置，瘦身同样生效，但 desktop-preview 没接审计。
 
 ## 先查别人
 
