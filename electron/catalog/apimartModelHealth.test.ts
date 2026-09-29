@@ -17,7 +17,7 @@ describe("APIMart model health inventory", () => {
     expect(entries.some((entry) => entry.modelKey === "gpt-4o-mini-tts")).toBe(true);
     expect(entries.every((entry) => entry.contractFingerprint.length === 64)).toBe(true);
     expect(entries.some((entry) => entry.taskKind === "text_to_audio")).toBe(true);
-    expect(entries.some((entry) => entry.taskKind === "transcribe")).toBe(false);
+    expect(entries.map((entry) => entry.taskKind)).not.toContain("transcribe");
   });
 
   it("keeps contract fingerprints independent of unrelated object key order", () => {

@@ -1789,6 +1789,15 @@
       ],
       "reason": "GenerationRunOutcome 是「这一次 generate 对用户而言是什么结局」的唯一说法，供 Agent 面板 / 外部 MCP 回包共用：started=真跑了、declined=用户没同意这次（**不是错误**）、nothing-to-run=范围里没有可跑的行所以一张卡都没弹过、unavailable=拿不到执行上下文（真错误）。刻意不复用 GenerationOperationState：那一张说的是「这份计划此刻停在哪一格」（draft/sealed/submitted/cancelled，跟着计划走、会持久化），这一张说的是「这一次调用回给模型什么」（跟着一次调用走、不落盘）。把 declined 折进 cancelled 会让「用户没同意」和「计划被终结」变成同一个词——而 2026-09-22 用户拍板的恰恰是这两件事不同（× 只收回这一次出价）。",
       "site": "src/workbench/generationCanvas/runner/generationRunOutcome.ts::type:GenerationRunOutcome/type-union"
+    },
+    {
+      "members": [
+        "pending-L3",
+        "recorded",
+        "recorded-stale"
+      ],
+      "reason": "APIMart 体检夹具的录制状态：某个模型 × 模式有没有真实录像（pending-L3 = 等 L3 真调用补录）、录像的契约指纹与当前目录是否一致（recorded / recorded-stale）。它只描述「体检录像 ↔ 当前目录契约」的对应关系，和任务状态、模型执行结果、目录生命周期都不同义，不能复用那些 owner。",
+      "site": "electron/catalog/apimartModelHealth.ts::type:ApimartRecordingStatus/property:status/type-union"
     }
   ],
   "debt": [
