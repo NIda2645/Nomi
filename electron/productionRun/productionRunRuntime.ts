@@ -13,8 +13,7 @@ import {
 import { currentProjectRevision, getApprovalReceiptAuthority } from '../capabilityCore/approvalReceiptRuntime'
 import { createProductionNotificationsListener } from './productionNotificationsDesktop'
 import type { ProductionRun, RunEvent } from './productionRunTypes'
-
-let shared: ProductionRunService | null = null
+import { getRegisteredProductionRunService, registerProductionRunService, resetRegisteredProductionRunService } from './productionRunServiceRegistry'
 const listeners = new Set<(run: ProductionRun) => void>()
 export function subscribeProductionRunChanges(listener: (run: ProductionRun) => void): () => void {
   listeners.add(listener)
@@ -30,7 +29,9 @@ function productionEvents() {
 
 /** One in-process control plane for MCP, RPC, IPC and recovery. The repository remains the durable source of truth. */
 export function getProductionRunService(): ProductionRunService {
-  if (!shared) {
+  try {
+    return getRegisteredProductionRunService()
+  } catch {
     // 付费门的人证装配（2026-09-10 根因修复）：**每一个**生产装配都必须带上进程内唯一的收据权威
     // 与项目版本解析器，否则 gate.decide 上的收据既验不了、也没人验 = 付费门直接放行。
     // 这两项在这里给一次，MCP stdio、GUI appIntegration、rpcServer、IPC、agentLane 都取的是这同一个
@@ -42,7 +43,7 @@ export function getProductionRunService(): ProductionRunService {
     const fixtureEnabled = isProductionRunE2eFixtureEnabled(process.env, Boolean(app?.isPackaged))
     if (fixtureEnabled) {
       const projectRootResolver = (projectId: string) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps())
-      shared = createProductionRunService({
+      registerProductionRunService(createProductionRunService({
         ...receiptWiring,
         projectRootResolver,
         onEvents: productionEvents(),
@@ -63,14 +64,14 @@ export function getProductionRunService(): ProductionRunService {
           maxAttemptsPerJob: 1,
           minimizeUploads: true,
         }),
-      })
+      }))
     } else {
-      shared = createProductionRunService({ ...receiptWiring, onEvents: productionEvents() })
+      registerProductionRunService(createProductionRunService({ ...receiptWiring, onEvents: productionEvents() }))
     }
   }
-  return shared
+  return getRegisteredProductionRunService()
 }
 
 export function resetProductionRunServiceForTests(): void {
-  shared = null
+  resetRegisteredProductionRunService()
 }

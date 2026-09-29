@@ -195,7 +195,7 @@ export function narrateModelKind(kind: string): string {
 // fix-model-kind：**直接把缺口补上**（改类型 + 按新类型重建调用通道），不是又把用户送去某一页
 // 自己找。这是这次唯一新增的动作——因为它是唯一一类「我们确切知道哪里错、也确切知道怎么改对」的
 // 失败。其余类别我们只知道现象、改不动，所以只能给「去哪儿」或「换一个」。
-export type GenerationErrorAction = 'retry' | 'switch-model' | 'open-model-access' | 'fix-model-kind'
+export type GenerationErrorAction = 'retry' | 'switch-model' | 'open-model-access' | 'fix-model-kind' | 'reconcile' | 'view-task'
 
 const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorAction> = {
   // 换模型才有救：上游/目录层面就没有这个模型，配置和重试都改不了它。
@@ -265,6 +265,8 @@ const ACTION_KEY: Record<GenerationErrorAction, string> = {
   'open-model-access': 'modelAccess',
   'fix-model-kind': 'fixModelKind',
   retry: 'retry',
+  reconcile: 'reconcile',
+  'view-task': 'viewTask',
 }
 
 /** 动作按钮文案（次动作用 `.alt` 变体，如「仍要重试」——避免和主按钮读起来一样重）。

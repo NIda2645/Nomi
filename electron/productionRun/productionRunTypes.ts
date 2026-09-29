@@ -183,6 +183,12 @@ export type ProductionJob = {
   updatedAt: string;
 };
 
+export type ProductionShotClaim = {
+  by: "canvas" | "production";
+  attempt: number;
+  claimedAt: string;
+};
+
 /**
  * P4 S1 一个镜头的可编辑草稿 + shot 粒度记账。
  *
@@ -232,6 +238,8 @@ export type ProductionGenerationShot = {
   nodeId?: string;
   /** P4 S5：这一镜的画布节点曾被用户从画布删除（整批撤销/手动删）。恢复补齐据此不复活（撤销事实优先）。 */
   canvasDetached?: boolean;
+  /** Durable owner of the current attempt; written only by the Run reducer. */
+  claim?: ProductionShotClaim;
   updatedAt: string;
 };
 
@@ -266,6 +274,8 @@ export type ProductionGenerationPlan = {
   /** A user deletion/undo of the single-shot placeholder must not be silently
    * resurrected by the next reconciliation pass. */
   canvasDetached?: boolean;
+  /** Durable owner for the legacy single-shot plan. */
+  claim?: ProductionShotClaim;
   /** Immutable paid submission authority prepared before the human gate. */
   authorizationEnvelope?: ProductionGenerationAuthorizationEnvelopeV1;
   authorizationDigest?: string;

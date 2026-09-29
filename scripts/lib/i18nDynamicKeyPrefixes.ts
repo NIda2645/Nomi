@@ -125,6 +125,7 @@ export const DYNAMIC_KEY_PREFIXES: DynamicPrefix[] = [
   { prefix: 'generationCommon.memory.kinds', why: '动态: 记忆条目类别;枚举来源: MemoryFold 的 fact.kind(memory.kinds.* 词条)' },
   { prefix: 'generationCommon.node.extractFrame', why: '动态: 抽帧首尾;枚举来源: extractVideoFrameToNode 的 which(node.extractFrame.* 词条)' },
   { prefix: 'generationCommon.observability.error', why: '动态: 可观测错误叙事;枚举来源: narrate.ts 的 error key(observability.error.${key}.reason/.hint 词条)' },
+  { prefix: 'generationCommon.observability.error.shotClaimed', why: '动态：production_shot_claimed 的四个 reason 枚举由 classifyGenerationError 的 claimCopy 提供。' },
   { prefix: 'generationCommon.observability.action', why: '动态: 可观测动作叙事;枚举来源: narrate.ts 的 ACTION_KEY[action](observability.action.${key}.main/.alt 词条)' },
   { prefix: 'generationCommon.production.artifactKind', why: '动态: 产物类型;枚举来源: ProductionRunTaskCard 的 preview.kind(production.artifactKind.* 词条)' },
   { prefix: 'generationCommon.production.batch.frozen', why: '动态: 批次冻结项;枚举来源: SpendConfirmDialog 的 frozen item(production.batch.frozen.* 词条)' },

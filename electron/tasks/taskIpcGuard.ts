@@ -18,6 +18,14 @@ export async function runTaskIpcGuard<T>(payload: unknown, thunk: () => Promise<
       });
       throw new Error(encodeVendorErrorMessage(error));
     }
+    const code = error && typeof error === "object" && typeof (error as { code?: unknown }).code === "string"
+      ? (error as { code: string }).code : undefined;
+    const reason = error && typeof error === "object" && typeof (error as { reason?: unknown }).reason === "string"
+      ? (error as { reason: string }).reason : undefined;
+    if (code && reason) {
+      const { encodeStructuredErrorMessage } = await import("../vendor/vendorHttp");
+      throw new Error(encodeStructuredErrorMessage({ code, reason }, error instanceof Error ? error.message : String(error)));
+    }
     throw error;
   }
 }

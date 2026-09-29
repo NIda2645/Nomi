@@ -4,6 +4,8 @@
 const MARKER = 'NOMI_VENDOR_ERR_B64::'
 
 export type VendorErrorStructuredLite = {
+  code?: string
+  reason?: string
   vendorKey?: string
   httpStatus?: number
   logicalCode?: number | string

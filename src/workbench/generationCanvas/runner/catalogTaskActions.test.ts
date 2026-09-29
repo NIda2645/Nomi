@@ -687,6 +687,20 @@ describe('轮询节奏 — 间隔分档 / 抖动 / 限流退避', () => {
 // 幂等键穿透回归：options.idempotencyKey 必须落进 request.extras.idempotencyKey，
 // 否则 electron 侧台账拿不到键、去重失效（= 提交幂等整条链断在最后一跳）。
 describe('buildCatalogTaskRequest — idempotencyKey 穿透到 request.extras', () => {
+  it('制作镜头节点显式投影 production binding，普通节点不伪造绑定', () => {
+    const bound = buildCatalogTaskRequest({
+      ...imageNode(),
+      prompt: 'a shot',
+      meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', productionRunId: 'run-1', productionShotId: 'shot-2' },
+    }).request.extras as Record<string, unknown>
+    expect(bound.productionRunId).toBe('run-1')
+    expect(bound.productionShotId).toBe('shot-2')
+
+    const ordinary = buildCatalogTaskRequest({ ...imageNode(), prompt: 'ordinary', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie' } }).request.extras as Record<string, unknown>
+    expect(ordinary.productionRunId).toBeUndefined()
+    expect(ordinary.productionShotId).toBeUndefined()
+  })
+
   it('options.idempotencyKey → request.extras.idempotencyKey', () => {
     const node: GenerationCanvasNode = { id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', archetype: { id: 'gpt-image-2', modeId: 't2i' } } }
     const built = buildCatalogTaskRequest(node, { idempotencyKey: 'run-abc-123' })

@@ -67,6 +67,11 @@ export type SubmissionOutboxDependencies = {
   /** Reuse an already-held Run lock; prevents nested acquisition in one-shot orchestration. */
   lockLease?: ProductionRunLockLease;
   now?: () => string;
+  /**
+   * 派发准入闸：在这次尝试的**第一笔耐久写**（预算预留 / 提交意向）之前调用，拿到的是还没落盘的 Run 与 job。
+   * 抛错 = 这一镜这次不提交：什么都没写，job 原样停在原状态，没有要释放或对账的东西。
+   * 生产里接的是镜头认领闸 `createProductionShotDispatchGuard`（画布接手 / 删节点 / 急停）。
+   */
   beforeDispatch?: (input: ProviderDispatchInput) => void | Promise<void>;
   afterDispatch?: (result: ProviderDispatchResult, input: ProviderDispatchInput) => void | Promise<void>;
 };
@@ -213,6 +218,11 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
     // （`amount: null`），于是「不当 0」和「能生成」同时成立，这道拒绝没有剩余的合法用途。
     // 已知价那条硬上限由 `authorizeSubmission` + 账本 reserve 原样守着。
 
+    // 准入闸排在**第一笔耐久写之前**：它看到的是这一镜还没被写成「提交中」的真实状态，一拒就什么都没写。
+    // 以前它排在 submit_intent_persisted 之后，看到的永远是「制作已经在提交」（认领判据里的 in_flight），
+    // 于是从来拒不了：急停之后同一轮里剩下的镜照样派发扣费（2026-09-29 #921 真额度验收）。
+    await deps.beforeDispatch?.({ run, job, idempotencyKey: intentKey, costCeiling: request.costCeiling });
+
     const reservationId = `${request.runId}:${request.jobId}:${job.attempt}`;
     const ledger = deps.repository.readBudgetLedger(request.projectId, request.runId);
     if (!ledger.reservations[reservationId]) {
@@ -226,23 +236,17 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
       });
       job = requiredJob(run, request.jobId);
     }
-    if (job.status === "authorized") {
-      run = jobCommand(request, "submit-intent", "submit_intent_persisted");
-      job = requiredJob(run, request.jobId);
-    }
+    if (job.status === "authorized") jobCommand(request, "submit-intent", "submit_intent_persisted");
 
+    run = jobCommand(request, "submitting", "submitting");
     const dispatchInput: ProviderDispatchInput = {
       run,
-      job,
-      idempotencyKey: `${request.runId}:${request.jobId}:${job.attempt}`,
+      job: requiredJob(run, request.jobId),
+      idempotencyKey: intentKey,
       costCeiling: request.costCeiling,
     };
-    await deps.beforeDispatch?.(dispatchInput);
-    run = jobCommand(request, "submitting", "submitting");
-    dispatchInput.run = run;
-    dispatchInput.job = requiredJob(run, request.jobId);
 
-    let submitIntent = deps.intentLog?.prepare({
+    const submitIntent = deps.intentLog?.prepare({
       runId: request.runId,
       kind: "provider.submit",
       key: intentKey,
@@ -258,7 +262,7 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
       fencingEpoch,
       allowRetryAfterAbort: request.allowRetryAfterAbort,
     });
-    if (submitIntent) submitIntent = deps.intentLog!.commit(submitIntent.intentId, { fencingEpoch });
+    if (submitIntent) deps.intentLog!.commit(submitIntent.intentId, { fencingEpoch });
 
     let response: ProviderDispatchResult;
     try {

@@ -125,6 +125,7 @@ function mockProvider(submit: ReturnType<typeof vi.fn>): GenerationProvider {
 function scheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, submit: ReturnType<typeof vi.fn>, options: Parameters<typeof createMultiShotBatchScheduler>[0]["options"] = {}) {
   const submission = createProductionGenerationSubmission({
     repository,
+    beforeDispatch: () => undefined,
     projectRoot: root,
     immutableProjectUuid: "project-uuid-1",
     projectGeneration: 1,
@@ -168,6 +169,7 @@ function schedulerWithCompletion(
 ) {
   const submission = createProductionGenerationSubmission({
     repository,
+    beforeDispatch: () => undefined,
     projectRoot: root,
     immutableProjectUuid: "project-uuid-1",
     projectGeneration: 1,

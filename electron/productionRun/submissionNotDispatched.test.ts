@@ -122,7 +122,7 @@ function setup(shots: ProductionGenerationShot[]) {
 
 function scheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, generationProvider: GenerationProvider) {
   const submission = createProductionGenerationSubmission({
-    repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+    repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
     intentMacKey: "test-intent-key", provider: generationProvider,
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
