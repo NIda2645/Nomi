@@ -171,6 +171,11 @@
   - 收集逻辑：`packages/app-builder-lib/src/util/appFileCopier.ts`
   - 排错文档：`website/docs/troubleshooting.md`
   - 仓库地址：https://github.com/electron-userland/electron-builder
+- **实施时逐条核对过的出处（2026-09-28，读的是本机装的 app-builder-lib 26.15.3 编译产物，对应源码如下）**：
+  - 生产依赖收集：https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/node-module-collector/pnpmNodeModulesCollector.ts ——跑 `pnpm list --prod`，每个包只跟 manifest 里的 dependencies / optionalDependencies，peer 一律不跟，所以随包库要的 peer 只能由我们的 dependencies 提供。
+  - node_modules 的文件过滤：https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/util/NodeModuleCopyHelper.ts ——`files` 里的排除模式按 `node_modules/<包>/…` 的相对路径匹配，所以 `!**/node_modules/esbuild/**` 能把传递依赖整包排除。
+  - 语言包裁剪：https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/electron/ElectronFramework.ts ——26.15.3 按文件名字面匹配（只转小写，不把 `-`/`_` 视为等价，master 才加），Windows 删 `.pak`、macOS 删 `.lproj`。
+  - Chromium 的 macOS 语言包命名：https://raw.githubusercontent.com/chromium/chromium/main/build/config/locales.gni ——en-US 输出为 en，其余把 `-` 换成 `_`（zh_CN、zh_TW）。
 - **v27 起 node_modules 按目标平台和架构过滤**：`website/docs/migration/v27-breaking-changes.md`。另一平台的二进制本不该出现在包里，出现就是配置问题。
 - **包体预算的通行做法**：基线加 CI 超了就红，PR 里贴变化量，例如 size-limit（https://github.com/ai/size-limit）。本方案借这个思路，但对象是整个安装包而不是前端 bundle，所以自己写审计脚本，不引依赖。
 - **仓库里已有**：
