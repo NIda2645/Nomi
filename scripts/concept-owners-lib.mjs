@@ -331,11 +331,14 @@ function writeApiPaths(concept) {
  * （方案：「多个入口」≠「多个 owner」）；在别的文件里**再定义**一份同名的函数 / 表 / 类型，才是第二个写口。
  * 别名（`const x = owner.x`、选择器 `useStore((s) => s.x)`）和重导出不算定义。
  * 另一个登记概念**明确认领**的同名定义（同名不同事，各自登记、各有计数键）不算——那是账上写明的判断。
+ * 写接口如果登记在接口 / 类型的**成员声明**上（依赖注入的钩子槽位，例如提交 outbox 的 `beforeDispatch`），
+ * 它是一份契约：别处给这个槽位填的实现是接线，不是第二个主人，所以这类写接口不做同名检查。
  */
 export function evaluateOwnership({ concepts, definitions, exists, read }) {
   const findings = []
   const secondWritePorts = []
   const claimed = writeApiIndex(concepts)
+  const implementations = (symbol) => (definitions.get(symbol) ?? []).filter((definition) => definition.kind !== 'signature')
   for (const concept of concepts) {
     for (const entry of concept.write_api ?? []) {
       if (!text(entry?.path) || !text(entry?.symbol)) continue
@@ -361,12 +364,18 @@ export function evaluateOwnership({ concepts, definitions, exists, read }) {
 
     const ownPaths = writeApiPaths(concept)
     const targets = new Map()
-    for (const entry of concept.write_api ?? []) if (isIdentifierSymbol(entry.symbol)) targets.set(entry.symbol, 'write_api')
+    for (const entry of concept.write_api ?? []) {
+      if (!isIdentifierSymbol(entry.symbol)) continue
+      // 登记处只有成员声明、没有实现 = 契约槽位（见上）；槽位的填充不查同名。
+      const slotOnly = !implementations(entry.symbol).some((definition) => definition.path === normalizePath(entry.path))
+      if (slotOnly && !targets.has(entry.symbol)) continue
+      targets.set(entry.symbol, 'write_api')
+    }
     for (const entry of concept.forbidden_derivations ?? []) {
       if (entry?.kind === 'definition' && isIdentifierSymbol(entry.symbol)) targets.set(entry.symbol, 'forbidden')
     }
     for (const [symbol, origin] of targets) {
-      for (const definition of definitions.get(symbol) ?? []) {
+      for (const definition of implementations(symbol)) {
         if (claimed.has(pairKey(definition.path, symbol))) continue
         if (origin === 'forbidden' && ownPaths.has(definition.path)) continue
         secondWritePorts.push({ concept: concept.name, path: definition.path, symbol, line: definition.line, origin })

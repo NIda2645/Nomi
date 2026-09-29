@@ -1126,7 +1126,7 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 | `parity_test` | 否 | 对拍 / 类级测试；写了就必须存在。暂不强制，覆盖数门岗每次打印 |
 | `since` · `notes` | 是 | |
 
-**门岗 `pnpm run check:concept-owners`**（进 gates；判据住 `scripts/concept-owners-lib.mjs`）：结构与计数键；主人今天还在；**第二写口**——写接口与 `definition` 旧形状在主人之外的**同名定义**（调用、别名、选择器、重导出都不算；另一个概念明确认领的同名定义放行）；pending 例外账与旧路写门冻结；身份比对必须登记且维度对得上；受管合同的边界必须进账。基线 `scripts/concept-owners-baseline.json` 存「概念 + 文件 + 符号」、必须等于现状；和 merge-base 比，已登记概念的口子只减不增，概念从账上消失而主人还在也红；没有 `--update`。复验历史代码：`node scripts/check-concept-owners.mjs --source-ref <提交> --concept <名字或 subject>`。
+**门岗 `pnpm run check:concept-owners`**（进 gates；判据住 `scripts/concept-owners-lib.mjs`）：结构与计数键；主人今天还在；**第二写口**——写接口与 `definition` 旧形状在主人之外的**同名定义**（调用、别名、选择器、重导出都不算；另一个概念明确认领的同名定义放行；登记在接口成员上的写接口是注入钩子的槽位，别处给槽位填实现不算）；pending 例外账与旧路写门冻结；身份比对必须登记且维度对得上；受管合同的边界必须进账。基线 `scripts/concept-owners-baseline.json` 存「概念 + 文件 + 符号」、必须等于现状；和 merge-base 比，已登记概念的口子只减不增，概念从账上消失而主人还在也红；没有 `--update`。复验历史代码：`node scripts/check-concept-owners.mjs --source-ref <提交> --concept <名字或 subject>`。
 
 **它只抓形状**：同一件事换个名字再写一份，门岗看不见——那一半归 `parity_test`、变异测试、真实旅程和 R33.3 收货那一问。
 

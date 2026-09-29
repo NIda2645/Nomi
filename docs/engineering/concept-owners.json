@@ -791,9 +791,18 @@
         {
           "path": "electron/shared/decideShotClaim.ts",
           "symbol": "decideShotClaim"
+        },
+        {
+          "path": "electron/productionRun/productionRunReducer.ts",
+          "symbol": "shot.claim"
+        },
+        {
+          "path": "electron/productionRun/batchScheduleDerivation.ts",
+          "symbol": "needsDispatch"
         }
       ],
       "forbidden_derivations": [],
+      "parity_test": "electron/shared/productionShotPhase.test.ts",
       "allowed_consumers": [
         "src/workbench/production/productionShotOwnership.ts",
         "src/workbench/generationCanvas/components/canvasProductionScope.ts",
@@ -1314,6 +1323,10 @@
         {
           "path": "electron/shared/productionRunCommandId.ts",
           "symbol": "isProductionRunIdentifier"
+        },
+        {
+          "path": "electron/shared/productionRunCommandId.ts",
+          "symbol": "detachShotNodesCommandId"
         }
       ],
       "forbidden_derivations": [],
@@ -1341,6 +1354,10 @@
         {
           "path": "electron/shared/productionShotJobs.ts",
           "symbol": "shotCountsTowardBatch"
+        },
+        {
+          "path": "electron/shared/productionShotJobs.ts",
+          "symbol": "shotIncluded"
         }
       ],
       "forbidden_derivations": [],
@@ -2165,6 +2182,356 @@
       ],
       "since": "2026-09-29",
       "notes": "PR #924（同上合同）：主进程里任何一个永远不返回的 await，都能把节点卡在非终态，而且点停也停不下。现在每个非终态的 GenerationProgressPhase 都在 GENERATION_PHASE_DEADLINE 里登记了最长时长与到期动作（穷尽的 Record，少一个阶段就是 tsc 红）；生成过程中等主进程的地方都经 awaitWithinPhase：结果回来、按最近上报的阶段截止时间到期、或用户点停，谁先到算谁。可恢复 / 卡住的结局不自动重试——重试会再提交一次付费任务。"
+    },
+    {
+      "name": "一镜对应哪些生成 job（镜 ↔ job 对应）",
+      "subject": "production.shot-jobs",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/productionShotJobs.ts",
+        "symbol": "jobsForShot"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/productionShotJobs.ts",
+          "symbol": "jobsForShot"
+        },
+        {
+          "path": "electron/shared/productionShotJobs.ts",
+          "symbol": "latestJobForShot"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/productionRun/batchScheduleDerivation.ts",
+        "electron/productionRun/productionRunReducer.ts",
+        "electron/shared/decideShotClaim.ts",
+        "electron/shared/productionShotPhase.ts",
+        "electron/productionRun/productionQaVerdict.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #921（合同 docs/fixes/2026-09-28-production-shot-claim.root-cause.json）：每个按镜找 job 的调用方只许问这一份对应关系（含单镜计划的旧形状：单镜没有 shots[]，唯一那一镜的身份就是候选 id）。门岗在合并那一刻报出两份遗留的同名实现，已记进基线：productionShotPhase.ts 私有的 jobsForShot（多镜分支不按 stageId === 'generate' 过滤，比主人宽）与 productionQaVerdict.ts 的 latestJobForShot（按画布节点 id 找、排序键也不同）。本 PR 不改生产文件；收口 = 前者改 import 这一份，后者先判是不是同一件事。"
+    },
+    {
+      "name": "渲染层发制作命令的唯一出口（失败不许吞）",
+      "subject": "production.renderer-command-path",
+      "lifecycle": "execution",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/production/productionRunCommands.ts",
+        "symbol": "executeProductionRunCommand"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/production/productionRunCommands.ts",
+          "symbol": "executeProductionRunCommand"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/production/productionRunCommands.test.ts",
+      "allowed_consumers": [
+        "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+        "src/workbench/production/reportDetachedShotNodes.ts",
+        "src/workbench/production/useProductionStatus.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #921（同上合同）：渲染层发给制作 Run 的每条命令都走 executeProductionRunCommand——版本冲突时带最新版本重发一次，真失败交还调用方，不许再 catch {} 吞掉（删节点上报曾因此静默失败，被删的镜照样派发扣费）。"
+    },
+    {
+      "name": "制作提交的准入口（派发闸排在第一笔耐久写之前）",
+      "subject": "production.submission-admission",
+      "lifecycle": "execution",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/submissionOutbox.ts",
+        "symbol": "submitOnce"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/submissionOutbox.ts",
+          "symbol": "submitOnce"
+        },
+        {
+          "path": "electron/productionRun/submissionOutbox.ts",
+          "symbol": "beforeDispatch"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/productionRun/productionShotDispatchGate.e2e.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionGenerationSubmission.ts",
+        "electron/productionRun/productionShotDispatchGuard.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #921（同上合同）：每条制作提交路径都经 submitOnce，它在预留预算、落提交意向（这次尝试的第一笔耐久写）之前先调派发闸 beforeDispatch；闸排在提交意向之后时看到的永远是 in_flight，一次都没拒过（真额度验收：急停后同一轮的镜照样扣费）。beforeDispatch 是 SubmissionOutboxDependencies 里声明的钩子槽位，生产侧由 productionGenerationSubmission 接到 productionShotDispatchGuard；槽位在依赖里是可选成员，漏接不会有编译期信号（R17 那一类），装配点目前靠派发闸的 e2e 测试守。"
+    },
+    {
+      "name": "跨供应商同一模型的身份（canonical 模型 id）",
+      "subject": "catalog.canonical-model-id",
+      "lifecycle": "catalog",
+      "authority_kind": "schema",
+      "trust_domain": "main",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/seedModelIdentity.ts",
+        "symbol": "CANONICAL_MODEL_IDS"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/seedModelIdentity.ts",
+          "symbol": "CANONICAL_MODEL_IDS"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/config/modelIdentity.channelMerge.test.ts",
+      "allowed_consumers": [
+        "electron/catalog/seedBuiltins.ts",
+        "src/config/modelIdentity.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #926（合同 docs/fixes/2026-09-28-channel-model-identity-merge.root-cause.json）：同一个模型经不同渠道 / 中转进目录时，身份只在这里显式声明（版本级，键 = 目录 modelKey，值 = 与 normalizeModelLabel 同形的 canonical id）；含渠道行的组每一行都显式填，不再赌 labelZh 相同。与 electron/catalog/apimartModelIds.ts 里同名的那张表是两件事，见「APIMart 出站模型名」。"
+    },
+    {
+      "name": "curated 模型的分档（旗舰 / 性价比 / 陪跑 / 退役）",
+      "subject": "catalog.model-lifecycle-tier",
+      "lifecycle": "catalog",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/seedModelIdentity.ts",
+        "symbol": "curatedCatalogLifecycle"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/seedModelIdentity.ts",
+          "symbol": "curatedCatalogLifecycle"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/catalog/seedBuiltins.test.ts",
+      "allowed_consumers": [
+        "electron/catalog/seedBuiltins.ts",
+        "src/devlab/designLab/catalogLiveness/states/01-listing.tsx"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #926（同上合同）：curated 行的分档只由这一个函数判；同一 canonical 组里渠道行与中转站行同档，合并成一条之后「取最强线路」不会让这个模型在下拉里悄悄换档。"
+    },
+    {
+      "name": "模型下拉里同一个模型收成一条",
+      "subject": "catalog.model-option-dedupe",
+      "lifecycle": "projection",
+      "authority_kind": "projection",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/config/modelIdentity.ts",
+        "symbol": "dedupeModelOptions"
+      },
+      "write_api": [
+        {
+          "path": "src/config/modelIdentity.ts",
+          "symbol": "dedupeModelOptions"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/config/modelIdentity.channelMerge.test.ts",
+      "allowed_consumers": [
+        "src/workbench/common/useDedupedModelSelect.ts",
+        "src/workbench/common/BulkModelPicker.tsx",
+        "src/workbench/settings/ModelBoxOrderSection.tsx",
+        "src/devlab/designLab/vendorOrder/vendorOrderLabKit.tsx"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #926（同上合同）：按 canonical 身份把目录行收成下拉里的一条并收集全部供应商；默认走哪家由同文件的 sortModelProviders 决定，它的前两级就是「供应商落家」的 compareVendorLanding，与执行侧同一把尺。"
+    },
+    {
+      "name": "APIMart 出站模型名（目录键 → APIMart 公开模型 id）",
+      "subject": "provider.apimart-wire-model-id",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/apimartModelIds.ts",
+        "symbol": "normalizeApimartCanonicalModelId"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/apimartModelIds.ts",
+          "symbol": "normalizeApimartCanonicalModelId"
+        },
+        {
+          "path": "electron/catalog/apimartModelIds.ts",
+          "symbol": "CANONICAL_MODEL_IDS"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/catalog/apimartModelIds.test.ts",
+      "allowed_consumers": [],
+      "since": "2026-09-28",
+      "notes": "为什么和「跨供应商同一模型的身份」分开登记（协调会话 2026-09-29 裁定：是另一件事，不改名）：这张表把目录里存的历史 modelKey 换成 APIMart 生成接口认的公开模型 id（值是 seedance-2.0 这类出站名），只在出站请求的共享边界上用（normalizeApimartCanonicalModelId），不参与合并与去重；seedModelIdentity 那张的值是跨供应商的身份键（seedance 2.0 这类），两张表键可以重叠、值的含义不同。两边各有计数键，同名由本条明确认领，门岗不再把它判成第二写口。"
+    },
+    {
+      "name": "这个模型名属于哪个档案（档案身份识别表）",
+      "subject": "catalog.archetype-identifier",
+      "lifecycle": "catalog",
+      "authority_kind": "schema",
+      "trust_domain": "main",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/archetypeIdentifiers.generated.ts",
+        "symbol": "ARCHETYPE_IDENTIFIER_PATTERNS"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/archetypeIdentifiers.generated.ts",
+          "symbol": "ARCHETYPE_IDENTIFIER_PATTERNS"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/catalog/archetypeIdentity.test.ts",
+      "allowed_consumers": [
+        "electron/catalog/archetypeIdentity.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #926（合同 docs/fixes/2026-09-28-nano-banana-pro-identifier.root-cause.json）：档案身份表由档案生成、check:archetype-defaults 守同步；每个识别串只属于一个档案，主进程的身份识别都读它。写错档案时两侧解析器会一致地认错（它们共用这一份声明），这类错只能按出处人工归位。"
+    },
+    {
+      "name": "内置目录的种入与退役（新装机种、老装机摘）",
+      "subject": "catalog.builtin-seeding",
+      "lifecycle": "catalog",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "durable",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/seedBuiltins.ts",
+        "symbol": "applyBuiltinSeeds"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/seedBuiltins.ts",
+          "symbol": "applyBuiltinSeeds"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/catalog/seedBuiltins.test.ts",
+      "allowed_consumers": [
+        "electron/catalog/catalogStore.ts",
+        "scripts/check-orphan-mapping-cables.ts",
+        "scripts/check-reference-outbound-contract.ts",
+        "scripts/model-identity-walkthrough.mjs",
+        "scripts/model-radar.ts",
+        "tests/ux/_mcpL2Fixture.mjs",
+        "tests/ux/agent-runtime-fixture.mjs",
+        "tests/ux/anchor-real-planner.mjs"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #926（合同 docs/fixes/2026-09-28-sora-2-retirement.root-cause.json）：目录只有「加」的通道，上游下架没有自动退出的通道。退役必须两件一起做：curated 源里删掉（新装机不再种）+ 退役清单里 prune（老装机摘掉已落盘的行）；两者互斥且幂等，都只经 applyBuiltinSeeds。"
+    },
+    {
+      "name": "目录里这一行现在怎么了（已退役 / 未配置 / 类型不符）",
+      "subject": "catalog.row-status",
+      "lifecycle": "catalog",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/executableModel.ts",
+        "symbol": "findExecutableModel"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/executableModel.ts",
+          "symbol": "findExecutableModel"
+        },
+        {
+          "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+          "symbol": "resolveExecutableNodeFromCatalog"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/catalog/retiredRowParity.test.ts",
+      "allowed_consumers": [
+        "electron/runtime.ts",
+        "electron/tasks/taskResultQuery.ts",
+        "electron/video/deconstructVideo.ts",
+        "src/workbench/generationCanvas/runner/catalogTaskActions.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "PR #926（合同 docs/fixes/2026-09-29-retired-model-card-reachable.root-cause.json）：「这一行现在怎么了」原来两层各答一遍——执行侧 findExecutableModel 三分（整条不在 = 已退役 / 在但停用 = 未配置 / 在但类型不符），渲染层却在请求出门前一律答「供应商断开」。现在判定只在执行侧；渲染层的 resolveExecutableNodeFromCatalog 只管「行还在但用不了」的恢复路，行整条不在就不抢答。"
+    },
+    {
+      "name": "生成错误怎么说成人话（错误 → 人话与动作）",
+      "subject": "diagnostics.generation-error-copy",
+      "lifecycle": "projection",
+      "authority_kind": "projection",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/observability/classifyError.ts",
+        "symbol": "classifyGenerationError"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/observability/classifyError.ts",
+          "symbol": "classifyGenerationError"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "src/workbench/ai/lane/laneCommandFailure.ts",
+        "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+        "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+        "src/workbench/observability/generationFeedback.ts",
+        "src/workbench/taskCenter/taskCenterEntries.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "PR #926（同上合同）：把生成错误映射成人话与下一步动作的唯一一处；内部签名（已退役 / 类型不符 / 缺文本大脑 / NOMI_ERR 码）不进「服务商原话」框——退役这条曾经漏了。"
+    },
+    {
+      "name": "模型框里模型的显示名（按当前语言翻译，不进身份）",
+      "subject": "catalog.model-display-label",
+      "lifecycle": "projection",
+      "authority_kind": "projection",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/common/useDedupedModelSelect.ts",
+        "symbol": "modelDisplayLabel"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/common/useDedupedModelSelect.ts",
+          "symbol": "modelDisplayLabel"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/common/useDedupedModelSelect.test.ts",
+      "allowed_consumers": [
+        "src/workbench/settings/ModelBoxOrderSection.tsx"
+      ],
+      "since": "2026-09-29",
+      "notes": "PR #926（合同 docs/fixes/2026-09-29-model-box-label-translation.root-cause.json）：模型框只给供应商名调了翻译、模型名漏了。模型名的显示名只在这里按当前语言翻，只进显示、不进身份——不能在更早的 dedupeModelOptions / toCatalogModelOptions 里翻，那里的 label 是身份的输入，在那里翻，身份就会随语言变。"
     }
   ]
 }

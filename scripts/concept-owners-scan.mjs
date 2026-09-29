@@ -279,8 +279,17 @@ function isDefinition(node, name) {
   return !selectsSameName(initializer, name)
 }
 
+/** 接口 / 类型字面量里声明的成员（`beforeDispatch?: (...) => void`）：一个**契约槽位**，不是实现。 */
+function signatureName(node) {
+  if ((ts.isPropertySignature(node) || ts.isMethodSignature(node)) && node.name && ts.isIdentifier(node.name)) return node.name.text
+  return null
+}
+
 /**
- * 一批符号在哪些文件里被**定义**：`Map<symbol, [{ path, line }]>`。
+ * 一批符号在哪些文件里被**定义**：`Map<symbol, [{ path, line, kind }]>`。
+ * `kind: 'implementation'` = 真的实现了一份（函数 / 类 / 类型 / 变量 / 对象成员）；
+ * `kind: 'signature'` = 只在接口或类型里声明了这个成员（依赖注入的钩子槽位）。槽位能让「主人在不在」成立，
+ * 但它本身不是第二个写口——别处给这个槽位填实现，是在接线，不是另立主人。
  * 行号只给人看（跳过去核对），不进基线身份——门的身份是「文件 + 符号」（R21.3）。
  */
 export function collectDefinitions({ files, read, symbols }) {
@@ -292,13 +301,19 @@ export function collectDefinitions({ files, read, symbols }) {
     const text = read(file)
     if (typeof text !== 'string' || !mentionsAny(text, wanted)) continue
     const source = parseSource(file, text)
+    const record = (name, node, kind) => {
+      const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1
+      const list = found.get(name) ?? []
+      list.push({ path: normalizePath(file), line, kind })
+      found.set(name, list)
+    }
     const visit = (node) => {
       const name = definedName(node)
       if (name && wanted.has(name) && isDefinition(node, name)) {
-        const line = source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1
-        const list = found.get(name) ?? []
-        list.push({ path: normalizePath(file), line })
-        found.set(name, list)
+        record(name, node, 'implementation')
+      } else {
+        const slot = signatureName(node)
+        if (slot && wanted.has(slot)) record(slot, node, 'signature')
       }
       ts.forEachChild(node, visit)
     }

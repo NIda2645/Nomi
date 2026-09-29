@@ -185,6 +185,56 @@ test('反向控制：另一个概念明确认领的同名定义是账上写明�
   }
 })
 
+test('契约槽位：写接口登记在接口成员上（注入的钩子）时，别处给槽位填实现不算第二写口；槽位删了就是主人不在', () => {
+  const slotConcept = concept({
+    name: '提交准入口',
+    subject: 'production.submission-admission',
+    lifecycle: 'execution',
+    authority_kind: 'gateway',
+    trust_domain: 'main',
+    owner: { path: 'electron/outbox.ts', symbol: 'submitOnce' },
+    write_api: [
+      { path: 'electron/outbox.ts', symbol: 'submitOnce' },
+      { path: 'electron/outbox.ts', symbol: 'beforeDispatch' },
+    ],
+    allowed_consumers: [],
+  })
+  const repo = makeRepo({
+    files: {
+      'electron/outbox.ts': [
+        'export interface OutboxDependencies { beforeDispatch?: (job: string) => void }',
+        'export function submitOnce(deps: OutboxDependencies, job: string): void { deps.beforeDispatch?.(job) }',
+      ].join('\n'),
+      'electron/wiring.ts': [
+        "import { submitOnce } from './outbox'",
+        "export const run = () => submitOnce({ beforeDispatch: (job) => { if (!job) throw new Error('no') } }, 'j')",
+      ].join('\n'),
+    },
+    concepts: [concept(), slotConcept],
+  })
+  try {
+    const green = run(repo)
+    assert.equal(green.status, 0, green.output)
+
+    write(repo.root, { 'electron/rival.ts': 'export function submitOnce(): void {}\n' })
+    const rival = run(repo)
+    assert.equal(rival.status, 1, rival.output)
+    assert.match(rival.output, /electron\/rival\.ts:1 · submitOnce/)
+    assert.doesNotMatch(rival.output, /wiring\.ts:\d+ · beforeDispatch/)
+
+    write(repo.root, {
+      'electron/rival.ts': null,
+      'electron/outbox.ts': 'export function submitOnce(job: string): void { void job }\n',
+    })
+    const slotGone = run(repo)
+    assert.equal(slotGone.status, 1, slotGone.output)
+    assert.match(slotGone.output, /owner-unresolved/)
+    assert.match(slotGone.output, /electron\/outbox\.ts · beforeDispatch/)
+  } finally {
+    cleanup(repo)
+  }
+})
+
 test('禁止的旧形状：住在主人文件里放行，别处再定义就红', () => {
   const withForbidden = concept({
     forbidden_derivations: [{ symbol: 'LEGACY_TIER_KEYS', kind: 'definition', why: '旧的第二张分级表' }],
