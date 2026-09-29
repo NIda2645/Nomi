@@ -1,0 +1,234 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-package-contents-unaudited",
+  "problem_type": "Release package contents are never inspected: the production dependency set, bundled files, locales and foreign-platform binaries grow without any gate",
+  "symptom": "0.22.4 Windows: installer 334MB, installed 1.2GB, app.asar 654MB of which renderer code is 30MB. A local rebuild of the same tree measured installer 333.8MB, installed 1189.9MB, app.asar 670.2MB, app.asar.unpacked 162.6MB, 55 locale packs (46.6MB), 14,705 source maps (188MB), 159 test files, 7 fixtures, one .env and 6 native binaries that cannot run on win32-x64.",
+  "direct_cause": "electron-builder copies every package.json `dependencies` entry and its closure into app.asar regardless of `files`; 47 renderer-only libraries that Vite already bundles into dist/assets were listed there. `files` also shipped public/** (Vite copies it into dist) with no exclusions for maps/tests/fixtures, electronLanguages was unset, esbuild came in through @earendil-works/chord, and afterPack pruned foreign binaries only for the ffmpeg/ffprobe package names.",
+  "class_root": "Nothing checked what the packaged product contains. The declared production dependency set was never compared with main-process runtime evidence, and the built package was never compared with an identity and size baseline, so each packaging mistake (2026-08-07 multi-platform ffmpeg/ffprobe 560MB, 2026-09-28 renderer libraries ~620MB and six foreign binaries) reached users before anyone looked.",
+  "affected_population": [
+    "Every Windows and macOS user downloading, installing or updating Nomi (installer and update size, disk usage)",
+    "Every future package added to package.json dependencies",
+    "Every dependency upgrade that brings per-platform native payloads or new transitive packages"
+  ],
+  "scope_paths": [
+    ".github/workflows/desktop-rc.yml",
+    "package.json",
+    "pnpm-lock.yaml",
+    "docs/engineering/package-budget.json",
+    "scripts/check-packaged-deps.mjs",
+    "scripts/audit-package.mjs",
+    "scripts/lib/moduleReferences.mjs",
+    "scripts/lib/packagedApp.mjs",
+    "scripts/packaging/native-binaries.cjs",
+    "scripts/packaging/platform-binaries.cjs",
+    "scripts/packaging/audit-packaged-media.cjs",
+    "scripts/after-pack-mac.cjs"
+  ],
+  "entry_points": [
+    "package.json dependencies -> electron-builder pnpm collector -> app.asar/node_modules",
+    "package.json build.files / asarUnpack / electronLanguages -> electron-builder file copy and locale pruning",
+    "scripts/after-pack-mac.cjs afterPack -> prunePlatformBinaries over app.asar.unpacked/node_modules",
+    ".github/workflows/desktop-rc.yml macOS and Windows jobs -> packaged candidate uploaded for release"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/node-module-collector/pnpmNodeModulesCollector.ts",
+      "checked_at": "2026-09-28",
+      "purpose": "Read in the installed app-builder-lib 26.15.3 (out/node-module-collector/pnpmNodeModulesCollector.js): production collection runs `pnpm list --prod` and keeps only each manifest's dependencies/optionalDependencies, so peers are dropped and must come from our own dependencies."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/electron/ElectronFramework.ts",
+      "checked_at": "2026-09-28",
+      "purpose": "removeUnusedLanguagesIfNeeded: 26.15.3 matches electronLanguages against file names literally (lowercased, no '-'/'_' equivalence; master added normalization), on .pak for Windows and .lproj for macOS."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://github.com/electron-userland/electron-builder/blob/master/packages/app-builder-lib/src/util/NodeModuleCopyHelper.ts",
+      "checked_at": "2026-09-28",
+      "purpose": "Negated `files` patterns are applied to node_modules files through moduleFullFilePath, so `!**/node_modules/esbuild/**` removes esbuild from the package."
+    },
+    {
+      "kind": "source-code",
+      "url": "https://raw.githubusercontent.com/chromium/chromium/main/build/config/locales.gni",
+      "checked_at": "2026-09-28",
+      "purpose": "Apple output names: en-US becomes en, every other locale replaces '-' with '_' (zh_CN, zh_TW), which is why the macOS list is spelled differently from Windows."
+    }
+  ],
+  "invariants": [
+    "Every package.json dependency has main-process runtime evidence (a load in the emitted dist-electron, a runtimeAllowlist entry with reason and evidence, or a non-optional peer of a packaged package), and every package the emitted main process loads is a dependency.",
+    "The packaged product matches its per-platform identity baseline (npm package names and locale packs), stays within its size budgets, and contains no source maps, tests, fixtures, .env files, public/ duplicates or native binaries that cannot run on the target.",
+    "Every package the packaged dist-electron imports, and every non-optional dependency and peer of every packaged package, resolves inside the package."
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/audit-package.mjs",
+    "tests": [
+      "scripts/audit-package.node-test.mjs",
+      "scripts/check-packaged-deps.node-test.mjs"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "scripts/audit-package.mjs",
+      "symbol": "auditPackagedMedia"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/audit-package.mjs",
+      "symbol": "measurePackage"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/check-packaged-deps.mjs",
+      "symbol": "analyzePackagedDeps"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/packaging/audit-packaged-media.cjs",
+      "symbol": "auditPackagedMedia"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/after-pack-mac.cjs",
+      "symbol": "prunePlatformBinaries"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/packaging/platform-binaries.cjs",
+      "symbol": "prunePlatformBinaries"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 6,
+    "why_not": "The three added doors are the gates themselves: check-packaged-deps (source side, contracts), and audit-package's measurePackage plus its call into auditPackagedMedia (product side, desktop-rc). The media-target check lost its own CLI entry and its separate workflow steps; it now runs only inside audit-package. prunePlatformBinaries stays the single afterPack writer, defined in platform-binaries.cjs and called from after-pack-mac.cjs."
+  },
+  "generality_proof": "The gates judge the class, not the instances. check:packaged-deps derives the allowed production set from the emitted main-process code, so any library the main process never loads is red whatever its name or size. audit-package judges the finished package by identity (every npm package and locale must be in the recorded list, so even a 10KB addition is red), by file class (maps, tests, fixtures, .env, public/ duplicates, and native binaries judged by their header rather than their package name), and by a runtime-closure walk that proves every import and declared dependency resolves inside the package. The can-this-run-on-the-target judgement lives in one module used by both afterPack pruning and the audit, so pruning and auditing cannot disagree.",
+  "shared_boundaries": [
+    {
+      "path": "scripts/check-packaged-deps.mjs",
+      "symbol": "analyzePackagedDeps",
+      "responsibility": "package.json dependencies must equal the set with main-process runtime evidence (contracts gate check:packaged-deps)."
+    },
+    {
+      "path": "scripts/audit-package.mjs",
+      "symbol": "compareWithBudget",
+      "responsibility": "The packaged product must match its identity and size baseline and contain no forbidden files or broken runtime links (desktop-rc, every platform, before the candidate uploads)."
+    },
+    {
+      "path": "scripts/packaging/native-binaries.cjs",
+      "symbol": "isForeignBinary",
+      "responsibility": "Single judgement of whether a native binary or a platform package can run on the target, shared by afterPack pruning and the audit."
+    },
+    {
+      "path": "scripts/lib/moduleReferences.mjs",
+      "symbol": "scanModuleReferences",
+      "responsibility": "Single scanner of module loads in build output, shared by check:packaged-deps and the audit's runtime-closure walk."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "package.json",
+      "entry_point": "dependencies",
+      "disposition": "enforced",
+      "evidence": "check:packaged-deps runs in gates:contracts; it was red with 47 renderer-only packages before they moved to devDependencies and red again when @tabler/icons-react was moved back (mutation check)."
+    },
+    {
+      "path": "package.json",
+      "entry_point": "build.files",
+      "disposition": "enforced",
+      "evidence": "audit-package FORBIDDEN_PATH_RULES flag maps, tests, fixtures, .env and public/ duplicates in the product; check:package-budget keeps excludedModules and the `!**/node_modules/<name>/**` patterns in sync and re-scans importers of each excluded module."
+    },
+    {
+      "path": "scripts/after-pack-mac.cjs",
+      "entry_point": "afterPack",
+      "disposition": "enforced",
+      "evidence": "prunePlatformBinaries now removes packages whose os/cpu excludes the target and files whose header cannot run there (6 removed on win32-x64); the audit re-checks every file with the same judgement."
+    },
+    {
+      "path": ".github/workflows/desktop-rc.yml",
+      "entry_point": "macos and windows package jobs",
+      "disposition": "enforced",
+      "evidence": "The audit step runs after packaging and before the rc-macos / rc-windows upload; scripts/check-desktop-rc-workflow.node-test.mjs pins no continue-on-error, report upload with if: always(), and no parallel media-target step."
+    },
+    {
+      "path": ".github/workflows/desktop-release.yml",
+      "entry_point": "promotion of the RC artifacts",
+      "disposition": "not-affected",
+      "evidence": "The release job downloads and re-uploads the exact RC artifacts checked against the RC manifest; it never repackages, so the RC audit covers what it publishes."
+    },
+    {
+      "path": ".github/workflows/desktop-preview.yml",
+      "entry_point": "Nomi Preview packages",
+      "disposition": "not-affected",
+      "evidence": "electron-builder.preview.cjs spreads package.json build, so the preview package inherits the same files exclusions, electronLanguages and afterPack pruning; the preview channel is not audited against the stable budget (recorded in residual_risks)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Package contents change with every dependency addition or upgrade and every build-config edit. Two instances of the same unchecked class already shipped: 2026-08-07 multi-platform ffmpeg/ffprobe (560MB unpacked, docs/qa/2026-08-07-release-size-baseline.md) and 2026-09-28 renderer libraries plus foreign binaries from sandbox-runtime and pi-tui that appeared after the first fix.",
+    "same_class_scan": [
+      "check:packaged-deps over the in-memory emit of electron/tsconfig.json and electron/tsconfig.pi.json: 1,122 files scanned, 47 dependencies without evidence, 0 non-literal package loads",
+      "audit-package on a local rebuild of the pre-change tree: 14,705 source maps, 159 test files, 7 fixtures, 1 .env, 6 foreign binaries, 55 locales, 4 broken peer links",
+      "Search of electron/ for require.resolve, createRequire, node_modules and asar.unpacked: path-loaded ffmpeg, ffprobe, sandbox-runtime and onnxruntime-web are registered in runtimeAllowlist",
+      "pnpm why esbuild --prod: only via @earendil-works/chord, whose only importer is dist/node/bundle.js (reachable through chord/bundler, which nothing we ship imports)"
+    ]
+  },
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/audit-package.mjs",
+    "invariant": "A candidate package ships only if its npm packages and locales are in the recorded baseline, its sizes are within budget, it contains no forbidden files, and every runtime import and declared dependency resolves inside it; package.json dependencies carry main-process runtime evidence.",
+    "failure_mode": "check:packaged-deps and check:package-budget turn contracts red; the desktop-rc platform job turns red before the candidate uploads; --update-baseline refuses a package with forbidden files or a broken closure and refuses any growth without --allow-growth and a reason recorded in history.",
+    "exception_policy": "none",
+    "strategy": "Check both ends of the pipe: the declared dependency set against the emitted main-process code in contracts, and the finished package against an identity-plus-size baseline in the release-candidate workflow, with one shared foreign-binary judgement used by both the pruning step and the audit.",
+    "artifacts": [
+      "scripts/audit-package.mjs",
+      "scripts/check-packaged-deps.mjs",
+      "scripts/lib/moduleReferences.mjs",
+      "scripts/lib/packagedApp.mjs",
+      "scripts/packaging/native-binaries.cjs",
+      "scripts/packaging/platform-binaries.cjs",
+      ".github/workflows/desktop-rc.yml",
+      "package.json",
+      "docs/engineering/package-budget.json"
+    ]
+  },
+  "regression_tests": [
+    "scripts/check-packaged-deps.node-test.mjs",
+    "scripts/audit-package.node-test.mjs",
+    "scripts/packaging/platform-binaries.test.cjs",
+    "scripts/check-desktop-rc-workflow.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/check-packaged-deps.node-test.mjs",
+    "scripts/audit-package.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "scripts/packaging/audit-packaged-media.cjs",
+      ".github/workflows/desktop-rc.yml"
+    ],
+    "rationale": "The standalone media-target CLI (audit-packaged-media.cjs require.main entry) and the separate 'Verify packaged media target(s)' workflow steps are removed; the check runs only inside audit-package. The ffmpeg/ffprobe name list no longer drives pruning (os/cpu and header judgement replaced it) and only feeds the media-target presence check."
+  },
+  "dependency_lifecycle": {
+    "decision": "retain-with-exit",
+    "current": "electron-builder 26.15.3",
+    "target": "electron-builder 27.x",
+    "rationale": "The gates check electron-builder's output, so the invariant holds on any version. Two compensations depend on 26.15.3 behaviour: afterPack removes foreign platform packages because 26 does not filter node_modules by target (v27 does), and the locale lists are spelled per platform because 26 matches names literally. Upgrading is a separate major-version change outside this fix.",
+    "exit_criteria": [
+      "With electron-builder >=27, a macOS package built after `pnpm install --force` shows no package-level removals in the afterPack log (the builder filtered them); prunePlatformBinaries is then reduced to the per-file header check",
+      "audit-package is green on the 27.x Windows and macOS packages against the same recorded baselines"
+    ]
+  },
+  "migration": "No user data or project migration: only dependency grouping, packaging configuration, afterPack pruning and CI change. The renderer bundle is byte-identical before and after (540/540 files, sha256). Existing installs update to the smaller package through the normal updater.",
+  "residual_risks": [
+    "macOS size and identity baselines are unrecorded until the next desktop-rc run (debt expires 2026-10-12). No macOS package was audited locally; the first run may surface packages or foreign binaries specific to `pnpm install --force`.",
+    "The runtime-closure walk covers literal requires/imports. check:packaged-deps reports non-literal loads (0 package loads today), but a package name computed at runtime would be invisible to both gates.",
+    "Nomi Preview packages inherit the slimming but are not audited against a budget.",
+    "The Windows packaged smoke that exercised create, canvas and export ran through a local harness that is not committed: test:core-smoke has no packaged mode because initialLocalStorage relies on the development-only `-r` preload.",
+    "Languages without a pack now resolve through Chromium's fallback: the first language in the OS preference list that ships, else en-US. For non-Chinese systems the first-run UI stays English as before; a system that lists Chinese as a secondary language may now start in Chinese. zh-TW is kept so Traditional Chinese systems keep the Chinese UI."
+  ]
+}
