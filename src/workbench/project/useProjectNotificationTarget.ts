@@ -9,7 +9,7 @@ import { useProductionRunStore } from '../production/productionRunStore'
 import { ProjectHydrationSupersededError } from './projectCanvasReadSurface'
 import { logRendererError } from '../../desktop/rendererLog'
 
-type Target = NotificationTarget & { runId?: string; artifactId?: string }
+type Target = NotificationTarget & { artifactId?: string }
 type Navigation = {
   activeProjectId: React.MutableRefObject<string | null>
   isHydrating: React.MutableRefObject<boolean>

@@ -6,6 +6,7 @@ import type {
   ProductionGenerationPlan,
   ProductionGenerationShot,
   ProductionJob,
+  ProductionRun,
 } from "./productionRunTypes";
 import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
 
@@ -127,7 +128,7 @@ function anchorCheckpointGate(status: ProductionGate["status"], createdAt = NOW)
 /** Base input: two included shots, no anchor requirement, generous budget, running. */
 function baseInput(overrides: Partial<BatchDerivationInput> = {}): BatchDerivationInput {
   const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64))];
-  return {
+  const base = {
     runId: "op-batch",
     runStatus: "running",
     plan: sealedPlan(shots),
@@ -137,6 +138,23 @@ function baseInput(overrides: Partial<BatchDerivationInput> = {}): BatchDerivati
     anchorGate: undefined,
     now: NOW,
     ...overrides,
+  } as Omit<BatchDerivationInput, "run">;
+  return {
+    ...base,
+    run: {
+      runId: base.runId,
+      projectId: "project",
+      revision: 1,
+      status: base.runStatus,
+      stageId: "generate" as ProductionRun["stageId"],
+      playbook: { name: "production", version: "test" },
+      origin: { host: "test" },
+      budget: base.budget,
+      jobs: base.jobs,
+      generationPlan: base.plan,
+      createdAt: NOW,
+      updatedAt: NOW,
+    } as ProductionRun,
   };
 }
 
@@ -327,6 +345,14 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
     // a costs 6 (fits exactly), b is unknown (0 toward cap) → both dispatchable.
     expect(result.shotDispatch.map((s) => s.shotId)).toEqual(["shot-a", "shot-b"]);
     expect(result.halt).toBeUndefined();
+  });
+});
+
+describe("shot claim dispatch boundary", () => {
+  it("does not dispatch a current attempt claimed by canvas", () => {
+    const shots = [shot("shot-a", "a".repeat(64), { claim: { by: "canvas", attempt: 1, claimedAt: NOW } })];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs: [jobFor("shot-a", "a".repeat(64), "authorized")] }));
+    expect(result.shotDispatch).toEqual([]);
   });
 });
 

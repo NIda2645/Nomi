@@ -16,6 +16,7 @@ import { useGenerationCanvasStore } from '../generationCanvas/store/generationCa
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import { buildDependencyWaves } from '../generationCanvas/runner/dependencyWaves'
 import { confirmAndRunPlan } from '../generationCanvas/components/batchPlanPreview'
+import { watchDeletedProductionNodes } from './watchDeletedProductionNodes'
 
 const POLL_INTERVAL_MS = 1500
 
@@ -112,53 +113,10 @@ export function ProductionCanvasLandingHost({ projectId }: { projectId: string |
     }
   }, [projectId, hasProductionNodes])
 
-  // ③：观察占位节点被删 → 上报 detach。订阅画布节点集合，删掉的属某 Run 的占位就发 plan.detach-shot-nodes。
+  // ③：观察占位节点被删 → 让 Run 记 detached（整批 ⌘Z / 手动删；失败留痕并告诉用户，见 watchDeletedProductionNodes）。
   React.useEffect(() => {
     if (!projectId) return
-    // 记住当前每个 production 占位节点 id → 它所属 runId。
-    const trackNodes = (): Map<string, string> => {
-      const map = new Map<string, string>()
-      for (const node of useGenerationCanvasStore.getState().nodes) {
-        const meta = node.meta as Record<string, unknown> | undefined
-        if (typeof meta?.productionRunId === 'string' && meta.productionRunId) map.set(node.id, meta.productionRunId)
-      }
-      return map
-    }
-    let known = trackNodes()
-    return useGenerationCanvasStore.subscribe(() => {
-      const next = trackNodes()
-      // 上一拍在、这一拍不在 = 被删。按 runId 聚合，逐 Run 发 detach（幂等：Run 侧对已 detached 的无变化）。
-      const removedByRun = new Map<string, string[]>()
-      for (const [nodeId, runId] of known.entries()) {
-        if (!next.has(nodeId)) {
-          const list = removedByRun.get(runId) ?? []
-          list.push(nodeId)
-          removedByRun.set(runId, list)
-        }
-      }
-      known = next
-      if (removedByRun.size === 0) return
-      for (const [runId, nodeIds] of removedByRun.entries()) {
-        void (async () => {
-          try {
-            const run = await productionRunApi.read(projectId, runId)
-            if (!run) return
-            // × 之后计划已是真终态（`cancelled`）：落地投影本来就不认它，不需要再补一趟 detach 去「抢在落地前面」。
-            // 这个观察者只为**还活着的计划**服务——用户手动删占位 / 整批 ⌘Z，让 Run 记下「这个节点是他自己拿走的」。
-            if (run.generationPlan?.state === 'cancelled') return
-            await productionRunApi.command(projectId, runId, {
-              commandId: `detach-canvas:${runId}:${nodeIds.slice().sort().join(',')}`.slice(0, 200),
-              expectedRevision: run.revision,
-              type: 'plan.detach-shot-nodes',
-              payload: { nodeIds },
-              issuedAt: new Date().toISOString(),
-            })
-          } catch {
-            // 上报失败不致命：占位没了，重开项目补齐时以「节点不在」为准也不会复活（materialize 幂等按 op 章）。
-          }
-        })()
-      }
-    })
+    return watchDeletedProductionNodes(projectId, productionRunApi)
   }, [projectId])
 
   return null

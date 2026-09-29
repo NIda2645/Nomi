@@ -1,4 +1,5 @@
-import { nodeHasResultStack, productionMetaOf } from './useNodeResultHistory'
+import { nodeHasResultStack } from './useNodeResultHistory'
+import { productionMetaOf } from '../model/productionMeta'
 import { notify } from '../../../ui/notificationPolicy'
 import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'

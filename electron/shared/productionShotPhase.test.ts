@@ -3,11 +3,13 @@ import { describe, expect, it } from 'vitest'
 import {
   deriveProductionShotState,
   isProductionJobInFlight,
+  jobAwaitsHuman,
   productionJobPhase,
   productionShotIdForNode,
-  productionShotOwnsGeneration,
 } from './productionShotPhase'
-import type { ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from '../productionRun/productionRunTypes'
+import { decideShotClaim } from './decideShotClaim'
+import { applyProductionCommand } from '../productionRun/productionRunReducer'
+import type { ProductionGenerationPlan, ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from '../productionRun/productionRunTypes'
 
 // 制作里「一镜在哪一段」的唯一判定：主进程的画布落地投影与渲染层的排队 / 已停小标读的是同一个函数。
 
@@ -22,6 +24,7 @@ function job(shotId: string, status: ProductionJobStatus, extra: Partial<Product
 
 function run(opts: {
   status?: ProductionRunStatus
+  planState?: ProductionGenerationPlan['state']
   shots?: Array<{ shotId: string; role?: 'anchor' | 'shot'; nodeId?: string; included?: boolean }>
   jobs?: ProductionJob[]
 }): ProductionRun {
@@ -33,7 +36,7 @@ function run(opts: {
     budget: { currency: 'CNY', authorized: 100, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
     planVersion: 1, snapshotCursor: 0, stages: [], gates: [], jobs: opts.jobs ?? [], artifacts: [],
     generationPlan: {
-      operationId: 'run-1', state: 'submitted', candidate, nodeId: opts.shots ? undefined : 'single-node',
+      operationId: 'run-1', state: opts.planState ?? 'submitted', candidate, nodeId: opts.shots ? undefined : 'single-node',
       ...(opts.shots ? { shots: opts.shots.map((shot) => ({
         shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), ...(shot.included !== undefined ? { included: shot.included } : {}),
         ...(shot.nodeId ? { nodeId: shot.nodeId } : {}), candidate: { ...candidate, candidateId: shot.shotId }, updatedAt: NOW,
@@ -77,6 +80,20 @@ describe('deriveProductionShotState', () => {
     expect(phaseOf(run({ status: 'paused', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'stopped' })
   })
 
+  it('预算停批后画布接手了这一镜（job 已脱离）→ null：节点上不再挂「已停 · 提额续拍」', () => {
+    const halted = run({ status: 'needs_attention', shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3' }], jobs: [job('s1', 'ready'), job('s2', 'authorized'), job('s3', 'authorized')] })
+    expect(phaseOf(halted, 's2')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+    const claimed = applyProductionCommand(halted, {
+      commandId: 'claim-s2', expectedRevision: halted.revision, type: 'shot.claim',
+      payload: { shotId: 's2', by: 'canvas' }, issuedAt: NOW,
+    }, NOW).run
+    expect(claimed.jobs.find((candidate) => candidate.metadata?.shotId === 's2')).toMatchObject({ status: 'detached', errorCode: 'canvas_claimed' })
+    // 画布接手的那一镜：制作不会再派它，按钮续的只会是别的镜头 → 不给它挂续拍入口。
+    expect(deriveProductionShotState(claimed, 's2')).toBeNull()
+    // 没被接手的那一镜照旧：已停，可以提额续拍。
+    expect(phaseOf(claimed, 's3')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+  })
+
   it('返工：同一镜多个 attempt 取最新那一次', () => {
     const old = job('s1', 'needs_attention', { jobId: 'job-s1-a1', errorCode: 'provider_task_failed', createdAt: '2026-08-25T00:00:00.000Z' })
     const fresh = job('s1', 'polling', { jobId: 'job-s1-a2', createdAt: '2026-08-25T00:10:00.000Z' })
@@ -96,6 +113,16 @@ describe('deriveProductionShotState', () => {
     expect(deriveProductionShotState(r, 's2')).toBeNull()
   })
 
+  it('被画布拿走的镜（删了节点 / 画布接手）不再占排队位次：分母与调度器的批次进度同一条规则', () => {
+    const queued = run({ shots: [{ shotId: 's1' }, { shotId: 's2', nodeId: 'node-s2' }, { shotId: 's3' }], jobs: [job('s1', 'authorized'), job('s2', 'authorized', { nodeId: 'node-s2' }), job('s3', 'authorized')] })
+    expect(phaseOf(queued, 's3')).toEqual({ phase: 'queued', queueIndex: 3, queueTotal: 3 })
+    const deleted = applyProductionCommand(queued, {
+      commandId: 'detach-s2', expectedRevision: queued.revision, type: 'plan.detach-shot-nodes', payload: { nodeIds: ['node-s2'] }, issuedAt: NOW,
+    }, NOW).run
+    expect(phaseOf(deleted, 's3')).toEqual({ phase: 'queued', queueIndex: 2, queueTotal: 2 })
+    expect(phaseOf(deleted, 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 2 })
+  })
+
   it('单镜计划（没有 shots[]）：唯一那一镜的身份是候选 id，生成段的每个 job 都属于它', () => {
     const r = run({ jobs: [job('whatever', 'polling', { metadata: {} })] })
     expect(phaseOf(r, 'cand-1')).toEqual({ phase: 'generating' })
@@ -106,6 +133,51 @@ describe('deriveProductionShotState', () => {
   it('找不到这一镜 / 没有 Run → null', () => {
     expect(deriveProductionShotState(null, 's1')).toBeNull()
     expect(deriveProductionShotState(run({ shots: [{ shotId: 's1' }] }), 'nope')).toBeNull()
+  })
+})
+
+// 2026-09-24 真模型走查：Agent 按「先别生成」只调 draft_shots，节点却挂「排队中 · 第 1/1」、任务按钮亮 1
+//（那一刻 0 job、0 请求）。用户还没点头的每一种状态都不许说「排队中」，也不许说「已停」再给一颗续拍钮。
+describe('deriveProductionShotState · 用户还没点头', () => {
+  const PRE_DISPATCH_RUN_STATUSES: ProductionRunStatus[] = [
+    'draft', 'awaiting_direction', 'awaiting_script_review', 'awaiting_storyboard_review', 'awaiting_contract', 'ready',
+  ]
+  const shots = [{ shotId: 'a1', role: 'anchor' as const }, { shotId: 's1' }]
+
+  it('draft_shots 建的草稿（Run draft、计划 draft、0 个 job）→ null（报告里那一幕，单镜与多镜都一样）', () => {
+    expect(deriveProductionShotState(run({ status: 'draft', planState: 'draft', shots: [{ shotId: 'shot-1' }] }), 'shot-1')).toBeNull()
+    expect(deriveProductionShotState(run({ status: 'draft', planState: 'draft' }), 'cand-1')).toBeNull()
+  })
+
+  for (const status of PRE_DISPATCH_RUN_STATUSES) {
+    for (const planState of ['draft', 'sealed'] as const) {
+      it(`Run ${status} + 计划 ${planState}、没有 job → 每一镜（含参考卡）都是 null`, () => {
+        const r = run({ status, planState, shots })
+        expect(deriveProductionShotState(r, 's1')).toBeNull()
+        expect(deriveProductionShotState(r, 'a1')).toBeNull()
+      })
+    }
+    it(`Run ${status} + 最新的 job 停在人工门前（authorization_required / planned）→ null`, () => {
+      for (const jobStatus of ['authorization_required', 'planned'] as const) {
+        const r = run({ status, planState: 'sealed', shots, jobs: [job('s1', jobStatus)] })
+        expect(deriveProductionShotState(r, 's1'), jobStatus).toBeNull()
+      }
+    })
+  }
+
+  // 注意不是「逐镜确认档」：那一档等人时 job 仍是 authorized、等的是另一道镜头门（productionRunDriverOps），这里管不到，
+  // 见根因合同 residual_risks。这里是已提交批次里返工 / 续拍的新 job 退回授权前（productionGenerationAuthorizationState）。
+  it('批次在跑，这一镜的新 job 退回人工门前（返工 / 续拍待授权）→ null，不说「排队中」', () => {
+    expect(deriveProductionShotState(run({ status: 'running', shots, jobs: [job('s1', 'authorization_required')] }), 's1')).toBeNull()
+  })
+
+  it('没点过头就被取消的草稿 → null，不显「已停」也不给续拍钮', () => {
+    expect(deriveProductionShotState(run({ status: 'cancelled', planState: 'cancelled', shots }), 's1')).toBeNull()
+  })
+
+  it('点过头之后照旧：计划已提交、还没 job → 排队中；job 过了人工门还没提交（authorized）→ 排队中', () => {
+    expect(phaseOf(run({ shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 1 })
+    expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] }), 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 1 })
   })
 })
 
@@ -129,17 +201,119 @@ describe('productionJobPhase is exhaustive over ProductionJobStatus', () => {
   })
 })
 
-describe('productionShotOwnsGeneration — 画布能不能再发这一镜', () => {
+describe('派出去了没有', () => {
+  it('只有 planned / authorization_required 还停在人工门前', () => {
+    const all = Object.keys({
+      planned: 1, authorization_required: 1, authorized: 1, submit_intent_persisted: 1, submitting: 1, provider_accepted: 1,
+      polling: 1, retry_wait: 1, downloading: 1, validating_technical: 1, validating_content: 1, ready: 1, adopted: 1,
+      submission_unknown: 1, reconciling: 1, needs_attention: 1, cancel_requested: 1, cancelled_remote: 1, detached: 1, too_late: 1,
+    } satisfies Record<ProductionJobStatus, 1>) as ProductionJobStatus[]
+    expect(all.filter(jobAwaitsHuman)).toEqual(['planned', 'authorization_required'])
+  })
+
+  it('没有 job 时：计划没提交 → 不在任何队列；提交后勾进的排队、勾掉的不排；单镜提交了就排', () => {
+    for (const planState of ['draft', 'sealed', 'cancelled'] as const) {
+      expect(deriveProductionShotState(run({ planState, shots: [{ shotId: 's1' }] }), 's1'), planState).toBeNull()
+    }
+    const submitted = run({ shots: [{ shotId: 's1' }, { shotId: 's2', included: false }] })
+    expect(deriveProductionShotState(submitted, 's1')?.phase).toBe('queued')
+    expect(deriveProductionShotState(submitted, 's2')).toBeNull()
+    expect(deriveProductionShotState(run({}), 'cand-1')?.phase).toBe('queued')
+    expect(deriveProductionShotState(run({ planState: 'draft' }), 'cand-1')).toBeNull()
+  })
+})
+
+describe('decideShotClaim — 画布能不能再发这一镜', () => {
   it('报价卡等确认：付费范围里的镜归制作流程，不在范围里的不归', () => {
     const r = run({ status: 'awaiting_contract', shots: [{ shotId: 's1', nodeId: 'n1' }, { shotId: 's2', nodeId: 'n2', included: false }] })
     r.generationPlan!.state = 'sealed'
-    expect(productionShotOwnsGeneration(r, 's1')).toBe(true)
-    expect(productionShotOwnsGeneration(r, 's2')).toBe(false)
+    expect(decideShotClaim(r, 's1', 'canvas').holder).toBe('production')
+    expect(decideShotClaim(r, 's2', 'canvas').holder).toBe('canvas')
   })
 
   it('已确认：排队的镜归制作流程，已停的不归', () => {
     const shots = [{ shotId: 's1', nodeId: 'n1' }]
-    expect(productionShotOwnsGeneration(run({ status: 'running', shots }), 's1')).toBe(true)
-    expect(productionShotOwnsGeneration(run({ status: 'paused', shots }), 's1')).toBe(false)
+    expect(decideShotClaim(run({ status: 'running', shots }), 's1', 'canvas').holder).toBe('production')
+    expect(decideShotClaim(run({ status: 'paused', shots }), 's1', 'canvas').holder).toBe('canvas')
+  })
+
+  it('approval gate waiting follows the run stop state without mixing holder and reason', () => {
+    const waiting = run({ status: 'running', shots: [{ shotId: 's1' }] })
+    waiting.generationPlan!.authorizationGateId = 'gate-1'
+    waiting.gates.push({ gateId: 'gate-1', scope: 'budget_envelope', status: 'waiting', planHash: 'p', jobIds: [], title: '', summary: '', createdAt: NOW, expiresAt: NOW })
+    expect(decideShotClaim(waiting, 's1', 'canvas')).toMatchObject({ holder: 'production', reason: 'awaiting_confirmation', granted: false })
+    waiting.status = 'paused'
+    expect(decideShotClaim(waiting, 's1', 'canvas')).toMatchObject({ holder: 'canvas', reason: 'run_stopped', granted: true })
+  })
+})
+
+describe('decideShotClaim — durable matrix regressions', () => {
+  it('does not persist a canvas claim for a mismatched shot on a single-shot plan', () => {
+    const single = run({ shots: undefined, jobs: [] })
+    const before = JSON.stringify(single)
+    const result = applyProductionCommand(single, {
+      commandId: 'claim-mismatched-single', expectedRevision: single.revision, type: 'shot.claim',
+      payload: { shotId: 'not-the-single-shot', by: 'canvas' }, issuedAt: NOW,
+    }, NOW)
+    expect(result.run).toEqual(single)
+    expect(JSON.stringify(result.run)).toBe(before)
+  })
+
+  it('running canvas claim is rejected for a queued job; stopped runs release it', () => {
+    const pending = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
+    expect(() => applyProductionCommand(pending, {
+      commandId: 'claim-s1', expectedRevision: pending.revision, type: 'shot.claim',
+      payload: { shotId: 's1', by: 'canvas' }, issuedAt: NOW,
+    }, NOW)).toThrow(/production_shot_claimed: queued/)
+    const stopped = run({ status: 'paused', shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
+    const claimed = applyProductionCommand(stopped, {
+      commandId: 'claim-s1-stopped', expectedRevision: stopped.revision, type: 'shot.claim',
+      payload: { shotId: 's1', by: 'canvas' }, issuedAt: NOW,
+    }, NOW).run
+    expect(claimed.jobs[0].status).toBe('detached')
+    expect(claimed.jobs[0].errorCode).toBe('canvas_claimed')
+    expect(claimed.generationPlan?.shots?.[0].claim).toMatchObject({ by: 'canvas', attempt: 1 })
+    const inFlight = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'polling')] })
+    expect(() => applyProductionCommand(inFlight, {
+      commandId: 'claim-s1-paid', expectedRevision: inFlight.revision, type: 'shot.claim',
+      payload: { shotId: 's1', by: 'canvas' }, issuedAt: NOW,
+    }, NOW)).toThrow(/production_shot_claimed: in_flight/)
+  })
+
+  it('a canvas claim record never outranks a same-attempt job that may already be paid', () => {
+    const r = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'polling')] })
+    r.generationPlan!.shots![0].claim = { by: 'canvas', attempt: 1, claimedAt: NOW }
+    expect(decideShotClaim(r, 's1', 'canvas')).toMatchObject({ holder: 'production', reason: 'in_flight', granted: false })
+    r.jobs[0] = job('s1', 'reconciling')
+    expect(decideShotClaim(r, 's1', 'canvas')).toMatchObject({ holder: 'production', reason: 'needs_reconcile', granted: false })
+    r.jobs[0] = job('s1', 'detached')
+    expect(decideShotClaim(r, 's1', 'production')).toMatchObject({ holder: 'canvas', reason: 'canvas_claimed', granted: false })
+  })
+
+  it('unknown/reconciling remain production-owned', () => {
+    for (const status of ['submission_unknown', 'reconciling'] as const) {
+      const result = decideShotClaim(run({ status: 'needs_attention', shots: [{ shotId: 's1' }], jobs: [job('s1', status)] }), 's1', 'canvas')
+      expect(result).toMatchObject({ holder: 'production', reason: 'needs_reconcile', granted: false })
+    }
+  })
+
+  it('authorization while stopped is released', () => {
+    const result = decideShotClaim(run({ status: 'needs_attention', shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorization_required')] }), 's1', 'canvas')
+    expect(result).toMatchObject({ holder: 'canvas', reason: 'run_stopped', granted: true })
+  })
+
+  it('rejected gate releases an unsubmitted shot', () => {
+    const r = run({ status: 'running', planState: 'sealed', shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
+    r.generationPlan!.authorizationGateId = 'gate-1'
+    r.gates.push({ gateId: 'gate-1', scope: 'budget_envelope', status: 'rejected', planHash: 'p', jobIds: [], title: '', summary: '', createdAt: NOW, expiresAt: NOW })
+    expect(decideShotClaim(r, 's1', 'canvas')).toMatchObject({ holder: 'canvas', reason: 'gate_rejected', granted: true })
+  })
+
+  it('detached cancels a waiting job but does not reclaim an in-flight attempt', () => {
+    const r = run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
+    r.generationPlan!.shots![0].canvasDetached = true
+    expect(decideShotClaim(r, 's1', 'canvas').reason).toBe('canvas_detached')
+    r.jobs[0].status = 'polling'
+    expect(decideShotClaim(r, 's1', 'canvas').holder).toBe('production')
   })
 })

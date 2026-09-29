@@ -10,6 +10,7 @@ import {
   type GenerationErrorKind,
 } from './narrate'
 import { parseVendorErrorFromMessage, stripVendorErrorMarker } from '../generationCanvas/runner/vendorErrorIpc'
+import { shotClaimCopy } from './shotClaimCopy'
 import { matchNomiErrorCode, stripNomiErrorCode } from '../../../electron/shared/nomiErrorCodes'
 import i18n from '../../i18n'
 
@@ -539,6 +540,18 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       hint: i18n.t('generationCommon.observability.error.webMedia.hint'),
       raw,
       ...narrateGenerationErrorActions('unknown'),
+    }
+  }
+  const claimReason = structured?.code === 'production_shot_claimed' ? structured.reason : undefined
+  const copy = shotClaimCopy(claimReason as Parameters<typeof shotClaimCopy>[0])
+  if (copy) {
+    return {
+      kind: 'unknown',
+      reason: i18n.t(`generationCommon.observability.error.shotClaimed.${copy.key}.reason`),
+      hint: i18n.t(`generationCommon.observability.error.shotClaimed.${copy.key}.hint`),
+      raw,
+      primary: copy.action,
+      secondary: copy.action,
     }
   }
   const kind = detectLegacyErrorKind(raw)

@@ -81,8 +81,13 @@ export class VendorRequestError extends Error {
 export const VENDOR_ERROR_IPC_MARKER = "NOMI_VENDOR_ERR_B64::";
 
 export function encodeVendorErrorMessage(error: VendorRequestError): string {
-  const b64 = Buffer.from(JSON.stringify(error.structured), "utf8").toString("base64");
-  return `${VENDOR_ERROR_IPC_MARKER}${b64}:: ${error.message}`;
+  return encodeStructuredErrorMessage(error.structured, error.message);
+}
+
+/** Reuse the established IPC marker for non-provider structured task errors. */
+export function encodeStructuredErrorMessage(structured: Record<string, unknown>, message: string): string {
+  const b64 = Buffer.from(JSON.stringify(structured), "utf8").toString("base64");
+  return `${VENDOR_ERROR_IPC_MARKER}${b64}:: ${message}`;
 }
 
 /** 状态码→类别查表(数字逻辑码与 HTTP 状态同表)。 */

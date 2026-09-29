@@ -106,6 +106,7 @@ function setupSingleShot() {
 function submission(root: string, repository: ReturnType<typeof createProductionRunRepository>, submit: ReturnType<typeof vi.fn>, now = "2026-08-24T00:00:00.000Z") {
   return createProductionGenerationSubmission({
     repository,
+    beforeDispatch: () => undefined,
     projectRoot: root,
     immutableProjectUuid: "project-uuid-1",
     projectGeneration: 1,

@@ -1,0 +1,754 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-production-shot-claim",
+  "problem_type": "Production and canvas disagree about shot ownership",
+  "symptom": "A canvas shot can be regenerated while its production job is queued, in flight, or awaiting reconciliation; stopped runs can also be dispatched. A canvas placeholder deleted while its shot was authorized but not yet submitted was still dispatched and billed (2026-09-29 paid acceptance, reproduced on the loopback fixture). Pressing the emergency stop after shot 1 of a three-shot batch had started still dispatched and billed shots 2 and 3 in the same drive (2026-09-29 paid acceptance, reproduced on the loopback fixture). Once a queued shot left a batch for the canvas (its node deleted, or the canvas took it over), the batch never completed: the Run stayed running and the task card said 进行中 forever (2026-09-29 rehearsal after fixing the detach report).",
+  "direct_cause": "Reducer, claim decision, and scheduler each inferred shot ownership from different subsets of Run state, with no durable attempt-scoped claim record. The canvas detach report built its command id as `detach-canvas:<runId>:<nodeIds>`; the ':' and ',' fail the production IPC identifier rule (\"Invalid command id\"), the landing host swallowed the rejection in `catch {}`, and it called the bridge directly instead of the shared renderer command path, so the Run never recorded the detach. The production dispatch gate (beforeDispatch → createProductionShotDispatchGuard → decideShotClaim) ran inside submissionOutbox.submitOnce after the budget reserve and after the job was written as submit_intent_persisted. decideShotClaim counts submit_intent_persisted as in_flight and grants production before any claim, detach or stop check, so the gate judged its own side effect and never refused anything; the scheduler walks the dispatch list it derived at the start of the drive, so a pause that landed mid-drive did not stop the remaining shots. The batch derivation kept a shot whose latest job production had let go (`detached`) in its video-shot set — `videoShotsOf` only dropped `included:false` — and `shotInFlight` counted the detached job as in flight, so progress never reached completed === total and onBatchComplete never fired.",
+  "class_root": "Every shot/job caller must use one attempt-scoped durable ownership decision and one shot-to-job correspondence. Renderer-built production command ids and the IPC identifier rule need one owner, and every renderer production command must go through the one renderer command path whose failures are surfaced, not swallowed. An admission check must judge the state before its own attempt writes anything: a gate placed after its caller's first durable write sees that write and always admits. Which shots a batch still owes needs one rule, shared by the scheduler's progress and the queue labels, that covers both unchecked shots and shots released to the canvas.",
+  "affected_population": [
+    "Production Runs with single-shot or multi-shot generation plans",
+    "Canvas nodes bound to production shots",
+    "Queued, stopped, detached, and reconciliation states",
+    "Canvas placeholders deleted (Delete key / ⌘Z of a batch) while their production shot is still queued",
+    "Batches stopped (急停 / 取消) while an earlier shot is still being submitted",
+    "Batches in which a queued shot was deleted from the canvas or taken over by the canvas"
+  ],
+  "scope_paths": [
+    "electron/productionRun/batchScheduleDerivation.ts",
+    "electron/productionRun/multiShotBatchScheduler.ts",
+    "electron/productionRun/productionRunCanvasLandingReducer.ts",
+    "electron/productionRun/productionRunReducer.ts",
+    "electron/productionRun/productionRunState.ts",
+    "electron/productionRun/productionRunTypes.ts",
+    "electron/runtime.ts",
+    "electron/productionRun/productionRunRuntime.ts",
+    "electron/productionRun/productionRunServiceRegistry.ts",
+    "electron/capabilityCore/appIntegration.ts",
+    "electron/productionRun/productionGenerationSubmission.ts",
+    "electron/productionRun/productionShotDispatchGuard.ts",
+    "electron/shared/decideShotClaim.ts",
+    "electron/shared/productionShotJobs.ts",
+    "electron/shared/productionShotPhase.test.ts",
+    "electron/tasks/taskIpcGuard.ts",
+    "electron/tasks/taskIpcHandlers.ts",
+    "src/workbench/generationCanvas/model/productionMeta.ts",
+    "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+    "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+    "electron/vendor/vendorHttp.ts",
+    "src/workbench/generationCanvas/runner/vendorErrorIpc.ts",
+    "src/workbench/observability/classifyError.ts",
+    "src/workbench/observability/narrate.ts",
+    "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+    "electron/shared/productionShotPhase.ts",
+    "electron/productionRun/canvasShotClaim.ts",
+    "electron/shared/productionRunCommandId.ts",
+    "electron/productionRun/productionRunIpc.ts",
+    "src/workbench/production/ProductionCanvasLandingHost.tsx",
+    "src/workbench/production/reportDetachedShotNodes.ts",
+    "src/workbench/production/watchDeletedProductionNodes.ts",
+    "src/workbench/production/productionRunCommands.ts",
+    "electron/productionRun/submissionOutbox.ts"
+  ],
+  "entry_points": [
+    "canvas shot.claim",
+    "batch scheduler dispatch derivation",
+    "beforeDispatch/runtime canvas submission guard",
+    "renderer canvas node deletion → plan.detach-shot-nodes over the production IPC",
+    "submissionOutbox.submitOnce → beforeDispatch (every production submission: batch scheduler, single shot, MCP stdio host)",
+    "batch completion: deriveBatchPlan progress → notifyBatchComplete → advanceSemanticProduction"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "This is an application-level Run ledger invariant; no third-party dependency controls it.",
+  "invariant_owner_layer": {
+    "layer": "electron/shared/decideShotClaim.ts",
+    "tests": [
+      "electron/shared/productionShotPhase.test.ts",
+      "electron/productionRun/batchScheduleDerivation.test.ts",
+      "electron/productionRun/productionRunReducerCanvasLanding.test.ts",
+      "electron/productionRun/productionShotDispatchGate.e2e.test.ts",
+      "electron/productionRun/productionBatchSettlesAfterRelease.e2e.test.ts"
+    ],
+    "why": "The shared decision owns the invariant and the reducer is the only durable writer; all scheduler and canvas callers consume those boundaries. The submission outbox asks the decision (through the dispatch gate) before the attempt's first durable write, so production is judged on the pre-persist state."
+  },
+  "invariants": [
+    "Only the current attempt may be claimed",
+    "Canvas claims are persisted in the Run reducer",
+    "Unsubmitted detached/claimed jobs never dispatch",
+    "In-flight and reconciliation jobs remain production-owned",
+    "A budget continuation quotes and re-authorizes only unsubmitted jobs production still owns; a shot the canvas has taken over is never quoted, never resurrected by the continuation, and never offered a production resume action",
+    "A renderer-built production command id always passes the IPC identifier rule; the rule and the id builders live in electron/shared/productionRunCommandId.ts",
+    "Every renderer production command goes through executeProductionRunCommand; a canvas detach report that does not land is logged and shown to the user, never swallowed",
+    "The production dispatch gate runs before the first durable write of a submission attempt (budget reserve / submit intent); a refused attempt leaves no reservation and no submit intent, and the job stays exactly as it was",
+    "A shot whose latest job production let go (`detached`) is not work its batch still owes: batch progress and queue positions both count shots through shotCountsTowardBatch (electron/shared/productionShotJobs.ts), the same function that owns the included:false rule"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createProductionShotDispatchGuard"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/dispatcher.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/host.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createProductionShotDispatchGuard"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/rpcServer.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/shotVerifyDeps.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSessionRuntimeInstall.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/parity/generationParityTestUtils.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/artifactPreviewHttpServer.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "jobAwaitsHuman"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "jobsForShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "shotCountsTowardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "shotIncluded"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/canvasShotClaim.ts",
+      "symbol": "getRegisteredProductionRunService"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/canvasShotClaim.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "dispatchUnit"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "deriveProductionShotState"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "beforeDispatch"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionQaVerdict.ts",
+      "symbol": "latestJobForShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunCanvasLandingReducer.ts",
+      "symbol": "isUnsubmittedJobStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "isProductionRunIdentifier"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "jobsForShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "latestJobForShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "detachShotNodes"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "getRegisteredProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunRuntime.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunServiceRegistry.ts",
+      "symbol": "ProductionRunService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunState.ts",
+      "symbol": "JOB_TRANSITIONS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionShotDispatchGuard.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "beforeDispatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/runtime.ts",
+      "symbol": "claimCanvasProductionShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/decideShotClaim.ts",
+      "symbol": "latestJobForShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/decideShotClaim.ts",
+      "symbol": "shotIncluded"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionRunCommandId.ts",
+      "symbol": "PRODUCTION_RUN_IDENTIFIER_PATTERN"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "jobsForShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "latestJobForShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "shotIncluded"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "jobAwaitsHuman"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "jobsForShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "productionJobPhase"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "shotCountsTowardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "shotIncluded"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/comfyCandidateTest.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/taskIpcGuard.ts",
+      "symbol": "encodeStructuredErrorMessage"
+    },
+    {
+      "kind": "read",
+      "path": "electron/tasks/taskIpcHandlers.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/tasks/taskIpcHandlers.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorHttp.ts",
+      "symbol": "encodeStructuredErrorMessage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/deconstructVideo.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+      "symbol": "executeProductionRunCommand"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/model/productionMeta.ts",
+      "symbol": "ProductionMeta"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "symbol": "GenerationErrorAction"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "symbol": "productionMetaOf"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "productionMetaOf"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+      "symbol": "productionMetaOf"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+      "symbol": "deriveProductionShotState"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeResultHistory.ts",
+      "symbol": "productionMetaOf"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "parseVendorErrorFromMessage"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "productionMetaOf"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "runTask"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/vendorErrorIpc.ts",
+      "symbol": "VendorErrorStructuredLite"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "GenerationErrorAction"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "parseVendorErrorFromMessage"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/generationFeedback.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/narrate.ts",
+      "symbol": "GenerationErrorAction"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/ProductionCanvasLandingHost.tsx",
+      "symbol": "watchDeletedProductionNodes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionShotOwnership.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/productionShotOwnership.ts",
+      "symbol": "decideShotClaim"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/reportDetachedShotNodes.ts",
+      "symbol": "detachShotNodesCommandId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/reportDetachedShotNodes.ts",
+      "symbol": "executeProductionRunCommand"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/useProductionStatus.ts",
+      "symbol": "executeProductionRunCommand"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/watchDeletedProductionNodes.ts",
+      "symbol": "reportDetachedShotNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/production/watchDeletedProductionNodes.ts",
+      "symbol": "surfaceDetachReportFailure"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/taskCenter/taskCenterEntries.ts",
+      "symbol": "classifyGenerationError"
+    }
+  ],
+  "door_reduction": {
+    "before": 57,
+    "after": 90,
+    "why_not": "门表按 2026-09-29 的代码用 door-map 整体重生成（取并集），命令：node scripts/door-map.mjs runTask beforeDispatch；node scripts/door-map.mjs deriveProductionShotState jobAwaitsHuman productionJobPhase --read=deriveProductionShotState,jobAwaitsHuman,productionJobPhase；node scripts/door-map.mjs claimCanvasProductionShot decideShotClaim getRegisteredProductionRunService；node scripts/door-map.mjs detachShotNodesCommandId isProductionRunIdentifier reportDetachedShotNodes watchDeletedProductionNodes executeProductionRunCommand detachShotNodes surfaceDetachReportFailure --read=isProductionRunIdentifier；node scripts/door-map.mjs createProductionShotDispatchGuard jobsForShot latestJobForShot --read=jobsForShot,latestJobForShot；node scripts/door-map.mjs encodeStructuredErrorMessage parseVendorErrorFromMessage classifyGenerationError productionMetaOf --read=parseVendorErrorFromMessage,classifyGenerationError,productionMetaOf（「被画布/制作占着」这句拒绝怎么一路变成节点上的人话）；node scripts/door-map.mjs ProductionShotClaim JOB_TRANSITIONS ProductionMeta VendorErrorStructuredLite GenerationErrorAction PRODUCTION_RUN_IDENTIFIER_PATTERN dispatchUnit isUnsubmittedJobStatus（本分支改过的类型 / 状态表各自的门）；node scripts/door-map.mjs ProductionRunService --roots=electron/productionRun（谁握着 Run 的唯一写口：服务注册表与它的使用方）。旧表里手写的门（如 generationCommon.ts 的 shotClaimed）door-map 数不出来，随 i18n 文件一起移出 scope。仍保留多扇门：decideShotClaim 是唯一判据，Run reducer 是唯一持久写口，runtime/canvasShotClaim 是画布提交闸，beforeDispatch 是制作派发闸，runTask/IPC 是通用任务入口；渲染层的制作命令只剩 executeProductionRunCommand 一个出口（删节点上报此前绕开它直调 bridge，本次收回），删节点观察只剩 watchDeletedProductionNodes 一处（从落地宿主组件里抽出，失败必经 surfaceDetachReportFailure），命令号与校验规则只剩 productionRunCommandId 一处。它们服务不同生命周期，合并会扩大权限边界。 派发准入闸只有 submissionOutbox.submitOnce 一个调用点（beforeDispatch 门），生产三处接线（appIntegration、mcpStdioServer 两处）都经 createProductionGenerationSubmission 传给它；本次只挪它在 submitOnce 里的位置，不新增门。 批次成员（这一批还欠哪些镜）门表：node scripts/door-map.mjs shotCountsTowardBatch shotIncluded（调度器的 videoShotsOf、排队位次 queueShotsOf、认领判据的 shot_excluded 三处都只经这一对函数，不再各写一份 included !== false）。"
+  },
+  "generality_proof": "Single-shot and multi-shot plans now share productionShotJobs for correspondence, decideShotClaim for ownership, and reducer persistence for claims; scheduler and runtime callers therefore see the same attempt-scoped result.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "jobsForShot/latestJobForShot",
+      "responsibility": "Resolve every generation job belonging to a shot, including the legacy single-shot shape."
+    },
+    {
+      "path": "electron/shared/decideShotClaim.ts",
+      "symbol": "decideShotClaim",
+      "responsibility": "Exhaustively map durable Run/job/gate state to one requester decision."
+    },
+    {
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "shot.claim",
+      "responsibility": "Persist canvas claims and detach only unsubmitted jobs."
+    },
+    {
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "needsDispatch",
+      "responsibility": "Refuse dispatch when the current attempt is canvas-owned or detached."
+    },
+    {
+      "path": "electron/shared/productionRunCommandId.ts",
+      "symbol": "isProductionRunIdentifier/detachShotNodesCommandId",
+      "responsibility": "Own the production identifier rule enforced at the IPC boundary and build renderer command ids that satisfy it by construction."
+    },
+    {
+      "path": "src/workbench/production/productionRunCommands.ts",
+      "symbol": "executeProductionRunCommand",
+      "responsibility": "The single renderer path for production commands; resends once on a revision conflict with the latest revision and lets real failures reach the caller."
+    },
+    {
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "submitOnce/beforeDispatch",
+      "responsibility": "Admit a submission attempt through the dispatch gate before reserving budget or persisting a submit intent; every production submission path goes through it."
+    },
+    {
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "shotIncluded/shotCountsTowardBatch",
+      "responsibility": "The one rule for which shots a batch still owes: checked into the batch and not released to the canvas (latest job not detached). Scheduler progress, queue positions and the claim decision's shot_excluded read it."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "entry_point": "dispatchUnit",
+      "disposition": "enforced",
+      "evidence": "All derived anchor/shot dispatch lists call needsDispatch with the durable Run."
+    },
+    {
+      "path": "electron/runtime.ts",
+      "entry_point": "runTask",
+      "disposition": "enforced",
+      "evidence": "Runtime canvas submission consults decideShotClaim before persisting shot.claim."
+    },
+    {
+      "path": "src/workbench/production/productionShotOwnership.ts",
+      "entry_point": "productionShotOwnsGeneration",
+      "disposition": "enforced",
+      "evidence": "Renderer ownership projection already delegates to decideShotClaim."
+    },
+    {
+      "path": "src/workbench/production/ProductionCanvasLandingHost.tsx",
+      "entry_point": "watchDeletedProductionNodes",
+      "disposition": "enforced",
+      "evidence": "The host now only mounts watchDeletedProductionNodes, which reports each deletion through reportDetachedShotNodes (shared id builder + executeProductionRunCommand) and hands every failure to surfaceDetachReportFailure; the inline `detach-canvas:` id and the `catch {}` are gone."
+    },
+    {
+      "path": "src/workbench/production/useProductionStatus.ts",
+      "entry_point": "executeCommand",
+      "disposition": "not-affected",
+      "evidence": "All nine production commands use globalThis.crypto.randomUUID() ids (36 chars of [0-9a-f-]) and already go through executeProductionRunCommand; the direction choiceKey only echoes a gate candidate key the main process normalized to [A-Za-z0-9._-]{1,40} (productionRunDriverOps normalizeDirectionCandidates, reducer directionCandidates) — the same rule the IPC applies."
+    },
+    {
+      "path": "src/workbench/ai/lane/laneTaskCandidateActions.ts",
+      "entry_point": "executeProductionRunCommand",
+      "disposition": "not-affected",
+      "evidence": "Its only production command uses a crypto.randomUUID() id through the shared renderer command path."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "entry_point": "beforeDispatch: assertProductionShotCanDispatch",
+      "disposition": "enforced",
+      "evidence": "The app wiring passes createProductionShotDispatchGuard into createProductionGenerationSubmission; the gate position is owned by submissionOutbox.submitOnce, so the batch scheduler and single-shot starts both get the pre-persist check."
+    },
+    {
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "entry_point": "beforeDispatch: assertProductionShotCanDispatch",
+      "disposition": "enforced",
+      "evidence": "Both MCP stdio submission sites pass the same guard into createProductionGenerationSubmission and reach the same submitOnce."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "entry_point": "createSubmissionOutbox({ beforeDispatch })",
+      "disposition": "enforced",
+      "evidence": "The generation facade only forwards the gate to the outbox; it does not call it a second time."
+    },
+    {
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "entry_point": "videoShotsOf",
+      "disposition": "enforced",
+      "evidence": "Video shots are filtered through shotCountsTowardBatch; the local isIncluded copy is gone. A deleted or taken-over shot no longer enters progress, so the batch completes when the shots it still owes are done."
+    },
+    {
+      "path": "electron/shared/productionShotPhase.ts",
+      "entry_point": "queueShotsOf",
+      "disposition": "enforced",
+      "evidence": "The queue denominator mirrors the scheduler rule through the same function (includedVideoShots with its own included filter was replaced)."
+    },
+    {
+      "path": "electron/shared/decideShotClaim.ts",
+      "entry_point": "shot_excluded",
+      "disposition": "enforced",
+      "evidence": "The claim decision reads the included rule through shotIncluded instead of its own included === false."
+    },
+    {
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "entry_point": "buildExhaustedHalt",
+      "disposition": "not-affected",
+      "evidence": "Only reached after the ledger hard wall fires; it shapes the budget-halt message and no completion decision reads it. Its included-only filter converges with the budget-halt work the coordinator scheduled for the next production PR."
+    },
+    {
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "entry_point": "anchorsOf",
+      "disposition": "not-affected",
+      "evidence": "Anchors keep the plain included rule on purpose: they gate the checkpoint where a person approves the look before the paid shots run, so an anchor taken back by the canvas must not silently release those shots. What to do instead is a spending decision raised to the coordinator."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same Run can be reached through canvas, scheduler, outbox, and generic task submission paths, and legacy single-shot data omits shot metadata.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch",
+      "rg for shot.claim, metadata.shotId, beforeDispatch, shotDispatch across electron and src",
+      "node scripts/door-map.mjs executeProductionRunCommand productionRunApi (renderer production command writers: useProductionStatus, laneTaskCandidateActions via the shared path; ProductionCanvasLandingHost called productionRunApi.command directly)",
+      "rg \"commandId\" src (every renderer-built production command id) and rg \"choiceKey\" src electron (the only renderer-sent key is echoed from a main-normalized gate candidate)",
+      "node scripts/door-map.mjs runTask beforeDispatch (beforeDispatch has one caller, submissionOutbox.submitOnce, and one production forwarder, productionGenerationSubmission; test harnesses pass () => undefined)",
+      "node scripts/door-map.mjs shotCountsTowardBatch shotIncluded; rg \"included !== false|included === false\" electron src (the other sites decide the paid scope at seal / pending-spend / preview time, not what a running batch still owes)"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/decideShotClaim.ts",
+    "invariant": "A requester is granted only when the current attempt and durable owner allow it.",
+    "failure_mode": "Reject with production_shot_claimed and a structured reason; scheduler omits the shot.",
+    "exception_policy": "none",
+    "strategy": "All callers reuse the same correspondence helper and decision; reducer is the only claim writer.",
+    "artifacts": [
+      "electron/shared/productionShotJobs.ts",
+      "electron/shared/decideShotClaim.ts",
+      "electron/productionRun/productionRunReducer.ts",
+      "electron/productionRun/batchScheduleDerivation.ts",
+      "electron/shared/productionRunCommandId.ts",
+      "src/workbench/production/reportDetachedShotNodes.ts",
+      "src/workbench/production/watchDeletedProductionNodes.ts",
+      "src/workbench/production/detachReportFeedback.ts",
+      "electron/productionRun/submissionOutbox.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/shared/productionShotPhase.test.ts",
+    "electron/productionRun/productionRunReducerCanvasLanding.test.ts",
+    "electron/productionRun/batchScheduleDerivation.test.ts",
+    "electron/tasks/taskIpcGuard.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
+    "electron/productionRun/productionShotDetachReport.e2e.test.ts",
+    "electron/shared/productionRunCommandId.test.ts",
+    "src/workbench/production/watchDeletedProductionNodes.test.ts",
+    "src/workbench/production/detachReportFeedback.test.ts",
+    "electron/productionRun/productionShotDispatchGate.e2e.test.ts",
+    "electron/productionRun/submissionOutbox.test.ts",
+    "electron/productionRun/productionGenerationSubmission.test.ts",
+    "electron/productionRun/productionBatchSettlesAfterRelease.e2e.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/shared/productionShotPhase.test.ts",
+    "electron/productionRun/batchScheduleDerivation.test.ts",
+    "electron/tasks/taskIpcGuard.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
+    "electron/productionRun/productionShotDetachReport.e2e.test.ts",
+    "electron/shared/productionRunCommandId.test.ts",
+    "src/workbench/production/watchDeletedProductionNodes.test.ts",
+    "electron/productionRun/productionShotDispatchGate.e2e.test.ts",
+    "electron/productionRun/productionBatchSettlesAfterRelease.e2e.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/productionRun/productionRunReducer.ts",
+      "electron/productionRun/batchScheduleDerivation.ts",
+      "src/workbench/production/ProductionCanvasLandingHost.tsx",
+      "electron/productionRun/productionRunIpc.ts",
+      "electron/productionRun/submissionOutbox.ts"
+    ],
+    "rationale": "The duplicate reducer and scheduler decision branches were deleted in these changed files; legacy Run records without claim remain readable through derived ownership. The landing host no longer hand-builds the detach command id or swallows its failure, and productionRunIpc no longer keeps its own copy of the identifier regex. submitOnce no longer calls the gate after the submit intent; the hand-built guard unit tests (productionShotDispatchGuard.test.ts, jobs constructed as authorized while the real call order showed the gate submit_intent_persisted) were replaced by productionShotDispatchGate.e2e.test.ts, which drives the real scheduler → submission → outbox order. batchScheduleDerivation no longer keeps its own isIncluded and productionShotPhase no longer keeps includedVideoShots; both read shotCountsTowardBatch / shotIncluded."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency controls this state invariant.",
+    "exit_criteria": []
+  },
+  "migration": "Claim is additive. Runs without a claim derive ownership from existing durable state; new canvas claims write the attempt-scoped record.",
+  "residual_risks": [
+    "The paid real-media acceptance path is intentionally out of scope for B1 and must be run by the coordinator.",
+    "When every remaining shot of a budget-halted run is taken over by the canvas, the run stays in needs_attention with nothing left to continue. No resume card is offered for those shots, but settling such a run automatically is outside this fix.",
+    "The same [A-Za-z0-9._-]{1,160} rule is still written out separately in other main-process validators (productionRunService, productionRunPaths, artifactProjection, productionDeepLink, productionRunE2eFixture, dispatcherParams, mcpProtocol, exportJobs). They validate ids the main process itself produced or MCP clients send, not renderer-built command ids; converging them onto productionRunCommandId is left to the coordinator.",
+    "executeProductionRunCommand resends a conflicted command once. A deletion that loses two consecutive races with scheduler writes is not recorded, but it is now logged and shown to the user with a way to pause or cancel the run.",
+    "The batch scheduler still derives its dispatch list once per drive and walks it (left unchanged on purpose; tracked by the coordinator). The gate now refuses stopped or claimed shots at admission, but a stop that lands after a shot has been admitted — the same tick as its submit intent — still lets that one shot go.",
+    "An anchor taken back by the canvas while queued still holds the anchor checkpoint, so its batch rests there instead of completing; skipping the checkpoint would spend on the video shots without the look approval, so this is left to the coordinator.",
+    "A shot deleted after it was submitted keeps its paid job and still counts as work the batch owes; detach clears that job's nodeId, and semanticGenerationReadiness requires a canvas node on every adopted job, so such a batch lands in needs_attention rather than rough cut (pre-existing, reported to the coordinator)."
+  ]
+}
