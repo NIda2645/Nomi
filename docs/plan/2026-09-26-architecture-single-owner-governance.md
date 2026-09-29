@@ -30,7 +30,7 @@
 - `docs/audit/2026-09-26-generation-derived-facts-two-engines-structure-review.md` 明确指出画布引擎与 `capabilityCore`/`productionRun` 是两台生成发动机；变体只是刚收掉的一份副本，模式和参数面仍在同一风险带。
 - `docs/audit/2026-09-26-storyboard-false-alarms-structure-review.md` 同时记录 IPC 类型/schema 双写和分镜对画布参考槽判据的重抄。
 - 第一轮 Phase -1 实扫又确认：语义/分镜路径已经走 `PlanCandidate → ExecutionContractV1 → AuthorizationEnvelope → ProductionRun`，但旧画布直生成仍由 `generationRunController → catalogTaskActions → runtime.runTask/submissionLedger` 直接提交 provider，不创建 `ProductionRun`/授权 envelope/ProductionJob；这是第二条真实的付费执行生命周期，必须先登记边界或迁移目标。
-- `docs/engineering/concept-owners.json` 当前登记 38 个概念，其中“出价/待决身份”和“画布缩放”仍是有界 `pending`；登记表目前能提示风险，但 `check:concept-owners` 尚未实现，暂不能自动阻止第二个写口。（2026-09-29 更新：门岗已落地、登记表升到 v2 共 59 个概念，见「Phase 1 进度」。）
+- `docs/engineering/concept-owners.json` 当前登记 38 个概念，其中“出价/待决身份”和“画布缩放”仍是有界 `pending`；登记表目前能提示风险，但 `check:concept-owners` 尚未实现，暂不能自动阻止第二个写口。（2026-09-29 更新：门岗已落地、登记表升到 v2 共 62 个概念，见「Phase 1 进度」。）
 - 2026-09-25 至 2026-09-26 的 main 提交连续出现 `agent-run-node-state-single-owner`、`generation-variant-single-owner`、`storyboard-planned-first-frame-slot`、`storyboard-resolve-vendor-rejected`、`open-fit-reopen-remembered-echo`、`spend-card-patch-json-values`，说明发现速度很快，但系统仍在靠反复发现后收口。
 
 ## 先查别人
@@ -406,7 +406,7 @@ Phase 1 只落地治理门、schema/owner parity、lifecycle identity 和 durabl
 
 **做了什么。** 只动门岗与账本，没碰 `electron/`、`src/` 的生产文件：
 
-- 登记表升到 v2（[`concept-owners.json`](../engineering/concept-owners.json)）：59 个概念 = 原 38 个 + 09-26 之后 main 上长出来的 15 个主人（#904、#906、#903、#907、v0.22.3 热修 295a7018a、#914、#916、#910、#918、#923）+ 原 `check:identity-compare` 的 6 个身份比对。每条补齐计数键四元组、`fact_kind`、`migration_status`、`write_api`、`forbidden_derivations`、`allowed_consumers`；两条 pending 写明 `migration_strategy`。字段表见 [R33.4](../engineering-rules.md)。
+- 登记表升到 v2（[`concept-owners.json`](../engineering/concept-owners.json)）：62 个概念 = 原 38 个 + 09-26 之后 main 上长出来的 18 个主人（#904、#906、#903、#907、v0.22.3 热修 295a7018a、#914、#916、#910、#918、#923 共 15 个；并入 main 之后又补 #925 自己用旧字段登的 1 个、#924 的 2 个）+ 原 `check:identity-compare` 的 6 个身份比对。每条补齐计数键四元组、`fact_kind`、`migration_status`、`write_api`、`forbidden_derivations`、`allowed_consumers`；两条 pending 写明 `migration_strategy`。字段表见 [R33.4](../engineering-rules.md)。
 - 新门岗 `pnpm run check:concept-owners`（`scripts/check-concept-owners.mjs`，判据在 `concept-owners-lib.mjs`，取证在 `concept-owners-scan.mjs`，基线 `scripts/concept-owners-baseline.json`），已进 `gates:contracts`；19 条 node 测试覆盖每条判据的先红后绿、三处豁免的反向控制，以及登记表坏掉时给出干净的红（不是堆栈）。
 - `check:identity-compare` 并入本门岗：脚本、基线、package 脚本同一提交删除；它基线里那两条「这是另一种身份」本来就是概念登记，现在是登记表里的身份概念，门岗逐字核 `identity_fields`。
 
@@ -414,13 +414,13 @@ Phase 1 只落地治理门、schema/owner parity、lifecycle identity 和 durabl
 
 **取舍（写在这里，别人再改有据可查）：**
 
-1. **最小必填集 = 计数键 + 判据真用得上的字段。** `subject / lifecycle / authority_kind / trust_domain` 是方案定义「唯一」的计数键；`owner / write_api / forbidden_derivations / allowed_consumers / migration_status` 是判据的输入；`fact_kind` 一个词、不写就会各写各的，一并必填。`trust_domain` 由主人路径派生、门岗逐条核，避免登记表里长出第二份真相。条件必填：pending 要 `migration_strategy`，身份比对要 `identity_fields`。**暂不强制** `parity_test / revision_source / replay_strategy`：机器还核不了「这条测试真是对拍」，强制只会逼出编造的路径或空壳 null；现有 16/59 条写了 `parity_test`，覆盖数每次在门岗输出里打印。
+1. **最小必填集 = 计数键 + 判据真用得上的字段。** `subject / lifecycle / authority_kind / trust_domain` 是方案定义「唯一」的计数键；`owner / write_api / forbidden_derivations / allowed_consumers / migration_status` 是判据的输入；`fact_kind` 一个词、不写就会各写各的，一并必填。`trust_domain` 由主人路径派生、门岗逐条核，避免登记表里长出第二份真相。条件必填：pending 要 `migration_strategy`，身份比对要 `identity_fields`。**暂不强制** `parity_test / revision_source / replay_strategy`：机器还核不了「这条测试真是对拍」，强制只会逼出编造的路径或空壳 null；现有 20/62 条写了 `parity_test`，覆盖数每次在门岗输出里打印。
 2. **`fact_kind` 在方案四类外加一类 `rule`。** 准入、落家、变体、要不要弹确认这类纯判据不存状态，也不是投影（本方案明文：投影不许重新决定模式、变体、准入、状态），硬塞进四类之一就是在账上说谎。
 3. **红判在活代码上，合同门表只用来归属。** 门表是「宁可多数一扇」的普查（R21.3），拿每扇写门判红会逼作者少数门，那正是门表要消灭的「我扫过了」；合同是写的那一刻的快照，会过期，活代码不会。合同侧只收紧一件事：它声明的共享边界（不变量的主人）必须进账。
 4. **只判「定义」不判「调用」。** 画布、Agent、MCP 从同一个主人 import 是多个入口一个主人；在别处再定义一份同名的函数 / 表 / 类型才是第二个写口。另一个概念明确认领的同名定义（同名不同事）放行——那是账上写明、评审看得见的判断。
 5. **pending 冻结的是旧路，不是暂定主人。** 迁移本来就是把消费者一个个挪到暂定主人上（画布缩放的 `useCanvasLiveZoom`），所以暂定主人的接口只按例外账放行；与它竞争同一件事的旧路（直接画布按 `quoteId` 出价铸令牌的四个函数、写持久化视角的 `rememberCategoryViewport`、读它的 `categoryViewports`）写门冻结、读者锁在例外账。
 6. **两个登记表门岗只留一个：并掉 `check:identity-compare`，不并其余三个。** identity-compare 的基线条目是「这个比对是另一种身份、有自己的主人」——本质就是概念登记，留两本账等于「哪些概念存在」这件事自己有两个主人。`check:vocabularies`（字面量词表的普查，几百个值集合，不是概念主人）、`check:boundary-owners`（核历史合同声明的边界今天还在不在，是处置台账）、`framework-boundaries`（造轮子前的框架边界）登记的不是概念主人，不并。
-7. **合同受管起点定在 2026-09-27。** 登记表最后一次和 main 对账是 09-26（#897），从 09-27 起的合同边界都要进账——既管住以后，也让门岗本身验证这次补登没有漏（10 份受管合同的边界全部进账）。
+7. **合同受管起点定在 2026-09-27。** 登记表最后一次和 main 对账是 09-26（#897），从 09-27 起的合同边界都要进账——既管住以后，也让门岗本身验证这次补登没有漏（12 份受管合同的边界全部进账；并入 main 那一刻门岗当场报出 #924 两个没登记的边界，补登后转绿）。
 8. **没有 `--update-baseline`。** 同 `check:boundary-owners`：自动写基线等于把红一键洗绿；基线只能手改，并受 merge-base 棘轮约束。
 
 **先红后绿（拿现在这本账去判当年的代码，`--source-ref` 可复验）：**
@@ -439,7 +439,7 @@ Phase 1 只落地治理门、schema/owner parity、lifecycle identity 和 durabl
 
 | 准入条件 | 状态 |
 |---|---|
-| `check:concept-owners` 对新增概念和第二写口 fail-closed | **形状层已落地**（本节）；没做：方案 §1 的「UI 按 raw status/flag 再分组」扫描、「跨入口是否汇到同一 handler」扫描、语义层对等（`parity_test` 16/59） |
+| `check:concept-owners` 对新增概念和第二写口 fail-closed | **形状层已落地**（本节）；没做：方案 §1 的「UI 按 raw status/flag 再分组」扫描、「跨入口是否汇到同一 handler」扫描、语义层对等（`parity_test` 20/62） |
 | direct canvas remote/paid 走同一 `ExecutionContractV1 → authorization → outbox → observation → artifact` 的真实 Electron/provider 证据 | 未满足 |
 | Run journal、intent log、approval/budget side-ledger 的 commit marker、恢复矩阵与 crash-injection 测试 | 未满足（耐久提交相关文件 #921 等在途分支正在改，本步不碰） |
 | 冷重启、重开、切项目、跨宿主、Windows storage 用稳定身份重建同一 Run | 未满足 |

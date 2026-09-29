@@ -356,16 +356,34 @@
         {
           "path": "electron/assets/providerMediaFetch.ts",
           "symbol": "fetchProviderMedia"
+        },
+        {
+          "path": "electron/shared/assets/providerMediaRetrievalBudget.ts",
+          "symbol": "providerMediaRetrievalTotalMs"
+        },
+        {
+          "path": "electron/shared/assets/providerMediaRetrievalBudget.ts",
+          "symbol": "PROVIDER_MEDIA_BYTE_CAP"
+        },
+        {
+          "path": "electron/shared/assets/providerMediaRetrievalBudget.ts",
+          "symbol": "PROVIDER_MEDIA_IDLE_TIMEOUT_MS"
+        },
+        {
+          "path": "electron/shared/assets/providerMediaRetrievalBudget.ts",
+          "symbol": "PROVIDER_MEDIA_RETRIEVAL_MAX_MS"
         }
       ],
       "forbidden_derivations": [],
+      "parity_test": "electron/assets/providerMediaFetch.test.ts",
       "allowed_consumers": [
         "electron/assets/projectAssetStore.ts",
         "electron/assets/downloadAsset.ts",
-        "electron/capabilityCore/generationOutputMaterializer.ts"
+        "electron/capabilityCore/generationOutputMaterializer.ts",
+        "src/workbench/generationCanvas/runner/generationPhaseDeadline.ts"
       ],
       "since": "2026-09-25",
-      "notes": "同一段供应商产物，普通生成本地化、另存到磁盘、Agent 付费卡物化三处取回共用一组超时 / 字节上限 / 供应商自己的线路。2026-09-25 之前付费卡那一处只给了 maxBytes，超时落回 hardenedFetch 的通用 20 秒且不走供应商线路：大视频普通生成落得下来、付费卡那条路每一轮都下载超时。"
+      "notes": "同一段供应商产物，普通生成本地化、另存到磁盘、Agent 付费卡物化三处取回共用一组超时 / 字节上限 / 供应商自己的线路。2026-09-25 之前付费卡那一处只给了 maxBytes，超时落回 hardenedFetch 的通用 20 秒且不走供应商线路：大视频普通生成落得下来、付费卡那条路每一轮都下载超时。 2026-09-29 #924 追加（合同 docs/fixes/2026-09-29-stuck-saving-retrieval-liveness.root-cause.json）：取回改成「空闲超时（没有进度就断）+ 按声明大小放大的总时限 + 字节上限」，全部数字只住 electron/shared/assets/providerMediaRetrievalBudget.ts，主进程取回与渲染层的阶段截止表读同一份，不许在调用处另写超时。"
     },
     {
       "name": "画布手势寿命（一次拖动/框选/缩放何时结束）",
@@ -2004,6 +2022,87 @@
       "allowed_consumers": [],
       "since": "2026-09-18",
       "notes": "从 scripts/identity-compare-baseline.json 迁来（2026-09-29 并入）。比的是「主清单与备份清单是不是同一个项目的同一代」，两边都还没有 projectId（清单本身就是 projectId 的来源，此时读的是磁盘原始 JSON）。刻意只用盘上那两个不可变量做一致性校验，属于清单完整性检查，不是运行期的项目身份比对。"
+    },
+    {
+      "name": "外发请求拿到的响应：要么读完、要么放弃（hardenedFetch 的收尾）",
+      "subject": "network.response-release",
+      "lifecycle": "host",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/hardenedFetch.ts",
+        "symbol": "hardenedFetch"
+      },
+      "write_api": [
+        {
+          "path": "electron/hardenedFetch.ts",
+          "symbol": "hardenedFetch"
+        },
+        {
+          "path": "electron/hardenedFetch.ts",
+          "symbol": "hardenedFetchText"
+        },
+        {
+          "path": "electron/hardenedFetch.ts",
+          "symbol": "abandonResponse"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/hardenedFetch.test.ts",
+      "allowed_consumers": [
+        "electron/ai/antigravityTask.ts",
+        "electron/assets/providerMediaFetch.ts",
+        "electron/audioTaskRunner.ts",
+        "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+        "electron/catalog/catalogCommit.ts",
+        "electron/catalog/dreaminaInputFiles.ts",
+        "electron/connectors/tikhubConnector.ts",
+        "electron/connectors/tikhubRoute.ts",
+        "electron/downloads/verifiedAssetCache.ts",
+        "electron/integrationCertification/integrationSession.ts",
+        "electron/localRuntime/localAiExternalProbe.ts",
+        "electron/localSpeech/localSpeechServer.ts",
+        "electron/promptLibrary/promptLibraryStore.ts",
+        "electron/providerAdapter/certificationMedia.ts",
+        "electron/providerAdapter/docsDiscovery.ts",
+        "electron/providerAdapter/providedDocs.ts",
+        "electron/video/extractVideoFrame.ts",
+        "tests/network/proxy-cold-main.cjs"
+      ],
+      "since": "2026-09-29",
+      "notes": "PR #924（合同 docs/fixes/2026-09-29-stuck-saving-retrieval-liveness.root-cause.json）：任务完成却一直停在「正在存到你电脑上」——取回原语拒收一个响应时没放掉连接，直连路由上把连接永远钉住。现在 hardenedFetch 拿到的每个响应，在它返回之前要么读完、要么经 abandonResponse 放弃（取消 body、什么都不等）；每次请求专用的连接池在请求自己的截止时间内销毁，不等连接池优雅关闭。拒收路径只许走 abandonResponse，不许再各写一份释放。"
+    },
+    {
+      "name": "生成各阶段最长能等多久（阶段截止表与唯一等待原语）",
+      "subject": "generation.phase-deadline",
+      "lifecycle": "execution",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/generationCanvas/runner/generationPhaseDeadline.ts",
+        "symbol": "awaitWithinPhase"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/runner/generationPhaseDeadline.ts",
+          "symbol": "awaitWithinPhase"
+        },
+        {
+          "path": "src/workbench/generationCanvas/runner/generationPhaseDeadline.ts",
+          "symbol": "GENERATION_PHASE_DEADLINE"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/generationCanvas/runner/generationPhaseDeadline.test.ts",
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/runner/catalogTaskActions.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "PR #924（同上合同）：主进程里任何一个永远不返回的 await，都能把节点卡在非终态，而且点停也停不下。现在每个非终态的 GenerationProgressPhase 都在 GENERATION_PHASE_DEADLINE 里登记了最长时长与到期动作（穷尽的 Record，少一个阶段就是 tsc 红）；生成过程中等主进程的地方都经 awaitWithinPhase：结果回来、按最近上报的阶段截止时间到期、或用户点停，谁先到算谁。可恢复 / 卡住的结局不自动重试——重试会再提交一次付费任务。"
     }
   ]
 }
