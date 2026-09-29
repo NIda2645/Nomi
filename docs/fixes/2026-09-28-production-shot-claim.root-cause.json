@@ -2,14 +2,15 @@
   "schema_version": 3,
   "id": "2026-09-28-production-shot-claim",
   "problem_type": "Production and canvas disagree about shot ownership",
-  "symptom": "A canvas shot can be regenerated while its production job is queued, in flight, or awaiting reconciliation; stopped runs can also be dispatched. A canvas placeholder deleted while its shot was authorized but not yet submitted was still dispatched and billed (2026-09-29 paid acceptance, reproduced on the loopback fixture).",
-  "direct_cause": "Reducer, claim decision, and scheduler each inferred shot ownership from different subsets of Run state, with no durable attempt-scoped claim record. The canvas detach report built its command id as `detach-canvas:<runId>:<nodeIds>`; the ':' and ',' fail the production IPC identifier rule (\"Invalid command id\"), the landing host swallowed the rejection in `catch {}`, and it called the bridge directly instead of the shared renderer command path, so the Run never recorded the detach.",
-  "class_root": "Every shot/job caller must use one attempt-scoped durable ownership decision and one shot-to-job correspondence. Renderer-built production command ids and the IPC identifier rule need one owner, and every renderer production command must go through the one renderer command path whose failures are surfaced, not swallowed.",
+  "symptom": "A canvas shot can be regenerated while its production job is queued, in flight, or awaiting reconciliation; stopped runs can also be dispatched. A canvas placeholder deleted while its shot was authorized but not yet submitted was still dispatched and billed (2026-09-29 paid acceptance, reproduced on the loopback fixture). Pressing the emergency stop after shot 1 of a three-shot batch had started still dispatched and billed shots 2 and 3 in the same drive (2026-09-29 paid acceptance, reproduced on the loopback fixture).",
+  "direct_cause": "Reducer, claim decision, and scheduler each inferred shot ownership from different subsets of Run state, with no durable attempt-scoped claim record. The canvas detach report built its command id as `detach-canvas:<runId>:<nodeIds>`; the ':' and ',' fail the production IPC identifier rule (\"Invalid command id\"), the landing host swallowed the rejection in `catch {}`, and it called the bridge directly instead of the shared renderer command path, so the Run never recorded the detach. The production dispatch gate (beforeDispatch → createProductionShotDispatchGuard → decideShotClaim) ran inside submissionOutbox.submitOnce after the budget reserve and after the job was written as submit_intent_persisted. decideShotClaim counts submit_intent_persisted as in_flight and grants production before any claim, detach or stop check, so the gate judged its own side effect and never refused anything; the scheduler walks the dispatch list it derived at the start of the drive, so a pause that landed mid-drive did not stop the remaining shots.",
+  "class_root": "Every shot/job caller must use one attempt-scoped durable ownership decision and one shot-to-job correspondence. Renderer-built production command ids and the IPC identifier rule need one owner, and every renderer production command must go through the one renderer command path whose failures are surfaced, not swallowed. An admission check must judge the state before its own attempt writes anything: a gate placed after its caller's first durable write sees that write and always admits.",
   "affected_population": [
     "Production Runs with single-shot or multi-shot generation plans",
     "Canvas nodes bound to production shots",
     "Queued, stopped, detached, and reconciliation states",
-    "Canvas placeholders deleted (Delete key / ⌘Z of a batch) while their production shot is still queued"
+    "Canvas placeholders deleted (Delete key / ⌘Z of a batch) while their production shot is still queued",
+    "Batches stopped (急停 / 取消) while an earlier shot is still being submitted"
   ],
   "scope_paths": [
     "electron/productionRun/batchScheduleDerivation.ts",
@@ -45,13 +46,15 @@
     "src/workbench/production/ProductionCanvasLandingHost.tsx",
     "src/workbench/production/reportDetachedShotNodes.ts",
     "src/workbench/production/watchDeletedProductionNodes.ts",
-    "src/workbench/production/productionRunCommands.ts"
+    "src/workbench/production/productionRunCommands.ts",
+    "electron/productionRun/submissionOutbox.ts"
   ],
   "entry_points": [
     "canvas shot.claim",
     "batch scheduler dispatch derivation",
     "beforeDispatch/runtime canvas submission guard",
-    "renderer canvas node deletion → plan.detach-shot-nodes over the production IPC"
+    "renderer canvas node deletion → plan.detach-shot-nodes over the production IPC",
+    "submissionOutbox.submitOnce → beforeDispatch (every production submission: batch scheduler, single shot, MCP stdio host)"
   ],
   "external_sources": [],
   "internal_only_reason": "This is an application-level Run ledger invariant; no third-party dependency controls it.",
@@ -60,9 +63,10 @@
     "tests": [
       "electron/shared/productionShotPhase.test.ts",
       "electron/productionRun/batchScheduleDerivation.test.ts",
-      "electron/productionRun/productionRunReducerCanvasLanding.test.ts"
+      "electron/productionRun/productionRunReducerCanvasLanding.test.ts",
+      "electron/productionRun/productionShotDispatchGate.e2e.test.ts"
     ],
-    "why": "The shared decision owns the invariant and the reducer is the only durable writer; all scheduler and canvas callers consume those boundaries."
+    "why": "The shared decision owns the invariant and the reducer is the only durable writer; all scheduler and canvas callers consume those boundaries. The submission outbox asks the decision (through the dispatch gate) before the attempt's first durable write, so production is judged on the pre-persist state."
   },
   "invariants": [
     "Only the current attempt may be claimed",
@@ -71,7 +75,8 @@
     "In-flight and reconciliation jobs remain production-owned",
     "A budget continuation quotes and re-authorizes only unsubmitted jobs production still owns; a shot the canvas has taken over is never quoted, never resurrected by the continuation, and never offered a production resume action",
     "A renderer-built production command id always passes the IPC identifier rule; the rule and the id builders live in electron/shared/productionRunCommandId.ts",
-    "Every renderer production command goes through executeProductionRunCommand; a canvas detach report that does not land is logged and shown to the user, never swallowed"
+    "Every renderer production command goes through executeProductionRunCommand; a canvas detach report that does not land is logged and shown to the user, never swallowed",
+    "The production dispatch gate runs before the first durable write of a submission attempt (budget reserve / submit intent); a refused attempt leaves no reservation and no submit intent, and the job stays exactly as it was"
   ],
   "doors": [
     {
@@ -493,7 +498,7 @@
   "door_reduction": {
     "before": 57,
     "after": 83,
-    "why_not": "门表按 2026-09-29 的代码用 door-map 整体重生成（取并集），命令：node scripts/door-map.mjs runTask beforeDispatch；node scripts/door-map.mjs deriveProductionShotState jobAwaitsHuman productionJobPhase --read=deriveProductionShotState,jobAwaitsHuman,productionJobPhase；node scripts/door-map.mjs claimCanvasProductionShot decideShotClaim getRegisteredProductionRunService；node scripts/door-map.mjs detachShotNodesCommandId isProductionRunIdentifier reportDetachedShotNodes watchDeletedProductionNodes executeProductionRunCommand detachShotNodes surfaceDetachReportFailure --read=isProductionRunIdentifier；node scripts/door-map.mjs createProductionShotDispatchGuard jobsForShot latestJobForShot --read=jobsForShot,latestJobForShot；node scripts/door-map.mjs encodeStructuredErrorMessage parseVendorErrorFromMessage classifyGenerationError productionMetaOf --read=parseVendorErrorFromMessage,classifyGenerationError,productionMetaOf（「被画布/制作占着」这句拒绝怎么一路变成节点上的人话）；node scripts/door-map.mjs ProductionShotClaim JOB_TRANSITIONS ProductionMeta VendorErrorStructuredLite GenerationErrorAction PRODUCTION_RUN_IDENTIFIER_PATTERN dispatchUnit isUnsubmittedJobStatus（本分支改过的类型 / 状态表各自的门）；node scripts/door-map.mjs ProductionRunService --roots=electron/productionRun（谁握着 Run 的唯一写口：服务注册表与它的使用方）。旧表里手写的门（如 generationCommon.ts 的 shotClaimed）door-map 数不出来，随 i18n 文件一起移出 scope。仍保留多扇门：decideShotClaim 是唯一判据，Run reducer 是唯一持久写口，runtime/canvasShotClaim 是画布提交闸，beforeDispatch 是制作派发闸，runTask/IPC 是通用任务入口；渲染层的制作命令只剩 executeProductionRunCommand 一个出口（删节点上报此前绕开它直调 bridge，本次收回），删节点观察只剩 watchDeletedProductionNodes 一处（从落地宿主组件里抽出，失败必经 surfaceDetachReportFailure），命令号与校验规则只剩 productionRunCommandId 一处。它们服务不同生命周期，合并会扩大权限边界。"
+    "why_not": "门表按 2026-09-29 的代码用 door-map 整体重生成（取并集），命令：node scripts/door-map.mjs runTask beforeDispatch；node scripts/door-map.mjs deriveProductionShotState jobAwaitsHuman productionJobPhase --read=deriveProductionShotState,jobAwaitsHuman,productionJobPhase；node scripts/door-map.mjs claimCanvasProductionShot decideShotClaim getRegisteredProductionRunService；node scripts/door-map.mjs detachShotNodesCommandId isProductionRunIdentifier reportDetachedShotNodes watchDeletedProductionNodes executeProductionRunCommand detachShotNodes surfaceDetachReportFailure --read=isProductionRunIdentifier；node scripts/door-map.mjs createProductionShotDispatchGuard jobsForShot latestJobForShot --read=jobsForShot,latestJobForShot；node scripts/door-map.mjs encodeStructuredErrorMessage parseVendorErrorFromMessage classifyGenerationError productionMetaOf --read=parseVendorErrorFromMessage,classifyGenerationError,productionMetaOf（「被画布/制作占着」这句拒绝怎么一路变成节点上的人话）；node scripts/door-map.mjs ProductionShotClaim JOB_TRANSITIONS ProductionMeta VendorErrorStructuredLite GenerationErrorAction PRODUCTION_RUN_IDENTIFIER_PATTERN dispatchUnit isUnsubmittedJobStatus（本分支改过的类型 / 状态表各自的门）；node scripts/door-map.mjs ProductionRunService --roots=electron/productionRun（谁握着 Run 的唯一写口：服务注册表与它的使用方）。旧表里手写的门（如 generationCommon.ts 的 shotClaimed）door-map 数不出来，随 i18n 文件一起移出 scope。仍保留多扇门：decideShotClaim 是唯一判据，Run reducer 是唯一持久写口，runtime/canvasShotClaim 是画布提交闸，beforeDispatch 是制作派发闸，runTask/IPC 是通用任务入口；渲染层的制作命令只剩 executeProductionRunCommand 一个出口（删节点上报此前绕开它直调 bridge，本次收回），删节点观察只剩 watchDeletedProductionNodes 一处（从落地宿主组件里抽出，失败必经 surfaceDetachReportFailure），命令号与校验规则只剩 productionRunCommandId 一处。它们服务不同生命周期，合并会扩大权限边界。 派发准入闸只有 submissionOutbox.submitOnce 一个调用点（beforeDispatch 门），生产三处接线（appIntegration、mcpStdioServer 两处）都经 createProductionGenerationSubmission 传给它；本次只挪它在 submitOnce 里的位置，不新增门。"
   },
   "generality_proof": "Single-shot and multi-shot plans now share productionShotJobs for correspondence, decideShotClaim for ownership, and reducer persistence for claims; scheduler and runtime callers therefore see the same attempt-scoped result.",
   "shared_boundaries": [
@@ -526,6 +531,11 @@
       "path": "src/workbench/production/productionRunCommands.ts",
       "symbol": "executeProductionRunCommand",
       "responsibility": "The single renderer path for production commands; resends once on a revision conflict with the latest revision and lets real failures reach the caller."
+    },
+    {
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "submitOnce/beforeDispatch",
+      "responsibility": "Admit a submission attempt through the dispatch gate before reserving budget or persisting a submit intent; every production submission path goes through it."
     }
   ],
   "same_class_entry_points": [
@@ -564,6 +574,24 @@
       "entry_point": "executeProductionRunCommand",
       "disposition": "not-affected",
       "evidence": "Its only production command uses a crypto.randomUUID() id through the shared renderer command path."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "entry_point": "beforeDispatch: assertProductionShotCanDispatch",
+      "disposition": "enforced",
+      "evidence": "The app wiring passes createProductionShotDispatchGuard into createProductionGenerationSubmission; the gate position is owned by submissionOutbox.submitOnce, so the batch scheduler and single-shot starts both get the pre-persist check."
+    },
+    {
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "entry_point": "beforeDispatch: assertProductionShotCanDispatch",
+      "disposition": "enforced",
+      "evidence": "Both MCP stdio submission sites pass the same guard into createProductionGenerationSubmission and reach the same submitOnce."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "entry_point": "createSubmissionOutbox({ beforeDispatch })",
+      "disposition": "enforced",
+      "evidence": "The generation facade only forwards the gate to the outbox; it does not call it a second time."
     }
   ],
   "recurrence": {
@@ -573,7 +601,8 @@
       "node scripts/door-map.mjs productionShotOwnsGeneration runTask beforeDispatch",
       "rg for shot.claim, metadata.shotId, beforeDispatch, shotDispatch across electron and src",
       "node scripts/door-map.mjs executeProductionRunCommand productionRunApi (renderer production command writers: useProductionStatus, laneTaskCandidateActions via the shared path; ProductionCanvasLandingHost called productionRunApi.command directly)",
-      "rg \"commandId\" src (every renderer-built production command id) and rg \"choiceKey\" src electron (the only renderer-sent key is echoed from a main-normalized gate candidate)"
+      "rg \"commandId\" src (every renderer-built production command id) and rg \"choiceKey\" src electron (the only renderer-sent key is echoed from a main-normalized gate candidate)",
+      "node scripts/door-map.mjs runTask beforeDispatch (beforeDispatch has one caller, submissionOutbox.submitOnce, and one production forwarder, productionGenerationSubmission; test harnesses pass () => undefined)"
     ]
   },
   "prevention": {
@@ -591,7 +620,8 @@
       "electron/shared/productionRunCommandId.ts",
       "src/workbench/production/reportDetachedShotNodes.ts",
       "src/workbench/production/watchDeletedProductionNodes.ts",
-      "src/workbench/production/detachReportFeedback.ts"
+      "src/workbench/production/detachReportFeedback.ts",
+      "electron/productionRun/submissionOutbox.ts"
     ]
   },
   "regression_tests": [
@@ -603,7 +633,10 @@
     "electron/productionRun/productionShotDetachReport.e2e.test.ts",
     "electron/shared/productionRunCommandId.test.ts",
     "src/workbench/production/watchDeletedProductionNodes.test.ts",
-    "src/workbench/production/detachReportFeedback.test.ts"
+    "src/workbench/production/detachReportFeedback.test.ts",
+    "electron/productionRun/productionShotDispatchGate.e2e.test.ts",
+    "electron/productionRun/submissionOutbox.test.ts",
+    "electron/productionRun/productionGenerationSubmission.test.ts"
   ],
   "class_regression_tests": [
     "electron/shared/productionShotPhase.test.ts",
@@ -612,7 +645,8 @@
     "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
     "electron/productionRun/productionShotDetachReport.e2e.test.ts",
     "electron/shared/productionRunCommandId.test.ts",
-    "src/workbench/production/watchDeletedProductionNodes.test.ts"
+    "src/workbench/production/watchDeletedProductionNodes.test.ts",
+    "electron/productionRun/productionShotDispatchGate.e2e.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -620,9 +654,10 @@
       "electron/productionRun/productionRunReducer.ts",
       "electron/productionRun/batchScheduleDerivation.ts",
       "src/workbench/production/ProductionCanvasLandingHost.tsx",
-      "electron/productionRun/productionRunIpc.ts"
+      "electron/productionRun/productionRunIpc.ts",
+      "electron/productionRun/submissionOutbox.ts"
     ],
-    "rationale": "The duplicate reducer and scheduler decision branches were deleted in these changed files; legacy Run records without claim remain readable through derived ownership. The landing host no longer hand-builds the detach command id or swallows its failure, and productionRunIpc no longer keeps its own copy of the identifier regex."
+    "rationale": "The duplicate reducer and scheduler decision branches were deleted in these changed files; legacy Run records without claim remain readable through derived ownership. The landing host no longer hand-builds the detach command id or swallows its failure, and productionRunIpc no longer keeps its own copy of the identifier regex. submitOnce no longer calls the gate after the submit intent; the hand-built guard unit tests (productionShotDispatchGuard.test.ts, jobs constructed as authorized while the real call order showed the gate submit_intent_persisted) were replaced by productionShotDispatchGate.e2e.test.ts, which drives the real scheduler → submission → outbox order."
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
@@ -634,6 +669,7 @@
     "The paid real-media acceptance path is intentionally out of scope for B1 and must be run by the coordinator.",
     "When every remaining shot of a budget-halted run is taken over by the canvas, the run stays in needs_attention with nothing left to continue. No resume card is offered for those shots, but settling such a run automatically is outside this fix.",
     "The same [A-Za-z0-9._-]{1,160} rule is still written out separately in other main-process validators (productionRunService, productionRunPaths, artifactProjection, productionDeepLink, productionRunE2eFixture, dispatcherParams, mcpProtocol, exportJobs). They validate ids the main process itself produced or MCP clients send, not renderer-built command ids; converging them onto productionRunCommandId is left to the coordinator.",
-    "executeProductionRunCommand resends a conflicted command once. A deletion that loses two consecutive races with scheduler writes is not recorded, but it is now logged and shown to the user with a way to pause or cancel the run."
+    "executeProductionRunCommand resends a conflicted command once. A deletion that loses two consecutive races with scheduler writes is not recorded, but it is now logged and shown to the user with a way to pause or cancel the run.",
+    "The batch scheduler still derives its dispatch list once per drive and walks it (left unchanged on purpose; tracked by the coordinator). The gate now refuses stopped or claimed shots at admission, but a stop that lands after a shot has been admitted — the same tick as its submit intent — still lets that one shot go."
   ]
 }

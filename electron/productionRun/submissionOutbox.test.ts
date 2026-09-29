@@ -7,6 +7,7 @@ import { createProductionRunRepository } from "./productionRunRepository";
 import { productionRunPaths } from "./productionRunPaths";
 import { createProductionRunIntentLog } from "./productionRunIntentLog";
 import { createProductionRunLock } from "./productionRunLock";
+import type { RunCommand } from "./productionRunTypes";
 import {
   SubmissionNotDispatchedError,
   SubmissionReceiptUnknownError,
@@ -140,23 +141,58 @@ describe("SubmissionOutbox", () => {
     expect(dispatch).toHaveBeenCalledTimes(1);
   });
 
-  it("resumes safely when interrupted before dispatch", async () => {
+  it("resumes safely when interrupted between the submit intent and dispatch", async () => {
     const repository = setup();
     const dispatch = vi.fn(async () => ({ providerTaskId: "provider-task-1" }));
-    const interrupted = outbox({
-      repository,
-      dispatch,
-      beforeDispatch: () => {
-        throw new Error("crash before dispatch");
+    // 进程恰好在「提交意向已落盘、还没开始提交」这一刻倒下：写 submitting 的那一笔没有发生。
+    const crashing = {
+      ...repository,
+      execute: (projectId: string, runId: string, command: RunCommand) => {
+        if (command.type === "job.status" && command.payload.status === "submitting") throw new Error("crash before dispatch");
+        return repository.execute(projectId, runId, command);
       },
-    });
+    };
 
-    await expect(interrupted.submit(request)).rejects.toThrow("crash before dispatch");
+    await expect(outbox({ repository: crashing, dispatch }).submit(request)).rejects.toThrow("crash before dispatch");
     expect(dispatch).not.toHaveBeenCalled();
     expect(repository.read("project-1", "run-1")?.jobs[0].status).toBe("submit_intent_persisted");
 
     await outbox({ repository, dispatch }).submit(request);
     expect(dispatch).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks the dispatch gate before anything is persisted; a refusal leaves no reservation and no submit intent", async () => {
+    const repository = setup();
+    const paths = productionRunPaths(root, "run-1");
+    const intentLog = createProductionRunIntentLog({ filePath: paths.intents, macKey: "test-app-owned-key" });
+    const dispatch = vi.fn(async () => ({ providerTaskId: "provider-task-1" }));
+    const seen: Array<{ status: string | undefined; reservations: number; intents: number }> = [];
+    let refuse = true;
+    const beforeDispatch = () => {
+      seen.push({
+        status: repository.read("project-1", "run-1")?.jobs[0].status,
+        reservations: Object.keys(repository.readBudgetLedger("project-1", "run-1").reservations).length,
+        intents: intentLog.list().length,
+      });
+      if (refuse) throw Object.assign(new Error("production_shot_claimed: run_stopped"), { code: "production_shot_claimed" });
+    };
+    const gated = outbox({ repository, dispatch, intentLog, beforeDispatch });
+
+    await expect(gated.submit(request)).rejects.toThrow("production_shot_claimed");
+    expect(seen).toEqual([{ status: "authorized", reservations: 0, intents: 0 }]);
+    const refused = repository.read("project-1", "run-1")!;
+    expect(refused.jobs[0].status, "a refused attempt is never written as a submit intent").toBe("authorized");
+    expect(refused.budget.reserved).toBe(0);
+    expect(repository.readBudgetLedger("project-1", "run-1").reservations).toEqual({});
+    expect(intentLog.list()).toHaveLength(0);
+    expect(dispatch).not.toHaveBeenCalled();
+
+    // 闸放行（例如用户点了「继续剩余」）：同一个 attempt 照常提交，只提交一次。
+    refuse = false;
+    await gated.submit(request);
+    expect(seen[1]).toEqual({ status: "authorized", reservations: 0, intents: 0 });
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(repository.read("project-1", "run-1")?.jobs[0].status).toBe("provider_accepted");
   });
 
   it("确定没写出去 → 自动重发一次，幂等键逐字不变；用真实意图日志跑（生产形态）", async () => {
