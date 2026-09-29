@@ -1,5 +1,5 @@
 import type { ProductionJob, ProductionJobStatus, ProductionRun } from "../productionRun/productionRunTypes";
-import { latestJobForShot } from "./productionShotJobs";
+import { latestJobForShot, shotIncluded } from "./productionShotJobs";
 
 export type ShotClaimRequester = "canvas" | "production";
 export type ShotClaimHolder = "canvas" | "production" | "none";
@@ -66,7 +66,7 @@ export function decideShotClaim(
   if (single && shotId !== plan.candidate?.candidateId) return decision("none", "missing_shot", requester);
   const shot = single ? undefined : plan.shots?.find((candidate) => candidate.shotId === shotId);
   if (!single && !shot) return decision("none", "missing_shot", requester);
-  if (shot?.included === false) return decision("canvas", "shot_excluded", requester);
+  if (shot && !shotIncluded(shot)) return decision("canvas", "shot_excluded", requester);
 
   const detached = plan.canvasDetached === true || shot?.canvasDetached === true;
   const gate = plan.authorizationGateId ? run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId) : undefined;

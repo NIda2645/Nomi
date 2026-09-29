@@ -12,7 +12,7 @@ import type { ShotPrice } from "./shotPricing";
 import { productionGenerationJobId } from "./productionGenerationAuthorization";
 import { jobAwaitsHuman } from "../shared/productionShotPhase";
 import { decideShotClaim } from "../shared/decideShotClaim";
-import { jobsForShot } from "../shared/productionShotJobs";
+import { jobsForShot, shotCountsTowardBatch, shotIncluded } from "../shared/productionShotJobs";
 
 /**
  * P4 S4 — the pure batch derivation. This is the heart of "调度器无自有持久状态" (plan §1).
@@ -168,11 +168,6 @@ const TERMINAL_DONE = new Set<ProductionJob["status"]>(["ready", "adopted"]);
  */
 const OBSERVABLE = new Set<ProductionJob["status"]>(["provider_accepted", "polling"]);
 
-/** A shot is included in the sealed contract unless explicitly unchecked (试拍/分批). */
-function isIncluded(shot: Pick<ProductionGenerationShot, "included">): boolean {
-  return shot.included !== false;
-}
-
 /** The current attempt for a shot = its attemptCount (a per-shot new_attempt bumps this), min 1. */
 function currentAttemptOf(shot: ProductionGenerationShot): number {
   return Number.isInteger(shot.attemptCount) && (shot.attemptCount as number) >= 1 ? (shot.attemptCount as number) : 1;
@@ -219,14 +214,23 @@ function toTask(runId: string, shot: ProductionGenerationShot): DispatchTask {
   return { shotId: shot.shotId, attempt: currentAttemptOf(shot), contractHash: shot.contract!.contractHash };
 }
 
-/** Anchor-role, included shots — the identity images the batch depends on. */
+/**
+ * Anchor-role, included shots — the identity images the batch depends on. Anchors deliberately keep the
+ * plain included rule: an anchor the canvas took back must keep holding its checkpoint, because the
+ * checkpoint is where a person approves the look before the paid video shots run.
+ */
 function anchorsOf(plan: ProductionGenerationPlan): ProductionGenerationShot[] {
-  return (plan.shots ?? []).filter((shot) => shot.role === "anchor" && isIncluded(shot));
+  return (plan.shots ?? []).filter((shot) => shot.role === "anchor" && shotIncluded(shot));
 }
 
-/** Video-role (or unroled, backward compatible), included shots. */
-function videoShotsOf(plan: ProductionGenerationPlan): ProductionGenerationShot[] {
-  return (plan.shots ?? []).filter((shot) => shot.role !== "anchor" && isIncluded(shot));
+/**
+ * Video-role (or unroled, backward compatible) shots this batch still owes — `shotCountsTowardBatch`, the one
+ * membership rule (unchecked shots and shots production let go to the canvas are out). A released shot used to
+ * stay in here with a `detached` job that counted as in flight, so the batch never completed and the Run sat in
+ * `running` after its node was deleted or the canvas took it over.
+ */
+function videoShotsOf(run: ProductionRun, plan: ProductionGenerationPlan): ProductionGenerationShot[] {
+  return (plan.shots ?? []).filter((shot) => shot.role !== "anchor" && shotCountsTowardBatch(run, shot));
 }
 
 /**
@@ -258,7 +262,7 @@ function deriveCheckpoint(input: BatchDerivationInput, anchors: ProductionGenera
  */
 export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationResult {
   const anchors = anchorsOf(input.plan);
-  const videoShots = videoShotsOf(input.plan);
+  const videoShots = videoShotsOf(input.run, input.plan);
 
   // Mixed batches retain their video progress; an anchor-only request tracks its actual paid units.
   const progressShots = videoShots.length > 0 ? videoShots : anchors;

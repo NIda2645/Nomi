@@ -14,6 +14,7 @@
 // 真相源 = Run 的 jobs[] + status（纯派生，无第二份状态）。
 import type { ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from "../productionRun/productionRunTypes";
 export { decideShotClaim } from "./decideShotClaim";
+import { shotCountsTowardBatch, shotIncluded } from "./productionShotJobs";
 
 export type ProductionShotPhase = "queued" | "generating" | "stopped" | "failed" | "done";
 
@@ -111,12 +112,14 @@ function isSingleShotPlan(run: ProductionRun): boolean {
 /**
  * 排队序列的分母 N 与位次按哪些镜算——**与调度器的 `progressShots` 同规则**
  * （`electron/productionRun/batchScheduleDerivation.ts`：`videoShots.length > 0 ? videoShots : anchors`）。
+ * 视频镜按 `shotCountsTowardBatch` 数（被画布拿走的镜不再占一个位次），参考卡按勾没勾进这一批数。
  * 调度器为「只有参考卡」的批次留了那一支；少了它用户会看到一排「排队中 1/0」。
  */
-function includedVideoShots(run: ProductionRun): { shotId: string }[] {
-  const included = (run.generationPlan?.shots ?? []).filter((shot) => shot.included !== false);
-  const nonAnchors = included.filter((shot) => shot.role !== "anchor");
-  return (nonAnchors.length > 0 ? nonAnchors : included).map((shot) => ({ shotId: shot.shotId }));
+function queueShotsOf(run: ProductionRun): { shotId: string }[] {
+  const shots = run.generationPlan?.shots ?? [];
+  const videoShots = shots.filter((shot) => shot.role !== "anchor" && shotCountsTowardBatch(run, shot));
+  const anchors = shots.filter((shot) => shot.role === "anchor" && shotIncluded(shot));
+  return (videoShots.length > 0 ? videoShots : anchors).map((shot) => ({ shotId: shot.shotId }));
 }
 
 /**
@@ -209,7 +212,7 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   }
   // 排队位次：anchor 不进视频序列（它先于镜跑），显纯「排队中」；单镜也没有序列可言。
   if (single || shot?.role === "anchor") return { phase: "queued", ...(job ? { job } : {}) };
-  const videoShots = includedVideoShots(run);
+  const videoShots = queueShotsOf(run);
   const total = videoShots.length;
   const index = videoShots.findIndex((candidate) => candidate.shotId === shotId);
   return { phase: "queued", ...(job ? { job } : {}), ...(index >= 0 && total > 0 ? { queueIndex: index + 1, queueTotal: total } : {}) };

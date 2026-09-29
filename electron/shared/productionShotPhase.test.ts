@@ -113,6 +113,16 @@ describe('deriveProductionShotState', () => {
     expect(deriveProductionShotState(r, 's2')).toBeNull()
   })
 
+  it('被画布拿走的镜（删了节点 / 画布接手）不再占排队位次：分母与调度器的批次进度同一条规则', () => {
+    const queued = run({ shots: [{ shotId: 's1' }, { shotId: 's2', nodeId: 'node-s2' }, { shotId: 's3' }], jobs: [job('s1', 'authorized'), job('s2', 'authorized', { nodeId: 'node-s2' }), job('s3', 'authorized')] })
+    expect(phaseOf(queued, 's3')).toEqual({ phase: 'queued', queueIndex: 3, queueTotal: 3 })
+    const deleted = applyProductionCommand(queued, {
+      commandId: 'detach-s2', expectedRevision: queued.revision, type: 'plan.detach-shot-nodes', payload: { nodeIds: ['node-s2'] }, issuedAt: NOW,
+    }, NOW).run
+    expect(phaseOf(deleted, 's3')).toEqual({ phase: 'queued', queueIndex: 2, queueTotal: 2 })
+    expect(phaseOf(deleted, 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 2 })
+  })
+
   it('单镜计划（没有 shots[]）：唯一那一镜的身份是候选 id，生成段的每个 job 都属于它', () => {
     const r = run({ jobs: [job('whatever', 'polling', { metadata: {} })] })
     expect(phaseOf(r, 'cand-1')).toEqual({ phase: 'generating' })

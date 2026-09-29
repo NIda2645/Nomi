@@ -594,6 +594,20 @@
       ],
       "since": "2026-09-29",
       "notes": "IPC 边界认的标识规则（[A-Za-z0-9._-]{1,160}，且不是 . / ..）和渲染层自己拼的命令号（目前是删节点上报的 detachShotNodesCommandId：`detach-canvas.<runId+节点集的哈希>`）住同一个模块——造出来的号按构造就过得去。起因：删节点上报曾手拼 `detach-canvas:<runId>:<节点 id,…>`，冒号逗号过不了 IPC 校验，失败又被 catch {} 吞掉，被删的镜照样派发扣费（2026-09-29 #921 真额度验收，合同 docs/fixes/2026-09-28-production-shot-claim.root-cause.json）。其余渲染层命令用 crypto.randomUUID()，天然合规；主进程里另有几份同样的正则（productionRunService / productionRunPaths 等），校验的是主进程自己产生或 MCP 送来的标识，不是渲染层拼的号，收敛留给协调会话排期。"
+    },
+    {
+      "name": "一批还欠哪些镜（批次成员）",
+      "owner": {
+        "path": "electron/shared/productionShotJobs.ts",
+        "symbol": "shotCountsTowardBatch"
+      },
+      "consumers": [
+        "electron/productionRun/batchScheduleDerivation.ts",
+        "electron/shared/productionShotPhase.ts",
+        "electron/shared/decideShotClaim.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "批次「做完没有」（调度器 progress → onBatchComplete）和排队「第 n / N」都按这一个函数数镜：没勾进这一批（included:false，判据 shotIncluded 同住一处）或最新那次尝试已被制作放手（detached：删了节点 / 画布接手 / 返工门被拒）的镜不算。以前调度器只滤 included:false，被画布拿走的镜被数成「在跑」，批次永远收不了尾（合同 docs/fixes/2026-09-28-production-shot-claim.root-cause.json）。参考卡（anchor）刻意只按 included 数：它挡着形象检查点，被拿走也不许悄悄放行付费镜。封印 / 待确认花费 / 预览里那十几处 included !== false 管的是「这次付费范围」，不是这条。"
     }
   ]
 }
