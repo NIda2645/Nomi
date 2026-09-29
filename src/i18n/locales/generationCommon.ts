@@ -1439,6 +1439,8 @@ export const zhGenerationCommon = {
       stoppedManual: '已停止剩余镜头。想继续可从这里接着拍。',
       raiseBudget: '提额续拍',
       continueRemaining: '继续剩余',
+      // 用户删掉占位节点、但这件事没能记进制作流程：被删的那一镜可能照样生成并计费。动作 = 打开任务面板（暂停 / 取消）。
+      detachFailed: '删掉的镜头没能从制作流程里撤下，它可能照样生成并计费。打开任务面板可以暂停或取消这次制作。',
       // P4 S6 返工/续拍的人话反馈（按结构化结果 code 翻译，禁拼串穿透 i18n 门）。
       rework: {
         noPriorAttempt: '这一镜还没生成过，先让它正常开拍',
@@ -2927,6 +2929,8 @@ export const enGenerationCommon = {
       stoppedManual: 'Remaining shots stopped. Continue filming from here.',
       raiseBudget: 'Raise budget',
       continueRemaining: 'Continue remaining',
+      // The user deleted a placeholder but the production run never recorded it: that shot may still generate and bill.
+      detachFailed: 'The deleted shot could not be withdrawn from the production run, so it may still generate and bill. Open Tasks to pause or cancel the run.',
       // P4 S6 rework/resume plain-language feedback (translated by structured result code — never a raw string).
       rework: {
         noPriorAttempt: 'This shot hasn\'t been generated yet — let it film first',
