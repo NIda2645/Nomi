@@ -174,24 +174,6 @@ export const ARCHETYPE_WIRE_DEFAULTS_VIDEO: Record<string, Record<string, Record
       }
     }
   },
-  "sora-2": {
-    "text_to_video": {
-      "*": {
-        "aspect_ratio": "16:9",
-        "resolution": "720p",
-        "duration": 4,
-        "model": "sora-2"
-      }
-    },
-    "image_to_video": {
-      "*": {
-        "aspect_ratio": "16:9",
-        "resolution": "720p",
-        "duration": 4,
-        "model": "sora-2"
-      }
-    }
-  },
   "veo-3.1": {
     "text_to_video": {
       "*": {
@@ -636,19 +618,6 @@ export const ARCHETYPE_WIRE_DEFAULTS_VIDEO: Record<string, Record<string, Record
       "*": {
         "duration": "6",
         "enablePromptExpansion": true
-      }
-    }
-  },
-  "rh-sora-2": {
-    "text_to_video": {
-      "*": {
-        "size": "720x1280",
-        "duration": "4"
-      }
-    },
-    "image_to_video": {
-      "*": {
-        "duration": "4"
       }
     }
   },

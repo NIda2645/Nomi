@@ -63,11 +63,6 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "grok-imagine-1.5",
     "grok_imagine_1_5"
   ],
-  "sora-2": [
-    "sora-2",
-    "sora-2-pro",
-    "sora2"
-  ],
   "veo-3.1": [
     "veo-3.1",
     "veo3.1",
@@ -196,10 +191,6 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   ],
   "rh-hailuo-2.3": [
     "rh-hailuo-2.3"
-  ],
-  "rh-sora-2": [
-    "rhart-video-s-official",
-    "sora-2-rh"
   ],
   "agnes-video": [
     "agnes-video",

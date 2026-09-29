@@ -94,7 +94,7 @@ export type ArchetypeMode = SharedArchetypeMode & {
  * **变体（variant）正交轴**（与 modes 平行的新轴，用户拍板方案 A：通用分段选择器）。
  *
  * 痛点：一族模型常有「同能力、不同 model 字符串」的若干变体（Seedance 的标准/fast/真人/真人快速、
- * Sora 的标准/pro…）。它们**跨所有 mode 生效**（fast 影响 t2v/i2v/omni/firstlast 全部的清晰度），
+ * Veo 的快速/高质/轻量…）。它们**跨所有 mode 生效**（fast 影响 t2v/i2v/omni/firstlast 全部的清晰度），
  * 故不能塞进 per-mode 的 `modelEnum`（否则 mode×variant 笛卡尔积）。新增档案级 `variants` 这一轴：
  *
  * - `modelKey`：选中该变体时**实际发请求**用的 model 字符串（如 `doubao-seedance-2.0-fast`）。

@@ -56,13 +56,4 @@ export const RH_HAILUO_2_3_ARCHETYPE: ModelArchetype = {
   modes: [textMode(HAILUO_PARAMS), imageMode(HAILUO_PARAMS, "imageUrl")],
 };
 
-// Sora 2（全能视频S 官方稳定版）。t2v 有 size，i2v 无 size（仅 duration）→ 两模式参数不同。
-const SORA_T_PARAMS = [sel("size", "尺寸", ["720x1280", "1280x720"], "720x1280"), sel("duration", "时长", ["4", "8", "12"], "4")];
-const SORA_I_PARAMS = [sel("duration", "时长", ["4", "8", "12"], "4")];
-export const RH_SORA_2_ARCHETYPE: ModelArchetype = {
-  id: "rh-sora-2", family: "sora", label: "Sora 2 (RunningHub)", kind: "video", defaultModeId: "text", transportTaskKind: "text_to_video",
-  identifierPatterns: ["rhart-video-s-official", "sora-2-rh"],
-  modes: [textMode(SORA_T_PARAMS), imageMode(SORA_I_PARAMS, "imageUrl")],
-};
-
-export const RUNNINGHUB_VIDEO_ARCHETYPES = [RH_VEO_3_1_ARCHETYPE, RH_KLING_3_ARCHETYPE, RH_WAN_2_7_ARCHETYPE, RH_HAILUO_2_3_ARCHETYPE, RH_SORA_2_ARCHETYPE];
+export const RUNNINGHUB_VIDEO_ARCHETYPES = [RH_VEO_3_1_ARCHETYPE, RH_KLING_3_ARCHETYPE, RH_WAN_2_7_ARCHETYPE, RH_HAILUO_2_3_ARCHETYPE];

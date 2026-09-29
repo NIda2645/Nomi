@@ -549,3 +549,64 @@ describe("Agnes complete catalog upgrade", () => {
     }
   });
 });
+
+describe("Sora 2 退役（2026-09-28：OpenAI 2026-09-24 关停 Sora 2 与 Videos API，用户拍板撤下）", () => {
+  const SORA_ROWS = [
+    { vendorKey: "apimart", modelKey: "sora-2", archetypeId: "sora-2", mappingIds: ["seed-apimart-sora-2-text_to_video", "seed-apimart-sora-2-image_to_video"] },
+    { vendorKey: "runninghub", modelKey: "rhart-video-s-official", archetypeId: "rh-sora-2", mappingIds: ["seed-rh-sora2-t2v", "seed-rh-sora2-i2v"] },
+  ] as const;
+
+  /** 升级前的老装机：两家的 Sora 2 行与 mapping 都已落盘（用户改过名也一样要摘）。 */
+  function oldInstall(): CatalogState {
+    const seeded = applyBuiltinSeeds(emptyCatalog(), NOW).state;
+    const models = SORA_ROWS.map((row) => ({
+      vendorKey: row.vendorKey, modelKey: row.modelKey, labelZh: "我的 Sora", kind: "video", enabled: true,
+      meta: { archetypeId: row.archetypeId, canonicalModelId: "sora 2" }, createdAt: NOW, updatedAt: NOW,
+    }) as CatalogState["models"][number]);
+    const mappings = SORA_ROWS.flatMap((row) => row.mappingIds.map((id) => ({
+      id, vendorKey: row.vendorKey, taskKind: /i2v|image_to_video/.test(id) ? "image_to_video" : "text_to_video",
+      modelKey: row.modelKey, name: "Sora 2", enabled: true, create: { method: "POST", path: "/v1/videos/generations" },
+      createdAt: NOW, updatedAt: NOW,
+    }) as CatalogState["mappings"][number]));
+    return { ...seeded, models: [...seeded.models, ...models], mappings: [...seeded.mappings, ...mappings] };
+  }
+
+  it("新装机：两家都不再种出 Sora 2，同家其它视频模型不受连带", () => {
+    const { state } = applyBuiltinSeeds(emptyCatalog(), NOW);
+    for (const row of SORA_ROWS) {
+      expect(state.models.find((m) => m.vendorKey === row.vendorKey && m.modelKey === row.modelKey)).toBeUndefined();
+      for (const id of row.mappingIds) expect(state.mappings.find((mp) => mp.id === id)).toBeUndefined();
+    }
+    expect(state.models.find((m) => m.vendorKey === "apimart" && m.modelKey === "veo3.1-fast")).toBeTruthy();
+    expect(state.models.find((m) => m.vendorKey === "runninghub" && m.modelKey === "kling-v3.0-pro")).toBeTruthy();
+  });
+
+  it("老装机：已落盘的两家 Sora 2 行与 mapping 被摘掉，重复启动幂等", () => {
+    const first = applyBuiltinSeeds(oldInstall(), "2026-09-28T00:00:00.000Z");
+    expect(first.changed).toBe(true);
+    for (const row of SORA_ROWS) {
+      expect(first.state.models.find((m) => m.vendorKey === row.vendorKey && m.modelKey === row.modelKey)).toBeUndefined();
+      for (const id of row.mappingIds) expect(first.state.mappings.find((mp) => mp.id === id)).toBeUndefined();
+    }
+    const again = applyBuiltinSeeds(first.state, "2026-09-29T00:00:00.000Z");
+    expect(again.changed).toBe(false);
+    expect(again.state).toBe(first.state);
+  });
+
+  it("用户自建渠道里同名的 sora-2 不受影响（只摘我们种的那一行：按 vendor + 种子 id 精确命中）", () => {
+    const base = oldInstall();
+    const state: CatalogState = {
+      ...base,
+      vendors: [...base.vendors, { key: "my-relay", name: "我的中转", enabled: true, baseUrlHint: "https://relay.example/v1", authType: "bearer", createdAt: NOW, updatedAt: NOW } as CatalogState["vendors"][number]],
+      models: [...base.models, { vendorKey: "my-relay", modelKey: "sora-2", labelZh: "Sora 2（自建）", kind: "video", enabled: true, createdAt: NOW, updatedAt: NOW } as CatalogState["models"][number]],
+      mappings: [...base.mappings, {
+        id: "user-my-relay-sora", vendorKey: "my-relay", taskKind: "text_to_video", modelKey: "sora-2", name: "自建 Sora", enabled: true,
+        create: { method: "POST", path: "/videos" }, createdAt: NOW, updatedAt: NOW,
+      } as CatalogState["mappings"][number]],
+    };
+    const { state: next } = applyBuiltinSeeds(state, "2026-09-28T00:00:00.000Z");
+    expect(next.models.find((m) => m.vendorKey === "my-relay" && m.modelKey === "sora-2")).toMatchObject({ labelZh: "Sora 2（自建）", enabled: true });
+    expect(next.mappings.find((mp) => mp.id === "user-my-relay-sora")).toBeTruthy();
+    expect(next.models.find((m) => m.vendorKey === "apimart" && m.modelKey === "sora-2")).toBeUndefined();
+  });
+});

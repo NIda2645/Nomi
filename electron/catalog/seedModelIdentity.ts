@@ -100,9 +100,6 @@ export const CANONICAL_MODEL_IDS: Record<string, string> = {
   // Veo 3.1（apimart / RunningHub）
   "veo3.1-fast": "veo 3.1",
   "rhart-video-v3.1-pro-official": "veo 3.1",
-  // Sora 2（apimart / RunningHub）
-  "sora-2": "sora 2",
-  "rhart-video-s-official": "sora 2",
   // Wan 2.7（apimart / RunningHub）
   "wan2.7": "wan 2.7",
   "rh-wan-2.7": "wan 2.7",

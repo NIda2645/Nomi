@@ -4,9 +4,11 @@ import { ARCHETYPE_WIRE_DEFAULTS, ARCHETYPE_SIZE_RATIO_SEMANTIC } from "./archet
 // 锁住档案默认桥接的关键不变量（生成数据由 check:archetype-defaults 门保证与档案同步）。
 describe("ARCHETYPE_WIRE_DEFAULTS（headless 缺参兜底桥接）", () => {
   it("视频档案补 model 变体 + duration 保 number（避 vendor「string≠int」）", () => {
-    const sora = ARCHETYPE_WIRE_DEFAULTS["sora-2"].text_to_video["*"];
-    expect(sora.model).toBe("sora-2");
-    expect(typeof sora.duration).toBe("number");
+    // 原先拿 Sora 2 当样本；Sora 2 于 2026-09-28 退役、档案已删，换同形状的 APIMart Hailuo 2.3（变体 + 数值时长）。
+    const hailuo = ARCHETYPE_WIRE_DEFAULTS["hailuo-2.3"].text_to_video["*"];
+    expect(hailuo.model).toBe("MiniMax-Hailuo-2.3");
+    expect(typeof hailuo.duration).toBe("number");
+    expect(ARCHETYPE_WIRE_DEFAULTS["sora-2"]).toBeUndefined();
     expect(ARCHETYPE_WIRE_DEFAULTS["volcengine-seedance-2"].text_to_video["*"].model).toBe("doubao-seedance-2-0-260128");
     expect(ARCHETYPE_WIRE_DEFAULTS["seedance-2-apimart"].text_to_video["*"].model).toBe("doubao-seedance-2.0-fast");
     expect(ARCHETYPE_WIRE_DEFAULTS["grok-imagine-1.5-video"].text_to_video["*"]).toMatchObject({
