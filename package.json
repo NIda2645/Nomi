@@ -110,6 +110,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "feedback:radar": "node ./scripts/feedback-radar.mjs",
+    "intake:radar": "node ./scripts/intake-radar.mjs",
+    "test:intake-radar": "node --test ./scripts/intake-radar.node-test.mjs ./scripts/lib/intake-radar/*.node-test.mjs",
     "stats": "node ./scripts/stats-downloads.mjs",
     "stats:snapshot": "node ./scripts/stats-downloads.mjs --snapshot",
     "stats:html": "node ./scripts/stats-downloads.mjs --html",

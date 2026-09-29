@@ -178,10 +178,13 @@ const INLINE_ALLOW = /nomi-secret-scan:allow\s+\S/;
 /**
  * 豁免标记棘轮：只减不增。想加第 N+1 个必须顺手把这个数字改大，
  * 一行 diff、review 看得见——防止「随手标一下就绿了」把门岗降级成橡皮图章。
- * 当前 4 个：scripts/lib/feedback/bilibili.test.mjs 的 B站 WBI 公开测试向量（社区文档已知答案，非凭证）；
- * electron/feedback/feedbackReport.test.ts 的脱敏金测试靶子（合成的 sk- 串，存在的意义就是被断言「不许出现在产物里」）。
+ * 当前 5 个：scripts/lib/feedback/bilibili.test.mjs 的 B站 WBI 公开测试向量（社区文档已知答案，非凭证）；
+ * electron/feedback/feedbackReport.test.ts 的脱敏金测试靶子（合成的 sk- 串，存在的意义就是被断言「不许出现在产物里」）；
+ * scripts/lib/intake-radar/cloudflare.node-test.mjs 的 FAKE_ACCOUNT_ID（占位 32 位十六进制串，
+ * 只用来测「从 wrangler whoami 输出里挑账号 id」的解析逻辑，只在定义处写一次字面量，
+ * 其余测试都引用这个常量，不会再长出第二处）。
  */
-const MAX_INLINE_ALLOWS = 4;
+const MAX_INLINE_ALLOWS = 5;
 
 /** 扫一行里的凭证。返回 [{name, sample}]。`scanPath` 用于公开资源标识这条字段级判据。 */
 function findCredentials(line, scanPath = "") {
