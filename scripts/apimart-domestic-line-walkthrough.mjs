@@ -6,46 +6,46 @@
 // 每一次出站都记账，走查按账本核对「请求到底发去了哪台主机」。临时资料目录，从不碰用户真实的 %APPDATA%\Nomi。
 //
 // 六个场景（编号与测试表 D:\tmp\apimart-endpoint-test\测试表.md 一一对应）：
-//   new-zh        新装机·中文：接入页上改地址 → 保存验证 → 重开还在 → 生成发往国内域 → 写错地址的两种提示
+//   new-zh        新装机·中文：接入页上改地址 → 保存验证 → 重开还在 → 画布生成发往国内域 → Agent 生成一次（对照组）
+//                 → 写错地址的两种提示；外加连接卡的体检结论（照真实 APIMart 应答，应是「已连通」）
 //   keyfirst-zh   新装机·中文：先填 key（主域被墙 → 已保存·未验证）→ 再改地址 → 重新保存验证 → 接上
-//   trap-zh       新装机·中文：点过「继续验证 → 自检」的连接（报错用户的真实状态）→ 改地址能存
+//   trap-zh       新装机·中文：点过「继续验证 → 自检」的连接（报错用户的真实状态）→ 改地址能存 → 画布生成
+//                 → Agent 生成（被拒，照实记）→ 对照：只删掉自检加的那个模型，Agent 再生成
 //   old-zh        老装机升级·中文：APIMart 早已接好（官方默认地址 + 占位 key）→ 改地址 → 重开还在 → 生成发往国内域
-//   new-en        新装机·英文界面：同 new-zh（改地址、写错提示①、保存验证、重开、生成）
+//   new-en        新装机·英文界面：同 new-zh 的地址/验证/生成几步，外加「A APIMart key」那句语法（旧问题）
 //   old-en        老装机升级·英文界面：同 old-zh，外加写错提示②（域名拼错）
 //
-// 用法：pnpm build 后  node scripts/apimart-domestic-line-walkthrough.mjs [场景…]
+// 用法：pnpm build 后  node scripts/apimart-domestic-line-walkthrough.mjs [--packaged <Nomi.exe>] [场景…]
+//       --packaged 指向打好的安装包里的 Nomi 可执行文件：整套走查改在那个包上跑（网络模拟照样在主入口前装上）；
 //       截图目录可用 NOMI_WALK_OUT 指定（默认仓库根 .apimart-line-walk/）；
 //       NOMI_WALK_OLD_CATALOG 指向一份老版本写下的 model-catalog.json 时，老装机场景从它起步。
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { launchNomiApp } from '../tests/ux/_launchApp.mjs'
+import { APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM, chooseAssistantModel, closeSpendCard, expandResidentPanel, sendCanvas } from '../tests/ux/agent-runtime-walk-support.mjs'
+import {
+  DOMESTIC, NETSIM, PRIMARY, UI, cancelAddressEdit, closeSettings, generateOnce, healthSettled, modelsSectionText, netLog, openModels,
+  repoRoot, saveAddress, takePackagedFlag, until,
+} from './apimart-line-walk-steps.mjs'
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const outRoot = path.resolve(process.env.NOMI_WALK_OUT || path.join(repoRoot, '.apimart-line-walk'))
-const NETSIM = path.join(repoRoot, 'scripts', 'apimart-line-netsim.cjs')
+const argv = process.argv.slice(2)
+/** 被测的打包产物（空串 = 仓库里刚 build 的开发构建）。 */
+const PACKAGED = takePackagedFlag(argv)
+const build = { packaged: PACKAGED || null, version: null }
 const IMAGE = path.join(repoRoot, 'tests', 'ux', 'fixtures', 'hires-detail-1024x1792.png')
-const PRIMARY = 'https://api.apimart.ai'
-const DOMESTIC = 'https://api.apib.ai'
 const FIXTURE_KEY = 'sk-walkthrough-placeholder-not-a-real-key'
+/** Agent 那一步用的对话模型：APIMart 自己的文本模型（走同一条线路、同一把 key）。 */
+const AGENT_TEXT_MODEL = 'DeepSeek V4 Flash'
+/** 连接卡体检「没有清单接口」时的那句（真实 APIMart 两条线路都有清单接口，出现它就说明体检没走通）。 */
+const NO_PROBE_NOTICE = '这家没有可预检的接口，第一次生成时才知道通不通'
 
-/** 界面文案（两种语言只在这一处）。 */
-const UI = {
-  'zh-CN': {
-    settings: '设置', models: '模型', back: '返回', saveVerify: '保存验证', editAddress: '编辑 APIMart 接入地址',
-    invalidAddress: '接入地址需以 http(s):// 开头。', unreachable: '连不上这个地址：', nextStep: '下一步：',
-    newBlank: '新建空白项目', workspace: '工作区切换', generateTab: '生成', addImageNode: '添加图片节点', model: '模型', generateAsset: '生成素材', confirm: '生成',
-  },
-  en: {
-    settings: 'Settings', models: 'Models', back: 'Back', saveVerify: 'Save Verify', editAddress: 'Edit APIMart connection address',
-    invalidAddress: 'The connection address must start with http(s)://.', unreachable: "Can't reach this address:", nextStep: 'Next:',
-    newBlank: 'New blank project', workspace: 'Switch workspace', generateTab: 'Generate', addImageNode: 'Add Image node', model: 'Model', generateAsset: 'Generate asset', confirm: 'Generate',
-  },
-}
 const OLD_ERROR = /Certification-owned connection changes require a new integration session/
 
 const results = []
+/** 每个场景的临时资料目录；跑完一并删掉（里面只有占位 key，也不留）。 */
+const profileRoots = new Set()
 /**
  * `knownGap`：这次改动之外的旧问题，照实记成「没通过」、单独列出，但不算本次改动的失败
  * （不许把它记成通过，也不许让它把本次改动的判据淹掉）。
@@ -53,11 +53,6 @@ const results = []
 function record(id, ok, detail, shots = [], { knownGap = false } = {}) {
   results.push({ id, ok, detail, shots, ...(knownGap ? { knownGap } : {}) })
   console.log(`  ${ok ? '✓' : knownGap ? '△' : '✗'} ${id} ${detail}${shots.length ? `  [${shots.join(', ')}]` : ''}`)
-}
-
-function netLog(file) {
-  if (!fs.existsSync(file)) return []
-  return fs.readFileSync(file, 'utf8').split('\n').filter(Boolean).map((line) => JSON.parse(line))
 }
 
 function readCatalog(settingsDir) {
@@ -68,6 +63,7 @@ const apimartRow = (settingsDir) => readCatalog(settingsDir).vendors.find((vendo
 /** 一个场景一份临时资料目录；同一场景的多次启动共用它（「重开 App」就是重启同一份资料）。 */
 function profile(name) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), `nomi-apimart-line-${name}-`))
+  profileRoots.add(root)
   const out = path.join(outRoot, name)
   fs.rmSync(out, { recursive: true, force: true })
   fs.mkdirSync(out, { recursive: true })
@@ -80,13 +76,17 @@ function profile(name) {
   }
 }
 
-async function launch(p, { locale = 'zh-CN', blocked = 'api.apimart.ai', mocked = 'api.apib.ai,apib.ai' } = {}) {
-  return launchNomiApp({
+const simulatorLoads = (p) => netLog(p.netLog).filter((entry) => entry.kind === 'netsim-loaded').length
+
+async function launch(p, { locale = 'zh-CN', blocked = 'api.apimart.ai', mocked = 'api.apib.ai,apib.ai', netsim = {} } = {}) {
+  const loadsBefore = simulatorLoads(p)
+  const launched = await launchNomiApp({
     name: `apimart-line-${p.name}`,
     tempRoot: p.root,
     settingsDir: p.settingsDir,
     projectsDir: p.projectsDir,
     userDataDir: p.userDataDir,
+    ...(PACKAGED ? { executablePath: PACKAGED } : {}),
     mainRequire: [NETSIM],
     initialLocalStorage: { 'nomi:locale:v1': locale },
     env: {
@@ -94,10 +94,19 @@ async function launch(p, { locale = 'zh-CN', blocked = 'api.apimart.ai', mocked 
       NOMI_NETSIM_IMAGE: IMAGE,
       NOMI_NETSIM_BLOCKED: blocked,
       NOMI_NETSIM_MOCK: mocked,
-      NOMI_RENDERER_URL: `file://${path.join(repoRoot, 'dist', 'index.html')}`,
+      NOMI_NETSIM_AGENT: '1',
+      ...netsim,
+      // 打包产物带着自己的渲染层；开发构建才指到仓库 dist/。
+      ...(PACKAGED ? {} : { NOMI_RENDERER_URL: `file://${path.join(repoRoot, 'dist', 'index.html')}` }),
     },
     settleMs: 2500,
   })
+  build.version ??= await launched.app.evaluate(({ app }) => app.getVersion())
+  if (simulatorLoads(p) <= loadsBefore) {
+    await launched.app.close().catch(() => undefined)
+    throw new Error('network simulator was not loaded before the app started — refusing to run against the real network')
+  }
+  return launched
 }
 
 async function shot(win, p, name) {
@@ -105,40 +114,8 @@ async function shot(win, p, name) {
   return path.join(p.out, name)
 }
 
-async function openModels(win, t) {
-  await win.getByRole('button', { name: t.settings, exact: true }).first().click()
-  await win.getByRole('dialog', { name: t.settings }).getByRole('button', { name: t.models, exact: true }).click()
-  await win.waitForSelector('[data-settings-section="models"]')
-}
-
-/** 地址行：点「修改」→ 填 → 保存。返回保存后那一行下面的报错（没有就是空串）。 */
-async function saveAddress(win, t, address) {
-  await win.getByRole('button', { name: t.editAddress }).click()
-  const field = win.locator('[data-model-connection-field="baseUrl"]')
-  await field.fill(address)
-  await win.locator('[data-model-connection-save="baseUrl"]').click()
-  await win.waitForTimeout(700)
-  return (await win.locator('[data-model-connection-field="baseUrl"]').count())
-    ? (await field.locator('xpath=../..').innerText()).trim()
-    : ''
-}
-
-/** 关掉设置窗（Esc 一次退一层：连接页 → 模型首页 → 关窗）。 */
-async function closeSettings(win) {
-  for (let i = 0; i < 4 && await win.locator('[data-settings-overlay]').count(); i += 1) {
-    await win.keyboard.press('Escape')
-    await win.waitForTimeout(300)
-  }
-  if (await win.locator('[data-settings-overlay]').count()) throw new Error('settings dialog did not close')
-}
-
-/** 编辑态里的「取消」（VendorBaseUrlField 给它挂了 data-model-connection-edit）。按 Esc 会连设置窗一起关掉。 */
-async function cancelAddressEdit(win) {
-  await win.locator('[data-model-connection-edit="baseUrl"]').click()
-}
-
 async function addressShown(win) {
-  return (await win.locator('[data-settings-section="models"]').innerText()).includes(DOMESTIC)
+  return (await modelsSectionText(win)).includes(DOMESTIC)
 }
 
 async function saveKeyOnConnectPage(win, t) {
@@ -147,24 +124,69 @@ async function saveKeyOnConnectPage(win, t) {
   await win.locator('[data-key-only-success]').waitFor({ timeout: 30_000 })
 }
 
-async function generateOnce(win, t) {
-  await win.getByText(t.newBlank, { exact: false }).first().click()
-  await win.locator(`[aria-label="${t.workspace}"]`).getByText(t.generateTab, { exact: true }).click()
-  await win.locator(`[aria-label="${t.addImageNode}"]`).first().click()
-  // 新节点的提示词框挂在画布浮框里，出现前 contenteditable 的最后一个是创作区那块（不可见）。
-  await win.locator('[data-node-id]').first().waitFor()
+/**
+ * Agent 用 APIMart 生成一次（大脑是 netsim 里照剧本回话的假模型，NOMI_NETSIM_AGENT=1）：
+ * 对话模型选 APIMart 的文本模型 → 说一句 → Agent 建草稿 → 调 generate → 面板出报价卡 → 点主按钮。
+ * 返回用户看到了什么（截图）、生成请求发去了哪、宿主回给 Agent 的那句话。
+ */
+async function agentGenerateOnce(win, p, prefix) {
+  await expandResidentPanel(win)
+  await chooseAssistantModel(win, AGENT_TEXT_MODEL, CANVAS_PANEL)
+  const mark = netLog(p.netLog).length
+  const brainSaid = (reply) => netLog(p.netLog).slice(mark).find((entry) => entry.kind === 'agent-brain' && entry.reply === reply)
+  // 「图落到了节点上」= 出现了一个之前没有图的节点，里面有一张真解码出来的图（画布只渲染屏上的节点，所以按节点身份比，不按张数比）。
+  const imageNodes = () => win.evaluate(() => [...document.querySelectorAll('[data-node-id]')]
+    .filter((node) => [...node.querySelectorAll('img')].some((img) => img.complete && img.naturalWidth > 200))
+    .map((node) => node.getAttribute('data-node-id')))
+  const hadImage = new Set(await imageNodes())
+  const landed = async () => (await imageNodes()).some((id) => !hadImage.has(id))
+  // 宿主拒绝确认时渲染层只弹一句 toast，原话进控制台（spend-confirm-refused）；两样都留下来当证据。
+  const consoleNotes = []
+  const onConsole = (message) => {
+    const text = message.text()
+    if (/spend|refus|certif|provider/i.test(text)) consoleNotes.push(`[${message.type()}] ${text}`.slice(0, 600))
+  }
+  win.on('console', onConsole)
+  await sendCanvas(win, 'WALK_AGENT 帮我画一只坐在窗台上的橘猫')
+  const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
+  // 被拒时 generate 可能根本不出卡、直接把拒绝交回 Agent；两种结局都要等得到。
+  await until(win, async () => await card.isVisible().catch(() => false) || brainSaid('WALK_AGENT_DONE') || brainSaid('WALK_AGENT_DRAFT_FAILED'))
+  const shots = []
+  let confirmed = false
+  if (await card.isVisible().catch(() => false)) {
+    shots.push(await shot(win, p, `${prefix}-01-agent-spend-card.png`))
+    await card.locator(INTERVENTION_CONFIRM).first().click()
+    confirmed = true
+    // 按下之后两秒：宿主若拒绝，这一刻屏上正好是那句 toast。
+    await win.waitForTimeout(2000)
+    shots.push(await shot(win, p, `${prefix}-02-agent-just-after-confirm.png`))
+  }
+  const submitted = () => hostsHit(p, mark).find((entry) => entry.method === 'POST' && entry.url.endsWith('/v1/images/generations'))
+  const refused = () => consoleNotes.find((note) => note.includes('spend-confirm-refused'))
+  await until(win, async () => brainSaid('WALK_AGENT_DONE') || brainSaid('WALK_AGENT_DRAFT_FAILED') || refused())
+  const done = brainSaid('WALK_AGENT_DONE') || brainSaid('WALK_AGENT_DRAFT_FAILED')
+  if (submitted()) {
+    // 新节点落在视野外时画布只给一颗「新节点在下方」的小钮（节点不在屏上就不渲染）——像用户一样点它过去看。
+    const offscreen = win.getByText(/新节点在(下方|上方|左侧|右侧)/).first()
+    await until(win, async () => await landed() || await offscreen.isVisible().catch(() => false), 60_000)
+    if (await offscreen.isVisible().catch(() => false)) await offscreen.click()
+    await until(win, landed, 60_000)
+  }
   await win.waitForTimeout(1200)
-  await win.locator('div[contenteditable="true"]').last().click()
-  await win.keyboard.type('一只棕灰色短毛猫侧身蜷卧在浅灰色平面上', { delay: 8 })
-  await win.locator(`[aria-label="${t.model}"]`).first().click()
-  await win.getByRole('option', { name: /GPT Image 2(?!\.)/ }).first().click()
-  await win.locator(`[aria-label="${t.generateAsset}"]`).first().click()
-  const confirm = win.locator('.fixed.inset-0').last().getByRole('button', { name: t.confirm, exact: true })
-  if (await confirm.count()) await confirm.first().click()
-  // 等到节点里那张图真的解码出来（不是占位）：截图要拍得到结果。
-  await win.waitForFunction(() => [...document.querySelectorAll('[data-node-id] img')]
-    .some((img) => img.complete && img.naturalWidth > 200), undefined, { timeout: 60_000 })
-  await win.waitForTimeout(800)
+  shots.push(await shot(win, p, `${prefix}-03-agent-outcome.png`))
+  win.off('console', onConsole)
+  const panelText = (await win.locator(CANVAS_PANEL).innerText().catch(() => '')).replace(/\s+/g, ' ').trim()
+  const traffic = hostsHit(p, mark).filter((entry) => entry.kind !== 'agent-brain')
+  fs.writeFileSync(path.join(p.out, `${prefix}-agent-network.json`), JSON.stringify(netLog(p.netLog).slice(mark), null, 2))
+  fs.writeFileSync(path.join(p.out, `${prefix}-agent-console.txt`), consoleNotes.join('\n'))
+  return {
+    shots, confirmed, panelText, consoleNotes,
+    submit: submitted()?.url ?? null,
+    primaryTouched: traffic.some((entry) => String(entry.url).startsWith(PRIMARY)),
+    imageLanded: await landed(),
+    hostToldAgent: done ? String(done.detail ?? '') : '（Agent 这一轮没收尾：generate 还挂在那张卡上）',
+    hostRefusal: refused() ?? '',
+  }
 }
 
 function hostsHit(p, since = 0) {
@@ -199,14 +221,26 @@ async function newInstall(locale, name) {
     const probe = hostsHit(p).find((entry) => entry.url.endsWith('/v1/balance'))
     record(`${name}/保存验证走国内线路`, probe?.url === `${DOMESTIC}/v1/balance` && apimartRow(p.settingsDir).enabled === true,
       `验证请求 → ${probe?.url ?? '（没有）'}；APIMart 已接入`, [keyShot])
+    if (locale === 'en') {
+      const connectText = await win.locator('[data-key-only-vendor="apimart"]').innerText()
+      record(`${name}/英文句子「A APIMart key」`, !connectText.includes('A APIMart key'),
+        '接入页写「A APIMart key is stored on this machine.」，应为「An APIMart key…」——旧问题（0.22.4 就是这句），本次未改', [keyShot], { knownGap: true })
+    }
 
     await app.close()
     ;({ app, win } = await launch(p, { locale }))
     await openModels(win, t)
     await win.locator('[data-model-home-connection="apimart"]').click()
+    await healthSettled(win)
     const reopened = await shot(win, p, '05-reopened-address-kept.png')
     record(`${name}/重开App地址还在`, await addressShown(win) && apimartRow(p.settingsDir).baseUrlHint === DOMESTIC,
       `重开后地址仍是 ${DOMESTIC}`, [reopened])
+    if (locale === 'zh-CN') {
+      // 体检结论：模拟服务照真实 APIMart 应答（/v1/models 带合法 key 回 200——2026-09-29 真实调用实测国内线路同样如此）。
+      const card = await modelsSectionText(win)
+      record(`${name}/国内线路上连接卡的体检结论`, card.includes('已连通') && !card.includes(NO_PROBE_NOTICE),
+        card.includes('已连通') ? '卡片右上角「已连通」，没有「没有可预检的接口」那句' : `卡片体检结论不对：${card.split('\n').slice(0, 8).join(' | ')}`, [reopened])
+    }
 
     await closeSettings(win)
     const mark = netLog(p.netLog).length
@@ -218,6 +252,12 @@ async function newInstall(locale, name) {
     record(`${name}/生成请求发往新地址`, submit?.url === `${DOMESTIC}/v1/images/generations` && !primaryTouched,
       `提交 → ${submit?.url ?? '（没有）'}；轮询/取图 ${traffic.filter((e) => e.url.startsWith(DOMESTIC)).length} 次都在国内域；主域 0 次`, [generated])
     fs.writeFileSync(path.join(p.out, '06-network.json'), JSON.stringify(traffic, null, 2))
+    if (locale === 'zh-CN') {
+      // 对照组：没点过「自检」的正常连接，Agent 用 APIMart 生成一次应当走得通（与 trap-zh 那一条对比）。
+      const agent = await agentGenerateOnce(win, p, '08')
+      record(`${name}/Agent用APIMart生成一次（对照）`, agent.confirmed && agent.submit === `${DOMESTIC}/v1/images/generations` && !agent.primaryTouched && agent.imageLanded,
+        `报价卡${agent.confirmed ? '出现并点了生成' : '没出现'}；提交 → ${agent.submit ?? '（没有）'}；图${agent.imageLanded ? '落到了节点上' : '没落到节点上'}；主域 ${agent.primaryTouched ? '被碰了' : '0 次'}`, agent.shots)
+    }
     return p
   } finally {
     await app.close().catch(() => undefined)
@@ -279,7 +319,8 @@ async function keyFirst() {
 async function selfCheckTrap() {
   const t = UI['zh-CN']
   const p = profile('trap-zh')
-  const { app, win } = await launch(p)
+  const launched = await launch(p)
+  const { app, win } = launched
   try {
     await openModels(win, t)
     await win.locator('[data-model-home-available="apimart"]').click()
@@ -299,6 +340,48 @@ async function selfCheckTrap() {
     const trapShot = await shot(win, p, '01-self-checked-connection-address-saved.png')
     record('trap-zh/自检过的连接也能改地址', marked && !error && apimartRow(p.settingsDir).baseUrlHint === DOMESTIC,
       `连接带着自检标记（修之前这里报 Certification-owned…）；现在保存成功：${apimartRow(p.settingsDir).baseUrlHint}`, [trapShot])
+
+    // 改完地址之后，这位用户真正要做的两件事：画布上生成一张、让 Agent 生成一张。
+    await closeSettings(win)
+    const mark = netLog(p.netLog).length
+    let canvasError = ''
+    try { await generateOnce(win, t) } catch (error) { canvasError = String(error?.message || error).split('\n')[0].slice(0, 200) }
+    const canvasShot = await shot(win, p, '02-canvas-generated-via-domestic.png')
+    const traffic = hostsHit(p, mark)
+    const submit = traffic.find((entry) => entry.method === 'POST' && entry.url.endsWith('/v1/images/generations'))
+    record('trap-zh/改完地址画布生成走国内', !canvasError && submit?.url === `${DOMESTIC}/v1/images/generations` && !traffic.some((entry) => entry.url.startsWith(PRIMARY)),
+      `提交 → ${submit?.url ?? '（没有）'}；主域 ${traffic.filter((entry) => entry.url.startsWith(PRIMARY)).length} 次；${canvasError ? `没出图：${canvasError}` : '图落到了节点上'}`, [canvasShot])
+    fs.writeFileSync(path.join(p.out, '02-network.json'), JSON.stringify(traffic, null, 2))
+
+    const agent = await agentGenerateOnce(win, p, '03')
+    const agentOk = agent.confirmed && agent.submit === `${DOMESTIC}/v1/images/generations` && !agent.primaryTouched && agent.imageLanded
+    record('trap-zh/改完地址Agent生成一次', agentOk,
+      agentOk ? `报价卡出现并点了生成；提交 → ${agent.submit}；图落到了节点上`
+        : `报价卡${agent.confirmed ? '出现并点了生成' : '没出现'}；提交 → ${agent.submit ?? '（没有）'}；`
+          + `宿主的拒绝（控制台原话）：${agent.hostRefusal.slice(0, 300) || '（没有）'}；${agent.hostToldAgent.slice(0, 200)}`,
+      agent.shots, agentOk ? {} : { knownGap: true })
+    fs.writeFileSync(path.join(p.out, '03-main-log.txt'), launched.mainLogTail()
+      .filter((line) => /apimart|certif|refus|provider|spend|generation/i.test(line)).join('\n'))
+    if (agentOk) return
+
+    // 对照：只删掉「自检」加进来的那个模型（它身上挂着 meta.adapter），别的都不动，Agent 再来一次。
+    // 这一步能过 = 拒绝的原因就是那个自检标记；同时它也是今天就能教给这类用户的绕法。
+    await closeSpendCard(win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`))
+    await openModels(win, t)
+    await win.locator('[data-model-home-connection="apimart"]').click()
+    await win.getByRole('button', { name: 'gpt-image-1', exact: true }).click()
+    await win.getByText('更多操作', { exact: true }).click()
+    await win.getByRole('button', { name: '删除模型', exact: true }).click()
+    const confirmDelete = win.getByRole('dialog').getByRole('button', { name: '删除', exact: true })
+    if (await confirmDelete.count()) await confirmDelete.last().click()
+    const unmarked = await until(win, async () => !readCatalog(p.settingsDir).models.some((model) => model.vendorKey === 'apimart' && model.meta && 'adapter' in model.meta), 15_000)
+    const deletedShot = await shot(win, p, '04-self-check-model-deleted.png')
+    await closeSettings(win)
+    const again = await agentGenerateOnce(win, p, '05')
+    record('trap-zh/删掉自检加的模型后Agent再生成（对照）',
+      Boolean(unmarked) && again.confirmed && again.submit === `${DOMESTIC}/v1/images/generations` && !again.primaryTouched && again.imageLanded,
+      `自检标记${unmarked ? '已随模型删掉' : '没删掉'}；报价卡${again.confirmed ? '出现并点了生成' : '没出现'}；提交 → ${again.submit ?? '（没有）'}；图${again.imageLanded ? '落到了节点上' : '没落到节点上'}`,
+      [deletedShot, ...again.shots])
   } finally {
     await app.close().catch(() => undefined)
   }
@@ -382,7 +465,7 @@ const SCENARIOS = {
   'old-en': async () => { const p = await oldInstall('en', 'old-en'); await typoHost(p, 'en') },
 }
 
-const wanted = process.argv.slice(2).length ? process.argv.slice(2) : Object.keys(SCENARIOS)
+const wanted = argv.length ? argv : Object.keys(SCENARIOS)
 for (const name of wanted) {
   if (!SCENARIOS[name]) throw new Error(`unknown scenario: ${name}`)
   console.log(`\n── ${name}`)
@@ -392,8 +475,10 @@ for (const name of wanted) {
     record(`${name}/场景没跑完`, false, String(error?.stack || error).slice(0, 600))
   }
 }
+for (const root of profileRoots) fs.rmSync(root, { recursive: true, force: true })
 fs.mkdirSync(outRoot, { recursive: true })
-fs.writeFileSync(path.join(outRoot, 'results.json'), JSON.stringify(results, null, 2))
+fs.writeFileSync(path.join(outRoot, 'results.json'), JSON.stringify({ build, results }, null, 2))
+console.log(`\n被测构建：${build.packaged ? `安装包 ${build.packaged}` : '开发构建'}（版本 ${build.version ?? '未知'}）`)
 const failed = results.filter((entry) => !entry.ok && !entry.knownGap)
 const gaps = results.filter((entry) => !entry.ok && entry.knownGap)
 if (gaps.length) console.log(`\n△ ${gaps.length} 条旧问题照实记为没通过：${gaps.map((entry) => entry.id).join('、')}`)
