@@ -151,14 +151,16 @@ function settleWithin<T>(work: Promise<T>, source: DeadlineSource): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     let settled = false
     let timer: ReturnType<typeof setTimeout> | undefined
-    let unsubscribeDeadline: (() => void) | undefined
-    let unsubscribeCancel: (() => void) | undefined
+    // 订阅在 finish 之后才建立（「停止」可能在订阅那一刻就同步回调）：统一收进这里，落定时逐个退订。
+    const cleanups: Array<() => void> = []
+    const releaseAll = () => {
+      for (const cleanup of cleanups.splice(0)) cleanup()
+    }
     const finish = (complete: () => void) => {
       if (settled) return
       settled = true
       if (timer !== undefined) clearTimeout(timer)
-      unsubscribeDeadline?.()
-      unsubscribeCancel?.()
+      releaseAll()
       complete()
     }
     const arm = () => {
@@ -176,11 +178,12 @@ function settleWithin<T>(work: Promise<T>, source: DeadlineSource): Promise<T> {
       timer = setTimeout(arm, remaining)
     }
     work.then((value) => finish(() => resolve(value)), (error: unknown) => finish(() => reject(error)))
-    unsubscribeDeadline = source.subscribe?.(arm)
-    unsubscribeCancel = source.cancelled?.((error) => finish(() => reject(error)))
+    const unsubscribeDeadline = source.subscribe?.(arm)
+    if (unsubscribeDeadline) cleanups.push(unsubscribeDeadline)
+    const unsubscribeCancel = source.cancelled?.((error) => finish(() => reject(error)))
+    if (unsubscribeCancel) cleanups.push(unsubscribeCancel)
     if (settled) {
-      unsubscribeDeadline?.()
-      unsubscribeCancel?.()
+      releaseAll()
       return
     }
     arm()
