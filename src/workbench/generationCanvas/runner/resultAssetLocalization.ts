@@ -2,6 +2,7 @@ import { getDesktopBridge } from '../../../desktop/bridge'
 import { unwrapAssetImportResult } from '../../../../electron/shared/contracts/assetImportResult'
 import type { GenerationNodeResult } from '../model/generationCanvasTypes'
 import { readMediaDimensions, type MediaDimensions } from '../nodes/nodeSizing'
+import { awaitMediaTransfer, describePhaseSilence } from './generationPhaseDeadline'
 
 // 「厂商临时 URL 绝不落进 result.url」的结构闸 + 存量抢救，共用的领域逻辑。
 //
@@ -22,6 +23,8 @@ export function isRemoteHttpUrl(url: string | undefined | null): boolean {
  * 确保一个生成结果的 url 落到本地。已是 nomi-local / 无 url → 原样返回（no-op）。
  * http(s) → 用 projectId 下载落盘，成功换成本地 url 并把原 CDN 留进 providerUrl；
  * 失败（URL 已过期 / 网络 / 无桌面环境）→ 保持原样，绝不阻断生成或加载（播放守卫会诚实报错）。
+ * 主进程一直没有回音（2026-09-28 那种挂住）同样算失败：最多等一次媒体传输那么久，到点保持原样返回——
+ * 「绝不阻断」要对「永远不返回」也成立，否则生成收尾、打开项目时的存量抢救都会跟着卡死在这里。
  */
 export async function localizeRemoteResultUrl(
   result: GenerationNodeResult,
@@ -36,12 +39,12 @@ export async function localizeRemoteResultUrl(
   if (!importRemoteUrl) return result
   const remoteUrl = String(result.url)
   try {
-    const asset = unwrapAssetImportResult(await importRemoteUrl({
+    const asset = unwrapAssetImportResult(await awaitMediaTransfer(importRemoteUrl({
       projectId: trimmedProjectId,
       url: remoteUrl,
       kind: 'generated',
       ownerNodeId: nodeId,
-    }))
+    }), (waitedMs) => new Error(describePhaseSilence('finalizing', waitedMs))))
     const localUrl = typeof asset?.data?.url === 'string' ? asset.data.url.trim() : ''
     if (result.type === 'image' || result.type === 'video') {
       const dimensions = readMediaDimensions(asset?.data?.width, asset?.data?.height)
