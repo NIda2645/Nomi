@@ -1,19 +1,18 @@
 // P4 S5 — 多镜产物画布落地（渲染层落点，capabilityApplyHandler 只做 dispatch）。
 //
-// 两件事，全在这里，capabilityApplyHandler 保持精简：
-//   1. production.materialize-shots：确认即落 + 打开项目补齐 + Run 每次变化后的跟随**共用**的一个家（P1）——
+// 这里只管一件事，capabilityApplyHandler 保持精简：
+//   production.materialize-shots：确认即落 + 打开项目补齐 + Run 每次变化后的跟随**共用**的一个家（P1）——
 //      把「锚 + 勾选镜」落成占位节点 + 编组，整批一个 Cmd+Z（proposalTxn 式事务），组也打 materializationOperationId 幂等章。
 //      幂等：同 op 已建的节点/组跳过（跑两次不重复，§3.4）；节点被删又补建=新节点（不复活由主进程 detach 记账把关）。
 //      每一镜再带两样之一：`result`（出片了：回填，**运行时断言 result.url 必须 nomi-local://**）或
 //      `generation`（没出片：这一镜此刻在节点上该挂的运行状态）。**两样都写进节点自己的运行记录**——
 //      与普通生成同一份状态，于是同一个 NodeGeneratingOverlay / NodeErrorReport 画它，不再有第二套画法。
 //      （以前「出片」走一条单独的 attach-shot-result、「生成中」由渲染层轮询 Run 另画一套，2026-09-25 合成这一条。）
-//   2. production.detach-canvas-nodes 的渲染半：见 registerCanvasDetachReporter（撤销/删节点 → 通知主进程记账）。
+// 反方向（用户删了占位节点 / 整批 ⌘Z → 让 Run 记 detached）不在这里：它住 src/workbench/production/watchDeletedProductionNodes.ts，
+// 由 ProductionCanvasLandingHost 挂载，经渲染层唯一的制作命令口发 plan.detach-shot-nodes。
 //
 // ctx 纪律：canvasGestureContext 只包同步段（禁跨 await，见其头注释）——本模块每个 store 写入各自 inLandingTxn 包一次。
 import { withProjectAction, isProjectExecutionContextCurrent } from '../project/projectCanvasReadSurface'
-import { productionRunApi } from '../production/productionRunApi'
-import { projectStoryboardDesign } from '../creation/storyboard/exec/storyboardProjection'
 import i18n from '../../i18n'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'

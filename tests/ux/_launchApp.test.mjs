@@ -13,6 +13,7 @@ import {
   prepareIsolatedCatalog,
   prepareLocalStorageSeed,
   launchNomiApp,
+  mainRequireArgs,
   repoRoot,
   withLinuxNoSandbox,
   withLinuxSyntheticCredentialStorage,
@@ -59,6 +60,32 @@ describe('initial local storage fixture', () => {
   test('refuses to seed a real profile before launching Electron', async () => {
     await expect(launchNomiApp({ executablePath: 'unused-by-isolation-guard', isolate: false, initialLocalStorage: { 'nomi:splash:v1': 'seen' } }))
       .rejects.toThrow('requires an isolated Nomi profile')
+  })
+})
+
+describe('mainRequire（主进程入口前的 -r 模块）', () => {
+  test('每个绝对路径拼成一对 -r，顺序保持', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-main-require-'))
+    try {
+      const first = path.join(root, 'guard.cjs')
+      const second = path.join(root, 'probe.cjs')
+      fs.writeFileSync(first, '')
+      fs.writeFileSync(second, '')
+      expect(mainRequireArgs([first, second])).toEqual(['-r', first, '-r', second])
+      expect(mainRequireArgs(undefined)).toEqual([])
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('相对路径与不存在的文件当场拒（相对路径会被 Node 当包名去找，闸就静默没装上）', () => {
+    expect(() => mainRequireArgs(['scripts/walkthrough-network-guard.cjs'])).toThrow('absolute module paths')
+    expect(() => mainRequireArgs([path.join(os.tmpdir(), 'nomi-no-such-guard.cjs')])).toThrow('does not exist')
+  })
+
+  test('不许装进真实 profile', async () => {
+    await expect(launchNomiApp({ executablePath: 'unused-by-isolation-guard', isolate: false, mainRequire: [path.join(repoRoot, 'scripts', 'walkthrough-network-guard.cjs')] }))
+      .rejects.toThrow('mainRequire requires an isolated Nomi profile')
   })
 })
 

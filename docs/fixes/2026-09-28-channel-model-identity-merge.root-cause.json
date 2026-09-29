@@ -1,0 +1,177 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-channel-model-identity-merge",
+  "problem_type": "跨渠道同一模型的身份没有显式声明：渠道行（fal / Runway）靠带渠道名的 labelZh 推导 canonical 身份，模型下拉与官网模型库按渠道重复列出同一个模型",
+  "symptom": "用内置种子目录走 App 模型下拉那条路（applyBuiltinSeeds → toCatalogModelOptions → dedupeModelOptions）：视频 55 行收成 41 条，其中 Seedance 2.5 / Seedance 2.5 · fal / Runway Seedance 2.5、MiniMax H3 / Runway Hailuo 3、Wan 3.0 / Runway Wan 3、Gemini Omni 1.1 Flash / Gemini Omni Flash 1.1 · fal / Runway Gemini Omni Flash、Grok Imagine 1.5 / Runway Grok Imagine 1.5、HappyHorse 1.0 / Runway HappyHorse 1.0 各算不同模型；图片 61 行收成 43 条，GPT Image 2 / Runway GPT Image 2、Nano Banana 2 / Nano Banana 2 · fal / Runway Gemini Image 3.1 Flash、Nano Banana / Runway Gemini 2.5 Flash Image、Seedream 5.0 Pro / · fal / Runway Seedream 5 Pro、Seedream 5.0 Lite / Runway Seedream 5 Lite 同样重复；音频 Eleven v3 / Runway Eleven v3、Eleven Sound Effects v2 / · fal / Runway 也重复。单家独有的渠道行（MiniMax H3-Max · fal、MiniMax Music 3 · fal、Hi3D v3.0 · fal、Runway Eleven Multilingual v2）身份里带着渠道名。",
+  "direct_cause": "fal 与 Runway 的 curated 行不在 electron/catalog/seedModelIdentity.ts 的 CANONICAL_MODEL_IDS 里，seedBuiltins.reconcileModels 不给它们写 meta.canonicalModelId；src/config/modelIdentity.deriveCanonicalModelId 于是回退到 normalizeModelLabel(labelZh)，而渠道行的 labelZh 带渠道名（「X · fal」「Runway X」），推出的键与中转站那几行不同，dedupeModelOptions 当成不同模型各列一条。",
+  "class_root": "模型身份只有在有人记得往 CANONICAL_MODEL_IDS 填的时候才是显式的，否则回退到用户可改、且渠道行天然带渠道名的 labelZh——新接一个转售渠道，或模型雷达给渠道加一行，重复就会再长出来（中转站之间的 Seedance 2.5 / Wan 3.0 / MiniMax H3 等组此前也只靠 label 碰巧相同）。连带的第二个缺口：分档（catalogLifecycle）按渠道行各写各的，合并后「取最强线路」会让同一个模型在下拉里悄悄换档。",
+  "affected_population": [
+    "同一模型接了两家及以上（中转站 + fal / Runway，或 ElevenLabs 官方 + Runway / fal）的桌面用户：模型下拉、分镜镜头条、锚点行、批量统一模型、设置里的模型框排序",
+    "官网模型库（导出脚本走同一条 dedupeModelOptions 路径）",
+    "所有新装机与老装机（老装机靠 reconcileModels 对账在下次启动补上身份）"
+  ],
+  "scope_paths": [
+    "electron/catalog/seedModelIdentity.ts",
+    "src/config/modelIdentity.ts"
+  ],
+  "entry_points": [
+    "画布生成节点的模型下拉（useDedupedModelSelect）",
+    "分镜镜头条与锚点行的模型框（useDedupedModelSelect）",
+    "画布 / 分镜批量「统一模型」（BulkModelPicker，按供应商摊平）",
+    "设置 → 模型框排序与隐藏（ModelBoxOrderSection）",
+    "官网模型库导出（applyBuiltinSeeds → toCatalogModelOptions → dedupeModelOptions）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "canonical 身份与分档是 Nomi 内部的目录约定。「谁和谁是同一个模型」的依据全部取自仓内已核对过官方文档的档案：nano-banana 档案 identifierPatterns 已收 gemini_2.5_flash / gemini-2.5-flash-image-preview；nano-banana-2 档案收 gemini-3.1-flash-image*，其 sources 摘录的 APIMart 文档把别名写作 nano-banana-2；minimax-h3 档案注明「MiniMax H3（Hailuo 03）」并收 hailuo3；gemini-omni-1.1 / grok-imagine-1.5-video / wan-3.0 / happyhorse 档案各自收了 Runway 的判别串。muse_image 的出品方按主管给的 Meta 官方出处（ai.meta.com 博客与 about.fb.com 新闻稿，2026-07-07）于 2026-09-29 复核后并入模型身份；seed_audio 查不到出处，未改。",
+  "invariants": [
+    "每一条 fal / Runway 转售的别家模型行都带不含渠道名的显式 canonicalModelId；Runway 自家出品（gen4.5 / gen4_turbo / gen4_image / gen4_image_turbo）与带理由的待定行除外，且待定行不许悄悄带上身份。",
+    "一个 canonical 组只要含渠道行，组里每一行都显式声明同一个 canonicalModelId（不靠用户可改的 labelZh 碰巧相同）。",
+    "合并不改变默认渠道：对每个合并组、每一种至少接了一家非渠道供应商的接入组合，按 vendorTier（无用户排序）选出的默认家与合并前那一条相同。",
+    "同一个合并组里同一家供应商的多行必须逐 (taskKind, modeId) 解析到同一条 mapping（可互换）；把变体拆成多行的渠道不进组，选的变体与发出去的 modelKey 永远一致。",
+    "合并组的分档等于非渠道行原有的分档：分档跟着模型走，不跟着渠道走。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/seedModelIdentity.ts",
+    "tests": [
+      "src/config/modelIdentity.channelMerge.test.ts",
+      "electron/catalog/seedBuiltins.test.ts"
+    ]
+  },
+  "doors": [
+    { "kind": "read", "path": "electron/catalog/apimartModelIds.ts", "symbol": "CANONICAL_MODEL_IDS" },
+    { "kind": "read", "path": "electron/catalog/seedBuiltins.ts", "symbol": "CANONICAL_MODEL_IDS" },
+    { "kind": "read", "path": "electron/catalog/seedModelIdentity.ts", "symbol": "CatalogLifecycle" },
+    { "kind": "read", "path": "src/config/modelIdentity.ts", "symbol": "CatalogLifecycle" },
+    { "kind": "write", "path": "electron/catalog/seedBuiltins.ts", "symbol": "curatedCatalogLifecycle" },
+    { "kind": "write", "path": "src/config/modelIdentity.ts", "symbol": "modelCatalogLifecycle" },
+    { "kind": "write", "path": "src/config/modelIdentity.ts", "symbol": "deriveCanonicalModelId" },
+    { "kind": "write", "path": "src/devlab/designLab/catalogLiveness/states/01-listing.tsx", "symbol": "curatedCatalogLifecycle" },
+    { "kind": "write", "path": "src/devlab/designLab/vendorOrder/vendorOrderLabKit.tsx", "symbol": "dedupeModelOptions" },
+    { "kind": "write", "path": "src/workbench/common/BulkModelPicker.tsx", "symbol": "dedupeModelOptions" },
+    { "kind": "write", "path": "src/workbench/common/useDedupedModelSelect.ts", "symbol": "modelCatalogLifecycle" },
+    { "kind": "write", "path": "src/workbench/common/useDedupedModelSelect.ts", "symbol": "dedupeModelOptions" },
+    { "kind": "write", "path": "src/workbench/settings/ModelBoxOrderSection.tsx", "symbol": "dedupeModelOptions" }
+  ],
+  "door_reduction": {
+    "before": 13,
+    "after": 13,
+    "why_not": "门本来就只有一个声明处 + 一个写口 + 一个读口，不需要再收：身份与分档只在 seedModelIdentity.ts 声明，只由 seedBuiltins.reconcileModels 写进 meta（curatedCatalogLifecycle / CANONICAL_MODEL_IDS 两扇），只由 src/config/modelIdentity 的 deriveCanonicalModelId / dedupeModelOptions / modelCatalogLifecycle 解读；其余的门（useDedupedModelSelect、BulkModelPicker、ModelBoxOrderSection、两个设计实验室夹具）都是这一个读口的下游消费者，各自服务一个不同的界面入口，合并它们等于删界面。apimartModelIds.ts 里的 CANONICAL_MODEL_IDS 是同名但无关的本地常量（APIMart 出站 model 字符串的规范化），门表工具按名字多数了一扇，本次不碰它。这次的缺口不在门多，而在声明处漏填——修在声明处（owner 表）+ 全量类测试。"
+  },
+  "generality_proof": "修在身份的唯一声明处 CANONICAL_MODEL_IDS，经唯一写口 reconcileModels 进 meta，由唯一读口 deriveCanonicalModelId 消费，所以下拉、分镜、批量、设置排序、官网导出这五个入口同时生效，没有哪个入口能绕过去。类测试 src/config/modelIdentity.channelMerge.test.ts 不按点名的几个模型断言，而是遍历种子目录里**全部** fal / Runway 行和**全部**含渠道行的组：新渠道行没带身份、待定行被悄悄并入、合并让任何接入组合的默认家换人、变体行被并进组、合并让某一条换档，这五种任何一种都会红；变异校验（删掉新增映射 → 21 红；撤回分档对齐 → 2 红；误并 Runway Seedance 2 变体行 → 5 红；误并 fal GPT Image 2 → 4 红）证明它们守的是不变量而不是样例。",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/seedModelIdentity.ts",
+      "symbol": "CANONICAL_MODEL_IDS",
+      "responsibility": "跨供应商同一模型的版本级 canonical 身份的唯一声明处；渠道行（fal / Runway 转售的别家模型）必须在这里写模型本身的身份，含渠道行的组每一行都显式填。"
+    },
+    {
+      "path": "electron/catalog/seedModelIdentity.ts",
+      "symbol": "curatedCatalogLifecycle",
+      "responsibility": "curated 行分档的唯一判定；同一 canonical 组里渠道行与中转站行同档，合并不让那一条换档。"
+    },
+    {
+      "path": "src/config/modelIdentity.ts",
+      "symbol": "dedupeModelOptions",
+      "responsibility": "按 canonical 身份把目录行收成下拉里的一条并收集全部供应商；默认家由同文件的 sortModelProviders（前两级即 electron/shared/contracts/vendorPreference.compareVendorLanding，与执行侧同一把尺）决定。本次未改，靠类测试核对合并前后默认家一致。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/catalog/falOfficial.ts",
+      "entry_point": "FAL_OFFICIAL_MODELS",
+      "disposition": "enforced",
+      "evidence": "全部 9 条 fal 行由类测试逐条核对：7 条带模型身份（Seedance 2.5 / Nano Banana 2 / Seedream 5.0 Pro / Gemini Omni 1.1 Flash / H3-Max / Music 3 / Eleven SFX v2 / Hi3D），openai/gpt-image-2 与 fal-ai/kling-video/v3/pro 在待定名单（合并会改默认家）并被断言不带身份。"
+    },
+    {
+      "path": "electron/catalog/runwayOfficial.ts",
+      "entry_point": "RUNWAY_OFFICIAL_MODELS",
+      "disposition": "enforced",
+      "evidence": "Runway 视频 / 音频行逐条核对：seedance2_5 / hailuo3 / wan3 / grok_imagine_1_5 / gemini_omni_flash / happyhorse_1_0 / eleven_v3 / eleven_text_to_sound_v2 / eleven_multilingual_v2 带模型身份；gen4.5 / gen4_turbo 为 Runway 自家出品不填；seedance2 / _fast / _mini、veo3.1 / _fast 为变体行、seed_audio 出品方查不清，均在待定名单并被断言不带身份。"
+    },
+    {
+      "path": "electron/catalog/runwayImage.ts",
+      "entry_point": "RUNWAY_IMAGE_SPECS",
+      "disposition": "enforced",
+      "evidence": "Runway 图像行逐条核对：gpt_image_2 / seedream5_pro / seedream5_lite / gemini_2.5_flash / gemini_image3.1_flash 并入对应模型；gemini_image3_pro / grok_imagine_image_2 本来就已并入；gen4_image / gen4_image_turbo 为自家出品；muse_image 是 Meta 的模型（Meta 官方 2026-07-07 发布，档案 sources 已登记），写模型身份 muse image。"
+    },
+    {
+      "path": "electron/catalog/elevenlabs.ts",
+      "entry_point": "ELEVENLABS_MODELS",
+      "disposition": "enforced",
+      "evidence": "ElevenLabs 官方与 Runway 转售共用 modelKey eleven_v3 / eleven_text_to_sound_v2：表按 modelKey 全局生效，两家同一身份，类测试断言 Eleven v3、Eleven Sound Effects v2 各只剩一条且含 Runway / fal。"
+    },
+    {
+      "path": "electron/catalog/minimaxOfficial.ts",
+      "entry_point": "MINIMAX_OFFICIAL_MODELS",
+      "disposition": "enforced",
+      "evidence": "MiniMax 官方与 APIMart 同用 modelKey MiniMax-H3，与 Runway hailuo3、kie minimax-h3 同组；类测试断言 MiniMax H3 只剩一条，且只接 MiniMax + Runway 时默认仍是 MiniMax（同档名字序 M < R）。"
+    },
+    {
+      "path": "electron/catalog/apimartModelIds.ts",
+      "entry_point": "CANONICAL_MODEL_IDS",
+      "disposition": "not-affected",
+      "evidence": "同名本地常量，含义是 APIMart 出站 model 字符串的规范化（doubao-seedance-2.0 → seedance-2.0），不参与下拉分组；门表工具按名字匹配把它算作一扇门，本次不改。"
+    },
+    {
+      "path": "src/config/modelOptionMappers.ts",
+      "entry_point": "toCatalogModelOptions",
+      "disposition": "not-affected",
+      "evidence": "唯一另写 canonicalModelId 的地方是 Antigravity 的家族 id（`${vendor}:family:...`，带 vendor 前缀、只在同一家内合并变体行），不跨供应商，与渠道身份无交集。"
+    },
+    {
+      "path": "src/config/models.ts",
+      "entry_point": "IMAGE_MODELS",
+      "disposition": "not-affected",
+      "evidence": "静态表（含 Nano Banana Pro 条目）只被 shotPresentation 用来查显示名，不进 dedupeModelOptions，不会在下拉里造出重复条目。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "模型雷达与渠道接入会持续给 fal / Runway 这类转售渠道加行，而渠道行的 labelZh 天然带渠道名；只要身份依赖「有人记得填表」，每接一个新渠道模型下拉就会再多一条重复。此前中转站之间新加的 Seedance 2.5 / Wan 3.0 / MiniMax H3 等组也没进表，只是 label 碰巧相同才合上——用户一改名就会拆开。",
+    "same_class_scan": [
+      "全量种子目录四种媒介（视频 55 / 图片 61 / 音频 20 / 3D 5 行）走 App 下拉同一条路列出所有组，逐组核对带渠道名的身份：视频 13 条、图片 9 条、音频 6 条、3D 1 条渠道行带渠道名；任务书点名的是视频 / 图片，音频的 Eleven v3 / Eleven Sound Effects v2 重复是本次同类扫描扫出来的。",
+      "按 archetype identifierPatterns 反查渠道行对应的模型：nano-banana 收 gemini_2.5_flash、nano-banana-2 收 gemini-3.1-flash-image*、minimax-h3 收 hailuo3、gemini-omni-1.1 收 gemini_omni_flash、grok-imagine-1.5-video 收 grok_imagine_1_5、wan-3.0 收 wan3、happyhorse 收 happyhorse_1_0。",
+      "默认渠道：对每个含渠道行的组枚举全部接入组合（Seedance 2.5 与 Seedream 5.0 Pro 各 28 种），用 sortModelProviders 比较合并前后默认家；本次合并 0 处变化，模拟并入 fal GPT Image 2 / Kling V3 Pro 各出现 RunningHub → fal 的变化，故这两行留待拍板。",
+      "变体行：对每个组里同一家的多行逐 (taskKind, modeId) 用 selectTaskMapping 解析，只有 kie 的 GPT Image 2 文生图 / 图生图两行同家同组，且解析到同一组 mapping；模拟并入 Runway seedance2 / _fast / _mini 与 veo3.1 / _fast 立即出现「同家多行各发各的 modelKey」，故暂不并。",
+      "分档：逐组比较合并组与非渠道行的 modelCatalogLifecycle，发现 Runway gemini_2.5_flash（旗舰）与 Nano Banana（旧款）、seedream5_lite（旗舰）与 Seedream 5.0 Lite（性价比）、happyhorse_1_0（陪跑）与 HappyHorse 1.0（旧款）三处冲突，按模型已有分档对齐 Runway 行。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/seedModelIdentity.ts",
+    "invariant": "渠道行的身份与分档只在 seedModelIdentity.ts 声明，且按模型（不按渠道）声明：含渠道行的组每一行显式同一身份、同一分档；变体拆行与会改默认家的渠道行不进组。",
+    "failure_mode": "新渠道行没带身份、待定行被悄悄并入、合并让任一接入组合的默认家换人、变体行被并进组、合并让某一条换档——类测试 modelIdentity.channelMerge.test.ts 当场红，并在断言信息里给出那一行的待定理由。",
+    "exception_policy": "none",
+    "strategy": "声明处补全（owner 表）+ 在 App 下拉的真实路径上做全量类断言，不在任何选择器里加按供应商的特判。待定名单不是豁免：名单里的行被断言「不带身份」，要并它们必须先解决名单里写的那件事（拍板默认渠道 / 做变体桥接 / 查清出品方）并删掉那一条；Runway 自家出品不属于「转售别家模型」这一类。",
+    "artifacts": [
+      "electron/catalog/seedModelIdentity.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/config/modelIdentity.channelMerge.test.ts",
+    "electron/catalog/seedBuiltins.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/config/modelIdentity.channelMerge.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有被替代的旧实现：本次只补全身份表与分档表。label 归一化回退仍是没进表的自定义 / 未来行的正当回退，且表里的值刻意等于 label 推导值，二者不是并行版本。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及第三方依赖：身份、分档与去重都是仓内纯函数与数据表。",
+    "exit_criteria": []
+  },
+  "migration": "老装机：canonicalModelId 与 catalogLifecycle 是 reconcileModels 对账的代码所有字段，下次启动漂移即自愈（seedBuiltins.test 覆盖，用户改过的 labelZh / enabled 不动）。已存节点记的是 (modelKey, vendor)，精确命中不经分组，不受影响。模型框偏好（hiddenModelIds / modelOrder / preferredVendorByModel）按 canonicalId 存：中转站那几行的 id 与原 label 推导值相同、不变；只有渠道行的旧 id（如「seedance 2.5 · fal」「runway seedance 2.5」）变成孤儿，见 residual_risks。",
+  "residual_risks": [
+    "模型框偏好未迁移：用户若单独隐藏过渠道那一条（如「Runway Seedance 2.5」），合并后它作为「Seedance 2.5」里的一个 chip 重新出现（不会成为默认家，默认家按分级不变）；若隐藏过中转站那一条却在用渠道那条，合并后整条被隐藏，需要到设置里取消隐藏。手动排过的渠道条目位置随之失效。",
+    "待定未并：fal 的 GPT Image 2 与 Kling V3 Pro（会让只接了 RunningHub + fal 的用户默认家从 RunningHub 变成 fal）、Runway 的 Seedance 2 / Fast / Mini 与 Veo 3.1 / Fast（变体拆行，需要跨供应商的变体桥接）、seed_audio（出品方查不清）——下拉里仍各列一条。",
+    "只接了 fal + Runway、没有非渠道供应商的用户：合并前两条各自选，合并后一条，默认走 fal（同档按显示名 fal.ai < Runway Dev），点一次 Runway chip 后被记住。",
+    "用户在设置里显式把 fal / Runway 排在中转站前面时，合并后这些模型按他的排序默认走 fal / Runway（排序设置的本义，但与合并前的实际落点不同）。",
+    "只接了 Runway 的用户：Runway Gemini 2.5 Flash Image 与 Runway HappyHorse 1.0 随模型归旧款折进「更多」，Runway Seedream 5 Lite 从旗舰区移到性价比区。",
+    "组名取目录里第一条的 labelZh：老装机里如果中转站那一行被删过又重新种回（排在渠道行之后），组名会显示成渠道行的名字（如「Seedance 2.5 · fal」），只影响显示。",
+    "仓内 nano-banana 档案的 identifierPatterns 含 \"nano-banana-pro\"，而仓内摘录的 APIMart 文档把 nano-banana-pro 写作 Gemini 3 Pro Image 的别名：裸串为 nano-banana-pro 的自建模型会被认成第一代 Nano Banana 档案。属于档案识别，不在本次身份合并范围内，未改。"
+  ]
+}

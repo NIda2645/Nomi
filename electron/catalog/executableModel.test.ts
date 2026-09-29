@@ -118,3 +118,21 @@ describe("findExecutableModel — 诚实 key 错误（missing vs locked）", () 
     expect(lockedMsg.length).toBeGreaterThan(0);
   });
 });
+
+// 「记录整条不在 = 已退役」是执行侧的唯一判定：渲染层（catalogTaskResolve）行不在就不抢答、原样交到这里，
+// 节点才落得到「这个模型已经下线了」+「换个模型」。钉住三分的前两支与它们的先后（先看记录，再看钥匙）。
+describe("findExecutableModel — 记录不在 = 已下线，记录在但停用 = 未配置", () => {
+  it("这家启用着、记录整条不在 → Model is retired（先于钥匙检查：没钥匙也照样说下线了）", () => {
+    catalogState.apiKeysByVendor = {};
+    expect(() => findExecutableModel("volcengine", "sora-2", "video")).toThrow(/^Model is retired: sora-2$/);
+  });
+
+  it("记录还在、只是被停用 → Model is not enabled（不是退役，那儿能开回来）", () => {
+    catalogState.models[0] = { ...catalogState.models[0], enabled: false };
+    expect(() => findExecutableModel("volcengine", "seedream", "image")).toThrow(/^Model is not enabled: seedream$/);
+  });
+
+  it("这家本身没启用 → Vendor is not enabled（不落到退役判断）", () => {
+    expect(() => findExecutableModel("kie", "sora-2", "video")).toThrow(/^Vendor is not enabled: kie$/);
+  });
+});

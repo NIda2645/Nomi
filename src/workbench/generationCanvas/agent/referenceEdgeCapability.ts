@@ -76,7 +76,7 @@ export function isTextPromptEdge(
  * 边语义 → 它要落到目标模型的哪些参考槽(任一满足即可)。通用 reference 接受任意槽。
  *
  * first_frame 同时认 `image_ref`:i2v 模型的「首帧输入槽」声明不统一——Hailuo 标 first_frame，
- * 而 Kling/Veo/Wan/Sora/seedance-apimart 把首帧输入归到通用 image_ref 数组槽(i2v 的输入图 = 首帧)。
+ * 而 Kling/Veo/Wan/seedance-apimart 把首帧输入归到通用 image_ref 数组槽(i2v 的输入图 = 首帧)。
  * 两者都能消费 keyframe→video 的首帧边,故都放行:resolver 已把首帧边的图源同时塞进 referenceImages
  * (→ image_ref 槽,archetypeMeta array 路由) 和 firstFrameUrl (→ first_frame 槽),投递端两条路都通。
  * 不放行就会把这条边静默丢弃 → 对账误报「批准已连接/实际未连接」(用户反复撞见的根因)。

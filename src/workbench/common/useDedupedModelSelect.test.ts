@@ -1,7 +1,8 @@
 // 病模型沉底/灰化的判定（2026-07-30 拍板）。核心是**别误伤**：下拉一条 = 去重后的模型，
 // 底下可能挂 2-4 家供应商；只要还有一家健康就该走那家、整条不算病。
 // 判据以 AilingProbe 注入 → 纯函数直测，不引 React 测试库、不碰 localStorage。
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import i18n from '../../i18n'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import {
@@ -78,6 +79,44 @@ describe('exact catalog variants in the generic model selector', () => {
     const fresh = renderSelect(variantOptions(['low']), '')
     fresh.view.onModelPick(fresh.view.modelOptions[0].value)
     expect(fresh.onChange).toHaveBeenCalledWith('gemini-3.7-flash-low', 'antigravity-cli')
+  })
+})
+
+// 2026-09-29 走查：英文界面模型框里是「Gemini 3 Pro 图像」「可灵 3.0」——供应商名在这一层翻了、模型名漏了。
+// 显示名在这一层翻；身份（canonicalId = 下拉的 value，也是模型框偏好的存键）一个字不动，切语言不会拆组。
+describe('模型名跟着界面语言走，身份不动', () => {
+  afterEach(async () => { await i18n.changeLanguage('zh-CN') })
+  const gemini = [
+    { ...option('gemini-3-pro-image-preview', 'apimart', 'Gemini 3 Pro 图像'), meta: { canonicalModelId: 'gemini image 3 pro' } },
+    { ...option('gemini_image3_pro', 'runway', 'Runway Gemini 3 Pro Image'), meta: { canonicalModelId: 'gemini image 3 pro' } },
+  ]
+  // 没显式声明身份的行按 label 归组：label 是身份的输入，所以更不能在归组之前翻。
+  const kling = [option('kling-3.0', 'apimart', '可灵 3.0'), option('kling-v3', 'kie', '可灵 3.0')]
+
+  it('折叠版：英文界面显示英文名，value（canonicalId）两种语言相同', async () => {
+    await i18n.changeLanguage('zh-CN')
+    const zh = buildModelSelectOptions(dedupeModelOptions([...gemini, ...kling]), healthy)
+    await i18n.changeLanguage('en')
+    const en = buildModelSelectOptions(dedupeModelOptions([...gemini, ...kling]), healthy)
+    expect(zh.map((row) => row.label)).toEqual(['Gemini 3 Pro 图像', '可灵 3.0'])
+    expect(en.map((row) => row.label)).toEqual(['Gemini 3 Pro Image', 'Kling 3.0'])
+    expect(en.map((row) => row.value)).toEqual(zh.map((row) => row.value))
+  })
+
+  it('批量摊平版：同一个显示名函数', async () => {
+    await i18n.changeLanguage('en')
+    const rows = buildVendorExplicitModelOptions(dedupeModelOptions(gemini), healthy)
+    expect(rows.map((row) => row.label)).toEqual(['Gemini 3 Pro Image', 'Gemini 3 Pro Image'])
+  })
+
+  // 「最近多次失败」那一支是另一段代码（灰化 + 沉底），名字同样要翻——两个版本各查一遍。
+  it('最近连败、被灰化沉底的行：名字照样跟着语言走', async () => {
+    await i18n.changeLanguage('en')
+    const sick = ailing('gemini-3-pro-image-preview', 'gemini_image3_pro')
+    const folded = buildModelSelectOptions(dedupeModelOptions(gemini), sick)
+    expect(folded.map((row) => [row.label, row.dimmed])).toEqual([['Gemini 3 Pro Image', true]])
+    const flattened = buildVendorExplicitModelOptions(dedupeModelOptions(gemini), sick)
+    expect(flattened.map((row) => [row.label, row.dimmed])).toEqual([['Gemini 3 Pro Image', true], ['Gemini 3 Pro Image', true]])
   })
 })
 

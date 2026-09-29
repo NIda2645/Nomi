@@ -1,8 +1,9 @@
 // 设置区行数据的直测。重点是三件**用户会当场发现错了**的事：
 // 行序、chip 顺序与高亮、以及「排完图片再去排视频，图片的顺序还在不在」。
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
+import i18n from '../../i18n'
 import { dedupeModelOptions } from '../../config/modelIdentity'
-import { modelProviderLabel } from '../common/useDedupedModelSelect'
+import { modelDisplayLabel, modelProviderLabel } from '../common/useDedupedModelSelect'
 import { buildModelBoxRows, mergeModelOrderForKind, moveModelRow } from './modelBoxOrder'
 import type { ModelOption } from '../../config/models'
 import type { ModelBoxPreferenceSettings } from '../../../electron/shared/contracts/modelBoxPreference'
@@ -23,7 +24,7 @@ const preference = (patch: Partial<ModelBoxPreferenceSettings>): ModelBoxPrefere
 
 describe('buildModelBoxRows', () => {
   it('orders provider tags by the global vendor list and highlights the first one by default', () => {
-    const rows = buildModelBoxRows(deduped, null, ['kie', 'apimart'], modelProviderLabel)
+    const rows = buildModelBoxRows(deduped, null, ['kie', 'apimart'], modelProviderLabel, modelDisplayLabel)
     expect(rows.visible[0].chips.map((chip) => chip.vendorKey)).toEqual(['kie', 'apimart'])
     expect(rows.visible[0].chips.map((chip) => chip.active)).toEqual([true, false])
     expect(rows.visible[0].chips.map((chip) => chip.label)).toEqual(['Kie', 'APIMart'])
@@ -31,7 +32,7 @@ describe('buildModelBoxRows', () => {
 
   // 样张原话「你手点过的，永远听你的」：手点过那家高亮，**顺序不动**（顺序永远是上面那张表）。
   it('highlights the hand-picked provider without reordering the tags', () => {
-    const rows = buildModelBoxRows(deduped, preference({ preferredVendorByModel: { 'nano-banana-2': 'kie' } }), ['apimart', 'kie'], modelProviderLabel)
+    const rows = buildModelBoxRows(deduped, preference({ preferredVendorByModel: { 'nano-banana-2': 'kie' } }), ['apimart', 'kie'], modelProviderLabel, modelDisplayLabel)
     const nanoBanana = rows.visible.find((row) => row.canonicalId === 'nano-banana-2')!
     expect(nanoBanana.chips.map((chip) => chip.vendorKey)).toEqual(['apimart', 'kie'])
     expect(nanoBanana.chips.find((chip) => chip.active)?.vendorKey).toBe('kie')
@@ -40,15 +41,32 @@ describe('buildModelBoxRows', () => {
   })
 
   it('splits hidden models into their own group, keeping their tags', () => {
-    const rows = buildModelBoxRows(deduped, preference({ hiddenModelIds: ['z-image-turbo'] }), ['apimart', 'kie'], modelProviderLabel)
+    const rows = buildModelBoxRows(deduped, preference({ hiddenModelIds: ['z-image-turbo'] }), ['apimart', 'kie'], modelProviderLabel, modelDisplayLabel)
     expect(rows.visible.map((row) => row.canonicalId)).toEqual(['gpt-image-2', 'nano-banana-2'])
     expect(rows.hidden.map((row) => row.canonicalId)).toEqual(['z-image-turbo'])
     expect(rows.hidden[0].chips.map((chip) => chip.vendorKey)).toEqual(['apimart'])
   })
 
   it('renders rows in the hand-sorted order', () => {
-    const rows = buildModelBoxRows(deduped, preference({ modelOrder: ['z-image-turbo', 'nano-banana-2'] }), [], modelProviderLabel)
+    const rows = buildModelBoxRows(deduped, preference({ modelOrder: ['z-image-turbo', 'nano-banana-2'] }), [], modelProviderLabel, modelDisplayLabel)
     expect(rows.visible.map((row) => row.canonicalId)).toEqual(['z-image-turbo', 'nano-banana-2', 'gpt-image-2'])
+  })
+})
+
+describe('buildModelBoxRows — 行名跟着界面语言走，身份不动（2026-09-29）', () => {
+  afterEach(async () => { await i18n.changeLanguage('zh-CN') })
+
+  it('英文界面：行名走现成的翻译表；canonicalId（偏好的存键）两种语言一字不差', async () => {
+    const rowsOf = () => buildModelBoxRows(dedupeModelOptions([
+      option('gemini image 3 pro', 'apimart', 'Gemini 3 Pro 图像'),
+      option('gemini image 3 pro', 'runway', 'Runway Gemini 3 Pro Image'),
+    ]), null, [], modelProviderLabel, modelDisplayLabel).visible[0]
+    await i18n.changeLanguage('zh-CN')
+    const zh = rowsOf()
+    await i18n.changeLanguage('en')
+    const en = rowsOf()
+    expect([zh.label, en.label]).toEqual(['Gemini 3 Pro 图像', 'Gemini 3 Pro Image'])
+    expect(en.canonicalId).toBe(zh.canonicalId)
   })
 })
 

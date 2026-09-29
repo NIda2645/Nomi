@@ -6,12 +6,12 @@ import type { ModelArchetype } from "./types";
 // 与 aspect_ratio 同义）；清晰度 720p/1080p/4k。
 //
 // duration 用 number 控件（合法离散值 4/6/8/10，5/7 报 invalid_duration，故 min 4 / max 10 / step 2）——
-// 与 Sora 2 / Hailuo 等既有视频模型同构：number 控件经 parseControlInput 落库为整数，body 模板原样保型，
+// 与 Hailuo 等既有视频模型同构：number 控件经 parseControlInput 落库为整数，body 模板原样保型，
 // 发出整数 6（API 要 integer）。若改用 select 会发字符串 "6"（select 不强转数值），可能触发 invalid_duration。
 //
 // 注：API 另有 video_urls（运动参考视频，与 duration 互斥），但当前视频传输工厂只产出
 // text_to_video / image_to_video 两个 mapping 桶（taskKind 枚举无 video_to_video），故视频参考暂未接，
-// 接入主链路是文生 + 图参考——这与 Sora 2 / Veo 3.1 等既有 curated 模型同构。
+// 接入主链路是文生 + 图参考——这与 Veo 3.1 等既有 curated 模型同构。
 
 const opt = (values: string[]): ModelParameterControl["options"] => values.map((value) => ({ value, label: value }));
 const numOpt = (values: number[]): ModelParameterControl["options"] => values.map((value) => ({ value, label: `${value}` }));

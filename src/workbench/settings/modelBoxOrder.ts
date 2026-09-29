@@ -21,6 +21,8 @@ export function buildModelBoxRows(
   preference: ModelBoxPreferenceSettings | null | undefined,
   orderedVendorKeys: readonly string[],
   labelOfProvider: (provider: ModelProviderRef) => string,
+  /** 行名怎么显示：与模型框同一个函数（`modelDisplayLabel`，按当前语言翻译），设置里看到的名字和下拉里一字不差。 */
+  labelOfModel: (model: DedupedModel) => string,
 ): ModelBoxRows {
   const toRow = (model: DedupedModel): ModelBoxRow => {
     const providers = sortModelProviders(model.providers, orderedVendorKeys)
@@ -29,7 +31,7 @@ export function buildModelBoxRows(
     const activeIndex = Math.max(0, rememberedProviderIndex(unique, rememberedVendorFor(model, preference)))
     return {
       canonicalId: model.canonicalId,
-      label: model.label,
+      label: labelOfModel(model),
       chips: unique.map((provider, index) => ({
         vendorKey: provider.vendor || provider.option.value,
         label: labelOfProvider(provider),

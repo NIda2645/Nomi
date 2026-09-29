@@ -32,7 +32,10 @@ export const NANO_BANANA_ARCHETYPE: ModelArchetype = {
   transportTaskKind: "text_to_image",
   // `gemini_2.5_flash` 是 Runway 侧对同一产品（Gemini 2.5 Flash Image）的判别串
   // （P4：档案 = 模型身份，供应商无关）。
-  identifierPatterns: ["nano-banana", "google/nano-banana", "google/nano-banana-edit", "nano-banana-pro", "gemini-2.5-flash-image-preview", "gemini_2.5_flash"],
+  // `nano-banana-pro` **不在这里**：它是 Gemini 3 Pro Image 的别名（APIMart 文档把它写作
+  // gemini-3-pro-image-preview-official 的别名），归 gemini-image-3-pro 档案；放在这里会让
+  // 自建渠道叫这个名字的模型拿到第一代 Nano Banana 的参数面（2026-09-28 挪走）。
+  identifierPatterns: ["nano-banana", "google/nano-banana", "google/nano-banana-edit", "gemini-2.5-flash-image-preview", "gemini_2.5_flash"],
   // Runway 的这一行原挂平台档案 runway-image（已删）；存量节点靠 legacyIds + 模型身份匹配迁到这里。
   legacyIds: ["runway-image"],
   modes: [

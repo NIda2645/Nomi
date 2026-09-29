@@ -13,7 +13,7 @@ import {
 
 describe("shared video capability registry", () => {
   it("does not reject references just because the provider has not published a maximum", () => {
-    const [base] = buildVideoModelCandidates([{ provider: "apimart", modelKey: "sora-2", label: "Sora", archetypeId: "sora-2" }]);
+    const [base] = buildVideoModelCandidates([{ provider: "apimart", modelKey: "kling-v3", label: "可灵 3.0", archetypeId: "kling-3.0" }]);
     const candidate = { ...base!, archetype: { ...base!.archetype,
       modes: base!.archetype.modes.map(mode => ({ ...mode, slots: mode.slots.map(slot => ({ ...slot, max: undefined })) })),
     } };

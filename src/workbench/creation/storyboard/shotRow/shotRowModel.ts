@@ -54,7 +54,7 @@ export function referencedVisualAnchors(shot: PlanShot, anchors: readonly PlanAn
  *
  * 开了首帧的视频镜落画布是「首帧图节点 —first_frame 边→ 视频节点」（storyboardPlan.buildShotRowNodes），
  * 所以这里问的就是「一条首帧边落哪个槽」——判据归 `firstFrameEdgeSlot`（画布参考槽显示与容量判断同一条），
- * 不在分镜侧再写一份。首帧槽优先，没有就是 image_ref[0]（APIMart Seedance 2.0、Kling、Sora、Wan 的图生视频）。
+ * 不在分镜侧再写一份。首帧槽优先，没有就是 image_ref[0]（APIMart Seedance 2.0、Kling、Wan 的图生视频）。
  */
 export function plannedFirstFrameSlot(
   mode: ArchetypeMode | null | undefined,

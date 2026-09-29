@@ -355,8 +355,17 @@ describe('buildCatalogTaskRequest — 标准参考面与档案投影并存（中
 // 已持久化 vendor 的节点只能沿候选 revision lineage 迁移；独立供应商即便同名/同 archetype 也不能
 // 被静默选中，否则一次 credential repair 会把旧节点送到完全无关的端点并产生付费请求。
 describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', () => {
-  const vendorDto = (key: string, hasApiKey: boolean, meta?: unknown): ModelCatalogVendorDto => ({ key, name: key, enabled: true, hasApiKey, ...(meta ? { meta } : {}), createdAt: '', updatedAt: '' })
+  const vendorDto = (key: string, hasApiKey: boolean, meta?: unknown, enabled = true): ModelCatalogVendorDto => ({ key, name: key, enabled, hasApiKey, ...(meta ? { meta } : {}), createdAt: '', updatedAt: '' })
   const apimartSeedream: ModelCatalogModelDto = { modelKey: 'doubao-seedream-4.5', vendorKey: 'apimart', labelZh: 'Seedream 4.5', kind: 'image', enabled: true, published: true, availability: { usable: true }, publishedModes: ['text_to_image'], meta: { archetypeId: 'seedream' }, createdAt: '', updatedAt: '' }
+  // 节点自己那家的那一行**还在**，只是现在用不了（没钥匙 / 被停用）——这是「供应商断开」，不是退役。
+  const kieSeedream: ModelCatalogModelDto = { ...apimartSeedream, modelKey: 'seedream', vendorKey: 'kie', availability: { usable: false, reason: 'credential_missing' } }
+
+  /** 假目录按主进程 filterByParams 的语义作答：带了 vendorKey / kind / enabled 就按它筛，不带就不筛。 */
+  const catalogOf = (rows: ModelCatalogModelDto[]) =>
+    async (params: { kind?: ModelCatalogModelDto['kind']; enabled?: boolean; vendorKey?: string }) => rows.filter((row) =>
+      (params.vendorKey === undefined || row.vendorKey === params.vendorKey)
+      && (params.kind === undefined || row.kind === params.kind)
+      && (params.enabled === undefined || row.enabled === params.enabled))
 
   const staleKieNode: GenerationCanvasNode = {
     id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫',
@@ -367,7 +376,7 @@ describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', ()
     const calls: Array<{ vendor: string; request: TaskRequestDto }> = []
     const options = {
       listCatalogVendors: async () => [vendorDto('apimart', true), vendorDto('kie', false)],
-      listCatalogModels: async () => [apimartSeedream],
+      listCatalogModels: catalogOf([apimartSeedream, kieSeedream]),
       runTask: async (vendor: string, request: TaskRequestDto) => {
         calls.push({ vendor, request })
         return { id: 't1', kind: request.kind, status: 'succeeded' as const, assets: [{ type: 'image' as const, url: 'https://x/out.png' }], raw: {} }
@@ -404,10 +413,11 @@ describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', ()
         vendorDto('kie--candidate-revision-2', true, candidateMeta),
       ],
       // enabled:true 的真实 DTO 不含已停用 source model；source vendor 仍因另一个兄弟模型可执行。
-      listCatalogModels: async () => [
+      listCatalogModels: catalogOf([
         { ...candidate, vendorKey: 'unrelated' },
         candidate,
-      ],
+        { ...kieSeedream, enabled: false },
+      ]),
       runTask: async (vendor: string, request: TaskRequestDto) => {
         calls.push({ vendor, request })
         return { id: 't-candidate', kind: request.kind, status: 'succeeded', assets: [{ type: 'image', url: 'https://x/candidate.png' }], raw: {} }
@@ -429,7 +439,7 @@ describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', ()
           adapterCandidateSourceVendorKey: 'kie',
         }),
       ],
-      listCatalogModels: async () => [{ ...apimartSeedream, modelKey: 'seedream', vendorKey: 'unrelated' }],
+      listCatalogModels: catalogOf([{ ...apimartSeedream, modelKey: 'seedream', vendorKey: 'unrelated' }, { ...kieSeedream, enabled: false }]),
       runTask,
     })).rejects.toThrow(/NOMI_ERR::model-config/)
     expect(runTask).not.toHaveBeenCalled()
@@ -438,8 +448,36 @@ describe('runCatalogGenerationTask — 旧节点供应商只由用户切换', ()
   it('没有任何已连接供应商提供该款 → 抛清晰可行动错误，而非 cryptic key missing', async () => {
     const { options } = harness()
     await expect(
-      runCatalogGenerationTask(staleKieNode, { projectTarget: TEST_TARGET, ...options, listCatalogVendors: async () => [vendorDto('kie', false)], listCatalogModels: async () => [] }),
+      runCatalogGenerationTask(staleKieNode, { projectTarget: TEST_TARGET, ...options, listCatalogVendors: async () => [vendorDto('kie', false)], listCatalogModels: catalogOf([kieSeedream]) }),
     ).rejects.toThrow(/NOMI_ERR::model-config/)
+  })
+
+  // 退役（seedBuiltins 的退役清单把这一行整条摘掉，如 Sora 2）不是「供应商断开」：渲染层不抢答，
+  // 身份原样交给执行侧那唯一的判定（findExecutableModel → `Model is retired`），节点才落得到
+  // 「这个模型已经下线了」+「换个模型」。2026-09-09 起这里一律报「供应商断开」，退役卡片从画布上够不着。
+  it('这家启用着、目录里整条都没有这一行（已退役）→ 不抢答，身份原样交执行侧判「已下线」', async () => {
+    const runTask = vi.fn(async (_vendor: string, _request: TaskRequestDto): Promise<TaskResultDto> => {
+      throw new Error('Model is retired: seedream')
+    })
+    await expect(runCatalogGenerationTask(staleKieNode, { projectTarget: TEST_TARGET,
+      listCatalogVendors: async () => [vendorDto('apimart', true), vendorDto('kie', true)],
+      listCatalogModels: catalogOf([apimartSeedream]),
+      runTask,
+    })).rejects.toThrow(/Model is retired: seedream/)
+    expect(runTask).toHaveBeenCalledTimes(1)
+    // 不换家、不换款：请求发给节点自己那家，报文里还是节点自己那一款。
+    expect(runTask.mock.calls[0]?.[0]).toBe('kie')
+    expect(runTask.mock.calls[0]?.[1].extras?.modelKey).toBe('seedream')
+  })
+
+  it('这家已停用、行也不在 → 仍是「供应商断开」的恢复路，一次执行都不发', async () => {
+    const runTask = vi.fn()
+    await expect(runCatalogGenerationTask(staleKieNode, { projectTarget: TEST_TARGET,
+      listCatalogVendors: async () => [vendorDto('apimart', true), vendorDto('kie', true, undefined, false)],
+      listCatalogModels: catalogOf([apimartSeedream]),
+      runTask,
+    })).rejects.toThrow(/NOMI_ERR::model-config/)
+    expect(runTask).not.toHaveBeenCalled()
   })
 })
 
@@ -687,6 +725,20 @@ describe('轮询节奏 — 间隔分档 / 抖动 / 限流退避', () => {
 // 幂等键穿透回归：options.idempotencyKey 必须落进 request.extras.idempotencyKey，
 // 否则 electron 侧台账拿不到键、去重失效（= 提交幂等整条链断在最后一跳）。
 describe('buildCatalogTaskRequest — idempotencyKey 穿透到 request.extras', () => {
+  it('制作镜头节点显式投影 production binding，普通节点不伪造绑定', () => {
+    const bound = buildCatalogTaskRequest({
+      ...imageNode(),
+      prompt: 'a shot',
+      meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', productionRunId: 'run-1', productionShotId: 'shot-2' },
+    }).request.extras as Record<string, unknown>
+    expect(bound.productionRunId).toBe('run-1')
+    expect(bound.productionShotId).toBe('shot-2')
+
+    const ordinary = buildCatalogTaskRequest({ ...imageNode(), prompt: 'ordinary', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie' } }).request.extras as Record<string, unknown>
+    expect(ordinary.productionRunId).toBeUndefined()
+    expect(ordinary.productionShotId).toBeUndefined()
+  })
+
   it('options.idempotencyKey → request.extras.idempotencyKey', () => {
     const node: GenerationCanvasNode = { id: 'n1', kind: 'image', title: '', position: { x: 0, y: 0 }, prompt: '画只猫', meta: { modelKey: 'gpt-image-2-image-to-image', modelVendor: 'kie', vendor: 'kie', archetype: { id: 'gpt-image-2', modeId: 't2i' } } }
     const built = buildCatalogTaskRequest(node, { idempotencyKey: 'run-abc-123' })

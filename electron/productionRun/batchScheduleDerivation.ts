@@ -6,9 +6,13 @@ import type {
   ProductionGenerationShot,
   ProductionJob,
   ProductionRunStatus,
+  ProductionRun,
 } from "./productionRunTypes";
 import type { ShotPrice } from "./shotPricing";
 import { productionGenerationJobId } from "./productionGenerationAuthorization";
+import { jobAwaitsHuman } from "../shared/productionShotPhase";
+import { decideShotClaim } from "../shared/decideShotClaim";
+import { jobsForShot, shotCountsTowardBatch, shotIncluded } from "../shared/productionShotJobs";
 
 /**
  * P4 S4 — the pure batch derivation. This is the heart of "调度器无自有持久状态" (plan §1).
@@ -132,6 +136,8 @@ export type BatchDerivationInput = {
   /** The current anchor checkpoint gate, if one was opened. */
   anchorGate?: ProductionGate;
   now: string;
+  /** Full durable run. Ownership and shot/job correspondence must use this same record. */
+  run: ProductionRun;
 };
 
 export type BatchDerivationResult = {
@@ -162,35 +168,30 @@ const TERMINAL_DONE = new Set<ProductionJob["status"]>(["ready", "adopted"]);
  */
 const OBSERVABLE = new Set<ProductionJob["status"]>(["provider_accepted", "polling"]);
 
-/** A shot is included in the sealed contract unless explicitly unchecked (试拍/分批). */
-function isIncluded(shot: Pick<ProductionGenerationShot, "included">): boolean {
-  return shot.included !== false;
-}
-
 /** The current attempt for a shot = its attemptCount (a per-shot new_attempt bumps this), min 1. */
 function currentAttemptOf(shot: ProductionGenerationShot): number {
   return Number.isInteger(shot.attemptCount) && (shot.attemptCount as number) >= 1 ? (shot.attemptCount as number) : 1;
 }
 
 /** The durable job (if any) for a shot's CURRENT attempt. Pure over jobs[]. */
-function jobForShot(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[]): ProductionJob | undefined {
+function jobForShot(run: ProductionRun, shot: ProductionGenerationShot): ProductionJob | undefined {
   const hash = shot.contract?.contractHash;
   if (!hash) return undefined;
-  const jobId = productionGenerationJobId(runId, hash, currentAttemptOf(shot), shot.shotId);
-  return jobs.find((candidate) => candidate.jobId === jobId);
+  const jobId = productionGenerationJobId(run.runId, hash, currentAttemptOf(shot), shot.shotId);
+  return jobsForShot(run, shot.shotId).find((candidate) => candidate.jobId === jobId);
 }
 
-function shotFinished(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[]): boolean {
-  const job = jobForShot(runId, shot, jobs);
+function shotFinished(run: ProductionRun, shot: ProductionGenerationShot): boolean {
+  const job = jobForShot(run, shot);
   return Boolean(job && TERMINAL_DONE.has(job.status));
 }
 
-function shotInFlight(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[]): boolean {
-  const job = jobForShot(runId, shot, jobs);
-  // authorization_required is still waiting for a human; authorized/intent-persisted is dispatchable.
-  // Neither is provider work in flight.
+function shotInFlight(run: ProductionRun, shot: ProductionGenerationShot): boolean {
+  const job = jobForShot(run, shot);
+  // authorization_required is still waiting for a human (`jobAwaitsHuman`, the one owner of that fact);
+  // authorized/intent-persisted is dispatchable. Neither is provider work in flight.
   return Boolean(job
-    && job.status !== "authorization_required"
+    && !jobAwaitsHuman(job.status)
     && !TERMINAL_DONE.has(job.status)
     && !DISPATCHABLE.has(job.status));
 }
@@ -201,9 +202,10 @@ function shotInFlight(runId: string, shot: ProductionGenerationShot, jobs: Produ
  * dispatchable for crash recovery because the outbox intent log proves at-most-once provider submission.
  */
 const DISPATCHABLE = new Set<ProductionJob["status"]>(["authorized", "submit_intent_persisted"]);
-function needsDispatch(runId: string, shot: ProductionGenerationShot, jobs: ProductionJob[]): boolean {
+function needsDispatch(run: ProductionRun, shot: ProductionGenerationShot): boolean {
   if (!shot.contract?.contractHash) return false;
-  const job = jobForShot(runId, shot, jobs);
+  if (!decideShotClaim(run, shot.shotId, "production").granted) return false;
+  const job = jobForShot(run, shot);
   return Boolean(job && DISPATCHABLE.has(job.status));
 }
 
@@ -212,14 +214,23 @@ function toTask(runId: string, shot: ProductionGenerationShot): DispatchTask {
   return { shotId: shot.shotId, attempt: currentAttemptOf(shot), contractHash: shot.contract!.contractHash };
 }
 
-/** Anchor-role, included shots — the identity images the batch depends on. */
+/**
+ * Anchor-role, included shots — the identity images the batch depends on. Anchors deliberately keep the
+ * plain included rule: an anchor the canvas took back must keep holding its checkpoint, because the
+ * checkpoint is where a person approves the look before the paid video shots run.
+ */
 function anchorsOf(plan: ProductionGenerationPlan): ProductionGenerationShot[] {
-  return (plan.shots ?? []).filter((shot) => shot.role === "anchor" && isIncluded(shot));
+  return (plan.shots ?? []).filter((shot) => shot.role === "anchor" && shotIncluded(shot));
 }
 
-/** Video-role (or unroled, backward compatible), included shots. */
-function videoShotsOf(plan: ProductionGenerationPlan): ProductionGenerationShot[] {
-  return (plan.shots ?? []).filter((shot) => shot.role !== "anchor" && isIncluded(shot));
+/**
+ * Video-role (or unroled, backward compatible) shots this batch still owes — `shotCountsTowardBatch`, the one
+ * membership rule (unchecked shots and shots production let go to the canvas are out). A released shot used to
+ * stay in here with a `detached` job that counted as in flight, so the batch never completed and the Run sat in
+ * `running` after its node was deleted or the canvas took it over.
+ */
+function videoShotsOf(run: ProductionRun, plan: ProductionGenerationPlan): ProductionGenerationShot[] {
+  return (plan.shots ?? []).filter((shot) => shot.role !== "anchor" && shotCountsTowardBatch(run, shot));
 }
 
 /**
@@ -229,7 +240,7 @@ function deriveCheckpoint(input: BatchDerivationInput, anchors: ProductionGenera
   if (anchors.length === 0) return { status: "not_required", readyAnchorJobIds: [] };
   const readyAnchorJobIds: string[] = [];
   for (const anchor of anchors) {
-    const job = jobForShot(input.runId, anchor, input.jobs);
+    const job = jobForShot(input.run, anchor);
     if (!job || !TERMINAL_DONE.has(job.status)) return { status: "pending_anchors", readyAnchorJobIds };
     readyAnchorJobIds.push(job.jobId);
   }
@@ -251,15 +262,15 @@ function deriveCheckpoint(input: BatchDerivationInput, anchors: ProductionGenera
  */
 export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationResult {
   const anchors = anchorsOf(input.plan);
-  const videoShots = videoShotsOf(input.plan);
+  const videoShots = videoShotsOf(input.run, input.plan);
 
   // Mixed batches retain their video progress; an anchor-only request tracks its actual paid units.
   const progressShots = videoShots.length > 0 ? videoShots : anchors;
   let completed = 0;
   let inFlight = 0;
   for (const shot of progressShots) {
-    if (shotFinished(input.runId, shot, input.jobs)) completed += 1;
-    else if (shotInFlight(input.runId, shot, input.jobs)) inFlight += 1;
+    if (shotFinished(input.run, shot)) completed += 1;
+    else if (shotInFlight(input.run, shot)) inFlight += 1;
   }
   const progress: BatchProgress = {
     total: progressShots.length,
@@ -274,14 +285,14 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // jobs[], so a crash-restart recomputes the same list and the observe loop resumes where it left off.
   const observe: DispatchTask[] = [];
   for (const shot of [...anchors, ...videoShots]) {
-    const job = jobForShot(input.runId, shot, input.jobs);
+    const job = jobForShot(input.run, shot);
     if (job && OBSERVABLE.has(job.status) && job.providerTaskId) observe.push(toTask(input.runId, shot));
   }
 
   // Stop semantics (plan §3.3/§4): a stopped run dispatches nothing NEW (未提交=不提交不扣费).
   // In-flight jobs still settle: they are already paid for, so `observe` keeps them pollable and the
   // orchestrator lands their results; completed jobs are preserved (both reflected in `progress`).
-  const stopped = input.runStatus === "pausing" || input.runStatus === "paused" || input.runStatus === "cancelled";
+  const stopped = input.runStatus === "pausing" || input.runStatus === "paused" || input.runStatus === "needs_attention" || input.runStatus === "cancelled";
   if (stopped) {
     return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress, unknownDispatchCount: 0 };
   }
@@ -289,7 +300,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // Anchors go first. Any anchor still needing a job (fresh or a rejected-checkpoint re-attempt) is
   // dispatched now; while anchors are not all ready, or the checkpoint has not released, shots wait.
   const anchorDispatch = anchors
-    .filter((anchor) => needsDispatch(input.runId, anchor, input.jobs))
+    .filter((anchor) => needsDispatch(input.run, anchor))
     .map((anchor) => toTask(input.runId, anchor));
   const checkpointReleased = checkpoint.status === "approved";
   if (anchors.length > 0 && !checkpointReleased) {
@@ -313,7 +324,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
 
   for (let i = 0; i < videoShots.length; i += 1) {
     const shot = videoShots[i];
-    if (!needsDispatch(input.runId, shot, input.jobs)) continue; // finished or in-flight → skip
+    if (!needsDispatch(input.run, shot)) continue; // finished, claimed, or in-flight → skip
     const price = input.perShotPrice(shot.shotId);
     if (!price.known) {
       // 算不出价 → 这一镜不进金额比较，也不因为金额被 halt。它照常派（人已经在信封上批过它）。
@@ -344,7 +355,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
     let remaining = 0;
     for (let i = haltIndex; i < videoShots.length; i += 1) {
       const shot = videoShots[i];
-      if (needsDispatch(input.runId, shot, input.jobs)) remaining += 1;
+      if (needsDispatch(input.run, shot)) remaining += 1;
     }
     halt = { ...halt, dispatchableCount, remainingCount: remaining };
   }

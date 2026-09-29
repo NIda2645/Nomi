@@ -31,7 +31,6 @@ import { SEEDANCE_2_5_RUNWAY_ARCHETYPE } from "./seedance25Runway";
 import { SEEDANCE_2_APIMART_ARCHETYPE } from "./seedanceApimart";
 import { SEEDANCE_VOLCENGINE_ARCHETYPE } from "./seedanceVolcengine";
 import { SEEDANCE_VOLCENGINE_2_5_ARCHETYPE } from "./seedanceVolcengine25";
-import { SORA_2_ARCHETYPE } from "./sora2";
 import { VEO_3_1_ARCHETYPE } from "./veo31";
 import { GEMINI_OMNI_11_ARCHETYPE } from "./geminiOmni11";
 import { RUNWAY_GEN45_ARCHETYPE } from "./runwayGen45";
@@ -70,7 +69,6 @@ const SOURCE_BACKED_PROFILES: readonly ModelArchetype[] = [
   KLING_3_TURBO_ARCHETYPE,
   HAPPYHORSE_1_1_ARCHETYPE,
   GROK_IMAGINE_1_5_VIDEO_ARCHETYPE,
-  SORA_2_ARCHETYPE,
   VEO_3_1_ARCHETYPE,
   GEMINI_OMNI_11_ARCHETYPE,
   RUNWAY_GEN45_ARCHETYPE,

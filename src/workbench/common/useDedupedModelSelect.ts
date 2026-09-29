@@ -52,6 +52,18 @@ export function modelProviderLabel(provider?: ModelProviderRef | null, connectio
   return translateModelDisplayText(connectionSuffix) || base
 }
 
+/**
+ * 模型在模型框里的显示名：组名按当前语言走现成的翻译表（`translateModelDisplayText`，与上面的供应商名同一张）。
+ *
+ * 为什么在这一层、不在 `dedupeModelOptions` / `toCatalogModelOptions`：那两层的 label 还是**身份的输入**——
+ * 没显式声明身份的行按 `normalizeModelLabel(label)` 归组，模型框偏好（排序 / 隐藏 / 记住的那家）按 canonicalId 存。
+ * 在那里翻译，身份就随语言变：切一次英文，组会拆开、偏好会对不上。显示名只在这里翻，身份一个字不动。
+ * 2026-09-29 之前供应商名在这里翻、模型名漏了：英文界面的模型框里是「Gemini 3 Pro 图像」「可灵 3.0」。
+ */
+export function modelDisplayLabel(model: Pick<DedupedModel, 'label'>): string {
+  return translateModelDisplayText(model.label)
+}
+
 /** 该模型是否「病」了：**每一家**供应商都在避让期才算。注入判据便于纯函数单测。 */
 type AilingProbe = (identity: { modelKey: unknown; vendor: unknown }) => boolean
 
@@ -190,7 +202,7 @@ export function buildModelSelectOptions(
     if (!isModelAiling(m, isAiling)) return {
       more: modelCatalogLifecycle(m) === 'legacy',
       value: m.canonicalId,
-      label: m.label,
+      label: modelDisplayLabel(m),
       icon: modelIdentityIcon(m),
       // 「未试跑」附在厂商短名后面，**不另起一个新元素**：2026-09-06 用户拍板过「别把模型名挤没」，
       // 而这一行要说的只是一句限定语（这家、还没真跑过），不是第二条信息。
@@ -209,7 +221,7 @@ export function buildModelSelectOptions(
     return {
       more: modelCatalogLifecycle(m) === 'legacy',
       value: m.canonicalId,
-      label: m.label,
+      label: modelDisplayLabel(m),
       icon: modelIdentityIcon(m),
       trailing: i18n.t('generationCommon.parameters.recentlyFailing'),
       trailingTone: 'danger',
@@ -273,7 +285,7 @@ export function buildVendorExplicitModelOptions(
           ? {
               value,
               more: modelCatalogLifecycle(model) === 'legacy',
-              label: model.label,
+              label: modelDisplayLabel(model),
               trailing: i18n.t('generationCommon.parameters.recentlyFailing'),
               trailingTone: 'danger',
               dimmed: true,
@@ -281,7 +293,7 @@ export function buildVendorExplicitModelOptions(
           : {
               value,
               more: modelCatalogLifecycle(model) === 'legacy',
-              label: model.label,
+              label: modelDisplayLabel(model),
               icon: modelIdentityIcon(model),
               // 摊平版一行就是一家，所以「暂未列出」按**这一家**判，不看别家
               // （折叠版要每家都没列出才标——那一行代表的是所有家）。
