@@ -68,7 +68,6 @@ const PENDING: ReadonlyMap<string, string> = new Map([
   ['runway:seedance2_mini', '变体行（同上）'],
   ['runway:veo3.1', '变体行（veo3.1 / veo3.1_fast 两行对 APIMart 的 fast / quality / lite 变体轴，对应关系未定）'],
   ['runway:veo3.1_fast', '变体行（同上）'],
-  ['runway:muse_image', '出品方查不清：仓里档案写「Runway 自家模型」，任务书写「Meta 的模型」——单家独有，今天并不并对下拉零影响'],
   ['runway:seed_audio', '出品方查不清：仓里档案写「Runway 自家的一手音频产品」'],
 ])
 

@@ -22,7 +22,7 @@
     "官网模型库导出（applyBuiltinSeeds → toCatalogModelOptions → dedupeModelOptions）"
   ],
   "external_sources": [],
-  "internal_only_reason": "canonical 身份与分档是 Nomi 内部的目录约定。「谁和谁是同一个模型」的依据全部取自仓内已核对过官方文档的档案：nano-banana 档案 identifierPatterns 已收 gemini_2.5_flash / gemini-2.5-flash-image-preview；nano-banana-2 档案收 gemini-3.1-flash-image*，其 sources 摘录的 APIMart 文档把别名写作 nano-banana-2；minimax-h3 档案注明「MiniMax H3（Hailuo 03）」并收 hailuo3；gemini-omni-1.1 / grok-imagine-1.5-video / wan-3.0 / happyhorse 档案各自收了 Runway 的判别串。本轮无网络，出品方在仓内查不清的两行（muse_image / seed_audio）没有改。",
+  "internal_only_reason": "canonical 身份与分档是 Nomi 内部的目录约定。「谁和谁是同一个模型」的依据全部取自仓内已核对过官方文档的档案：nano-banana 档案 identifierPatterns 已收 gemini_2.5_flash / gemini-2.5-flash-image-preview；nano-banana-2 档案收 gemini-3.1-flash-image*，其 sources 摘录的 APIMart 文档把别名写作 nano-banana-2；minimax-h3 档案注明「MiniMax H3（Hailuo 03）」并收 hailuo3；gemini-omni-1.1 / grok-imagine-1.5-video / wan-3.0 / happyhorse 档案各自收了 Runway 的判别串。muse_image 的出品方按主管给的 Meta 官方出处（ai.meta.com 博客与 about.fb.com 新闻稿，2026-07-07）于 2026-09-29 复核后并入模型身份；seed_audio 查不到出处，未改。",
   "invariants": [
     "每一条 fal / Runway 转售的别家模型行都带不含渠道名的显式 canonicalModelId；Runway 自家出品（gen4.5 / gen4_turbo / gen4_image / gen4_image_turbo）与带理由的待定行除外，且待定行不许悄悄带上身份。",
     "一个 canonical 组只要含渠道行，组里每一行都显式声明同一个 canonicalModelId（不靠用户可改的 labelZh 碰巧相同）。",
@@ -92,7 +92,7 @@
       "path": "electron/catalog/runwayImage.ts",
       "entry_point": "RUNWAY_IMAGE_SPECS",
       "disposition": "enforced",
-      "evidence": "Runway 图像行逐条核对：gpt_image_2 / seedream5_pro / seedream5_lite / gemini_2.5_flash / gemini_image3.1_flash 并入对应模型；gemini_image3_pro / grok_imagine_image_2 本来就已并入；gen4_image / gen4_image_turbo 为自家出品；muse_image 出品方查不清在待定名单。"
+      "evidence": "Runway 图像行逐条核对：gpt_image_2 / seedream5_pro / seedream5_lite / gemini_2.5_flash / gemini_image3.1_flash 并入对应模型；gemini_image3_pro / grok_imagine_image_2 本来就已并入；gen4_image / gen4_image_turbo 为自家出品；muse_image 是 Meta 的模型（Meta 官方 2026-07-07 发布，档案 sources 已登记），写模型身份 muse image。"
     },
     {
       "path": "electron/catalog/elevenlabs.ts",
@@ -167,7 +167,7 @@
   "migration": "老装机：canonicalModelId 与 catalogLifecycle 是 reconcileModels 对账的代码所有字段，下次启动漂移即自愈（seedBuiltins.test 覆盖，用户改过的 labelZh / enabled 不动）。已存节点记的是 (modelKey, vendor)，精确命中不经分组，不受影响。模型框偏好（hiddenModelIds / modelOrder / preferredVendorByModel）按 canonicalId 存：中转站那几行的 id 与原 label 推导值相同、不变；只有渠道行的旧 id（如「seedance 2.5 · fal」「runway seedance 2.5」）变成孤儿，见 residual_risks。",
   "residual_risks": [
     "模型框偏好未迁移：用户若单独隐藏过渠道那一条（如「Runway Seedance 2.5」），合并后它作为「Seedance 2.5」里的一个 chip 重新出现（不会成为默认家，默认家按分级不变）；若隐藏过中转站那一条却在用渠道那条，合并后整条被隐藏，需要到设置里取消隐藏。手动排过的渠道条目位置随之失效。",
-    "待定未并：fal 的 GPT Image 2 与 Kling V3 Pro（会让只接了 RunningHub + fal 的用户默认家从 RunningHub 变成 fal）、Runway 的 Seedance 2 / Fast / Mini 与 Veo 3.1 / Fast（变体拆行，需要跨供应商的变体桥接）、muse_image / seed_audio（出品方查不清）——下拉里仍各列一条。",
+    "待定未并：fal 的 GPT Image 2 与 Kling V3 Pro（会让只接了 RunningHub + fal 的用户默认家从 RunningHub 变成 fal）、Runway 的 Seedance 2 / Fast / Mini 与 Veo 3.1 / Fast（变体拆行，需要跨供应商的变体桥接）、seed_audio（出品方查不清）——下拉里仍各列一条。",
     "只接了 fal + Runway、没有非渠道供应商的用户：合并前两条各自选，合并后一条，默认走 fal（同档按显示名 fal.ai < Runway Dev），点一次 Runway chip 后被记住。",
     "用户在设置里显式把 fal / Runway 排在中转站前面时，合并后这些模型按他的排序默认走 fal / Runway（排序设置的本义，但与合并前的实际落点不同）。",
     "只接了 Runway 的用户：Runway Gemini 2.5 Flash Image 与 Runway HappyHorse 1.0 随模型归旧款折进「更多」，Runway Seedream 5 Lite 从旗舰区移到性价比区。",

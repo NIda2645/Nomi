@@ -444,6 +444,8 @@ describe("canonicalModelId（跨供应商去重键，2026-07-17）", () => {
     expect(canonicalOf(state, "fal", "minimax/h3-max")).toBe("minimax h3-max");
     expect(canonicalOf(state, "elevenlabs", "eleven_v3")).toBe("eleven v3");
     expect(canonicalOf(state, "runway", "eleven_v3")).toBe("eleven v3");
+    // Muse Image 是 Meta 的模型（2026-07-07 发布），Runway 只是渠道：身份不带 Runway。
+    expect(canonicalOf(state, "runway", "muse_image")).toBe("muse image");
     // Runway 自家出品保留 Runway 身份；待定的（默认渠道会换家 / 变体行）这次不填。
     expect(canonicalOf(state, "runway", "gen4.5")).toBeUndefined();
     expect(canonicalOf(state, "fal", "openai/gpt-image-2")).toBeUndefined();

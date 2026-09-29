@@ -9,8 +9,8 @@ import {
  * **Runway 一手图像模型的模型身份档案**（一个模型一个档案，P4）。
  *
  * 这里放的是「目前只有 Runway 一家提供、我们仓里没有别的档案主人」的五个产品：
- * Gen-4 Image（含 Turbo 变体）、Muse Image、Grok Imagine Image 2、Gemini Image 3 Pro、
- * Gemini Image 3.1 Flash。**它们不是「Runway 平台档案」**——每个档案只罩一个产品，
+ * Gen-4 Image（含 Turbo 变体，Runway 自家出品）、Muse Image（Meta 出品）、Grok Imagine Image 2、
+ * Gemini Image 3 Pro、Gemini Image 3.1 Flash。**它们不是「Runway 平台档案」**——每个档案只罩一个产品，
  * 声明的能力面就是那个产品官方 spec 的能力面。若日后别家也提供同一模型，这些档案原地
  * 加 `identifierPatterns` + `vendorParams` 即可服务多家（与 gpt-image-2 同形状），
  * 不需要再建第二个档案。
@@ -156,7 +156,13 @@ export const RUNWAY_GEN4_IMAGE_TURBO_ARCHETYPE: ModelArchetype = {
   modes: [runwayImageModes("gen4_image_turbo")[1]],
 };
 
-/** Muse Image —— Runway 自家模型。ratio 全是大尺寸（1600:1600 起，含 auto），outputCount ≤10。 */
+/**
+ * Muse Image —— **Meta 的模型**（Meta Superintelligence Labs 2026-07-07 发布），Runway 是转售渠道之一，
+ * 不是 Runway 自家出品（此前这里写错成「Runway 自家模型」）。身份按模型走：seedModelIdentity 里
+ * `muse_image` → "muse image"，以后别家接同一个模型能自动并成一条。
+ * `id` / `family` 保持原样：它们是已落盘节点 meta 里的档案指针，改了老节点就认不回来。
+ * ratio 全是大尺寸（1600:1600 起，含 auto），outputCount ≤10——这些是 Runway 那条线缆的事实。
+ */
 export const RUNWAY_MUSE_IMAGE_ARCHETYPE: ModelArchetype = {
   id: "runway-muse-image",
   family: "runway-muse",
@@ -171,6 +177,16 @@ export const RUNWAY_MUSE_IMAGE_ARCHETYPE: ModelArchetype = {
       ...RUNWAY_OPENAPI_SOURCE,
       covers:
         "/v1/text_to_image 的 muse_image 变体：ratio 9 值（2352:1008 / 2016:1152 / 1920:1280 / 1792:1344 / 1600:1600 / 1344:1792 / 1280:1920 / 1152:2016 / auto，**不含 1024:1024**）、referenceImages maxItems 10、outputCount 1–10",
+    },
+    {
+      url: "https://ai.meta.com/blog/introducing-muse-image-muse-video-msl/",
+      checkedAt: "2026-09-29",
+      covers: "出品方：Meta Superintelligence Labs 开发的 Muse Image，发布于 2026-07-07（页面只提 Meta 自家产品里的可用性，不涉及 Runway）",
+    },
+    {
+      url: "https://about.fb.com/news/2026/07/introducing-muse-image-meta-ai/",
+      checkedAt: "2026-09-29",
+      covers: "Meta 新闻稿 2026-07-07：Muse Image 是 Meta Superintelligence Labs 的第一个图像生成模型",
     },
   ],
   modes: runwayImageModes("muse_image"),

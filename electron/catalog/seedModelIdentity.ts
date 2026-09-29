@@ -28,7 +28,7 @@ export type CatalogLifecycle = "flagship" | "value" | "companion" | "legacy";
  *    ① Runway 把变体拆成多行的（seedance2 / _fast / _mini、veo3.1 / _fast）——选择器按供应商折叠，
  *       并进来后同一家只剩一行可选，用户选的变体与真正发出去的 modelKey 会对不上；
  *    ② 并进来会让部分用户的默认渠道换家的（fal 的 GPT Image 2、Kling V3 Pro：同档里「fal.ai」字母序排在 RunningHub 前）；
- *    ③ 出品方查不清的（Runway 的 muse_image / seed_audio）。
+ *    ③ 出品方查不清的（Runway 的 seed_audio）。
  */
 export const CANONICAL_MODEL_IDS: Record<string, string> = {
   // Seedream 4.5（kie / apimart / 火山 / RunningHub 四家）
@@ -144,6 +144,9 @@ export const CANONICAL_MODEL_IDS: Record<string, string> = {
   "minimax/music-3": "minimax music 3",
   // 3D：fal 的 Hi3D v3.0（RunningHub 的 HiTem3D v21 是另一版本，不并）。
   "hitem3d/hi3d/v3.0": "hi3d v3.0",
+  // Muse Image 是 Meta 的模型（Meta Superintelligence Labs，2026-07-07 发布，出处见 runwayNativeImage.ts），
+  // Runway 只是转售渠道 → 写模型本身的身份，不写「runway muse image」。
+  "muse_image": "muse image",
   "suno-v5-5": "suno v5.5",
   "suno-v5.5": "suno v5.5",
   "suno-sounds-v5-5": "suno sounds v5.5",
