@@ -13,12 +13,13 @@
 // 验什么（截图写进 .model-identity-walk/，人眼核对）：
 //   ① 中英两种界面：视频模型框里 Seedance 2.5、图片模型框里 GPT Image 2 / Nano Banana 2 各只出现一次，
 //      并进来的渠道行（Seedance 2.5 · fal、Runway Seedance 2.5、Runway GPT Image 2、Nano Banana 2 · fal…）不再单列；
-//      模型框里没有 Sora 2；
+//      模型框里没有 Sora 2；模型名跟着界面语言走（英文界面是「Gemini 3 Pro Image」「Kling 3.0」，不是中文原名）；
 //   ② 默认 chip（没排过供应商顺序、没点过）是分级表推出来的那一家：Seedance 2.5 → 火山方舟，
 //      GPT Image 2 / Nano Banana 2 → APIMart；
 //   ③ 把 Seedance 2.5 切到 fal、GPT Image 2 切到 Runway，重启 App 重开节点，选择还在（界面 + 落盘两处都核）；
 //   ④ 老项目里的 Sora 2 节点能打开，点生成落「这个模型已经下线了」+「换个模型」（英文界面落对应英文），
-//      卡里没有技术签名、没有「服务商原话」框；点「换个模型」换成 Seedance 2.5 后参数面板正常。
+//      卡里没有技术签名、没有「服务商原话」框、没有「仍要重试」，正文对任何下线原因都成立；
+//      点「换个模型」换成 Seedance 2.5 后参数面板正常。
 //
 // 用法：pnpm build 后 node scripts/model-identity-walkthrough.mjs
 import { spawnSync } from 'node:child_process'
@@ -51,8 +52,8 @@ const PROJECT_NAME = '模型身份走查'
 const projectRoot = path.join(projectsDir, `walk-${PROJECT_ID}`)
 
 const T = {
-  'zh-CN': { model: '模型', provider: '供应商', volc: '火山方舟', generate: '生成素材', confirm: '生成', retired: '这个模型已经下线了', switchModel: '换个模型', more: '更多', providerWords: '服务商原话' },
-  en: { model: 'Model', provider: 'Provider', volc: 'Volcengine Ark', generate: 'Generate asset', confirm: 'Generate', retired: 'This model has been removed', switchModel: 'Switch model', more: 'More', providerWords: 'Provider message' },
+  'zh-CN': { model: '模型', provider: '供应商', volc: '火山方舟', generate: '生成素材', confirm: '生成', retired: '这个模型已经下线了', retiredHint: '它已经不在模型列表里了', retryAlt: '仍要重试', switchModel: '换个模型', more: '更多', providerWords: '服务商原话', gemini: 'Gemini 3 Pro 图像', kling: '可灵 3.0' },
+  en: { model: 'Model', provider: 'Provider', volc: 'Volcengine Ark', generate: 'Generate asset', confirm: 'Generate', retired: 'This model has been removed', retiredHint: "It's no longer in the model list", retryAlt: 'Retry anyway', switchModel: 'Switch model', more: 'More', providerWords: 'Provider message', gemini: 'Gemini 3 Pro Image', kling: 'Kling 3.0' },
 }
 
 let failed = false
@@ -127,6 +128,14 @@ async function shot(win, name) {
   console.log(`  📸 ${name}`)
 }
 
+/** 只拍一个元素（退役卡特写），逐字核对文案用。 */
+async function shotElement(locator, name) {
+  const file = path.join(outDir, name)
+  await locator.screenshot({ path: file })
+  shots.push(file)
+  console.log(`  📸 ${name}`)
+}
+
 function launch() {
   return launchNomiApp({
     name: 'model-identity-walk',
@@ -162,7 +171,18 @@ async function openCanvas(win) {
   if (!ready) {
     await shot(win, `diag-open-canvas-${Date.now()}.png`).catch(() => undefined)
     const visible = await win.evaluate(() => (document.body.innerText || '').replace(/\s+/g, ' ').slice(0, 400)).catch(() => '')
-    throw new Error(`打不开走查项目的生成画布（节点没出现）。屏上文字：${visible}`)
+    // 屏上看得见节点、选择器却数到 0 的时候，把「那张卡在 DOM 里挂在哪」一并打出来，别再靠猜。
+    const dom = await win.evaluate(() => {
+      const label = Array.from(document.querySelectorAll('*')).find((element) => element.children.length === 0 && (element.textContent || '').trim() === 'vid-merge')
+      const chain = []
+      for (let node = label; node && chain.length < 12; node = node.parentElement) {
+        const cls = typeof node.className === 'string' && node.className.trim() ? `.${node.className.trim().split(/\s+/).slice(0, 3).join('.')}` : ''
+        const id = node.getAttribute('data-id') ? `[data-id=${node.getAttribute('data-id')}]` : ''
+        chain.splice(chain.length, 0, `${node.tagName.toLowerCase()}${cls}${id}`)
+      }
+      return { rfNodes: document.querySelectorAll('.react-flow__node').length, dataIds: document.querySelectorAll('[data-id]').length, chain }
+    }).catch((error) => ({ error: String(error) }))
+    throw new Error(`打不开走查项目的生成画布（节点没出现）。DOM：${JSON.stringify(dom)}。屏上文字：${visible}`)
   }
 }
 
@@ -296,6 +316,12 @@ async function checkModelBoxes(win, lang) {
   console.log(`    Seedance 2.5 行：${rowSummary(seedanceRow)}`)
   expectThat(seedanceRow?.chips.find((chip) => chip.active)?.label === T[lang].volc, `视频：Seedance 2.5 默认 chip = ${T[lang].volc}`)
   console.log(`    视频框里仍带渠道名的行：${rows.filter((row) => CHANNEL_NAMED.test(row.label)).map((row) => row.label).join('、') || '无'}`)
+  expectThat(rows.some((row) => row.label === T[lang].kling), `视频：可灵 3.0 在这个语言下显示为「${T[lang].kling}」`)
+  if (lang === 'en') {
+    const cjk = rows.filter((row) => /[\u4e00-\u9fff]/.test(row.label)).map((row) => row.label)
+    expectThat(!rows.some((row) => row.label === T['zh-CN'].kling), `视频：英文界面不再显示「${T['zh-CN'].kling}」`)
+    console.log(`    英文视频框里仍是中文的行：${cjk.join('、') || '无'}`)
+  }
   await revealRow(win, 'Seedance 2.5')
   await shot(win, `${lang}-video-model-box.png`)
   await win.keyboard.press('Escape')
@@ -311,8 +337,18 @@ async function checkModelBoxes(win, lang) {
   }
   expectThat(!rows.some((row) => MERGED_AWAY.image.test(row.label)), `图片：并进来的渠道行不再单列（残留：${rows.filter((row) => MERGED_AWAY.image.test(row.label)).map((row) => row.label).join('、') || '无'}）`)
   console.log(`    图片框里仍带渠道名的行：${rows.filter((row) => CHANNEL_NAMED.test(row.label)).map((row) => row.label).join('、') || '无'}`)
+  expectThat(rows.some((row) => row.label === T[lang].gemini), `图片：Gemini 3 Pro 在这个语言下显示为「${T[lang].gemini}」`)
+  if (lang === 'en') {
+    const cjk = rows.filter((row) => /[\u4e00-\u9fff]/.test(row.label)).map((row) => row.label)
+    expectThat(!rows.some((row) => row.label === T['zh-CN'].gemini), `图片：英文界面不再显示「${T['zh-CN'].gemini}」`)
+    console.log(`    英文图片框里仍是中文的行：${cjk.join('、') || '无'}`)
+  }
   await revealRow(win, 'GPT Image 2')
   await shot(win, `${lang}-image-model-box.png`)
+  if (lang === 'en') {
+    await revealRow(win, T.en.gemini)
+    await shot(win, 'en-image-model-box-gemini-label.png')
+  }
   await win.keyboard.press('Escape')
 }
 
@@ -383,7 +419,11 @@ async function soraScenario(win, lang, nodeId, prefix) {
   expectThat(!nodeText.includes(t.providerWords), `退役卡里没有「${t.providerWords}」框`)
   expectThat(Boolean(card), `点生成 → 「${t.retired}」`)
   expectThat(card?.primary === t.switchModel, `主按钮 = 「${t.switchModel}」（「${card?.primary}」）`)
+  expectThat(Boolean(card?.text.includes(t.retiredHint)), `正文是对任何下线模型都成立的说法（含「${t.retiredHint}」）`)
+  expectThat(!/一直失败|kept failing/i.test(card?.text || ''), '正文不再说「在服务商那边一直失败」')
+  expectThat(!(card?.text || '').includes(t.retryAlt), `卡上没有「${t.retryAlt}」`)
   await shot(win, `${prefix}-sora-retired-card.png`)
+  await shotElement(win.locator(`.react-flow__node[data-id="${nodeId}"] [role="alert"]`).first(), `${prefix}-sora-retired-card-closeup.png`)
   await win.locator(`.react-flow__node[data-id="${nodeId}"] [role="alert"]`).first().getByRole('button', { name: t.switchModel, exact: true }).click()
   const menu = await poll(async () => (await win.locator('[role="option"]:visible').count()) > 0, { timeout: 8000 })
   expectThat(Boolean(menu), `点「${t.switchModel}」→ 模型框打开`)
