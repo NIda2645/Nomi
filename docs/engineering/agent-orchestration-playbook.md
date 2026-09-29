@@ -387,6 +387,11 @@ node scripts/research/tikhub-search.mjs \
 owner 未定的概念照样要列，标 `pending` 并写清由哪份任务书收口。
 正本是 `docs/engineering/concept-owners.json`。
 
+**机器强制（`pnpm run check:concept-owners`，2026-09-29 起）**：登记表 v2 的结构与计数键、主人今天还在、
+第二写口（主人之外的同名定义）、pending 例外账与旧路写门冻结、身份比对维度，以及文件名日期 ≥ 2026-09-27 的
+根因合同的共享边界必须进账。占用表里写的「唯一 owner」就是登记表里的 `owner` / `write_api`；
+碰到没登记的概念就在同一个 PR 里登记，否则合同一进来就红（字段表见 R33.4）。
+
 **编排者这一侧多两件事**：
 
 - 维护**全局占用表**：哪个概念此刻归哪条 lane，从发工那一刻算起；同一时段同一概念只归一条。

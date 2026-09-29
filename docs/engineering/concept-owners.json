@@ -1,13 +1,35 @@
 {
-  "_schema": "concepts: [{ name, owner: { path, symbol?, pending? }, consumers: [path], since, notes }] · 纪律与判据见 docs/engineering-rules.md R33.4",
+  "_schema": "v2：concepts: [{ name, subject, lifecycle, authority_kind, trust_domain, fact_kind, migration_status, migration_strategy?, owner: { path, symbol }, write_api: [{ path, symbol }], forbidden_derivations: [{ symbol, kind, why }], identity_fields?, parity_test?, allowed_consumers: [path], since, notes }] · 字段表与判据见 docs/engineering-rules.md R33.4 · 门岗 pnpm run check:concept-owners",
+  "schema_version": 2,
   "concepts": [
     {
       "name": "等用户",
+      "subject": "agent-lane.awaiting-user",
+      "lifecycle": "execution",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/agentLane/laneApprovalGate.ts",
         "symbol": "createLaneApprovalGate"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/agentLane/laneApprovalGate.ts",
+          "symbol": "createLaneApprovalGate"
+        },
+        {
+          "path": "electron/shared/agentLane/laneApproval.ts",
+          "symbol": "preflightLaneApproval"
+        },
+        {
+          "path": "electron/shared/agentLane/laneApproval.ts",
+          "symbol": "laneApprovalGrantable"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "electron/agentLane/laneNativeApproval.ts",
         "electron/agentLane/laneRuntimePort.ts",
         "electron/agentLane/laneHost.mts",
@@ -19,28 +41,110 @@
     },
     {
       "name": "出价/待决身份",
+      "subject": "spend.pending-identity",
+      "lifecycle": "spend-authority",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "pending",
+      "migration_strategy": "durable 身份的目标是 ProductionRun / ProductionGenerationPlan.operationId（projectId + operationId），quoteId 只作报价版本指纹。由 Phase 0 施工卡 P0-5（docs/audit/2026-09-26-phase-zero-construction-cards.md）收口；直接画布那条 nodeId + quoteId 的旧路随 Phase 2 的 direct canvas paid → ProductionRun 试点迁走。收口判据：PendingSpendConfirm 只剩 ProductionRun 投影这一个生产者，forbidden_derivations 里的四个报价 / 令牌函数不再有生产调用处。",
       "owner": {
         "path": "electron/shared/contracts/pendingSpendConfirm.ts",
-        "symbol": "PendingSpendConfirm",
-        "pending": true
+        "symbol": "PendingSpendConfirm"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/contracts/pendingSpendConfirm.ts",
+          "symbol": "PendingSpendConfirm"
+        },
+        {
+          "path": "electron/productionRun/productionPendingSpend.ts",
+          "symbol": "projectPendingSpendConfirm"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "prepareSpendQuote",
+          "kind": "reference",
+          "why": "直接画布按 quoteId 出价——与 operationId 竞争「这一笔」身份的旧路（Phase 0 冻结决策：迁移前不新增消费者）"
+        },
+        {
+          "symbol": "takeSpendQuote",
+          "kind": "reference",
+          "why": "直接画布按 quoteId 取回报价——同一条旧路，迁移前不新增消费者"
+        },
+        {
+          "symbol": "mintSpendGrant",
+          "kind": "reference",
+          "why": "直接画布按 nodeId + quoteId 铸花钱令牌——同一条旧路，迁移前不新增调用处"
+        },
+        {
+          "symbol": "assertAndConsumeQuotedSpend",
+          "kind": "reference",
+          "why": "直接画布按 quoteId 核销令牌——同一条旧路，迁移前不新增调用处"
+        }
+      ],
+      "allowed_consumers": [
         "electron/productionRun/productionPendingSpend.ts",
         "electron/capabilityCore/spendDecisionWaiters.ts",
         "src/workbench/ai/v4/spendCardDraft.ts",
         "electron/spendQuote.ts",
-        "electron/spendGrant.ts"
+        "electron/spendGrant.ts",
+        "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+        "electron/capabilityCore/pendingSpendReferences.ts",
+        "src/devlab/designLab/v4/states/07-spend-params.tsx",
+        "src/workbench/ai/v4/agentPanelSpendCard.ts",
+        "src/workbench/ai/v4/spendCardEstimate.ts",
+        "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+        "electron/spendConfirmGrant.ts",
+        "electron/tasks/taskIpcHandlers.ts",
+        "electron/tasks/taskSpend.ts",
+        "electron/integrationCertification/integrationSession.ts",
+        "electron/integrationCertification/integrationSessionRuntimeInstall.ts",
+        "electron/capabilityCore/modelOnboarding/tryModel.ts",
+        "electron/parity/generationParityTestUtils.ts",
+        "src/ui/onboarding/workflowPage/runTestGeneration.ts",
+        "src/workbench/generationCanvas/runner/generationRunController.ts",
+        "src/workbench/generationCanvas/spend/spendConfirm.ts"
       ],
       "since": "2026-09-22",
       "notes": "pending：DTO 不是 durable owner，只是跨进程投影契约。durable identity 目标是 ProductionRun/ProductionGenerationPlan.operationId（projectId + operationId）；quoteId 只表示报价/版本指纹。当前消费者包括 electron/productionRun/productionPendingSpend.ts、electron/capabilityCore/spendDecisionWaiters.ts、src/workbench/ai/v4/spendCardDraft.ts 以及对应 IPC/Agent projection；现有消费者允许继续读，新写消费者在 owner promotion 前禁止。直接画布 electron/spendQuote.ts + electron/spendGrant.ts 使用 nodeId + quoteId，是另一个 bounded context，记录为迁移候选，不得冒充全局待决身份。"
     },
     {
       "name": "参数准入",
+      "subject": "generation.parameter-admission",
+      "lifecycle": "frozen-execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/capabilityCore/executionContract.ts",
         "symbol": "compileParameters"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/executionContract.ts",
+          "symbol": "compileParameters"
+        },
+        {
+          "path": "electron/capabilityCore/executionContract.ts",
+          "symbol": "admitPlanCandidate"
+        },
+        {
+          "path": "electron/capabilityCore/generationPlanningParameters.ts",
+          "symbol": "GENERATION_PLANNING_HINTS"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "GENERATION_PLANNING_PARAMETER_KEYS",
+          "kind": "definition",
+          "why": "09-22 打捞分支的第二张意图键表；现在只许在 owner 文件里由 GENERATION_PLANNING_HINTS 派生"
+        }
+      ],
+      "parity_test": "electron/capabilityCore/parameterAdmission.class.test.ts",
+      "allowed_consumers": [
         "electron/capabilityCore/generationPlanPatch.ts",
         "electron/capabilityCore/mcpGenerationTools.ts",
         "electron/capabilityCore/mcpGenerationMultiShot.ts",
@@ -54,11 +158,41 @@
     },
     {
       "name": "供应商落家",
+      "subject": "catalog.vendor-landing",
+      "lifecycle": "catalog",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/contracts/vendorPreference.ts",
         "symbol": "compareVendorLanding"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/contracts/vendorPreference.ts",
+          "symbol": "compareVendorLanding"
+        },
+        {
+          "path": "electron/shared/contracts/vendorPreference.ts",
+          "symbol": "vendorTier"
+        },
+        {
+          "path": "electron/shared/contracts/vendorPreference.ts",
+          "symbol": "orderByVendorPreference"
+        },
+        {
+          "path": "electron/shared/contracts/vendorPreference.ts",
+          "symbol": "OFFICIAL_VENDOR_KEYS"
+        },
+        {
+          "path": "electron/shared/contracts/vendorPreference.ts",
+          "symbol": "BUILTIN_RELAY_VENDOR_KEYS"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/parity/vendorLandingParity.test.ts",
+      "allowed_consumers": [
         "electron/catalog/executableModel.ts",
         "src/config/modelIdentity.ts",
         "src/workbench/ai/v4/agentPanelV4ModelRows.ts",
@@ -69,11 +203,40 @@
     },
     {
       "name": "渲染层失败证据（进主进程日志的那一行）",
+      "subject": "diagnostics.renderer-failure-log",
+      "lifecycle": "host",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "durable",
+      "migration_status": "converged",
       "owner": {
         "path": "src/desktop/rendererLog.ts",
         "symbol": "forwardToMainLog"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/desktop/rendererLog.ts",
+          "symbol": "forwardToMainLog"
+        },
+        {
+          "path": "src/desktop/rendererLog.ts",
+          "symbol": "logRendererError"
+        },
+        {
+          "path": "src/desktop/rendererLog.ts",
+          "symbol": "logRendererWarn"
+        },
+        {
+          "path": "src/desktop/rendererLog.ts",
+          "symbol": "logRendererCrash"
+        },
+        {
+          "path": "src/desktop/rendererLog.ts",
+          "symbol": "installRendererErrorCapture"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "electron/logging/rendererLog.ts",
         "electron/diagnostics/diagnosticsBundle.ts",
         "electron/feedback/feedbackIpc.ts"
@@ -83,11 +246,28 @@
     },
     {
       "name": "任务分组",
+      "subject": "task-center.grouping",
+      "lifecycle": "projection",
+      "authority_kind": "projection",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/taskCenter/taskCenterProjection.ts",
         "symbol": "TASK_CENTER_GROUPS"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/taskCenter/taskCenterProjection.ts",
+          "symbol": "TASK_CENTER_GROUPS"
+        },
+        {
+          "path": "src/workbench/taskCenter/taskCenterEntries.ts",
+          "symbol": "summarizeTaskCenterRows"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/taskCenter/taskCenterEntries.ts",
         "src/workbench/taskCenter/productionRunTaskCenter.ts",
         "src/workbench/taskCenter/exportJobTaskCenter.ts",
@@ -101,11 +281,24 @@
     },
     {
       "name": "制作 Run 算不算任务",
+      "subject": "task-center.production-run-membership",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/production/productionRunView.ts",
         "symbol": "isProductionRunTask"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/production/productionRunView.ts",
+          "symbol": "isProductionRunTask"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/taskCenter/productionRunTaskCenter.ts",
         "src/workbench/production/productionRunStore.ts"
       ],
@@ -114,11 +307,29 @@
     },
     {
       "name": "制作镜头在画布上的运行状态",
+      "subject": "production.shot-phase",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "projection",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/productionShotPhase.ts",
         "symbol": "deriveProductionShotState"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/productionShotPhase.ts",
+          "symbol": "deriveProductionShotState"
+        },
+        {
+          "path": "electron/shared/productionShotPhase.ts",
+          "symbol": "productionJobPhase"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/shared/productionShotPhase.test.ts",
+      "allowed_consumers": [
         "electron/productionRun/multiShotCanvasLanding.ts",
         "electron/productionRun/canvasLandingHost.ts",
         "electron/capabilityCore/appIntegrationRunObservation.ts",
@@ -131,11 +342,24 @@
     },
     {
       "name": "供应商产物取回线路",
+      "subject": "provider.media-retrieval",
+      "lifecycle": "provider-observation",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/assets/providerMediaFetch.ts",
         "symbol": "fetchProviderMedia"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/assets/providerMediaFetch.ts",
+          "symbol": "fetchProviderMedia"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "electron/assets/projectAssetStore.ts",
         "electron/assets/downloadAsset.ts",
         "electron/capabilityCore/generationOutputMaterializer.ts"
@@ -145,11 +369,32 @@
     },
     {
       "name": "画布手势寿命（一次拖动/框选/缩放何时结束）",
+      "subject": "canvas.gesture-lifetime",
+      "lifecycle": "live-interaction",
+      "authority_kind": "lease",
+      "trust_domain": "renderer",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
         "symbol": "beginCanvasDragging"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/components/canvasDraggingFlag.ts",
+          "symbol": "beginCanvasDragging"
+        },
+        {
+          "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+          "symbol": "endKernelNodeDrag"
+        },
+        {
+          "path": "src/workbench/generationCanvas/reactFlow/canvasDragWriteback.ts",
+          "symbol": "keyboardMoveScope"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/generationCanvas/components/useCanvasSelectionDrag.ts",
         "src/workbench/generationCanvas/nodes/useNodeDragResize.ts",
         "src/workbench/generationCanvas/nodes/NodeVideoPlaybackGuard.tsx",
@@ -162,11 +407,28 @@
     },
     {
       "name": "画布视频何时挂播放器、谁在播",
+      "subject": "canvas.video-playback",
+      "lifecycle": "live-interaction",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/nodes/nodeVideoPlayback.ts",
         "symbol": "claimNodeVideoPlayback"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/nodes/nodeVideoPlayback.ts",
+          "symbol": "claimNodeVideoPlayback"
+        },
+        {
+          "path": "src/workbench/generationCanvas/nodes/nodeVideoPlayback.ts",
+          "symbol": "releaseNodeVideoPlayback"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/generationCanvas/nodes/NodeVideoPlaybackGuard.tsx",
         "src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx"
       ],
@@ -175,11 +437,24 @@
     },
     {
       "name": "视频封面",
+      "subject": "asset.video-cover",
+      "lifecycle": "materialized-artifact",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "durable",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/assets/assetPreview.ts",
         "symbol": "attachStoredAssetPreview"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/assets/assetPreview.ts",
+          "symbol": "attachStoredAssetPreview"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "electron/assets/assetSidecar.ts",
         "electron/assets/localFileImport.ts",
         "electron/assets/localizeTaskAsset.ts",
@@ -193,11 +468,24 @@
     },
     {
       "name": "@ 引用落哪个槽",
+      "subject": "canvas.mention-reference-slot",
+      "lifecycle": "author",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/model/canvasReferenceConnection.ts",
         "symbol": "resolveMentionReference"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/model/canvasReferenceConnection.ts",
+          "symbol": "resolveMentionReference"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/generationCanvas/nodes/useNodeMentionSource.ts"
       ],
       "since": "2026-09-25",
@@ -205,12 +493,40 @@
     },
     {
       "name": "画布缩放",
+      "subject": "canvas.zoom",
+      "lifecycle": "live-interaction",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "pending",
+      "migration_strategy": "五个直接读 workbenchStore.categoryViewports[*].zoom 的节点组件（NodeFloatingToolbar / NodeGeneratingOverlay / NodeImportingOverlay / NodeLabelRow / NodeGenerationComposer）改读 useCanvasLiveZoom；宿主不在 ReactFlowProvider 内的设计实验室登记例外并做性能验证后关 pending（Phase 0 施工卡 P0-5）。收口判据：categoryViewports 的读者只剩「画布记住的视角」自己的消费者。",
       "owner": {
         "path": "src/workbench/generationCanvas/reactFlow/canvasViewportScale.ts",
-        "symbol": "selectFlowZoom",
-        "pending": true
+        "symbol": "selectFlowZoom"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/reactFlow/canvasViewportScale.ts",
+          "symbol": "selectFlowZoom"
+        },
+        {
+          "path": "src/workbench/generationCanvas/reactFlow/canvasViewportScale.ts",
+          "symbol": "useCanvasLiveZoom"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "categoryViewports",
+          "kind": "reference",
+          "why": "持久化的「记住的视角」不是实时缩放；五个节点组件直接读它是 pending 例外，例外账之外不许再有读者"
+        },
+        {
+          "symbol": "rememberCategoryViewport",
+          "kind": "reference",
+          "why": "写持久化视角的唯一入口；程序动画中间帧写 store 的旧路已删，pending 期间旧路上不许再长写口"
+        }
+      ],
+      "allowed_consumers": [
         "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowNodes.tsx",
         "src/workbench/generationCanvas/nodes/ClipNode.tsx",
         "src/workbench/generationCanvas/nodes/shotTable/ShotTableNode.tsx",
@@ -218,18 +534,41 @@
         "src/workbench/generationCanvas/nodes/NodeGeneratingOverlay.tsx",
         "src/workbench/generationCanvas/nodes/NodeImportingOverlay.tsx",
         "src/workbench/generationCanvas/nodes/NodeLabelRow.tsx",
-        "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx"
+        "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx",
+        "src/workbench/generationCanvas/components/useAutoFitOnLoad.ts",
+        "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
+        "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx",
+        "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts",
+        "src/workbench/generationCanvas/store/canvasVisibleArea.ts",
+        "src/workbench/workbenchStore.ts",
+        "src/devlab/designLab/canvasFrame/states/02-shot-label.tsx",
+        "src/devlab/designLab/nodeComposerBar/nodeComposerBarLabKit.tsx",
+        "src/devlab/designLab/processFeedback/processFeedbackLabKit.tsx"
       ],
       "since": "2026-09-25",
       "notes": "pending：React Flow transform[2] 是 live zoom 的唯一真相；workbenchStore.categoryViewports[*].zoom 只是持久化的记住视角，不应被当成实时缩放。程序动画的中间帧已不再写 store，但 NodeFloatingToolbar、NodeGeneratingOverlay、NodeImportingOverlay、NodeLabelRow、NodeGenerationComposer 仍直接读 store 副本。迁移目标是 useCanvasLiveZoom，若宿主不在 ReactFlowProvider 内必须显式登记设计实验室例外并做性能验证；完成前保留 pending。"
     },
     {
       "name": "画布生成浮框的位置与宽度",
+      "subject": "canvas.composer-placement",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/nodes/composerCanvasPlacement.ts",
         "symbol": "composerCanvasPlacement"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/nodes/composerCanvasPlacement.ts",
+          "symbol": "composerCanvasPlacement"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/generationCanvas/nodes/composerCanvasPlacement.test.ts",
+      "allowed_consumers": [
         "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx"
       ],
       "since": "2026-09-25",
@@ -237,11 +576,28 @@
     },
     {
       "name": "付费生成要不要弹确认",
+      "subject": "spend.confirmation-requirement",
+      "lifecycle": "spend-authority",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
         "symbol": "spendConfirmationRequirement"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+          "symbol": "spendConfirmationRequirement"
+        },
+        {
+          "path": "src/workbench/generationCanvas/spend/spendConfirm.ts",
+          "symbol": "confirmGenerationSpend"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/generationCanvas/runner/generationRunController.ts",
         "src/workbench/generationCanvas/components/batchPlanPreview.ts",
         "src/workbench/creation/storyboard/exec/storyboardRowActions.ts"
@@ -251,11 +607,32 @@
     },
     {
       "name": "新东西落在画布哪里（相对用户看得见的那块）",
+      "subject": "canvas.insertion-point",
+      "lifecycle": "live-interaction",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/store/canvasVisibleArea.ts",
         "symbol": "visibleInsertionPoint"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/store/canvasVisibleArea.ts",
+          "symbol": "visibleInsertionPoint"
+        },
+        {
+          "path": "src/workbench/generationCanvas/store/canvasVisibleArea.ts",
+          "symbol": "placeBlockInVisibleArea"
+        },
+        {
+          "path": "src/workbench/generationCanvas/store/canvasVisibleArea.ts",
+          "symbol": "publishCanvasStageSize"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/generationCanvas/store/canvasNodeActions.ts",
         "src/workbench/generationCanvas/store/resolveInsertionPosition.ts",
         "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
@@ -267,11 +644,25 @@
     },
     {
       "name": "谁能移动画布视口",
+      "subject": "canvas.viewport-movement",
+      "lifecycle": "live-interaction",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/reactFlow/useReactFlowViewportAnimation.ts",
         "symbol": "animateViewportTo"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/reactFlow/useReactFlowViewportAnimation.ts",
+          "symbol": "animateViewportTo"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/generationCanvas/components/canvasViewportMovers.structure.test.ts",
+      "allowed_consumers": [
         "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
         "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowEffects.ts",
         "src/workbench/generationCanvas/reactFlow/useCanvasArrivalHint.ts",
@@ -282,11 +673,24 @@
     },
     {
       "name": "画布记住的视角（每个分类）",
+      "subject": "canvas.remembered-viewport",
+      "lifecycle": "preference",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "durable",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/workbenchStore.ts",
         "symbol": "rememberCategoryViewport"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/workbenchStore.ts",
+          "symbol": "rememberCategoryViewport"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/generationCanvas/components/useAutoFitOnLoad.ts",
         "src/workbench/generationCanvas/store/canvasVisibleArea.ts",
         "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx"
@@ -296,11 +700,24 @@
     },
     {
       "name": "模型工具的身份",
+      "subject": "agent.tool-identity",
+      "lifecycle": "catalog",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/agentCapabilities/modelFacingToolRegistry.ts",
         "symbol": "MODEL_FACING_TOOL_SPECS"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/agentCapabilities/modelFacingToolRegistry.ts",
+          "symbol": "MODEL_FACING_TOOL_SPECS"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/ai/resident/timelineAgentSurface.tsx",
         "src/workbench/ai/v4/agentPanelV4Intervention.ts",
         "src/workbench/ai/resident/residentToolDisplay.ts",
@@ -313,11 +730,24 @@
     },
     {
       "name": "技能显示名",
+      "subject": "skill.display-name",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/skillLibrary/skillDisplay.ts",
         "symbol": "skillLabelForKey"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/skillLibrary/skillDisplay.ts",
+          "symbol": "skillLabelForKey"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/ai/v4/useAgentPanelV4Data.ts",
         "src/workbench/ai/lane/laneViewModel.ts",
         "src/workbench/ai/ProjectAgentResidentShell.tsx",
@@ -328,11 +758,24 @@
     },
     {
       "name": "制作镜头的生成归属",
+      "subject": "production.shot-generation-ownership",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/productionShotPhase.ts",
         "symbol": "productionShotOwnsGeneration"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/productionShotPhase.ts",
+          "symbol": "productionShotOwnsGeneration"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/production/productionShotOwnership.ts",
         "src/workbench/generationCanvas/components/canvasProductionScope.ts",
         "src/workbench/generationCanvas/runner/generationRunController.ts"
@@ -342,11 +785,24 @@
     },
     {
       "name": "素材库落点的项目归属（跨项目先复制）",
+      "subject": "asset.library-drop-materialization",
+      "lifecycle": "project-data",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/assets/assetLibraryMaterialize.ts",
         "symbol": "materializeAssetLibraryItems"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/assets/assetLibraryMaterialize.ts",
+          "symbol": "materializeAssetLibraryItems"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/generationCanvas/components/canvasStageDrop.ts",
         "src/workbench/timeline/addAssetToTimeline.ts",
         "src/workbench/assets/AssetLibraryPanel.tsx"
@@ -356,11 +812,24 @@
     },
     {
       "name": "素材格子的选择规则",
+      "subject": "asset.library-selection",
+      "lifecycle": "live-interaction",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/assets/assetLibraryUsage.ts",
         "symbol": "nextAssetSelection"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/assets/assetLibraryUsage.ts",
+          "symbol": "nextAssetSelection"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/assets/AssetLibraryPanel.tsx"
       ],
       "since": "2026-09-25",
@@ -368,11 +837,24 @@
     },
     {
       "name": "宿主跨源隔离头",
+      "subject": "host.cross-origin-isolation",
+      "lifecycle": "host",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/crossOriginIsolation.ts",
         "symbol": "CROSS_ORIGIN_ISOLATION_HEADERS"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/crossOriginIsolation.ts",
+          "symbol": "CROSS_ORIGIN_ISOLATION_HEADERS"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "electron/contentSecurityPolicy.ts",
         "vite.config.ts"
       ],
@@ -381,11 +863,24 @@
     },
     {
       "name": "第三方示例媒体的失效",
+      "subject": "media.remote-example-failure",
+      "lifecycle": "session",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
       "owner": {
         "path": "src/media/remoteExampleMedia.ts",
         "symbol": "useRemoteExampleMedia"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/media/remoteExampleMedia.ts",
+          "symbol": "useRemoteExampleMedia"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/promptLibrary/PromptCard.tsx",
         "src/workbench/promptLibrary/PromptPreviewOverlay.tsx",
         "src/workbench/skillLibrary/SkillMedia.tsx"
@@ -395,11 +890,28 @@
     },
     {
       "name": "项目数据里的构建产物地址",
+      "subject": "project.build-artifact-url",
+      "lifecycle": "project-data",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/workspace/buildArtifactMigration.ts",
         "symbol": "createBuildArtifactRewriter"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/workspace/buildArtifactMigration.ts",
+          "symbol": "createBuildArtifactRewriter"
+        },
+        {
+          "path": "electron/shared/buildArtifactUrl.ts",
+          "symbol": "classifyBuildArtifactUrl"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "electron/workspace/workspaceManifest.ts",
         "electron/shared/buildArtifactUrl.ts"
       ],
@@ -408,11 +920,24 @@
     },
     {
       "name": "剪辑面板的收起状态",
+      "subject": "editing.panel-collapse",
+      "lifecycle": "preference",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "durable",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/preview/editingPanelLayoutSlice.ts",
         "symbol": "setEditingPanelLayout"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/preview/editingPanelLayoutSlice.ts",
+          "symbol": "setEditingPanelLayout"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/preview/PreviewWorkspace.tsx",
         "src/workbench/preview/PreviewSourcePanel.tsx",
         "src/workbench/preview/panelLayout.ts"
@@ -422,11 +947,24 @@
     },
     {
       "name": "叫回 Nomi 的入口",
+      "subject": "shell.recall-entry",
+      "lifecycle": "projection",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
       "owner": {
         "path": "src/ui/app-shell/CollapsedAiChip.tsx",
         "symbol": "CollapsedAiChip"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/ui/app-shell/CollapsedAiChip.tsx",
+          "symbol": "CollapsedAiChip"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/ui/app-shell/NomiAppBar.tsx"
       ],
       "since": "2026-09-25",
@@ -434,11 +972,36 @@
     },
     {
       "name": "用户真实资料目录（在哪 + 凭据由哪几份文件组成）",
+      "subject": "test-harness.real-profile",
+      "lifecycle": "delivery",
+      "authority_kind": "gateway",
+      "trust_domain": "test",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
       "owner": {
         "path": "tests/ux/_realProfile.mjs",
         "symbol": "realNomiProfile"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "tests/ux/_realProfile.mjs",
+          "symbol": "realNomiProfile"
+        },
+        {
+          "path": "tests/ux/_realProfile.mjs",
+          "symbol": "seedRealCredentials"
+        },
+        {
+          "path": "tests/ux/_realProfile.mjs",
+          "symbol": "seedRealModels"
+        },
+        {
+          "path": "tests/ux/_realProfile.mjs",
+          "symbol": "removeRealCredentials"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "evals/lib/isoApp.mjs",
         "tests/ux/_paidRun.mjs",
         "tests/ux/core-smoke/run.mjs",
@@ -452,11 +1015,32 @@
     },
     {
       "name": "付费走查的开关与收据",
+      "subject": "test-harness.paid-run",
+      "lifecycle": "delivery",
+      "authority_kind": "gateway",
+      "trust_domain": "test",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "tests/ux/_paidRun.mjs",
         "symbol": "paidRunRefusal"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "tests/ux/_paidRun.mjs",
+          "symbol": "paidRunRefusal"
+        },
+        {
+          "path": "tests/ux/_paidRun.mjs",
+          "symbol": "assertPaidRunAllowed"
+        },
+        {
+          "path": "tests/ux/_paidRun.mjs",
+          "symbol": "spendReceipt"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "tests/ux/canvas-spend-policy.paid.mjs",
         "tests/ux/agent-spend-real-image.paid.mjs",
         "tests/ux/agent-video-landing.paid.mjs",
@@ -470,11 +1054,24 @@
     },
     {
       "name": "执行计划检查的镜头字段表（resolve 输入）",
+      "subject": "generation.resolve-input-schema",
+      "lifecycle": "author",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/agentCapabilities/generation.ts",
         "symbol": "generationResolveInputSchema"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/agentCapabilities/generation.ts",
+          "symbol": "generationResolveInputSchema"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "electron/capabilityCore/mcpGenerationTools.ts",
         "electron/capabilityCore/generationResolveIpc.ts",
         "electron/shared/videoCapabilities/planResolver.ts",
@@ -486,11 +1083,29 @@
     },
     {
       "name": "首帧边落哪个参考槽",
+      "subject": "canvas.first-frame-slot",
+      "lifecycle": "author",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/runner/referenceSlots.ts",
         "symbol": "assignEdgeToSlot"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/runner/referenceSlots.ts",
+          "symbol": "assignEdgeToSlot"
+        },
+        {
+          "path": "src/workbench/generationCanvas/runner/referenceSlots.ts",
+          "symbol": "firstFrameEdgeSlot"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/creation/storyboard/shotRow/shotRowModel.plannedFirstFrame.test.ts",
+      "allowed_consumers": [
         "src/workbench/generationCanvas/runner/referenceSlots.ts",
         "src/workbench/creation/storyboard/shotRow/shotRowModel.ts"
       ],
@@ -499,11 +1114,24 @@
     },
     {
       "name": "分镜行缺必填参考",
+      "subject": "storyboard.missing-required-reference",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/creation/storyboard/shotRow/shotRowModel.ts",
         "symbol": "missingRequiredSlotsOf"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/creation/storyboard/shotRow/shotRowModel.ts",
+          "symbol": "missingRequiredSlotsOf"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
         "src/workbench/creation/storyboard/shotRow/StoryboardShotRow.tsx",
         "src/workbench/creation/storyboard/shotRow/ShotReferenceZone.tsx",
@@ -516,11 +1144,29 @@
     },
     {
       "name": "一次生成跑哪个变体",
+      "subject": "generation.variant-resolution",
+      "lifecycle": "frozen-execution",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/modelArchetypes/variantResolution.ts",
         "symbol": "resolveArchetypeVariant"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/modelArchetypes/variantResolution.ts",
+          "symbol": "resolveArchetypeVariant"
+        },
+        {
+          "path": "electron/shared/modelArchetypes/variantResolution.ts",
+          "symbol": "canonicalArchetypeVariantId"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/parity/variantResolutionParity.test.ts",
+      "allowed_consumers": [
         "src/workbench/generationCanvas/nodes/controls/archetypeMeta.ts",
         "src/workbench/generationCanvas/agent/plannedNodeMeta.ts",
         "src/workbench/ai/v4/spendCardDraft.ts",
@@ -535,11 +1181,24 @@
     },
     {
       "name": "生成参数值能是什么",
+      "subject": "generation.parameter-value-schema",
+      "lifecycle": "author",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
         "symbol": "generationJsonValueSchema"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "electron/shared/agentCapabilities/generationPlanSchemas.ts",
+          "symbol": "generationJsonValueSchema"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "src/workbench/ai/v4/spendCardDraft.ts"
       ],
       "since": "2026-09-26",
@@ -547,11 +1206,37 @@
     },
     {
       "name": "生成面底部区域的收起偏好",
+      "subject": "workbench.dock-collapse",
+      "lifecycle": "preference",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "durable",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generation/dockCollapsePrefs.ts",
         "symbol": "readDockCollapsed"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/generation/dockCollapsePrefs.ts",
+          "symbol": "readDockCollapsed"
+        },
+        {
+          "path": "src/workbench/generation/dockCollapsePrefs.ts",
+          "symbol": "writeDockCollapsed"
+        },
+        {
+          "path": "src/workbench/generation/dockCollapsePrefs.ts",
+          "symbol": "dockCollapsedByDefault"
+        },
+        {
+          "path": "src/workbench/generation/useDockCollapsed.ts",
+          "symbol": "useDockCollapsed"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/generation/dockCollapsePrefs.test.ts",
+      "allowed_consumers": [
         "src/workbench/workbenchStore.ts",
         "src/workbench/timeline/TimelineMiniPreview.tsx",
         "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx",
@@ -562,17 +1247,722 @@
     },
     {
       "name": "制作节点的运行记录由谁写",
+      "subject": "production.node-run-record",
+      "lifecycle": "projection",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
       "owner": {
         "path": "src/workbench/capability/multiShotCanvasLanding.ts",
         "symbol": "applyShotGeneration"
       },
-      "consumers": [
+      "write_api": [
+        {
+          "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+          "symbol": "applyShotGeneration"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
         "electron/productionRun/multiShotCanvasLanding.ts",
         "electron/shared/productionShotPhase.ts",
         "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts"
       ],
       "since": "2026-09-26",
       "notes": "制作投影写进节点的那条运行记录（id 由 productionShotPhase.productionRunRecordId 生成、isProductionRunRecord 认）只归制作投影写：主进程 buildMaterializeShotsPayload 算出每镜的「生成中 / 失败 / 结束 / 出片」，渲染层 applyShotGeneration 落到节点上。画布自己的重开收敛（canvasSnapshotNormalizer.convergeStuckMidFlightNode）不许碰它——2026-09-26 真付费 T5：重开窗口后在跑的第 1 镜被当幽灵收成空闲，看着像没在跑（合同 docs/fixes/2026-09-26-inflight-shot-reload-display.root-cause.json）。"
+    },
+    {
+      "name": "Agent 面板的文案对象（每种语言一个稳定对象）",
+      "subject": "agent-panel.labels-cache",
+      "lifecycle": "session",
+      "authority_kind": "projection",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/ai/v4/agentPanelV4Labels.ts",
+        "symbol": "useV4Labels"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/ai/v4/agentPanelV4Labels.ts",
+          "symbol": "useV4Labels"
+        },
+        {
+          "path": "src/workbench/ai/v4/agentPanelV4Labels.ts",
+          "symbol": "buildV4Labels"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/ai/v4/agentPanelV4Performance.test.ts",
+      "allowed_consumers": [
+        "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+        "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+        "src/workbench/ai/ProjectAgentResidentShell.tsx",
+        "src/ui/app-shell/CollapsedAiChip.tsx",
+        "src/devlab/designLab/v4/states/01-vocabulary.tsx",
+        "src/devlab/designLab/v4/states/03-flow.tsx",
+        "src/devlab/designLab/v4/states/07-spend-params.tsx"
+      ],
+      "since": "2026-09-27",
+      "notes": "PR #904（合同 docs/fixes/2026-09-27-agent-panel-long-conversation-freeze.root-cause.json）：21 回合长对话把渲染进程冻住——每行每次渲染都新建一份 labels、调 64 次 t()。现在按 i18n.resolvedLanguage 缓存，同一语言返回同一个引用，切语言才重建；调用方照旧 useV4Labels()，不许再自己拼一份 labels 对象。"
+    },
+    {
+      "name": "Agent 面板流条目的身份（一次流式更新只重画变了的行）",
+      "subject": "agent-panel.flow-render-identity",
+      "lifecycle": "projection",
+      "authority_kind": "projection",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+        "symbol": "shareFlowItems"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+          "symbol": "shareFlowItems"
+        },
+        {
+          "path": "src/workbench/ai/v4/shareEqualDeep.ts",
+          "symbol": "replaceEqualDeep"
+        },
+        {
+          "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+          "symbol": "V4FlowRow"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/ai/v4/agentPanelV4Performance.test.ts",
+      "allowed_consumers": [
+        "src/devlab/designLab/v4/states/01-vocabulary.tsx"
+      ],
+      "since": "2026-09-27",
+      "notes": "PR #904（同上合同）：一次流式更新的渲染代价必须与对话长度无关。派生出来的整条 flow 经 shareFlowItems 走通用结构共享 replaceEqualDeep（照 TanStack Query 的 replaceEqualDeep：递归复用相等的普通对象 / 数组子树），未变的条目沿用上一轮引用；行组件 V4FlowRow 是 memo 边界、回调走稳定包装。不许按 V4FlowItem 的种类另写一份字段对比清单。"
+    },
+    {
+      "name": "画布媒体节点的固有尺寸（图片 / 视频宽高）",
+      "subject": "canvas.media-intrinsic-size",
+      "lifecycle": "project-data",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "durable",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+        "symbol": "computeMediaMetaPatch"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/nodes/nodeSizing.ts",
+          "symbol": "computeMediaMetaPatch"
+        },
+        {
+          "path": "src/workbench/generationCanvas/store/nodeRunOutcome.ts",
+          "symbol": "nodeRunOutcomePatch"
+        },
+        {
+          "path": "src/workbench/project/projectMediaMigration.ts",
+          "symbol": "backfillCanvasMediaDimensions"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/generationCanvas/store/nodeRunOutcome.test.ts",
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/adapters/assetImportAdapter.ts",
+        "src/workbench/generationCanvas/components/canvasResultDrag.ts",
+        "src/workbench/generationCanvas/components/canvasStageDrop.ts",
+        "src/workbench/generationCanvas/components/ScreenshotCropOverlay.tsx",
+        "src/workbench/generationCanvas/nodes/buildContactSheetNode.ts",
+        "src/workbench/generationCanvas/nodes/director/agent/StagingCaptureHost.tsx",
+        "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+        "src/workbench/generationCanvas/nodes/useNodeImageEditing.ts",
+        "src/workbench/generationCanvas/nodes/useNodeMediaMeasurement.ts",
+        "src/workbench/generationCanvas/nodes/useNodePanoramaHandlers.ts",
+        "src/workbench/generationCanvas/nodes/whiteboard/WhiteboardModal.tsx",
+        "src/workbench/generationCanvas/runner/projectAssetHealthCheck.ts",
+        "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+        "src/workbench/generationCanvas/runner/textActions.ts",
+        "src/workbench/generationCanvas/store/canvasRunActions.ts",
+        "src/workbench/project/projectPersistenceService.ts"
+      ],
+      "since": "2026-09-27",
+      "notes": "v0.22.3 热修 295a7018a（合同 docs/fixes/2026-09-27-canvas-media-aspect-from-landing.root-cause.json）：结果落地后节点外框按错误比例摆。每个媒体结果的落地边界都经 computeMediaMetaPatch 写规范的宽高，最早的共享落地点是 nodeRunOutcomePatch，老项目打开时由 backfillCanvasMediaDimensions 从素材记录补齐。不许各落地点自己量尺寸写 meta。"
+    },
+    {
+      "name": "这段字节是不是冒充媒体的网页 / 文本",
+      "subject": "asset.markup-masquerade",
+      "lifecycle": "materialized-artifact",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/assets/mediaTypes.ts",
+        "symbol": "isMarkupMasquerade"
+      },
+      "write_api": [
+        {
+          "path": "electron/assets/mediaTypes.ts",
+          "symbol": "isMarkupMasquerade"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/assets/mediaTypes.test.ts",
+      "allowed_consumers": [
+        "electron/assets/projectAssetStore.ts",
+        "electron/catalog/assetLocalization.ts",
+        "electron/providerAdapter/certificationMedia.ts"
+      ],
+      "since": "2026-09-27",
+      "notes": "PR #907（合同 docs/fixes/2026-09-27-reference-image-markup-false-positive.root-cause.json）：这条判断原来有三份定义（生成落地、认证、参考上传），两份锚在文件开头、一份漂成不锚定的全文搜索，把正常参考图误判成网页。现在只有一份，锚在 BOM 与空白之后的文件开头，住在已经负责「字节 → 媒体类型」的 mediaTypes 旁边；各校验边界只消费它。"
+    },
+    {
+      "name": "跨进程的错误机器码",
+      "subject": "diagnostics.error-code",
+      "lifecycle": "host",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/nomiErrorCodes.ts",
+        "symbol": "NomiErrorCode"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/nomiErrorCodes.ts",
+          "symbol": "NomiErrorCode"
+        },
+        {
+          "path": "electron/shared/nomiErrorCodes.ts",
+          "symbol": "tagNomiError"
+        },
+        {
+          "path": "electron/shared/nomiErrorCodes.ts",
+          "symbol": "matchNomiErrorCode"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/catalog/assetLocalization.ts",
+        "electron/networkOutboundMessage.ts",
+        "electron/vendor/vendorOutboundGuard.ts",
+        "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+        "src/workbench/generationCanvas/runner/outboundBlockedRecovery.ts",
+        "src/workbench/observability/classifyError.ts",
+        "src/workbench/observability/narrate.ts"
+      ],
+      "since": "2026-09-27",
+      "notes": "PR #907（同上合同）：本地、出请求之前的素材失败原来不带机器码，渲染层分不清是素材坏了还是供应商拒了。现在过 IPC 的失败带 asset-invalid 这类机器码，渲染层按码分类、不按中文文案猜；码表只有 NomiErrorCode 这一份，打码与认码只经 tagNomiError / matchNomiErrorCode。"
+    },
+    {
+      "name": "哪些推送的 ref 带新内容、需要评审收据",
+      "subject": "delivery.review-receipt-scope",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "scripts/ponytail-review-branch.mjs",
+        "symbol": "verifyPushReceipt"
+      },
+      "write_api": [
+        {
+          "path": "scripts/ponytail-review-branch.mjs",
+          "symbol": "verifyPushReceipt"
+        },
+        {
+          "path": "scripts/ponytail-review-branch.mjs",
+          "symbol": "alreadyOnRemote"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "scripts/ponytail-review-hook.mjs"
+      ],
+      "since": "2026-09-27",
+      "notes": "PR #906（合同 docs/fixes/2026-09-27-release-tag-blocked-by-dev-hook.root-cause.json）：发版 tag 指向已合并的提交，被开发机钩子当成「新内容、缺评审收据」拦下。已经在远端跟踪分支里的提交不带新内容、不要收据；哪些 ref 要收据只在 verifyPushReceipt 一处判，钩子只转交 Git 给的 ref 列表。"
+    },
+    {
+      "name": "官网媒体按字节范围响应",
+      "subject": "site.media-byte-ranges",
+      "lifecycle": "host",
+      "authority_kind": "gateway",
+      "trust_domain": "site",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "worker/byteRange.ts",
+        "symbol": "serveAssetWithRanges"
+      },
+      "write_api": [
+        {
+          "path": "worker/byteRange.ts",
+          "symbol": "serveAssetWithRanges"
+        },
+        {
+          "path": "wrangler.json",
+          "symbol": "run_worker_first"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/catalog/siteWorkerByteRange.test.ts",
+      "allowed_consumers": [
+        "worker/index.ts"
+      ],
+      "since": "2026-09-27",
+      "notes": "PR #903（合同 docs/fixes/2026-09-27-site-media-byte-ranges.root-cause.json）：官网视频拖不动进度条——worker 没绑 ASSETS、媒体请求也没先走 worker。现在 serveAssetWithRanges 是 worker 里资产响应的唯一生产者（解析 Range、按 ETag 取长度、切片、206 / 416 / 200），wrangler.json 的 run_worker_first 把媒体请求先交给它。"
+    },
+    {
+      "name": "Agent 面板历史加载失败的提示何时清除",
+      "subject": "agent-panel.history-error",
+      "lifecycle": "session",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+        "symbol": "AgentPanelV4Panel"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+          "symbol": "AgentPanelV4Panel"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/ai/v4/asyncReadIdentity.test.ts",
+      "allowed_consumers": [
+        "src/workbench/ai/ProjectAgentResidentShell.tsx",
+        "src/devlab/designLab/v4/b2cFormFixtures.tsx",
+        "src/devlab/designLab/v4/states/03-flow.tsx",
+        "src/devlab/designLab/v4/states/07-spend-params.tsx"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #910（合同 docs/fixes/2026-09-28-agent-panel-history-error-reset.root-cause.json）：面板把「回调换了身份」当成「换了会话」，历史加载失败的提示被无故清掉或清不掉。historyError 只在会话身份（historyIdentity）变了或用户显式重试时清，这件事只在面板这一处管。"
+    },
+    {
+      "name": "APIMart 查询结果里产物地址的几种形状",
+      "subject": "provider.apimart-result-shape",
+      "lifecycle": "provider-observation",
+      "authority_kind": "schema",
+      "trust_domain": "main",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/apimartVendor.ts",
+        "symbol": "APIMART_IMAGE_QUERY_OP"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/apimartVendor.ts",
+          "symbol": "APIMART_IMAGE_QUERY_OP"
+        },
+        {
+          "path": "electron/catalog/apimartVendor.ts",
+          "symbol": "APIMART_VIDEO_QUERY_OP"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/capabilityCore/apimartGenerationQuery.ts",
+        "electron/catalog/apimartImages.ts",
+        "electron/catalog/apimartVideos.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #914（v0.22.4，合同 docs/fixes/2026-09-28-apimart-production-boundaries.root-cause.json）：部分模型把结果地址给成字符串而不是数组，结果拉不回本地。地址可能的几种形状只在共享查询配方里声明，图片 / 视频目录与查询都读这一份，解析侧不另猜。"
+    },
+    {
+      "name": "哪些失败可以换备用域名重试",
+      "subject": "provider.alternate-origin-retry",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/vendor/vendorBaseFallback.ts",
+        "symbol": "isConnectPhaseError"
+      },
+      "write_api": [
+        {
+          "path": "electron/vendor/vendorBaseFallback.ts",
+          "symbol": "isConnectPhaseError"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [],
+      "since": "2026-09-28",
+      "notes": "PR #914（同上合同）：建连阶段被重置时连不上服务商。只有建连阶段的失败（请求还没被服务商收到）才走已登记的备用域名重试；这道分类只在 isConnectPhaseError 一处，发生在白名单备用域名那条既有路径之前，不许调用方自己判「这次能不能换域名」。"
+    },
+    {
+      "name": "APIMart 模型体检清单（零花费）",
+      "subject": "catalog.apimart-health-inventory",
+      "lifecycle": "catalog",
+      "authority_kind": "projection",
+      "trust_domain": "main",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/apimartModelHealth.ts",
+        "symbol": "buildApimartHealthInventory"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/apimartModelHealth.ts",
+          "symbol": "buildApimartHealthInventory"
+        },
+        {
+          "path": "electron/catalog/apimartModelHealth.ts",
+          "symbol": "contractFingerprint"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/catalog/apimartModelHealth.test.ts",
+      "allowed_consumers": [
+        "scripts/apimart-model-health.ts",
+        "scripts/model-radar.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #923（合同 docs/fixes/2026-09-28-apimart-result-shape-replay.root-cause.json，方案 docs/plan/2026-09-28-apimart-model-health.md）：体检名单从目录代码导出「模型 × 模式」与契约指纹，名单本身就是体检清单，不另维护一份；清单里不含任何价格与花费。"
+    },
+    {
+      "name": "被动 MCP 请求会不会冷启动 Nomi",
+      "subject": "mcp.passive-discovery",
+      "lifecycle": "host",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/mcpProtocol.ts",
+        "symbol": "createMcpProtocol"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/mcpProtocol.ts",
+          "symbol": "createMcpProtocol"
+        },
+        {
+          "path": "electron/capabilityCore/mcpNodeLauncher.ts",
+          "symbol": "invokeIfOpen"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/capabilityCore/mcpStdioServer.ts",
+        "scripts/check-mcp-payload.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #916（合同 docs/fixes/2026-09-28-mcp-passive-request-cold-launch.root-cause.json）：外部 AI 工具列一下资源就把 Nomi 窗口拉起来。initialize / tools/list / resources/list / resources/templates/list / ping 这类被动发现在没有活实例时只读返回、不冷启动；分流只在 createMcpProtocol，只探测不拉起的调用走 invokeIfOpen。真实工具调用仍可后台拉起（用户拍板）。"
+    },
+    {
+      "name": "后台启动的 Nomi 何时空闲退出",
+      "subject": "host.background-idle-exit",
+      "lifecycle": "host",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/backgroundIdleExit.ts",
+        "symbol": "createBackgroundIdleExit"
+      },
+      "write_api": [
+        {
+          "path": "electron/backgroundIdleExit.ts",
+          "symbol": "createBackgroundIdleExit"
+        },
+        {
+          "path": "electron/backgroundIdleExit.ts",
+          "symbol": "setBackgroundIdleExitOwner"
+        },
+        {
+          "path": "electron/backgroundIdleExit.ts",
+          "symbol": "isBackgroundWindowUnshown"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/backgroundIdleExit.test.ts",
+      "allowed_consumers": [
+        "electron/backgroundLaunch.ts",
+        "electron/desktopNotification.ts"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #916（同上合同）：为 MCP 工具调用在后台拉起的实例，从没显示过窗口、最后一次 RPC 之后闲置到期、且没有在途 ProductionRun 工作时才退出。计时与判据只在这里；在途判据消费现有 owner 的只读状态，不新增第二份。窗口显示过之后不走这条退出。"
+    },
+    {
+      "name": "TipTap 编辑器的唯一入口",
+      "subject": "editor.tiptap-entry",
+      "lifecycle": "live-interaction",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/common/useNomiRichTextEditor.ts",
+        "symbol": "useNomiTiptapEditor"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/common/useNomiRichTextEditor.ts",
+          "symbol": "useNomiTiptapEditor"
+        },
+        {
+          "path": "src/workbench/common/useNomiRichTextEditor.ts",
+          "symbol": "useNomiRichTextEditor"
+        },
+        {
+          "path": "src/workbench/assets/PromptEditor.tsx",
+          "symbol": "PromptEditor"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "src/workbench/creation/WorkbenchEditor.tsx",
+        "src/workbench/generationCanvas/nodes/render/TextDocumentNode.tsx",
+        "src/workbench/creation/storyboard/shotRow/PromptSkeletonSegments.tsx",
+        "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #910（合同 docs/fixes/2026-09-28-react19-tiptap-selection.root-cause.json）：升 React 19 后画布提示词框选区错乱。每个 TipTap 面都经 useNomiTiptapEditor 拿编辑器，React 19 的生命周期策略钉在这一处；一个挂载期只有一个 EditorView 拥有 DOM 选区。eslint no-restricted-imports 拒绝别处直接 import useEditor，守门走查 tests/ux/canvas-shortcuts.walk.mjs。"
+    },
+    {
+      "name": "连参考图之后切到哪个模式",
+      "subject": "canvas.reference-mode",
+      "lifecycle": "author",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+        "symbol": "resolveModeForReferenceDemand"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+          "symbol": "resolveModeForReferenceDemand"
+        },
+        {
+          "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+          "symbol": "preferredImageWorkflow"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/model/canvasReferenceConnection.ts",
+        "src/workbench/generationCanvas/nodes/NodeGenerationComposer.tsx"
+      ],
+      "since": "2026-09-28",
+      "notes": "PR #918（方案 docs/plan/2026-09-28-reference-default-mode.md，无根因合同）：用户要求连了参考图后默认是参考模式、不是首尾帧。当前模式接不住新连的图时，按档案声明的偏好顺序切（参考类工作流 → 其它图参考工作流 → 首帧工作流）；「连线类型」与「切模式」共用 preferredImageWorkflow 这一份顺序，只读 ModelArchetype.modes 的 intent 与 slots，不按模型名写死（P4）。"
+    },
+    {
+      "name": "端口绑定是不是同一个",
+      "subject": "identity.surface-port-binding",
+      "lifecycle": "session",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/surfacePortBinding.ts",
+        "symbol": "sameSurfacePortBindingWire"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/surfacePortBinding.ts",
+          "symbol": "sameSurfacePortBindingWire"
+        }
+      ],
+      "forbidden_derivations": [],
+      "identity_fields": [
+        "version",
+        "bindingId",
+        "projectId",
+        "immutableProjectUuid",
+        "projectGeneration",
+        "webContentsId",
+        "processId",
+        "frameRoutingId",
+        "origin",
+        "surfaceInstanceId",
+        "portRevision",
+        "nonce"
+      ],
+      "allowed_consumers": [
+        "electron/surfacePortPreloadBridge.ts",
+        "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+        "src/workbench/project/projectCanvasReadSurface.ts"
+      ],
+      "since": "2026-09-18",
+      "notes": "原 check:identity-compare 的 owner 模块（C2，审计 docs/audit/2026-09-17-ownership-lifetime-census.md §2；合同 docs/fixes/2026-09-18-ownership-single-source.root-cause.json）。主进程登记表、preload、渲染层原来各比一份，维度 13 / 7 / 13，漏维的正好是 preload 那道信任边界（#802 的形状）。维度跟着类型 SurfacePortBindingWire 走；门岗逐字核这个函数比的身份维度等于 identity_fields（只算门岗认识的身份维度）。2026-09-29 随 check:identity-compare 并入 check:concept-owners 登记。"
+    },
+    {
+      "name": "两条描述是不是同一个渲染帧",
+      "subject": "identity.surface-frame-owner",
+      "lifecycle": "session",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/surfacePortBinding.ts",
+        "symbol": "sameSurfaceFrameOwner"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/surfacePortBinding.ts",
+          "symbol": "sameSurfaceFrameOwner"
+        }
+      ],
+      "forbidden_derivations": [],
+      "identity_fields": [
+        "contents",
+        "frame",
+        "webContentsId",
+        "processId",
+        "frameRoutingId",
+        "origin"
+      ],
+      "allowed_consumers": [
+        "electron/capabilityCore/canvasReadCapturedSnapshotRegistry.ts",
+        "electron/capabilityCore/canvasReadSurfaceRegistry.ts"
+      ],
+      "since": "2026-09-18",
+      "notes": "比的是「哪个 webContents / 哪个进程 / 哪个帧 / 哪个源」，不是端口绑定那一整套。canvasReadSurfaceRegistry 与 canvasReadCapturedSnapshotRegistry 原来各写一遍逐字相同的六维，它们一起决定「这次快照能不能算数」。原 check:identity-compare 的 owner 模块里的比对，2026-09-29 并入时单独登记。"
+    },
+    {
+      "name": "项目 Agent 绑定是不是同一个项目",
+      "subject": "identity.project-agent-binding",
+      "lifecycle": "project-data",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/projectBinding.ts",
+        "symbol": "sameProjectAgentBinding"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/projectBinding.ts",
+          "symbol": "sameProjectAgentBinding"
+        }
+      ],
+      "forbidden_derivations": [],
+      "identity_fields": [
+        "projectId",
+        "immutableProjectUuid",
+        "projectGeneration"
+      ],
+      "allowed_consumers": [
+        "electron/assets/assetWriteContext.ts",
+        "electron/assets/projectInteractionCapture.ts",
+        "electron/assets/windowProjectCapture.ts",
+        "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+        "electron/capabilityCore/projectAgentProposalReceiptCorrelation.ts",
+        "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+        "electron/workspace/workspaceRepository.ts",
+        "src/workbench/generationCanvas/agent/proposalUndo.ts",
+        "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+        "src/workbench/project/projectCanvasReadSurface.ts",
+        "src/workbench/project/projectRepository.ts"
+      ],
+      "since": "2026-09-18",
+      "notes": "项目身份的三维比对（projectId + immutableProjectUuid + projectGeneration）：同一套比对原来在五处逐字抄了五遍，只比 projectId 那几处会把「同 id 重建的项目」认成旧项目。原 check:identity-compare 的 owner 模块，2026-09-29 并入时单独登记。"
+    },
+    {
+      "name": "已提交的项目选择是不是同一个",
+      "subject": "identity.committed-project-selection",
+      "lifecycle": "project-data",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/projectBinding.ts",
+        "symbol": "sameCommittedProjectSelection"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/projectBinding.ts",
+          "symbol": "sameCommittedProjectSelection"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/capabilityCore/canvasReadPortResolver.ts",
+        "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+        "electron/capabilityCore/currentProjectResolver.ts",
+        "electron/export/exportJobIpc.ts",
+        "electron/export/exportJobManager.ts",
+        "electron/export/exportJobs.ts"
+      ],
+      "since": "2026-09-18",
+      "notes": "已提交的项目选择 = 项目绑定（委托 sameProjectAgentBinding）+ canonicalRootDigest。合同 docs/fixes/2026-09-18-ownership-single-source.root-cause.json 声明的边界。它委托绑定比对、只直接比一维，身份比对的形状探测看不见它（这正是「从 owner import 就隐身」的设计），所以不写 identity_fields，靠这条登记与第二写口判据守着。"
+    },
+    {
+      "name": "挂起单是不是同一张",
+      "subject": "identity.canvas-read-suspension",
+      "lifecycle": "session",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+        "symbol": "sameSuspensionWire"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/canvasReadSurfaceRegistry.ts",
+          "symbol": "sameSuspensionWire"
+        }
+      ],
+      "forbidden_derivations": [],
+      "identity_fields": [
+        "version",
+        "suspensionId",
+        "surfaceInstanceId",
+        "portRevision",
+        "nonce"
+      ],
+      "allowed_consumers": [],
+      "since": "2026-09-18",
+      "notes": "从 scripts/identity-compare-baseline.json 迁来（2026-09-29 并入）。这是挂起单的身份，不是端口绑定的身份：一次挂起由「哪个 surface 实例 + 第几版端口 + 这一次的 nonce」定，刻意不含项目与帧维度——挂起要能跨项目切换存活到恢复那一刻，把项目维度加进去等于让每次切项目都作废挂起。与端口绑定是两种身份，不是同一种的窄版。"
+    },
+    {
+      "name": "主清单与备份清单是不是同一个项目的同一代",
+      "subject": "identity.manifest-completeness",
+      "lifecycle": "project-data",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/workspace/workspaceManifest.ts",
+        "symbol": "sameCompleteIdentity"
+      },
+      "write_api": [
+        {
+          "path": "electron/workspace/workspaceManifest.ts",
+          "symbol": "sameCompleteIdentity"
+        }
+      ],
+      "forbidden_derivations": [],
+      "identity_fields": [
+        "immutableProjectUuid",
+        "projectGeneration"
+      ],
+      "allowed_consumers": [],
+      "since": "2026-09-18",
+      "notes": "从 scripts/identity-compare-baseline.json 迁来（2026-09-29 并入）。比的是「主清单与备份清单是不是同一个项目的同一代」，两边都还没有 projectId（清单本身就是 projectId 的来源，此时读的是磁盘原始 JSON）。刻意只用盘上那两个不可变量做一致性校验，属于清单完整性检查，不是运行期的项目身份比对。"
     }
   ]
 }

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "note": "check:concept-owners 的棘轮基线（R17.0）：存身份（概念 + 文件 + 符号）不存裸数字，必须等于现状，只减不增。second_write_ports = 已知的第二写口债（每条写清为什么暂时收不掉）；pending_write_doors = pending 概念那条旧路在登记那一刻的全部生产写门，冻结——旧路上再长一扇就红，收掉一扇就必须删掉对应条目。新条目只能随「这次才登记 / 这次才转成 pending」的概念一起进来（和 merge-base 比）。本文件只能手改，没有 --update。",
+  "second_write_ports": [],
+  "pending_write_doors": [
+    { "concept": "出价/待决身份", "path": "electron/capabilityCore/modelOnboarding/tryModel.ts", "symbol": "mintSpendGrant" },
+    { "concept": "出价/待决身份", "path": "electron/integrationCertification/integrationSession.ts", "symbol": "mintSpendGrant" },
+    { "concept": "出价/待决身份", "path": "electron/integrationCertification/integrationSessionRuntimeInstall.ts", "symbol": "mintSpendGrant" },
+    { "concept": "出价/待决身份", "path": "electron/parity/generationParityTestUtils.ts", "symbol": "mintSpendGrant" },
+    { "concept": "出价/待决身份", "path": "electron/spendConfirmGrant.ts", "symbol": "mintSpendGrant" },
+    { "concept": "出价/待决身份", "path": "electron/spendConfirmGrant.ts", "symbol": "prepareSpendQuote" },
+    { "concept": "出价/待决身份", "path": "electron/spendConfirmGrant.ts", "symbol": "takeSpendQuote" },
+    { "concept": "出价/待决身份", "path": "electron/tasks/taskIpcHandlers.ts", "symbol": "mintSpendGrant" },
+    { "concept": "出价/待决身份", "path": "electron/tasks/taskIpcHandlers.ts", "symbol": "prepareSpendQuote" },
+    { "concept": "出价/待决身份", "path": "electron/tasks/taskIpcHandlers.ts", "symbol": "takeSpendQuote" },
+    { "concept": "出价/待决身份", "path": "electron/tasks/taskSpend.ts", "symbol": "assertAndConsumeQuotedSpend" },
+    { "concept": "出价/待决身份", "path": "src/ui/onboarding/workflowPage/runTestGeneration.ts", "symbol": "mintSpendGrant" },
+    { "concept": "出价/待决身份", "path": "src/workbench/generationCanvas/runner/generationRunController.ts", "symbol": "mintSpendGrant" },
+    { "concept": "出价/待决身份", "path": "src/workbench/generationCanvas/spend/spendConfirm.ts", "symbol": "mintSpendGrant" },
+    { "concept": "画布缩放", "path": "src/devlab/designLab/canvasFrame/states/02-shot-label.tsx", "symbol": "rememberCategoryViewport" },
+    { "concept": "画布缩放", "path": "src/devlab/designLab/nodeComposerBar/nodeComposerBarLabKit.tsx", "symbol": "rememberCategoryViewport" },
+    { "concept": "画布缩放", "path": "src/devlab/designLab/processFeedback/processFeedbackLabKit.tsx", "symbol": "rememberCategoryViewport" },
+    { "concept": "画布缩放", "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlow.tsx", "symbol": "rememberCategoryViewport" },
+    { "concept": "画布缩放", "path": "src/workbench/generationCanvas/reactFlow/GenerationCanvasReactFlowViewport.tsx", "symbol": "rememberCategoryViewport" },
+    { "concept": "画布缩放", "path": "src/workbench/generationCanvas/reactFlow/useGenerationCanvasReactFlowPointer.ts", "symbol": "rememberCategoryViewport" }
+  ]
+}

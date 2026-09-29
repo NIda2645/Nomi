@@ -106,7 +106,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R22 | 验证分层与测试预算 | contracts 常跑；unit/desktop/journey/canvas/performance/package 按真实风险独立触发；删改名、空 diff、分类器自身与手动发布边界 fail-closed 到全维度；不删安全/持久化/认证边界覆盖；**没有真实资源时记 `unverified`，不许 mock 绿灯替代 live 证据** |
 | R25 | 交工前 Ponytail 评审 | 交工前 `pnpm run review:branch` 对整分支跑一次（超限自动分块）、findings 进 PR 正文 `## Ponytail` 节逐条表态；钩子只查收据（树相等即放行），失败或无收据 fail-closed，runner 不可用时只许 `-- --defer` 留痕延后 |
 | R27 | 多智能体编排手册 | 派工/收货/接力机器化纪律：谁的方案谁实施·验收必跨池、任务书发行权独占+开工三行头、收货三查（behind 数/两点回滚/套件失败 delta=0）、等待用 shell 哨兵轮询（禁 `--watch`/Monitor/交卷）；实施派工先引用反方 prior-art 报告（R5②）、`recurring` bug 派工两段式先出门表（R21）。详见 L2 `docs/engineering/agent-orchestration-playbook.md` |
-| R33 | 概念的 owner 先于目录 | 派工切的是概念不是文件夹：任务书必带「概念占用表」（碰哪些概念 / 唯一 owner 的文件·符号 / 允许谁消费），写不出不开工；同一时段同一概念只归一条 lane，要碰别人持有的概念先停下协调、不许先写再合；验收多一问「有没有多出第二个 owner」，测试绿不作为放行理由；正本 `docs/engineering/concept-owners.json`（只登记碰到的概念、当场登记、第二个写口即违规）；多入口共享同一概念要有「同一输入 → 出站报文逐字节相同」的对等棘轮。语义级门岗是发版后第一批 TODO |
+| R33 | 概念的 owner 先于目录 | 派工切的是概念不是文件夹：任务书必带「概念占用表」（碰哪些概念 / 唯一 owner 的文件·符号 / 允许谁消费），写不出不开工；同一时段同一概念只归一条 lane，要碰别人持有的概念先停下协调、不许先写再合；验收多一问「有没有多出第二个 owner」，测试绿不作为放行理由；正本 `docs/engineering/concept-owners.json`（只登记碰到的概念、当场登记、第二个写口即违规）；多入口共享同一概念要有「同一输入 → 出站报文逐字节相同」的对等棘轮。门岗 `check:concept-owners` 管形状（第二写口、pending 冻结、合同边界必须进账），语义对等仍靠 parity_test |
 
 ## 决策自治
 
