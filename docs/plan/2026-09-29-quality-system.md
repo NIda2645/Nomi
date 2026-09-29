@@ -14,6 +14,27 @@
 
 已有的规矩和门岗检查的是「代码对不对」，查不到「用户用不用得成」。再加上改得太快（2026-09 一个月落了 600 多份根因合同），问题总要拖到用户手里才暴露。修法不是再加门岗，而是换掉「做完」的定义：**做完 = 用户在真实环境里做成了这件事，而且我们看得到证据。**
 
+## 先查别人
+
+检索记录见 [`../research/2026-09-29-quality-system/prior-art.md`](../research/2026-09-29-quality-system/prior-art.md)。结论：五层里每一层都有成熟做法可抄，不自研一套新理论。自研的只有「把这些接到我们现有的剧本、门岗和反馈接收端上」这一层。
+
+| 问的是什么 | 别人怎么做（出处） | 我们照做还是不同 |
+|---|---|---|
+| 按「用户要完成的事」定义质量，并给每件事量成功率 | Google SRE 的关键用户旅程（CUJ）与 SLO：https://sre.google/workbook/implementing-slos/ | 照做：功能状态表的每一行就是一条旅程，第 5 层按旅程统计成功率 |
+| 可靠性跌破线就停新功能 | Google SRE 错误预算政策：https://sre.google/workbook/error-budget-policy/ | 照做：修完 4 个水下问题前冻结新功能 |
+| 先给少数人用，再放开 | Chrome 的 Canary / Dev / Beta / Stable 分渠道发布：https://www.chromium.org/getting-involved/dev-channel/ | 照做：先推预览版渠道，再推正式版 |
+| 每个功能的所有状态都要设计出来 | 「UI Stack」：理想、空、出错、部分、加载各态都要设计：https://www.scotthurff.com/posts/why-your-user-interface-is-awkward-youre-ignoring-the-ui-stack/ | 照做：状态表每个状态都写用户看到的字和能做的动作 |
+| 把状态和允许的转换写死，不可能的状态写不出来 | 状态图（statecharts）：https://statecharts.dev/ | 部分照做：我们已有的阶段时限穷举表（`generationPhaseDeadline.ts`）、`narrate.ts` 的穷举动作表就是这个思路，这次把它扩到每条旅程 |
+| 每种错误有固定说法和建议动作 | Stripe 错误码目录：https://docs.stripe.com/error-codes | 照做：错误只从唯一的错误目录取文案和动作，不许各处拼 |
+| 先修 bug 再写新代码 | Joel Test 第 5 条：https://www.joelonsoftware.com/2000/08/09/the-joel-test-12-steps-to-better-code/ | 照做：冻结期只修不加 |
+
+仓库里已有的，直接复用、不重写：
+- `tests/ux/core-smoke/`（清单式冒烟，两套资料）；
+- `docs/plan/2026-09-26-architecture-single-owner-governance.md`（结构收敛）；
+- `check:concept-owners`（概念唯一主人门岗）；
+- `scripts/intake-radar.mjs`（反馈接收端数据）；
+- `tests/ux/_paidRun.mjs`（真额度走查护栏）。
+
 ## 这几天暴露的失败类别
 
 | 类别 | 实例 | 由哪一层拦 |
