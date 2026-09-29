@@ -24,14 +24,15 @@
 // 花钱之前逐字段核对要派发的每一镜（_agentVideoPaid.mjs：Seedance 2.0 Fast · 480p · 4 秒 · 无音频；「全自动」下这一核对在
 // 说「生成」之前做，草稿就是宿主要封印的那一份）；凭据与原库保护、收据见 _paidRun.mjs / _realProfile.mjs。
 //
-// ── 2026-09-29 零额度彩排（loopback 夹具，同一套真 App）：S2、S3 在当前构建上必红，修好之前别花钱跑它们 ──
-//   S2：画布删节点上报的 commandId 是 `detach-canvas:<runId>:<nodeIds>`（ProductionCanvasLandingHost.tsx），带「:」「,」，
-//       过不了 IPC 的 identifier 校验（productionRunIpc.ts `[A-Za-z0-9._-]{1,160}` → "Invalid command id"），渲染层 catch 吞掉，
-//       Run 里从来没有 detach，被删的那一镜照样派发、照样扣费。
-//   S3：急停只把 Run 改成 pausing；同一轮派发循环里剩下的镜头照样提交。#921 接上的 beforeDispatch 在 submitOnce 里排在
-//       `submit_intent_persisted` 写盘之后（submissionOutbox.ts），而 decideShotClaim 把这一档算「钱可能已花」直接归制作，
-//       这道闸因此永远放行。
-//   只有 S1 今天能走通，所以缺省只跑 S1；S2、S3 要显式点名（NOMI_SHOT_CLAIM_SCENARIOS=2 / 3）。
+// ── 2026-09-29 零额度彩排（loopback 夹具，同一套真 App）──
+//   修复前 S2、S3 必红：删节点上报的命令号带「:」「,」过不了 IPC 校验、失败又被吞（缺陷 A）；派发准入闸排在提交意向落盘之后、
+//   一次都拒不了，急停后同一轮剩下的镜照样提交（缺陷 B）。两处已在本分支修掉（electron/shared/productionRunCommandId.ts、
+//   submissionOutbox.submitOnce），修复后的彩排：
+//   S2：删节点（第 1 镜提交中 / 第 2 镜排队时各删一次）都落成 detached，整场只有第 1 镜一笔——可以花钱复验。
+//   S3：急停后只剩第 1 镜那一笔、第 2、3 镜不预留不提交；画布接手第 2 镜、「已停」消失——都过。但 Run 一直停在 pausing，
+//       从不落到 paused（多镜调度器不做暂停收尾），第 3 镜「继续剩余」回「run status pausing is not resumable」，
+//       本脚本在「第 1 镜收尾之后 Run 落到已暂停」那一步会红——这一段修好之前别花钱跑 S3。
+//   缺省只跑 S1（不替人决定花钱）；S2、S3 要显式点名（NOMI_SHOT_CLAIM_SCENARIOS=1,2 / 3）。
 import fs from 'node:fs'
 import path from 'node:path'
 import { require as tsxRequire } from 'tsx/cjs/api'
@@ -585,7 +586,7 @@ const SCENARIOS = {
   2: () => runScenario('s2', scenarioDeleteQueuedShot),
   3: () => runScenario('s3', scenarioPauseCanvasTakeoverResume),
 }
-// 缺省只跑 S1：S2、S3 在当前构建上已由零额度彩排证实必红（见文件头），缺陷修好之前跑它们只是花钱看红。
+// 缺省只跑 S1：要不要为 S2、S3 花钱由跑的人点名决定（S3 眼下仍会在暂停收尾那一步红，见文件头）。
 const requested = String(process.env.NOMI_SHOT_CLAIM_SCENARIOS || '1').split(',').map((value) => value.trim()).filter(Boolean)
 const unknown = requested.filter((key) => !SCENARIOS[key])
 if (unknown.length) throw new Error(`NOMI_SHOT_CLAIM_SCENARIOS 只认 1、2、3：${unknown.join('、')}`)
