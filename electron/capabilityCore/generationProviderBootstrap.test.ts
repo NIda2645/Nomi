@@ -283,6 +283,26 @@ describe("generation provider bootstrap", () => {
     }
   });
 
+  // 2026-09-29：主域被墙的用户在设置里改到官方国内线路后，Agent 付款卡 / 外部 MCP / 全自动 Run
+  // 这条路也得认它——那是代码里登记的同一条内置连接（凭据守卫认的那张名单），不是「漂移」。
+  it("keeps the direct-key APIMart provider on its officially registered domestic line and sends there", async () => {
+    const fixture = encryptedState();
+    fixture.vendors[0] = { ...fixture.vendors[0], baseUrlHint: "https://api.apib.ai" };
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      code: 200,
+      data: [{ status: "submitted", task_id: "task-domestic" }],
+    }), { status: 200 }));
+
+    const boot = createGenerationProviderBootstrap(fixture, { catalogReader: () => fixture, fetchImpl });
+    const provider = boot.providers[0];
+    expect(boot.readinessByProvider.apimart).toMatchObject({ providerReady: true });
+
+    const request = generationInput();
+    await expect(provider?.submit(provider?.buildRequest(request), request.idempotencyKey))
+      .resolves.toMatchObject({ providerTaskId: "task-domestic" });
+    expect(fetchImpl).toHaveBeenCalledWith("https://api.apib.ai/v1/images/generations", expect.anything());
+  });
+
   it("fails closed when a direct-key APIMart endpoint drifts in the live catalog", async () => {
     const initial = encryptedState();
     const live = encryptedState();

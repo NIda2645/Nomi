@@ -22,13 +22,14 @@ import { describeIllegalHeader, findIllegalHeader, isJsonRecord, mergeHeadersCas
 import { parseModelListPage, type ModelListResult, type ModelListDescriptor, type ModelListFailureKind } from "./modelListResponse";
 import { modelListErrorRedactor } from "./modelListSafety";
 import { createExplicitProxyDispatcher } from "../../systemProxy";
+import { desktopT } from "../../desktopStrings";
 import type { Dispatcher } from "undici";
 export type { ModelListFailureKind } from "./modelListResponse";
 
 export async function describeNetworkErrorLazy(error: unknown): Promise<string> {
   const { describeNetworkError } = await import("../../systemProxy");
-  const reason = describeNetworkError(error);
-  return `Network error: ${reason}. Next: check the relay URL, local network, and proxy settings, then retry.`;
+  // 这句话直接出现在设置页地址栏下面（连接状态说明），不能是英文原话（2026-09-29）。
+  return desktopT("network.unreachable", { reason: describeNetworkError(error) });
 }
 
 /** 上游失败体 → 那句人话。键优先级表住 jsonUtils（全仓唯一），挑不出来才退回原文/HTTP 码。 */

@@ -23,7 +23,10 @@ describe('approved model access architecture', () => {
     expect(page).toContain("value={saved ? 'saved-key' : apiKey}")
     expect(page).toContain('disabled={busy || saved}')
     expect(page.indexOf('data-platform-key-only')).toBeLessThan(page.indexOf('data-key-only-success'))
-    expect(page).not.toContain('baseUrl')
+    // 2026-09-29 用户拍板「一开始配置就该能改地址」（主域被墙的人得先换线路，key 才验得出去）：
+    // 地址行用已接入卡片同一个组件、同一个保存入口，不在这页另写一份地址编辑。
+    expect(page).toContain('<VendorBaseUrlField')
+    expect(page).not.toContain('upsertVendor(')
     expect(page).not.toContain('文档')
 
     // 「已有预置地址、模型和请求适配」必须真的有清单：页面拿到的是模型数组本身，

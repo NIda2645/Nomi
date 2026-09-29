@@ -17,6 +17,7 @@ import { MESHY_VENDOR_SEED } from "./meshyOfficial";
 import { HIGGSFIELD_VENDOR_SEED } from "./higgsfieldVendor";
 import { FAL_VENDOR_SEED } from "./falOfficial";
 import { RUNWAY_VENDOR_SEED } from "./runwayOfficial";
+import { codeDeclaredFallbackOrigins } from "../vendor/vendorBaseFallback";
 import type { HttpOperation, Vendor } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -199,7 +200,12 @@ export function builtinVendorScopeMatches(vendor: Vendor): boolean {
   // a freshly seeded APIMart row remains eligible after Settings persists it.
   const vendorProviderKind = vendor.providerKind ?? "openai-compatible";
   const seedProviderKind = seed.providerKind ?? "openai-compatible";
-  return normalize(vendor.baseUrlHint, true) === normalize(seed.baseUrl, true)
+  // 换到这家代码里登记的官方备用域（APIMart 的国内线路）仍是同一条内置连接：
+  // 名单只有一份，就是凭据守卫认的那张（vendorBaseFallback 的 FAMILIES）。
+  let baseOrigin = "";
+  try { baseOrigin = new URL(String(vendor.baseUrlHint ?? "")).origin; } catch { /* 解析不出来 = 不是官方线路 */ }
+  return (normalize(vendor.baseUrlHint, true) === normalize(seed.baseUrl, true)
+      || codeDeclaredFallbackOrigins(seed.key).includes(baseOrigin))
     && normalize(vendor.authType) === normalize(seed.authType)
     && normalize(vendor.authHeader) === normalize(seed.authHeader)
     && normalize(vendor.authScheme) === normalize(seed.authScheme)

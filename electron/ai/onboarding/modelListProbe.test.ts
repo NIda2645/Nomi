@@ -62,7 +62,9 @@ describe("model discovery failures are actionable across candidate routes", () =
       .mockRejectedValueOnce(new Error("network unavailable")));
     const result = await probe();
     expect(result).toMatchObject({ ok: false, failureKind: "network", error: expect.stringContaining("network unavailable"), statuses: [404] });
-    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("Next:") });
+    // 这句话出现在设置页地址栏下面：带下一步，且是界面语言（默认中文），不是英文原话。
+    expect(result).toMatchObject({ ok: false, error: expect.stringContaining("下一步：检查接口地址") });
+    expect(result).not.toMatchObject({ error: expect.stringContaining("Network error") });
   });
 
   it("uses unsupported only when all candidates actually lack a list route", async () => {

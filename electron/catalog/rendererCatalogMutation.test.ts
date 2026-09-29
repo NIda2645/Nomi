@@ -153,7 +153,7 @@ describe("renderer Catalog mutation boundary", () => {
     expect(store.upsertModelCatalogVendor).not.toHaveBeenCalled();
   });
 
-  it("rejects security-scope edits on certification-owned connections", () => {
+  it("rejects sign-in placement edits on certification-owned connections, in words the user can read", () => {
     const catalog = state();
     catalog.vendors[0] = {
       ...catalog.vendors[0],
@@ -163,9 +163,27 @@ describe("renderer Catalog mutation boundary", () => {
     } as never;
 
     expect(() => sanitizeRendererVendorMutation(
-      { key: "relay", baseUrlHint: "https://new.example/v1" },
+      { key: "relay", authType: "x-api-key", authHeader: "X-Key" },
       catalog,
-    )).toThrow(/integration|certification|connection/i);
+    )).toThrow("这个连接的鉴权方式不能在这里改");
+    // 以前抛给用户的就是这句英文原话（2026-09-29 用户截图）。
+    expect(() => sanitizeRendererVendorMutation({ key: "relay", authType: "x-api-key" }, catalog))
+      .not.toThrow(/Certification-owned|integration session/);
+  });
+
+  // 2026-09-29：新装机点过「继续验证 → 自检」的 APIMart 会带上 meta.adapter，于是设置里改接口地址
+  // 被这道锁拒掉，老装机却能改。地址归用户在设置里亲手改——新老装机一个样。
+  it("lets the settings page change the address of a certification-owned connection", () => {
+    const catalog = state();
+    catalog.vendors[0] = {
+      ...catalog.vendors[0],
+      enabled: true,
+      baseUrlHint: "https://old.example/v1",
+      meta: { adapter: { activeRevision: "revision-old" } },
+    } as never;
+
+    expect(sanitizeRendererVendorMutation({ key: "relay", baseUrlHint: "https://new.example/v1" }, catalog))
+      .toMatchObject({ key: "relay", baseUrlHint: "https://new.example/v1" });
   });
 });
 
