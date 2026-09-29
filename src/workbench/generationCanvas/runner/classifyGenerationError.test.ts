@@ -510,6 +510,10 @@ describe('模型已下线 ≠ 模型被停用（删模型不能变成坑换坑�
     expect(report.reason).toBe('这个模型已经下线了')
     expect(report.primary).toBe('switch-model')
     expect(report.hint).not.toMatch(/稍等|稍后再试/)
+    // 这是我们自己的签名，服务商没被请求到：不许以「服务商原话：Model is retired: …」印进卡片正文。
+    expect(report.providerMessage).toBeUndefined()
+    // 技术详情里的原文照留（复制详情 / 反馈要用），只是不进可见正文。
+    expect(report.raw).toContain('Model is retired: imagen-4.0-apimart')
   })
 
   it('「被停用」仍归模型未配置 → 去模型接入（记录还在，那儿能开回来）', () => {

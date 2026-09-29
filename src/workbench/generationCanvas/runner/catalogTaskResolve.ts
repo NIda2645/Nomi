@@ -51,7 +51,7 @@ export type CatalogTaskActionOptions = {
   /** Renderer disclosure gate for a public temporary-host fallback. */
   anonymousAssetHostingConsent?: 'allow'
   runTask?: (vendor: string, request: TaskRequestDto, projectId: TaskProjectIdentity) => Promise<TaskResultDto>
-  listCatalogModels?: (params: { kind: BillingModelKind; enabled: true }) => Promise<ModelCatalogModelDto[]>
+  listCatalogModels?: (params: { kind?: BillingModelKind; enabled?: boolean; vendorKey?: string }) => Promise<ModelCatalogModelDto[]>
   listCatalogVendors?: () => Promise<ModelCatalogVendorDto[]>
   fetchTaskResult?: (payload: FetchWorkbenchTaskResultRequestDto) => Promise<{ vendor: string; result: TaskResultDto }>
   pollIntervalMs?: number
@@ -132,6 +132,24 @@ function catalogKindForNode(node: GenerationCanvasNode): BillingModelKind {
   return getGenerationNodeCatalogKind(node.kind)
 }
 
+/**
+ * 这一行是不是**整条不在目录里了**（这家启用着，却查不到任何 kind、任何启停状态的同名行）。
+ *
+ * 判据与执行侧逐条同序：findExecutableModel 先看「这家启用没有」，再看「记录在不在」——不在就是
+ * `Model is retired`（seedBuiltins 的退役清单摘掉了它）。这里不下「退役」结论，只决定**别抢答**：
+ * 行不在 → 原样交给执行侧那唯一的判定；行还在（停用 / 钥匙不通 / 类型不符）→ 仍由下面给「供应商断开」的恢复路。
+ */
+async function catalogRowIsGone(
+  listCatalogModels: NonNullable<CatalogTaskActionOptions['listCatalogModels']>,
+  vendors: readonly ModelCatalogVendorDto[],
+  vendorKey: string,
+  modelKey: string,
+): Promise<boolean> {
+  if (!modelKey || !vendors.some((row) => row.key === vendorKey && row.enabled)) return false
+  const rows = await listCatalogModels({ vendorKey })
+  return !rows.some((row) => row.vendorKey === vendorKey && [row.modelKey, row.modelAlias].includes(modelKey))
+}
+
 export async function resolveExecutableNodeFromCatalog(
   node: GenerationCanvasNode,
   options: CatalogTaskActionOptions,
@@ -168,6 +186,10 @@ export async function resolveExecutableNodeFromCatalog(
         model.availability.usable && model.vendorKey === vendor && [model.modelKey, model.modelAlias].includes(modelKey),
       )
       if (match) return { ...node, meta: projectParameterReferenceSlots(node.meta || {}, match.meta) }
+      // 这家启用着、目录里却**整条都没有**这一行 = 已退役下线（如 Sora 2）。那不是「供应商断开」：
+      // 原样交给执行侧的唯一判定（findExecutableModel → `Model is retired`），节点落「这个模型已经下线了」
+      // +「换个模型」，身份一个字不改（2026-09-09「可用性不许改选中身份」的裁决不变）。
+      if (await catalogRowIsGone(listCatalogModels, vendors, vendor, modelKey)) return node
     } catch {
       // Non-desktop/test callers may have no model catalog bridge; retain their already validated declaration.
       return node
