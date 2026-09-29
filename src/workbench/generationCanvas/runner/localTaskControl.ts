@@ -10,6 +10,38 @@ import { notify } from '../../../ui/notificationPolicy'
 import i18n from '../../../i18n'
 
 const cancelRequested = new Set<string>()
+/** 正在等主进程回音的 await（查结果、提交、落地）：停止请求一到就通知它们，不等下一轮轮询。 */
+const cancelListeners = new Map<string, Set<() => void>>()
+
+function markTaskCancelRequested(nodeId: string): void {
+  cancelRequested.add(nodeId)
+  for (const listener of [...(cancelListeners.get(nodeId) ?? [])]) listener()
+}
+
+/**
+ * 订阅这个节点的「停止」请求（已经请求过就立刻回调一次），返回退订函数。
+ *
+ * 为什么要它（2026-09-28）：以前取消只是在集合里记一笔，轮询在每一轮开头问一次——节点卡在一次永远不返回的
+ * 查结果 IPC 上时，「下一轮」永远不来，停止按钮按了等于没按。现在正在等的那个 await 订阅这里，一叫停立刻结束。
+ */
+export function onTaskCancelRequested(nodeId: string, listener: () => void): () => void {
+  if (cancelRequested.has(nodeId)) {
+    listener()
+    return () => {}
+  }
+  let listeners = cancelListeners.get(nodeId)
+  if (!listeners) {
+    listeners = new Set()
+    cancelListeners.set(nodeId, listeners)
+  }
+  listeners.add(listener)
+  return () => {
+    const current = cancelListeners.get(nodeId)
+    if (!current) return
+    current.delete(listener)
+    if (current.size === 0) cancelListeners.delete(nodeId)
+  }
+}
 
 export class LocalTaskCancelledError extends Error {
   constructor() {
@@ -46,7 +78,7 @@ export function requestTaskCancel(node: {
   // 收摊要做的事是把那个还没出片的派生节点删掉（startVideoDepthDerivation），
   // 在这里顺手把它翻成 idle 只会留下一张永远空着的卡。
   if (isVideoDepthProgressPhase(node.progress?.phase)) {
-    cancelRequested.add(node.id)
+    markTaskCancelRequested(node.id)
     useNodeLivePreviewStore.getState().clearPreview(node.id)
     return
   }
@@ -59,13 +91,13 @@ export function requestTaskCancel(node: {
         const store = useGenerationCanvasStore.getState()
         const current = store.nodes.find((candidate) => candidate.id === node.id)
         if ((current?.progress?.taskId || current?.runs?.[0]?.taskId) !== promptId) return
-        if (current?.status === 'running') cancelRequested.add(node.id)
+        if (current?.status === 'running') markTaskCancelRequested(node.id)
         store.setNodeStatus(node.id, 'idle')
       }
     }).catch(() => report('failed'))
     return
   }
-  cancelRequested.add(node.id)
+  markTaskCancelRequested(node.id)
   if (promptId) {
     void tasks?.comfyuiInterrupt?.(promptId)
       .then((result) => {

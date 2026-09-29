@@ -618,6 +618,9 @@ describe('runCatalogGenerationTask — 轮询查询失败绝不重新提交付�
     const spy = vi
       .spyOn(globalThis, 'setTimeout')
       .mockImplementation(((fn: () => void, ms?: number) => {
+        // 只快进轮询间隔（退避封顶 30s）。每次查结果另有分钟级的阶段时限计时器（generationPhaseDeadline），
+        // 它照真实时钟挂着、查询一落定就被清掉——既不该被记进「间隔」，也不该被快进成立刻到期。
+        if (Number(ms) > 30_000) return realSetTimeout(fn, ms)
         waits.push(Number(ms))
         return realSetTimeout(fn, 0) // 记录时长但立即触发，测试不真等
       }) as unknown as typeof globalThis.setTimeout)

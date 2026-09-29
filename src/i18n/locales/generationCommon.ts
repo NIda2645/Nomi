@@ -1492,6 +1492,13 @@ export const zhGenerationCommon = {
     retrievingResult: '正在重新拉取结果…',
     stillUpstream: '任务仍在上游进行，请稍后再次拉取。',
   },
+  // 生成的某一步等不到回音、到点收场时的说法（runner/generationPhaseDeadline）。每句都说清钱在哪、下一步是什么。
+  phaseDeadline: {
+    resultSilent: '查结果等了 {{minutes}} 分钟没有回音，已停止等待。任务可能已在上游完成，可以免费重新拉取。',
+    savingSilent: '存到本机 {{minutes}} 分钟没有完成，已停止等待。可以免费重新拉取结果。',
+    stalledUncharged: '这一步 {{minutes}} 分钟没有任何进展，已停止等待。请求还没发给服务商、没有扣费，可以直接重试。',
+    stalledMaybeCharged: '提交后 {{minutes}} 分钟没有收到服务商回执，已停止等待。这次提交可能已被受理并扣费——重新生成前，请先到服务商后台核对。',
+  },
   agentRuntime: {
     shotTitle: '镜头 {{index}}',
     shotKeyframeTitle: '镜头 {{index}} 首帧',
@@ -2980,6 +2987,15 @@ export const enGenerationCommon = {
     otherProjectTask: 'This task belongs to another project. Open the project that started it to retrieve the result.',
     retrievingResult: 'Retrieving the result again…',
     stillUpstream: 'The task is still running upstream. Try retrieving it again later.',
+  },
+  phaseDeadline: {
+    resultSilent:
+      'The result check got no answer for {{minutes}} min, so Nomi stopped waiting. The task may have finished upstream; retrieve it again for free.',
+    savingSilent: 'Saving to this computer did not finish in {{minutes}} min, so Nomi stopped waiting. Retrieve the result again for free.',
+    stalledUncharged:
+      'This step made no progress for {{minutes}} min, so Nomi stopped waiting. Nothing was sent to the provider and nothing was charged; you can retry.',
+    stalledMaybeCharged:
+      'No receipt from the provider {{minutes}} min after submitting, so Nomi stopped waiting. The submission may have been accepted and charged. Check the provider dashboard before generating again.',
   },
   agentRuntime: {
     shotTitle: 'Shot {{index}}',

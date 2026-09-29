@@ -1,5 +1,7 @@
 // 生成提交的重试策略（哪些失败值得自动重试、重试几次、退避多久）。只管判定与等待，
 // 不碰节点状态——结局投递由 generationRunController / runProjectDelivery 负责。
+import { isGenerationPhaseStalledError } from './generationPhaseDeadline'
+import { isRecoverableTimeoutError } from './recoverableTimeout'
 
 type RetryableGenerationError = Error & {
   status?: number
@@ -10,6 +12,11 @@ const DEFAULT_MAX_ATTEMPTS = 3
 const DEFAULT_BASE_DELAY_MS = 350
 
 export function isRetryableGenerationError(error: unknown): boolean {
+  // 自动重试 = 重新提交 = 再付一次钱。这两类按**类型**先排除，不交给下面的文案判断：
+  // - 可找回：钱已花、任务在上游，该做的是免费重新拉取。它的文案现在就是最后一次取回错误的原话
+  //   （可能恰好含 timeout / Failed to fetch），按文案判会把一次已付费的任务再提交一遍；
+  // - 阶段到期：我们自己决定不再等了（提交那一格到期时，钱可能已经花了）。
+  if (isRecoverableTimeoutError(error) || isGenerationPhaseStalledError(error)) return false
   if (error instanceof TypeError) return true
   if (!(error instanceof Error)) return false
   const candidate = error as RetryableGenerationError
