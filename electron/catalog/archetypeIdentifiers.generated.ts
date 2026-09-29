@@ -259,7 +259,8 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   ],
   "gemini-image-3-pro": [
     "gemini_image3_pro",
-    "gemini-3-pro-image-preview"
+    "gemini-3-pro-image-preview",
+    "nano-banana-pro"
   ],
   "gemini-image-3.1-flash": [
     "gemini_image3.1_flash"
@@ -306,7 +307,6 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "nano-banana",
     "google/nano-banana",
     "google/nano-banana-edit",
-    "nano-banana-pro",
     "gemini-2.5-flash-image-preview",
     "gemini_2.5_flash"
   ],

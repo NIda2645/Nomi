@@ -246,7 +246,9 @@ export const GEMINI_IMAGE_3_PRO_ARCHETYPE: ModelArchetype = {
   kind: "image",
   defaultModeId: "t2i",
   transportTaskKind: "text_to_image",
-  identifierPatterns: ["gemini_image3_pro", "gemini-3-pro-image-preview"],
+  // `nano-banana-pro` = 同一个模型的另一个名字（Nano Banana Pro；APIMart 文档里是 -official 那条的别名）。
+  // 原先误挂在第一代 nano-banana 档案上，2026-09-28 挪到这里。
+  identifierPatterns: ["gemini_image3_pro", "gemini-3-pro-image-preview", "nano-banana-pro"],
   legacyIds: ["runway-image"],
   sources: [
     {

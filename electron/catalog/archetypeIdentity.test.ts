@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { archetypeIdForModel } from "./archetypeIdentity";
 import { nativeWireProfileForArchetype } from "./nativeWireProfiles";
 import { hostRootBase } from "../ai/requestPipeline";
+import { archetypeParameterControls, getArchetypeById, resolveArchetypeForModel } from "../shared/modelArchetypes";
 
 describe("archetypeIdForModel", () => {
   it("认出用户那三个 Seedance 2.0 变体，全都落火山档案", () => {
@@ -81,5 +82,32 @@ describe("hostRootBase", () => {
     expect(hostRootBase("https://sd.example.com:8443")).toBe("https://sd.example.com:8443");
     // 只剥结尾一层：/codex/v1 → /codex（中间段是人家的路由前缀，不能动）
     expect(hostRootBase("https://code.example.com/codex/v1")).toBe("https://code.example.com/codex");
+  });
+});
+
+// 2026-09-28：`nano-banana-pro` 是 Gemini 3 Pro Image（Nano Banana Pro）的别名，原先误挂在第一代 nano-banana 档案上。
+// 自建渠道里叫这个名字的模型（没有显式 archetypeId，全靠身份识别）必须拿到 Gemini 3 Pro Image 的档案与参数面，
+// 主进程（archetypeIdForModel，读生成的身份表）与渲染层（resolveArchetypeForModel，读档案本身）答案一致。
+describe("nano-banana-pro 归 Gemini 3 Pro Image", () => {
+  const customRow = { modelKey: "nano-banana-pro", modelAlias: null, vendorKey: "my-relay", meta: {} };
+
+  it("两侧身份都认成 gemini-image-3-pro；第一代与原有别名不受影响", () => {
+    expect(archetypeIdForModel("nano-banana-pro")).toBe("gemini-image-3-pro");
+    expect(archetypeIdForModel("google/nano-banana-pro")).toBe("gemini-image-3-pro");
+    expect(resolveArchetypeForModel(customRow)?.id).toBe("gemini-image-3-pro");
+    expect(archetypeIdForModel("nano-banana")).toBe("nano-banana");
+    expect(archetypeIdForModel("gemini-3-pro-image-preview")).toBe("gemini-image-3-pro");
+  });
+
+  it("自建模型拿到的是 Gemini 3 Pro Image 的参数面，不是第一代 Nano Banana 的", () => {
+    const controls = archetypeParameterControls(customRow);
+    const gemini3Pro = getArchetypeById("gemini-image-3-pro")!;
+    const nanoBanana = getArchetypeById("nano-banana")!;
+    const defaultParams = (archetype: typeof gemini3Pro) =>
+      archetype.modes.find((mode) => mode.id === archetype.defaultModeId)!.params;
+    expect(controls).toEqual(defaultParams(gemini3Pro));
+    expect(controls).not.toEqual(defaultParams(nanoBanana));
+    // 可见差异：第一代的「格式」控件不在，Gemini 3 Pro 的比例取值（像素比，参考图上限 14）在。
+    expect(controls?.some((control) => control.key === "output_format")).toBe(false);
   });
 });
