@@ -33,6 +33,7 @@ import { fileURLToPath } from "node:url";
 import { realNomiProfile } from "../tests/ux/_realProfile.mjs";
 import { MODEL_ARCHETYPES } from "../electron/shared/modelArchetypes/index.ts";
 import { applyBuiltinSeeds } from "../electron/catalog/seedBuiltins.ts";
+import { buildApimartHealthInventory, type ApimartHealthEntry } from "../electron/catalog/apimartModelHealth.ts";
 import { billingKindForTaskKind, type CatalogState, type Mapping } from "../electron/catalog/types.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -132,6 +133,34 @@ export function parseApimart(text: string): RadarEntry[] {
     out.push({ vendor: "apimart", category, slug, title: m[2].trim(), url });
   }
   return dedupe(out);
+}
+
+/** Associate curated catalog identities with documentation pages without guessing a URL. */
+export function associateCatalogDocs(modelKeys: readonly string[], entries: readonly RadarEntry[], aliasesByModel = new Map<string, readonly string[]>()): Map<string, RadarEntry[]> {
+  const docs = entries.filter((entry) => entry.vendor === "apimart");
+  // Generic family words are shared by unrelated vendors (for example
+  // midjourney/imagine and midjourney/video). They may not claim a curated
+  // APIMart model through the broad isCovered containment rule.
+  const genericFamilyWords = new Set(["imagine", "video", "audio", "image", "model", "generation"]);
+  return new Map(modelKeys.map((modelKey) => [
+    modelKey,
+    docs.filter((entry) => {
+      const slug = normalizeToken(entry.slug.split("/").pop() ?? entry.slug);
+      const coverage = new Set([normalizeToken(modelKey), ...(aliasesByModel.get(modelKey) ?? []).map(normalizeToken)]);
+      return !genericFamilyWords.has(slug) && isCovered(entry.slug, coverage);
+    }),
+  ]));
+}
+
+/** The one place that answers "which APIMart models we ship, and which documentation pages cover each". */
+export function apimartDocumentationCoverage(
+  entries: readonly RadarEntry[],
+  inventory: readonly ApimartHealthEntry[] = buildApimartHealthInventory(),
+): { modelKey: string; docs: RadarEntry[] }[] {
+  const modelKeys = [...new Set(inventory.map((entry) => entry.modelKey))];
+  const aliasesByModel = new Map(modelKeys.map((modelKey) => [modelKey, [...new Set(inventory.filter((entry) => entry.modelKey === modelKey).flatMap((entry) => entry.documentationKeys))]] as const));
+  const associations = associateCatalogDocs(modelKeys, entries, aliasesByModel);
+  return modelKeys.map((modelKey) => ({ modelKey, docs: associations.get(modelKey) ?? [] }));
 }
 
 function dedupe(entries: RadarEntry[]): RadarEntry[] {
@@ -613,7 +642,7 @@ export function offlineFileName(url: string): string {
   return `${u.host}${u.pathname}`.replace(/\//g, "_");
 }
 
-function offlineFetcher(dir: string): FetchText {
+export function offlineFetcher(dir: string): FetchText {
   return async (url) => fs.readFileSync(path.join(dir, offlineFileName(url)), "utf8");
 }
 
@@ -653,6 +682,9 @@ async function main(): Promise<void> {
   const offlineDir = offlineIdx >= 0 ? args[offlineIdx + 1] : "";
 
   const { entries, failures } = await collectVendors(VENDORS, offlineDir ? offlineFetcher(offlineDir) : fetchIndex);
+  const apimartDocumentationMissing = apimartDocumentationCoverage(entries.apimart ?? [])
+    .filter((row) => row.docs.length === 0)
+    .map((row) => row.modelKey);
 
   // Offline fixtures never spend. Credentials are read only from the process environment here.
   if (!offlineDir) {
@@ -718,6 +750,9 @@ async function main(): Promise<void> {
           ? ` · ⚠️ 我们种了但没列 ${d.unlisted.length}`
           : ` · 未接入 ${d.uncovered.length}（其中协议已知 ${uncoveredKnownWire} · 别家已接 ${uncoveredElsewhere}）（${byCat(d.uncovered, present)}）`),
     );
+    if (d.vendor === "apimart") {
+      console.log(`  文档页未匹配（我们已接、索引里没对上） ${apimartDocumentationMissing.length}: ${apimartDocumentationMissing.join(", ") || "（无）"}`);
+    }
     for (const e of d.added) console.log(`  🆕 [${e.category}] ${e.slug} — ${e.title}（${wireTag(e)}）`);
     for (const e of d.removed) console.log(`  🗑️  [${e.category}] ${e.slug}（上次有、这次没了）`);
     // 未接入整册（能有 93 条）逐条打印是噪音；只挑「其实不是协议缺口/别家已经接了」的子集出来——
@@ -733,7 +768,7 @@ async function main(): Promise<void> {
   }
 
   fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
-  fs.writeFileSync(path.join(SNAPSHOT_DIR, "latest.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), diffs, failures }, null, 2)}\n`);
+  fs.writeFileSync(path.join(SNAPSHOT_DIR, "latest.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), diffs, failures, apimartDocumentationMissing }, null, 2)}\n`);
   const totalNew = diffs.reduce((n, d) => n + d.added.length, 0);
   const totalUnlisted = diffs.reduce((n, d) => n + d.unlisted.length, 0);
   const totalUncovered = diffs.reduce((n, d) => n + d.uncovered.length, 0);

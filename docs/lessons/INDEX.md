@@ -98,6 +98,7 @@
 - [停掉一个 agent ≠ 现场清空：子 agent 还在写、哨兵还在跑](stopping-an-agent-leaves-children-and-sentinels.md) — B · TaskStop 只停一个；先 ListAgents 停子 agent，再 pgrep 杀 until 循环，证明无写入后才派接力写手
 
 - [管道跑测试会吞掉退出码](piped-test-runs-mask-exit-codes.md) — `| tail` 的 exit 0 是 tail 的；错的 reporter 名会「全绿」通过
+- [门岗对它看不见的东西永远是绿的](a-gate-is-green-on-what-it-cannot-see.md) — 门岗说「通过」前先确认要查的东西在它扫描范围里；文件夹样张曾整片逃过契约门岗
 - [测试文件不进主 typecheck](tests-are-not-typechecked.md) — 已由 `check:test-types` 接管，但 `pnpm typecheck` 仍看不见测试
 - [判测试翻红前先查别的 worktree](flaky-test-check-other-worktrees-first.md) — 并行 suite 能把耗时放大 40x，和真 flake 长得一样
 - [写在规则里的分档，没人把它接到本机入口上](local-gates-ran-full-suite-and-jammed-the-machine-lock.md) — ✅ 已固化；`pnpm run gates` 排队十几分钟、9 棵树抢一把锁时读；判据存在 ≠ 判据被调用，改验证策略先 grep 全部调用点

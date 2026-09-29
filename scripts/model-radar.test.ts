@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   annotateDiff,
   annotateEntries,
+  associateCatalogDocs,
   apimartSubIndexUrls,
   collectApimart,
   collectVendors,
@@ -108,6 +109,22 @@ describe("apimart 索引解析", () => {
   it("texts / tasks / 首页不进", () => {
     expect(slugs.some((s) => s.includes("models"))).toBe(false);
     expect(slugs.some((s) => s.includes("status"))).toBe(false);
+  });
+
+  it("catalog model key 关联文档页，找不到的明确留空", () => {
+    const matched = associateCatalogDocs(["gemini-3.1-flash-image-preview", "retired-model"], parseApimart(APIMART_SAMPLE));
+    expect(matched.get("gemini-3.1-flash-image-preview")?.map((entry) => entry.slug)).toEqual(["gemini-3.1-flash"]);
+    expect(matched.get("retired-model")).toEqual([]);
+  });
+
+  it("通用 imagine/video 文档页不能串到别家模型", () => {
+    const docs = [
+      { vendor: "apimart", category: "image", slug: "midjourney/imagine", title: "Imagine", url: "https://docs.apimart.ai/imagine" },
+      { vendor: "apimart", category: "video", slug: "midjourney/video", title: "Video", url: "https://docs.apimart.ai/video" },
+    ] as RadarEntry[];
+    const matched = associateCatalogDocs(["grok-imagine-2.0-ext", "wan3.0-video"], docs);
+    expect(matched.get("grok-imagine-2.0-ext")).toEqual([]);
+    expect(matched.get("wan3.0-video")).toEqual([]);
   });
 });
 
