@@ -8,7 +8,7 @@ exports.default = async function afterPack(context) {
     : path.join(context.appOutDir, "resources");
   const unpackedNodeModulesPath = path.join(resourcesPath, "app.asar.unpacked", "node_modules");
   const pruned = prunePlatformBinaries(unpackedNodeModulesPath, context.electronPlatformName, context.arch);
-  console.log(`[afterPack] kept ${pruned.target}; removed ${pruned.removed.length} foreign media runtimes`);
+  console.log(`[afterPack] target ${pruned.target}; removed ${pruned.removed.length} foreign-platform packages/binaries${pruned.removed.length ? `: ${pruned.removed.join(", ")}` : ""}`);
 
   if (context.electronPlatformName !== "darwin") return;
 
