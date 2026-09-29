@@ -10,11 +10,12 @@
 //   keyfirst-zh   新装机·中文：先填 key（主域被墙 → 已保存·未验证）→ 再改地址 → 重新保存验证 → 接上
 //   trap-zh       新装机·中文：点过「继续验证 → 自检」的连接（报错用户的真实状态）→ 改地址能存
 //   old-zh        老装机升级·中文：APIMart 早已接好（官方默认地址 + 占位 key）→ 改地址 → 重开还在 → 生成发往国内域
-//   new-en        新装机·英文界面：同 new-zh 的改地址与两种写错提示
-//   old-en        老装机升级·英文界面：已接入卡片上改地址
+//   new-en        新装机·英文界面：同 new-zh（改地址、写错提示①、保存验证、重开、生成）
+//   old-en        老装机升级·英文界面：同 old-zh，外加写错提示②（域名拼错）
 //
 // 用法：pnpm build 后  node scripts/apimart-domestic-line-walkthrough.mjs [场景…]
-//       截图目录可用 NOMI_WALK_OUT 指定（默认仓库根 .apimart-line-walk/）。
+//       截图目录可用 NOMI_WALK_OUT 指定（默认仓库根 .apimart-line-walk/）；
+//       NOMI_WALK_OLD_CATALOG 指向一份老版本写下的 model-catalog.json 时，老装机场景从它起步。
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -34,10 +35,12 @@ const UI = {
   'zh-CN': {
     settings: '设置', models: '模型', back: '返回', saveVerify: '保存验证', editAddress: '编辑 APIMart 接入地址',
     invalidAddress: '接入地址需以 http(s):// 开头。', unreachable: '连不上这个地址：', nextStep: '下一步：',
+    newBlank: '新建空白项目', workspace: '工作区切换', generateTab: '生成', addImageNode: '添加图片节点', model: '模型', generateAsset: '生成素材', confirm: '生成',
   },
   en: {
     settings: 'Settings', models: 'Models', back: 'Back', saveVerify: 'Save Verify', editAddress: 'Edit APIMart connection address',
     invalidAddress: 'The connection address must start with http(s)://.', unreachable: "Can't reach this address:", nextStep: 'Next:',
+    newBlank: 'New blank project', workspace: 'Switch workspace', generateTab: 'Generate', addImageNode: 'Add Image node', model: 'Model', generateAsset: 'Generate asset', confirm: 'Generate',
   },
 }
 const OLD_ERROR = /Certification-owned connection changes require a new integration session/
@@ -144,19 +147,19 @@ async function saveKeyOnConnectPage(win, t) {
   await win.locator('[data-key-only-success]').waitFor({ timeout: 30_000 })
 }
 
-async function generateOnce(win) {
-  await win.getByText('新建空白项目', { exact: false }).first().click()
-  await win.locator('[aria-label="工作区切换"]').getByText('生成', { exact: true }).click()
-  await win.locator('[aria-label="添加图片节点"]').first().click()
+async function generateOnce(win, t) {
+  await win.getByText(t.newBlank, { exact: false }).first().click()
+  await win.locator(`[aria-label="${t.workspace}"]`).getByText(t.generateTab, { exact: true }).click()
+  await win.locator(`[aria-label="${t.addImageNode}"]`).first().click()
   // 新节点的提示词框挂在画布浮框里，出现前 contenteditable 的最后一个是创作区那块（不可见）。
   await win.locator('[data-node-id]').first().waitFor()
   await win.waitForTimeout(1200)
   await win.locator('div[contenteditable="true"]').last().click()
   await win.keyboard.type('一只棕灰色短毛猫侧身蜷卧在浅灰色平面上', { delay: 8 })
-  await win.locator('[aria-label="模型"]').first().click()
+  await win.locator(`[aria-label="${t.model}"]`).first().click()
   await win.getByRole('option', { name: /GPT Image 2(?!\.)/ }).first().click()
-  await win.locator('[aria-label="生成素材"]').first().click()
-  const confirm = win.locator('.fixed.inset-0').last().getByRole('button', { name: '生成', exact: true })
+  await win.locator(`[aria-label="${t.generateAsset}"]`).first().click()
+  const confirm = win.locator('.fixed.inset-0').last().getByRole('button', { name: t.confirm, exact: true })
   if (await confirm.count()) await confirm.first().click()
   // 等到节点里那张图真的解码出来（不是占位）：截图要拍得到结果。
   await win.waitForFunction(() => [...document.querySelectorAll('[data-node-id] img')]
@@ -190,7 +193,6 @@ async function newInstall(locale, name) {
     const savedShot = await shot(win, p, '03-domestic-address-saved.png')
     record(`${name}/改成国内地址保存`, !error && apimartRow(p.settingsDir).baseUrlHint === DOMESTIC && !OLD_ERROR.test(error),
       `地址行显示 ${DOMESTIC}，没有报错`, [savedShot])
-    if (locale !== 'zh-CN') return p
 
     await saveKeyOnConnectPage(win, t)
     const keyShot = await shot(win, p, '04-key-saved-published.png')
@@ -208,7 +210,7 @@ async function newInstall(locale, name) {
 
     await closeSettings(win)
     const mark = netLog(p.netLog).length
-    await generateOnce(win)
+    await generateOnce(win, t)
     const generated = await shot(win, p, '06-generated-via-domestic.png')
     const traffic = hostsHit(p, mark)
     const submit = traffic.find((entry) => entry.method === 'POST' && entry.url.endsWith('/v1/images/generations'))
@@ -308,6 +310,12 @@ async function buildOldProfile(name, locale) {
   // 界面语言是这份资料自己的偏好（localStorage），造资料时就定下来——之后的启动不会覆盖它。
   const t = UI[locale]
   const p = profile(name)
+  // 老版本写下的目录（例如 0.22.4 形状的 model-catalog.json）：给了就先放进资料目录，新版本启动时照常升级它。
+  const oldCatalog = process.env.NOMI_WALK_OLD_CATALOG
+  if (oldCatalog) {
+    fs.mkdirSync(p.settingsDir, { recursive: true })
+    fs.copyFileSync(oldCatalog, path.join(p.settingsDir, 'model-catalog.json'))
+  }
   const { app, win } = await launch(p, { locale, blocked: '', mocked: 'api.apimart.ai,api.apib.ai,apib.ai' })
   try {
     await openModels(win, t)
@@ -320,7 +328,7 @@ async function buildOldProfile(name, locale) {
   if (row.baseUrlHint !== PRIMARY || row.enabled !== true || row.credentialBinding?.origin !== PRIMARY) {
     throw new Error(`old profile was not built as an already-connected APIMart: ${JSON.stringify(row)}`)
   }
-  fs.writeFileSync(path.join(p.out, '00-old-profile-before.json'), JSON.stringify({ baseUrlHint: row.baseUrlHint, binding: row.credentialBinding }, null, 2))
+  fs.writeFileSync(path.join(p.out, '00-old-profile-before.json'), JSON.stringify({ oldCatalog: oldCatalog || null, baseUrlHint: row.baseUrlHint, binding: row.credentialBinding }, null, 2))
   return p
 }
 
@@ -336,7 +344,6 @@ async function oldInstall(locale, name) {
     const after = await shot(win, p, '02-connected-card-address-saved.png')
     record(`${name}/已接入卡片改成国内地址`, !error && apimartRow(p.settingsDir).baseUrlHint === DOMESTIC,
       `地址 ${PRIMARY} → ${DOMESTIC}，没有报错`, [before, after])
-    if (locale !== 'zh-CN') return p
 
     const malformed = await saveAddress(win, t, 'apib.ai/v1')
     const malformedShot = await shot(win, p, '03-malformed-address.png')
@@ -353,7 +360,7 @@ async function oldInstall(locale, name) {
 
     await closeSettings(win)
     const mark = netLog(p.netLog).length
-    await generateOnce(win)
+    await generateOnce(win, t)
     const generated = await shot(win, p, '05-generated-via-domestic.png')
     const traffic = hostsHit(p, mark)
     const submit = traffic.find((entry) => entry.method === 'POST' && entry.url.endsWith('/v1/images/generations'))
@@ -371,7 +378,7 @@ const SCENARIOS = {
   'keyfirst-zh': keyFirst,
   'trap-zh': selfCheckTrap,
   'old-zh': async () => { await oldInstall('zh-CN', 'old-zh') },
-  'new-en': async () => { const p = await newInstall('en', 'new-en'); void p },
+  'new-en': async () => { await newInstall('en', 'new-en') },
   'old-en': async () => { const p = await oldInstall('en', 'old-en'); await typoHost(p, 'en') },
 }
 
