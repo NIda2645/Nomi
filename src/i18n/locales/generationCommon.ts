@@ -322,7 +322,7 @@ export const zhGenerationCommon = {
       },
       modelRetired: {
         reason: '这个模型已经下线了',
-        hint: '它在服务商那边一直失败，我们把它从模型列表里移除了。换一个模型就能继续。',
+        hint: '它已经不在模型列表里了，重试也用不了。换个模型就能继续。',
       },
       accountGate: {
         reason: '账号权限不足',
@@ -1816,7 +1816,7 @@ export const enGenerationCommon = {
       },
       modelRetired: {
         reason: 'This model has been removed',
-        hint: 'It kept failing at the provider, so we took it out of the model list. Pick another model to continue.',
+        hint: "It's no longer in the model list, so retrying won't help. Switch to another model to continue.",
       },
       accountGate: {
         reason: 'Insufficient account access',

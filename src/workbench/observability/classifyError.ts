@@ -21,7 +21,8 @@ export type GenerationErrorReport = {
    * 偶发失败才给「重试」——以前一律「重试」，等于让用户对着确定失败的模型死磕。
    */
   primary: GenerationErrorAction
-  secondary: GenerationErrorAction
+  /** `null` = 这一类没有第二个有用的动作（如已下线：重试必然再撞同一张卡），错误卡不摆次按钮。 */
+  secondary: GenerationErrorAction | null
   /** Short human reason, e.g. 配额或限流. */
   reason: string
   /** Actionable suggestion sentence (empty for unknown errors). */

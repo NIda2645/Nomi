@@ -2,7 +2,7 @@
   "schema_version": 3,
   "id": "2026-09-29-retired-model-card-reachable",
   "problem_type": "「这个模型已经下线了」从画布上够不着：渲染层在请求出门前抢答「供应商断开」，分类器又把我们自己的退役签名当「服务商原话」印成英文",
-  "symptom": "Sora 2 退役真机走查：旧项目里存着 Sora 2 的视频节点点生成，节点落「模型未配置 · 这个模型没配好…」+「检查模型」，而不是给退役设计的「这个模型已经下线了」+「换个模型」；把这一层放开后，退役卡正文又多出一行「服务商原话：Model is retired: sora-2」——一句英文，还栽赃给了根本没被请求的那家（截图 .model-identity-walk/zh-sora-retired-card.png 的前后两版）。",
+  "symptom": "Sora 2 退役真机走查：旧项目里存着 Sora 2 的视频节点点生成，节点落「模型未配置 · 这个模型没配好…」+「检查模型」，而不是给退役设计的「这个模型已经下线了」+「换个模型」；把这一层放开后，退役卡正文又多出一行「服务商原话：Model is retired: sora-2」——一句英文，还栽赃给了根本没被请求的那家（截图 .model-identity-walk/zh-sora-retired-card.png 的前后两版）。 协调会话审阅后追加两处（撤 Sora 2 以后这张卡会被更多人看到）：正文写的是为 Imagen 4 写的「它在服务商那边一直失败，我们把它从模型列表里移除了」，对 Sora 2 这种上游关停不成立；次按钮「仍要重试」对已下线必然再撞同一张卡。",
   "direct_cause": "① src/workbench/generationCanvas/runner/catalogTaskResolve.ts 的 resolveExecutableNodeFromCatalog：节点钉了供应商、这家还在目录里、却没有可用的同名行时，一律抛 model-config（providerDisconnected）。行被 seedBuiltins 的退役清单整条摘掉的情形也被它截住，请求到不了执行侧 findExecutableModel——全仓唯一给出 `Model is retired` 的地方（该 throw 由 cecbfc19b 于 2026-09-09 引入，此后所有退役模型的旧节点都够不着退役卡）。② src/workbench/observability/classifyError.ts 对退役签名调 reportFor('model-retired', raw, undefined)，从 raw 抠出首行当 providerMessage。",
   "class_root": "「这一行现在怎么了」是一个事实，却有两层各自回答：执行侧 findExecutableModel 三分（整条不在 = 已退役 / 在但停用 = 未配置 / 在但类型不符），渲染层 2026-09-09 起在请求出门前一律答「供应商断开」，把执行侧的三分截成了一种；分类器对「内部签名算不算服务商原话」逐条手判，类型不符、缺文本大脑都显式给了 ''，退役这条漏了。",
   "affected_population": [
@@ -11,11 +11,14 @@
   ],
   "scope_paths": [
     "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
-    "src/workbench/observability/classifyError.ts"
+    "src/workbench/observability/classifyError.ts",
+    "src/workbench/observability/narrate.ts",
+    "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx"
   ],
   "entry_points": [
     "画布节点点生成（单个与批量都经 runCatalogGenerationTask → resolveExecutableNodeFromCatalog）",
-    "节点错误卡 NodeErrorReport 与 Agent 车道失败横幅（laneCommandFailure）读 classifyGenerationError 的 providerMessage"
+    "节点错误卡 NodeErrorReport 与 Agent 车道失败横幅（laneCommandFailure）读 classifyGenerationError 的 providerMessage",
+    "错误卡的主 / 次动作表 narrate.ACTION_BY_KIND（NodeErrorReport 按它摆按钮）"
   ],
   "external_sources": [],
   "internal_only_reason": "两层之间的内部判据与错误分类，不涉及外部协议；退役签名 `Model is retired:` 是 electron/catalog/executableModel.ts 自己抛的。",
@@ -23,7 +26,9 @@
     "节点钉的那家启用着、目录里整条没有这一行（任何 kind、任何启停状态、按 modelKey 或 modelAlias 都查不到）→ 渲染层不抢答，节点身份原样交执行侧，落 model-retired：「这个模型已经下线了」+「换个模型」",
     "行还在（停用 / 钥匙不通 / 类型不符）或这家本身没启用 → 仍由渲染层给「供应商断开」的恢复路，一次执行都不发（2026-09-09「可用性不许改选中身份」的裁决不变）",
     "渲染层「不抢答」⇔ 执行侧「Model is retired」：同一份落盘目录上两层逐条同序，任何一层单独改判据即红",
-    "退役卡正文不出现「服务商原话」框：退役签名是我们自己的，服务商没被请求到；原文只留在技术详情 / 复制详情里"
+    "退役卡正文不出现「服务商原话」框：退役签名是我们自己的，服务商没被请求到；原文只留在技术详情 / 复制详情里",
+    "退役卡不摆「仍要重试」：动作表里 model-retired 的次动作为 null；其余 23 类的次动作与改表前逐一相同",
+    "退役卡正文对任何下线原因都成立，不替下线编原因（不再说「在服务商那边一直失败」）；中英两种界面同一个意思"
   ],
   "invariant_owner_layer": {
     "layer": "electron/catalog/executableModel.ts",
@@ -67,14 +72,24 @@
       "kind": "read",
       "path": "electron/video/deconstructVideo.ts",
       "symbol": "findExecutableModel"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/narrate.ts",
+      "symbol": "ACTION_BY_KIND"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "symbol": "secondaryAction"
     }
   ],
   "door_reduction": {
-    "before": 7,
-    "after": 7,
-    "why_not": "判定本身只有一扇门：findExecutableModel（执行侧唯一给出 Model is retired 的地方），其余四处 findExecutableModel 读者是不同的执行入口（任务派发 runtime、结果查询 taskResultQuery、拆参考片 deconstructVideo、findExecutableModelForTask），都经同一个判定，不需要合并。渲染层那扇（修前是 resolveExecutableNodeFromCatalog 里的内联 throw，修后是 catalogRowIsGone）的职责是请求出门前的供应商恢复路，这次把它从「另给一个答案」改成「行不在就不抢答」，并用 retiredRowParity 对等棘轮钉住它与执行侧同序；classifyError.detectModelRetired 只把签名映射成卡片，不做判定。门数不变，但「这一行退役了没有」的答案从两份变回一份。"
+    "before": 9,
+    "after": 9,
+    "why_not": "判定本身只有一扇门：findExecutableModel（执行侧唯一给出 Model is retired 的地方），其余四处 findExecutableModel 读者是不同的执行入口（任务派发 runtime、结果查询 taskResultQuery、拆参考片 deconstructVideo、findExecutableModelForTask），都经同一个判定，不需要合并。渲染层那扇（修前是 resolveExecutableNodeFromCatalog 里的内联 throw，修后是 catalogRowIsGone）的职责是请求出门前的供应商恢复路，这次把它从「另给一个答案」改成「行不在就不抢答」，并用 retiredRowParity 对等棘轮钉住它与执行侧同序；classifyError.detectModelRetired 只把签名映射成卡片，不做判定。门数不变，但「这一行退役了没有」的答案从两份变回一份。 追加的两扇：narrate.ACTION_BY_KIND 是每类错误主 / 次动作的唯一出处（本次把次动作也写进表里，不再在函数里按规则现算），NodeErrorReport 只读它摆按钮；两者一个出规则、一个渲染，不该合并。"
   },
-  "generality_proof": "修在两个共享边界：渲染层所有生成（单个、批量、分镜）都经 resolveExecutableNodeFromCatalog 这一个入口，所有错误展示（节点错误卡、Agent 车道横幅）都经 classifyGenerationError 这一个分类器。不按模型、供应商写特例：Imagen 4、Sora 2 与以后任何被退役清单摘掉的行走同一条路。对等棘轮在真实 catalogStore 落盘文件上同时跑两层（渲染层读 listModelCatalogModels——IPC 背后同一个函数，执行侧读 findExecutableModel），五种目录形态逐一核对。变异校验：删掉「行不在就不抢答」、不看这家启用没有、只在启用清单里找行、找行加 kind 过滤、不认别名——五种单边漂移全部被 retiredRowParity 抓红；退役签名改回 undefined 被 classifyGenerationError.test 抓红。",
+  "generality_proof": "修在两个共享边界：渲染层所有生成（单个、批量、分镜）都经 resolveExecutableNodeFromCatalog 这一个入口，所有错误展示（节点错误卡、Agent 车道横幅）都经 classifyGenerationError 这一个分类器。不按模型、供应商写特例：Imagen 4、Sora 2 与以后任何被退役清单摘掉的行走同一条路。对等棘轮在真实 catalogStore 落盘文件上同时跑两层（渲染层读 listModelCatalogModels——IPC 背后同一个函数，执行侧读 findExecutableModel），五种目录形态逐一核对。变异校验：删掉「行不在就不抢答」、不看这家启用没有、只在启用清单里找行、找行加 kind 过滤、不认别名——五种单边漂移全部被 retiredRowParity 抓红；退役签名改回 undefined 被 classifyGenerationError.test 抓红。 追加部分：次动作写进穷举 Record（新增错误类不写主 / 次动作即类型错误），逐类测试钉住除已下线外无一变化；文案改在 src/i18n/locales/generationCommon.ts 的 modelRetired（中英各一条）。真机走查中英各拍一张退役卡特写：.model-identity-walk/zh-sora-retired-card-closeup.png、en-sora-retired-card-closeup.png。",
   "shared_boundaries": [
     {
       "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
@@ -117,6 +132,12 @@
       "entry_point": "findExecutableModel",
       "disposition": "not-affected",
       "evidence": "判据未改；executableModel.test 新增三条钉住「整条不在 = Model is retired（先于钥匙检查）/ 停用 = Model is not enabled / 这家没启用 = Vendor is not enabled」。"
+    },
+    {
+      "path": "src/workbench/observability/narrate.ts",
+      "entry_point": "narrateGenerationErrorActions",
+      "disposition": "enforced",
+      "evidence": "classifyGenerationError.test「已下线：没有次动作，文案不替下线编原因（中英都查）」与「已下线以外的每一类，次动作都和改表前的规则一样」（穷举 24 类）。变异校验：已下线次动作改回重试、顺手去掉别的类的次动作、中文正文改回旧句，三个变异全部抓红。"
     }
   ],
   "recurrence": {
@@ -139,7 +160,8 @@
     "artifacts": [
       "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
       "src/workbench/observability/classifyError.ts",
-      "electron/catalog/retiredRowParity.test.ts"
+      "electron/catalog/retiredRowParity.test.ts",
+      "src/workbench/observability/narrate.ts"
     ]
   },
   "regression_tests": [
@@ -157,9 +179,10 @@
     "status": "removed",
     "removed_paths": [
       "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
-      "src/workbench/observability/classifyError.ts"
+      "src/workbench/observability/classifyError.ts",
+      "src/workbench/observability/narrate.ts"
     ],
-    "rationale": "没有并行版：catalogTaskResolve 里「行整条不在也一律抢答供应商断开」的旧路径在原处收窄删除（同一个出口，只剩行还在时才抛）；classifyError 里退役签名给 undefined、把签名抠进「服务商原话」的旧写法在原处改为 ''。两处都没有保留旧行为的开关或回退。"
+    "rationale": "没有并行版：catalogTaskResolve 里「行整条不在也一律抢答供应商断开」的旧路径在原处收窄删除（同一个出口，只剩行还在时才抛）；classifyError 里退役签名给 undefined、把签名抠进「服务商原话」的旧写法在原处改为 ''。两处都没有保留旧行为的开关或回退。 narrate 里「次动作按主动作现算 + fix-model-kind 例外」的规则在原处换成表里逐类写出，没有保留旧规则。"
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
@@ -168,7 +191,6 @@
   },
   "migration": "无数据迁移：节点存的 modelKey / vendor 原样不动。旧项目里存着已退役模型的节点，下次点生成就落「这个模型已经下线了」+「换个模型」（中英两种界面真机走查截图：.model-identity-walk/zh-sora-retired-card.png、en-sora-retired-card.png）。",
   "residual_risks": [
-    "退役卡的提示语是通用的「它在服务商那边一直失败，我们把它从模型列表里移除了」（为 Imagen 4 写的），对 Sora 2 这种上游关停不够准确；次按钮「仍要重试」对退役模型必然再撞同一张卡（免费、不出门）。都是文案 / 动作取舍，留给协调会话定。",
     "另一类问题（不在本合同范围）：节点失败后换了模型，旧失败仍留在节点上，useNodeModelAutoSelect 的换家 toast 把旧失败的原因安到新选的那家头上（走查实拍：Sora 节点换成 Seedance 2.5 · fal 后弹「[fal]：这个模型已经下线了…切到 Kie.ai」×3）。任何失败都会这样，不是退役特有；已报协调会话。"
   ]
 }
