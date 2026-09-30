@@ -33,7 +33,11 @@ export const CORE_SMOKE_NEEDS = Object.freeze({
   // 零额度的 loopback 供应商：真 HTTP 服务器 + 写进隔离 settings 的模型目录（agent-runtime-fixture.mjs）。
   loopbackProvider: Object.freeze({
     requires: Object.freeze([]),
-    async provision({ repoRoot, settingsDir, userDataDir, appName, needs }) {
+    /**
+     * `options.fixture`：调用方要的夹具档位（如全功能走查的 `usage: 'measured'`），原样交给
+     * `createAgentRuntimeFixture`。核心冒烟不传——一个字节都不变。
+     */
+    async provision({ repoRoot, settingsDir, userDataDir, appName, needs, options }) {
       // profile-copy 夹具里 settings 是用户真实资料的**拷贝**，已经有目录文件；
       // fixture 以 wx 写入（绝不覆盖），所以先把拷贝里那份挪开——原库从来不被碰到。
       const catalog = path.join(settingsDir, 'model-catalog.json')
@@ -42,6 +46,7 @@ export const CORE_SMOKE_NEEDS = Object.freeze({
       // 没声明的场景（只聊天的那些）一个字节都不变。
       const paid = Array.isArray(needs) && needs.includes('paidGenerationRoute')
       const fixture = await createAgentRuntimeFixture({
+        ...(options?.fixture ?? {}),
         rootDir: repoRoot, settingsDir,
         ...(paid ? { generationProvider: 'apimart', userDataDir, appName } : {}),
       })
@@ -102,7 +107,7 @@ export function checkNeeds(needs, registry = CORE_SMOKE_NEEDS) {
 }
 
 /** 按依赖顺序准备。任何一步失败都先释放已准备的，再把错误抛出去（让走查红）。 */
-export async function provisionNeeds(needs, { repoRoot, settingsDir, userDataDir, appName, registry = CORE_SMOKE_NEEDS }) {
+export async function provisionNeeds(needs, { repoRoot, settingsDir, userDataDir, appName, registry = CORE_SMOKE_NEEDS, options = {} }) {
   const problems = checkNeeds(needs, registry)
   if (problems.length) throw new Error(problems.join('\n'))
   const ordered = []
@@ -118,7 +123,7 @@ export async function provisionNeeds(needs, { repoRoot, settingsDir, userDataDir
   const closers = []
   try {
     for (const id of ordered) {
-      const result = await registry[id].provision({ repoRoot, settingsDir, userDataDir, appName, handles, needs: ordered })
+      const result = await registry[id].provision({ repoRoot, settingsDir, userDataDir, appName, handles, needs: ordered, options })
       handles[id] = result.handle
       Object.assign(localStorage, result.localStorage ?? {})
       Object.assign(env, result.env ?? {})

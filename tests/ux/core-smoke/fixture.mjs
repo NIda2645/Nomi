@@ -271,8 +271,11 @@ function registerInCopiedRegistry(settingsDir, project) {
  * @param {string} [options.locale]          'zh-CN' | 'en'；profile-copy 下以用户真实语言为准
  * @param {true} [options.syntheticCredentialStorage]  走查会往 catalog 写占位凭据时**必须**显式声明 true：
  *   声明了就不许在 profile-copy 下跑（那一档连的是用户真实资料的拷贝与真实钥匙串），起进程之前就拒。
+ * @param {{ mainRequire?: string[], env?: Record<string,string>, needsOptions?: object }} [options.extras]
+ *   全功能走查在同一只夹具上多挂的三样（核心冒烟不传，一个字节不变）：主进程入口前加载的模块
+ *   （启动器的 mainRequire，走查网络闸就是它）、额外的进程环境（黑洞代理）、交给依赖登记表的档位（如夹具 `usage: 'measured'`）。
  */
-export async function launchCoreSmoke({ name, seed = null, needs = [], preferences = {}, emptyViewport, locale = 'zh-CN', syntheticCredentialStorage = null }) {
+export async function launchCoreSmoke({ name, seed = null, needs = [], preferences = {}, emptyViewport, locale = 'zh-CN', syntheticCredentialStorage = null, extras = {} }) {
   const environment = readCoreSmokeEnvironment()
   const { fixture } = environment
   // 隔离的合成凭据存储是 empty / used 的既定前提；profile-copy 刻意不用它（要的是用户真实偏好）。
@@ -305,7 +308,9 @@ export async function launchCoreSmoke({ name, seed = null, needs = [], preferenc
   // 所以 appName 就是 package.json 里的 `nomi`（同 `agent-runtime-walk-support.mjs:390` 的非打包分支）。
   const provisioned = await provisionNeeds(needs, {
     repoRoot, settingsDir: dirs.settingsDir, userDataDir: dirs.userDataDir, appName: 'nomi',
+    ...(extras.needsOptions ? { options: extras.needsOptions } : {}),
   })
+  const launchEnv = { ...provisioned.env, ...(extras.env ?? {}) }
   const used = fixture !== 'empty'
   const viewport = used ? USED_VIEWPORT : (emptyViewport ?? USED_VIEWPORT)
   const initialLocalStorage = {
@@ -328,7 +333,8 @@ export async function launchCoreSmoke({ name, seed = null, needs = [], preferenc
       viewportSize: viewport,
       initialLocalStorage,
       // 依赖登记表里 `env` 那一格（needs.mjs）：只有主进程读得到的口子走这里。
-      ...(Object.keys(provisioned.env).length ? { env: provisioned.env } : {}),
+      ...(Object.keys(launchEnv).length ? { env: launchEnv } : {}),
+      ...(extras.mainRequire?.length ? { mainRequire: extras.mainRequire } : {}),
       args: ['--no-proxy-server'],
       syntheticCredentialStorage: isolatedCredentials,
     })
