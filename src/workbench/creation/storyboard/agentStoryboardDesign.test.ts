@@ -15,7 +15,7 @@ vi.mock('../../project/projectCanvasReadSurface', () => ({
 const plan = (title: string, prompt: string): StoryboardPlan => ({ title, anchors: [],
   shots: [{ index: 1, shotId: 'shot-1', shotKind: 'image', durationSec: 0, anchorIds: [], prompt }] })
 const designs = () => useWorkbenchStore.getState().storyboardDesignsByDocumentId.doc ?? []
-const upsert = (designId: string, value: StoryboardPlan) => upsertAgentStoryboardDesign({ projectId: 'p', documentId: 'doc', designId, plan: value })
+const upsert = (designId: string, value: StoryboardPlan, initiator: 'user' | 'agent' = 'agent') => upsertAgentStoryboardDesign({ projectId: 'p', documentId: 'doc', designId, plan: value, initiator })
 
 beforeEach(() => {
   context.projectId = 'p'; context.current = true
@@ -66,7 +66,7 @@ describe('the agent writes into the same plan list a hand-made plan lives in', (
     context.projectId = 'other'
     expect(() => upsert('op-1', plan('Seaside', 'A'))).toThrow('storyboard_project_changed')
     context.projectId = 'p'
-    expect(() => upsertAgentStoryboardDesign({ projectId: 'p', documentId: 'missing', designId: 'op-1', plan: plan('Seaside', 'A') }))
+    expect(() => upsertAgentStoryboardDesign({ projectId: 'p', documentId: 'missing', designId: 'op-1', plan: plan('Seaside', 'A'), initiator: 'agent' }))
       .toThrow('storyboard_document_missing')
     expect(designs()).toEqual([])
   })
@@ -108,6 +108,17 @@ describe('程序 / Agent 新建的方案不替用户打开', () => {
   it('用户点「新建方案」：新方案被打开（用户的动作才能打开）', () => {
     const design = useWorkbenchStore.getState().addStoryboardDesign({ initiator: 'user', documentId: 'doc' })!
     expect(view()).toEqual({ doc: 'doc', design: design.id })
+  })
+
+  it('用户亲手点「拆分镜」发起的方案：照常替他打开（谁发起决定，不是经不经过 Agent 工具）', () => {
+    upsert('op-btn', plan('Button', 'a'), 'user')
+    expect(view()).toEqual({ doc: 'doc', design: 'op-btn' })
+  })
+
+  it('发起人缺了或不认识：拒绝，不猜', () => {
+    expect(() => upsertAgentStoryboardDesign({ projectId: 'p', documentId: 'doc', designId: 'x', plan: plan('X', 'a') })).toThrow('storyboard_initiator_required')
+    expect(() => upsertAgentStoryboardDesign({ projectId: 'p', documentId: 'doc', designId: 'x', plan: plan('X', 'a'), initiator: 'model' })).toThrow('storyboard_initiator_required')
+    expect(designs()).toEqual([])
   })
 
   it('用户点开 Agent 写好的方案：正常打开', () => {

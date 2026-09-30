@@ -75,3 +75,26 @@ describe("P4 §3.2 — anchor checkpoint decide re-kicks the batch scheduler (se
     expect(decided?.status).toBe("approved");
   });
 });
+
+// 「继续」之后叫醒谁（2026-09-29）：任务卡 / MCP / 画布的继续都经 run.control resume。多镜批次的派发归批次调度器——
+// 以前服务在这里只踢 driveGeneration，状态回到 running，却一镜都不派。
+describe("continuing a stopped multi-shot batch wakes the batch scheduler", () => {
+  it("run.control resume on a paused semantic multi-shot run kicks the batch scheduler exactly once", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-batch-wake-"));
+    roots.push(root);
+    const repository = createProductionRunRepository({ projectDirResolver: (p) => (p === "project-1" ? root : null), now });
+    const candidate = (id: string) => ({ candidateId: `cand-${id}`, revision: 1, moduleId: "generation.single-shot", providerId: "apimart", modelId: "video-model", mode: "image-to-video", prompt: id, parameters: {}, references: [] });
+    const shots = ["shot-1", "shot-2"].map((shotId) => ({ shotId, candidate: candidate(shotId) }));
+    let run = repository.createGenerationDraft({ operationId: "op-wake", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, shots });
+    run = repository.execute("project-1", "op-wake", { commandId: "start", expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: now() }).run;
+    const service = createProductionRunService({ repository });
+    const paused = await service.command("project-1", "op-wake", { commandId: "pause", expectedRevision: run.revision, type: "run.control", payload: { action: "pause" }, issuedAt: now() });
+    expect(paused.run.status, "nothing at the provider: the pause settles in the same write").toBe("paused");
+
+    const kicker = vi.fn();
+    registerBatchSchedulerKicker(kicker);
+    const resumed = await service.command("project-1", "op-wake", { commandId: "resume", expectedRevision: paused.run.revision, type: "run.control", payload: { action: "resume" }, issuedAt: now() });
+    expect(resumed.run.status).toBe("running");
+    expect(kicker).toHaveBeenCalledExactlyOnceWith("project-1", "op-wake");
+  });
+});

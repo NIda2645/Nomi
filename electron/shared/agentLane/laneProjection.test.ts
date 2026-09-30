@@ -95,7 +95,7 @@ describe('lane user attachments', () => {
   it('a claim the host cannot resolve is still shown as attached (no silent disappearance)', () => {
     const projection = projectLaneSnapshot(laneWith([input(1, 'x', { approvalPolicy: policy, attachments: [{ assetId: 'gone', version: 2 }] })]), facts)
     expect(projection.parts[0]).toMatchObject({ kind: 'user', attachments: [{ assetId: 'gone', version: 2 }] })
-    expect((projection.parts[0] as { attachments: Array<{ display?: unknown }> }).attachments[0].display).toBeUndefined()
+    expect((projection.parts[0] as unknown as { attachments: Array<{ display?: unknown }> }).attachments[0].display).toBeUndefined()
   })
 })
 

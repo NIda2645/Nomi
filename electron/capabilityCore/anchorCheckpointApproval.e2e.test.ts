@@ -120,7 +120,7 @@ function buildScheduler(root: string, repository: ReturnType<typeof createProduc
   createGenerationRuntimeAdapter({ providers: [provider] });
   const submission = createProductionGenerationSubmission({
     repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
-    projectRevision: 0, intentMacKey: "test-intent-key", providers: [provider],
+    intentMacKey: "test-intent-key", providers: [provider],
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });

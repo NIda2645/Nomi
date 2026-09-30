@@ -17,6 +17,13 @@ export type StoryboardRequestTarget = Readonly<{
   /** The plan the attached shot references belong to. Present only together with `shotIds`. */
   designId?: string;
   shotIds?: readonly string[];
+  /**
+   * The user asked for this plan through the storyboard button, so the plan that results is opened for
+   * them. **Absent = the Agent decided to create it** (a chat request, a follow-up): the plan is saved
+   * to the list but not opened. "Who initiated" is stated here by the caller that knows, never guessed
+   * by the tool that creates the plan.
+   */
+  openResult?: true;
 }>;
 
 /** Model guidance describes the same immutable target enforced by the host. */

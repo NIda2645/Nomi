@@ -19,7 +19,8 @@ export const USER_REPORTED_ISSUES = Object.freeze([
   { id: 'U12', reported: '2026-09-29', text: '生成失败时的提示文字：原因说错、把旧失败算到新换的那家头上、提示是英文原话', playbook: 'pb06-failure-small-window', rules: ['failure-reason-misstated', 'failure-blamed-on-wrong-vendor', 'raw-english-in-chinese-ui', 'stale-failure-toast'] },
   { id: 'U13', reported: '2026-09-29', text: '失败停批后没开拍的镜头显示「预算已用完」「提额续拍」，里面的额度全是 0', playbook: null, rules: ['ui-budget-exhausted', 'ui-raise-budget'],
     notYet: '要一条「参考卡（定妆照）失败 → Run 进 needs_attention → 没开拍的镜头」的剧本，第一个里程碑没写（下一批）' },
-  { id: 'U14', reported: '2026-09-29', text: '点了之后弹「操作没成功，稍后再试」', playbook: 'pb01-two-page-card', rules: ['ui-operation-failed-try-later'] },
+  // 2026-09-29 起返工 / 续拍没有笼统的「稍后再试」：每种失败一句话。还说不清是哪种的只剩「这是 Nomi 自己的问题」——它出现 = 这个老问题换了个样子回来。
+  { id: 'U14', reported: '2026-09-29', text: '点了之后弹「操作没成功，稍后再试」', playbook: 'pb01-two-page-card', rules: ['ui-action-internal-error'] },
   { id: 'U15', reported: '2026-09-29', text: 'Seedream 5.0 供应商出了图，Nomi 显示失败还劝换供应商', playbook: 'pb90-seedream5-paid', rules: ['provider-succeeded-nomi-failed', 'suggests-switching-after-local-failure'],
     notYet: '只进付费小额组：零花费夹具复现不了真供应商回的那张图；剧本已写，发版前 NOMI_SPEND_OK=1 跑' },
 ].map(Object.freeze))

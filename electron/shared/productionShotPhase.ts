@@ -12,24 +12,31 @@
 // 同一个输入，两端的判定逐字相同，不会一个说在生成、一个说已停。
 //
 // 真相源 = Run 的 jobs[] + status（纯派生，无第二份状态）。
-import type { ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from "../productionRun/productionRunTypes";
+import type { ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStopReason } from "../productionRun/productionRunTypes";
+import { runStopReason } from "./productionRunStop";
 export { decideShotClaim } from "./decideShotClaim";
 import { shotCountsTowardBatch, shotIncluded } from "./productionShotJobs";
 
 export type ProductionShotPhase = "queued" | "generating" | "stopped" | "failed" | "done";
 
-export type ProductionShotState = {
-  phase: ProductionShotPhase;
+type ProductionShotStateFields = {
   /** 这一镜最新的那次任务（排队中且还没派发时没有）。投影用它的 jobId 当节点运行记录的身份。 */
   job?: ProductionJob;
   /** 排队中：第 n / N（n=本镜在待生成序列里的位次，从 1 起；N=总镜数）。仅 queued 有。 */
   queueIndex?: number;
   queueTotal?: number;
-  /** stopped 的原因：预算触顶(halt) 还是用户急停(stop)。文案据此选（提额续拍 / 继续剩余）。 */
-  stoppedReason?: "budget" | "stopped";
   /** failed 的人话原因。 */
   failureMessage?: string;
 };
+
+/**
+ * 一镜在画布上的运行状态。`stopped` **一定**带着停下的原因：停的那一刻记下的事实（`runStopReason`，
+ * electron/shared/productionRunStop.ts），文案与入口据此选；上一版写下的 Run 没记原因 = `unknown`——绝不猜成预算
+ * （以前 needs_attention 一律被说成「预算已用完」）。别的阶段没有这一格，读的人不用再兜底。
+ */
+export type ProductionShotState =
+  | (ProductionShotStateFields & { phase: "stopped"; stoppedReason: ProductionRunStopReason | "unknown" })
+  | (ProductionShotStateFields & { phase: Exclude<ProductionShotPhase, "stopped">; stoppedReason?: never });
 
 /**
  * job.status → 这一镜落在哪一段。**穷尽**：ProductionJobStatus 新增一个状态而这里没给出归属，编译就过不去
@@ -87,22 +94,6 @@ export function jobAwaitsHuman(status: ProductionJobStatus): boolean {
 /** 这次任务是不是已经交给供应商、还在等结论（观察者据此判断还要不要再去问）。 */
 export function isProductionJobInFlight(job: Pick<ProductionJob, "status" | "providerTaskId">): boolean {
   return Boolean(job.providerTaskId) && productionJobPhase(job.status) === "generating";
-}
-
-/**
- * 这一镜此刻是否归制作流程生成——画布再发一次同一镜就是重复生成、重复扣费，所以画布的「能不能生成」「生成全部」都读它。
- * 与「节点上显示哪一段」（deriveProductionShotState）是两件事，分开判，改显示不许顺带改归属：
- * - Agent 拟好、报价卡还没摆出来（cardHidden 草稿）→ 不归，用户可在画布上自己生成；
- * - 报价卡摆在用户面前等确认 → 归（用户会在卡上决定；画布先发 + 再确认 = 两次）；
- * - 已确认：排队 / 生成中 → 归；已停 / 失败 / 完成 → 不归；丢掉的计划、不在付费范围里的镜 → 不归。
- * （2026-09-25：Agent 起草的镜头卡片等确认时，底栏仍把它算进「生成全部」。）
- */
-// 「已停」而非「失败」的 job 错因：预算触顶 / 急停到达这镜（可续拍，warning 非 danger）。provider 拒 = 真失败。
-const HALT_ERROR_CODES = new Set(["budget_exhausted", "budget_halt", "batch_stopped", "restart_recovery_required"]);
-
-/** run 整体处于「停」的态：急停(pausing/paused/cancelled) 或预算 halt(needs_attention)。 */
-function runIsStopped(status: ProductionRunStatus): boolean {
-  return status === "pausing" || status === "paused" || status === "cancelled" || status === "needs_attention";
 }
 
 function isSingleShotPlan(run: ProductionRun): boolean {
@@ -192,13 +183,11 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
 
   if (job && jobPhase === "done") return { phase: "done", job };
   if (job && jobPhase === "failed") {
-    // 区分「已停」vs「失败」：预算/急停错因（HALT_ERROR_CODES）或批被停/取消到达这镜 = 已停（可续拍，warning）；
-    // provider 拒（有真错因）= 失败（danger）。run 整体已停 + 无真错因也算已停。
-    const haltedByCode = job.errorCode !== undefined && HALT_ERROR_CODES.has(job.errorCode);
-    const batchStopped = job.status === "cancelled_remote" || job.status === "too_late";
-    if (haltedByCode || batchStopped || (job.status === "needs_attention" && !job.errorCode && runIsStopped(run.status))) {
-      return { phase: "stopped", job, stoppedReason: haltedByCode && job.errorCode !== "batch_stopped" ? "budget" : run.status === "needs_attention" ? "budget" : "stopped" };
-    }
+    // 「已停」vs「失败」：Run 停着，而这一镜是随批被停下的（cancelled_remote / too_late），或 job 没有真错因 = 已停；
+    // 供应商拒（有真错因）或 Run 根本没停 = 失败。停下的原因只读 Run 记下的事实，不从错因码或 Run 状态猜（以前这里会猜成「预算」）。
+    const stopReason = runStopReason(run);
+    const stoppedWithBatch = job.status === "cancelled_remote" || job.status === "too_late" || (job.status === "needs_attention" && !job.errorCode);
+    if (stopReason && stoppedWithBatch) return { phase: "stopped", job, stoppedReason: stopReason };
     return { phase: "failed", job, ...(job.errorMessage ? { failureMessage: job.errorMessage } : {}) };
   }
   if (job && jobPhase === "generating") return { phase: "generating", job };
@@ -206,10 +195,9 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   // 没有 job 时，只有计划已提交、这一镜又勾进了这一批，它才真的在排队（批次会自己轮到它）。
   // 否则是用户还没点头（草稿 / 报价卡在等 / 没点头就取消），或者这镜没被勾进这一批：它不在任何队列里。
   if (!job && (run.generationPlan.state !== "submitted" || shot?.included === false)) return null;
-  // 无 job 或 job 还在派发前的档：run 已停 → 显「已停」；否则「排队中（第 n/N）」。
-  if (runIsStopped(run.status)) {
-    return { phase: "stopped", ...(job ? { job } : {}), stoppedReason: run.status === "needs_attention" ? "budget" : "stopped" };
-  }
+  // 无 job 或 job 还在派发前的档：run 停着 → 显「已停」，原因照 Run 记下的说；否则「排队中（第 n/N）」。
+  const stopReason = runStopReason(run);
+  if (stopReason) return { phase: "stopped", ...(job ? { job } : {}), stoppedReason: stopReason };
   // 排队位次：anchor 不进视频序列（它先于镜跑），显纯「排队中」；单镜也没有序列可言。
   if (single || shot?.role === "anchor") return { phase: "queued", ...(job ? { job } : {}) };
   const videoShots = queueShotsOf(run);

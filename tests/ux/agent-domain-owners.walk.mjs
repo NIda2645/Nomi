@@ -224,6 +224,32 @@ try {
     await expect(win().locator(`${CREATION_PANEL} ${COMPOSER}`)).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
   }, { surfaces: ['workspaceMode', 'agentPanel', 'rightPanel', 'canvasViewport', 'creationSelection'] })
   const SHOTS = EN ? ['Morning harbour in the mist', 'A cat on the pier', 'Seagulls past the masts'] : ['清晨的渔港，雾里的小船', '码头上晒太阳的猫', '海鸥掠过桅杆']
+  await row('storyboard-button', EN ? 'Select text in the document, click "Split into shots"' : '在文稿里选中文字，点「拆成镜头」', EN ? 'The new plan opens by itself (the user did it); a plan the Agent decides to create does not (next row)' : '新方案自动打开（是用户亲手点的）；Agent 自己决定建的方案不打开（见下一行）', async (record) => {
+    const listState = () => win().evaluate(() => ({ ids: [...document.querySelectorAll('[data-storyboard-id]')].map((element) => element.getAttribute('data-storyboard-id')), active: [...document.querySelectorAll('[data-storyboard-id][data-active="true"]')].map((element) => element.getAttribute('data-storyboard-id')) }))
+    const before = await listState()
+    const turn = scriptTurn(fixture, { label: 'dom-storyboard-button', marker: 'DOM-BTN', steps: [
+      { name: 'draft_shots', args: { shots: SHOTS.map((prompt, index) => ({ title: `${EN ? 'Shot' : '镜头'} ${index + 1}`, prompt, taskKind: 'text_to_video',
+        candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: 'kling-v3' } })) } },
+      { text: EN ? 'The storyboard is written.' : '分镜写好了。' },
+    ] })
+    await pb.monitor.step('用户：选中文稿文字，点「拆成镜头」', async () => {
+      const editor = win().locator('[aria-label="创作文档编辑区"] .tiptap[contenteditable="true"], .tiptap[contenteditable="true"]').first()
+      await clickOrFail(editor, '文稿编辑区')
+      // 文稿开头写一句带暗号的话（空资料里文稿本来是空的，选区要有字；暗号让「大脑」认得这一轮）。
+      await win().keyboard.press('Control+Home')
+      await win().keyboard.type(EN ? 'DOM-BTN: the harbour at dawn. ' : 'DOM-BTN：清晨的渔港。')
+      await win().keyboard.press('Control+a')
+      await clickOrFail(win().getByRole('button', { name: EN ? 'Split into shots' : '拆成镜头' }), '选区浮条上的「拆成镜头」')
+    }, { surfaces: ['workspaceMode', 'agentPanel', 'rightPanel', 'canvasViewport', 'creationSelection', 'storyboardTable'] })
+    await turn.done
+    await expect.poll(async () => (await listState()).ids.length, { message: '新方案进了左栏', timeout: DEFAULT_TIMEOUT_MS }).toBe(before.ids.length + 1)
+    const after = await listState()
+    const created = after.ids.find((id) => !before.ids.includes(id))
+    record.screenshots.push(await shot('storyboard-button-opened'))
+    expect(after.active, '用户亲手点的：新方案被打开').toEqual([created])
+    return `新方案 ${created} 已打开（打开的方案 前 ${JSON.stringify(before.active)} 后 ${JSON.stringify(after.active)}）`
+  })
+
   await row('storyboard-not-opened', EN ? 'Ask the Agent to draft a multi-shot storyboard' : '让 Agent 起草多镜头分镜', EN ? 'The storyboard table does not open by itself; the Agent says it is written and where to open it' : '分镜表不会自己打开；Agent 说分镜写好了、在哪打开', async (record) => {
     const listState = () => win().evaluate(() => ({ ids: [...document.querySelectorAll('[data-storyboard-id]')].map((element) => element.getAttribute('data-storyboard-id')), active: [...document.querySelectorAll('[data-storyboard-id][data-active="true"]')].map((element) => element.getAttribute('data-storyboard-id')) }))
     const before = await listState()

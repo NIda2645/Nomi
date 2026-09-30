@@ -181,8 +181,8 @@ describe("semantic MCP generation tools", () => {
         modelId, modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } })) }],
     }]);
     const declared = () => ({ moduleId: "generation.single-shot", providerId: "fixture-provider", modelId: "model-default", mode: "text-to-image" });
-    const create = (params: Record<string, unknown>, defaultModelForTaskKind: (() => ReturnType<typeof declared> | undefined) | undefined = declared) =>
-      createGenerationPlanningHandler({ registry: twoModels, operations: createInMemoryGenerationOperationStore(), ...(defaultModelForTaskKind ? { defaultModelForTaskKind } : {}), now: () => "2026-09-30T00:00:00.000Z" })
+    const create = (params: Record<string, unknown>, defaultModelForTaskKind: () => ReturnType<typeof declared> | undefined = declared) =>
+      createGenerationPlanningHandler({ registry: twoModels, operations: createInMemoryGenerationOperationStore(), defaultModelForTaskKind, now: () => "2026-09-30T00:00:00.000Z" })
         ({ capability: "create", params, lease }) as Promise<Record<string, unknown>>;
 
     it("a draft that follows the user's default carries no deviation", async () => {
@@ -958,7 +958,15 @@ it('a document-admitted draft saves its author body into that document\'s plan, 
     expect(result.operation.sourceDocumentId).toBe('doc')
     // 写给模型的回执必须说清「存了、没替用户打开、去哪点开」——回话里那句话读的是这条事实，不是它自己的想象。
     expect((result as { storyboardSaved?: unknown }).storyboardSaved).toMatchObject({ designId: result.operation.operationId, opened: false, openFrom: expect.stringContaining('NOT opened') })
+    expect(saved[0].payload.initiator).toBe('agent')
   }
+  // 用户亲手点「拆分镜」：目标上带 openResult，落地时发起人是 user、回执说已替他打开。
+  saved.length=0
+  const fromButton=await handler({capability:'create',lease,origin:{host:'nomi',sourceDocument:{documentId:'doc',revision:1,contentHash:'hash'}},
+    storyboardTarget:{projectId:'project-1',sourceDocumentId:'doc',sourceDocumentRevision:1,sourceDocumentContentHash:'hash',targetKind:'storyboard',requestId:'r',plans:[],openResult:true},
+    params:{operation:'create',...input}}) as {storyboardSaved?:{opened:boolean}}
+  expect(saved[0].payload.initiator).toBe('user')
+  expect(fromButton.storyboardSaved?.opened).toBe(true)
   // 不是从文稿来的草稿没有方案列表可存，也就没有这条事实。
   const plain=await handler({capability:'create',lease,params:{operation:'create',...input}}) as Record<string,unknown>
   expect(plain).not.toHaveProperty('storyboardSaved')

@@ -15,13 +15,13 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { DEFAULT_TIMEOUT_MS, clickOrFail, expect } from './_assert.mjs'
+import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { BRAIN } from './_agentVideoPaid.mjs'
 import { openPaidWalk } from './_paidRun.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
 import {
-  APPROVAL_CARD, CANVAS_PANEL, COMPOSER_MODEL, MODEL_POPOVER,
+  APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_MODEL, MODEL_POPOVER,
   chooseAssistantModel, closeSpendCard, newConversation, openCanvas, readProject, sendCanvas, waitForV4TurnIdle,
 } from './agent-runtime-walk-support.mjs'
 
@@ -64,10 +64,12 @@ try {
     try {
       // 每一轮从空画布起步：上一轮留下的草稿节点会让真模型去问「是替换还是新建」，那测的就不是默认模型了。
       if (nodesSeen > 0) {
+        const draftNodes = win.locator('.react-flow__node')
+        const proof = await proveProbe(draftNodes, '上一轮留下的草稿节点在画布上')
         await win.locator('.react-flow__pane').first().click({ position: { x: 5, y: 300 } })
         await win.keyboard.press('Control+a')
         await win.keyboard.press('Delete')
-        await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.length, { message: '清空上一轮的草稿节点', timeout: DEFAULT_TIMEOUT_MS }).toBe(0)
+        await expectAbsent(draftNodes, { provenBy: proof, message: '清空上一轮的草稿节点' })
         nodesSeen = 0
       }
       await newConversation(win, CANVAS_PANEL)
@@ -78,7 +80,7 @@ try {
       await sendCanvas(win, ASK)
       const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
       // 等这一轮落地（卡在等人时输入框仍是运行态，所以先等「卡出现」或「回合结束」二者其一）。
-      await expect.poll(async () => (await card.isVisible().catch(() => false)) || (await win.locator(`${CANVAS_PANEL} [data-v4-block="composer"][data-mode="running"]`).count()) === 0, { timeout: stationTimeout({ turns: 2 }), message: '这一轮迟迟没落地' }).toBe(true)
+      await expect.poll(async () => (await card.isVisible().catch(() => false)) || (await win.locator(`${CANVAS_PANEL} ${COMPOSER}:not([data-mode="running"])`).count()) > 0, { timeout: stationTimeout({ turns: 2 }), message: '这一轮迟迟没落地' }).toBe(true)
       record.cardShown = await card.isVisible().catch(() => false)
       if (!record.cardShown) { record.error = 'no-card' }
       record.cardModelLabel = !record.cardShown ? null : ((await card.innerText()).replace(/\s+/g, ' ').match(new RegExp(`(${defaultLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}|${(paid.label(IMAGE_OTHER.vendorKey, IMAGE_OTHER.modelKey) ?? 'x').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`)) ?? [])[1] ?? null
