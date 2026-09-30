@@ -150,7 +150,13 @@ describe("「继续剩余」：接着拍，续额度只在真因预算停下时�
 
   it("急停后在跑的那一镜还没收尾（pausing）：也能接着拍，不再报「not resumable」", async () => {
     const { repository, hooks } = setup();
-    stop(repository, "pausing", "user_paused");
+    // 第 1 镜已经交给供应商、还在跑：急停只能先停在 pausing，等它收尾。
+    let run = repository.read(PROJECT, RUN)!;
+    const job1 = run.jobs.find((job) => job.metadata?.shotId === "shot-1")!;
+    for (const status of ["submit_intent_persisted", "submitting", "provider_accepted", "polling"] as const) {
+      run = repository.execute(PROJECT, RUN, { commandId: `job1-${status}`, expectedRevision: run.revision, type: "job.status", payload: { jobId: job1.jobId, status }, issuedAt: now() }).run;
+    }
+    expect(stop(repository, "pausing", "user_paused").status, "还有一镜在供应商那边：停在 pausing").toBe("pausing");
     await expect(hooks.resumeProductionBatch({ projectId: PROJECT, runId: RUN })).resolves.toEqual({ ok: true, code: "resumed" });
     expect(repository.read(PROJECT, RUN)?.status).toBe("running");
   });

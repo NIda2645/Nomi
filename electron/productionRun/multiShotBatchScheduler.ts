@@ -365,7 +365,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
   return { runToQuiescence };
 }
 
-/** 派发准入闸的拒绝（productionShotDispatchGuard 抛的 production_shot_claimed）。 */
+/** 派发准入闸的拒绝（canvasShotClaim 抛出的错误带结构化的 code: production_shot_claimed 与 reason）。 */
 function isShotClaimDenied(error: unknown): boolean {
   return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "production_shot_claimed";
 }

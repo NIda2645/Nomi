@@ -16,7 +16,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, waitForVisualQuiescence } from './_assert.mjs'
+import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, screenshotSettled, waitForVisualQuiescence } from './_assert.mjs'
 import { findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { FIXTURE_TEXT_MODEL_LABEL, flattenRequestText } from './agent-runtime-fixture.mjs'
@@ -95,6 +95,87 @@ async function fitView(win) {
   const fit = win.getByRole('button', { name: /^(适应视图|Fit view)$/ }).first()
   if (await fit.isVisible().catch(() => false)) await fit.click()
   await waitForVisualQuiescence(win)
+}
+
+/**
+ * 给验收页拍一张看得清字的局部图：放大到这几张卡的字读得出来（不点它们，免得弹出输入框），只截这几张卡那一块。
+ * 整屏图照拍（看得到上下文），这一张是给人对着读卡上那句话的。
+ */
+let zoomCount = 0
+/** 画布上真正空着、看得见的那一块：左边浮着工具条、底下浮着生成条与缩放条，都不算。 */
+async function usableStage(win) {
+  const stage = await win.locator('.generation-canvas-v2__stage').first().boundingBox()
+  if (!stage) return null
+  return { left: stage.x + 80, top: stage.y + 12, right: stage.x + stage.width - 12, bottom: stage.y + stage.height - 130 }
+}
+const unionOf = (boxes) => {
+  const x = Math.min(...boxes.map((box) => box.x)); const y = Math.min(...boxes.map((box) => box.y))
+  return { x, y, width: Math.max(...boxes.map((box) => box.x + box.width)) - x, height: Math.max(...boxes.map((box) => box.y + box.height)) - y }
+}
+/** 中键拖动空白处，把这几张卡挪到可见区正中（和用户平移画布是同一个手势）。 */
+async function centerOn(win, union, area) {
+  const dx = (area.left + area.right) / 2 - (union.x + union.width / 2)
+  const dy = (area.top + area.bottom) / 2 - (union.y + union.height / 2)
+  if (Math.abs(dx) < 16 && Math.abs(dy) < 16) return
+  const from = await findCanvasBlankPoint(win)
+  if (!from) return
+  await win.mouse.move(from.x, from.y)
+  await win.mouse.down({ button: 'middle' })
+  await win.mouse.move(from.x + dx, from.y + dy, { steps: 10 })
+  await win.mouse.up({ button: 'middle' })
+  await waitForVisualQuiescence(win)
+}
+/** 卡片附近一个滚轮真会缩放画布的空白点（卡片与带 nowheel 的区域会吃掉滚轮）。 */
+async function wheelAnchorNear(win, union, area) {
+  const points = [
+    { x: union.x + union.width / 2, y: union.y + union.height / 2 },
+    { x: union.x + union.width / 2, y: union.y - 14 },
+    { x: union.x - 14, y: union.y + union.height / 2 },
+    { x: union.x + union.width + 14, y: union.y + union.height / 2 },
+    { x: union.x + union.width / 2, y: union.y + union.height + 14 },
+  ].filter((point) => point.x > area.left && point.x < area.right && point.y > area.top && point.y < area.bottom)
+  return win.evaluate((candidates) => candidates.find((point) => {
+    const element = document.elementFromPoint(point.x, point.y)
+    return Boolean(element && element.closest('.react-flow') && !element.closest('.react-flow__node') && !element.closest('.nowheel'))
+  }) ?? null, points)
+}
+async function zoomShot(win, id, label, nodeIds) {
+  try {
+    await fitView(win)
+    const area = await usableStage(win)
+    if (!area) return null
+    const boxesOf = async () => (await Promise.all(nodeIds.map((nodeId) => win.locator(`[data-node-id="${nodeId}"]`).first().boundingBox()))).filter(Boolean)
+    const wheel = async (point, delta) => {
+      await win.mouse.move(point.x, point.y)
+      await win.keyboard.down('Control'); await win.mouse.wheel(0, delta); await win.keyboard.up('Control')
+      await waitForVisualQuiescence(win)
+    }
+    for (let step = 0; step < 16; step += 1) {
+      let boxes = await boxesOf()
+      if (!boxes.length || boxes[0].width >= (nodeIds.length === 1 ? 420 : 340)) break
+      await centerOn(win, unionOf(boxes), area)
+      boxes = await boxesOf()
+      const anchor = await wheelAnchorNear(win, unionOf(boxes), area)
+      if (!anchor) break
+      await wheel(anchor, -160)
+      const grown = unionOf(await boxesOf())
+      if (grown.width > area.right - area.left - 24 || grown.height > area.bottom - area.top - 24) { await wheel(anchor, 160); break }
+    }
+    const settled = await boxesOf()
+    if (!settled.length) return null
+    await centerOn(win, unionOf(settled), area)
+    const union = unionOf(await boxesOf())
+    const stage = await win.locator('.generation-canvas-v2__stage').first().boundingBox()
+    const left = Math.max(stage.x, union.x - 24); const top = Math.max(stage.y, union.y - 40)
+    const right = Math.min(stage.x + stage.width, union.x + union.width + 24); const bottom = Math.min(stage.y + stage.height, union.y + union.height + 24)
+    const file = path.join(walk.outputDir, `z${String(++zoomCount).padStart(2, '0')}-${id}-${label}.png`)
+    await screenshotSettled(win, { path: file, clip: { x: left, y: top, width: Math.max(1, right - left), height: Math.max(1, bottom - top) } })
+    ;(rows[id] ??= { title: '', ok: false, detail: '', shots: [] }).shots.push(file)
+    return file
+  } catch (error) {
+    log('zoom shot failed', String(error?.message ?? error).split('\n')[0])
+    return null
+  }
 }
 
 /** 放大到能看清这一张卡、并选中它。 */
@@ -196,6 +277,10 @@ try {
     // ── 上一版留下的资料：换这一版打开同一个项目 ──
     const { projectId, projectRoot, operationId, scenario: previousScenario, projectName } = previous.seed
     log('upgrade from', previousScenario, 'run', operationId, 'status on disk', readRun(projectRoot, operationId)?.status, jobsOf(readRun(projectRoot, operationId)))
+    // 上一版那一场最后切到了英文（界面语言跟着资料走）：先切回中文走主路径，英文那一张后面再切。
+    await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'zh-CN'))
+    await win.reload({ waitUntil: 'domcontentloaded' })
+    await waitForVisualQuiescence(win)
     const card = win.locator('[data-project-card="true"]').filter({ hasText: projectName }).first()
     await expect(card).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
     await card.hover()
@@ -204,10 +289,15 @@ try {
     await openCanvas(win)
     const nodeIds = readRun(projectRoot, operationId).generationPlan.shots.map((shot) => shot.nodeId).filter(Boolean)
     if (previousScenario === 'pause-settle') {
-      await row('U1', '升级：上一版一直「暂停中」的制作，打开后落到「已暂停」', async () => {
+      await row('U1', '升级：上一版一直「暂停中」的制作，打开后落到「已暂停」；没开拍的镜头不猜原因、不说预算，给「继续」', async () => {
         await expect.poll(() => readRun(projectRoot, operationId)?.status, { timeout: stationTimeout({ operations: 4 }), intervals: [500] }).toBe('paused')
-        return jobsOf(readRun(projectRoot, operationId))
+        await fitView(win)
+        await expect.poll(async () => (await faces(win, nodeIds)).some((face) => face.placeholder === 'stopped'), { timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
+        const all = await faces(win, nodeIds)
+        if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? '') || face.action === 'resume-budget')) throw new Error(`升级后挂着预算文案：${JSON.stringify(all)}`)
+        return `${readRun(projectRoot, operationId).status} · stop=${JSON.stringify(readRun(projectRoot, operationId).stop ?? null)} · ${jobsOf(readRun(projectRoot, operationId))} · ${JSON.stringify(all.map((face) => [face.placeholderText, face.action]).filter(([text]) => text))}`
       })
+      await zoomShot(win, 'U1', 'zh-legacy-paused', [nodeIds.at(-1)])
       await openTaskCard(win)
       await shot('U1', 'zh-task-card')
       await closeTaskPanel(win)
@@ -216,29 +306,42 @@ try {
         const pending = run.generationPlan.shots.filter((planShot) => run.jobs.find((job) => job.metadata?.shotId === planShot.shotId)?.status === 'authorized')
         if (pending.length === 0) throw new Error(`没有待继续的镜头：${jobsOf(run)}`)
         const last = pending.at(-1)
+        await zoomShot(win, 'U2', 'zh-stopped-shot', [last.nodeId])
         await focusNode(win, last.nodeId)
         await shot('U2', 'zh-stopped-shot')
         await clickOrFail(win.locator(`[data-node-id="${last.nodeId}"] [data-production-shot-action]`).first(), '第 3 镜「继续剩余」', { noWaitAfter: true })
         const before = walk.fixture.images.length
-        await expect.poll(() => walk.fixture.images.length, { timeout: stationTimeout({ operations: 4 }) }).toBe(before + pending.length)
+        try {
+          await expect.poll(() => walk.fixture.images.length, { timeout: stationTimeout({ operations: 4 }) }).toBe(before + pending.length)
+        } catch {
+          // 派不出去时如实写清卡在哪：Run 的状态、每镜的 job、批准信封的到期时间对比现在。
+          const after = readRun(projectRoot, operationId)
+          const expiresAt = after?.generationPlan?.authorizationEnvelope?.expiresAt
+          const lapsed = expiresAt && Date.parse(expiresAt) <= Date.now()
+          throw new Error(`点了「继续剩余」，剩下的镜头没有派出去（夹具只收到 ${walk.fixture.images.length - before} 笔）：Run ${after?.status} · ${jobsOf(after)}`
+            + `${lapsed ? ` · 批准信封 ${expiresAt} 到期（现在 ${new Date().toISOString()}）——派发时核「授权过期」，一直拒` : ''}`)
+        }
         await expect.poll(() => readRun(projectRoot, operationId).jobs.filter((job) => job.status === 'ready' || job.status === 'adopted').length,
           { timeout: stationTimeout({ operations: 4 }) }).toBe(run.generationPlan.shots.length)
         return jobsOf(readRun(projectRoot, operationId))
       })
       await fitView(win)
       await shot('U2', 'zh-after-resume')
+      await zoomShot(win, 'U2', 'zh-after-resume', nodeIds)
       await setLocale(win, 'en')
       await fitView(win)
       await shot('U2', 'en-after-resume')
+      await zoomShot(win, 'U2', 'en-after-resume', nodeIds)
     } else {
       await fitView(win)
-      await row('U3', '升级：上一版停在「需要处理」的制作（没记停下原因），打开后不再说「预算已用完 / 提额续拍」', async () => {
+      await row('U3', '升级：上一版参考卡失败后一直「进行中」的批次（视频镜一直排队），打开后如实停下，不说「预算已用完 / 提额续拍」', async () => {
         await expect.poll(async () => (await faces(win, nodeIds)).some((face) => face.placeholder === 'stopped'), { timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
         const text = await pageText(win)
         if (BUDGET_COPY.test(text)) throw new Error(`页面上还有预算文案：${JSON.stringify(await faces(win, nodeIds))}`)
         return JSON.stringify((await faces(win, nodeIds)).map((face) => face.placeholderText ?? face.failure))
       })
       await shot('U3', 'zh-legacy-stopped')
+      await zoomShot(win, 'U3', 'zh-legacy-stopped', [nodeIds.at(-1)])
       await setLocale(win, 'en')
       await fitView(win)
       await row('U4', '升级（英文）：同一个旧制作，英文界面也不说预算、没有中文', async () => {
@@ -248,6 +351,7 @@ try {
         return JSON.stringify((await faces(win, nodeIds)).map((face) => face.placeholderText))
       })
       await shot('U4', 'en-legacy-stopped')
+      await zoomShot(win, 'U4', 'en-legacy-stopped', [nodeIds.at(-1)])
     }
   } else {
     const { projectId, projectRoot, name: projectName } = await walk.newProject()
@@ -283,6 +387,18 @@ try {
         await openTaskCard(win)
         await shot('T1', 'zh-checkpoint-card')
         await clickOrFail(win.locator(`${TASK_CARD} [data-production-primary-action]`).first(), '制作卡主按钮（过目后开拍）')
+        await row('T1b', '形象确认卡：今天没有价格，说明行不提预算（以前拼成「按已批准的 已批准的 预算开拍」）', async () => {
+          const card = win.locator('[data-anchor-checkpoint-card]').first()
+          await expect(card).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
+          const note = (await win.locator('[data-anchor-checkpoint-note]').first().textContent())?.trim() ?? ''
+          if (BUDGET_COPY.test(note) || /预算|budget/i.test(note)) throw new Error(`说明行提到了预算：「${note}」`)
+          if (/已批准的\s*已批准的/.test(note)) throw new Error(`说明行重复：「${note}」`)
+          const file = path.join(walk.outputDir, `z${String(++zoomCount).padStart(2, '0')}-T1b-zh-checkpoint-card.png`)
+          await screenshotSettled(card, { path: file })
+          const entry = (rows.T1b ??= { title: '', ok: false, detail: '', shots: [] })
+          entry.shots = [...entry.shots, file]
+          return note
+        })
         await clickOrFail(win.locator('[data-anchor-checkpoint-primary][data-anchor-checkpoint-mode="approve"]'), '形象确认卡「开拍」')
         await closeTaskPanel(win)
         await row('T2', '放行形象后，两镜视频真的派出去（不卡在「排队中」）', async () => {
@@ -291,6 +407,7 @@ try {
         })
         await fitView(win)
         await shot('T2', 'zh-videos-generating')
+        await zoomShot(win, 'T2', 'zh-videos-generating', [video1.nodeId, video2.nodeId])
         walk.fixture.releaseVideos()
         await row('T3', '两镜视频出片、落回各自的卡；整批收尾，Run 不再一直「进行中」', async () => {
           for (const planShot of [video1, video2]) {
@@ -301,6 +418,7 @@ try {
         })
         await fitView(win)
         await shot('T3', 'zh-landed')
+        await zoomShot(win, 'T3', 'zh-landed', [video1.nodeId, video2.nodeId])
         await row('T4', '全程没有「预算已用完 / 提额续拍」', async () => {
           if (BUDGET_COPY.test(await pageText(win))) throw new Error('页面上出现了预算文案')
           return 'ok'
@@ -311,6 +429,7 @@ try {
         await setLocale(win, 'en')
         await fitView(win)
         await shot('T3', 'en-landed')
+        await zoomShot(win, 'T3', 'en-landed', [video1.nodeId, video2.nodeId])
         void anchor
       } else {
         await row('T5', '参考卡生成失败后，Run 停下来（不会一直转）', async () => {
@@ -328,6 +447,7 @@ try {
           return JSON.stringify(all.map((face) => [face.placeholderText, face.action]))
         })
         await shot('T6', 'zh-shots-after-anchor-failed')
+        await zoomShot(win, 'T6', 'zh-shots-after-anchor-failed', [video1.nodeId])
         await row('T7', '在失败的参考卡上点「重试」：说人话，不拼主进程英文原话', async () => {
           await focusNode(win, anchor.nodeId)
           const retry = win.locator(`[data-node-id="${anchor.nodeId}"] [role="alert"] button`).filter({ hasText: /^(重试|仍要重试|Retry|Retry anyway)$/ }).first()
@@ -340,6 +460,7 @@ try {
           return feedback
         })
         await shot('T7', 'zh-anchor-retry-feedback')
+        await zoomShot(win, 'T7', 'zh-anchor-retry-feedback', [anchor.nodeId])
         await setLocale(win, 'en')
         await fitView(win)
         await row('T8', '英文界面：视频镜不说预算、没有中文', async () => {
@@ -349,6 +470,7 @@ try {
           return JSON.stringify(all.map((face) => face.placeholderText))
         })
         await shot('T8', 'en-shots-after-anchor-failed')
+        await zoomShot(win, 'T8', 'en-shots-after-anchor-failed', [video1.nodeId])
         await row('T9', '英文界面：参考卡「重试」的反馈是英文人话', async () => {
           await focusNode(win, anchor.nodeId)
           const retry = win.locator(`[data-node-id="${anchor.nodeId}"] [role="alert"] button`).filter({ hasText: /^(Retry|Retry anyway)$/ }).first()
@@ -361,6 +483,7 @@ try {
           return feedback
         })
         await shot('T9', 'en-anchor-retry-feedback')
+        await zoomShot(win, 'T9', 'en-anchor-retry-feedback', [anchor.nodeId])
         walk.report.seed.nodeIds = nodeIds
       }
     } else {
@@ -385,6 +508,7 @@ try {
           await focusNode(win, shot3.nodeId)
           await expect(win.locator(`[data-node-id="${shot3.nodeId}"] [data-production-shot-action]`).first()).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
           await shot('T13', 'zh-pausing-before-resume')
+          await zoomShot(win, 'T13', 'zh-pausing-before-resume', [shot3.nodeId])
           await clickOrFail(win.locator(`[data-node-id="${shot3.nodeId}"] [data-production-shot-action]`).first(), '第 3 镜「继续剩余」', { noWaitAfter: true })
           await expect.poll(() => readRun(projectRoot, operationId)?.status, { timeout: DEFAULT_TIMEOUT_MS }).toBe('running')
           const feedback = (await faces(win, [shot3.nodeId]))[0].feedback
@@ -401,6 +525,7 @@ try {
         })
         await fitView(win)
         await shot('T14', 'zh-all-landed')
+        await zoomShot(win, 'T14', 'zh-all-landed', nodeIds)
       } else {
         walk.fixture.holdSubmits(false)
         await recorded(goDone.received, 'generate returns')
@@ -414,6 +539,7 @@ try {
         await row('T11', '「继续剩余」能用：剩下两镜派出去并出片', async () => {
           await focusNode(win, shot3.nodeId)
           await shot('T11', 'zh-stopped-shot3')
+          await zoomShot(win, 'T11', 'zh-stopped-shot3', [shot3.nodeId])
           await clickOrFail(win.locator(`[data-node-id="${shot3.nodeId}"] [data-production-shot-action]`).first(), '第 3 镜「继续剩余」', { noWaitAfter: true })
           let feedback = null
           await expect.poll(async () => {
@@ -427,6 +553,7 @@ try {
         })
         await fitView(win)
         await shot('T11', 'zh-after-resume')
+        await zoomShot(win, 'T11', 'zh-after-resume', nodeIds)
         await row('T12', '「继续剩余」出错时说人话（不拼主进程英文原话）', async () => {
           const all = await faces(win, nodeIds)
           const bad = all.find((face) => face.feedback && RAW_MAIN_TEXT.test(face.feedback))
@@ -436,6 +563,7 @@ try {
         await setLocale(win, 'en')
         await fitView(win)
         await shot('T11', 'en-after-resume')
+        await zoomShot(win, 'T11', 'en-after-resume', nodeIds)
       }
     }
     walk.report.seed.nodeIds ??= undefined
