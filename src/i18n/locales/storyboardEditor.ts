@@ -437,7 +437,7 @@ export const enStoryboardEditor = {
     rerunFreshRefs: 'Rerun Refs',
     missingRequired: 'Missing {{slot}}',
     missingRequiredHint: 'This model needs a reference image to generate. Switch the model/mode, or attach a reference card to this shot.',
-    noRefAcceptedSwitch: '{{mode}} takes no references — switch to "{{other}}" to attach a {{slot}}',
+    noRefAcceptedSwitch: '{{mode}} takes no references — switch to "{{other}}" to add a reference ({{slot}})',
     noRefAcceptedSwitchSame: '{{mode}} takes no references — switch to the "{{other}}" mode to attach one',
     slotAccepts: {
       image: '"{{label}}" takes images only',
