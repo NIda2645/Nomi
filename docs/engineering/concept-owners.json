@@ -573,6 +573,47 @@
       ],
       "since": "2026-09-26",
       "notes": "制作投影写进节点的那条运行记录（id 由 productionShotPhase.productionRunRecordId 生成、isProductionRunRecord 认）只归制作投影写：主进程 buildMaterializeShotsPayload 算出每镜的「生成中 / 失败 / 结束 / 出片」，渲染层 applyShotGeneration 落到节点上。画布自己的重开收敛（canvasSnapshotNormalizer.convergeStuckMidFlightNode）不许碰它——2026-09-26 真付费 T5：重开窗口后在跑的第 1 镜被当幽灵收成空闲，看着像没在跑（合同 docs/fixes/2026-09-26-inflight-shot-reload-display.root-cause.json）。"
+    },
+    {
+      "name": "这条连接归不归认证适配器管",
+      "owner": {
+        "path": "electron/catalog/certificationOwnership.ts",
+        "symbol": "isCertificationOwnedConnection"
+      },
+      "consumers": [
+        "electron/capabilityCore/generationProviderBootstrap.ts",
+        "electron/capabilityCore/apimartGenerationProvider.ts",
+        "electron/catalog/directKeyCredential.ts",
+        "electron/catalog/rendererCatalogMutation.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "标记是 meta.adapter。连接本身带标记 → 归；内置家只认内置目录（seedBuiltins.builtinCatalogModelKeys）模型上的标记，用户自己加、自己自检的模型只管它自己；非内置家任何一行带标记都归。此前 4 份判据都把「整家任何一行带标记」当成整条连接归认证（A10b：点过「继续验证 → 自检」后 Agent 生成对整家 APIMart 关门）。合同 docs/fixes/2026-09-29-connection-certification-ownership-one-owner.root-cause.json；main 上按 v2 登记为 catalog.connection.certification-ownership。"
+    },
+    {
+      "name": "设置页改连接（渲染层那扇写门能改什么）",
+      "owner": {
+        "path": "electron/catalog/rendererCatalogMutation.ts",
+        "symbol": "upsertRendererCatalogVendor"
+      },
+      "consumers": [
+        "electron/main.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "接口地址归用户（保存即生效，已存 key 的去向跟着用户这次保存走）；认证连接的鉴权放法不重新接入就改不了；「是不是认证连接」问 certificationOwnership。合同 docs/fixes/2026-09-29-settings-address-is-the-users.root-cause.json。"
+    },
+    {
+      "name": "这条连接还是不是内置家那一条",
+      "owner": {
+        "path": "electron/catalog/builtinVendorSeeds.ts",
+        "symbol": "builtinVendorScopeMatches"
+      },
+      "consumers": [
+        "electron/capabilityCore/generationProviderBootstrap.ts",
+        "electron/capabilityCore/apimartGenerationProvider.ts",
+        "electron/catalog/directKeyCredential.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "内置家的连接身份由代码拥有：鉴权放法与种子一致，接口地址是种子地址或代码登记的官方备用线路（与凭据守卫同一张名单）。合同 docs/fixes/2026-09-29-settings-address-is-the-users.root-cause.json。"
     }
   ]
 }
