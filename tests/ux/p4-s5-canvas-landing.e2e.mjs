@@ -20,7 +20,7 @@ import path from 'node:path'
 
 import { launchNomiApp } from './_launchApp.mjs'
 import { repoRoot } from './_mcpJourney.mjs'
-import { clickOrFail, proveProbe, expectAbsent } from './_assert.mjs'
+import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, proveProbe, expectAbsent } from './_assert.mjs'
 import { findCanvasBlankPoint } from './_canvasHit.mjs'
 
 const shotsDir = path.join(repoRoot, 'tests/ux/shots/p4-s5-canvas-landing')
@@ -243,7 +243,7 @@ try {
 
   // ── 同一批停下（预算停批，按生命周期 owner 的写法记下原因）：批过、没派出去的镜「已停」；从没被批过的 shot-3 仍是「还没生成」 ──
   await pinRun(landedRun(projectId, {}, { stopped: true }))
-  await win.waitForFunction(() => document.querySelectorAll('[data-shot-placeholder-state="stopped"]').length >= 2, undefined, { timeout: 5_000 }).catch(() => undefined)
+  await expect.poll(async () => (await placeholderStates())['shot-2'], { message: '停下：shot-2 的小标换成「已停」', timeout: DEFAULT_TIMEOUT_MS }).toBe('stopped')
   const stoppedStates = await placeholderStates()
   check(stoppedStates['shot-2'] === 'stopped' && stoppedStates['anchor-1'] === 'stopped', `停下：批过的参考卡与 shot-2「已停」（实得 ${JSON.stringify(stoppedStates)}）`)
   check(stoppedStates['shot-3'] === 'not_generated', `停下：从没被批过的 shot-3 不是「已停」、不挂续拍钮（实得 ${stoppedStates['shot-3']}）`)
