@@ -1591,10 +1591,11 @@
         "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
         "src/workbench/generationCanvas/runner/outboundBlockedRecovery.ts",
         "src/workbench/observability/classifyError.ts",
-        "src/workbench/observability/narrate.ts"
+        "src/workbench/observability/narrate.ts",
+        "electron/assets/generatedMediaDecode.ts"
       ],
       "since": "2026-09-27",
-      "notes": "PR #907（同上合同）：本地、出请求之前的素材失败原来不带机器码，渲染层分不清是素材坏了还是供应商拒了。现在过 IPC 的失败带 asset-invalid 这类机器码，渲染层按码分类、不按中文文案猜；码表只有 NomiErrorCode 这一份，打码与认码只经 tagNomiError / matchNomiErrorCode。"
+      "notes": "PR #907（同上合同）：本地、出请求之前的素材失败原来不带机器码，渲染层分不清是素材坏了还是供应商拒了。现在过 IPC 的失败带 asset-invalid 这类机器码，渲染层按码分类、不按中文文案猜；码表只有 NomiErrorCode 这一份，打码与认码只经 tagNomiError / matchNomiErrorCode。 2026-09-29：新增 output-unreadable（供应商已经把结果发回来、本机读不出来；electron/assets/generatedMediaDecode.ts 统一抛，渲染层按码归类）。"
     },
     {
       "name": "哪些推送的 ref 带新内容、需要评审收据",
@@ -2498,6 +2499,18 @@
         {
           "path": "src/workbench/observability/classifyError.ts",
           "symbol": "classifyGenerationError"
+        },
+        {
+          "path": "src/workbench/observability/narrate.ts",
+          "symbol": "narrateIsVendorSideFailure"
+        },
+        {
+          "path": "src/workbench/generationCanvas/runner/taskFailureMessage.ts",
+          "symbol": "formatTaskFailureMessage"
+        },
+        {
+          "path": "src/workbench/generationCanvas/runner/taskFailureMessage.ts",
+          "symbol": "parseTaskFailureMessage"
         }
       ],
       "forbidden_derivations": [],
@@ -2506,10 +2519,11 @@
         "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
         "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
         "src/workbench/observability/generationFeedback.ts",
-        "src/workbench/taskCenter/taskCenterEntries.ts"
+        "src/workbench/taskCenter/taskCenterEntries.ts",
+        "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts"
       ],
       "since": "2026-09-29",
-      "notes": "PR #926（同上合同）：把生成错误映射成人话与下一步动作的唯一一处；内部签名（已退役 / 类型不符 / 缺文本大脑 / NOMI_ERR 码）不进「服务商原话」框——退役这条曾经漏了。"
+      "notes": "PR #926（同上合同）：把生成错误映射成人话与下一步动作的唯一一处；内部签名（已退役 / 类型不符 / 缺文本大脑 / NOMI_ERR 码）不进「服务商原话」框——退役这条曾经漏了。 2026-09-29（合同 docs/fixes/2026-09-29-failure-reason-from-upstream-evidence.root-cause.json）：分类按上游自己的码与话归类（状态码派生的 input 只是没有证据时的落点）；标题永远是界面语言，供应商说的话只进「服务商原话」；每一类声明它是不是服务商那一侧的事（vendorSide，narrate 的穷举表），点名供应商的界面只在它为 true 时才有资格；结果已送达而本机读不出来 = output-unreadable（只有重试）。异步任务失败的文本格式产出与解析成对住在 taskFailureMessage。"
     },
     {
       "name": "模型框里模型的显示名（按当前语言翻译，不进身份）",
@@ -2652,6 +2666,166 @@
       ],
       "since": "2026-09-29",
       "notes": "内置家的连接身份由代码拥有：鉴权放法与种子一致，接口地址是种子地址或代码登记的官方备用线路（vendor/vendorBaseFallback.codeDeclaredFallbackOrigins，与凭据守卫同一张名单——APIMart 的国内线路 api.apib.ai 在里面）。内置家自动发布、Agent 生成器装配、生成器出请求都问它，不一致就 fail-closed。合同 docs/fixes/2026-09-29-settings-address-is-the-users.root-cause.json。"
+    },
+    {
+      "name": "生成产物能不能解码（出没出画面）",
+      "subject": "asset.generated-media-decode",
+      "lifecycle": "materialized-artifact",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/assets/generatedMediaDecode.ts",
+        "symbol": "verifyGeneratedMediaDecodes"
+      },
+      "write_api": [
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "verifyGeneratedMediaDecodes"
+        },
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "interpretDecodeRun"
+        },
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "decodeInvocation"
+        },
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "decodeTimeoutMs"
+        },
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "generatedMediaValidationError"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/assets/generatedMediaDecode.test.ts",
+      "allowed_consumers": [
+        "electron/assets/projectAssetStore.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "合同 docs/fixes/2026-09-29-generated-media-decode-verdict.root-cause.json：供应商已经出了图、Nomi 却判 decode_failed——旧判定把「解码器一句抱怨都没有」当成「能解码」（-xerror + -err_detect explode），IEND 之后多几个字节的完整 PNG 也被拒收。现在「能不能解码」= 解码器把第一帧拿出来、宽高为正（三态：decodable / undecodable / unverified），ffmpeg 原话进日志、不进判决；超时随文件大小放宽。生成产物校验的所有失败（解码 / 冒充网页 / 认不出字节 / 类型不符 / 格式不支持）统一带机器码 output-unreadable。另外两处仍用严格判据、刻意不并进来：mediaProbe.decodeMediaInput 只服务模型 / 工作流认证（providerAdapter/certificationMedia.ts，certifyOutput 才走）——认证要的是「产物干净」的证据，不是「能不能显示」；antigravityArtifacts.validateAntigravityImage 是 Antigravity 本机通道自己的安全校验（精确的 PNG / JPEG / WebP 终止字节 + -xerror，输入图与输出图都过它），受信域和错误码（ANTIGRAVITY_IMAGE_INVALID）都是它自己的。"
+    },
+    {
+      "name": "一次运行发给了哪家的哪个模型（失败点名与健康记账的身份）",
+      "subject": "generation.dispatched-attempt",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+        "symbol": "dispatchedAttempt"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+          "symbol": "dispatchedAttempt"
+        },
+        {
+          "path": "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+          "symbol": "failedAttemptOf"
+        },
+        {
+          "path": "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+          "symbol": "failureDescribesCurrentSelection"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "nodeModelIdentity",
+          "kind": "definition",
+          "why": "「失败那一刻读节点现在选着谁」当失败的身份——运行期间用户换了家，失败就记到没失败过的那家头上（模型健康记账与切家提示都栽过）；失败的身份只许来自运行记录上的 attempt"
+        }
+      ],
+      "parity_test": "src/workbench/generationCanvas/runner/failedAttemptIdentity.test.ts",
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/runner/generationRunController.ts",
+        "src/workbench/generationCanvas/runner/nodeModelHealth.ts",
+        "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "合同 docs/fixes/2026-09-29-failure-belongs-to-the-dispatched-attempt.root-cause.json：runGenerationNode 在运行开始时用同一对选择器（selectedVendor / selectedModelKey，与 buildCatalogTaskRequest 同读）把「发给谁」写进运行记录（GenerationNodeRunRecord.attempt，随项目落盘）；之后失败提示点名的是它、模型健康记账记到的也是它，不再读「失败时节点碰巧选着谁」。没有这一栏的运行记录（旧项目；multiShotCanvasLanding 为制作流程投影的记录）读不出是谁失败的——不点名、不出切家提示，节点错误卡照旧把原因说清。"
+    },
+    {
+      "name": "一条提示的身份、去重、撤回与位置（同一件事一条、前提不成立就收、整条留在窗口里）",
+      "subject": "feedback.toast-identity",
+      "lifecycle": "live-interaction",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/ui/toast.tsx",
+        "symbol": "useToastStore"
+      },
+      "write_api": [
+        {
+          "path": "src/ui/toast.tsx",
+          "symbol": "useToastStore"
+        },
+        {
+          "path": "src/ui/toast.tsx",
+          "symbol": "buildToastNotification"
+        },
+        {
+          "path": "src/ui/toast.tsx",
+          "symbol": "TOAST_MAX_HEIGHT"
+        },
+        {
+          "path": "src/NomiAppProviders.tsx",
+          "symbol": "NomiAppProviders"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "providerSwitchToastId",
+          "kind": "definition",
+          "why": "「按 (节点, 失败方, 模型, 目标, 目标模型) 拼身份」的第二套提示身份——换家之后 id 变了，旧提示成了没人撤的孤儿；一张卡一个 id，「同一次失败」由 occurrence 定，撤回由所有者的 validWhile 管"
+        }
+      ],
+      "parity_test": "src/ui/toastOccurrence.test.ts",
+      "allowed_consumers": [
+        "src/ui/notificationPolicy.ts",
+        "src/utils/showUndoToast.ts",
+        "src/utils/showInfoToast.ts",
+        "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+        "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "合同 docs/fixes/2026-09-29-toast-identity-withdrawal-and-window-fit.root-cause.json：提示的身份与撤回都归所有者。occurrence = 「同一件事被重新宣布」还是「又发生一次」（×N 只在真的又发生 N 次时出现，关掉过的事件不再冒出来）；validWhile = 前提不成立就撤回（靠状态变化，不靠定时器；showUndoToast 原来私有的监视并入它）；位置归容器：grid 隐式列 minmax(0,1fr)、高度上限 TOAST_MAX_HEIGHT 随窗口、文字区在上限内滚动。不给 occurrence / validWhile 的调用方照旧（每次 push 算一次发生）。"
+    },
+    {
+      "name": "上游自己给的错误码怎么从响应体挑出来",
+      "subject": "provider.upstream-error-code",
+      "lifecycle": "provider-observation",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/jsonUtils.ts",
+        "symbol": "pickUpstreamCode"
+      },
+      "write_api": [
+        {
+          "path": "electron/jsonUtils.ts",
+          "symbol": "pickUpstreamCode"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/vendor/upstreamEvidenceParity.test.ts",
+      "allowed_consumers": [
+        "electron/vendor/vendorHttp.ts",
+        "electron/ai/aiSdkVendorError.ts",
+        "electron/ai/runtimeVendorError.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "合同 docs/fixes/2026-09-29-failure-reason-from-upstream-evidence.root-cause.json：状态码（400/422）只说「请求有问题」，从不说为什么；上游自己的错误码（model_not_found 一类）才是它说的原因。三条把上游失败带过 IPC 的通道——图 / 视频 / JSON 请求（vendorHttp.requestVendor）、AI SDK 文本请求（aiSdkVendorError.vendorErrorFromAiSdkError）、Agent 的 pi 运行时（runtimeVendorError.describeRuntimeError，读响应体走 upstreamCodeFromBody）——都经同一个 pickUpstreamCode 把它随失败载荷（VendorErrorStructured.upstreamCode）带过去，classifyGenerationError 按码归类。键优先级表与 pickUpstreamMessage 同住一处。customCallRunner 只是把已有的载荷脱敏后原样（展开 structured）重包，不丢这一栏。"
     }
   ]
 }

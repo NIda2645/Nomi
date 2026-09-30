@@ -4,7 +4,8 @@
 // `-xerror`（任何一个解码错误、包括第一张图之后的尾包错误，都让 ffmpeg 退出 1）叠 `-err_detect explode`
 // （解码器碰到最轻微的异常就中止）。用户要的是另一件事：「我能不能拿到这张图」。
 //
-// 实测（随包 ffmpeg 4.1，20181217；脚本见 docs/fixes/2026-09-29-generated-media-decode-verdict.root-cause.json）：
+// 实测（随包 ffmpeg 4.1，20181217；矩阵写在 docs/fixes/2026-09-29-generated-media-decode-verdict.root-cause.json 的
+// generality_proof 里，可重跑的版本就是同目录的 generatedMediaDecode.test.ts——它用随包 ffmpeg 现场编码同样的输入）：
 //   · PNG 后面多了几个字节（IEND 之后的尾数据，常见于带水印 / 元数据 / CDN 补丁的产物）：`-xerror` 判 1，
 //     而它是一张完整、可显示的图——旧判定把已经付了钱的图当成失败；
 //   · JPEG 的畸形 EXIF / APP 段、XMP、JSON 元数据、尾部垃圾：解码器只是抱怨或干脆不吭声，图完好；

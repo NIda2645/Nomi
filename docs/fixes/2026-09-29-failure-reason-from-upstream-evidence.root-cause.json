@@ -1,0 +1,293 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-failure-reason-from-upstream-evidence",
+  "problem_type": "生成失败的原因说错：按 HTTP 状态码猜原因（400 一律「参数不被接受」），供应商自己给的码与话没带过来；标题不分界面语言；本机这一侧的失败也被说成供应商的事",
+  "symptom": "2026-09-29 全功能走查 pb06（U12），中英各一遍：夹具供应商对第一笔回 HTTP 400、错误码 model_not_found、原话「This model has been deprecated and is no longer available. Please switch to another model or provider.」——节点错误卡与右上角切家提示却说「参数不被接受·请检查比例 / 尺寸」，让用户去改与问题无关的设置（failure-reason-misstated 每一遍 2 处）；认不出类别的失败，标题直接是供应商的原话（任何语言），中文界面顶着一整句英文；结果已经送达却读不出来（本机判 decode_failed）同样被说成「服务商临时故障」并劝换一家。",
+  "direct_cause": "① electron/vendor/vendorHttp.ts 的 categorizeVendorFailure 把 HTTP 400 / 422 一律派生成 category=input，classifyGenerationError 见到 category=input 就落「参数不被接受」——而 400 只说「请求有问题」，从不说为什么（模型已下线、审核拦了、余额不足都可以回 400）。上游自己给的错误码（OpenAI 兼容信封的 error.code，如 model_not_found；官方 schema：code 是 string 或 null）与它的话在主进程结构化载荷里只带了话（upstreamMsg），码没带，分类器只能读状态码。② 界面语言没有规矩：供应商的话（任意语言）直接当标题——classifyGenerationError 的 unknown 兜底把 raw 首行当 reason。③ 「是不是服务商那一侧的事」没有出处：切家提示对任何失败都点名供应商，读不出产物、本地护栏也不例外。④ 异步任务失败的文本格式（原话 + (taskId=…, kind=…) 后缀）由 catalogTaskResultParse 产出、分类器拿正则各读各的（后缀会混进标题）。⑤ 「模型已下线」那一类只认 Google 家族一句固定原话和几个泛词，认不出 OpenAI 兼容一族说的「model … deprecated / no longer available」。",
+  "class_root": "「这次失败是什么原因、是谁的事」是一个要由证据回答的判断，仓库里却有几处各自回答：状态码派生的类别（vendorHttp）被当成原因；分类器读的证据只有 upstreamMsg 加状态码；切家提示自己认定「失败了就是供应商的事」；异步任务的失败文本由产出方与解析方各写一份格式。没有一张目录既定义证据的种类与优先级（Nomi 机器码 → 上游自己的码 → 供应商说的话 → 状态码派生的类别），又声明每一类归谁（vendorSide）、文案是哪种语言。",
+  "affected_population": [
+    "所有走 classifyGenerationError 的失败展示：节点错误卡、切家提示、任务中心、状态条、Agent 车道横幅（五个读者）",
+    "所有把上游失败带过 IPC 的传输：图 / 视频 / JSON 请求（vendorHttp）、AI SDK 文本请求（aiSdkVendorError）、Agent 的 pi 运行时（runtimeVendorError）",
+    "中英两种界面；旧项目里已经落盘的失败串（没有 upstreamCode 的载荷）"
+  ],
+  "scope_paths": [
+    "electron/ai/aiSdkVendorError.ts",
+    "electron/ai/runtimeVendorError.ts",
+    "electron/jsonUtils.ts",
+    "electron/shared/nomiErrorCodes.ts",
+    "electron/vendor/vendorHttp.ts",
+    "src/i18n/locales/generationCommon.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts",
+    "src/workbench/generationCanvas/runner/taskFailureMessage.ts",
+    "src/workbench/generationCanvas/runner/vendorErrorIpc.ts",
+    "src/workbench/observability/classifyError.ts",
+    "src/workbench/observability/narrate.ts"
+  ],
+  "entry_points": [
+    "失败落在节点上：NodeErrorReport 读 classifyGenerationError（原因 + 建议 + 服务商原话）",
+    "失败之后的切家提示：useNodeModelAutoSelect 读 report.reason / hint / vendorSide",
+    "任务中心、状态条（generationFeedback）与 Agent 车道横幅（laneFailureText）读同一个分类器",
+    "上游失败带过 IPC 的三条通道：vendorHttp.requestVendor、aiSdkVendorError.vendorErrorFromAiSdkError、runtimeVendorError.describeRuntimeError"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://github.com/openai/openai-openapi/blob/main/openapi.json",
+      "checked_at": "2026-09-30",
+      "purpose": "错误信封 error{code: string|null, message, param, type}（OpenAI 兼容的各家沿用）：pickUpstreamCode 只收字符串形标识码，null 与整句话不收；分类按码与话归类，不按状态码猜"
+    }
+  ],
+  "invariants": [
+    "分类的证据顺序只有一条：Nomi 自己的机器码 → 上游自己的错误码（UPSTREAM_CODE_KINDS）→ 供应商说的话（MODEL_UNAVAILABLE_WORDS 等，只读「能证明是供应商说的」那句，不读带 URL 的诊断串）→ 状态码派生的类别（没有证据时的落点）。HTTP 400 本身不是「参数不被接受」的证据。",
+    "真的参数错误仍归「参数不被接受」（400 加参数错误的话，或没有别的证据）；不为任何一家供应商写分支：码表里登记的是各家共用的标识码，加一行 = 加一个码 + 一条用例。",
+    "标题永远是界面当前语言的一句话：供应商的话只有和界面同语言才配当标题，否则降为「服务商原话」那一格的次要信息（中文界面要有汉字、英文界面不许有）；认不出来源的话（可能是我们自己的）不套这条规矩。",
+    "每一类失败都声明它是不是服务商那一侧的事（narrate.VENDOR_SIDE_BY_KIND，穷举 Record）；点名供应商说「它失败了」的界面只在 vendorSide 为 true 时才有资格；结果已送达却读不出来（output-unreadable）、本机护栏、出站策略、素材上传失败都是 false，只给「重试」。",
+    "上游自己的错误码经同一个 pickUpstreamCode 随失败载荷带过 IPC（三条通道）；没有码、或「码」是一句话就不写这一栏。",
+    "异步任务失败的文本格式只由 taskFailureMessage 一处产出与解析（成对），取原话时不带 taskId / kind 后缀。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/observability/classifyError.ts",
+    "tests": [
+      "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts",
+      "electron/vendor/vendorHttp.test.ts",
+      "electron/ai/aiSdkVendorError.test.ts",
+      "electron/ai/runtimeVendorError.test.ts",
+      "electron/vendor/upstreamEvidenceParity.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/observability/generationFeedback.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/taskCenter/taskCenterEntries.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "classifyGenerationError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "parseTaskFailureMessage"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "narrateIsVendorSideFailure"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/observability/narrate.ts",
+      "symbol": "narrateIsVendorSideFailure"
+    },
+    {
+      "kind": "write",
+      "path": "electron/jsonUtils.ts",
+      "symbol": "pickUpstreamCode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorHttp.ts",
+      "symbol": "pickUpstreamCode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/aiSdkVendorError.ts",
+      "symbol": "pickUpstreamCode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/aiSdkVendorError.ts",
+      "symbol": "upstreamCodeFromBody"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/runtimeVendorError.ts",
+      "symbol": "upstreamCodeFromBody"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/nomiErrorCodes.ts",
+      "symbol": "tagNomiError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/vendorErrorIpc.ts",
+      "symbol": "VendorErrorStructuredLite"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts",
+      "symbol": "formatTaskFailureMessage"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/taskFailureMessage.ts",
+      "symbol": "parseTaskFailureMessage"
+    },
+    {
+      "kind": "write",
+      "path": "src/i18n/locales/generationCommon.ts",
+      "symbol": "outputUnreadable"
+    }
+  ],
+  "door_reduction": {
+    "before": 9,
+    "after": 19,
+    "why_not": "「谁来决定这次失败说什么」一直只有一扇：classifyGenerationError（五个读者，修前修后不变）。after 比 before 多，是两件事：一是清单现在把 owner 的定义点（pickUpstreamCode、narrateIsVendorSideFailure、tagNomiError、taskFailureMessage、文案 key）也列全了，修前只数了调用点；二是「上游自己的码」是新增的一路证据，三条传输通道（vendorHttp、aiSdkVendorError、runtimeVendorError）各多一个调用点——它们各自是不同的传输入口，都读同一个 pickUpstreamCode，不能合并。修前 9 扇 = 5 个读者 + vendorHttp / aiSdkVendorError / runtimeVendorError 三条通道的 upstreamMsg 产出点 + catalogTaskResultParse 的失败后缀（node scripts/door-map.mjs classifyGenerationError pickUpstreamMessage upstreamMessageFromBody describeTaskFailure 在 main 上去掉 onboarding 模型清单探测两处无关调用后的数）。"
+  },
+  "generality_proof": "【为什么不是只对「模型已下线」这一个说法有效】(1) 不写「某某家」的分支：证据是上游响应体里的 error.code / 供应商的话，与供应商名、域名、URL、模型名无关；码表登记的是各家共用的标识码（OpenAI 兼容信封的 error.code，官方 OpenAPI schema 里是 string 或 null），没登记的码不猜，落回话与状态码。(2) 三条传输通道读同一个 pickUpstreamCode（键优先级表一份），customCallRunner 展开 structured 重包时不丢；vendorHttp.test / aiSdkVendorError.test / runtimeVendorError.test 各覆盖一条通道（含「数字业务码」「整句话」不当码收），upstreamEvidenceParity.test 再把三条通道放在同一张表上——同一份响应体必须带出同一份证据，新增字段而漏掉哪条通道就红（变异校验：三条通道各去掉一次，全部抓红）。(3) 语言：标题规则读 i18n.language，中英对称，两边各有单测（中文界面英文原话不进标题、英文界面中文原话不进标题）。(4) 旧数据：node.error 里落盘的旧串（没有 upstreamCode 的载荷）仍走「话 + 状态码」两路，不会变成未分类；文案 key 只增不改。(5) 新类别：VENDOR_SIDE_BY_KIND 与 ACTION_BY_KIND 是穷举 Record，新增一类不声明 vendorSide 与主次动作即类型错误；vendorSide 只有这张表一个出处（reportFor 不再按调用点另判一遍）。(6) 真机（pb06 + pb07，中英各一遍，开发构建、真 Electron）：模型下线那一笔说「模型不可用」，参数错误那一笔仍说「参数不被接受」，读不出来那一笔说「生成的文件没能读出来」且不劝换一家；main 上同样的 pb06 每一遍 13 处违反（其中 12 处属于本合同与 2026-09-29-failure-belongs-to-the-dispatched-attempt、2026-09-29-toast-identity-withdrawal-and-window-fit 三份合同的六条规则），本分支这六条规则零触发。(7) 变异校验（备份还原，逐个跑）：去掉 output-unreadable 分支、码表里删 model_not_found、把 output-unreadable 标成服务商那一侧、标题不看界面语言、让 URL 路径里的 /model/ 也当证据、把任意字符串都当错误码——六个变异全部被 classifyGenerationError.test / vendorHttp.test 抓红；另有三个（三条通道各自漏带上游码）被 upstreamEvidenceParity.test 抓红。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/observability/classifyError.ts",
+      "symbol": "classifyGenerationError",
+      "responsibility": "失败 → 原因、动作、是不是服务商那一侧：证据顺序的唯一出处，标题永远是界面语言，认不出来源的话不套语言规矩。"
+    },
+    {
+      "path": "electron/jsonUtils.ts",
+      "symbol": "pickUpstreamCode",
+      "responsibility": "上游自己给的错误码怎么从响应体挑出来：三条传输通道共用，只收字符串形标识码。"
+    },
+    {
+      "path": "src/workbench/observability/narrate.ts",
+      "symbol": "narrateIsVendorSideFailure",
+      "responsibility": "每一类失败归谁的唯一出处（穷举表）：点名供应商的界面只在它为 true 时才有资格。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/observability/classifyError.ts",
+      "entry_point": "classifyGenerationError",
+      "disposition": "enforced",
+      "evidence": "classifyGenerationError.test：走查载荷原样复现（码 + 话 → 模型不可用）、只有码也认、URL 里的 /model/ 不是证据、真的参数错误仍是 input、标题语言（中英对称）、output-unreadable、vendorSide 逐类表；其中 22 条在 main 上红。"
+    },
+    {
+      "path": "electron/vendor/vendorHttp.ts",
+      "entry_point": "requestVendor",
+      "disposition": "enforced",
+      "evidence": "vendorHttp.test：structured.upstreamCode（字符串码带上、数字业务码 / 整句话 / 缺失都不写）。"
+    },
+    {
+      "path": "electron/ai/aiSdkVendorError.ts",
+      "entry_point": "vendorErrorFromAiSdkError",
+      "disposition": "enforced",
+      "evidence": "aiSdkVendorError.test：文本侧同一个上游码带上；classifyGenerationError.test 里的「文本侧对等」用例读同一形状。"
+    },
+    {
+      "path": "electron/ai/runtimeVendorError.ts",
+      "entry_point": "describeRuntimeError",
+      "disposition": "enforced",
+      "evidence": "runtimeVendorError.test：pi 运行时的 400 + model_not_found 带上码；没有码 / 码是一句话不写。这是全仓第三条把上游失败带过 IPC 的通道，修 vendorHttp 与 aiSdkVendorError 时最容易漏掉的一条——upstreamEvidenceParity.test 把三条通道放在同一张表上，今后漏带任何一条都红。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/taskFailureMessage.ts",
+      "entry_point": "parseTaskFailureMessage",
+      "disposition": "enforced",
+      "evidence": "classifyGenerationError.test「异步任务失败的形状」：标题是界面语言、原话在次要那一格、taskId 后缀不进标题；formatTaskFailureMessage 与 parseTaskFailureMessage 成对，只有 taskFailureMessage 一处产出与解析。"
+    },
+    {
+      "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+      "entry_point": "laneFailureText",
+      "disposition": "not-affected",
+      "evidence": "读同一个 classifyGenerationError 的 reason / providerMessage，未改。它自己另有一条「能不能印在界面上」的形状规矩（showableRaw：必须有汉字），与目录的标题语言规矩不是同一条——见 residual_risks。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
+      "entry_point": "NodeErrorReport",
+      "disposition": "not-affected",
+      "evidence": "只渲染 report.reason / hint / providerMessage 与动作表；分类走同一个 classifyGenerationError，本次未改。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "reportAuthorizationFailure",
+      "disposition": "not-affected",
+      "evidence": "授权失败的提示直接印 error.message（可能是英文内部话）——不经目录，也不是「生成失败原因」的判断；记在 residual_risks。"
+    },
+    {
+      "path": "src/workbench/production/productionShotActions.ts",
+      "entry_point": "reportResult",
+      "disposition": "not-affected",
+      "evidence": "制作流程（另一位 owner 的 lane，本次按任务书不碰）：兜底文案「稍后再试」把主进程英文原话直接拼在前面，不经目录；全功能走查 ui-operation-failed-try-later 已经抓到，交协调会话。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "供应商会不断换说法、换错误码、换模型；任何一家在 400 里说了别的原因、或结果已送达而本机读不出来，都会把用户送去改无关的设置、或再付一次钱。原因由证据判、归属由目录声明之后，新增一类或一家不需要改分类器的分支。",
+    "same_class_scan": [
+      "git grep classifyGenerationError（src / electron，非测试）：5 个读者——节点错误卡、切家提示、任务中心、状态条、Agent 车道横幅——都读同一个分类器，没有第二个分类器。",
+      "git grep upstreamMsg（electron / src，非测试）：产出 upstreamMsg 的通道三条（vendorHttp.requestVendor、aiSdkVendorError.vendorErrorFromAiSdkError、runtimeVendorError.describeRuntimeError），修后三条都带 upstreamCode；customCallRunner 只是脱敏后展开 structured 重包；imageRouteFallback 读 upstreamMsg 做重试路由决定，不产出用户看的文案。",
+      "其他自己写生成失败文案、不经目录的地方（本次只登记、不动）：catalogTaskActions.ts / catalogTaskResolve.ts / relayFrameResolver.ts 里写死的中文 throw；generationRunController.reportAuthorizationFailure 直接印 error.message；productionShotActions.reportResult 的兜底文案；laneCommandFailure.laneFailureText 的 showableRaw 形状规矩。",
+      "node scripts/door-map.mjs classifyGenerationError …：修前 9 扇（5 读者 + 4 个证据产出点），见 doors / door_reduction。",
+      "第三条通道（pi 运行时）是数门时才发现漏带上游码的：同一份上游响应体在三条通道上必须带出同一份证据，已经用 electron/vendor/upstreamEvidenceParity.test.ts 钉成对等（结构评审见 docs/audit/2026-09-30-vendor-transport-and-ui-toast-structure-review.md）。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/observability/classifyError.ts",
+    "invariant": "失败的原因由证据顺序决定（机器码 → 上游码 → 供应商的话 → 状态码派生的类别），归属由 narrate 的穷举表声明，标题永远是界面语言；HTTP 400 本身不是「参数不被接受」的证据。",
+    "failure_mode": "任何人让分类重新按状态码猜原因、把任意串当上游码、让 URL 当证据、让标题跟着供应商的语言走、把本机这一侧的类别标成服务商的事，classifyGenerationError.test / vendorHttp.test 红；新增失败类别不声明 vendorSide 与动作，类型检查红。",
+    "exception_policy": "none",
+    "strategy": "一张目录：classifyGenerationError 是证据顺序的唯一出处；narrate 的穷举 Record 是归属（vendorSide）与动作的唯一出处；上游码经 pickUpstreamCode 这一个挑选函数进入三条传输通道；异步任务失败文本经 taskFailureMessage 成对产出与解析。",
+    "artifacts": [
+      "src/workbench/observability/classifyError.ts",
+      "src/workbench/observability/narrate.ts",
+      "electron/jsonUtils.ts",
+      "src/workbench/generationCanvas/runner/taskFailureMessage.ts",
+      "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts",
+      "electron/vendor/upstreamEvidenceParity.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts",
+    "electron/vendor/vendorHttp.test.ts",
+    "electron/ai/aiSdkVendorError.test.ts",
+    "electron/ai/runtimeVendorError.test.ts",
+    "electron/vendor/upstreamEvidenceParity.test.ts",
+    "tests/ux/full-walk/playbooks/pb07-failure-kinds.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts",
+    "electron/vendor/vendorHttp.test.ts",
+    "electron/vendor/upstreamEvidenceParity.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/observability/classifyError.ts",
+      "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts"
+    ],
+    "rationale": "没有并行版：classifyError 里各个判据各自读 structured?.upstreamMsg 的写法，在原处换成一个 vendorOriginatedText 出口；「标题 = raw 首行」的兜底被界面语言规矩取代；catalogTaskResultParse 里手拼失败后缀的写法换成 formatTaskFailureMessage，不留旧格式。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "无数据迁移：upstreamCode 是可选字段（旧载荷没有它照常分类）；output-unreadable 是新增的机器码 / 类别 / 两条文案，不改已有 key；modelUnavailableUpstream 的建议文案改写（不再暗示「服务商在维护」）。项目里已落盘的旧失败下次打开仍按话与状态码归类。",
+  "residual_risks": [
+    "其他自己写生成失败文案、不经目录的地方（本次只登记、不动）：① catalogTaskActions.ts / catalogTaskResolve.ts / relayFrameResolver.ts 里写死的中文 throw（英文界面里是中文）；② generationRunController.reportAuthorizationFailure 直接印 error.message；③ productionShotActions.reportResult 的兜底文案「稍后再试」（制作流程 owner 的 lane）；④ laneCommandFailure.laneFailureText 的 showableRaw 要求「必须有汉字」，与目录的标题语言规矩不是同一条。已报协调会话。",
+    "码表现在只登记了「模型已下线」一族（model_not_found 等）：审核 / 余额 / 配额等其他类别仍主要靠话与状态码；加码是加一行加一条用例，需要真实供应商的码样本（用户真机遇到时补）。",
+    "HTTP 400 且没有任何证据的失败仍落「参数不被接受」——这是设计：它是没有证据时的落点，不是判断。"
+  ]
+}

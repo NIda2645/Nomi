@@ -1,0 +1,226 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-toast-identity-withdrawal-and-window-fit",
+  "problem_type": "一条提示的身份、撤回与位置没有所有者：同一件事叠成 ×3、事情过去了提示还挂着、整条伸出窗口连关闭钮都点不到",
+  "symptom": "2026-09-29 全功能走查 pb06（U10 + U12）：① 1280×800 与最小窗 1100×720 下，失败提示整条伸出窗口右沿，动作按钮被截半、关闭钮在视口外点不到（overlay-out-of-viewport 与 close-button-unreachable 每一遍各 3 处）；② 同一次失败叠成「×3」而供应商那边只失败了 1 次（9c-repeated-toast 每一遍 2 处）；③ 换家后重新生成成功，那条 ttl:false 的失败提示还挂在屏上说这张卡失败（stale-failure-toast）。",
+  "direct_cause": "① 位置：Mantine Notifications 给每条提示内联 max-height（notificationMaxHeight，写死 160）并 overflow:hidden；容器里那一列是隐式 auto 网格列，会增长到内容的 min-content，一个不可折行的动作名或一长句就把整列撑出窗口（NomiAppProviders 的容器只写了 grid，没有约束列宽）。② 去重：toast 所有者按 id 合并、同原因就 +1，分不清「同一次失败被 effect 重新宣布」与「又失败了一次」——useNodeModelAutoSelect 的 effect 在依赖变化时重复 push，每次都算一次发生。③ 撤回：前提失效（节点成功 / 换家 / 被删）之后谁来收提示没有所有者——showUndoToast 自己私有一份监视加退订，切家提示（ttl:false）什么都没有，于是成功之后还挂着。④ 身份：切家提示的 id 由 providerSwitchToastId(节点, 失败方, 模型, 目标, 目标模型) 拼出，换家一次 id 就变，旧提示成了没人撤的孤儿。",
+  "class_root": "「一条提示是什么事、什么时候不再成立、放在哪」是提示所有者（toast store 与它的容器）的事，却被分给了三处：调用方拼身份、调用方私有监视前提、容器与内容各管一半的尺寸。任何新的持续性提示（ttl:false）都要重新回答这三件事，答错一件就是一次走查违反。",
+  "affected_population": [
+    "所有 ttl:false 或带动作按钮的持续性提示：切家提示、撤销提示（showUndoToast 的 13 处调用）、画布反馈（notify 的 background 级）",
+    "窗口尺寸：1280×800 常见笔记本、最小窗 1100×720（electron/main.ts 的 minWidth × minHeight）、右侧面板打开时容器让位的情形",
+    "中英两种界面（英文串长 1.5–2 倍，被削与伸出最容易在英文里暴露）"
+  ],
+  "scope_paths": [
+    "src/ui/toast.tsx",
+    "src/NomiAppProviders.tsx",
+    "src/utils/showInfoToast.ts",
+    "src/utils/showUndoToast.ts",
+    "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+    "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts"
+  ],
+  "entry_points": [
+    "失败之后的切家提示、模型不在下拉里的提示、Agent 指定模型解析不出的提示：都在 useNodeModelAutoSelect 里 push",
+    "撤销提示 showUndoToast（13 处调用，接口不变）",
+    "画布反馈 notify(background) → useToastStore.push",
+    "提示容器 NomiAppProviders（Mantine Notifications 的 top-right 容器）"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://v8.mantine.dev/x/notifications/",
+      "checked_at": "2026-09-30",
+      "purpose": "Notifications 容器的 position / limit / zIndex 与 notifications.show 的 id / autoClose / withCloseButton / onClose：所有者只用这些公开接口"
+    },
+    {
+      "kind": "source-code",
+      "url": "https://unpkg.com/@mantine/notifications@8.3.18/esm/Notifications.mjs",
+      "checked_at": "2026-09-30",
+      "purpose": "已安装版本 8.3.18 的发布文件：notificationMaxHeight（默认 200）经 getNotificationStateStyles 内联成每条提示的 max-height——高度上限因此必须由所有者给一个随窗口的值，不能写死"
+    }
+  ],
+  "invariants": [
+    "同一件事只有一条提示：身份（id）按「哪张卡的哪件事」定一次；「同一次事件」由 occurrence 定——同 id 同 occurrence 是重新宣布（原地替换、不涨 ×N），新 occurrence 才是又发生了一次（×2）；不给 occurrence 的调用方照旧（每次 push 算一次发生）。",
+    "被关掉 / 撤回的事件不再冒出来（同一个 occurrence），同一张卡的下一次事件照常弹。",
+    "前提不成立就撤回，靠状态变化、不靠定时器：调用方交出 validWhile { isValid, subscribe }，所有者订阅、前提变了就问、不成立就收，提示消失时退订；判定抛错按不成立处理（宁可少一条提示，不留一句过期的话）。",
+    "整条提示在窗口里：容器列宽 minmax(0,1fr)、每条提示最大高度随窗口（TOAST_MAX_HEIGHT）、文字区在上限内滚动；提示根节点永远装得下它的内容（不被削）；关闭钮在视口内、点得到；1280×800 与最小窗、中英、右侧面板打开都成立。",
+    "切家提示一张卡一条（id 按节点）；前提 = 这条失败仍描述这张卡（失败记录上的 attempt 就是节点现在选着的那一对、节点仍处在这次失败里）；节点重跑 / 成功 / 换家 / 被删就撤回。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/ui/toast.tsx",
+    "tests": [
+      "src/ui/toastOccurrence.test.ts",
+      "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.test.ts",
+      "src/utils/showInfoToast.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/ui/toast.tsx",
+      "symbol": "useToastStore"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/toast.tsx",
+      "symbol": "buildToastNotification"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/toast.tsx",
+      "symbol": "TOAST_MAX_HEIGHT"
+    },
+    {
+      "kind": "write",
+      "path": "src/NomiAppProviders.tsx",
+      "symbol": "TOAST_MAX_HEIGHT"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/notificationPolicy.ts",
+      "symbol": "useToastStore"
+    },
+    {
+      "kind": "write",
+      "path": "src/utils/showUndoToast.ts",
+      "symbol": "useToastStore"
+    },
+    {
+      "kind": "write",
+      "path": "src/utils/showInfoToast.ts",
+      "symbol": "showInfoToast"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "useToastStore"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "nodeRecoveryToastId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "nodeNoticeValidity"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+      "symbol": "nodeRecoveryToastId"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+      "symbol": "nodeNoticeValidity"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 12,
+    "why_not": "「一条提示的身份与撤回」的门在修前是散的：调用方拼身份（providerSwitchToastId）、showUndoToast 私有的监视与退订、useNodeModelAutoSelect 什么都不管——修后收成所有者一处（useToastStore.push 的 id / occurrence / validWhile），调用方只交出「这是哪件事、前提怎么问」。after 比 before 多，是因为修前只数了 useToastStore 的调用点（node scripts/door-map.mjs useToastStore providerSwitchToastId 在 main 上是 4 扇），修后清单把所有者的定义点（toast.tsx、容器 NomiAppProviders、nodeRecoveryNotice 里的身份与前提监视）也列全了；各调用方是不同的产品入口（画布反馈、撤销、切家），不该合并成一个。"
+  },
+  "generality_proof": "【为什么不是只修了切家提示这一条】(1) 所有者一处：toast store 是唯一的 push / remove / 去重 / 撤回入口（notificationPolicy、showUndoToast、useNodeModelAutoSelect 都经它）；showUndoToast 原来私有的监视加退订并入 validWhile（删旧，13 个调用方接口不变）。(2) 身份 / 撤回与内容无关：任何调用方给 id + occurrence + validWhile 就得到同样的语义；不给的行为不变（回归用例钉住）。(3) 位置在容器（NomiAppProviders 的列宽）与所有者（TOAST_MAX_HEIGHT），不在每条提示里各写 max-width：真实 Chromium + 生产 CSS + 真实 NomiAppProviders 的 e2e（tests/ux/failure-toast-layout.e2e.mjs）在 1280×800 与从 electron/main.ts 读出的最小窗、中英、右侧面板打开、超长动作名、目录里最长的一句文案（所有 vendorSide 类里取最长，英文 457 字）、同一失败 ×3 的场景全部断言「在窗口内、× 点得到、没被削、只有一条」；该 e2e 在 main 上红。(4) 真机（pb06，中英各一遍，真 Electron）：main 上每一遍 12 处相关违反（overlay 3、close 3、9c 2、reason 2、wrong-vendor 1、stale 1），本分支零。(5) 变异校验（备份还原）：×N 不看 occurrence、不撤回、关掉的事件复活、去掉 grid 列约束、把最大高度改回写死的 160——五个变异全部被抓红（前三个 vitest，后两个真实 Chromium）。",
+  "shared_boundaries": [
+    {
+      "path": "src/ui/toast.tsx",
+      "symbol": "useToastStore",
+      "responsibility": "提示的身份、去重（occurrence）、撤回（validWhile）与高度上限（TOAST_MAX_HEIGHT）的唯一所有者。"
+    },
+    {
+      "path": "src/NomiAppProviders.tsx",
+      "symbol": "NomiAppProviders",
+      "responsibility": "提示容器：列宽 minmax(0,1fr)、最大高度随窗口、右侧面板打开时让位。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/ui/toast.tsx",
+      "entry_point": "useToastStore",
+      "disposition": "enforced",
+      "evidence": "toastOccurrence.test 9 条（重新宣布不涨、新事件才 ×2、关掉的事件不复活、validWhile 前提失效即收 / 抛错按失效 / 收掉后再问碰不到同 id 的新提示）；e2e failure-toast-layout 里「同一失败 ×3 只有一条」。"
+    },
+    {
+      "path": "src/utils/showUndoToast.ts",
+      "entry_point": "showUndoToast",
+      "disposition": "enforced",
+      "evidence": "原来私有的监视与退订并入 validWhile（13 个调用点接口不变）；showInfoToast.test 里的撤销提示用例：失效即收、点击那一刻再验、到点 / 关闭退订。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "entry_point": "useNodeModelAutoSelect",
+      "disposition": "enforced",
+      "evidence": "切家提示（失败与断连两种）与「Agent 指定模型解析不出」的提示都带 id / occurrence / validWhile；nodeRecoveryNotice.test 18 条（真实画布 store + 真实 toast 所有者）：换家 / 重跑 / 成功 / 被删即撤回，撤回后同一次失败不复活、下一次失败照常弹。"
+    },
+    {
+      "path": "src/ui/notificationPolicy.ts",
+      "entry_point": "notify",
+      "disposition": "not-affected",
+      "evidence": "background 级反馈按 (identity, reason) 合并，每一次 notify 是一件真的事，×N 是对的；它不给 occurrence，语义不变。"
+    },
+    {
+      "path": "src/utils/showInfoToast.ts",
+      "entry_point": "showInfoToast",
+      "disposition": "not-affected",
+      "evidence": "一次性告知 toast（id 可选）；本次只删掉了 providerSwitchToastId（第二套身份规则，已无调用方）。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "凡是有持续性提示（ttl:false）的功能都会遇到这三个问题，新功能每加一条就重演一次（2026-09 已经有切家提示、撤销提示各写了一套）；所有者不管，就永远靠每个调用方自觉。",
+    "same_class_scan": [
+      "git grep useToastStore（src，非测试）：notificationPolicy、showUndoToast、useNodeModelAutoSelect 三处 push，其余是 remove；都经同一个所有者。",
+      "git grep \"ttl: false\"（src，非测试）：只有切家提示（已迁 validWhile）；其余持续性提示都带动作加关闭钮，不受 occurrence 语义影响。",
+      "git grep providerSwitchToastId：修前 useNodeModelAutoSelect 一处使用加 showInfoToast 一处定义；修后整个删除。",
+      "git grep watchUndoable：showUndoToast 的调用方传的是「怎么问、谁会通知」，收掉与退订现在归所有者。",
+      "git grep \"notificationMaxHeight\\|data-position=top-right\"（src）：只有 NomiAppProviders 一处，容器修一处。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/ui/toast.tsx",
+    "invariant": "一条提示的身份（id + occurrence）、撤回（validWhile）与高度上限只有 toast 所有者一处管；容器保证整条提示在窗口里、关闭钮点得到。",
+    "failure_mode": "任何人让 ×N 不看 occurrence、让前提失效不撤回、让关掉的事件复活、去掉容器的列宽约束、把最大高度写回固定值，toastOccurrence.test / nodeRecoveryNotice.test 或真实 Chromium 的 failure-toast-layout e2e 红。",
+    "exception_policy": "none",
+    "strategy": "把身份、撤回、位置上限收进所有者：occurrence 区分「重新宣布」与「又发生一次」，validWhile 是前提监视的唯一接口（showUndoToast 私有那份并入），TOAST_MAX_HEIGHT 是高度上限的唯一出处；容器只写一次列宽约束。",
+    "artifacts": [
+      "src/ui/toast.tsx",
+      "src/NomiAppProviders.tsx",
+      "src/utils/showUndoToast.ts",
+      "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+      "src/ui/toastOccurrence.test.ts",
+      "tests/ux/failure-toast-layout.e2e.mjs"
+    ]
+  },
+  "regression_tests": [
+    "src/ui/toastOccurrence.test.ts",
+    "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.test.ts",
+    "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.test.ts",
+    "src/utils/showInfoToast.test.ts",
+    "tests/ux/failure-toast-layout.e2e.mjs"
+  ],
+  "class_regression_tests": [
+    "src/ui/toastOccurrence.test.ts",
+    "tests/ux/failure-toast-layout.e2e.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/utils/showInfoToast.ts",
+      "src/utils/showUndoToast.ts"
+    ],
+    "rationale": "没有并行版：providerSwitchToastId（拼身份）在原处删除；showUndoToast 私有的监视 / 退订（unwatch、stopWatching、setTimeout 退订）在原处删除并入所有者的 validWhile。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及依赖变更：仍是 @mantine/notifications 8.3.18，只用它的公开接口与容器 className。",
+    "exit_criteria": []
+  },
+  "migration": "无数据迁移：occurrence / validWhile 是新增的可选入参，不给的调用方行为不变；providerSwitchToastId 已无调用方。",
+  "residual_risks": [
+    "动作按钮的标签在窄容器里会被截成「切到 Agent R…」（按钮自身 truncate）：容器现在保证整条提示不出窗口，但动作名很长时读不全；改成折行还是保留截断是设计决定（要出样张），本次不动。",
+    "提示正文在窄窗口里偏长（英文最长的一类要在文字区里滚动）：要不要把「建议」从提示里拿掉、只留原因，是产品取舍，交协调会话。",
+    "右侧面板让位规则只认 model / tasks / director 三个面板（[data-nomi-right-panel]）；Agent 面板不让位，提示会盖住它的顶部——沿用原有行为。"
+  ]
+}
