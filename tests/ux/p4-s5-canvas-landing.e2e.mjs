@@ -4,8 +4,13 @@
 // 真 store 落节点 + 建组 + 逐镜回填 → 整批一个 Cmd+Z 撤整组。多镜派发/生成属后端（S6 真付费验收），
 // 这里在渲染边界注入真载荷取证（同 S3a 的「render half」哲学，provider=0）。
 //
-// 断言链（J1）：确认落地 → 占位 + 组出现 → 三态同屏（构造排队+生成中+已停并存）光/暗截图 → 逐镜填充 →
-// 全部完成 → 一个 Cmd+Z 整组消失 → 撤销后节点没了（素材库产物由数据层保留，见回填断言）。
+// 断言链（J1）：确认落地 → 占位 + 组出现 → 在跑的批次（排队中 + 生成中 + 还没生成同屏）光/暗截图 →
+// 同一批停下（已停，warning 非 danger）→ 逐镜填充 → 全部完成 → 一个 Cmd+Z 整组消失 → 撤销后节点没了
+// （素材库产物由数据层保留，见回填断言）。
+//
+// 2026-09-30：「已停」只读 Run 停下那一刻记下的原因（#934：run.stop），不再从某个 job 的错因码猜；「排队中」只给
+// 批过、有任务、还没派出去的镜（没点就不叫排队中）。所以「排队中」和「已停」不会同时出现在同一批上——停着的批次里
+// 没有排队的镜。这里按产品真实会出现的两个画面分两步取证，而不是拼一个产品里不存在的 Run。
 //
 // 2026-09-25：「生成中」不再是一块占位——它写进节点自己的运行记录（materialize-shots 带 generation），
 // 由普通生成那张等待画面画；结果回填也走同一条 materialize-shots（专用的 attach-shot-result 已删）。
@@ -39,24 +44,26 @@ const MATERIALIZE_PAYLOAD = {
   ],
 }
 
-// 构造「三态同屏」的 Run：shot-1 生成中(polling)、shot-2 排队(无 job)、shot-3 已停(run needs_attention)。
-function threeStateRun(projectId, nodeIds) {
+// 构造一批在跑 / 停下的 Run：参考卡与 shot-2 批过、还没派出去（authorized）；shot-1 生成中（polling）；shot-3 从没被批过（无 job）。
+// running → 参考卡、shot-2「排队中」，shot-3「还没生成」；stopped（按生命周期 owner 的写法记下 run.stop）→ 批过的那两镜「已停」。
+function landedRun(projectId, nodeIds, { stopped = false } = {}) {
   const NOW = '2026-08-25T00:00:00.000Z'
   const shot = (shotId, nodeId) => ({
     shotId, role: shotId === 'anchor-1' ? 'anchor' : 'shot',
     candidate: { candidateId: shotId, revision: 1, moduleId: 'm', providerId: 'apimart', modelId: 'video', mode: 't2v', prompt: '', parameters: {}, references: [] },
     nodeId, updatedAt: NOW,
   })
-  const job = (shotId, nodeId, status, errorCode) => ({ jobId: `job-${shotId}`, stageId: 'generate', status, attempt: 1, provider: 'apimart', model: 'video', idempotencyKey: `k-${shotId}`, nodeId, metadata: { shotId }, ...(errorCode ? { errorCode } : {}), createdAt: NOW, updatedAt: NOW })
+  const job = (shotId, nodeId, status) => ({ jobId: `job-${shotId}`, stageId: 'generate', status, attempt: 1, provider: 'apimart', model: 'video', idempotencyKey: `k-${shotId}`, nodeId, metadata: { shotId }, createdAt: NOW, updatedAt: NOW })
   return {
     schemaVersion: 1, runId: RUN_ID, projectId, revision: 1,
-    status: 'running', // running：未派发镜显「排队中」；靠 shot-3 job 的预算错因显「已停」→ 三态同屏
+    // 停下的原因只有一个来处：Run 停下那一刻记下的 stop（预算停批 = needs_attention + budget）。
+    status: stopped ? 'needs_attention' : 'running',
+    ...(stopped ? { stop: { reason: 'budget', at: NOW } } : {}),
     stageId: 'generate', playbook: { name: 'generation.single-shot', version: '1.0.0' }, origin: { host: 'semantic-mcp' },
     policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: 13, maxAttemptsPerJob: 1, minimizeUploads: true },
     budget: { currency: 'CNY', authorized: 13, reserved: 0, actual: 0, unsettled: 0 },
     planVersion: 1, snapshotCursor: 0, stages: [], gates: [],
-    // shot-1 生成中(polling)；shot-2 无 job=排队；shot-3 预算触顶(needs_attention+budget_exhausted)=已停。
-    jobs: [job('shot-1', nodeIds['shot-1'], 'polling'), job('shot-3', nodeIds['shot-3'], 'needs_attention', 'budget_exhausted')],
+    jobs: [job('anchor-1', nodeIds['anchor-1'], 'authorized'), job('shot-1', nodeIds['shot-1'], 'polling'), job('shot-2', nodeIds['shot-2'], 'authorized')],
     artifacts: [],
     generationPlan: {
       operationId: RUN_ID, state: 'submitted',
@@ -137,8 +144,8 @@ try {
   const afterSecond = await win.evaluate((opId) => window.__nomiCanvasStore.getState().nodes.filter((n) => n.meta?.materializationOperationId === opId).length, OP_ID)
   check(afterSecond === 4, `幂等：第二次 materialize 不重复建节点（仍 4 个，实得 ${afterSecond}）`)
 
-  // ── 三态同屏：pin 一份构造 Run（shot-1 生成中 / shot-2 排队 / shot-3 已停） ──
-  await win.evaluate(({ run, projectId }) => {
+  // ── 在跑的批次：pin 一份构造 Run（参考卡 / shot-2 排队、shot-1 生成中、shot-3 还没生成） ──
+  const pinRun = (run) => win.evaluate(({ run, projectId }) => {
     const s = window.__nomiCanvasStore.getState()
     const nodeIds = {}
     for (const n of s.nodes) if (n.meta?.productionShotId) nodeIds[n.meta.productionShotId] = n.id
@@ -146,7 +153,8 @@ try {
     run.generationPlan.shots = run.generationPlan.shots.map((shot) => ({ ...shot, nodeId: nodeIds[shot.shotId] }))
     run.jobs = run.jobs.map((job) => ({ ...job, nodeId: nodeIds[job.metadata.shotId] }))
     window.__nomiProductionLandingStore.setState({ projectId, runs: { [run.runId]: run }, pinnedForE2E: true })
-  }, { run: threeStateRun(projectId, {}), projectId })
+  }, { run, projectId })
+  await pinRun(landedRun(projectId, {}))
   // shot-1 在生成：主进程的落地投影把「生成中」写进节点自己的运行记录（真 handler，只动已有节点）。
   await win.evaluate(async (payload) => {
     payload.projectId = new URLSearchParams(window.location.hash.split('?')[1]).get('projectId')
@@ -208,16 +216,39 @@ try {
   }
   check(true, `适应视图后 ${expectedPlaceholders} 个占位全部进入视口`)
 
-  const states = await win.evaluate(() => Array.from(document.querySelectorAll('[data-shot-placeholder-state]')).map((el) => el.getAttribute('data-shot-placeholder-state')))
-  check(!states.includes('generating'), '「生成中」不再是一块制作专属占位（第二套画法已删）')
+  const placeholderStates = () => win.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('[data-shot-placeholder-state]'))
+    .map((el) => [window.__nomiCanvasStore.getState().nodes.find((node) => node.id === el.getAttribute('data-production-shot-node'))?.meta?.productionShotId, el.getAttribute('data-shot-placeholder-state')])))
+  const states = await placeholderStates()
+  check(!Object.values(states).includes('generating'), '「生成中」不再是一块制作专属占位（第二套画法已删）')
   const shot1Waiting = await win.evaluate(() => {
     const id = window.__nomiCanvasStore.getState().nodes.find((node) => node.meta?.productionShotId === 'shot-1')?.id
     const el = id ? document.querySelector(`[data-node-id="${id}"]`) : null
     return Boolean(el?.querySelector('[data-generating-placement="surface"]')) && el?.getAttribute('data-status') === 'running'
   })
   check(shot1Waiting, '三态：shot-1 生成中 = 节点自己 running + 普通生成那张等待画面')
-  check(states.includes('queued'), '三态：有「排队中」占位（shot-2 无 job）')
-  check(states.includes('stopped'), '三态：有「已停」占位（shot-3 · run 预算 halt，warning 非 danger）')
+  check(states['shot-2'] === 'queued' && states['anchor-1'] === 'queued', `在跑：批过、还没派出去的参考卡与 shot-2「排队中」（实得 ${JSON.stringify(states)}）`)
+  check(states['shot-3'] === 'not_generated', `在跑：从没被批过的 shot-3「还没生成」，不说排队（实得 ${states['shot-3']}）`)
+  const notGeneratedCopy = await win.evaluate(() => document.querySelector('[data-shot-placeholder-state="not_generated"]')?.textContent?.trim() ?? '')
+  check(notGeneratedCopy === '还没生成', `「还没生成」小标文案（实得「${notGeneratedCopy}」）`)
+
+  await win.waitForTimeout(200)
+  await win.screenshot({ path: path.join(shotsDir, '01-three-states-light.png') })
+  // 暗模式。
+  await win.evaluate(() => { document.documentElement.setAttribute('data-mantine-color-scheme', 'dark'); document.documentElement.style.colorScheme = 'dark' })
+  await win.waitForTimeout(300)
+  await win.screenshot({ path: path.join(shotsDir, '02-three-states-dark.png') })
+  // 回光模式继续。
+  await win.evaluate(() => { document.documentElement.setAttribute('data-mantine-color-scheme', 'light'); document.documentElement.style.colorScheme = 'light' })
+  await win.waitForTimeout(300)
+
+  // ── 同一批停下（预算停批，按生命周期 owner 的写法记下原因）：批过、没派出去的镜「已停」；从没被批过的 shot-3 仍是「还没生成」 ──
+  await pinRun(landedRun(projectId, {}, { stopped: true }))
+  await win.waitForFunction(() => document.querySelectorAll('[data-shot-placeholder-state="stopped"]').length >= 2, undefined, { timeout: 5_000 }).catch(() => undefined)
+  const stoppedStates = await placeholderStates()
+  check(stoppedStates['shot-2'] === 'stopped' && stoppedStates['anchor-1'] === 'stopped', `停下：批过的参考卡与 shot-2「已停」（实得 ${JSON.stringify(stoppedStates)}）`)
+  check(stoppedStates['shot-3'] === 'not_generated', `停下：从没被批过的 shot-3 不是「已停」、不挂续拍钮（实得 ${stoppedStates['shot-3']}）`)
+  const stopReason = await win.evaluate(() => document.querySelector('[data-shot-placeholder-state="stopped"] [data-shot-stop-reason]')?.getAttribute('data-shot-stop-reason'))
+  check(stopReason === 'budget', `已停的原因照 Run 记下的说（实得 ${stopReason}）`)
   // 已停占位用 warning 底、非 danger（截计算色不比字面串）。
   const stoppedIsWarning = await win.evaluate(() => {
     const el = document.querySelector('[data-shot-placeholder-state="stopped"]')
@@ -231,16 +262,8 @@ try {
     return actual === expected && actual !== dangerColor
   })
   check(stoppedIsWarning, '已停占位边框=warning 色（≠danger，截计算色比对）')
-
   await win.waitForTimeout(200)
-  await win.screenshot({ path: path.join(shotsDir, '01-three-states-light.png') })
-  // 暗模式。
-  await win.evaluate(() => { document.documentElement.setAttribute('data-mantine-color-scheme', 'dark'); document.documentElement.style.colorScheme = 'dark' })
-  await win.waitForTimeout(300)
-  await win.screenshot({ path: path.join(shotsDir, '02-three-states-dark.png') })
-  // 回光模式继续。
-  await win.evaluate(() => { document.documentElement.setAttribute('data-mantine-color-scheme', 'light'); document.documentElement.style.colorScheme = 'light' })
-  await win.waitForTimeout(300)
+  await win.screenshot({ path: path.join(shotsDir, '01b-stopped-light.png') })
 
   // ── 逐镜填充：解 pin，真 materialize-shots 给 shot-1 回填一个本地 result ──
   await win.evaluate(() => window.__nomiProductionLandingStore.setState({ pinnedForE2E: false, runs: {} }))
@@ -291,7 +314,7 @@ try {
   check(afterUndo.group === false, '分镜组也随同一步撤销消失')
 
   await win.screenshot({ path: path.join(shotsDir, '03-after-undo.png') })
-  for (const f of ['01-three-states-light.png', '02-three-states-dark.png', '03-after-undo.png']) {
+  for (const f of ['01-three-states-light.png', '02-three-states-dark.png', '01b-stopped-light.png', '03-after-undo.png']) {
     const stat = fs.statSync(path.join(shotsDir, f))
     check(stat.size > 0, `截图 ${f} 落地且非空（${stat.size} 字节）`)
   }

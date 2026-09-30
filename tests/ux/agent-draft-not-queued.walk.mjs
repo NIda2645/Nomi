@@ -7,7 +7,10 @@
 // 同一次还查出：Agent 派出去的镜「生成中」是一层 8-25 的旧遮罩（模糊 + 大 N），9-08 普通节点换像素动画时没跟上。
 //
 // 用户拍板（样张 docs/design/2026-09-24-draft-shot-honest-status-mockup.html）：
-//   ① 草稿节点什么都不挂；③ 报价卡在等人那一刻同草稿；④ 点了之后生成中走普通节点那一套（像素等待面 + 状态行）。
+//   ① 草稿节点不说排队；③ 报价卡在等人那一刻也不说排队；④ 点了之后生成中走普通节点那一套（像素等待面 + 状态行）。
+//   2026-09-30（付费卡① 第 12 条「没点就不叫排队中」+ 协调会话：每一种状态都要有自己的标记）：① ③ 从「什么都不挂」
+//   改成各挂一个中性小标——草稿「还没生成」、报价卡在等「等你确认」（不转圈、不带钟、不说排队）。以前的「什么都不挂」
+//   让用户分不清「在等我」「没人管」还是「出错了」；判定仍只看盘上的事实（没有任务 = 没被批过）。
 //   ② 任务面板那一半由 #869（2026-09-25 拍板的任务面板样张）接手：draft_shots 建的草稿不进任务列表，
 //   报价卡在等人时归「等你处理」——这里按那一版断言，不另立一套。④ 的画法由 #870 落进节点自己的运行记录。
 //
@@ -52,15 +55,26 @@ function nodeFace(win, nodeId) {
       waiting: Boolean(node?.querySelector('[data-generation-waiting]')),
       phase: node?.querySelector('[data-generation-status]')?.getAttribute('data-phase') ?? null,
       placeholder: node?.querySelector('[data-shot-placeholder-state]')?.getAttribute('data-shot-placeholder-state') ?? null,
+      placeholderText: node?.querySelector('[data-shot-placeholder-state]')?.textContent?.trim() ?? null,
       oldOverlay: Boolean(node?.querySelector('.generation-canvas-v2-node__generating-overlay')),
       errorCard: Boolean(node?.querySelector('[role="alert"]')),
     }
   }, nodeId)
 }
 
-/** 「这个节点什么都没说」：没有等待面、没有状态行、没有批次占位、没有旧遮罩、没有错误卡。 */
-function isQuiet(face) {
-  return face.present && !face.waiting && face.phase === null && face.placeholder === null && !face.oldOverlay && !face.errorCard
+/** 中性小标的文案（zh / en 各一句，都不说排队）。 */
+const NEUTRAL_COPY = {
+  not_generated: { zh: '还没生成', en: 'Not generated' },
+  awaiting_confirmation: { zh: '等你确认', en: 'Waiting for you' },
+}
+
+/**
+ * 「这个节点只说了一句中性的真话」：挂着这一态自己的小标（文案对得上界面语言），没有等待面、没有状态行、
+ * 没有排队、没有旧遮罩、没有错误卡。
+ */
+function saysOnly(face, state, locale) {
+  return face.present && !face.waiting && face.phase === null && face.placeholder === state
+    && face.placeholderText === NEUTRAL_COPY[state][locale] && !face.oldOverlay && !face.errorCard
 }
 
 /**
@@ -80,8 +94,7 @@ async function expectDraftFace(win, walk, nodeId, { runId, locale }) {
     { provenBy: panelProof, message: `${locale}：还没点头的草稿不在任务列表里` })
   await walk.snap(`draft-task-panel-${locale}`)
   await win.keyboard.press('Escape')
-  const face = await nodeFace(win, nodeId)
-  expect(isQuiet(face), `${locale}：草稿节点什么都不挂（实得 ${JSON.stringify(face)}）`).toBe(true)
+  await expect.poll(async () => saysOnly(await nodeFace(win, nodeId), 'not_generated', locale), { message: `${locale}：草稿节点只挂「还没生成」（不说排队）`, timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
   await expect(win.locator(TASK_TRIGGER).first(), `${locale}：任务按钮不变蓝`).not.toHaveClass(/bg-nomi-accent/)
   await expect(win.locator(TASK_COUNT), `${locale}：任务按钮不显示数字`).toHaveCount(0)
   await walk.snap(`draft-${locale}`)
@@ -162,9 +175,9 @@ try {
   expect(readRun(projectRoot, operationId)?.jobs ?? [], '卡在等：仍然没有任何生成任务').toHaveLength(0)
   expect(walk.fixture.images, '卡在等：供应商仍然一次请求都没收到').toHaveLength(0)
   expect(await landingHasRun(win, operationId), '报价卡在等人：画布落地 host 仍读着这份 Run').toBe(true)
-  expect(isQuiet(await nodeFace(win, nodeId)), '报价卡在等人：节点仍然什么都不挂').toBe(true)
+  await expect.poll(async () => saysOnly(await nodeFace(win, nodeId), 'awaiting_confirmation', 'en'), { message: '报价卡在等人：节点只挂「等你确认」（不说排队）', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
   await walk.snap('card-waiting-en')
-  // #875：报价卡摆出来等人 = 这一镜归制作流程，画布再发一次就是同一镜两笔。节点照样什么都不挂（上一句），
+  // #875：报价卡摆出来等人 = 这一镜归制作流程，画布再发一次就是同一镜两笔。节点只挂「等你确认」（上一句），
   // 但底栏不把它算进「生成全部」、选中它时生成钮按不下去。点一下空白画布取消选中（不按 Esc：会碰到面板上的卡）。
   const runAll = win.locator('[data-batch-dock="true"] [data-storyboard-run-all="true"]')
   expect(await runAll.count() === 0 || await runAll.first().isDisabled(), '报价卡在等人：底栏不提供「生成全部」').toBe(true)
@@ -206,8 +219,8 @@ try {
   expect((await nodeFace(win, nodeId)).phase, '出图后不再说「生成中」').not.toBe('generating')
   await walk.snap('done-zh')
 
-  walk.report.verified = ['draft-says-nothing-and-spends-nothing', 'draft-not-counted-as-running-task',
-    'card-waiting-says-nothing', 'card-waiting-canvas-cannot-regenerate', 'dispatched-uses-the-shared-waiting-surface', 'result-lands-on-the-drafted-node']
+  walk.report.verified = ['draft-says-not-generated-and-spends-nothing', 'draft-not-counted-as-running-task',
+    'card-waiting-says-waiting-for-you', 'card-waiting-canvas-cannot-regenerate', 'dispatched-uses-the-shared-waiting-surface', 'result-lands-on-the-drafted-node']
 } catch (error) {
   failure = error
   process.exitCode = 1
