@@ -178,13 +178,41 @@ function reportForMissingImageReference(
   }
 }
 
-/** legacy 字符串 → 类别(老项目持久化的 node.error / 非 vendor 错误的兜底识别;文案不在这里)。 */
+/**
+ * 三位状态码只认**独立的词**：`HTTP 401` / `401 Unauthorized` / `(401)` / `status=401` 算；
+ * 端口 `59401`、任务 id `task_a4029b`、版本号 `10.0.0.401` 里碰巧连着的三个字符不算。
+ */
+function hasStatusCode(lower: string, code: '401' | '402' | '429'): boolean {
+  return new RegExp(`(?:^|[^\\w.])${code}(?!\\w)`).test(lower)
+}
+
+/** URL 整段（scheme 起到空白为止）——里面的端口、路径、任务 id 都是别人的字，不是失败的证据。 */
+const URL_IN_TEXT = /[a-z][a-z0-9+.-]*:\/\/[^\s"'<>]+/gi
+
+/**
+ * legacy 关键词嗅探**读哪一段文字**——判据不能读自己写的字。
+ *
+ * 病根（2026-09-30 pb07 真机走查抓出）：嗅探读整句 raw，而 raw 里有一大半是我们自己拼的诊断外壳：供应商键、方法、
+ * **带随机端口 / 任务 id 的 URL**、`taskId=…`。'401' / '402' / '429' 这几个裸子串于是从 `127.0.0.1:59401`
+ * 这样的端口里「读」出鉴权 / 余额 / 限流——供应商回了一句「我认不出」（418 + 自由文本）的失败，被配上「API Key 无效」。
+ * 生产里同一个洞：任何带随机 id 的 URL（`…/tasks/5c1429ab`）都能让一条 404 变成「额度」。
+ *
+ *   · 认得出哪句是供应商自己的话（结构化载荷的 upstreamMsg，或异步任务失败格式里的原话）→ 只读它，外壳一个字都不读
+ *     （三条传输通道产出的载荷都带 upstreamMsg——外壳里没有任何「另外的」证据）；
+ *   · 来源不明的串（老项目持久化的 node.error、非 vendor 错误、只有 {code, reason} 的载荷）只能整句读，但先把 URL 抠掉，
+ *     状态码只认独立的词（hasStatusCode）。
+ */
+function legacyEvidence(upstream: string | undefined, raw: string): string {
+  return upstream ?? raw.replace(URL_IN_TEXT, ' ')
+}
+
+/** legacy 字符串 → 类别(老项目持久化的 node.error / 非 vendor 错误的兜底识别;文案不在这里)。`raw` 是 legacyEvidence 挑出的那段字。 */
 function detectLegacyErrorKind(raw: string): GenerationErrorKind | null {
   const lower = raw.toLowerCase()
   // 输出截断（agentError.describeEmptyAgentReply 的 length 签名）最先判——它是确定性失败，
   // 落进 unknown 会给出「稍等重试」的误导（重试必再撞）。短语来自我们自己的文案，单一来源。
   if (raw.includes('输出长度上限') || raw.includes('内容被截断')) return 'output-truncated'
-  if (lower.includes('api key') || lower.includes('apikey') || lower.includes('unauthorized') || lower.includes('401'))
+  if (lower.includes('api key') || lower.includes('apikey') || lower.includes('unauthorized') || hasStatusCode(lower, '401'))
     return 'auth'
   // 余额不足要和限流分开——用户动作不同(充值 vs 等待)。只匹配明确指向余额/欠费的词,
   // 避免把 OpenAI 的 insufficient_quota(配额)误判成余额。
@@ -193,13 +221,13 @@ function detectLegacyErrorKind(raw: string): GenerationErrorKind | null {
     lower.includes('balance') ||
     raw.includes('欠费') ||
     lower.includes('arrears') ||
-    lower.includes('402')
+    hasStatusCode(lower, '402')
   )
     return 'balance'
   if (
     lower.includes('quota') ||
     lower.includes('rate limit') ||
-    lower.includes('429') ||
+    hasStatusCode(lower, '429') ||
     lower.includes('insufficient')
   )
     return 'quota'
@@ -642,7 +670,7 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       secondary: copy.action,
     }
   }
-  const kind = detectLegacyErrorKind(raw)
+  const kind = detectLegacyErrorKind(legacyEvidence(upstream, raw))
   if (kind) return reportFor(kind, raw, upstream)
   // 供应商说的话，只有**和界面同一种语言**才配当标题（读得懂、说得具体）；否则标题是界面语言的一句话，
   // 原话降为「服务商原话」那一格的次要信息（中文界面不再顶着供应商的一整句英文，英文界面同理）。
