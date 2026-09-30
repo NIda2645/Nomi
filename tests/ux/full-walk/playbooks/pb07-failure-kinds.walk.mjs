@@ -9,7 +9,7 @@
 //      屏上不出现「切到另一家」这类劝换供应商的提示（结果已经送达，失败在本机，换一家不是解法）；
 //   ③ 供应商说成功、给的是一张完整的 PNG（IEND 之后带了尾数据）→ 图照常落地成功（这一类以前被判 decode_failed）；
 //   ④ 供应商回一句认不出类别的话（一句英文）→ 标题永远是界面语言：中文界面顶的是「生成失败」、英文原话降到「服务商原话」那一格，
-//      英文界面标题就是那句话（以前中文界面顶着一整句英文）。
+//      英文界面标题就是那句话（以前中文界面顶着一整句英文）；说明如实说「认不出」——不编「临时故障 / 额度」，供应商给了码就带上码。
 //
 // 零花费：两家本机回环供应商（第二家只是为了让「切家提示」有资格出现——② 里它不出现才有证明力）；四笔都发给第一家。
 // 夹具里「坏」的定义与宿主的落地判据是同一个（见 tests/ux/agent-runtime-fixture.mjs 的 undecodableJpegBytes / pngWithTrailingBytes）。
@@ -29,6 +29,7 @@ const reasonOf = (kind) => uiText(LOCALE, `generationCommon.observability.error.
 const CARD = 'kinds-card'
 /** 供应商回的一句认不出类别的话（英文）：它说了什么，界面只能原样转述，不能替它编原因。 */
 const UNKNOWN_SAID = 'The render farm returned an unrecognised state after the third checkpoint.'
+const UNKNOWN_CODE = 'render_farm_state'
 /** 一句真的参数错误（OpenAI 兼容形状：type=invalid_request_error、param 指向出错的参数、code 为 null）。 */
 const PARAM_ERROR = "Invalid value for 'size': 4096x4096 is not supported by this model. Supported sizes are 1024x1024 and 1024x1536."
 
@@ -57,7 +58,7 @@ fixture.setMediaBehavior(({ index }) => {
   if (index === 0) return { reject: { status: 400, json: { error: { message: PARAM_ERROR, type: 'invalid_request_error', param: 'size', code: null } } } }
   if (index === 1) return { corruptResult: true }
   if (index === 2) return { trailingBytesResult: true }
-  return { reject: { status: 418, json: { error: { message: UNKNOWN_SAID } } } }
+  return { reject: { status: 418, json: { error: { message: UNKNOWN_SAID, code: UNKNOWN_CODE } } } }
 })
 /** 打开项目时画布把唯一一张卡放得很大、标题与原因在窗口外：像人一样先缩小、再把整张卡（标题、原因、建议、按钮）拖进舞台再看。 */
 const showWholeCard = async () => {
@@ -129,6 +130,10 @@ try {
     // 英文界面里那句话本来就是英文，直接当标题。
     await expect(card(), SEED_EN ? '英文界面：标题就是供应商那句话' : '中文界面：标题是「生成失败」，不是一整句英文').toContainText(SEED_EN ? UNKNOWN_SAID : reasonOf('unknown'), { timeout: DEFAULT_TIMEOUT_MS })
     await expect(card(), '供应商原话在「服务商原话」那一格里仍看得见').toContainText(UNKNOWN_SAID, { timeout: DEFAULT_TIMEOUT_MS })
+    // 说明如实说「认不出」并带上供应商给的码；不编原因（没有「临时故障 / 额度」）。
+    const honest = uiText(LOCALE, 'generationCommon.observability.error.unknown.hintWithCode').replace('{{code}}', UNKNOWN_CODE)
+    await expect(card(), '说明说的是「认不出」并带着供应商的错误码').toContainText(honest, { timeout: DEFAULT_TIMEOUT_MS })
+    expect(await card().innerText(), '认不出的失败不编原因、不提额度').not.toMatch(/临时故障|额度|out of credit|temporarily unavailable/i)
     await showWholeCard()
     await monitor.screenshot('unknown-kind-card')
   }, { surfaces: ['modal', 'canvasGesture', 'canvasViewport'] })

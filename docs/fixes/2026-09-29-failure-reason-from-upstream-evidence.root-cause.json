@@ -1,9 +1,9 @@
 {
   "schema_version": 3,
   "id": "2026-09-29-failure-reason-from-upstream-evidence",
-  "problem_type": "生成失败的原因说错：按 HTTP 状态码猜原因（400 一律「参数不被接受」），供应商自己给的码与话没带过来；标题不分界面语言；本机这一侧的失败也被说成供应商的事",
-  "symptom": "2026-09-29 全功能走查 pb06（U12），中英各一遍：夹具供应商对第一笔回 HTTP 400、错误码 model_not_found、原话「This model has been deprecated and is no longer available. Please switch to another model or provider.」——节点错误卡与右上角切家提示却说「参数不被接受·请检查比例 / 尺寸」，让用户去改与问题无关的设置（failure-reason-misstated 每一遍 2 处）；认不出类别的失败，标题直接是供应商的原话（任何语言），中文界面顶着一整句英文；结果已经送达却读不出来（本机判 decode_failed）同样被说成「服务商临时故障」并劝换一家。",
-  "direct_cause": "① electron/vendor/vendorHttp.ts 的 categorizeVendorFailure 把 HTTP 400 / 422 一律派生成 category=input，classifyGenerationError 见到 category=input 就落「参数不被接受」——而 400 只说「请求有问题」，从不说为什么（模型已下线、审核拦了、余额不足都可以回 400）。上游自己给的错误码（OpenAI 兼容信封的 error.code，如 model_not_found；官方 schema：code 是 string 或 null）与它的话在主进程结构化载荷里只带了话（upstreamMsg），码没带，分类器只能读状态码。② 界面语言没有规矩：供应商的话（任意语言）直接当标题——classifyGenerationError 的 unknown 兜底把 raw 首行当 reason。③ 「是不是服务商那一侧的事」没有出处：切家提示对任何失败都点名供应商，读不出产物、本地护栏也不例外。④ 异步任务失败的文本格式（原话 + (taskId=…, kind=…) 后缀）由 catalogTaskResultParse 产出、分类器拿正则各读各的（后缀会混进标题）。⑤ 「模型已下线」那一类只认 Google 家族一句固定原话和几个泛词，认不出 OpenAI 兼容一族说的「model … deprecated / no longer available」。",
+  "problem_type": "生成失败的原因说错：按 HTTP 状态码猜原因（400 一律「参数不被接受」），供应商自己给的码与话没带过来；标题不分界面语言；本机这一侧的失败也被说成供应商的事；认不出的失败还编原因（「服务商临时故障或额度问题」）",
+  "symptom": "2026-09-29 全功能走查 pb06（U12），中英各一遍：夹具供应商对第一笔回 HTTP 400、错误码 model_not_found、原话「This model has been deprecated and is no longer available. Please switch to another model or provider.」——节点错误卡与右上角切家提示却说「参数不被接受·请检查比例 / 尺寸」，让用户去改与问题无关的设置（failure-reason-misstated 每一遍 2 处）；认不出类别的失败，标题直接是供应商的原话（任何语言），中文界面顶着一整句英文；结果已经送达却读不出来（本机判 decode_failed）同样被说成「服务商临时故障」并劝换一家。制作流程转来的一条（F6）：参考卡失败时错误卡写「可能是服务商临时故障或额度问题」——这是 unknown 的固定文案，对任何没有分类器认得的失败都这么说，其中「额度」是猜的（今天没有价格，猜额度只会把人引去查账）。",
+  "direct_cause": "① electron/vendor/vendorHttp.ts 的 categorizeVendorFailure 把 HTTP 400 / 422 一律派生成 category=input，classifyGenerationError 见到 category=input 就落「参数不被接受」——而 400 只说「请求有问题」，从不说为什么（模型已下线、审核拦了、余额不足都可以回 400）。上游自己给的错误码（OpenAI 兼容信封的 error.code，如 model_not_found；官方 schema：code 是 string 或 null）与它的话在主进程结构化载荷里只带了话（upstreamMsg），码没带，分类器只能读状态码。② 界面语言没有规矩：供应商的话（任意语言）直接当标题——classifyGenerationError 的 unknown 兜底把 raw 首行当 reason。③ 「是不是服务商那一侧的事」没有出处：切家提示对任何失败都点名供应商，读不出产物、本地护栏也不例外。④ 异步任务失败的文本格式（原话 + (taskId=…, kind=…) 后缀）由 catalogTaskResultParse 产出、分类器拿正则各读各的（后缀会混进标题）。⑤ 「模型已下线」那一类只认 Google 家族一句固定原话和几个泛词，认不出 OpenAI 兼容一族说的「model … deprecated / no longer available」。⑥ 目录里没有一类认得的失败（unknown）说的是一句固定的**猜测**（「可能是服务商临时故障或额度问题，建议稍等重试」）：对不认识的失败编了两个原因，其中「额度」没有任何证据。",
   "class_root": "「这次失败是什么原因、是谁的事」是一个要由证据回答的判断，仓库里却有几处各自回答：状态码派生的类别（vendorHttp）被当成原因；分类器读的证据只有 upstreamMsg 加状态码；切家提示自己认定「失败了就是供应商的事」；异步任务的失败文本由产出方与解析方各写一份格式。没有一张目录既定义证据的种类与优先级（Nomi 机器码 → 上游自己的码 → 供应商说的话 → 状态码派生的类别），又声明每一类归谁（vendorSide）、文案是哪种语言。",
   "affected_population": [
     "所有走 classifyGenerationError 的失败展示：节点错误卡、切家提示、任务中心、状态条、Agent 车道横幅（五个读者）",
@@ -43,7 +43,8 @@
     "标题永远是界面当前语言的一句话：供应商的话只有和界面同语言才配当标题，否则降为「服务商原话」那一格的次要信息（中文界面要有汉字、英文界面不许有）；认不出来源的话（可能是我们自己的）不套这条规矩。",
     "每一类失败都声明它是不是服务商那一侧的事（narrate.VENDOR_SIDE_BY_KIND，穷举 Record）；点名供应商说「它失败了」的界面只在 vendorSide 为 true 时才有资格；结果已送达却读不出来（output-unreadable）、本机护栏、出站策略、素材上传失败都是 false，只给「重试」。",
     "上游自己的错误码经同一个 pickUpstreamCode 随失败载荷带过 IPC（三条通道）；没有码、或「码」是一句话就不写这一栏。",
-    "异步任务失败的文本格式只由 taskFailureMessage 一处产出与解析（成对），取原话时不带 taskId / kind 后缀。"
+    "异步任务失败的文本格式只由 taskFailureMessage 一处产出与解析（成对），取原话时不带 taskId / kind 后缀。",
+    "认不出的失败（unknown）如实说「认不出」：不编原因（没有「临时故障 / 额度」），供应商给了码（上游 error.code 或业务码）就带上码，原文（「服务商原话」）与完整报文（「技术详情」）是入口；重试 / 换个模型是动作建议，不是对原因的判断。"
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/observability/classifyError.ts",
@@ -157,7 +158,7 @@
     "after": 19,
     "why_not": "「谁来决定这次失败说什么」一直只有一扇：classifyGenerationError（五个读者，修前修后不变）。after 比 before 多，是两件事：一是清单现在把 owner 的定义点（pickUpstreamCode、narrateIsVendorSideFailure、tagNomiError、taskFailureMessage、文案 key）也列全了，修前只数了调用点；二是「上游自己的码」是新增的一路证据，三条传输通道（vendorHttp、aiSdkVendorError、runtimeVendorError）各多一个调用点——它们各自是不同的传输入口，都读同一个 pickUpstreamCode，不能合并。修前 9 扇 = 5 个读者 + vendorHttp / aiSdkVendorError / runtimeVendorError 三条通道的 upstreamMsg 产出点 + catalogTaskResultParse 的失败后缀（node scripts/door-map.mjs classifyGenerationError pickUpstreamMessage upstreamMessageFromBody describeTaskFailure 在 main 上去掉 onboarding 模型清单探测两处无关调用后的数）。"
   },
-  "generality_proof": "【为什么不是只对「模型已下线」这一个说法有效】(1) 不写「某某家」的分支：证据是上游响应体里的 error.code / 供应商的话，与供应商名、域名、URL、模型名无关；码表登记的是各家共用的标识码（OpenAI 兼容信封的 error.code，官方 OpenAPI schema 里是 string 或 null），没登记的码不猜，落回话与状态码。(2) 三条传输通道读同一个 pickUpstreamCode（键优先级表一份），customCallRunner 展开 structured 重包时不丢；vendorHttp.test / aiSdkVendorError.test / runtimeVendorError.test 各覆盖一条通道（含「数字业务码」「整句话」不当码收），upstreamEvidenceParity.test 再把三条通道放在同一张表上——同一份响应体必须带出同一份证据，新增字段而漏掉哪条通道就红（变异校验：三条通道各去掉一次，全部抓红）。(3) 语言：标题规则读 i18n.language，中英对称，两边各有单测（中文界面英文原话不进标题、英文界面中文原话不进标题）。(4) 旧数据：node.error 里落盘的旧串（没有 upstreamCode 的载荷）仍走「话 + 状态码」两路，不会变成未分类；文案 key 只增不改。(5) 新类别：VENDOR_SIDE_BY_KIND 与 ACTION_BY_KIND 是穷举 Record，新增一类不声明 vendorSide 与主次动作即类型错误；vendorSide 只有这张表一个出处（reportFor 不再按调用点另判一遍）。(6) 真机（pb06 + pb07，中英各一遍，开发构建、真 Electron）：模型下线那一笔说「模型不可用」，参数错误那一笔仍说「参数不被接受」，读不出来那一笔说「生成的文件没能读出来」且不劝换一家；main 上同样的 pb06 每一遍 13 处违反（其中 12 处属于本合同与 2026-09-29-failure-belongs-to-the-dispatched-attempt、2026-09-29-toast-identity-withdrawal-and-window-fit 三份合同的六条规则），本分支这六条规则零触发。(7) 变异校验（备份还原，逐个跑）：去掉 output-unreadable 分支、码表里删 model_not_found、把 output-unreadable 标成服务商那一侧、标题不看界面语言、让 URL 路径里的 /model/ 也当证据、把任意字符串都当错误码——六个变异全部被 classifyGenerationError.test / vendorHttp.test 抓红；另有三个（三条通道各自漏带上游码）被 upstreamEvidenceParity.test 抓红。",
+  "generality_proof": "【为什么不是只对「模型已下线」这一个说法有效】(1) 不写「某某家」的分支：证据是上游响应体里的 error.code / 供应商的话，与供应商名、域名、URL、模型名无关；码表登记的是各家共用的标识码（OpenAI 兼容信封的 error.code，官方 OpenAPI schema 里是 string 或 null），没登记的码不猜，落回话与状态码。(2) 三条传输通道读同一个 pickUpstreamCode（键优先级表一份），customCallRunner 展开 structured 重包时不丢；vendorHttp.test / aiSdkVendorError.test / runtimeVendorError.test 各覆盖一条通道（含「数字业务码」「整句话」不当码收），upstreamEvidenceParity.test 再把三条通道放在同一张表上——同一份响应体必须带出同一份证据，新增字段而漏掉哪条通道就红（变异校验：三条通道各去掉一次，全部抓红）。(3) 语言：标题规则读 i18n.language，中英对称，两边各有单测（中文界面英文原话不进标题、英文界面中文原话不进标题）。(4) 旧数据：node.error 里落盘的旧串（没有 upstreamCode 的载荷）仍走「话 + 状态码」两路，不会变成未分类；文案 key 只增不改。(5) 新类别：VENDOR_SIDE_BY_KIND 与 ACTION_BY_KIND 是穷举 Record，新增一类不声明 vendorSide 与主次动作即类型错误；vendorSide 只有这张表一个出处（reportFor 不再按调用点另判一遍）。(6) 真机（pb06 + pb07，中英各一遍，开发构建、真 Electron）：模型下线那一笔说「模型不可用」，参数错误那一笔仍说「参数不被接受」，读不出来那一笔说「生成的文件没能读出来」且不劝换一家；main 上同样的 pb06 每一遍 13 处违反（其中 12 处属于本合同与 2026-09-29-failure-belongs-to-the-dispatched-attempt、2026-09-29-toast-identity-withdrawal-and-window-fit 三份合同的六条规则），本分支这六条规则零触发。(7) 变异校验（备份还原，逐个跑）：去掉 output-unreadable 分支、码表里删 model_not_found、把 output-unreadable 标成服务商那一侧、标题不看界面语言、让 URL 路径里的 /model/ 也当证据、把任意字符串都当错误码——六个变异全部被 classifyGenerationError.test / vendorHttp.test 抓红；另有三个（三条通道各自漏带上游码）被 upstreamEvidenceParity.test 抓红；认不出的失败这一条又有五个变异（三个出口各自漏带码、narrate 不认码、文案改回猜测）全部被抓红。真机 pb07 ④（中英各一遍）：418 + 英文原话 + 码 render_farm_state → 中文标题「生成失败」、说明「Nomi 没能认出这次失败的原因，所以不去猜。服务商给的错误码是 render_farm_state…」，英文界面对称。",
   "shared_boundaries": [
     {
       "path": "src/workbench/observability/classifyError.ts",
@@ -180,7 +181,7 @@
       "path": "src/workbench/observability/classifyError.ts",
       "entry_point": "classifyGenerationError",
       "disposition": "enforced",
-      "evidence": "classifyGenerationError.test：走查载荷原样复现（码 + 话 → 模型不可用）、只有码也认、URL 里的 /model/ 不是证据、真的参数错误仍是 input、标题语言（中英对称）、output-unreadable、vendorSide 逐类表；把这份测试放到 main 的源码上跑，133 条里 36 条红。"
+      "evidence": "classifyGenerationError.test：走查载荷原样复现（码 + 话 → 模型不可用）、只有码也认、URL 里的 /model/ 不是证据、真的参数错误仍是 input、标题语言（中英对称）、output-unreadable、vendorSide 逐类表、认不出的失败如实说认不出并带码（F6，三个出口 × 中英）；把这份测试放到 main 的源码上跑，133 条里 36 条红（F6 那几条是之后加的）。"
     },
     {
       "path": "electron/vendor/vendorHttp.ts",
@@ -275,9 +276,10 @@
     "status": "removed",
     "removed_paths": [
       "src/workbench/observability/classifyError.ts",
-      "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts"
+      "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts",
+      "src/i18n/locales/generationCommon.ts"
     ],
-    "rationale": "没有并行版：classifyError 里各个判据各自读 structured?.upstreamMsg 的写法，在原处换成一个 vendorOriginatedText 出口；「标题 = raw 首行」的兜底被界面语言规矩取代；catalogTaskResultParse 里手拼失败后缀的写法换成 formatTaskFailureMessage，不留旧格式。"
+    "rationale": "没有并行版：classifyError 里各个判据各自读 structured?.upstreamMsg 的写法，在原处换成一个 vendorOriginatedText 出口；「标题 = raw 首行」的兜底被界面语言规矩取代；catalogTaskResultParse 里手拼失败后缀的写法换成 formatTaskFailureMessage，不留旧格式；generationCommon 里 unknown 那句固定的猜测文案在原处换成「如实说认不出」的两条（hint / hintWithCode），不留旧文案。"
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
