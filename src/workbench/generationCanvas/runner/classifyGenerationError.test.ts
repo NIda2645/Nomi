@@ -1023,3 +1023,97 @@ describe('vendorSide —— 失败是不是服务商那一侧的事', () => {
     expect(classifyGenerationError(message).vendorSide).toBe(false)
   })
 })
+
+// 认不出的失败如实说「认不出」（F6，2026-09-30）。旧文案对每一个没有分类器认得的失败都说「可能是服务商临时故障或额度问题」——
+// 其中「额度」是猜的：今天没有价格，猜额度只会把人引去查账。目录不认识的失败就说不认识，不编原因；
+// 供应商给了码就带上码，原文（「服务商原话」）和完整报文（「技术详情」）留着当入口。
+describe('认不出的失败如实说认不出：不编原因、不提额度，附上供应商的码与原文入口（F6）', () => {
+  const structuredMessage = (structured: Record<string, unknown>, tail = 'Provider request failed') =>
+    `Error: NOMI_VENDOR_ERR_B64::${Buffer.from(JSON.stringify(structured), 'utf8').toString('base64')}:: ${tail}`
+  // 说出任何一种「原因」的词：临时故障 / 额度 / 余额 / 限流——认不出的失败一个都不许说。
+  const GUESSED_CAUSE = /临时故障|额度|余额|限流|credit|quota|balance|temporar|rate.?limit/i
+  const UNRECOGNIZED = 'The render farm returned an unrecognised state after the third checkpoint.'
+
+  it('没有任何证据（连供应商的话都没有）→ 说认不出，一个原因都不编', () => {
+    const report = classifyGenerationError('something odd happened')
+    expect(report.kind).toBe('unknown')
+    expect(report.hint).toContain('没能认出这次失败的原因')
+    expect(report.hint).toContain('技术详情')
+    expect(`${report.reason}${report.hint}`).not.toMatch(GUESSED_CAUSE)
+    // 没有码就不写「错误码」这一句
+    expect(report.hint).not.toContain('错误码')
+  })
+
+  it('供应商给了错误码 → 说明里带上这个码（有码就带，不靠猜）', () => {
+    // 真实形状：主进程的失败信息尾巴里带着供应商原话（技术详情读的就是它）。
+    const report = classifyGenerationError(structuredMessage(
+      { vendorKey: 'x', httpStatus: 418, category: 'unknown', upstreamMsg: UNRECOGNIZED, upstreamCode: 'render_farm_state' },
+      `Provider request failed (HTTP 418) at x POST https://x.invalid/v1/images: ${UNRECOGNIZED}`,
+    ))
+    expect(report.kind).toBe('unknown')
+    expect(report.hint).toContain('没能认出这次失败的原因')
+    expect(report.hint).toContain('服务商给的错误码是 render_farm_state')
+    expect(`${report.reason}${report.hint}`).not.toMatch(GUESSED_CAUSE)
+    // 原文入口：供应商的话在「服务商原话」那一格，完整报文在 raw（技术详情）
+    expect(report.providerMessage).toBe(UNRECOGNIZED)
+    expect(report.raw).toContain(UNRECOGNIZED)
+  })
+
+  it('三条 unknown 出口都带码：供应商的话是界面语言 / 不是界面语言 / 根本没有话（只有码）', () => {
+    const inUiLanguage = classifyGenerationError(structuredMessage({ vendorKey: 'x', httpStatus: 418, category: 'unknown', upstreamMsg: '当前模型排队人数过多，请等一会儿再来', upstreamCode: 'queue_busy' }))
+    const outOfUiLanguage = classifyGenerationError(structuredMessage({ vendorKey: 'x', httpStatus: 418, category: 'unknown', upstreamMsg: UNRECOGNIZED, upstreamCode: 'queue_busy' }))
+    const codeOnly = classifyGenerationError(structuredMessage({ vendorKey: 'x', httpStatus: 418, category: 'unknown', upstreamCode: 'queue_busy' }))
+    for (const report of [inUiLanguage, outOfUiLanguage, codeOnly]) {
+      expect(report.kind).toBe('unknown')
+      expect(report.hint).toContain('服务商给的错误码是 queue_busy')
+    }
+  })
+
+  it('供应商只给了业务码（logicalCode，HTTP 200 里的错误信封）→ 也带上', () => {
+    const report = classifyGenerationError(structuredMessage({ vendorKey: 'x', logicalCode: 90417, category: 'unknown', upstreamMsg: UNRECOGNIZED }))
+    expect(report.kind).toBe('unknown')
+    expect(report.hint).toContain('服务商给的错误码是 90417')
+  })
+
+  it('英文界面同样：不猜、带码；说明里没有中文', async () => {
+    await i18n.changeLanguage('en')
+    try {
+      const withCode = classifyGenerationError(structuredMessage({ vendorKey: 'x', httpStatus: 418, category: 'unknown', upstreamMsg: UNRECOGNIZED, upstreamCode: 'render_farm_state' }))
+      expect(withCode.hint).toContain('Nomi could not tell what caused this failure, so it will not guess.')
+      expect(withCode.hint).toContain('The provider’s error code is render_farm_state')
+      expect(withCode.hint).toContain('Technical details')
+      expect(`${withCode.reason}${withCode.hint}`).not.toMatch(GUESSED_CAUSE)
+      expect(withCode.hint).not.toMatch(/[㐀-鿿]/)
+      const bare = classifyGenerationError('something odd happened')
+      expect(bare.hint).toContain('will not guess')
+      expect(bare.hint).not.toContain('error code')
+      expect(`${bare.reason}${bare.hint}`).not.toMatch(GUESSED_CAUSE)
+    } finally {
+      await i18n.changeLanguage('zh-CN')
+    }
+  })
+
+  it('认得的类别不受影响：该说余额 / 限流 / 服务商故障的，照说（有证据才说）', () => {
+    const kinds = [
+      ['402', structuredMessage({ vendorKey: 'x', httpStatus: 402, category: 'balance', upstreamMsg: 'insufficient balance' }), 'balance'],
+      ['429', structuredMessage({ vendorKey: 'x', httpStatus: 429, category: 'quota', upstreamMsg: 'too many requests' }), 'quota'],
+      ['500', structuredMessage({ vendorKey: 'x', httpStatus: 500, category: 'server', upstreamMsg: 'boom' }), 'server'],
+    ] as const
+    for (const [, message, kind] of kinds) expect(classifyGenerationError(message).kind).toBe(kind)
+  })
+
+  it('认不出的失败里没有一个是「服务商临时故障 / 额度」的猜测：unknown 的两条文案在中英各一遍都不含它', async () => {
+    for (const language of ['zh-CN', 'en'] as const) {
+      await i18n.changeLanguage(language)
+      try {
+        for (const key of ['hint', 'hintWithCode'] as const) {
+          const text = i18n.t(`generationCommon.observability.error.unknown.${key}`, { code: 'X' })
+          expect(text, `${language} unknown.${key}`).not.toMatch(GUESSED_CAUSE)
+          expect(text).not.toContain('generationCommon.')
+        }
+      } finally {
+        await i18n.changeLanguage('zh-CN')
+      }
+    }
+  })
+})

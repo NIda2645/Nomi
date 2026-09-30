@@ -130,6 +130,16 @@ function isInUiLanguage(text: string): boolean {
   return String(i18n.language || '').toLowerCase().startsWith('zh') ? hasHan : !hasHan
 }
 
+/**
+ * 认不出的失败（unknown）的说明里附上**供应商自己给的错误码**——有就带（上游的 error.code，或业务码 logicalCode）。
+ * 不编原因：码与「技术详情」里的原文是用户和我们排查的入口；没有码就不写这一句（narrate 里 hint / hintWithCode 二选一）。
+ */
+function unknownCopyParams(structured: VendorErrorStructuredLite | null): Record<string, string> | undefined {
+  const logical = structured?.logicalCode === undefined || structured.logicalCode === '' ? '' : String(structured.logicalCode)
+  const code = structured?.upstreamCode || logical
+  return code ? { code } : undefined
+}
+
 function truncateLine(value: string): string {
   const clean = value.replace(/\s+/g, ' ').trim()
   return clean.length > 100 ? `${clean.slice(0, 99)}…` : clean
@@ -643,19 +653,19 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       return {
         kind: 'unknown',
         reason: truncateLine(said),
-        hint: narrateGenerationError('unknown').hint,
+        hint: narrateGenerationError('unknown', unknownCopyParams(structured)).hint,
         vendorSide: true, // 供应商说了话（且不是我们认得的任何一类）：它这次失败了
         raw,
         ...narrateGenerationErrorActions('unknown'),
       }
     }
-    return { ...reportFor('unknown', raw, upstream), vendorSide: true }
+    return { ...reportFor('unknown', raw, upstream, unknownCopyParams(structured)), vendorSide: true }
   }
   // 兜底:抠 raw 可读首行当 reason,通用建议出自 narrate 的 unknown 词条。
   return {
     kind: 'unknown',
     reason: extractReadableErrorLine(raw) || narrateGenerationError('unknown').reason,
-    hint: narrateGenerationError('unknown').hint,
+    hint: narrateGenerationError('unknown', unknownCopyParams(structured)).hint,
     // 认不出来源、也没有供应商说的话：可能是我们自己的话（本机护栏 / 内部错误），不点名任何一家。
     vendorSide: false,
     raw,

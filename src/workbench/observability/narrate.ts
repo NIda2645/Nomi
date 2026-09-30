@@ -174,9 +174,11 @@ export function narrateGenerationError(
   // These failures occur before the provider is called; never infer billing from a generic failure.
   const uncharged = kind === 'outbound-blocked-submit' || kind === 'outbound-blocked-credential-origin'
     || kind === 'asset-upload-failed' || kind === 'asset-invalid'
+  // 认不出的失败：服务商给了错误码就把码带进说明（不编原因，码是用户和我们排查的入口）。
+  const hintKey = kind === 'unknown' && params?.code ? 'hintWithCode' : 'hint'
   return {
     reason: uncharged ? `${reason} · ${i18n.t('generationCommon.observability.progress.notCharged')}` : reason,
-    hint: i18n.t(`generationCommon.observability.error.${key}.hint`, params),
+    hint: i18n.t(`generationCommon.observability.error.${key}.${hintKey}`, params),
   }
 }
 

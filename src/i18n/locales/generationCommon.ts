@@ -377,9 +377,12 @@ export const zhGenerationCommon = {
         reason: '生成的文件没能读出来',
         hint: '服务商已经把结果发回来了，但 Nomi 没能读取这个文件（可能没传完整、文件损坏、格式暂不支持，或返回的根本不是图片 / 视频）。可以重试一次；反复出现请点「反馈问题」，把技术详情发给我们。',
       },
+      // 认不出的失败如实说「认不出」：不编原因（不是「服务商临时故障」，更不是「额度」——今天没有价格，猜额度只会把人引去查账）。
+      // 服务商给了错误码就带上码（hintWithCode）；原文和完整报文留在「技术详情」里。重试 / 换模型是动作建议，不是对原因的判断。
       unknown: {
         reason: '生成失败',
-        hint: '可能是服务商临时故障或额度问题，建议稍等重试，或换一个模型。',
+        hint: 'Nomi 没能认出这次失败的原因，所以不去猜。完整的原始报文留在错误卡的「技术详情」里；可以重试一次，或换一个模型。',
+        hintWithCode: 'Nomi 没能认出这次失败的原因，所以不去猜。服务商给的错误码是 {{code}}，完整的原始报文留在错误卡的「技术详情」里；可以重试一次，或换一个模型。',
       },
       opaque: {
         detail: '这次生成结束时没有带回任何错误信息——这是 Nomi 这侧的缺口，不是你的操作问题。请用这张卡片上的「反馈此问题」把它发给我们，技术详情里是我们目前能拿到的全部线索。',
@@ -1898,7 +1901,8 @@ export const enGenerationCommon = {
       },
       unknown: {
         reason: 'Generation failed',
-        hint: 'The provider may be temporarily unavailable or out of credit. Try again later or choose another model.',
+        hint: 'Nomi could not tell what caused this failure, so it will not guess. The full original response is kept under “Technical details” on the error card. You can retry once, or choose another model.',
+        hintWithCode: 'Nomi could not tell what caused this failure, so it will not guess. The provider’s error code is {{code}}; the full original response is kept under “Technical details” on the error card. You can retry once, or choose another model.',
       },
       opaque: {
         detail: "This generation ended without carrying back any error information - that is a gap on Nomi's side, not something you did. Use \"Report this problem\" on this card to send it to us; the technical details hold everything we currently have.",
