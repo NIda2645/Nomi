@@ -180,7 +180,7 @@
       "path": "src/workbench/observability/classifyError.ts",
       "entry_point": "classifyGenerationError",
       "disposition": "enforced",
-      "evidence": "classifyGenerationError.test：走查载荷原样复现（码 + 话 → 模型不可用）、只有码也认、URL 里的 /model/ 不是证据、真的参数错误仍是 input、标题语言（中英对称）、output-unreadable、vendorSide 逐类表；其中 22 条在 main 上红。"
+      "evidence": "classifyGenerationError.test：走查载荷原样复现（码 + 话 → 模型不可用）、只有码也认、URL 里的 /model/ 不是证据、真的参数错误仍是 input、标题语言（中英对称）、output-unreadable、vendorSide 逐类表；把这份测试放到 main 的源码上跑，133 条里 36 条红。"
     },
     {
       "path": "electron/vendor/vendorHttp.ts",
