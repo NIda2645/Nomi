@@ -10,7 +10,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { chromium } from 'playwright'
 import { createServer } from 'vite'
-import { expect, expectHittable, expectOverlayReachable, screenshotSettled, waitForVisualQuiescence } from './_assert.mjs'
+import { expect, expectAbsent, expectHittable, expectOverlayReachable, proveProbe, screenshotSettled, waitForVisualQuiescence } from './_assert.mjs'
 
 const root = path.resolve(import.meta.dirname, '../..')
 const evidence = path.join(root, '.tmp', 'failure-toast-layout-evidence')
@@ -38,9 +38,13 @@ try {
       await page.waitForFunction(() => Boolean(window.__toastFixture))
       const toasts = page.locator('.mantine-Notification-root')
       const closer = toasts.locator('.mantine-Notification-closeButton')
+      // Every "there is no toast" below is only worth something if this very locator can see a toast: prove it once, on a
+      // stage where one is showing, before any absence is asserted (tests/ux/_assert.mjs expectAbsent / proveProbe).
+      await page.evaluate(() => window.__toastFixture.showFailure())
+      const proof = await proveProbe(toasts, 'the probe counts the failure toast while one is on screen')
       const check = async (label, run) => {
         await page.evaluate(() => window.__toastFixture.clear())
-        await expect(toasts).toHaveCount(0)
+        await expectAbsent(toasts, { provenBy: proof, message: 'the stage is empty before the scenario starts' })
         try { await run() } catch (error) { failures.push(`[${tag}] ${label}: ${String(error?.message ?? error).split('\n')[0]}`) }
       }
       const expectInside = async (label) => {
@@ -68,7 +72,7 @@ try {
         await expectReadableWithoutScrolling('失败提示（模型已下线）')
         await screenshotSettled(page, { path: path.join(evidence, `${tag}-failure-toast.png`) })
         await closer.click()
-        await expect(toasts).toHaveCount(0)
+        await expectAbsent(toasts, { provenBy: proof, message: 'pressing × removes the toast' })
       })
 
       await check('the longest message the failure catalog can produce fits without being cut (worst case for this language)', async () => {
