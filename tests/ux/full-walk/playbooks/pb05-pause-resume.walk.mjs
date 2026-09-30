@@ -19,7 +19,7 @@ import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_PERMISSION, CREATION_PANEL, INTERVENTION_CONFIRM, PERMISSION_POPOVER,
   expandResidentPanel, permissionTier, sendCanvas, sendCreation,
 } from '../../agent-runtime-walk-support.mjs'
-import { clickBlank } from '../actions.mjs'
+import { clickBlank, fitCanvasView } from '../actions.mjs'
 import { lastUserText as lastUserTextOf, operationIdOf, scriptTurn } from '../brain.mjs'
 import { startPlaybook } from '../launch.mjs'
 
@@ -117,19 +117,34 @@ try {
 
   await monitor.settle('暂停之后，在飞的镜头都已收尾')
 
-  await monitor.step('在还没拍的那一镜上点「继续剩余」', async () => {
+  // 用户要在某一镜上点按钮，先得看见它：画布只渲染视野里的卡，不适应视图就找不到「已停」的那几镜
+  // （上一版剧本就这样空过了「继续剩余」这一步）。视口是用户自己挪的，这一步声明它。
+  await monitor.step('把画布上的卡片放进视野（适应视图）', async () => {
     await clickBlank(win()).catch(() => undefined)
+    await fitCanvasView(win())
+  }, { surfaces: ['canvasViewport'] })
+
+  await monitor.step('在还没拍的那一镜上点「继续剩余」', async () => {
     const resume = win().locator('[data-shot-placeholder-state="stopped"] [data-production-shot-action]')
     if (!(await resume.count())) {
       // 暂停之后剩下的镜照样交完了（上面铁律 1 那条），画布上没有「已停」的镜头可继续——如实记下。
       monitor.note({ kind: 'nothing-to-resume', runStatus: run()?.status, jobs: (run()?.jobs ?? []).map((job) => job.status) })
       return
     }
+    // 点之前 Run 停在哪（落盘的 run.json 正被改写时可能一瞬读不到，读到为止）。
+    let stoppedAs = null
+    await expect.poll(() => (stoppedAs = run()?.status ?? null), { message: '读到这次制作的 Run', timeout: DEFAULT_TIMEOUT_MS }).not.toBeNull()
     monitor.consentFullAuto({ label: '「继续剩余」' })
     await clickOrFail(resume.first(), '「继续剩余」')
     // 结论可能是一条一闪而过的 toast：等它出现，或者 Run 真的动起来。
-    await expect.poll(async () => (await win().locator('.mantine-Notification-root').count()) > 0 || ['running', 'completed'].includes(run()?.status),
-      { message: '点完有个结论（提示或 Run 动了）', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
+    // 「动起来」= 离开点之前的停着状态，先读后台落盘的 Run（不受界面卡顿影响）：夹具出片很快，Run 可能在两次轮询之间
+    // 就从「进行中」走到「等粗剪确认」——只认 running / completed 会把真接着拍了的 Run 判成「没结论」（2026-09-30 实跑撞到）。
+    await expect.poll(async () => {
+      const now = run()
+      if (now && now.status !== stoppedAs) return true
+      return (await win().locator('.mantine-Notification-root').count()) > 0
+    }, { message: '点完有个结论（提示或 Run 动了）', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
+    monitor.note({ kind: 'resume-outcome', from: stoppedAs, to: run()?.status ?? null })
   }, { surfaces: [] })
 
   // ── C：Agent 在忙的时候按停止（用户口中的「在 Agent 里点了暂停」）──────────────────────────
