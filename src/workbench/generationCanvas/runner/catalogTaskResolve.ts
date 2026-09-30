@@ -15,7 +15,7 @@ import {
   type TaskRequestDto,
   type TaskResultDto,
 } from '../../api/taskApi'
-import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
+import type { GenerationCanvasEdge, GenerationCanvasNode, GenerationNodeRunAttempt } from '../model/generationCanvasTypes'
 import { projectParameterReferenceSlots } from '../model/parameterReferenceSlots'
 import type { GenerationProgressPhase } from '../../observability/narrate'
 import {
@@ -126,6 +126,17 @@ export function selectedModelKey(node: GenerationCanvasNode): string {
     asTrimmedString(meta.imageModel) ||
     asTrimmedString(meta.videoModel)
   )
+}
+
+/**
+ * 这个节点**此刻会发给谁**：与 `buildCatalogTaskRequest` 读同一对选择器（`selectedVendor` / `selectedModelKey`），
+ * 所以它就是请求真正发往的那一家、那个模型。运行开始时读一次、存进运行记录（GenerationNodeRunRecord.attempt）。
+ * 选不出完整的一对（还没选模型）→ undefined：没有「发给谁」，也就没有「谁失败了」。
+ */
+export function dispatchedAttempt(node: GenerationCanvasNode): GenerationNodeRunAttempt | undefined {
+  const vendorKey = selectedVendor(node)
+  const modelKey = selectedModelKey(node)
+  return vendorKey && modelKey ? { vendorKey, modelKey } : undefined
 }
 
 function catalogKindForNode(node: GenerationCanvasNode): BillingModelKind {
