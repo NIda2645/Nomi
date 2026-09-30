@@ -2652,6 +2652,37 @@
       ],
       "since": "2026-09-29",
       "notes": "内置家的连接身份由代码拥有：鉴权放法与种子一致，接口地址是种子地址或代码登记的官方备用线路（vendor/vendorBaseFallback.codeDeclaredFallbackOrigins，与凭据守卫同一张名单——APIMart 的国内线路 api.apib.ai 在里面）。内置家自动发布、Agent 生成器装配、生成器出请求都问它，不一致就 fail-closed。合同 docs/fixes/2026-09-29-settings-address-is-the-users.root-cause.json。"
+    },
+    {
+      "name": "凭据请求重定向策略",
+      "subject": "network.credential-redirect-policy",
+      "lifecycle": "execution",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/vendor/vendorBaseFallback.ts",
+        "symbol": "fetchVendorWithBaseFallback"
+      },
+      "write_api": [
+        {
+          "path": "electron/vendor/vendorBaseFallback.ts",
+          "symbol": "fetchVendorWithBaseFallback"
+        },
+        {
+          "path": "electron/ai/onboarding/onboardingIpc.ts",
+          "symbol": "probeOneProtocol"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/vendor/vendorHttp.ts",
+        "electron/ai/onboarding/onboardingIpc.ts",
+        "electron/ai/onboarding/modelListProbe.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "带凭据或自定义鉴权头的供应商与接入探测请求必须在共享出站边界拒绝重定向，避免后续 origin 收到凭据或 POST body。vendor fallback 的首发与官方备用域重发、onboarding 协议探测分别是同一规则的两个执行入口；模型列表分页沿用 manual + 逐跳 origin/path 校验。合同 docs/fixes/2026-09-30-credential-redirect-leak.root-cause.json。"
     }
   ]
 }
