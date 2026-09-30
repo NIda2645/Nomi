@@ -2428,6 +2428,10 @@
         {
           "path": "electron/catalog/seedBuiltins.ts",
           "symbol": "applyBuiltinSeeds"
+        },
+        {
+          "path": "electron/catalog/seedBuiltins.ts",
+          "symbol": "builtinCatalogModelKeys"
         }
       ],
       "forbidden_derivations": [],
@@ -2532,6 +2536,122 @@
       ],
       "since": "2026-09-29",
       "notes": "PR #926（合同 docs/fixes/2026-09-29-model-box-label-translation.root-cause.json）：模型框只给供应商名调了翻译、模型名漏了。模型名的显示名只在这里按当前语言翻，只进显示、不进身份——不能在更早的 dedupeModelOptions / toCatalogModelOptions 里翻，那里的 label 是身份的输入，在那里翻，身份就会随语言变。"
+    },
+    {
+      "name": "这条连接归不归认证适配器管",
+      "subject": "catalog.connection.certification-ownership",
+      "lifecycle": "catalog",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/certificationOwnership.ts",
+        "symbol": "isCertificationOwnedConnection"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/certificationOwnership.ts",
+          "symbol": "isCertificationOwnedConnection"
+        },
+        {
+          "path": "electron/catalog/certificationOwnership.ts",
+          "symbol": "carriesCertificationMark"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "hasCertificationOwnedConnection",
+          "kind": "definition",
+          "why": "2026-09-29 前 Agent 生成器装配里的那一份（整家任何一行带标记就算）；已删，只许 import 主人"
+        },
+        {
+          "symbol": "isCertificationOwned",
+          "kind": "definition",
+          "why": "同上那一份的别名包装；已删"
+        },
+        {
+          "symbol": "hasAdapterMetadata",
+          "kind": "definition",
+          "why": "生成器出请求那一份；已删"
+        },
+        {
+          "symbol": "hasCertificationOwnedAdapter",
+          "kind": "definition",
+          "why": "内置家发布那一份；已删"
+        },
+        {
+          "symbol": "certificationOwnedConnection",
+          "kind": "definition",
+          "why": "设置页改连接那一份；已删"
+        }
+      ],
+      "parity_test": "electron/parity/certificationOwnershipParity.test.ts",
+      "allowed_consumers": [
+        "electron/capabilityCore/generationProviderBootstrap.ts",
+        "electron/capabilityCore/apimartGenerationProvider.ts",
+        "electron/catalog/directKeyCredential.ts",
+        "electron/catalog/rendererCatalogMutation.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "标记是 meta.adapter（认证晋升 / 自检 / 声明卡 / 渲染层新建模型都会写在模型行上）。判据：连接本身带标记 → 归；内置家（有代码种子）只认内置目录模型（seedBuiltins.builtinCatalogModelKeys）上的标记，用户自己加、自己自检的模型只管它自己；非内置家（AI 接入 / 声明卡 / 手接中转）任何一行带标记都归。此前 4 份判据都把「整家任何一行带标记」当成整条连接归认证：报错用户点过「继续验证 → 自检」之后 Agent 生成对整家 APIMart 关门、画布照样出图（A10b）。收口合同 docs/fixes/2026-09-29-connection-certification-ownership-one-owner.root-cause.json。第五份回不来：「meta 上有没有 adapter」这个问法由 certificationOwnership.test.ts 的全仓扫描守着（主人之外出现即红），旧的五个名字由本条 forbidden_derivations 守着，Agent 与画布同源由 parity_test 守着。"
+    },
+    {
+      "name": "设置页改连接（渲染层那扇写门能改什么）",
+      "subject": "catalog.connection.renderer-edit",
+      "lifecycle": "catalog",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/rendererCatalogMutation.ts",
+        "symbol": "upsertRendererCatalogVendor"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/rendererCatalogMutation.ts",
+          "symbol": "upsertRendererCatalogVendor"
+        },
+        {
+          "path": "electron/catalog/rendererCatalogMutation.ts",
+          "symbol": "sanitizeRendererVendorMutation"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/catalog/settingsAddressSave.test.ts",
+      "allowed_consumers": [
+        "electron/main.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "设置页（渲染层 IPC）改一条连接只走这一扇：接口地址归用户（保存即生效，已存 key 的去向跟着用户这次保存走）；认证连接的鉴权放法（authType / authHeader / authQueryParam / providerKind）不重新接入就改不了；认证元数据渲染层写不动。「是不是认证连接」不在这里判——问 catalog.connection.certification-ownership。程序写门（catalogStore.upsertModelCatalogVendor、Agent / MCP / 声明卡）不经这里，改地址也不挪绑定。合同 docs/fixes/2026-09-29-settings-address-is-the-users.root-cause.json。"
+    },
+    {
+      "name": "这条连接还是不是内置家那一条",
+      "subject": "catalog.builtin-connection-scope",
+      "lifecycle": "catalog",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/builtinVendorSeeds.ts",
+        "symbol": "builtinVendorScopeMatches"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/builtinVendorSeeds.ts",
+          "symbol": "builtinVendorScopeMatches"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/capabilityCore/generationProviderBootstrap.ts",
+        "electron/capabilityCore/apimartGenerationProvider.ts",
+        "electron/catalog/directKeyCredential.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "内置家的连接身份由代码拥有：鉴权放法与种子一致，接口地址是种子地址或代码登记的官方备用线路（vendor/vendorBaseFallback.codeDeclaredFallbackOrigins，与凭据守卫同一张名单——APIMart 的国内线路 api.apib.ai 在里面）。内置家自动发布、Agent 生成器装配、生成器出请求都问它，不一致就 fail-closed。合同 docs/fixes/2026-09-29-settings-address-is-the-users.root-cause.json。"
     }
   ]
 }

@@ -4,6 +4,7 @@ import { derivePublishedExecution, modelHasPublishedExecution } from '../shared/
 
 import { validateCandidateCredential, candidateCredentialSnapshot } from './validateCandidateCredential'
 import { hasBuiltinCredentialJudgement } from './builtinVendorSeeds'
+import { carriesCertificationMark, isCertificationOwnedConnection } from './certificationOwnership'
 import { publishBuiltinCuratedVendor } from './directKeyCredential'
 import { bindCredentialDestination, judgeCredentialDestination, readCredentialBinding } from './credentialBinding'
 import { codeDeclaredFallbackOrigins } from '../vendor/vendorBaseFallback'
@@ -15,10 +16,6 @@ function record(value: unknown): Json {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Json : {}
 }
 
-function hasAdapter(meta: unknown): boolean {
-  return Object.prototype.hasOwnProperty.call(record(meta), 'adapter')
-}
-
 /** 认证连接上设置页改不了的字段。接口地址不在其中：它归用户在设置里亲手改（2026-09-29，主域被墙要能换线路）。 */
 const SECURITY_SCOPE_FIELDS = ['authType', 'authHeader', 'authQueryParam', 'providerKind'] as const
 
@@ -26,13 +23,8 @@ function normalizedScopeValue(value: unknown): unknown {
   return typeof value === 'string' ? value.trim() : value ?? null
 }
 
-function certificationOwnedConnection(state: CatalogState, vendorKey: string): boolean {
-  const vendor = state.vendors.find((item) => item.key === vendorKey)
-  return hasAdapter(vendor?.meta) || state.models.some((model) => model.vendorKey === vendorKey && hasAdapter(model.meta))
-}
-
 function assertMutableConnectionScope(raw: Json, existing: CatalogState['vendors'][number] | undefined, state: CatalogState): void {
-  if (!existing || !certificationOwnedConnection(state, existing.key)) return
+  if (!existing || !isCertificationOwnedConnection(state, existing.key)) return
   const changed = SECURITY_SCOPE_FIELDS.some((key) =>
     Object.prototype.hasOwnProperty.call(raw, key)
       && normalizedScopeValue(raw[key]) !== normalizedScopeValue(existing[key]),
@@ -45,7 +37,7 @@ function preserveCertificationMeta(incoming: unknown, existing: unknown): Json |
   const next = { ...record(incoming) }
   delete next.adapter
   const current = record(existing)
-  if (Object.prototype.hasOwnProperty.call(current, 'adapter')) next.adapter = current.adapter
+  if (carriesCertificationMark(current)) next.adapter = current.adapter
   return Object.keys(next).length ? next : undefined
 }
 
@@ -90,7 +82,7 @@ export function sanitizeRendererMappingMutation(payload: unknown, state: Catalog
   const modelKey = String(raw.modelKey || '').trim()
   const taskKind = String(raw.taskKind || '').trim()
   const targets = state.models.filter((model) => model.vendorKey === vendorKey
-    && (!modelKey || model.modelKey === modelKey) && hasAdapter(model.meta))
+    && (!modelKey || model.modelKey === modelKey) && carriesCertificationMark(model.meta))
   if (targets.length === 0) return raw
   const publishedForTask = targets.some((model) => derivePublishedExecution(model, { mappings: state.mappings })
     .publishedModes.includes(taskKind as never))

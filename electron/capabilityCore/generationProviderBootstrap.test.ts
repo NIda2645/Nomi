@@ -303,6 +303,30 @@ describe("generation provider bootstrap", () => {
     expect(fetchImpl).toHaveBeenCalledWith("https://api.apib.ai/v1/images/generations", expect.anything());
   });
 
+  // 2026-09-29（A10b）：报错用户点过「继续验证 → 自检」——在内置 APIMart 上手加了一个模型去自检，
+  // 那一行带着 meta.adapter。旧判据把「这家名下任何一行带标记」当成整家归认证管：装配、取连接、
+  // 出请求三处各抄一份，Agent 那条路对整家 APIMart 关门（画布那条路不查，照样出图）。
+  // 判据收成一份（catalog/certificationOwnership）之后，用户自己加的那一行只管它自己。
+  it("keeps the Agent path on built-in APIMart when the user added and self-checked a model of their own (A10b)", async () => {
+    const fixture = encryptedState();
+    fixture.models.push({
+      modelKey: "gpt-image-1", vendorKey: "apimart", labelZh: "gpt-image-1", kind: "image", enabled: false,
+      meta: { adapter: { state: "unverified", modes: [], updatedAt: "now" } }, createdAt: "now", updatedAt: "now",
+    });
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      code: 200,
+      data: [{ status: "submitted", task_id: "task-a10b" }],
+    }), { status: 200 }));
+
+    const boot = createGenerationProviderBootstrap(fixture, { catalogReader: () => fixture, fetchImpl });
+    expect(boot.readinessByProvider.apimart).toMatchObject({ providerReady: true });
+    const provider = boot.providers.find((candidate) => candidate.providerId === "apimart");
+    const request = generationInput();
+    await expect(provider?.submit(provider.buildRequest(request), request.idempotencyKey))
+      .resolves.toMatchObject({ providerTaskId: "task-a10b" });
+    expect(fetchImpl).toHaveBeenCalledWith("https://api.apimart.ai/v1/images/generations", expect.anything());
+  });
+
   it("fails closed when a direct-key APIMart endpoint drifts in the live catalog", async () => {
     const initial = encryptedState();
     const live = encryptedState();
