@@ -175,8 +175,8 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   const batch = React.useMemo(() => deriveStoryboardBatch(rows, skippedShotIds), [rows, skippedShotIds])
   // 参考卡执行态（B3 图卡）：与行同一份 derive（生成态 / 是否出图）。
   const anchorCards = React.useMemo(
-    () => (plan ? deriveAnchorCardRuntimes({ plan, designId, nodes: canvasNodes, rows }) : []),
-    [plan, designId, canvasNodes, rows],
+    () => (plan ? deriveAnchorCardRuntimes({ plan, designId, nodes: canvasNodes }) : []),
+    [plan, designId, canvasNodes],
   )
 
   React.useEffect(() => {

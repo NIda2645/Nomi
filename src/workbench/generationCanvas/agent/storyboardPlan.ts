@@ -137,13 +137,6 @@ export type StoryboardPlanToArgsOptions = {
   storyboardDesignId?: string
 }
 
-/** 锚类型 → 该锚连到镜头的参考边语义。 */
-function edgeModeForAnchor(kind: PlanAnchorKind): GenerationCanvasEdgeMode {
-  if (kind === 'character') return 'character_ref'
-  if (kind === 'scene' || kind === 'style') return 'style_ref'
-  return 'reference' // prop 走通用参考槽（无道具专用 mode）
-}
-
 /**
  * 锚类型 → 画布节点种类。角色/场景有专用卡；**道具无专用节点种类 → 用 image（通用参考图节点）**
  * ——直接用 'prop' 当 kind 会让画布 registry 查不到定义而崩（defaultSize undefined，R13 真机抓出）。

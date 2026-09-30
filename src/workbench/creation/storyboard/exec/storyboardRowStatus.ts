@@ -4,7 +4,7 @@ import type { GenerationCanvasNode } from '../../../generationCanvas/model/gener
 import type { ArchetypeMode, ArchetypeReferenceSlot } from '../../../../../electron/shared/modelArchetypes/types'
 import type { ModelOption } from '../../../../config/models'
 import { stableShotId, type PlanAnchor, type PlanShot, type StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
-import { anchorCarriesOwnMaterial, isVisualAnchor } from '../../../generationCanvas/agent/storyboardPromptCompiler'
+import { isVisualAnchor } from '../../../generationCanvas/agent/storyboardPromptCompiler'
 import { isAnchorFrozen } from '../../../generationCanvas/model/anchorBibleKeys'
 import { hasUsableResult } from '../../../generationCanvas/runner/dependencyWaves'
 import { effectiveShotValue, missingRequiredSlots, plannedFirstFrameSlot, referencedVisualAnchors, resolveShotArchetypeMode, shotBindsAnchor } from '../shotRow/shotRowModel'
@@ -293,10 +293,8 @@ export function deriveAnchorCardRuntimes(input: {
   plan: StoryboardPlan
   designId: string
   nodes: readonly GenerationCanvasNode[]
-  /** 行 runtime（deriveStoryboardRowRuntimes 的输出；等待计数与行状态同一份）。 */
-  rows: readonly StoryboardRowRuntime[]
 }): AnchorCardRuntime[] {
-  const { plan, designId, nodes, rows } = input
+  const { plan, designId, nodes } = input
   return plan.anchors.map((anchor) => {
     const visual = isVisualAnchor(anchor)
     const node = visual ? findAnchorNode(nodes, designId, anchor) : null

@@ -38,7 +38,7 @@ describe('visual anchors with explicit text-only mode', () => {
     expect(rows[1].exec.ignoredAnchors).toEqual([])
     expect(rows[2].exec.status).toBe('ready')
     expect(rows[2].exec.ignoredAnchors).toEqual([])
-    const cards = deriveAnchorCardRuntimes({ plan, designId: 'd', nodes: [], rows })
+    const cards = deriveAnchorCardRuntimes({ plan, designId: 'd', nodes: [] })
     expect(cards[0]).toMatchObject({ referencedByCount: 2 })
   })
   it('loopback tool result returns actionable correction without rejecting t2v', async () => {

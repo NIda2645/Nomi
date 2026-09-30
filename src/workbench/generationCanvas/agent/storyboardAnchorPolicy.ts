@@ -27,7 +27,7 @@ export type AnchorModelFitIssue = {
 export function ignoredShotAnchors(_plan: StoryboardPlan, shot: PlanShot, mode: ArchetypeMode | null | undefined): IgnoredAnchor[] {
   if (!mode) return []
   const declared = new Set(mode.slots.map((slot) => slot.kind as string))
-  return Object.entries(shot.referenceBindings ?? {}).flatMap(([slotKey, bindings]) => declared.has(slotKey) ? [] : bindingsOf(shot.referenceBindings, slotKey).map((binding) => ({
+  return Object.keys(shot.referenceBindings ?? {}).flatMap((slotKey) => declared.has(slotKey) ? [] : bindingsOf(shot.referenceBindings, slotKey).map((binding) => ({
     anchorId: binding.anchorId ?? binding.url,
     name: binding.name?.trim() || i18n.t('storyboardEditor.unnamed'),
     reason: i18n.t('storyboardEditor.anchorPolicy.ignoredReason', { mode: mode.id }),

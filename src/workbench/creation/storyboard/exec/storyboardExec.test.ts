@@ -12,7 +12,6 @@ import {
   deriveAnchorCardRuntimes,
   deriveShotRowExec,
   deriveStoryboardBatch,
-  deriveStoryboardRowRuntimes,
   SHOT_ROW_STATUSES,
   type StoryboardRowRuntime,
 } from './storyboardRowStatus'
@@ -356,10 +355,7 @@ describe('deriveStoryboardBatch（批量分桶 = footer 同一份）', () => {
 describe('deriveAnchorCardRuntimes（参考卡执行态 = 节点投影，B3）', () => {
   it('视觉锚按节点投影分态；文本锚恒文字卡；被引用数只数行上摆着的绑定', () => {
     const plan = planOf([shotOf({ referenceBindings: heroBinding }), shotOf({ index: 2, shotId: 'shot-b', referenceBindings: heroBinding }), shotOf({ index: 3, shotId: 'shot-c' })])
-    const rows = deriveStoryboardRowRuntimes({
-      plan, designId: DESIGN, imageModelOptions: [], videoModelOptions: [], nodes: [],
-    })
-    const [heroCard, styleCard] = deriveAnchorCardRuntimes({ plan, designId: DESIGN, nodes: [], rows })
+    const [heroCard, styleCard] = deriveAnchorCardRuntimes({ plan, designId: DESIGN, nodes: [] })
     expect(heroCard.visual).toBe(true)
     expect(heroCard.node).toBeNull()
     expect(heroCard.resultUrl).toBeNull()
@@ -374,17 +370,16 @@ describe('deriveAnchorCardRuntimes（参考卡执行态 = 节点投影，B3）',
       result: { id: 'r1', type: 'image', url: 'nomi-local://a.png', createdAt: 1 },
       meta: { storyboardDesignId: DESIGN, anchorId: 'hero', referenceSheet: true },
     })
-    const rows = deriveStoryboardRowRuntimes({ plan, designId: DESIGN, imageModelOptions: [], videoModelOptions: [], nodes: [doneNode] })
-    const [done] = deriveAnchorCardRuntimes({ plan, designId: DESIGN, nodes: [doneNode], rows })
+    const [done] = deriveAnchorCardRuntimes({ plan, designId: DESIGN, nodes: [doneNode] })
     expect(done.resultUrl).toBe('nomi-local://a.png')
     expect(done.locked).toBe(false)
 
     const lockedNode = nodeOf({ ...doneNode, meta: { ...(doneNode.meta || {}), frozen: { at: 1, by: 'user' } } })
-    const [locked] = deriveAnchorCardRuntimes({ plan, designId: DESIGN, nodes: [lockedNode], rows })
+    const [locked] = deriveAnchorCardRuntimes({ plan, designId: DESIGN, nodes: [lockedNode] })
     expect(locked.locked).toBe(true)
 
     const runningNode = nodeOf({ id: 'n-hero', status: 'running', progress: { percent: 55, updatedAt: 1 }, meta: { storyboardDesignId: DESIGN, anchorId: 'hero', referenceSheet: true } })
-    const [running] = deriveAnchorCardRuntimes({ plan, designId: DESIGN, nodes: [runningNode], rows })
+    const [running] = deriveAnchorCardRuntimes({ plan, designId: DESIGN, nodes: [runningNode] })
     expect(running.generating).toBe(true)
     expect(running.progressPercent).toBe(55)
   })

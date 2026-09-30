@@ -27,7 +27,6 @@ import { findModelOptionByIdentifier } from '../../../config/modelOptionResolver
 import { useVendorPreferenceOrder } from '../../common/useVendorPreference'
 import StoryboardShotRow from './shotRow/StoryboardShotRow'
 import { tableFrameMediaBox } from './shotRow/shotFrameGeometry'
-import type { MentionSuggestionItem } from '../../assets/AssetMentionSuggestionList'
 import {
   ASPECT_OPTIONS,
   effectiveShotAspect,
