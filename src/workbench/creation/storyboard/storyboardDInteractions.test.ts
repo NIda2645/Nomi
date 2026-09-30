@@ -9,9 +9,9 @@ const plan: StoryboardPlan = {
   title: 'test',
   anchors: [{ id: 'hero', kind: 'character', name: 'Hero', description: 'hero', carrier: 'visual' }],
   shots: [
-    { shotId: 'shot-1', index: 1, sceneId: 'scene-1', durationSec: 0, shotKind: 'image', anchorIds: ['hero'], prompt: 'one' },
+    { shotId: 'shot-1', index: 1, sceneId: 'scene-1', durationSec: 0, shotKind: 'image', anchorIds: ['hero'], referenceBindings: { image_ref: [{ url: 'hero.png', anchorId: 'hero' }] }, prompt: 'one' },
     { shotId: 'shot-2', index: 2, sceneId: 'scene-1', durationSec: 6, shotKind: 'video', anchorIds: [], prompt: 'two' },
-    { shotId: 'shot-3', index: 3, sceneId: 'scene-1', durationSec: 4, shotKind: 'image', anchorIds: ['hero'], prompt: 'three' },
+    { shotId: 'shot-3', index: 3, sceneId: 'scene-1', durationSec: 4, shotKind: 'image', anchorIds: ['hero'], referenceBindings: { image_ref: [{ url: 'hero.png', anchorId: 'hero' }] }, prompt: 'three' },
   ],
   scenes: [{ id: 'scene-1', title: 'Scene' }],
 }
@@ -41,7 +41,7 @@ function row(position: number, status: StoryboardRowRuntime['exec']['status'], u
 }
 
 describe('storyboard D interaction pure functions', () => {
-  it('filters positions by anchor without renumbering the source plan', () => {
+  it('filters positions by the anchor bound on the row (anchorIds alone do not count) without renumbering the source plan', () => {
     expect(positionsForAnchorFilter(plan, 'hero')).toEqual([0, 2])
     expect(filterPlanByAnchor(plan, 'hero').shots.map((shot) => shot.shotId)).toEqual(['shot-1', 'shot-3'])
     expect(filterPlanByAnchor(plan, 'hero').shots.map((shot) => shot.index)).toEqual([1, 3])

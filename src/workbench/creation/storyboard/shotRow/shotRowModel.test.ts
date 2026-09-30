@@ -36,9 +36,13 @@ const modeOf = (over: Partial<ArchetypeMode> = {}): ArchetypeMode => ({
 })
 
 describe('shotRowModel — 视觉锚投影', () => {
-  it('只计视觉锚（carrier 缺省按 kind 推断；text 锚不占参考槽）', () => {
-    const shot = shotOf({ anchorIds: ['a-hero', 'a-style', 'a-prop', 'ghost'] })
+  it('「引用」= 这一行参考列里真摆着的、来自某张锚的绑定；只计视觉锚（text 锚不占参考槽）', () => {
+    const shot = shotOf({
+      anchorIds: ['a-hero', 'a-style', 'a-prop', 'ghost'], // anchorIds 不产生任何作用
+      referenceBindings: { image_ref: [{ url: 'hero.png', anchorId: 'a-hero' }, { url: 'style.png', anchorId: 'a-style' }, { url: 'x.png' }] },
+    })
     expect(referencedVisualAnchors(shot, ANCHORS).map((a) => a.id)).toEqual(['a-hero'])
+    expect(referencedVisualAnchors(shotOf({ anchorIds: ['a-hero'] }), ANCHORS)).toEqual([])
   })
 })
 
@@ -50,13 +54,11 @@ describe('shotRowModel — 缺必填判定（画面格红态 + 组头计数共�
     expect(missingRequiredSlots(mode, bound, ANCHORS)).toEqual([])
   })
 
-  it('image_ref min≥1 可被引用的视觉锚满足；也可被直接绑定满足；不足才缺', () => {
+  it('image_ref min≥1 只被行上摆着的绑定满足；anchorIds 不记功（它发不出去任何东西）', () => {
     const mode = modeOf({ slots: [{ kind: 'image_ref', label: '角色参考', min: 1, max: 9 }] })
     expect(missingRequiredSlots(mode, shotOf(), ANCHORS)).toHaveLength(1)
-    expect(missingRequiredSlots(mode, shotOf({ anchorIds: ['a-hero'] }), ANCHORS)).toHaveLength(0)
+    expect(missingRequiredSlots(mode, shotOf({ anchorIds: ['a-hero'] }), ANCHORS)).toHaveLength(1)
     expect(missingRequiredSlots(mode, shotOf({ referenceBindings: { image_ref: [{ url: 'a.png' }] } }), ANCHORS)).toHaveLength(0)
-    // text 锚不算数
-    expect(missingRequiredSlots(mode, shotOf({ anchorIds: ['a-style'] }), ANCHORS)).toHaveLength(1)
   })
 
   it('视频/音频参考槽 min≥1 时也按绑定数算，不再无条件报缺', () => {

@@ -9,7 +9,6 @@ import {
   applyModelToAll,
   applyShotKindToAll,
   changeAnchorKind,
-  danglingAnchorIdsForShot,
   defaultCarrierForKind,
   deriveBulkDuration,
   deriveBulkModelKey,
@@ -24,7 +23,6 @@ import {
   sceneGroupsOf,
   shotKindPatch,
   shotTypeOf,
-  toggleShotAnchor,
   totalDurationSec,
   updateShotPrompt,
   validatePlan,
@@ -63,42 +61,22 @@ describe('storyboardPlanEdits — 锚', () => {
     expect(p.anchors[0]).toMatchObject({ kind: 'style', carrier: 'text' })
   })
 
-  it('removeAnchor 不擦引用它的镜头（失效引用留给校验标红）', () => {
+  it('removeAnchor 只删锚；镜头的 anchorIds 原样留着（它不产生任何作用，也不再造成失效引用拦截）', () => {
     const p = removeAnchor(base(), 'anchor-1')
     expect(p.anchors.map((a) => a.id)).toEqual(['anchor-2'])
-    expect(p.shots[0].anchorIds).toContain('anchor-1') // 镜头引用未被静默清掉
-    expect(danglingAnchorIdsForShot(p, p.shots[0])).toEqual(['anchor-1'])
+    expect(p.shots[0].anchorIds).toContain('anchor-1')
+    expect(validatePlan(p)).toEqual([])
   })
 })
 
 describe('storyboardPlanEdits — 镜头', () => {
-  it('提示词中的 @ 出现顺序是视觉锚绑定和画布边 order 的唯一顺序', () => {
-    const firstUrl = 'nomi-local://first.png'
-    const secondUrl = 'nomi-local://second.png'
+  it('改提示词只改提示词：@ 的有无 / 顺序都不再改 anchorIds（@ 的素材住在参考列）', () => {
     const p = base()
-    const plan: StoryboardPlan = {
-      ...p,
-      anchors: [
-        { ...p.anchors[0], id: 'first', referenceUrl: firstUrl },
-        { ...p.anchors[0], id: 'second', referenceUrl: secondUrl },
-        p.anchors[1],
-      ],
-      shots: [{ ...p.shots[0], anchorIds: ['first', 'second'], prompt: `${firstUrl} 旧文本` }],
-    }
-    const next = updateShotPrompt(plan, 0, `先看 @[asset:${encodeURIComponent(secondUrl)}]，再看 @[asset:${encodeURIComponent(firstUrl)}]`)
-    expect(next.shots[0].anchorIds).toEqual(['second', 'first'])
-  })
-
-  it('没有 @ 的旧纯文本保留历史绑定，删掉 @ 后绑定随文本真相移除', () => {
-    const url = 'nomi-local://first.png'
-    const p = base()
-    const withBinding: StoryboardPlan = {
-      ...p,
-      anchors: [{ ...p.anchors[0], referenceUrl: url }, p.anchors[1]],
-      shots: [{ ...p.shots[0], anchorIds: ['anchor-1'], prompt: `主体 @[asset:${encodeURIComponent(url)}]` }],
-    }
-    expect(updateShotPrompt(withBinding, 0, '纯文字').shots[0].anchorIds).toEqual([])
-    expect(updateShotPrompt({ ...p, shots: [{ ...p.shots[0], anchorIds: ['anchor-1'], prompt: '旧纯文本' }] }, 0, '继续旧纯文本').shots[0].anchorIds).toEqual(['anchor-1'])
+    const plan: StoryboardPlan = { ...p, shots: [{ ...p.shots[0], anchorIds: ['anchor-1'], prompt: '旧文本' }] }
+    const next = updateShotPrompt(plan, 0, '先看 @[asset:nomi-local%3A%2F%2Fsecond.png]，再看 @[asset:nomi-local%3A%2F%2Ffirst.png]')
+    expect(next.shots[0].prompt).toContain('@[asset:')
+    expect(next.shots[0].anchorIds).toEqual(['anchor-1'])
+    expect(updateShotPrompt(next, 0, '纯文字').shots[0].anchorIds).toEqual(['anchor-1'])
   })
 
   it('外部素材只提升为现有 PlanAnchor，镜头仍只写 anchorIds', () => {
@@ -136,12 +114,6 @@ describe('storyboardPlanEdits — 镜头', () => {
     expect(moveShot(base(), 0, 9)).toEqual(base()) // 越界不动
   })
 
-  it('toggleShotAnchor 勾/取消引用', () => {
-    const added = toggleShotAnchor(base(), 1, 'anchor-2') // 镜2 原无 anchor-2
-    expect(added.shots[1].anchorIds).toEqual(['anchor-1', 'anchor-2'])
-    const removed = toggleShotAnchor(added, 1, 'anchor-1')
-    expect(removed.shots[1].anchorIds).toEqual(['anchor-2'])
-  })
 })
 
 describe('storyboardPlanEdits — 校验', () => {
@@ -149,11 +121,8 @@ describe('storyboardPlanEdits — 校验', () => {
     expect(validatePlan(base())).toEqual([])
   })
 
-  it('删锚造成的失效引用被逐镜捕获', () => {
-    const p = removeAnchor(base(), 'anchor-1')
-    const issues = validatePlan(p)
-    expect(issues).toContainEqual({ kind: 'dangling-ref', shotIndex: 1, anchorId: 'anchor-1' })
-    expect(issues).toContainEqual({ kind: 'dangling-ref', shotIndex: 2, anchorId: 'anchor-1' })
+  it('删锚不再造成「失效引用」拦截：anchorIds 不产生任何作用，就不会有东西失效', () => {
+    expect(validatePlan(removeAnchor(base(), 'anchor-1'))).toEqual([])
   })
 
   it('空提示词镜 / 无镜 / 视觉锚无名 各自拦截', () => {

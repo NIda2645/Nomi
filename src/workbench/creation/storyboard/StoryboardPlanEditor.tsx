@@ -49,6 +49,7 @@ import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { stableProjectAgentJson } from '../../../../electron/shared/legacyAgentJson'
 import { isRunTargetLoaded, readRunProjectRecord } from '../../generationCanvas/runner/runProjectDelivery'
 import { canvasNodeToAssetRefs } from '../../assets/assetTypes'
+import { appendBinding } from './shotRow/shotReferenceSlots'
 import { AssetPreviewDialog, type AssetPreviewSequenceItem } from '../../assets/AssetPreviewDialog'
 import type { AssetRef } from '../../assets/assetTypes'
 import { buildStoryboardPlaybackQueue, hiddenGeneratingCount, positionsForAnchorFilter } from './storyboardDInteractions'
@@ -162,7 +163,6 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
     switch (issue.kind) {
       case 'no-shots': return t('storyboardEditor.issue.noShots')
       case 'empty-shot-prompt': return t('storyboardEditor.issue.emptyPrompt', { index: issue.shotIndex })
-      case 'dangling-ref': return t('storyboardEditor.issue.danglingRef', { index: issue.shotIndex })
       case 'anchor-no-name': return t('storyboardEditor.issue.anchorNoName')
     }
   }
@@ -173,7 +173,7 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
     [plan, designId, imageModelOptions, videoModelOptions, canvasNodes],
   )
   const batch = React.useMemo(() => deriveStoryboardBatch(rows, skippedShotIds), [rows, skippedShotIds])
-  // 参考卡执行态（B3 图卡）：与行同一份 derive（「N 镜在等它」直接聚合 rows 的 waitingRefs）。
+  // 参考卡执行态（B3 图卡）：与行同一份 derive（生成态 / 是否出图）。
   const anchorCards = React.useMemo(
     () => (plan ? deriveAnchorCardRuntimes({ plan, designId, nodes: canvasNodes, rows }) : []),
     [plan, designId, canvasNodes, rows],
@@ -475,9 +475,14 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
     if (!result) return
     const target = result.plan.shots[targetPosition]
     if (!target) return
-    const anchorIds = target.anchorIds.includes(result.anchorId) ? target.anchorIds : [...target.anchorIds, result.anchorId]
-    const keyframe = target.shotKind !== 'image' ? { ...(target.keyframe ?? {}), enabled: true } : target.keyframe
-    setStoryboardPlan({ ...result.plan, shots: result.plan.shots.map((shot, position) => position === targetPosition ? { ...shot, anchorIds, ...(keyframe ? { keyframe } : {}) } : shot) })
+    // 「设为首帧」= 把这一镜的结果放进目标镜参考列里的首帧槽（没有首帧槽的模式退到图片参考槽）。发出去的就是参考列里摆着的。
+    const mode = rows[targetPosition]?.mode
+    const slot = mode?.slots.find((candidate) => candidate.kind === 'first_frame') ?? mode?.slots.find((candidate) => candidate.kind === 'image_ref')
+    const asset = runtime.exec.node ? canvasNodeToAssetRefs(runtime.exec.node)[0] : undefined
+    if (!slot || !asset) { reportFailure(t('storyboardEditor.resultIntake.noFirstFrameSlot', { index: target.index })); return }
+    const added = appendBinding(target.referenceBindings, slot, { url: asset.renderUrl, name: t('storyboardEditor.resultIntake.shot', { index: runtime.shot.index }), ...(runtime.exec.node ? { sourceNodeId: runtime.exec.node.id } : {}) }, asset.kind === 'video' ? 'video' : 'image')
+    if (added.status === 'added') setStoryboardPlan({ ...result.plan, shots: result.plan.shots.map((shot, position) => position === targetPosition ? { ...shot, referenceBindings: added.next } : shot) })
+    else if (added.status !== 'duplicate') reportFailure(t('storyboardEditor.resultIntake.noFirstFrameSlot', { index: target.index }))
   }
   const onStartPlayback = (selectedRows: StoryboardRowRuntime[] = rows): void => {
     if (selectedRows.length === 0) return
@@ -487,16 +492,8 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
   }
   const previewNode = previewNodeId ? canvasNodes.find((node) => node.id === previewNodeId) ?? null : null
   const previewAsset = previewNode ? canvasNodeToAssetRefs(previewNode)[0] ?? null : null
-  // ⏳ 直达参考卡：滚动定位 + data 锚点（参考卡区在同一滚动容器内）。
-  const onJumpToAnchor = (anchorId: string): void => {
-    const card = document.querySelector(`[data-anchor-card="${CSS.escape(anchorId)}"]`)
-    card?.scrollIntoView({ behavior: 'smooth', block: 'center' })
-  }
-
   // 不进批量的原因摘要（footer 写明原因，与批次判定同一份 derive）。
   const excludedReasons: string[] = []
-  if (batch.excluded.waitingRefs > 0) excludedReasons.push(t('storyboardEditor.footer.reasonWaiting', { count: batch.excluded.waitingRefs }))
-  if (batch.excluded.unlockedRefs > 0) excludedReasons.push(t('storyboardEditor.footer.reasonUnlocked', { count: batch.excluded.unlockedRefs }))
   if (batch.excluded.missingRequired > 0) excludedReasons.push(t('storyboardEditor.footer.reasonMissing', { count: batch.excluded.missingRequired }))
   if (batch.excluded.generating > 0) excludedReasons.push(t('storyboardEditor.footer.reasonGenerating', { count: batch.excluded.generating }))
   if (batch.excluded.recoverable > 0) excludedReasons.push(t('storyboardEditor.footer.reasonRecoverable', { count: batch.excluded.recoverable }))
@@ -632,7 +629,6 @@ export default function StoryboardPlanEditor({ projectId }: { projectId?: string
               onToggleLockRow={onToggleLockRow}
               onOpenPreviewRow={onOpenPreviewRow}
               onRerunFreshRefsRow={onRerunFreshRefsRow}
-              onJumpToAnchor={onJumpToAnchor}
               onSaveResultAsReference={onSaveResultAsReference}
               onSetResultAsFirstFrame={onSetResultAsFirstFrame}
               onGenerateSelected={(selected) => onRunSelected(selected)}

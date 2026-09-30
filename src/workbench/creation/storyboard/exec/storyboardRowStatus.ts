@@ -7,7 +7,7 @@ import { stableShotId, type PlanAnchor, type PlanShot, type StoryboardPlan } fro
 import { anchorCarriesOwnMaterial, isVisualAnchor } from '../../../generationCanvas/agent/storyboardPromptCompiler'
 import { isAnchorFrozen } from '../../../generationCanvas/model/anchorBibleKeys'
 import { hasUsableResult } from '../../../generationCanvas/runner/dependencyWaves'
-import { effectiveShotValue, missingRequiredSlots, plannedFirstFrameSlot, referencedVisualAnchors, resolveShotArchetypeMode } from '../shotRow/shotRowModel'
+import { effectiveShotValue, missingRequiredSlots, plannedFirstFrameSlot, referencedVisualAnchors, resolveShotArchetypeMode, shotBindsAnchor } from '../shotRow/shotRowModel'
 import { findAnchorNode, findShotKeyframeNode, findShotNode } from './storyboardNodeBinding'
 import { findModelOptionByIdentifier } from '../../../../config/modelOptionResolvers'
 import { peekVendorPreferenceOrder } from '../../../common/useVendorPreference'
@@ -23,7 +23,6 @@ import { peekVendorPreferenceOrder } from '../../../common/useVendorPreference'
 /**
  * 行状态词表（本表格投影的唯一 owner）：
  * - ready            未生成，点「生成」即可跑（画面格 = 常驻生成按钮）；
- * - waiting-refs     引用的参考卡还没出图（⏳ 可点直达；不进批量）；
  * - missing-required 该行模型必填参考无来源（红态；不进批量）；
  * - generating       本体或首帧图节点在排队/生成（进度覆盖）；
  * - failed           生成真的失败了（节点 `status === 'error'`；红边 + 人话错误；重试要重新花钱、计入「未生成」批量）；
@@ -33,14 +32,8 @@ import { peekVendorPreferenceOrder } from '../../../common/useVendorPreference'
  * - done             有可用结果（画面格 = 结果图 + 悬停浮条）；
  * - locked           已锁定（结果满意，不进批量不被重跑；同参考卡锁语义）。
  */
-export const SHOT_ROW_STATUSES = ['ready', 'anchor-ignored', 'waiting-refs', 'missing-required', 'generating', 'failed', 'recoverable', 'done', 'locked'] as const
+export const SHOT_ROW_STATUSES = ['ready', 'anchor-ignored', 'missing-required', 'generating', 'failed', 'recoverable', 'done', 'locked'] as const
 export type ShotRowStatus = (typeof SHOT_ROW_STATUSES)[number]
-
-export type WaitingRef = {
-  anchor: PlanAnchor
-  /** 该锚绑定的画布节点（未建则 null）；要区分「未生成/生成中」由消费方看 node.status 自行判。 */
-  node: GenerationCanvasNode | null
-}
 
 export type PlannedFirstFrame = {
   slotKind: ArchetypeReferenceSlot['kind']
@@ -58,11 +51,7 @@ export type ShotRowExec = {
    * `recoverNodeResult`——它可能是首帧图节点，所以不能让消费方拿 `node` 猜。
    */
   recoverableNode: GenerationCanvasNode | null
-  /** 未就绪的引用锚（等参考图）。 */
-  waitingRefs: WaitingRef[]
   ignoredAnchors: IgnoredAnchor[]
-  /** 已出图但未锁定的引用锚：单跑不拦（画布同一破锁语义）、批量要等锁。 */
-  unlockedRefs: PlanAnchor[]
   /**
    * 缺必填参考的槽（shotRowModel.missingRequiredSlots）。画面格「缺X参考」、批量排除、场组头计数、
    * **参考列的红格**都读这一份——参考列不再自己拿「必填 + 没绑定」另判一遍（0.22.0 误报）。
@@ -128,39 +117,10 @@ export function deriveShotRowExec(input: {
   const keyframeEnabled = shot.shotKind !== 'image' && shot.keyframe?.enabled === true
   const keyframeNode = keyframeEnabled ? findShotKeyframeNode(nodes, designId, shot) : null
 
-  // 引用锚就绪度（等参考图 / 待锁定）：吃参考的行才看；镜像批量波次的判据
-  // （hasUsableResult + frozen），footer 排除原因与真实批次行为不打架。
+  // 这一行参考列里摆着、当前模式却用不上的参考图（逐张点名）。
+  // 以前这里还要看「引用的锚有没有出图 / 有没有锁定」来决定行是不是在等——那是按 anchorIds 连边时代的事：
+  // 锚出了图才有得连。现在没有任何自动连边，发出去的只有参考列里已经摆着的图，行没有东西可等。
   const ignoredAnchors = ignoredShotAnchors(plan, shot, mode)
-  const waitingRefs: WaitingRef[] = []
-  const unlockedRefs: PlanAnchor[] = []
-  if (rowConsumesReferences(mode)) {
-    // isVisualAnchor 再过一道：与 materialize 连边同一谓词——不给「永远等一张不会生成的卡」留缝
-    // （如 carrier 被手动翻成 visual 的 style 锚，materialize 不建节点也不连边）。
-    for (const anchor of referencedVisualAnchors(shot, plan.anchors).filter(isVisualAnchor)) {
-      // 自带素材的锚（@ 引用素材库/上传、结果即收）**没有**参考卡节点可等——materialize 按同一个
-      // 谓词决定不给它建卡（storyboardPromptCompiler.anchorCarriesOwnMaterial）。等不等，要看
-      // **素材怎么到模型**（与 storyboardPlan.ts 的两条出口一一对应）：
-      //   · 只带 URL       → 随 `params.referenceImageUrls` 走，节点建不建都不影响 → 从不等；
-      //   · 指着画布节点   → 随一条参考边从那个节点走 → 那个节点还在、且真出了图，才叫就位。
-      // 这里曾另写一份判据：「URL 有没有落进本行吃图槽的 `referenceBindings`」。但 `referenceBindings`
-      // 今天根本不投影到节点（v6 合同 §9.3 记着这笔债），@ 引用与结果即收两条路也都不写它，
-      // 没钉模型的行更连槽都没有——于是同一张锚在执行层「素材已就位」、在状态层「等参考图」。
-      if (anchorCarriesOwnMaterial(anchor)) {
-        if (!anchor.referenceSourceNodeId) continue
-        const sourceNode = nodes.find((candidate) => candidate.id === anchor.referenceSourceNodeId) ?? null
-        if (sourceNode && hasUsableResult(sourceNode)) continue
-        // 源节点被删/还没出图：那条边接不上，素材真的到不了模型——这一行该等，且等的是它。
-        waitingRefs.push({ anchor, node: sourceNode })
-        continue
-      }
-      const anchorNode = findAnchorNode(nodes, designId, anchor)
-      if (!anchorNode || !hasUsableResult(anchorNode)) {
-        waitingRefs.push({ anchor, node: anchorNode })
-      } else if (!isAnchorFrozen(anchorNode)) {
-        unlockedRefs.push(anchor)
-      }
-    }
-  }
 
   const missingSlots = missingRequiredSlots(mode, shot, plan.anchors)
   const plannedSlot = plannedFirstFrameSlot(mode, shot)
@@ -187,9 +147,7 @@ export function deriveShotRowExec(input: {
             ? 'done'
             : missingSlots.length > 0
               ? 'missing-required'
-              : waitingRefs.length > 0
-                ? 'waiting-refs'
-                : ignoredAnchors.length ? 'anchor-ignored' : 'ready'
+              : ignoredAnchors.length ? 'anchor-ignored' : 'ready'
 
   // 参考已变：diff「吃参考节点」（有首帧则锚边连在首帧图上）的提交时快照 vs 锚节点当前 result。
   // 快照里没这把锚（旧产物/后加的引用）不亮——只有确知「跑时用的是旧版」才报，不造假警报。
@@ -223,9 +181,7 @@ export function deriveShotRowExec(input: {
     node,
     keyframeNode,
     recoverableNode,
-    waitingRefs,
     ignoredAnchors,
-    unlockedRefs,
     missingSlots,
     plannedFirstFrame,
     changedRefs,
@@ -270,9 +226,7 @@ export function deriveNodeRowExec(
     node,
     keyframeNode: null,
     recoverableNode,
-    waitingRefs: [],
     ignoredAnchors: [],
-    unlockedRefs: [],
     missingSlots: [],
     plannedFirstFrame: null,
     changedRefs: [],
@@ -331,11 +285,8 @@ export type AnchorCardRuntime = {
   errorMessage: string | null
   progressPercent: number | null
   locked: boolean
-  /** 引用此锚的镜数（visual 反查计数；文本锚=写进提示词的镜数）。 */
+  /** 行上参考列里摆着这张锚的绑定的镜数（只数看得见的绑定，不数 anchorIds）。 */
   referencedByCount: number
-  consumedByShotCount: number
-  /** 其中还没出图、正等这张卡的镜数（astat「N 镜在等它」）。 */
-  waitingShotCount: number
 }
 
 export function deriveAnchorCardRuntimes(input: {
@@ -366,9 +317,7 @@ export function deriveAnchorCardRuntimes(input: {
         ? Math.max(0, Math.min(100, percent))
         : null,
       locked: Boolean(node && isAnchorFrozen(node) && hasUsableResult(node)),
-      referencedByCount: plan.shots.filter((shot) => shot.anchorIds.includes(anchor.id)).length,
-      consumedByShotCount: rows.filter(row => row.shot.anchorIds.includes(anchor.id) && (!visual || rowConsumesReferences(row.mode))).length,
-      waitingShotCount: rows.filter((row) => row.exec.waitingRefs.some((ref) => ref.anchor.id === anchor.id)).length,
+      referencedByCount: plan.shots.filter((shot) => shotBindsAnchor(shot, anchor.id)).length,
     }
   })
 }
@@ -382,9 +331,6 @@ export type StoryboardBatchView<T extends StoryboardRowWithExec = StoryboardRowR
   runnable: T[]
   /** 不进批次的原因分桶（footer 写明原因）。 */
   excluded: {
-    waitingRefs: number
-    /** 参考卡已出图但没锁：批量为保一致性等锁（画布 W2 冻结门同语义）。 */
-    unlockedRefs: number
     missingRequired: number
     locked: number
     generating: number
@@ -413,7 +359,7 @@ export function deriveStoryboardBatch<T extends StoryboardRowWithExec>(
   const countByStatus = Object.fromEntries(SHOT_ROW_STATUSES.map((status) => [status, 0])) as Record<ShotRowStatus, number>
   const view: StoryboardBatchView<T> = {
     runnable: [],
-    excluded: { waitingRefs: 0, unlockedRefs: 0, missingRequired: 0, locked: 0, generating: 0, recoverable: 0, skipped: 0 },
+    excluded: { missingRequired: 0, locked: 0, generating: 0, recoverable: 0, skipped: 0 },
     doneCount: 0,
     countByStatus,
   }
@@ -440,18 +386,13 @@ export function deriveStoryboardBatch<T extends StoryboardRowWithExec>(
         // 已付费、待找回：不进批量（免费找回是行内动作，不是批量生成）。
         view.excluded.recoverable += 1
         break
-      case 'waiting-refs':
-        view.excluded.waitingRefs += 1
-        break
       case 'missing-required':
         view.excluded.missingRequired += 1
         break
       case 'anchor-ignored':
       case 'ready':
       case 'failed':
-        // 就绪/失败重试的行：引用锚未锁定 → 不进批（批量波次的冻结门会拦，提前说清而不是让 toast 事后报）。
-        if (row.exec.unlockedRefs.length > 0) view.excluded.unlockedRefs += 1
-        else view.runnable.push(row)
+        view.runnable.push(row)
         break
     }
   }

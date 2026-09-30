@@ -23,6 +23,8 @@ const DESIGN = 'design-1'
 
 const hero: PlanAnchor = { id: 'hero', kind: 'character', name: '林薇', description: '短发', carrier: 'visual' }
 const styleAnchor: PlanAnchor = { id: 'mood', kind: 'style', name: '全片风格', description: '赛博霓虹', carrier: 'text' }
+/** 行上参考列里摆着一张来自「林薇」的参考图——「引用」只有这一种读法（anchorIds 不产生任何作用）。 */
+const heroBinding = { image_ref: [{ url: 'nomi-local://a.png', name: '林薇', anchorId: 'hero' }] }
 
 function shotOf(partial: Partial<PlanShot> = {}): PlanShot {
   return { index: 1, shotId: 'shot-a', durationSec: 5, anchorIds: ['hero'], prompt: '天台远景', ...partial }
@@ -55,54 +57,32 @@ const firstFrameMode: ArchetypeMode = {
 }
 
 describe('storyboardShotToCreateNodesArgs（单行 materialize）', () => {
-  it('该行引用且没建过的锚一并建卡；已建过的用真实节点 id 连边、不重建', () => {
-    const plan = planOf([shotOf()])
+  it('单行 materialize 只建这一镜自己：不顺手建它引用的定妆卡、不连任何锚边；提示词逐字等于行上写的', () => {
+    const plan = planOf([shotOf({ anchorIds: ['hero', 'mood'], prompt: '一条巨龙盘在山顶' })])
     const args = storyboardShotToCreateNodesArgs(plan, plan.shots[0], { storyboardDesignId: DESIGN })
-    expect(args.nodes.map((node) => node.clientId)).toEqual(['hero', 'shot-a'])
-    expect(args.anchorCount).toBe(1)
-    expect(args.edges).toEqual([{ sourceClientId: 'hero', targetClientId: 'shot-a', mode: 'character_ref', order: 0 }])
-
-    const reused = storyboardShotToCreateNodesArgs(plan, plan.shots[0], {
-      storyboardDesignId: DESIGN,
-      existingAnchorNodeIdByAnchorId: { hero: 'node-77' },
-    })
-    expect(reused.nodes.map((node) => node.clientId)).toEqual(['shot-a'])
-    expect(reused.anchorCount).toBe(0)
-    expect(reused.edges).toEqual([{ sourceClientId: 'node-77', targetClientId: 'shot-a', mode: 'character_ref', order: 0 }])
-  })
-
-  it('锚节点 metadata 恒带 anchorId 绑定键；镜节点带 shotId', () => {
-    const plan = planOf([shotOf()])
-    const args = storyboardShotToCreateNodesArgs(plan, plan.shots[0], { storyboardDesignId: DESIGN })
-    expect(args.nodes[0].metadata).toMatchObject({ anchorId: 'hero', storyboardDesignId: DESIGN })
-    expect(args.nodes[1].metadata).toMatchObject({ shotId: 'shot-a', storyboardDesignId: DESIGN })
-  })
-
-  it('omitAnchorReferenceEdges（该行模式不吃参考）：不建锚、不连锚边，文本锚照旧拼 prompt', () => {
-    const plan = planOf([shotOf({ anchorIds: ['hero', 'mood'] })])
-    const args = storyboardShotToCreateNodesArgs(plan, plan.shots[0], {
-      storyboardDesignId: DESIGN,
-      omitAnchorReferenceEdges: true,
-    })
     expect(args.nodes.map((node) => node.clientId)).toEqual(['shot-a'])
+    expect(args.anchorCount).toBe(0)
     expect(args.edges).toEqual([])
-    expect(args.nodes[0].prompt).toContain('赛博霓虹')
+    expect(args.nodes[0].prompt).toBe('一条巨龙盘在山顶')
   })
 
-  it('图片+视频镜：首帧图节点按需建；已建过则用真实 id 接 first_frame 边', () => {
+  it('镜节点带 shotId + designId；不带任何锚绑定键', () => {
+    const plan = planOf([shotOf()])
+    const args = storyboardShotToCreateNodesArgs(plan, plan.shots[0], { storyboardDesignId: DESIGN })
+    expect(args.nodes[0].metadata).toMatchObject({ shotId: 'shot-a', storyboardDesignId: DESIGN })
+    expect(args.nodes[0].metadata).not.toHaveProperty('anchorId')
+  })
+
+  it('图片+视频镜：首帧图节点按需建；已建过则用真实 id 接 first_frame 边；首帧只拿首帧提示词', () => {
     const plan = planOf([shotOf({ keyframe: { enabled: true, prompt: '首帧' } })])
     const fresh = storyboardShotToCreateNodesArgs(plan, plan.shots[0], { storyboardDesignId: DESIGN })
-    expect(fresh.nodes.map((node) => node.clientId)).toEqual(['hero', 'shot-a-keyframe', 'shot-a'])
-    expect(fresh.edges).toContainEqual({ sourceClientId: 'shot-a-keyframe', targetClientId: 'shot-a', mode: 'first_frame' })
+    expect(fresh.nodes.map((node) => node.clientId)).toEqual(['shot-a-keyframe', 'shot-a'])
+    expect(fresh.nodes[0].prompt).toBe('首帧')
+    expect(fresh.edges).toEqual([{ sourceClientId: 'shot-a-keyframe', targetClientId: 'shot-a', mode: 'first_frame' }])
 
-    const reused = storyboardShotToCreateNodesArgs(plan, plan.shots[0], {
-      storyboardDesignId: DESIGN,
-      existingAnchorNodeIdByAnchorId: { hero: 'node-77' },
-      existingKeyframeNodeId: 'node-kf',
-    })
+    const reused = storyboardShotToCreateNodesArgs(plan, plan.shots[0], { storyboardDesignId: DESIGN, existingKeyframeNodeId: 'node-kf' })
     expect(reused.nodes.map((node) => node.clientId)).toEqual(['shot-a'])
-    expect(reused.edges).toContainEqual({ sourceClientId: 'node-kf', targetClientId: 'shot-a', mode: 'first_frame' })
-    expect(reused.edges).toContainEqual({ sourceClientId: 'node-77', targetClientId: 'node-kf', mode: 'character_ref', order: 0 })
+    expect(reused.edges).toEqual([{ sourceClientId: 'node-kf', targetClientId: 'shot-a', mode: 'first_frame' }])
   })
 
   it('单锚 materialize：视觉锚一张卡；文本锚返回 null', () => {
@@ -156,93 +136,26 @@ describe('deriveShotRowExec（行状态机）', () => {
     meta: { storyboardDesignId: DESIGN, anchorId: 'hero', referenceSheet: true, frozen: { at: 1, by: 'user' } },
   })
 
-  const derive = (nodes: GenerationCanvasNode[], mode: ArchetypeMode | null = i2vMode, shot: PlanShot = shotOf()) =>
+  const derive = (nodes: GenerationCanvasNode[], mode: ArchetypeMode | null = i2vMode, shot: PlanShot = shotOf({ referenceBindings: heroBinding })) =>
     deriveShotRowExec({ plan: planOf([shot]), shot, designId: DESIGN, nodes, mode })
 
-  it('未建节点 + 锚已就绪且锁定 → ready；锚没出图 → waiting-refs（可点直达的锚在 waitingRefs 里）', () => {
+  it('行不等任何参考卡：锚有没有出图、锁没锁定，都不改变行状态（发出去的只有参考列里已摆着的图）', () => {
     expect(derive([readyAnchor]).status).toBe('ready')
-    const bare = derive([])
-    expect(bare.status).toBe('waiting-refs')
-    expect(bare.waitingRefs[0]?.anchor.id).toBe('hero')
+    expect(derive([]).status).toBe('ready')
+    const unlocked = nodeOf({ ...readyAnchor, meta: { storyboardDesignId: DESIGN, anchorId: 'hero', referenceSheet: true } })
+    expect(derive([unlocked]).status).toBe('ready')
   })
 
-  // ── 自带素材的锚（外部参考）：@ 引用素材库/上传、或「用作… → 设为首帧/存为参考」建出来的那种。
-  // materialize 对这一族**从不建参考卡节点**（storyboardPlan.ts 的三处判据都是 referenceUrl || referenceSourceNodeId），
-  // 所以状态层去找一个「不会存在的锚节点」再判「等参考图」，是同一件事的第二份真相。
-  const libraryAnchor: PlanAnchor = {
-    id: 'lib', kind: 'prop', name: 'library.png', description: '', carrier: 'visual',
-    referenceUrl: 'nomi-local://asset/p/assets/library.png', referenceKind: 'image',
-  }
-  const intakeAnchor: PlanAnchor = {
-    id: 'intake', kind: 'prop', name: '镜 6', description: '', carrier: 'visual',
-    referenceUrl: 'nomi-local://asset/p/assets/shot6.png', referenceKind: 'image', referenceSourceNodeId: 'n-shot6',
-  }
-  const withAnchor = (anchor: PlanAnchor, shot: PlanShot, nodes: GenerationCanvasNode[] = [], mode: ArchetypeMode | null = i2vMode) =>
-    deriveShotRowExec({ plan: planOf([shot], [anchor, styleAnchor]), shot, designId: DESIGN, nodes, mode })
-
-  it('@ 引用的素材库图：没有 referenceBindings 也不算「等参考图」（素材就在 URL 里）', () => {
-    const shot = shotOf({ anchorIds: ['lib'] })
-    const exec = withAnchor(libraryAnchor, shot)
-    expect(exec.waitingRefs).toEqual([])
+  it('只有 anchorIds、参考列里什么都没摆：不产生任何作用（不等、不拦、不算缺）', () => {
+    const exec = derive([], i2vMode, shotOf({ anchorIds: ['hero', 'mood', 'ghost'] }))
     expect(exec.status).toBe('ready')
   })
 
-  // 结果即收的锚指着画布上一个**已经出了图**的镜头节点；素材随一条参考边从那个节点走。
-  const intakeSourceNode = nodeOf({
-    id: 'n-shot6', kind: 'image', title: '镜头 6',
-    result: { id: 'r6', type: 'image', url: 'nomi-local://shot6.png', createdAt: 1 },
-    meta: { storyboardDesignId: DESIGN, shotId: 'shot-6' },
-  })
-
-  it('结果即收（设为首帧/存为参考）建出的锚带 referenceSourceNodeId：源节点出了图就不算「等参考图」', () => {
-    const shot = shotOf({ anchorIds: ['intake'] })
-    const exec = withAnchor(intakeAnchor, shot, [intakeSourceNode])
-    expect(exec.waitingRefs).toEqual([])
-    expect(exec.status).toBe('ready')
-  })
-
-  it('源节点被删/还没出图 → 这一行照旧等，且等的就是它（那条参考边接不上，素材真的到不了模型）', () => {
-    const shot = shotOf({ anchorIds: ['intake'] })
-    const dangling = withAnchor(intakeAnchor, shot, [])
-    expect(dangling.status).toBe('waiting-refs')
-    expect(dangling.waitingRefs.map((ref) => ref.anchor.id)).toEqual(['intake'])
-    const pending = withAnchor(intakeAnchor, shot, [nodeOf({ id: 'n-shot6', kind: 'image', title: '镜头 6' })])
-    expect(pending.status).toBe('waiting-refs')
-  })
-
-  it('没钉模型的行（mode=null，参考列只有 @ 入口）也一样：外部参考不把整行拖进等待', () => {
-    const shot = shotOf({ anchorIds: ['lib'] })
-    const exec = withAnchor(libraryAnchor, shot, [], null)
-    expect(exec.waitingRefs).toEqual([])
-    expect(exec.status).toBe('ready')
-  })
-
-  it('类级不变量：要生成的参考卡照旧会等；自带素材的一张都不等（同一份 plan 里混着两种）', () => {
-    const shot = shotOf({ anchorIds: ['hero', 'lib', 'intake'] })
-    const exec = deriveShotRowExec({
-      plan: planOf([shot], [hero, libraryAnchor, intakeAnchor]), shot, designId: DESIGN, nodes: [intakeSourceNode], mode: i2vMode,
-    })
-    expect(exec.waitingRefs.map((ref) => ref.anchor.id)).toEqual(['hero'])
-    expect(exec.status).toBe('waiting-refs')
-  })
-
-  it('自带素材的锚不进 unlockedRefs：批量不该为一张永远不会被「锁定」的外部图停下', () => {
-    const shot = shotOf({ anchorIds: ['lib'] })
-    expect(withAnchor(libraryAnchor, shot).unlockedRefs).toEqual([])
-  })
-
-  it('锚出了图但没锁：单跑不拦（ready），批量前经 unlockedRefs 排除', () => {
-    const unlockedAnchor = nodeOf({
-      ...readyAnchor,
-      meta: { storyboardDesignId: DESIGN, anchorId: 'hero', referenceSheet: true },
-    })
-    const exec = derive([unlockedAnchor])
-    expect(exec.status).toBe('ready')
-    expect(exec.unlockedRefs.map((anchor) => anchor.id)).toEqual(['hero'])
-  })
-
-  it('不吃参考的模式（t2v）不等锚', () => {
-    expect(derive([], t2vMode).status).toBe('anchor-ignored')
+  it('不吃参考的模式（t2v）+ 行上摆着参考图 → anchor-ignored，并逐张点名；行上没摆就是 ready', () => {
+    const exec = derive([], t2vMode)
+    expect(exec.status).toBe('anchor-ignored')
+    expect(exec.ignoredAnchors.map((ignored) => ignored.name)).toEqual(['林薇'])
+    expect(derive([], t2vMode, shotOf({ anchorIds: ['hero'] })).status).toBe('ready')
   })
 
   it('必填槽无来源 → missing-required（红态；批量排除）', () => {
@@ -330,7 +243,7 @@ describe('deriveShotRowExec（行状态机）', () => {
     expect(derive([readyAnchor, kfRunning], i2vMode, shot).status).toBe('generating')
   })
 
-  it('参考已变（B3）：跑时快照 vs 锚当前 result 不一致 → changedRefs 亮；重跑后（快照=当前）消', () => {
+  it('参考已变（B3）：跑时快照 vs 锚当前 result 不一致（行上摆着来自这张锚的参考图）→ changedRefs 亮；重跑后消', () => {
     const base = { storyboardDesignId: DESIGN, shotId: 'shot-a' }
     const doneWithOldRef = nodeOf({
       id: 'n1',
@@ -358,7 +271,7 @@ describe('deriveShotRowExec（行状态机）', () => {
   })
 
   it('参考已变（首帧行）：锚边连在首帧图上 → diff 首帧图的快照', () => {
-    const shot = shotOf({ keyframe: { enabled: true, prompt: '首帧' } })
+    const shot = shotOf({ keyframe: { enabled: true, prompt: '首帧' }, referenceBindings: heroBinding })
     const kfDone = nodeOf({
       id: 'n-kf', kind: 'image',
       result: { id: 'rk', type: 'image', url: 'nomi-local://k.png', createdAt: 1 },
@@ -374,7 +287,7 @@ describe('deriveShotRowExec（行状态机）', () => {
 })
 
 describe('deriveStoryboardBatch（批量分桶 = footer 同一份）', () => {
-  const rowOf = (status: (typeof SHOT_ROW_STATUSES)[number], unlocked = false, shotId = 'shot-a'): StoryboardRowRuntime => ({
+  const rowOf = (status: (typeof SHOT_ROW_STATUSES)[number], _unused = false, shotId = 'shot-a'): StoryboardRowRuntime => ({
     shot: shotOf({ shotId }),
     mode: i2vMode,
     exec: {
@@ -382,9 +295,7 @@ describe('deriveStoryboardBatch（批量分桶 = footer 同一份）', () => {
       node: null,
       keyframeNode: null,
       recoverableNode: null,
-      waitingRefs: [],
       ignoredAnchors: [],
-      unlockedRefs: unlocked ? [hero] : [],
       missingSlots: [],
       plannedFirstFrame: null,
       changedRefs: [],
@@ -396,15 +307,15 @@ describe('deriveStoryboardBatch（批量分桶 = footer 同一份）', () => {
     },
   })
 
-  it('ready/failed 进批；等待/缺料/生成中/已锁/待锁定各归各桶', () => {
+  it('ready/failed 进批；缺料/生成中/已锁各归各桶', () => {
     const view = deriveStoryboardBatch([
-      rowOf('ready'), rowOf('failed'), rowOf('waiting-refs'), rowOf('missing-required'),
-      rowOf('generating'), rowOf('locked'), rowOf('done'), rowOf('ready', true),
+      rowOf('ready'), rowOf('failed'), rowOf('missing-required'),
+      rowOf('generating'), rowOf('locked'), rowOf('done'),
     ])
     expect(view.runnable).toHaveLength(2)
-    expect(view.excluded).toEqual({ waitingRefs: 1, unlockedRefs: 1, missingRequired: 1, locked: 1, generating: 1, recoverable: 0, skipped: 0 })
+    expect(view.excluded).toEqual({ missingRequired: 1, locked: 1, generating: 1, recoverable: 0, skipped: 0 })
     expect(view.doneCount).toBe(1)
-    expect(view.countByStatus.ready).toBe(2)
+    expect(view.countByStatus.ready).toBe(1)
   })
 
   /**
@@ -443,8 +354,8 @@ describe('deriveStoryboardBatch（批量分桶 = footer 同一份）', () => {
 })
 
 describe('deriveAnchorCardRuntimes（参考卡执行态 = 节点投影，B3）', () => {
-  it('视觉锚按节点投影分态；文本锚恒文字卡；「N 镜在等它」与行 derive 同一份', () => {
-    const plan = planOf([shotOf(), shotOf({ index: 2, shotId: 'shot-b' })])
+  it('视觉锚按节点投影分态；文本锚恒文字卡；被引用数只数行上摆着的绑定', () => {
+    const plan = planOf([shotOf({ referenceBindings: heroBinding }), shotOf({ index: 2, shotId: 'shot-b', referenceBindings: heroBinding }), shotOf({ index: 3, shotId: 'shot-c' })])
     const rows = deriveStoryboardRowRuntimes({
       plan, designId: DESIGN, imageModelOptions: [], videoModelOptions: [], nodes: [],
     })
@@ -452,8 +363,7 @@ describe('deriveAnchorCardRuntimes（参考卡执行态 = 节点投影，B3）',
     expect(heroCard.visual).toBe(true)
     expect(heroCard.node).toBeNull()
     expect(heroCard.resultUrl).toBeNull()
-    expect(heroCard.waitingShotCount).toBe(2) // 两镜都在等它——与行的 waitingRefs 同一份
-    expect(heroCard.referencedByCount).toBe(2)
+    expect(heroCard.referencedByCount).toBe(2) // 第 3 镜只有 anchorIds，不算
     expect(styleCard.visual).toBe(false) // 文本锚不生成图
   })
 
