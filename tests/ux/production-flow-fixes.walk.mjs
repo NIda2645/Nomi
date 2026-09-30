@@ -212,8 +212,31 @@ function faces(win, nodeIds) {
   }), nodeIds)
 }
 
-async function pageText(win) {
-  return win.evaluate(() => document.body.innerText)
+const TASK_PANEL = '[data-nomi-right-panel="tasks"]'
+const TOASTS = '.mantine-Notification-root'
+
+/**
+ * 「预算已用完 / 提额续拍」这类话只会出现在三块产品界面上：镜头卡（占位、失败、节点反馈，`faces` 读的那几格）、
+ * 任务面板、提示框。只读这三块（各自的 data 属性 / 类名定位），不读整页——整页里有 Agent 对话和我们自己 seed 的
+ * 文字，断言会被它们污染成必然命中或必然不中。返回命中的那几段原文，空数组 = 这三块上都没有。
+ */
+async function budgetCopyOnProductSurfaces(win, nodeIds) {
+  const cardFaces = await faces(win, nodeIds)
+  // 探针得先证明它读得到东西：镜头卡一张都没读到、任务面板是空的，「没有预算文案」就是一句空话。
+  if (!cardFaces.some((face) => face.exists)) throw new Error('镜头卡一张都没读到（节点不在视野里？）')
+  const panelText = await win.locator(TASK_PANEL).first().textContent().catch(() => '')
+  if (!panelText?.trim()) throw new Error('任务面板没读到内容')
+  const cards = cardFaces.flatMap((face) => [face.placeholderText, face.failure, face.feedback])
+  const toasts = await win.locator(TOASTS).allTextContents().catch(() => [])
+  return [...cards, panelText, ...toasts].filter((text) => text && BUDGET_COPY.test(text))
+}
+
+/** 打开任务面板查一遍三块产品界面，再关上（截图时界面状态与之前一样）。 */
+async function assertNoBudgetCopy(win, nodeIds, where) {
+  await openTaskCard(win)
+  const hits = await budgetCopyOnProductSurfaces(win, nodeIds)
+  await closeTaskPanel(win)
+  if (hits.length > 0) throw new Error(`${where}：镜头卡 / 任务面板 / 提示框上还有预算文案：${JSON.stringify(hits)}`)
 }
 
 /** Agent 起草 → 切「全自动」→ 说一句「全部生成」。返回 Run 与镜。 */
@@ -336,8 +359,7 @@ try {
       await fitView(win)
       await row('U3', '升级：上一版参考卡失败后一直「进行中」的批次（视频镜一直排队），打开后如实停下，不说「预算已用完 / 提额续拍」', async () => {
         await expect.poll(async () => (await faces(win, nodeIds)).some((face) => face.placeholder === 'stopped'), { timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
-        const text = await pageText(win)
-        if (BUDGET_COPY.test(text)) throw new Error(`页面上还有预算文案：${JSON.stringify(await faces(win, nodeIds))}`)
+        await assertNoBudgetCopy(win, nodeIds, '升级后的旧制作')
         return JSON.stringify((await faces(win, nodeIds)).map((face) => face.placeholderText ?? face.failure))
       })
       await shot('U3', 'zh-legacy-stopped')
@@ -345,8 +367,7 @@ try {
       await setLocale(win, 'en')
       await fitView(win)
       await row('U4', '升级（英文）：同一个旧制作，英文界面也不说预算、没有中文', async () => {
-        const text = await pageText(win)
-        if (BUDGET_COPY.test(text)) throw new Error('英文界面还有预算文案')
+        await assertNoBudgetCopy(win, nodeIds, '英文界面')
         for (const face of await faces(win, nodeIds)) if (face.placeholderText) assertNoCjk(face.placeholderText, `卡 ${face.id}`)
         return JSON.stringify((await faces(win, nodeIds)).map((face) => face.placeholderText))
       })
@@ -420,8 +441,8 @@ try {
         await shot('T3', 'zh-landed')
         await zoomShot(win, 'T3', 'zh-landed', [video1.nodeId, video2.nodeId])
         await row('T4', '全程没有「预算已用完 / 提额续拍」', async () => {
-          if (BUDGET_COPY.test(await pageText(win))) throw new Error('页面上出现了预算文案')
-          return 'ok'
+          await assertNoBudgetCopy(win, [anchor.nodeId, video1.nodeId, video2.nodeId], '整条路走完')
+          return 'ok：镜头卡、任务面板、提示框上都没有'
         })
         await openTaskCard(win)
         await shot('T3', 'zh-task-card-settled')
@@ -430,7 +451,6 @@ try {
         await fitView(win)
         await shot('T3', 'en-landed')
         await zoomShot(win, 'T3', 'en-landed', [video1.nodeId, video2.nodeId])
-        void anchor
       } else {
         await row('T5', '参考卡生成失败后，Run 停下来（不会一直转）', async () => {
           await expect.poll(() => readRun(projectRoot, operationId)?.status, { timeout: stationTimeout({ operations: 6 }), intervals: [500] }).toBe('needs_attention')
