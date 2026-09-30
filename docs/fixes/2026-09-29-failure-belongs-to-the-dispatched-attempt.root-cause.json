@@ -30,7 +30,8 @@
     "运行开始时把 (供应商, 模型) 写进运行记录（attempt）：用的是与请求构造同一对选择器（selectedVendor / selectedModelKey），一次运行只写一次；没有选定模型的运行不写（不点名任何人）。",
     "失败提示点名的是失败记录上的 attempt，不是节点现在选着谁；失败的那一对不是节点现在选着的那一对（用户已经换了家 / 换了模型）→ 这条失败不再描述这张卡，不出提示（节点上的错误卡自己仍把原因说清）。",
     "模型健康记账记到 attempt 那一对：运行期间换家，失败记 A、成功清 A，B 不受影响。",
-    "attempt 随项目落盘（zod schema 的可选字段）：旧记录没有它照常加载；读不出是谁失败的就不点名、不记账。"
+    "attempt 随项目落盘（zod schema 的可选字段）：旧记录没有它照常加载；读不出是谁失败的就不点名、不记账。",
+    "提示的句子只在 useNodeModelAutoSelect 一处拼成：模板自己会在原因后面补句号，原因是供应商的整句话且自带句号时先剥掉（nodeRecoveryNotice.withoutTrailingStop），不叠成「…checkpoint..」「…再来。。」。"
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
@@ -107,7 +108,7 @@
     "after": 12,
     "why_not": "「谁失败了」的判定门从两扇（nodeModelHealth.nodeModelIdentity 读节点当前选择去记账、useNodeModelAutoSelect 读 selectedVendor 去点名）收成一扇：dispatchedAttempt 在提交那一刻写一次，其余全是读者。after 比 before 多，是因为修前只数了调用点（node scripts/door-map.mjs nodeModelIdentity recordNodeModelFailure recordNodeModelSuccess 在 main 上是 3 扇），修后清单把定义点（dispatchedAttempt、记账函数、运行记录的 schema 与类型）也列全了，不是判定门变多了；两个记账函数各自是成功 / 失败两个不同的入口，读者各自读 run.attempt，不该合并。"
   },
-  "generality_proof": "【为什么不是只修了「切到另一家」这一条路】(1) attempt 读的是与请求构造同一对选择器（selectedVendor / selectedModelKey）：改选择器的语义，请求与记录同时变，不会各自漂移；重试循环里选择不会中途变（花钱前的确认已冻结）。(2) 所有生成运行都经 runGenerationNode 一个入口写它（单个、批量、分镜同一个函数）；失败提示、健康记账两个读者只读记录，不再读节点当前选择——nodeModelIdentity（读节点的旧函数）已删除。(3) 别的供应商 / 版本 / 平台：只搬运一对字符串，与供应商、平台无关。(4) 旧数据：schema 可选字段，旧记录无 attempt → 不点名、不记账（宁可少记也不冤记）；schema 拒绝空串。(5) 真机（pb06 中英各一遍）：第一家 400 → 点「切到另一家」→ 再生成成功，提示点名的是真正失败的那家、成功之后提示收走；pb07 里 ①②两笔失败的落盘运行记录都带着 attempt（读落盘项目断言）。(6) 变异校验（备份还原）：运行记录不写 attempt、失败提示不判「失败是否仍描述当前选择」、把「结果读不出来」也当成服务商的事——三个变异全部被 failedAttemptIdentity.test / useNodeModelAutoSelect.test 抓红（failedAttemptIdentity 用真的 runGenerationNode 加真的画布 store，只有磁盘与付费令牌是桩）。",
+  "generality_proof": "【为什么不是只修了「切到另一家」这一条路】(1) attempt 读的是与请求构造同一对选择器（selectedVendor / selectedModelKey）：改选择器的语义，请求与记录同时变，不会各自漂移；重试循环里选择不会中途变（花钱前的确认已冻结）。(2) 所有生成运行都经 runGenerationNode 一个入口写它（单个、批量、分镜同一个函数）；失败提示、健康记账两个读者只读记录，不再读节点当前选择——nodeModelIdentity（读节点的旧函数）已删除。(3) 别的供应商 / 版本 / 平台：只搬运一对字符串，与供应商、平台无关。(4) 旧数据：schema 可选字段，旧记录无 attempt → 不点名、不记账（宁可少记也不冤记）；schema 拒绝空串。(5) 真机（pb06 中英各一遍）：第一家 400 → 点「切到另一家」→ 再生成成功，提示点名的是真正失败的那家、成功之后提示收走；pb07 里 ①②两笔失败的落盘运行记录都带着 attempt（读落盘项目断言）。(6) 变异校验（备份还原）：运行记录不写 attempt、失败提示不判「失败是否仍描述当前选择」、把「结果读不出来」也当成服务商的事——三个变异全部被 failedAttemptIdentity.test / useNodeModelAutoSelect.test 抓红（failedAttemptIdentity 用真的 runGenerationNode 加真的画布 store，只有磁盘与付费令牌是桩）。 (7) 提示句子的标点（2026-09-30 pb07 英文截图里叠成「checkpoint..」）：withoutTrailingStop 只在拼提示这一处用；两个变异（不剥、剥掉时忽略中文句号）被 useNodeModelAutoSelect.test 抓红；pb07 ④ 在真机上读屏上提示的文字断言没有叠在一起的句号。",
   "shared_boundaries": [
     {
       "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",

@@ -116,6 +116,18 @@ it('a vendor-side failure in a shape the catalog has no dedicated class for stil
   expect(mocks.push.mock.calls[0][0].message).toContain('"vendor":"apimart"')
 })
 
+// 红（旧代码把原因原样塞进模板）：供应商的话是界面语言、还带着句号时，模板再补一个句号，
+// 屏上就是「…the third checkpoint.. Nomi could not…」（2026-09-30 pb07 英文截图）。
+it('a vendor sentence that already ends with a full stop is not followed by a second one in the notice', () => {
+  const payload = Buffer.from(JSON.stringify({ vendorKey: 'apimart', httpStatus: 418, category: 'unknown', upstreamMsg: '当前模型排队人数过多，请等一会儿再来。' }), 'utf8').toString('base64')
+  const error = `NOMI_VENDOR_ERR_B64::${payload}:: Provider request failed (HTTP 418)`
+  mount(failedCard({ error, runs: [{ id: 'run-1', status: 'error', startedAt: 1, updatedAt: 10, attempt: ATTEMPT, error }] }))
+  expect(mocks.push).toHaveBeenCalledTimes(1)
+  const message: string = mocks.push.mock.calls[0][0].message
+  const values = JSON.parse(message.slice(message.indexOf('{'))) as { reason: string }
+  expect(values.reason).toBe('当前模型排队人数过多，请等一会儿再来')
+})
+
 it('the notice carries its own premise: it stops holding as soon as the card leaves this failure', () => {
   const node = failedCard()
   mount(node)

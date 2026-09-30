@@ -9,7 +9,8 @@
 //      屏上不出现「切到另一家」这类劝换供应商的提示（结果已经送达，失败在本机，换一家不是解法）；
 //   ③ 供应商说成功、给的是一张完整的 PNG（IEND 之后带了尾数据）→ 图照常落地成功（这一类以前被判 decode_failed）；
 //   ④ 供应商回一句认不出类别的话（一句英文）→ 标题永远是界面语言：中文界面顶的是「生成失败」、英文原话降到「服务商原话」那一格，
-//      英文界面标题就是那句话（以前中文界面顶着一整句英文）；说明如实说「认不出」——不编「临时故障 / 额度」，供应商给了码就带上码。
+//      英文界面标题就是那句话（以前中文界面顶着一整句英文）；说明如实说「认不出」——不编「临时故障 / 额度」，供应商给了码就带上码；
+//      屏上的切家提示里，原因自带句号时模板不再叠第二个。
 //
 // 零花费：两家本机回环供应商（第二家只是为了让「切家提示」有资格出现——② 里它不出现才有证明力）；四笔都发给第一家。
 // 夹具里「坏」的定义与宿主的落地判据是同一个（见 tests/ux/agent-runtime-fixture.mjs 的 undecodableJpegBytes / pngWithTrailingBytes）。
@@ -134,6 +135,9 @@ try {
     const honest = uiText(LOCALE, 'generationCommon.observability.error.unknown.hintWithCode').replace('{{code}}', UNKNOWN_CODE)
     await expect(card(), '说明说的是「认不出」并带着供应商的错误码').toContainText(honest, { timeout: DEFAULT_TIMEOUT_MS })
     expect(await card().innerText(), '认不出的失败不编原因、不提额度').not.toMatch(/临时故障|额度|out of credit|temporarily unavailable/i)
+    // 屏上的切家提示是同一句话的另一种排版：原因（供应商的整句话）自带句号时，提示模板不再补第二个（以前叠成「…checkpoint..」）。
+    await expect(switchNotice().first(), '这一笔是服务商那一侧的失败，本场又有第二家可切：切家提示出现').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
+    expect(await switchNotice().first().innerText(), '提示里没有叠在一起的句号').not.toMatch(/[.。]{2}/)
     await showWholeCard()
     await monitor.screenshot('unknown-kind-card')
   }, { surfaces: ['modal', 'canvasGesture', 'canvasViewport'] })

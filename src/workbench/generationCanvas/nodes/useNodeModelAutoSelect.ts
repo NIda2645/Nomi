@@ -46,6 +46,7 @@ import {
   failureNoticeStillHolds,
   nodeNoticeValidity,
   nodeRecoveryToastId,
+  withoutTrailingStop,
 } from './nodeRecoveryNotice'
 
 type UseNodeModelAutoSelectArgs = {
@@ -289,7 +290,7 @@ export function useNodeModelAutoSelect({
       type: 'warning',
       ttl: false,
       message: failure
-        ? t('generationCommon.node.providerFailed', { vendor: sourceVendor, reason: failure.reason, hint: failure.hint })
+        ? t('generationCommon.node.providerFailed', { vendor: sourceVendor, reason: withoutTrailingStop(failure.reason), hint: failure.hint })
         : t('generationCommon.node.providerDisconnected', { vendor: sourceVendor }),
       actionLabel: t('generationCommon.node.switchProvider', { model: target.label, vendor: target.vendorName }),
       validWhile: nodeNoticeValidity({

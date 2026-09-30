@@ -19,6 +19,14 @@ export function nodeRecoveryToastId(nodeId: string): string {
   return `node-recovery:${nodeId}`
 }
 
+/**
+ * 提示模板自己会在「原因」后面补一个句号。原因如果是供应商的一整句话（界面语言的那种），往往已经带着句号，
+ * 叠起来就是「…the third checkpoint.. Nomi could not…」「…请等一会儿再来。。」。
+ */
+export function withoutTrailingStop(reason: string): string {
+  return reason.replace(/[.。]+\s*$/, '')
+}
+
 export type FailedAttempt = Readonly<{
   vendorKey: string
   modelKey: string
