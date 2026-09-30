@@ -1,6 +1,6 @@
 # 制作流程修复：停下原因是事实、生命周期一个主人、派发只核批过的那一份
 
-> 状态：已实施（分支 `claude/production-flow-fixes`）。根因合同 `docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json`。
+> 状态：🚧 进行中（2026-09-30：已在 `claude/production-flow-fixes` 本地实现，过门岗、真 App 走查与付费复验，待协调会话开 PR 合入）。根因合同：[docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json](../fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json)
 > 质量体系按 `docs/plan/2026-09-29-quality-system.md`：测试表、真实路径测试、中英截图、验收页。
 
 ## 用户那条路
