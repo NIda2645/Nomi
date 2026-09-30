@@ -40,7 +40,8 @@ const rows = []
 const IMAGE_DEFAULT = { vendorKey: FIXTURE_APIMART_VENDOR, modelKey: 'gemini-3.1-flash-image-preview', option: /^Nano Banana 2(\s|$|·)/ }
 const IMAGE_NAMED = { modelKey: 'gpt-image-2', label: 'GPT Image 2' }
 const VIDEO_DEFAULT = { vendorKey: FIXTURE_APIMART_VENDOR, modelKey: 'kling-v3', option: /^(可灵 3\.0|Kling 3\.0)(\s|$|·)/ }
-const MARKER_TEXT = '【验收暗句：栈桥尽头的灯-8842】'
+// 暗号跟界面语言走：英文界面里不该出现中文，哪怕是走查自己种的文件内容（它会被 Agent 原样复述进对话）。
+const MARKER_TEXT = EN ? '[ACCEPT-MARK: lamp-8842]' : '【验收暗句：栈桥尽头的灯-8842】'
 const DOMAIN_FILE = path.join(outputDir, EN ? 'harbour-note.txt' : '海港便笺.txt')
 fs.writeFileSync(DOMAIN_FILE, `${MARKER_TEXT}\n${EN ? 'The lamp at the end of the pier stays lit all night.' : '栈桥尽头的那盏灯整夜亮着。'}\n`)
 const FILE_NAME = path.basename(DOMAIN_FILE)
@@ -116,9 +117,12 @@ try {
     })
 
   await row('attach-reopen', EN ? 'Close the project, reopen, look at that message' : '关掉项目再打开，看那条历史消息', EN ? 'The attachment is still there' : '附件还在', async (record) => {
-    await clickOrFail(win().getByRole('button', { name: /返回项目库|Back to (the )?(project )?library|Project library|Projects/i }), '顶栏「项目库」')
-    await smoke.openProject()
-    await expandResidentPanel(win())
+    // 回项目库再打开是用户的动作：项目库里没有工作区（workspaceMode 读成空），打开后回到生成页——整段声明成用户动作。
+    await pb.monitor.step('用户：回项目库、再打开这个项目', async () => {
+      await clickOrFail(win().getByRole('button', { name: /返回项目库|Back to (the )?(project )?library|Project library|Projects/i }), '顶栏「项目库」')
+      await smoke.openProject()
+      await expandResidentPanel(win())
+    }, { surfaces: ['*'] })
     const bubble = win().locator(`${CANVAS_PANEL} ${USER_BUBBLE}`).filter({ hasText: /DOM-ATT/ }).last()
     await expect(bubble, '重开后历史里那条消息还在').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
     await expect(bubble.locator('[data-v4-chip]').filter({ hasText: FILE_NAME.slice(0, 4) }), '重开后那条历史消息还带着附件签').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
@@ -240,9 +244,10 @@ try {
       await win().keyboard.type(EN ? 'DOM-BTN: the harbour at dawn. ' : 'DOM-BTN：清晨的渔港。')
       await win().keyboard.press('Control+a')
       await clickOrFail(win().getByRole('button', { name: EN ? 'Split into shots' : '拆成镜头' }), '选区浮条上的「拆成镜头」')
+      // 方案落地、被打开发生在这一下点击的结果里：等它落完才算这一步结束，界面的变化才算在用户这一步声明里。
+      await turn.done
+      await expect.poll(async () => (await listState()).ids.length, { message: '新方案进了左栏', timeout: DEFAULT_TIMEOUT_MS }).toBe(before.ids.length + 1)
     }, { surfaces: ['workspaceMode', 'agentPanel', 'rightPanel', 'canvasViewport', 'creationSelection', 'storyboardTable'] })
-    await turn.done
-    await expect.poll(async () => (await listState()).ids.length, { message: '新方案进了左栏', timeout: DEFAULT_TIMEOUT_MS }).toBe(before.ids.length + 1)
     const after = await listState()
     const created = after.ids.find((id) => !before.ids.includes(id))
     record.screenshots.push(await shot('storyboard-button-opened'))
