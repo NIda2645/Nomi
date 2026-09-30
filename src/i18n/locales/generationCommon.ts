@@ -1235,7 +1235,7 @@ export const zhGenerationCommon = {
       directionGate: '方向定了才会拟分镜。这一步不调用模型，也不花钱。',
       sampleGate: '先看这一镜样片：满意就继续剩下的镜头，不满意只亏这一镜的钱。',
       shotGate: '第 {{index}} 镜（{{node}}）将用 {{provider}} · {{model}} 提交。批准前不会调用供应商，也不会产生这镜的费用。',
-      checkpointGate: '定妆照先出好了——过目后按已批预算开拍，这一步不新增花费。不满意哪张就重拍哪张。',
+      checkpointGate: '定妆照先出好了——过目后就开拍你已经确认过的那几镜，这一步不新增花费。不满意哪张就重拍哪张。',
       exportGate: '导出会把粗剪合成成片；这一步由你明确批准后才执行。',
       needsAttention: '自动流程已经暂停，请查看当前镜头或阶段并处理失败原因。',
       providerStale: 'Nomi 仍会查询已有任务，但不会因为等待过久而重复提交。',
@@ -1346,8 +1346,9 @@ export const zhGenerationCommon = {
       viewLarge: '查看大图：{{name}}',
       stillAlt: '{{name}} 的定妆照',
       stillLargeAlt: '定妆照大图',
-      budgetUnknown: '已批准的',
-      note: '确认后按已批准的 {{budget}} 预算开拍 {{count}} 镜——这一步不新增花费。不满意哪张就重拍哪张，只花那一张的钱。',
+      // 说明行按「有没有已知金额」分两句：今天价格未知，金额一个字都不提（以前拼成「按已批准的 已批准的 预算开拍」）。
+      note: '确认后开拍 {{count}} 镜——都是你已经确认过的，这一步不新增花费。不满意哪张就重拍哪张，只花那一张的钱。',
+      noteWithBudget: '确认后按已批准的 {{budget}} 开拍 {{count}} 镜——这一步不新增花费。不满意哪张就重拍哪张，只花那一张的钱。',
       defer: '先不拍',
       approve: '形象都对，开拍 {{count}} 镜',
       reworkSelected: '先重拍选中的，再回来过目',
@@ -1445,15 +1446,41 @@ export const zhGenerationCommon = {
       queuedNth: '排队中 · 第 {{index}}/{{total}}',
       stoppedBudget: '预算已用完，这镜还没开拍。提额后可继续拍剩下的。',
       stoppedManual: '已停止剩余镜头。想继续可从这里接着拍。',
+      // 已停的另外几种真实原因（2026-09-29：以前一律说成「预算已用完」）。没有能按的「继续」时，文案里说清能做什么。
+      stoppedAfterFailure: '前面有镜头没生成成功，这一镜还没开拍。选中它可以单独生成，或在任务面板取消这次制作。',
+      stoppedForRecovery: 'Nomi 重启后要先核对之前在跑的镜头，这一镜还没开拍。打开任务面板核对。',
+      stoppedCancelled: '这次制作已取消，这一镜没有开拍。选中它可以单独生成。',
+      // 上一版留下的、没记停下原因的制作：不猜原因，只说停了。
+      stoppedUnknown: '这次制作停下了，这一镜还没开拍。想继续可从这里接着拍。',
       raiseBudget: '提额续拍',
       continueRemaining: '继续剩余',
       // 用户删掉占位节点、但这件事没能记进制作流程：被删的那一镜可能照样生成并计费。动作 = 打开任务面板（暂停 / 取消）。
       detachFailed: '删掉的镜头没能从制作流程里撤下，它可能照样生成并计费。打开任务面板可以暂停或取消这次制作。',
-      // P4 S6 返工/续拍的人话反馈（按结构化结果 code 翻译，禁拼串穿透 i18n 门）。
-      rework: {
-        noPriorAttempt: '这一镜还没生成过，先让它正常开拍',
-        unavailable: '暂时用不了，请稍后再试',
-        failed: '操作没成功，请稍后再试',
+      // 返工 / 续拍没做成：每一种结构化的码一句人话——怎么了、钱怎么样了、能做什么（productionShotActions.ts 的表，
+      // 穷尽，没有兜底句；主进程原话只进日志）。这几步都在交给供应商之前，所以凡是没做成的都没有扣费。
+      actionFailure: {
+        requestInvalid: '这一镜的制作记录不完整（缺批次或镜头编号），没法从这里重做。选中它可以在画布上单独生成。',
+        bridgeUnavailable: '这个窗口连不上 Nomi 桌面端，这里做不了这一步。',
+        coreStarting: 'Nomi 的生成功能还在启动，过几秒再点一次。',
+        runNotOpen: '这个项目现在没打开，打开它再点一次。',
+        runMissing: '这一批的制作记录已经不在了，没法接着做。选中镜头可以在画布上单独生成。',
+        runUnreadable: '这一批的制作记录读不出来（文件可能损坏，或正被别的程序占用），这次没做成、没有扣费。关掉占用它的程序后再点一次。',
+        notMultishot: '这个节点不是多镜批次里的镜头，直接在节点上重新生成就行。',
+        projectUnavailable: '读不到这个项目的信息（项目文件夹可能被移动过），这次没做成、没有扣费。重开项目后再点一次。',
+        confirmationUnavailable: '这个窗口弹不出付费确认，这次没有开拍、没有扣费。回到 Nomi 主窗口再点一次。',
+        providerUnavailable: '这一镜用的模型现在接不上供应商（连接被删了，或 Key 没配好），这次没有开拍。到「模型接入」接好后再点一次。',
+        noPriorAttempt: '这一镜还没生成过，先让它正常开拍。',
+        previousAttemptUnsettled: '这一镜上一次还没出结果，等它出来再重做。',
+        queuedShotsPending: '还有镜头在排队，这一镜现在不能单独重做。可以选中它在画布上单独生成，或在任务面板取消这次制作。',
+        attemptLimit: '这一镜已经重做到上限了。可以选中它在画布上单独生成。',
+        runChanged: '这一批刚好有别的更新，这次没做成、没有扣费。再点一次。',
+        approvalStale: '确认的时候项目刚好有变动，这次没有开拍、没有扣费。再点一次，重新确认。',
+        approvalExpired: '确认框放太久已经失效，这次没有开拍、没有扣费。再点一次。',
+        runFinished: '这次制作已经结束了，没有能继续的镜头。',
+        notStopped: '这一批现在没有停着，不用继续。',
+        planNotSubmitted: '这份方案还没开拍，先在 Agent 面板里确认生成。',
+        ledgerWriteFailed: '没能把这一步写进项目记录（磁盘满了，或项目文件夹不能写入），这次没做成、没有扣费。腾出空间或检查权限后再点一次。',
+        internalError: '这是 Nomi 自己的问题：这一步没做成，没有扣费，错误已记进日志。可以从「反馈与分享」把它发给我们。',
       },
     },
     // 逐镜降级：从 S2 的结构化 code 翻人话徽标（禁拼串穿透 i18n 门）。
@@ -2738,7 +2765,7 @@ export const enGenerationCommon = {
       directionGate: 'The storyboard is drafted only after the direction is set. This step calls no model and costs nothing.',
       sampleGate: 'Check this one sample shot: approve to continue the rest, or stop and only lose this shot.',
       shotGate: 'Shot {{index}} ({{node}}) will use {{provider}} · {{model}}. No provider call or charge for this shot occurs before approval.',
-      checkpointGate: 'The character stills are ready — review them, then shoot within the budget you already approved. This step adds no cost; reshoot any still you do not like.',
+      checkpointGate: 'The character stills are ready — review them, then shoot the shots you already confirmed. This step adds no cost; reshoot any still you do not like.',
       exportGate: 'Exporting assembles the rough cut into the final file; it runs only after you approve.',
       needsAttention: 'Automation is paused. Open the current shot or stage to resolve the failure.',
       providerStale: 'Nomi will keep checking the existing task without resubmitting it because of the delay.',
@@ -2848,8 +2875,10 @@ export const enGenerationCommon = {
       viewLarge: 'View larger: {{name}}',
       stillAlt: 'Character Still',
       stillLargeAlt: 'Character still, enlarged',
-      budgetUnknown: 'the approved',
-      note: 'On confirm, Nomi shoots {{count}} shots within the approved {{budget}} budget — this step adds no cost. Reshoot any you do not like; you only pay for that one.',
+      // The note has two versions depending on whether an amount is known: prices are unknown today, so no amount is mentioned
+      // (it used to read "within the approved the approved budget").
+      note: 'On confirm, Nomi shoots {{count}} shots — all ones you already confirmed, so this step adds no cost. Reshoot any you do not like; you only pay for that one.',
+      noteWithBudget: 'On confirm, Nomi shoots {{count}} shots within the approved {{budget}} — this step adds no cost. Reshoot any you do not like; you only pay for that one.',
       defer: 'Not yet',
       approve: 'Looks right — shoot {{count}} shots',
       reworkSelected: 'Reshoot the selected ones first',
@@ -2947,15 +2976,43 @@ export const enGenerationCommon = {
       queuedNth: 'Queued · {{index}}/{{total}}',
       stoppedBudget: 'Budget ran out before this shot. Raise it to keep filming the rest.',
       stoppedManual: 'Remaining shots stopped. Continue filming from here.',
+      // The other real reasons a run stops (2026-09-29: all of them used to read as "budget ran out"). Without a working
+      // "continue", the sentence itself says what the user can do.
+      stoppedAfterFailure: 'An earlier shot failed, so this one hasn\'t started. Select it to generate it on its own, or cancel the run in Tasks.',
+      stoppedForRecovery: 'After restarting, Nomi has to check the shots that were running, so this one hasn\'t started. Open Tasks to check them.',
+      stoppedCancelled: 'This run was cancelled before this shot started. Select it to generate it on its own.',
+      // A run from the previous version that never recorded why it stopped: say it stopped, never guess why.
+      stoppedUnknown: 'This run stopped before this shot started. Continue filming from here.',
       raiseBudget: 'Raise budget',
       continueRemaining: 'Continue remaining',
       // The user deleted a placeholder but the production run never recorded it: that shot may still generate and bill.
       detachFailed: 'The deleted shot could not be withdrawn from the production run, so it may still generate and bill. Open Tasks to pause or cancel the run.',
-      // P4 S6 rework/resume plain-language feedback (translated by structured result code — never a raw string).
-      rework: {
-        noPriorAttempt: 'This shot hasn\'t been generated yet — let it film first',
-        unavailable: 'Not available right now, please try again later',
-        failed: 'That didn\'t work, please try again later',
+      // Rework / resume did not go through: one sentence per structured code - what happened, what it cost, what to do
+      // (productionShotActions.ts, exhaustive, no catch-all line; raw main-process text stays in the log). All of these steps
+      // happen before anything reaches a provider, so nothing that failed here was charged.
+      actionFailure: {
+        requestInvalid: 'This shot\'s production record is incomplete (its run or shot id is missing), so it can\'t be redone from here. Select it to generate it on the canvas.',
+        bridgeUnavailable: 'This window isn\'t connected to the Nomi desktop app, so this can\'t be done here.',
+        coreStarting: 'Nomi\'s generation is still starting up. Try again in a few seconds.',
+        runNotOpen: 'This project isn\'t open. Open it and try again.',
+        runMissing: 'This run\'s production record is gone, so it can\'t continue. Select a shot to generate it on the canvas.',
+        runUnreadable: 'Couldn\'t read this run\'s production record (the file may be damaged or locked by another program). Nothing was done or charged. Close whatever is using it and try again.',
+        notMultishot: 'This node isn\'t a shot in a multi-shot batch. Regenerate it directly on the node.',
+        projectUnavailable: 'Couldn\'t read this project\'s details (its folder may have moved). Nothing was done or charged. Reopen the project and try again.',
+        confirmationUnavailable: 'This window can\'t show the spend confirmation, so nothing started and nothing was charged. Try again from the main Nomi window.',
+        providerUnavailable: 'This shot\'s model can\'t reach a provider right now (the connection was removed or its key isn\'t set), so nothing started. Reconnect it in Model Access, then try again.',
+        noPriorAttempt: 'This shot hasn\'t been generated yet. Let it film first.',
+        previousAttemptUnsettled: 'This shot\'s last attempt hasn\'t finished. Wait for it before redoing.',
+        queuedShotsPending: 'Other shots are still queued, so this one can\'t be redone on its own yet. Select it to generate it on the canvas, or cancel the run in Tasks.',
+        attemptLimit: 'This shot has reached its redo limit. Select it to generate it on the canvas.',
+        runChanged: 'This run just changed, so this didn\'t go through and nothing was charged. Try again.',
+        approvalStale: 'The project changed while you were confirming, so nothing started and nothing was charged. Try again and confirm once more.',
+        approvalExpired: 'The confirmation expired, so nothing started and nothing was charged. Try again.',
+        runFinished: 'This run has finished; there are no shots left to continue.',
+        notStopped: 'This run isn\'t stopped, so there\'s nothing to continue.',
+        planNotSubmitted: 'This plan hasn\'t started yet. Confirm it in the Agent panel first.',
+        ledgerWriteFailed: 'Couldn\'t save this step to the project record (the disk is full or the project folder isn\'t writable). Nothing was done or charged. Free up space or check permissions, then try again.',
+        internalError: 'This is a problem in Nomi itself: the step didn\'t go through and nothing was charged. The error is in the log - you can send it to us from Feedback & share.',
       },
     },
     // Per-shot degradation: translate S2 structured code into a plain-language badge (never a raw string).

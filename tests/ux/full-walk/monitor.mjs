@@ -33,11 +33,21 @@ const FIXTURE_MODEL_LABELS = new Set([FIXTURE_TEXT_MODEL_LABEL, FIXTURE_IMAGE_MO
  * （「budget exhausted」「may already have been submitted」「stopped the remaining shots」）和产品真实英文一条都对不上，
  * 英文界面那一档于是对这些话全瞎。两种语言都认：英文界面里冒出一句中文状态话，照样要核它说得对不对（漏译另由铁律 7 判）。
  */
+/** 界面上说「因为什么停了」的那几句 → Run 记下的停下原因必须是它（run.stop.reason）。 */
+const STOP_CLAIM_REASON = Object.freeze({
+  'budget-exhausted': 'budget',
+  'raise-budget': 'budget',
+  'stopped-after-failure': 'failed',
+  'stopped-for-recovery': 'restart_recovery',
+})
 const UI_CLAIM_TEXTS = Object.freeze([
   Object.freeze({ claim: 'maybe-submitted', key: 'agentToolFailure.generation_execution_failed' }),
   Object.freeze({ claim: 'budget-exhausted', key: 'generationCommon.production.canvasLanding.stoppedBudget' }),
   Object.freeze({ claim: 'raise-budget', key: 'generationCommon.production.canvasLanding.raiseBudget' }),
-  Object.freeze({ claim: 'operation-failed-try-later', key: 'generationCommon.production.canvasLanding.rework.failed' }),
+  Object.freeze({ claim: 'stopped-after-failure', key: 'generationCommon.production.canvasLanding.stoppedAfterFailure' }),
+  Object.freeze({ claim: 'stopped-for-recovery', key: 'generationCommon.production.canvasLanding.stoppedForRecovery' }),
+  // 返工 / 续拍没做成时「这是 Nomi 自己的问题」那一句：说它的那一刻，就有一种失败在源头没被分类（2026-09-29 起没有笼统的「稍后再试」）。
+  Object.freeze({ claim: 'action-internal-error', key: 'generationCommon.production.canvasLanding.actionFailure.internalError' }),
   Object.freeze({ claim: 'stopped-remaining', key: 'generationCommon.production.canvasLanding.stoppedManual' }),
   Object.freeze({ claim: 'queued', key: 'generationCommon.production.canvasLanding.queued', anchored: true }),
 ])
@@ -647,28 +657,24 @@ export function createInvariantMonitor(options) {
         })
         continue
       }
-      if (claim.claim === 'budget-exhausted' || claim.claim === 'raise-budget') {
-        const budgetRecord = runs.some((run) => (run.jobs ?? []).some((job) => ['budget_exhausted', 'budget_halt'].includes(job.errorCode)))
-        if (budgetRecord) continue
+      if (STOP_CLAIM_REASON[claim.claim]) {
+        // 「为什么停」是 Run 在停下那一刻记下的事实（run.stop.reason，electron/productionRun/productionRunLifecycle.ts applyRunStatus）：
+        // 界面说的原因，后台得真有一个 Run 是因为它停的。
+        const expected = STOP_CLAIM_REASON[claim.claim]
+        if (runs.some((run) => run.stop?.reason === expected)) continue
         await violate({
           invariant: 4, rule: `ui-${claim.claim}`, key: `${claim.claim}|${claim.node}`,
-          module: 'electron/shared/productionShotPhase.ts deriveProductionShotState（run.status==="needs_attention" 一律判成预算原因）',
-          message: `界面说「${claim.text}」，而任何一个 Run 都没有预算停批记录（没有 budget_exhausted / budget_halt）`,
-          snapshot: { claim, runs: runs.map((run) => ({ runId: run.runId, status: run.status, budget: run.budget ?? null, jobs: (run.jobs ?? []).map((job) => ({ shotId: job.metadata?.shotId, status: job.status, errorCode: job.errorCode ?? null })) })) },
+          module: 'electron/shared/productionRunStop.ts runStopReason → electron/shared/productionShotPhase.ts deriveProductionShotState（界面说的停下原因与 Run 记下的不一致）',
+          message: `界面说「${claim.text}」，而没有哪个 Run 记下的停下原因是 ${expected}`,
+          snapshot: { claim, runs: runs.map((run) => ({ runId: run.runId, status: run.status, stop: run.stop ?? null, budget: run.budget ?? null })) },
         })
-      } else if (claim.claim === 'operation-failed-try-later') {
-        const stuck = runs.filter((run) => run.status === 'pausing')
-        const hostSaid = (mainLogTail?.() ?? []).filter((line) => /not resumable|pausing|attempt limit|production-run|rework|command/i.test(line)).slice(-12)
-        // 「稍后再试」只在失败是暂时的时候才是真话。宿主拒绝的是一个**定了的**原因（尝试次数用完 / Run 卡在 pausing），
-        // 再等多久、再按几次都一样。
-        const deterministic = /attempt limit|not resumable|exceeds/i.test(`${claim.text} ${hostSaid.join(' ')}`) || stuck.length > 0
+      } else if (claim.claim === 'action-internal-error') {
+        const hostSaid = (mainLogTail?.() ?? []).filter((line) => /production-action|internal-error|production-run/i.test(line)).slice(-12)
         await violate({
-          invariant: 4, rule: 'ui-operation-failed-try-later', key: `${claim.claim}|${claim.node}`,
-          module: 'src/workbench/production/productionShotActions.ts reportResult（兜底文案一律「稍后再试」，把主进程英文原话拼在前面）',
-          message: `界面说「${claim.text.slice(0, 80)}」${deterministic
-            ? `——宿主拒绝的是一个定了的原因（${stuck.length ? `Run 停在 pausing：${stuck.map((run) => run.runId.slice(-8)).join('、')}` : '尝试次数上限'}），「稍后再试」不会好`
-            : '，宿主拒绝的真原因没说出来'}`,
-          snapshot: { claim, hostSaid, runs: runs.map((run) => ({ runId: run.runId, status: run.status })) },
+          invariant: 4, rule: 'ui-action-internal-error', key: `${claim.claim}|${claim.node}`,
+          module: 'electron/capabilityCore/appIntegrationProductionActions.ts productionShotActionFailureOf（这一种失败在源头没被分类）',
+          message: `界面说「${claim.text.slice(0, 80)}」——返工 / 续拍撞上了一种还没有语义码的失败（主进程日志 production-action-internal-error 那一行就是它）`,
+          snapshot: { claim, hostSaid, runs: runs.map((run) => ({ runId: run.runId, status: run.status, stop: run.stop ?? null })) },
         })
       } else if (claim.claim === 'stopped-remaining') {
         const run = runs.at(-1)

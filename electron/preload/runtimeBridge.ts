@@ -20,11 +20,11 @@ export const runtimeBridge = {
       ipcRenderer.invoke("nomi:production-runs:materialize-storyboard", { projectId, runId, artifactId, expectedVersion }),
     events: (projectId: string, runId: string, afterCursor: number) =>
       ipcRenderer.invoke("nomi:production-runs:events", { projectId, runId, afterCursor }),
-    // P4 S6：返工一镜（同 Run 新 Job + 单镜确认 + 派发）；续拍已停批次（manual=急停继续 / budget=提额续拍）。
+    // P4 S6：返工一镜（同 Run 新 Job + 单镜确认 + 派发）；续拍已停批次（续额度还是直接接着拍，主进程照 Run 记下的停下原因定）。
     rework: (projectId: string, runId: string, shotId?: string) =>
       ipcRenderer.invoke("nomi:production-runs:rework", { projectId, runId, ...(shotId ? { shotId } : {}) }),
-    resumeBatch: (projectId: string, runId: string, reason: "budget" | "manual") =>
-      ipcRenderer.invoke("nomi:production-runs:resume-batch", { projectId, runId, reason }),
+    resumeBatch: (projectId: string, runId: string) =>
+      ipcRenderer.invoke("nomi:production-runs:resume-batch", { projectId, runId }),
     // 2026-09-11 Agent 面板付费确认卡：读待确认的那笔 / 卡上改参数 / 丢弃草稿 / 确认并开跑。
     pendingSpend: (projectId: string) => ipcRenderer.invoke("nomi:production-runs:pending-spend", { projectId }),
     reviseSpend: (payload: unknown) => ipcRenderer.invoke("nomi:production-runs:revise-spend", payload),

@@ -110,7 +110,6 @@ function submission(root: string, repository: ReturnType<typeof createProduction
     projectRoot: root,
     immutableProjectUuid: "project-uuid-1",
     projectGeneration: 1,
-    projectRevision: 0,
     intentMacKey: "test-intent-key",
     provider: {
       ...provider(submit as GenerationProvider["submit"]),
