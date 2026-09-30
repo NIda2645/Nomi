@@ -5,7 +5,15 @@
 // 所以参数可以从上一次的结果里算（例如 generate 要的 operationId 来自 draft_shots 的结果）。
 //
 // 大脑说的话由剧本给——它不是被测对象。被测的是**宿主递给大脑的东西**（工具结果 / 回执），监视器从夹具请求里读它们。
+import { expect } from '../_assert.mjs'
+import { stationTimeout } from '../_station-budget.mjs'
 import { flattenRequestText } from '../agent-runtime-fixture.mjs'
+
+/**
+ * 一步最长等多久：宿主把这一步的请求发到大脑这里，按 station 预算的一个模型回合算（安全上限，不是完成条件）。
+ * 等不到就明说「宿主没把请求发过来」，不让剧本挂到跑器的总超时（第一版一次附件没导进来，剧本在这里干等了 40 分钟）。
+ */
+const STEP_ARRIVAL_BUDGET_MS = stationTimeout({ turns: 1 })
 
 /** 这一次请求里最后一条用户消息的文字（历史里的旧话不算，免得下一轮又被上一轮的期望认走）。 */
 export function lastUserText(body) {
@@ -27,29 +35,52 @@ function answersCall(body, callId) {
 }
 
 /**
- * 写一轮。`steps` 依次是 `{ tool, args, text? }`（调工具，args 可以是函数 `({ previous, body }) => args`）
+ * 写一轮。`steps` 依次是 `{ name, args, text? }`（调工具，args 可以是函数 `({ previous, body }) => args`）
  * 或 `{ text }`（说话收尾）。返回每一步的「到达」promise 和工具调用 id。
+ * 每一步从上一步落地起最多等 STEP_ARRIVAL_BUDGET_MS；等不到，这一步和它后面的每一步都以「宿主没发」拒绝。
  */
 export function scriptTurn(fixture, { label, marker, steps }) {
   if (!steps.length) throw new Error('scriptTurn needs at least one step')
   const callIds = steps.map((_, index) => `${label}-${index}`)
-  const arrivals = steps.map((step, index) => {
+  const landed = steps.map(() => null)
+  const failures = steps.map(() => null)
+  // 回复一到就放（宿主那边在等模型），和下面「调用方最多等多久」是两件事，互不耽误。
+  steps.forEach((step, index) => {
     const match = index === 0
       ? (body) => lastUserText(body).includes(marker) && !(body?.messages ?? []).some((message) => message?.role === 'tool' && callIds.includes(message.tool_call_id))
       : (body) => answersCall(body, callIds[index - 1])
     const handle = fixture.expectText({ label: `${label} #${index}`, match, reply: { type: 'hold' } })
-    return handle.received.then((record) => {
+    void handle.received.then((record) => {
       const previous = index === 0 ? null : toolResultText(record.body, callIds[index - 1])
       const context = { previous, body: record.body }
-      const reply = step.tool
-        ? { type: 'tool', id: callIds[index], name: step.tool, args: typeof step.args === 'function' ? step.args(context) : step.args, ...(step.text ? { text: step.text } : {}) }
+      // 工具那一步写成 `{ name, args }`——和夹具回复同一个形状，check:walkthrough-tool-args 才认得出、才去对 schema。
+      const reply = step.name
+        ? { type: 'tool', id: callIds[index], name: step.name, args: typeof step.args === 'function' ? step.args(context) : step.args, ...(step.text ? { text: step.text } : {}) }
         : { type: 'text', text: typeof step.text === 'function' ? step.text(context) : step.text }
       handle.release(reply)
       // 同一步被宿主重发（压缩之后重试、上下文超限之后重试）：真模型会给出同样的回答。
       // 一次性期望已经用掉了，这里补一个只认「这一步」的常驻应答，免得夹具把重试判成计划外请求。
       fixture.respond({ label: `${label} #${index} (retry)`, match, reply })
-      return { record, previous, reply }
+      landed[index] = { record, previous, reply }
+    }).catch((error) => {
+      // 出牌本身出错（例如 args 函数读不到上一步的结果）：记下，交给等这一步的人。
+      failures[index] = error
     })
+  })
+  const arrivals = []
+  let chain = Promise.resolve()
+  steps.forEach((_, index) => {
+    chain = chain.then(async () => {
+      await expect.poll(() => landed[index] !== null || failures[index] !== null, {
+        message: `${label} #${index}：宿主一直没把这一步的请求发给大脑（最多等 ${STEP_ARRIVAL_BUDGET_MS / 1000}s）`,
+        timeout: STEP_ARRIVAL_BUDGET_MS,
+      }).toBe(true)
+      if (failures[index]) throw failures[index]
+      return landed[index]
+    })
+    // 剧本可能只等最后一步：前面某一步的拒绝不许变成「未处理的拒绝」把进程带崩（等它的人照样拿到拒绝）。
+    chain.catch(() => {})
+    arrivals.push(chain)
   })
   return { callIds, arrivals, done: arrivals.at(-1) }
 }

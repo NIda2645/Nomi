@@ -58,7 +58,8 @@ try {
     // 上传是本机导入（落进项目素材），等它落定再发——真人也是看到签不转了才按发送。
     await expect.poll(() => fs.existsSync(path.join(smoke.project.projectRoot, 'assets')) && fs.readdirSync(path.join(smoke.project.projectRoot, 'assets'), { recursive: true })
       .some((name) => String(name).endsWith('.txt')), { message: '附件落进了项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
-  }, { surfaces: [] })
+    // 后面每一步都建立在「附件挂上了」之上：它没成，读附件、长对话的证据都不可信（会把没导进来算成产品没发给模型），剧本就此停下。
+  }, { surfaces: [], critical: true })
 
   const askTurn = scriptTurn(fixture, {
     label: 'pb04-attachment',
@@ -85,7 +86,7 @@ try {
     label: 'pb04-write',
     marker: 'PB04-扩写',
     steps: [
-      { tool: 'write_script', args: { content: LONG_SCRIPT, where: 'end' } },
+      { name: 'write_script', args: { content: LONG_SCRIPT, where: 'end' } },
       { text: '扩写好了，写进了文稿末尾。' },
     ],
   })
@@ -99,10 +100,10 @@ try {
       marker,
       steps: [
         // 真模型改稿的样子：先读全文，改一场写回；再读一遍全文确认，再改下一场。
-        { tool: 'read_script', args: {} },
-        { tool: 'write_script', args: ({ previous }) => ({ content: `【第${round}轮收紧 · 前一半】\n${String(previous ?? '').slice(0, 6000)}`, where: 'end' }) },
-        { tool: 'read_script', args: {} },
-        { tool: 'write_script', args: ({ previous }) => ({ content: `【第${round}轮收紧 · 后一半】\n${String(previous ?? '').slice(-6000)}`, where: 'end' }) },
+        { name: 'read_script', args: {} },
+        { name: 'write_script', args: ({ previous }) => ({ content: `【第${round}轮收紧 · 前一半】\n${String(previous ?? '').slice(0, 6000)}`, where: 'end' }) },
+        { name: 'read_script', args: {} },
+        { name: 'write_script', args: ({ previous }) => ({ content: `【第${round}轮收紧 · 后一半】\n${String(previous ?? '').slice(-6000)}`, where: 'end' }) },
         { text: `第 ${round} 轮改好了。` },
       ],
     })

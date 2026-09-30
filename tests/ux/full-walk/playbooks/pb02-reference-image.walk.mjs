@@ -65,8 +65,8 @@ try {
     label: 'pb02-draft',
     marker: 'PB02',
     steps: [
-      { tool: 'draft_shots', args: { shots: [{ prompt, taskKind: 'text_to_image', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL }, parameters: { aspect_ratio: '1:1' } }] } },
-      { tool: 'generate', args: ({ previous }) => ({ operationId: operationIdOf(previous) }) },
+      { name: 'draft_shots', args: { shots: [{ prompt, taskKind: 'text_to_image', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL }, parameters: { aspect_ratio: '1:1' } }] } },
+      { name: 'generate', args: ({ previous }) => ({ operationId: operationIdOf(previous) }) },
       { text: EN ? 'Started.' : '好的，开始生成。' },
     ],
   })

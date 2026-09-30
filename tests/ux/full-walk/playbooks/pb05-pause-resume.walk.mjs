@@ -42,8 +42,8 @@ const ask = (marker) => (EN
   ? `${marker}: turn these three shots into videos — 1) ${SHOTS[0]}; 2) ${SHOTS[1]}; 3) ${SHOTS[2]}.`
   : `${marker}：把这三镜做成视频——镜1，${SHOTS[0]}；镜2，${SHOTS[1]}；镜3，${SHOTS[2]}。`)
 const draftSteps = () => [
-  { tool: 'draft_shots', args: { shots: SHOTS.map((prompt, index) => ({ title: `镜头 ${index + 1}`, prompt, taskKind: 'text_to_video', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: VIDEO_MODEL } })) } },
-  { tool: 'generate', args: ({ previous }) => ({ operationId: operationIdOf(previous) }) },
+  { name: 'draft_shots', args: { shots: SHOTS.map((prompt, index) => ({ title: `镜头 ${index + 1}`, prompt, taskKind: 'text_to_video', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: VIDEO_MODEL } })) } },
+  { name: 'generate', args: ({ previous }) => ({ operationId: operationIdOf(previous) }) },
   { text: EN ? 'All three shots are generating.' : '三镜都开始生成了。' },
 ]
 

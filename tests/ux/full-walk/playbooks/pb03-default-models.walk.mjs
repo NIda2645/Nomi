@@ -62,10 +62,10 @@ try {
     label: 'pb03-draft',
     marker: 'PB03',
     steps: [
-      { tool: 'draft_shots', args: ({ body }) => ({ shots: [omitCandidate
+      { name: 'draft_shots', args: ({ body }) => ({ shots: [omitCandidate
         ? { prompt, taskKind: 'text_to_image', parameters: { aspect_ratio: '1:1' } }
         : { prompt, taskKind: 'text_to_image', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: pickImageModel(body) }, parameters: { aspect_ratio: '1:1' } }] }) },
-      { tool: 'generate', args: ({ previous }) => ({ operationId: operationIdOf(previous) }) },
+      { name: 'generate', args: ({ previous }) => ({ operationId: operationIdOf(previous) }) },
       { text: EN ? 'Started.' : '开始生成了。' },
     ],
   })

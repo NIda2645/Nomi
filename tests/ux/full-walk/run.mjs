@@ -95,7 +95,12 @@ export function runFullWalk({ only = null, locale = null, reportOnly = null, env
       const dir = path.join(runDir, run.id)
       const report = readJson(path.join(dir, 'monitor-report.json'))
       const result = readJson(path.join(dir, 'result.json'))
-      if (!report) { results.push({ ...run, status: 'skipped', reason: '这一次没跑它' }); continue }
+      if (!report) {
+        // 有日志没报告 = 跑了、中途没了（被掐 / 崩了）：那是走查故障，不是「没跑」。
+        const ran = fs.existsSync(path.join(runDir, `${run.id}.log`))
+        results.push(ran ? { ...run, status: 'broken', dir } : { ...run, status: 'skipped', reason: '这一次没跑它' })
+        continue
+      }
       const exitCode = result?.exitCode ?? 2
       results.push({ ...run, status: exitCode === 0 ? 'clean' : exitCode === 1 ? 'red' : 'broken', exitCode, durationMs: report.durationMs, dir, report })
       continue
@@ -107,8 +112,9 @@ export function runFullWalk({ only = null, locale = null, reportOnly = null, env
     })
     const dir = path.join(runDir, run.id)
     const report = readJson(path.join(dir, 'monitor-report.json'))
-    const status = outcome.exitCode === 0 ? 'clean' : outcome.exitCode === 1 ? 'red' : 'broken'
-    results.push({ ...run, status, exitCode: outcome.exitCode, durationMs: outcome.durationMs, logPath: outcome.logPath, dir, report, failureSummary: outcome.failureSummary })
+    // 被跑器按总超时掐掉（那时退出码也是 1）、或者没留下监视器报告：它的「没违反」不作数，一律算走查故障，不能当成「有违反」。
+    const status = outcome.timedOut || !report ? 'broken' : outcome.exitCode === 0 ? 'clean' : outcome.exitCode === 1 ? 'red' : 'broken'
+    results.push({ ...run, status, exitCode: outcome.exitCode, timedOut: Boolean(outcome.timedOut), durationMs: outcome.durationMs, logPath: outcome.logPath, dir, report, failureSummary: outcome.failureSummary })
   }
   const summary = summarize({ results, meta, runStamp, runDir, reportedBy: git(['rev-parse', '--short=9', 'HEAD']) })
   const reportsDir = path.join(repoRoot, 'tests', 'ux', 'full-walk', 'reports')
@@ -135,7 +141,9 @@ export function summarize({ results, meta, runStamp, runDir, reportedBy = null }
   }))
   const rootsOf = (rules) => [...new Set(rules.map((rule) => rootOfRule(rule)?.root).filter(Boolean))].sort()
   const hitRules = (playbookId) => new Set(violations.filter((violation) => violation.playbook === playbookId).map((violation) => violation.rule))
-  const ran = new Set(results.filter((result) => result.status !== 'skipped').map((result) => result.playbookId))
+  // 「没复现」只在那条剧本真走通过（有监视器报告）时才算数；只剩走查故障的剧本，它的「没抓到」什么也说明不了。
+  const sound = new Set(results.filter((result) => result.status === 'clean' || result.status === 'red').map((result) => result.playbookId))
+  const broken = new Set(results.filter((result) => result.status === 'broken').map((result) => result.playbookId))
   const userIssues = USER_REPORTED_ISSUES.map((issue) => {
     const inPlaybook = violations.filter((violation) => violation.playbook === issue.playbook && issue.rules.includes(violation.rule))
     // 它该被抓到的那条剧本没触发、别的剧本触发了同一条规则：如实标「别处复现」，证据指向那条剧本。
@@ -143,7 +151,8 @@ export function summarize({ results, meta, runStamp, runDir, reportedBy = null }
     const matched = inPlaybook.length ? inPlaybook : elsewhere
     return {
       ...issue,
-      status: inPlaybook.length ? 'reproduced' : elsewhere.length ? 'reproduced-elsewhere' : issue.notYet ? 'not-yet' : ran.has(issue.playbook) ? 'not-reproduced' : 'not-run',
+      status: inPlaybook.length ? 'reproduced' : elsewhere.length ? 'reproduced-elsewhere' : issue.notYet ? 'not-yet'
+        : sound.has(issue.playbook) ? 'not-reproduced' : broken.has(issue.playbook) ? 'playbook-broken' : 'not-run',
       evidence: matched.map((violation) => ({ run: violation.run, invariant: violation.invariant, rule: violation.rule, module: violation.module, screenshot: violation.evidence.screenshot, snapshot: violation.evidence.snapshot, message: violation.message })),
       rulesHitInPlaybook: [...hitRules(issue.playbook)],
       // 复现了按真正触发的规则归；没复现按它登记的规则归。
@@ -183,7 +192,10 @@ export function renderMarkdown(summary) {
   if (summary.note) lines.push(`> ${summary.note}`, '')
   lines.push('## 剧本', '', '| 剧本 × 变体 | 结果 | 步骤走通 | 违反 | 观察者看见（转圈 / 面变化 / 真实输入） | 说明 |', '|---|---|---|---|---|---|')
   for (const run of summary.runs) {
-    const note = run.status === 'skipped' ? run.reason : run.failedSteps.map((step) => `没走通：${step.label}`).join('；')
+    const note = run.status === 'skipped' ? run.reason
+      : run.timedOut ? `跑器总超时（${Math.round(PLAYBOOK_TIMEOUT_MS / 60_000)} 分钟）掐掉，没有监视器报告`
+        : run.steps === null ? '没有监视器报告（进程中途没了）'
+          : run.failedSteps.map((step) => `没走通：${step.label}`).join('；')
     const seen = run.probeSeen ? `${run.probeSeen.spinners.length} / ${run.probeSeen.surfaceChanges} / ${run.probeSeen.trustedInputs}` : '—'
     lines.push(`| ${run.id} | ${{ clean: '✓ 零违反', red: '✖ 有违反', broken: '⚠ 走查故障', skipped: '跳过' }[run.status]} | ${run.steps ?? '—'} | ${run.violations ?? '—'} | ${seen} | ${md(note)} |`)
   }
@@ -193,7 +205,7 @@ export function renderMarkdown(summary) {
   for (const [key, value] of Object.entries(summary.limits)) lines.push(`- \`${key}\`${value.value !== undefined ? ` = ${value.value}` : ''} ← ${value.source}`)
   lines.push('', '## 用户报的问题 → 这一次复现了没有', '', '| # | 问题 | 结果 | 铁律 · 规则 | 模块 | 证据 | 底层设计问题 |', '|---|---|---|---|---|---|---|')
   for (const issue of summary.userIssues) {
-    const status = { reproduced: '✖ 复现', 'reproduced-elsewhere': `✖ 别处复现（${[...new Set(issue.evidence.map((item) => item.run))].join('、')}）`, 'not-reproduced': '○ 没复现', 'not-yet': '… 下一批', 'not-run': '— 没跑' }[issue.status]
+    const status = { reproduced: '✖ 复现', 'reproduced-elsewhere': `✖ 别处复现（${[...new Set(issue.evidence.map((item) => item.run))].join('、')}）`, 'not-reproduced': '○ 没复现', 'playbook-broken': '⚠ 剧本没走通，不作数', 'not-yet': '… 下一批', 'not-run': '— 没跑' }[issue.status]
     const first = issue.evidence[0]
     lines.push(`| ${issue.id} | ${md(issue.text)} | ${status} | ${first ? issue.evidence.map((item) => `${item.invariant} · ${item.rule}`).filter((value, index, all) => all.indexOf(value) === index).join('；') : md(issue.notYet ?? '')} | ${md(first?.module ?? '')} | ${first ? `\`${first.screenshot}\`` : ''} | ${issue.roots.map((root) => `${root} ${DESIGN_ROOTS[root]}`).join('；')} |`)
   }
