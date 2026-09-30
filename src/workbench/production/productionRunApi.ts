@@ -1,7 +1,7 @@
 import { getDesktopBridge } from '../../desktop/bridge'
-import type { ProductionActionResult, RunCommand } from '../../../electron/productionRun/productionRunTypes'
+import type { ProductionActionResult, ProductionShotActionFailure, ProductionShotActionResult, RunCommand } from '../../../electron/productionRun/productionRunTypes'
 
-export type { ProductionActionResult }
+export type { ProductionActionResult, ProductionShotActionFailure, ProductionShotActionResult }
 
 function bridge() {
   const value = getDesktopBridge()?.productionRuns
@@ -16,9 +16,9 @@ export const productionRunApi = {
   command: (projectId: string, runId: string, command: RunCommand) => bridge().command(projectId, runId, command),
   materializeStoryboard: (projectId: string, runId: string, artifactId: string, expectedVersion: number) => bridge().materializeStoryboard(projectId, runId, artifactId, expectedVersion),
   events: (projectId: string, runId: string, afterCursor: number) => bridge().events(projectId, runId, afterCursor),
-  // P4 S6：返工一镜（同 Run 新 Job + 单镜确认 + 派发）；续拍已停批次。回结构化 { ok, code, message? }（渲染层 t() 翻译 code）。
-  rework: (projectId: string, runId: string, shotId?: string): Promise<ProductionActionResult> => bridge().rework(projectId, runId, shotId) as Promise<ProductionActionResult>,
-  resumeBatch: (projectId: string, runId: string, reason: 'budget' | 'manual'): Promise<ProductionActionResult> => bridge().resumeBatch(projectId, runId, reason) as Promise<ProductionActionResult>,
+  // P4 S6：返工一镜（同 Run 新 Job + 单镜确认 + 派发）；续拍已停批次。回结构化结果（没做成带语义码 failure，渲染层按码翻译）。
+  rework: (projectId: string, runId: string, shotId?: string): Promise<ProductionShotActionResult> => bridge().rework(projectId, runId, shotId),
+  resumeBatch: (projectId: string, runId: string): Promise<ProductionShotActionResult> => bridge().resumeBatch(projectId, runId),
   // 2026-09-11 Agent 面板付费确认卡。读是投影（价格由宿主算），三个动作都回结构化 { ok, code }。
   pendingSpend: (projectId: string) => bridge().pendingSpend(projectId),
   reviseSpend: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }) => bridge().reviseSpend(input),

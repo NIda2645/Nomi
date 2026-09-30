@@ -10,9 +10,10 @@ import type {
 } from "./productionRunTypes";
 import type { ShotPrice } from "./shotPricing";
 import { productionGenerationJobId } from "./productionGenerationAuthorization";
-import { jobAwaitsHuman } from "../shared/productionShotPhase";
+import { jobAwaitsHuman, productionJobPhase } from "../shared/productionShotPhase";
 import { decideShotClaim } from "../shared/decideShotClaim";
 import { jobsForShot, shotCountsTowardBatch, shotIncluded } from "../shared/productionShotJobs";
+import { isStoppedRunStatus } from "../shared/productionRunStop";
 
 /**
  * P4 S4 — the pure batch derivation. This is the heart of "调度器无自有持久状态" (plan §1).
@@ -153,6 +154,11 @@ export type BatchDerivationResult = {
   observe: DispatchTask[];
   checkpoint: CheckpointState;
   progress: BatchProgress;
+  /**
+   * 当前这次尝试已经确定没成的单元（参考卡与视频镜；没出片、也不会自己再出片：失败 / 供应商撤单 / 提交结果未知）。
+   * 只看**当前尝试**：返工成功后，上一次失败的那个 job 不再算——以前按全部 job 数，重做成功的批次收尾时照样被判「有镜头没成」。
+   */
+  failedUnits: string[];
   /** 本 tick 派出去的镜头里价格未知的笔数。`nomi_get_run` 据此如实说「另有 N 镜价格未知」。 */
   unknownDispatchCount: number;
   halt?: BudgetHalt;
@@ -184,6 +190,12 @@ function jobForShot(run: ProductionRun, shot: ProductionGenerationShot): Product
 function shotFinished(run: ProductionRun, shot: ProductionGenerationShot): boolean {
   const job = jobForShot(run, shot);
   return Boolean(job && TERMINAL_DONE.has(job.status));
+}
+
+/** 这一镜的当前尝试确定没成：不会自己再出片，得有人重做或取消。 */
+function shotFailed(run: ProductionRun, shot: ProductionGenerationShot): boolean {
+  const job = jobForShot(run, shot);
+  return Boolean(job && (productionJobPhase(job.status) === "failed" || job.status === "submission_unknown"));
 }
 
 function shotInFlight(run: ProductionRun, shot: ProductionGenerationShot): boolean {
@@ -280,6 +292,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   };
 
   const checkpoint = deriveCheckpoint(input, anchors);
+  const failedUnits = [...anchors, ...videoShots].filter((shot) => shotFailed(input.run, shot)).map((shot) => shot.shotId);
 
   // In-flight units to keep polling (anchors first, then shots — plan order). Derived purely from
   // jobs[], so a crash-restart recomputes the same list and the observe loop resumes where it left off.
@@ -292,9 +305,9 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // Stop semantics (plan §3.3/§4): a stopped run dispatches nothing NEW (未提交=不提交不扣费).
   // In-flight jobs still settle: they are already paid for, so `observe` keeps them pollable and the
   // orchestrator lands their results; completed jobs are preserved (both reflected in `progress`).
-  const stopped = input.runStatus === "pausing" || input.runStatus === "paused" || input.runStatus === "needs_attention" || input.runStatus === "cancelled";
+  const stopped = isStoppedRunStatus(input.runStatus);
   if (stopped) {
-    return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress, unknownDispatchCount: 0 };
+    return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress, failedUnits, unknownDispatchCount: 0 };
   }
 
   // Anchors go first. Any anchor still needing a job (fresh or a rejected-checkpoint re-attempt) is
@@ -305,7 +318,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   const checkpointReleased = checkpoint.status === "approved";
   if (anchors.length > 0 && !checkpointReleased) {
     // Anchors present but checkpoint not released → dispatch anchors (if any pending), block shots.
-    return { anchorDispatch, shotDispatch: [], observe, checkpoint, progress, unknownDispatchCount: 0 };
+    return { anchorDispatch, shotDispatch: [], observe, checkpoint, progress, failedUnits, unknownDispatchCount: 0 };
   }
 
   // Checkpoint approved by a person, or no anchors at all → consider video shots.
@@ -360,5 +373,5 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
     halt = { ...halt, dispatchableCount, remainingCount: remaining };
   }
 
-  return { anchorDispatch, shotDispatch, observe, checkpoint, progress, unknownDispatchCount, ...(halt ? { halt } : {}) };
+  return { anchorDispatch, shotDispatch, observe, checkpoint, progress, failedUnits, unknownDispatchCount, ...(halt ? { halt } : {}) };
 }

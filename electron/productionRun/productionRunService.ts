@@ -12,7 +12,8 @@ import {
 } from './artifactProjection'
 import { buildProductionDeepLink } from './productionDeepLink'
 import { applyRunControl } from './productionRunControl'
-import { createDriverOps } from './productionRunDriverOps'
+import { isStillAtProvider, settleRunLifecycle } from './productionRunLifecycle'
+import { createDriverOps, isSemanticMultiShotRun } from './productionRunDriverOps'
 import { isShotGate, isSpendGate } from './productionRunGateIdentity'
 import { withEventTap } from './productionRunEventTap'
 import { assertStoryboardSourceFresh, createArtifactOperations } from './productionRunArtifactOperations'
@@ -271,6 +272,16 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     directionsInFlight,
   })
 
+  /**
+   * 叫醒干这个 Run 的活的那一方——「谁来驱动」只在这里判：多镜批次的派发归批次调度器（批次收齐后它自己交给
+   * driveGeneration 收尾），其余归 driveGeneration。Run 从停着被放回 running（任务卡 / 画布 / MCP 的「继续」都经
+   * run.control）后经这里，入口自己不用知道该踢谁；以前「继续」只踢 driveGeneration，多镜批次状态回到 running 却一镜都不派。
+   */
+  function wakeRunDriver(run: ProductionRun): void {
+    if (isSemanticMultiShotRun(run)) kickBatchSchedulerForRun(run.projectId, run.runId)
+    else void driveGeneration(run)
+  }
+
   async function command(projectId: string, runId: string, runCommand: RunCommand) {
     const safeProjectId = identifier(projectId, 'project')
     const safeRunId = identifier(runId, 'run')
@@ -337,7 +348,8 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     if (runCommand.type === 'run.control') {
       // A4 run 控制：逻辑在 productionRunControl.ts（MCP 与渲染端同一收口）。
       const controlled = applyRunControl(repository, safeProjectId, safeRunId, requireRun(safeProjectId, safeRunId), runCommand)
-      if (runCommand.payload.action === 'resume' && controlled.run.status === 'running') void driveGeneration(controlled.run) // 恢复必须重踢 driver：只回状态不回工作=假 resume
+      // 恢复必须重踢干活的那一方：只回状态不回工作 = 假 resume。
+      if (runCommand.payload.action === 'resume' && controlled.run.status === 'running') wakeRunDriver(controlled.run)
       return controlled
     }
     if (runCommand.type === 'script.review' || runCommand.type === 'artifact.review') {
@@ -556,6 +568,15 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       for (const summary of summaries) {
         let current = repository.read(safeProjectId, summary.runId)
         if (!current || ['completed', 'cancelled'].includes(current.status)) continue
+        // 老数据：上一版把多镜批次急停后留在 pausing、手上其实已经没有在跑的活——之后再没有命令经过写入口，
+        // 它就永远「暂停中」。欠不欠这一步只由生命周期 owner 判，这里只负责在重开项目时让它经过一次写入口。
+        if (settleRunLifecycle(current, new Date().toISOString())) {
+          try {
+            current = executeInternal(safeProjectId, current.runId, current, 'run.lifecycle.settle', {}, `recovery-${current.runId}-lifecycle-${current.revision}`).run
+          } catch (error) {
+            logError('production-run', 'recovery-lifecycle-settle-failed', error)
+          }
+        }
         // Semantic single-shot runs own recovery through ProductionGenerationSubmission
         // (resume/poll/reconcile). The legacy playbook driver must not rewrite their
         // durable provider state to submission_unknown or kick a second submit.
@@ -563,7 +584,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
           && current.generationPlan?.operationId === current.runId
         let changedUnknown = false
         for (const job of current.jobs) {
-          if (!['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content'].includes(job.status)) continue
+          if (!isStillAtProvider(job)) continue
           if (isSemanticSingleShot) continue
           try {
             current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
@@ -578,10 +599,10 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         }
         current = requireRun(safeProjectId, current.runId)
         if (changedUnknown && current.status !== 'needs_attention') {
-          try { current = executeInternal(safeProjectId, current.runId, current, 'run.status', { status: 'needs_attention' }, `recovery-${current.runId}-attention-${current.revision}`).run } catch { /* preserve the durable job state */ }
+          try { current = executeInternal(safeProjectId, current.runId, current, 'run.status', { status: 'needs_attention', reason: 'restart_recovery' }, `recovery-${current.runId}-attention-${current.revision}`).run } catch { /* preserve the durable job state */ }
         }
         if (current.status === 'exporting') {
-          try { current = executeInternal(safeProjectId, current.runId, current, 'run.status', { status: 'needs_attention' }, `recovery-${current.runId}-export-attention-${current.revision}`).run } catch { /* preserve exporting state for inspection */ }
+          try { current = executeInternal(safeProjectId, current.runId, current, 'run.status', { status: 'needs_attention', reason: 'restart_recovery' }, `recovery-${current.runId}-export-attention-${current.revision}`).run } catch { /* preserve exporting state for inspection */ }
         }
         // B1/B3：草稿建好时 GUI 关着 → 重开时补动作。budget_only 自动批准方向门，其余补拟候选（gate 还 waiting 且无候选才跑）。
         if (current.status === 'awaiting_direction') {

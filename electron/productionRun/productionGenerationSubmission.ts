@@ -103,7 +103,6 @@ export type ProductionGenerationSubmissionDependencies = {
   projectRoot: string;
   immutableProjectUuid: string;
   projectGeneration: number;
-  projectRevision: number;
   intentMacKey: string | NodeJS.TypedArray;
   provider?: GenerationProvider;
   providers?: readonly GenerationProvider[];
@@ -340,9 +339,14 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
       throw new Error("This generation Run has no sealed paid authorization; it is read-only until re-planned");
     }
     if (
+      // 派发时核的是「还是不是那个项目、那一个 Run、那一版计划、那一道批过的门」。**不核项目文档版本**：它在批准那一刻
+      // 已经核过（收据只对当时的版本有效，见 productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后项目
+      // 照常会变——Nomi 自己把占位和参考卡结果落到画布上就会让它前进。以前这里要求派发时项目版本仍等于封信封时的版本，
+      // 于是定妆照检查点放行、急停后继续、重开项目这些「批准之后过一会儿才派」的路一律报
+      // 「Generation authorization no longer matches」，视频镜永远排队（2026-09-29 用户实见）。发出去的请求本身已由
+      // 合同哈希、线上报文哈希、幂等键逐字钉死（下面那组比对），项目文档怎么变都改不了它。
       authorizationEnvelope.immutableProjectUuid !== deps.immutableProjectUuid
       || authorizationEnvelope.projectGeneration !== deps.projectGeneration
-      || authorizationEnvelope.projectRevision !== deps.projectRevision
       || authorizationEnvelope.projectId !== current.projectId
       || authorizationEnvelope.runId !== current.runId
       || authorizationEnvelope.planVersion !== current.planVersion

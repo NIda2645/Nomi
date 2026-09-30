@@ -248,6 +248,31 @@ export async function prepareProductionGenerationAuthorizationWithReferences(
   return prepareProductionGenerationAuthorization({ ...input, referenceUrlsByContract });
 }
 
+/**
+ * 返工这一镜被拒的结构化原因（2026-09-29）。appIntegrationProductionActions 照它回语义码，渲染层照语义码说人话、
+ * 给能做的事。以前只有英文句子，外层用正则猜：上一次还在跑也被说成「这一镜还没生成过」，排队中的镜挡着返工
+ * 则落成一句「操作没成功」前面拼着这行英文。
+ */
+export type GenerationReworkRefusal = "no_prior_attempt" | "previous_attempt_unsettled" | "queued_shots_pending" | "attempt_limit";
+
+export class GenerationReworkRefusedError extends Error {
+  constructor(readonly refusal: GenerationReworkRefusal, message: string) {
+    super(message);
+    this.name = "GenerationReworkRefusedError";
+  }
+}
+
+/**
+ * 续额度用不着：剩下的镜头要么已经交出去了（`nothing_left`），要么现有授权本来就盖得住（`already_covered`）。
+ * 这不是失败——续拍直接接着拍就行，不用再让人批一次钱。以前它和真正的失败一样抛普通 Error，续拍于是报「没成功」。
+ */
+export class GenerationContinuationNotNeededError extends Error {
+  constructor(readonly why: "nothing_left" | "already_covered", message: string) {
+    super(message);
+    this.name = "GenerationContinuationNotNeededError";
+  }
+}
+
 function addressedUnit(run: ProductionRun, shotId?: string): {
   shot?: ProductionGenerationShot;
   candidate: PlanCandidate;
@@ -255,11 +280,12 @@ function addressedUnit(run: ProductionRun, shotId?: string): {
 } {
   const plan = run.generationPlan;
   if (!plan || (plan.state !== "sealed" && plan.state !== "submitted") || !plan.authorizationEnvelope) {
-    throw new Error("This generation Run cannot create new paid work until it has a sealed authorization");
+    throw new GenerationReworkRefusedError("no_prior_attempt", "This generation Run cannot create new paid work until it has a sealed authorization");
   }
   if (shotId) {
     const shot = (plan.shots ?? []).find((candidate) => candidate.shotId === shotId);
-    if (!shot?.contract) throw new Error(`Generation shot is not sealed: ${shotId}`);
+    // 这一镜没有封过的合同 = 从没有过一次授权的尝试，谈不上重做。
+    if (!shot?.contract) throw new GenerationReworkRefusedError("no_prior_attempt", `Generation shot is not sealed: ${shotId}`);
     return { shot, candidate: shot.candidate, contract: shot.contract };
   }
   if (plan.shots?.length) throw new Error("A multi-shot reauthorization requires a shot id");
@@ -296,15 +322,16 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
   }
   const unit = addressedUnit(input.run, input.shotId);
   const parent = latestJobFor(input.run, unit.contract.contractHash, input.shotId);
-  if (!parent || !REWORKABLE_JOB_STATUSES.has(parent.status)) {
-    throw new Error("The previous generation attempt is not safely reworkable");
+  if (!parent) throw new GenerationReworkRefusedError("no_prior_attempt", "The previous generation attempt is not safely reworkable");
+  if (!REWORKABLE_JOB_STATUSES.has(parent.status)) {
+    throw new GenerationReworkRefusedError("previous_attempt_unsettled", "The previous generation attempt is not safely reworkable");
   }
   if (input.run.jobs.some((job) => UNSUBMITTED_AUTHORIZATION_STATUSES.has(job.status))) {
-    throw new Error("Generation rework requires all previously authorized jobs to be submitted or settled");
+    throw new GenerationReworkRefusedError("queued_shots_pending", "Generation rework requires all previously authorized jobs to be submitted or settled");
   }
   const attempt = parent.attempt + 1;
   if (attempt > input.run.policy.maxAttemptsPerJob) {
-    throw new Error("Generation rework exceeds the Run attempt limit");
+    throw new GenerationReworkRefusedError("attempt_limit", "Generation rework exceeds the Run attempt limit");
   }
   const price = input.resolveShotPrice(unit.contract);
   const priceCeiling = jobPriceCeiling(price);
@@ -442,7 +469,7 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
         price: { currency: input.run.budget.currency, maximum: jobPriceCeiling(price) },
       }];
     });
-  if (jobs.length === 0) throw new Error("This generation Run has no unsubmitted jobs to continue");
+  if (jobs.length === 0) throw new GenerationContinuationNotNeededError("nothing_left", "This generation Run has no unsubmitted jobs to continue");
 
   const remainingMaximum = sumKnownJobCeilings(jobs);
   const unknownJobCount = countUnknownJobPrices(jobs);
@@ -452,7 +479,7 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
   // 「不用再开门」而卡死在这里——续批那条路因此对未知价永远走不通。判据补上未知那根轴：
   // 还有未知价的镜头要跑，就仍然需要一次人的决定（或全自动档的代答）。
   if (unknownJobCount === 0 && !budgetExceeds(completeMaximum, input.run.budget.authorized)) {
-    throw new Error("The current generation authorization already covers the remaining jobs");
+    throw new GenerationContinuationNotNeededError("already_covered", "The current generation authorization already covers the remaining jobs");
   }
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation continuation time is invalid");

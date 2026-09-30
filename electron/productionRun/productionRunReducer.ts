@@ -2,6 +2,7 @@ import type { ArtifactReviewDecision } from "../shared/agentCapabilities/product
 import { transitionJob, transitionRun } from "./productionRunState";
 import { decideShotClaim } from "../shared/decideShotClaim";
 import { jobsForShot, latestJobForShot } from "../shared/productionShotJobs";
+import { applyOwedLifecycleStep, applyRunStatus } from "./productionRunLifecycle";
 import { bindShotNodes, detachShotNodes } from "./productionRunCanvasLandingReducer";
 import type {
   BudgetLedgerSummary,
@@ -12,7 +13,6 @@ import type {
   ProductionJobStatus,
   ProductionGenerationPlan,
   ProductionRun,
-  ProductionRunStatus,
   ProductionStage,
   RunCommand,
 } from "./productionRunTypes";
@@ -198,10 +198,11 @@ export function applyProductionCommand(
   now: string,
 ): ProductionCommandEffect {
   switch (command.type) {
-    case "run.status": {
-      const status = text(command.payload, "status") as ProductionRunStatus;
-      return { run: transitionRun(current, status, now), eventType: "run.status.changed", message: status };
-    }
+    case "run.status":
+      // 停下的原因在停的那一刻落成 run.stop（生命周期 owner：productionRunLifecycle）。
+      return applyRunStatus(current, command, now);
+    case "run.lifecycle.settle":
+      return applyOwedLifecycleStep(current, now);
     case "run.stage": {
       const stageId = text(command.payload, "stageId");
       return { run: { ...current, stageId, updatedAt: now }, eventType: "run.stage.changed", message: stageId };

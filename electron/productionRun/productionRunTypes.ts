@@ -72,6 +72,23 @@ export type ProductionRunStatus =
   | "completed"
   | "cancelled";
 
+/**
+ * 一次制作**为什么停下**：停的那一刻由停它的那一方写进 `run.status` 命令（`payload.reason`），界面只读这个事实。
+ * 以前界面从 Run 状态反推——`needs_attention` 一律被说成「预算已用完 · 提额续拍」，而今天根本没有价格。
+ * - `budget`：已知价的镜头把批过的额度用完了（只有知道价格时才可能）；
+ * - `failed`：有镜头、审片、组装或导出没成功，这一批靠自己走不下去了；
+ * - `user_paused`：用户按了急停；
+ * - `user_cancelled`：用户取消了这次制作；
+ * - `restart_recovery`：Nomi 重启后要先核对之前在跑的任务。
+ */
+export type ProductionRunStopReason = "budget" | "failed" | "user_paused" | "user_cancelled" | "restart_recovery";
+
+export type ProductionRunStop = {
+  reason: ProductionRunStopReason;
+  /** 停下的那一刻。 */
+  at: string;
+};
+
 export type ProductionJobStatus =
   | "planned"
   | "authorization_required"
@@ -390,6 +407,11 @@ export type ProductionRun = {
   generationPlan?: ProductionGenerationPlan;
   /** Creative metadata only; editable shot content is owned by generationPlan. */
   authoring?: { title: string };
+  /**
+   * 停在 pausing / paused / needs_attention / cancelled 时，停下的原因（只由 reducer 的 `run.status` 写，离开这些状态即清掉）。
+   * 上一版写下的 Run 没有它：读作「原因没记下」，绝不当成预算。
+   */
+  stop?: ProductionRunStop;
   createdAt: string;
   updatedAt: string;
 };
@@ -443,21 +465,53 @@ export type ProductionRunSummary = Pick<
 };
 
 /**
- * P4 S6：返工/续拍编排的结构化结果（appIntegration 编排 → main.ts IPC → 渲染层给用户人话反馈）。
+ * 画布上「重做这一镜」（返工）/「继续剩余」（续拍）没做成的**每一种**原因（2026-09-29）。渲染层按码逐个翻成人话和能做的事
+ * （src/workbench/production/productionShotActions.ts 的表，穷尽），主进程原话只进主进程日志。
+ *
+ * **没有笼统的「操作没成功，稍后再试」**：以前所有失败都落进那一句，前面还拼着主进程英文原话。一个失败说不清是哪一种，
+ * 就是它在源头还没被分类——去源头给它一个码，不在界面上兜一句。唯一不细分的是 `internal_error`：Nomi 自己的不变量
+ * 没守住（bug），界面如实说「这是 Nomi 的问题、没有扣费、已记日志、可以反馈」，而不是装成一次可以稍后重试的波动。
+ */
+export type ProductionShotActionFailure =
+  | "request_invalid" // 请求里缺批次或镜头编号（画布节点的制作记录不完整）
+  | "bridge_unavailable" // 这个窗口连不上桌面端（渲染层调不到主进程）
+  | "core_starting" // 生成能力核还在启动
+  | "run_not_open" // 不是当前打开的项目
+  | "run_missing" // 这一批的制作记录已经不在了
+  | "run_unreadable" // 记录读不出来（文件损坏或被占用）
+  | "not_multishot" // 不是多镜批次里的镜头（单镜节点就在节点上重新生成）
+  | "project_unavailable" // 读不到项目身份（文件夹被移动 / 记录不完整）
+  | "confirmation_unavailable" // 这个窗口弹不出付费确认
+  | "provider_unavailable" // 这一镜的模型现在接不上供应商
+  | "no_prior_attempt" // 这一镜还没生成过
+  | "previous_attempt_unsettled" // 上一次还没出结果
+  | "queued_shots_pending" // 还有镜头在排队，不能单独重做
+  | "attempt_limit" // 重做到上限了
+  | "run_changed" // 刚好有别的写入（版本冲突 / 写锁被占 / 状态已变）
+  | "approval_stale" // 确认的时候项目刚好有变动（收据对不上当前项目）
+  | "approval_expired" // 确认框放太久失效了
+  | "run_finished" // 这次制作已经结束（完成 / 取消）
+  | "not_stopped" // 这一批没停着，不用继续
+  | "plan_not_submitted" // 方案还没开拍
+  | "ledger_write_failed" // 写不进项目记录（磁盘满 / 没有写入权限）
+  | "internal_error"; // Nomi 自己的 bug（不变量断言没过）
+
+/** 返工 / 续拍的结构化结果（appIntegration 编排 → IPC → 渲染层）。declined = 用户在确认框里说了不，不扣费、不报错。 */
+export type ProductionShotActionResult =
+  | { ok: true; code: "reworked" | "resumed" }
+  | { ok: false; code: "rework_declined" | "resume_declined" }
+  | { ok: false; code: "failed"; failure: ProductionShotActionFailure };
+
+/**
+ * 付费确认卡（Agent 面板）四个通道的结构化结果（appIntegration 编排 → main.ts IPC → 渲染层给用户人话反馈）。
  * 住在纯类型文件里（不在 appIntegration），这样渲染层 bridge/API 引它时不把 electron 主进程模块图拖进 src 类型检查。
- * 绝不含任何密钥；`code` 由渲染层 t() 翻译（不拼串穿透 i18n 门）。
+ * 绝不含任何密钥；`code` 由渲染层 t() 翻译（不拼串穿透 i18n 门）。返工 / 续拍有自己的结果类型（ProductionShotActionResult）。
  */
 export type ProductionActionResult = {
   quoteId?: string;
   ok: boolean;
   code:
-    | "reworked" // 返工已确认并派发
-    | "rework_declined" // 用户取消/超时单镜确认 → 不扣费，新 Job 保持未授权
-    | "resume_declined" // 用户取消/超时续拍确认 → 不扣费，剩余 Job 不提交
-    | "resumed" // 续拍已重启
-    | "no_prior_attempt" // 该镜没有可返工的上一次（从没生成过）
     | "run_not_open" // 该项目不是当前打开的项目（守卫）
-    | "not_multishot" // 不是语义多镜 Run
     | "revised" // 付费卡上改了参数：旧授权已撤、计划回到草稿等重新封印
     | "discarded" // 付费卡上按了 ×：这份草稿被丢弃
     | "spend_confirmed" // 付费卡上确认了：收据已签、门已批、已开跑

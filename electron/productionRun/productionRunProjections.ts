@@ -9,6 +9,7 @@
 import { buildProductionDeepLink } from './productionDeepLink'
 import { safeExternalText, safeProductionContract, safeShotId } from './productionRunProjectionSanitizer'
 import { trustLevelOf } from './productionRunTypes'
+import { runStopReason } from '../shared/productionRunStop'
 import { createArtifactProjection, type ArtifactProjection } from './artifactProjection'
 import { metadataProjection } from './productionRunArtifactHelpers'
 import type { ProductionRun, RunEvent } from './productionRunTypes'
@@ -26,6 +27,8 @@ export type ProductionRunProjection = {
   projectId: string
   revision: number
   status: ProductionRun['status']
+  /** 停着时停下的原因（Run 在停下那一刻记下的事实，经 runStopReason 读）；没停 = null；上一版停下没记 = 'unknown'。 */
+  stopReason: ReturnType<typeof runStopReason>
   stageId: string
   playbook: ProductionRun['playbook']
   origin: ProductionRun['origin']
@@ -74,6 +77,7 @@ export function safeRunProjection(run: ProductionRun): Omit<ProductionRunProject
     projectId: run.projectId,
     revision: run.revision,
     status: run.status,
+    stopReason: runStopReason(run),
     stageId: run.stageId,
     playbook: { name: run.playbook.name, version: run.playbook.version },
     origin: { host: run.origin.host, ...(run.origin.actorId ? { actorId: run.origin.actorId } : {}) },

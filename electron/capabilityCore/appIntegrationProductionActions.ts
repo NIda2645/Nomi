@@ -1,22 +1,29 @@
-import type { ApprovalReceiptAuthority } from './approvalReceipt'
+import { HumanApprovalRequiredError, ReceiptExpiredError, ReceiptScopeError, type ApprovalReceiptAuthority } from './approvalReceipt'
 import { decideRunOwnedGenerationGate } from './runOwnedGenerationGateAuthority'
 import type { GenerationProviderBootstrap } from './generationProviderBootstrap'
 import type { ExecutionContractV1 } from './executionContract'
+import { GenerationProviderCapabilityError } from './generationRuntimeAdapter'
 import type { ProductionRunService } from '../productionRun/productionRunService'
-import type { MultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
 import {
+  GenerationContinuationNotNeededError,
+  GenerationReworkRefusedError,
   prepareProductionGenerationContinuationAuthorization,
   prepareProductionGenerationReauthorization,
   type GenerationAuthorizationProjectIdentity,
 } from '../productionRun/prepareProductionGenerationAuthorization'
-import type { ProductionActionResult, ProductionRun } from '../productionRun/productionRunTypes'
+import type { ProductionRun, ProductionShotActionFailure, ProductionShotActionResult } from '../productionRun/productionRunTypes'
 import type { ShotPrice } from '../productionRun/shotPricing'
 import type { WorkspaceProjectRecordV2 } from '../workspace/workspaceTypes'
+import { ProductionRunParseError, ProductionRunRevisionConflictError } from '../productionRun/productionRunRepository'
+import { ProductionRunLockBusyError } from '../productionRun/productionRunLock'
+import { IllegalProductionTransitionError } from '../productionRun/productionRunState'
+import { ProductionRunControlRefusedError } from '../productionRun/productionRunControl'
+import { retryLiftsStop } from '../productionRun/productionRunLifecycle'
+import { runStopReason } from '../shared/productionRunStop'
+import { logError, logWarn } from '../logging/logger'
 
-// Keep the extracted action hooks on the scheduler's real result contract.
-// A reduced `{ quiescent }` shape is not assignable to the production
-// scheduler callback because callers also rely on progress/checkpoint data.
-type SchedulerLike = Pick<MultiShotBatchScheduler, 'runToQuiescence'>
+/** 这个 Run 现在驱动得起来吗；起不来是缺什么（与调度器构造同一份判断：appIntegration.submissionReadinessForRun）。 */
+export type ProductionDriverReadiness = 'ready' | 'provider_missing' | 'project_missing'
 
 type ActionDeps = {
   generationService: Pick<ProductionRunService, 'repository' | 'readFull' | 'command'>
@@ -24,23 +31,71 @@ type ActionDeps = {
   readProviderBootstrap: () => GenerationProviderBootstrap
   readProject: (projectId: string) => WorkspaceProjectRecordV2 | null
   resolveShotPrice: (contract: ExecutionContractV1) => ShotPrice
-  buildSchedulerForRun: (projectId: string, runId: string, run: Pick<ProductionRun, 'projectId' | 'generationPlan' | 'jobs'>) => SchedulerLike | null
-  driveScheduler: (projectId: string, runId: string, scheduler: SchedulerLike, label: string) => void
+  driverReadiness: (run: ProductionRun) => ProductionDriverReadiness
+  /** 给这个 Run 的批次调度器一个 tick（已经有一趟在跑就记一笔，收尾时补踢）。 */
+  kickScheduler: (projectId: string, runId: string) => void
   receiptAuthority?: ApprovalReceiptAuthority
   confirmGenerationInNomi?: (input: { challengeToken: string }) => Promise<unknown>
   projectRevisionResolver: (projectId: string) => number | undefined
 }
 
-function projectIdentity(projectId: string, record: WorkspaceProjectRecordV2): GenerationAuthorizationProjectIdentity {
-  if (!record.immutableProjectUuid || !record.projectGeneration || !Number.isInteger(record.revision)) {
-    throw new Error('project identity unavailable')
-  }
+/** 写项目记录时撞上的系统错误（磁盘满 / 只读 / 没有权限 / 被占用）：Node 给的是结构化的 errno 码，不是一句话。 */
+const LEDGER_WRITE_ERRNO = new Set(['ENOSPC', 'EDQUOT', 'EROFS', 'EACCES', 'EPERM', 'EBUSY'])
+
+/**
+ * 一次没做成的返工 / 续拍是哪一种——只认源头已经结构化的错误类型与系统错误码，**不读英文原话**。
+ * 认不出来的只剩 Nomi 自己的不变量断言（bug）：如实归到 `internal_error`，不装成「稍后再试」。
+ */
+export function productionShotActionFailureOf(error: unknown): ProductionShotActionFailure {
+  if (error instanceof GenerationReworkRefusedError) return error.refusal
+  if (error instanceof ProductionRunRevisionConflictError
+    || error instanceof ProductionRunLockBusyError
+    || error instanceof IllegalProductionTransitionError
+    || error instanceof ProductionRunControlRefusedError) return 'run_changed'
+  if (error instanceof ReceiptScopeError) return 'approval_stale'
+  if (error instanceof ReceiptExpiredError) return 'approval_expired'
+  if (error instanceof HumanApprovalRequiredError) return 'confirmation_unavailable'
+  if (error instanceof GenerationProviderCapabilityError) return 'provider_unavailable'
+  if (error instanceof ProductionRunParseError) return 'run_unreadable'
+  const errno = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined
+  if (typeof errno === 'string' && LEDGER_WRITE_ERRNO.has(errno)) return 'ledger_write_failed'
+  return 'internal_error'
+}
+
+function failed(failure: ProductionShotActionFailure): ProductionShotActionResult {
+  return { ok: false, code: 'failed', failure }
+}
+
+/** 没做成：原话连同堆栈进主进程日志（Nomi 自己的 bug 记 ERROR，其余是可预期的情形记 WARN），界面只拿语义码。 */
+function failedWith(error: unknown): ProductionShotActionResult {
+  const failure = productionShotActionFailureOf(error)
+  if (failure === 'internal_error') logError('production-run', 'production-action-internal-error', error)
+  else logWarn('production-run', 'production-action-failed', { failure }, error)
+  return failed(failure)
+}
+
+function projectIdentity(projectId: string, record: WorkspaceProjectRecordV2 | null): GenerationAuthorizationProjectIdentity | null {
+  if (!record?.immutableProjectUuid || !record.projectGeneration || !Number.isInteger(record.revision)) return null
   return {
     projectId,
     immutableProjectUuid: record.immutableProjectUuid,
     projectGeneration: record.projectGeneration,
     revocationEpoch: 0,
   }
+}
+
+/** 读这一批：读不出来（文件坏了 / 被占着）和已经不在了是两回事。 */
+function readRun(deps: ActionDeps, projectId: string, runId: string): ProductionRun | ProductionShotActionResult {
+  let run: ProductionRun | null
+  try {
+    run = deps.generationService.repository.read(projectId, runId)
+  } catch (error) {
+    logError('production-run', 'production-action-read-failed', error)
+    return failed('run_unreadable')
+  }
+  if (!run) return failed('run_missing')
+  if (!run.generationPlan?.shots || run.generationPlan.shots.length === 0) return failed('not_multishot')
+  return run
 }
 
 /**
@@ -50,58 +105,61 @@ function projectIdentity(projectId: string, record: WorkspaceProjectRecordV2): G
  * below the giant-file gate.
  */
 export function createProductionActionHooks(deps: ActionDeps): {
-  reworkProductionShot: (input: { projectId: string; runId: string; shotId?: string }) => Promise<ProductionActionResult>
-  resumeProductionBatch: (input: { projectId: string; runId: string; reason: 'budget' | 'manual' }) => Promise<ProductionActionResult>
+  reworkProductionShot: (input: { projectId: string; runId: string; shotId?: string }) => Promise<ProductionShotActionResult>
+  resumeProductionBatch: (input: { projectId: string; runId: string }) => Promise<ProductionShotActionResult>
 } {
-  const reworkProductionShot = async (input: { projectId: string; runId: string; shotId?: string }): Promise<ProductionActionResult> => {
-    const { projectId, runId, shotId } = input
-    if (!deps.isProjectOpen(projectId)) return { ok: false, code: 'run_not_open' }
-    let run: ProductionRun | null
+  /** 「继续」只有一条路：run.control resume（与任务卡、MCP 同一个口；服务的恢复钩子叫醒驱动这个 Run 的那一方）。 */
+  async function resumeRun(run: ProductionRun, commandId: string): Promise<ProductionShotActionResult | null> {
     try {
-      run = deps.generationService.repository.read(projectId, runId)
-    } catch {
-      return { ok: false, code: 'failed', message: 'run read failed' }
+      await deps.generationService.command(run.projectId, run.runId, {
+        commandId,
+        expectedRevision: run.revision,
+        type: 'run.control',
+        payload: { action: 'resume' },
+        issuedAt: new Date().toISOString(),
+      })
+      return null
+    } catch (error) {
+      return failedWith(error)
     }
-    if (!run || !run.generationPlan?.shots || run.generationPlan.shots.length === 0) return { ok: false, code: 'not_multishot' }
+  }
+
+  const reworkProductionShot = async (input: { projectId: string; runId: string; shotId?: string }): Promise<ProductionShotActionResult> => {
+    const { projectId, runId, shotId } = input
+    if (!deps.isProjectOpen(projectId)) return failed('run_not_open')
+    const read = readRun(deps, projectId, runId)
+    if ('code' in read) return read
+    let run = read
+    // 多镜批次里重做的是「这一镜」：没带镜头编号就不知道重做谁。
+    if (!shotId) return failed('request_invalid')
     const receiptAuthority = deps.receiptAuthority
     const confirm = deps.confirmGenerationInNomi
+    if (!receiptAuthority || !confirm) return failed('confirmation_unavailable')
     const record = deps.readProject(projectId)
-    if (!receiptAuthority || !confirm || !record) return { ok: false, code: 'unavailable' }
-    let identity: GenerationAuthorizationProjectIdentity
-    try {
-      identity = projectIdentity(projectId, record)
-    } catch {
-      return { ok: false, code: 'unavailable' }
-    }
-    const providerBootstrap = deps.readProviderBootstrap()
+    const identity = projectIdentity(projectId, record)
+    if (!record || !identity) return failed('project_unavailable')
     let authorization
     try {
       authorization = prepareProductionGenerationReauthorization({
         lease: identity,
         projectRevision: record.revision,
         run,
-        ...(shotId ? { shotId } : {}),
-        providers: providerBootstrap.providers,
+        shotId,
+        providers: deps.readProviderBootstrap().providers,
         resolveShotPrice: deps.resolveShotPrice,
         now: new Date().toISOString(),
       })
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      if (/previous generation attempt|previously authorized generation plan/.test(message)) return { ok: false, code: 'no_prior_attempt' }
-      return { ok: false, code: 'failed', message }
-    }
-    try {
       run = (await deps.generationService.command(projectId, runId, {
         commandId: `production-rework-authorize:${authorization.envelope.gateId}`,
         expectedRevision: run.revision,
         type: 'generation.reauthorize',
-        payload: { authorization, ...(shotId ? { shotId } : {}) },
+        payload: { authorization, shotId },
         issuedAt: new Date().toISOString(),
       })).run
     } catch (error) {
-      return { ok: false, code: 'failed', message: error instanceof Error ? error.message : String(error) }
+      return failedWith(error)
     }
-    const shot = shotId ? (run.generationPlan?.shots ?? []).find((candidate) => candidate.shotId === shotId) : undefined
+    const shot = (run.generationPlan?.shots ?? []).find((candidate) => candidate.shotId === shotId)
     const shotContract = shot?.contract ?? run.generationPlan?.contract
     const modelLabel = shotContract?.modelId ?? run.generationPlan?.candidate.modelId ?? ''
     const shotSummary = typeof shot?.candidate.prompt === 'string' && shot.candidate.prompt.trim()
@@ -124,111 +182,111 @@ export function createProductionActionHooks(deps: ActionDeps): {
         },
       })
       if (!decision.approved) return { ok: false, code: 'rework_declined' }
-      const submitting = deps.generationService.repository.read(projectId, runId)
-      if (submitting?.generationPlan?.state !== 'submitted') {
-        if (!submitting) return { ok: false, code: 'failed', message: 'run gone before submit' }
-        await deps.generationService.command(projectId, runId, {
+      run = decision.run
+      // 封好还没开拍的方案（sealed）：批了这一镜就把方案交出去，调度器才会派。
+      if (run.generationPlan?.state !== 'submitted') {
+        run = (await deps.generationService.command(projectId, runId, {
           commandId: `production-rework-submit:${authorization.envelope.gateId}`,
-          expectedRevision: submitting.revision,
+          expectedRevision: run.revision,
           type: 'generation.submit',
           payload: {},
           issuedAt: new Date().toISOString(),
-        })
+        })).run
       }
     } catch (error) {
-      return { ok: false, code: 'failed', message: error instanceof Error ? error.message : String(error) }
+      return failedWith(error)
     }
-    const kicking = deps.generationService.repository.read(projectId, runId)
-    if (kicking) {
-      const scheduler = deps.buildSchedulerForRun(projectId, runId, kicking)
-      if (scheduler) deps.driveScheduler(projectId, runId, scheduler, 'rework dispatch tick')
+    // 停着的批次一镜都不派：这次停下若随重做解除（retryLiftsStop，生命周期 owner 判），就让它接着走，
+    // 否则这一镜永远不开拍（例如因为有镜头失败而停下的批次——重做的正是那一镜）。
+    const stopReason = runStopReason(run)
+    if (stopReason && retryLiftsStop(stopReason)) {
+      const refused = await resumeRun(run, `production-rework-resume:${authorization.envelope.gateId}`)
+      if (refused) return refused
     }
+    deps.kickScheduler(projectId, runId)
     return { ok: true, code: 'reworked' }
   }
 
-  const resumeProductionBatch = async (input: { projectId: string; runId: string; reason: 'budget' | 'manual' }): Promise<ProductionActionResult> => {
-    const { projectId, runId, reason } = input
-    if (!deps.isProjectOpen(projectId)) return { ok: false, code: 'run_not_open' }
-    let run: ProductionRun | null
-    try {
-      run = deps.generationService.repository.read(projectId, runId)
-    } catch {
-      return { ok: false, code: 'failed', message: 'run read failed' }
+  /**
+   * 「继续剩余」：接着拍这一批还没开拍的镜。走哪条路由 Run 在停下那一刻记下的原因决定（渲染层不替它选）：
+   * 只有真因为预算停下（知道价格时才可能）才走续额度确认；其余一律直接接着拍。
+   */
+  const resumeProductionBatch = async (input: { projectId: string; runId: string }): Promise<ProductionShotActionResult> => {
+    const { projectId, runId } = input
+    if (!deps.isProjectOpen(projectId)) return failed('run_not_open')
+    const read = readRun(deps, projectId, runId)
+    if ('code' in read) return read
+    let run = read
+    if (run.generationPlan?.state !== 'submitted') return failed('plan_not_submitted')
+    if (run.status === 'completed' || run.status === 'cancelled') return failed('run_finished')
+    const stopReason = runStopReason(run)
+    if (stopReason === null) {
+      if (run.status !== 'running') return failed('not_stopped')
+      // 已经在跑：可能是上一趟驱动歇下了，踢一下让它接着派。
+      deps.kickScheduler(projectId, runId)
+      return { ok: true, code: 'resumed' }
     }
-    if (!run || !run.generationPlan?.shots || run.generationPlan.shots.length === 0) return { ok: false, code: 'not_multishot' }
-    if (run.generationPlan.state !== 'submitted') return { ok: false, code: 'failed', message: 'plan not submitted' }
-    if (reason === 'budget') {
-      const providerBootstrap = deps.readProviderBootstrap()
-      const receiptAuthority = deps.receiptAuthority
-      const confirm = deps.confirmGenerationInNomi
-      const record = deps.readProject(projectId)
-      if (!receiptAuthority || !confirm || !record) return { ok: false, code: 'unavailable' }
-      let identity: GenerationAuthorizationProjectIdentity
-      try {
-        identity = projectIdentity(projectId, record)
-      } catch {
-        return { ok: false, code: 'unavailable' }
-      }
-      let authorization
-      try {
-        authorization = prepareProductionGenerationContinuationAuthorization({
-          lease: identity,
-          projectRevision: record.revision,
-          run,
-          providers: providerBootstrap.providers,
-          resolveShotPrice: deps.resolveShotPrice,
-          now: new Date().toISOString(),
-        })
-        run = (await deps.generationService.command(projectId, runId, {
-          commandId: `production-continuation-authorize:${authorization.envelope.gateId}`,
-          expectedRevision: run.revision,
-          type: 'generation.continue_authorization',
-          payload: { authorization },
-          issuedAt: new Date().toISOString(),
-        })).run
-      } catch (error) {
-        return { ok: false, code: 'failed', message: error instanceof Error ? error.message : String(error) }
-      }
-      const modelLabel = [...new Set(authorization.envelope.jobs.map((job) => job.modelId))].join(', ')
-      try {
-        const decision = await decideRunOwnedGenerationGate({
-          owner: deps.generationService,
-          receipts: receiptAuthority,
-          confirm,
-          lease: identity,
-          operationId: runId,
-          authorization,
-          commandPrefix: 'production-continuation',
-          projectRevisionResolver: deps.projectRevisionResolver,
-          display: { model: modelLabel },
-        })
-        if (!decision.approved) return { ok: false, code: 'resume_declined' }
-        run = decision.run
-      } catch (error) {
-        return { ok: false, code: 'failed', message: error instanceof Error ? error.message : String(error) }
-      }
+    // 驱动不起来就别把 Run 改成 running——那只会是一次假继续。
+    const readiness = deps.driverReadiness(run)
+    if (readiness === 'provider_missing') return failed('provider_unavailable')
+    if (readiness === 'project_missing') return failed('project_unavailable')
+    if (stopReason === 'budget') {
+      const continued = await continueBudget(run)
+      if ('code' in continued) return continued
+      run = continued
     }
-    if (run.status === 'paused' || run.status === 'needs_attention') {
-      try {
-        await deps.generationService.command(projectId, runId, {
-          commandId: `production-resume:${runId}:${run.revision}`,
-          expectedRevision: run.revision,
-          type: 'run.status',
-          payload: { status: 'running' },
-          issuedAt: new Date().toISOString(),
-        })
-      } catch (error) {
-        return { ok: false, code: 'failed', message: error instanceof Error ? error.message : String(error) }
-      }
-    } else if (run.status !== 'running') {
-      return { ok: false, code: 'failed', message: `run status ${run.status} is not resumable` }
-    }
-    const running = deps.generationService.repository.read(projectId, runId)
-    if (!running) return { ok: false, code: 'failed', message: 'run gone after resume' }
-    const scheduler = deps.buildSchedulerForRun(projectId, runId, running)
-    if (!scheduler) return { ok: false, code: 'unavailable' }
-    deps.driveScheduler(projectId, runId, scheduler, 'batch resume tick')
+    const refused = await resumeRun(run, `production-resume:${runId}:${run.revision}`)
+    if (refused) return refused
     return { ok: true, code: 'resumed' }
+  }
+
+  /** 因预算停下的批次：先让人批续的那笔钱（盖得住或没剩下要批的，就不用再批）。返回批完之后的 Run。 */
+  async function continueBudget(run: ProductionRun): Promise<ProductionRun | ProductionShotActionResult> {
+    const receiptAuthority = deps.receiptAuthority
+    const confirm = deps.confirmGenerationInNomi
+    if (!receiptAuthority || !confirm) return failed('confirmation_unavailable')
+    const record = deps.readProject(run.projectId)
+    const identity = projectIdentity(run.projectId, record)
+    if (!record || !identity) return failed('project_unavailable')
+    let authorization
+    try {
+      authorization = prepareProductionGenerationContinuationAuthorization({
+        lease: identity,
+        projectRevision: record.revision,
+        run,
+        providers: deps.readProviderBootstrap().providers,
+        resolveShotPrice: deps.resolveShotPrice,
+        now: new Date().toISOString(),
+      })
+    } catch (error) {
+      if (error instanceof GenerationContinuationNotNeededError) return run
+      return failedWith(error)
+    }
+    try {
+      const authorized = (await deps.generationService.command(run.projectId, run.runId, {
+        commandId: `production-continuation-authorize:${authorization.envelope.gateId}`,
+        expectedRevision: run.revision,
+        type: 'generation.continue_authorization',
+        payload: { authorization },
+        issuedAt: new Date().toISOString(),
+      })).run
+      const modelLabel = [...new Set(authorization.envelope.jobs.map((job) => job.modelId))].join(', ')
+      const decision = await decideRunOwnedGenerationGate({
+        owner: deps.generationService,
+        receipts: receiptAuthority,
+        confirm,
+        lease: identity,
+        operationId: authorized.runId,
+        authorization,
+        commandPrefix: 'production-continuation',
+        projectRevisionResolver: deps.projectRevisionResolver,
+        display: { model: modelLabel },
+      })
+      if (!decision.approved) return { ok: false, code: 'resume_declined' }
+      return decision.run
+    } catch (error) {
+      return failedWith(error)
+    }
   }
 
   return { reworkProductionShot, resumeProductionBatch }

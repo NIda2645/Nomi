@@ -9,7 +9,7 @@ import {
 } from './productionShotPhase'
 import { decideShotClaim } from './decideShotClaim'
 import { applyProductionCommand } from '../productionRun/productionRunReducer'
-import type { ProductionGenerationPlan, ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from '../productionRun/productionRunTypes'
+import type { ProductionGenerationPlan, ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus, ProductionRunStopReason } from '../productionRun/productionRunTypes'
 
 // 制作里「一镜在哪一段」的唯一判定：主进程的画布落地投影与渲染层的排队 / 已停小标读的是同一个函数。
 
@@ -24,6 +24,8 @@ function job(shotId: string, status: ProductionJobStatus, extra: Partial<Product
 
 function run(opts: {
   status?: ProductionRunStatus
+  /** 停下的那一刻记下的原因（reducer 写的 run.stop）；不给 = 上一版留下的、没记原因的 Run。 */
+  stop?: ProductionRunStopReason
   planState?: ProductionGenerationPlan['state']
   shots?: Array<{ shotId: string; role?: 'anchor' | 'shot'; nodeId?: string; included?: boolean }>
   jobs?: ProductionJob[]
@@ -43,6 +45,7 @@ function run(opts: {
       })) } : {}),
       updatedAt: NOW,
     },
+    ...(opts.stop ? { stop: { reason: opts.stop, at: NOW } } : {}),
     createdAt: NOW, updatedAt: NOW,
   }
 }
@@ -66,22 +69,37 @@ describe('deriveProductionShotState', () => {
     expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'adopted')] }), 's1')).toEqual({ phase: 'done' })
   })
 
-  it('预算 / 急停错因 → 已停（可续拍）；供应商拒 → 失败（带原因）', () => {
-    expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention', { errorCode: 'budget_exhausted' })] }), 's1'))
+  it('批被停 / 取消时到达这一镜 → 已停，原因照 Run 记下的说；供应商拒 → 失败（带原因）', () => {
+    expect(phaseOf(run({ status: 'paused', stop: 'user_paused', shots: [{ shotId: 's1' }], jobs: [job('s1', 'cancelled_remote')] }), 's1'))
+      .toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
+    expect(phaseOf(run({ status: 'needs_attention', stop: 'budget', shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention')] }), 's1'))
       .toEqual({ phase: 'stopped', stoppedReason: 'budget' })
-    expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'cancelled_remote')] }), 's1'))
-      .toEqual({ phase: 'stopped', stoppedReason: 'stopped' })
     expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention', { errorCode: 'provider_task_failed', errorMessage: '内容被拦截' })] }), 's1'))
       .toEqual({ phase: 'failed', failureMessage: '内容被拦截' })
+    // 错因码不再决定「为什么停」：以前 budget_exhausted / restart_recovery_required 这类码会被说成「预算已用完」。
+    expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention', { errorCode: 'budget_exhausted' })] }), 's1'))
+      .toEqual({ phase: 'failed' })
   })
 
-  it('Run 整体停了：没派发的镜 → 已停（预算 halt / 手动急停分开说）', () => {
-    expect(phaseOf(run({ status: 'needs_attention', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
-    expect(phaseOf(run({ status: 'paused', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'stopped' })
+  it('Run 整体停了：没派发的镜 → 已停，原因只读停下那一刻记下的事实', () => {
+    const idle = (status: ProductionRunStatus, stop?: ProductionRunStopReason) => phaseOf(run({ status, stop, shots: [{ shotId: 's1' }] }), 's1')
+    expect(idle('needs_attention', 'budget')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+    expect(idle('needs_attention', 'failed')).toEqual({ phase: 'stopped', stoppedReason: 'failed' })
+    expect(idle('needs_attention', 'restart_recovery')).toEqual({ phase: 'stopped', stoppedReason: 'restart_recovery' })
+    expect(idle('pausing', 'user_paused')).toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
+    expect(idle('paused', 'user_paused')).toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
+    expect(idle('cancelled', 'user_cancelled')).toEqual({ phase: 'stopped', stoppedReason: 'user_cancelled' })
+  })
+
+  it('上一版留下的、没记停下原因的 Run：说「停了」，绝不猜成预算', () => {
+    // 这正是用户实见的那一格：needs_attention 以前一律被说成「预算已用完 · 提额续拍」，而那天根本没有价格。
+    expect(phaseOf(run({ status: 'needs_attention', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'unknown' })
+    expect(phaseOf(run({ status: 'paused', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'unknown' })
+    expect(phaseOf(run({ status: 'running', shots: [{ shotId: 's1' }] }), 's1')?.phase).toBe('queued')
   })
 
   it('预算停批后画布接手了这一镜（job 已脱离）→ null：节点上不再挂「已停 · 提额续拍」', () => {
-    const halted = run({ status: 'needs_attention', shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3' }], jobs: [job('s1', 'ready'), job('s2', 'authorized'), job('s3', 'authorized')] })
+    const halted = run({ status: 'needs_attention', stop: 'budget', shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3' }], jobs: [job('s1', 'ready'), job('s2', 'authorized'), job('s3', 'authorized')] })
     expect(phaseOf(halted, 's2')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
     const claimed = applyProductionCommand(halted, {
       commandId: 'claim-s2', expectedRevision: halted.revision, type: 'shot.claim',

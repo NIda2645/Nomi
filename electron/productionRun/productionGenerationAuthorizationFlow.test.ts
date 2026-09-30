@@ -131,7 +131,6 @@ function setup(approve = true, hardCap = 10) {
     projectRoot: root,
     immutableProjectUuid: lease.immutableProjectUuid,
     projectGeneration: lease.projectGeneration,
-    projectRevision: 12,
     intentMacKey: "test-intent-key",
     providers: [provider],
     now: () => NOW,
