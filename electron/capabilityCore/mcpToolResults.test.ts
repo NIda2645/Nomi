@@ -1,7 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { canvasReadResultSchema, projectCanvasRead } from '../shared/agentCapabilities/canvasRead'
-import { safeRunProjection } from '../productionRun/productionRunProjections'
-import type { ProductionRun } from '../productionRun/productionRunTypes'
 import {
   buildCanonicalMcpToolResult,
   buildToolOutcome,
@@ -268,33 +266,5 @@ describe('buildProgressStartMessage (A1 起始帧参数回显)', () => {
     expect(buildProgressStartMessage('nomi_run_start', { playbook: 'brand.promo' }))
       .toBe('正在创建制作草稿 · brand.promo')
     expect(buildProgressStartMessage('nomi_read', { target: 'canvas' })).toBeNull()
-  })
-})
-
-// Agent 读 Run 时读的是停下那一刻记下的原因（2026-09-29）：投影透出 stopReason（runStopReason），转述按它说。
-// 以前 needs_attention 一律「有任务卡住了」，Agent 分不清是失败、预算还是重启后要核对。
-describe('nomi_read target=run：停下的原因来自 Run 记下的事实', () => {
-  const stoppedRun = (stop?: ProductionRun['stop']) => ({
-    schemaVersion: 1, runId: 'run-stop', projectId: 'p1', revision: 3, status: 'needs_attention', stageId: 'generate',
-    playbook: { name: 'generation.single-shot', version: '1' }, origin: { host: 'semantic-mcp' },
-    budget: { currency: 'CNY', authorized: 0, reserved: 0, actual: 0, unsettled: 0, unknownInFlight: 0 },
-    policy: {}, planVersion: 1, snapshotCursor: 3, stages: [], gates: [], jobs: [], artifacts: [],
-    ...(stop ? { stop } : {}), createdAt: '2026-09-29T00:00:00.000Z', updatedAt: '2026-09-29T00:00:00.000Z',
-  }) as unknown as ProductionRun
-
-  it('a batch stopped because a shot failed says so, with the recorded reason in the outcome', () => {
-    const projection = safeRunProjection(stoppedRun({ reason: 'failed', at: '2026-09-29T00:00:00.000Z' }))
-    const { text, outcome } = buildToolOutcome('nomi_read', { target: 'run', projectId: 'p1', runId: 'run-stop' }, projection)
-    expect(outcome).toMatchObject({ stopReason: 'failed' })
-    expect(text).toContain('有镜头没生成成功')
-    expect(text, '不是预算停下的，不说额度用完').not.toContain('额度用完')
-  })
-
-  it('an older run that stopped without a recorded reason is never described as a budget stop', () => {
-    const projection = safeRunProjection(stoppedRun())
-    const { text, outcome } = buildToolOutcome('nomi_read', { target: 'run', projectId: 'p1', runId: 'run-stop' }, projection, 'en')
-    expect(outcome).toMatchObject({ stopReason: 'unknown' })
-    expect(text).toContain('reason not recorded')
-    expect(text, '没记原因就不猜成预算').not.toMatch(/budget used up/i)
   })
 })

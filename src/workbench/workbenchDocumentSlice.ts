@@ -9,6 +9,22 @@ import {
   type WorkbenchDocument,
 } from './workbenchTypes'
 
+/**
+ * 谁发起了这次「新建方案」。**这是决定要不要替用户打开它的唯一输入**：
+ * 只有用户自己的动作（点「新建方案」、点「复制」）能改变他正在看的那份方案；
+ * Agent / 程序新建的东西只进列表，打开是用户的下一个动作（与「程序不挪画布」同一条）。
+ * 必须由调用方显式说出来——没有默认值，忘了写编译不过，而不是悄悄替用户切了界面。
+ */
+export type StoryboardInitiator = 'user' | 'agent'
+
+/**
+ * 新建方案之后，「用户正在看的那份」要不要跟着变。**唯一**决定它的地方（`addStoryboardDesign` 与
+ * `setStoryboardPlan` 的新建分支共用），不许各调用方自己记得传不传。
+ */
+function activationAfterCreate(initiator: StoryboardInitiator, documentId: string, designId: string): { activeDocumentId: string; activeStoryboardId: string } | Record<string, never> {
+  return initiator === 'user' ? { activeDocumentId: documentId, activeStoryboardId: designId } : {}
+}
+
 /** 创作文档 + 分镜方案的状态与 action（P2/P4）。从 workbenchStore 拆出，守 R9/R12 巨壳门。 */
 export type WorkbenchDocumentSlice = {
   /** 原稿文档集合（有序，多文档侧栏真相源）。随项目持久化。 */
@@ -35,8 +51,11 @@ export type WorkbenchDocumentSlice = {
    * 新增一条方案。`identity` 只有 Agent 产出那条路会传：它让方案的 id **就是**模型手里那个
    * draft id，于是「模型指名的那份」与「用户在侧栏看到的那一行」是同一个身份，多轮改的是同一份。
    * 传了 identity 就按模型给的标题原样命名（不追加序号——给「海边日落」加个 2 是胡说）。
+   *
+   * `initiator` 必填：`'user'` 才会把新方案设为用户正在看的那份，`'agent'` 只入列表。
    */
-  addStoryboardDesign: (documentId?: string, source?: StoryboardPlan, identity?: { id: string; title: string }) => StoryboardDesign | null
+  addStoryboardDesign: (input: { initiator: StoryboardInitiator; documentId?: string; source?: StoryboardPlan; identity?: { id: string; title: string } }) => StoryboardDesign | null
+  /** 复制只会由用户的菜单动作发起，所以复制出来的那份会被打开。 */
   duplicateStoryboardDesign: (id: string, documentId?: string) => StoryboardDesign | null
   renameStoryboardDesign: (id: string, title: string) => void
   deleteStoryboardDesign: (id: string, documentId?: string) => void
@@ -53,7 +72,7 @@ export type WorkbenchDocumentSlice = {
   /** 恢复整套文档集合 + 激活 id（项目载入专用，不标脏）。 */
   hydrateWorkbenchDocuments: (documents: WorkbenchDocument[], activeId: string | null) => void
   /** 写入/改写分镜方案对象（planner 落库、编辑器逐字段编辑）：置草稿态。按 documentId 索引；缺省回退 activeDocumentId。 */
-  setStoryboardPlan: (plan: StoryboardPlan | null, documentId?: string, storyboardId?: string, syncSource?: boolean, createNew?: boolean) => StoryboardDesign | null
+  setStoryboardPlan: (plan: StoryboardPlan | null, documentId?: string, storyboardId?: string, syncSource?: boolean, createNew?: false | StoryboardInitiator) => StoryboardDesign | null
   /** 首次行内/批量生成把方案「落进画布」后调用：方案保留、转已落画布（卡片留痕）。按 documentId 索引；缺省回退 activeDocumentId。 */
   commitStoryboardPlan: (documentId?: string, storyboardId?: string) => void
   /** 丢弃方案：清空该文档的方案（卡片随之消失）。按 documentId 索引；缺省回退 activeDocumentId。 */
@@ -215,7 +234,7 @@ export const createWorkbenchDocumentSlice = (
       }
     })
   },
-  addStoryboardDesign: (documentId, source, identity) => {
+  addStoryboardDesign: ({ initiator, documentId, source, identity }) => {
     const target = resolveTargetDocumentId(documentId, get)
     if (!target) return null
     const state = get()
@@ -238,8 +257,7 @@ export const createWorkbenchDocumentSlice = (
         ...current.storyboardDesignsByDocumentId,
         [target]: [...(current.storyboardDesignsByDocumentId[target] ?? []), design],
       },
-      activeDocumentId: target,
-      activeStoryboardId: design.id,
+      ...activationAfterCreate(initiator, target, design.id),
       persistRevision: current.persistRevision + 1,
     }))
     if (source) projectPlan(design)
@@ -250,7 +268,7 @@ export const createWorkbenchDocumentSlice = (
     if (!target) return null
     const source = findDesign(get(), id, target)
     if (!source) return null
-    return get().addStoryboardDesign(target, source.plan)
+    return get().addStoryboardDesign({ initiator: 'user', documentId: target, source: source.plan })
   },
   renameStoryboardDesign: (id, title) => {
     const trimmed = title.trim()
@@ -300,7 +318,7 @@ export const createWorkbenchDocumentSlice = (
       }
     })
   },
-  setStoryboardPlan: (storyboardPlan, documentId, storyboardId, syncSource = false, createNew = false) => {
+  setStoryboardPlan: (storyboardPlan, documentId, storyboardId, syncSource = false, createNew: false | StoryboardInitiator = false) => {
     // P0-6:方案是 per-project 持久化产物 → bump persistRevision 触发防抖落盘(否则用户手改的方案不保存)。
     // 写/改方案一律置草稿态(被编辑即与画布上旧节点不一致)。P4:按 documentId 索引（缺省回退激活文档）。
     const target = resolveTargetDocumentId(documentId, get)
@@ -312,10 +330,10 @@ export const createWorkbenchDocumentSlice = (
       // async result was in flight. Ordinary UI and compatibility calls keep
       // updating the currently visible design.
       const visible = findDesign(state, state.activeStoryboardId, target)
-      const replaceEmptyStarter = createNew && !storyboardId && visible && isEmptyStoryboardPlan(visible.plan)
+      const replaceEmptyStarter = createNew !== false && !storyboardId && visible && isEmptyStoryboardPlan(visible.plan)
       const active = storyboardId
         ? findDesign(state, storyboardId, target)
-        : createNew && !replaceEmptyStarter
+        : createNew !== false && !replaceEmptyStarter
           ? undefined
           : visible
       // A revision whose target was deleted while the planner was running is
@@ -346,12 +364,13 @@ export const createWorkbenchDocumentSlice = (
         : createDesign(target, storyboardPlan, sourceDocumentUpdatedAt)
       appliedDesign = nextDesign
       const nextDesigns = active ? designs.map((design) => (design.id === active.id ? nextDesign : design)) : [...designs, nextDesign]
-      const shouldReveal = state.activeDocumentId === target
-        && (storyboardId ? state.activeStoryboardId === storyboardId : state.activeStoryboardId === null)
+      // 只有「这一笔新建了一份方案」才存在打开谁的问题；改已有方案不动用户正在看的那份。
+      // 发起人不说（`createNew` 缺省）= 用户在编辑器里直接动手，沿用老行为。
+      const created = !active
+      const reveal = created && state.activeDocumentId === target && state.activeStoryboardId === null
       return {
         storyboardDesignsByDocumentId: { ...state.storyboardDesignsByDocumentId, [target]: nextDesigns },
-        activeDocumentId: shouldReveal ? target : state.activeDocumentId,
-        activeStoryboardId: shouldReveal ? nextDesign.id : state.activeStoryboardId,
+        ...(reveal ? activationAfterCreate(createNew || 'user', target, nextDesign.id) : {}),
         persistRevision: state.persistRevision + 1,
       }
     })

@@ -6,8 +6,7 @@
 // structuredContent.nomiOutcome 给模型稳定字段（runId/params/nextActions/error），不再让它从文本里抠 ID。
 // 纯逻辑、不碰 electron —— 与 mcpProtocol 同边界，可裸 node 单测。
 
-import { isStillAtProvider } from '../productionRun/productionRunLifecycle'
-import type { ProductionJobStatus, ProductionRunStopReason } from '../productionRun/productionRunTypes'
+import { ACTIVE_JOB_STATUSES } from '../productionRun/productionRunControl'
 import { isAnchorCheckpointGate } from '../productionRun/anchorCheckpoint'
 import { projectGenerationRecovery } from './generationRecoveryProjection'
 
@@ -36,30 +35,8 @@ const RUN_STATUS_HINT: Record<string, { zh: string; en: string; nextZh: string; 
   cancelled: { zh: '已取消', en: 'cancelled', nextZh: '未提交的任务不计费', nextEn: 'Unsubmitted jobs are not charged', action: 'none' },
 }
 
-/**
- * 停着的 Run **为什么停**（Run 在停下那一刻记下的事实，投影里的 `stopReason`）→ 给 Agent 转述的人话与下一步。
- * 以前 needs_attention 一律说「有任务卡住了」，Agent 没法告诉用户是预算、失败还是重启后要核对。
- * 穷尽：多一种停下原因而这里没表态，类型检查当场红。
- */
-const STOP_REASON_HINT: Record<ProductionRunStopReason | 'unknown', { zh: string; en: string; nextZh: string; nextEn: string; action: string }> = {
-  budget: { zh: '批过的额度用完了', en: 'approved budget used up', nextZh: '已知价格的镜头把批过的额度用完了；续拍要先在 Nomi 里续额度', nextEn: 'Priced shots used up the approved budget; continuing needs a budget top-up in Nomi', action: 'raise_budget' },
-  failed: { zh: '有镜头没生成成功', en: 'a shot failed', nextZh: '有镜头没生成成功，这一批停下了。可以在 Nomi 画布上重做那一镜，或取消这次制作', nextEn: 'A shot failed, so the batch stopped. Redo that shot on the Nomi canvas, or cancel the run', action: 'rework_or_cancel' },
-  user_paused: { zh: '用户暂停了', en: 'paused by the user', nextZh: '已提交的花费不退但产物保留；未提交的不再花钱。可继续或取消', nextEn: 'Submitted spend is not refundable but its output is kept; nothing new will be charged. Resume or cancel', action: 'resume_or_cancel' },
-  user_cancelled: { zh: '用户取消了', en: 'cancelled by the user', nextZh: '未提交的任务不计费', nextEn: 'Unsubmitted jobs are not charged', action: 'none' },
-  restart_recovery: { zh: '重启后待核对', en: 'waiting for a post-restart check', nextZh: 'Nomi 重启后要先核对之前在跑的任务，看错误详情选恢复动作', nextEn: 'After a restart Nomi must verify the jobs that were running; check the error details for recovery actions', action: 'recover' },
-  unknown: { zh: '已停（上一版没记原因）', en: 'stopped (reason not recorded by an older version)', nextZh: '这次制作是上一版停下的，没有记下原因；看错误详情选恢复动作，或取消', nextEn: 'An older version stopped this run without recording why; check the error details for recovery actions, or cancel', action: 'recover' },
-}
-
 function str(value: unknown): string {
   return typeof value === 'string' ? value : ''
-}
-
-/** 投影里的停下原因（productionRunProjections 只透出 runStopReason 读到的那一格）。不认识的词当作没给。 */
-function stopReasonOf(value: Record<string, unknown>): ProductionRunStopReason | 'unknown' | null {
-  const raw = value.stopReason
-  return typeof raw === 'string' && Object.prototype.hasOwnProperty.call(STOP_REASON_HINT, raw)
-    ? raw as ProductionRunStopReason | 'unknown'
-    : null
 }
 function rec(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {}
@@ -383,8 +360,7 @@ export function buildToolOutcome(
 
   if (toolName === 'nomi_read' && readTarget === 'run') {
     const status = str(value.status) || 'unknown'
-    const stopReason = stopReasonOf(value)
-    const hint = stalledDraftHint(value) ?? (status === 'needs_attention' && stopReason ? STOP_REASON_HINT[stopReason] : RUN_STATUS_HINT[status])
+    const hint = stalledDraftHint(value) ?? RUN_STATUS_HINT[status]
     const artifacts = Array.isArray(value.artifacts) ? (value.artifacts as Array<Record<string, unknown>>) : []
     const latest = artifacts.at(-1)
     const preview = latest ? rec(latest.preview) : {}
@@ -454,7 +430,7 @@ export function buildToolOutcome(
     return {
       text,
       outcome: {
-        kind: 'run_status', runId, projectId, status, stopReason, stageId: str(value.stageId) || null, trustLevel,
+        kind: 'run_status', runId, projectId, status, stageId: str(value.stageId) || null, trustLevel,
         budget: { authorized: budget.authorized ?? null, actual: budget.actual ?? null },
         latestPreviewUrl: str(preview.url) || null,
         ...(direction && direction.candidates.length ? { directionGateId: direction.gateId, directionCandidates: direction.candidates } : {}),
@@ -577,7 +553,7 @@ export function buildToolOutcome(
     const budget = rec(value.budget)
     // 诚实敞口（D4）：已提交给供应商的任务收不回、钱已花——如实报数量，别让用户以为「停=零损失」。
     const jobsArr = Array.isArray(value.jobs) ? (value.jobs as Array<Record<string, unknown>>) : []
-    const inFlight = jobsArr.filter((job) => isStillAtProvider({ status: str(job.status) as ProductionJobStatus })).length
+    const inFlight = jobsArr.filter((job) => ACTIVE_JOB_STATUSES.includes(str(job.status))).length
     const done = action === 'pause'
       ? (status === 'pausing' ? L(ctx, '✓ 正在暂停', '✓ Pausing') : L(ctx, '✓ 已暂停', '✓ Paused'))
       : action === 'resume'

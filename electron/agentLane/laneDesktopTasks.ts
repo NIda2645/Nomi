@@ -1,29 +1,7 @@
-import type { LaneTaskCandidate, LaneTaskFacts, LaneTaskStatus } from '../shared/agentLane/laneContracts'
+import type { LaneTaskCandidate, LaneTaskFacts } from '../shared/agentLane/laneContracts'
 import type { ProductionRun } from '../productionRun/productionRunTypes'
 import { canAdoptArtifact } from '../productionRun/productionRunReducer'
 import { getProductionRunService, subscribeProductionRunChanges } from '../productionRun/productionRunRuntime'
-import { runStopReason } from '../shared/productionRunStop'
-
-/**
- * needs_attention 在 Agent 任务列表里算「失败」还是「停了」：只读 Run 在停下那一刻记下的原因（runStopReason）。
- * 以前一律当失败——额度用完的停也被说成失败。
- */
-function attentionTaskStatus(run: ProductionRun): LaneTaskStatus {
-  const reason = runStopReason(run)
-  switch (reason) {
-    case 'budget':
-    case 'user_paused':
-    case 'user_cancelled':
-      return 'stopped'
-    case 'failed':
-    case 'restart_recovery':
-    case 'unknown':
-    case null:
-      return 'failed'
-    default:
-      return ((value: never) => value)(reason)
-  }
-}
 
 /** Domain events invalidate cached facts; token deltas only renew expired preview handles. */
 export function createDesktopLaneTasks(projectId: string, refresh: () => void) {
@@ -32,7 +10,7 @@ export function createDesktopLaneTasks(projectId: string, refresh: () => void) {
     const stagesTotal = run.stages.length
     const stagesDone = run.stages.filter((stage) => stage.status === 'completed').length
     const status = run.status === 'completed' ? 'complete' : run.status === 'cancelled' || run.status === 'paused' ? 'stopped'
-      : run.status === 'needs_attention' ? attentionTaskStatus(run) : run.status === 'running' || run.status === 'exporting' || run.status === 'pausing' ? 'running' : 'queued'
+      : run.status === 'needs_attention' ? 'failed' : run.status === 'running' || run.status === 'exporting' || run.status === 'pausing' ? 'running' : 'queued'
     const candidates: LaneTaskCandidate[] = []
     let expiresAt = Infinity
     for (const artifact of run.artifacts) {

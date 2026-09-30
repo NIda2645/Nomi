@@ -50,7 +50,7 @@ export async function generateSelectedTableRows(nodeId: string, imageModelOption
     ] }
     // Copy each fact into a production owner once. Later user edits remain owned by that plan.
     const design = existing && !newRows.length ? existing
-      : workbench.setStoryboardPlan(plan, existing?.documentId, existing?.id, false, !existing)
+      : workbench.setStoryboardPlan(plan, existing?.documentId, existing?.id, false, existing ? false : 'user')
     if (!design) return
     source = { kind: 'storyboard', documentId: design.documentId, designId: design.id }
   }

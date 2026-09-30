@@ -119,7 +119,7 @@ const ipcApi: DetachReportApi = {
 async function runScheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, submits: string[]) {
   const submission = createProductionGenerationSubmission({
     repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }),
-    projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key",
+    projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0, intentMacKey: "test-intent-key",
     provider: provider(submits),
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.mp4` }),
     now,

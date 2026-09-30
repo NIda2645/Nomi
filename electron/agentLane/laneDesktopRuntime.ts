@@ -34,6 +34,8 @@ import type { ProjectSurfaceSession } from '../capabilityCore/canvasReadSurfaceR
 import { parseLaneCommand } from './laneCommandCodec'
 import { readSkillRecords, isSkillSelectableInWorkbench } from '../skills/skillStore'
 import { createDesktopLaneTasks } from './laneDesktopTasks'
+import { createDesktopLaneAttachments } from './laneDesktopAttachments'
+import { readLaneDeclaredDefaults } from './laneDesktopModelDefaults'
 import { bindLaneProjectSession } from './laneProjectSession'
 
 /** 选中技能 → 提示词。唯一注入点在岛上（pi 的 `formatSkillInvocation`），这里只是桥（形状手抄，理由见 `feedbackIpc.ts:57`）。 */
@@ -177,6 +179,8 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
             .filter(Boolean).join('\n\n'),
           tools: ports.tools, toolLifecycle: ports.toolLifecycle, input,
           tasks: tasks.resolve,
+          attachments: createDesktopLaneAttachments(binding.projectId),
+          modelDefaults: readLaneDeclaredDefaults,
           approval: { hasUserInterface: true, policy: () => composer.approvalPolicy },
         })
       } catch (error) { ports.dispose(); tasks.dispose(); throw error }

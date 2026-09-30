@@ -1,6 +1,6 @@
 import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import { pinAssetReference } from "./semanticGenerationCandidate";
-import { storyboardPlanFromDraftSubjects, presentStoryboardAuthoring, patchStoryboardAuthoring, upsertStoryboardDesign } from './mcpGenerationMultiShot';
+import { storyboardPlanFromDraftSubjects, presentStoryboardAuthoring, patchStoryboardAuthoring, upsertStoryboardDesign, storyboardSavedFact, type StoryboardSavedFact } from './mcpGenerationMultiShot';
 import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
 import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext';
@@ -54,7 +54,7 @@ import { resolveGenerationPlan } from "../shared/videoCapabilities/planResolver"
 import { generationResolveInputSchema } from "../shared/agentCapabilities/generation";
 import { normalizeStoredDraft, resolvePlanPatch } from "./generationPlanPatch";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
-import { semanticCandidateFromParams } from "./semanticGenerationCandidate";
+import { DECLARED_DEFAULT_DEVIATION_NOTE, declaredDefaultDeviations, semanticCandidateFromParams } from "./semanticGenerationCandidate";
 import { projectGenerationOperationPreview } from "./mcpGenerationPreview";
 import { generationCandidateSchema } from "../shared/agentCapabilities/generationPlanSchemas";
 
@@ -312,14 +312,13 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     origin: Parameters<GenerationPlanningHandler>[0]['origin'],
     designId: string,
     shots: readonly GenerationOperationDraftShot[],
-  ): Promise<void> => {
+  ): Promise<StoryboardSavedFact | undefined> => {
     const source = origin?.sourceDocument;
-    if (!source) return;
+    if (!source) return undefined;
     if (!deps.requestRenderer) throw new Error('storyboard_renderer_required');
-    await upsertStoryboardDesign(deps.requestRenderer, {
-      projectId, documentId: source.documentId, designId,
-      plan: storyboardPlanFromDraftSubjects(shots, projectId, deps.resolveStoryboardReferenceUrl),
-    });
+    const plan = storyboardPlanFromDraftSubjects(shots, projectId, deps.resolveStoryboardReferenceUrl);
+    await upsertStoryboardDesign(deps.requestRenderer, { projectId, documentId: source.documentId, designId, plan });
+    return storyboardSavedFact(designId, plan.title);
   };
 
   const { resolveCreateShots, sealMultiShotFor } = createMultiShotCreateHelpers({
@@ -474,12 +473,18 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         // 顶层 candidate = 第一个 shot 的 candidate (reducer seal 硬要顶层 contract 匹配顶层 draft candidate,
         // productionRunReducer.ts generation.seal). 与 S4 e2e setup 同构 (top = shots[0]).
         const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedShots[0].candidate, shots: normalizedShots, now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
-        await saveDocumentPlan(capturedProjectId, input.origin, operation.operationId, normalizedShots);
+        const savedPlan = await saveDocumentPlan(capturedProjectId, input.origin, operation.operationId, normalizedShots);
         // 「这份草稿只有参考卡」是一条**安静提示**，不是一次拒绝（2026-09-22，用户 09-21 点名）。
         // 它照样会生成、照样在报价卡上逐张标价；缺的只是「还没有镜头用到它们」这件事实，
         // 说一句就够——模型据此可以接着补镜头，也可以照用户的意思就停在这里。
         const anchorsOnly = normalizedShots.every((shot) => shot.role === "anchor");
+        // 只核对**模型自己写的**镜头（`params.shots`）：剧本自动拟镜那条路的模型本来就是宿主按默认补的。
+        const authored = Array.isArray(params.shots) ? params.shots : undefined;
+        const deviations = authored ? declaredDefaultDeviations(normalizedShots.map((shot, index) => ({ shotId: shot.shotId,
+          params: (authored[index] ?? {}) as Record<string, unknown>, candidate: shot.candidate })), deps.defaultModelForTaskKind) : [];
         return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview",
+          ...(savedPlan ? { storyboardSaved: savedPlan } : {}),
+          ...(deviations.length ? { modelDeviatesFromUserDefault: deviations, defaultDeviationNote: DECLARED_DEFAULT_DEVIATION_NOTE } : {}),
           ...(anchorsOnly ? { note: "This draft has only reference cards; no shot reuses them yet. That is fine — add the shots that reuse them in a later draft_shots call, or generate the cards on their own." } : {}) };
       }
       // A natural-language create request only needs `prompt`.  Keep the
@@ -504,9 +509,12 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       }
       const normalizedSingle = normalizeVideoCandidate(singleCandidate, deps.videoModelCandidates);
       const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedSingle, now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
-      await saveDocumentPlan(capturedProjectId, input.origin, operation.operationId,
+      const savedSingle = await saveDocumentPlan(capturedProjectId, input.origin, operation.operationId,
         [{shotId:normalizedSingle.candidateId,candidate:normalizedSingle,storyboard:params.storyboard as GenerationOperationDraftShot['storyboard']}]);
-      return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview" };
+      const singleDeviations = declaredDefaultDeviations([{ params, candidate: normalizedSingle }], deps.defaultModelForTaskKind);
+      return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview",
+        ...(savedSingle ? { storyboardSaved: savedSingle } : {}),
+        ...(singleDeviations.length ? { modelDeviatesFromUserDefault: singleDeviations, defaultDeviationNote: DECLARED_DEFAULT_DEVIATION_NOTE } : {}) };
     }
     const stored = await deps.operations.read(input.lease.projectId, operationId);
     if (!stored) throw new GenerationOperationNotFoundError();

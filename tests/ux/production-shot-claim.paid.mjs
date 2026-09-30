@@ -29,11 +29,9 @@
 //   一次都拒不了，急停后同一轮剩下的镜照样提交（缺陷 B）。两处已在本分支修掉（electron/shared/productionRunCommandId.ts、
 //   submissionOutbox.submitOnce），修复后的彩排：
 //   S2：删节点（第 1 镜提交中 / 第 2 镜排队时各删一次）都落成 detached，整场只有第 1 镜一笔——可以花钱复验。
-//   S3：急停后只剩第 1 镜那一笔、第 2、3 镜不预留不提交；画布接手第 2 镜、「已停」消失——都过。当时 Run 一直停在 pausing
-//       （多镜调度器不做暂停收尾），第 3 镜「继续剩余」回「run status pausing is not resumable」。2026-09-30 暂停收尾挂到仓库
-//       唯一写入口（productionRunLifecycle.settleRunLifecycle）、pausing 可以直接继续之后，付费复验跑通：第 1 镜收尾落到已暂停、
-//       画布接手第 2 镜、继续剩余只派第 3 镜，每镜恰好一笔。注意：开拍确认在封信封 10 分钟后过期、派发时核它（PR「新发现 F1」，
-//       待拍板），S3 要在 10 分钟内走完，否则第 3 镜会派不出去。
+//   S3：急停后只剩第 1 镜那一笔、第 2、3 镜不预留不提交；画布接手第 2 镜、「已停」消失——都过。但 Run 一直停在 pausing，
+//       从不落到 paused（多镜调度器不做暂停收尾），第 3 镜「继续剩余」回「run status pausing is not resumable」，
+//       本脚本在「第 1 镜收尾之后 Run 落到已暂停」那一步会红——这一段修好之前别花钱跑 S3。
 //   缺省只跑 S1（不替人决定花钱）；S2、S3 要显式点名（NOMI_SHOT_CLAIM_SCENARIOS=1,2 / 3）。
 import fs from 'node:fs'
 import path from 'node:path'
@@ -588,7 +586,7 @@ const SCENARIOS = {
   2: () => runScenario('s2', scenarioDeleteQueuedShot),
   3: () => runScenario('s3', scenarioPauseCanvasTakeoverResume),
 }
-// 缺省只跑 S1：要不要为 S2、S3 花钱由跑的人点名决定（S3 要在开拍确认的 10 分钟内走完，见文件头）。
+// 缺省只跑 S1：要不要为 S2、S3 花钱由跑的人点名决定（S3 眼下仍会在暂停收尾那一步红，见文件头）。
 const requested = String(process.env.NOMI_SHOT_CLAIM_SCENARIOS || '1').split(',').map((value) => value.trim()).filter(Boolean)
 const unknown = requested.filter((key) => !SCENARIOS[key])
 if (unknown.length) throw new Error(`NOMI_SHOT_CLAIM_SCENARIOS 只认 1、2、3：${unknown.join('、')}`)

@@ -10,7 +10,6 @@ import { initialPlaybookStages, requireProductionPlaybook } from "./productionPl
 import { productionRunPaths, productionRunsRoot } from "./productionRunPaths";
 import { createProductionRunLock } from "./productionRunLock";
 import { applyProductionCommand, type ProductionCommandEffect } from "./productionRunReducer";
-import { settleRunLifecycle } from "./productionRunLifecycle";
 import { assertProductionPolicyReady } from "./productionPolicyReadiness";
 import {
   applyBudgetEntry,
@@ -573,46 +572,36 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     } else {
       effect = applyProductionCommand(current, command, timestamp);
     }
-    // 生命周期收尾挂在这个唯一写入口上（productionRunLifecycle.settleRunLifecycle）：哪条命令让 Run 欠下一步
-    // （例如急停后最后一件交给供应商的活收了尾），那一步作为自己的 run.status.changed 事件跟这条命令一起落盘。
-    // 所以没有哪个驱动需要记得去收尾——老驱动、多镜调度器、观察器、恢复流程写到这里都一样。
-    const settled = settleRunLifecycle(effect.run, timestamp);
-    const steps = settled ? [effect, settled] : [effect];
-    let cursor = latestEvent?.cursor ?? 0;
-    let next: ProductionRun = current;
-    const events: RunEvent[] = steps.map((step, index) => {
-      cursor += 1;
-      next = {
-        ...step.run,
-        revision: current.revision + index + 1,
-        snapshotCursor: cursor,
-        updatedAt: timestamp,
-      };
-      const event: RunEvent = {
-        schemaVersion: PRODUCTION_RUN_SCHEMA_VERSION,
-        eventId: `evt-${randomId()}`,
-        cursor,
-        runId,
-        runRevision: next.revision,
-        commandId: command.commandId,
-        type: step.eventType,
-        message: step.message,
-        emittedAt: timestamp,
-        stageId: next.stageId,
-        payload: { run: next, commandType: command.type },
-      };
-      appendDurableJsonLine(paths.events, event);
-      return event;
-    });
+    const cursor = (latestEvent?.cursor ?? 0) + 1;
+    const next: ProductionRun = {
+      ...effect.run,
+      revision: current.revision + 1,
+      snapshotCursor: cursor,
+      updatedAt: timestamp,
+    };
+    const event: RunEvent = {
+      schemaVersion: PRODUCTION_RUN_SCHEMA_VERSION,
+      eventId: `evt-${randomId()}`,
+      cursor,
+      runId,
+      runRevision: next.revision,
+      commandId: command.commandId,
+      type: effect.eventType,
+      message: effect.message,
+      emittedAt: timestamp,
+      stageId: next.stageId,
+      payload: { run: next, commandType: command.type },
+    };
+    appendDurableJsonLine(paths.events, event);
     const record: CommandRecord = {
       commandId: command.commandId,
       expectedRevision: command.expectedRevision,
       resultRevision: next.revision,
-      eventCursors: events.map((event) => event.cursor),
+      eventCursors: [cursor],
     };
     appendDurableJsonLine(paths.commands, record);
     writeJsonFileAtomic(paths.snapshot, envelopeFor(next));
-    return { run: next, events };
+    return { run: next, events: [event] };
   }
 
   function execute(projectId: string, runId: string, command: RunCommand): RunCommandResult {

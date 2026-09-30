@@ -137,7 +137,8 @@ function buildSubmission(root: string, repository: ReturnType<typeof createProdu
   // Sanity: the real adapter must accept this provider (proves we exercise the genuine adapter path).
   createGenerationRuntimeAdapter({ providers: [provider] });
   return createProductionGenerationSubmission({
-    repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider,
+    repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+    intentMacKey: "test-intent-key", provider,
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });
@@ -175,9 +176,8 @@ describe("B3 production/canvas claim integration matrix", () => {
       const submits: string[] = [];
       const current = repository.read("project-1", "op-batch")!;
       const running = repository.execute("project-1", "op-batch", { commandId: "running", expectedRevision: current.revision, type: "run.status", payload: { status: "running" }, issuedAt: now() }).run;
-      // 手上没有交给供应商的活：急停的同一次写入就落到 paused（生命周期收尾挂在仓库写入口上）。
-      const paused = repository.execute("project-1", "op-batch", { commandId: "pause", expectedRevision: running.revision, type: "run.status", payload: { status: "pausing", reason: "user_paused" }, issuedAt: now() }).run;
-      expect(paused.status).toBe("paused");
+      const pausing = repository.execute("project-1", "op-batch", { commandId: "pause", expectedRevision: running.revision, type: "run.status", payload: { status: "pausing" }, issuedAt: now() }).run;
+      const paused = repository.execute("project-1", "op-batch", { commandId: "pause-settle", expectedRevision: pausing.revision, type: "run.status", payload: { status: "paused" }, issuedAt: now() }).run;
       repository.execute("project-1", "op-batch", { commandId: "canvas-claim", expectedRevision: paused.revision, type: "shot.claim", payload: { shotId: "shot-1", by: "canvas" }, issuedAt: now() });
       expect(decideShotClaim(repository.read("project-1", "op-batch"), "shot-1", "production")).toMatchObject({ granted: false, holder: "canvas", reason: "canvas_claimed" });
       await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
@@ -195,7 +195,8 @@ describe("B3 production/canvas claim integration matrix", () => {
       const provider = loopbackProvider(vendor.origin, submits);
       provider.submit = async () => { submits.push("unknown"); throw new SubmissionReconciliationRequiredError(); };
       const guarded = createProductionGenerationSubmission({
-        repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider,
+        repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+        intentMacKey: "test-intent-key", provider,
         materializeOutput: async ({ providerTaskId }) => ({ artifactId: providerTaskId, kind: "video" as const, contentHash: providerTaskId, projectRelativePath: `${providerTaskId}.png` }), now,
       });
       const before = repository.read("project-1", "op-batch")!;
@@ -577,7 +578,8 @@ describe("P4 slow provider — the batch waits (not spins) and still materialize
    * clock, no polling — the awaited runToQuiescence promise IS the synchronization). */
   function slowScheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, provider: GenerationProvider, options: Parameters<typeof createMultiShotBatchScheduler>[0]["options"] = {}) {
     const submission = createProductionGenerationSubmission({
-      repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider,
+      repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+      intentMacKey: "test-intent-key", provider,
       materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
       now,
     });

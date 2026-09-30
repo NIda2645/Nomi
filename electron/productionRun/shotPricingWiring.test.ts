@@ -217,7 +217,7 @@ function sealedApprovedSingleShot(priceAmount: number | null) {
     now,
   });
   const runner = createProductionGenerationSubmission({
-    repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key",
+    repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0, intentMacKey: "test-intent-key",
     provider,
     now: () => now,
   });

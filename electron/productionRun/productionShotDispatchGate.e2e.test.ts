@@ -103,7 +103,8 @@ function observedGate(repository: Repository) {
 
 function submission(root: string, repository: Repository, beforeDispatch: ReturnType<typeof observedGate>["guard"], vendor: GenerationProvider) {
   return createProductionGenerationSubmission({
-    repository, beforeDispatch, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider: vendor,
+    repository, beforeDispatch, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+    intentMacKey: "test-intent-key", provider: vendor,
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.mp4` }),
     now,
   });
@@ -118,8 +119,7 @@ afterEach(() => {
 
 describe("the production dispatch gate runs before anything about the attempt is persisted", () => {
   it.each([
-    // 急停：第 1 镜收尾后这一趟驱动把 pausing 收成 paused（多镜批次以前永远停在 pausing）。
-    ["pause", "paused"],
+    ["pause", "pausing"],
     ["cancel", "cancelled"],
   ] as const)("%s pressed while shot 1 is at the provider: shots 2 and 3 are refused with nothing reserved or intended", async (action, stopped) => {
     const { root, repository } = setup([shotEntry("shot-1"), shotEntry("shot-2"), shotEntry("shot-3")]);

@@ -503,33 +503,3 @@ describe("anchor-only batch（校验放行之后仍然照旧工作）", () => {
     expect(result.shotDispatch, "检查点没放行之前，镜头一个都不许派").toEqual([]);
   });
 });
-
-// 批次歇下来时「有没有单元确定没成」只看**当前那次尝试**（2026-09-29）：重做成功之后，上一次失败的那个 job
-// 还躺在 jobs 里，不许再让整批被判「有镜头没成」而停下；当前尝试失败（失败 / 撤单 / 提交结果未知）才算，参考卡也算。
-describe("failedUnits — only the current attempt counts", () => {
-  it("a redone shot whose new attempt finished is not a failed unit; the superseded failure is ignored", () => {
-    const shots = [shot("shot-a", "a".repeat(64), { attemptCount: 2 }), shot("shot-b", "b".repeat(64))];
-    const jobs = [
-      jobFor("shot-a", "a".repeat(64), "needs_attention", 1),
-      jobFor("shot-a", "a".repeat(64), "ready", 2),
-      jobFor("shot-b", "b".repeat(64), "ready"),
-    ];
-    expect(deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs })).failedUnits).toEqual([]);
-  });
-
-  it("the current attempt failing (failed, submission unknown) makes it a failed unit — anchors included", () => {
-    const plan = planWithAnchor();
-    const jobs = [
-      { ...jobFor("anchor-1", ANCHOR_HASH, "needs_attention"), model: "image-model" },
-      jobFor("shot-a", "a".repeat(64), "submission_unknown"),
-      jobFor("shot-b", "b".repeat(64), "authorized"),
-    ];
-    expect(deriveBatchPlan(baseInput({ plan, jobs })).failedUnits).toEqual(["anchor-1", "shot-a"]);
-  });
-
-  it("is reported even while the run is stopped (the rest verdict and the canvas read the same derivation)", () => {
-    const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64))];
-    const jobs = [jobFor("shot-a", "a".repeat(64), "needs_attention"), jobFor("shot-b", "b".repeat(64), "authorized")];
-    expect(deriveBatchPlan(baseInput({ runStatus: "needs_attention", plan: sealedPlan(shots), jobs })).failedUnits).toEqual(["shot-a"]);
-  });
-});

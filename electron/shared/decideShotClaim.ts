@@ -1,6 +1,5 @@
 import type { ProductionJob, ProductionJobStatus, ProductionRun } from "../productionRun/productionRunTypes";
 import { latestJobForShot, shotIncluded } from "./productionShotJobs";
-import { isStoppedRunStatus } from "./productionRunStop";
 
 export type ShotClaimRequester = "canvas" | "production";
 export type ShotClaimHolder = "canvas" | "production" | "none";
@@ -30,6 +29,7 @@ const IN_FLIGHT: ReadonlySet<ProductionJob["status"]> = new Set([
   "downloading", "validating_technical", "validating_content",
 ]);
 const NEEDS_RECONCILE: ReadonlySet<ProductionJob["status"]> = new Set(["submission_unknown", "reconciling"]);
+const STOPPED_RUNS: ReadonlySet<ProductionRun["status"]> = new Set(["pausing", "paused", "needs_attention", "cancelled"]);
 
 function terminalStatus(status: ProductionJobStatus): boolean {
   switch (status) {
@@ -86,26 +86,26 @@ export function decideShotClaim(
   if (plan.state !== "submitted") {
     if (plan.cardHidden === true) return decision("canvas", "shot_excluded", requester);
     if (gateRejected) return decision("canvas", "gate_rejected", requester);
-    return isStoppedRunStatus(run.status)
+    return STOPPED_RUNS.has(run.status)
       ? decision("canvas", "run_stopped", requester)
       : decision("production", "awaiting_confirmation", requester);
   }
   if (gateRejected) return decision("canvas", "gate_rejected", requester);
   if (gate && gate.status !== "approved") {
-    return isStoppedRunStatus(run.status)
+    return STOPPED_RUNS.has(run.status)
       ? decision("canvas", "run_stopped", requester)
       : decision("production", "awaiting_confirmation", requester);
   }
   if (job && terminalStatus(job.status)) return decision("canvas", "terminal", requester);
   if (job && (job.status === "planned" || job.status === "authorization_required" || job.status === "authorized")) {
-    return isStoppedRunStatus(run.status)
+    return STOPPED_RUNS.has(run.status)
       ? decision("canvas", "run_stopped", requester)
       : decision("production", "queued", requester);
   }
-  if (!job) return isStoppedRunStatus(run.status)
+  if (!job) return STOPPED_RUNS.has(run.status)
     ? decision("canvas", "run_stopped", requester)
     : decision("production", "queued", requester);
-  return isStoppedRunStatus(run.status)
+  return STOPPED_RUNS.has(run.status)
     ? decision("canvas", "run_stopped", requester)
     : decision("production", "queued", requester);
 }

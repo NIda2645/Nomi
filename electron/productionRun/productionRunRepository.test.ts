@@ -115,7 +115,7 @@ describe("ProductionRunRepository", () => {
         commandId: "cmd-stale",
         expectedRevision: 0,
         type: "run.status",
-        payload: { status: "cancelled", reason: "user_cancelled" },
+        payload: { status: "cancelled" },
         issuedAt: "2026-08-08T08:00:00.000Z",
       }),
     ).toThrow(ProductionRunRevisionConflictError);
@@ -165,7 +165,7 @@ describe("ProductionRunRepository", () => {
       commandId: "cmd-2",
       expectedRevision: 1,
       type: "run.status",
-      payload: { status: "cancelled", reason: "user_cancelled" },
+      payload: { status: "cancelled" },
       issuedAt: "2026-08-08T08:00:00.000Z",
     });
 

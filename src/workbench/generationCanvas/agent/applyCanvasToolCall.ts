@@ -322,7 +322,7 @@ export async function applyCanvasToolCall(
         message: '目标原稿已不存在，未应用迟到的规划结果。',
       } satisfies StoryboardPlanApplicationResult
     }
-    const design = inCtx(() => store.setStoryboardPlan(plan, targetDocumentId, storyboardId, true, !storyboardId))
+    const design = inCtx(() => store.setStoryboardPlan(plan, targetDocumentId, storyboardId, true, storyboardId ? false : 'agent'))
     if (!design) {
       return {
         status: 'obsolete',
@@ -331,15 +331,12 @@ export async function applyCanvasToolCall(
         message: '目标分镜已不存在，未应用迟到的规划结果。',
       } satisfies StoryboardPlanApplicationResult
     }
-    if (store.workspaceMode === 'creation' || store.workspaceMode === 'storyboard') {
-      store.setWorkspaceMode('creation')
-    }
     return {
       status: 'applied',
       documentId: targetDocumentId,
       storyboardDesignId: design.id,
       anchorIssues: validateAnchorModelFit(plan),
-      message: `已生成分镜方案「${plan.title || '未命名'}」：${plan.anchors.length} 个锚 · ${plan.shots.length} 个镜头，已放到分镜页，待你审阅/修改后在行内或底部批量生成。${validateAnchorModelFit(plan).map(issue => issue.correction).join('\n')}`,
+      message: `已生成分镜方案「${plan.title || '未命名'}」：${plan.anchors.length} 个锚 · ${plan.shots.length} 个镜头，已存进创作页左栏原稿下的方案列表，**没有替用户打开**——请在回话里告诉用户到那里点开审阅/修改，之后在行内或底部批量生成。${validateAnchorModelFit(plan).map(issue => issue.correction).join('\n')}`,
     } satisfies StoryboardPlanApplicationResult
   }
 

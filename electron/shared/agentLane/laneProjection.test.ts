@@ -68,6 +68,37 @@ describe('lane skill provenance', () => {
   })
 })
 
+describe('lane user attachments', () => {
+  const laneWith = (messages: LaneSnapshot['transcript']): LaneSnapshot => ({
+    lane: 'main', tipId: 'tip', operation: null, queues: [], faulted: false,
+    configuration: { model: { provider: 'fixture', modelId: 'fixture' }, thinkingLevel: 'off', activeToolNames: [] },
+    stats: { messageCount: messages.length, usage }, transcript: messages,
+  })
+  const input = (seq: number, content: string, context: Record<string, unknown>): LaneSnapshot['transcript'][number] => ({
+    id: `e${seq}`, parentId: null, seq, timestamp: seq, type: 'message',
+    message: { role: 'nomi.input', content, timestamp: seq, context },
+  } as unknown as LaneSnapshot['transcript'][number])
+  const policy = { mode: 'step', spend: 'confirm' }
+  const facts = { pricing: 'unpriced' as const, supportedThinkingLevels: ['off' as const] }
+  const display = { url: 'nomi-local://a', fileName: '剧本.txt', contentType: 'text/plain', sizeBytes: 12, kind: 'file' as const }
+
+  it('an attached file stays on the user segment that carried it — and only that one', () => {
+    const projection = projectLaneSnapshot(laneWith([
+      input(1, '总结这个文件', { approvalPolicy: policy, attachments: [{ assetId: 'asset-1', version: 1 }] }),
+      input(2, '再来一句', { approvalPolicy: policy }),
+    ]), facts, undefined, undefined, undefined, undefined,
+    (claims) => claims.map(claim => ({ ...claim, display })))
+    const users = projection.parts.filter(part => part.kind === 'user')
+    expect(users.map(part => part.kind === 'user' ? part.attachments : 'x')).toEqual([[{ assetId: 'asset-1', version: 1, display }], undefined])
+  })
+
+  it('a claim the host cannot resolve is still shown as attached (no silent disappearance)', () => {
+    const projection = projectLaneSnapshot(laneWith([input(1, 'x', { approvalPolicy: policy, attachments: [{ assetId: 'gone', version: 2 }] })]), facts)
+    expect(projection.parts[0]).toMatchObject({ kind: 'user', attachments: [{ assetId: 'gone', version: 2 }] })
+    expect((projection.parts[0] as { attachments: Array<{ display?: unknown }> }).attachments[0].display).toBeUndefined()
+  })
+})
+
 describe('lane stop visibility', () => {
   /**
    * 用户点「停止」时模型还一个字都没吐出来是**常态**（真实会话 2026-09-12 的 5 次停止全是这个形状：

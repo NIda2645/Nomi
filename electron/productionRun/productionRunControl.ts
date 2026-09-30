@@ -6,16 +6,28 @@
 import type { ProductionRunRepository } from './productionRunRepository'
 import type { ProductionRun, RunCommand, RunCommandResult } from './productionRunTypes'
 
-// 已提交给供应商的任务**无法撤回、钱已花出**——暂停/取消都只能让它们跑完收尾（结果保留不浪费），能守住的边界是
-// 「不再提交新任务」。pausing → paused 那一步不在这里、也不在任何驱动里：它是生命周期 owner
-// （productionRunLifecycle.settleRunLifecycle）挂在仓库写入口上的收尾，最后一件活收尾的那条写入顺带落下。
+/**
+ * 已提交给供应商、还没收尾的任务状态。中转商物理现实：这些任务**无法撤回、钱已花出**——
+ * 暂停/取消都只能让它们跑完收尾（结果保留不浪费），能守住的边界是「不再提交新任务」。
+ */
+export const ACTIVE_JOB_STATUSES = ['submitting', 'provider_accepted', 'polling', 'retry_wait', 'downloading', 'validating_technical', 'validating_content']
 
-/** 这次控制在 Run 当前的状态下不允许（人话留给 Agent 转述；画布按类型认出它，不读这句话）。 */
-export class ProductionRunControlRefusedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'ProductionRunControlRefusedError'
-  }
+/** 暂停收尾：pausing 且已无在途任务 → 落 paused。driver 提交循环退出时调（也可幂等重入）。 */
+export function settlePauseIfQuiet(
+  repository: Pick<ProductionRunRepository, 'execute'>,
+  projectId: string,
+  runId: string,
+  current: ProductionRun,
+): ProductionRun {
+  if (current.status !== 'pausing') return current
+  if (current.jobs.some((job) => ACTIVE_JOB_STATUSES.includes(job.status))) return current
+  return repository.execute(projectId, runId, {
+    commandId: `pause-settle-${current.revision}`,
+    expectedRevision: current.revision,
+    type: 'run.status',
+    payload: { status: 'paused' },
+    issuedAt: new Date().toISOString(),
+  }).run
 }
 
 /**
@@ -31,24 +43,32 @@ export function applyRunControl(
 ): RunCommandResult {
   const action = typeof runCommand.payload.action === 'string' ? runCommand.payload.action : ''
   const actionLabel = action === 'pause' ? '暂停' : action === 'resume' ? '继续' : '取消'
-  const illegal = () => new ProductionRunControlRefusedError(`无法${actionLabel}：制作当前状态是 ${current.status}，不允许这个操作`)
+  const illegal = () => new Error(`无法${actionLabel}：制作当前状态是 ${current.status}，不允许这个操作`)
   if (action === 'pause') {
     if (['pausing', 'paused'].includes(current.status)) return { run: current, events: [] }
     if (current.status !== 'running') throw illegal()
-    // 手上没有交给供应商的活，同一次写入就落到 paused（生命周期收尾）；有则停在 pausing，最后一件收尾时再落。
-    return repository.execute(projectId, runId, { ...runCommand, type: 'run.status', payload: { status: 'pausing', reason: 'user_paused' } })
+    let result = repository.execute(projectId, runId, { ...runCommand, type: 'run.status', payload: { status: 'pausing' } })
+    // 没有在途任务就直接落停；有则停在 pausing，由收尾流程转 paused。
+    if (!result.run.jobs.some((job) => ACTIVE_JOB_STATUSES.includes(job.status))) {
+      result = repository.execute(projectId, runId, {
+        ...runCommand,
+        commandId: `${runCommand.commandId}:settle`,
+        expectedRevision: result.run.revision,
+        type: 'run.status',
+        payload: { status: 'paused' },
+      })
+    }
+    return result
   }
   if (action === 'resume') {
     if (current.status === 'running') return { run: current, events: [] }
-    // 急停后在跑的那一镜还没回来（pausing）也能接着拍：用户改主意了，不必等它收尾（2026-09-29：以前这里报
-    // 「run status pausing is not resumable」，而画布上的「继续剩余」正摆在他面前）。
-    if (!['pausing', 'paused', 'needs_attention'].includes(current.status)) throw illegal()
+    if (!['paused', 'needs_attention'].includes(current.status)) throw illegal()
     return repository.execute(projectId, runId, { ...runCommand, type: 'run.status', payload: { status: 'running' } })
   }
   if (action === 'cancel') {
     if (current.status === 'cancelled') return { run: current, events: [] }
     if (current.status === 'completed') throw illegal()
-    return repository.execute(projectId, runId, { ...runCommand, type: 'run.status', payload: { status: 'cancelled', reason: 'user_cancelled' } })
+    return repository.execute(projectId, runId, { ...runCommand, type: 'run.status', payload: { status: 'cancelled' } })
   }
   throw new Error('Invalid production control action')
 }

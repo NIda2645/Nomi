@@ -342,3 +342,36 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
     references: references(deps.params.references, deps.resolveAssetReferenceIdentity),
   });
 }
+
+/**
+ * 「这份草稿用的模型」与「用户声明的默认模型」对不上的那几镜。
+ *
+ * 补默认只发生在模型**没点名**的时候（上面 `semanticCandidateFromParams`）；模型点名了别家，宿主照单全收——
+ * 因为宿主分不清「用户点名」和「模型自己挑的」。所以在草稿落地的这一处把**事实**递还给模型：
+ * 用户的默认是谁、这份草稿实际用的是谁。它据此要么改回默认，要么在回话里向用户说清为什么换、换成了谁——
+ * 嘴里的话读的是这份状态，不是它的印象。默认由 `defaultModelForTaskKind`（用户声明的唯一解释者）回答，这里不另存。
+ */
+export type DeclaredDefaultDeviation = Readonly<{
+  shotId?: string;
+  taskKind: GenerationDefaultTaskKind;
+  userDefault: string;
+  used: string;
+}>;
+
+export function declaredDefaultDeviations(
+  items: ReadonlyArray<{ shotId?: string; params: SemanticGenerationCandidateParams; candidate: Pick<PlanCandidate, "providerId" | "modelId" | "mode"> }>,
+  defaultFor: SemanticGenerationCandidateDeps["defaultModelForTaskKind"],
+): DeclaredDefaultDeviation[] {
+  if (!defaultFor) return [];
+  return items.flatMap(({ shotId, params, candidate }): DeclaredDefaultDeviation[] => {
+    const byMode = normalized(candidate.mode);
+    const taskKind = isTaskKind(byMode) ? byMode : inferGenerationTaskKind(params);
+    const declared = defaultFor(taskKind);
+    if (!declared || (declared.providerId === candidate.providerId && declared.modelId === candidate.modelId)) return [];
+    return [{ ...(shotId ? { shotId } : {}), taskKind, userDefault: `${declared.providerId}/${declared.modelId}`, used: `${candidate.providerId}/${candidate.modelId}` }];
+  });
+}
+
+export const DECLARED_DEFAULT_DEVIATION_NOTE =
+  "modelDeviatesFromUserDefault lists drafts whose model is not the one the user set as default in Settings. "
+  + "If the user did not name that model, patch the draft back to the user's default; if you keep it, tell the user why it changed and which model it is now — take the model name from this result, not from memory.";

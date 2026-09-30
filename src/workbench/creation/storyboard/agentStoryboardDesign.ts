@@ -36,7 +36,7 @@ export function upsertAgentStoryboardDesign(data: Record<string, unknown>): { st
   const existing = (store.storyboardDesignsByDocumentId[documentId] ?? []).find(design => design.id === designId)
   const saved = existing
     ? store.setStoryboardPlan(plan, documentId, designId, true)
-    : store.addStoryboardDesign(documentId, plan, { id: designId, title: plan.title })
+    : store.addStoryboardDesign({ initiator: 'agent', documentId, source: plan, identity: { id: designId, title: plan.title } })
   if (!saved || saved.id !== designId) throw new Error('storyboard_design_save_rejected')
   return { status: 'saved', designId }
 }

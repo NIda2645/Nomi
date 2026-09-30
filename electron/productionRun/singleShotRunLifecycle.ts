@@ -214,12 +214,12 @@ export function markSingleShotAttention(
   run = repository.read(projectId, runId) ?? run;
   if (run.status === "running") {
     run = mutate(repository, projectId, runId, (current) => current.status === "running"
-      ? { type: "run.status", payload: { status: "needs_attention", reason: "failed" }, tag: "attention" }
+      ? { type: "run.status", payload: { status: "needs_attention" }, tag: "attention" }
       : null, now) ?? run;
   } else if (RUNNING_SOURCES.has(run.status)) {
     run = markSingleShotRunning(repository, projectId, runId, now) ?? run;
     run = mutate(repository, projectId, runId, (current) => current.status === "running"
-      ? { type: "run.status", payload: { status: "needs_attention", reason: "failed" }, tag: "attention" }
+      ? { type: "run.status", payload: { status: "needs_attention" }, tag: "attention" }
       : null, now) ?? run;
   }
   return run;

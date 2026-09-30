@@ -142,7 +142,7 @@ function harness(
   createGenerationRuntimeAdapter({ providers: [provider] }); // sanity: the real adapter accepts this provider
   const submission = createProductionGenerationSubmission({
     repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
-    intentMacKey: "test-intent-key", providers: [provider],
+    projectRevision: 0, intentMacKey: "test-intent-key", providers: [provider],
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });

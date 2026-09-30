@@ -173,6 +173,41 @@ describe("semantic MCP generation tools", () => {
     expect(defaultModelForTaskKind).toHaveBeenCalledWith("text_to_image");
   });
 
+  describe("declared default model deviation is handed back to the Agent as state", () => {
+    const twoModels = createModuleRegistry([{
+      moduleId: "generation.single-shot", version: "1.0.0", inputKinds: ["text", "image"], outputKinds: ["image"], modes: ["text-to-image"],
+      parameterSchema: {}, assetInputSchema: { references: { kind: "asset", max: 4 } },
+      providers: [{ providerId: "fixture-provider", models: ["model-default", "model-other"].map((modelId) => ({
+        modelId, modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } })) }],
+    }]);
+    const declared = () => ({ moduleId: "generation.single-shot", providerId: "fixture-provider", modelId: "model-default", mode: "text-to-image" });
+    const create = (params: Record<string, unknown>, defaultModelForTaskKind: (() => ReturnType<typeof declared> | undefined) | undefined = declared) =>
+      createGenerationPlanningHandler({ registry: twoModels, operations: createInMemoryGenerationOperationStore(), ...(defaultModelForTaskKind ? { defaultModelForTaskKind } : {}), now: () => "2026-09-30T00:00:00.000Z" })
+        ({ capability: "create", params, lease }) as Promise<Record<string, unknown>>;
+
+    it("a draft that follows the user's default carries no deviation", async () => {
+      expect(await create({ prompt: "红色纸船" })).not.toHaveProperty("modelDeviatesFromUserDefault");
+    });
+
+    it("single draft: a model the Agent chose itself is reported against the user's default, in both directions of the class", async () => {
+      const result = await create({ prompt: "红色纸船", modelId: "model-other" });
+      expect(result.modelDeviatesFromUserDefault).toEqual([{ taskKind: "text_to_image", userDefault: "fixture-provider/model-default", used: "fixture-provider/model-other" }]);
+      expect(String(result.defaultDeviationNote)).toContain("tell the user why it changed");
+    });
+
+    it("multi-shot draft: each deviating shot is named; shots on the default are not", async () => {
+      const result = await create({ shots: [
+        { shotId: "s1", prompt: "一", taskKind: "text_to_image" },
+        { shotId: "s2", prompt: "二", taskKind: "text_to_image", modelId: "model-other" },
+      ] });
+      expect(result.modelDeviatesFromUserDefault).toEqual([{ shotId: "s2", taskKind: "text_to_image", userDefault: "fixture-provider/model-default", used: "fixture-provider/model-other" }]);
+    });
+
+    it("the user set no default: nothing to deviate from", async () => {
+      expect(await create({ prompt: "红色纸船", modelId: "model-other" }, () => undefined)).not.toHaveProperty("modelDeviatesFromUserDefault");
+    });
+  });
+
   it("infers video intent and preserves explicit model parameters on the short create path", async () => {
     const operations = createInMemoryGenerationOperationStore();
     const defaultModelForTaskKind = vi.fn((taskKind: "text_to_image" | "image_edit" | "text_to_video" | "image_to_video") => ({
@@ -921,7 +956,12 @@ it('a document-admitted draft saves its author body into that document\'s plan, 
     // The Run keeps no second copy of the author body — the document's plan is the only one.
     expect(result.operation).not.toHaveProperty('editorial')
     expect(result.operation.sourceDocumentId).toBe('doc')
+    // 写给模型的回执必须说清「存了、没替用户打开、去哪点开」——回话里那句话读的是这条事实，不是它自己的想象。
+    expect((result as { storyboardSaved?: unknown }).storyboardSaved).toMatchObject({ designId: result.operation.operationId, opened: false, openFrom: expect.stringContaining('NOT opened') })
   }
+  // 不是从文稿来的草稿没有方案列表可存，也就没有这条事实。
+  const plain=await handler({capability:'create',lease,params:{operation:'create',...input}}) as Record<string,unknown>
+  expect(plain).not.toHaveProperty('storyboardSaved')
 })
 
 it('refuses a document-admitted draft when the renderer that owns plans is unreachable', async () => {

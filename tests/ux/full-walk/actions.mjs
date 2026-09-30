@@ -1,6 +1,6 @@
 // 剧本里反复用到的**用户动作**（像人一样点、拖；不直调桥、不灌 store）。
 // 判据不在这里：这里只负责「点到了没有」，点完之后对不对由监视器按铁律判。
-import { clickOrFail, expect, waitForVisualQuiescence } from '../_assert.mjs'
+import { clickOrFail, expect } from '../_assert.mjs'
 import { stationTimeout } from '../_station-budget.mjs'
 import { findCanvasBlankPoint, findConnectionStartPoint, findNodeHitPoint, panCanvasUntilInside } from '../_canvasHit.mjs'
 
@@ -34,17 +34,6 @@ export async function clickBlank(win) {
   const blank = await findCanvasBlankPoint(win, { inset: 80 })
   if (!blank) throw new Error('画布上找不到空白处')
   await win.mouse.click(blank.x, blank.y)
-}
-
-/**
- * 点画布底栏的「适应视图」，把所有卡片放进视野——用户要在某张卡上点按钮之前，先得看见它。
- * 画布只渲染视野里的卡（React Flow onlyRenderVisibleElements），视野外的卡在 DOM 里根本不存在，
- * 不先适应视图就去找它，只会得出「画布上没有这张卡」的假结论。
- */
-export async function fitCanvasView(win) {
-  const fit = win.getByRole('button', { name: /^(适应视图|Fit view)$/ }).first()
-  await clickOrFail(fit, '画布「适应视图」')
-  await waitForVisualQuiescence(win)
 }
 
 /**

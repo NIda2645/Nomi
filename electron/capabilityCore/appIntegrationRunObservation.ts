@@ -48,8 +48,6 @@ export function createRunObservationDrivers(deps: {
 }): RunObservationDrivers {
   const { repository, buildSchedulerForRun } = deps
   const activeBatchDrives = new Set<string>()
-  // 一趟驱动还在跑时又有人踢了一次（例如用户点了继续）：那一下可能恰好落在这一趟最后一轮派生之后，收尾时补踢一次。
-  const kickedDuringDrive = new Set<string>()
   // 单镜与多镜共用的「过一会儿再来问一次」定时器。**两半必须是同一条规则**：
   // 供应商在观察窗（默认 300s）内没给结论，就歇一歇再接着问，直到它给出终态。
   // 2026-09-25 之前只有多镜这一半——单镜观察窗一过就静静退出、没有人再问，
@@ -132,17 +130,10 @@ export function createRunObservationDrivers(deps: {
       .catch((error) => {
         logWarn('production-run', 'observation-step-failed', { step: label }, error)
       })
-      .finally(() => {
-        activeBatchDrives.delete(key)
-        if (kickedDuringDrive.delete(key)) kickSchedulerForRun(projectId, runId)
-      })
+      .finally(() => activeBatchDrives.delete(key))
   }
   const kickSchedulerForRun = (projectId: string, runId: string): void => {
-    const key = `${projectId}:${runId}`
-    if (activeBatchDrives.has(key)) {
-      kickedDuringDrive.add(key) // 已有长跑 drive：它的下一轮派生多半会接住新状态；接不住的那一下由它收尾时补踢
-      return
-    }
+    if (activeBatchDrives.has(`${projectId}:${runId}`)) return // 已有长跑 drive；它的下一轮派生会接住新状态
     let run
     try {
       run = repository.read(projectId, runId)
@@ -151,9 +142,7 @@ export function createRunObservationDrivers(deps: {
     }
     if (!run || !run.generationPlan?.shots || run.generationPlan.shots.length === 0) return
     if (run.generationPlan.state !== 'submitted') return // 还没确认过的草稿不驱动
-    // 已完成 / 已取消 / 已暂停不自动续。pausing 要驱动：在跑的那一镜要有人盯着收尾，收尾后才落到 paused——
-    // 以前连它也跳过，多镜批次急停后永远停在 pausing（2026-09-29 用户实见「暂停后还一直在转」）。
-    if (['completed', 'cancelled', 'paused'].includes(run.status)) return
+    if (['completed', 'cancelled', 'paused', 'pausing'].includes(run.status)) return // 已停/急停不自动续
     const scheduler = buildSchedulerForRun(projectId, runId, run)
     if (!scheduler) return
     driveScheduler(projectId, runId, scheduler, 'batch resume tick')

@@ -129,6 +129,7 @@ function scheduler(root: string, repository: ReturnType<typeof createProductionR
     projectRoot: root,
     immutableProjectUuid: "project-uuid-1",
     projectGeneration: 1,
+    projectRevision: 0,
     intentMacKey: "test-intent-key",
     provider: mockProvider(submit),
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
@@ -172,6 +173,7 @@ function schedulerWithCompletion(
     projectRoot: root,
     immutableProjectUuid: "project-uuid-1",
     projectGeneration: 1,
+    projectRevision: 0,
     intentMacKey: "test-intent-key",
     provider: mockProvider(submit),
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
@@ -288,9 +290,9 @@ describe("P4 S4 batch scheduler — stop semantics", () => {
     let run = repository.read("project-1", "op-batch")!;
     repository.execute("project-1", "op-batch", { commandId: `start:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: NOW });
     run = repository.read("project-1", "op-batch")!;
-    // 手上没有交给供应商的活：急停的同一次写入就落到 paused（生命周期收尾挂在仓库写入口上，不靠任何驱动）。
-    run = repository.execute("project-1", "op-batch", { commandId: `pause:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "pausing", reason: "user_paused" }, issuedAt: NOW }).run;
-    expect(run).toMatchObject({ status: "paused", stop: { reason: "user_paused" } });
+    repository.execute("project-1", "op-batch", { commandId: `pause:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "pausing" }, issuedAt: NOW });
+    run = repository.read("project-1", "op-batch")!;
+    repository.execute("project-1", "op-batch", { commandId: `pause-settle:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "paused" }, issuedAt: NOW });
 
     const outcome = await scheduler(root, repository, submit).runToQuiescence();
     expect(submit).toHaveBeenCalledTimes(0);
@@ -308,8 +310,10 @@ describe("P4 S4 batch scheduler — stop semantics", () => {
     await sched.runToQuiescence();
     expect(submit).toHaveBeenCalledTimes(1);
 
-    const run = repository.read("project-1", "op-batch")!;
-    repository.execute("project-1", "op-batch", { commandId: `pause:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "pausing", reason: "user_paused" }, issuedAt: NOW });
+    let run = repository.read("project-1", "op-batch")!;
+    repository.execute("project-1", "op-batch", { commandId: `pause:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "pausing" }, issuedAt: NOW });
+    run = repository.read("project-1", "op-batch")!;
+    if (run.status === "pausing") repository.execute("project-1", "op-batch", { commandId: `pause-settle:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "paused" }, issuedAt: NOW });
 
     const outcome = await scheduler(root, repository, submit).runToQuiescence();
     expect(submit).toHaveBeenCalledTimes(1); // paused → no new submissions
@@ -375,8 +379,10 @@ describe("P4 S4 batch scheduler — crash recovery", () => {
     await schedulerWithCompletion(root, repository, submit, completed, { maxShotsPerRun: 1 }).runToQuiescence();
     expect(completed).not.toHaveBeenCalled();
 
-    const run = repository.read("project-1", "op-batch")!;
-    repository.execute("project-1", "op-batch", { commandId: `pause:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "pausing", reason: "user_paused" }, issuedAt: NOW });
+    let run = repository.read("project-1", "op-batch")!;
+    repository.execute("project-1", "op-batch", { commandId: `pause:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "pausing" }, issuedAt: NOW });
+    run = repository.read("project-1", "op-batch")!;
+    if (run.status === "pausing") repository.execute("project-1", "op-batch", { commandId: `pause-settle:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "paused" }, issuedAt: NOW });
     await schedulerWithCompletion(root, repository, submit, completed).runToQuiescence();
     expect(completed).not.toHaveBeenCalled();
   });

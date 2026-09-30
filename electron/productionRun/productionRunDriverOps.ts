@@ -8,6 +8,7 @@
 import crypto from 'node:crypto'
 
 import { desktopT } from '../i18n'
+import { settlePauseIfQuiet } from './productionRunControl'
 import { adoptedGenerationShotNodeIds, buildQaRetryPlans, buildQaStageOutcome, type QaVerifyResponse } from './productionQaVerdict'
 import type { ProductionRunRepository } from './productionRunRepository'
 import { freezeGateId, hasApprovedFreezeGate, hasWaitingFreezeGate, hasWaitingSampleGate, isShotGate, sampleGateId, shotGateId, shouldSampleGate } from './productionRunGateIdentity'
@@ -187,7 +188,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
         stage: stageValue(current, 'qa', { status: 'needs_attention', qaSummary: '审片服务不可用，未继续组装；请重试审片' }),
       }, `driver-${runId}-qa-attention-${current.revision}`).run
       if (current.status === 'running') {
-        current = executeInternal(projectId, runId, current, 'run.status', { status: 'needs_attention', reason: 'failed' }, `driver-${runId}-qa-attention-run-${current.revision}`).run
+        current = executeInternal(projectId, runId, current, 'run.status', { status: 'needs_attention' }, `driver-${runId}-qa-attention-run-${current.revision}`).run
       }
       return current
     }
@@ -339,7 +340,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
         try {
           repository.execute(run.projectId, run.runId, {
             commandId: `driver:${run.runId}:script-error:${current.revision}`,
-            expectedRevision: current.revision, type: 'run.status', payload: { status: 'needs_attention', reason: 'failed' }, issuedAt: new Date().toISOString(),
+            expectedRevision: current.revision, type: 'run.status', payload: { status: 'needs_attention' }, issuedAt: new Date().toISOString(),
           })
         } catch { /* Preserve the original planning failure; the run remains inspectable. */ }
       }
@@ -428,7 +429,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
       if (current.status === 'ready') {
         current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'running' }, `driver-${run.runId}-generation-start`).run
       }
-      current = requireRun(run.projectId, run.runId)
+      current = settlePauseIfQuiet(repository, run.projectId, run.runId, requireRun(run.projectId, run.runId))
       if (current.status !== 'running') return
       if (!semanticMultiShot) {
         // `authorized` is the pre-submit state owned by the still-supported
@@ -453,7 +454,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
           }
           current = requireRun(run.projectId, run.runId)
           if (current.status !== 'needs_attention') {
-            current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention', reason: 'failed' }, `driver-${run.runId}-legacy-writer-retired`).run
+            current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention' }, `driver-${run.runId}-legacy-writer-retired`).run
           }
           return
         }
@@ -557,21 +558,21 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
               }
             } else {
               current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'needs_attention', patch: { errorCode: 'asset_not_localized', errorMessage: '生成已返回，但项目内没有可预览的本地素材' } }, `driver-${job.jobId}-asset-attention`).run
-              if (current.status !== 'needs_attention') current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention', reason: 'failed' }, `driver-${run.runId}-asset-attention-${current.revision}`).run
+              if (current.status !== 'needs_attention') current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention' }, `driver-${run.runId}-asset-attention-${current.revision}`).run
               return
             }
           } catch (error) {
             current = requireRun(run.projectId, run.runId)
             if (current.jobs.find((candidate) => candidate.jobId === job.jobId)?.status === 'submitting') current = executeInternal(run.projectId, run.runId, current, 'job.status', { jobId: job.jobId, status: 'submission_unknown', patch: { errorCode: 'renderer_or_provider_unknown', errorMessage: '生成提交结果无法确认' } }, `driver-${job.jobId}-unknown-${current.revision}`).run
             if (current.status !== 'needs_attention') {
-              try { current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention', reason: 'failed' }, `driver-${run.runId}-generation-attention-${current.revision}`).run } catch { /* preserve unknown job state */ }
+              try { current = executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention' }, `driver-${run.runId}-generation-attention-${current.revision}`).run } catch { /* preserve unknown job state */ }
             }
             logError('production-run', 'generation-driver-stopped', error)
             return
           }
         }
       }
-      current = requireRun(run.projectId, run.runId)
+      current = settlePauseIfQuiet(repository, run.projectId, run.runId, requireRun(run.projectId, run.runId))
       if (current.status !== 'running') return
       if (semanticMultiShot) {
         // Materialization deliberately leaves a job `ready`: the artifact is
@@ -602,7 +603,6 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
           if (current.status !== 'needs_attention') {
             executeInternal(run.projectId, run.runId, current, 'run.status', {
               status: 'needs_attention',
-              reason: 'failed',
             }, `driver-${run.runId}-generation-incomplete-run-${current.revision}`)
           }
           return
@@ -679,7 +679,7 @@ export function createDriverOps(deps: DriverOpsDeps): DriverOps {
     } catch (error) {
       const current = repository.read(run.projectId, run.runId)
       if (current && current.status === 'exporting') {
-        try { executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention', reason: 'failed' }, `driver-${run.runId}-export-attention-${current.revision}`) } catch { /* preserve export error */ }
+        try { executeInternal(run.projectId, run.runId, current, 'run.status', { status: 'needs_attention' }, `driver-${run.runId}-export-attention-${current.revision}`) } catch { /* preserve export error */ }
       }
       logError('production-run', 'export-driver-failed', error)
     } finally {

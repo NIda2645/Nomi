@@ -30,3 +30,24 @@ describe('模型索引那句指路，只点名真能调的工具', () => {
     expect(named).toContain(modelCatalogReadSpec().name)
   })
 })
+
+describe('用户声明的默认模型：模型看得到，且说的是同一个模型', () => {
+  const declared = { text_to_image: { vendor: 'fixture', modelId: 'image-1' }, image_to_video: { vendor: 'fixture', modelId: 'video-9' } } as const
+
+  it('索引里有「图片默认 / 视频默认」，并带着「没点名用默认、点名听用户、换了要先说」三条规则', () => {
+    const text = formatLaneModelIndex(context, declared)
+    expect(text).toContain('图片默认（文生图）：fixture/image-1')
+    expect(text).toContain('视频默认（图生视频）：fixture/video-9')
+    expect(text).toContain('用户没点名模型时')
+    expect(text).toContain('以用户点名的为准')
+    expect(text).toContain('先在回话里说清为什么换')
+    // 没声明的任务不出行——不告诉模型一个不存在的默认。
+    expect(text).not.toContain('改图')
+    expect(text).not.toContain('文生视频')
+  })
+
+  it('一个默认都没有：整段不出', () => {
+    expect(formatLaneModelIndex(context, {})).not.toContain('用户在设置里选的默认模型')
+    expect(formatLaneModelIndex(context)).not.toContain('用户在设置里选的默认模型')
+  })
+})

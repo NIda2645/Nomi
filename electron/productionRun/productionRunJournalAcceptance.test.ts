@@ -8,7 +8,7 @@ import { productionRunPaths } from './productionRunPaths';
 let root = '';
 const makeRepository = () => createProductionRunRepository({ projectDirResolver: () => root });
 const command = (index: number) => ({ commandId: `command-${index}`, expectedRevision: index,
-  type: 'run.status' as const, payload: index % 2 === 0 ? { status: 'running' as const } : { status: 'needs_attention' as const, reason: 'failed' as const }, issuedAt: '2026-09-20T00:00:00.000Z' });
+  type: 'run.status' as const, payload: { status: index % 2 === 0 ? 'running' as const : 'needs_attention' as const }, issuedAt: '2026-09-20T00:00:00.000Z' });
 beforeEach(() => {
   root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-journal-acceptance-'));
   makeRepository().create({ runId: 'run-1', projectId: 'project-1',

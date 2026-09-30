@@ -453,6 +453,16 @@ export function storyboardPlanFromDraftSubjects(subjects: readonly GenerationOpe
   return plan;
 }
 
+/**
+ * 「方案已存、**没有替用户打开**」这一条事实。写给模型的回执必须带它——Agent 新建的方案只进创作页左栏的列表，
+ * 打开是用户的动作；模型要靠这一条才知道该在回话里告诉用户去哪点开，而不是含糊地说「已生成」。
+ */
+export type StoryboardSavedFact = Readonly<{ designId: string; title: string; opened: false; openFrom: string }>;
+export function storyboardSavedFact(designId: string, title: string): StoryboardSavedFact {
+  return { designId, title, opened: false,
+    openFrom: 'Creation page, left column: the plan row under its source document. It is NOT opened for the user — tell them it is written and where to open it.' };
+}
+
 type RequestRenderer = (op: string, payload: unknown, timeoutMs: number) => Promise<unknown>;
 /** Author bodies are small; a renderer that cannot answer inside this window is not going to. */
 const STORYBOARD_RENDERER_TIMEOUT_MS = 15_000;

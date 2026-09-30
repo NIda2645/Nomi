@@ -22,7 +22,7 @@ export type AnchorCheckpointCardModel = {
   gateId: string
   projectId: string
   runId: string
-  /** 已批准硬预算（¥）——只有已知金额时说明行才提它（noteWithBudget）；未知为 null（不伪造金额，说明行也不提预算）。 */
+  /** 已批准硬预算（¥）——说明行「按已批准的 ¥N 预算开拍」用；未知为 null（不伪造金额）。 */
   approvedBudget: number | null
   budgetCurrency: string
   /** 镜头数（非锚、included 的镜）——主按钮「开拍 N 镜」用。 */
