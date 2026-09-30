@@ -23,6 +23,7 @@ import { ProductionRunLockBusyError } from "../productionRun/productionRunLock";
 import { IllegalProductionTransitionError } from "../productionRun/productionRunState";
 import { GenerationReworkRefusedError } from "../productionRun/prepareProductionGenerationAuthorization";
 import { createProductionRunService } from "../productionRun/productionRunService";
+import { authorizationGateForJob } from "../shared/productionSpendAuthority";
 import type { ProductionGenerationShot, ProductionRunStopReason, ProductionShotActionFailure } from "../productionRun/productionRunTypes";
 import type { WorkspaceProjectRecordV2 } from "../workspace/workspaceTypes";
 
@@ -226,15 +227,26 @@ describe("「重做这一镜」", () => {
     expect(repository.read(PROJECT, RUN)).toMatchObject({ status: "paused", stop: { reason: "user_paused" } });
   });
 
-  it("还有镜头在排队（已授权没提交）：queued_shots_pending，不弹确认", async () => {
+  // 2026-09-30：授权按门存（每点一次一份）。重做这一镜是「又一份」，旁边还在排队的镜不再挡住它，
+  // 而且那一镜照样由批它的那道门盖着（以前这里是 queued_shots_pending，不弹确认）。
+  it("还有镜头在排队（已授权没提交）：照样能重做失败的这一镜，排队的那一镜仍由它自己那份授权盖着", async () => {
     const { repository, hooks, confirmGenerationInNomi } = setup({ withReceipts: true });
     let run = repository.read(PROJECT, RUN)!;
     const job1 = run.jobs.find((job) => job.metadata?.shotId === "shot-1")!;
     for (const status of ["submit_intent_persisted", "submitting", "needs_attention"] as const) {
       run = repository.execute(PROJECT, RUN, { commandId: `job1-${status}`, expectedRevision: run.revision, type: "job.status", payload: { jobId: job1.jobId, status, ...(status === "needs_attention" ? { patch: { errorCode: "provider_task_failed" } } : {}) }, issuedAt: now() }).run;
     }
-    await expect(hooks.reworkProductionShot({ projectId: PROJECT, runId: RUN, shotId: "shot-1" })).resolves.toEqual({ ok: false, code: "failed", failure: "queued_shots_pending" });
-    expect(confirmGenerationInNomi, "被拒就不弹确认").not.toHaveBeenCalled();
+    const queued = run.jobs.find((job) => job.metadata?.shotId === "shot-2")!;
+    const queuedGate = authorizationGateForJob(run, queued)!;
+    expect(queued.status, "第 2 镜批了还在排队").toBe("authorized");
+    await expect(hooks.reworkProductionShot({ projectId: PROJECT, runId: RUN, shotId: "shot-1" })).resolves.toEqual({ ok: true, code: "reworked" });
+    expect(confirmGenerationInNomi, "重做照常弹一次确认").toHaveBeenCalledTimes(1);
+    const after = repository.read(PROJECT, RUN)!;
+    const queuedAfter = after.jobs.find((job) => job.jobId === queued.jobId)!;
+    expect(queuedAfter.status).toBe("authorized");
+    expect(authorizationGateForJob(after, queuedAfter)?.gateId, "还是批它的那道门").toBe(queuedGate.gateId);
+    expect(authorizationGateForJob(after, queuedAfter)?.status).toBe("approved");
+    expect(after.jobs.filter((job) => job.metadata?.shotId === "shot-1").map((job) => job.attempt), "失败那一镜多了第 2 次").toEqual([1, 2]);
   });
 
   it("这一镜上一次还在排队（没交给供应商）：previous_attempt_unsettled，不再被说成「还没生成过」", async () => {

@@ -235,8 +235,6 @@ export function applyProductionCommand(
       // P4 S1 multi-shot seal: freeze per-shot sub-contracts (included shots only) + the plan-level hash.
       // Single-shot seal (no shots[] in payload) stays byte-identical to today.
       const sealedShots = sealGenerationShots(currentPlan, command.payload.shots);
-      const rawPlanHash = typeof command.payload.planHash === "string" ? command.payload.planHash.trim() : "";
-      if (sealedShots && !rawPlanHash) throw new Error("A multi-shot generation seal requires a plan hash");
       // P4 S2 seal precheck: when the caller supplies per-shot prices (derived from the catalog), the
       // reducer enforces the hard spend ceiling at the single source of truth. Absent shotPrices →
       // byte-identical to today (no precheck, no costCertainty) so the single-shot chain is untouched.
@@ -280,18 +278,11 @@ export function applyProductionCommand(
             candidate: { ...currentPlan.candidate, sealedContractHash: contract.contractHash },
             contract,
             state: "sealed",
+            // 这一份授权（信封）住在它自己那道门上（authorization.gate），计划上不再挂一份。
             ...(sealedShots ? { shots: sealedShots.map(shot => {
               const job = authorization?.jobs.find(candidate => candidate.metadata?.shotId === shot.shotId);
               return job ? { ...shot, attemptCount: job.attempt } : shot;
-            }), planHash: authorization?.authorizationDigest ?? rawPlanHash } : {}),
-            ...(authorization
-              ? {
-                  authorizationEnvelope: authorization.envelope,
-                  authorizationDigest: authorization.authorizationDigest,
-                  authorizationGateId: authorization.envelope.gateId,
-                  planHash: authorization.authorizationDigest,
-                }
-              : {}),
+            }) } : {}),
             ...(costCertainty ? { costCertainty } : {}),
             updatedAt: now,
           },
@@ -461,32 +452,6 @@ export function applyProductionCommand(
       return bindShotNodes(current, command, now);
     case "plan.detach-shot-nodes":
       return detachShotNodes(current, command, now);
-    case "generation.approve": {
-      const currentPlan = current.generationPlan;
-      const receiptId = text(command.payload, "receiptId");
-      const contractHash = text(command.payload, "contractHash");
-      if (!currentPlan || currentPlan.state !== "sealed" || !currentPlan.contract) throw new Error("A sealed generation plan is required before approval");
-      // P4 S1: a multi-shot receipt is keyed on the plan-level hash (covers the whole operation);
-      // a single-shot receipt is keyed on the one sealed contract hash. Accept whichever this plan uses.
-      const expectedHash = currentPlan.shots ? currentPlan.planHash : currentPlan.contract.contractHash;
-      if (expectedHash !== contractHash) throw new Error("Generation approval does not match the sealed contract");
-      const rawAttempt = command.payload.attempt;
-      const approvedAttempt = rawAttempt === undefined ? undefined : Number(rawAttempt);
-      if (approvedAttempt !== undefined && (!Number.isInteger(approvedAttempt) || approvedAttempt < 1)) throw new Error("Generation approval attempt is invalid");
-      if (currentPlan.approvedReceiptId === receiptId && currentPlan.approvedAttempt === approvedAttempt) return { run: current, eventType: "generation.plan.approved", message: currentPlan.operationId };
-      // P4 S1: the plan-level receipt approves every INCLUDED shot (a per-operation receipt covers the
-      // whole batch — §1). Excluded shots stay unapproved. Single-shot plans (no shots[]) are unaffected.
-      const approvedShots = currentPlan.shots
-        ? currentPlan.shots.map((shot) => (isShotIncluded(shot)
-            ? { ...shot, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), approvedAt: now, updatedAt: now }
-            : shot))
-        : undefined;
-      return {
-        run: { ...current, generationPlan: { ...currentPlan, approvedReceiptId: receiptId, ...(approvedAttempt === undefined ? {} : { approvedAttempt }), ...(approvedShots ? { shots: approvedShots } : {}), approvedAt: now, updatedAt: now }, updatedAt: now },
-        eventType: "generation.plan.approved",
-        message: currentPlan.operationId,
-      };
-    }
     case "generation.reauthorize": {
       const rawShotId = typeof command.payload.shotId === "string" ? command.payload.shotId.trim() : "";
       const reauthorized = deriveGenerationReauthorizationState({

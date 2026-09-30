@@ -3,12 +3,14 @@ import type { GenerationOperation, GenerationOperationStore } from "../capabilit
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
 import type { ProductionRunService } from "./productionRunService";
+import { spendAuthorizationGates } from "../shared/productionSpendAuthority";
 
 type GenerationRunOwner = Pick<ProductionRunService, "createGenerationDraft" | "readFull" | "command">;
 
 function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): GenerationOperation | null {
   const plan = run.generationPlan;
   if (!plan) return null;
+  const latest = spendAuthorizationGates(run).at(-1);
   return {
     operationId: plan.operationId,
     ...(run.origin.sourceDocument ? { sourceDocumentId: run.origin.sourceDocument.documentId } : {}),
@@ -18,10 +20,8 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
     state: plan.state,
     ...(plan.cardHidden === true ? { cardHidden: true } : {}),
     ...(plan.contract ? { contract: structuredClone(plan.contract) } : {}),
-    ...(plan.approvedReceiptId ? { approvedReceiptId: plan.approvedReceiptId } : {}),
-    ...(plan.authorizationEnvelope ? { authorizationEnvelope: structuredClone(plan.authorizationEnvelope) } : {}),
-    ...(plan.authorizationDigest ? { authorizationDigest: plan.authorizationDigest } : {}),
-    ...(plan.authorizationGateId ? { authorizationGateId: plan.authorizationGateId } : {}),
+    ...(latest ? { authorization: { gateId: latest.gateId, digest: latest.authorizationDigest,
+      envelope: structuredClone(latest.authorizationEnvelope), status: latest.status } } : {}),
     planVersion: run.planVersion,
     // P4 S4: project the multi-shot entries so the MCP gate can build the real display.shots. A
     // single-shot plan has no shots[] → this is omitted and the flat single-shot path is unchanged.
@@ -32,7 +32,6 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
             candidate: structuredClone(shot.candidate),
             ...(shot.contract ? { contract: structuredClone(shot.contract) } : {}),
           })),
-          ...(plan.planHash ? { planHash: plan.planHash } : {}),
         }
       : {}),
     updatedAt: plan.updatedAt,

@@ -203,6 +203,11 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
    * 且任何一处都不许出现代表未知的 0（2026-09-21 未知价开闸）。
    */
   unpriced?: boolean;
+  /**
+   * 批准之后先别派：多镜批次的调度器这一轮不跑，job 停在「已授权、还没发出」。模拟第 1 镜还在排队
+   * （等形象确认、被并发挡着）时用户又点了第 2 镜；之后由 `dispatchNow()` 真的跑一轮调度。
+   */
+  holdDispatch?: () => boolean;
 } = {}) {
   const { root, repository, owner, operations, canvasLanding } = base;
   const provider = loopbackProvider(vendorOrigin, submits);
@@ -226,6 +231,14 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     const run = repository.read(projectId, operationId);
     if (!run) throw new Error(`Harness has no durable Run for ${operationId}`);
     return run;
+  };
+  const runBatch = async (operationId: string) => {
+    const scheduler = createMultiShotBatchScheduler({
+      repository, submission, projectId: PROJECT_ID, runId: operationId,
+      perShotPrice: () => (hooks.unpriced ? { known: false } : { known: true, amount: PRICING.cost }), now,
+    });
+    await scheduler.runToQuiescence();
+    await canvasLanding.landCanvasBestEffort(PROJECT_ID, operationId);
   };
   const handler = createGenerationPlanningHandler({
     registry,
@@ -257,12 +270,7 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
           commandId: `fixture:submit:v${run.planVersion}`, expectedRevision: run.revision,
           type: "generation.submit", payload: {}, issuedAt: now(),
         });
-        const scheduler = createMultiShotBatchScheduler({
-          repository, submission, projectId: PROJECT_ID, runId: operation.operationId,
-          perShotPrice: () => (hooks.unpriced ? { known: false } : { known: true, amount: PRICING.cost }), now,
-        });
-        await scheduler.runToQuiescence();
-        await canvasLanding.landCanvasBestEffort(PROJECT_ID, operation.operationId);
+        if (!hooks.holdDispatch?.()) await runBatch(operation.operationId);
         return { operationId: operation.operationId, state: "submitted", nextAction: "observe" };
       }
       const started = await submission.start({ projectId: PROJECT_ID, operationId: operation.operationId }) as { nextAction: string };
@@ -320,7 +328,9 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
       approvalPolicy: () => ({ mode, spend: "confirm" }),
     },
   );
-  return { actions, withWindow: actions(window), withoutWindow: actions(() => null), submission, handler, receipts, authority, transport };
+  return { actions, withWindow: actions(window), withoutWindow: actions(() => null), submission, handler, receipts, authority, transport,
+    /** 真跑一轮多镜调度（`holdDispatch` 放开之后用）。 */
+    dispatchNow: (operationId: string = OPERATION_ID) => runBatch(operationId) };
 }
 
 /** 模型那一侧的一次调用（`tryExecute` 的入参形状）。 */

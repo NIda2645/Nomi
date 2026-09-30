@@ -159,7 +159,8 @@ it("new confirmation of the same candidate uses a distinct attempt and command i
     expect(done.budget.reserved).toBeCloseTo(0.6);
     expect(done.policy.maxSpend).toBe(1);
     expect([...base.renderer.nodes.entries()]).toEqual(nodes);
-    await expect(submission.start({ projectId: PROJECT_ID, operationId: OPERATION_ID, attempt: 1 })).rejects.toThrow(/observation-only/);
+    // 第一轮那一次仍由它自己那道门盖着（每点一次一份），但它已经出片了：再发一次一律拒绝，供应商那边不多一笔。
+    await expect(submission.start({ projectId: PROJECT_ID, operationId: OPERATION_ID, attempt: 1 })).rejects.toThrow(/observation-only|cannot be submitted/);
     expect(submits).toHaveLength(2);
   } finally { await vendor.close(); }
 });

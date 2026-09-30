@@ -526,7 +526,10 @@ describe("semantic MCP generation tools", () => {
       ...baseOperations,
       read(projectId: string, operationId: string) {
         const operation = baseOperations.read(projectId, operationId);
-        return operation && approval.receiptId ? { ...operation, approvedReceiptId: approval.receiptId } : operation;
+        // 批准住在「批这一份的那道门」上：这里把那道门已批的结论投影回 read（与生产 operationFromRun 同形）。
+        return operation && approval.receiptId
+          ? { ...operation, authorization: { gateId: "gate-1", digest: "digest-1", envelope: {} as never, status: "approved" as const } }
+          : operation;
       },
     };
     const start = async (operation: GenerationOperation) => ({
@@ -702,13 +705,15 @@ describe("semantic MCP generation tools", () => {
         { shotId: "shot-a", candidate: { ...candidate({ candidateId: "cand-a", prompt: "雨夜推门", parameters: { aspectRatio: "1:1", duration: 15 } }) }, contract: shotContract("cand-a", "hash-a", "雨夜推门") },
         { shotId: "shot-b", candidate: { ...candidate({ candidateId: "cand-b", prompt: "货架对视", parameters: { aspectRatio: "1:1", duration: 15 } }) }, contract: shotContract("cand-b", "hash-b", "货架对视") },
       ];
-      const operation = { operationId: "op-multi", projectId: "project-1", candidate: candidate(), state: "sealed" as const, contract: sealedContract, shots, planHash: "plan-hash-x", planVersion: 3, updatedAt: "2026-08-23T00:00:00.000Z" };
+      // 最近一份授权（那道门上的信封）：gate_request 回执的摘要与成本范围都读它。
+      const authorization = { gateId: "generation-authorization:op-multi:v3", digest: "plan-hash-x", status: "waiting" as const,
+        envelope: { costScope: "generation.multi-shot:op-multi", budget: { currency: "CNY", maximum: 18, ledgerCeiling: 18, unknownJobCount: 0 } } as never };
+      const operation = { operationId: "op-multi", projectId: "project-1", candidate: candidate(), state: "sealed" as const, contract: sealedContract, shots, authorization, planVersion: 3, updatedAt: "2026-08-23T00:00:00.000Z" };
       return {
         create: () => operation,
         read: () => operation,
         patch: () => operation,
         seal: () => operation,
-        approve: () => ({ ...operation, approvedReceiptId: "r" }),
         cancel: () => ({ ...operation, state: "cancelled" as const }),
         present: () => operation,
         withdraw: () => ({ ...operation, state: "draft" as const, cardHidden: true }),
@@ -775,7 +780,9 @@ describe("semantic MCP generation tools", () => {
       const videoShot = sealed.shots!.find((s) => s.shotId === "shot-a");
       expect(videoShot?.contract?.contractHash).toBeTruthy();
       expect(videoShot?.candidate.sealedContractHash).toBe(videoShot?.contract?.contractHash);
-      expect(gate.contractHash).toBe(sealed.planHash); // multi-shot receipt keyed on the plan hash
+      // 多镜收据键在盖住整批的那个摘要上（没有授权信封时是封印包的 planHash），不是某一镜的合同哈希。
+      expect(gate.contractHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(sealed.shots!.map((shot) => shot.contract?.contractHash)).not.toContain(gate.contractHash);
     });
 
     it("an excluded shot carries no sub-contract and drops off the card (试拍/分批)", async () => {

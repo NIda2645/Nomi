@@ -56,17 +56,8 @@ function makeApprovalReceipt(clock: () => string = () => '2026-08-23T00:00:00.00
  * 逐镜确认一次性拿掉——付费放行，所以要收据。逐镜价目/合计/上限全部来自这个信封（唯一价格真相源）。
  */
 function trustGrantRun(): ProductionRun {
-  return {
-    ...run,
-    policy: { ...run.policy, trustLevel: 'confirm_all' },
-    generationPlan: {
-      operationId: 'run-1',
-      state: 'sealed',
-      candidate: {} as never,
-      costCertainty: 'known',
-      authorizationDigest: 'digest-trust',
-      authorizationGateId: 'gate-1',
-      authorizationEnvelope: {
+  // 授权住在它自己那道门上（2026-09-30）：信封摆在一道付费门上，计划上不留。
+  const authorizationEnvelope = {
         schemaVersion: 1,
         immutableProjectUuid: 'uuid-1',
         projectGeneration: 1,
@@ -82,7 +73,18 @@ function trustGrantRun(): ProductionRun {
           { jobId: 'job-1', shotId: 'shot-1', providerId: 'apimart', modelId: 'kling-v2', mode: 'i2v', price: { currency: 'CNY', maximum: 4 } },
           { jobId: 'job-2', shotId: 'shot-2', providerId: 'apimart', modelId: 'kling-v2', mode: 'i2v', price: { currency: 'CNY', maximum: 5 } },
         ],
-      } as never,
+      } as never
+  return {
+    ...run,
+    policy: { ...run.policy, trustLevel: 'confirm_all' },
+    gates: [...run.gates, { gateId: 'gate-trust', scope: 'budget_envelope', status: 'waiting', planHash: 'digest-trust',
+      authorizationDigest: 'digest-trust', authorizationEnvelope, jobIds: ['job-1', 'job-2'], title: '', summary: '',
+      createdAt: '2026-08-08T10:00:00.000Z', expiresAt: '2026-08-24T00:00:00.000Z' }],
+    generationPlan: {
+      operationId: 'run-1',
+      state: 'sealed',
+      candidate: {} as never,
+      costCertainty: 'known',
       updatedAt: '2026-08-08T10:00:00.000Z',
     },
   }

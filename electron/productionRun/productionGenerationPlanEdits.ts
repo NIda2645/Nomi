@@ -16,6 +16,7 @@ import type {
   ProductionRun,
   RunCommand,
 } from "./productionRunTypes";
+import { waitingAuthorizationGates } from "../shared/productionSpendAuthority";
 
 /** Update one shot inside a plan by id; throws if the plan has no such shot. */
 export function replaceShot(
@@ -60,26 +61,26 @@ function record(payload: Record<string, unknown>, key: string): Record<string, u
  */
 export function revokeWaitingGenerationAuthorization(
   current: ProductionRun,
-  plan: ProductionGenerationPlan,
+  _plan: ProductionGenerationPlan,
   now: string,
   what: string,
 ): Readonly<{ gates: ProductionGate[]; jobs: ProductionJob[]; planVersion: number }> {
-  if (!plan.authorizationDigest || !plan.authorizationGateId) {
-    throw new Error(`${what} requires an authorized generation plan`);
-  }
-  const authorizationGate = current.gates.find((gate) => gate.gateId === plan.authorizationGateId);
-  if (!authorizationGate || authorizationGate.status !== "waiting") {
+  // 撤的是**还在等人决定**的那几份授权（每份住在自己那道门上）；已经批过的那几份与它们的 job 一个不动。
+  const waiting = waitingAuthorizationGates(current);
+  if (waiting.length === 0) {
     throw new Error(`${what} is available only before the spend gate is decided`);
   }
-  const abandonedJobs = current.jobs.filter((job) => job.authorizationDigest === plan.authorizationDigest);
+  const revokedDigests = new Set(waiting.map((gate) => gate.authorizationDigest));
+  const abandonedJobs = current.jobs.filter((job) => job.authorizationDigest !== undefined && revokedDigests.has(job.authorizationDigest));
   if (abandonedJobs.some((job) => job.status !== "authorization_required")) {
     throw new Error(`${what} cannot replace an authorization that has begun execution`);
   }
+  const revokedGateIds = new Set(waiting.map((gate) => gate.gateId));
   return {
-    gates: current.gates.map((gate) => gate.gateId === authorizationGate.gateId
+    gates: current.gates.map((gate) => revokedGateIds.has(gate.gateId)
       ? { ...gate, status: "revoked" as const, decidedAt: now }
       : gate),
-    jobs: current.jobs.filter((job) => job.authorizationDigest !== plan.authorizationDigest),
+    jobs: current.jobs.filter((job) => job.authorizationDigest === undefined || !revokedDigests.has(job.authorizationDigest)),
     planVersion: current.planVersion + 1,
   };
 }
@@ -94,13 +95,6 @@ export function unsealedGenerationPlanFields(plan: ProductionGenerationPlan, now
       candidate: { ...shot.candidate, sealedContractHash: undefined }, approvedReceiptId: undefined,
       approvedAt: undefined, approvedAttempt: undefined })) } : {}),
     contract: undefined,
-    planHash: undefined,
-    authorizationEnvelope: undefined,
-    authorizationDigest: undefined,
-    authorizationGateId: undefined,
-    approvedReceiptId: undefined,
-    approvedAt: undefined,
-    approvedAttempt: undefined,
     costCertainty: undefined,
     updatedAt: now,
   };
@@ -235,8 +229,7 @@ export function withdrawGenerationPresentation(current: ProductionRun, now: stri
     return { ...current, generationPlan: { ...plan, cardHidden: true, updatedAt: now }, updatedAt: now };
   }
   if (plan.state !== "sealed") return current;
-  const gate = current.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
-  if (!gate || gate.status !== "waiting") return current;
+  if (waitingAuthorizationGates(current).length === 0) return current;
   const revoked = revokeWaitingGenerationAuthorization(current, plan, now, "Withdraw");
   return { ...current, ...revoked,
     generationPlan: { ...unsealedGenerationPlanFields(plan, now), cardHidden: true, updatedAt: now }, updatedAt: now };

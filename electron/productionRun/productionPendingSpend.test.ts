@@ -79,18 +79,18 @@ describe("付费卡的宿主投影", () => {
 
   it("已封印 + 付费门在等 = 同一张卡的另一档（带 gateId；卡不区分这两档，命令那层才区分）", () => {
     const sealed = run({
-      gates: [{ gateId: "gate-1", scope: "budget_envelope", status: "waiting", planHash: "d1", authorizationDigest: "d1", title: "", summary: "", jobIds: [], createdAt: NOW, expiresAt: NOW } as ProductionRun["gates"][number]],
+      gates: [{ gateId: "gate-1", scope: "budget_envelope", status: "waiting", planHash: "d1", authorizationDigest: "d1", authorizationEnvelope: { gateId: "gate-1", jobs: [] } as never, title: "", summary: "", jobIds: [], createdAt: NOW, expiresAt: NOW } as ProductionRun["gates"][number]],
     });
-    sealed.generationPlan = { ...sealed.generationPlan!, state: "sealed", authorizationGateId: "gate-1", authorizationDigest: "d1" };
+    sealed.generationPlan = { ...sealed.generationPlan!, state: "sealed" };
     const pending = projectPendingSpendConfirm(sealed, resolvePricing);
     expect(pending?.gateId).toBe("gate-1");
   });
 
   it("门已经批过 / 计划已提交 / 已取消 → 不出卡（那已经不是「等你决定」了）", () => {
     const decided = run({
-      gates: [{ gateId: "gate-1", scope: "budget_envelope", status: "approved", planHash: "d1", authorizationDigest: "d1", title: "", summary: "", jobIds: [], createdAt: NOW, expiresAt: NOW } as ProductionRun["gates"][number]],
+      gates: [{ gateId: "gate-1", scope: "budget_envelope", status: "approved", planHash: "d1", authorizationDigest: "d1", authorizationEnvelope: { gateId: "gate-1", jobs: [] } as never, title: "", summary: "", jobIds: [], createdAt: NOW, expiresAt: NOW } as ProductionRun["gates"][number]],
     });
-    decided.generationPlan = { ...decided.generationPlan!, state: "sealed", authorizationGateId: "gate-1", authorizationDigest: "d1" };
+    decided.generationPlan = { ...decided.generationPlan!, state: "sealed" };
     expect(projectPendingSpendConfirm(decided, resolvePricing)).toBeUndefined();
     for (const state of ["submitted", "cancelled"] as const) {
       const other = run();
@@ -162,9 +162,9 @@ describe("付费卡的宿主投影", () => {
 
   it("封印后门还等着的那一笔，在全自动档下仍然出卡（代答链失败 = 它真的在等人）", () => {
     const sealed = run({
-      gates: [{ gateId: "gate-a", kind: "budget", status: "waiting", requestedAt: NOW } as never],
+      gates: [{ gateId: "gate-a", scope: "budget_envelope", status: "waiting", planHash: "d-a", authorizationDigest: "d-a", authorizationEnvelope: { gateId: "gate-a", jobs: [] } as never, title: "", summary: "", jobIds: [], createdAt: NOW, expiresAt: NOW } as ProductionRun["gates"][number]],
     });
-    sealed.generationPlan = { ...sealed.generationPlan!, state: "sealed", authorizationGateId: "gate-a" };
+    sealed.generationPlan = { ...sealed.generationPlan!, state: "sealed" };
     expect(projectPendingSpendConfirm(sealed, resolvePricing, () => true)).toBeDefined();
   });
 

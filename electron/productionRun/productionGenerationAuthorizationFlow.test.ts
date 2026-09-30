@@ -244,7 +244,7 @@ describe("Run-owned paid generation authorization", () => {
       readFull: (projectId: string, runId: string) => repository.read(projectId, runId)!,
       command: async (projectId: string, runId: string, command: Parameters<typeof repository.execute>[2]) => repository.execute(projectId, runId, command),
     };
-    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model" }));
+    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model", contractHash: authorization.authorizationDigest }));
     const generationAuthority = createRunOwnedGenerationGateAuthority({
       owner: owner as never,
       operations: { read: vi.fn(async () => undefined) } as never,
@@ -265,7 +265,7 @@ describe("Run-owned paid generation authorization", () => {
   });
 
   it("rejects a malformed sealed gate before issuing a request-time challenge", async () => {
-    const { root, repository } = setup(false);
+    const { root, repository, authorization } = setup(false);
     const receipts = createApprovalReceiptAuthority({
       filePath: path.join(root, "approval-receipts.json"),
       macKey: "approval-receipt-key",
@@ -279,7 +279,7 @@ describe("Run-owned paid generation authorization", () => {
       readFull: () => malformed,
       command: vi.fn(),
     };
-    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model" }));
+    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model", contractHash: authorization.authorizationDigest }));
     const requestChallenge = vi.spyOn(receipts, "requestChallenge");
     const generationAuthority = createRunOwnedGenerationGateAuthority({
       owner: owner as never,
@@ -297,7 +297,7 @@ describe("Run-owned paid generation authorization", () => {
   });
 
   it("rejects an expired sealed authorization at request time without issuing a challenge", async () => {
-    const { root, repository } = setup(false);
+    const { root, repository, authorization } = setup(false);
     const receipts = createApprovalReceiptAuthority({
       filePath: path.join(root, "approval-receipts.json"),
       macKey: "approval-receipt-key",
@@ -309,7 +309,7 @@ describe("Run-owned paid generation authorization", () => {
       readFull: (projectId: string, runId: string) => repository.read(projectId, runId)!,
       command: vi.fn(),
     };
-    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model" }));
+    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model", contractHash: authorization.authorizationDigest }));
     const requestChallenge = vi.spyOn(receipts, "requestChallenge");
     const generationAuthority = createRunOwnedGenerationGateAuthority({
       owner: owner as never,
@@ -478,12 +478,11 @@ describe("Run-owned paid generation authorization", () => {
   it("persists one digest-bound gate, Approval and budget authorization", () => {
     const { repository, authorization } = setup();
     const run = repository.read("project-1", "op-1")!;
-    expect(run.generationPlan).toMatchObject({
-      authorizationDigest: authorization.authorizationDigest,
-      authorizationGateId: authorization.envelope.gateId,
-      approvedReceiptId: "receipt-1",
-      planHash: authorization.authorizationDigest,
-    });
+    // 授权住在它自己那道门上；计划上不再挂一份（2026-09-30，每点一次一份）。
+    for (const field of ["authorizationEnvelope", "authorizationDigest", "authorizationGateId", "approvedReceiptId", "planHash"]) {
+      expect(run.generationPlan, `计划上不许再有 ${field}`).not.toHaveProperty(field);
+    }
+    expect(run.gates[0]?.authorizationEnvelope, "信封住在门上").toEqual(authorization.envelope);
     expect(run.jobs).toEqual([expect.objectContaining({
       jobId: authorization.envelope.jobs[0].jobId,
       status: "authorized",

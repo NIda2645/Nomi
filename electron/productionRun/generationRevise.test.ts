@@ -117,11 +117,8 @@ describe("generation.revise · 卡上改参数", () => {
     expect(plan.state).toBe("draft");
     // 封印/授权字段整组清零——重新计价、重新封印、重新出卡才能拿到新的 digest。
     expect(plan.contract).toBeUndefined();
-    expect(plan.planHash).toBeUndefined();
-    expect(plan.authorizationDigest).toBeUndefined();
-    expect(plan.authorizationEnvelope).toBeUndefined();
-    expect(plan.authorizationGateId).toBeUndefined();
     expect(plan.costCertainty).toBeUndefined();
+    // 那一份授权住在它自己那道门上：门被撤回（下面那条），计划上本来就不挂授权。
     expect(effect.run.gates).toEqual([expect.objectContaining({ status: "revoked" })]);
     expect(effect.run.jobs).toEqual([]);
     expect(effect.run.planVersion).toBe(2);
@@ -240,7 +237,6 @@ describe("generation.revise · 卡上换模型与 Run 白名单（#748）", () =
     expect(next.policy.allowedModels).toContain("fixture-model-pro");
     // 放行的只是判据里的身份，不是那笔钱：旧授权照撤，仍要重新出卡、重新由真人按一次。
     expect(next.generationPlan!.state).toBe("draft");
-    expect(next.generationPlan!.authorizationDigest).toBeUndefined();
     expect(next.gates.every((gate) => gate.status !== "waiting")).toBe(true);
     expect(next.policy.maxSpend).toBe(FROZEN.maxSpend);
   });
@@ -282,14 +278,13 @@ describe("generation.present · 同一方案的新付费范围", () => {
     expect(next.generationPlan?.shots?.map((shot) => [shot.shotId, shot.included])).toEqual([["shot-a", false], ["shot-b", true]]);
     expect(next.gates[0].status).toBe("revoked");
     expect(next.jobs).toEqual([]);
-    expect(next.generationPlan?.authorizationEnvelope).toBeUndefined();
     expect(next.generationPlan?.shots?.every((shot) => !shot.contract && !shot.approvedReceiptId)).toBe(true);
   });
 
   it("S06: completed batch leaves the same creative identities available for the next batch", () => {
     const run = sealedRun();
     const completed: ProductionRun = { ...run, status: "completed",
-      generationPlan: { ...run.generationPlan!, state: "submitted", approvedReceiptId: "first-batch" },
+      generationPlan: { ...run.generationPlan!, state: "submitted" },
       gates: run.gates.map((gate) => ({ ...gate, status: "approved" })),
       jobs: run.jobs.map((job) => ({ ...job, status: "ready" })) };
     const next = present(completed, ["shot-b"]);
@@ -299,7 +294,8 @@ describe("generation.present · 同一方案的新付费范围", () => {
     expect(next.generationPlan?.shots?.map((shot) => shot.shotId)).toEqual(["shot-a", "shot-b"]);
     expect(next.generationPlan?.state).toBe("draft");
     expect(next.planVersion).toBe(completed.planVersion + 1);
-    expect(next.generationPlan?.approvedReceiptId).toBeUndefined();
+    // 上一批的批准住在它自己那道门上（原样留着），计划上没有一份「当前批准」可以沿用到下一批。
+    expect(next.generationPlan).not.toHaveProperty("approvedReceiptId");
   });
 
   it("S07: unknown previous submission cannot be reset by presenting another batch", () => {

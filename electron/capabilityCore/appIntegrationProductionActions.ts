@@ -182,17 +182,8 @@ export function createProductionActionHooks(deps: ActionDeps): {
         },
       })
       if (!decision.approved) return { ok: false, code: 'rework_declined' }
+      // 重做是这一镜的又一份授权（住在它自己那道门上），计划照旧在跑，不需要再「交一次方案」。
       run = decision.run
-      // 封好还没开拍的方案（sealed）：批了这一镜就把方案交出去，调度器才会派。
-      if (run.generationPlan?.state !== 'submitted') {
-        run = (await deps.generationService.command(projectId, runId, {
-          commandId: `production-rework-submit:${authorization.envelope.gateId}`,
-          expectedRevision: run.revision,
-          type: 'generation.submit',
-          payload: {},
-          issuedAt: new Date().toISOString(),
-        })).run
-      }
     } catch (error) {
       return failedWith(error)
     }

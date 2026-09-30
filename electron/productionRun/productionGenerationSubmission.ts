@@ -15,6 +15,7 @@ import {
   productionGenerationProviderIdempotencyKey,
 } from "./productionGenerationAuthorization";
 import { nextGenerationAttempt } from "./prepareProductionGenerationAuthorization";
+import { authorizationGateForJob } from "../shared/productionSpendAuthority";
 import { createProductionRunRuntimeEnvelope } from "./productionRunRuntimeEnvelope";
 import { createProductionRunIntentLog } from "./productionRunIntentLog";
 import { productionRunPaths } from "./productionRunPaths";
@@ -155,9 +156,9 @@ function requiredRun(repository: ProductionRunRepository, projectId: string, run
 
 /**
  * P4 S1: resolve the sub-contract this call addresses.
- * - No shotId → the default (single) shot: top-level plan contract + plan-level receipt (today's chain).
- * - shotId → that shot's sealed sub-contract + the shot's own receipt approval.
- * Either way the plan must be sealed/submitted and the addressed unit must be approved before submit.
+ * - No shotId → the default (single) shot: the top-level plan contract.
+ * - shotId → that shot's sealed sub-contract.
+ * 批没批准不在这里判：派发前 `prepareAuthorizedSubmission` 核「批这个 job 的那道门」（唯一判据），这里只要合同在。
  */
 function requiredContract(run: ProductionRun, shotId?: string): ExecutionContractV1 {
   const plan = run.generationPlan;
@@ -166,10 +167,10 @@ function requiredContract(run: ProductionRun, shotId?: string): ExecutionContrac
   }
   if (shotId) {
     const shot = (plan.shots ?? []).find((candidate) => candidate.shotId === shotId);
-    if (!shot?.contract || !shot.approvedReceiptId) throw new Error("Seal and confirm the generation plan before starting");
+    if (!shot?.contract) throw new Error("Seal and confirm the generation plan before starting");
     return shot.contract;
   }
-  if (!plan.contract || !plan.approvedReceiptId) throw new Error("Seal and confirm the generation plan before starting");
+  if (!plan.contract) throw new Error("Seal and confirm the generation plan before starting");
   return plan.contract;
 }
 
@@ -332,37 +333,37 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
   } {
     let current = run;
     const plan = current.generationPlan;
-    const authorizationEnvelope = plan?.authorizationEnvelope;
-    const authorizationDigest = plan?.authorizationDigest;
-    const gateId = plan?.authorizationGateId;
-    if (!plan || !authorizationEnvelope || !authorizationDigest || !gateId) {
+    const existingJob = current.jobs.find((job) => job.jobId === jobId);
+    // 批这个 job 的**那一道门**（每点一次一份授权，信封住在门上）。不是计划上某一份：那一份已删——它让排在前面、
+    // 已经批过的镜在下一次批准时失去授权，也让「只批这一镜」只能靠把别的镜移出这一批来实现（2026-09-30）。
+    const gate = existingJob ? authorizationGateForJob(current, existingJob) : undefined;
+    const authorizationEnvelope = gate?.authorizationEnvelope;
+    const authorizationDigest = gate?.authorizationDigest;
+    const gateId = gate?.gateId;
+    if (!plan || !existingJob || !gate || !authorizationEnvelope || !authorizationDigest || !gateId) {
       throw new Error("This generation Run has no sealed paid authorization; it is read-only until re-planned");
     }
     if (
-      // 派发时核的是「还是不是那个项目、那一个 Run、那一版计划、那一道批过的门」。**不核项目文档版本**：它在批准那一刻
-      // 已经核过（收据只对当时的版本有效，见 productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后项目
-      // 照常会变——Nomi 自己把占位和参考卡结果落到画布上就会让它前进。以前这里要求派发时项目版本仍等于封信封时的版本，
-      // 于是定妆照检查点放行、急停后继续、重开项目这些「批准之后过一会儿才派」的路一律报
+      // 派发时核的是「还是不是那个项目、那一个 Run、批它的那一道门」。**不核活的项目文档版本、也不核活的计划版本**：
+      // 批准那一刻它们是前提（收据只对当时的版本有效，见 productionRunApprovalReceipt.assertCurrentProjectRevision），
+      // 批准之后项目照常会变——Nomi 自己把占位和参考卡结果落到画布上、用户在卡上改下一镜，都会让它们前进。以前这里要求
+      // 派发时它们仍等于封信封时的值，于是定妆照检查点放行、急停后继续、重开项目这些「批准之后过一会儿才派」的路一律报
       // 「Generation authorization no longer matches」，视频镜永远排队（2026-09-29 用户实见）。发出去的请求本身已由
-      // 合同哈希、线上报文哈希、幂等键逐字钉死（下面那组比对），项目文档怎么变都改不了它。
+      // 合同哈希、线上报文哈希、幂等键逐字钉死（下面那组比对），文档和计划怎么变都改不了它。
       authorizationEnvelope.immutableProjectUuid !== deps.immutableProjectUuid
       || authorizationEnvelope.projectGeneration !== deps.projectGeneration
       || authorizationEnvelope.projectId !== current.projectId
       || authorizationEnvelope.runId !== current.runId
-      || authorizationEnvelope.planVersion !== current.planVersion
       || authorizationEnvelope.gateId !== gateId
     ) {
       throw new Error("Generation authorization no longer matches the current project or Run");
     }
     const authorized = authorizationEnvelope.jobs.find((job) => job.jobId === jobId);
-    const existingJob = current.jobs.find((job) => job.jobId === jobId);
-    const gate = current.gates.find((candidate) => candidate.gateId === gateId);
     const approvalId = `approval:${gateId}`;
     const approval = deps.repository.readApprovals(current.projectId, current.runId)
       .find((candidate) => candidate.approvalId === approvalId);
     if (
       !authorized
-      || !existingJob
       || authorized.attempt !== attempt
       || authorized.contractHash !== contract.contractHash
       || authorized.providerId !== contract.providerId
@@ -370,11 +371,9 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
       || authorized.providerIdempotencyKey !== productionGenerationProviderIdempotencyKey(current.runId, contract.contractHash, attempt, shotId)
       || existingJob.authorizationDigest !== authorizationDigest
       || existingJob.providerIdempotencyKey !== authorized.providerIdempotencyKey
-      || !gate
       || gate.status !== "approved"
-      || gate.authorizationDigest !== authorizationDigest
       || gate.planHash !== authorizationDigest
-      || gate.receiptId !== plan.approvedReceiptId
+      || !gate.receiptId
       || !approval
       || approval.authorizationDigest !== authorizationDigest
       || approval.planHash !== authorizationDigest
@@ -442,7 +441,8 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     if (!Number.isInteger(attempt) || attempt < 1) throw new Error("Generation attempt is invalid");
     let jobId = productionGenerationJobId(run.runId, contract.contractHash, attempt, shotId);
     const existingJob = run.jobs.find((job) => job.jobId === jobId);
-    if (existingJob && existingJob.authorizationDigest !== run.generationPlan?.authorizationDigest) {
+    // 没有任何一份授权（门）盖着的旧 job 只能看、不能再发：它的那一轮授权已经不在了。
+    if (existingJob && !authorizationGateForJob(run, existingJob)) {
       throw new Error("Historical generation execution is observation-only");
     }
     if (existingJob?.status === "provider_accepted" && existingJob.providerTaskId) {

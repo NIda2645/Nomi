@@ -406,7 +406,7 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           return startSemanticMultiShotBatch(operation, {
             readRun: (projectId, runId) => productionRuns.repository.read(projectId, runId),
             submitPlan: (run) => productionRuns.command(lease.projectId, operation.operationId, {
-              commandId: `generation.submit:${operation.operationId}:${run.generationPlan?.planHash ?? run.generationPlan?.contract?.contractHash ?? 'plan'}`,
+              commandId: `generation.submit:${operation.operationId}:v${run.planVersion}`,
               expectedRevision: run.revision,
               type: 'generation.submit',
               payload: {},

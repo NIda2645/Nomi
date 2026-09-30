@@ -276,8 +276,8 @@ describe('decideShotClaim — 画布能不能再发这一镜', () => {
 
   it('approval gate waiting follows the run stop state without mixing holder and reason', () => {
     const waiting = run({ status: 'running', shots: [{ shotId: 's1' }] })
-    waiting.generationPlan!.authorizationGateId = 'gate-1'
-    waiting.gates.push({ gateId: 'gate-1', scope: 'budget_envelope', status: 'waiting', planHash: 'p', jobIds: [], title: '', summary: '', createdAt: NOW, expiresAt: NOW })
+    waiting.gates.push({ gateId: 'gate-1', scope: 'budget_envelope', status: 'waiting', planHash: 'p', authorizationDigest: 'p',
+      authorizationEnvelope: { gateId: 'gate-1', jobs: [{ shotId: 's1' }] } as never, jobIds: [], title: '', summary: '', createdAt: NOW, expiresAt: NOW })
     expect(decideShotClaim(waiting, 's1', 'canvas')).toMatchObject({ holder: 'production', reason: 'awaiting_confirmation', granted: false })
     waiting.status = 'paused'
     expect(decideShotClaim(waiting, 's1', 'canvas')).toMatchObject({ holder: 'canvas', reason: 'run_stopped', granted: true })
@@ -341,8 +341,8 @@ describe('decideShotClaim — durable matrix regressions', () => {
 
   it('rejected gate releases an unsubmitted shot', () => {
     const r = run({ status: 'running', planState: 'sealed', shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] })
-    r.generationPlan!.authorizationGateId = 'gate-1'
-    r.gates.push({ gateId: 'gate-1', scope: 'budget_envelope', status: 'rejected', planHash: 'p', jobIds: [], title: '', summary: '', createdAt: NOW, expiresAt: NOW })
+    r.gates.push({ gateId: 'gate-1', scope: 'budget_envelope', status: 'rejected', planHash: 'p', authorizationDigest: 'p',
+      authorizationEnvelope: { gateId: 'gate-1', jobs: [{ shotId: 's1' }] } as never, jobIds: [], title: '', summary: '', createdAt: NOW, expiresAt: NOW })
     expect(decideShotClaim(r, 's1', 'canvas')).toMatchObject({ holder: 'canvas', reason: 'gate_rejected', granted: true })
   })
 

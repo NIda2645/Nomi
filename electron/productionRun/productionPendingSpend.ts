@@ -26,6 +26,7 @@ import type { PlanCandidate } from "../capabilityCore/executionContract";
 import { deriveShotPrice, type ModelPricing, type ShotPrice } from "./shotPricing";
 import type { ProductionGenerationPlan, ProductionRun } from "./productionRunTypes";
 import type { PendingSpendConfirm, PendingSpendShot } from "../shared/contracts/pendingSpendConfirm";
+import { waitingAuthorizationGates } from "../shared/productionSpendAuthority";
 
 /** Agent lane 自己发起的那条路。`generationTransportAdapters` 的 `plan()` 就是这么盖的章。 */
 export const IN_APP_AGENT_ORIGIN_HOST = "nomi";
@@ -86,9 +87,9 @@ export function awaitingSpendDecision(
   const plan = run.generationPlan;
   if (!plan) return undefined;
   if (plan.state === "sealed") {
-    const gate = run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
+    const gate = waitingAuthorizationGates(run).at(-1);
     // 封印了却没有一道在等的门 = 这笔已经被决定过了，不该再问一次。
-    if (!gate || gate.status !== "waiting") return undefined;
+    if (!gate) return undefined;
     return { plan, gateId: gate.gateId };
   }
   if (plan.state !== "draft") return undefined;

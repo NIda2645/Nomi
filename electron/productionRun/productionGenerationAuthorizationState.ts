@@ -18,7 +18,6 @@ import type {
 import {
   REWORKABLE_JOB_STATUSES,
   nextGenerationAttempt,
-  UNSUBMITTED_AUTHORIZATION_STATUSES,
 } from "./prepareProductionGenerationAuthorization";
 
 type AuthorizationPreparation = Readonly<{
@@ -210,9 +209,9 @@ export function deriveSealedGenerationAuthorizationState(input: Readonly<{
       status: "waiting",
       planHash: authorizationDigest,
       authorizationDigest,
+      authorizationEnvelope: envelope,
       costScope: envelope.costScope,
       requestedSpend: envelope.budget.maximum,
-    ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
       ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
       jobIds: jobs.map((job) => job.jobId),
       title: "Confirm generation spend",
@@ -231,11 +230,7 @@ export function deriveGenerationReauthorizationState(input: Readonly<{
   now: string;
 }>): ReauthorizedGenerationState {
   const plan = input.run.generationPlan;
-  if (
-    !plan
-    || (plan.state !== "sealed" && plan.state !== "submitted")
-    || !plan.authorizationEnvelope
-  ) {
+  if (!plan || (plan.state !== "sealed" && plan.state !== "submitted")) {
     throw new Error("A previously authorized generation plan is required before rework");
   }
   const { envelope, authorizationDigest } = preparationFrom(input.preparation);
@@ -302,9 +297,8 @@ export function deriveGenerationReauthorizationState(input: Readonly<{
   if (!parent || !REWORKABLE_JOB_STATUSES.has(parent.status)) {
     throw new Error("The previous generation attempt is not safely reworkable");
   }
-  if (input.run.jobs.some((job) => UNSUBMITTED_AUTHORIZATION_STATUSES.has(job.status))) {
-    throw new Error("Generation rework requires all previously authorized jobs to be submitted or settled");
-  }
+  // 以前这里要求「之前批过的都已发出」：计划上只有一份授权，重做那一份会替掉它，排在前面的镜就失去授权。
+  // 现在每份授权住在自己那道门上（productionSpendAuthority），重做只是又一份，不替任何一份。
   const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
   if (
     envelope.budget.currency !== input.run.budget.currency
@@ -353,6 +347,7 @@ export function deriveGenerationReauthorizationState(input: Readonly<{
     status: "waiting",
     planHash: authorizationDigest,
     authorizationDigest,
+    authorizationEnvelope: envelope,
     costScope: envelope.costScope,
     requestedSpend: envelope.budget.maximum,
     ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
@@ -362,16 +357,9 @@ export function deriveGenerationReauthorizationState(input: Readonly<{
     createdAt: input.now,
     expiresAt: envelope.expiresAt,
   };
+  // 计划的状态不动：重做是这一镜的又一份授权，不是把整份计划退回「等人决定」。
   const generationPlan: ProductionGenerationPlan = {
     ...plan,
-    state: "sealed",
-    planHash: authorizationDigest,
-    authorizationEnvelope: envelope,
-    authorizationDigest,
-    authorizationGateId: envelope.gateId,
-    approvedReceiptId: undefined,
-    approvedAt: undefined,
-    approvedAttempt: undefined,
     ...(input.shotId
       ? {
           shots: plan.shots!.map((candidateShot) => candidateShot.shotId === input.shotId
@@ -398,7 +386,7 @@ export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
   now: string;
 }>): ContinuedGenerationState {
   const plan = input.run.generationPlan;
-  if (!plan || plan.state !== "submitted" || !plan.shots?.length || !plan.authorizationEnvelope) {
+  if (!plan || plan.state !== "submitted" || !plan.shots?.length) {
     throw new Error("A submitted multi-shot authorization is required before paid continuation");
   }
   const { envelope, authorizationDigest } = preparationFrom(input.preparation);
@@ -469,6 +457,7 @@ export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
     status: "waiting",
     planHash: authorizationDigest,
     authorizationDigest,
+    authorizationEnvelope: envelope,
     costScope: envelope.costScope,
     requestedSpend: envelope.budget.maximum,
     ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
@@ -481,13 +470,6 @@ export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
   const continuedShotIds = new Set(envelope.jobs.map((job) => job.shotId));
   const generationPlan: ProductionGenerationPlan = {
     ...plan,
-    planHash: authorizationDigest,
-    authorizationEnvelope: envelope,
-    authorizationDigest,
-    authorizationGateId: envelope.gateId,
-    approvedReceiptId: undefined,
-    approvedAt: undefined,
-    approvedAttempt: undefined,
     shots: plan.shots.map((shot) => continuedShotIds.has(shot.shotId)
       ? { ...shot, approvedReceiptId: undefined, approvedAt: undefined, updatedAt: input.now }
       : shot),
@@ -505,14 +487,16 @@ export function applyGenerationAuthorizationGateDecision(input: Readonly<{
 }>): GenerationAuthorizationGateDecision {
   if (!input.gate.authorizationDigest) return { generationPlan: input.run.generationPlan };
   const plan = input.run.generationPlan;
+  // 决的是**这道门自己那一份**：门上的信封、门的摘要、门的 job 表三者对得上才算数。
+  const envelope = input.gate.authorizationEnvelope;
   if (
-    !plan?.authorizationEnvelope
-    || plan.authorizationDigest !== input.gate.authorizationDigest
-    || plan.authorizationGateId !== input.gate.gateId
+    !plan
+    || !envelope
+    || envelope.gateId !== input.gate.gateId
     || input.gate.planHash !== input.gate.authorizationDigest
-    || input.gate.jobIds.join("\n") !== plan.authorizationEnvelope.jobs.map((job) => job.jobId).join("\n")
+    || input.gate.jobIds.join("\n") !== envelope.jobs.map((job) => job.jobId).join("\n")
   ) {
-    throw new Error("Generation authorization gate does not match the sealed plan");
+    throw new Error("Generation authorization gate does not match its sealed envelope");
   }
   if (input.status !== "approved") return { generationPlan: plan };
   const receiptId = input.receiptId?.trim();
@@ -521,11 +505,9 @@ export function applyGenerationAuthorizationGateDecision(input: Readonly<{
     receiptId,
     generationPlan: {
       ...plan,
-      approvedReceiptId: receiptId,
-      approvedAt: input.now,
       ...(plan.shots
         ? {
-            shots: plan.shots.map((shot) => plan.authorizationEnvelope!.jobs.some((job) => job.shotId === shot.shotId)
+            shots: plan.shots.map((shot) => envelope.jobs.some((job) => job.shotId === shot.shotId)
               ? { ...shot, approvedReceiptId: receiptId, approvedAt: input.now, updatedAt: input.now }
               : shot),
           }

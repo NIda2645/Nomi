@@ -371,7 +371,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       resolvePricing: (providerId, modelId) => deps.resolveModelPricing?.(providerId, modelId),
       currency: "CNY",
       ...(operation.planVersion !== undefined ? { planVersion: operation.planVersion } : {}),
-      ...(operation.planHash ? { planHash: operation.planHash } : {}),
+      ...(operation.authorization ? { planHash: operation.authorization.digest } : {}),
       specs: {
         shotCount: includedVideo.length,
         ...(totalDurationSeconds === undefined ? {} : { durationSeconds: totalDurationSeconds }),
@@ -645,14 +645,14 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
           operationId,
           projectId: input.lease.projectId,
           // A multi-shot receipt is keyed on the PLAN hash (covers the whole batch — §1).
-          contractHash: sealed.authorizationDigest ?? sealed.planHash ?? contract.contractHash,
+          contractHash: sealed.authorization?.digest ?? multiShotSeal?.planHash ?? contract.contractHash,
           model: `${contract.providerId}/${contract.modelId}`,
           referenceCount: contract.references.length,
-          costScope: sealed.authorizationEnvelope?.costScope ?? `generation.multi-shot:${operationId}`,
+          costScope: sealed.authorization?.envelope.costScope ?? `generation.multi-shot:${operationId}`,
           // 一批**全部**算不出价：没有任何已知金额可报，如实回 null（不是 0）。
           maximumCost: multiShot.shots.every((shot) => !shot.price.known)
             ? null
-            : sealed.authorizationEnvelope?.budget.maximum ?? knownSubtotal,
+            : sealed.authorization?.envelope.budget.maximum ?? knownSubtotal,
           costKnown: multiShot.shots.every((shot) => shot.price.known),
           unknownShotCount: multiShot.shots.reduce((count, shot) => (shot.price.known ? count : count + 1), 0),
           currency: "CNY",
@@ -673,11 +673,11 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         operation: sealed,
         operationId,
         projectId: input.lease.projectId,
-        contractHash: sealed.authorizationDigest ?? contract.contractHash,
+        contractHash: sealed.authorization?.digest ?? contract.contractHash,
         model: `${contract.providerId}/${contract.modelId}`,
         referenceCount: contract.references.length,
-        costScope: sealed.authorizationEnvelope?.costScope ?? `generation.single-shot:${operationId}`,
-        maximumCost: price.known ? sealed.authorizationEnvelope?.budget.maximum ?? price.amount : null,
+        costScope: sealed.authorization?.envelope.costScope ?? `generation.single-shot:${operationId}`,
+        maximumCost: price.known ? sealed.authorization?.envelope.budget.maximum ?? price.amount : null,
         costKnown: price.known,
         ...(price.known ? {} : { unknownShotCount: 1 }),
         currency: "CNY",
@@ -699,7 +699,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // turn; treat that replay as an observation instead of attempting a
       // second provider submission.
       if (current.state === "submitted") return { operation: current, taskRef: generationTaskReference(operationId), operationId, nextAction: "observe" };
-      if (current.state !== "sealed" || !current.contract || !current.approvedReceiptId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "Confirm the generation plan before starting: the user has not approved this draft yet.");
+      if (current.state !== "sealed" || !current.contract || current.authorization?.status !== "approved") refuseToModel(GENERATION_ARGUMENT_REFUSAL, "Confirm the generation plan before starting: the user has not approved this draft yet.");
       return deps.start?.(current, input.lease) ?? { operationId, state: current.state, nextAction: "provider_not_configured" };
     }
     // 宿主内部用（不在任何模型可见的方法表里）：问这句话的那个回合没了 → 收回这一次出价，计划留着。

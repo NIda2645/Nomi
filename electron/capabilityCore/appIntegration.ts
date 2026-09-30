@@ -402,7 +402,7 @@ export async function startCapabilityCore(
             const beforeKick = generationService.repository.read(lease.projectId, operation.operationId)
             if (beforeKick?.generationPlan?.state === 'sealed') {
               await generationService.command(lease.projectId, operation.operationId, {
-                commandId: `generation.submit:${operation.operationId}:${beforeKick.generationPlan.planHash ?? beforeKick.generationPlan.contract?.contractHash ?? 'plan'}`,
+                commandId: `generation.submit:${operation.operationId}:v${beforeKick.planVersion}`,
                 expectedRevision: beforeKick.revision,
                 type: 'generation.submit',
                 payload: {},

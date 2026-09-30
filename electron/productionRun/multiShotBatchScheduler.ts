@@ -5,6 +5,7 @@ import type { ProductionGenerationSubmission } from "./productionGenerationSubmi
 import type { ShotPrice } from "./shotPricing";
 import { currentAnchorCheckpointGate, buildAnchorCheckpointGate } from "./anchorCheckpoint";
 import { logInfo, logWarn } from "../logging/logger";
+import { latestSpendAuthorizationDigest } from "../shared/productionSpendAuthority";
 
 /**
  * P4 S4 — the durable batch scheduler orchestrator (plan §3.3). It has NO persistent state of its own:
@@ -110,7 +111,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
   function command(run: ProductionRun, type: string, payload: Record<string, unknown>, suffix: string): ProductionRun {
     return deps.repository.execute(run.projectId, run.runId, {
-      commandId: `batch.scheduler:${run.runId}:${run.generationPlan?.authorizationDigest ?? run.planVersion}:${suffix}`,
+      commandId: `batch.scheduler:${run.runId}:${latestSpendAuthorizationDigest(run) ?? run.planVersion}:${suffix}`,
       expectedRevision: run.revision,
       type,
       payload,
@@ -158,7 +159,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
   /** Open the anchor checkpoint gate (§3.2) referencing the ready anchor jobs — a free quality gate. */
   function openCheckpoint(run: ProductionRun, checkpoint: CheckpointState): ProductionRun {
-    const gate = buildAnchorCheckpointGate({ runId: run.runId, planHash: run.generationPlan?.planHash ?? "", anchorJobIds: checkpoint.readyAnchorJobIds, now: now() });
+    const gate = buildAnchorCheckpointGate({ runId: run.runId, planHash: latestSpendAuthorizationDigest(run) ?? "", anchorJobIds: checkpoint.readyAnchorJobIds, now: now() });
     return command(run, "gate.add", { gate }, `open-anchor-checkpoint:${gate.gateId}`);
   }
 

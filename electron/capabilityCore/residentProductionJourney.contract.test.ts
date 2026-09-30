@@ -267,7 +267,7 @@ describe("resident Agent production journey (zero quota contract)", () => {
     expect(shots.reduce((total, shot) => total + Number(shot.candidate.parameters.duration), 0)).toBe(300);
 
     const { repository, sealed } = createRunFixture(shots, topContract);
-    expect(sealed.generationPlan).toMatchObject({ state: "sealed", planHash: "fixture-plan-5m" });
+    expect(sealed.generationPlan).toMatchObject({ state: "sealed" });
     expect(sealed.generationPlan?.shots).toHaveLength(20);
 
     const providerSubmit = vi.fn();
@@ -289,7 +289,7 @@ describe("resident Agent production journey (zero quota contract)", () => {
       readRun: (projectId, runId) => {
         const run = repository.read(projectId, runId);
         return run
-          ? { projectId: run.projectId, runId: run.runId, revision: run.revision, generationPlan: run.generationPlan! }
+          ? { projectId: run.projectId, runId: run.runId, revision: run.revision, planVersion: run.planVersion, generationPlan: run.generationPlan! }
           : null;
       },
       submitPlan,

@@ -36,12 +36,12 @@ describe('production action feedback ownership', () => {
   })
   it('says the structured failure in plain words at the requesting shot, and clears on a successful retry', async () => {
     api.rework
-      .mockResolvedValueOnce({ ok: false, code: 'failed', failure: 'queued_shots_pending' })
+      .mockResolvedValueOnce({ ok: false, code: 'failed', failure: 'previous_attempt_unsettled' })
       .mockResolvedValueOnce({ ok: true, code: 'reworked' })
     const present = vi.fn()
     await reworkProductionShot('project', 'run', 'shot', present)
     const shown = present.mock.calls.at(-1)?.[0] as string
-    expect(shown).toBe(i18n.t('generationCommon.production.canvasLanding.actionFailure.queuedShotsPending'))
+    expect(shown).toBe(i18n.t('generationCommon.production.canvasLanding.actionFailure.previousAttemptUnsettled'))
     expect(shown).not.toMatch(RAW_MAIN_TEXT)
     await reworkProductionShot('project', 'run', 'shot', present)
     expect(present.mock.calls.at(-1)).toEqual([''])

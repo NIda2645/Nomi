@@ -5,6 +5,7 @@ import type {
   PreparedProductionGenerationAuthorization,
 } from "../productionRun/prepareProductionGenerationAuthorization";
 import type { ProductionRun } from "../productionRun/productionRunTypes";
+import { spendAuthorizationGates, waitingAuthorizationGates } from "../shared/productionSpendAuthority";
 import type {
   ApprovalReceiptAuthority,
   HumanApprovalDisplay,
@@ -50,18 +51,16 @@ export function createRunOwnedGenerationGateAuthority(input: Readonly<{
     const operationId = operationIdFrom(params);
     const run = input.owner.readFull(lease.projectId, operationId);
     const plan = run.generationPlan;
-    const envelope = plan?.authorizationEnvelope;
-    const digest = plan?.authorizationDigest;
-    const gate = plan?.authorizationGateId
-      ? run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId)
-      : undefined;
+    // 这一次 gate_request 刚封的那一份（按它回的摘要找那道门）——每点一次一份，信封住在门上。
+    const sealedDigest = typeof planned.contractHash === "string" ? planned.contractHash : undefined;
+    const gate = sealedDigest ? waitingAuthorizationGates(run).find((candidate) => candidate.authorizationDigest === sealedDigest) : undefined;
+    const envelope = gate?.authorizationEnvelope;
+    const digest = gate?.authorizationDigest;
     if (
       !plan
       || !envelope
       || !digest
       || !gate
-      || gate.status !== "waiting"
-      || gate.authorizationDigest !== digest
       || gate.planHash !== digest
       || envelope.immutableProjectUuid !== lease.immutableProjectUuid
       || envelope.projectGeneration !== lease.projectGeneration
@@ -126,12 +125,10 @@ export function createRunOwnedGenerationGateAuthority(input: Readonly<{
   const authorizeGeneration: NonNullable<DispatchContext["authorizeGeneration"]> = async ({ params, lease, receipt }) => {
     const operationId = operationIdFrom(params);
     const run = input.owner.readFull(lease.projectId, operationId);
-    const plan = run.generationPlan;
-    const envelope = plan?.authorizationEnvelope;
-    const digest = plan?.authorizationDigest;
-    const gate = plan?.authorizationGateId
-      ? run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId)
-      : undefined;
+    // 收据上写着它批的是哪一道门：决的就是那一道（它自己那一份信封），不是计划上某一份。
+    const gate = spendAuthorizationGates(run).find((candidate) => candidate.gateId === receipt.gateId);
+    const envelope = gate?.authorizationEnvelope;
+    const digest = gate?.authorizationDigest;
     assertReceiptMatchesAuthorization(receipt, lease, operationId, envelope, digest, gate?.gateId);
     assertCurrentProjectRevision(lease.projectId, envelope?.projectRevision, input.projectRevisionResolver);
     if (!gate || gate.status !== "waiting" || gate.authorizationDigest !== digest || gate.planHash !== digest) {

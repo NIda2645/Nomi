@@ -36,15 +36,22 @@ export type GenerationOperation = Readonly<{
   /** 草稿建好但报价卡还没摆到用户面前（见 `ProductionGenerationPlan.cardHidden`）。 */
   cardHidden?: boolean;
   contract?: ExecutionContractV1;
-  approvedReceiptId?: string;
   /** P4 S4: multi-shot entries (anchors + video shots). Absent = single-shot (today's flat path). */
   shots?: ReadonlyArray<GenerationOperationShot>;
-  planHash?: string;
   planVersion?: number;
-  authorizationEnvelope?: ProductionGenerationAuthorizationEnvelopeV1;
-  authorizationDigest?: string;
-  authorizationGateId?: string;
+  /**
+   * 最近一份授权（最近那道付费门，信封住在门上）。每点一次一份，所以这里只是「最近那一次」的投影，
+   * 给 gate_request 回执与 start 前置判断读；派发永远按「批这个 job 的那道门」核，不读这一格。
+   */
+  authorization?: GenerationOperationAuthorization;
   updatedAt: string;
+}>;
+
+export type GenerationOperationAuthorization = Readonly<{
+  gateId: string;
+  digest: string;
+  envelope: ProductionGenerationAuthorizationEnvelopeV1;
+  status: "waiting" | "approved" | "rejected" | "expired" | "revoked";
 }>;
 
 export type GenerationAuthorizationPreparation = Readonly<{

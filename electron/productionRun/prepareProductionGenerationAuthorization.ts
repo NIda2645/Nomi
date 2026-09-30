@@ -18,6 +18,7 @@ import {
   type ProductionGenerationAuthorizationEnvelopeV1,
 } from "./productionGenerationAuthorization";
 import type { ShotPrice } from "./shotPricing";
+import { authorizedReferenceUrls } from "../shared/productionSpendAuthority";
 
 /**
  * 一镜的授权上限。**目录算不出 → `null`，不是 0**（2026-09-21 用户拍板：价格未知不许挡住生成）。
@@ -72,12 +73,6 @@ export const REWORKABLE_JOB_STATUSES = new Set<ProductionJob["status"]>([
   "cancelled_remote",
   "detached",
   "too_late",
-]);
-
-export const UNSUBMITTED_AUTHORIZATION_STATUSES = new Set<ProductionJob["status"]>([
-  "authorization_required",
-  "authorized",
-  "submit_intent_persisted",
 ]);
 
 function unitsFor(
@@ -253,7 +248,7 @@ export async function prepareProductionGenerationAuthorizationWithReferences(
  * 给能做的事。以前只有英文句子，外层用正则猜：上一次还在跑也被说成「这一镜还没生成过」，排队中的镜挡着返工
  * 则落成一句「操作没成功」前面拼着这行英文。
  */
-export type GenerationReworkRefusal = "no_prior_attempt" | "previous_attempt_unsettled" | "queued_shots_pending" | "attempt_limit";
+export type GenerationReworkRefusal = "no_prior_attempt" | "previous_attempt_unsettled" | "attempt_limit";
 
 export class GenerationReworkRefusedError extends Error {
   constructor(readonly refusal: GenerationReworkRefusal, message: string) {
@@ -279,7 +274,7 @@ function addressedUnit(run: ProductionRun, shotId?: string): {
   contract: ExecutionContractV1;
 } {
   const plan = run.generationPlan;
-  if (!plan || (plan.state !== "sealed" && plan.state !== "submitted") || !plan.authorizationEnvelope) {
+  if (!plan || (plan.state !== "sealed" && plan.state !== "submitted")) {
     throw new GenerationReworkRefusedError("no_prior_attempt", "This generation Run cannot create new paid work until it has a sealed authorization");
   }
   if (shotId) {
@@ -326,9 +321,6 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
   if (!REWORKABLE_JOB_STATUSES.has(parent.status)) {
     throw new GenerationReworkRefusedError("previous_attempt_unsettled", "The previous generation attempt is not safely reworkable");
   }
-  if (input.run.jobs.some((job) => UNSUBMITTED_AUTHORIZATION_STATUSES.has(job.status))) {
-    throw new GenerationReworkRefusedError("queued_shots_pending", "Generation rework requires all previously authorized jobs to be submitted or settled");
-  }
   const attempt = parent.attempt + 1;
   if (attempt > input.run.policy.maxAttemptsPerJob) {
     throw new GenerationReworkRefusedError("attempt_limit", "Generation rework exceeds the Run attempt limit");
@@ -346,7 +338,7 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
   const prepared = createGenerationRuntimeAdapter({ providers: input.providers }).prepareAuthorization({
     contract: unit.contract,
     providerIdempotencyKey,
-    referenceUrls: input.run.generationPlan?.authorizationEnvelope?.jobs.find(job => job.contractHash === unit.contract.contractHash)?.referenceUrls,
+    referenceUrls: authorizedReferenceUrls(input.run, unit.contract.contractHash),
   });
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation reauthorization time is invalid");
@@ -378,7 +370,7 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
       mode: unit.contract.mode,
       parameters: unit.contract.parameters,
       references: unit.contract.references,
-      referenceUrls: input.run.generationPlan?.authorizationEnvelope?.jobs.find(job => job.contractHash === unit.contract.contractHash)?.referenceUrls,
+      referenceUrls: authorizedReferenceUrls(input.run, unit.contract.contractHash),
       providerWirePayloadHash: prepared.providerRequestHash,
       providerIdempotencyKey,
       price: { currency: input.run.budget.currency, maximum: priceCeiling },
@@ -417,7 +409,6 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
     || !plan
     || plan.state !== "submitted"
     || !plan.shots?.length
-    || !plan.authorizationEnvelope
   ) {
     throw new Error("A submitted multi-shot authorization is required before paid continuation");
   }
@@ -446,7 +437,7 @@ export function prepareProductionGenerationContinuationAuthorization(input: Read
       if (existing.providerIdempotencyKey !== providerIdempotencyKey) {
         throw new Error(`Generation continuation job identity changed: ${shot.shotId}`);
       }
-      const referenceUrls = plan.authorizationEnvelope?.jobs.find(job => job.contractHash === contract.contractHash)?.referenceUrls;
+      const referenceUrls = authorizedReferenceUrls(input.run, contract.contractHash);
       const prepared = adapter.prepareAuthorization({ contract, providerIdempotencyKey, referenceUrls });
       return [{
         jobId,

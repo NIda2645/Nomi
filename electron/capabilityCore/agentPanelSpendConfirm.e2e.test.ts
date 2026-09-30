@@ -1,3 +1,4 @@
+import { spendAuthorizationGates } from "../shared/productionSpendAuthority";
 import { createPendingSpendActions } from './appIntegrationSpendConfirm';
 import { registerSpendWaiter, spendDecisionAwaited } from './spendDecisionWaiters';
 import { withdrawStalePresentations } from '../productionRun/stalePresentationSweep';
@@ -64,14 +65,15 @@ describe("Agent 面板付费卡：确认 → 真的开始生成（零额度 loop
       // ── ② 收据绑定的候选版本 = 执行时的候选版本 ──
       // 门是在**改完之后**才开的，所以信封里冻着的 candidateRevision 只可能是改后那一版；
       // 决门的那张收据就绑在这个 gateId + digest 上（对不上批不动）。
-      const envelopeTargets = (plan.authorizationEnvelope?.jobs ?? []).map((job) => job.target as { candidateRevision?: number });
+      // 信封住在批它的那道门上（每点一次一份）。
+      const gate = spendAuthorizationGates(run).at(-1)!;
+      const envelopeTargets = gate.authorizationEnvelope.jobs.map((job) => job.target as { candidateRevision?: number });
       expect(envelopeTargets).toHaveLength(1);
       expect(envelopeTargets[0].candidateRevision).toBe(2);
       expect(plan.candidate.revision).toBe(2);
-      const gate = run.gates.find((entry) => entry.gateId === plan.authorizationGateId)!;
       expect(gate.status).toBe("approved");
       expect(gate.receiptId).toBeTruthy();
-      expect(gate.authorizationDigest).toBe(plan.authorizationDigest);
+      expect(plan, "授权不挂在计划上").not.toHaveProperty("authorizationDigest");
       // 执行出来的那个 job 也绑在同一份合同上（收据 = 实际执行，不是注释保证的）。
       const job = run.jobs[0]!;
       expect(job.status === "ready" || job.status === "adopted").toBe(true);
@@ -258,7 +260,7 @@ describe("三档 × 付费报价卡（2026-09-12 拍板）", () => {
       const run = base.repository.read(PROJECT_ID, operationId)!;
       const plan = run.generationPlan!;
       expect(plan.state).toBe("submitted");
-      const gate = run.gates.find((entry) => entry.gateId === plan.authorizationGateId)!;
+      const gate = spendAuthorizationGates(run).at(-1)!;
       expect(gate.status).toBe("approved");
       expect(gate.receiptId).toBeTruthy();
       const receipt = receipts.verifyReceipt(receipts.resolveReceiptToken(gate.receiptId!));

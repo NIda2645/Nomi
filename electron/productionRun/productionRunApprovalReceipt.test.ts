@@ -216,15 +216,14 @@ describe('production approval receipt scope', () => {
     const confirmAll = {
       ...run,
       policy: { trustLevel: 'confirm_all' },
-      generationPlan: {
-        authorizationDigest: 'digest-trust',
-        costCertainty: 'known',
+      gates: [{ gateId: 'gate-trust', scope: 'budget_envelope', status: 'waiting', planHash: 'digest-trust', authorizationDigest: 'digest-trust',
         authorizationEnvelope: {
           immutableProjectUuid: 'uuid-1', projectGeneration: 1, projectRevision: 2, runId: 'run-1', planVersion: 1,
           budget: { currency: 'CNY', maximum: 5, ledgerCeiling: 5 },
           jobs: [{ shotId: 'shot-1', providerId: 'apimart', modelId: 'kling-v2', mode: 'i2v', price: { currency: 'CNY', maximum: 5 } }],
         },
-      },
+      }],
+      generationPlan: { costCertainty: 'known' },
     } as unknown as ProductionRun
     expect(() => owner(authority).verifyTrustGrant('project-1', 'run-1', confirmAll, {
       ...fixture().command({}),

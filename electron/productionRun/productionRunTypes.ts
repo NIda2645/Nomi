@@ -271,17 +271,11 @@ export type ProductionGenerationPlan = {
   cardHidden?: boolean;
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
-  approvedReceiptId?: string;
-  approvedAt?: string;
-  /** Which explicit submission attempt the latest human receipt authorizes. */
-  approvedAttempt?: number;
   /**
    * P4 S1 多镜形态：每镜的草稿 + shot 粒度记账。空/缺省 = 单镜旧形态（走顶层 candidate/contract）。
    * 顶层字段永不删除（老 Run 快照读路径依赖它）；多镜时顶层继续描述「默认镜」以维持向后兼容。
    */
   shots?: ProductionGenerationShot[];
-  /** Plan-level hash freezing the whole multi-shot operation (anchor + included shots) at seal time. */
-  planHash?: string;
   /**
    * Single-shot canvas landing binding. Multi-shot plans keep this identity on
    * each `shots[]` entry; the top-level field preserves the legacy single-shot
@@ -293,10 +287,6 @@ export type ProductionGenerationPlan = {
   canvasDetached?: boolean;
   /** Durable owner for the legacy single-shot plan. */
   claim?: ProductionShotClaim;
-  /** Immutable paid submission authority prepared before the human gate. */
-  authorizationEnvelope?: ProductionGenerationAuthorizationEnvelopeV1;
-  authorizationDigest?: string;
-  authorizationGateId?: string;
   /**
    * P4 S2 seal-time cost certainty. "known" = every included shot had a derived price at seal.
    * "partial" = the plan sealed with at least one unpriced shot (honest "we could not price all of
@@ -331,6 +321,13 @@ export type ProductionGate = {
   planHash: string;
   /** Present only for the paid generation gate whose planHash is the canonical digest. */
   authorizationDigest?: string;
+  /**
+   * 付费生成门**自己**带着它冻住的那份信封（2026-09-30）：每点一次一份，只盖那一次点到的镜头。
+   * 派发核的是「批这个 job 的那道门」上的这一份（job.authorizationDigest → 这道门），不是计划上某一份——
+   * 计划级那一份已删：它让「只批这一镜」只能靠把别的镜移出这一批来实现，也让排在前面的镜在下一次批准时
+   * 失去授权。只在 `authorizationDigest` 存在时出现。
+   */
+  authorizationEnvelope?: ProductionGenerationAuthorizationEnvelopeV1;
   costScope?: string;
   receiptId?: string;
   requestedSpend?: number;
@@ -485,7 +482,6 @@ export type ProductionShotActionFailure =
   | "provider_unavailable" // 这一镜的模型现在接不上供应商
   | "no_prior_attempt" // 这一镜还没生成过
   | "previous_attempt_unsettled" // 上一次还没出结果
-  | "queued_shots_pending" // 还有镜头在排队，不能单独重做
   | "attempt_limit" // 重做到上限了
   | "run_changed" // 刚好有别的写入（版本冲突 / 写锁被占 / 状态已变）
   | "approval_stale" // 确认的时候项目刚好有变动（收据对不上当前项目）

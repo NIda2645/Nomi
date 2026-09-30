@@ -66,9 +66,6 @@ function sealedPlan(shots: ProductionGenerationShot[]): ProductionGenerationPlan
     state: "submitted",
     candidate: shots[0].candidate,
     contract: shots[0].contract,
-    planHash: "plan-hash-batch",
-    approvedReceiptId: "receipt-plan",
-    approvedAt: NOW,
     shots,
     updatedAt: NOW,
   };

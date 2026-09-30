@@ -11,6 +11,7 @@ import { productionRunPaths, productionRunsRoot } from "./productionRunPaths";
 import { createProductionRunLock } from "./productionRunLock";
 import { applyProductionCommand, type ProductionCommandEffect } from "./productionRunReducer";
 import { settleRunLifecycle } from "./productionRunLifecycle";
+import { normalizeLegacySpendAuthority } from "../shared/productionSpendAuthority";
 import { assertProductionPolicyReady } from "./productionPolicyReadiness";
 import {
   applyBudgetEntry,
@@ -155,7 +156,12 @@ function budgetEntryFromPayload(value: unknown): BudgetLedgerEntry {
  * 不改盘上字节（投影读永远无副作用）。不补的话它会以 `undefined` 的身份流进一个声明为 number
  * 的字段，下游每一处读它的地方都得再猜一次。
  */
-function withBudgetDefaults(run: ProductionRun): ProductionRun {
+/**
+ * 读盘归一（唯一一处）：旧 Run 缺的账本计数补 0；旧 Run 挂在计划上的那份授权搬到它自己那道门上
+ * （normalizeLegacySpendAuthority，2026-09-30 起授权按门存）。只改内存里的投影，不回写盘。
+ */
+function withReadDefaults(stored: ProductionRun): ProductionRun {
+  const run = normalizeLegacySpendAuthority(stored);
   if (Number.isSafeInteger(run.budget?.unknownInFlight)) return run;
   return { ...run, budget: { ...run.budget, unknownInFlight: 0 } };
 }
@@ -295,13 +301,13 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     if (eventContent === null && snapshotContent === null) return null;
     const latestEvent = readEventJournal(paths.events, eventContent).latest();
     const snapshot = validSnapshot(snapshotContent);
-    if (snapshot && snapshot.snapshotCursor === (latestEvent?.cursor ?? snapshot.snapshotCursor)) return withBudgetDefaults(snapshot.run);
+    if (snapshot && snapshot.snapshotCursor === (latestEvent?.cursor ?? snapshot.snapshotCursor)) return withReadDefaults(snapshot.run);
     // Reads may rebuild an in-memory projection for callers, but never repair
     // durable bytes. Backup/migration/rewrite belongs to an explicit command;
     // a projection read must be safe to retry after a crash and side-effect free.
     const recovered = runFromEvent(latestEvent);
     if (!recovered) throw new ProductionRunParseError(paths.snapshot, 0);
-    return withBudgetDefaults(recovered);
+    return withReadDefaults(recovered);
   }
 
   function create(input: CreateProductionRunInput): ProductionRun {
@@ -515,15 +521,13 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
           if (!job) throw new Error(`Production job not found: ${jobId}`);
           return job;
         });
-        const plan = current.generationPlan;
-        const authorizationEnvelope = gate.authorizationDigest ? plan?.authorizationEnvelope : undefined;
+        // 决的是这道门**自己**那一份信封（每点一次一份，信封住在门上）。
+        const authorizationEnvelope = gate.authorizationDigest ? gate.authorizationEnvelope : undefined;
         const receiptId = typeof command.payload.receiptId === "string" ? command.payload.receiptId.trim() : "";
         if (gate.authorizationDigest) {
           if (
             !authorizationEnvelope
             || !receiptId
-            || plan?.authorizationDigest !== gate.authorizationDigest
-            || plan.authorizationGateId !== gate.gateId
             || gate.planHash !== gate.authorizationDigest
             || authorizationEnvelope.gateId !== gate.gateId
             || authorizationEnvelope.costScope !== gate.costScope
