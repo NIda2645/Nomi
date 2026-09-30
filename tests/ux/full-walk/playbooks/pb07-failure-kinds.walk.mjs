@@ -7,9 +7,11 @@
 //   ① 供应商回「参数不对」（真的参数错误，不是模型下线）→ 卡上仍说「参数不被接受」——修复不能把这一类也改没；
 //   ② 供应商说成功、给的字节读不出来 → 卡上说「生成的文件没能读出来」；运行记录里记着它发给了谁；
 //      屏上不出现「切到另一家」这类劝换供应商的提示（结果已经送达，失败在本机，换一家不是解法）；
-//   ③ 供应商说成功、给的是一张完整的 PNG（IEND 之后带了尾数据）→ 图照常落地成功（这一类以前被判 decode_failed）。
+//   ③ 供应商说成功、给的是一张完整的 PNG（IEND 之后带了尾数据）→ 图照常落地成功（这一类以前被判 decode_failed）；
+//   ④ 供应商回一句认不出类别的话（一句英文）→ 标题永远是界面语言：中文界面顶的是「生成失败」、英文原话降到「服务商原话」那一格，
+//      英文界面标题就是那句话（以前中文界面顶着一整句英文）。
 //
-// 零花费：两家本机回环供应商（第二家只是为了让「切家提示」有资格出现——② 里它不出现才有证明力）；三笔都发给第一家。
+// 零花费：两家本机回环供应商（第二家只是为了让「切家提示」有资格出现——② 里它不出现才有证明力）；四笔都发给第一家。
 // 夹具里「坏」的定义与宿主的落地判据是同一个（见 tests/ux/agent-runtime-fixture.mjs 的 undecodableJpegBytes / pngWithTrailingBytes）。
 import { DEFAULT_TIMEOUT_MS, expect, expectAbsent, proveProbe } from '../../_assert.mjs'
 import { panCanvasUntilInside } from '../../_canvasHit.mjs'
@@ -25,6 +27,8 @@ const SEED_EN = process.env.NOMI_FULL_WALK_LOCALE === 'en'
 const LOCALE = SEED_EN ? 'en' : 'zh-CN'
 const reasonOf = (kind) => uiText(LOCALE, `generationCommon.observability.error.${kind}.reason`)
 const CARD = 'kinds-card'
+/** 供应商回的一句认不出类别的话（英文）：它说了什么，界面只能原样转述，不能替它编原因。 */
+const UNKNOWN_SAID = 'The render farm returned an unrecognised state after the third checkpoint.'
 /** 一句真的参数错误（OpenAI 兼容形状：type=invalid_request_error、param 指向出错的参数、code 为 null）。 */
 const PARAM_ERROR = "Invalid value for 'size': 4096x4096 is not supported by this model. Supported sizes are 1024x1024 and 1024x1536."
 
@@ -48,11 +52,12 @@ const node = async () => ((await monitor.readProject())?.payload?.generationCanv
 const card = () => win().locator(`[data-node-id="${CARD}"]`).first()
 const toast = () => win().locator('.mantine-Notification-root')
 const switchNotice = () => toast().filter({ hasText: /切到|Switch to/ })
-// 三笔提交的结局按顺序排好：参数错误 → 读不出来 → 带尾数据的完整 PNG。
+// 四笔提交的结局按顺序排好：参数错误 → 读不出来 → 带尾数据的完整 PNG → 一句认不出类别的话（418 不在状态码表里）。
 fixture.setMediaBehavior(({ index }) => {
   if (index === 0) return { reject: { status: 400, json: { error: { message: PARAM_ERROR, type: 'invalid_request_error', param: 'size', code: null } } } }
   if (index === 1) return { corruptResult: true }
-  return { trailingBytesResult: true }
+  if (index === 2) return { trailingBytesResult: true }
+  return { reject: { status: 418, json: { error: { message: UNKNOWN_SAID } } } }
 })
 /** 打开项目时画布把唯一一张卡放得很大、标题与原因在窗口外：像人一样先缩小、再把整张卡（标题、原因、建议、按钮）拖进舞台再看。 */
 const showWholeCard = async () => {
@@ -71,6 +76,7 @@ try {
   let noticeProof = null
   let firstRunId = null
   let secondRunId = null
+  let thirdRunId = null
 
   await monitor.step('打开项目（从项目库）', () => smoke.openProject(), { surfaces: ['*'], critical: true })
 
@@ -107,11 +113,24 @@ try {
     await monitor.consentNodeGenerate(CARD, { label: '第三次生成' })
     await clickNodeGenerate(win(), CARD)
     await expect.poll(async () => (await newRun(secondRunId))?.status, { message: '第三次落成成功（这一类以前被判 decode_failed）', timeout: stationTimeout({ operations: 4 }) }).toBe('success')
+    thirdRunId = (await newRun(secondRunId)).id
     const landed = await node()
     expect(landed?.status, '节点落成 success').toBe('success')
     expect(landed?.result?.url, '产物落进了项目（nomi-local 地址），不是供应商给的原始地址').toMatch(/^nomi-local:\/\//)
     await expectAbsent(switchNotice(), { provenBy: noticeProof, message: '成功之后屏上没有劝换供应商的提示' })
     await monitor.screenshot('trailing-bytes-landed')
+  }, { surfaces: ['modal', 'canvasGesture', 'canvasViewport'] })
+
+  await monitor.step('④ 再点 ↑ 生成（供应商回一句认不出类别的话）', async () => {
+    await monitor.consentNodeGenerate(CARD, { label: '第四次生成' })
+    await clickNodeGenerate(win(), CARD)
+    await expect.poll(async () => (await newRun(thirdRunId))?.status, { message: '第四次落成失败', timeout: stationTimeout({ operations: 4 }) }).toBe('error')
+    // 标题永远是界面当前语言的一句话：中文界面顶的是「生成失败」，供应商的英文原话降到「服务商原话」那一格（仍看得见）；
+    // 英文界面里那句话本来就是英文，直接当标题。
+    await expect(card(), SEED_EN ? '英文界面：标题就是供应商那句话' : '中文界面：标题是「生成失败」，不是一整句英文').toContainText(SEED_EN ? UNKNOWN_SAID : reasonOf('unknown'), { timeout: DEFAULT_TIMEOUT_MS })
+    await expect(card(), '供应商原话在「服务商原话」那一格里仍看得见').toContainText(UNKNOWN_SAID, { timeout: DEFAULT_TIMEOUT_MS })
+    await showWholeCard()
+    await monitor.screenshot('unknown-kind-card')
   }, { surfaces: ['modal', 'canvasGesture', 'canvasViewport'] })
 
   await monitor.settle('收尾')

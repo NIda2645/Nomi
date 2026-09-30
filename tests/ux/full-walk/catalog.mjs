@@ -49,7 +49,7 @@ export const FULL_WALK_PLAYBOOKS = Object.freeze([
   }),
   Object.freeze({
     id: 'pb07-failure-kinds', script: 'tests/ux/full-walk/playbooks/pb07-failure-kinds.walk.mjs', paid: false,
-    title: Object.freeze({ 'zh-CN': '生成失败有几种：参数错误、结果读不出来、带尾数据的完整图照常落地', en: 'Failure kinds: rejected parameters, unreadable result, complete image with trailing bytes still lands' }),
+    title: Object.freeze({ 'zh-CN': '生成失败有几种：参数错误、结果读不出来、带尾数据的完整图照常落地、认不出类别的话标题跟界面语言', en: 'Failure kinds: rejected parameters, unreadable result, complete image with trailing bytes still lands, unknown provider text keeps the headline in the UI language' }),
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' }), Object.freeze({ id: 'en', locale: 'en' })]),
   }),
   Object.freeze({
