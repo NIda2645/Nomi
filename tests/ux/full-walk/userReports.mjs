@@ -23,4 +23,5 @@ export const USER_REPORTED_ISSUES = Object.freeze([
   { id: 'U14', reported: '2026-09-29', text: '点了之后弹「操作没成功，稍后再试」', playbook: 'pb01-two-page-card', rules: ['ui-action-internal-error'] },
   { id: 'U15', reported: '2026-09-29', text: 'Seedream 5.0 供应商出了图，Nomi 显示失败还劝换供应商', playbook: 'pb90-seedream5-paid', rules: ['provider-succeeded-nomi-failed', 'suggests-switching-after-local-failure'],
     notYet: '只进付费小额组：零花费夹具复现不了真供应商回的那张图；剧本已写，发版前 NOMI_SPEND_OK=1 跑' },
+  { id: 'U16', reported: '2026-09-30', text: '分镜里把图片提示词写成「巨龙」，生成出来的却是人物（提示词被追加了看不见的人物特征、还连上了看不见的人物参考图）', playbook: 'pb07-storyboard-prompt-truth', rules: ['sent-prompt-unseen-addition', 'sent-references'] },
 ].map(Object.freeze))
