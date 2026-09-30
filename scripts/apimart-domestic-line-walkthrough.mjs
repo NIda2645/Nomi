@@ -10,7 +10,7 @@
 //                 → 写错地址的两种提示；外加连接卡的体检结论（照真实 APIMart 应答，应是「已连通」）
 //   keyfirst-zh   新装机·中文：先填 key（主域被墙 → 已保存·未验证）→ 再改地址 → 重新保存验证 → 接上
 //   trap-zh       新装机·中文：点过「继续验证 → 自检」的连接（报错用户的真实状态）→ 改地址能存 → 画布生成
-//                 → Agent 生成（被拒，照实记）→ 对照：只删掉自检加的那个模型，Agent 再生成
+//                 → Agent 生成（结构修复后应直接通过）→ 对照：只删掉自检加的那个模型，Agent 再生成
 //   old-zh        老装机升级·中文：APIMart 早已接好（官方默认地址 + 占位 key）→ 改地址 → 重开还在 → 生成发往国内域
 //   new-en        新装机·英文界面：同 new-zh 的地址/验证/生成几步，外加「A APIMart key」那句语法（旧问题）
 //   old-en        老装机升级·英文界面：同 old-zh，外加写错提示②（域名拼错）
@@ -355,18 +355,20 @@ async function selfCheckTrap() {
 
     const agent = await agentGenerateOnce(win, p, '03')
     const agentOk = agent.confirmed && agent.submit === `${DOMESTIC}/v1/images/generations` && !agent.primaryTouched && agent.imageLanded
+    // 2026-09-29 结构修复之后这一条应当直接通过（「这条连接归不归认证管」只剩一份判据，
+    // 用户自己加的自检模型只管它自己）；拒了就是本次改动没做到，照实记成没通过。
     record('trap-zh/改完地址Agent生成一次', agentOk,
-      agentOk ? `报价卡出现并点了生成；提交 → ${agent.submit}；图落到了节点上`
+      agentOk ? `报价卡出现并点了生成；提交 → ${agent.submit}；图落到了节点上；主域 0 次`
         : `报价卡${agent.confirmed ? '出现并点了生成' : '没出现'}；提交 → ${agent.submit ?? '（没有）'}；`
           + `宿主的拒绝（控制台原话）：${agent.hostRefusal.slice(0, 300) || '（没有）'}；${agent.hostToldAgent.slice(0, 200)}`,
-      agent.shots, agentOk ? {} : { knownGap: true })
+      agent.shots)
     fs.writeFileSync(path.join(p.out, '03-main-log.txt'), launched.mainLogTail()
       .filter((line) => /apimart|certif|refus|provider|spend|generation/i.test(line)).join('\n'))
-    if (agentOk) return
 
-    // 对照：只删掉「自检」加进来的那个模型（它身上挂着 meta.adapter），别的都不动，Agent 再来一次。
-    // 这一步能过 = 拒绝的原因就是那个自检标记；同时它也是今天就能教给这类用户的绕法。
-    await closeSpendCard(win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`))
+    // 对照（回归）：只删掉「自检」加进来的那个模型，别的都不动，Agent 再来一次——删模型这条路
+    // （修复前教给这类用户的绕法）不许被修坏。
+    const pendingCard = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
+    if (await pendingCard.isVisible().catch(() => false)) await closeSpendCard(pendingCard)
     await openModels(win, t)
     await win.locator('[data-model-home-connection="apimart"]').click()
     await win.getByRole('button', { name: 'gpt-image-1', exact: true }).click()
