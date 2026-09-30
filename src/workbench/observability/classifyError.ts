@@ -5,11 +5,13 @@
 import {
   narrateGenerationError,
   narrateGenerationErrorActions,
+  narrateIsVendorSideFailure,
   narrateModelKind,
   type GenerationErrorAction,
   type GenerationErrorKind,
 } from './narrate'
-import { parseVendorErrorFromMessage, stripVendorErrorMarker } from '../generationCanvas/runner/vendorErrorIpc'
+import { parseVendorErrorFromMessage, stripVendorErrorMarker, type VendorErrorStructuredLite } from '../generationCanvas/runner/vendorErrorIpc'
+import { parseTaskFailureMessage } from '../generationCanvas/runner/taskFailureMessage'
 import { shotClaimCopy } from './shotClaimCopy'
 import { matchNomiErrorCode, stripNomiErrorCode } from '../../../electron/shared/nomiErrorCodes'
 import i18n from '../../i18n'
@@ -39,6 +41,12 @@ export type GenerationErrorReport = {
    * 文案是给人看的、还要翻译，用正则从它里面抠 modelKey 是必然会烂的耦合。
    */
   modelKindFix?: { modelKey: string; registered: string; requested: string }
+  /**
+   * 这次失败是不是**服务商那一侧**的事（分类的类别本身说了算，`unknown` 看有没有供应商说的话）。
+   * 任何点名供应商说「它失败了」的界面（切家提示）只在它为 true 时才有资格：我们自己这一侧的失败
+   * （读不出产物、本地校验、出站策略……）点名供应商就是栽赃，劝换一家也不是解法。
+   */
+  vendorSide: boolean
   /** Original raw error message (any "→ hint" tail from older builds stripped). */
   raw: string
 }
@@ -113,6 +121,15 @@ function extractReadableErrorLine(raw: string): string {
  */
 const IPC_WRAPPER_PREFIX = /^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/
 
+/**
+ * 这句话是不是界面当前语言的话。判据只有一条：中文界面要有汉字，英文界面不能有。
+ * 数字 / 符号 / 代码串在中文界面里算「不是中文」——标题不该是一串没人读得懂的标识。
+ */
+function isInUiLanguage(text: string): boolean {
+  const hasHan = /[㐀-鿿]/.test(text)
+  return String(i18n.language || '').toLowerCase().startsWith('zh') ? hasHan : !hasHan
+}
+
 function truncateLine(value: string): string {
   const clean = value.replace(/\s+/g, ' ').trim()
   return clean.length > 100 ? `${clean.slice(0, 99)}…` : clean
@@ -144,6 +161,8 @@ function reportForMissingImageReference(
     kind: 'input',
     reason,
     hint: '',
+    // 本机在发请求前的护栏：请求没出门，说不上是哪家供应商拒了什么。
+    vendorSide: false,
     raw,
     ...narrateGenerationErrorActions('input'),
   }
@@ -361,23 +380,68 @@ function detectAssetTooLarge(raw: string): boolean {
 }
 
 /**
- * 「模型在服务商上游根本不存在」——确定性失败，重试必再撞同一堵墙，所以不能落进 unknown
+ * 上游**自己给的错误码** → 失败类别（全仓唯一一张码表）。
+ *
+ * 为什么码要压过状态码：`categorizeVendorFailure` 把 400/422 一律派生成 `input`，可 400 只说「请求有问题」，
+ * 从不说为什么——模型已下线、审核拦了、余额不足都可以回 400。把 400 当成「参数不被接受」就是猜
+ * （2026-09-29 走查：供应商说「模型已下线」，界面却叫用户去改比例 / 尺寸）。上游的错误码才是它自己说的原因，
+ * 主进程把它随失败载荷一起带过来（`upstreamCode`，electron/jsonUtils.pickUpstreamCode），这里按码归类。
+ *
+ * 只登记**有明确类别、且各家共用**的标识码（OpenAI 兼容 / new-api 一族的 `model_not_found` 等）；没登记的码
+ * 不猜——落回文案判据与状态码。加一行 = 加一个码、一条用例，不写「某某家」的分支。
+ */
+const UPSTREAM_CODE_KINDS: ReadonlyArray<readonly [GenerationErrorKind, readonly string[]]> = [
+  ['model-unavailable-upstream', ['model_not_found', 'model_not_available', 'model_unavailable', 'model_deprecated', 'model_offline', 'model_decommissioned']],
+]
+const KIND_BY_UPSTREAM_CODE: ReadonlyMap<string, GenerationErrorKind> = new Map(
+  UPSTREAM_CODE_KINDS.flatMap(([kind, codes]) => codes.map((code) => [code, kind] as const)),
+)
+
+function upstreamCodeKind(code: string | undefined): GenerationErrorKind | null {
+  return KIND_BY_UPSTREAM_CODE.get(String(code || '').trim().toLowerCase().replace(/[-.\s]+/g, '_')) ?? null
+}
+
+/**
+ * **供应商说的那句话**（任何语言），能证明它是供应商说的才给——主进程的结构化载荷（`upstreamMsg`），
+ * 或异步任务失败那个只由我们产出的格式（taskFailureMessage）。认不出来源的一律 `undefined`：
+ * 那可能是我们自己的话（中文硬编码的 throw、内部英文错误），不能被当成「服务商原话」或按供应商的语言规矩处理。
+ */
+function vendorOriginatedText(structured: VendorErrorStructuredLite | null, raw: string): string | undefined {
+  if (typeof structured?.upstreamMsg === 'string') return structured.upstreamMsg
+  return parseTaskFailureMessage(raw)?.upstream
+}
+
+/**
+ * 「模型在服务商上游根本不存在 / 已下线 / 不可用」——确定性失败，重试必再撞同一堵墙，所以不能落进 unknown
  * 拿到「稍等重试」那句误导（同 output-truncated 的理由）。
  *
- * 实测来源（2026-07-30 用户真机 + 直连探针）：apimart 的 Imagen 4 提交成功、8 秒后终态失败，
- * `data.error.message` 里裹着 Google 的原话 `{"error":{"code":404,"message":"Requested entity
- * was not found.","status":"NOT_FOUND"}}`，且 `credits_cost: 0`（不计费）。
- *
- * 短语取得很窄（只认上游厂商的固定原话），不用「404 / not found」这类泛词——素材 404、
- * 项目不存在等都会被误吞。
+ * 三路证据，强的在前：
+ *   ① 上游自己的错误码（UPSTREAM_CODE_KINDS）；
+ *   ② 供应商固定原话（Google / Vertex：实测来源 2026-07-30 apimart 的 Imagen 4，`data.error.message` 里裹着
+ *      `{"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}`，`credits_cost: 0`）；
+ *   ③ 供应商说「这个模型 已下线 / 不再可用 / 不存在」（英文 / 中文）。③ 只读**供应商说的那句话**
+ *      （结构化载荷的 upstreamMsg，或任务失败格式里的原话），不读带 URL 的诊断串——路径里的 `/model/` 不该被当成证据。
+ * 短语取窄：必须同时出现「模型」与「下线 / 不再可用 / 不存在」这一族；「参数已弃用」「素材 404」「项目不存在」都不算。
  */
-function detectModelUnavailableUpstream(upstream: string | undefined, raw: string): boolean {
+const MODEL_UNAVAILABLE_WORDS: readonly RegExp[] = [
+  // "This model has been deprecated and is no longer available." / "The model `x` was discontinued"
+  /\bmodels?\b[^.\n]{0,120}\b(?:deprecated|no longer (?:available|supported|offered|provided)|discontinued|decommissioned|retired|sunset|taken offline|unavailable)\b/i,
+  /\b(?:deprecated|discontinued|decommissioned|retired)\b[^.\n]{0,40}\bmodels?\b/i,
+  // "The model `gpt-x` does not exist (or you do not have access to it)" / "No such model" / "Unknown model"
+  /\bmodels?\b[^.\n]{0,80}\b(?:does not exist|doesn't exist|is not found|was not found|not found)\b/i,
+  /\b(?:no such|unknown|invalid) model\b/i,
+  /模型[^。\n]{0,20}(?:已下线|已停用|已弃用|已废弃|已下架|不再(?:提供|可用|支持)|暂不(?:提供|可用)|不存在|不可用)/,
+]
+
+function detectModelUnavailableUpstream(code: string | undefined, upstream: string | undefined, raw: string): boolean {
+  if (upstreamCodeKind(code) === 'model-unavailable-upstream') return true
   const text = `${upstream || ''} ${raw}`.toLowerCase()
-  return (
+  if (
     // Google / Vertex 家族：模型 ID 不存在或该 key 无权访问时的固定原话
     text.includes('requested entity was not found') ||
     text.includes('模型不存在')
-  )
+  ) return true
+  return typeof upstream === 'string' && MODEL_UNAVAILABLE_WORDS.some((pattern) => pattern.test(upstream))
 }
 
 /**
@@ -437,7 +501,9 @@ function reportFor(
   const { reason, hint } = narrateGenerationError(kind, params)
   const providerMessage = pickProviderMessage(upstream ?? extractReadableErrorLine(raw), reason)
   // 存进技术详情的 raw 也把 NOMI_ERR:: 码标记剥掉——那是给分类器读的机器标记,不是给人看的。
-  return { kind, reason, hint, raw: stripNomiErrorCode(raw), ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
+  // upstream 显式给 '' = 这是我们自己的签名（服务商没被请求到 / 结果已经送达），不算供应商的事，不管类别表怎么写。
+  const vendorSide = narrateIsVendorSideFailure(kind) && upstream !== ''
+  return { kind, reason, hint, vendorSide, raw: stripNomiErrorCode(raw), ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
 }
 
 export function classifyGenerationError(message: string): GenerationErrorReport {
@@ -448,6 +514,8 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
     stripVendorErrorMarker(String(message || ''))
       .split('\n→')[0]
       .trim() || i18n.t('generationCommon.observability.error.unknown.reason')
+  // 供应商说的那句话（能证明来源才有值）：判据、「服务商原话」框、标题的语言规矩都读它，不再各自从 raw 里抠。
+  const upstream = vendorOriginatedText(structured, cleanRaw)
   const missingImageReference = detectMissingImageReference(cleanRaw)
   if (missingImageReference) return reportForMissingImageReference(missingImageReference, cleanRaw)
   // 我们**自己**的出站策略拒绝：判据是稳定机器码（NOMI_ERR::outbound-blocked::），最先判。
@@ -463,6 +531,9 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   // 同族第三条（凭据绑定）：也必须单独一支——它的下一步是「回接入页重新保存密钥」，
   // 归进上面那条会把用户送去查代理，而这台机器的网络一点毛病都没有。
   if (outboundCode === 'outbound-blocked-credential-origin') return reportFor('outbound-blocked-credential-origin', cleanRaw, '')
+  // 结果已经送达、Nomi 本机读不出来：失败在我们这一侧，upstream 显式给 ''——把那句英文校验串印进「服务商原话」
+  // 就是栽赃（服务商已经把图发回来了）。也不给「换一家」：动作表里这一类只有重试。
+  if (outboundCode === 'output-unreadable') return reportFor('output-unreadable', cleanRaw, '')
   // 已退役下线**最先**判：判据是 electron 抛的专用签名（确定性事实），不该被任何猜文案的检测抢走。
   // upstream 显式给 ''，与下面类型不符 / 缺文本大脑同理：这是我们自己的签名，服务商根本没被请求到。
   // 给 undefined 会从 raw 抠出「Model is retired: sora-2」，以「服务商原话：」印在退役卡正文里——
@@ -492,26 +563,26 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   // 账号档位闸（会员/企业 Key/网页授权）先判——它的关键词（会员/授权/开通即梦会员）比
   // model-not-open 更具体；反过来放后面会被宽词抢走（即梦 CLI 兜底文案曾被判成「模型未开通」
   // 并给出火山 Ark 指引，2026-07-06 真机走查抓出）。reason 出自 narrate，服务商原话单独提到可见区。
-  if (detectAccountGate(structured?.upstreamMsg, cleanRaw)) {
-    return reportFor('account-gate', cleanRaw, structured?.upstreamMsg)
+  if (detectAccountGate(upstream, cleanRaw)) {
+    return reportFor('account-gate', cleanRaw, upstream)
   }
   // 上游「模型不存在」先于 model-not-open 判——两者都是模型级问题，但动作不同：这条是**换模型**
   // （上游根本没这个模型，去控制台也开不出来），model-not-open 是去控制台开通。
-  if (detectModelUnavailableUpstream(structured?.upstreamMsg, cleanRaw)) {
-    return reportFor('model-unavailable-upstream', cleanRaw, structured?.upstreamMsg)
+  if (detectModelUnavailableUpstream(structured?.upstreamCode, upstream, cleanRaw)) {
+    return reportFor('model-unavailable-upstream', cleanRaw, upstream)
   }
   // 模型未开通先于 category 判(理由见 detectModelNotOpen)。
-  if (detectModelNotOpen(structured?.upstreamMsg, cleanRaw)) {
-    return reportFor('model-not-open', cleanRaw, structured?.upstreamMsg)
+  if (detectModelNotOpen(upstream, cleanRaw)) {
+    return reportFor('model-not-open', cleanRaw, upstream)
   }
   // 中转生图路由未开通先于 category 判——403 会被派生成 auth（「API Key 无效」），把「去中转
   // 控制台开分组」误导成「查密钥」（2026-07-24 y7api 真实报错定案）。
-  if (detectImageRouteDisabled(structured?.upstreamMsg, cleanRaw)) {
-    return reportFor('image-route-disabled', cleanRaw, structured?.upstreamMsg)
+  if (detectImageRouteDisabled(upstream, cleanRaw)) {
+    return reportFor('image-route-disabled', cleanRaw, upstream)
   }
   // 余额不足/欠费先于 category 判——RunningHub 605/1620 数值会被派生成 server/input 误导。
-  if (detectBalance(structured?.upstreamMsg, cleanRaw)) {
-    return reportFor('balance', cleanRaw, structured?.upstreamMsg)
+  if (detectBalance(upstream, cleanRaw)) {
+    return reportFor('balance', cleanRaw, upstream)
   }
   // 素材上传失败先于 category 判——失败在我们这侧，服务商根本没被请求到，不能借上游的状态码说话。
   // 太大（413）比「上传失败」更具体，先判——否则会被归成「稍等重试」，而重试永远不可能成。
@@ -522,15 +593,15 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   if (detectAssetUploadFailed(cleanRaw)) return reportFor('asset-upload-failed', cleanRaw, undefined)
   // 内容安全拦截先于 category 判——审核拒绝走 HTTP 400，会被派生成「参数不被接受·检查比例/尺寸」
   // 并配一个必然再撞的「重试」（理由见 detectContentModerationTarget）。
-  const moderated = detectContentModerationTarget(structured?.upstreamMsg, cleanRaw)
+  const moderated = detectContentModerationTarget(upstream, cleanRaw)
   if (moderated) {
-    return reportFor(moderated === 'image' ? 'input-image-blocked' : 'content-policy', cleanRaw, structured?.upstreamMsg)
+    return reportFor(moderated === 'image' ? 'input-image-blocked' : 'content-policy', cleanRaw, upstream)
   }
   if (structured?.category && (STRUCTURED_KINDS as readonly string[]).includes(structured.category)) {
-    return reportFor(structured.category as GenerationErrorKind, stripVendorErrorMarker(message), structured.upstreamMsg)
+    return reportFor(structured.category as GenerationErrorKind, stripVendorErrorMarker(message), upstream)
   }
   if (structured?.category === 'timeout') {
-    return reportFor('network', stripVendorErrorMarker(message), structured.upstreamMsg)
+    return reportFor('network', stripVendorErrorMarker(message), upstream)
   }
   // Strip any legacy "\n→ hint" tail that older builds baked into node.error.
   const raw =
@@ -542,6 +613,7 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       kind: 'unknown',
       reason: i18n.t('generationCommon.observability.error.webMedia.reason'),
       hint: i18n.t('generationCommon.observability.error.webMedia.hint'),
+      vendorSide: false,
       raw,
       ...narrateGenerationErrorActions('unknown'),
     }
@@ -553,18 +625,38 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       kind: 'unknown',
       reason: i18n.t(`generationCommon.observability.error.shotClaimed.${copy.key}.reason`),
       hint: i18n.t(`generationCommon.observability.error.shotClaimed.${copy.key}.hint`),
+      vendorSide: false,
       raw,
       primary: copy.action,
       secondary: copy.action,
     }
   }
   const kind = detectLegacyErrorKind(raw)
-  if (kind) return reportFor(kind, raw, undefined)
+  if (kind) return reportFor(kind, raw, upstream)
+  // 供应商说的话，只有**和界面同一种语言**才配当标题（读得懂、说得具体）；否则标题是界面语言的一句话，
+  // 原话降为「服务商原话」那一格的次要信息（中文界面不再顶着供应商的一整句英文，英文界面同理）。
+  // 认不出来源的（可能是我们自己的话）不走这里：照下面抠首行，别把我们自己说得很具体的话换成泛泛的「生成失败」。
+  if (upstream) {
+    const said = pickProviderMessage(upstream, '')
+    if (said && isInUiLanguage(said)) {
+      return {
+        kind: 'unknown',
+        reason: truncateLine(said),
+        hint: narrateGenerationError('unknown').hint,
+        vendorSide: true, // 供应商说了话（且不是我们认得的任何一类）：它这次失败了
+        raw,
+        ...narrateGenerationErrorActions('unknown'),
+      }
+    }
+    return { ...reportFor('unknown', raw, upstream), vendorSide: true }
+  }
   // 兜底:抠 raw 可读首行当 reason,通用建议出自 narrate 的 unknown 词条。
   return {
     kind: 'unknown',
     reason: extractReadableErrorLine(raw) || narrateGenerationError('unknown').reason,
     hint: narrateGenerationError('unknown').hint,
+    // 认不出来源、也没有供应商说的话：可能是我们自己的话（本机护栏 / 内部错误），不点名任何一家。
+    vendorSide: false,
     raw,
     ...narrateGenerationErrorActions('unknown'),
   }

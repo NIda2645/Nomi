@@ -320,7 +320,7 @@ export const zhGenerationCommon = {
       },
       modelUnavailableUpstream: {
         reason: '这个模型服务商这边取不到',
-        hint: '服务商上游回的是「该模型不存在」。这次失败不计费。',
+        hint: '服务商回复说这个模型现在用不了（已下线或不存在）。重试没用，换个模型就能继续。这次失败不计费。',
       },
       modelRetired: {
         reason: '这个模型已经下线了',
@@ -371,6 +371,11 @@ export const zhGenerationCommon = {
       outputTruncated: {
         reason: '输出超长被截断',
         hint: '这一轮要返回的内容超过了模型的单轮输出上限，原样重试只会再次截断。请缩短这轮任务（如剧本分段拆镜头、减少镜头数），或换单轮输出上限更大的模型。',
+      },
+      // 结果已经送达，读不出来发生在 Nomi 这一侧：不说「服务商失败」、不劝换一家、不替它声明计不计费。
+      outputUnreadable: {
+        reason: '生成的文件没能读出来',
+        hint: '服务商已经把结果发回来了，但 Nomi 没能读取这个文件（可能没传完整、文件损坏、格式暂不支持，或返回的根本不是图片 / 视频）。可以重试一次；反复出现请点「反馈问题」，把技术详情发给我们。',
       },
       unknown: {
         reason: '生成失败',
@@ -1832,7 +1837,7 @@ export const enGenerationCommon = {
       },
       modelUnavailableUpstream: {
         reason: 'The provider cannot reach this model',
-        hint: 'The provider upstream reports that this model does not exist. This failure is not billed.',
+        hint: 'The provider says this model is not available (retired or gone). Retrying will not help — switch to another model. This failure is not billed.',
       },
       modelRetired: {
         reason: 'This model has been removed',
@@ -1886,6 +1891,10 @@ export const enGenerationCommon = {
       outputTruncated: {
         reason: 'Output truncated',
         hint: 'The response exceeded the model’s output limit. Shorten the task or choose a model with a larger output limit.',
+      },
+      outputUnreadable: {
+        reason: 'The generated file could not be read',
+        hint: 'The provider sent the result back, but Nomi could not read the file (it may be incomplete or damaged, in an unsupported format, or not an image / video at all). You can try once more; if it keeps happening, click “Report Issue” and send us the technical details.',
       },
       unknown: {
         reason: 'Generation failed',

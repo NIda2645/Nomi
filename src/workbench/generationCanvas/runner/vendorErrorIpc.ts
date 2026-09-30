@@ -10,6 +10,8 @@ export type VendorErrorStructuredLite = {
   httpStatus?: number
   logicalCode?: number | string
   upstreamMsg?: string
+  /** 上游自己给的错误码（`model_not_found` 这一类）；只有响应体里真有才会带。 */
+  upstreamCode?: string
   category?: string
   retryable?: boolean
 }

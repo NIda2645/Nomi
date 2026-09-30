@@ -529,14 +529,15 @@ describe('动作表：每类主 / 次动作都写在表里，改一类不许带�
     'image-route-disabled': true, 'account-gate': true, 'content-policy': true, 'input-image-blocked': true,
     'asset-upload-failed': true, 'asset-too-large': true, 'asset-invalid': true, 'outbound-blocked': true,
     'outbound-blocked-submit': true, 'outbound-blocked-credential-origin': true, server: true, input: true,
-    'output-truncated': true, unknown: true,
+    'output-truncated': true, 'output-unreadable': true, unknown: true,
   }
 
-  it('已下线以外的每一类，次动作都和改表前的规则一样（主动作是重试 / 一键改对 → 换个模型；其余 → 重试）', () => {
+  it('已下线、读不出来以外的每一类，次动作都和改表前的规则一样（主动作是重试 / 一键改对 → 换个模型；其余 → 重试）', () => {
     for (const kind of Object.keys(EVERY_KIND) as GenerationErrorKind[]) {
       const { primary, secondary } = narrateGenerationErrorActions(kind)
       const before = primary === 'retry' || primary === 'fix-model-kind' ? 'switch-model' : 'retry'
-      expect({ kind, secondary }).toEqual({ kind, secondary: kind === 'model-retired' ? null : before })
+      // 已下线、读不出来：这两类不给第二个动作（重试必再撞同一张卡 / 换供应商不是解法）。
+      expect({ kind, secondary }).toEqual({ kind, secondary: kind === 'model-retired' || kind === 'output-unreadable' ? null : before })
     }
   })
 })
@@ -796,5 +797,229 @@ describe('出站被我们自己的安全策略拦下（2026-09-06 真实验收�
   it('按稳定码分类，不按那句中文 —— 人话换成英文也照样归对', () => {
     const englishShaped = tagNomiError('outbound-blocked', 'Download blocked by network policy.')
     expect(classifyGenerationError(englishShaped).kind).toBe('outbound-blocked')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// 失败原因按**上游自己的码与话**归类，不按状态码猜（2026-09-29 全功能走查 pb06）：
+// 供应商回 HTTP 400「这个模型已下线，请换一个」，界面却说「参数不被接受，请检查比例 / 尺寸」——
+// 因为 400 被状态码表一律派生成 input。400 只说「请求有问题」，从不说为什么。
+// ---------------------------------------------------------------------------
+describe('失败原因按上游自己的码与话归类（一张目录，没有某某家的分支）', () => {
+  const encode = (structured: Record<string, unknown>, tail = 'Provider request failed (HTTP 400) at agent-runtime-loopback POST http://127.0.0.1:59109/v1/images/generations: x') =>
+    `Error invoking remote method 'nomi:tasks:run': Error: NOMI_VENDOR_ERR_B64::${Buffer.from(JSON.stringify(structured), 'utf8').toString('base64')}:: ${tail}`
+  const DEPRECATED = 'This model has been deprecated and is no longer available. Please switch to another model or provider.'
+  /** 全功能走查 pb06 里供应商夹具回的那一笔，逐字段照抄（载荷来自 evidence 目录的 c2-node-generate.json）。 */
+  const walkPayload = {
+    vendorKey: 'agent-runtime-loopback', method: 'POST', url: 'http://127.0.0.1:59109/v1/images/generations',
+    httpStatus: 400, upstreamMsg: DEPRECATED, category: 'input', retryable: false,
+  }
+
+  it('走查那一笔（模型已下线的 400）：说的是「这个模型用不了」，动作是换个模型，不是去改比例', () => {
+    const report = classifyGenerationError(encode({ ...walkPayload, upstreamCode: 'model_not_found' }))
+    expect(report.kind).toBe('model-unavailable-upstream')
+    expect(report.reason).not.toBe(i18n.t('generationCommon.observability.error.input.reason'))
+    expect(report.primary).toBe('switch-model')
+    expect(`${report.reason}${report.hint}`).not.toMatch(/比例|尺寸|参数/)
+    // 供应商自己的话仍然可见（次要信息），只是不再顶替标题。
+    expect(report.providerMessage).toBe(DEPRECATED)
+  })
+
+  it('没有码也认：供应商的话（已下线 / 不再可用）本身就是证据，旧载荷 / 别的供应商同样归对', () => {
+    expect(classifyGenerationError(encode(walkPayload)).kind).toBe('model-unavailable-upstream')
+  })
+
+  it('只有码也认：上游只回了 model_not_found 和一句没有信息量的话', () => {
+    expect(classifyGenerationError(encode({ ...walkPayload, upstreamMsg: 'no available channel', upstreamCode: 'model_not_found' })).kind)
+      .toBe('model-unavailable-upstream')
+  })
+
+  it.each([
+    ['该模型已下线，请更换模型', undefined],
+    ['The model `gpt-image-9` does not exist or you do not have access to it.', undefined],
+    ['No such model: seedream-9', undefined],
+    ['unavailable', 'model_unavailable'],
+  ])('同一类的其他说法：%s', (upstreamMsg, upstreamCode) => {
+    expect(classifyGenerationError(encode({ ...walkPayload, upstreamMsg, ...(upstreamCode ? { upstreamCode } : {}) })).kind)
+      .toBe('model-unavailable-upstream')
+  })
+
+  it('异步任务失败那条路（只有格式、没有载荷）同样认：话在 (taskId=…, kind=…) 之前', () => {
+    const report = classifyGenerationError(`${DEPRECATED} (taskId=task_01ABC, kind=text_to_image)`)
+    expect(report.kind).toBe('model-unavailable-upstream')
+    expect(report.providerMessage).toBe(DEPRECATED)
+    expect(report.providerMessage).not.toContain('taskId')
+  })
+
+  // 类的另一头：真参数错**仍然**是「参数不被接受」——本次修的是「没有证据就把 400 说成参数错」，不是取消这个类别。
+  it.each([
+    ['size 不在支持列表', "Invalid value for 'size': '3000x3000'. Supported values are: 1024x1024, 1792x1024, 1024x1792.", 'invalid_value'],
+    ['比例不支持', 'aspect_ratio must be one of 1:1, 16:9, 9:16', undefined],
+    ['参数已弃用（不是模型已弃用）', "The 'quality' parameter is deprecated; use 'resolution' instead.", undefined],
+    ['这个模型不支持某个参数（不是模型不可用）', "Parameter 'seed' is not supported for this model", undefined],
+    ['模型不支持这个比例', 'Model seedream-5 does not support aspect ratio 21:9', undefined],
+    ['没有任何说明的 400', 'Bad Request', undefined],
+  ])('真参数错仍归「参数不被接受」：%s', (_label, upstreamMsg, upstreamCode) => {
+    const report = classifyGenerationError(encode({ ...walkPayload, upstreamMsg, ...(upstreamCode ? { upstreamCode } : {}) }))
+    expect(report.kind).toBe('input')
+    expect(report.reason).toBe(i18n.t('generationCommon.observability.error.input.reason'))
+  })
+
+  it('URL 路径里的 /model/ 不是证据：证据只读供应商说的那句话', () => {
+    const report = classifyGenerationError(encode(
+      { ...walkPayload, httpStatus: 404, category: 'unknown', upstreamMsg: 'Route not found', url: 'https://relay.example/v1/model/abc' },
+      'Provider request failed (HTTP 404) at relay GET https://relay.example/v1/model/abc: Route not found',
+    ))
+    expect(report.kind).not.toBe('model-unavailable-upstream')
+    // 没有码也没有认得的话：也不许把没证据的 404 说成「参数不被接受」
+    expect(report.kind).not.toBe('input')
+  })
+
+  it('图 / 视频侧与文本侧两条通道带过来的码同形：文本侧（AI SDK）同样按码归类', () => {
+    const apiError = new APICallError({
+      message: 'Bad Request', url: 'https://api.apimart.ai/v1/chat/completions', requestBodyValues: {}, statusCode: 400,
+      responseBody: JSON.stringify({ error: { code: 'model_not_found', message: 'The model gpt-x does not exist' } }),
+    })
+    const message = describeAgentError(apiError, { vendorKey: 'apimart' })
+    expect(parseVendorErrorFromMessage(message)?.upstreamCode).toBe('model_not_found')
+    expect(classifyGenerationError(message).kind).toBe('model-unavailable-upstream')
+  })
+
+  it.each(['zh-CN', 'en'])('下线文案说得对、不带走参数：%s', async (language) => {
+    await i18n.changeLanguage(language)
+    try {
+      const report = classifyGenerationError(encode({ ...walkPayload, upstreamCode: 'model_not_found' }))
+      expect(report.kind).toBe('model-unavailable-upstream')
+      expect(`${report.reason} ${report.hint}`).not.toMatch(/ratio|aspect|size|比例|尺寸|参数/i)
+      expect(report.hint).toMatch(language === 'en' ? /switch to another model/i : /换个模型/)
+      expect(report.hint).not.toMatch(/稍等|稍后再试|try again later/i)
+    } finally {
+      await i18n.changeLanguage('zh-CN')
+    }
+  })
+})
+
+describe('标题永远是界面语言的一句话；供应商的话只进「服务商原话」（2026-09-29：中文界面顶着供应商的英文原话）', () => {
+  const encode = (structured: Record<string, unknown>) =>
+    `Error: NOMI_VENDOR_ERR_B64::${Buffer.from(JSON.stringify(structured), 'utf8').toString('base64')}:: Provider request failed`
+  const sixEnglishWords = /[A-Za-z][A-Za-z'-]*(?:[\s,.:;()]+[A-Za-z][A-Za-z'-]*){5,}/
+  // 这些话没有任何一个分类器认得（不是余额 / 限流 / 下线 / 审核 / 参数），落到 unknown。
+  const UNCLASSIFIED = [
+    'Unexpected upstream condition while rendering the frame sequence for this request.',
+    'The render farm returned an unrecognised state after the third checkpoint.',
+  ]
+
+  it.each(UNCLASSIFIED)('中文界面：结构化载荷里的英文原话不进标题也不进提示——%s', (upstreamMsg) => {
+    const report = classifyGenerationError(encode({ vendorKey: 'x', httpStatus: 404, category: 'unknown', upstreamMsg }))
+    expect(report.kind).toBe('unknown')
+    expect(report.reason).toBe('生成失败')
+    expect(sixEnglishWords.test(report.reason)).toBe(false)
+    expect(sixEnglishWords.test(report.hint)).toBe(false)
+    expect(report.providerMessage).toBe(upstreamMsg)
+  })
+
+  it('异步任务失败的形状同理：标题是界面语言，原话在次要那一格，内部的 taskId 后缀不进标题', () => {
+    const report = classifyGenerationError(`${UNCLASSIFIED[0]} (taskId=task_01ABC, kind=text_to_image)`)
+    expect(report.reason).toBe('生成失败')
+    expect(report.reason).not.toContain('taskId')
+    expect(report.providerMessage).toBe(UNCLASSIFIED[0])
+  })
+
+  it('同一种语言的原话可以当标题（读得懂，也更具体）', () => {
+    const said = '当前模型排队人数过多，请等一会儿再来'
+    const report = classifyGenerationError(encode({ vendorKey: 'x', httpStatus: 404, category: 'unknown', upstreamMsg: said }))
+    expect(report.reason).toBe(said)
+    expect(report.providerMessage).toBeUndefined()
+  })
+
+  it('英文界面对称：中文原话不进标题', async () => {
+    await i18n.changeLanguage('en')
+    try {
+      const said = '当前模型排队人数过多，请等一会儿再来'
+      const report = classifyGenerationError(encode({ vendorKey: 'x', httpStatus: 404, category: 'unknown', upstreamMsg: said }))
+      expect(report.reason).toBe('Generation failed')
+      expect(report.reason).not.toMatch(/[㐀-鿿]/)
+      expect(report.providerMessage).toBe(said)
+    } finally {
+      await i18n.changeLanguage('zh-CN')
+    }
+  })
+
+  it('我们自己的话不受这条规矩牵连：认不出来源的照旧抠首行当标题（不把具体的话换成泛泛的「生成失败」）', () => {
+    expect(classifyGenerationError('请先写点提示词再生成。').reason).toBe('请先写点提示词再生成。')
+    expect(classifyGenerationError('模型任务执行失败 (taskId=t_1, kind=text_to_image)').providerMessage).toBeUndefined()
+  })
+})
+
+describe('供应商已经把结果发回来了、Nomi 没能读出来：说读不出来，不栽给服务商', () => {
+  const unreadable = tagNomiError('output-unreadable', 'Generated media validation failed (decode_failed)')
+  const sixWords = (text: string): boolean => /[A-Za-z][A-Za-z'-]*(?:[\s,.:;()]+[A-Za-z][A-Za-z'-]*){5,}/.test(text)
+
+  it('按机器码归类：不再落进 unknown 的「可能是服务商临时故障或额度问题，换一个模型」', () => {
+    const report = classifyGenerationError(unreadable)
+    expect(report.kind).toBe('output-unreadable')
+    expect(report.reason).toBe('生成的文件没能读出来')
+    expect(`${report.reason}${report.hint}`).not.toMatch(/服务商临时故障|额度问题|换一个模型|换个模型/)
+    expect(sixWords(report.reason + report.hint)).toBe(false)
+  })
+
+  it('只有重试：换供应商不是它的解法（动作表里这一类没有第二个动作）', () => {
+    const report = classifyGenerationError(unreadable)
+    expect(report.primary).toBe('retry')
+    expect(report.secondary).toBeNull()
+  })
+
+  it('那句英文校验串不印进「服务商原话」（服务商已经把图发回来了），技术详情里照留', () => {
+    const report = classifyGenerationError(unreadable)
+    expect(report.providerMessage).toBeUndefined()
+    expect(report.raw).toContain('decode_failed')
+    expect(report.raw).not.toContain('NOMI_ERR::')
+  })
+
+  it('所有「生成产物校验失败」的原因走同一个码（decode / 冒充网页 / 认不出字节 / 类型不符 / 格式不支持）', () => {
+    for (const reason of ['decode_failed', 'decode_unverified', 'markup_masquerade', 'unknown_bytes', 'kind_mismatch', 'unsupported_format', 'evidence_mismatch']) {
+      expect(classifyGenerationError(tagNomiError('output-unreadable', `Generated media validation failed (${reason})`)).kind).toBe('output-unreadable')
+    }
+  })
+
+  it('英文界面同样是英文', async () => {
+    await i18n.changeLanguage('en')
+    try {
+      const report = classifyGenerationError(unreadable)
+      expect(report.reason).toBe('The generated file could not be read')
+      expect(report.reason + report.hint).not.toMatch(/[㐀-鿿]/)
+    } finally {
+      await i18n.changeLanguage('zh-CN')
+    }
+  })
+})
+
+// 点名供应商说「它失败了」之前必须先问：这是服务商那一侧的事吗？（2026-09-29 pb06：本机判失败之后提示劝换一家）
+describe('vendorSide —— 失败是不是服务商那一侧的事', () => {
+  const structuredMessage = (structured: Record<string, unknown>, tail: string) =>
+    `Error: NOMI_VENDOR_ERR_B64::${Buffer.from(JSON.stringify(structured), 'utf8').toString('base64')}:: ${tail}`
+
+  it.each([
+    ['供应商回 400：模型已下线', structuredMessage({ vendorKey: 'x', httpStatus: 400, category: 'input', upstreamMsg: 'This model has been deprecated and is no longer available.', upstreamCode: 'model_not_found' }, 'Provider request failed (HTTP 400)')],
+    ['供应商回 401', structuredMessage({ vendorKey: 'x', httpStatus: 401, category: 'auth', upstreamMsg: 'invalid key' }, 'Provider request failed (HTTP 401)')],
+    ['供应商回 500', structuredMessage({ vendorKey: 'x', httpStatus: 500, category: 'server', upstreamMsg: 'boom' }, 'Provider request failed (HTTP 500)')],
+    ['没被任何一类认出、但供应商说了话', structuredMessage({ vendorKey: 'x', httpStatus: 404, category: 'unknown', upstreamMsg: 'Unexpected upstream condition while rendering the frame sequence.' }, 'Provider request failed (HTTP 404)')],
+    ['异步任务在供应商那边失败', 'Insufficient balance on the upstream account (taskId=t_1, kind=text_to_image)'],
+    ['老格式的 401 字符串（旧数据）', '401 Unauthorized — invalid api key'],
+  ])('是：%s', (_label, message) => {
+    expect(classifyGenerationError(message).vendorSide).toBe(true)
+  })
+
+  it.each([
+    ['结果已送达、本机读不出来', tagNomiError('output-unreadable', 'Generated media validation failed (decode_failed)')],
+    ['参考素材本身不行（请求没发出）', tagNomiError('asset-invalid', '参考素材读取失败')],
+    ['我们自己的出站策略拦了提交（走的是 VendorRequestError 的壳）', structuredMessage({ vendorKey: 'x', category: 'network', upstreamMsg: 'refused' }, `Provider request refused by outbound policy: ${tagNomiError('outbound-blocked-submit', 'blocked')}`)],
+    ['取片被出站策略拦了', tagNomiError('outbound-blocked', 'blocked')],
+    ['模型已被我们下线', 'Model is retired: sora-2'],
+    ['图生图缺参考图的本机护栏（归 input 类，但请求没出门）', '图生图缺少参考图：这次请求里没有任何图片可以发给模型。'],
+    ['我们自己中文的本机护栏（没有供应商说的话）', '请先写点提示词再生成。'],
+    ['内部英文错误（没有供应商说的话）', 'node not found'],
+  ])('否：%s', (_label, message) => {
+    expect(classifyGenerationError(message).vendorSide).toBe(false)
   })
 })
