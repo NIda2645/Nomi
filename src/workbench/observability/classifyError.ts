@@ -501,8 +501,9 @@ function reportFor(
   const { reason, hint } = narrateGenerationError(kind, params)
   const providerMessage = pickProviderMessage(upstream ?? extractReadableErrorLine(raw), reason)
   // 存进技术详情的 raw 也把 NOMI_ERR:: 码标记剥掉——那是给分类器读的机器标记,不是给人看的。
-  // upstream 显式给 '' = 这是我们自己的签名（服务商没被请求到 / 结果已经送达），不算供应商的事，不管类别表怎么写。
-  const vendorSide = narrateIsVendorSideFailure(kind) && upstream !== ''
+  // 「是不是服务商那一侧的事」只有类别表一个出处（narrate.VENDOR_SIDE_BY_KIND，穷举 Record）：
+  // 我们自己的签名（服务商没被请求到 / 结果已经送达）在表里写 false，这里不再按调用点另判一遍。
+  const vendorSide = narrateIsVendorSideFailure(kind)
   return { kind, reason, hint, vendorSide, raw: stripNomiErrorCode(raw), ...narrateGenerationErrorActions(kind), ...(providerMessage ? { providerMessage } : {}) }
 }
 
