@@ -41,7 +41,7 @@ const IMAGE_DEFAULT = { vendorKey: FIXTURE_APIMART_VENDOR, modelKey: 'gemini-3.1
 const IMAGE_NAMED = { modelKey: 'gpt-image-2', label: 'GPT Image 2' }
 const VIDEO_DEFAULT = { vendorKey: FIXTURE_APIMART_VENDOR, modelKey: 'kling-v3', option: /^(可灵 3\.0|Kling 3\.0)(\s|$|·)/ }
 // 暗号跟界面语言走：英文界面里不该出现中文，哪怕是走查自己种的文件内容（它会被 Agent 原样复述进对话）。
-const MARKER_TEXT = EN ? '[ACCEPT-MARK: lamp-8842]' : '【验收暗句：栈桥尽头的灯-8842】'
+const MARKER_TEXT = EN ? 'ACCEPT-MARK lamp-8842' : '【验收暗句：栈桥尽头的灯-8842】'
 const DOMAIN_FILE = path.join(outputDir, EN ? 'harbour-note.txt' : '海港便笺.txt')
 fs.writeFileSync(DOMAIN_FILE, `${MARKER_TEXT}\n${EN ? 'The lamp at the end of the pier stays lit all night.' : '栈桥尽头的那盏灯整夜亮着。'}\n`)
 const FILE_NAME = path.basename(DOMAIN_FILE)
