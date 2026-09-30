@@ -32,6 +32,7 @@ import StoryboardShotFrame from './StoryboardShotFrame'
 import StoryboardFrameActions from './StoryboardFrameActions'
 import StoryboardVariantsDrawer from './StoryboardVariantsDrawer'
 import ShotReferenceZone from './ShotReferenceZone'
+import { modeDisplayLabel, referenceCapableSibling } from './shotReferenceCells'
 import ShotComposerBar from './ShotComposerBar'
 import PromptSkeletonSegments from './PromptSkeletonSegments'
 import type { ShotVariant } from './shotVariants'
@@ -192,6 +193,14 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
   // 档案按 (modelKey, modelVendor) 取：同名两家的档案/参数可以不同，按名字取会拿到另一家的模式表。
   const resolved = resolveShotArchetypeMode(findModelOptionByIdentifier(modelOptions ?? [], shot.modelKey, shot.modelVendor, orderedVendorKeys), shot.modeId)
   const resolvedMode = resolved?.mode ?? null
+  // 行上摆着、当前模式用不上的参考图：一句话点名（模式名与下拉同一个出口；换哪个模式才带得上也说出来）。
+  const ignoredNames = (exec?.ignoredAnchors ?? []).map((anchor) => anchor.name).join(t('storyboardEditor.anchorPolicy.nameSeparator'))
+  const ignoredSwitch = resolvedMode ? referenceCapableSibling(resolvedMode, resolved?.archetype ?? null) : undefined
+  const ignoredReferenceNotice = resolvedMode && ignoredNames
+    ? ignoredSwitch
+      ? t('storyboardEditor.anchorPolicy.rowIgnored', { names: ignoredNames, mode: modeDisplayLabel(resolvedMode), other: ignoredSwitch.modeLabel })
+      : t('storyboardEditor.anchorPolicy.rowIgnoredNoAlt', { names: ignoredNames, mode: modeDisplayLabel(resolvedMode) })
+    : null
 
 
   /**
@@ -346,7 +355,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
       {exec?.node ? <StoryboardOverrideBadge node={exec.node} onResolve={(field, action) => props.onResolveOverride ? props.onResolveOverride(field, action) : resolveStoryboardOverride(exec.node!.id, field, action)} /> : null}
       {exec?.ignoredAnchors?.length ? (
         <span className="text-micro text-nomi-ink-40" data-storyboard-anchor-ignored={shot.index} title={exec.ignoredAnchors.map(anchor => `${anchor.name}: ${anchor.reason}`).join('\n')}>
-          {t('storyboardEditor.anchorPolicy.rowIgnored', { names: exec.ignoredAnchors.map((anchor) => anchor.name).join('、'), mode: resolvedMode?.id ?? '' })}
+          {ignoredReferenceNotice}
         </span>
       ) : null}
       {skipped ? (
@@ -515,6 +524,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
           missingSlots={exec ? exec.missingSlots : missingRequiredSlots(resolvedMode, shot, anchors)}
           plannedFirstFrame={exec?.plannedFirstFrame ?? null}
           anchors={anchors}
+          hideNoRefNotice={Boolean(exec?.ignoredAnchors?.length)}
           onTriggerMention={triggerAtMention}
           mentionEnabled={Boolean(mentionSearch)}
         />
