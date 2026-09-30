@@ -23,6 +23,7 @@ import { appFramesOf, classifyEgress, REQUIRED_GUARD_LAYERS, vendorHostsOf } fro
 import { INVARIANTS, invariantById, loadDictionaries, loadLimits, UI_LOCALES, uiText, uiTextPattern } from './invariants.mjs'
 import { ensurePageProbe, readPageProbe } from './pageProbe.mjs'
 import { unseenPromptAdditions } from './promptTruth.mjs'
+import { finishedNodeSpinner, snapshotAgeMs } from './spinnerVerdict.mjs'
 import { DESIGN_ROOTS, rootOfRule } from './rules.mjs'
 
 /** 夹具模型的显示名（只有中文 labelZh）：EN 界面上看到它们不是漏译。 */
@@ -236,6 +237,9 @@ export function createInvariantMonitor(options) {
       shotId: shot.shotId, nodeId: shot.nodeId ?? null, index: shot.index, prompt: shot.prompt,
       providerId: shot.providerId, model: shot.modelId, params: shot.parameters ?? {}, refs: (shot.references ?? []).length,
       canvasRefs: canvasRefsOf(shot.nodeId), surfaceText: dom.text,
+      // 「这一镜到底是图还是视频」的四份说法（铁律 3：同一件事，四处读法必须一致）：候选的模式、模型自己的种类（目录）、画布占位节点的种类，加上卡标题一份（在下面对整张卡判）。
+      mode: shot.mode ?? null, modelKind: catalogKindOf(shot.providerId, shot.modelId),
+      nodeKind: (canvas.nodes ?? []).find((node) => node.id === shot.nodeId)?.kind ?? null,
     }))
     // 按钮承诺的范围：按钮上写了「N 镜」= N 镜（全部）；没写而卡在翻页 = 只有眼前这一页。
     const buttonScope = buttonCount > 1 || !pagerMatch ? allShots : allShots.filter((_, index) => index === pageIndex)
@@ -247,7 +251,57 @@ export function createInvariantMonitor(options) {
     }
     consents.push(consent)
     fs.writeFileSync(path.join(outputDir, `${consent.id}-spend-card.json`), JSON.stringify(consent, null, 2))
+    await checkCardCoherence(consent)
+    await checkQueuedBeforeConsent(consent)
     return consent
+  }
+
+  /** 模型自己的种类（image / video / text / audio）：只从 App 用的那份目录读，读不到 = null（不判）。 */
+  function catalogKindOf(vendorKey, modelKey) {
+    try {
+      const catalog = JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))
+      const hit = (catalog.models ?? []).find((model) => model.modelKey === modelKey && (!vendorKey || model.vendorKey === vendorKey))
+      return hit?.kind ?? null
+    } catch { return null }
+  }
+
+  /**
+   * 付费卡上「这是图还是视频」只有一个答案：卡标题、候选的模式、模型自己的种类、画布占位节点的种类，四样必须一致。
+   * 任何两样不一致，用户在付钱前那一刻看到的就是自相矛盾的一张卡（标题说视频、模型是图片模型、节点又是视频）。
+   */
+  async function checkCardCoherence(consent) {
+    const kindOfText = (value) => (/video|视频/i.test(String(value ?? '')) ? 'video' : /image|图|封面/i.test(String(value ?? '')) ? 'image' : null)
+    const titleKind = /视频|video/i.test(consent.dom.title) ? 'video' : /图片|image|张/i.test(consent.dom.title) ? 'image' : null
+    for (const shot of consent.allShots) {
+      const facts = { 卡标题: titleKind, 候选模式: kindOfText(shot.mode), 模型种类: shot.modelKind, 画布节点: shot.nodeKind }
+      const distinct = new Set(Object.values(facts).filter(Boolean))
+      if (distinct.size <= 1) continue
+      await violate({
+        invariant: 3, rule: 'card-kind-mismatch', key: `${consent.id}|${shot.shotId}`,
+        module: 'electron/capabilityCore/semanticGenerationCandidate.ts inferGenerationTaskKind（提示词里有「镜头 / 动画」等词就判视频，与点名的模型无关）+ 候选 mode 缺省取 taskKind + 卡标题读 mode / 卡体读模型种类 / 画布节点读 shot.kind——四处各读各的，没有唯一主人',
+        message: `付费卡对「${shot.shotId}」说的自相矛盾：${Object.entries(facts).map(([name, value]) => `${name}=${value ?? '无'}`).join('，')}（标题「${consent.dom.title}」，模型 ${shot.providerId}/${shot.model}，模式 ${shot.mode ?? '无'}）`,
+        snapshot: { facts, shot: { ...shot, surfaceText: undefined }, title: consent.dom.title },
+      })
+    }
+  }
+
+  /** 用户还没点头，节点上就写着「排队中 · 第 n/N」：这句话是「已经派进队列、下一步就花钱」，而此刻一个请求都没发。 */
+  async function checkQueuedBeforeConsent(consent) {
+    const patterns = uiClaimPatterns().filter((entry) => entry.claim === 'queued')
+    const nodeIds = consent.allShots.map((shot) => shot.nodeId).filter(Boolean)
+    if (nodeIds.length === 0) return
+    const shown = await win().evaluate(({ ids, sources }) => ids.flatMap((id) => {
+      const text = String(document.querySelector(`[data-node-id="${id}"]`)?.innerText ?? '').replace(/\s+/g, ' ')
+      return sources.some((source) => new RegExp(source).test(text)) ? [{ id, text: text.slice(0, 200) }] : []
+    }), { ids: nodeIds, sources: patterns.map((entry) => entry.source) }).catch(() => [])
+    for (const hit of shown) {
+      await violate({
+        invariant: 4, rule: 'ui-queued-before-consent', key: `${consent.id}|${hit.id}`,
+        module: 'electron/shared/productionShotPhase.ts deriveProductionShotState（没有 job、计划 state=submitted 就判「排队中」；此刻付费卡还在等用户点头）',
+        message: `付费卡还在等用户点头（供应商 ${submissions.length} 笔提交），画布节点 ${hit.id} 已经写着「排队中」：${hit.text.slice(0, 80)}`,
+        snapshot: { hit, submissions: submissions.length },
+      })
+    }
   }
 
   /** 用户自己在节点上点生成之前调用：读下这个节点此刻摆的模型 / 参数 / 参考（节点就是那张生成框的唯一输入）。 */
@@ -789,8 +843,14 @@ export function createInvariantMonitor(options) {
           continue
         }
         if (present && terminal && !node.runs?.some((run) => ['running', 'queued'].includes(run.status))) {
-          const lingering = now - Math.max(spinner.firstSeen, node.runs?.[0]?.completedAt ?? 0)
-          if (lingering > limits.savedFeedbackWindowMs.value) {
+          // 只认「最后一次真的看见它」，快照过期就不下结论（F7：满载时读到几秒前的快照，转圈早收了还报「还在」）。
+          const seen = finishedNodeSpinner({ spinner, completedAt: node.runs?.[0]?.completedAt ?? 0, readAt: probe.readAt, sampledAt: probe.spinnersSampledAt })
+          if (seen.verdict === 'stale-snapshot') {
+            notes.push({ at: now, kind: 'spinner-snapshot-stale', node: node.id, ageMs: snapshotAgeMs({ readAt: probe.readAt, sampledAt: probe.spinnersSampledAt }) })
+            continue
+          }
+          const lingering = seen.lingeringMs ?? 0
+          if (seen.verdict === 'fresh-present' && lingering > limits.savedFeedbackWindowMs.value) {
             await violate({
               invariant: 5, rule: 'spinner-on-finished-node', key: `${node.id}|${spinner.desc}`,
               module: 'src/workbench/generationCanvas/nodes（节点状态已终态，转圈没收）',

@@ -53,6 +53,11 @@ export const FULL_WALK_PLAYBOOKS = Object.freeze([
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
   }),
   Object.freeze({
+    id: 'pb08-cover-card-kind', script: 'tests/ux/full-walk/playbooks/pb08-cover-card-kind.walk.mjs', paid: false,
+    title: Object.freeze({ 'zh-CN': '让 Agent 做一个 3:4 封面：付费卡标题 / 模型 / 画布节点到底是图还是视频', en: 'Ask the Agent for a 3:4 cover: is the card, model and node an image or a video' }),
+    variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
+  }),
+  Object.freeze({
     id: 'pb90-seedream5-paid', script: 'tests/ux/full-walk/playbooks/pb90-seedream5.paid.mjs', paid: true,
     title: Object.freeze({ 'zh-CN': '（付费小额）Seedream 5.0 出一张最小档的图，看落地校验', en: '(paid) One smallest Seedream 5.0 image, check landing' }),
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
@@ -124,7 +129,7 @@ export const FULL_WALK_JOURNEYS = Object.freeze([
       { id: 'done', kind: 'terminal', visibleText: ['generationCommon.resultStack.versionCount', 'generationCommon.resultStack.rerun'], actions: ['重拍这镜', '下载'], owner: 'electron/shared/productionShotPhase.ts#deriveProductionShotState' },
       { id: 'failed', kind: 'terminal', visibleText: ['generationCommon.production.canvasLanding.stoppedAfterFailure'], actions: ['重拍这镜'], owner: 'electron/productionRun/multiShotBatchScheduler.ts#settleAtRest' },
     ].map(Object.freeze)),
-    scripts: Object.freeze(['tests/ux/full-walk/playbooks/pb01-two-page-card.walk.mjs', 'tests/ux/full-walk/playbooks/pb03-default-models.walk.mjs', 'tests/ux/core-smoke-spend-confirm.walk.mjs']),
+    scripts: Object.freeze(['tests/ux/full-walk/playbooks/pb01-two-page-card.walk.mjs', 'tests/ux/full-walk/playbooks/pb03-default-models.walk.mjs', 'tests/ux/full-walk/playbooks/pb08-cover-card-kind.walk.mjs', 'tests/ux/core-smoke-spend-confirm.walk.mjs']),
     invariants: Object.freeze([1, 2, 3, 4, 6, 9]),
     metric: Object.freeze({ gap: '付费卡的「确认 / 收回 / 只确认当前页」没有任何上报；agent.turn.completed 在 telemetryEvents 里声明了却没有发射点' }),
   }),
