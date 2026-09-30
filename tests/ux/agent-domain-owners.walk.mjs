@@ -103,8 +103,12 @@ try {
       await clickOrFail(win().locator(`${CANVAS_PANEL} ${COMPOSER_ADD_FILE}`), '输入框的「+」（添加文件）')
       await (await chooser).setFiles(DOMAIN_FILE)
       await expect(win().locator(`${CANVAS_PANEL} ${COMPOSER} ${COMPOSER_CHIP}`).filter({ hasText: FILE_NAME.slice(0, 4) }), '输入框里挂上了附件签').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
-      await expect.poll(() => fs.existsSync(path.join(smoke.project.projectRoot, 'assets')) && fs.readdirSync(path.join(smoke.project.projectRoot, 'assets'), { recursive: true })
-        .some((name) => String(name).endsWith('.txt')), { message: '附件落进了项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
+      const assetNames = () => (fs.existsSync(path.join(smoke.project.projectRoot, 'assets')) ? fs.readdirSync(path.join(smoke.project.projectRoot, 'assets'), { recursive: true }).map(String) : [])
+      try {
+        await expect.poll(() => assetNames().some((name) => name.endsWith('.txt')), { message: '附件落进了项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
+      } catch (error) {
+        throw new Error(`附件没落进项目素材（assets 里现有：${JSON.stringify(assetNames())}；项目里名字带 harbour/海港 的：${JSON.stringify(fs.readdirSync(smoke.project.projectRoot, { recursive: true }).map(String).filter((name) => /harbour|海港|\.txt$/i.test(name)))}；项目根：${smoke.project.projectRoot}）`, { cause: error })
+      }
       record.screenshots.push(await shot('attach-composer'))
       await sendCanvas(win(), EN ? 'DOM-ATT: summarize this file for me.' : 'DOM-ATT：总结一下这个文件。')
       await summarizeTurn.done
