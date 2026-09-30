@@ -78,7 +78,7 @@ try {
     })
     await monitor.step(`${one.id} · 看点完之后发生了什么（供应商收到没有 / 有没有提示）`, async () => {
       const before = fixture.images.length + (fixture.videos?.length ?? 0)
-      await expect.poll(() => fixture.images.length + (fixture.videos?.length ?? 0), { timeout: 15_000 }).toBeGreaterThan(before).catch(() => undefined)
+      await expect.poll(() => fixture.images.length + (fixture.videos?.length ?? 0), { timeout: stationTimeout() }).toBeGreaterThan(before).catch(() => undefined)
       await win().waitForTimeout(1500)
       const toasts = await win().evaluate(() => [...document.querySelectorAll('.mantine-Notification-root, [role="status"], [role="alert"]')].map((el) => String(el.innerText ?? '').replace(/\s+/g, ' ').trim()).filter(Boolean))
       monitor.note({ kind: `case-${one.id}-after-confirm`, toasts, images: fixture.images.length, videos: fixture.videos?.length ?? 0 })
