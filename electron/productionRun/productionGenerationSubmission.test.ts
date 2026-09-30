@@ -106,7 +106,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -135,7 +134,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -161,7 +159,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -188,7 +185,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       registry,
       provider: {
@@ -213,7 +209,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -239,7 +234,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -306,7 +300,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -354,7 +347,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -393,7 +385,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -430,7 +421,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -452,7 +442,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -475,7 +464,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -505,7 +493,6 @@ describe("Run-owned semantic generation submission", () => {
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider,
       afterProviderAcceptance: () => { throw new Error("receipt lost after acceptance"); },
@@ -533,8 +520,7 @@ describe("historical batch observation", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "historical-task" }));
     const materializeOutput = vi.fn(async (_input: { contract: unknown }) => ({ artifactId: "historic-artifact", kind: "image" as const, contentHash: "hash", projectRelativePath: "out.png" }));
     const submission = createProductionGenerationSubmission({
-      repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
-      intentMacKey: "test-intent-key", now: () => "2026-08-23T00:00:00.000Z", materializeOutput,
+      repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", now: () => "2026-08-23T00:00:00.000Z", materializeOutput,
       provider: { providerId: "fixture-provider", capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },
         buildRequest: input => input, submit, query: async () => ({ status: "succeeded", raw: {} }),
         materialize: async () => ({ outputs: [{ kind: "image", url: "https://fixture.invalid/out.png" }] }) },

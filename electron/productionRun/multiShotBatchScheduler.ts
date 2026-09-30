@@ -4,7 +4,7 @@ import type { ProductionRunRepository } from "./productionRunRepository";
 import type { ProductionGenerationSubmission } from "./productionGenerationSubmission";
 import type { ShotPrice } from "./shotPricing";
 import { currentAnchorCheckpointGate, buildAnchorCheckpointGate } from "./anchorCheckpoint";
-import { logWarn } from "../logging/logger";
+import { logInfo, logWarn } from "../logging/logger";
 
 /**
  * P4 S4 — the durable batch scheduler orchestrator (plan §3.3). It has NO persistent state of its own:
@@ -175,27 +175,28 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
     }
   }
 
-  /**
-   * 一镜已经**确定失败**（`needs_attention` / `submission_unknown`）而整批再没有可派可轮的活时，
-   * Run 必须如实落到 `needs_attention`。
-   *
-   * 在这之前它停在 `running` 一动不动：没有终态、没有通知、没有任何一处告诉用户
-   * 「这一镜没成，另外几镜的钱已经花了」。装死比报错更难查——2026-09-18 C9 那条红
-   * 在 CI 上的表现就是 Run 永远 `running`，25 轮轮询等到超时。
-   */
-  function settleAttentionIfUnitsFailed(run: ProductionRun): ProductionRun {
-    if (run.status !== "running") return run;
-    const failed = run.jobs.some((job) => job.stageId === "generate"
-      && (job.status === "needs_attention" || job.status === "submission_unknown"));
-    if (!failed) return run;
-    return command(run, "run.status", { status: "needs_attention" }, `unit-failed-attention-${run.revision}`);
+  /** 批次自己停下（§3.3：可查询的停，绝不静默超支）。原因在停的这一刻写进命令，由生命周期 owner 落成 run.stop。 */
+  function stopRun(reason: "budget" | "failed"): void {
+    const run = requireRun(deps);
+    if (run.status !== "running") return;
+    command(run, "run.status", { status: "needs_attention", reason }, `batch-stop-${reason}-${run.revision}`);
   }
 
-  /** Halt the Run (§3.3): a queryable stop, never a silent over-spend. */
-  function haltRun(run: ProductionRun): ProductionRun {
-    if (run.status === "needs_attention") return run;
-    if (run.status !== "running") return run;
-    return command(run, "run.status", { status: "needs_attention" }, "budget-halt");
+  /**
+   * 这一趟驱动歇下来了（再没有能自己派、能自己轮询的活）：批次该不该停、为什么停，**只在这里判一次**。
+   *   · 预算不够派下一镜（halt）→ 停，原因 budget；
+   *   · 有单元的当前尝试确定没成（参考卡或视频镜），而且不是在等人看形象（检查点 waiting）→ 停，原因 failed；
+   *   · 其余（等人看形象、整批做完交给收尾）不停。
+   * 以前这几种各有各的调用点：整批做完时才判失败，于是参考卡失败时（检查点卡在 pending_anchors）Run 永远 running、
+   * 视频镜永远「排队中」（2026-09-18 C9 与 2026-09-29 用户实见同一族）。
+   */
+  function settleAtRest(result: BatchDerivationResult): void {
+    if (result.halt) {
+      stopRun("budget");
+      return;
+    }
+    if (result.checkpoint.status === "waiting") return;
+    if (result.failedUnits.length > 0) stopRun("failed");
   }
 
   async function runToQuiescence(): Promise<BatchOutcome> {
@@ -276,8 +277,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
             dispatchedShots += 1;
           } catch (error) {
             if (isBudgetExceeded(error)) {
-              const halted = haltRun(requireRun(deps));
-              void halted;
+              stopRun("budget");
               const finalRun = requireRun(deps);
               const finalGate = currentAnchorCheckpointGate(finalRun);
               const finalResult = deriveBatchPlan({
@@ -297,7 +297,9 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
             // 这一镜的耐久状态由提交那层写（未派发→`needs_attention`，未知→`submission_unknown`），
             // 调度器只负责别死。
             failedShots.add(task.shotId);
-            logWarn("production-run", "batch-dispatch-failed", { shotId: task.shotId }, error);
+            // 派发准入闸拒了（画布接手 / 删了节点 / 急停）：这一镜本来就不该派，不是一次失败，不记成 batch-dispatch-failed。
+            if (isShotClaimDenied(error)) logInfo("production-run", "batch-dispatch-skipped", { shotId: task.shotId, reason: claimDenialReason(error) });
+            else logWarn("production-run", "batch-dispatch-failed", { shotId: task.shotId }, error);
           }
         }
         continue; // re-derive: dispatched shots now have jobs; halt/completion decided next
@@ -332,15 +334,16 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
       // 6. If the checkpoint is waiting (user must approve) → rest here (nothing more to do this run).
       // pending_anchors here means anchors are neither dispatchable nor pollable (e.g. needs_attention)
-      // — a genuine rest until the user re-attempts them.
+      // — a genuine rest until the user re-attempts them; settleAtRest says whether that rest is a stop.
       if (result.checkpoint.status === "waiting" || result.checkpoint.status === "pending_anchors" || result.checkpoint.status === "rejected") {
+        settleAtRest(result);
         return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
       }
 
       // 7. Budget halt → halt the Run and rest (提额续拍 is a fresh scheduler run). In-flight units have
       // already settled (case 5 runs first), so halting never strands pollable paid work.
       if (result.halt) {
-        haltRun(run);
+        settleAtRest(result);
         return { progress: result.progress, checkpoint: result.checkpoint, halt: result.halt, quiescent: true };
       }
 
@@ -349,17 +352,27 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
       // callback is only emitted for a fully settled batch; checkpoint waits,
       // budget halts, and partial test drives never trigger it.
       await notifyBatchComplete(result.progress);
-      settleAttentionIfUnitsFailed(requireRun(deps));
+      settleAtRest(result);
       return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
     }
 
     // Bounded-out (should not happen for a healthy batch) — report the last derived state. The loop ran
     // at least once (maxTicks >= 8), so lastResult is set; fall back to an empty progress only defensively.
-    const result = lastResult ?? { progress: { total: 0, completed: 0, inFlight: 0, pending: 0 }, checkpoint: { status: "not_required" as const, readyAnchorJobIds: [] }, anchorDispatch: [], shotDispatch: [], observe: [] };
+    const result = lastResult ?? { progress: { total: 0, completed: 0, inFlight: 0, pending: 0 }, checkpoint: { status: "not_required" as const, readyAnchorJobIds: [] }, anchorDispatch: [], shotDispatch: [], observe: [], failedUnits: [] };
     return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: false };
   }
 
   return { runToQuiescence };
+}
+
+/** 派发准入闸的拒绝（productionShotDispatchGuard 抛的 production_shot_claimed）。 */
+function isShotClaimDenied(error: unknown): boolean {
+  return typeof error === "object" && error !== null && (error as { code?: unknown }).code === "production_shot_claimed";
+}
+
+function claimDenialReason(error: unknown): string {
+  const reason = (error as { reason?: unknown }).reason;
+  return typeof reason === "string" ? reason : "unknown";
 }
 
 function isBudgetExceeded(error: unknown): boolean {

@@ -2652,6 +2652,209 @@
       ],
       "since": "2026-09-29",
       "notes": "内置家的连接身份由代码拥有：鉴权放法与种子一致，接口地址是种子地址或代码登记的官方备用线路（vendor/vendorBaseFallback.codeDeclaredFallbackOrigins，与凭据守卫同一张名单——APIMart 的国内线路 api.apib.ai 在里面）。内置家自动发布、Agent 生成器装配、生成器出请求都问它，不一致就 fail-closed。合同 docs/fixes/2026-09-29-settings-address-is-the-users.root-cause.json。"
+    },
+    {
+      "name": "制作 Run 为什么停下（停下原因）",
+      "subject": "production.run-stop-reason",
+      "lifecycle": "execution",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "durable",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionRunLifecycle.ts",
+        "symbol": "applyRunStatus"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "applyRunStatus"
+        },
+        {
+          "path": "electron/shared/productionRunStop.ts",
+          "symbol": "runStopReason"
+        },
+        {
+          "path": "electron/shared/productionRunStop.ts",
+          "symbol": "parseRunStopReason"
+        },
+        {
+          "path": "electron/shared/productionRunStop.ts",
+          "symbol": "isStoppedRunStatus"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "HALT_ERROR_CODES",
+          "kind": "definition",
+          "why": "从 job 的 errorCode / Run 的 needs_attention 反推「预算停下」——那天根本没有价格，界面却说「预算已用完 · 提额续拍」（2026-09-29 删掉）。停下原因只读 run.stop。"
+        },
+        {
+          "symbol": "STOPPED_RUNS",
+          "kind": "definition",
+          "why": "「停着的状态」手抄一份（认领判据以前的写法）；只许 isStoppedRunStatus。"
+        },
+        {
+          "symbol": "runIsStopped",
+          "kind": "definition",
+          "why": "画布小标自己判「停没停」的旧助手；只许 runStopReason / isStoppedRunStatus。"
+        }
+      ],
+      "parity_test": "electron/productionRun/productionRunStopReason.e2e.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionRunLifecycle.ts",
+        "electron/productionRun/productionRunReducer.ts",
+        "electron/productionRun/batchScheduleDerivation.ts",
+        "electron/productionRun/productionRunProjections.ts",
+        "electron/shared/productionShotPhase.ts",
+        "electron/shared/decideShotClaim.ts",
+        "electron/capabilityCore/appIntegrationProductionActions.ts",
+        "electron/agentLane/laneDesktopTasks.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "2026-09-29 用户实见：Agent 付费卡确认 → 定妆照出图 → 检查点放行后视频镜派不出去 → Run 进 needs_attention → 画布说「预算已用完 · 提额续拍」，点进去额度全是 0（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。原因从来没被记下，界面只好从状态反推。现在「为什么停」是停下那一刻的事实：停它的一方在 run.status 命令的 payload.reason 里说（预算 / 失败 / 用户暂停 / 用户取消 / 重启后核对），applyRunStatus 落成 run.stop；新停下不说原因即拒绝写入；停着之间的挪动沿用原来记下的；离开停着的状态即清掉。读口只有 runStopReason：画布小标（deriveProductionShotState）、续拍入口（appIntegrationProductionActions）、Agent 读 Run（projection 的 stopReason → mcpToolResults）、Agent 任务列表（laneDesktopTasks）都读它。上一版停下时没记的读作 unknown，绝不猜成预算。渲染层 IPC 的 run.status 白名单不透传 reason，所以渲染层写不出一次「停下」——停只能经 run.control（暂停 / 取消），原因在那里写。"
+    },
+    {
+      "name": "制作 Run 的生命周期收尾与解除（急停收尾落到已暂停、重做解除失败停下）",
+      "subject": "production.run-lifecycle-settle",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionRunLifecycle.ts",
+        "symbol": "settleRunLifecycle"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "settleRunLifecycle"
+        },
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "applyOwedLifecycleStep"
+        },
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "isStillAtProvider"
+        },
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "retryLiftsStop"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "settlePauseIfQuiet",
+          "kind": "definition",
+          "why": "每个驱动在自己循环尾巴上各调一次的旧收尾；多镜调度器没调，批次急停后永远停在「暂停中」（2026-09-29 删掉）。收尾挂在仓库写入口上，驱动不许再自己收。"
+        },
+        {
+          "symbol": "ACTIVE_JOB_STATUSES",
+          "kind": "definition",
+          "why": "「还在供应商那边」的手抄状态表（与 productionJobPhase 的 generating 重复一份）；只许 isStillAtProvider。"
+        }
+      ],
+      "parity_test": "electron/productionRun/productionRunStopReason.e2e.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionRunRepository.ts",
+        "electron/productionRun/productionRunReducer.ts",
+        "electron/productionRun/productionRunService.ts",
+        "electron/capabilityCore/mcpToolResults.ts",
+        "electron/capabilityCore/appIntegrationProductionActions.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "2026-09-29 用户实见「多镜急停后永远停在暂停中，继续剩余按不动」（合同同上）。生命周期里唯一「自己发生」的一步：急停（pausing）之后交给供应商的最后一件活收了尾，Run 落成 paused。它挂在唯一写入口 productionRunRepository.executeUnlocked 上，每条命令之后判一次，那一步作为自己的 run.status.changed 事件与命令同一次落盘——老驱动、多镜调度器、观察器、恢复流程谁写下最后一笔都一样，驱动里不再有收尾调用。上一版留下的「pausing 而手上已无活」由重开项目的恢复（resumeUnfinishedRuns）发 run.lifecycle.settle 补上那一步，欠不欠只由 settleRunLifecycle 判。retryLiftsStop（穷举）决定用户重做一镜时哪种停下随之解除：失败 / 上一版没记原因的解除，预算 / 用户暂停 / 用户取消 / 重启核对不解除。"
+    },
+    {
+      "name": "继续之后叫醒谁来驱动这个 Run",
+      "subject": "production.run-driver-wake",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionRunService.ts",
+        "symbol": "wakeRunDriver"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionRunService.ts",
+          "symbol": "wakeRunDriver"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/appIntegrationRunObservation.test.ts",
+      "allowed_consumers": [],
+      "since": "2026-09-29",
+      "notes": "2026-09-29：任务卡 / MCP / 画布的「继续」都经 run.control resume；以前服务只踢 driveGeneration，多镜批次状态回到 running 却一镜都不派（派发归批次调度器）。「谁来驱动」只在 wakeRunDriver 判：多镜批次踢批次调度器（批次收齐后它自己交给 driveGeneration 收尾），其余归 driveGeneration。一趟驱动还在跑时来的踢由 appIntegrationRunObservation 记一笔、收尾时补踢（与 driveGeneration 的 generationRerunRequested 同一个做法），不丢唤醒。"
+    },
+    {
+      "name": "画布返工 / 续拍没做成怎么跟用户说（失败码 → 人话）",
+      "subject": "production.shot-action-failure",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+        "symbol": "productionShotActionFailureOf"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+          "symbol": "productionShotActionFailureOf"
+        },
+        {
+          "path": "electron/productionRun/productionRunTypes.ts",
+          "symbol": "ProductionShotActionFailure"
+        },
+        {
+          "path": "src/workbench/production/productionShotActions.ts",
+          "symbol": "SHOT_ACTION_FAILURE_COPY"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/appIntegrationProductionActions.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionActionIpc.ts",
+        "electron/capabilityCore/appIntegration.ts",
+        "src/workbench/production/productionRunApi.ts",
+        "src/desktop/productionRunBridgeTypes.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "2026-09-29 用户实见：点「继续剩余」弹「操作没成功，请稍后再试 · run status pausing is not resumable」（合同同上）。以前所有失败都落进那一句，前面拼主进程英文原话。现在每一种没做成都有自己的码：主进程 productionShotActionFailureOf 只认源头的错误类型（返工被拒、版本冲突、写锁被占、状态机不允许、确认过期 / 对不上、没有人证、供应商没注册、记录解析失败）与 Node 的 errno（磁盘满 / 没有写权限），不读英文原话；渲染层 SHOT_ACTION_FAILURE_COPY 穷尽地一码一句（怎么了、钱怎么样了、能做什么），没有兜底句。唯一不细分的 internal_error 是 Nomi 自己的不变量没守住（bug）：如实说「这是 Nomi 的问题、没有扣费、已记日志、可以反馈」，不装成「稍后再试」。IPC 两个通道不往渲染层抛异常，渲染层的 catch 因此只剩「桥不通」（bridge_unavailable）一种。"
+    },
+    {
+      "name": "派发时核的授权范围（批过的那一份）",
+      "subject": "production.dispatch-authorization-scope",
+      "lifecycle": "spend-authority",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionGenerationSubmission.ts",
+        "symbol": "prepareAuthorizedSubmission"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionGenerationSubmission.ts",
+          "symbol": "prepareAuthorizedSubmission"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/productionRun/productionGenerationAuthorizationFlow.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/multiShotBatchScheduler.ts",
+        "electron/capabilityCore/appIntegration.ts",
+        "electron/capabilityCore/mcpStdioServer.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "2026-09-29 用户实见：定妆照检查点放行后视频镜派不出去（「Generation authorization no longer matches the current project or Run」），批次停下（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。派发时要核的是「批过的那一份」，只有它：封进信封的项目身份（immutableProjectUuid + projectGeneration）、Run、计划版本、那道门，以及每个 job 的合同哈希、供应商、模型、第几次、幂等键、线上报文哈希、参考图、单价上限、到期时间——收据签的就是这份信封的摘要。项目文档的版本号不在里面：它只是「用户看报价那一刻项目是不是最新」的前提，在批准那一刻由收据那一侧核（productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后 Nomi 自己把占位和参考卡结果落上画布就会让它前进。所以派发不再读活的文档版本（createProductionGenerationSubmission 连这个依赖都没有了），也没有「重试时重新封一次」这种补法。批准那一刻的版本绑定是否也该松开，归付费卡审批那条 lane，不在这里。"
     }
   ]
 }
