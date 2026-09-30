@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import http from "node:http";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -17,6 +18,20 @@ import type { Vendor } from "../catalog/types";
 
 const PRIMARY = "https://api.apimart.ai";
 const APIB = "https://api.apib.ai";
+
+const redirectServers: http.Server[] = [];
+
+async function listenRedirectServer(handler: http.RequestListener): Promise<{ origin: string; server: http.Server }> {
+  const server = http.createServer(handler);
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  redirectServers.push(server);
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Redirect fixture did not expose a TCP address");
+  return { origin: `http://127.0.0.1:${address.port}`, server };
+}
 
 /** 连接从未建立形态的 fetch 拒绝（undici 把码塞 cause.code）。 */
 const connectFail = (code = "UND_ERR_CONNECT_TIMEOUT") =>
@@ -37,6 +52,13 @@ beforeEach(() => resetVendorBaseFallbackForTests());
 afterEach(() => {
   vi.unstubAllGlobals();
   resetVendorBaseFallbackForTests();
+});
+
+afterEach(async () => {
+  for (const server of redirectServers.splice(0)) {
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });
 
 describe("isConnectPhaseError（换线重发的安全闸）", () => {
@@ -118,6 +140,39 @@ describe("探测梯子 + rewrite", () => {
 });
 
 describe("fetchVendorWithBaseFallback / requestJson 集成", () => {
+  it.each([302, 307, 308])(
+    "credentialed POST rejects HTTP %s redirects before custom auth or body reaches another origin",
+    async (status) => {
+      const targetRequests: Array<{ headers: http.IncomingHttpHeaders; body: string }> = [];
+      const target = await listenRedirectServer((request, response) => {
+        const chunks: Buffer[] = [];
+        request.on("data", (chunk: Buffer) => chunks.push(chunk));
+        request.on("end", () => {
+          targetRequests.push({ headers: request.headers, body: Buffer.concat(chunks).toString("utf8") });
+          response.end("unexpected target request");
+        });
+      });
+      let sourceRequests = 0;
+      const source = await listenRedirectServer((request, response) => {
+        sourceRequests += 1;
+        request.resume();
+        request.on("end", () => {
+          response.writeHead(status, { location: `${target.origin}/redirected` });
+          response.end();
+        });
+      });
+
+      await expect(fetchVendorWithBaseFallback(`${source.origin}/v1/generations`, {
+        method: "POST",
+        headers: { "x-api-key": "redirect-api-key", "x-tenant-key": "redirect-tenant", "content-type": "application/json" },
+        body: JSON.stringify({ prompt: "redirect-sensitive-body" }),
+      })).rejects.toBeInstanceOf(Error);
+
+      expect(sourceRequests).toBe(1);
+      expect(targetRequests).toEqual([]);
+    },
+  );
+
   it("连接层失败 → 换线重发一次成功；付费 POST 只在「请求从未离开本机」时重发", async () => {
     const wireCalls: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string | URL, init?: RequestInit) => {
