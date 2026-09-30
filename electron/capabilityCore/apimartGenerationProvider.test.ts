@@ -714,7 +714,10 @@ describe("APIMart observe-only generation provider", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("rejects certification-owned rows before a contextual submit can force an APIMart endpoint", () => {
+  // 2026-09-29（A10b）：「这条连接归不归认证管」收成一份判据（catalog/certificationOwnership）。
+  // 用户自己加的一行带认证标记只管它自己，不再让整条连接翻成认证连接。这份夹具里那一行之外连一个
+  // 内置目录模型都没有，于是照旧在付费前拒掉——拒因从「认证连接」换成「代码拥有的契约不在了」。
+  it("still rejects a user-added certified row before a contextual submit when the built-in contract is gone", () => {
     const fetchImpl = vi.fn();
     const provider = createApimartGenerationProvider({
       resolveConnection: () => ({ apiKey: "test-key" }),
@@ -722,6 +725,20 @@ describe("APIMart observe-only generation provider", () => {
       fetchImpl,
     });
     expect(() => provider.buildRequest(input({ modelId: "shared-model", mode: "text-to-image", parameters: {} })))
+      .toThrow("apimart catalog direct-key contract is unavailable");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  // 内置目录里的模型带了标记 = 代码拥有的契约被认证接管：整条连接归认证，连没带标记的
+  // gpt-image-2 也不许这个执行器接管，付费前就拒。
+  it("rejects the whole connection once a built-in catalog model carries a certification mark", () => {
+    const fetchImpl = vi.fn();
+    const base = catalogFixture();
+    base.models = base.models.map((model) => model.modelKey === "viduq3"
+      ? { ...model, meta: { ...(model.meta as Record<string, unknown>), adapter: { state: "failed", modes: [] } } }
+      : model);
+    const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), catalogReader: () => base, fetchImpl });
+    expect(() => provider.buildRequest(input()))
       .toThrow("apimart certification-owned connection requires its certified transport");
     expect(fetchImpl).not.toHaveBeenCalled();
   });

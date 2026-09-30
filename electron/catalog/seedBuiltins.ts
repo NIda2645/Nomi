@@ -617,6 +617,17 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
 }
 
 /**
+ * 这家**内置目录里**有哪些模型（curated 登记表里的 modelKey；不在表里的家返回空集）。
+ * 「用户自己加的模型」与「代码拥有的模型」只靠这张表分得开——`meta` 上的任何字段渲染层都写得动，
+ * 拿来判身份就是让用户自己给自己的行盖章。`certificationOwnership` 靠它判「标记落在谁身上」。
+ */
+export function builtinCatalogModelKeys(vendorKey: string): ReadonlySet<string> {
+  return new Set(CURATED_VENDOR_CONTRACTS
+    .filter((contract) => contract.vendorKey === vendorKey)
+    .flatMap((contract) => contract.models.map((model) => model.modelKey)));
+}
+
+/**
  * 这家在当前 catalog 里，是否仍指向**代码拥有的**执行契约。
  *
  * 判据用在凭据发布与 provider 两个边界上，所以后来的一次 catalog 编辑（改了 create/query、

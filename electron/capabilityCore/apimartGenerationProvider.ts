@@ -15,6 +15,7 @@ import { productionGenerationPayloadHash } from "../productionRun/productionGene
 import { readCatalog } from "../catalog/catalogStore";
 import { builtinVendorScopeMatches, isBuiltinDirectKeyVendor } from "../catalog/builtinVendorSeeds";
 import { hasBuiltinCuratedExecution } from "../catalog/seedBuiltins";
+import { isCertificationOwnedConnection } from "../catalog/certificationOwnership";
 import {
   billingKindForTaskKind,
   selectTaskMapping,
@@ -185,15 +186,10 @@ function readCatalogSnapshot(reader: () => CatalogState, vendorKey: string): Cat
   return state;
 }
 
-function hasAdapterMetadata(meta: unknown): boolean {
-  return Boolean(meta && typeof meta === "object" && !Array.isArray(meta)
-    && Object.prototype.hasOwnProperty.call(meta, "adapter"));
-}
-
 /**
  * 内置 direct-key 家（APIMart 等）的连接身份是**代码拥有**的策展合同：它的 auth / 端点 /
- * 生命周期由仓库里的种子说了算。同一个 vendorKey 上如果挂了认证契约（`meta.adapter`），
- * 那一行必须由认证适配器伺候——这个执行器不能悄悄接管它。
+ * 生命周期由仓库里的种子说了算。这条连接如果归认证适配器管（判据唯一的主人：
+ * `catalog/certificationOwnership`），就必须由认证适配器伺候——这个执行器不能悄悄接管它。
  *
  * 非 direct-key 的家（用户自己接的中转、自建网关、ComfyUI…）没有这份策展合同，
  * 它们的 auth / 端点全部来自用户保存的那条连接与 mapping 声明，由
@@ -201,9 +197,7 @@ function hasAdapterMetadata(meta: unknown): boolean {
  */
 function assertDirectKeyContract(state: CatalogState, vendor: Vendor): void {
   if (!isBuiltinDirectKeyVendor(vendor.key)) return;
-  const certificationOwned = hasAdapterMetadata(vendor.meta)
-    || state.models.some((model) => model.vendorKey === vendor.key && hasAdapterMetadata(model.meta));
-  if (certificationOwned) {
+  if (isCertificationOwnedConnection(state, vendor.key)) {
     throw new CatalogGenerationProviderError(`${vendor.key} certification-owned connection requires its certified transport`);
   }
   if (!builtinVendorScopeMatches(vendor) || !hasBuiltinCuratedExecution(state, vendor.key)) {

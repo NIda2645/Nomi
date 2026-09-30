@@ -10,10 +10,12 @@ import { useVendorHealth } from './useVendorHealth'
 import { ModelChipGroups, type ChipModel } from './ModelChipGroups'
 import { groupModelsByKind } from './modelChipGrouping'
 import { ModelSettingsPageSurface } from './ModelSettingsPageSurface'
+import { VendorBaseUrlField } from './VendorBaseUrlField'
 
 export function KnownVendorKeyConnectPage({
   directory,
   vendorName,
+  baseUrl = '',
   models,
   hasApiKey = false,
   credentialVerificationPending = false,
@@ -24,6 +26,8 @@ export function KnownVendorKeyConnectPage({
 }: {
   directory: KnownVendor
   vendorName: string
+  /** 这家现在的接口地址。填 key 之前就要能改：主域被墙的用户得先换线路，key 才验得出去（2026-09-29）。 */
+  baseUrl?: string
   /**
    * 这家**已经预置好**的模型清单（含请求适配），未接入时也是真数据——
    * 页面必须把它摊开给用户看，而不是只报一个数字（2026-09-14 修：此前只传 `.length`，
@@ -180,6 +184,12 @@ export function KnownVendorKeyConnectPage({
         ) : null}
 
         <div className="mt-5" data-platform-key-only>
+          {/* 地址行与已接入卡片共用同一份实现（VendorBaseUrlField），存法也是同一个入口。 */}
+          {baseUrl ? (
+            <div className="mb-4">
+              <VendorBaseUrlField vendorKey={directory.vendorKey} vendorName={vendorName} baseUrl={baseUrl} disabled={busy} onSaved={onSaved} />
+            </div>
+          ) : null}
           <label htmlFor={`key-only-${directory.vendorKey}`} className="text-caption font-medium text-nomi-ink-80">
             {t('onboardingProviders.keyOnly.keyLabel', { name: vendorName })}
           </label>

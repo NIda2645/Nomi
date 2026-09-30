@@ -45,6 +45,39 @@ export function assertPaidRunAllowed(script, env = process.env) {
 }
 
 /**
+ * 花第一分钱之前，在被测 App 里把花钱面收窄到被授权的那几个模型（`seeded` = seedRealModels 的返回），
+ * 再让 App 自己说它们「能用」。返回停掉了几个未授权的生成模型。
+ *
+ * 为什么非在 App 起来之后做：App 首启会把内置目录补进隔离副本（同一家 APIMart 下几十个生成模型），
+ * 它们和被授权的那一个共用同一把 key——不停掉，Agent 在 list_models 里点到哪个贵的、全自动档就直接花了。
+ * 停用走的是设置页同一条 IPC（`modelCatalog.upsertModel`），等于用户在设置里把别的生成模型关掉。
+ * 可用性问的是主进程的唯一答案（含钥匙解不解得开）：Windows 上漏拷 Local State，这里就会红，一分钱没花。
+ * 开发构建与打包产物（例如发版前在安装包上的真实核对）走的是同一份。
+ */
+export async function lockSpendToModels(win, seeded) {
+  const authorized = new Set(seeded.map((row) => `${row.vendorKey}/${row.modelKey}`))
+  const disabled = await win.evaluate((allowed) => {
+    const off = []
+    for (const row of window.nomiDesktop.modelCatalog.listModels({})) {
+      if (row.kind === 'text' || !row.enabled || allowed.includes(`${row.vendorKey}/${row.modelKey}`)) continue
+      window.nomiDesktop.modelCatalog.upsertModel({ vendorKey: row.vendorKey, modelKey: row.modelKey, enabled: false })
+      off.push(`${row.vendorKey}/${row.modelKey}`)
+    }
+    return off
+  }, [...authorized])
+  const rows = await win.evaluate(() => window.nomiDesktop.modelCatalog.listModels({}))
+  const stillOn = rows.filter((row) => row.kind !== 'text' && row.enabled && !authorized.has(`${row.vendorKey}/${row.modelKey}`))
+    .map((row) => `${row.vendorKey}/${row.modelKey}`)
+  if (stillOn.length) throw new Error(`付费前置不成立：这些未授权的生成模型停不掉（一分钱没花）：${stillOn.join('、')}`)
+  const unusable = seeded.map((want) => {
+    const row = rows.find((candidate) => candidate.vendorKey === want.vendorKey && candidate.modelKey === want.modelKey)
+    return row?.availability?.usable ? null : `${want.vendorKey}/${want.modelKey}：${JSON.stringify(row?.availability ?? '目录里没有')}`
+  }).filter(Boolean)
+  if (unusable.length) throw new Error(`付费前置不成立，被测 App 说这些模型不能用（一分钱没花）：\n  ${unusable.join('\n  ')}`)
+  return disabled.length
+}
+
+/**
  * 付费走查的起点：先过闸，再建隔离实例（createRuntimeWalk），再把**点名的真实模型**连同凭据装进去。
  * 返回的 `finish(error)` 在 App 关掉之后删凭据副本、写收据、比对原库指纹。
  */
@@ -59,35 +92,8 @@ export async function openPaidWalk(script, name, models) {
   walk.report.realProfileBefore = guard.realProfileBefore
   console.log(`[paid] 隔离副本装了：${walk.report.seededModels.join(' · ')}`)
   const label = (vendorKey, modelKey) => seeded.find((row) => row.vendorKey === vendorKey && row.modelKey === modelKey)?.labelZh
-  /**
-   * 花第一分钱之前，在被测 App 里把花钱面收窄到被授权的那几个模型，再让 App 自己说它们「能用」。
-   *
-   * 为什么非在 App 起来之后做：App 首启会把内置目录补进隔离副本（同一家 APIMart 下几十个生成模型），
-   * 它们和被授权的那一个共用同一把 key——不停掉，Agent 在 list_models 里点到哪个贵的、全自动档就直接花了。
-   * 停用走的是设置页同一条 IPC（`modelCatalog.upsertModel`），等于用户在设置里把别的生成模型关掉。
-   * 可用性问的是主进程的唯一答案（含钥匙解不解得开）：Windows 上漏拷 Local State，这里就会红，一分钱没花。
-   */
   async function lockToAuthorizedModels(win) {
-    const authorized = new Set(seeded.map((row) => `${row.vendorKey}/${row.modelKey}`))
-    const disabled = await win.evaluate((allowed) => {
-      const off = []
-      for (const row of window.nomiDesktop.modelCatalog.listModels({})) {
-        if (row.kind === 'text' || !row.enabled || allowed.includes(`${row.vendorKey}/${row.modelKey}`)) continue
-        window.nomiDesktop.modelCatalog.upsertModel({ vendorKey: row.vendorKey, modelKey: row.modelKey, enabled: false })
-        off.push(`${row.vendorKey}/${row.modelKey}`)
-      }
-      return off
-    }, [...authorized])
-    const rows = await win.evaluate(() => window.nomiDesktop.modelCatalog.listModels({}))
-    const stillOn = rows.filter((row) => row.kind !== 'text' && row.enabled && !authorized.has(`${row.vendorKey}/${row.modelKey}`))
-      .map((row) => `${row.vendorKey}/${row.modelKey}`)
-    if (stillOn.length) throw new Error(`付费前置不成立：这些未授权的生成模型停不掉（一分钱没花）：${stillOn.join('、')}`)
-    const unusable = seeded.map((want) => {
-      const row = rows.find((candidate) => candidate.vendorKey === want.vendorKey && candidate.modelKey === want.modelKey)
-      return row?.availability?.usable ? null : `${want.vendorKey}/${want.modelKey}：${JSON.stringify(row?.availability ?? '目录里没有')}`
-    }).filter(Boolean)
-    if (unusable.length) throw new Error(`付费前置不成立，被测 App 说这些模型不能用（一分钱没花）：\n  ${unusable.join('\n  ')}`)
-    walk.report.disabledUnauthorizedModels = disabled.length
+    walk.report.disabledUnauthorizedModels = await lockSpendToModels(win, seeded)
   }
   async function finish(error) {
     await walk.finish(error, {

@@ -3,6 +3,7 @@ import { readCatalog } from "../catalog/catalogStore";
 import type { CatalogState, Vendor } from "../catalog/types";
 import { builtinVendorScopeMatches, isBuiltinDirectKeyVendor } from "../catalog/builtinVendorSeeds";
 import { hasBuiltinCuratedExecution } from "../catalog/seedBuiltins";
+import { isCertificationOwnedConnection } from "../catalog/certificationOwnership";
 import type { GenerationProvider } from "./generationRuntimeAdapter";
 import { createCatalogGenerationProvider } from "./apimartGenerationProvider";
 import type { GenerationProviderReadiness, GenerationProviderReadinessMap } from "./moduleCatalogBootstrap";
@@ -34,16 +35,6 @@ function readiness(providerReady: boolean, capabilities: GenerationProviderReadi
   return { providerReady, capabilities, ...(missingForSubmit?.length ? { missingForSubmit } : {}) };
 }
 
-function hasAdapter(meta: unknown): boolean {
-  return Boolean(meta && typeof meta === "object" && !Array.isArray(meta)
-    && Object.prototype.hasOwnProperty.call(meta, "adapter"));
-}
-
-function hasCertificationOwnedConnection(state: CatalogState, vendorKey: string): boolean {
-  return state.vendors.some((vendor) => vendor.key === vendorKey && hasAdapter(vendor.meta))
-    || state.models.some((model) => model.vendorKey === vendorKey && hasAdapter(model.meta));
-}
-
 function hasPublishedExecutionForProvider(state: CatalogState, vendorKey: string): boolean {
   // A built-in direct-key row is a code-owned transport. A certification-owned
   // row of the same vendor must be served by the certification adapter
@@ -58,12 +49,7 @@ function hasSafeDirectKeyScope(state: CatalogState, vendorKey: string): boolean 
   if (!isBuiltinDirectKeyVendor(vendorKey)) return true;
   const vendor = state.vendors.find((candidate) => candidate.key === vendorKey);
   if (!vendor) return false;
-  return !hasCertificationOwnedConnection(state, vendorKey) && builtinVendorScopeMatches(vendor);
-}
-
-/** 这家的出站 mapping 由认证适配器拥有（`meta.adapter`）→ 这个执行器不接管它。 */
-function isCertificationOwned(state: CatalogState, vendorKey: string): boolean {
-  return hasCertificationOwnedConnection(state, vendorKey);
+  return !isCertificationOwnedConnection(state, vendorKey) && builtinVendorScopeMatches(vendor);
 }
 
 /** 夹具只认一家：`NOMI_E2E_FIXTURE_VENDOR`（缺省 apimart）。 */
@@ -133,7 +119,8 @@ export function createGenerationProviderBootstrap(
     if (!credentialIsUsable(state, vendorKey) && !fixtureKeyForVendor) continue;
     if (!hasPublishedExecutionForProvider(state, vendorKey)) continue;
     if (!hasSafeDirectKeyScope(state, vendorKey)) continue;
-    if (!isBuiltinDirectKeyVendor(vendorKey) && isCertificationOwned(state, vendorKey)) continue;
+    // 这家的出站 mapping 由认证适配器拥有 → 这个执行器不接管它（判据唯一的主人：catalog/certificationOwnership）。
+    if (!isBuiltinDirectKeyVendor(vendorKey) && isCertificationOwnedConnection(state, vendorKey)) continue;
 
     const connectionResolver = options.connectionResolver;
     const resolveConnection = connectionResolver
@@ -145,7 +132,7 @@ export function createGenerationProviderBootstrap(
           const live = current.vendors.find((candidate) => candidate.key === vendorKey && candidate.enabled);
           if (!live || !credentialIsUsable(current, vendorKey)) return null;
           if (isBuiltinDirectKeyVendor(vendorKey)
-            && (hasCertificationOwnedConnection(current, vendorKey)
+            && (isCertificationOwnedConnection(current, vendorKey)
               || !builtinVendorScopeMatches(live)
               || !hasBuiltinCuratedExecution(current, vendorKey))) {
             return null;
