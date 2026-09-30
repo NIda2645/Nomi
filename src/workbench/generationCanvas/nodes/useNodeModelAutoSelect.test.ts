@@ -39,10 +39,14 @@ const failedCard = (overrides: Partial<GenerationCanvasNode> = {}): GenerationCa
   ...overrides,
 } as GenerationCanvasNode)
 
+// 测试直接驱动这个 hook（React 原语已被 mock 成同步桩，见文件顶部）。别名不以 use 开头，rules-of-hooks 才不会把
+// 「在 mount 这个普通函数里调用」当成组件外调用——基线里各条用例是在 it 回调里直接调它的，这里抽成一个 mount 助手。
+const driveHook = useNodeModelAutoSelect
+
 function mount(node: GenerationCanvasNode, options: { selectedModelOption?: ModelOption | null; modelOptions?: ModelOption[] } = {}) {
   mocks.nodes = [node]
   const updateNode = vi.fn()
-  useNodeModelAutoSelect({
+  driveHook({
     node,
     modelOptions: options.modelOptions ?? [current, alternative],
     selectedModelValue: 'gpt-image-2',
