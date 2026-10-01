@@ -17,6 +17,7 @@ const labels: LaneViewModelLabels = {
   toolSummary: () => undefined,
   toolFailure: () => undefined,
   toolFailureDetail: (failure) => failure.code,
+  assistantFailure: (text) => text,
   thinkingLabel: '[thinking]',
   formatTokens: (value) => `${value}t`,
   formatCost: (usd) => `$${usd.toFixed(4)}`,
@@ -278,14 +279,14 @@ describe('laneViewModel', () => {
     // 工具结果**并回它自己那一行**，不新开一行——收据是一行，不是两行（v4 定稿）。
     const tool = model.items[2]
     expect(tool.kind === 'tool' && tool.receipt.status).toBe('output-available')
-    expect(tool.kind === 'tool' && tool.receipt.output).toBe('The opening scene.')
+    // 成功的回包是给模型读的，不进展开体（做了什么由这一行的标签与摘要说）。
+    expect(tool.kind === 'tool' && tool.receipt.output).toBeUndefined()
   })
 
-  it('收据展开体不印那行给模型的话，但正文一个字不少', () => {
+  it('成功的工具回包不进收据展开体：有信封与没信封、读与写都一样', () => {
     next = 0
-    // 宿主写进工具结果的尾行有两个读者，读到的不该是同一段字：模型读 `User sees: …`（免得它自己编
-    // 「已经生成好了」），用户读这一行收据。那句话是英文、第三人称写用户，而它讲的事这一行自己
-    // 已经画出来了（撤销钮、介入槽里的卡）——印出去就是同一件事说两遍，其中一遍还不是用户文案。
+    // 回包的读者是模型：英文、带 `User sees: …`、可能带 id 或 JSON。面板上「做了什么」由行标签 + 摘要说，
+    // 撤销钮在行尾——把回包再印一遍就是同一件事说两遍，其中一遍还不是用户文案（真机走查里中文界面印出了英文尾巴）。
     const userSees = 'The document now contains the new text (append); the user can undo it with Cmd+Z.'
     const model = laneViewModel(projection([
       part({ kind: 'user', text: 'Append a closing line.' }),
@@ -293,25 +294,13 @@ describe('laneViewModel', () => {
       part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'write_script', isError: false,
         text: `Applied append to the document. New revision 1.\nUser sees: ${userSees} (undoToken=undo-1)`,
         nextAction: { kind: 'none', userSees, undoToken: 'undo-1' } }),
-    ]), labels)
-    const tool = model.items[1]
-    expect(tool.kind === 'tool' && tool.receipt.output).toBe('Applied append to the document. New revision 1.')
-  })
-
-  it('没有信封的工具结果原样印，不去猜哪一行是给模型的', () => {
-    next = 0
-    // 去尾只按结构走（投影带上来的信封 → 同一个渲染函数算出那行长什么样 → 逐字对齐才去）。
-    // 认 "User sees:" 这个前缀的写法会在读动词、失败结果、旧转录上乱删正文——那是把一个
-    // 判据换成一个猜测。这条钉住「没有信封就一个字不动」。
-    const model = laneViewModel(projection([
-      part({ kind: 'user', text: '看一下。' }),
-      part({ kind: 'tool-call', toolCallId: 'c1', toolName: 'read_script', args: {}, running: false }),
-      part({ kind: 'tool-result', toolCallId: 'c1', toolName: 'read_script', isError: false,
+      part({ kind: 'tool-call', toolCallId: 'c2', toolName: 'read_script', args: {}, running: false }),
+      part({ kind: 'tool-result', toolCallId: 'c2', toolName: 'read_script', isError: false,
         text: 'The opening scene.\nUser sees: nothing was written by this call.' }),
     ]), labels)
-    const tool = model.items[1]
-    expect(tool.kind === 'tool' && tool.receipt.output)
-      .toBe('The opening scene.\nUser sees: nothing was written by this call.')
+    for (const item of model.items.filter((entry) => entry.kind === 'tool')) {
+      expect(item.kind === 'tool' && item.receipt.output).toBeUndefined()
+    }
   })
 
   it('回合以用户消息为界：上一轮的文本绝不并进下一轮的气泡', () => {
@@ -659,4 +648,39 @@ it('R03 preserves a tool row identity when its result settles', () => {
   const result = part({ kind: 'tool-result', toolCallId: 'stable-call', toolName: 'read_script', text: 'read', isError: false })
   expect(laneViewModel(projection([call, result]), labels).items[0].identity)
     .toBe(laneViewModel(projection([call]), labels).items[0].identity)
+})
+
+describe('laneViewModel · 工具卡与失败行不摆原始内容', () => {
+  const OP = 'op-4f2a9c1e-7b3d-4e8a-9c21-0d5e6f7a8b9c'
+  const run = (resultText: string, args: unknown = { operationId: OP, modelKey: 'apimart/gpt-image-1', prompt: '雨夜街口' }) => {
+    next = 0
+    return laneViewModel(projection([
+      part({ kind: 'tool-call', toolCallId: 't1', toolName: 'generate', args, running: false }),
+      part({ kind: 'tool-result', toolCallId: 't1', toolName: 'generate', text: resultText, isError: false }),
+    ]), labels).items[0] as Extract<ReturnType<typeof laneViewModel>['items'][number], { kind: 'tool' }>
+  }
+
+  it('reported case: 入参不进展开体（带 op id 与供应商路由键）', () => {
+    const { receipt } = run('Done.')
+    expect(receipt.input).toBeUndefined()
+    expect(JSON.stringify(receipt)).not.toContain(OP)
+    expect(JSON.stringify(receipt)).not.toContain('apimart/')
+  })
+
+  it('reported case: 成功回包是给模型读的，不进展开体（JSON 信封 / 带 id 的散文 / 英文 User sees 尾巴一律不印）', () => {
+    for (const text of [
+      JSON.stringify({ text: '已提交 2 张。', operationId: OP, providerId: 'apimart' }),
+      `{"operationId":"${OP}","model":"apimart/gpt-image-1"}`,
+      `已提交，任务 ${OP}`,
+      '路由 kie/veo3-fast 已受理',
+      'Applied append to the document. User sees: The document now contains the new text; the user can undo it with Cmd+Z.',
+    ]) expect(run(text).receipt.output, text).toBeUndefined()
+  })
+
+  it('reported case: 助手回合带回的服务商报文走 assistantFailure，原文不进 reason', () => {
+    next = 0
+    const raw = '{"error":{"message":"bad","type":"invalid_request_error"}} [nomi-classified: server error]'
+    const items = laneViewModel(projection([part({ kind: 'error', text: raw })]), { ...labels, assistantFailure: () => '[人话]' }).items
+    expect(items).toEqual([{ kind: 'error', reason: '[人话]' }])
+  })
 })

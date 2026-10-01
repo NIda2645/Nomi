@@ -56,7 +56,9 @@ export function scriptTurn(fixture, { label, marker, steps }) {
       // 工具那一步写成 `{ name, args }`——和夹具回复同一个形状，check:walkthrough-tool-args 才认得出、才去对 schema。
       const reply = step.name
         ? { type: 'tool', id: callIds[index], name: step.name, args: typeof step.args === 'function' ? step.args(context) : step.args, ...(step.text ? { text: typeof step.text === 'function' ? step.text(context) : step.text } : {}) }
-        : { type: 'text', text: typeof step.text === 'function' ? step.text(context) : step.text }
+        // 供应商整条回 HTTP 错误（带原始 JSON 体）：走「服务商报错 → Agent 面板那一行」。
+        : step.httpError ? { type: 'http-error', status: step.httpError.status, json: step.httpError.json }
+          : { type: 'text', text: typeof step.text === 'function' ? step.text(context) : step.text }
       handle.release(reply)
       // 同一步被宿主重发（压缩之后重试、上下文超限之后重试）：真模型会给出同样的回答。
       // 一次性期望已经用掉了，这里补一个只认「这一步」的常驻应答，免得夹具把重试判成计划外请求。

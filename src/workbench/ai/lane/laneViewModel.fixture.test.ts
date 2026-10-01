@@ -18,6 +18,7 @@ const labels: LaneViewModelLabels = {
   toolSummary: () => undefined,
   toolFailure: () => undefined,
   toolFailureDetail: (failure) => failure.code,
+  assistantFailure: (text) => text,
   thinkingLabel: '[thinking]',
   formatTokens: (value) => `${value}t`,
   formatCost: (usd) => `$${usd.toFixed(4)}`,
@@ -44,8 +45,9 @@ describe('laneViewModel against a projection a real pi lane produced', () => {
     expect(first.kind === 'user' && first.text).toBe('Append one paragraph to the document.')
     expect(read.kind === 'tool' && read.receipt.action).toBe('document')
     expect(read.kind === 'tool' && read.receipt.status).toBe('output-available')
-    expect(read.kind === 'tool' && read.receipt.output).toBe('The opening scene.')
-    expect(write.kind === 'tool' && write.receipt.output).toBe('Applied append to the document. New revision 1.')
+    // 成功回包是给模型读的，不进展开体。
+    expect(read.kind === 'tool' && read.receipt.output).toBeUndefined()
+    expect(write.kind === 'tool' && write.receipt.output).toBeUndefined()
     expect(closing.kind === 'assistant' && closing.status).toBe('complete')
   })
 
