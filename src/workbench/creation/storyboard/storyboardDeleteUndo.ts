@@ -45,10 +45,8 @@ export function restoredStoryboardPlan(current: StoryboardPlan, undo: Storyboard
     if (candidates[0]) { matches.set(before, candidates[0]); used.add(candidates[0]) }
   }
   const shots = [...current.shots]
-  const anchorIds = new Set(current.anchors.map(anchor => anchor.id))
   for (const [index, shot] of undo.before.entries()) {
     if (!undo.removed.has(shot) || matches.has(shot)) continue
-    if (shot.anchorIds.some(id => !anchorIds.has(id))) throw new Error('Deleted storyboard reference no longer exists')
     const successor = undo.before.slice(index + 1).map(row => matches.get(row)).find(row => row && shots.includes(row))
     const predecessor = undo.before.slice(0, index).reverse().map(row => matches.get(row)).find(row => row && shots.includes(row))
     shots.splice(successor ? shots.indexOf(successor) : predecessor ? shots.indexOf(predecessor) + 1 : shots.length, 0, shot)

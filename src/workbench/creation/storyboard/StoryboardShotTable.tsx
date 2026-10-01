@@ -7,15 +7,11 @@ import type { ModelOption } from '../../../config/models'
 import type { StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
 import { storyboardProfileForKey } from '../../generationCanvas/agent/storyboardProfiles'
 import {
-  addExternalReferenceAnchor,
   duplicateShotAt,
-  danglingAnchorIdsForShot,
   moveShot,
   NO_SCENE_VALUE,
   insertShotAt,
-  rememberAnchorReferenceUrl,
   sceneGroupsOf,
-  toggleShotAnchor,
   totalDurationSec,
   updateShotPrompt,
   updateShotAt,
@@ -24,9 +20,13 @@ import {
 } from '../../generationCanvas/agent/storyboardPlanEdits'
 import type { AnchorCardRuntime, StoryboardRowRuntime } from './exec/storyboardRowStatus'
 import { useShotMentionSource } from './shotRow/useShotMentionSource'
+import { appendBinding } from './shotRow/shotReferenceSlots'
+import { resolveShotArchetypeMode } from './shotRow/shotRowModel'
+import { referenceSlotAccept } from '../../generationCanvas/nodes/controls/archetypeMeta'
+import { findModelOptionByIdentifier } from '../../../config/modelOptionResolvers'
+import { useVendorPreferenceOrder } from '../../common/useVendorPreference'
 import StoryboardShotRow from './shotRow/StoryboardShotRow'
 import { tableFrameMediaBox } from './shotRow/shotFrameGeometry'
-import type { MentionSuggestionItem } from '../../assets/AssetMentionSuggestionList'
 import {
   ASPECT_OPTIONS,
   effectiveShotAspect,
@@ -86,8 +86,6 @@ type Props = {
   onOpenPreviewRow: (runtime: StoryboardRowRuntime) => void
   /** 参考已变「用新图重跑」。 */
   onRerunFreshRefsRow: (runtime: StoryboardRowRuntime) => void
-  /** ⏳ 态点参考卡名 → 滚动定位参考卡。 */
-  onJumpToAnchor: (anchorId: string) => void
   onSaveResultAsReference: (runtime: StoryboardRowRuntime) => void
   onSetResultAsFirstFrame: (runtime: StoryboardRowRuntime, targetIndex: number) => void
   onGenerateSelected: (runtimes: StoryboardRowRuntime[]) => void
@@ -124,22 +122,33 @@ function ShotRowWithMention({
   rowProps,
   anchorCards,
   projectId,
-  onRememberAnchorUrl,
-  onAddExternalReference,
 }: {
   rowProps: ShotRowProps
   anchorCards: AnchorCardRuntime[]
   projectId?: string | null
-  onRememberAnchorUrl: (anchorId: string, url: string) => void
-  onAddExternalReference: (item: MentionSuggestionItem) => void
 }): JSX.Element {
+  const orderedVendorKeys = useVendorPreferenceOrder()
+  const { shot, modelOptions, onUpdate } = rowProps
+  const resolvedMode = resolveShotArchetypeMode(findModelOptionByIdentifier(modelOptions ?? [], shot.modelKey, shot.modelVendor, orderedVendorKeys), shot.modeId)?.mode ?? null
+  // @ 一个素材 = 往这一行的参考列里放一张。这一行当前模式没有能收它的槽（如文生图）就不假装：拒绝插入。
+  const onBindReference = React.useCallback((reference: { url: string; name: string; kind: 'image' | 'video' | 'audio'; anchorId?: string; sourceNodeId?: string }): boolean => {
+    if (!resolvedMode) return false
+    const slot = resolvedMode.slots.find((candidate) => candidate.kind === 'image_ref' && referenceSlotAccept(candidate.kind) === reference.kind)
+      ?? resolvedMode.slots.find((candidate) => referenceSlotAccept(candidate.kind) === reference.kind)
+    if (!slot) return false
+    const result = appendBinding(shot.referenceBindings, slot, {
+      url: reference.url, name: reference.name,
+      ...(reference.anchorId ? { anchorId: reference.anchorId } : {}),
+      ...(reference.sourceNodeId ? { sourceNodeId: reference.sourceNodeId } : {}),
+    }, reference.kind)
+    if (result.status === 'added') { onUpdate({ referenceBindings: result.next }); return true }
+    return result.status === 'duplicate'
+  }, [onUpdate, resolvedMode, shot.referenceBindings])
   const { mentionSearch, onMentionSelect, currentReferenceUrls, mentionUpload } = useShotMentionSource(
     rowProps.shot,
     rowProps.anchors,
     anchorCards,
-    rowProps.onToggleAnchor,
-    onRememberAnchorUrl,
-    onAddExternalReference,
+    onBindReference,
     projectId,
   )
   return (
@@ -153,7 +162,7 @@ function ShotRowWithMention({
   )
 }
 
-export default function StoryboardShotTable({ plan, projectId, rows, anchorCards, imageModelOptions, videoModelOptions, emptyPromptShots, durationWarnings, onChange, onStoryboardShotSelect, onSelectionChange, onGenerateRow, onRegenerateRow, onRecoverRow, onVariantsRow, onToggleLockRow, onOpenPreviewRow, onRerunFreshRefsRow, onJumpToAnchor, onSaveResultAsReference, onSetResultAsFirstFrame, onGenerateSelected, onDeleteSelected, filterAnchorId, skippedShotIds, onToggleSkip, variantsByShotId, adoptedVariantByShotId, outputTagByShotId, onAgentHandoff, onLockSelected, onPlayGroup, onAdoptVariant: props_onAdoptVariant, onDeleteVariant: props_onDeleteVariant }: Props): JSX.Element {
+export default function StoryboardShotTable({ plan, projectId, rows, anchorCards, imageModelOptions, videoModelOptions, emptyPromptShots, durationWarnings, onChange, onStoryboardShotSelect, onSelectionChange, onGenerateRow, onRegenerateRow, onRecoverRow, onVariantsRow, onToggleLockRow, onOpenPreviewRow, onRerunFreshRefsRow, onSaveResultAsReference, onSetResultAsFirstFrame, onGenerateSelected, onDeleteSelected, filterAnchorId, skippedShotIds, onToggleSkip, variantsByShotId, adoptedVariantByShotId, outputTagByShotId, onAgentHandoff, onLockSelected, onPlayGroup, onAdoptVariant: props_onAdoptVariant, onDeleteVariant: props_onDeleteVariant }: Props): JSX.Element {
   const { t } = useTranslation()
   const [dragIndex, setDragIndex] = React.useState<number | null>(null)
   const [overIndex, setOverIndex] = React.useState<number | null>(null)
@@ -328,7 +337,6 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
                     shot,
                     anchors: plan.anchors,
                     modelOptions: shot.shotKind === 'image' ? imageModelOptions : videoModelOptions,
-                    danglingIds: danglingAnchorIdsForShot(plan, shot),
                     promptInvalid: emptyPromptShots.has(shot.index),
                     durationWarning: durationWarnings?.get(shotKey),
                     exec: runtime?.exec,
@@ -379,7 +387,6 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
                     },
                     onOpenPreview: runtime ? () => onOpenPreviewRow(runtime) : undefined,
                     onRerunFreshRefs: runtime ? () => onRerunFreshRefsRow(runtime) : undefined,
-                    onJumpToAnchor,
                     draggable: true as const,
                     isDragOver: overIndex === pos && dragIndex !== null && dragIndex !== pos,
                     onDragStart: () => setDragIndex(pos),
@@ -397,17 +404,6 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
                       const next = updateShotPrompt(plan, pos, patch.prompt)
                       onChange(updateShotAt(next, pos, { promptSegments: patch.promptSegments }))
                     },
-                    onToggleAnchor: (anchorId: string) => onChange(toggleShotAnchor(plan, pos, anchorId)),
-                    onRememberAnchorUrl: (anchorId: string, url: string) => onChange(rememberAnchorReferenceUrl(plan, anchorId, url)),
-                    onAddExternalReference: (item: MentionSuggestionItem) => {
-                      const sourceNodeId = item.group === 'canvas' && item.key.startsWith('shot-result:')
-                        ? item.key.slice('shot-result:'.length).split(':')[0]
-                        : undefined
-                      const added = addExternalReferenceAnchor(plan, { id: item.key, name: item.label, url: item.url, kind: item.kind ?? 'image', ...(sourceNodeId ? { sourceNodeId } : {}) })
-                      const nextShot = plan.shots[pos]
-                      const anchorIds = nextShot.anchorIds.includes(added.anchorId) ? nextShot.anchorIds : [...nextShot.anchorIds, added.anchorId]
-                      onChange(updateShotAt(added.plan, pos, { anchorIds }))
-                    },
                     onRemove: () => {
                       const runtimeForRow = rows[pos]
                       if (runtimeForRow?.exec.resultUrl) {
@@ -420,15 +416,13 @@ export default function StoryboardShotTable({ plan, projectId, rows, anchorCards
                   }
                   // C1：有 anchorCards 时走 ShotRowWithMention（含 useShotMentionSource），
                   // 缺省（编辑器没提供）退回 StoryboardShotRow（无 @ 面板）。
-                  const { onRememberAnchorUrl, onAddExternalReference, ...rowProps } = commonRowProps
+                  const rowProps = commonRowProps
                   const row = anchorCards
                     ? (
                       <ShotRowWithMention
                         rowProps={rowProps}
                         anchorCards={anchorCards}
                         projectId={projectId}
-                        onRememberAnchorUrl={onRememberAnchorUrl}
-                        onAddExternalReference={onAddExternalReference}
                       />
                     )
                     : <StoryboardShotRow {...rowProps} />

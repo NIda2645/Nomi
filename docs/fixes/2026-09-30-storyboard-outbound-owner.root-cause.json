@@ -1,0 +1,214 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-30-storyboard-outbound-owner",
+  "problem_type": "分镜一行「发出去什么」有两个主人：行上显示的（行自己的提示词框 / 参考列）与真正发出去的（按 anchorIds 展开的编译结果）",
+  "symptom": "用户在分镜里把某一镜的图片提示词写成「一条巨龙盘在山顶」，生成出来的却是人物：供应商收到的是「巨龙」加上两行他看不见的字（引用角色的身份特征、文本风格锚整段描述），还可能带着一张他看不见的角色定妆卡当参考图。付了钱，出来的不是他要的东西。",
+  "direct_cause": "storyboardPromptCompiler 的 anchorPromptBits 在编译节点提示词时把镜头引用的锚追加进去；buildShotRowNodes 又按 anchorIds 把视觉锚的定妆卡连成参考边、把锚自带素材写进 metadata.referenceImageUrls。分镜行只显示 shot.prompt 和 shot.referenceBindings，这两样追加都不在行上。",
+  "class_root": "「这一镜会发出去什么（提示词 + 参考图）」没有唯一的主人：展示（行组件）读 shot.prompt / referenceBindings，发送（编译层）另读 anchorIds 展开，两份真相靠手工对齐，任何一边多一步转换，用户看到的和供应商收到的就分叉。",
+  "affected_population": [
+    "所有引用了角色 / 场景 / 道具 / 风格锚的分镜行，图片镜与视频镜都一样",
+    "从行内生成、生成剩余、Agent 确认框（storyboard.present）、放到画布、production.materialize-storyboard 任一入口发出的镜头",
+    "用 Agent 起草并带 anchorIds 的旧方案"
+  ],
+  "scope_paths": [
+    "electron/shared/storyboard/storyboardPromptCompiler.ts",
+    "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+    "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+    "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+    "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+    "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+    "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+    "src/workbench/creation/storyboard/shotRow/shotRowModel.ts",
+    "src/workbench/creation/storyboard/shotRow/shotReferenceSlots.ts",
+    "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+    "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+    "src/workbench/capability/capabilityApplyHandler.ts"
+  ],
+  "entry_points": [
+    "行内生成：storyboardRowActions.generateShotRow → materializeShotRow",
+    "生成剩余 / 批量：storyboardRowActions.runStoryboardBatch → materializeShotRow",
+    "Agent 确认框（storyboard.present）：同样走 runStoryboardBatch（带落地事务）",
+    "放到画布：runStoryboardBatch(placementOnly)",
+    "production.materialize-storyboard：capabilityApplyHandler → storyboardPlanToCreateNodesArgs → projectPlanShotsOntoCreatedNodes",
+    "方案编辑后的投影：storyboardProjection.projectStoryboardDesign / storyboardOverrideActions"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "这是 Nomi 自己的「行 → 出站请求」编译合同，没有第三方库或外部规范决定这条不变量；用户原话「修复底层结构，千万别修症状」和产品规则「一镜发出去的 = 行上写的提示词 + 行上看得见的参考图」是依据。",
+  "invariants": [
+    "一镜发出去的提示词 = 这一行提示词框里的字（首帧图 = 首帧提示词框里的字），逐字，不追加、不替换、不从别处补",
+    "一镜发出去的参考图 = 这一行参考列里摆着的绑定（referenceBindings），不多不少；anchorIds 不产生任何参考边 / 元数据 / 追加",
+    "上面两条只由 compileShotOutbound 一个函数算出；所有入口与投影都从它取，行上的显示读的是同一份数据",
+    "行上摆着、当前模式用不上的参考图，必须逐张点名告诉用户（不假装会用、也不在没有参考图时乱说「不会被使用」）"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+      "symbol": "compileShotOutbound"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "symbol": "compileShotOutbound"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "compileShotOutbound"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "symbol": "materializeShotRow"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "symbol": "projectPlanShotsOntoCreatedNodes"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/shotReferenceSlots.ts",
+      "symbol": "shotReferenceMetaPatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/shotRow/useShotMentionSource.ts",
+      "symbol": "onBindReference"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardShotTable.tsx",
+      "symbol": "onBindReference"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "symbol": "updateShotPrompt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts",
+      "symbol": "ignoredShotAnchors"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/storyboard/shotRow/shotRowModel.ts",
+      "symbol": "referencedVisualAnchors"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+      "symbol": "ignoredShotAnchors"
+    }
+  ],
+  "door_reduction": {
+    "before": 14,
+    "after": 12,
+    "why_not": "修之前「发出去什么」由四处各自决定：storyboardPlan.ts 的提示词编译、storyboardPlan.ts 按 anchorIds 连参考边并写 referenceImageUrls、storyboardProjection.ts 直接读 shot.referenceBindings、storyboardOverrideActions.ts 另渲染提示词；另有读 anchorIds 的行状态 / 过滤 / @ 选择等十处。现在所有写提示词与参考图的门都只经 compileShotOutbound（storyboardPromptCompiler.ts 是唯一算的地方，其余是它的消费者），读 anchorIds 的门已删或改读行上绑定。剩下每扇门为什么必须存在：storyboardPlan.ts 建节点参数、storyboardProjection.ts 与 shotReferenceSlots.ts 把已存在的节点按当前模式投影参考槽、storyboardRowActions.ts 是行 / 批量 / Agent / 摆位的统一 materialize、capabilityApplyHandler.ts 是 production.materialize 的落地点、useShotMentionSource.ts + StoryboardShotTable.tsx 是 @ 选素材往参考列里放的入口、storyboardPlanEdits.ts 是纯提示词编辑、三处 read 门只读行上的绑定。它们都不再自己拼提示词或参考图。"
+  },
+  "generality_proof": "anchorPromptBits、referenceOrderForShot 和按 anchorIds 连边 / 写 metadata 的整段代码已删除，出站提示词与参考图只剩 compileShotOutbound 一个出口。对等测试 shotOutbound.parity.test.ts 把同一行从行内生成、批量、Agent 确认框、放到画布、production.materialize、方案编辑投影六个入口各发一遍，逐字节相同，且等于行上写的；在编译函数里追加一行字的变异会让其中 8 条变红。走查监视器规则 sent-prompt-unseen-addition 在真 Electron 上对每个入口比对供应商收到的提示词与用户确认那一刻看到的提示词。",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+      "symbol": "compileShotOutbound",
+      "responsibility": "一镜发出去的提示词与参考绑定的唯一出口：只读行上的 prompt / keyframe.prompt / referenceBindings。"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "symbol": "projectShotNode",
+      "responsibility": "把 compileShotOutbound 的输出按当前模式投影进节点 prompt 与参考槽 meta；行内生成、批量、方案编辑、落地后补投影共用。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+      "symbol": "ignoredShotAnchors",
+      "responsibility": "行上摆着、当前模式没有对应槽的参考图（逐张点名）——「参考图不会被使用」这句话的唯一判据。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+      "entry_point": "generateShotRow / runStoryboardBatch / materializeShotRow",
+      "disposition": "enforced",
+      "evidence": "三者都经 storyboardShotToCreateNodesArgs（compileShotOutbound）建节点、再经 syncShotNodeWithRow → projectShotNode 投影；shotOutbound.parity.test.ts 逐入口断言提示词与参考图。"
+    },
+    {
+      "path": "src/workbench/capability/capabilityApplyHandler.ts",
+      "entry_point": "production.materialize-storyboard",
+      "disposition": "enforced",
+      "evidence": "storyboardPlanToCreateNodesArgs 用同一个 buildShotRowNodes；落地后新增 projectPlanShotsOntoCreatedNodes 把行上的参考图按当前模式投影进节点（以前这条路根本没有行里摆着的参考图）。"
+    },
+    {
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "entry_point": "resolveStoryboardOverride",
+      "disposition": "enforced",
+      "evidence": "采纳 / 放弃覆写时经 renderShotNodePrompt 取提示词，renderShotNodePrompt 现在只是 compileShotOutbound 的一层壳。"
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "Agent draft_shots 起草 → 生成制作流程（provider 引擎）",
+      "disposition": "not-affected",
+      "evidence": "这条路发出去的是候选 prompt 原样（executionContract 只做 @ 素材到 @imageN 的投影），从不读 anchorIds，也不编译锚；搜索 electron/ 下 anchorIds、staticFeatures 的使用，只有 schema 与 anchorBible 元数据。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "只要有人在编译层再加一句「顺手带上」（风格、角色、负向词），同一类分叉就会从任一入口回来；旧实现里已经有两处这样的追加（文本锚整段、视觉锚身份特征）和两处自动连图。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs buildShotPrompt / buildKeyframePrompt / renderShotNodePrompt / projectShotNode：修前全部调用点都在 storyboardPlan / storyboardProjection / storyboardOverrideActions，修后只剩 compileShotOutbound 的消费者。",
+      "grep anchorIds 在 src、electron 的全部读取点：行状态（等参考卡 / 缺必填信用）、反查过滤、@ 选择、失效引用拦截、撤销删除校验——逐一改为只认行上的绑定或删除。",
+      "grep referenceImageUrls / referenceVideoUrls / referenceAudioUrls 的写入口：只剩用户手写的节点设置，不再有从分镜锚派生的。",
+      "electron/ 下的 production / MCP 路径：不读 anchorIds，不属于这一类（见 same_class_entry_points）。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+    "invariant": "一镜发出去的提示词与参考图只由 compileShotOutbound 算出，且只读行上的 prompt / keyframe.prompt / referenceBindings。",
+    "failure_mode": "没有第二条编译路径可走；有人往编译里追加字，shotOutbound.parity.test.ts 与走查规则 sent-prompt-unseen-addition 当场变红。",
+    "exception_policy": "none",
+    "strategy": "删除 anchorPromptBits 与 anchorIds 展开，把「发出去什么」收成一个函数，所有入口取它；用对等测试逐字节钉住六个入口，用走查监视器在真 App 里对账供应商收到的请求。",
+    "artifacts": [
+      "electron/shared/storyboard/storyboardPromptCompiler.ts",
+      "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+      "src/workbench/capability/capabilityApplyHandler.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/creation/storyboard/exec/shotOutbound.parity.test.ts",
+    "src/workbench/generationCanvas/agent/storyboardPlan.test.ts",
+    "src/workbench/creation/storyboard/exec/storyboardExec.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/creation/storyboard/exec/shotOutbound.parity.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/shared/storyboard/storyboardPromptCompiler.ts",
+      "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+      "src/workbench/generationCanvas/agent/storyboardPlanEdits.ts",
+      "src/workbench/creation/storyboard/exec/storyboardRowStatus.ts"
+    ],
+    "rationale": "anchorPromptBits / referenceOrderForShot / 按 anchorIds 连边 / 锚自带素材写 metadata / toggleShotAnchor / 失效引用拦截 / 行「等参考卡」与「等锁定」的派生全部同一提交删除，没有开关、没有兜底。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "行到出站请求的编译是 Nomi 自己的合同，没有第三方运行时参与。",
+    "exit_criteria": []
+  },
+  "migration": "已有方案里的 anchorIds 原样保留在文件里，但不再产生任何作用：不自动迁成提示词文字，不自动连参考图。定妆卡作为项目素材留着，用户可以自己 @ 或放进行上的参考列。Agent 起草时已有的「角色锚有真实图 → 写进 referenceBindings」(normalizeStoryboardAnchorDefaults) 保持不变，因为它落在行上看得见的位置。",
+  "residual_risks": [
+    "真付费一镜（巨龙）的真实出图结果需要真实供应商验证，见 PR 测试表。",
+    "anchorIds 在 Agent 工具说明里仍被描述为引用关系；这一版不改 Agent 行为，后续可让 Agent 把要带上的角色描述直接写进这一镜的提示词。",
+    "状态名 anchor-ignored 与 Agent 侧 anchorIssues 字段沿用旧名，含义已改为「行上看得见的参考图被当前模式忽略」。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+    "tests": [
+      "src/workbench/creation/storyboard/exec/shotOutbound.parity.test.ts",
+      "src/workbench/generationCanvas/agent/storyboardPlan.test.ts"
+    ]
+  }
+}

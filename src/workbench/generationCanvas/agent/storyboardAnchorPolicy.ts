@@ -9,6 +9,13 @@ import type { PlanShot, StoryboardPlan } from './storyboardPlan'
 import { isVisualAnchor } from './storyboardPromptCompiler'
 import i18n from '../../../i18n'
 
+/**
+ * 「这一行上摆着、当前模式却用不上」的参考图（2026-09-30）。
+ *
+ * 名字沿用 IgnoredAnchor / 'anchor-ignored' 是因为状态词表与门岗登记按这个 id 认；含义已经变了：
+ * 它**只**看这一行参考列里真的摆着的绑定（referenceBindings），不再看 anchorIds——引用锚不再产生任何作用。
+ * 只有行上真有参考图、而模式没有对应的槽才算「用不上」，并且逐张点名（用户要知道是哪一张不会发）。
+ */
 export type IgnoredAnchor = { anchorId: string; name: string; reason: string }
 export type AnchorModelFitIssue = {
   kind: 'anchor-not-consumable'
@@ -17,13 +24,14 @@ export type AnchorModelFitIssue = {
   correction: string
 }
 
-export function ignoredShotAnchors(plan: StoryboardPlan, shot: PlanShot, mode: ArchetypeMode | null | undefined): IgnoredAnchor[] {
-  if (!mode || !anchorsConsumedBy(mode).includes('none')) return []
-  return plan.anchors.filter(anchor => shot.anchorIds.includes(anchor.id) && isVisualAnchor(anchor)).map(anchor => ({
-    anchorId: anchor.id,
-    name: anchor.name,
+export function ignoredShotAnchors(_plan: StoryboardPlan, shot: PlanShot, mode: ArchetypeMode | null | undefined): IgnoredAnchor[] {
+  if (!mode) return []
+  const declared = new Set(mode.slots.map((slot) => slot.kind as string))
+  return Object.keys(shot.referenceBindings ?? {}).flatMap((slotKey) => declared.has(slotKey) ? [] : bindingsOf(shot.referenceBindings, slotKey).map((binding) => ({
+    anchorId: binding.anchorId ?? binding.url,
+    name: binding.name?.trim() || i18n.t('storyboardEditor.unnamed'),
     reason: i18n.t('storyboardEditor.anchorPolicy.ignoredReason', { mode: mode.id }),
-  }))
+  })))
 }
 
 /** Advisory only: a user's explicit t2v choice is accepted unchanged. */
