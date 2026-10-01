@@ -8,6 +8,8 @@
 > 3. **hook 路径里没有扣费请求**：模型雷达带 `--no-liveness`，跳过每周一次的存活探测（那是向供应商发真实付费请求）；手动跑 `pnpm run radar:models` 仍会探测。
 >
 > 两个雷达并行跑。**分诊只由协调会话做；其他会话看到不动手、不写待办。**
+>
+> **技能不在就明说，不叫人去跑**：hook 先查 `agent-skills/<名>/SKILL.md`、`.claude/skills/<名>/SKILL.md`、`~/.claude/skills/<名>/SKILL.md`；不在就输出「技能 X 在这台机器上没有，今天没查成」。截至 2026-10-02 这台机器上只有 `nomi-intake-radar`、`nomi-competitive-radar`，没有 `nomi-research-radar`、`nomi-model-radar`（论文雷达最新一份停在 09-07）；模型雷达缺技能时分诊规则看 `docs/plan/2026-08-27-vendor-model-radar.md`。恢复还是撤掉由协调会话去问用户。论文雷达、三日竞品雷达、分诊这几句要动手的提醒前面都有「只由协调会话做」。
 
 **③ 用户反馈雷达**：（SessionStart hook 已跑） `pnpm run intake:radar`（从 Cloudflare 增量拉用户反馈 / 匿名用量事件 / Agent 轨迹，算成功率、错误码排行、和上一窗口比的突增）。确定性脚本，不烧额度；有新反馈或有突增时才起 `nomi-intake-radar` 技能做分诊（归真 bug / 配置问题 / 体验问题 / 数据上报问题，挂私有待办）。脚本报错 = 明说「今天没查成」，**不许**说成「没有新反馈」。原始数据与报告只落仓库外缓存目录（`%LOCALAPPDATA%\nomi-intake\`，可用 `NOMI_INTAKE_CACHE` 改），不进仓库、不进提交。
 
