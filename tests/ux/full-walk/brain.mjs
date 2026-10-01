@@ -55,7 +55,7 @@ export function scriptTurn(fixture, { label, marker, steps }) {
       const context = { previous, body: record.body }
       // 工具那一步写成 `{ name, args }`——和夹具回复同一个形状，check:walkthrough-tool-args 才认得出、才去对 schema。
       const reply = step.name
-        ? { type: 'tool', id: callIds[index], name: step.name, args: typeof step.args === 'function' ? step.args(context) : step.args, ...(step.text ? { text: step.text } : {}) }
+        ? { type: 'tool', id: callIds[index], name: step.name, args: typeof step.args === 'function' ? step.args(context) : step.args, ...(step.text ? { text: typeof step.text === 'function' ? step.text(context) : step.text } : {}) }
         : { type: 'text', text: typeof step.text === 'function' ? step.text(context) : step.text }
       handle.release(reply)
       // 同一步被宿主重发（压缩之后重试、上下文超限之后重试）：真模型会给出同样的回答。

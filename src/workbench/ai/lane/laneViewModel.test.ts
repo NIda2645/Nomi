@@ -29,6 +29,7 @@ const labels: LaneViewModelLabels = {
   formatStages: (done, total) => `${done}/${total} stages`,
   formatMoney: (currency, amount) => `${currency} ${amount.toFixed(2)}`,
   taskUnknown: '[task-unknown]',
+  attachmentUnavailable: '[attachment-unavailable]',
   answered: '[answered]',
   skillLabel: (key) => `[skill:${key}]`,
 }
@@ -349,6 +350,18 @@ describe('laneViewModel', () => {
     // 没挂技能的那一轮**整行不出**：印一个空凭据等于说「用了个说不出名字的技能」。
     expect(model.items[2]).toEqual({ kind: 'user', text: '再来一句。' })
     expect(JSON.stringify(model.items[3])).not.toContain('skill')
+  })
+
+  it('发出去的用户消息带着附件签；解不出来的文件画「附件不可用」，不消失', () => {
+    next = 0
+    const display = { url: 'nomi-local://x', fileName: '剧本.txt', contentType: 'text/plain', sizeBytes: 9, kind: 'file' as const }
+    const model = laneViewModel(projection([
+      { ...part({ kind: 'user', text: '总结这个文件' }), attachments: [{ assetId: 'a1', version: 1, display }, { assetId: 'a2', version: 1 }] } as LanePart,
+      part({ kind: 'user', text: '没挂附件' }),
+    ]), labels)
+    expect(model.items[0]).toEqual({ kind: 'user', text: '总结这个文件', chips: [
+      { id: 'a1', kind: 'file', label: '剧本.txt' }, { id: 'a2', kind: 'file', label: '[attachment-unavailable]' }] })
+    expect(model.items[1]).toEqual({ kind: 'user', text: '没挂附件' })
   })
 
   it('S20: selected-only legacy skills keep their chip without claiming verified injection', () => {

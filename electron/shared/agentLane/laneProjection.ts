@@ -27,7 +27,7 @@ import type { NomiPricingBasis } from './laneModelConfig.js';
 import { LANE_LEGACY_NOTE, LANE_LEGACY_COMPLETE_NOTE, LANE_LEGACY_TOOLS_NOTE, laneLegacyFacts } from './laneLegacyNote.js';
 import {
   LANE_TASK_NOTE_TYPE, isLaneTaskNote,
-  type LaneMetric, type LanePart, type LanePendingApproval, type LaneProjection,
+  type LaneAttachmentResolver, type LaneMetric, type LanePart, type LanePendingApproval, type LaneProjection,
   type LaneQueueKind, type LaneQueuedMessage, type LaneTaskFacts, type LaneThinking, type LaneThinkingLevel,
 } from './laneContracts.js';
 import { laneToolNextActionOf } from './laneToolNextAction.js';
@@ -216,6 +216,11 @@ export function projectLaneSnapshot(
   tasks?: (productionRunId: string) => LaneTaskFacts | undefined,
   history?: readonly LaneSnapshot['transcript'][number][],
   previousInputId?: string,
+  /**
+   * 用户消息上的附件 claim → 展示快照。claim 是转录里已有的事实，文件名要按 assetId 现查，
+   * 而查询只有主进程做得了（项目素材索引在那边），所以和 `tasks` 一样从参数进来。
+   */
+  attachments?: LaneAttachmentResolver,
 ): LaneProjection {
   const parts: LanePart[] = [];
   let inputEntryId = previousInputId;
@@ -250,9 +255,15 @@ export function projectLaneSnapshot(
       // 技能只从**这条消息自己**的 context 读。用「当前选中的技能」去补历史那几条，
       // 会把今天选的技能追认到昨天那句话上——那是编一个用户没做过的操作。
       const skillKey = isLaneInputMessage(message) ? message.context.skillKey : undefined;
+      // 附件同理只从**这条消息自己**的 context 读——发出去的那一刻挂了什么，重开项目后就还是什么。
+      const claims = isLaneInputMessage(message) ? message.context.attachments : undefined;
+      const attached = claims?.length
+        ? (attachments?.(claims) ?? claims.map(claim => ({ assetId: claim.assetId, version: claim.version })))
+        : undefined;
       parts.push({ sequence: parts.length, entryId: entry.id, entrySeq: entry.seq, contentIndex: 0,
         kind: 'user', text: isLaneInputMessage(message) ? message.context.displayText ?? message.content : textOf(message.content),
         ...(skillKey ? { skillKey } : {}),
+        ...(attached?.length ? { attachments: attached } : {}),
         ...(isLaneInputMessage(message) && message.context.storyboardTarget ? { storyboardTarget: message.context.storyboardTarget } : {}),
         ...(isLaneInputMessage(message) && message.context.skillSnapshot ? { skillSnapshot: message.context.skillSnapshot } : {}) });
       continue;

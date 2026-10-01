@@ -333,6 +333,7 @@ export function createPiGenerationTransportAdapter(
       lease: currentLease,
       origin: { host: "nomi", actorId: "project-agent-host", ...(context?.sourceDocument ? { sourceDocument: context.sourceDocument } : {}) },
       ...(context?.storyboardTarget ? { storyboardTarget: context.storyboardTarget } : {}),
+      ...(context?.modelNames ? { modelNames: context.modelNames } : {}),
     })),
     signal,
   );

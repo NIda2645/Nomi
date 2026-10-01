@@ -134,6 +134,7 @@ function labViewModelLabels(fx: ReturnType<typeof useV4Fixtures>, toolLabel: str
     formatStages: (done, total) => fx.t('agentPanelV4.taskStages', { done, total }),
     formatMoney: (currency, amount) => formatMoney(fx.locale, currency, amount),
     taskUnknown: fx.t('agentPanelV4.taskUnknown'),
+    attachmentUnavailable: fx.t('agentPanelV4.attachmentUnavailable'),
     answered: fx.t('agentPanelV4.questionAnswered'),
     // 技能名。这一格的转录里一条用户消息都没有，所以永远查不到它——但类型要求穷尽，
     // 哪天这一格接上带技能的那一轮，缺的那句话是编译错误，不是画面上的一块空白。

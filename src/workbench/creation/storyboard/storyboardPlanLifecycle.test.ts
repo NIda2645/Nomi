@@ -24,7 +24,7 @@ describe('分镜方案生命周期（单一 owner）', () => {
     const state = useWorkbenchStore.getState()
     const graph = useGenerationCanvasStore.getState()
     const revision = state.persistRevision
-    const first = state.addStoryboardDesign(DOC)
+    const first = state.addStoryboardDesign({ initiator: 'user', documentId: DOC })
     expect(first?.plan).toEqual(createEmptyStoryboardPlan())
     // 空白新建也要有**自己的名字**：两行都叫「分镜方案」时，用户在左栏看到的是同一个东西
     // （2026-09-21 真机截图）。名字只落在行上，plan.title 仍是空——起手式判据靠的就是它。
@@ -34,7 +34,7 @@ describe('分镜方案生命周期（单一 owner）', () => {
     state.setStoryboardPlan({ ...first!.plan, title: 'Keep authored draft', shots: first!.plan.shots.map(shot => ({ ...shot, prompt: 'Keep this prompt' })) }, DOC, first!.id)
     const authored = useWorkbenchStore.getState().storyboardDesignsByDocumentId[DOC][0]
     const authoredGraph = useGenerationCanvasStore.getState()
-    const second = state.addStoryboardDesign(DOC)
+    const second = state.addStoryboardDesign({ initiator: 'user', documentId: DOC })
     expect(second?.plan).toEqual(createEmptyStoryboardPlan())
     expect(second?.id).not.toBe(first?.id)
     expect(second?.title).not.toBe(authored.title)
@@ -46,19 +46,19 @@ describe('分镜方案生命周期（单一 owner）', () => {
   // 2026-09-21 真机截图：连开两个空白方案，左栏两行一模一样。
   it('two blank creations in a row never share a row label', () => {
     const state = useWorkbenchStore.getState()
-    const titles = [1, 2, 3].map(() => state.addStoryboardDesign(DOC)?.title)
+    const titles = [1, 2, 3].map(() => state.addStoryboardDesign({ initiator: 'user', documentId: DOC })?.title)
     expect(titles).toEqual(['分镜方案', '分镜方案 2', '分镜方案 3'])
     expect(new Set(titles).size).toBe(3)
     // 删掉中间那个之后，再新建拿回的是**最小可用**号，不是「已有几个 + 1」（那会重发一个在用的号）。
     const designs = useWorkbenchStore.getState().storyboardDesignsByDocumentId[DOC]
     useWorkbenchStore.getState().deleteStoryboardDesign(designs[1].id, DOC)
-    expect(useWorkbenchStore.getState().addStoryboardDesign(DOC)?.title).toBe('分镜方案 2')
+    expect(useWorkbenchStore.getState().addStoryboardDesign({ initiator: 'user', documentId: DOC })?.title).toBe('分镜方案 2')
   })
   it('new and duplicate target the explicit document while invalid targets do not mutate', () => {
     const state = useWorkbenchStore.getState()
     const other = state.addWorkbenchDocument()
     state.setActiveStoryboardId(null)
-    const blank = state.addStoryboardDesign(DOC)
+    const blank = state.addStoryboardDesign({ initiator: 'user', documentId: DOC })
     expect(blank?.documentId).toBe(DOC)
     expect(useWorkbenchStore.getState().activeDocumentId).toBe(DOC)
     expect(useWorkbenchStore.getState().activeStoryboardId).toBe(blank?.id)
@@ -67,7 +67,7 @@ describe('分镜方案生命周期（单一 owner）', () => {
     expect(copy?.plan.shots).toEqual(plan.shots)
     expect(copy?.id).not.toBe(blank?.id)
     const before = useWorkbenchStore.getState()
-    expect(state.addStoryboardDesign('deleted-document')).toBeNull()
+    expect(state.addStoryboardDesign({ initiator: 'user', documentId: 'deleted-document' })).toBeNull()
     expect(useWorkbenchStore.getState()).toBe(before)
     expect(before.storyboardDesignsByDocumentId[other.id]).toBeUndefined()
   })
@@ -75,7 +75,7 @@ describe('分镜方案生命周期（单一 owner）', () => {
   it('planner replaces the blank structural starter', () => {
     useWorkbenchStore.getState().hydrateStoryboardDesigns({ [DOC]: [design(DOC, createEmptyStoryboardPlan())] })
     const starterId = useWorkbenchStore.getState().activeStoryboardId
-    useWorkbenchStore.getState().setStoryboardPlan(plan, DOC, undefined, true, true)
+    useWorkbenchStore.getState().setStoryboardPlan(plan, DOC, undefined, true, 'user')
     expect(useWorkbenchStore.getState().activeStoryboardId).toBe(starterId)
     expect(useWorkbenchStore.getState().storyboardDesignsByDocumentId[DOC]).toHaveLength(1)
     expect(active()?.plan).toEqual(plan)
