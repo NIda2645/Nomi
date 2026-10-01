@@ -261,7 +261,7 @@
         { "name": "pi 的 powershell 工具与 Git Bash / shellPath 的 Windows 方案（尚未接）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/windows.md:1" }
       ],
       "whyNotIntegrated": "只出策略不出执行：沙箱 allowWrite 从项目根 derive、不读用户可编辑配置（领域约束：用户是创作者，可编辑的沙箱配置等于留后门）。Windows 的 PowerShell 工具 pi 有、我们没接，是缺口而不是理由。",
-      "revisitWhen": "T-AG-56 定位出真因：缺 bash 就接 createPowerShellTool；OS 沙箱起不来则沿用 active:false 降级",
+      "revisitWhen": "Windows 命令沙箱起不来的真因定位后：缺 bash 就接 createPowerShellTool；OS 沙箱起不来则沿用 active:false 降级",
       "revisitBy": "2026-10-31"
     },
     {
