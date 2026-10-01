@@ -63,6 +63,11 @@ export function formatStoryboardRequestTarget(target: StoryboardRequestTarget | 
  */
 export type GenerationInvocationContext = Readonly<{
   storyboardTarget?: StoryboardRequestTarget;
+  /**
+   * `${vendor}/${modelId}` → 用户在界面上看到的模型名（渲染层随这条消息给的 `AgentModelEntry.displayName`）。
+   * 宿主递还给 Agent 的事实（例如「实际用的模型 ≠ 你的默认」）要带名字：Agent 对用户只说名字，不念 id。
+   */
+  modelNames?: Readonly<Record<string, string>>;
   sourceDocument?: Readonly<{
     documentId: string;
     revision: number;

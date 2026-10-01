@@ -356,11 +356,15 @@ export type DeclaredDefaultDeviation = Readonly<{
   taskKind: GenerationDefaultTaskKind;
   userDefault: string;
   used: string;
+  /** 用户在界面上看到的名字——Agent 对用户说话只许用它，不许念上面两个 id。拿不到名字时退回 id 本身（照实，不编）。 */
+  userDefaultName: string;
+  usedName: string;
 }>;
 
 export function declaredDefaultDeviations(
   items: ReadonlyArray<{ shotId?: string; params: SemanticGenerationCandidateParams; candidate: Pick<PlanCandidate, "providerId" | "modelId" | "mode"> }>,
   defaultFor: SemanticGenerationCandidateDeps["defaultModelForTaskKind"],
+  names: Readonly<Record<string, string>> = {},
 ): DeclaredDefaultDeviation[] {
   if (!defaultFor) return [];
   return items.flatMap(({ shotId, params, candidate }): DeclaredDefaultDeviation[] => {
@@ -368,10 +372,12 @@ export function declaredDefaultDeviations(
     const taskKind = isTaskKind(byMode) ? byMode : inferGenerationTaskKind(params);
     const declared = defaultFor(taskKind);
     if (!declared || (declared.providerId === candidate.providerId && declared.modelId === candidate.modelId)) return [];
-    return [{ ...(shotId ? { shotId } : {}), taskKind, userDefault: `${declared.providerId}/${declared.modelId}`, used: `${candidate.providerId}/${candidate.modelId}` }];
+    const userDefault = `${declared.providerId}/${declared.modelId}`;
+    const used = `${candidate.providerId}/${candidate.modelId}`;
+    return [{ ...(shotId ? { shotId } : {}), taskKind, userDefault, used, userDefaultName: names[userDefault] ?? declared.modelId, usedName: names[used] ?? candidate.modelId }];
   });
 }
 
 export const DECLARED_DEFAULT_DEVIATION_NOTE =
   "modelDeviatesFromUserDefault lists drafts whose model is not the one the user set as default in Settings. "
-  + "If the user did not name that model, patch the draft back to the user's default; if you keep it, tell the user why it changed and which model it is now — take the model name from this result, not from memory.";
+  + "If the user did not name that model, patch the draft back to the user's default; if you keep it, tell the user why it changed and which model it is now — say the models to the user by userDefaultName / usedName (the names the user sees on cards and in Settings) — never read out the ids, and take names from this result, not from memory.";

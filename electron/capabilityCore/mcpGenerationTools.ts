@@ -484,7 +484,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         // 只核对**模型自己写的**镜头（`params.shots`）：剧本自动拟镜那条路的模型本来就是宿主按默认补的。
         const authored = Array.isArray(params.shots) ? params.shots : undefined;
         const deviations = authored ? declaredDefaultDeviations(normalizedShots.map((shot, index) => ({ shotId: shot.shotId,
-          params: (authored[index] ?? {}) as Record<string, unknown>, candidate: shot.candidate })), deps.defaultModelForTaskKind) : [];
+          params: (authored[index] ?? {}) as Record<string, unknown>, candidate: shot.candidate })), deps.defaultModelForTaskKind, input.modelNames) : [];
         return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview",
           ...(savedPlan ? { storyboardSaved: savedPlan } : {}),
           ...(deviations.length ? { modelDeviatesFromUserDefault: deviations, defaultDeviationNote: DECLARED_DEFAULT_DEVIATION_NOTE } : {}),
@@ -514,7 +514,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedSingle, now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
       const savedSingle = await saveDocumentPlan(capturedProjectId, input.origin, operation.operationId,
         [{shotId:normalizedSingle.candidateId,candidate:normalizedSingle,storyboard:params.storyboard as GenerationOperationDraftShot['storyboard']}], input.storyboardTarget);
-      const singleDeviations = declaredDefaultDeviations([{ params, candidate: normalizedSingle }], deps.defaultModelForTaskKind);
+      const singleDeviations = declaredDefaultDeviations([{ params, candidate: normalizedSingle }], deps.defaultModelForTaskKind, input.modelNames);
       return { operation, taskRef: generationTaskReference(operation.operationId), nextAction: "preview",
         ...(savedSingle ? { storyboardSaved: savedSingle } : {}),
         ...(singleDeviations.length ? { modelDeviatesFromUserDefault: singleDeviations, defaultDeviationNote: DECLARED_DEFAULT_DEVIATION_NOTE } : {}) };
@@ -726,6 +726,7 @@ export type GenerationPlanningHandler = (input: {
   lease?: ProjectLeaseV2;
   origin?: { host: string; actorId?: string; sourceDocument?: { documentId: string; revision: number; contentHash: string } };
   storyboardTarget?: GenerationInvocationContext['storyboardTarget'];
+  modelNames?: GenerationInvocationContext['modelNames'];
 }) => unknown | Promise<unknown>;
 
 export { createInMemoryGenerationOperationStore } from "./mcpGenerationOperationMemoryStore";

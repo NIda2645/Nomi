@@ -203,9 +203,10 @@ try {
           candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: IMAGE_NAMED.modelKey } }] } },
         // 先说为什么换、换成谁——话里的模型名读宿主递回来的偏离事实，不是脚本写死的。
         { name: 'generate', text: ({ previous }) => {
-          const fact = /"modelDeviatesFromUserDefault":\[\{[^\]]*"userDefault":"([^"]+)","used":"([^"]+)"/.exec(String(previous ?? ''))
-          seen.fact = fact ? { userDefault: fact[1], used: fact[2] } : null
-          return fact ? (EN ? `Your default ${fact[1]} can't take two reference images, so I switched to ${fact[2]}.` : `你设的默认 ${fact[1]} 做不了多图合成，这次换成 ${fact[2]}。`)
+          // 对用户说话只用宿主递回来的**显示名**（和卡上、设置里同一个名字），不念 id。
+          const fact = /"modelDeviatesFromUserDefault":\[\{[^\]]*"used":"([^"]+)","userDefaultName":"([^"]+)","usedName":"([^"]+)"/.exec(String(previous ?? ''))
+          seen.fact = fact ? { used: fact[1], userDefaultName: fact[2], usedName: fact[3] } : null
+          return fact ? (EN ? `Your default ${fact[2]} can't take two reference images, so I switched to ${fact[3]}.` : `你设的默认 ${fact[2]} 做不了多图合成，这次换成 ${fact[3]}。`)
             : (EN ? 'Using the default.' : '用默认的。')
         }, args: ({ previous }) => ({ operationId: operationIdOf(previous) }) },
         { text: EN ? 'The card is ready.' : '付费卡摆好了。' },
@@ -217,8 +218,12 @@ try {
       record.screenshots.push(await shot('default-switch-card'))
       expect(seen.fact, '宿主把「实际用的 ≠ 用户默认」作为事实递给了 Agent').toBeTruthy()
       expect(seen.fact.used).toContain(IMAGE_NAMED.modelKey)
-      expect(said, 'Agent 的话里说了默认是谁、换成了谁').toContain(seen.fact.userDefault)
-      expect(said).toContain(seen.fact.used)
+      expect(said, 'Agent 的话里说了默认是谁（显示名）').toContain(seen.fact.userDefaultName)
+      expect(said, 'Agent 的话里说了换成谁（显示名）').toContain(seen.fact.usedName)
+      // 显示名就是卡上那个名字；话里不许出现 id（供应商 / 模型 id）。
+      const idsSpoken = /apimart\/|gpt-image-2|gemini-3\.1-flash-image-preview/.test(said)
+      expect(idsSpoken, `话里没有念 id：${said.slice(0, 120)}`).toBe(false)
+      expect(seen.fact.usedName, '显示名与卡上写的是同一个').toBe(IMAGE_NAMED.label)
       expect(text, '付费卡上是换后的模型').toContain(IMAGE_NAMED.label)
       await closeSpendCard(spendCard(CANVAS_PANEL))
       await turn.done.catch(() => undefined)

@@ -30,7 +30,7 @@ const ROUNDS = Number(process.env.NOMI_REAL_ROUNDS || 10)
 const LABEL = process.env.NOMI_REAL_LABEL || 'run'
 const IMAGE_DEFAULT = { vendorKey: 'apimart', modelKey: 'gemini-3.1-flash-image-preview' }
 const IMAGE_OTHER = { vendorKey: 'apimart', modelKey: 'gpt-image-2' }
-const ASK = '帮我画一张雨后水洼里漂着一只红色纸船的图，1:1，就一张。起草好就直接提交生成，我在确认卡上点头。'
+const ASK = process.env.NOMI_REAL_ASK || '帮我画一张雨后水洼里漂着一只红色纸船的图，1:1，就一张。起草好就直接提交生成，我在确认卡上点头。'
 const ARG_REJECTED = /Validation failed for tool|capability_input_invalid|generation_input_invalid|Unrecognized key\(s\)|must be (array|string|number|object)|Required/i
 
 const paid = await openPaidWalk('agent-default-model-real.paid.mjs', 'agent-default-model-real', [BRAIN, IMAGE_DEFAULT, IMAGE_OTHER])
@@ -134,6 +134,10 @@ try {
     }
     record.followedDefault = record.draftModel === `${IMAGE_DEFAULT.vendorKey}/${IMAGE_DEFAULT.modelKey}`
     if (record.draftModel && record.error === 'no-card') record.error = null
+    // 回复里提到模型时说的是显示名还是 id（宿主给的事实带显示名；模型对用户只许说显示名）。
+    const labels = [defaultLabel, paid.label(IMAGE_OTHER.vendorKey, IMAGE_OTHER.modelKey)].filter(Boolean)
+    record.displayNameMentions = labels.reduce((sum, label) => sum + (record.said.split(label).length - 1), 0)
+    record.idMentions = (record.said.match(/apimart\/|gpt-image-2|gemini-3\.1-flash-image-preview/g) ?? []).length
     rounds.push(record)
     console.log(`[real-default] 第 ${round} 轮：卡=${record.cardShown} 草稿模型=${record.draftModel} 跟默认=${record.followedDefault} 点名=${record.namedModelInCall ?? '-'} 参数被拒=${record.argRejected}${record.error ? ' 错误=' + record.error : ''}`)
   }
@@ -142,7 +146,7 @@ try {
   const succeeded = rounds.filter((entry) => entry.draftModel && !entry.error).length
   const cards = rounds.filter((entry) => entry.cardShown).length
   const toolCorrect = rounds.filter((entry) => !entry.argRejected).length
-  walk.report.numbers = { label: LABEL, rounds: ROUNDS, followedDefault: `${followed}/${ROUNDS}`, turnSuccess: `${succeeded}/${ROUNDS}`, cardShown: `${cards}/${ROUNDS}`, toolWriteCorrect: `${toolCorrect}/${ROUNDS}` }
+  walk.report.numbers = { mentions: { displayName: rounds.reduce((n, r) => n + r.displayNameMentions, 0), id: rounds.reduce((n, r) => n + r.idMentions, 0) }, label: LABEL, rounds: ROUNDS, followedDefault: `${followed}/${ROUNDS}`, turnSuccess: `${succeeded}/${ROUNDS}`, cardShown: `${cards}/${ROUNDS}`, toolWriteCorrect: `${toolCorrect}/${ROUNDS}` }
   walk.report.rounds = rounds
   console.log(`[real-default] ${JSON.stringify(walk.report.numbers)}`)
   fs.writeFileSync(path.join(walk.report.outputDir, `real-default-${LABEL}.json`), JSON.stringify({ numbers: walk.report.numbers, declaredDefault: walk.report.declaredDefault, rounds }, null, 2))
