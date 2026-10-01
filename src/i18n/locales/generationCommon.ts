@@ -320,7 +320,7 @@ export const zhGenerationCommon = {
       },
       modelUnavailableUpstream: {
         reason: '这个模型服务商这边取不到',
-        hint: '服务商回复说这个模型现在用不了（已下线或不存在）。重试没用，换个模型就能继续。这次失败不计费。',
+        hint: '服务商回复说这个模型现在用不了（已下线或不存在）。重试没用，换个模型就能继续。',
       },
       modelRetired: {
         reason: '这个模型已经下线了',
@@ -1867,7 +1867,7 @@ export const enGenerationCommon = {
       },
       modelUnavailableUpstream: {
         reason: 'The provider cannot reach this model',
-        hint: 'The provider says this model is not available (retired or gone). Retrying will not help — switch to another model. This failure is not billed.',
+        hint: 'The provider says this model is not available (retired or gone). Retrying will not help — switch to another model.',
       },
       modelRetired: {
         reason: 'This model has been removed',
