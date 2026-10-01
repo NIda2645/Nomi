@@ -29,6 +29,17 @@ function generationResultsMarkdown(gr) {
   return `### 总体\n${overall}\n\n### 按能力\n${byCap || '（无）'}\n\n### 明细（按能力 × 版本 × 系统 × 日期，${gr.versionGranularityNote}）${detailTable}`
 }
 
+function excludedMarkdown(ex) {
+  if (ex.count === 0) return '自动化（测试 / 走查）事件：0 条被排除。'
+  const parts = ex.byEvent.map((e) => `${e.eventName} × ${e.count}`).join('、')
+  return `自动化（测试 / 走查）事件：已排除 ${ex.count} 条，不计入下面任何统计（${parts}）。`
+}
+
+function failureReasonsMarkdown(fr) {
+  if (fr.total === 0) return '（没有失败的生成事件）'
+  return fr.ranking.map((r, i) => `${i + 1}. \`${r.reason}\` × ${r.count}（${pct(r.share)}）`).join('\n')
+}
+
 function spikesMarkdown(spikes, window) {
   if (!window.latestDate || !window.previousDate) return '（数据不足两天，暂时比不出突增）'
   if (spikes.length === 0) return `${window.previousDate} → ${window.latestDate}：无明显突增`
@@ -72,7 +83,12 @@ ${newFeedbackSection}
 
 ## 生成结果（成功 / 失败 / 取消）
 
+${excludedMarkdown(report.excludedAutomated)}
+
 ${generationResultsMarkdown(report.generationResults)}
+
+### 失败原因排行（共 ${report.failureReasons.total} 次失败）
+${failureReasonsMarkdown(report.failureReasons)}
 
 ## 错误码排行
 
@@ -102,6 +118,10 @@ export function renderTerminalSummary(report, { mdPath, jsonPath } = {}) {
   lines.push(`  新增反馈 ${report.totals.newFeedbackCount} 条 · 累计反馈 ${report.totals.feedbackCount} / 事件 ${report.totals.eventsCount} / 轨迹 ${report.totals.trajectoriesCount}`)
   const gr = report.generationResults.overall
   lines.push(`  生成结果：总计 ${gr.total}，成功 ${gr.success}（${pct(gr.successRate)}）、失败 ${gr.failure}（${pct(gr.failureRate)}）、取消 ${gr.cancel}（${pct(gr.cancelRate)}）`)
+  if (report.excludedAutomated.count) lines.push(`  已排除自动化事件 ${report.excludedAutomated.count} 条（测试 / 走查），不计入上面的数`)
+  if (report.failureReasons.total) {
+    lines.push(`  失败原因前三：${report.failureReasons.ranking.slice(0, 3).map((r) => `${r.reason}×${r.count}`).join(' · ')}`)
+  }
   if (report.errorCodeRanking.length) {
     lines.push(`  错误码排行前三：${report.errorCodeRanking.slice(0, 3).map((r) => `${r.errorCode}×${r.count}`).join(' · ')}`)
   }

@@ -12,7 +12,7 @@ description: 每次 Nomi 会话开始自动跑用户反馈雷达——先跑 `pn
 1. 跑 `pnpm run intake:radar`（如果本轮会话开始时的「每日雷达」步骤已经跑过，直接读它的输出，不用重跑）。
    - 失败会红着退出，终端明说「今天没查成」——这种情况**不要**把它读成「今天没有新反馈」，如实告诉用户抓取失败以及失败原因，不要往下分诊（没有新数据可分诊）。
 2. 报告在仓库外的缓存目录：默认 `%LOCALAPPDATA%\nomi-intake\reports\<日期>.md`（同名 `.json` 是给这份技能读的结构化版本），可能被 `NOMI_INTAKE_CACHE` 改过位置——脚本终端输出的最后几行会打印这一轮报告的实际路径，认那个，不要假设默认路径。
-3. 读 `.json` 报告里的 `newFeedback`（本次新增反馈）、`generationResults`（成功/失败/取消分布）、`errorCodeRanking`、`spikes`（突增）、`launches`/`updateActions`。这些数字都已经算好，**不要重新数一遍**，也不要在没重新验证的前提下怀疑脚本的算术。
+3. 读 `.json` 报告里的 `newFeedback`（本次新增反馈）、`generationResults`（成功/失败/取消分布，**默认已排除自动化事件**，被排除的条数在 `excludedAutomated`）、`failureReasons`（失败按原因排行，原因是分类码）、`errorCodeRanking`、`spikes`（突增）、`launches`/`updateActions`。这些数字都已经算好，**不要重新数一遍**，也不要在没重新验证的前提下怀疑脚本的算术。
 
 ## 先判断数据可不可信，再下结论
 

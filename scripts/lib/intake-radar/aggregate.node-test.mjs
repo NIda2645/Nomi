@@ -12,7 +12,11 @@ import {
   tallyLaunches,
   tallyUpdateActions,
   buildIntakeReport,
+  isAutomatedEvent,
+  splitAutomatedEvents,
+  rankFailureReasons,
 } from './aggregate.mjs'
+import { renderMarkdown, renderTerminalSummary } from './render.mjs'
 
 // 夹具：占位句，不放任何真实用户原文（任务书 §要做 1 明确要求）。形状照
 // D:\tmp\nomi-intake 里的真实结构（receivedAt/receipt/ref/payload.manifest/payload.context）。
@@ -238,4 +242,75 @@ test('buildIntakeReport 把本地解析失败的文件计入 dataQuality，不�
   })
   assert.equal(report.dataQuality.corruptFileCount, 1)
   assert.equal(report.totals.feedbackCount, 0)
+})
+
+// ---- 自动化事件排除 + 失败原因排行（夹具：真实用户 3 条 + 走查 4 条）----
+
+function withAuto(evt) {
+  return { ...evt, systemProps: { ...evt.systemProps, automated: true } }
+}
+function withReason(evt, errorType) {
+  return { ...evt, props: { ...evt.props, errorType } }
+}
+
+function mixedFixture() {
+  const t = '2026-10-01T00:00:00.000Z'
+  const real = [
+    withReason(genEvent({ timestamp: t, capability: 'video', result: 'failure' }), 'asset-upload-failed'),
+    withReason(genEvent({ timestamp: t, capability: 'video', result: 'failure' }), 'asset-upload-failed'),
+    genEvent({ timestamp: t, capability: 'image', result: 'success' }),
+  ]
+  const auto = [
+    withAuto(withReason(genEvent({ timestamp: t, capability: 'video', result: 'failure' }), 'model-unavailable-upstream')),
+    withAuto(withReason(genEvent({ timestamp: t, capability: 'video', result: 'failure' }), 'model-unavailable-upstream')),
+    withAuto(withReason(genEvent({ timestamp: t, capability: 'video', result: 'failure' }), 'model-unavailable-upstream')),
+    withAuto({ ...genEvent({ timestamp: t, capability: 'image', result: 'success' }) }),
+  ]
+  return { real, auto, records: [fakeEventsRecord({ key: 'events/2026-10-01/a.json', events: [...real, ...auto] })] }
+}
+
+test('isAutomatedEvent 只认 systemProps.automated === true', () => {
+  const t = '2026-10-01T00:00:00.000Z'
+  assert.equal(isAutomatedEvent(withAuto(genEvent({ timestamp: t, capability: 'image', result: 'success' }))), true)
+  assert.equal(isAutomatedEvent(genEvent({ timestamp: t, capability: 'image', result: 'success' })), false)
+  assert.equal(isAutomatedEvent({ systemProps: { automated: 'true' } }), false)
+})
+
+test('splitAutomatedEvents 把自动化事件拆出去并单独计数', () => {
+  const { real, auto } = mixedFixture()
+  const split = splitAutomatedEvents([...real, ...auto])
+  assert.equal(split.real.length, 3)
+  assert.equal(split.excluded.count, 4)
+  assert.deepEqual(split.excluded.byEvent, [{ eventName: 'generation.completed', count: 4 }])
+})
+
+test('rankFailureReasons 按原因排行；老版本没带原因的单独成一类', () => {
+  const t = '2026-10-01T00:00:00.000Z'
+  const ranking = rankFailureReasons([
+    withReason(genEvent({ timestamp: t, capability: 'video', result: 'failure' }), 'balance'),
+    withReason(genEvent({ timestamp: t, capability: 'video', result: 'failure' }), 'balance'),
+    withReason(genEvent({ timestamp: t, capability: 'video', result: 'failure' }), 'network'),
+    genEvent({ timestamp: t, capability: 'video', result: 'failure' }),
+    genEvent({ timestamp: t, capability: 'video', result: 'success' }),
+  ])
+  assert.equal(ranking.total, 4)
+  assert.deepEqual(ranking.ranking.map((r) => [r.reason, r.count]), [['balance', 2], ['network', 1], ['（旧版本未上报）', 1]])
+  assert.equal(ranking.ranking[0].share, 50)
+})
+
+test('buildIntakeReport 默认排除自动化：成功率与失败排行只算真实用户，被排除的条数单独列出', () => {
+  const { records } = mixedFixture()
+  const report = buildIntakeReport({ feedbackRecords: [], eventRecords: records, trajectoriesCount: 0, newFeedbackKeys: [], newEventKeys: [], generatedAt: '2026-10-01T12:00:00.000Z' })
+  assert.equal(report.totals.eventsCount, 3)
+  assert.equal(report.totals.excludedAutomatedCount, 4)
+  assert.equal(report.generationResults.overall.total, 3)
+  assert.equal(report.generationResults.overall.failure, 2)
+  assert.deepEqual(report.failureReasons.ranking.map((r) => r.reason), ['asset-upload-failed'])
+  // 自动化的 3 次 model-unavailable-upstream 不许进排行，也不许造出假突增
+  assert.equal(report.spikes.length, 0)
+  const md = renderMarkdown(report)
+  assert.match(md, /已排除 4 条/)
+  assert.match(md, /1\. `asset-upload-failed` × 2/)
+  assert.doesNotMatch(md, /model-unavailable-upstream/)
+  assert.match(renderTerminalSummary(report), /已排除自动化事件 4 条/)
 })
