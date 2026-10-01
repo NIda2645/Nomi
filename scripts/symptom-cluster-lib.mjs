@@ -1,4 +1,4 @@
-// 症状聚类的判据本体（R21 / R14，2026-09-07）。
+// 症状聚类的判据本体（R21 / R14，2026-09-07；2026-10-02 起与「重写判据」合并）。
 //
 // 守的不变量：**同一层在短时间里被修第三次，就不许再修第四次了，先出那一层的结构评审。**
 //
@@ -8,10 +8,11 @@
 // 最便宜的证据。人不会去数——那是机器的活。
 //
 // 判据（刻意粗）：合同的 scope_paths / entry_points → 模块键（两级目录）；同一模块在 7 天窗口里
-// 累计 ≥3 份合同 → 要求存在一份**日期不早于该窗口最后一份合同**、且提到这个模块的
-// docs/audit/*.md 结构评审。没有 → 红。
+// 累计 ≥3 份合同 → 簇里**最新那份**合同必须带 `rewrite_decision`：{ decision: patch|rewrite|delete,
+// characterization_test: <测试路径> }（2026-10-02 起取代「交一份结构评审文档」——两份并存就是并行版，P1）。
+// 路径存在、选 rewrite 时测试必须在 diff 里，由 root-cause-contracts 的校验管；这里只判「有没有选」。
 //
-// 为什么门槛是「有没有一份评审文档」而不是更聪明的判断：门岗只判**做没做**，做得好不好是人的事。
+// 为什么门槛是「有没有做选择」而不是更聪明的判断：门岗只判**做没做**，做得好不好是人的事。
 // 一道试图判质量的门岗会开始误判，然后被绕过（R17）。
 //
 // 老合同按日期阈值豁免：只有**整簇都在阈值之后**的窗口才受管。追溯会让门岗一上线就一片红，
@@ -21,7 +22,14 @@ const CONTRACT_DATE = /(?:^|\/)(\d{4}-\d{2}-\d{2})-/
 /** 从任意字符串里捞仓库路径样子的片段（entry_points 常写成一句话，路径夹在里面）。 */
 const PATH_LIKE = /\b((?:src|electron|scripts|tests|docs|\.github)\/[\w./+-]+)/g
 
-export const SYMPTOM_CLUSTER_THRESHOLD_DATE = '2026-09-07'
+/** 整簇都在这天（含）之后才受管；更早的簇已按旧规矩（结构评审文档）处理过，不追溯。 */
+export const SYMPTOM_CLUSTER_THRESHOLD_DATE = '2026-10-02'
+export const REWRITE_DECISION_VALUES = ['patch', 'rewrite', 'delete']
+
+export function hasRewriteDecision(decision) {
+  return Boolean(decision) && REWRITE_DECISION_VALUES.includes(decision.decision)
+    && typeof decision.characterization_test === 'string' && decision.characterization_test.trim() !== ''
+}
 export const SYMPTOM_CLUSTER_WINDOW_DAYS = 7
 export const SYMPTOM_CLUSTER_MIN_CONTRACTS = 3
 
@@ -115,24 +123,26 @@ export function findClusters({ contracts, windowDays = SYMPTOM_CLUSTER_WINDOW_DA
 }
 
 /**
- * 判簇。`audits` = [{ file, date, text }]（docs/audit/*.md）。
- * 只管**整簇都在阈值之后**的窗口；要求存在一份日期 >= 簇结束日、且正文提到该模块的评审。
+ * 判簇。只管**整簇都在阈值之后**的窗口；要求簇里最新那份合同带有效的 rewrite_decision。
  */
-export function evaluateClusters({ clusters, audits, threshold = SYMPTOM_CLUSTER_THRESHOLD_DATE }) {
+export function evaluateClusters({ clusters, threshold = SYMPTOM_CLUSTER_THRESHOLD_DATE }) {
   // 同一模块可能有多个重叠窗口；只报最密的那一条，否则一个热模块会刷屏，而刷屏的门岗没人读。
   const worstByModule = new Map()
   for (const cluster of clusters) {
     if (!cluster.contracts.every((entry) => entry.date >= threshold)) continue
-    if (audits.some((audit) => audit.date && audit.date >= cluster.to && audit.text.includes(cluster.module))) continue
+    const newest = cluster.contracts[cluster.contracts.length - 1]
+    if (hasRewriteDecision(newest.rewriteDecision)) continue
     const previous = worstByModule.get(cluster.module)
     if (!previous || cluster.contracts.length > previous.contracts.length) worstByModule.set(cluster.module, cluster)
   }
   const errors = []
   for (const cluster of [...worstByModule.values()].sort((a, b) => a.module.localeCompare(b.module))) {
+    const newest = cluster.contracts[cluster.contracts.length - 1]
     errors.push(`模块 ${cluster.module}：${cluster.from} 到 ${cluster.to} 的 ${SYMPTOM_CLUSTER_WINDOW_DAYS} 天里已有 ${cluster.contracts.length} 份根因合同`
       + `\n      ${cluster.contracts.map((entry) => entry.file).join('\n      ')}`
-      + `\n      —— 第三份合同是「这一层的结构不对」最便宜的证据，不是再修一次的理由。`
-      + `\n      先出 docs/audit/<不早于 ${cluster.to}>-*.md 的结构评审（正文里点名 ${cluster.module}），再继续修。`)
+      + `\n      —— 第三份合同是「这一层的结构不对」最便宜的证据，不是再补一次的理由。`
+      + `\n      在最新那份（${newest.file}）里写 rewrite_decision：{ "decision": "patch|rewrite|delete", "characterization_test": "<特征测试路径>" }；`
+      + `\n      选 rewrite：先写特征测试钉住旧行为，只重写一个模块，同一次提交删掉旧的（该测试必须在本次 diff 里）。`)
   }
   return errors
 }

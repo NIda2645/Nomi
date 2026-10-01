@@ -1,0 +1,126 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-rewrite-decision-merges-r21-2",
+  "problem_type": "A guard that only asks 'did you write a review document?' lets the same layer be patched a fourth time with a document that changes nothing, because there is no point where someone must choose patch, rewrite or delete and pin the old behaviour",
+  "symptom": "The same file is fixed again and again (a recent hot file had 17 fix commits in 14 days) and the structural review required by R21.2 after the third contract is satisfied by a document, not by a decision; the repeated-patch signal never turned into a rewrite.",
+  "direct_cause": "symptom-cluster accepted any later docs/audit/*.md that merely mentioned the module as the answer to a third contract in 7 days; nothing required choosing patch/rewrite/delete, and nothing required a characterization test to exist before a rewrite.",
+  "class_root": "The 'third fix on the same layer' signal had two owners with different outputs (a clustering gate that wanted a document, and no rule that said what the document must decide), so the cheapest compliant action was to write prose.",
+  "affected_population": [
+    "Every layer that collects a third corrective contract in 7 days",
+    "Every contract author after 2026-10-02"
+  ],
+  "entry_points": [
+    "scripts/symptom-cluster-lib.mjs evaluateClusters: decides whether a cluster is answered",
+    "scripts/root-cause-contracts.mjs validateRewriteDecision: validates the answer when a contract carries it"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Repository-internal contract schema and gate; the research basis (characterization tests, strangler fig, wrong abstraction) is cited in docs/research/2026-10-01-ai-collaboration-rules/report.md.",
+  "invariants": [
+    "A cluster dated on or after 2026-10-02 is answered only by a rewrite_decision on its newest contract: decision patch|rewrite|delete plus a characterization_test path",
+    "A contract that carries rewrite_decision must name an existing test file; choosing rewrite additionally requires that test to be in the same diff",
+    "There is one answer path: the review-document path is removed, not kept beside it"
+  ],
+  "generality_proof": "Both the cluster gate and the contract validator read the same field name from the same contract object; the node tests cover every enum value, a missing or blank test path, a ghost path, a non-test path, rewrite with and without the test in the diff, older contracts carrying the decision, and the grandfather threshold.",
+  "same_class_entry_points": [
+    {
+      "path": "scripts/check-symptom-cluster.mjs",
+      "entry_point": "readContracts",
+      "disposition": "enforced",
+      "evidence": "Reads rewrite_decision from every contract and passes it to evaluateClusters; the audit-document reader was deleted."
+    },
+    {
+      "path": "scripts/root-cause-contracts.mjs",
+      "entry_point": "validateContract",
+      "disposition": "enforced",
+      "evidence": "Calls validateRewriteDecision for corrective contracts, so a malformed decision fails the contract gate."
+    },
+    {
+      "path": "scripts/new-root-cause-contract.mjs",
+      "entry_point": "contract template",
+      "disposition": "not-affected",
+      "evidence": "The field is optional and only required by the cluster gate; the generator does not need to emit it."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any hot layer reproduces the same pattern: three fixes, a document, a fourth fix.",
+    "same_class_scan": [
+      "door-map of evaluateClusters: one definition in symptom-cluster-lib, one caller in check-symptom-cluster",
+      "audit documents are no longer read by any gate; docs/audit remains a place for humans to write, not a gate input",
+      "run-gates-contracts keeps check:symptom-cluster advisory; the answer format changes, not the severity"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "scripts/symptom-cluster-lib.mjs",
+    "invariant": "A third fix on the same layer is answered by a recorded patch/rewrite/delete choice with a characterization test, not by prose.",
+    "failure_mode": "The gate is advisory in the contracts run; a missing decision prints the cluster and the exact field to add, and the contract validator fails a malformed decision once written.",
+    "exception_policy": "none",
+    "strategy": "One field, one validator, one cluster rule; thresholds are trial values (14 days, third fix) to be calibrated against our own commit history until 2026-10-15.",
+    "artifacts": [
+      "scripts/symptom-cluster-lib.mjs",
+      "scripts/root-cause-contracts.mjs",
+      "docs/engineering-rules.md"
+    ]
+  },
+  "invariant_owner_layer": {
+    "layer": "scripts/symptom-cluster-lib.mjs",
+    "tests": [
+      "scripts/check-symptom-cluster.node-test.mjs"
+    ],
+    "why": "The cluster rule is a pure function proven by node tests; the field validation is proven in check-root-cause-contracts.node-test.mjs."
+  },
+  "regression_tests": [
+    "scripts/check-symptom-cluster.node-test.mjs",
+    "scripts/check-root-cause-contracts.node-test.mjs"
+  ],
+  "class_regression_tests": [
+    "scripts/check-symptom-cluster.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "scripts/check-symptom-cluster.mjs"
+    ],
+    "rationale": "Two parallel answers to the same cluster would let the cheaper one win; clusters before 2026-10-02 were already answered under the old rule and are not re-judged."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Repository-internal gate; no dependency involved.",
+    "exit_criteria": []
+  },
+  "migration": "None: older clusters are grandfathered by date; new clusters follow the new rule.",
+  "residual_risks": [
+    "The thresholds (7-day cluster, 14-day file, third fix) are trial values with no authoritative number; they are calibrated against the commit history by 2026-10-15.",
+    "The gate judges whether a choice was made, not whether it was the right one."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "scripts/check-symptom-cluster.mjs",
+      "symbol": "evaluateClusters"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/root-cause-contracts.mjs",
+      "symbol": "validateRewriteDecision"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "The cluster rule and the field validator are two different checks on the same field; the audit-document door was removed in the same change."
+  },
+  "scope_paths": [
+    "scripts/symptom-cluster-lib.mjs",
+    "scripts/check-symptom-cluster.mjs",
+    "scripts/root-cause-contracts.mjs"
+  ],
+  "shared_boundaries": [
+    {
+      "path": "scripts/symptom-cluster-lib.mjs",
+      "symbol": "evaluateClusters",
+      "responsibility": "The only place that decides whether a hot-layer cluster has been answered."
+    }
+  ]
+}

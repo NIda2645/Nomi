@@ -382,6 +382,31 @@ function validateInvariantOwnerLayer(contract, existingFiles, label) {
 }
 
 /**
+ * 「补 / 重写 / 删」的选择（R21.2，2026-10-02 起与症状聚类合并）：同一层被反复修时，合同要写明选了哪条路，
+ * 并给出特征测试路径——不再交一份评审文档。字段可选；一旦写了就必须成立：
+ * 测试文件存在且是测试；选 `rewrite` 时那份特征测试必须出现在本次 diff 里（先钉住旧行为，再重写）。
+ */
+export const REWRITE_DECISIONS = ["patch", "rewrite", "delete"];
+function validateRewriteDecision(contract, changed, existingFiles, label) {
+  const errors = [];
+  const decision = contract?.rewrite_decision;
+  if (decision === undefined) return errors;
+  if (!record(decision) || !REWRITE_DECISIONS.includes(decision.decision)) {
+    errors.push(`${label}: rewrite_decision.decision must be one of ${REWRITE_DECISIONS.join(", ")}`);
+    return errors;
+  }
+  const test = decision.characterization_test;
+  if (!nonEmptyText(test) || !isTestFile(normalized(test))) {
+    errors.push(`${label}: rewrite_decision.characterization_test must be a test file path (the test that pins the old behaviour)`);
+  } else if (!fileExists(test, existingFiles)) {
+    errors.push(`${label}: rewrite_decision.characterization_test does not exist: ${test}`);
+  } else if (decision.decision === "rewrite" && !changed.has(normalized(test))) {
+    errors.push(`${label}: a rewrite must add or change its characterization test in this diff: ${test}`);
+  }
+  return errors;
+}
+
+/**
  * 「这条不变量碰到的状态，一共有几扇门」——动生产代码之前必须先数的那一问（R21，2026-09-11）。
  *
  * 为什么加它：合同已经逼你写清 class_root 和 same_class_entry_points，但那两项都是**叙述**——
@@ -581,6 +606,7 @@ function validateContract(contract, changed, existingFiles, index, fileContents)
   if (fileDate && fileDate >= DOOR_MAP_SINCE) {
     errors.push(...validateDoorMap(contract, changed, existingFiles, label, fileContents));
   }
+  errors.push(...validateRewriteDecision(contract, changed, existingFiles, label));
   for (const field of ["affected_population", "scope_paths", "entry_points", "invariants", "regression_tests", "residual_risks"]) {
     if (!nonEmptyTextArray(contract?.[field])) errors.push(`${label}: ${field} must be a non-empty string array`);
   }

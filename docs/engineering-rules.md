@@ -902,13 +902,29 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 
 **填 `none` 是允许的、诚实的答案**——代价是必须附一份结构工单。这条的全部意义就是：让「没人管」变成一条**记在账上的债**，而不是无声地成为没人管。老合同按日期阈值豁免（`scripts/root-cause-contracts.mjs` 的 `INVARIANT_OWNER_LAYER_SINCE`），追溯只会把 200 多份历史合同一次性打红。
 
-### R21.2 同一层七天内第三份合同 = 先出结构评审，不是再修一次（2026-09-07）
+### R21.2 重写判据：同一处被反复补，先选「补 / 重写 / 删」并钉住旧行为（2026-09-07；2026-10-02 起与「同一层七天内第三份合同」合并）
 
-根因流程是**逐件**执行的：每份合同都诚实地问过「同类问题还能不能从别的入口回来」，但它问的范围是那一件事。「这个模块这周已经是第三份合同了」这个信号**此前没有 owner**——每个修的人只看得见自己那一件，而三件挨着出现恰恰是「这一层的结构不对」最便宜的证据。人不会去数，那是机器的活。
+> **试用到 2026-10-15，用我们自己的提交历史回测校准。** 下面的 14 天、第 3 次、「第三个特例」都是试用值，没有权威数字（调研报告 §五）。校准办法：对近 90 天每个被改动 ≥3 次的文件，看第三次之后是否又出现第四、五次 fix，据此调阈值；`.claude/reuse-reminders.log` 里的触发记录是另一半数据。校准前提醒只是提醒，不拦。
 
-**门岗**：`pnpm run check:symptom-cluster`（`scripts/check-symptom-cluster.mjs`，判据在 `scripts/symptom-cluster-lib.mjs`）。同一模块键（路径前两段，如 `electron/harness`）在 **7 天窗口**内累计 **≥3 份**根因合同 → 红，要求存在一份日期不早于该窗口最后一份合同、且正文点名该模块的 `docs/audit/*.md` 结构评审。整簇都在 2026-09-07 之后才受管；历史聚簇（当前 37 个）报出来但不追溯。
+**为什么**：同一处被反复补，往往是抽象选错了（Sandi Metz：参数加条件分支就是抽象错了）；只靠提示压不住修补堆积（SlopCodeBench）。根因流程又是**逐件**执行的——每份合同都问过「同类问题还能不能从别的入口回来」，但问的范围是那一件事，「这一处这周已经是第三次了」这个信号此前没有 owner，人也不会去数。
 
-**门岗只判做没做，不判做得好不好**——一道试图判质量的门岗会开始误判，然后被绕过（R17）。评审的分量是人的验收项。
+**判据（出现任一条就停止打补丁）**：① 同一文件 14 天内第三次因 bug 修改；② 要给现有函数加第三个特例分支或参数；③ 改一处要读两处以上的旁路逻辑。
+
+**此时必须选定「补 / 重写 / 删」之一，并给出特征测试路径**：
+- 选**重写**：先写特征测试钉住旧行为（Feathers——它只能发现变化，不能证明结果正确；反方 Spolsky：旧代码里埋着大量 bug 修复，所以先钉住再动）；范围限**一个模块**（Strangler Fig，不重写整个系统）；**同一次提交删掉旧的**（P1）。
+- 选**补**或**删**：同样写明特征测试，说明为什么不重写。
+
+**怎么落在合同里（机器管的部分，不再交评审文档）**：根因合同可带
+
+```json
+"rewrite_decision": { "decision": "patch | rewrite | delete", "characterization_test": "<特征测试路径>" }
+```
+
+- 字段本身可选；**同一模块键（路径前两段，如 `electron/harness`）7 天窗口内累计 ≥3 份根因合同**时，`pnpm run check:symptom-cluster`（`scripts/check-symptom-cluster.mjs`，判据在 `scripts/symptom-cluster-lib.mjs`）要求簇里**最新那份**合同带有效的 `rewrite_decision`。整簇都在 2026-10-02 之后才受管；更早的聚簇已按旧规矩（结构评审文档）处理过，不追溯，**评审文档这条路已删，不并存**。
+- 写了就必须成立（`check:root-cause-contracts`，`scripts/root-cause-contracts.mjs` 的 `validateRewriteDecision`）：选项在 patch / rewrite / delete 里；`characterization_test` 是存在的测试文件；**选 rewrite 时那份测试必须出现在本次 diff 里**。
+- **门岗只判做没做，不判做得好不好**——一道试图判质量的门岗会开始误判，然后被绕过（R17）。选得对不对是人的验收项。
+
+**动手那一刻的提醒（只提醒、不拦、出错静默放行）**：`scripts/claude-hooks/edit-time-reminder.sh`（PreToolUse · Write|Edit）——改的文件近 14 天已有 ≥3 次 fix 提交时，提醒先过本判据；在 `src/`、`electron/` 新建文件时，附一份接口级「已有能力清单」（`scripts/build-capability-index.mjs` 从 `concept-owners.json` 与 `framework-boundaries.json` 现算）并要一行「已查过 / 没找到」。提醒随工具结果一起到，不是写入前；它让 agent 立刻自查，拦不住这一次写入。
 
 **派工/自验清单必须显式点名本闸（2026-09-01 教训）**：凡改动触及 electron/ 高风险 pattern（`*ipc.ts` / `*store.ts` / `runtime.ts` / catalog 核心 / validator 等），任务 brief 与自验清单必须写明「跑 `pnpm run check:root-cause-contracts`、改动作者自写契约」——不点名就会漏：曾有 4 个返工 PR 因 brief 验证档只列 typecheck/lint/focused，集体被本闸拦下返场补契约（同批次里自写了契约的 2 个 PR 一次过闸）。
 
