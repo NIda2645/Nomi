@@ -48,7 +48,7 @@
 
 ## 验收门
 
-- 测试表 27 行（零花费的行全在真 Electron 里按用户动作走，改之前 / 改之后截图并排；付费两行未验证，花费 0）：`D:\tmp\failure-truth-test\验收.html`，用户看截图打勾。
+- 测试表（零花费的行全在真 Electron 里按用户动作走，改之前 / 改之后截图并排，「改之后」全部来自同一个最终 head）：`D:\tmp\failure-truth-test\验收.html`，用户看截图打勾。
 - 全功能走查监视器里与本次相关的六条规则（`failure-reason-misstated`、`failure-blamed-on-wrong-vendor`、`stale-failure-toast`、`overlay-out-of-viewport`、`close-button-unreachable`、`9c-repeated-toast`）在本分支零触发，干净 main 上每遍 12 处。
-- 门岗：contracts 红名单与干净 main 逐项相同；相关单测全绿；37 个「改回旧行为」的变异全部被抓红。
-- 付费两行（Seedream 5.0 / Z-Image Turbo 真图）待用户用真实密钥在 Nomi 关着时跑 `tests/ux/full-walk/playbooks/pb90-seedream5.paid.mjs`。
+- 门岗：contracts 红名单与干净 main 逐项相同；相关单测全绿；46 个「改回旧行为」的变异全部被抓红。
+- 真实付费：Seedream 5.0 已在隔离副本上跑过一张（`tests/ux/full-walk/playbooks/pb90-seedream5.paid.mjs`，图落地、供应商只收一笔、没有误判）；Z-Image Turbo 不在本次范围。
