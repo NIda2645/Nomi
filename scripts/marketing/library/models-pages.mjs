@@ -55,8 +55,27 @@ const resolutionRank = (value) => {
 }
 const resolutionsOf = (model) => [...new Set(model.facts.resolutions.map(normalizeResolution))].sort((left, right) => resolutionRank(left) - resolutionRank(right))
 
+/** 时长：给了最小和最大就写成区间；只给了几个可选值就按数字从小到大排好（各家档案取并集后顺序是乱的）。 */
+const durationValues = (duration, copy) => {
+  if (duration?.min != null && duration?.max != null) return [copy.model.seconds(duration.min, duration.max)]
+  const options = [...new Set((duration?.options ?? []).map(Number).filter(Number.isFinite))].sort((left, right) => left - right)
+  return options.map((value) => copy.model.seconds(value, value))
+}
+
+/**
+ * 画幅：档案里有两种东西混在一起——真正的画幅（16:9、auto），和个别渠道逐个列出的固定像素尺寸（1696:2528）。
+ * 前者逐个写，后者几十个全列出来就是一堵墙，只写一个「另有 N 种固定像素尺寸」；auto、adaptive、auto_1k 合成一个「自适应」。
+ */
+const isPixelSize = (value) => /^\d+:\d+$/.test(value) && Math.max(...value.split(':').map(Number)) > 64
+const isAdaptive = (value) => value === 'adaptive' || /^auto(?:_.*)?$/.test(value)
+function aspectValues(aspectRatios, copy) {
+  const ratios = aspectRatios.filter((value) => !isPixelSize(value) && !isAdaptive(value))
+  const sizes = aspectRatios.filter(isPixelSize).length
+  return [...(aspectRatios.some(isAdaptive) ? [copy.model.adaptive] : []), ...new Set(ratios), ...(sizes ? [copy.model.fixedSizes(sizes)] : [])]
+}
+
 /** 能力表的每一行：[标签, 值的列表]；没有这项能力的行不出现（不写「不支持」占位）。 */
-function specRows(model, locale) {
+export function specRows(model, locale) {
   const copy = copyFor(locale)
   const { rows } = copy.model
   const facts = model.facts
@@ -65,12 +84,12 @@ function specRows(model, locale) {
     .filter((kind) => kind in facts.references)
     .map((kind) => (facts.references[kind] == null ? copy.slots[kind] : `${copy.slots[kind]} ${facts.references[kind]}`))
   if (refs.length) out.push([rows.refs, refs])
-  const duration = facts.durationSeconds
-  if (duration?.min != null && duration?.max != null) out.push([rows.duration, [copy.model.seconds(duration.min, duration.max)]])
-  else if (duration?.options?.length) out.push([rows.duration, duration.options.map((value) => copy.model.seconds(value, value))])
+  const durations = durationValues(facts.durationSeconds, copy)
+  if (durations.length) out.push([rows.duration, durations])
   const resolutions = resolutionsOf(model)
   if (resolutions.length) out.push([rows.resolution, resolutions])
-  if (facts.aspectRatios.length) out.push([rows.aspect, facts.aspectRatios.map((value) => (value === 'adaptive' ? copy.model.adaptive : value))])
+  const aspects = aspectValues(facts.aspectRatios, copy)
+  if (aspects.length) out.push([rows.aspect, aspects])
   if (facts.audio) out.push([rows.audio, [copy.model.audioYes]])
   if (facts.variants.length) out.push([rows.variants, facts.variants])
   out.push([rows.vendors, apiVendors(model, locale).map((vendor) => vendor.name)])

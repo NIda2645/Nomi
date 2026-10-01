@@ -27,7 +27,7 @@
     "seo:audit": "node scripts/seo/seo-audit.mjs",
     "test:seo": "node --test tests/seo/*.node.mjs scripts/seo/seo-audit.node.mjs",
     "check:site-data": "tsx scripts/site/export-site-data.mts --check",
-    "check:site-editorial": "node --test ./scripts/check-site-editorial.node-test.mjs && node ./scripts/check-site-editorial.mjs",
+    "check:site-editorial": "node --test ./scripts/check-site-editorial.node-test.mjs ./scripts/marketing/library/models-pages.node-test.mjs && node ./scripts/check-site-editorial.mjs",
     "check:site-pricing": "node --test ./scripts/check-site-pricing.node-test.mjs && node ./scripts/check-site-pricing.mjs",
     "check:site-links": "node --test ./scripts/check-site-links.node-test.mjs && node ./scripts/check-site-links.mjs",
     "check:site-locales": "node --test ./scripts/check-site-locales.node-test.mjs && node ./scripts/check-site-locales.mjs",

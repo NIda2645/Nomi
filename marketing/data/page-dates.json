@@ -36,11 +36,11 @@
     "date": "2026-10-01"
   },
   "/en/models/flux-2-pro": {
-    "hash": "01d4d514d85b8a20",
+    "hash": "046db35423c2d758",
     "date": "2026-10-01"
   },
   "/en/models/gemini-image-3-pro": {
-    "hash": "160c3a13d91fb742",
+    "hash": "47a9fbfa74c5d18a",
     "date": "2026-10-01"
   },
   "/en/models/gemini-omni-1-1-flash": {
@@ -48,15 +48,15 @@
     "date": "2026-10-01"
   },
   "/en/models/gpt-image-2": {
-    "hash": "3663c1c810d15e66",
+    "hash": "9b46523ba2bcc57e",
     "date": "2026-10-01"
   },
   "/en/models/gpt-image-2-5-flare": {
-    "hash": "ff651f7ae3805f31",
+    "hash": "a5c9f49a6c844a2a",
     "date": "2026-10-01"
   },
   "/en/models/gpt-image-2-5-sunburst": {
-    "hash": "6df8f94bbdd98f0b",
+    "hash": "edaab8070b259456",
     "date": "2026-10-01"
   },
   "/en/models/grok-imagine-1-5": {
@@ -64,7 +64,7 @@
     "date": "2026-10-01"
   },
   "/en/models/grok-imagine-image-2": {
-    "hash": "713c060e61a44524",
+    "hash": "b44ccc8249a098de",
     "date": "2026-10-01"
   },
   "/en/models/hailuo-2-3": {
@@ -76,15 +76,15 @@
     "date": "2026-10-01"
   },
   "/en/models/imagen-4-fast": {
-    "hash": "4de081b248caab2f",
+    "hash": "781b038660206ed1",
     "date": "2026-10-01"
   },
   "/en/models/imagen-4-ultra": {
-    "hash": "0d4f2f711ec976b0",
+    "hash": "041573d09e079cd8",
     "date": "2026-10-01"
   },
   "/en/models/kling-3-0": {
-    "hash": "82e4ed8353d8f66e",
+    "hash": "303f5149cdb6b22b",
     "date": "2026-10-01"
   },
   "/en/models/kling-3-0-turbo": {
@@ -92,7 +92,7 @@
     "date": "2026-10-01"
   },
   "/en/models/minimax-h3": {
-    "hash": "56e2db5db936634a",
+    "hash": "3c0ee4fb6f3d2db0",
     "date": "2026-10-01"
   },
   "/en/models/minimax-h3-max": {
@@ -100,15 +100,15 @@
     "date": "2026-10-01"
   },
   "/en/models/muse-image": {
-    "hash": "0ee6c5fa5784d49a",
+    "hash": "eb405b5593cec444",
     "date": "2026-10-01"
   },
   "/en/models/nano-banana-2": {
-    "hash": "a48728f4654edb74",
+    "hash": "40dc475e6df5ab08",
     "date": "2026-10-01"
   },
   "/en/models/nano-banana-2-lite": {
-    "hash": "417b41bed6f899a8",
+    "hash": "f7b4eaadac248b98",
     "date": "2026-10-01"
   },
   "/en/models/qwen-image": {
@@ -120,15 +120,15 @@
     "date": "2026-10-01"
   },
   "/en/models/runway-gen-4-5": {
-    "hash": "7c5983ebab6d3b1f",
+    "hash": "7ecb7c6294032ea7",
     "date": "2026-10-01"
   },
   "/en/models/runway-gen-4-image": {
-    "hash": "7e1ea4247a1859c0",
+    "hash": "2145a0f004585f27",
     "date": "2026-10-01"
   },
   "/en/models/runway-gen-4-turbo": {
-    "hash": "492d9268b6776549",
+    "hash": "5b60e16ac1d4eee6",
     "date": "2026-10-01"
   },
   "/en/models/seedance-2-5": {
@@ -456,11 +456,11 @@
     "date": "2026-10-01"
   },
   "/models/flux-2-pro": {
-    "hash": "525ec567a84fa1a9",
+    "hash": "295bcc54f4a6da0e",
     "date": "2026-10-01"
   },
   "/models/gemini-image-3-pro": {
-    "hash": "89fbd1a75ce5b09e",
+    "hash": "71345e96e1d0f6ac",
     "date": "2026-10-01"
   },
   "/models/gemini-omni-1-1-flash": {
@@ -468,15 +468,15 @@
     "date": "2026-10-01"
   },
   "/models/gpt-image-2": {
-    "hash": "f3b113724ac5f3b1",
+    "hash": "c5a0129e17bb779a",
     "date": "2026-10-01"
   },
   "/models/gpt-image-2-5-flare": {
-    "hash": "aefd1bc2bfda273e",
+    "hash": "1ccce32f727994c5",
     "date": "2026-10-01"
   },
   "/models/gpt-image-2-5-sunburst": {
-    "hash": "e293fd93d79cbafc",
+    "hash": "061216cae5f5c762",
     "date": "2026-10-01"
   },
   "/models/grok-imagine-1-5": {
@@ -484,7 +484,7 @@
     "date": "2026-10-01"
   },
   "/models/grok-imagine-image-2": {
-    "hash": "c8a1e7c4cfef26e3",
+    "hash": "066c10865407a19c",
     "date": "2026-10-01"
   },
   "/models/hailuo-2-3": {
@@ -496,15 +496,15 @@
     "date": "2026-10-01"
   },
   "/models/imagen-4-fast": {
-    "hash": "11dd792c25520c48",
+    "hash": "dc406050cf973070",
     "date": "2026-10-01"
   },
   "/models/imagen-4-ultra": {
-    "hash": "5c209f5d89ddc915",
+    "hash": "4e9592881616b713",
     "date": "2026-10-01"
   },
   "/models/kling-3-0": {
-    "hash": "5e11646b90eda66a",
+    "hash": "49beed4f3aabe3c5",
     "date": "2026-10-01"
   },
   "/models/kling-3-0-turbo": {
@@ -512,7 +512,7 @@
     "date": "2026-10-01"
   },
   "/models/minimax-h3": {
-    "hash": "d592faf67785a2bb",
+    "hash": "36db7a3334a1f6c6",
     "date": "2026-10-01"
   },
   "/models/minimax-h3-max": {
@@ -520,15 +520,15 @@
     "date": "2026-10-01"
   },
   "/models/muse-image": {
-    "hash": "2913acdf248d9c16",
+    "hash": "d8edc8407c0abe85",
     "date": "2026-10-01"
   },
   "/models/nano-banana-2": {
-    "hash": "8db71982795f15d9",
+    "hash": "04d75fcb32f54920",
     "date": "2026-10-01"
   },
   "/models/nano-banana-2-lite": {
-    "hash": "83468e9069483048",
+    "hash": "427322562d49244f",
     "date": "2026-10-01"
   },
   "/models/qwen-image": {
@@ -540,15 +540,15 @@
     "date": "2026-10-01"
   },
   "/models/runway-gen-4-5": {
-    "hash": "d2b3c94c2b6ae6b0",
+    "hash": "85c72da83d8f3100",
     "date": "2026-10-01"
   },
   "/models/runway-gen-4-image": {
-    "hash": "edb77066526e9ad1",
+    "hash": "313a1b588607938e",
     "date": "2026-10-01"
   },
   "/models/runway-gen-4-turbo": {
-    "hash": "a52c5c913ea2f6c9",
+    "hash": "599e68f74d09a00d",
     "date": "2026-10-01"
   },
   "/models/seedance-2-5": {
