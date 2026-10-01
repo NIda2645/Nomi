@@ -1,5 +1,5 @@
 ---
-model: runway muse image
+model: muse image
 maker: Meta Superintelligence Labs
 released: 2026-07-07
 checkedAt: 2026-09-28

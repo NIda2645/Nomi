@@ -29,6 +29,11 @@
           "key": "runninghub",
           "name": "RunningHub",
           "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
+          "authType": "bearer"
         }
       ],
       "facts": {
@@ -168,6 +173,11 @@
           "key": "minimax",
           "name": "MiniMax",
           "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
+          "authType": "bearer"
         }
       ],
       "facts": {
@@ -223,7 +233,8 @@
       "archetypeIds": [
         "seedance-2.5",
         "seedance-2.5-apimart",
-        "volcengine-seedance-2-5"
+        "volcengine-seedance-2-5",
+        "seedance-2.5-runway"
       ],
       "family": "seedance",
       "identityGapWith": null,
@@ -241,6 +252,16 @@
         {
           "key": "volcengine",
           "name": "火山方舟",
+          "authType": "bearer"
+        },
+        {
+          "key": "fal",
+          "name": "fal.ai",
+          "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
           "authType": "bearer"
         }
       ],
@@ -309,6 +330,11 @@
           "key": "apimart",
           "name": "APIMart",
           "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
+          "authType": "bearer"
         }
       ],
       "facts": {
@@ -363,7 +389,8 @@
       "lifecycle": "flagship",
       "recognized": true,
       "archetypeIds": [
-        "nano-banana-2"
+        "nano-banana-2",
+        "gemini-image-3.1-flash"
       ],
       "family": "nano-banana",
       "identityGapWith": null,
@@ -377,16 +404,28 @@
           "key": "apimart",
           "name": "APIMart",
           "authType": "bearer"
+        },
+        {
+          "key": "fal",
+          "name": "fal.ai",
+          "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
+          "authType": "bearer"
         }
       ],
       "facts": {
         "intents": [
           "text",
-          "edit"
+          "edit",
+          "single"
         ],
         "modeTerms": [
           "文生图",
-          "改图"
+          "改图",
+          "参考图/改图"
         ],
         "references": {
           "image_ref": 14
@@ -411,7 +450,63 @@
           "1:4",
           "4:1",
           "1:8",
-          "8:1"
+          "8:1",
+          "512:512",
+          "416:624",
+          "624:416",
+          "432:592",
+          "592:432",
+          "448:576",
+          "576:448",
+          "384:672",
+          "672:384",
+          "768:336",
+          "256:1024",
+          "1024:256",
+          "176:1408",
+          "1408:176",
+          "1024:1024",
+          "832:1248",
+          "1248:832",
+          "864:1184",
+          "1184:864",
+          "896:1152",
+          "1152:896",
+          "768:1344",
+          "1344:768",
+          "1536:672",
+          "512:2048",
+          "2048:512",
+          "352:2816",
+          "2816:352",
+          "2048:2048",
+          "1696:2528",
+          "2528:1696",
+          "1792:2400",
+          "2400:1792",
+          "1856:2304",
+          "2304:1856",
+          "1536:2752",
+          "2752:1536",
+          "3168:1344",
+          "1024:4096",
+          "4096:1024",
+          "704:5632",
+          "5632:704",
+          "4096:4096",
+          "3392:5056",
+          "5056:3392",
+          "3584:4800",
+          "4800:3584",
+          "3712:4608",
+          "4608:3712",
+          "3072:5504",
+          "5504:3072",
+          "6336:2688",
+          "2048:8192",
+          "8192:2048",
+          "1408:11264",
+          "11264:1408"
         ],
         "durationSeconds": null,
         "audio": false,
@@ -446,6 +541,16 @@
         {
           "key": "volcengine",
           "name": "火山方舟",
+          "authType": "bearer"
+        },
+        {
+          "key": "fal",
+          "name": "fal.ai",
+          "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
           "authType": "bearer"
         }
       ],
@@ -668,6 +773,16 @@
         {
           "key": "kie",
           "name": "Kie.ai",
+          "authType": "bearer"
+        },
+        {
+          "key": "fal",
+          "name": "fal.ai",
+          "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
           "authType": "bearer"
         }
       ],
@@ -1016,6 +1131,11 @@
           "key": "apimart",
           "name": "APIMart",
           "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
+          "authType": "bearer"
         }
       ],
       "facts": {
@@ -1036,64 +1156,6 @@
           "min": 6,
           "max": 30
         },
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "nano-banana-2-fal",
-      "canonicalId": "nano banana 2 · fal",
-      "label": "Nano Banana 2 · fal",
-      "kind": "image",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "nano-banana-2"
-      ],
-      "family": "nano-banana",
-      "identityGapWith": "nano banana 2",
-      "vendors": [
-        {
-          "key": "fal",
-          "name": "fal.ai",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "edit"
-        ],
-        "modeTerms": [
-          "文生图",
-          "改图"
-        ],
-        "references": {
-          "image_ref": 14
-        },
-        "resolutions": [
-          "1K",
-          "2K",
-          "4K"
-        ],
-        "aspectRatios": [
-          "auto",
-          "1:1",
-          "16:9",
-          "9:16",
-          "4:3",
-          "3:4",
-          "3:2",
-          "2:3",
-          "5:4",
-          "4:5",
-          "21:9",
-          "1:4",
-          "4:1",
-          "1:8",
-          "8:1"
-        ],
-        "durationSeconds": null,
         "audio": false,
         "variants": []
       }
@@ -1158,49 +1220,8 @@
       }
     },
     {
-      "slug": "seedream-5-pro",
-      "canonicalId": "seedream 5.0 pro · fal",
-      "label": "Seedream 5.0 Pro · fal",
-      "kind": "image",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "seedream-5-pro"
-      ],
-      "family": "seedream",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "fal",
-          "name": "fal.ai",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "edit"
-        ],
-        "modeTerms": [
-          "文生图",
-          "改图"
-        ],
-        "references": {
-          "image_ref": 10
-        },
-        "resolutions": [
-          "1K",
-          "2K"
-        ],
-        "aspectRatios": [],
-        "durationSeconds": null,
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
       "slug": "minimax-h3-max",
-      "canonicalId": "minimax h3-max · fal",
+      "canonicalId": "minimax h3-max",
       "label": "MiniMax H3-Max · fal",
       "kind": "video",
       "lifecycle": "flagship",
@@ -1250,66 +1271,6 @@
       }
     },
     {
-      "slug": "seedance-2-5-fal",
-      "canonicalId": "seedance 2.5 · fal",
-      "label": "Seedance 2.5 · fal",
-      "kind": "video",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "seedance-2.5"
-      ],
-      "family": "seedance",
-      "identityGapWith": "seedance 2.5",
-      "vendors": [
-        {
-          "key": "fal",
-          "name": "fal.ai",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "single",
-          "firstlast",
-          "character"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "首帧",
-          "首尾帧",
-          "全能参考"
-        ],
-        "references": {
-          "first_frame": 1,
-          "last_frame": 1,
-          "image_ref": 30,
-          "video_ref": 10,
-          "audio_ref": 10
-        },
-        "resolutions": [
-          "480p",
-          "720p"
-        ],
-        "aspectRatios": [
-          "adaptive",
-          "16:9",
-          "9:16",
-          "1:1",
-          "4:3",
-          "3:4",
-          "21:9"
-        ],
-        "durationSeconds": {
-          "min": 4,
-          "max": 30
-        },
-        "audio": true,
-        "variants": []
-      }
-    },
-    {
       "slug": "kling-3-0-fal",
       "canonicalId": "kling v3 pro · fal",
       "label": "Kling V3 Pro · fal",
@@ -1350,63 +1311,6 @@
           "options": [
             "3",
             "5",
-            "10"
-          ]
-        },
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "gemini-omni-1-1",
-      "canonicalId": "gemini omni flash 1.1 · fal",
-      "label": "Gemini Omni Flash 1.1 · fal",
-      "kind": "video",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "gemini-omni-1.1"
-      ],
-      "family": "gemini-omni",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "fal",
-          "name": "fal.ai",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "firstlast",
-          "character"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "首尾帧",
-          "参考图"
-        ],
-        "references": {
-          "first_frame": 1,
-          "last_frame": 1,
-          "image_ref": 7
-        },
-        "resolutions": [
-          "360p",
-          "720p",
-          "1080p",
-          "4k"
-        ],
-        "aspectRatios": [
-          "16:9",
-          "9:16"
-        ],
-        "durationSeconds": {
-          "options": [
-            "4",
-            "6",
-            "8",
             "10"
           ]
         },
@@ -1523,66 +1427,6 @@
           ]
         },
         "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "runway-seedance-2-5",
-      "canonicalId": "runway seedance 2.5",
-      "label": "Runway Seedance 2.5",
-      "kind": "video",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "seedance-2.5-runway"
-      ],
-      "family": "seedance",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "single",
-          "firstlast",
-          "character"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "首帧",
-          "首尾帧",
-          "全能参考"
-        ],
-        "references": {
-          "first_frame": 1,
-          "last_frame": 1,
-          "image_ref": 30,
-          "video_ref": 10,
-          "audio_ref": 10
-        },
-        "resolutions": [
-          "480p",
-          "720p"
-        ],
-        "aspectRatios": [
-          "adaptive",
-          "16:9",
-          "9:16",
-          "1:1",
-          "4:3",
-          "3:4",
-          "21:9"
-        ],
-        "durationSeconds": {
-          "min": 4,
-          "max": 30
-        },
-        "audio": true,
         "variants": []
       }
     },
@@ -1785,168 +1629,6 @@
       }
     },
     {
-      "slug": "runway-wan-3",
-      "canonicalId": "runway wan 3",
-      "label": "Runway Wan 3",
-      "kind": "video",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "wan-3.0"
-      ],
-      "family": "wan",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "single",
-          "firstlast",
-          "character"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "首帧",
-          "首尾帧",
-          "全能参考"
-        ],
-        "references": {
-          "first_frame": 1,
-          "last_frame": 1,
-          "image_ref": 10,
-          "video_ref": 5,
-          "audio_ref": 5
-        },
-        "resolutions": [
-          "480P",
-          "720P",
-          "1080P"
-        ],
-        "aspectRatios": [
-          "adaptive",
-          "16:9",
-          "4:3",
-          "1:1",
-          "3:4",
-          "9:16"
-        ],
-        "durationSeconds": {
-          "min": 2,
-          "max": 30
-        },
-        "audio": false,
-        "variants": [
-          "Wan 3.0",
-          "Wan 3.0 高速"
-        ]
-      }
-    },
-    {
-      "slug": "runway-grok-imagine-1-5",
-      "canonicalId": "runway grok imagine 1.5",
-      "label": "Runway Grok Imagine 1.5",
-      "kind": "video",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "grok-imagine-1.5-video"
-      ],
-      "family": "grok-imagine",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "single"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "图生视频"
-        ],
-        "references": {
-          "image_ref": 7
-        },
-        "resolutions": [],
-        "aspectRatios": [],
-        "durationSeconds": {
-          "min": 6,
-          "max": 30
-        },
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "runway-hailuo-3",
-      "canonicalId": "runway hailuo 3",
-      "label": "Runway Hailuo 3",
-      "kind": "video",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "minimax-h3"
-      ],
-      "family": "minimax",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "single",
-          "character"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "图生视频",
-          "参考生视频"
-        ],
-        "references": {
-          "first_frame": 1,
-          "last_frame": 1,
-          "image_ref": 9,
-          "video_ref": 3,
-          "audio_ref": 3
-        },
-        "resolutions": [
-          "768P",
-          "2K"
-        ],
-        "aspectRatios": [
-          "16:9",
-          "9:16",
-          "1:1",
-          "4:3",
-          "3:4",
-          "21:9",
-          "adaptive"
-        ],
-        "durationSeconds": {
-          "min": 4,
-          "max": 15
-        },
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
       "slug": "runway-veo-3-1",
       "canonicalId": "runway veo 3.1",
       "label": "Runway Veo 3.1",
@@ -2053,262 +1735,8 @@
       }
     },
     {
-      "slug": "runway-gemini-omni-flash",
-      "canonicalId": "runway gemini omni flash",
-      "label": "Runway Gemini Omni Flash",
-      "kind": "video",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "gemini-omni-1.1"
-      ],
-      "family": "gemini-omni",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "firstlast",
-          "character"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "首尾帧",
-          "参考图"
-        ],
-        "references": {
-          "first_frame": 1,
-          "last_frame": 1,
-          "image_ref": 7
-        },
-        "resolutions": [
-          "360p",
-          "720p",
-          "1080p",
-          "4k"
-        ],
-        "aspectRatios": [
-          "16:9",
-          "9:16"
-        ],
-        "durationSeconds": {
-          "options": [
-            "4",
-            "6",
-            "8",
-            "10"
-          ]
-        },
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "runway-gpt-image-2",
-      "canonicalId": "runway gpt image 2",
-      "label": "Runway GPT Image 2",
-      "kind": "image",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "gpt-image-2"
-      ],
-      "family": "gpt-image",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "edit"
-        ],
-        "modeTerms": [
-          "文生图",
-          "图生图"
-        ],
-        "references": {
-          "image_ref": 16
-        },
-        "resolutions": [
-          "1K",
-          "2K",
-          "4K"
-        ],
-        "aspectRatios": [
-          "auto",
-          "1:1",
-          "3:2",
-          "2:3",
-          "4:3",
-          "3:4",
-          "5:4",
-          "4:5",
-          "16:9",
-          "9:16",
-          "2:1",
-          "1:2",
-          "3:1",
-          "1:3",
-          "21:9",
-          "9:21"
-        ],
-        "durationSeconds": null,
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "runway-seedream-5-pro",
-      "canonicalId": "runway seedream 5 pro",
-      "label": "Runway Seedream 5 Pro",
-      "kind": "image",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "seedream-5-pro"
-      ],
-      "family": "seedream",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "edit"
-        ],
-        "modeTerms": [
-          "文生图",
-          "改图"
-        ],
-        "references": {
-          "image_ref": 10
-        },
-        "resolutions": [
-          "1K",
-          "2K"
-        ],
-        "aspectRatios": [],
-        "durationSeconds": null,
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "runway-seedream-5-lite",
-      "canonicalId": "runway seedream 5 lite",
-      "label": "Runway Seedream 5 Lite",
-      "kind": "image",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "kie-seedream-5-lite"
-      ],
-      "family": "seedream",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "edit"
-        ],
-        "modeTerms": [
-          "文生图",
-          "改图"
-        ],
-        "references": {
-          "image_ref": 14
-        },
-        "resolutions": [],
-        "aspectRatios": [
-          "1:1",
-          "4:3",
-          "3:4",
-          "16:9",
-          "9:16",
-          "2:3",
-          "3:2",
-          "21:9"
-        ],
-        "durationSeconds": null,
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "runway-gemini-2-5-flash-image",
-      "canonicalId": "runway gemini 2.5 flash image",
-      "label": "Runway Gemini 2.5 Flash Image",
-      "kind": "image",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "nano-banana"
-      ],
-      "family": "nano-banana",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "edit"
-        ],
-        "modeTerms": [
-          "文生图",
-          "改图"
-        ],
-        "references": {
-          "image_ref": 10
-        },
-        "resolutions": [],
-        "aspectRatios": [
-          "1:1",
-          "9:16",
-          "16:9",
-          "3:4",
-          "4:3",
-          "3:2",
-          "2:3",
-          "5:4",
-          "4:5",
-          "21:9",
-          "auto"
-        ],
-        "durationSeconds": null,
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
-      "slug": "runway-muse-image",
-      "canonicalId": "runway muse image",
+      "slug": "muse-image",
+      "canonicalId": "muse image",
       "label": "Runway Muse Image",
       "kind": "image",
       "lifecycle": "flagship",
@@ -2463,101 +1891,6 @@
       }
     },
     {
-      "slug": "runway-gemini-image-3-1-flash",
-      "canonicalId": "runway gemini image 3.1 flash",
-      "label": "Runway Gemini Image 3.1 Flash",
-      "kind": "image",
-      "lifecycle": "flagship",
-      "recognized": true,
-      "archetypeIds": [
-        "gemini-image-3.1-flash"
-      ],
-      "family": "gemini-image-3",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "single"
-        ],
-        "modeTerms": [
-          "文生图",
-          "参考图/改图"
-        ],
-        "references": {
-          "image_ref": 14
-        },
-        "resolutions": [],
-        "aspectRatios": [
-          "512:512",
-          "416:624",
-          "624:416",
-          "432:592",
-          "592:432",
-          "448:576",
-          "576:448",
-          "384:672",
-          "672:384",
-          "768:336",
-          "256:1024",
-          "1024:256",
-          "176:1408",
-          "1408:176",
-          "1024:1024",
-          "832:1248",
-          "1248:832",
-          "864:1184",
-          "1184:864",
-          "896:1152",
-          "1152:896",
-          "768:1344",
-          "1344:768",
-          "1536:672",
-          "512:2048",
-          "2048:512",
-          "352:2816",
-          "2816:352",
-          "2048:2048",
-          "1696:2528",
-          "2528:1696",
-          "1792:2400",
-          "2400:1792",
-          "1856:2304",
-          "2304:1856",
-          "1536:2752",
-          "2752:1536",
-          "3168:1344",
-          "1024:4096",
-          "4096:1024",
-          "704:5632",
-          "5632:704",
-          "4096:4096",
-          "3392:5056",
-          "5056:3392",
-          "3584:4800",
-          "4800:3584",
-          "3712:4608",
-          "4608:3712",
-          "3072:5504",
-          "5504:3072",
-          "6336:2688",
-          "2048:8192",
-          "8192:2048",
-          "1408:11264",
-          "11264:1408"
-        ],
-        "durationSeconds": null,
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
       "slug": "nano-banana-2-lite",
       "canonicalId": "nano banana 2 lite",
       "label": "Nano Banana 2 Lite",
@@ -2633,6 +1966,11 @@
         {
           "key": "volcengine",
           "name": "火山方舟",
+          "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
           "authType": "bearer"
         }
       ],
@@ -2896,67 +2234,6 @@
         },
         "audio": false,
         "variants": []
-      }
-    },
-    {
-      "slug": "sora-2",
-      "canonicalId": "sora 2",
-      "label": "Sora 2",
-      "kind": "video",
-      "lifecycle": "companion",
-      "recognized": true,
-      "archetypeIds": [
-        "sora-2",
-        "rh-sora-2"
-      ],
-      "family": "sora",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "apimart",
-          "name": "APIMart",
-          "authType": "bearer"
-        },
-        {
-          "key": "runninghub",
-          "name": "RunningHub",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "single"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "图生视频"
-        ],
-        "references": {
-          "image_ref": 1,
-          "first_frame": 1
-        },
-        "resolutions": [
-          "720p"
-        ],
-        "aspectRatios": [
-          "16:9",
-          "9:16"
-        ],
-        "durationSeconds": {
-          "options": [
-            "4",
-            "8",
-            "12",
-            "16",
-            "20"
-          ]
-        },
-        "audio": false,
-        "variants": [
-          "标准",
-          "Pro"
-        ]
       }
     },
     {
@@ -3667,62 +2944,6 @@
       }
     },
     {
-      "slug": "runway-happyhorse-1-0",
-      "canonicalId": "runway happyhorse 1.0",
-      "label": "Runway HappyHorse 1.0",
-      "kind": "video",
-      "lifecycle": "companion",
-      "recognized": true,
-      "archetypeIds": [
-        "happyhorse"
-      ],
-      "family": "happyhorse",
-      "identityGapWith": null,
-      "vendors": [
-        {
-          "key": "runway",
-          "name": "Runway Dev",
-          "authType": "bearer"
-        }
-      ],
-      "facts": {
-        "intents": [
-          "text",
-          "single",
-          "character",
-          "edit"
-        ],
-        "modeTerms": [
-          "文生视频",
-          "图生视频",
-          "角色参考",
-          "视频编辑"
-        ],
-        "references": {
-          "first_frame": 1,
-          "image_ref": 9,
-          "source_video": 1
-        },
-        "resolutions": [
-          "720p",
-          "1080p"
-        ],
-        "aspectRatios": [
-          "16:9",
-          "9:16",
-          "1:1",
-          "4:3",
-          "3:4"
-        ],
-        "durationSeconds": {
-          "min": 3,
-          "max": 15
-        },
-        "audio": false,
-        "variants": []
-      }
-    },
-    {
       "slug": "soul-2",
       "canonicalId": "soul 2",
       "label": "Soul 2",
@@ -4005,6 +3226,11 @@
           "key": "kie",
           "name": "Kie.ai",
           "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
+          "authType": "bearer"
         }
       ],
       "facts": {
@@ -4138,6 +3364,11 @@
         {
           "key": "runninghub",
           "name": "RunningHub",
+          "authType": "bearer"
+        },
+        {
+          "key": "runway",
+          "name": "Runway Dev",
           "authType": "bearer"
         }
       ],
