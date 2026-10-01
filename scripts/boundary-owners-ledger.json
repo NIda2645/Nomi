@@ -595,6 +595,12 @@
       "path": "electron/shared/agentCapabilities/canvasWrite.ts",
       "symbol": "isRendererOwnedStoryboardProposal",
       "reason": "它的两个消费方 projectAgentExecutionCoordinator / projectAgentTurnExecution 在 agent-lane 切换（commit 36f343204 一系）中随旧 projectAgentHost 整体删除，之后全仓零调用方；lane 侧没有「渲染层持有的分镜提案」这一执行目标（分镜草稿走 draft_shots，不经提案登记）。2026-09-24 同类扫描按 P1 删除这个死符号，该合同针对旧运行时的不变量随之不再适用。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-11-door-map-rule.root-cause.json",
+      "path": "scripts/check-door-map.mjs",
+      "symbol": "evaluatePullRequest",
+      "reason": "check:door-map 已于 2026-10-01 并入 check:root-cause-contracts（用户按门岗账本 docs/audit/2026-10-01-gate-ledger.md 拍板）：被删的只是「recurring 合同的 PR 正文必须引用那份合同」这一半（窗口里 5 次红全是补引用 / 补门表）；门表合法性（必填、path 存在、符号对得上、不许行号、不许重复）一直在 root-cause-contracts.mjs 的 validateDoorMap，不变量仍有主人。"
     }
   ],
   "unverified": [

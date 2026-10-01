@@ -357,7 +357,7 @@ function sendReply(state, reply) {
  * `videoResultPath`：apimart 档出片地址的路径段（缺省 `/fixture/video.mp4`）。真供应商的产物地址常带一个很长的
  * basename（签名段 / 哈希段），落盘时怎么起名要靠它复现（2026-09-26 长文件名被截成 `.bin`）。
  */
-export async function createAgentRuntimeFixture({ rootDir, settingsDir, generationProvider = 'loopback', userDataDir, appName, videoResultPath = '/fixture/video.mp4', usage = 'fixed', extraImageVendor = false }) {
+export async function createAgentRuntimeFixture({ rootDir, settingsDir, generationProvider = 'loopback', userDataDir, appName, videoResultPath = '/fixture/video.mp4', usage = 'fixed', extraImageVendor = false, contextLimitTokens = null }) {
   if (!/^\/fixture\/[^/?#]+$/.test(videoResultPath)) throw new TypeError('videoResultPath must be /fixture/<name>')
   if (!['fixed', 'measured'].includes(usage)) throw new TypeError("usage must be 'fixed' or 'measured'")
   if (!path.isAbsolute(rootDir) || !path.isAbsolute(settingsDir)) {
@@ -546,6 +546,16 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
     if (record.path !== '/v1/chat/completions') {
       rejectRequest(record, response, `Unexpected route: ${request.method} ${record.path}`)
       return
+    }
+    // 真供应商的上下文窗口：一次请求的输入超过它就整条回 400（与 OpenAI 兼容端点的措辞一致，pi 据此判「上下文溢出」）。
+    // 用户反馈「Assistant request exceeded the context window」就是这条路；夹具不设窗口时永远不会复现它。
+    if (contextLimitTokens) {
+      const promptTokens = estimateFixtureTokens(JSON.stringify({ messages: record.body?.messages ?? [], tools: record.body?.tools ?? [] }))
+      if (promptTokens > contextLimitTokens) {
+        record.contextOverflow = promptTokens
+        jsonResponse(response, 400, { error: { message: `Requested token count exceeds the model's maximum context length of ${contextLimitTokens} tokens (this request: ${promptTokens}).`, code: 'context_length_exceeded', type: 'invalid_request_error' } })
+        return
+      }
     }
     const measure = usage === 'measured' ? { usage: (reply) => measuredFixtureUsage(record.body, reply) } : {}
     const expectation = expectations.find((entry) => !entry.consumed && entry.match(record.body, record))

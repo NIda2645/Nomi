@@ -1,4 +1,4 @@
-// PR 正文的**唯一取法**（2026-09-18）。此前 check:prior-art 与 check:door-map 各自读一个
+// PR 正文的**唯一取法**（2026-09-18）。此前 check:prior-art 与（已于 2026-10-01 删除的）check:door-map 各自读一个
 // 工作流注入的 env（`PRIOR_ART_PR_BODY` / `DOOR_MAP_PR_BODY` = `github.event.pull_request.body`），
 // 也就是**事件负载里的那份正文**。
 //

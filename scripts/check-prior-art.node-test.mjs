@@ -4,7 +4,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  PRIOR_ART_DIFF_BUDGET,
   PRIOR_ART_THRESHOLD_DATE,
   evaluatePlans,
   evaluatePullRequest,
@@ -27,11 +26,12 @@ const GOOD_SECTION = `# 方案
 ## 范围
 `
 
-test('缺整节 → 红', () => {
+// 2026-10-01（P0「只写我们独有的」）：方案不再被强制写「先查别人」——领域工作（分镜、制作流程、画布……）
+// 没有现成的可查，逼人写一节只会写出「查过了，没有」。这一节只在**引入通用能力**时才有人要（见下面
+// 「登记表变了」那几条）；写了就必须写像样——有节但出处不足仍然红。
+test('没有「先查别人」这一节的方案 → 绿（领域工作不再要手续）', () => {
   const plans = new Map([['docs/plan/2026-09-08-x.md', '# 方案\n\n## 范围\n- 改这改那\n']])
-  const errors = evaluatePlans({ plans })
-  assert.equal(errors.length, 1)
-  assert.match(errors[0], /缺少「## 先查别人」一节/)
+  assert.deepEqual(evaluatePlans({ plans }), [])
 })
 
 test('有节但带出处的条目不足 3 条 → 红', () => {
@@ -64,25 +64,36 @@ test('节的边界只到同级或更高级标题，四级小标题算节内', ()
   assert.equal(section.sourced.length, 3)
 })
 
-test('大改 PR 正文没引用任何方案 → 红；小改不管', () => {
-  const plans = new Map([['docs/plan/2026-09-08-x.md', GOOD_SECTION]])
-  const big = evaluatePullRequest({ body: '顺手改了点东西', changedLines: PRIOR_ART_DIFF_BUDGET + 1, plans })
-  assert.equal(big.length, 1)
-  assert.match(big[0], /没有引用任何 docs\/plan/)
-  assert.deepEqual(evaluatePullRequest({ body: '顺手改了点东西', changedLines: PRIOR_ART_DIFF_BUDGET, plans }), [])
+test('PR 不动自写登记表：改多少行都不要求引用方案（旧的「超过 300 行」那道纸面门岗已删）', () => {
+  const plans = new Map()
+  assert.deepEqual(evaluatePullRequest({ body: '顺手改了点东西', registryChanged: false, plans }), [])
+  assert.deepEqual(evaluatePullRequest({ body: '', plans }), [])
 })
 
-test('大改 PR 引用了合格方案 → 绿；引用不存在或不合格的 → 红', () => {
+test('PR 新增 / 修改了自写登记表（= 新增通用能力）：正文既没引用方案也没带查证 → 红', () => {
+  const errors = evaluatePullRequest({ body: '顺手加了个通用能力', registryChanged: true, plans: new Map() })
+  assert.equal(errors.length, 1)
+  assert.match(errors[0], /自写登记表/)
+})
+
+test('登记表变了 + 引用合格方案 → 绿；引用不存在或不合格的 → 红', () => {
   const plans = new Map([
     ['docs/plan/2026-09-08-x.md', GOOD_SECTION],
     ['docs/plan/2026-09-08-bad.md', '# 方案\n## 范围\n- 无\n'],
   ])
-  const lines = PRIOR_ART_DIFF_BUDGET + 500
-  assert.deepEqual(evaluatePullRequest({ body: '见 docs/plan/2026-09-08-x.md', changedLines: lines, plans }), [])
-  const missing = evaluatePullRequest({ body: '见 docs/plan/2026-09-08-ghost.md', changedLines: lines, plans })
+  assert.deepEqual(evaluatePullRequest({ body: '见 docs/plan/2026-09-08-x.md', registryChanged: true, plans }), [])
+  const missing = evaluatePullRequest({ body: '见 docs/plan/2026-09-08-ghost.md', registryChanged: true, plans })
   assert.match(missing[0], /引用的方案不存在于本分支/)
-  const bad = evaluatePullRequest({ body: '见 docs/plan/2026-09-08-bad.md', changedLines: lines, plans })
+  const bad = evaluatePullRequest({ body: '见 docs/plan/2026-09-08-bad.md', registryChanged: true, plans })
   assert.match(bad[0], /引用的方案不合格/)
+})
+
+test('登记表变了 + 正文自己带一节合格的「先查别人」→ 绿；带了但出处不足 → 红', () => {
+  const good = evaluatePullRequest({ body: GOOD_SECTION, registryChanged: true, plans: new Map() })
+  assert.deepEqual(good, [])
+  const thin = evaluatePullRequest({ body: '## 先查别人\n- 查过了\n', registryChanged: true, plans: new Map() })
+  assert.equal(thin.length, 1)
+  assert.match(thin[0], /只有 0 条带出处/)
 })
 
 test('正文里的方案路径去重保序', () => {

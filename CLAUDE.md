@@ -2,7 +2,7 @@
 
 > **怎么读这份文件（3 层）**：
 > - **L0 每轮** = `scripts/claude-hooks/self-check.sh`（hook，每条消息自动注入「三闸 + 核心原则 + 近期坑」）——salience 层，本文件**不再复述它**。
-> - **L1 always 加载** = 本文件：项目事实 + 命令 + **P1–P5** + **D1–D6** + 规则索引。**每次 session 读完再动手。** 保持精简（一屏左右）。
+> - **L1 always 加载** = 本文件：项目事实 + 命令 + **P0–P5** + **D1–D6** + 规则索引。**每次 session 读完再动手。** 保持精简（一屏左右）。
 > - **L2 触发才查** = `docs/engineering-rules.md`（18 个主号详解 + 旧号别名表）；`docs/coding-standards.md`（编码规范）；`docs/lessons/INDEX.md`（踩过的坑，按 A/B/C/D/E/F 场景分，走查/CI/分支/平台/产品/编排前各查一眼）；`docs/ARCHITECTURE-NOW.md`（各子系统现在真正跑的是什么，带 file:line，读方案前先过）；`docs/GLOSSARY.md`（同一东西的多个叫法）。
 >
 > **维护纪律**：本文件是**策展的，不是 append 的**。新踩的坑进 `docs/lessons/`（一条一个文件，挂 `INDEX.md`）或 hook 的 `violations.log`，**不塞这里**；只有「反复出现 + 永远相关」的原则才提升进 L1。Hook 真相源是 `scripts/claude-hooks/`，`pnpm install` postinstall 自动装进 `.claude/`；`check:claude-hooks` 验同步。**禁止手改 `AGENTS.md`**：改纪律只改本文件，再跑 `pnpm run gen:agents`；`check:agents-sync` 拦漂移。本文件已做过可机器化分诊，删减依据见 `docs/engineering/rule-enforcement-audit.md`。
@@ -40,20 +40,22 @@ Nomi：本地优先 AI 视频创作工作台。
 | `pnpm run check:i18n` | 可见文字国际化门岗（禁止新增硬编码 UI 文案；遗留基线只减不增）|
 | `pnpm run check:framework-boundary` | 框架边界门岗（框架已提供的能力不许再长一份自研版本；债只减不增、绑方案、到期即红）|
 | `node scripts/door-map.mjs <符号或文件>` | 数门（列出一份状态的全部写/读入口，输出直接粘进根因合同 `doors`）|
-| `pnpm run check:door-map` | 数门门岗（`recurring` 合同必须带门表，PR 正文必须引用它）|
 | `pnpm run check:real-media-fixture` | 真实素材门岗（画布性能/导入/导出/走查四类各至少一条真素材测试；合成夹具棘轮只减不增；缺素材硬红不许 skip，CI 未就位期只能记带到期日的债）|
 | `pnpm run check:rule-aliases` | 规则编号解析门岗（家规文件里任何 `R<数字>` 都要解析得到——合并规则不许留悬空引用）|
+| `pnpm run check:self-written` | 自写登记门岗（P0：diff 里在 `src/`、`electron/` 新增、落在领域目录之外又没被登记表认领的代码文件就报；`enforceFrom` 之前警告、之后阻断；测试 / 类型声明 / 纯接线豁免）|
 | `pnpm run check:framework-surface` | 框架接触面门岗（登记框架公开的**每个字段**都要有一条裁决：派生/常量/不用/上游默认/带到期日的债；上游升级加字段即红）|
 | `pnpm run check:audit` | 审计节奏提醒（≥25 commit 提示） |
 | `npx skills experimental_install` | 从 `skills-lock.json` 还原 `.claude/skills/`（换机/协作者用） |
 
-**Push 前按风险面分层（R22）**：contracts 始终跑（一次跑完全部门岗再汇总，不再第一个红就停；`check:docs-index`/`check:doc-status`/`check:ledger` 只出 warning 不阻断，合入 main 后由 `docs-autosync` workflow 自动补齐回写）；unit 独立选 focused/full（**本机 `pnpm run gates` 也按同一份 `scripts/validation-policy.mjs` 分档**，全量一万两千多个测试交给 CI 并行机器，不再占着全机那把 gates 锁；想本机兜底跑全量用 `pnpm run gates:full`）；Electron、真实旅程、React Flow 画布、性能和 macOS package 各按受影响路径独立触发，`main` push 也按真实 `before..after` 分类，不因事件名自动全量。删除/重命名、空 diff、测试/CI 分类器自身和手动发布边界 fail-closed 到全维度。连续小修先在本地收敛，再一次性验证和 push，不让每个微提交反复触发全套 CI。
+**Push 前按风险面分层（R22）**：contracts 始终跑（一次跑完全部门岗再汇总，不再第一个红就停；`check:ledger` 只出 warning 不阻断；`check:docs-index` / `check:doc-status` / `check:research-sources` 已于 2026-10-01 按门岗账本移出 PR 的 Contracts——合入 main 后由 `docs-autosync` workflow 自动补齐回写；`check:symptom-cluster` 降为提示）；unit 独立选 focused/full（**本机 `pnpm run gates` 也按同一份 `scripts/validation-policy.mjs` 分档**，全量一万两千多个测试交给 CI 并行机器，不再占着全机那把 gates 锁；想本机兜底跑全量用 `pnpm run gates:full`）；Electron、真实旅程、React Flow 画布、性能和 macOS package 各按受影响路径独立触发，`main` push 也按真实 `before..after` 分类，不因事件名自动全量。删除/重命名、空 diff、测试/CI 分类器自身和手动发布边界 fail-closed 到全维度。连续小修先在本地收敛，再一次性验证和 push，不让每个微提交反复触发全套 CI。
 
 **交付身份只走统一命令**：任务开始先跑 `delivery:preflight`；PR 合并后**立即**在 Git fetch 得到的真实 merge SHA 上跑 `delivery:verify-merged`：非纯文档的 merge 必须看到该 SHA 上 `Core Flow Smoke (empty)` / `(used)` 都是 success 才发收据（skipped / 缺席一律拒绝）。**上一个合入没有收据，就不合下一个**；冒烟红了不自动回滚，由人决定修还是 revert。任务 commit、PR head、merge commit 与 tree 分开报告；禁止用 REST compare 文件列表重建 Git tree/commit，禁止把 `same-tree-different-commit` 叫成代码不匹配。
 
-**交工前的 Ponytail 评审（R25，R24 由 PR #223 保留）**：评审只在**能落地的时刻**跑一次——交工前对整条分支 `merge-base(origin/main, HEAD)..HEAD` 跑 `pnpm run review:branch`（只读、限时的 Ponytail 适配器，超过单次上限自动按提交／按文件分块多跑几次再合并，不再逼人拆提交）。findings 落 `.claude/ponytail-findings/<headSha>.md`，收据落 `.claude/ponytail-receipt.json`；PR 正文必须带 `## Ponytail` 节，每条发现写「已改」或「不改，因为…」。**钩子只查收据不跑模型**：`pre-commit` 只做敏感数据扫描；`pre-push` 校验要推的每个 ref 的**树**等于收据的树（rebase／改提交信息不改树，不必重审；改一行就失效）——没有收据、树不符、收据 mergeBase 不在这条历史里都 fail-closed。**runner 不可用时的留痕延后**：`pnpm run review:branch -- --defer` 记一行进 `.claude/ponytail-deferred.log` 并发一张 deferred 收据，`check:ponytail-review` 一直红到补审或 `--accept <sha>`；绕口写法（`--no-verify`、`-c core.hooksPath=` 等）照旧拒绝。
+**交工前的 Ponytail 评审（R25，R24 由 PR #223 保留）**：评审只在**能落地的时刻**跑一次——交工前对整条分支 `merge-base(origin/main, HEAD)..HEAD` 跑 `pnpm run review:branch`（只读、限时的 Ponytail 适配器，超过单次上限自动按提交／按文件分块多跑几次再合并，不再逼人拆提交）。findings 落 `.claude/ponytail-findings/<headSha>.md`，收据落 `.claude/ponytail-receipt.json`；PR 正文必须带 `## Ponytail` 节，每条发现写「已改」或「不改，因为…」。**钩子只查收据不跑模型**：`pre-commit` 只做敏感数据扫描；`pre-push` 校验要推的每个 ref 的**树**等于收据的树（rebase／改提交信息不改树，不必重审；改一行就失效）——没有收据、树不符、收据 mergeBase 不在这条历史里都 fail-closed。**2026-10-01 起降为提示**（用户按门岗账本拍板：47 个 PR 里约 33 个是 `--defer`，要求没有信息量）：pre-push 的收据要求与 `check:ponytail-review` 只打印提示、不阻断，模式在 `docs/engineering/ponytail-mode.json`；**Codex 恢复以后把 `mode` 改回 `enforce`（一行）、再跑一次 `pnpm run review:branch` 补真收据即重新开起来**（评审本体、收据、延后账本都没删）。**runner 不可用时的留痕延后**：`pnpm run review:branch -- --defer` 记一行进 `.claude/ponytail-deferred.log` 并发一张 deferred 收据，`check:ponytail-review` 一直红到补审或 `--accept <sha>`；绕口写法（`--no-verify`、`-c core.hooksPath=` 等）照旧拒绝。
 
-## 五条核心原则
+## 六条核心原则
+
+**P0 只写我们独有的** — Nomi 自己写的只有领域本身（分镜、镜头与制作流程、画布、素材、按镜头的花钱语义……以 `docs/engineering/self-written.json` 的领域目录为准）；其余一律接入现成的框架 / 库 / 标准，「先查别人」的结论**默认是接入**，不是查完照样自写。领域目录之外自写一项通用能力是例外：必须进自写登记表，理由只认领域约束（花钱要批准、画布写入要回执、隐私承诺不经第三方……），框架后来有了就换掉；登记表里标了「待替换」的不是借口。自检：「这段是我们独有的吗？不是 → 先找现成的接入。」（门岗 `check:self-written`：领域目录外新增文件没登记就报；R5 是它的执行手册。）
 
 **P1 加新必删旧** — 引入新实现时同 commit 删旧实现，无并行版、无 fallback、无逃生口。CSS 同理：新样式只写组件 `className`，迁 Tailwind 即删旧 CSS；全局 CSS 只可减不可增。
 
@@ -93,7 +95,7 @@ Nomi：本地优先 AI 视频创作工作台。
 | R2 | 用户视角 + 极简 | 每条信息问「有行动价值吗」，没有删；好产品不靠文字解释；每屏记信息密度三个数 |
 | R3 | 决策对比表 | 涉及取舍先给用户对比表（方案/用户看到/代价），不单方面开干；样张内两条拍板冲突 → 停下上报 |
 | R4 | 执行前写文档 | 多文件/多步改动先写 `docs/plan`：范围/不动项/回滚/验收门；「先查别人」一节是 R5 的落点 |
-| R5 | 先查别人（一条规则，五个触发面）| 动手前先去看别人已经做好的是什么，**凭记忆判断 = 没查**。① 用第三方库的某个 API → Context7 查官方文档｜② 做方案 → 读同用户任务/同媒介/同载体的近邻开源给 file:line + 反方 prior-art 报告（旧 R6，`check:prior-art`）｜③ 要写一段**通用能力** → build-vs-buy 三问：通用问题？同类怎么做（实查）？在不在护城河上（旧 R20）｜④ 引入/接入/升级框架 SDK 运行时**或它没用过的层** → 四列表 + 参考实现逐层对照 + framework-surface 逐字段裁决，三份都进 `framework-boundaries.json`（旧 R29，`check:framework-boundary`/`check:framework-surface`）｜⑤ **外部也读写**的格式/协议/契约 → 先找规范，写「规范链接/我们的偏差/偏差理由」，理由只许是领域约束、扩展只放标准的扩展点（旧 R31，`check:standard-formats`）。代价落在我们身上＝③④；代价落在**用户**身上＝⑤ |
+| R5 | P0 的执行：怎么找到现成的（一条规则，五个触发面）| 动手前先去看别人已经做好的是什么，**凭记忆判断 = 没查**，**结论默认是接入（P0）**。① 用第三方库的某个 API → Context7 查官方文档｜② 做方案 → 读同用户任务/同媒介/同载体的近邻开源给 file:line + 反方 prior-art 报告（旧 R6，`check:prior-art`）｜③ 要写一段**通用能力** → build-vs-buy 三问：通用问题？同类怎么做（实查）？在不在护城河上（旧 R20，`check:self-written`）｜④ 引入/接入/升级框架 SDK 运行时**或它没用过的层** → 四列表 + 参考实现逐层对照 + framework-surface 逐字段裁决，三份都进 `framework-boundaries.json`（旧 R29，`check:framework-boundary`/`check:framework-surface`）｜⑤ **外部也读写**的格式/协议/契约 → 先找规范，写「规范链接/我们的偏差/偏差理由」，理由只许是领域约束、扩展只放标准的扩展点（旧 R31，`check:standard-formats`）。代价落在我们身上＝③④；代价落在**用户**身上＝⑤ |
 | R7 | 6 角色评审 | 项目方案定稿前：CTO / 设计 / PM / 前端 / 后端 / 真实用户各审一遍；另开 agent 做对抗评审 |
 | R8 | 先出样张 | 用户可见改动先出 mockup + 用户拍板；改/扩现有 UI 先看它真实样子；实现后必须与样张逐项对账（`check:mockup-contracts`）|
 | R9 | 模块化 + 防巨壳 | 写码前想清楚分层；单文件 ≤800 行；白名单巨壳只减不增（`check:filesize`，旧 R12）|
@@ -102,9 +104,9 @@ Nomi：本地优先 AI 视频创作工作台。
 | R14 | 周期审计 | ≥25 commit 或发版前：多维 subagent 审计 + 走查 + `docs/audit` 文档；固定含 R14.1「同一语义有几份定义」七维横扫与对偶路径检查，R14.2 三条（依赖框架四列表重跑 + 核心链路真实模型量数字 + 重造清单反向扫）；功能交付前按 R14.3 审完整任务差异，脚本/中等模型做机械核查，强模型核高风险，修后复审 |
 | R15 | 可见文字国际化 | 所有用户可见文字走 i18n；默认 `zh-CN`，当前仅 `zh-CN`/`en`；`check:i18n` 硬零无基线；zh/en 两轨都要真截图（EN 串长 1.5-2 倍，截断只有眼睛看得出）|
 | R17 | 防线建在最早能拦住的那层（含棘轮门岗族）| 能让编译器拦的别留给门岗，能让门岗拦的别留给人（旧 R28）；安全关键依赖不许「optional + 欠账登记」——**登记是带到期日的承诺，不是防线**；能力可能不存在时用显式 `unsupported`，不用 `undefined`。已机器接管的写法族一律做成**棘轮**：基线只减不增、存身份不存裸数字、**加规则必须先验它会红**——重活 `check:heavy-path`（旧 R17）｜测试等待 `check:test-waits`（旧 R18，硬零）｜分层边界 `check:boundaries`（旧 R26）｜token / 词表 / i18n / 框架边界 / 框架接触面 / 标准格式。门岗红了**先读它红在哪条判据**，别改预算或抬基线挤 PR（那是 P2 的症状修法）|
-| R21 | 修复必须走根因流程；可复发/高风险交 v3 合同 | 所有纠正性改动强制走 `root-cause-remediation`；`recurring` 或高风险生产路径提交 schema-v3 `docs/fixes/*.root-cause.json`（`check:root-cause-contracts`）；必答「这条不变量归哪层管、那层有没有测试」（`invariant_owner_layer`）、必带机器生成的门表（`doors`，先跑 `node scripts/door-map.mjs`，`check:door-map`）；同一层 7 天内第三份合同先出结构评审（`check:symptom-cluster`）|
+| R21 | 修复必须走根因流程；可复发/高风险交 v3 合同 | 所有纠正性改动强制走 `root-cause-remediation`；`recurring` 或高风险生产路径提交 schema-v3 `docs/fixes/*.root-cause.json`（`check:root-cause-contracts`）；必答「这条不变量归哪层管、那层有没有测试」（`invariant_owner_layer`）、必带机器生成的门表（`doors`，先跑 `node scripts/door-map.mjs`，由 `check:root-cause-contracts` 校验；PR 正文不再要求引用）；同一层 7 天内第三份合同先出结构评审（`check:symptom-cluster`，2026-10-01 起只提示不阻断）|
 | R22 | 验证分层与测试预算 | contracts 常跑；unit/desktop/journey/canvas/performance/package 按真实风险独立触发；删改名、空 diff、分类器自身与手动发布边界 fail-closed 到全维度；不删安全/持久化/认证边界覆盖；**没有真实资源时记 `unverified`，不许 mock 绿灯替代 live 证据** |
-| R25 | 交工前 Ponytail 评审 | 交工前 `pnpm run review:branch` 对整分支跑一次（超限自动分块）、findings 进 PR 正文 `## Ponytail` 节逐条表态；钩子只查收据（树相等即放行），失败或无收据 fail-closed，runner 不可用时只许 `-- --defer` 留痕延后 |
+| R25 | 交工前 Ponytail 评审 | 交工前 `pnpm run review:branch` 对整分支跑一次（超限自动分块）、findings 进 PR 正文 `## Ponytail` 节逐条表态；钩子只查收据（树相等即放行）；**当前是提示模式**（`docs/engineering/ponytail-mode.json`，Codex 恢复后改回 `enforce` 即 fail-closed）；runner 不可用时只许 `-- --defer` 留痕延后 |
 | R27 | 多智能体编排手册 | 派工/收货/接力机器化纪律：谁的方案谁实施·验收必跨池、任务书发行权独占+开工三行头、收货三查（behind 数/两点回滚/套件失败 delta=0）、等待用 shell 哨兵轮询（禁 `--watch`/Monitor/交卷）；实施派工先引用反方 prior-art 报告（R5②）、`recurring` bug 派工两段式先出门表（R21）。详见 L2 `docs/engineering/agent-orchestration-playbook.md` |
 | R33 | 概念的 owner 先于目录 | 派工切的是概念不是文件夹：任务书必带「概念占用表」（碰哪些概念 / 唯一 owner 的文件·符号 / 允许谁消费），写不出不开工；同一时段同一概念只归一条 lane，要碰别人持有的概念先停下协调、不许先写再合；验收多一问「有没有多出第二个 owner」，测试绿不作为放行理由；正本 `docs/engineering/concept-owners.json`（只登记碰到的概念、当场登记、第二个写口即违规）；多入口共享同一概念要有「同一输入 → 出站报文逐字节相同」的对等棘轮。门岗 `check:concept-owners` 管形状（第二写口、pending 冻结、合同边界必须进账），语义对等仍靠 parity_test |
 

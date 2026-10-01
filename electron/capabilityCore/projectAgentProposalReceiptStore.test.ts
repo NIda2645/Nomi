@@ -7,6 +7,7 @@ import {
   hashProjectAgentCommittedProposal,
   createProjectAgentProposalReceiptService,
   projectAgentProposalReceiptPath,
+  PROJECT_AGENT_PREPARING_DEADLINE_MS,
 } from "./projectAgentProposalReceiptStore";
 
 const binding = {
@@ -258,3 +259,50 @@ describe("ProjectAgent committed proposal receipt", () => {
     ).toMatchObject({ lifecycle: "committed", proposal: correlated });
   });
 });
+
+describe("a preparing receipt has an owner-set deadline and then a terminal state", () => {
+  const second = { ...proposal, proposalId: "proposal-b" }
+  const stuck = (projectRoot: string, clock: { now: number }) => {
+    const service = createProjectAgentProposalReceiptService({ projectRoot, binding, now: () => clock.now })
+    const prepared = service.write({ expectedRevision: 0, proposalId: proposal.proposalId, operationId: "prepare-a", lifecycle: "preparing", proposal })
+    return { service, prepared }
+  }
+
+  it("inside the deadline a new write is still refused — and says when the old one settles and what to do", () => {
+    const clock = { now: Date.parse("2026-09-30T10:00:00Z") }
+    const { service, prepared } = stuck(tempProject(), clock)
+    clock.now += PROJECT_AGENT_PREPARING_DEADLINE_MS - 1_000
+    expect(() => service.write({ expectedRevision: prepared.revision, proposalId: second.proposalId, operationId: "prepare-b", lifecycle: "preparing", proposal: second }))
+      .toThrow(/unfinished operation[\s\S]*settled automatically[\s\S]*read/i)
+  })
+
+  it("past the deadline the stuck write ends in a terminal state on the next touch (read), and later writes go through", () => {
+    const clock = { now: Date.parse("2026-09-30T10:00:00Z") }
+    const { service, prepared } = stuck(tempProject(), clock)
+    clock.now += PROJECT_AGENT_PREPARING_DEADLINE_MS + 1
+    const settled = service.read()
+    expect(settled).toMatchObject({ lifecycle: "undone", proposalId: proposal.proposalId })
+    expect(settled!.revision).toBe(prepared.revision + 1)
+    const next = service.write({ expectedRevision: settled!.revision, proposalId: second.proposalId, operationId: "prepare-b", lifecycle: "preparing", proposal: second })
+    expect(next).toMatchObject({ lifecycle: "preparing", proposalId: second.proposalId })
+  })
+
+  it("the settlement is durable and idempotent: a recreated reader sees the same terminal receipt, not a second settlement", () => {
+    const clock = { now: Date.parse("2026-09-30T10:00:00Z") }
+    const projectRoot = tempProject()
+    const { service, prepared } = stuck(projectRoot, clock)
+    clock.now += PROJECT_AGENT_PREPARING_DEADLINE_MS + 1
+    const first = service.read()!
+    const again = createProjectAgentProposalReceiptService({ projectRoot, binding, now: () => clock.now }).read()!
+    expect(again.revision).toBe(first.revision)
+    expect(first.revision).toBe(prepared.revision + 1)
+  })
+
+  it("a committed receipt never expires", () => {
+    const clock = { now: Date.parse("2026-09-30T10:00:00Z") }
+    const { service, prepared } = stuck(tempProject(), clock)
+    service.write({ expectedRevision: prepared.revision, proposalId: proposal.proposalId, operationId: "commit-a", lifecycle: "committed", proposal })
+    clock.now += PROJECT_AGENT_PREPARING_DEADLINE_MS * 10
+    expect(service.read()).toMatchObject({ lifecycle: "committed", revision: 2 })
+  })
+})

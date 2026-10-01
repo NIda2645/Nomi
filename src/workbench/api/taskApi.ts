@@ -1,5 +1,6 @@
 import { getDesktopBridge, type DesktopBridge } from '../../desktop/bridge'
-import type { TelemetryResult } from '../../../electron/shared/contracts/telemetry'
+import { TELEMETRY_ERROR_TYPE_PATTERN, type CapabilitySlot, type DurationBucket, type TelemetryResult } from '../../../electron/shared/contracts/telemetry'
+import { classifyGenerationError } from '../observability/classifyError'
 import { describeOpaqueFailure } from '../observability/opaqueFailure'
 
 export type TaskKind =
@@ -133,6 +134,58 @@ export async function mintSpendGrant(nodeIds: string[], maxAttemptsPerNode?: num
   return grantId
 }
 
+function telemetryCapability(kind: TaskKind): CapabilitySlot | null {
+  if (kind === 'text_to_image') return 'image'
+  if (kind === 'image_edit') return 'image-edit'
+  if (kind === 'text_to_video' || kind === 'image_to_video') return 'video'
+  if (kind === 'text_to_audio') return 'audio'
+  if (kind === 'text_to_3d' || kind === 'image_to_3d') return '3d'
+  return null
+}
+
+/**
+ * 失败只上报「类别码」——`classifyGenerationError` 那一张分类表的 kind，原文、URL、提示词、
+ * 文件名、供应商返回体一个字都不出这个函数。分不出来就是 'unknown'。
+ */
+function failureTypeOf(message: string | undefined): string {
+  try {
+    const kind = classifyGenerationError(String(message ?? '')).kind
+    return TELEMETRY_ERROR_TYPE_PATTERN.test(kind) ? kind : 'unknown'
+  } catch {
+    return 'unknown'
+  }
+}
+
+function trackGenerationOutcome(desktop: DesktopBridge, capability: CapabilitySlot, startedAt: number, result: TelemetryResult, failureMessage?: string): void {
+  const elapsed = (typeof performance !== 'undefined' ? performance.now() : Date.now()) - startedAt
+  void desktop.telemetry?.track({
+    eventName: 'generation.completed',
+    props: {
+      capability,
+      durationBucket: durationBucketOf(elapsed),
+      result,
+      attemptCountBucket: '1',
+      ...(result === 'failure' ? { errorType: failureTypeOf(failureMessage) } : {}),
+    },
+  })
+}
+
+function durationBucketOf(ms: number): DurationBucket {
+  return ms < 1000 ? '<1s' : ms <= 5000 ? '1-5s' : '>5s'
+}
+
+/** 已提交、还没到终态的异步生成：任务 id → 开始时间与能力。到终态报一次就删；上限防泄漏。 */
+const inFlightGenerations = new Map<string, { capability: CapabilitySlot; startedAt: number }>()
+const IN_FLIGHT_LIMIT = 200
+function rememberInFlightGeneration(taskId: string, capability: CapabilitySlot, startedAt: number): void {
+  if (!taskId) return
+  if (inFlightGenerations.size >= IN_FLIGHT_LIMIT) {
+    const oldest = inFlightGenerations.keys().next().value
+    if (oldest !== undefined) inFlightGenerations.delete(oldest)
+  }
+  inFlightGenerations.set(taskId, { capability, startedAt })
+}
+
 export async function runWorkbenchTaskByVendor(
   vendor: string,
   request: TaskRequestDto,
@@ -142,21 +195,24 @@ export async function runWorkbenchTaskByVendor(
   if (!normalizedVendor) throw new Error('vendor is required')
   const desktop = requireDesktopRuntime('task execution')
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-  const track = (result: TelemetryResult): void => {
-    const capability = request.kind === 'text_to_image' ? 'image' : request.kind === 'image_edit' ? 'image-edit' : request.kind === 'text_to_video' || request.kind === 'image_to_video' ? 'video' : request.kind === 'text_to_audio' ? 'audio' : request.kind === 'text_to_3d' || request.kind === 'image_to_3d' ? '3d' : null
-    if (!capability) return
-    const endedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
-    void desktop.telemetry?.track({ eventName: 'generation.completed', props: { capability, durationBucket: endedAt - startedAt < 1000 ? '<1s' : endedAt - startedAt <= 5000 ? '1-5s' : '>5s', result, attemptCountBucket: '1' } })
-  }
+  const capability = telemetryCapability(request.kind)
   try {
     const response = await desktop.tasks.run({
       vendor: normalizedVendor,
       request: withTaskProjectIdentity(request, projectId),
     }) as TaskResultDto
-    track(response.status === 'succeeded' ? 'success' : response.status === 'failed' ? 'failure' : 'cancel')
+    if (capability) {
+      if (response.status === 'succeeded' || response.status === 'failed') {
+        trackGenerationOutcome(desktop, capability, startedAt, response.status === 'succeeded' ? 'success' : 'failure', response.error)
+      } else {
+        // 还在跑（queued/running）：这不是一个结果。最终结果在轮询到终态时报（fetchWorkbenchTaskResultByVendor），
+        // 之前把它记成 cancel，视频这类异步任务的成败就全丢了。
+        rememberInFlightGeneration(response.id, capability, startedAt)
+      }
+    }
     return response
   } catch (error) {
-    track('failure')
+    if (capability) trackGenerationOutcome(desktop, capability, startedAt, 'failure', error instanceof Error ? error.message : String(error))
     throw error
   }
 }
@@ -190,10 +246,17 @@ export async function fetchWorkbenchTaskResultByVendor(
 ): Promise<FetchWorkbenchTaskResultResponseDto> {
   // 只复述任务自带的项目身份：缓存命中时主进程核对它与提交时一致，miss 后无状态重建用它本地化资产。
   const { projectId, ...query } = payload
-  return requireDesktopRuntime('task result polling').tasks.result({
+  const desktop = requireDesktopRuntime('task result polling')
+  const response = await desktop.tasks.result({
     ...query,
     ...(projectId ? { projectId } : {}),
-  }) as Promise<FetchWorkbenchTaskResultResponseDto>
+  }) as FetchWorkbenchTaskResultResponseDto
+  const pending = inFlightGenerations.get(payload.taskId)
+  if (pending && (response.result.status === 'succeeded' || response.result.status === 'failed')) {
+    inFlightGenerations.delete(payload.taskId)
+    trackGenerationOutcome(desktop, pending.capability, pending.startedAt, response.result.status === 'succeeded' ? 'success' : 'failure', response.result.error)
+  }
+  return response
 }
 
 /**
