@@ -9,8 +9,8 @@
 // 规矩：package.json 里定义的每个 `check:*` 脚本，都必须能从 `gates` 链**传递可达**。
 //
 // 为什么必须传递解析、不能只做字面 substring 匹配：
-//   check:site 自己内部就跑了 `build-marketing-sitemap.mjs --check` 和 `pnpm run check:handbook`，
-//   所以 check:handbook / check:sitemap 事实上已被覆盖，只是**没有字面出现在 gates 那一行**。
+//   check:site 自己内部就跑了 `build-marketing-sitemap.mjs --check` 和 `pnpm run check:site-data`（外加一串 check:site-*），
+//   所以 check:site-data / check:sitemap 事实上已被覆盖，只是**没有字面出现在 gates 那一行**。
 //   一个朴素的字面检查会对着这两个精确地误报。而误报的下场是有人把门岗关掉——
 //   那就正好重演了本门岗要防的那件事。所以宁可多写几十行解析，也不留假红。
 import fs from 'node:fs'
