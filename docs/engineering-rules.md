@@ -950,7 +950,7 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 - 老合同按日期阈值豁免（`scripts/root-cause-contracts.mjs` 的 `DOOR_MAP_SINCE`），追溯只会把 400 份历史合同一次性打红。
 
 派工侧的另一半（复发类修复先派数门工人、任务书与 PR 必须引用门表）见 R27 与
-[`docs/engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)，门岗是 `check:door-map`。
+[`docs/engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)。2026-10-01 起门岗 `check:door-map` 已并入 `check:root-cause-contracts`：合同的 `doors` 校验（必填、path 存在、符号对得上）一直在后者，被删的只是「PR 正文必须引用合同」那一半（用户按门岗账本拍板，门表由脚本生成，不再靠正文宣告）。
 方案：[`docs/plan/2026-09-11-door-map-rule.md`](plan/2026-09-11-door-map-rule.md)。
 
 ## R22 验证分层与测试预算

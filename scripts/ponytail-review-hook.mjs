@@ -15,6 +15,7 @@ import fs from 'node:fs'
 import { pathToFileURL } from 'node:url'
 
 import { receiptPath, repoRootFromGit, runGit, verifyPushReceipt } from './ponytail-review-branch.mjs'
+import { readPonytailMode } from './ponytail-mode.mjs'
 
 // 四十个 0（删除 ref 的占位 SHA）本身就落在这个字符集里，不需要第二条正则。
 const SHA = /^[0-9a-f]{40}$/i
@@ -56,6 +57,11 @@ function main() {
     const result = verifyPushReceipt({ repoRoot, ranges })
     if (result.ok) {
       console.error(`[ponytail-receipt] ok${result.receipt ? ` (${result.receipt.status}, ${result.receipt.reviewedAt})` : `: ${result.reason}`}`)
+      return 0
+    }
+    if (readPonytailMode(repoRoot) === 'hint') {
+      console.error(`[ponytail-receipt] 提示（不阻断）：${result.reason}`)
+      console.error('Ponytail 评审当前是提示模式（docs/engineering/ponytail-mode.json，2026-10-01 按门岗账本降级）；Codex 恢复后把 mode 改回 enforce，再跑 pnpm run review:branch。')
       return 0
     }
     console.error(`[ponytail-receipt] BLOCKED: ${result.reason}`)

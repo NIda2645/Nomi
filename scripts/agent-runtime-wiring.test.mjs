@@ -120,9 +120,13 @@ describe('private pi build and test wiring', () => {
   })
 
   test('production and zero-error native test types remain reachable from root gates', () => {
-    expect(pkg.scripts.typecheck).toContain('tsc -p electron/tsconfig.pi.json --noEmit')
+    // 2026-10-01：typecheck 由编排器并发拉起四份检查（生产 tsc x3 + check:test-types），不再是一条 && 链。
+    expect(pkg.scripts.typecheck).toBe('node ./scripts/typecheck.mjs')
+    const orchestrator = read('scripts/typecheck.mjs')
+    expect(orchestrator).toContain("'electron/tsconfig.pi.json', '--noEmit'")
+    expect(orchestrator).toContain('scripts/check-test-types.mjs')
     expect(reachable('gates').has('typecheck')).toBe(true)
-    expect(reachable('gates').has('check:test-types')).toBe(true)
+    expect(pkg.scripts['check:test-types']).toContain('check-test-types.mjs')
     expect(read('scripts/check-test-types.mjs')).toContain('tests/agent-runtime/tsconfig.json')
     const parsed = ts.getParsedCommandLineOfConfigFile(path.join(repoRoot, 'tests/agent-runtime/tsconfig.json'), {}, {
       ...ts.sys, onUnRecoverableConfigFileDiagnostic: (diagnostic) => { throw new Error(String(diagnostic.messageText)) },

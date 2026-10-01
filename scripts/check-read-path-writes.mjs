@@ -37,7 +37,7 @@ const rel = (file) => path.relative(repoRoot, file).split(path.sep).join('/')
  *   · 日志（`logger.write` → `writeFileSync`）：几乎所有函数都可达它，它不是「用户状态」；
  *   · 清单迁移（`readWorkspaceManifest` 读时补写旧格式）：那是**拍板过**的惰性迁移，
  *     判据在它自己的事务层，不是「偷改偏好」；
- *   · 项目内容落盘：本来就该由用户动作触发，归 `check:door-map` 的门表管。
+ *   · 项目内容落盘：本来就该由用户动作触发，归根因合同的 `doors` 门表管（check:root-cause-contracts）。
  *
  * 这条门岗管的是一件很窄但很具体的事：**名字说「我只算答案」的函数，不许改用户的设置**。
  * 范围窄不是妥协——一条拦得住、没人想关掉的规则，比一条报 200 行然后被加进豁免名单的规则有用。
