@@ -8,6 +8,7 @@
 // 用法：先 pnpm run build，再 node tests/ux/telemetry-failure-reason.walk.mjs
 //       EVIDENCE_DIR=<目录> 指定截图与抓包落点（默认 tests/ux/shots/telemetry-failure-reason）
 import { launchNomiApp } from './_launchApp.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { expect, clickOrFail, DEFAULT_TIMEOUT_MS, screenshotSettled } from './_assert.mjs'
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
@@ -123,7 +124,7 @@ try {
   await clickOrFail(win.getByRole('button', { name: /生成素材|重新生成/ }).first(), '生成按钮')
 
   const errorCard = win.locator('[role="alert"][aria-label^="生成失败"]').first()
-  await expect(errorCard, '失败卡没出来——这次生成没有真的失败').toBeVisible({ timeout: 120_000 })
+  await expect(errorCard, '失败卡没出来——这次生成没有真的失败').toBeVisible({ timeout: stationTimeout({ turns: 1 }) })
   await snap('02-generation-failed-card')
 
   // 出站事件：等到抓到一条 generation.completed

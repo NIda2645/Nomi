@@ -34,7 +34,7 @@ describe('telemetry event contract', () => {
 })
 
 describe('生成失败原因与自动化标记（只带类别码，不带内容）', () => {
-  const base = { capability: 'video', durationBucket: '>5s', attemptCountBucket: '1' }
+  const base = { capability: 'video', durationBucket: '>5s', attemptCountBucket: '1' } as const
 
   it('失败事件可以带 errorType 类别码；成功 / 取消不许带', () => {
     expect(isTelemetryProps({ ...base, result: 'failure', errorType: 'asset-upload-failed' }, 'generation.completed')).toBe(true)

@@ -189,7 +189,7 @@ export const zhSettings = {
     canvasGesturePanHint: '滚轮/双指滑平移；捏合或 ⌘/Ctrl+滚轮缩放。',
     telemetry: {
       title: '隐私与诊断',
-      description: '可选的匿名数据，只统计功能使用次数、耗时区间，以及 Agent 每一步用了什么工具、成没成功。不发送提示词、文稿、素材、项目名、文件路径或用户标识，也不经过任何第三方——只发到 Nomi 自己的接收端。默认关闭，随时可以关闭并删除本机记录。',
+      description: '可选的匿名数据，只统计功能使用次数、耗时区间、生成成没成功、失败属于哪一类（一个固定分类，不含具体内容），以及 Agent 每一步用了什么工具、成没成功。不发送提示词、文稿、素材、项目名、文件路径或用户标识，也不经过任何第三方——只发到 Nomi 自己的接收端。默认关闭，随时可以关闭并删除本机记录。',
       toggle: '帮助改进 Nomi',
       statusDisabled: '已关闭；不会发送网络请求',
       statusUnconfigured: '已开启；这个版本不发送——开发版没有上报地址，记录只留在本机',
@@ -434,7 +434,7 @@ export const enSettings = {
     canvasGesturePanHint: 'Wheel/two-finger swipe pans; pinch or ⌘/Ctrl+wheel zooms.',
     telemetry: {
       title: 'Privacy & diagnostics',
-      description: 'Optional anonymous data counts feature use and duration buckets, plus which tools each Agent step used and whether it succeeded. Prompts, manuscripts, assets, project names, file paths, and user identifiers are never sent, and nothing passes through a third party \u2014 it goes only to Nomi\u2019s own endpoint. Off by default; you can turn it off and delete local records anytime.',
+      description: 'Optional anonymous data counts feature use, duration buckets, whether a generation succeeded, which fixed category a failure falls into (never any details), plus which tools each Agent step used and whether it succeeded. Prompts, manuscripts, assets, project names, file paths, and user identifiers are never sent, and nothing passes through a third party \u2014 it goes only to Nomi\u2019s own endpoint. Off by default; you can turn it off and delete local records anytime.',
       toggle: 'Help improve Nomi',
       statusDisabled: 'Off; no network requests are made',
       statusUnconfigured: 'On; this build does not send — development builds have no intake address, records stay on this machine',
