@@ -38,9 +38,11 @@ const ASK = process.env.NOMI_REAL_ASK || '帮我画一张雨后水洼里漂着�
 const ARG_REJECTED = /Validation failed for tool|capability_input_invalid|generation_input_invalid|Unrecognized key\(s\)|must be (array|string|number|object)|Required/i
 
 const imageTmp = fs0.mkdtempSync(path.join(os.tmpdir(), 'real-two-images-'))
-const twoImages = ['red', 'blue'].map((color) => {
-  const file = path.join(imageTmp, `${color}.png`)
-  execFileSync(ffmpeg.path, ['-y', '-f', 'lavfi', '-i', `color=c=${color}:s=256x256`, '-frames:v', '1', file], { stdio: 'pipe' })
+/** 每一轮两张**内容不同**的图（同内容会被素材库按内容去重，第二轮就挂不上新的）。 */
+const twoImagesFor = (round) => [0, 1].map((slot) => {
+  const file = path.join(imageTmp, `r${round}-${slot}.png`)
+  const color = ((round * 7 + slot * 90) % 200 + 40).toString(16).padStart(2, '0')
+  execFileSync(ffmpeg.path, ['-y', '-f', 'lavfi', '-i', `color=c=0x${color}${slot ? '40' : 'c0'}${slot ? 'e0' : '30'}:s=256x256`, '-frames:v', '1', file], { stdio: 'pipe' })
   return file
 })
 const paid = await openPaidWalk('agent-default-model-real.paid.mjs', 'agent-default-model-real', [BRAIN, IMAGE_DEFAULT, IMAGE_OTHER])
@@ -91,11 +93,11 @@ try {
         // 「把这两张合成一张」得真有两张：每轮随消息挂两张图（本机 ffmpeg 现生成的纯色图，不是素材库里的用户素材）。
         const chooser = win.waitForEvent('filechooser', { timeout: stationTimeout() })
         await clickOrFail(win.locator(`${CANVAS_PANEL} ${COMPOSER_ADD_FILE}`), '输入框的「+」')
-        await (await chooser).setFiles(twoImages)
+        await (await chooser).setFiles(twoImagesFor(round))
         await expect(win.locator(`${CANVAS_PANEL} ${COMPOSER} ${COMPOSER_CHIP}`).nth(1), '两张图都挂上了').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
         // 两张图落进项目素材才算上传完（发送前不能还在上传）。
         await expect.poll(() => fs0.existsSync(path.join(projectRoot, 'assets')) && fs0.readdirSync(path.join(projectRoot, 'assets'), { recursive: true }).filter((name) => String(name).endsWith('.png')).length,
-          { message: '两张图落进项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThanOrEqual(2)
+          { message: '两张图落进项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThanOrEqual(2 * round)
       }
       await sendCanvas(win, ASK)
       const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
