@@ -2,6 +2,7 @@ import { DEFAULT_IMAGE_SECONDS } from '../../generationCanvas/model/buildClipFro
 import { effectiveShotDurationSec, type PlanShot, type StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
 import type { StoryboardRowRuntime } from './exec/storyboardRowStatus'
 import { canvasNodeToAssetRefs } from '../../assets/assetTypes'
+import { shotBindsAnchor } from './shotRow/shotRowModel'
 
 /** D 段周边交互的纯函数 owner：视图只投影这些结果，不另存一份状态快照。 */
 
@@ -18,13 +19,13 @@ export type StoryboardPlaybackItem = {
 }
 
 export function shotsReferencingAnchor(plan: StoryboardPlan, anchorId: string): PlanShot[] {
-  return plan.shots.filter((shot) => shot.anchorIds.includes(anchorId))
+  return plan.shots.filter((shot) => shotBindsAnchor(shot, anchorId))
 }
 
 export function positionsForAnchorFilter(plan: StoryboardPlan, anchorId: string | null): number[] {
   if (!anchorId) return plan.shots.map((_shot, position) => position)
   return plan.shots.reduce<number[]>((positions, shot, position) => {
-    if (shot.anchorIds.includes(anchorId)) positions.push(position)
+    if (shotBindsAnchor(shot, anchorId)) positions.push(position)
     return positions
   }, [])
 }

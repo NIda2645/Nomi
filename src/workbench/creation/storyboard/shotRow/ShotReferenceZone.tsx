@@ -65,6 +65,8 @@ type Props = {
   /** 通用「@」入口（契约未知的默认模型行）；缺省 = 该行禁用 @。 */
   onTriggerMention?: (() => void) | undefined
   mentionEnabled: boolean
+  /** 这一行已经有一句点名的提示（行上摆着、当前模式用不上的参考图）时，固定的「不吃参考」那句不再出现——一行只留一句。 */
+  hideNoRefNotice?: boolean
 }
 
 /** 槽只收某一种媒体时的人话拒绝理由。写成静态映射而非动态键——动态键会在门岗外静默漏译。 */
@@ -158,7 +160,7 @@ function SlotStack({ cell, tiles }: { cell: ShotReferenceCell; tiles: readonly S
   )
 }
 
-export default function ShotReferenceZone({ mode, archetype, bindings, onChangeBindings, missingSlots, plannedFirstFrame, anchors, onTriggerMention, mentionEnabled }: Props): JSX.Element {
+export default function ShotReferenceZone({ mode, archetype, bindings, onChangeBindings, missingSlots, plannedFirstFrame, anchors, onTriggerMention, mentionEnabled, hideNoRefNotice }: Props): JSX.Element {
   const openProjectId = useOpenProjectId()
   const { t } = useTranslation()
   const narrow = useStoryboardRowNarrow()
@@ -278,7 +280,7 @@ export default function ShotReferenceZone({ mode, archetype, bindings, onChangeB
       data-storyboard-refzone="true"
       data-storyboard-refzone-density={narrow ? 'narrow' : 'wide'}
     >
-      {column.kind === 'none-accepted' ? (column.switchTo ? (
+      {column.kind === 'none-accepted' ? (column.switchTo && !hideNoRefNotice ? (
         <span
           className={cn('text-micro leading-relaxed text-nomi-ink-30', narrow && 'line-clamp-3')}
           title={column.switchTo.modeLabel === column.switchTo.slotLabel

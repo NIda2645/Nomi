@@ -4,12 +4,61 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createRequire } from 'node:module'
 import http from 'node:http'
 import path from 'node:path'
+import { crc32, deflateSync } from 'node:zlib'
 
 import { withLinuxNoSandbox, withLinuxSyntheticCredentialStorage } from './_launchApp.mjs'
 
 const require = createRequire(import.meta.url)
 
+/**
+ * 「供应商说成功、给的字节却有毛病」的两种样本（全功能走查用）。它们对「坏」的定义必须和宿主的落地判据是同一个
+ * （electron/assets/generatedMediaDecode.ts：解码器把第一帧拿出来、宽高为正 = 能解码），否则夹具和宿主各说各话：
+ *   · corruptResult —— JPEG 魔数后面全是随机字节，解码器一帧都出不来（真·读不出来）。旧夹具给的是「截掉后半段的 JPEG」，
+ *     可截断的 JPEG 解码器仍解得出上半张图，宿主按定义判它能解码——它就不再是「读不出来」的样本了，监视器却还把这一笔记成失败。
+ *   · trailingBytesResult —— 一张完整的 PNG，IEND 之后多了 100 个字节。真编码器 / 加水印 / CDN 补丁的产物里常见，
+ *     图完好可显示；旧判据（-xerror）把它整张拒收。
+ */
+function undecodableJpegBytes() {
+  return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(Array.from({ length: 5000 }, (_, index) => (index * 131 + 7) & 255))])
+}
+
+function pngChunk(type, data) {
+  const length = Buffer.alloc(4)
+  length.writeUInt32BE(data.length)
+  const body = Buffer.concat([Buffer.from(type, 'ascii'), data])
+  const checksum = Buffer.alloc(4)
+  checksum.writeUInt32BE(crc32(body) >>> 0)
+  return Buffer.concat([length, body, checksum])
+}
+
+function pngWithTrailingBytes() {
+  const width = 256
+  const height = 256
+  const header = Buffer.alloc(13)
+  header.writeUInt32BE(width, 0)
+  header.writeUInt32BE(height, 4)
+  header[8] = 8 // 位深
+  header[9] = 2 // RGB
+  const stride = width * 3 + 1
+  const rows = Buffer.alloc(stride * height)
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const at = y * stride + 1 + x * 3
+      rows[at] = x
+      rows[at + 1] = y
+      rows[at + 2] = (x + y) & 255
+    }
+  }
+  const png = Buffer.concat([
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+    pngChunk('IHDR', header), pngChunk('IDAT', deflateSync(rows)), pngChunk('IEND', Buffer.alloc(0)),
+  ])
+  return Buffer.concat([png, Buffer.alloc(100, 0x41)])
+}
+
 export const FIXTURE_VENDOR = 'agent-runtime-loopback'
+/** 这家在目录里的显示名——界面（失败提示）点名它用的是这个，不是上面那个 key。 */
+export const FIXTURE_VENDOR_NAME = 'Agent Runtime Loopback'
 export const FIXTURE_TEXT_MODEL = 'agent-runtime-text'
 export const FIXTURE_IMAGE_MODEL = 'agent-runtime-image'
 // v4 的模型弹层每行只印**显示名**（`labelZh || modelKey`），没有 per-row 挂点，
@@ -190,7 +239,7 @@ async function modelCatalog(baseURL, { generationProvider, apimartKey, extraImag
     // 内置 apimart 排在前面，走查的 SDK 就会去连 apimart 的真实地址而不是这台 loopback 夹具
     // （表现是 `textRequests: 0`、整条走查干等到超时）。夹具这家必须排第一。
     vendors: [{
-      key: FIXTURE_VENDOR, name: 'Agent Runtime Loopback', enabled: true, baseUrlHint: baseURL,
+      key: FIXTURE_VENDOR, name: FIXTURE_VENDOR_NAME, enabled: true, baseUrlHint: baseURL,
       authType: 'none', authHeader: null, authQueryParam: null, providerKind: 'openai-compatible',
       createdAt: NOW, updatedAt: NOW,
     }, ...(extraImageVendor ? [{
@@ -327,6 +376,9 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
   }
   const imageBytes = await readFile(path.join(rootDir, 'resources/onboarding-demo/shot-4.jpg'))
   const imageURL = `data:image/jpeg;base64,${imageBytes.toString('base64')}`
+  const corruptImageBytes = undecodableJpegBytes()
+  const corruptImageURL = `data:image/jpeg;base64,${corruptImageBytes.toString('base64')}`
+  const trailingBytesPngURL = `data:image/png;base64,${pngWithTrailingBytes().toString('base64')}`
   // 视频产物用一段**真的供应商出片**（2026-08-20 L3 全旅程审计里真模型生成的 mp4），不是合成色块：
   // 宿主要把它下载、校验、落进项目素材库，再投成画布节点的 nomi-local:// 结果。
   // 只在真有人来取视频时才读（非视频走查不必把近 1MB 读进内存）。
@@ -361,10 +413,11 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
   /**
    * 逐笔的失败注入（全功能走查用，缺省 = 老样子：受理并出片）。压着 / 放开不在这里——那是 holdSubmits / holdTasks /
    * releaseVideos 的事，一件事只有一个开关。
-   * `({ kind: 'image'|'video', body, index }) => undefined | { reject: { status, json } } | { fail: { message } } | { corruptResult: true }`
+   * `({ kind: 'image'|'video', body, index }) => undefined | { reject: { status, json } } | { fail: { message } } | { corruptResult: true } | { trailingBytesResult: true }`
    *   · reject：受理那一步就回错（没有任务号）；
    *   · fail：受理成功、轮询回 failed（apimart 形状）/ 同步那一档直接回 500；
-   *   · corruptResult：受理、出图都「成功」，给的图却是截掉后半段的 JPEG（apimart 图片那一档）。
+   *   · corruptResult：受理、出图都「成功」，给的图却是读不出来的字节（JPEG 魔数 + 随机字节；apimart 异步档与回环同步档都认）；
+   *   · trailingBytesResult：出图「成功」，给的是一张完整的 PNG、IEND 之后带了尾数据（回环同步档认）——宿主应当照常落地。
    */
   let mediaBehavior = null
   const sockets = new Set()
@@ -385,13 +438,12 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
       response.end(imageBytes)
       return
     }
-    // 供应商说「成功」、给的图却残缺（截掉后半段的 JPEG）：宿主严格解码会判它失败。
+    // 供应商说「成功」、给的字节却读不出来（JPEG 魔数 + 随机字节，解码器一帧都出不来）：宿主判 decode_failed。
     // 只有 `mediaBehavior` 回了 `{ corruptResult: true }` 的那一笔任务才会拿到这个地址。
     if (record.path === '/fixture/corrupt.jpg') {
       if (!canWrite(response)) return
-      const truncated = imageBytes.subarray(0, Math.floor(imageBytes.length * 0.4))
-      response.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': truncated.length })
-      response.end(truncated)
+      response.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': corruptImageBytes.length })
+      response.end(corruptImageBytes)
       return
     }
     if (record.path === '/fixture/video.mp4' || record.path === videoResultPath) {
@@ -461,7 +513,7 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
       const loopbackCaller = record.body?.model === FIXTURE_IMAGE_MODEL
       if (!apimartMode || loopbackCaller) {
         if (behavior?.fail) { jsonResponse(response, 500, { error: { message: String(behavior.fail.message ?? 'fixture failure') } }); return }
-        jsonResponse(response, 200, { data: [{ url: imageURL }] })
+        jsonResponse(response, 200, { data: [{ url: behavior?.corruptResult ? corruptImageURL : behavior?.trailingBytesResult ? trailingBytesPngURL : imageURL }] })
         return
       }
       if (submitsHeld) await submitsHeld

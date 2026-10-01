@@ -104,9 +104,19 @@ export type GenerationNodeProgress = {
 
 export type GenerationNodeRunStatus = Exclude<GenerationNodeStatus, 'idle'> | 'cancelled'
 
+/**
+ * 一次运行**实际发给的**是哪家供应商的哪个模型。运行开始那一刻从被执行的节点读出、随运行记录落盘，
+ * 之后失败、找回都读这一份——失败属于「发出去的那一次」，不属于「节点现在选着谁」。
+ * （2026-09-29：用户点了提示里的「切到另一家」，旧失败还挂在节点上，提示按新选的那家去点名，说它失败了。）
+ * 旧记录没有这一栏：读不出是谁失败的，就不替它点名。
+ */
+export type GenerationNodeRunAttempt = { vendorKey: string; modelKey: string }
+
 export type GenerationNodeRunRecord = {
   id: string
   status: GenerationNodeRunStatus
+  /** 这次运行发给谁（提交那一刻固定，见 GenerationNodeRunAttempt）。制作流程写的记录不带它。 */
+  attempt?: GenerationNodeRunAttempt
   /** 运行所属项目（提交那一刻固定）。旧记录没有这一栏：由记录所在项目派生，派生不出即拒绝找回。 */
   projectId?: string
   taskId?: string

@@ -29,7 +29,7 @@ import { buildModelEntryIndex } from '../../../generationCanvas/agent/plannedNod
 import { getVendorPreference } from '../../../api/vendorPreferenceApi'
 import { ANCHOR_META_KEYS, isAnchorFrozen, type AnchorFrozenMark } from '../../../generationCanvas/model/anchorBibleKeys'
 import { findAnchorNode, findShotKeyframeNode, findShotNode } from './storyboardNodeBinding'
-import { rowConsumesReferences, type StoryboardRowRuntime } from './storyboardRowStatus'
+import type { StoryboardRowRuntime } from './storyboardRowStatus'
 
 /**
  * 分镜表的**执行动作层**（v5 B）：行内/批量生成 = 按需 materialize（没建过的节点此刻建）+
@@ -89,24 +89,15 @@ function canvasState(): { nodes: GenerationCanvasNode[]; edges: ReturnType<typeo
   return { nodes: state.nodes, edges: state.edges }
 }
 
-/** 该行已建过的依赖节点映射（锚 → 真实 id；重复 materialize 时复用不重建）。 */
-function existingRowBindings(ctx: RowActionContext, shot: PlanShot): {
+/** 该行已建过的节点（重复 materialize 时复用不重建）。 */
+function existingRowBindings(ctx: RowActionContext, _shot: PlanShot): {
   shotNode: GenerationCanvasNode | null
   keyframeNode: GenerationCanvasNode | null
-  anchorNodeIdByAnchorId: Record<string, string>
 } {
   const { nodes } = canvasState()
-  const anchorNodeIdByAnchorId: Record<string, string> = {}
-  for (const anchorId of shot.anchorIds) {
-    const anchor = ctx.plan.anchors.find((candidate) => candidate.id === anchorId)
-    if (!anchor) continue
-    const node = anchorNodeFor(ctx, nodes, anchor)
-    if (node) anchorNodeIdByAnchorId[anchorId] = node.id
-  }
   return {
-    shotNode: findShotNode(nodes, ctx.designId, shot),
-    keyframeNode: findShotKeyframeNode(nodes, ctx.designId, shot),
-    anchorNodeIdByAnchorId,
+    shotNode: findShotNode(nodes, ctx.designId, _shot),
+    keyframeNode: findShotKeyframeNode(nodes, ctx.designId, _shot),
   }
 }
 
@@ -155,9 +146,7 @@ export async function materializeShotRow(
     creationDocumentId: ctx.documentId,
     storyboardDesignId: ctx.designId,
     materializationOperationId: `storyboard:${ctx.designId}`,
-    existingAnchorNodeIdByAnchorId: existing.anchorNodeIdByAnchorId,
     ...(existing.keyframeNode ? { existingKeyframeNodeId: existing.keyframeNode.id } : {}),
-    ...(rowConsumesReferences(mode) ? {} : { omitAnchorReferenceEdges: true }),
   })
   if (existing.shotNode) {
     const clientId = stableShotId(shot)

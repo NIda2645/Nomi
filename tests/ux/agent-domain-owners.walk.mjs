@@ -41,7 +41,7 @@ const IMAGE_DEFAULT = { vendorKey: FIXTURE_APIMART_VENDOR, modelKey: 'gemini-3.1
 const IMAGE_NAMED = { modelKey: 'gpt-image-2', label: 'GPT Image 2' }
 const VIDEO_DEFAULT = { vendorKey: FIXTURE_APIMART_VENDOR, modelKey: 'kling-v3', option: /^(可灵 3\.0|Kling 3\.0)(\s|$|·)/ }
 // 暗号跟界面语言走：英文界面里不该出现中文，哪怕是走查自己种的文件内容（它会被 Agent 原样复述进对话）。
-const MARKER_TEXT = EN ? '[ACCEPT-MARK: lamp-8842]' : '【验收暗句：栈桥尽头的灯-8842】'
+const MARKER_TEXT = EN ? 'ACCEPT-MARK lamp-8842' : '【验收暗句：栈桥尽头的灯-8842】'
 const DOMAIN_FILE = path.join(outputDir, EN ? 'harbour-note.txt' : '海港便笺.txt')
 fs.writeFileSync(DOMAIN_FILE, `${MARKER_TEXT}\n${EN ? 'The lamp at the end of the pier stays lit all night.' : '栈桥尽头的那盏灯整夜亮着。'}\n`)
 const FILE_NAME = path.basename(DOMAIN_FILE)
@@ -103,8 +103,12 @@ try {
       await clickOrFail(win().locator(`${CANVAS_PANEL} ${COMPOSER_ADD_FILE}`), '输入框的「+」（添加文件）')
       await (await chooser).setFiles(DOMAIN_FILE)
       await expect(win().locator(`${CANVAS_PANEL} ${COMPOSER} ${COMPOSER_CHIP}`).filter({ hasText: FILE_NAME.slice(0, 4) }), '输入框里挂上了附件签').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
-      await expect.poll(() => fs.existsSync(path.join(smoke.project.projectRoot, 'assets')) && fs.readdirSync(path.join(smoke.project.projectRoot, 'assets'), { recursive: true })
-        .some((name) => String(name).endsWith('.txt')), { message: '附件落进了项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
+      const assetNames = () => (fs.existsSync(path.join(smoke.project.projectRoot, 'assets')) ? fs.readdirSync(path.join(smoke.project.projectRoot, 'assets'), { recursive: true }).map(String) : [])
+      try {
+        await expect.poll(() => assetNames().some((name) => name.endsWith('.txt')), { message: '附件落进了项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
+      } catch (error) {
+        throw new Error(`附件没落进项目素材（assets 里现有：${JSON.stringify(assetNames())}；项目里名字带 harbour/海港 的：${JSON.stringify(fs.readdirSync(smoke.project.projectRoot, { recursive: true }).map(String).filter((name) => /harbour|海港|\.txt$/i.test(name)))}；项目根：${smoke.project.projectRoot}）`, { cause: error })
+      }
       record.screenshots.push(await shot('attach-composer'))
       await sendCanvas(win(), EN ? 'DOM-ATT: summarize this file for me.' : 'DOM-ATT：总结一下这个文件。')
       await summarizeTurn.done
@@ -131,7 +135,8 @@ try {
   })
 
   // ═══ ② 默认模型（行 5/6/7/8）══════════════════════════════════════════════════════════
-  const toldDefault = (body, kind) => new RegExp(`${kind}[^\\n]*：${FIXTURE_APIMART_VENDOR}/([^\\s\\n]+)`).exec(flattenRequestText(body))?.[1] ?? null
+  // 守规矩的模型读索引里「图片默认（文生图）：显示名（modelId: X，vendor: 家——仅供工具参数）」那一行；读到就不点名、让宿主补。
+  const toldDefault = (body, kind) => new RegExp(`${kind}[^\\n]*modelId: ([^，\\s)]+)，vendor: ${FIXTURE_APIMART_VENDOR}`).exec(flattenRequestText(body))?.[1] ?? null
   const cardText = async (panel = CANVAS_PANEL) => (await spendCard(panel).innerText()).replace(/\s+/g, ' ').trim()
 
   let imageLabel = ''
@@ -199,9 +204,10 @@ try {
           candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: IMAGE_NAMED.modelKey } }] } },
         // 先说为什么换、换成谁——话里的模型名读宿主递回来的偏离事实，不是脚本写死的。
         { name: 'generate', text: ({ previous }) => {
-          const fact = /"modelDeviatesFromUserDefault":\[\{[^\]]*"userDefault":"([^"]+)","used":"([^"]+)"/.exec(String(previous ?? ''))
-          seen.fact = fact ? { userDefault: fact[1], used: fact[2] } : null
-          return fact ? (EN ? `Your default ${fact[1]} can't take two reference images, so I switched to ${fact[2]}.` : `你设的默认 ${fact[1]} 做不了多图合成，这次换成 ${fact[2]}。`)
+          // 对用户说话只用宿主递回来的**显示名**（和卡上、设置里同一个名字），不念 id。
+          const fact = /"modelDeviatesFromUserDefault":\[\{[^\]]*"used":"([^"]+)","userDefaultName":"([^"]+)","usedName":"([^"]+)"/.exec(String(previous ?? ''))
+          seen.fact = fact ? { used: fact[1], userDefaultName: fact[2], usedName: fact[3] } : null
+          return fact ? (EN ? `Your default ${fact[2]} can't take two reference images, so I switched to ${fact[3]}.` : `你设的默认 ${fact[2]} 做不了多图合成，这次换成 ${fact[3]}。`)
             : (EN ? 'Using the default.' : '用默认的。')
         }, args: ({ previous }) => ({ operationId: operationIdOf(previous) }) },
         { text: EN ? 'The card is ready.' : '付费卡摆好了。' },
@@ -213,8 +219,12 @@ try {
       record.screenshots.push(await shot('default-switch-card'))
       expect(seen.fact, '宿主把「实际用的 ≠ 用户默认」作为事实递给了 Agent').toBeTruthy()
       expect(seen.fact.used).toContain(IMAGE_NAMED.modelKey)
-      expect(said, 'Agent 的话里说了默认是谁、换成了谁').toContain(seen.fact.userDefault)
-      expect(said).toContain(seen.fact.used)
+      expect(said, 'Agent 的话里说了默认是谁（显示名）').toContain(seen.fact.userDefaultName)
+      expect(said, 'Agent 的话里说了换成谁（显示名）').toContain(seen.fact.usedName)
+      // 显示名就是卡上那个名字；话里不许出现 id（供应商 / 模型 id）。
+      const idsSpoken = /apimart\/|gpt-image-2|gemini-3\.1-flash-image-preview/.test(said)
+      expect(idsSpoken, `话里没有念 id：${said.slice(0, 120)}`).toBe(false)
+      expect(seen.fact.usedName, '显示名与卡上写的是同一个').toBe(IMAGE_NAMED.label)
       expect(text, '付费卡上是换后的模型').toContain(IMAGE_NAMED.label)
       await closeSpendCard(spendCard(CANVAS_PANEL))
       await turn.done.catch(() => undefined)

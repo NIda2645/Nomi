@@ -15,13 +15,17 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import fs0 from 'node:fs'
+import os from 'node:os'
+import { execFileSync } from 'node:child_process'
+import ffmpeg from '@ffmpeg-installer/ffmpeg'
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { BRAIN } from './_agentVideoPaid.mjs'
 import { openPaidWalk } from './_paidRun.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
 import {
-  APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_MODEL, MODEL_POPOVER,
+  APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_ADD_FILE, COMPOSER_CHIP, COMPOSER_MODEL, MODEL_POPOVER,
   chooseAssistantModel, closeSpendCard, newConversation, openCanvas, readProject, sendCanvas, waitForV4TurnIdle,
 } from './agent-runtime-walk-support.mjs'
 
@@ -30,9 +34,17 @@ const ROUNDS = Number(process.env.NOMI_REAL_ROUNDS || 10)
 const LABEL = process.env.NOMI_REAL_LABEL || 'run'
 const IMAGE_DEFAULT = { vendorKey: 'apimart', modelKey: 'gemini-3.1-flash-image-preview' }
 const IMAGE_OTHER = { vendorKey: 'apimart', modelKey: 'gpt-image-2' }
-const ASK = '帮我画一张雨后水洼里漂着一只红色纸船的图，1:1，就一张。起草好就直接提交生成，我在确认卡上点头。'
+const ASK = process.env.NOMI_REAL_ASK || '帮我画一张雨后水洼里漂着一只红色纸船的图，1:1，就一张。起草好就直接提交生成，我在确认卡上点头。'
 const ARG_REJECTED = /Validation failed for tool|capability_input_invalid|generation_input_invalid|Unrecognized key\(s\)|must be (array|string|number|object)|Required/i
 
+const imageTmp = fs0.mkdtempSync(path.join(os.tmpdir(), 'real-two-images-'))
+/** 每一轮两张**内容不同**的图（同内容会被素材库按内容去重，第二轮就挂不上新的）。 */
+const twoImagesFor = (round) => [0, 1].map((slot) => {
+  const file = path.join(imageTmp, `r${round}-${slot}.png`)
+  const color = ((round * 7 + slot * 90) % 200 + 40).toString(16).padStart(2, '0')
+  execFileSync(ffmpeg.path, ['-y', '-f', 'lavfi', '-i', `color=c=0x${color}${slot ? '40' : 'c0'}${slot ? 'e0' : '30'}:s=256x256`, '-frames:v', '1', file], { stdio: 'pipe' })
+  return file
+})
 const paid = await openPaidWalk('agent-default-model-real.paid.mjs', 'agent-default-model-real', [BRAIN, IMAGE_DEFAULT, IMAGE_OTHER])
 const { walk } = paid
 let failure
@@ -77,6 +89,16 @@ try {
       await expect(win.locator(`${CANVAS_PANEL} [data-v4-block="empty"]`), '新对话的空态').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
       const noShare = win.getByRole('button', { name: '不分享', exact: true }).first()
       if (await noShare.isVisible().catch(() => false)) await noShare.click()
+      if (process.env.NOMI_REAL_ATTACH_TWO === '1') {
+        // 「把这两张合成一张」得真有两张：每轮随消息挂两张图（本机 ffmpeg 现生成的纯色图，不是素材库里的用户素材）。
+        const chooser = win.waitForEvent('filechooser', { timeout: stationTimeout() })
+        await clickOrFail(win.locator(`${CANVAS_PANEL} ${COMPOSER_ADD_FILE}`), '输入框的「+」')
+        await (await chooser).setFiles(twoImagesFor(round))
+        await expect(win.locator(`${CANVAS_PANEL} ${COMPOSER} ${COMPOSER_CHIP}`).nth(1), '两张图都挂上了').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
+        // 两张图落进项目素材才算上传完（发送前不能还在上传）。
+        await expect.poll(() => fs0.existsSync(path.join(projectRoot, 'assets')) && fs0.readdirSync(path.join(projectRoot, 'assets'), { recursive: true }).filter((name) => String(name).endsWith('.png')).length,
+          { message: '两张图落进项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThanOrEqual(2 * round)
+      }
       await sendCanvas(win, ASK)
       const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
       // 等这一轮落地（卡在等人时输入框仍是运行态，所以先等「卡出现」或「回合结束」二者其一）。
@@ -134,6 +156,10 @@ try {
     }
     record.followedDefault = record.draftModel === `${IMAGE_DEFAULT.vendorKey}/${IMAGE_DEFAULT.modelKey}`
     if (record.draftModel && record.error === 'no-card') record.error = null
+    // 回复里提到模型时说的是显示名还是 id（宿主给的事实带显示名；模型对用户只许说显示名）。
+    const labels = [defaultLabel, paid.label(IMAGE_OTHER.vendorKey, IMAGE_OTHER.modelKey)].filter(Boolean)
+    record.displayNameMentions = labels.reduce((sum, label) => sum + (record.said.split(label).length - 1), 0)
+    record.idMentions = (record.said.match(/apimart\/|gpt-image-2|gemini-3\.1-flash-image-preview/g) ?? []).length
     rounds.push(record)
     console.log(`[real-default] 第 ${round} 轮：卡=${record.cardShown} 草稿模型=${record.draftModel} 跟默认=${record.followedDefault} 点名=${record.namedModelInCall ?? '-'} 参数被拒=${record.argRejected}${record.error ? ' 错误=' + record.error : ''}`)
   }
@@ -142,7 +168,7 @@ try {
   const succeeded = rounds.filter((entry) => entry.draftModel && !entry.error).length
   const cards = rounds.filter((entry) => entry.cardShown).length
   const toolCorrect = rounds.filter((entry) => !entry.argRejected).length
-  walk.report.numbers = { label: LABEL, rounds: ROUNDS, followedDefault: `${followed}/${ROUNDS}`, turnSuccess: `${succeeded}/${ROUNDS}`, cardShown: `${cards}/${ROUNDS}`, toolWriteCorrect: `${toolCorrect}/${ROUNDS}` }
+  walk.report.numbers = { mentions: { displayName: rounds.reduce((n, r) => n + r.displayNameMentions, 0), id: rounds.reduce((n, r) => n + r.idMentions, 0) }, label: LABEL, rounds: ROUNDS, followedDefault: `${followed}/${ROUNDS}`, turnSuccess: `${succeeded}/${ROUNDS}`, cardShown: `${cards}/${ROUNDS}`, toolWriteCorrect: `${toolCorrect}/${ROUNDS}` }
   walk.report.rounds = rounds
   console.log(`[real-default] ${JSON.stringify(walk.report.numbers)}`)
   fs.writeFileSync(path.join(walk.report.outputDir, `real-default-${LABEL}.json`), JSON.stringify({ numbers: walk.report.numbers, declaredDefault: walk.report.declaredDefault, rounds }, null, 2))

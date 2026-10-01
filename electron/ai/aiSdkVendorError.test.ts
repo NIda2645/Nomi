@@ -60,6 +60,16 @@ describe("vendorErrorFromAiSdkError — 状态码查表(复用 categorizeVendorF
     expect(mapped?.message).toContain("官方算力限制");
   });
 
+  // 与图/视频侧（vendorHttp）同一个 pickUpstreamCode：两条通道带过去的失败原因必须同形。
+  it("上游自己给的错误码一并带走(同 vendorHttp 的 pickUpstreamCode，两侧同形)", () => {
+    const mapped = vendorErrorFromAiSdkError(
+      apiError({ statusCode: 400, responseBody: JSON.stringify({ error: { message: "The model `gpt-x` does not exist", code: "model_not_found" } }) }),
+    );
+    expect(mapped?.structured.upstreamCode).toBe("model_not_found");
+    expect(vendorErrorFromAiSdkError(apiError({ statusCode: 400, responseBody: JSON.stringify({ error: { message: "Bad Request" } }) }))?.structured.upstreamCode).toBeUndefined();
+    expect(vendorErrorFromAiSdkError(apiError({ statusCode: 400, responseBody: "not json at all" }))?.structured.upstreamCode).toBeUndefined();
+  });
+
   it("带上调用方给的 vendorKey 与 APICallError 自己的 url", () => {
     const mapped = vendorErrorFromAiSdkError(apiError({ statusCode: 500 }), { vendorKey: "apimart" });
     expect(mapped?.structured.vendorKey).toBe("apimart");

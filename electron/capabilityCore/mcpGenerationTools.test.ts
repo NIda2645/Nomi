@@ -191,8 +191,18 @@ describe("semantic MCP generation tools", () => {
 
     it("single draft: a model the Agent chose itself is reported against the user's default, in both directions of the class", async () => {
       const result = await create({ prompt: "红色纸船", modelId: "model-other" });
-      expect(result.modelDeviatesFromUserDefault).toEqual([{ taskKind: "text_to_image", userDefault: "fixture-provider/model-default", used: "fixture-provider/model-other" }]);
+      expect(result.modelDeviatesFromUserDefault).toEqual([{ taskKind: "text_to_image", userDefault: "fixture-provider/model-default", used: "fixture-provider/model-other", userDefaultName: "model-default", usedName: "model-other" }]);
       expect(String(result.defaultDeviationNote)).toContain("tell the user why it changed");
+    });
+
+    it("the deviation fact carries the names the user sees; without a name it falls back to the id, never invents one", async () => {
+      const handler = createGenerationPlanningHandler({ registry: twoModels, operations: createInMemoryGenerationOperationStore(), defaultModelForTaskKind: declared, now: () => "2026-10-01T00:00:00.000Z" });
+      const named = await handler({ capability: "create", params: { prompt: "红色纸船", modelId: "model-other" }, lease,
+        modelNames: { "fixture-provider/model-default": "Default Display", "fixture-provider/model-other": "Other Display" } }) as Record<string, unknown>;
+      expect(named.modelDeviatesFromUserDefault).toEqual([expect.objectContaining({ userDefaultName: "Default Display", usedName: "Other Display" })]);
+      expect(String(named.defaultDeviationNote)).toContain("never read out the ids");
+      const unnamed = await create({ prompt: "红色纸船", modelId: "model-other" });
+      expect(unnamed.modelDeviatesFromUserDefault).toEqual([expect.objectContaining({ userDefaultName: "model-default", usedName: "model-other" })]);
     });
 
     it("multi-shot draft: each deviating shot is named; shots on the default are not", async () => {
@@ -200,7 +210,7 @@ describe("semantic MCP generation tools", () => {
         { shotId: "s1", prompt: "一", taskKind: "text_to_image" },
         { shotId: "s2", prompt: "二", taskKind: "text_to_image", modelId: "model-other" },
       ] });
-      expect(result.modelDeviatesFromUserDefault).toEqual([{ shotId: "s2", taskKind: "text_to_image", userDefault: "fixture-provider/model-default", used: "fixture-provider/model-other" }]);
+      expect(result.modelDeviatesFromUserDefault).toEqual([{ shotId: "s2", taskKind: "text_to_image", userDefault: "fixture-provider/model-default", used: "fixture-provider/model-other", userDefaultName: "model-default", usedName: "model-other" }]);
     });
 
     it("the user set no default: nothing to deviate from", async () => {

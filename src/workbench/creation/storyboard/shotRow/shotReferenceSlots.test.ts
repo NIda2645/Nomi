@@ -242,7 +242,7 @@ describe('shotReferenceColumn — 三形态（v6：一个槽一个格）', () =>
 describe('请求体构造 —— 走档案的 inputKey / asArray，分镜侧零供应商分支', () => {
   const bodyFor = (archetype: ModelArchetype, modeId: string, shot: PlanShot): Record<string, unknown> => {
     const mode = modeOf(archetype, modeId)
-    const meta = { archetype: { id: archetype.id, modeId, variantId: '' }, ...shotReferenceMetaPatch(mode, shot) }
+    const meta = { archetype: { id: archetype.id, modeId, variantId: '' }, ...shotReferenceMetaPatch(mode, shot.referenceBindings) }
     return buildArchetypeInputParams(meta, archetype)
   }
 
@@ -288,8 +288,8 @@ describe('请求体构造 —— 走档案的 inputKey / asArray，分镜侧零�
   })
 
   it('删掉绑定后 meta 写空 —— 不让刚删的首帧还留在节点上被发出去', () => {
-    expect(shotReferenceMetaPatch(SEEDANCE_FIRSTLAST, shotOf())).toEqual({ firstFrameUrl: '', lastFrameUrl: '' })
-    expect(shotReferenceMetaPatch(SEEDANCE_OMNI, shotOf()))
+    expect(shotReferenceMetaPatch(SEEDANCE_FIRSTLAST, shotOf().referenceBindings)).toEqual({ firstFrameUrl: '', lastFrameUrl: '' })
+    expect(shotReferenceMetaPatch(SEEDANCE_OMNI, shotOf().referenceBindings))
       .toEqual({ referenceImageUrls: [], referenceVideoUrls: [], referenceAudioUrls: [] })
   })
 })
