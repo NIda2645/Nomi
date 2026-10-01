@@ -365,11 +365,19 @@ describe("P4 S4 deriveBatchPlan — stop semantics", () => {
     });
   }
 
+  it("a shot nobody has approved (no job at all) is not part of the batch: not pending, not dispatched, does not block completion", () => {
+    const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64))];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs: [jobFor("shot-a", "a".repeat(64), "ready")] }));
+    expect(result.progress).toMatchObject({ total: 1, completed: 1, inFlight: 0, pending: 0 });
+    expect(result.shotDispatch).toEqual([]);
+  });
+
   it("reports structured stop counts (stopped/completed/pending) from durable jobs", () => {
     const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64)), shot("shot-c", "c".repeat(64))];
     const jobs = [
       jobFor("shot-a", "a".repeat(64), "ready"), // completed
       jobFor("shot-b", "b".repeat(64), "provider_accepted"), // in-flight
+      jobFor("shot-c", "c".repeat(64), "authorized"), // approved, never dispatched (a shot with no job at all was never approved and is not part of the batch)
     ];
     const result = deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs, runStatus: "paused" }));
     expect(result.progress.completed).toBe(1);

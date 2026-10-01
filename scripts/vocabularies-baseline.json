@@ -1711,13 +1711,15 @@
     },
     {
       "members": [
+        "awaiting_confirmation",
         "done",
         "failed",
         "generating",
+        "not_generated",
         "queued",
         "stopped"
       ],
-      "reason": "ProductionShotPhase 是合法的 view model：queued、generating、stopped、failed、done 表达制作镜头在画布上的用户可见阶段，由 ProductionJobStatus（productionJobPhase 这一个穷尽 mapper）、Run status 与 error code 派生；它不持久化、不反向覆盖 ProductionRun 账本。2026-09-25 从渲染层搬到中立层：主进程画布落地投影与渲染层排队/已停小标读同一个判定。",
+      "reason": "ProductionShotPhase 是合法的 view model：awaiting_confirmation、not_generated、queued、generating、stopped、failed、done 表达制作镜头在画布上的用户可见阶段，由 ProductionJobStatus（productionJobPhase 这一个穷尽 mapper）、Run status / 记下的停止原因与计划状态派生；它不持久化、不反向覆盖 ProductionRun 账本。2026-09-25 从渲染层搬到中立层：主进程画布落地投影与渲染层小标读同一个判定。2026-09-30 加 awaiting_confirmation / not_generated：以前「还在等用户点头」「从没被批过」都返回 null、画布上什么都不画，没点就不叫排队中（排队只给有任务、还没派出去的镜）。",
       "site": "electron/shared/productionShotPhase.ts::type:ProductionShotPhase/type-union"
     },
     {
