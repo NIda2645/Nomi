@@ -1,0 +1,4 @@
+# 旧的一页手册 2026-09-28 退役，内容并进 /quickstart（方案 docs/plan/2026-09-28-site-libraries-seo.md §5.6/§12）。
+# Cloudflare Pages 在静态文件之前读这份文件；两条都写，覆盖旧的干净地址与旧的 .html 直链。
+/handbook.html  /quickstart  301
+/handbook       /quickstart  301

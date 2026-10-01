@@ -1,10 +1,27 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { marketingPages } from '../marketing/site-manifest.mjs'
+import { shared } from '../marketing/content.mjs'
+import { loadSiteData } from '../marketing/library/data.mjs'
+import { loadPageDates } from '../marketing/page-dates.mjs'
+import { computeSitemapEntries } from '../marketing/pages.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_BASE_URL = 'https://nomiaqm.com'
+const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
+const runtimeFacts = Object.freeze({ ...shared, version: packageJson.version })
+
+/**
+ * 每周巡检默认查哪些页面：不再是手写的 5 个，而是生成器真实产出的全部页面（方案 §8：
+ * 「SEO 监测的页面清单改成读生成器输出，新页面自动纳入每周检查」）。跟 sitemap 用同一份计算
+ * （marketing/pages.mjs 的 computeSitemapEntries），页面清单只有一个 owner。
+ */
+const marketingPages = computeSitemapEntries({
+  siteData: loadSiteData(),
+  runtimeFacts,
+  previousDates: loadPageDates(),
+  today: new Date().toISOString().slice(0, 10),
+}).entries
 
 const parseAttributes = (tag) => Object.fromEntries(
   [...tag.matchAll(/([\w:-]+)\s*=\s*["']([^"']*)["']/g)].map((match) => [match[1].toLowerCase(), match[2]]),
