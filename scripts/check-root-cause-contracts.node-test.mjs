@@ -869,3 +869,49 @@ test('只有 @generated 标记但含可执行声明的（生成出来的代码�
   });
   assert.match(result.errors.join("\n"), new RegExp(`not in the door map: ${DOOR_GENERATED_CODE}`));
 });
+
+// —— rewrite_decision（R21.2，2026-10-02 起与症状聚类合并）——
+// 同一层被反复修时，合同写明「补 / 重写 / 删」并给出特征测试；选重写时那份测试必须在本次 diff 里。
+const LEGACY_TEST = "electron/catalog/legacyBehaviour.test.ts";
+const OWNER_LAYER = { layer: "electron/catalog/assetLocalization.ts", tests: ["electron/catalog/assetLocalization.test.ts"] };
+
+function validateWithDecision(decision, changedExtra = []) {
+  const contract = { ...completeContract, __file: DATED_FILE, invariant_owner_layer: OWNER_LAYER };
+  if (decision !== undefined) contract.rewrite_decision = decision;
+  return validateRootCauseChange({
+    changedFiles: [DATED_FILE, "electron/catalog/assetLocalization.ts", "electron/catalog/assetLocalization.test.ts", ...changedExtra],
+    contracts: [contract],
+    existingFiles: new Set([...datedFiles, LEGACY_TEST]),
+  });
+}
+
+test("rewrite_decision: 不写不报错（它只在同一层被反复修时由症状聚类门岗要求）", () => {
+  const result = validateWithDecision(undefined);
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("rewrite_decision: 选项只能是 patch / rewrite / delete", () => {
+  const result = validateWithDecision({ decision: "maybe", characterization_test: "electron/catalog/assetLocalization.test.ts" });
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join("\n"), /rewrite_decision\.decision must be one of/);
+});
+
+test("rewrite_decision: 特征测试必须是存在的测试文件", () => {
+  const notTest = validateWithDecision({ decision: "patch", characterization_test: "electron/catalog/assetLocalization.ts" });
+  assert.match(notTest.errors.join("\n"), /characterization_test must be a test file path/);
+  const ghost = validateWithDecision({ decision: "patch", characterization_test: "electron/catalog/ghost.test.ts" });
+  assert.match(ghost.errors.join("\n"), /characterization_test does not exist/);
+});
+
+test("rewrite_decision: 补 / 删 → 测试存在即可；重写 → 那份测试必须在本次 diff 里", () => {
+  const characterization = LEGACY_TEST;
+  assert.equal(validateWithDecision({ decision: "patch", characterization_test: characterization }).ok, true);
+  assert.equal(validateWithDecision({ decision: "delete", characterization_test: characterization }).ok, true);
+
+  const untouched = validateWithDecision({ decision: "rewrite", characterization_test: characterization });
+  assert.equal(untouched.ok, false);
+  assert.match(untouched.errors.join("\n"), /a rewrite must add or change its characterization test in this diff/);
+
+  const touched = validateWithDecision({ decision: "rewrite", characterization_test: characterization }, [characterization]);
+  assert.equal(touched.ok, true, touched.errors.join("\n"));
+});
