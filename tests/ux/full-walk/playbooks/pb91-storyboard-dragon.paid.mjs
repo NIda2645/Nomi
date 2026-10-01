@@ -71,6 +71,13 @@ try {
   if (receipt.media.length !== 1) findings.push({ invariant: 1, rule: 'exactly-one-submission', message: `供应商收到 ${receipt.media.length} 笔（应恰好 1 笔）` })
   const edgesIn = ((await read()).payload.generationCanvas.edges ?? []).filter((edge) => edge.target === landed.id).length
   if (edgesIn !== 0) findings.push({ invariant: 3, rule: 'sent-references', message: `这一镜被连了 ${edgesIn} 张行上没有的参考图` })
+  // 出来的那张图在 App 关闭后随临时目录一起没了：当场拷进证据目录，人眼要看「是龙还是人」。
+  const resultUrl = landed.result?.url
+  const relative = typeof resultUrl === 'string' ? /^nomi-local:\/\/asset\/[^/]+\/(.+)$/.exec(resultUrl)?.[1] : null
+  if (relative) {
+    const source = path.join(projectRoot, ...decodeURIComponent(relative).split('/'))
+    if (fs.existsSync(source)) fs.copyFileSync(source, path.join(walk.outputDir, 'dragon-result.png'))
+  }
   await walk.snap('dragon-row-after-generate')
   walk.report.dragon.findings = findings
   fs.writeFileSync(path.join(walk.outputDir, 'full-walk-findings.json'), JSON.stringify(findings, null, 2))
