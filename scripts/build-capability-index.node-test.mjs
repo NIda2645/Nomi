@@ -5,11 +5,11 @@
 // 裁剪上下文的文件——证明清单里能看到 pi 的 context-compaction；把这条登记拿掉，清单里就没有了。
 // 补登记之前这条断言是红的，这就是它的价值（见 docs/research/2026-10-01-ai-collaboration-rules/report.md §3 缺的那张清单）。
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, test } from 'node:test'
 import { buildCapabilityIndex, DEFAULT_MAX_BYTES, loadRegistries, neighbourhoodOf } from './build-capability-index.mjs'
+import { gitPaths } from './lib/gitPaths.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const real = loadRegistries(root)
@@ -103,13 +103,13 @@ describe('laneContextFit 场景：登记决定看不看得见', () => {
       ? { ...fw, capabilities: fw.capabilities.filter((cap) => cap.id !== 'context-compaction') }
       : fw))
     const { text } = buildCapabilityIndex({ concepts: real.concepts, frameworks: without, targetRel: target })
-    assert.doesNotMatch(text, /[pi] context-compaction/)
+    assert.doesNotMatch(text, /\[pi\] context-compaction/)
   })
 })
 
 describe('不入库、不另起真相源', () => {
   test('仓库里没有被提交的清单产物', () => {
-    const tracked = execFileSync('git', ['ls-files'], { cwd: root, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }).split('\n')
+    const tracked = gitPaths(['ls-files'], { cwd: root, maxBuffer: 64 * 1024 * 1024 })
     const offenders = tracked.filter((file) => /capability-index.*\.(json|md|txt)$/i.test(file))
     assert.deepEqual(offenders, [])
   })
