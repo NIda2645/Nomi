@@ -15,6 +15,7 @@ import {
   type ProjectAgentProposalReceiptWrite,
 } from "../shared/projectAgentProposalReceipt";
 import { assertProjectAgentBinding, sameProjectAgentBinding } from "../shared/projectBinding";
+import { MODEL_TOOL_WRITE_TIMEOUT_MS_VALUE } from "../shared/agentCapabilities/verbDeclaration";
 
 type ReceiptOperation = Readonly<{
   operationId: string;
@@ -58,6 +59,14 @@ export class ProjectAgentProposalReceiptError extends Error {
 }
 
 const MAX_OPERATIONS = 64;
+
+/**
+ * 「准备中」最长能停多久——**这份回执的主人定的时限**。一次写入从登记准备到提交/放弃，最长不过写工具自己的预算
+ * （`MODEL_TOOL_WRITE_TIMEOUT_MS_VALUE`），再留一格收尾余量；过了这一点还停在 `preparing`，就说明那次写入已经死了
+ * （工具超时、回执没拿到、进程被打断），没有人会再去收它。没有这条时限时，这样一次死掉的写入会把之后**每一次**
+ * 写入都挡在「已有未完成操作」后面，直到用户手工清文件（pb04 走查 `agent-write-receipt-stuck`）。
+ */
+export const PROJECT_AGENT_PREPARING_DEADLINE_MS = MODEL_TOOL_WRITE_TIMEOUT_MS_VALUE + 15_000;
 
 function receiptPath(projectRoot: string): string {
   return path.join(path.resolve(projectRoot), ".nomi", "project-agent-proposal-receipt.json");
@@ -123,7 +132,7 @@ function hashJournal(value: Omit<ProjectAgentProposalReceipt, "journalHash">): s
   return digest("nomi-project-agent-proposal-journal:v2", value);
 }
 
-function operationHash(kind: "write" | "transition" | "clear", value: unknown): string {
+function operationHash(kind: "write" | "transition" | "clear" | "expire", value: unknown): string {
   return digest(`nomi-project-agent-proposal-operation:${kind}:v2`, value);
 }
 
@@ -290,11 +299,39 @@ export function createProjectAgentProposalReceiptService(
   input: Readonly<{
     projectRoot: string;
     binding: ProjectBinding;
+    /** 时钟只给测试注入；生产用系统时间。 */
+    now?: () => number;
   }>,
 ): ProjectAgentProposalReceiptService {
   assertProjectAgentBinding(input.binding);
+  const now = input.now ?? Date.now;
+  /** 回执上的时间戳与「过没过时限」读同一个时钟（测试注入的也是它）。 */
+  const make = (value: Parameters<typeof makeReceipt>[0]) => makeReceipt({ ...value, updatedAt: value.updatedAt ?? new Date(now()).toISOString() });
   const trustedBinding = Object.freeze({ ...input.binding });
   const store = createProjectAgentProposalReceiptStore(input.projectRoot);
+
+  /**
+   * 停在 `preparing` 超过主人时限的回执，在**任何一扇门第一次碰到它时**落到终态（`undone`，与写入被确定拒绝时
+   * `abandonDocumentProposalReceipt` 收的是同一个终态）。为什么在这里而不是调用方：四扇门（read / write /
+   * transition / clear）都先过 `current()`，放在这里就没有哪条入口能绕过去读到一份永远停着的「准备中」。
+   * 这是**收场**不是重试：写入有没有真的落到文稿不在这里猜——之后的写入自带文稿前提（revision / 内容哈希），
+   * 落没落会在它那一步被核出来。
+   */
+  const settleExpired = (receipt: ProjectAgentProposalReceipt): ProjectAgentProposalReceipt => {
+    if (receipt.lifecycle !== "preparing" || now() - Date.parse(receipt.updatedAt) <= PROJECT_AGENT_PREPARING_DEADLINE_MS) return receipt;
+    return store.write(
+      make({
+        previous: receipt,
+        binding: trustedBinding,
+        lifecycle: "undone",
+        proposalId: receipt.proposalId,
+        operationId: `preparing-expired:${receipt.operationId}`,
+        proposal: receipt.proposal,
+        requestHash: operationHash("expire", { operationId: receipt.operationId, revision: receipt.revision }),
+        updatedAt: new Date(now()).toISOString(),
+      }),
+    );
+  };
 
   const current = (): ProjectAgentProposalReceipt | null => {
     const receipt = store.read();
@@ -305,7 +342,7 @@ export function createProjectAgentProposalReceiptService(
     if (!sameProjectAgentBinding(receipt.binding, trustedBinding)) {
       throw new ProjectAgentProposalReceiptError("Project Agent proposal receipt binding mismatch");
     }
-    return receipt;
+    return settleExpired(receipt);
   };
   const replay = (
     receipt: ProjectAgentProposalReceipt | null,
@@ -357,8 +394,10 @@ export function createProjectAgentProposalReceiptService(
       assertCas(receipt, value.expectedRevision);
       if (value.lifecycle === "preparing") {
         if (receipt && receipt.lifecycle !== "committed" && receipt.lifecycle !== "undone") {
+          const settlesInMs = Math.max(0, PROJECT_AGENT_PREPARING_DEADLINE_MS - (now() - Date.parse(receipt.updatedAt)));
           throw new ProjectAgentProposalReceiptError(
-            "Project Agent proposal receipt already has an unfinished operation",
+            "Project Agent proposal receipt already has an unfinished operation: the previous write has not reported its result. "
+              + `Its outcome is settled automatically in about ${Math.ceil(settlesInMs / 1000)}s. Read the script to see what landed, then write again after that.`,
           );
         }
       } else {
@@ -373,7 +412,7 @@ export function createProjectAgentProposalReceiptService(
       }
       return toView(
         store.write(
-          makeReceipt({
+          make({
             previous: receipt,
             binding: trustedBinding,
             lifecycle: value.lifecycle,
@@ -408,7 +447,7 @@ export function createProjectAgentProposalReceiptService(
       }
       return toView(
         store.write(
-          makeReceipt({
+          make({
             previous: receipt,
             binding: trustedBinding,
             lifecycle: value.lifecycle,
@@ -436,7 +475,7 @@ export function createProjectAgentProposalReceiptService(
       }
       const cleared = toView(
         store.write(
-          makeReceipt({
+          make({
             previous: receipt,
             binding: trustedBinding,
             lifecycle: "undone",

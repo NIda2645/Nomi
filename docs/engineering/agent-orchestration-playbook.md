@@ -361,10 +361,8 @@ node scripts/research/tikhub-search.mjs \
 | ① 数门 | `node scripts/door-map.mjs <mutator 符号或文件>` 的门表 + 一句「这条不变量该归哪扇门」的判断 | 门表进根因合同的 `doors`；`check:root-cause-contracts` 逐条核 path:line |
 | ② 修复 | 修在门表上那个支配全部写者的边界；`door_reduction` 记清减了几扇 | 改动的生产文件 ⊆ 门表；≥2 扇没减必须写 `why_not` |
 
-**机器强制（`pnpm run check:door-map`）**：变化中的合同里，日期 ≥ 2026-09-11 且判为 `recurring` 的那些，
-① 门表不能为空，② **PR 正文必须引用那份合同的路径**。在 CI 的 contracts job 上跑，PR 正文经
-`DOOR_MAP_PR_BODY` 注入（走 env 不走命令行，同 §16）。合同侧的字段校验由 `check:root-cause-contracts` 管，
-两道门不重叠：一道管「门表填没填对」，一道管「派工链上的人看不看得见它」。
+**机器强制（`pnpm run check:root-cause-contracts`）**：合同侧的字段校验——门表不能为空、每条 `{kind, path, symbol}` 的 path 存在且符号对得上、不许手写行号、不许重复。
+2026-10-01 起原来的 `check:door-map`（「`recurring` 合同的 PR 正文必须引用那份合同」）已删：用户按门岗账本拍板，门表由脚本（`node scripts/door-map.mjs`）生成，合同里的门表合法性才是要紧的，正文宣告只是纸面（窗口里 5 次红全是补引用 / 补门表）。派工两段式（先派数门工人）仍然是纪律，只是不再有一道门岗数正文。
 
 **派工模板要加的两行**（抄进 brief，不是提醒）：
 

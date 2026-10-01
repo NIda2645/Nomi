@@ -11,7 +11,7 @@ test('正文不再来自事件负载：pull_request 事件里也是现取', () =
   const calls = []
   const result = resolvePullRequestBody({
     env: { GITHUB_EVENT_NAME: 'pull_request', NOMI_PR_NUMBER: '812', PRIOR_ART_PR_BODY: '旧快照', DOOR_MAP_PR_BODY: '旧快照' },
-    argv: ['node', 'check-door-map.mjs'],
+    argv: ['node', 'check-prior-art.mjs'],
     fetchBody: (args) => {
       calls.push(args)
       return '现在的正文 docs/fixes/2026-09-18-x.root-cause.json'
@@ -26,7 +26,7 @@ test('正文不再来自事件负载：pull_request 事件里也是现取', () =
 test('pull_request 事件里取不到正文 = 红，不是跳过（拿不到证据就说拿不到）', () => {
   const result = resolvePullRequestBody({
     env: { GITHUB_EVENT_NAME: 'pull_request', NOMI_PR_NUMBER: '812' },
-    argv: ['node', 'check-door-map.mjs'],
+    argv: ['node', 'check-prior-art.mjs'],
     fetchBody: () => { throw new Error('gh: not authenticated\nrun gh auth login') },
   })
   assert.equal(result.available, false)
@@ -36,13 +36,13 @@ test('pull_request 事件里取不到正文 = 红，不是跳过（拿不到证�
 })
 
 test('本地默认跳过；加 --pr 才查，取不到也只是「今天没查成」', () => {
-  const skipped = resolvePullRequestBody({ env: {}, argv: ['node', 'check-door-map.mjs'], fetchBody: () => 'x' })
+  const skipped = resolvePullRequestBody({ env: {}, argv: ['node', 'check-prior-art.mjs'], fetchBody: () => 'x' })
   assert.equal(skipped.available, false)
   assert.equal(skipped.required, false)
 
   const asked = resolvePullRequestBody({
     env: {},
-    argv: ['node', 'check-door-map.mjs', '--pr'],
+    argv: ['node', 'check-prior-art.mjs', '--pr'],
     fetchBody: () => { throw new Error('gh: command not found') },
   })
   assert.equal(asked.available, false)
@@ -52,7 +52,7 @@ test('本地默认跳过；加 --pr 才查，取不到也只是「今天没查�
   const calls = []
   const found = resolvePullRequestBody({
     env: {},
-    argv: ['node', 'check-door-map.mjs', '--pr'],
+    argv: ['node', 'check-prior-art.mjs', '--pr'],
     fetchBody: (args) => { calls.push(args); return 'body' },
   })
   assert.equal(found.available, true)

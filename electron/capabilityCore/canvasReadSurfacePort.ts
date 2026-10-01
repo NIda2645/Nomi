@@ -138,7 +138,11 @@ export function createCanvasReadSurfacePortRuntime(
           settle(requestId, request, { error: new SurfacePortError(request.mutating ? "capability_receipt_unresolved" : "surface_port_unavailable") });
           return;
         }
-        const uncertain = request.mutating && rendererError && ["capability_cancelled", "surface_port_stale", "surface_port_unavailable", "surface_port_suspended", "project_binding_stale"].includes(rendererError.code);
+        // 渲染层**回了**一个明确的拒绝，写入的结局本来是已知的：`surface_port_stale` 是它在碰文稿之前验目标
+        //（锚点 / 内容哈希 / 项目绑定）发现对不上而拒绝的——什么都没执行（真机 pb04 实测：第五次写入收到的就是它）。
+        // 把它当「结果不确定」只会让回执永远停在 `preparing`、挡住之后每一次写入。
+        // 另外几个码（被取消 / 端口不可用 / 被挂起 / 绑定过期）可能发生在派发**之后**，结局真不知道，仍按不确定处理。
+        const uncertain = request.mutating && rendererError && ["capability_cancelled", "surface_port_unavailable", "surface_port_suspended", "project_binding_stale"].includes(rendererError.code);
         settle(requestId, request, rendererError ? { error: uncertain ? new SurfacePortError("capability_receipt_unresolved") : rendererError } : { value: reply?.result });
       },
       (error) =>

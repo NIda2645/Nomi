@@ -58,6 +58,12 @@ jobs:
           pnpm run check:doc-status
           pnpm run check:ledger
 
+      # 自媒体来源提醒（判断题，机器补不了）：2026-10-01 起不再出现在 PR 的 Contracts 里，
+      # 在这里作为只读提示继续跑，红了不拦、只留在日志里。
+      - name: Research-sources reminder (read-only)
+        continue-on-error: true
+        run: pnpm run check:research-sources
+
       # GITHUB_TOKEN 的 push 不递归启动 workflow；不靠提交标记跳过 CI。
       # 固定分支的创建、更新和无差异收敛全部交给 action。
       - name: Update the single docs repair PR

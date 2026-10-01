@@ -72,7 +72,8 @@ function topLevelStatements(body) {
  */
 export function exemptionOf(path, content) {
   const file = String(path).replaceAll('\\', '/')
-  if (/\.(?:test|spec|e2e)\.[cm]?[jt]sx?$/.test(file) || /(?:^|\/)(?:__tests__|__fixtures__|testSupport)\//.test(file)) return 'test'
+  if (/\.(?:test|spec|e2e)\.[cm]?[jt]sx?$/.test(file) || /(?:^|\/)(?:__tests__|__fixtures__|testSupport)\//.test(file)
+    || /(?:^|\/)test[A-Z][^/]*\.[cm]?[jt]sx?$/.test(file) || /TestUtils?\.[cm]?[jt]sx?$/.test(file)) return 'test'
   if (/\.d\.ts$/.test(file)) return 'declaration'
   const statements = topLevelStatements(stripComments(content))
   if (statements.length === 0) return 'types-only'

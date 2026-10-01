@@ -45,6 +45,25 @@ const INTENTIONALLY_OUT_OF_CHAIN = new Map([
     '手动交接体检工具（--with-tests 可启动全套件），不是每次 push 的正确性门岗',
   ],
   [
+    'check:test-types',
+    // 2026-10-01 用户按门岗账本拍板「test-types 与 typecheck 合成一次」：typecheck 编排器（scripts/typecheck.mjs）并发拉起它，
+    // scripts/typecheck.node-test.mjs 钉死名单里有它。单独跑 `pnpm run check:test-types` 仍然可用。
+    '由 typecheck 编排器并发驱动（scripts/typecheck.mjs 的 TYPECHECK_JOBS），不再在 gates:contracts 里单列、重复跑一遍',
+  ],
+  [
+    'check:docs-index',
+    // 2026-10-01 用户按门岗账本拍板移出 PR 的 Contracts：49/49 次都红、永远不阻断。补齐与验收在 docs-autosync 工作流里。
+    '文档索引记账：由 docs-autosync 在 main 上补齐并验收，不进 PR 的 Contracts（门岗账本：advisory 49/49 次红、无读者）',
+  ],
+  [
+    'check:doc-status',
+    '文档状态记账：同 check:docs-index，由 docs-autosync 在 main 上补齐并验收',
+  ],
+  [
+    'check:research-sources',
+    '自媒体来源提醒：判断题，机器补不了；移出 PR 的 Contracts，在 docs-autosync 里作为只读提示跑（continue-on-error）',
+  ],
+  [
     'check:audit',
     // 这是**节奏提醒**不是正确性门岗：commit 攒够 25 个就提示该做周期审计（R14）。
     // 它按时间/计数报红，和这次改动对不对无关。放进 gates 会让「今天该审计了」

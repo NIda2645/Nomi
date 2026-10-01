@@ -215,6 +215,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   // registered in this process; otherwise pi rejects the whole turn with
   // `configured_tools_unavailable` before it can reach the provider.
   const registeredToolNames = new Set(tools.map((tool) => tool.name));
+  // 工具定义也是请求输入的一部分（每次请求都带）；估一次，从预算里先扣掉。
   // Every descriptor assembled by the desktop surface is resident for this
   // lane. The native menu may contain projected aliases, but only registered
   // descriptors can be handed to the harness.
@@ -406,7 +407,8 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
           toolCallId: '', toolName: tool.name, args: value ? { operation: value } : {},
         })}`);
       }).join('\n') : '';
-    return { systemPrompt: [await systemPromptForRun(event.runId), catalogInput ? formatLaneModelIndex(catalogInput.context, options.modelDefaults?.()) : '', input?.context.systemPrompt, input?.context.skillPrompt, quote, authority].filter(Boolean).join('\n\n') };
+    const systemPrompt = [await systemPromptForRun(event.runId), catalogInput ? formatLaneModelIndex(catalogInput.context, options.modelDefaults?.()) : '', input?.context.systemPrompt, input?.context.skillPrompt, quote, authority].filter(Boolean).join('\n\n');
+    return { systemPrompt };
   });
 
   harness.hooks.on('before_tool', async (event, hookContext) => {
