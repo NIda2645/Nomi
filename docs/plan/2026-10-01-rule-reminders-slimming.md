@@ -65,7 +65,7 @@
 |---|---|---|
 | 常用命令大表（约 3.9 KB） | `docs/engineering/commands.md` | CLAUDE.md「常用命令」一节直接指向；`self-check.sh`【命令全表】块（消息含 gates / check: / 门岗 / 命令）；`package.json` 是真相源 |
 | push 前分层（R22）、交付身份（R11）、Ponytail（R25） | `docs/engineering/delivery-and-review.md` | `self-check.sh`【交付】块（消息含 合并 / merge / 收据 / verify-merged / preflight / 开 PR / 交工 / Ponytail / review:branch / 推送）；pre-push 闸门自己拦没过的、没收据的 |
-| 三个每日雷达 + 三日竞品雷达 | `docs/engineering/daily-radars.md`；技能 `nomi-*-radar` | **SessionStart hook `daily-radar.sh` 直接跑脚本并注入结果**；失败明说「今天没查成」；**一台机器一天一次，标记与摘要在仓库外，后开的会话拿缓存摘要**；失败下次重试；两个雷达并行；hook 不动工作树、不发扣费请求（`--no-liveness`）；分诊只由协调会话做 |
+| 每日雷达（用户反馈、模型）+ 三日竞品雷达；论文雷达改为按需（2026-10-01 用户拍板）| `docs/engineering/daily-radars.md`；技能 `nomi-intake-radar` / `nomi-competitive-radar`；模型雷达分诊看 `docs/plan/2026-08-27-vendor-model-radar.md` | **SessionStart hook `daily-radar.sh` 直接跑脚本并注入结果**；失败明说「今天没查成」；**一台机器一天一次，标记与摘要在仓库外，后开的会话拿缓存摘要**；失败下次重试；两个雷达并行；hook 不动工作树、不发扣费请求（`--no-liveness`）；分诊只由协调会话做 |
 | P2 / P3 / P5 全文 | `docs/engineering/principles-detail.md`；CLAUDE.md 各留一两行 | `self-check.sh`【修根因】【报完成前】【设计流程】块都带指针；P2 另有 `root-cause-remediation` 技能 |
 | 三闸段（CLAUDE.md） | 删（和 `self-check.sh` 逐句重复） | 常驻 640 字节仍在每轮注入三刻与贯穿原则 |
 | L0 ① 里的 R5.1 / R5.4 / R5.5 细节 | `self-check.sh`【先查别人 · R5】块；`stack-currency-check.sh`（PreToolUse · 写 docs/plan 或动 package.json）追加一句 R5.4 / R5.5 | 消息含 框架 / SDK / 依赖 / 协议 / 规范 / 格式 / 导入导出 / MCP / 技能包 等；或写方案文档 / 动 package.json 的那一刻 |

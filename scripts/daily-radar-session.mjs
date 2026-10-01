@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 每日雷达（SessionStart hook 的本体）：会话一开就把「用户反馈雷达」「供应商模型雷达」跑掉并把结果注入上下文，
-// 再提醒「论文雷达」「三日竞品雷达」。
+// 再提醒「三日竞品雷达」。论文雷达改为按需（2026-10-01 用户拍板），不再每日提醒。
 //
 // 为什么从 CLAUDE.md 的一段指令改成 hook：必须每次发生的事写成 hook，不写成指令（调研报告 §一.2；官方：CLAUDE.md 是 advisory，
 // hook 是 deterministic）。原先靠 agent 在第一条消息里自觉去跑，跑没跑、跑败了有没有说成「没有新东西」都没人管。
@@ -29,10 +29,9 @@ export const RADARS = [
       ? `有新反馈或有突增时，由协调会话起 nomi-intake-radar 技能分诊。${TRIAGE}`
       : `技能 nomi-intake-radar 在这台机器上没有，今天没法按技能分诊（不是没有新反馈）；把「新增 N 条」告诉协调会话。${TRIAGE}`) },
   // --no-liveness：每周一次的存活探测会发付费请求，hook 路径里不许有任何扣费请求。
-  { key: 'models', label: '供应商模型雷达', script: 'radar:models', argv: ['node_modules/tsx/dist/cli.mjs', 'scripts/model-radar.ts', '--no-liveness'], skill: 'nomi-model-radar',
-    next: (hasSkill) => (hasSkill
-      ? `\`新增 > 0\` 时由协调会话起 nomi-model-radar 技能分诊；要接某个先出接入方案，点头后才写码；快照等用户看过再 -- --update-baseline。${TRIAGE}`
-      : `技能 nomi-model-radar 在这台机器上没有；\`新增 > 0\` 时按 ${MODEL_TRIAGE_PLAN} 的分诊规则由协调会话处理；要接某个先出接入方案，点头后才写码；快照等用户看过再 -- --update-baseline。${TRIAGE}`) },
+  { key: 'models', label: '供应商模型雷达', script: 'radar:models', argv: ['node_modules/tsx/dist/cli.mjs', 'scripts/model-radar.ts', '--no-liveness'],
+    // 不恢复模型雷达的分诊技能（2026-10-01 用户拍板）：分诊一律按方案文档的规则，由协调会话手做。
+    next: () => `\`新增 > 0\` 时按 ${MODEL_TRIAGE_PLAN} 的分诊规则由协调会话处理；要接某个先出接入方案，点头后才写码；快照等用户看过再 -- --update-baseline。${TRIAGE}` },
 ]
 const TAIL_LINES = 14
 const TAIL_CHARS = 1200
@@ -91,22 +90,11 @@ export function readState(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return {} }
 }
 
-/** 最新一份 docs/research/<date>-radar.md 的日期（没有 = null）。 */
-export function latestPaperRadarDate(root, readdir = fs.readdirSync) {
-  try {
-    const dates = readdir(path.join(root, 'docs', 'research'))
-      .map((name) => /^(\d{4}-\d{2}-\d{2})-radar\.md$/.exec(name)?.[1])
-      .filter(Boolean)
-      .sort()
-    return dates.at(-1) ?? null
-  } catch { return null }
-}
-
 /**
  * 纯逻辑（可测）：返回 { text, state }。run(root, radar) 注入；两个雷达**并行**。
  * state = 机器级的当天标记 + 摘要：今天已成功的直接给缓存摘要（带跑的时间），失败的重跑。
  */
-export async function runDailyRadar({ root, now = new Date(), run = defaultRun, state = {}, readdir = fs.readdirSync, hasSkill = (name) => skillExists(name, { root }) }) {
+export async function runDailyRadar({ root, now = new Date(), run = defaultRun, state = {}, hasSkill = (name) => skillExists(name, { root }) }) {
   const today = localDate(now)
   const next = state.date === today ? { ...state } : { date: today }
 
@@ -120,7 +108,7 @@ export async function runDailyRadar({ root, now = new Date(), run = defaultRun, 
     if (cached) {
       lines.push(`【${radar.label}】今天 ${cached.at} 已在本机跑过（别的会话先开了；摘要如下，新增数以当时为准；要重跑：pnpm run ${radar.script}）：`)
       lines.push(cached.text || '（当时脚本没有输出）')
-      lines.push(`→ ${radar.next(hasSkill(radar.skill))}`)
+      lines.push(`→ ${radar.next(radar.skill ? hasSkill(radar.skill) : true)}`)
       continue
     }
     if (result.status === 0) {
@@ -128,7 +116,7 @@ export async function runDailyRadar({ root, now = new Date(), run = defaultRun, 
       next[radar.key] = { ok: true, at, text }
       lines.push(`【${radar.label}】已跑（${at}，pnpm run ${radar.script}）：`)
       lines.push(text)
-      lines.push(`→ ${radar.next(hasSkill(radar.skill))}`)
+      lines.push(`→ ${radar.next(radar.skill ? hasSkill(radar.skill) : true)}`)
     } else {
       const why = result.error?.code === 'ETIMEDOUT' || result.signal ? `超时（>${TIMEOUT_MS / 1000}s）`
         : result.error ? `没能启动：${result.error.message}`
@@ -140,10 +128,6 @@ export async function runDailyRadar({ root, now = new Date(), run = defaultRun, 
     }
   }
 
-  const paper = latestPaperRadarDate(root, readdir)
-  if (paper === today) lines.push(`【论文雷达】今天已有 docs/research/${today}-radar.md，跳过。`)
-  else if (hasSkill('nomi-research-radar')) lines.push(`【论文雷达】只由协调会话做：今天还没有 docs/research/${today}-radar.md（最新：${paper ?? '无'}）→ 静默跑 nomi-research-radar 技能（额度默认授权），回答时带出当天最该动的 1-2 件事。`)
-  else lines.push(`【论文雷达】技能 nomi-research-radar 在这台机器上没有，今天没查成（不是没有新论文；最新一份 docs/research/ 下的 radar 是 ${paper ?? '无'}）。恢复还是撤掉由协调会话去问用户，别的会话不动手。`)
   if (hasSkill('nomi-competitive-radar')) lines.push('【三日竞品雷达】只由协调会话做：首轮检查到期 / 未完成周期（nomi-competitive-radar；入口 docs/research/competitive/README.md）；失败不能记「无更新」，研究建议不能自动变成开发或发布授权。')
   else lines.push('【三日竞品雷达】技能 nomi-competitive-radar 在这台机器上没有，今天没查成（不是没有更新）；由协调会话处理。')
   return { text: lines.join('\n'), state: next }
@@ -161,7 +145,7 @@ export function tryLock(lockFile, now = Date.now()) {
 export const unlock = (lockFile) => { try { fs.rmSync(lockFile, { force: true }) } catch { /* 无所谓 */ } }
 
 /** 会话级入口（含读写缓存与锁）；测试通过 env.NOMI_INTAKE_CACHE 指到临时目录。 */
-export async function runSession({ root, env = process.env, now = () => new Date(), run = defaultRun, readdir = fs.readdirSync, hasSkill, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), lockWaitMs = LOCK_WAIT_MS }) {
+export async function runSession({ root, env = process.env, now = () => new Date(), run = defaultRun, hasSkill, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), lockWaitMs = LOCK_WAIT_MS }) {
   const stateFile = radarStateFile(env)
   const lockFile = `${stateFile}.lock`
   let waited = 0
@@ -171,7 +155,7 @@ export async function runSession({ root, env = process.env, now = () => new Date
     waited += 2000
   }
   try {
-    const { text, state } = await runDailyRadar({ root, now: now(), run, state: readState(stateFile), readdir, ...(hasSkill ? { hasSkill } : {}) })
+    const { text, state } = await runDailyRadar({ root, now: now(), run, state: readState(stateFile), ...(hasSkill ? { hasSkill } : {}) })
     try { fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.writeFileSync(stateFile, JSON.stringify(state)) } catch { /* 写不进去只会让下次再跑一遍 */ }
     return text
   } finally {

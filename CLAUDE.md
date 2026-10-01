@@ -67,7 +67,7 @@ Nomi：本地优先 AI 视频创作工作台。
 
 ## 每日雷达
 
-用户反馈 / 供应商模型 / 论文 / 三日竞品四个雷达，由 **SessionStart hook（`scripts/claude-hooks/daily-radar.sh`）直接跑脚本并把结果注入会话**；脚本失败时它会明说「今天没查成」——**不许**说成「没有新反馈 / 没有新模型」。分诊规矩与细则：`docs/engineering/daily-radars.md`；技能 `nomi-intake-radar` / `nomi-model-radar` / `nomi-research-radar` / `nomi-competitive-radar`。研究建议不能自动变成开发或发布授权。
+用户反馈 / 供应商模型两个雷达由 **SessionStart hook（`scripts/claude-hooks/daily-radar.sh`）直接跑**并把结果注入会话，三日竞品雷达由它提醒；失败会明说「今天没查成」，**不许**说成「没有新反馈 / 没有新模型」。**论文雷达改为按需（2026-10-01 用户拍板），不再每日提醒。** 模型雷达分诊按 `docs/plan/2026-08-27-vendor-model-radar.md`，只由协调会话做。细则：`docs/engineering/daily-radars.md`。
 
 ## 决策自治
 
