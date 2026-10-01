@@ -9,7 +9,7 @@ contracts 始终跑（一次跑完全部门岗再汇总，不再第一个红就�
 
 ## 交付身份只走统一命令（R11）
 
-任务开始先跑 `delivery:preflight`；PR 合并后**立即**在 Git fetch 得到的真实 merge SHA 上跑 `delivery:verify-merged`：非纯文档的 merge 必须看到该 SHA 上 `Core Flow Smoke (empty)` / `(used)` 都是 success 才发收据（skipped / 缺席一律拒绝）。**合并规矩（2026-10-01 用户拍板）**：CI 绿 + 扫描干净就合；**最多 3 个合并在等收据**（`quality-gate.yml` 按 SHA 分组，每个合并提交各跑一套），任何一个收据红了**立刻停止再合**，交人定修还是回滚（冒烟红了不自动回滚）。任务 commit、PR head、merge commit 与 tree 分开报告；禁止用 REST compare 文件列表重建 Git tree/commit，禁止把 `same-tree-different-commit` 叫成代码不匹配。
+任务开始先跑 `delivery:preflight`；PR 合并后**立即**在 Git fetch 得到的真实 merge SHA 上跑 `delivery:verify-merged`：非纯文档的 merge 必须看到该 SHA 上 `Core Flow Smoke (empty)` / `(used)` 都是 success 才发收据（skipped / 缺席一律拒绝）。**合并规矩（2026-10-01 用户拍板；只由协调会话做，其他会话开 PR 后把号发给它、不自己合）**：CI 绿 + 扫描干净就合；**最多 3 个合并在等收据**（`quality-gate.yml` 按 SHA 分组，每个合并提交各跑一套），任何一个收据红了**立刻停止再合**，交人定修还是回滚（冒烟红了不自动回滚）。任务 commit、PR head、merge commit 与 tree 分开报告；禁止用 REST compare 文件列表重建 Git tree/commit，禁止把 `same-tree-different-commit` 叫成代码不匹配。
 
 ## 交工前的 Ponytail 评审（R25，R24 由 PR #223 保留）
 

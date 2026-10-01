@@ -56,8 +56,9 @@ describe('关键词块：命中才注入', () => {
     })
   }
 
-  test('新合并规矩在交付块里（CI 绿 + 扫描干净就合，最多 3 个在等收据，红了立刻停）', () => {
+  test('新合并规矩在交付块里（只由协调会话做；CI 绿 + 扫描干净就合，最多 3 个在等收据，红了立刻停）', () => {
     const out = inject('合并')
+    assert.match(out, /只由协调会话做/)
     assert.match(out, /最多 3 个在等收据/)
     assert.match(out, /收据红了立刻停/)
     assert.doesNotMatch(out, /上一个合入没有收据，就不合下一个/)
