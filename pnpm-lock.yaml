@@ -280,6 +280,9 @@ importers:
       leafer-ui:
         specifier: ^2.1.0
         version: 2.1.7
+      marked:
+        specifier: 18.0.5
+        version: 18.0.5
       onnxruntime-common:
         specifier: 1.21.0
         version: 1.21.0

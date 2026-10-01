@@ -348,6 +348,7 @@
     "img-fx": "0.5.1",
     "immer": "^11.1.8",
     "leafer-ui": "^2.1.0",
+    "marked": "18.0.5",
     "onnxruntime-common": "1.21.0",
     "perfect-freehand": "^1.2.2",
     "playwright": "^1.60.0",
