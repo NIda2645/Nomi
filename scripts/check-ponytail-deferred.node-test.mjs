@@ -28,7 +28,7 @@ function row(sha, reviewed, reason = 'codex runner unavailable') {
 function runGate(file, args = []) {
   const result = spawnSync(process.execPath, [GATE, ...args], {
     encoding: 'utf8',
-    env: { ...process.env, NOMI_PONYTAIL_DEFERRED_LOG_OVERRIDE: file },
+    env: { ...process.env, NOMI_PONYTAIL_DEFERRED_LOG_OVERRIDE: file, NOMI_PONYTAIL_MODE: 'enforce' },
   })
   return { status: result.status, out: `${result.stdout || ''}${result.stderr || ''}` }
 }

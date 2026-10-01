@@ -25,7 +25,11 @@
  *   ② **判断题提醒**（2026-09-07 新增，`check:research-sources` 是第一条）：判据本身是判断题，
  *      机器**原理上补不了**，而硬拦会逼出「写一节假的来过门」——那比没有更糟。
  *      入选门槛很窄：判据必须允许「明写理由也算达标」的诚实出口，否则它就不是提醒而是躲。
- * 「这个门岗老是红、很烦」在两类里都不是理由——那是要么修根因、要么删门岗，不是降级。
+ *   ③ **用户按门岗账本拍板降级的提示**（2026-10-01，docs/audit/2026-10-01-gate-ledger.md）：目前只有 `check:symptom-cluster`
+ *      （6 次红全是补一份结构评审文档）。这一类不是「老红很烦」——是用户看过数据、明确说这道只提示不阻断；
+ *      名单由 `gate-slimming.node-test.mjs` 钉死，升回阻断要改那里并说明理由。
+ *      （`docs-index` / `doc-status` / `research-sources` 在同一次拍板里被**移出** PR 的 Contracts，不再是 advisory。）
+ * 「这个门岗老是红、很烦」在前两类里都不是理由——那是要么修根因、要么删门岗，不是降级。
  *
  * 用法：node scripts/run-gates-contracts.mjs [--advisory=a,b] <check:x> <check:y> ...
  * 门岗清单仍然逐个写在 package.json 的 `gates:contracts` 里（顺序即执行顺序），
