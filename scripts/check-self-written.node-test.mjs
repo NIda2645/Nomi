@@ -73,6 +73,8 @@ test('不咬：有登记的不报（精确文件、目录前缀、glob 三种写
 test('豁免各有判据：测试、.d.ts、纯接线、纯类型 不报；有运行时语句的不豁免', () => {
   assert.equal(exemptionOf('electron/agentLane/foo.test.ts', 'x'), 'test')
   assert.equal(exemptionOf('src/utils/__fixtures__/a.ts', 'export const x = 1'), 'test')
+  assert.equal(exemptionOf('src/workbench/ai/v4/testReactRenderer.ts', 'export const x = 1'), 'test')
+  assert.equal(exemptionOf('electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts', 'export const x = 1'), 'test')
   assert.equal(exemptionOf('electron/types.d.ts', 'declare const x: number'), 'declaration')
   assert.equal(exemptionOf('electron/agentLane/index.ts', "export { a, b } from './a'\nexport * from './b'\n"), 'wiring')
   assert.equal(exemptionOf('electron/agentLane/t.ts', "import type { A } from './a'\nexport type B = { f: (x: number) => string }\nexport interface C { y: string }\n"), 'types-only')
@@ -178,6 +180,13 @@ test('领域目录是概念级的：顶层树里混着的通用代码（hooks、
     'electron/catalog/newVendorAdapter.ts',
     'src/workbench/generationCanvas/nodes/NewNode.tsx',
     'src/workbench/production/NewRunCard.tsx',
+    'src/workbench/ai/v4/agentPanelSpendCardV2.ts',
+    'src/workbench/ai/v4/AgentPanelV4ReceiptV2.tsx',
+    'src/workbench/ai/lane/laneNewThing.ts',
+    'src/workbench/ai/systemPrompt/NewPromptThing.tsx',
+    'electron/memory/projectMemoryV2.ts',
+    'electron/experience/experienceThing.ts',
+    'electron/connectors/tikhubNewEndpoint.ts',
     'src/workbench/creation/newStoryboardThing.ts',
   ]) assert.equal(flagged(file), false, `${file} 是领域，不该报`)
   // 通用：报（这些在旧版「整棵顶层树都算领域」下全部漏过去）
@@ -199,6 +208,19 @@ test('领域目录是概念级的：顶层树里混着的通用代码（hooks、
     'src/workbench/common/NewMarkdown.tsx',
     'src/workbench/api/newApi.ts',
     'src/ui/newToast.tsx',
+    // 通用聊天界面：0.24 要换成品组件、最容易再造轮子的地方
+    'src/workbench/ai/v4/AgentPanelV4MarkdownV2.tsx',
+    'src/workbench/ai/v4/AgentPanelV4MessageV2.tsx',
+    'src/workbench/ai/v4/AgentPanelV4RowV2.tsx',
+    'src/workbench/ai/v4/AgentPanelV4ComposerV2.tsx',
+    'src/workbench/ai/v4/agentPanelV4ScrollMemoryV2.ts',
+    'src/workbench/ai/v4/agentPanelV4CollapseV2.ts',
+    'src/workbench/ai/v4/formatMoneyV2.ts',
+    'src/workbench/ai/v4/vendor/aiElementsPrimitivesV2.tsx',
+    'src/workbench/ai/composer/AutoGrowTextareaV2.tsx',
+    'src/workbench/ai/resident/residentTranscriptScrollV2.ts',
+    'electron/conversations/conversationsStoreV2.ts',
+    'electron/connectors/connectorPrefsStoreV2.ts',
     'src/design/NewPopover.tsx',
   ]) assert.equal(flagged(file), true, `${file} 是通用代码，应该报`)
 })

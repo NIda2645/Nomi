@@ -305,6 +305,86 @@ function scan(files, staged) {
   return hits;
 }
 
+// ============================================================================
+// 私有待办编号（2026-10-01）：`T-RL-12` / `T-AG-41` / `T-QA-62` 这类编号是**私有待办正本**里的条目，
+// 公开仓库里出现它们 = 把私有待办的存在与结构泄露出来（编号本身不是凭证，但它指向一份不公开的账）。
+// 老文件里约 130 处历史编号不追溯——**只查新增的行**，所以改一个含历史编号的老文件、没新增编号，不红。
+//   · pre-commit（staged）：只看 `git diff --cached` 里新增的行；
+//   · CI / `--all`：只看 merge-base(origin/main, HEAD)..HEAD 里新增的行（同一条规则，同一份判据）；
+//   · 显式给文件：整份文件算新增（测试与手动抽查用）。
+// 没有行级豁免标记：要写问题就写问题本身（「上下文超窗」「写入回执卡死」），不写编号。
+// ============================================================================
+export const PRIVATE_TODO_ID = /\bT-(?:RL|AG|QA|CV|DS|MO|ED|MD|EC|WB|CR)-\d+\b/g;
+const PRIVATE_TODO_ID_ADVICE = "私有待办编号不进公开仓库，改成写问题本身";
+
+/** 解析 `git diff -U0` 的输出 → Map<文件, [{no, text}]>（只含新增行；二进制文件没有 hunk，自然为空）。 */
+export function parseAddedLines(diffText) {
+  const added = new Map();
+  let file = null;
+  let lineNo = 0;
+  for (const raw of String(diffText).split("\n")) {
+    if (raw.startsWith("+++ ")) {
+      const target = raw.slice(4).trim();
+      file = target === "/dev/null" ? null : target.replace(/^b\//, "");
+      continue;
+    }
+    const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(raw);
+    if (hunk) { lineNo = Number(hunk[1]); continue; }
+    if (file && raw.startsWith("+") && !raw.startsWith("+++")) {
+      if (!added.has(file)) added.set(file, []);
+      added.get(file).push({ no: lineNo, text: raw.slice(1) });
+      lineNo += 1;
+    }
+  }
+  return added;
+}
+
+function scanPrivateTodoIds(addedByFile) {
+  const hits = [];
+  for (const [file, lines] of addedByFile) {
+    if (isAllowed(file)) continue; // 本扫描器自己（含正则定义）与安全文档
+    for (const { no, text } of lines) {
+      for (const m of text.matchAll(PRIVATE_TODO_ID)) {
+        hits.push({ f: `${file}:${no}`, kind: "私有待办编号", detail: `${m[0]} —— ${PRIVATE_TODO_ID_ADVICE}` });
+      }
+    }
+  }
+  return hits;
+}
+
+function gitDiffAdded(args) {
+  try {
+    return parseAddedLines(execFileSync("git", ["-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff", ...args], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }));
+  } catch {
+    return null;
+  }
+}
+
+/** CI / --all 的「PR 差异」：显式 base 优先，否则 merge-base(origin/main, HEAD)；拿不到 = null（说明白，不假装通过）。 */
+function prDiffBase() {
+  const explicit = (process.env.SECRET_SCAN_BASE_REF || process.env.ROOT_CAUSE_BASE_REF || "").trim();
+  if (explicit && !/^0+$/.test(explicit)) {
+    try { execFileSync("git", ["rev-parse", "--verify", `${explicit}^{commit}`], { stdio: "ignore" }); return explicit; } catch { /* 往下找 */ }
+  }
+  try { return execFileSync("git", ["merge-base", "HEAD", "origin/main"], { encoding: "utf8" }).trim(); } catch { return null; }
+}
+
+function privateTodoHits(mode, files) {
+  if (mode === "staged") return scanPrivateTodoIds(gitDiffAdded(["--cached", "--diff-filter=AM"]) ?? new Map());
+  if (mode === "all") {
+    const base = prDiffBase();
+    if (!base) { console.error("  ⚠️ 私有待办编号：拿不到可信 base，本次不判 PR 差异（不拿算不出来当通过）"); return []; }
+    return scanPrivateTodoIds(gitDiffAdded([base, "HEAD", "--diff-filter=AM"]) ?? new Map());
+  }
+  // 显式文件：整份算新增
+  const whole = new Map();
+  for (const f of files) {
+    const text = readContent(f, false);
+    if (text) whole.set(normalizeScanPath(f), text.split("\n").map((line, i) => ({ no: i + 1, text: line })));
+  }
+  return scanPrivateTodoIds(whole);
+}
+
 // ── 主流程 ──
 const args = process.argv.slice(2);
 let files, mode, staged;
@@ -314,6 +394,7 @@ else if (args.length && !args[0].startsWith("--")) { files = args; mode = "指�
 else { files = listStaged(); mode = "git staged 文件"; staged = true; }
 
 const hits = scan(files, staged);
+hits.push(...privateTodoHits(staged ? "staged" : (scanningAll ? "all" : "files"), files));
 
 if (hits.length) {
   console.error("\n  🔴 安全门岗拦截：检测到疑似敏感数据（明文凭证 / 微信记录 / db_key / 私有配置）");
