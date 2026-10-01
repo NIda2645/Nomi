@@ -49,14 +49,14 @@
   "platforms": {
     "darwin-arm64": {
       "unrecorded": {
-        "reason": "本机只有 Windows，没有 macOS 打包产物；下一次 desktop-rc 的 macOS 作业会上传 package-audit-darwin-arm64.json，用它登记",
-        "expires": "2026-10-12"
+        "reason": "本机只有 Windows，没有 macOS 打包产物；下一次 desktop-rc 的 macOS 作业会上传 package-audit-darwin-arm64.json，用它登记。2026-10-01 顺延 10-12 → 11-15：下一次 RC 就是 0.23 的候选版，0.23 RC 产出 package-audit-darwin-*.json 后登记",
+        "expires": "2026-11-15"
       }
     },
     "darwin-x64": {
       "unrecorded": {
-        "reason": "同 darwin-arm64：用下一次 desktop-rc 上传的 package-audit-darwin-x64.json 登记",
-        "expires": "2026-10-12"
+        "reason": "同 darwin-arm64：用下一次 desktop-rc 上传的 package-audit-darwin-x64.json 登记。2026-10-01 顺延 10-12 → 11-15：0.23 RC 产出 package-audit-darwin-*.json 后登记",
+        "expires": "2026-11-15"
       }
     },
     "win32-x64": {
