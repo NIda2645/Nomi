@@ -69,6 +69,55 @@ export function flattenEvents(eventRecords) {
 }
 
 // ---------------------------------------------------------------------------
+// 自动化事件：默认不进任何统计
+// ---------------------------------------------------------------------------
+
+/** 事件的 systemProps.automated === true 表示它来自测试 / 走查启动的进程
+ *  （electron/telemetry/telemetryEvents.ts 的 isAutomatedLaunch，以「谁启动的」为准）。 */
+export function isAutomatedEvent(evt) {
+  return evt?.systemProps?.automated === true
+}
+
+/** 拆成「真实用户事件」与「被排除的自动化事件」，并单独数出被排除了多少、都是什么事件。 */
+export function splitAutomatedEvents(events) {
+  const real = []
+  const automated = []
+  for (const evt of events) (isAutomatedEvent(evt) ? automated : real).push(evt)
+  const byEvent = new Map()
+  for (const evt of automated) byEvent.set(evt.eventName, (byEvent.get(evt.eventName) ?? 0) + 1)
+  return {
+    real,
+    excluded: {
+      count: automated.length,
+      byEvent: [...byEvent.entries()].map(([eventName, count]) => ({ eventName, count })).sort((a, b) => b.count - a.count || a.eventName.localeCompare(b.eventName)),
+    },
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 生成失败原因排行（props.errorType 是类别码；老版本的失败事件没有这一格，单独记一类）
+// ---------------------------------------------------------------------------
+
+export const UNREPORTED_FAILURE_REASON = '（旧版本未上报）'
+
+export function rankFailureReasons(events) {
+  const counts = new Map()
+  let total = 0
+  for (const evt of events) {
+    if (evt.eventName !== 'generation.completed' || evt.props?.result !== 'failure') continue
+    const reason = typeof evt.props?.errorType === 'string' && evt.props.errorType ? evt.props.errorType : UNREPORTED_FAILURE_REASON
+    counts.set(reason, (counts.get(reason) ?? 0) + 1)
+    total += 1
+  }
+  return {
+    total,
+    ranking: [...counts.entries()]
+      .map(([reason, count]) => ({ reason, count, share: total > 0 ? Math.round((count / total) * 1000) / 10 : 0 }))
+      .sort((a, b) => b.count - a.count || (a.reason === UNREPORTED_FAILURE_REASON) - (b.reason === UNREPORTED_FAILURE_REASON) || a.reason.localeCompare(b.reason)),
+  }
+}
+
+// ---------------------------------------------------------------------------
 // 生成结果：按能力 / 版本 / 系统 / 日期
 // ---------------------------------------------------------------------------
 
@@ -237,7 +286,9 @@ export function buildIntakeReport({
   generatedAt = new Date().toISOString(),
 }) {
   const feedbackItems = buildFeedbackItems(feedbackRecords)
-  const events = flattenEvents(eventRecords)
+  const allEvents = flattenEvents(eventRecords)
+  // 自动化事件默认排除：下面所有统计只看真实用户事件，被排除的条数单独报。
+  const { real: events, excluded: excludedAutomated } = splitAutomatedEvents(allEvents)
   const newKeySet = new Set(newFeedbackKeys)
   const newFeedback = feedbackItems.filter((item) => newKeySet.has(item.key))
   const { latestDate, previousDate } = latestTwoDatesWithData(events)
@@ -248,12 +299,15 @@ export function buildIntakeReport({
     totals: {
       feedbackCount: feedbackItems.length,
       eventsCount: events.length,
+      excludedAutomatedCount: excludedAutomated.count,
       trajectoriesCount,
       newFeedbackCount: newFeedback.length,
       newEventKeysCount: newEventKeys.length,
     },
     newFeedback,
+    excludedAutomated,
     generationResults: groupGenerationResults(events),
+    failureReasons: rankFailureReasons(events),
     errorCodeRanking: rankErrorCodes(feedbackItems),
     spikes: detectGenerationSpikes(events, { latestDate, previousDate }),
     launches: tallyLaunches(events),

@@ -90,7 +90,7 @@ export const zhAgentPanelV4 = {
   feedback: '反馈',
   consent: {
     title: '帮 Nomi 变好',
-    collects: '✓ 匿名分享：用了哪些功能 · 生成成没成功 · Agent 每一步用了什么工具、花了多久',
+    collects: '✓ 匿名分享：用了哪些功能 · 生成成没成功 · 失败属于哪一类 · Agent 每一步用了什么工具、花了多久',
     excludes: '✗ 不含：你的提示词 · 文稿 · 素材 · 文件路径 · 密钥',
     accept: '愿意',
     decline: '不分享',
@@ -583,7 +583,7 @@ export const enAgentPanelV4 = {
   feedback: 'Report',
   consent: {
     title: 'Help Nomi get better',
-    collects: '✓ Shared anonymously: which features you used · whether a generation succeeded · which tools each Agent step used and how long it took',
+    collects: '✓ Shared anonymously: which features you used · whether a generation succeeded · which category a failure falls into · which tools each Agent step used and how long it took',
     excludes: '✗ Never included: your prompts · manuscripts · assets · file paths · keys',
     accept: 'I\u2019m in',
     decline: "Don't share",
