@@ -3179,6 +3179,83 @@
       ],
       "since": "2026-09-29",
       "notes": "合同 docs/fixes/2026-09-29-failure-reason-from-upstream-evidence.root-cause.json：状态码（400/422）只说「请求有问题」，从不说为什么；上游自己的错误码（model_not_found 一类）才是它说的原因。三条把上游失败带过 IPC 的通道——图 / 视频 / JSON 请求（vendorHttp.requestVendor）、AI SDK 文本请求（aiSdkVendorError.vendorErrorFromAiSdkError）、Agent 的 pi 运行时（runtimeVendorError.describeRuntimeError，读响应体走 upstreamCodeFromBody）——都经同一个 pickUpstreamCode 把它随失败载荷（VendorErrorStructured.upstreamCode）带过去，classifyGenerationError 按码归类。键优先级表与 pickUpstreamMessage 同住一处。customCallRunner 只是把已有的载荷脱敏后原样（展开 structured）重包，不丢这一栏。"
+    },
+    {
+      "name": "每一次模型请求的输入预算（超了怎么收）",
+      "subject": "agent-lane.request-input-budget",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/agentLane/laneContextFit.ts",
+        "symbol": "fitContextToBudget"
+      },
+      "write_api": [
+        {
+          "path": "electron/agentLane/laneContextFit.ts",
+          "symbol": "fitContextToBudget"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneHost.mts"
+      ],
+      "since": "2026-10-01",
+      "notes": "预算数字住 laneContextBudget.mts（LANE_CONTEXT_TOKEN_BUDGET）；「这一次请求超了预算时收什么、不收什么」只住 fitContextToBudget：pi 的压缩只在回合之间量一次，管不到一个回合里连着十几次请求。收起的只有旧的大工具结果、其次旧的大调用参数；最新结果、最新助手消息、用户的话从不收；只改这一次的视图，不动落盘转录。收完仍超就如实报 overBudgetBy，由工具结果的源头上限（laneTools truncateForModel）负责。"
+    },
+    {
+      "name": "写入回执「准备中」的时限与终态",
+      "subject": "agent-proposal.receipt-preparing-deadline",
+      "lifecycle": "execution",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+        "symbol": "createProjectAgentProposalReceiptService"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+          "symbol": "createProjectAgentProposalReceiptService"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneDesktopRuntime.ts",
+        "electron/capabilityCore/mcpStdioServer.ts",
+        "electron/capabilityCore/projectAgentReceiptResolver.ts"
+      ],
+      "since": "2026-10-01",
+      "notes": "回执停在 preparing 的最长时间由回执自己的主人定（PROJECT_AGENT_PREPARING_DEADLINE_MS = 写工具预算 + 收尾余量），任何一扇门（read/write/transition/clear）第一次碰到过期的 preparing 就把它落到终态 undone。这是兜底，不是修复：写入被明确拒绝时由调用方当场收场（见 capability.surface-write-outcome）。"
+    },
+    {
+      "name": "渲染层写入回复的结局归类（明确拒绝 / 结局不明）",
+      "subject": "capability.surface-write-outcome",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+        "symbol": "createCanvasReadSurfacePortRuntime"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+          "symbol": "createCanvasReadSurfacePortRuntime"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/capabilityCore/canvasReadExecutionRuntime.ts"
+      ],
+      "since": "2026-10-01",
+      "notes": "一次改动型请求渲染层回了错误码：它在碰文稿之前验目标发现对不上而拒绝（surface_port_stale）= 结局已知，什么都没执行，如实往上报；被取消 / 端口不可用 / 被挂起 / 绑定过期可能发生在派发之后 = 结局不明，才是 capability_receipt_unresolved。把已知拒绝当不明会让回执永远停在 preparing（pb04 走查 agent-write-receipt-stuck 的第一根因）。"
     }
   ]
 }

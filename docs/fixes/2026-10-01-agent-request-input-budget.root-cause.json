@@ -1,0 +1,123 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-agent-request-input-budget",
+  "problem_type": "A budget enforced only between turns is not a per-request bound: inside one turn every step re-sends all earlier tool results, so input grows without limit",
+  "symptom": "Long Agent conversations (read the script, write it back, repeat) send 88K to 146K input tokens in a single model request although the lane's registered budget is 80K; one turn costs 750K tokens in total, and real users hit 'Assistant request exceeded the context window'.",
+  "direct_cause": "pi compacts only after a turn when the measured context is over the threshold; within a turn the lane's transform_context hook returned only a system prompt, so every request carried every earlier tool result and every large write argument verbatim.",
+  "class_root": "The input budget had an owner for the number (laneContextBudget) but no owner for the per-request enforcement: nothing guaranteed that the request actually sent is within the budget.",
+  "affected_population": [
+    "Every Agent turn with several tool calls that return large results (read_script, look_at_canvas, list_models)",
+    "Every provider and model (the bound is on our request, not a provider setting)",
+    "New and upgraded profiles alike"
+  ],
+  "entry_points": [
+    "laneHost transform_context: runs before every model request of every turn",
+    "pi compaction (between turns) remains the long-term memory mechanism"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Repository-internal invariants (per-request input size, who classifies a renderer refusal, how long a receipt may stay preparing); the framework only provides the hook point (documented in pi-agent-core types: transformContext / transform_context 'Context window management').",
+  "invariants": [
+    "Every model request's estimated input (system prompt + tool definitions + messages) is within the lane budget unless the irreducible part alone exceeds it",
+    "Only old large tool results, then old large call arguments, are dropped from the request view; the latest tool result, latest assistant message and every user message never are",
+    "The persisted transcript is never edited; a dropped result says what happened and how to get it back (call the tool again)"
+  ],
+  "generality_proof": "The guard runs in the one hook every request of every turn passes through, and its rules depend only on the messages' own sizes, not on tool names or scenarios; the class test feeds a long multi-read turn, write-heavy turns, and an irreducible case.",
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneHost.mts",
+      "entry_point": "transform_context hook",
+      "disposition": "enforced",
+      "evidence": "Every model request of every turn passes the hook; it calls fitContextToBudget with the lane budget and the tool-definition reserve."
+    },
+    {
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "entry_point": "laneCompactionSettings",
+      "disposition": "not-affected",
+      "evidence": "pi's between-turn compaction threshold; kept as is, it complements the per-request guard."
+    },
+    {
+      "path": "electron/agentLane/laneTools.mts",
+      "entry_point": "truncateForModel",
+      "disposition": "not-affected",
+      "evidence": "The source-side cap on a single tool result; the guard handles accumulation, not one oversized result."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new tool that returns large results, or any longer conversation, produces the same growth; the registered budget was not binding per request.",
+    "same_class_scan": [
+      "door-map fitContextToBudget / estimateRequestTokens: one call site (laneHost)",
+      "pb04 full-walk: 10 requests over budget before, 0 after",
+      "the other transform_context consumer (system prompt composition) does not touch messages"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneContextFit.ts",
+    "invariant": "Per-request estimated input is within the lane budget.",
+    "failure_mode": "When the irreducible part alone exceeds the budget the guard reports overBudgetBy and leaves messages intact (fail visible), and the tool-result source cap bounds the latest result.",
+    "exception_policy": "none",
+    "strategy": "One pure function in the one hook; concept agent-lane.request-input-budget registered; walk invariant 8 (input tokens per request) measures it on a real turn.",
+    "artifacts": [
+      "electron/agentLane/laneContextFit.ts",
+      "electron/agentLane/laneHost.mts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/laneContextFit.ts",
+    "tests": [
+      "electron/agentLane/laneContextFit.test.ts"
+    ],
+    "why": "The guard is a pure function proven by feeding long turns, write-heavy turns, user-message protection, idempotence and the irreducible case; the real-app proof is the pb04 per-request token measurement."
+  },
+  "regression_tests": [
+    "electron/agentLane/laneContextFit.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/agentLane/laneContextFit.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "There was no per-request bound before; nothing to remove."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Uses the documented transform_context hook of the installed pi version; no upgrade changes the invariant.",
+    "exit_criteria": []
+  },
+  "migration": "None: only the request view changes; transcripts and settings are untouched.",
+  "residual_risks": [
+    "The size estimate is bytes/3 (conservative for English, close for Chinese); a provider tokenizer can differ.",
+    "Images and PDFs in user messages are not elided (user content)."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "fitContextToBudget"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneContextFit.ts",
+      "symbol": "estimateRequestTokens"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "fitContextToBudget has exactly one caller (laneHost transform_context); estimateRequestTokens is used inside the guard and by its tests."
+  },
+  "scope_paths": [
+    "electron/agentLane/laneHost.mts",
+    "electron/agentLane/laneContextFit.ts"
+  ],
+  "shared_boundaries": [
+    {
+      "path": "electron/agentLane/laneContextFit.ts",
+      "symbol": "fitContextToBudget",
+      "responsibility": "The only place that decides what to drop when one model request would exceed the input budget; edits the view of that request only."
+    }
+  ]
+}
