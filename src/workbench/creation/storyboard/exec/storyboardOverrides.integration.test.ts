@@ -105,15 +105,15 @@ it('plan-bound nodes retain later canvas prompt overrides when the original row 
   expect(node().meta?.overriddenFields).toContain('prompt')
 })
 
-it('an existing shot materializes and connects a newly referenced visual anchor before generation', async () => {
+it('an existing shot that references a visual anchor does NOT get the anchor card built or wired in before generation (anchorIds do nothing)', async () => {
   const updatedShot = { ...shot, anchorIds: ['new-actor'] }
-  const updatedPlan = { ...plan, anchors: [{ id: 'new-actor', kind: 'character' as const, carrier: 'visual' as const, name: 'Actor', description: 'New actor' }], shots: [updatedShot] }
+  const updatedPlan = { ...plan, anchors: [{ id: 'new-actor', kind: 'character' as const, carrier: 'visual' as const, name: 'Actor', description: 'New actor', staticFeatures: 'a woman with black hair' }], shots: [updatedShot] }
   const mode = null
   await materializeShotRow({ ...ctx, plan: updatedPlan }, updatedShot, mode)
   const canvas = useGenerationCanvasStore.getState()
-  const anchorNode = canvas.nodes.find(value => value.meta?.anchorId === 'new-actor')
-  expect(anchorNode).toBeDefined()
-  expect(canvas.edges.some(edge => edge.source === anchorNode?.id && edge.target === 'n3')).toBe(true)
+  expect(canvas.nodes.find(value => value.meta?.anchorId === 'new-actor')).toBeUndefined()
+  expect(canvas.edges.some(edge => edge.target === 'n3')).toBe(false)
+  expect(canvas.nodes.find(value => value.id === 'n3')?.prompt ?? '').not.toContain('black hair')
 })
 
 it('Run identity does not grant override ownership to variants, derived nodes, keyframes or partial identities', () => {

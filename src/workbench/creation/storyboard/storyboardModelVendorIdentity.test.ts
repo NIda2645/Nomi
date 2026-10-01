@@ -119,7 +119,7 @@ describe('③ 锚行模型框：两家同名模型是两个可区分的选项，
     renderToStaticMarkup(createElement(StoryboardAnchorRow, {
       runtime: {
         anchor, node: null, visual: true, resultUrl: null, generating: false, failed: false, recoverable: false,
-        errorMessage: null, progressPercent: null, locked: false, referencedByCount: 0, consumedByShotCount: 0, waitingShotCount: 0,
+        errorMessage: null, progressPercent: null, locked: false, referencedByCount: 0,
       },
       aspect: '16:9', modelOptions: OPTIONS, onUpdate,
       onChangeKind: () => {}, onRemove: () => {}, onGenerate: () => {}, onRegenerate: () => {}, onToggleLock: () => {},

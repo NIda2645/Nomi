@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes/types'
 import type { PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
-import { cellCount, referenceColumnOf } from './shotReferenceCells'
+import { cellCount, modeDisplayLabel, referenceColumnOf } from './shotReferenceCells'
 
 const modeOf = (slots: ArchetypeMode['slots']): ArchetypeMode => ({
   id: 'm', intent: 'character', vendorTerm: 'x', hint: '', slots, params: [], promptRequired: true,
@@ -52,5 +52,30 @@ describe('shotReferenceCells', () => {
     if (column.kind !== 'cells') throw new Error('expected cells')
     expect(column.cells.map((cell) => cell.key)).toEqual(['image_ref'])
     expect(shot.referenceBindings?.first_frame).toHaveLength(1)
+  })
+})
+
+describe('句子里提到模式 / 槽：名字和模式下拉显示的是同一个（不拼 id、不直接拼档案里的中文）', () => {
+  const t2i: ArchetypeMode = { ...modeOf([]), id: 't2i', vendorTerm: '文生图' }
+  const edit: ArchetypeMode = { ...modeOf([{ kind: 'image_ref', label: '输入图', min: 1, max: 1 }]), id: 'edit', vendorTerm: '改图' }
+  const archetype = { modes: [t2i, edit] } as never
+
+  it('中文界面：用档案里的叫法，不是 t2i', async () => {
+    expect(modeDisplayLabel(t2i)).toBe('文生图')
+    const column = referenceColumnOf(t2i, undefined, archetype)
+    expect(column).toMatchObject({ kind: 'none-accepted', modeLabel: '文生图', switchTo: { modeLabel: '改图', slotLabel: '输入图' } })
+  })
+
+  it('英文界面：模式名与槽名都取英文那份（与下拉同一个 translateModelDisplayText），一个中文字都不混', async () => {
+    const i18n = (await import('../../../../i18n')).default
+    await i18n.changeLanguage('en')
+    try {
+      expect(modeDisplayLabel(t2i)).toBe('Text-to-image')
+      const column = referenceColumnOf(t2i, undefined, archetype)
+      expect(column).toMatchObject({ kind: 'none-accepted', modeLabel: 'Text-to-image', switchTo: { modeLabel: 'Edit image', slotLabel: 'Input image' } })
+      expect(JSON.stringify(column)).not.toMatch(/[一-鿿]/)
+    } finally {
+      await i18n.changeLanguage('zh-CN')
+    }
   })
 })

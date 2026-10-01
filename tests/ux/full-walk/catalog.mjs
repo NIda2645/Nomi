@@ -58,6 +58,11 @@ export const FULL_WALK_PLAYBOOKS = Object.freeze([
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
   }),
   Object.freeze({
+    id: 'pb91-storyboard-dragon-paid', script: 'tests/ux/full-walk/playbooks/pb91-storyboard-dragon.paid.mjs', paid: true,
+    title: Object.freeze({ 'zh-CN': '（付费小额）分镜里写「巨龙」，真出图一张，结果是龙不是人', en: '(paid) Storyboard row says dragon, one real image, it must be a dragon' }),
+    variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
+  }),
+  Object.freeze({
     id: 'pb90-seedream5-paid', script: 'tests/ux/full-walk/playbooks/pb90-seedream5.paid.mjs', paid: true,
     title: Object.freeze({ 'zh-CN': '（付费小额）Seedream 5.0 出一张最小档的图，看落地校验', en: '(paid) One smallest Seedream 5.0 image, check landing' }),
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
@@ -113,7 +118,7 @@ export const FULL_WALK_JOURNEYS = Object.freeze([
       { id: 'success', kind: 'terminal', visibleText: ['generationCommon.resultStack.versionCount'], actions: ['下载', '设为首帧'], owner: 'src/workbench/generationCanvas/nodes/NodeResultStack.tsx#NodeResultStack' },
       { id: 'error', kind: 'terminal', visibleText: ['generationCommon.observability.action.retry.main'], actions: ['重试'], owner: 'src/workbench/observability/classifyError.ts#classifyGenerationError' },
     ].map(Object.freeze)),
-    scripts: Object.freeze(['tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs', 'tests/ux/full-walk/playbooks/pb07-storyboard-prompt-truth.walk.mjs', 'tests/ux/pr619-reference-task.walk.mjs']),
+    scripts: Object.freeze(['tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs', 'tests/ux/full-walk/playbooks/pb07-storyboard-prompt-truth.walk.mjs', 'tests/ux/full-walk/playbooks/pb91-storyboard-dragon.paid.mjs', 'tests/ux/pr619-reference-task.walk.mjs']),
     invariants: Object.freeze([1, 3, 5]),
     metric: Object.freeze({ success: 'generation.completed{capability=image-edit,result=success}', failure: 'generation.completed{capability=image-edit,result=failure}', owner: 'src/workbench/api/taskApi.ts' }),
   }),

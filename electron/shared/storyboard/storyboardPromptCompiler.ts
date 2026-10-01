@@ -1,5 +1,4 @@
-import { parsePromptSegments } from './promptMentions'
-import type { PlanAnchor, PlanAnchorKind, PlanShot } from './storyboardPlan'
+import type { PlanAnchor, PlanAnchorKind, PlanReferenceBinding, PlanShot } from './storyboardPlan'
 
 /**
  * 分镜方案的**提示词编译层**：把 `StoryboardPlan` 的锚/镜头结构编译成真正下发给模型的文字
@@ -97,69 +96,31 @@ export function buildAnchorSheetPrompt(anchor: PlanAnchor): string {
 }
 
 /**
- * 引用锚要拼进镜头 prompt 的那几段。两类锚、两种拼法，**唯一一处**（两个 build*Prompt 共用，别再各抄一份）：
+ * **一镜发出去什么：全仓唯一的一个函数**（2026-09-30，「巨龙」变成人物那次的根因合同 storyboard-outbound-owner）。
  *
- *  · 文本锚（style 等，carrier='text'）：整段 description。它本来就不建节点，只能靠 prompt 说清。
- *  · 视觉锚（角色/场景/道具 = 定妆卡）：只拼 `staticFeatures`（身份 DNA），**绝不拼 dynamicFeatures**。
- *    档案本来就把这两层分开了：static 是「同一个人」的定义（脸/眼/疤/年龄性别），跨镜不变；
- *    dynamic 是服装与状态，跨镜本来就该变——拼进去会跟这一镜的画面打架（这一镜她刚从水里爬出来，
- *    卡上却写着「穿黄油布外套」）。
+ * 规则只有一句：一镜发出去的 = 这一行写的提示词 + 这一行上看得见的参考图。别的什么都不加。
+ *   · 提示词 = 行上那个提示词框里的字（首帧图节点 = 首帧提示词框里的字，框空了才退到这一镜的提示词框）；
+ *   · 参考图 = 这一行参考列里画着的绑定（referenceBindings），不多不少。
+ * 以前这里还会把「引用锚」的身份特征、文本锚的整段描述追加进提示词，并按 anchorIds 把定妆卡连成参考边——
+ * 行上既看不到追加的字，也看不到那张图，用户写「巨龙」，供应商收到「巨龙 + 一个黑发女人的描述 + 她的照片」。
+ * 追加与自动连图已整段删除；anchorIds 留在旧方案里只是一个不再产生任何作用的字段。
  *
- * 为什么视觉锚除了连参考图还要**再给一段字**（2026-09-02 实测才敢加，不是拍脑袋）：
- * Seedream 4.5 i2i、同一张参考图、同一段镜头文字，只有「拼不拼 static」一个变量，shot3 各跑 4 次——
- *   · 只给图：**0/4** 拿到要求的「脸部特写」（都退回全身/中景站位）
- *   · 图 + static：**3/4** 拿到特写
- * 身份本身两臂都没崩（参考图 i2i 已经锁得住），所以这段字的收益在**构图遵循度**：
- * 只给图时模型不知道这一镜的重点是谁，就退回最安全的全身；给了身份文字它才照着「特写谁的脸」去构图。
- *
- * 顺带解决黑盒：拼在这里 = 这段字进 `node.prompt`，用户在提示词框里**看得见也改得动**，
- * 而不是躺在 meta 里没人知道它存不存在。
+ * 所有入口（行内生成 / 生成剩余 / Agent 确认框 / 放到画布 / production.materialize-storyboard）都从这里取，
+ * 不许各自再拼；对等测试 shotOutbound.parity.test.ts 逐字节比它们。
  */
-function anchorPromptBits(shot: PlanShot, anchorById: Map<string, PlanAnchor>): string[] {
-  return shot.anchorIds
-    .map((id) => anchorById.get(id))
-    .filter((anchor): anchor is PlanAnchor => Boolean(anchor))
-    .map((anchor) => {
-      if (anchor.carrier === 'text') return `${anchor.name}：${anchor.description}`.trim()
-      const staticFeatures = (anchor.staticFeatures || '').trim()
-      return staticFeatures ? `${anchor.name}·身份特征（跨镜保持一致）：${staticFeatures}` : ''
-    })
-    .filter(Boolean)
-}
+export type ShotOutbound = Readonly<{
+  prompt: string
+  /** 按槽种类分桶的有序绑定；只留有地址的。投影进节点 meta 由行的参考槽层（shotReferenceMetaPatch）按当前模式做。 */
+  referenceBindings: Record<string, PlanReferenceBinding[]>
+}>
 
-/** 视觉参考的边顺序：先按提示词 @ 的出现顺序，再接没有 @ 的旧绑定，保持兼容。 */
-export function referenceOrderForShot(shot: PlanShot, anchorById: Map<string, PlanAnchor>): Map<string, number> {
-  const byUrl = new Map<string, string>()
-  for (const anchor of anchorById.values()) {
-    if (anchor.referenceUrl) byUrl.set(anchor.referenceUrl, anchor.id)
+export function compileShotOutbound(shot: PlanShot, part: 'shot' | 'keyframe'): ShotOutbound {
+  if (part === 'keyframe') {
+    const keyframePrompt = typeof shot.keyframe?.prompt === 'string' ? shot.keyframe.prompt.trim() : ''
+    return { prompt: keyframePrompt || shot.prompt.trim(), referenceBindings: {} }
   }
-  const ordered = new Set<string>()
-  for (const segment of parsePromptSegments(shot.prompt)) {
-    if (segment.type !== 'mention') continue
-    const anchorId = byUrl.get(segment.url)
-    if (anchorId && shot.anchorIds.includes(anchorId)) ordered.add(anchorId)
-  }
-  for (const anchorId of shot.anchorIds) {
-    const anchor = anchorById.get(anchorId)
-    if (anchor && isVisualAnchor(anchor)) ordered.add(anchorId)
-  }
-  return new Map([...ordered].map((anchorId, index) => [anchorId, index]))
-}
-
-/** 镜头 prompt = 镜头本体 + 引用锚的描述段（文本锚整段 / 视觉锚只给身份 DNA）。 */
-export function buildShotPrompt(shot: PlanShot, anchorById: Map<string, PlanAnchor>): string {
-  const bits = anchorPromptBits(shot, anchorById)
-  const base = shot.prompt.trim()
-  return bits.length ? [base, ...bits].filter(Boolean).join('\n') : base
-}
-
-export function buildKeyframePrompt(shot: PlanShot, anchorById: Map<string, PlanAnchor>): string {
-  // 优先级：用户在编辑器手改的 keyframe.prompt > planner 的静态首帧分解 ffDesc > 镜头 prompt（今天的兜底）。
-  // 为什么 ffDesc 排在 shot.prompt 前：shot.prompt 写的是「运动」（推进/摇移/动作演进），拿它当首帧图
-  // 提示词会让静态首帧被运动词污染（director-shot-translation 的污染词铁律）；ffDesc 才是那一帧的快照。
-  const keyframePrompt = typeof shot.keyframe?.prompt === 'string' && shot.keyframe.prompt.trim()
-    ? shot.keyframe.prompt.trim()
-    : (typeof shot.ffDesc === 'string' && shot.ffDesc.trim() ? shot.ffDesc.trim() : shot.prompt.trim())
-  const bits = anchorPromptBits(shot, anchorById)
-  return bits.length ? [keyframePrompt, ...bits].filter(Boolean).join('\n') : keyframePrompt
+  const referenceBindings = Object.fromEntries(
+    Object.entries(shot.referenceBindings ?? {}).map(([slot, bindings]) => [slot, (Array.isArray(bindings) ? bindings : []).filter((binding) => Boolean(binding?.url))]),
+  )
+  return { prompt: shot.prompt.trim(), referenceBindings }
 }

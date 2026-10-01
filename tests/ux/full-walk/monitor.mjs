@@ -84,6 +84,13 @@ export function sentReferenceCount(body) {
     || pick(input.image_urls) || pick(input.input_urls) || pick(body?.extra_body?.image)
 }
 
+/** 节点参考槽里摆着的图（referenceSlotStorage 写的那几个 meta 键）。 */
+function nodeSlotReferenceCount(meta) {
+  const arrays = ['referenceImageUrls', 'referenceVideoUrls', 'referenceAudioUrls'].reduce((sum, key) => sum + (Array.isArray(meta?.[key]) ? meta[key].filter(Boolean).length : 0), 0)
+  const singles = ['firstFrameUrl', 'lastFrameUrl', 'sourceVideoUrl'].reduce((sum, key) => sum + (typeof meta?.[key] === 'string' && meta[key].trim() ? 1 : 0), 0)
+  return arrays + singles
+}
+
 function sentParams(body) {
   const input = body?.input && typeof body.input === 'object' ? body.input : {}
   return {
@@ -318,7 +325,8 @@ export function createInvariantMonitor(options) {
       scope: [{
         nodeId, prompt: node?.prompt ?? '', model: meta.modelKey ?? meta.imageModel ?? meta.videoModel ?? null, providerId: meta.modelVendor ?? null,
         params: { aspect_ratio: meta.aspect_ratio ?? meta.aspectRatio ?? null, resolution: meta.resolution ?? null, duration: meta.duration ?? null },
-        refs: incoming.length + (Array.isArray(node?.references) ? node.references.length : 0),
+        // 节点上摆着几张参考：连进来的线 + 参考槽里的图（meta 里的数组 / 单值槽）——用户在这张卡上看得见的都算。
+        refs: incoming.length + (Array.isArray(node?.references) ? node.references.length : 0) + nodeSlotReferenceCount(meta),
         surfaceText, remaining: count, submissions: [],
       }],
       declaredCount: count, buttonCount: count,
@@ -335,6 +343,12 @@ export function createInvariantMonitor(options) {
    */
   async function consentStoryboardRows(shotIndexes, { kind = 'storyboard-row', label } = {}) {
     const rows = await win().evaluate((indexes) => {
+      // 参考列里摆着几张：叠放格读它自己的计数，单张格数一个（一个槽一个格，装几张都只占一格）。
+      const shownReferenceCount = (row) => [...row.querySelectorAll('[data-storyboard-ref-slot]')].reduce((sum, slot) => {
+        const stack = slot.querySelector('[data-storyboard-ref-stack-count]')
+        if (stack) return sum + (Number(stack.getAttribute('data-storyboard-ref-stack-count')) || 0)
+        return sum + (slot.querySelector('[data-storyboard-ref-tile]') ? 1 : 0)
+      }, 0)
       const editor = document.querySelector('[data-storyboard-editor="true"]')
       const editorText = String(editor?.innerText ?? '')
       return indexes.map((index) => {
@@ -344,7 +358,8 @@ export function createInvariantMonitor(options) {
           index, found: Boolean(row),
           prompt: String(box?.innerText ?? ''),
           // 参考列里摆着几格（一格一个槽，叠放格里可以有多张）+ 提示词里 @ 出来的参考签。
-          refCells: row ? row.querySelectorAll('[data-storyboard-ref-stack]').length : 0,
+          // 行自己点名「这张参考图不会发出去」（当前模式没有对应的槽）的，不算「摆着要发的」——那句话就是用户确认时看到的事实。
+          refCells: !row || row.querySelector('[data-storyboard-anchor-ignored]') ? 0 : shownReferenceCount(row),
           mentionChips: box ? box.querySelectorAll('[data-mention-chip], [data-type="mention"], .prompt-mention').length : 0,
           rowText: String(row?.innerText ?? ''),
           editorText,
