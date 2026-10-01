@@ -1,5 +1,8 @@
 import type { ArtifactReviewDecision } from "../shared/agentCapabilities/productionRun";
 import { transitionJob, transitionRun } from "./productionRunState";
+import { decideShotClaim } from "../shared/decideShotClaim";
+import { jobsForShot, latestJobForShot } from "../shared/productionShotJobs";
+import { applyOwedLifecycleStep, applyRunStatus } from "./productionRunLifecycle";
 import { bindShotNodes, detachShotNodes } from "./productionRunCanvasLandingReducer";
 import type {
   BudgetLedgerSummary,
@@ -10,7 +13,6 @@ import type {
   ProductionJobStatus,
   ProductionGenerationPlan,
   ProductionRun,
-  ProductionRunStatus,
   ProductionStage,
   RunCommand,
 } from "./productionRunTypes";
@@ -196,10 +198,11 @@ export function applyProductionCommand(
   now: string,
 ): ProductionCommandEffect {
   switch (command.type) {
-    case "run.status": {
-      const status = text(command.payload, "status") as ProductionRunStatus;
-      return { run: transitionRun(current, status, now), eventType: "run.status.changed", message: status };
-    }
+    case "run.status":
+      // 停下的原因在停的那一刻落成 run.stop（生命周期 owner：productionRunLifecycle）。
+      return applyRunStatus(current, command, now);
+    case "run.lifecycle.settle":
+      return applyOwedLifecycleStep(current, now);
     case "run.stage": {
       const stageId = text(command.payload, "stageId");
       return { run: { ...current, stageId, updatedAt: now }, eventType: "run.stage.changed", message: stageId };
@@ -415,6 +418,44 @@ export function applyProductionCommand(
         message: currentPlan.operationId,
       };
     }
+    case "shot.claim": {
+      const by = text(command.payload, "by");
+      if (by !== "canvas" && by !== "production") throw new Error("Invalid shot claim owner");
+      const shotId = text(command.payload, "shotId");
+      const decision = decideShotClaim(current, shotId, by);
+      if (!decision.granted) {
+        throw Object.assign(new Error(`production_shot_claimed: ${decision.reason}`), {
+          code: "production_shot_claimed",
+          reason: decision.reason,
+        });
+      }
+      if (by === "production") {
+        return { run: current, eventType: "shot.claimed", message: shotId };
+      }
+      // A canvas claim is only durable when the shared decision explicitly
+      // assigns ownership to canvas. `holder: none` covers missing/mismatched
+      // shot IDs and must remain a no-op, especially for single-shot plans.
+      if (decision.holder !== "canvas") return { run: current, eventType: "shot.claimed", message: shotId };
+      const pending = new Set<ProductionJob["status"]>(["planned", "authorization_required", "authorized"]);
+      const latest = latestJobForShot(current, shotId);
+      const claim = { by: "canvas" as const, attempt: latest?.attempt ?? 1, claimedAt: now };
+      const jobs = current.jobs.map((job) => {
+        const matches = jobsForShot(current, shotId).some((candidate) => candidate.jobId === job.jobId);
+        return matches && pending.has(job.status)
+          ? { ...transitionJob(job, "detached", now), errorCode: "canvas_claimed", errorMessage: "Canvas claimed this shot", updatedAt: now }
+          : job;
+      });
+      const plan = current.generationPlan;
+      const shots = plan?.shots?.map((shot) => shot.shotId === shotId ? { ...shot, claim, updatedAt: now } : shot);
+      const generationPlan = plan
+        ? { ...plan, ...(shots ? { shots } : { claim }), updatedAt: now }
+        : plan;
+      return {
+        run: { ...current, jobs, ...(generationPlan ? { generationPlan } : {}), updatedAt: now },
+        eventType: "shot.claimed",
+        message: shotId,
+      };
+    }
     case "plan.bind-shot-nodes":
       // P4 S5 画布落地：拆进 productionRunCanvasLandingReducer 守 800 行门岗（R9）。
       return bindShotNodes(current, command, now);
@@ -592,7 +633,11 @@ export function applyProductionCommand(
         ? current.jobs.map((job) => currentGate.jobIds.includes(job.jobId) && job.status === "authorization_required"
           ? transitionJob(job, "authorized", now)
           : job)
-        : current.jobs;
+        : currentGate.authorizationDigest && currentGate.costScope?.startsWith("generation.rework:")
+          ? current.jobs.map((job) => currentGate.jobIds.includes(job.jobId) && ["authorization_required", "authorized"].includes(job.status)
+            ? { ...transitionJob(job, "detached", now), errorCode: "production_gate_rejected", errorMessage: "Production authorization was rejected", updatedAt: now }
+            : job)
+          : current.jobs;
       const approvesDirection = status === "approved" && current.status === "awaiting_direction"
         && currentGate.scope === "stage" && gateId.startsWith("gate-direction-");
       const approvesBuild = status === "approved" && current.status === "awaiting_contract"

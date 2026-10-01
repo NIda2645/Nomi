@@ -1,0 +1,206 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-connection-certification-ownership-one-owner",
+  "problem_type": "同一条「这条连接归不归认证适配器管」的判据抄了 4 份，且都把模型级的认证标记当成连接级的归属",
+  "symptom": "报错用户（新装机）点过「继续验证 → 自检」（手填 gpt-image-1 去自检）后把 APIMart 地址改成国内线路：画布能出图，但让 Agent 用 APIMart 生成时，报价卡上点「仍要生成」弹「这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。」，请求一次都不发，镜头节点一直「排队中」；主进程日志 GenerationProviderCapabilityError: Provider apimart lacks required recovery capabilities: configured_provider（0.22.5 安装包实测，验收表 A10b）。只删掉那个自检模型，同一个 Agent 立刻出图（A10c）。",
+  "direct_cause": "electron/capabilityCore/generationProviderBootstrap.ts 的 hasCertificationOwnedConnection 把「apimart 名下任何一行模型带 meta.adapter」当成整条连接归认证适配器管。自检手填的 gpt-image-1 走渲染层新建写门（sanitizeRendererModelMutation 给新行天生写 adapter: unverified），于是 hasSafeDirectKeyScope 返回 false，APIMart 生成器没有装配，readiness 停在 configured_provider；引擎 B 的五个入口全部拒发。画布（引擎 A）按模型判发布，不看这条判据，所以照样出图。",
+  "class_root": "「这条连接归不归认证适配器管」没有唯一主人：Agent 生成器装配与取连接（generationProviderBootstrap）、生成器出请求（apimartGenerationProvider.assertDirectKeyContract）、内置家发布（directKeyCredential.publishBuiltinCuratedVendor）、设置页改连接（rendererCatalogMutation 的鉴权锁）各抄一份，而且全都把模型级的标记（这一行的执行归认证）当成连接级的归属（整条连接归认证）。于是任何一行模型被标记——用户自己加模型、导入、声明、自检——都会让内置家的 Agent 生成、自动发布、设置页改连接一起翻转，而画布路不翻：两台发动机对同一份目录给出两个答案，四份抄写之间也随时可能各自漂移。",
+  "affected_population": [
+    "在内置家下点过「继续验证 → 自检」或手加过模型的用户（渲染层新建的模型行天生带 adapter: unverified）——报错用户就是这一类",
+    "curated 登记表里的全部内置家（kie、apimart、volcengine、runninghub 等 20 条契约），不止 APIMart",
+    "引擎 B 的五个入口：Agent 付款卡、提交执行计划、外部 MCP start_generation、全自动 Run、继续批量",
+    "填 key 之后内置家的自动发布（publishBuiltinCuratedVendor），与设置页改连接的鉴权锁"
+  ],
+  "scope_paths": [
+    "electron/catalog/certificationOwnership.ts",
+    "electron/catalog/seedBuiltins.ts",
+    "electron/capabilityCore/generationProviderBootstrap.ts",
+    "electron/capabilityCore/apimartGenerationProvider.ts",
+    "electron/catalog/directKeyCredential.ts",
+    "electron/catalog/rendererCatalogMutation.ts"
+  ],
+  "entry_points": [
+    "Agent 付款卡 / 提交执行计划 / 外部 MCP start_generation / 全自动与继续 Run → createGenerationProviderBootstrap（装配）与它每次提交前的 resolveConnection（取连接）",
+    "生成器出请求 → apimartGenerationProvider.selectCatalogSelection → assertDirectKeyContract",
+    "填 key 验过之后内置家自动发布 → directKeyCredential.publishBuiltinCuratedVendor",
+    "设置页改连接 → rendererCatalogMutation.sanitizeRendererVendorMutation 的鉴权锁；认证元数据保留与 mapping 启用也读同一个标记"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "判据是 Nomi 自己目录里认证标记（meta.adapter）的归属语义，没有第三方文档或源码能决定它。",
+  "invariants": [
+    "全仓只有 electron/catalog/certificationOwnership.isCertificationOwnedConnection 回答「这条连接归不归认证适配器管」；「这一行 meta 上有没有 adapter」这个问法只许出现在这个文件里",
+    "连接本身带标记 → 归；内置家（有代码种子）只认内置目录（seedBuiltins 的 curated 登记表）模型上的标记；非内置家（AI 接入 / 声明卡 / 手接中转）任何一行带标记都归",
+    "用户自己加、自己自检的模型只影响它自己：它发布哪些模式由 shared/modelPublication 按那一行自己的 adapter 决定",
+    "同一份目录上，画布（引擎 A）与 Agent / Run（引擎 B）对同一个模型给同一个答案、发出逐字段相同的请求",
+    "AI 接入 / 声明卡建的连接仍是认证连接：authType / authHeader / authQueryParam / providerKind 不重新接入就改不了"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/certificationOwnership.ts",
+    "tests": [
+      "electron/catalog/certificationOwnership.test.ts",
+      "electron/parity/certificationOwnershipParity.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "isCertificationOwnedConnection"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "symbol": "isCertificationOwnedConnection"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/directKeyCredential.ts",
+      "symbol": "isCertificationOwnedConnection"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "isCertificationOwnedConnection"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/certificationOwnership.ts",
+      "symbol": "carriesCertificationMark"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "carriesCertificationMark"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/certificationOwnership.ts",
+      "symbol": "builtinCatalogModelKeys"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "builtinCatalogModelKeys"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 8,
+    "why_not": "判据的定义从 4 份减到 1 份（hasCertificationOwnedConnection / hasAdapterMetadata / hasCertificationOwnedAdapter / certificationOwnedConnection 连同 isCertificationOwned 包装全部删掉），门表多出来的是「谁来问这一份」而不是「谁又写了一份」。isCertificationOwnedConnection 的四个调用方各守一个不同的用户动作，缺一不可：generationProviderBootstrap（Agent / Run 装配与每次提交前取连接）、apimartGenerationProvider（出请求前最后一道）、directKeyCredential（填 key 后自动发布）、rendererCatalogMutation（设置页鉴权锁）。carriesCertificationMark 的两个读者：主人自己，和设置页保留认证元数据 / 限制 mapping 启用（按模型判，不是连接级判据）。builtinCatalogModelKeys 是「哪些模型属于内置目录」的读口，只让主人读，数据仍只有 curated 登记表那一张。"
+  },
+  "generality_proof": "四个会回答「这条连接归不归认证管」的入口现在都 import 同一个 isCertificationOwnedConnection，判据写在一处；「标记落在谁身上」按 curated 登记表判，不按 vendorKey 名单（对全部 20 条内置契约同时成立，类测试逐家扫）、也不按渲染层写得动的 meta 字段。换一家内置、换一个手加模型的入口（继续验证、导入、声明、AI 接入）、换一台老装机（旧数据里的标记）都走同一句判据；画布与 Agent 是否同源由对拍测试在报错用户的真实目录上逐入口比出站报文。",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/certificationOwnership.ts",
+      "symbol": "isCertificationOwnedConnection",
+      "responsibility": "回答「这条连接归不归认证适配器管」的唯一判据：连接本身的标记、内置目录模型的标记、非内置家的任意模型标记。"
+    },
+    {
+      "path": "electron/catalog/certificationOwnership.ts",
+      "symbol": "carriesCertificationMark",
+      "responsibility": "「这一行 meta 上有没有认证标记」的唯一问法；任何别处需要按模型判标记都 import 它。"
+    },
+    {
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "builtinCatalogModelKeys",
+      "responsibility": "从 curated 登记表派生「这家内置目录里有哪些模型」，让「用户自己加的」与「代码拥有的」分得开，且不看渲染层写得动的字段。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "entry_point": "createGenerationProviderBootstrap",
+      "disposition": "enforced",
+      "evidence": "hasSafeDirectKeyScope、非内置认证连接跳过、resolveConnection 三处都改问 isCertificationOwnedConnection；generationProviderBootstrap.test「keeps the Agent path on built-in APIMart when the user added and self-checked a model of their own (A10b)」修前红（providerReady false）、修后绿。"
+    },
+    {
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "entry_point": "assertDirectKeyContract",
+      "disposition": "enforced",
+      "evidence": "改问主人；apimartGenerationProvider.test：内置目录模型带标记 → 整条连接拒（认证连接）；只有用户自己的认证行、内置契约不在 → 照旧付费前拒（契约不完整），fetch 零次。"
+    },
+    {
+      "path": "electron/catalog/directKeyCredential.ts",
+      "entry_point": "publishBuiltinCuratedVendor",
+      "disposition": "enforced",
+      "evidence": "改问主人；directKeyCredential.test「a model the user added and self-checked does not stop the built-in vendor from publishing (A10b)」走渲染层真实新建写门造现场，修前红、修后绿。"
+    },
+    {
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "entry_point": "sanitizeRendererVendorMutation",
+      "disposition": "enforced",
+      "evidence": "鉴权锁改问主人，认证元数据保留与 mapping 启用改用 carriesCertificationMark；certificationOwnership.test (b) 用真实声明卡写门建连接，四个鉴权字段各改一次都被拒、地址照样能改。"
+    },
+    {
+      "path": "electron/shared/modelPublication.ts",
+      "entry_point": "derivePublishedExecution",
+      "disposition": "not-affected",
+      "evidence": "它读 adapter 的内容（activeRevision / 已验证的模式）决定**这一行模型**发布哪些模式——正是「只管它自己」的那一半，不回答连接归属；2026-09-11 起自检失败不下架，这里不变。"
+    },
+    {
+      "path": "electron/providerAdapter/serviceCatalog.ts",
+      "entry_point": "staging selected models",
+      "disposition": "not-affected",
+      "evidence": "它是写标记的一方（继续验证选中的新行写 adapter: unverified），已可执行的行原样返回不加标记；写多少标记都不再改变连接归属的判法。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "每一个往内置家名下添模型的流程都会写标记（渲染层新建、继续验证、导入、声明卡、AI 接入），每一台主域被墙的新装机都会走到「继续验证 → 自检」；四份抄写各自漂移还会让同一份目录在不同入口得到不同答案。",
+    "same_class_scan": [
+      "rg \"hasOwnProperty\\.call\\([^)]*['\\\"]adapter['\\\"]\\)|['\\\"]adapter['\\\"] in \" electron src（不含测试）：修前 5 处（4 份连接判据 + rendererCatalogMutation 的元数据保留），修后只剩 electron/catalog/certificationOwnership.ts 一处；certificationOwnership.test 的全仓扫描守着这一条。",
+      "rg \"hasCertificationOwnedConnection|hasCertificationOwnedAdapter|certificationOwnedConnection|hasAdapterMetadata|isCertificationOwned\\(\" electron src：修后零处；这五个名字登记为 concept-owners 的 forbidden_derivations（definition），主人之外再定义即红（已验）。",
+      "node scripts/door-map.mjs isCertificationOwnedConnection / carriesCertificationMark / builtinCatalogModelKeys：8 扇门，见 doors。",
+      "rg \"adapter: \\{\" electron（写标记的一方）：catalogCommit、providerAdapter/serviceCatalog、promotionMeta、declaredProviderRegistration、comfyuiWorkflowImportStore、rendererCatalogMutation——全部写在模型行上，vendor 行今天没有写门；判据照旧认 vendor 行上的旧数据。",
+      "electron/parity：GENERATION_ENTRANCES 十个入口（五个引擎 A、五个引擎 B）在报错用户的真实目录上全部跑一遍（certificationOwnershipParity.test），修前引擎 B 五个入口全部 configured_provider。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/certificationOwnership.ts",
+    "invariant": "「这条连接归不归认证适配器管」只有 isCertificationOwnedConnection 一份；连接本身 / 内置目录模型 / 非内置家任意模型的标记才算，用户自己加的模型只管它自己。",
+    "failure_mode": "判为认证连接时照旧 fail-closed：Agent 生成器不装配、出请求前拒（fetch 零次）、内置家不自动发布、设置页改鉴权放法抛人话不写盘。判为非认证连接的内置家仍要过 builtinVendorScopeMatches 与 hasBuiltinCuratedExecution，带 key 的请求仍要过凭据守卫（去向与放法都比对绑定）。",
+    "exception_policy": "none",
+    "strategy": "判据收成一个模块、四份抄写同 commit 删光（P1）；「标记落在谁身上」按 curated 登记表判；第五份回不来靠三道：① concept-owners 登记表把五个旧名字列为 forbidden_derivations（definition），check:concept-owners 主人之外再定义即红；② certificationOwnership.test 扫全仓生产代码，「meta 上有没有 adapter」这个问法在主人之外出现即红（换函数名也一样）；③ 对拍测试在报错用户的现场逐入口比引擎 A 与引擎 B 的出站报文，任何一条生成路自己再判一遍、判得不一样就红。",
+    "artifacts": [
+      "electron/catalog/certificationOwnership.ts",
+      "electron/catalog/seedBuiltins.ts",
+      "electron/capabilityCore/generationProviderBootstrap.ts",
+      "electron/capabilityCore/apimartGenerationProvider.ts",
+      "electron/catalog/directKeyCredential.ts",
+      "electron/catalog/rendererCatalogMutation.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/certificationOwnership.test.ts",
+    "electron/parity/certificationOwnershipParity.test.ts",
+    "electron/capabilityCore/generationProviderBootstrap.test.ts",
+    "electron/catalog/directKeyCredential.test.ts",
+    "electron/capabilityCore/apimartGenerationProvider.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/certificationOwnership.test.ts",
+    "electron/parity/certificationOwnershipParity.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/generationProviderBootstrap.ts",
+      "electron/capabilityCore/apimartGenerationProvider.ts",
+      "electron/catalog/directKeyCredential.ts",
+      "electron/catalog/rendererCatalogMutation.ts"
+    ],
+    "rationale": "四个文件里的判据定义（hasAdapter / hasCertificationOwnedConnection / isCertificationOwned、hasAdapterMetadata、hasCertificationOwnedAdapter、hasAdapter / certificationOwnedConnection）同 commit 删掉，没有保留旧判法的开关或回退。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "判据全在本仓；没有第三方依赖决定这条不变量。",
+    "exit_criteria": []
+  },
+  "migration": "不迁数据：判据只读盘上已有的标记。旧装机里用户自己加的模型上那些标记，从这一版起不再让整条内置连接翻转；连接本身与内置目录模型上的标记照旧算数。",
+  "residual_risks": [
+    "内置目录模型在「不可执行」时被选去自检（serviceCatalog 只对已可执行的行免写标记），会按判据让整条内置连接算作认证连接——这是判据有意保留的（代码拥有的契约被认证接管），但这类用户会再遇到 Agent 关门；要不要再收窄，需要真实用户数据判断它常不常见。",
+    "非内置家的认证连接（AI 接入 / 声明卡），引擎 B 仍不装配（交给认证适配器）而画布照常出图：这是既有的发动机分工，不在本次范围；它与本判据共用同一个主人，改分工时只改这一处。",
+    "全仓扫描只认四种问法（hasOwnProperty.call / Object.hasOwn / Reflect.has / 'adapter' in）；写成 meta.adapter !== undefined 一类能绕过扫描，靠 forbidden_derivations、A10b 的消费者测试与对拍测试兜住行为。"
+  ]
+}

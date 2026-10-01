@@ -12,7 +12,7 @@ export const zhShotTable = {
   openSelected: '编辑选中镜头', viewOnly: '删除此节点仅移除视图，原稿分镜仍保留',
   columns: { index: '镜', thumbnail: '关键帧', duration: '时长', visual: '画面', references: '参考槽', status: '状态' },
   unknownReferences: '未选模型', noReferences: '无需参考', unread: '没读出',
-  status: { ready: '未生成', 'anchor-ignored': '参考未使用', 'waiting-refs': '等参考图', 'missing-required': '缺必填参考', generating: '生成中', failed: '生成失败', recoverable: '可找回', done: '已生成', locked: '已锁定' },
+  status: { ready: '未生成', 'anchor-ignored': '参考未使用', 'missing-required': '缺必填参考', generating: '生成中', failed: '生成失败', recoverable: '可找回', done: '已生成', locked: '已锁定' },
 }
 export const enShotTable = {
   openScript: 'Open script', factsEmpty: 'Deconstruct again to read this reference video',
@@ -27,5 +27,5 @@ export const enShotTable = {
   openSelected: 'Edit selected shot', viewOnly: 'Deleting this node removes the view; the storyboard remains',
   columns: { index: 'Shot', thumbnail: 'Keyframe', duration: 'Duration', visual: 'Visual', references: 'References', status: 'Status' },
   unknownReferences: 'No model selected', noReferences: 'No references needed', unread: 'Not read',
-  status: { ready: 'Not generated', 'anchor-ignored': 'Reference unused', 'waiting-refs': 'Waiting for references', 'missing-required': 'Required reference missing', generating: 'Generating', failed: 'Generation failed', recoverable: 'Recoverable', done: 'Generated', locked: 'Locked' },
+  status: { ready: 'Not generated', 'anchor-ignored': 'Reference unused', 'missing-required': 'Required reference missing', generating: 'Generating', failed: 'Generation failed', recoverable: 'Recoverable', done: 'Generated', locked: 'Locked' },
 }

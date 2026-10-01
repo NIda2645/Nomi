@@ -278,7 +278,7 @@ export default function StoryboardAnchorRow({
             bindings={anchor.referenceBindings}
             onChangeBindings={(next) => onUpdate({ referenceBindings: next })}
             // 锚行没有计划首帧、也不引用别的锚：缺不缺只看它自己的绑定——同一个 owner，零额外来源。
-            missingSlots={missingRequiredSlotsOf(resolvedMode, anchor.referenceBindings, { plannedFirstFrame: null, visualAnchorCount: 0 })}
+            missingSlots={missingRequiredSlotsOf(resolvedMode, anchor.referenceBindings, { plannedFirstFrame: null })}
             anchors={[]}
             mentionEnabled={false}
           />
@@ -318,12 +318,6 @@ export default function StoryboardAnchorRow({
               <IconTrash size={13} stroke={1.6} />
             </button>
           </div>
-
-          {runtime.visual && runtime.referencedByCount > runtime.consumedByShotCount ? (
-            <p className="text-micro text-nomi-warning" data-anchor-consumption-warning={anchor.id}>
-              {t('storyboardEditor.anchorPolicy.countWarning', { total: runtime.referencedByCount, ignored: runtime.referencedByCount - runtime.consumedByShotCount })}
-            </p>
-          ) : null}
 
           <AutoGrowTextarea
             value={anchor.description}

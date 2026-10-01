@@ -8,11 +8,13 @@ import type { CreateProductionRunInput, RunCommand } from "./productionRunTypes"
 
 
 import { assertTrustedSender } from "../ipcSenderGuard";
+import { isProductionRunIdentifier } from "../shared/productionRunCommandId";
 const RENDERER_COMMAND_TYPES = new Set(["run.status", "run.control", "gate.decide", "artifact.adopt", "artifact.review", "plan.attach", "policy.refresh", "job.reconcile", "plan.detach-shot-nodes", "generation.present"]);
 
+/** 标识形状只认中立层那一份（渲染层造命令号用的也是它）：两边各写一份就会各自漂，漂了的命令在这里被拒。 */
 function identifier(value: unknown, label: string): string {
   const normalized = typeof value === "string" ? value.trim() : "";
-  if (!/^[A-Za-z0-9._-]{1,160}$/.test(normalized) || normalized === "." || normalized === "..") throw new Error(`Invalid ${label} id`);
+  if (!isProductionRunIdentifier(normalized)) throw new Error(`Invalid ${label} id`);
   return normalized;
 }
 

@@ -60,6 +60,10 @@ import {
 } from '../adapters/modelOptionsAdapter'
 import { nodeSelectedModelAddress } from './controls/parameterControlModel'
 import { comfyWorkflowTakesPrompt } from '../runner/promptRequirement'
+import { useProductionRunStore } from '../../production/productionRunStore'
+import { productionMetaOf } from '../model/productionMeta'
+import { decideShotClaim } from '../../../../electron/shared/decideShotClaim'
+import { shotClaimCopy } from '../../observability/shotClaimCopy'
 
 // C5 P2：文本节点的三种生成模式（label 在渲染处翻译）。
 // 存**整键**而非相对片段：编译器替我们校验键存在（satisfies TranslationKey），
@@ -187,6 +191,13 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
   const hasPendingRefs = pendingRefKey.length > 0
   // 视频缺参考本会禁用「生成」；但若缺的是「连了线、只是还没生成」的上游 → 仍可点（去备齐），不禁用。
   const canGenerateNow = canGenerate || (hasPendingRefs && !isGenerating)
+  const productionBinding = productionMetaOf(node)
+  const productionRun = useProductionRunStore((state) => state.run?.runId === productionBinding?.runId ? state.run : null)
+  const productionClaim = productionRun && productionBinding
+    ? decideShotClaim(productionRun, productionBinding.shotId ?? productionRun.generationPlan?.candidate?.candidateId, 'canvas')
+    : null
+  const productionClaimBlocked = productionClaim?.holder === 'production'
+  const productionClaimCopy = shotClaimCopy(productionClaim?.reason)
   const isTextKind = node.kind === 'text'
   // 声音节点：解析当前档案模式（配音 speech / 转写 transcribe），驱动「台词框 vs 音频参考槽」分流。
   const isAudioKind = isAudioLikeGenerationNodeKind(node.kind)
@@ -545,6 +556,10 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
                 slot: unmetDependency.slotLabel,
                 companions: unmetDependency.companionLabels.join(t('generationCommon.composer.companionOr')),
               })
+            : productionClaimBlocked
+            ? t(productionClaimCopy
+              ? `generationCommon.observability.error.shotClaimed.${productionClaimCopy.key}.reason`
+              : 'generationCommon.observability.error.shotClaimed.generic.reason')
             : !canGenerateNow && !isGenerating
             ? nodeExecutionKind === 'video'
               ? acceptsDrop
@@ -576,7 +591,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
                 data-bar-segment="generate"
                 className={cn(GENERATE_BUTTON_CLASS, 'ml-auto')}
                 aria-label={hasResult ? t('generationCommon.composer.regenerate') : t('generationCommon.composer.generateAsset')}
-                disabled={!canGenerateNow}
+                disabled={!canGenerateNow || productionClaimBlocked}
                 onClick={handleGenerate}
               >
                 {isGenerating ? '···' : '↑'}

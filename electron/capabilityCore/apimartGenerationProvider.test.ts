@@ -490,7 +490,7 @@ describe("APIMart observe-only generation provider", () => {
   it("maps a semantic text-to-video contract to APIMart's flat video body", () => {
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: vi.fn() });
     expect(provider.buildRequest(input({
-      modelId: "sora-2",
+      modelId: "kling-3.0-turbo",
       mode: "text-to-video",
       parameters: {
         aspectRatio: "16:9",
@@ -498,7 +498,7 @@ describe("APIMart observe-only generation provider", () => {
         resolution: "720p",
       },
     }))).toEqual({
-      model: "sora-2",
+      model: "kling-3.0-turbo",
       prompt: "a red paper crane",
       duration: 5,
       resolution: "720p",
@@ -677,7 +677,7 @@ describe("APIMart observe-only generation provider", () => {
   it("honors an explicit catalog drop instead of guessing a replacement wire field", () => {
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: vi.fn() });
     const body = provider.buildRequest(input({
-      modelId: "sora-2",
+      modelId: "kling-v3",
       mode: "image_to_video",
       parameters: { aspectRatio: "16:9", duration: 4, imageUrls: ["https://cdn.example/frame.png"] },
     }));
@@ -689,11 +689,11 @@ describe("APIMart observe-only generation provider", () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe("https://api.apimart.ai/v1/videos/generations");
       expect(init?.method).toBe("POST");
-      expect(JSON.parse(String(init?.body))).toMatchObject({ model: "sora-2", duration: 4, aspect_ratio: "16:9" });
+      expect(JSON.parse(String(init?.body))).toMatchObject({ model: "kling-3.0-turbo", duration: 4, aspect_ratio: "16:9" });
       return new Response(JSON.stringify({ code: 200, data: [{ status: "submitted", task_id: "video-task-1" }] }), { status: 200 });
     });
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: fetchImpl as unknown as typeof fetch });
-    const request = provider.buildRequest(input({ modelId: "sora-2", mode: "text_to_video", parameters: { duration: 4, aspect_ratio: "16:9" } }));
+    const request = provider.buildRequest(input({ modelId: "kling-3.0-turbo", mode: "text_to_video", parameters: { duration: 4, aspect_ratio: "16:9" } }));
     // Runtime Adapter passes a structuredClone of the prepared request.  A
     // deep clone must still select the video endpoint from the local hash map.
     await expect(provider.submit(structuredClone(request), "stable-key")).resolves.toMatchObject({ providerTaskId: "video-task-1" });
@@ -702,7 +702,7 @@ describe("APIMart observe-only generation provider", () => {
 
   it("fails closed instead of forwarding an unknown semantic video parameter", () => {
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: vi.fn() });
-    expect(() => provider.buildRequest(input({ modelId: "sora-2", mode: "text-to-video", parameters: { duration: 4, mysteryKnob: true } })))
+    expect(() => provider.buildRequest(input({ modelId: "kling-3.0-turbo", mode: "text-to-video", parameters: { duration: 4, mysteryKnob: true } })))
       .toThrow("catalog generation parameter is unsupported: mysteryKnob");
   });
 
@@ -714,7 +714,10 @@ describe("APIMart observe-only generation provider", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("rejects certification-owned rows before a contextual submit can force an APIMart endpoint", () => {
+  // 2026-09-29（A10b）：「这条连接归不归认证管」收成一份判据（catalog/certificationOwnership）。
+  // 用户自己加的一行带认证标记只管它自己，不再让整条连接翻成认证连接。这份夹具里那一行之外连一个
+  // 内置目录模型都没有，于是照旧在付费前拒掉——拒因从「认证连接」换成「代码拥有的契约不在了」。
+  it("still rejects a user-added certified row before a contextual submit when the built-in contract is gone", () => {
     const fetchImpl = vi.fn();
     const provider = createApimartGenerationProvider({
       resolveConnection: () => ({ apiKey: "test-key" }),
@@ -722,6 +725,20 @@ describe("APIMart observe-only generation provider", () => {
       fetchImpl,
     });
     expect(() => provider.buildRequest(input({ modelId: "shared-model", mode: "text-to-image", parameters: {} })))
+      .toThrow("apimart catalog direct-key contract is unavailable");
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  // 内置目录里的模型带了标记 = 代码拥有的契约被认证接管：整条连接归认证，连没带标记的
+  // gpt-image-2 也不许这个执行器接管，付费前就拒。
+  it("rejects the whole connection once a built-in catalog model carries a certification mark", () => {
+    const fetchImpl = vi.fn();
+    const base = catalogFixture();
+    base.models = base.models.map((model) => model.modelKey === "viduq3"
+      ? { ...model, meta: { ...(model.meta as Record<string, unknown>), adapter: { state: "failed", modes: [] } } }
+      : model);
+    const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), catalogReader: () => base, fetchImpl });
+    expect(() => provider.buildRequest(input()))
       .toThrow("apimart certification-owned connection requires its certified transport");
     expect(fetchImpl).not.toHaveBeenCalled();
   });
@@ -741,7 +758,7 @@ describe("APIMart observe-only generation provider", () => {
     });
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: fetchImpl as unknown as typeof fetch });
     const request = provider.buildRequest(input({
-      modelId: "sora-2",
+      modelId: "kling-v3",
       mode: "image_to_video",
       references: [{ assetId: "asset-character", contentHash: "c".repeat(64), version: 1, kind: "image", role: "character" }],
       parameters: { duration: 4, imageUrls: ["https://cdn.example/character.png"] },
@@ -750,7 +767,7 @@ describe("APIMart observe-only generation provider", () => {
       submitWithContext: (request: unknown, idempotencyKey: string, semanticInput: ReturnType<typeof input>) => Promise<unknown>;
     }).submitWithContext;
     await expect(contextual(structuredClone(request), "stable-key", input({
-      modelId: "sora-2",
+      modelId: "kling-v3",
       mode: "image_to_video",
       references: [{ assetId: "asset-character", contentHash: "c".repeat(64), version: 1, kind: "image", role: "character" }],
       parameters: { duration: 4, imageUrls: ["https://cdn.example/character.png"] },
@@ -763,7 +780,7 @@ describe("APIMart observe-only generation provider", () => {
       fetchImpl: vi.fn(),
     });
     const references = [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const, role: "reference" as const }];
-    expect(provider.buildRequest(input({ modelId: "sora-2", mode: "image_to_video", references,
+    expect(provider.buildRequest(input({ modelId: "kling-v3", mode: "image_to_video", references,
       referenceUrls: approvedUrls([[references[0], "https://cdn.example/asset-1.png"]]),
       parameters: { duration: 3 } }))).toMatchObject({
       image_urls: ["https://cdn.example/asset-1.png"],
@@ -814,7 +831,7 @@ describe("APIMart observe-only generation provider", () => {
   it("fails closed when references have no resolved provider URL", () => {
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: vi.fn() });
     expect(() => provider.buildRequest(input({
-      modelId: "sora-2",
+      modelId: "kling-v3",
       mode: "image_to_video",
       references: [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" }],
       parameters: { duration: 3 },
@@ -824,7 +841,7 @@ describe("APIMart observe-only generation provider", () => {
   it("fails closed when fewer resolved URLs than references survive canonical projection", () => {
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: vi.fn() });
     expect(() => provider.buildRequest(input({
-      modelId: "sora-2",
+      modelId: "kling-v3",
       mode: "image_to_video",
       // One typed image plus one legacy reference without a kind: both must
       // resolve independently; sharing one URL must not pass the final gate.
@@ -839,7 +856,7 @@ describe("APIMart observe-only generation provider", () => {
   it("rejects local-only reference URLs instead of sending an unreachable paid request", () => {
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl: vi.fn() });
     expect(() => provider.buildRequest(input({
-      modelId: "sora-2",
+      modelId: "kling-v3",
       mode: "image_to_video",
       references: [{ assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" }],
       parameters: { duration: 3, imageUrls: ["nomi-local://project/assets/asset-1.png"] },
@@ -854,7 +871,7 @@ describe("APIMart observe-only generation provider", () => {
     });
     const reference = { assetId: "asset-1", contentHash: "a".repeat(64), version: 1, kind: "image" as const };
     expect(() => provider.buildRequest(input({
-      modelId: "sora-2",
+      modelId: "kling-v3",
       mode: "image_to_video",
       references: [reference],
       referenceUrls: approvedUrls([[reference, "https://cdn.example/from-approval.png"]]),
@@ -866,7 +883,7 @@ describe("APIMart observe-only generation provider", () => {
     const fetchImpl = vi.fn();
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl });
     await expect(provider.submit({
-      model: "sora-2",
+      model: "kling-v3",
       prompt: "a cat",
       image_urls: ["file:///Users/me/character.png"],
     }, "stable-key")).rejects.toThrow("apimart sealed catalog identity is missing");
@@ -876,7 +893,7 @@ describe("APIMart observe-only generation provider", () => {
   it("fails closed on an unsupported direct-submit body field", async () => {
     const fetchImpl = vi.fn();
     const provider = createApimartGenerationProvider({ resolveConnection: () => ({ apiKey: "test-key" }), fetchImpl });
-    await expect(provider.submit({ model: "sora-2", prompt: "a cat", duration: 3, mysteryKnob: true }, "stable-key"))
+    await expect(provider.submit({ model: "kling-v3", prompt: "a cat", duration: 3, mysteryKnob: true }, "stable-key"))
       .rejects.toThrow("apimart sealed catalog identity is missing");
     expect(fetchImpl).not.toHaveBeenCalled();
   });

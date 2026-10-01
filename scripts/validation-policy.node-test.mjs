@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import { writeGithubOutput } from './select-quality-gate-profile.mjs'
 import { classifyValidationPolicy, CORE_SMOKE_ADVISORY_CHECK_NAMES, CORE_SMOKE_ADVISORY_FIXTURES, CORE_SMOKE_BLOCKING_CHECK_NAMES, CORE_SMOKE_BLOCKING_FIXTURES, CORE_SMOKE_FIXTURES } from './validation-policy.mjs'
@@ -162,7 +163,7 @@ test('renderer-to-Electron bridges retain full unit, desktop, and journey covera
 
 test('ordinary canvas behavior and React Flow performance paths select different surfaces', () => {
   assert.deepEqual(
-    surfaces(classifyValidationPolicy(['src/workbench/generationCanvas/nodes/NodeParameterControls.tsx'])),
+    surfaces(classifyValidationPolicy(['src/workbench/generationCanvas/components/CanvasArrivalHint.tsx'])),
     {
       ...focusedOnly,
       unit: 'full',
@@ -396,7 +397,7 @@ test('validation infrastructure composes monotonically with real product and pac
 
 test('mixed changes merge risks monotonically and preserve normalized Git entries', () => {
   const result = classifyValidationPolicy([
-    { status: 'M', path: './src/workbench/generationCanvas/nodes/NodeParameterControls.tsx' },
+    { status: 'M', path: './src/workbench/generationCanvas/components/CanvasArrivalHint.tsx' },
     { status: 'M', path: 'electron/preload.ts' },
   ])
   assert.deepEqual(surfaces(result), {
@@ -407,7 +408,7 @@ test('mixed changes merge risks monotonically and preserve normalized Git entrie
     package: true,
   })
   assert.deepEqual(result.files, [
-    { status: 'M', path: 'src/workbench/generationCanvas/nodes/NodeParameterControls.tsx' },
+    { status: 'M', path: 'src/workbench/generationCanvas/components/CanvasArrivalHint.tsx' },
     { status: 'M', path: 'electron/preload.ts' },
   ])
 })
@@ -433,4 +434,78 @@ test('GitHub output exposes every policy dimension with stable snake-case names'
     reason: 'electron:electron/preload.ts',
     changed_count: '1',
   })
+})
+
+// ---- T-QA-62：谁决定画布上显示什么，改了它就必须跑 full 画布验收 ----
+// 「Canvas Acceptance」= 画布 full 档（canvas-landing / canvas-reconcile / batch-production 都只在 full 里）。
+// #934 / #940 / #937 都改了画布显示的主人，却只拿到 critical，S5 回归就这样进了 main。
+
+const canvasEscapes = JSON.parse(fs.readFileSync(new URL('./validation-policy-canvas-escapes.json', import.meta.url), 'utf8'))
+
+for (const { pr, why, files } of canvasEscapes) {
+  test(`#${pr} 的真实改动清单（${why}）必须选 full 画布验收`, () => {
+    assert.equal(classifyValidationPolicy(files).canvas, 'full')
+  })
+}
+
+test('画布显示的主人，单独改一个文件也要 full 画布验收（electron 一侧的主人此前连 critical 都没有）', () => {
+  const owners = [
+    'electron/shared/productionShotPhase.ts',
+    'electron/shared/productionShotJobs.ts',
+    'electron/shared/decideShotClaim.ts',
+    'electron/shared/productionRunStop.ts',
+    'electron/shared/canvas/generationNodeStatus.ts',
+    'electron/productionRun/canvasLandingHost.ts',
+    'electron/productionRun/canvasShotClaim.ts',
+    'electron/productionRun/multiShotCanvasLanding.ts',
+    'electron/productionRun/productionRunCanvasLandingReducer.ts',
+    'electron/productionRun/productionRunLifecycle.ts',
+    'electron/productionRun/productionRunReducer.ts',
+    'electron/productionRun/productionRunProjections.ts',
+    'electron/productionRun/batchScheduleDerivation.ts',
+    'src/workbench/capability/multiShotCanvasLanding.ts',
+    'src/workbench/production/ProductionCanvasLandingHost.tsx',
+    'src/workbench/production/productionCanvasLandingStore.ts',
+    'src/workbench/production/productionShotOwnership.ts',
+    'src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx',
+    'src/workbench/generationCanvas/nodes/NodeGeneratingOverlay.tsx',
+    'src/workbench/generationCanvas/spend/AnchorCheckpointCard.tsx',
+    'src/workbench/generationCanvas/store/generationCanvasStore.ts',
+    'src/workbench/generationCanvas/agent/applyCanvasToolCall.ts',
+  ]
+  for (const file of owners) {
+    assert.equal(classifyValidationPolicy([file]).canvas, 'full', file)
+  }
+})
+
+test('generationCanvas 的每个子目录都必须明确归档：产出画布显示的 → full，只管手势/样式的 → critical（新目录没表态就红）', () => {
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'src', 'workbench', 'generationCanvas')
+  const dirs = fs.readdirSync(root, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name)
+  const full = new Set(['reactFlow', 'nodes', 'spend', 'store', 'runner', 'model', 'agent', 'events', 'adapters'])
+  const criticalOnly = new Set(['components', 'hooks', 'styles', 'textEdit', 'videoDepth', 'fixation', 'plugins'])
+  for (const dir of dirs) {
+    assert.ok(full.has(dir) || criticalOnly.has(dir), `src/workbench/generationCanvas/${dir} 没有在分类器里表态（full 还是 critical）`)
+    const level = classifyValidationPolicy([`src/workbench/generationCanvas/${dir}/x.ts`]).canvas
+    assert.equal(level, full.has(dir) ? 'full' : 'critical', dir)
+  }
+})
+
+test('画布显示相关概念在 concept-owners.json 里的 owner 与写口，改了都必须 full 画布验收（清单对着概念表，不靠人记）', () => {
+  const registry = JSON.parse(fs.readFileSync(new URL('../docs/engineering/concept-owners.json', import.meta.url), 'utf8'))
+  const displaySubjects = new Set([
+    'production.shot-phase',
+    'production.shot-generation-ownership',
+    'production.shot-jobs',
+    'production.run-stop-reason',
+    'production.run-lifecycle-settle',
+    'production.node-run-record',
+  ])
+  const concepts = registry.concepts.filter((concept) => displaySubjects.has(concept.subject))
+  assert.equal(concepts.length, displaySubjects.size, '概念表里少了画布显示相关的概念——改名了就在这里同步，别让清单悄悄失效')
+  for (const concept of concepts) {
+    const paths = [concept.owner?.path, ...(concept.write_api ?? []).map((entry) => entry.path)].filter(Boolean)
+    for (const file of new Set(paths)) {
+      assert.equal(classifyValidationPolicy([file]).canvas, 'full', `${concept.subject} 的 ${file}`)
+    }
+  }
 })

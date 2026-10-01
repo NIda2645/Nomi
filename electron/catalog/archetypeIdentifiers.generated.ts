@@ -63,11 +63,6 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "grok-imagine-1.5",
     "grok_imagine_1_5"
   ],
-  "sora-2": [
-    "sora-2",
-    "sora-2-pro",
-    "sora2"
-  ],
   "veo-3.1": [
     "veo-3.1",
     "veo3.1",
@@ -197,10 +192,6 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   "rh-hailuo-2.3": [
     "rh-hailuo-2.3"
   ],
-  "rh-sora-2": [
-    "rhart-video-s-official",
-    "sora-2-rh"
-  ],
   "agnes-video": [
     "agnes-video",
     "agnes-video-v2.0",
@@ -259,7 +250,8 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
   ],
   "gemini-image-3-pro": [
     "gemini_image3_pro",
-    "gemini-3-pro-image-preview"
+    "gemini-3-pro-image-preview",
+    "nano-banana-pro"
   ],
   "gemini-image-3.1-flash": [
     "gemini_image3.1_flash"
@@ -306,7 +298,6 @@ export const ARCHETYPE_IDENTIFIER_PATTERNS: Record<string, string[]> = {
     "nano-banana",
     "google/nano-banana",
     "google/nano-banana-edit",
-    "nano-banana-pro",
     "gemini-2.5-flash-image-preview",
     "gemini_2.5_flash"
   ],

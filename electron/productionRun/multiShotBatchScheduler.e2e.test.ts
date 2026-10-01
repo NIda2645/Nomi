@@ -7,12 +7,19 @@ import { afterEach, describe, expect, it } from "vitest";
 import { compileExecutionContract, type PlanCandidate } from "../capabilityCore/executionContract";
 import { createModuleRegistry } from "../capabilityCore/moduleRegistry";
 import { createGenerationRuntimeAdapter, type GenerationProvider } from "../capabilityCore/generationRuntimeAdapter";
-import { prepareProductionGenerationReauthorization } from "./prepareProductionGenerationAuthorization";
+import {
+  prepareProductionGenerationContinuationAuthorization,
+  prepareProductionGenerationReauthorization,
+} from "./prepareProductionGenerationAuthorization";
 import { createProductionGenerationSubmission } from "./productionGenerationSubmission";
 import { sealAndApproveProductionGeneration } from "./productionGenerationAuthorizationTestUtils";
 import { createProductionRunRepository } from "./productionRunRepository";
 import { createMultiShotBatchScheduler } from "./multiShotBatchScheduler";
 import { currentAnchorCheckpointGate } from "./anchorCheckpoint";
+import { createProductionShotDispatchGuard } from "./productionShotDispatchGuard";
+import { decideShotClaim } from "../shared/decideShotClaim";
+import { deriveProductionShotState } from "../shared/productionShotPhase";
+import { SubmissionReconciliationRequiredError } from "./submissionOutbox";
 import type { ProductionGenerationShot } from "./productionRunTypes";
 
 // P4 S4 — J1/J3 end-to-end over a REAL loopback vendor (zero quota). This drives the FULL durable chain:
@@ -94,11 +101,11 @@ function shotEntry(shotId: string, prompt: string, role: "anchor" | "shot"): Pro
   return { shotId, ...(role === "anchor" ? { role } : {}), candidate: { ...cand, sealedContractHash: contract.contractHash }, contract, approvedReceiptId: "receipt-plan", updatedAt: now() };
 }
 
-function setup(shots: ProductionGenerationShot[]) {
+function setup(shots: ProductionGenerationShot[], maximumSpend: number | null = null) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-batch-e2e-"));
   roots.push(root);
   const repository = createProductionRunRepository({ projectDirResolver: (p) => (p === "project-1" ? root : null), now });
-  repository.createGenerationDraft({ operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, shots, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 2 } });
+  repository.createGenerationDraft({ operationId: "op-batch", projectId: "project-1", origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, shots, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 3 } });
   const top = shots[0].contract!;
   sealAndApproveProductionGeneration({
     repository,
@@ -117,6 +124,7 @@ function setup(shots: ProductionGenerationShot[]) {
     }],
     multiShot: { shots, planHash: "plan-hash-batch" },
     resolveShotPrice: () => ({ known: true, amount: 6 }),
+    maximumSpend,
     receiptId: "receipt-plan",
     now: now(),
   });
@@ -129,8 +137,7 @@ function buildSubmission(root: string, repository: ReturnType<typeof createProdu
   // Sanity: the real adapter must accept this provider (proves we exercise the genuine adapter path).
   createGenerationRuntimeAdapter({ providers: [provider] });
   return createProductionGenerationSubmission({
-    repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
-    intentMacKey: "test-intent-key", provider,
+    repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider,
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });
@@ -151,6 +158,199 @@ function scheduler(root: string, repository: ReturnType<typeof createProductionR
   const submission = buildSubmission(root, repository, origin, submits);
   return createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-batch", perShotPrice: () => ({ known: true, amount: 6 }), now, options });
 }
+
+async function dispatchCanvasOnce(repository: ReturnType<typeof createProductionRunRepository>, origin: string, shotId: string, submits: string[]) {
+  const run = repository.read("project-1", "op-batch")!;
+  const decision = decideShotClaim(run, shotId, "canvas");
+  if (!decision.granted) throw new Error(`canvas dispatch denied: ${decision.reason}`);
+  const provider = loopbackProvider(origin, submits);
+  await provider.submit({}, `canvas:${shotId}`);
+}
+
+describe("B3 production/canvas claim integration matrix", () => {
+  it("paused → canvas claim: scheduler submits zero and canvas submits exactly once", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot")]);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      const current = repository.read("project-1", "op-batch")!;
+      const running = repository.execute("project-1", "op-batch", { commandId: "running", expectedRevision: current.revision, type: "run.status", payload: { status: "running" }, issuedAt: now() }).run;
+      // 手上没有交给供应商的活：急停的同一次写入就落到 paused（生命周期收尾挂在仓库写入口上）。
+      const paused = repository.execute("project-1", "op-batch", { commandId: "pause", expectedRevision: running.revision, type: "run.status", payload: { status: "pausing", reason: "user_paused" }, issuedAt: now() }).run;
+      expect(paused.status).toBe("paused");
+      repository.execute("project-1", "op-batch", { commandId: "canvas-claim", expectedRevision: paused.revision, type: "shot.claim", payload: { shotId: "shot-1", by: "canvas" }, issuedAt: now() });
+      expect(decideShotClaim(repository.read("project-1", "op-batch"), "shot-1", "production")).toMatchObject({ granted: false, holder: "canvas", reason: "canvas_claimed" });
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(0);
+      await dispatchCanvasOnce(repository, vendor.origin, "shot-1", submits);
+      expect(submits).toHaveLength(1);
+    } finally { await vendor.close(); }
+  });
+
+  it("submission_unknown/reconciling: canvas is rejected with needs_reconcile and provider receives zero new submits", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot")]);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      const provider = loopbackProvider(vendor.origin, submits);
+      provider.submit = async () => { submits.push("unknown"); throw new SubmissionReconciliationRequiredError(); };
+      const guarded = createProductionGenerationSubmission({
+        repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider,
+        materializeOutput: async ({ providerTaskId }) => ({ artifactId: providerTaskId, kind: "video" as const, contentHash: providerTaskId, projectRelativePath: `${providerTaskId}.png` }), now,
+      });
+      const before = repository.read("project-1", "op-batch")!;
+      const intent = repository.execute("project-1", "op-batch", { commandId: "mark-intent", expectedRevision: before.revision, type: "job.status", payload: { jobId: before.jobs[0].jobId, status: "submit_intent_persisted" }, issuedAt: now() }).run;
+      const submitting = repository.execute("project-1", "op-batch", { commandId: "mark-submitting", expectedRevision: intent.revision, type: "job.status", payload: { jobId: before.jobs[0].jobId, status: "submitting" }, issuedAt: now() }).run;
+      repository.execute("project-1", "op-batch", { commandId: "mark-unknown", expectedRevision: submitting.revision, type: "job.status", payload: { jobId: before.jobs[0].jobId, status: "submission_unknown" }, issuedAt: now() });
+      expect(repository.read("project-1", "op-batch")?.jobs[0]?.status).toBe("submission_unknown");
+      const decision = decideShotClaim(repository.read("project-1", "op-batch"), "shot-1", "canvas");
+      expect(decision).toMatchObject({ granted: false, holder: "production", reason: "needs_reconcile" });
+      expect(submits).toHaveLength(0);
+      await expect(guarded.start({ projectId: "project-1", operationId: "op-batch" })).rejects.toThrow();
+      expect(submits).toHaveLength(0);
+    } finally { await vendor.close(); }
+  });
+
+  it("confirmed rework dispatches one new provider submission and leaves sibling attempts untouched", async () => {
+    const shots = [shotEntry("shot-1", "a", "shot"), shotEntry("shot-2", "b", "shot")];
+    const { root, repository } = setup(shots);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      const before = repository.read("project-1", "op-batch")!;
+      const target = before.jobs.find((job) => job.metadata?.shotId === "shot-2")!;
+      const rework = prepareProductionGenerationReauthorization({ lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 0, run: before, shotId: "shot-2", providers: [loopbackProvider(vendor.origin, submits)], resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock() });
+      const requested = repository.execute("project-1", "op-batch", { commandId: "rework", expectedRevision: before.revision, type: "generation.reauthorize", payload: { shotId: "shot-2", authorization: rework }, issuedAt: now() }).run;
+      const approved = repository.execute("project-1", "op-batch", { commandId: "approve-rework", expectedRevision: requested.revision, type: "gate.decide", payload: { gateId: rework.envelope.gateId, status: "approved", receiptId: "receipt-rework", authorizationDigest: rework.authorizationDigest }, issuedAt: now() }).run;
+      repository.execute("project-1", "op-batch", { commandId: "submit-rework", expectedRevision: approved.revision, type: "generation.submit", payload: {}, issuedAt: now() });
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(3);
+      expect(repository.read("project-1", "op-batch")?.jobs.filter((job) => job.metadata?.shotId === "shot-1")).toHaveLength(1);
+      expect(repository.read("project-1", "op-batch")?.jobs.some((job) => job.parentJobId === target.jobId)).toBe(true);
+    } finally { await vendor.close(); }
+  });
+
+  it("canvasDetached after node deletion: scheduler submits zero", async () => {
+    const shots = [Object.assign(shotEntry("shot-1", "a", "shot"), { nodeId: "node-shot-1" })];
+    const { root, repository } = setup(shots);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      const current = repository.read("project-1", "op-batch")!;
+      const bound = repository.execute("project-1", "op-batch", { commandId: "bind", expectedRevision: current.revision, type: "plan.bind-shot-nodes", payload: { bindings: [{ shotId: "shot-1", nodeId: "node-shot-1" }] }, issuedAt: now() }).run;
+      const detached = repository.execute("project-1", "op-batch", { commandId: "detach", expectedRevision: bound.revision, type: "plan.detach-shot-nodes", payload: { nodeIds: ["node-shot-1"] }, issuedAt: now() }).run;
+      expect(decideShotClaim(detached, "shot-1", "production")).toMatchObject({ granted: false, holder: "canvas", reason: "canvas_detached" });
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(0);
+    } finally { await vendor.close(); }
+  });
+
+  it("rejected rework gate releases canvas once and allows a later rework attempt", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot")]);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      const run = repository.read("project-1", "op-batch")!;
+      const rework = prepareProductionGenerationReauthorization({ lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 0, run, shotId: "shot-1", providers: [loopbackProvider(vendor.origin, submits)], resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock() });
+      const requested = repository.execute("project-1", "op-batch", { commandId: "rework-rejected", expectedRevision: run.revision, type: "generation.reauthorize", payload: { shotId: "shot-1", authorization: rework }, issuedAt: now() }).run;
+      const rejected = repository.execute("project-1", "op-batch", { commandId: "reject-rework", expectedRevision: requested.revision, type: "gate.decide", payload: { gateId: rework.envelope.gateId, status: "rejected" }, issuedAt: now() }).run;
+      expect(decideShotClaim(rejected, "shot-1", "canvas")).toMatchObject({ granted: true, holder: "canvas", reason: "gate_rejected" });
+      await dispatchCanvasOnce(repository, vendor.origin, "shot-1", submits);
+      expect(submits).toHaveLength(2);
+      const second = prepareProductionGenerationReauthorization({ lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 }, projectRevision: 0, run: rejected, shotId: "shot-1", providers: [loopbackProvider(vendor.origin, submits)], resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock() });
+      expect(second.attempt).toBeGreaterThan(rework.attempt);
+    } finally { await vendor.close(); }
+  });
+
+  // 预算停批 → 画布接手其中一镜 → 提额续拍：续拍的报价只含制作还要生成的镜头，接手的那一镜不收钱、不复活、不再派。
+  const lease = { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 };
+  const shotJob = (run: ReturnType<ReturnType<typeof createProductionRunRepository>["read"]>, shotId: string) =>
+    run?.jobs.find((job) => job.metadata?.shotId === shotId);
+
+  it("budget halt → canvas takes shot-2 → continuation quotes and runs only shot-3", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot"), shotEntry("shot-2", "b", "shot"), shotEntry("shot-3", "c", "shot")], 6);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      expect(submits).toHaveLength(1);
+      const halted = repository.read("project-1", "op-batch")!;
+      expect(halted.status).toBe("needs_attention");
+      // 停批不改授权：没发出去的镜头仍是 authorized（续拍前由预算上限拦住，不会被派）。
+      expect(shotJob(halted, "shot-2")?.status).toBe("authorized");
+      expect(shotJob(halted, "shot-3")?.status).toBe("authorized");
+
+      const claimed = repository.execute("project-1", "op-batch", {
+        commandId: "canvas-claim-budget-halted", expectedRevision: halted.revision, type: "shot.claim",
+        payload: { shotId: "shot-2", by: "canvas" }, issuedAt: now(),
+      }).run;
+      expect(shotJob(claimed, "shot-2")).toMatchObject({ status: "detached", errorCode: "canvas_claimed" });
+      await dispatchCanvasOnce(repository, vendor.origin, "shot-2", submits);
+      expect(submits).toHaveLength(2);
+
+      const continuation = prepareProductionGenerationContinuationAuthorization({
+        lease, projectRevision: 0, run: claimed, providers: [loopbackProvider(vendor.origin, submits)],
+        resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock(),
+      });
+      // 报价：只有 shot-3 一镜，6；不是把画布已经生成的 shot-2 也算进去的 12。
+      expect(continuation.envelope.jobs.map((job) => job.shotId)).toEqual(["shot-3"]);
+      expect(continuation.envelope.budget.maximum).toBe(6);
+      expect(continuation.envelope.budget.ledgerCeiling).toBe(claimed.budget.actual + claimed.budget.reserved + claimed.budget.unsettled + 6);
+
+      let run = repository.execute("project-1", "op-batch", {
+        commandId: "canvas-budget-continuation", expectedRevision: claimed.revision, type: "generation.continue_authorization",
+        payload: { authorization: continuation }, issuedAt: now(),
+      }).run;
+      run = repository.execute("project-1", "op-batch", {
+        commandId: "approve-budget-continuation", expectedRevision: run.revision, type: "gate.decide",
+        payload: { gateId: continuation.envelope.gateId, status: "approved", receiptId: "receipt-budget-continuation", authorizationDigest: continuation.authorizationDigest }, issuedAt: now(),
+      }).run;
+      // 批准后授权上限只为 shot-3 抬高一镜的钱（B3b 的写法会多抬 shot-2 那 6）。
+      expect(run.budget.authorized).toBe(continuation.envelope.budget.ledgerCeiling);
+      expect(run.budget.authorized - halted.budget.authorized).toBe(Math.max(0, claimed.budget.actual + claimed.budget.reserved + claimed.budget.unsettled + 6 - halted.budget.authorized));
+      // 批准续拍不会把画布接手的镜头复活成可派状态。
+      expect(shotJob(run, "shot-2")).toMatchObject({ status: "detached", errorCode: "canvas_claimed" });
+      repository.execute("project-1", "op-batch", {
+        commandId: "resume-budget-continuation", expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: now(),
+      });
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+
+      const settled = repository.read("project-1", "op-batch")!;
+      // 三镜三次生成：制作 shot-1、画布 shot-2、制作 shot-3；shot-2 没有第二次。
+      expect(submits).toHaveLength(3);
+      expect(submits.filter((key) => key === "canvas:shot-2")).toHaveLength(1);
+      expect(shotJob(settled, "shot-3")?.status).toBe("ready");
+      expect(shotJob(settled, "shot-2")).toMatchObject({ status: "detached", errorCode: "canvas_claimed" });
+      // 制作这边只派了它真正要生成的两镜（shot-1、shot-3）。
+      expect(submits.filter((key) => !key.startsWith("canvas:"))).toHaveLength(2);
+    } finally { await vendor.close(); }
+  });
+
+  it("budget halt → canvas takes the only remaining shot → no continuation to offer and no resume card on it", async () => {
+    const { root, repository } = setup([shotEntry("shot-1", "a", "shot"), shotEntry("shot-2", "b", "shot")], 6);
+    const vendor = await startLoopbackVendor();
+    try {
+      const submits: string[] = [];
+      await scheduler(root, repository, vendor.origin, submits).runToQuiescence();
+      const halted = repository.read("project-1", "op-batch")!;
+      expect(deriveProductionShotState(halted, "shot-2")).toMatchObject({ phase: "stopped", stoppedReason: "budget" });
+      const claimed = repository.execute("project-1", "op-batch", {
+        commandId: "canvas-claim-last", expectedRevision: halted.revision, type: "shot.claim",
+        payload: { shotId: "shot-2", by: "canvas" }, issuedAt: now(),
+      }).run;
+      // 节点上不再挂「已停 · 提额续拍」：制作不会再派这一镜。
+      expect(deriveProductionShotState(claimed, "shot-2")).toBeNull();
+      // 没有要续的镜头，就没有续拍报价（不是报一个 0 元或含已接手镜头的价）。
+      expect(() => prepareProductionGenerationContinuationAuthorization({
+        lease, projectRevision: 0, run: claimed, providers: [loopbackProvider(vendor.origin, submits)],
+        resolveShotPrice: () => ({ known: true, amount: 6 }), now: tickClock(),
+      })).toThrow(/no unsubmitted jobs to continue/);
+      expect(submits).toHaveLength(1);
+    } finally { await vendor.close(); }
+  });
+});
 
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); clock = NOW_BASE; });
 
@@ -377,8 +577,7 @@ describe("P4 slow provider — the batch waits (not spins) and still materialize
    * clock, no polling — the awaited runToQuiescence promise IS the synchronization). */
   function slowScheduler(root: string, repository: ReturnType<typeof createProductionRunRepository>, provider: GenerationProvider, options: Parameters<typeof createMultiShotBatchScheduler>[0]["options"] = {}) {
     const submission = createProductionGenerationSubmission({
-      repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
-      intentMacKey: "test-intent-key", provider,
+      repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }), projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider,
       materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
       now,
     });

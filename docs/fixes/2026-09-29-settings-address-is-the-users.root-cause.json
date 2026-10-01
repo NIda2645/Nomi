@@ -1,0 +1,235 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-settings-address-is-the-users",
+  "problem_type": "连接的接口地址该不该让用户在设置里改，取决于这条连接名下有没有哪一行模型碰巧带着认证标记——同一个内置连接因装机经历不同而一台能改、一台不能改；而主域被墙的用户恰恰只能靠改地址用下去",
+  "symptom": "2026-09-29 用户反馈：全新电脑装 Nomi，把 APIMart 改成国内接口 https://apib.ai/v1，点保存报「保存失败：Certification-owned connection changes require a new integration session」（英文原话）；公司那台老电脑能改。内置主域 api.apimart.ai 要翻墙，很多用户不会翻墙，于是完全用不了。本机复现（主域模拟成连接超时、零真实请求）：接入 APIMart 页填 key → 验证只打被墙的主域 → 「已保存 · 未验证」、APIMart 不进已接入；此时接入页上根本没有地址栏；点「继续验证」→ 手填一个模型 id →「自检 1 个」（失败）之后 APIMart 才出现在已接入里，点进去改地址即报上面那句英文。",
+  "direct_cause": "① electron/catalog/rendererCatalogMutation.ts 的 assertMutableConnectionScope：只要这条连接「认证所有」（vendor.meta 或名下任意一行模型的 meta 带 adapter），设置页这个入口改 baseUrlHint 一律抛英文原话；「继续验证 → 自检」给内置 APIMart 添了一行带 adapter 的模型，于是新装机被锁，老装机（从没点过）不锁。② src/ui/onboarding/KnownVendorKeyConnectPage.tsx（2026-08-16 起内置家首次接入走的页面）没有地址栏，主域不通的新装机在接上之前改不了地址。③ electron/catalog/builtinVendorSeeds.ts 的 builtinVendorScopeMatches 只认种子那一个主机：换到 APIMart 官方登记的国内线路后，凭据发布（publishBuiltinCuratedVendor）与 Agent 付款卡 / 外部 MCP / 全自动 Run 的执行器都把它当成「被改过的连接」拒掉。",
+  "class_root": "「谁能改一条连接的地址」由一个偶然的数据性质（名下有没有带 adapter 的模型行）决定，而不是由「这次改动从哪个入口来」决定：设置页那个入口只有设置界面在调，Agent 与 AI 接入改连接走的是主进程里自己的写门（各自已有绑定判据），可锁却挂在前者身上、又随后者留下的数据时有时无。与之同源的第二半：「这还是不是那条内置连接」按种子主机逐字比较，而不是问凭据去向那张唯一的官方域名表（vendorBaseFallback 的 FAMILIES），于是官方登记过的国内线路被当成漂移。",
+  "affected_population": [
+    "主域 api.apimart.ai 不通（大陆不翻墙）的新装机：接上之前没地址栏，接上之后若点过「继续验证 → 自检」又被锁",
+    "任何名下带认证标记模型的连接（内置家点过自检、「添加其他」接进来的中转站）：设置里改不了地址",
+    "把 APIMart 换到官方国内线路的用户：Agent 付款卡 / 外部 MCP / 全自动 Run 与 key 保存后的自动发布都拒绝这条连接",
+    "中英两种界面：保存失败与连接状态说明里夹着英文原话"
+  ],
+  "scope_paths": [
+    "electron/catalog/rendererCatalogMutation.ts",
+    "electron/catalog/builtinVendorSeeds.ts",
+    "src/ui/onboarding/KnownVendorKeyConnectPage.tsx",
+    "src/ui/onboarding/OnboardingDrawer.tsx"
+  ],
+  "entry_points": [
+    "设置 → 模型 → 接入 APIMart（首次接入页）上的地址栏",
+    "设置 → 模型 → 已接入的 APIMart（连接详情卡）上的地址栏（与自定义中转卡共用 VendorBaseUrlField）",
+    "地址换好之后：画布生成（引擎 A）、Agent 付款卡 / 外部 MCP / 全自动 Run（引擎 B）、key 保存验证与自动发布"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "判据是本仓内部的入口划分与凭据去向不变量；APIMart 国内线路的出处（官方公告 + 2026-07-29 实测）已随登记表记在 electron/vendor/vendorBaseFallback.ts 文件头，本次不新增外部事实。本次零额度核对：无鉴权 GET https://api.apib.ai/v1/models 与 https://apib.ai/v1/models 都回 401 + apimart_error 体（后者经官网中间件改写到同一后端，但不是登记的接口主机）。",
+  "invariants": [
+    "设置页这个入口（nomi:model-catalog:vendor:upsert，只有设置界面在调）改连接地址不看认证标记：新老装机一个样；认证连接上它仍拒绝改鉴权放法（authType / authHeader / authQueryParam / providerKind），拒绝的话是界面语言的人话",
+    "用户在设置里存了新地址、而已存 key 的绑定会拦下新地址时，绑定在这一次保存里跟到新地址——只经 credentialBinding.bindCredentialDestination 这一种派生写法；新地址本来就放行（绑定的 origin 或官方备用域）时绑定不动；没存过 key 的连接没有绑定可跟",
+    "程序写门（主进程 upsertModelCatalogVendor、Agent 的 connect_provider、声明卡登记门）改地址时绑定一律不动：带 key 的请求去新地址照旧被凭据守卫拦下",
+    "官方域名表只有一份：vendorBaseFallback 的 FAMILIES（codeDeclaredFallbackOrigins）。它既是凭据守卫的放行名单，也是「官方备用线路仍是同一条内置连接」的判据；设置页不另抄名单",
+    "内置家的首次接入页就有地址栏（与已接入卡片同一个组件、同一个保存入口），主域不通的用户能先换线路再验 key"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/rendererCatalogMutation.ts",
+    "tests": [
+      "electron/catalog/settingsAddressSave.test.ts",
+      "electron/catalog/rendererCatalogMutation.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "builtinVendorScopeMatches"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "symbol": "builtinVendorScopeMatches"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/builtinVendorSeeds.ts",
+      "symbol": "codeDeclaredFallbackOrigins"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/directKeyCredential.ts",
+      "symbol": "builtinVendorScopeMatches"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "codeDeclaredFallbackOrigins"
+    },
+    {
+      "kind": "read",
+      "path": "electron/vendor/vendorOutboundGuard.ts",
+      "symbol": "codeDeclaredFallbackOrigins"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/onboarding/OnboardingDrawer.tsx",
+      "symbol": "KnownVendorKeyConnectPage"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogStore.ts",
+      "symbol": "bindCredentialDestination"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "bindCredentialDestination"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "sanitizeRendererVendorMutation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/main.ts",
+      "symbol": "upsertRendererCatalogVendor"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/CustomVendorManage.tsx",
+      "symbol": "VendorBaseUrlField"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/KnownVendorKeyConnectPage.tsx",
+      "symbol": "VendorBaseUrlField"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/onboarding/VendorOnboardCard.tsx",
+      "symbol": "VendorBaseUrlField"
+    }
+  ],
+  "door_reduction": {
+    "before": 12,
+    "after": 14,
+    "why_not": "多出的两扇都是本次有意加的：① rendererCatalogMutation.ts 里的 bindCredentialDestination——用户在设置里存了新地址，是除「保存 key」之外第二个「用户亲眼确认过去向」的时刻（用户 2026-09-29 拍板：保存时把绑定一起更新）；它不是第二种写法，绑定仍只由 credentialBinding.bindCredentialDestination 从 vendor 行派生。② KnownVendorKeyConnectPage 里的 VendorBaseUrlField——内置家首次接入页的地址栏，与已接入卡片（VendorOnboardCard）、自定义中转卡（CustomVendorManage）是同一个组件、同一个保存入口，不是第二份地址编辑。其余各扇各有归属：main.ts 注册设置页入口；sanitizeRendererVendorMutation 管这个入口能改什么；catalogStore.applyApiKeyUpsert 是保存 key 的唯一事务；OnboardingDrawer 把目录里的地址交给接入页；builtinVendorScopeMatches 的三个读者分别是自动发布、执行器装配与执行器每次请求前的复核；codeDeclaredFallbackOrigins 的三个读者都问同一张官方名单（凭据守卫、内置连接判据、设置页保存后的放行判断），名单只有一份。"
+  },
+  "generality_proof": "修在两个共享边界，不按供应商写特例：① 设置页所有改地址的界面（内置家接入页、已接入卡片、自定义中转卡、ComfyUI 卡片）都经同一个 IPC 到 sanitizeRendererVendorMutation / upsertRendererCatalogVendor，地址从认证锁里拿出来、绑定跟随写在这一处；② 「官方线路仍是同一条内置连接」写在 builtinVendorScopeMatches 这一个判据里，它的三个读者（凭据发布、执行器装配、执行器请求前复核）自动跟上，名单来自凭据守卫同一张表，以后给任何内置家登记备用域都不用再改判据。程序写门一扇没动，各自的绑定判据（connect_provider 拒绝对已绑定连接给地址、声明卡拒绝改已绑定 origin、store 层 upsert 不改绑定）由既有测试与本次的对照测试共同钉住。变异校验四刀全部抓红并已还原：地址放回锁（2 条红）、去掉绑定跟随（1 条红）、判据只认种子主机（2 条红）、让程序写门也挪绑定（3 条红，含既有 credentialBindingWriteDoor）。",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "sanitizeRendererVendorMutation",
+      "responsibility": "设置页入口能改什么：地址可改（不看认证标记）；认证连接上的鉴权放法仍拒绝，拒绝说人话。"
+    },
+    {
+      "path": "electron/catalog/rendererCatalogMutation.ts",
+      "symbol": "upsertRendererCatalogVendor",
+      "responsibility": "用户在设置里存了新地址而绑定会拦下它时，绑定经 bindCredentialDestination 跟到新地址；程序写门不经过这里。"
+    },
+    {
+      "path": "electron/catalog/builtinVendorSeeds.ts",
+      "symbol": "builtinVendorScopeMatches",
+      "responsibility": "内置连接的传输面判据：地址落在这家登记的官方域名（codeDeclaredFallbackOrigins）上仍是同一条内置连接，其它主机照旧 fail-closed。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/ui/onboarding/VendorBaseUrlField.tsx",
+      "entry_point": "VendorBaseUrlField",
+      "disposition": "enforced",
+      "evidence": "已接入卡片、自定义中转卡与（本次起）内置家接入页共用这一个地址栏，保存都走 bridge.modelCatalog.upsertVendor → upsertRendererCatalogVendor。settingsAddressSave.test ①（带自检标记的内置连接能存）；走查 trap-zh / old-zh / new-zh 真机截图。"
+    },
+    {
+      "path": "src/ui/onboarding/ComfyuiLocalCard.tsx",
+      "entry_point": "ComfyuiLocalCard",
+      "disposition": "enforced",
+      "evidence": "同一个 IPC 入口改本地 ComfyUI 地址；导入过工作流的实例带 adapter 标记，此前同样被这道锁拦下，现在与其它连接一样可改（ComfyUI 免鉴权，没有绑定可跟）。"
+    },
+    {
+      "path": "electron/capabilityCore/modelOnboarding/dispatch.ts",
+      "entry_point": "connectProvider",
+      "disposition": "not-affected",
+      "evidence": "Agent 改连接走主进程 upsertModelCatalogVendor，只改名字与代理开关；对已绑定连接给地址返回 credential_origin_mismatch（credentialInvariants.test 钉住，未改）。"
+    },
+    {
+      "path": "electron/catalog/declaredProviderRegistration.ts",
+      "entry_point": "registerDeclaredProvider",
+      "disposition": "not-affected",
+      "evidence": "声明卡改已绑定 origin 抛 DeclaredOriginRewriteError（credentialInvariants.test 钉住，未改）。"
+    },
+    {
+      "path": "electron/catalog/catalogStore.ts",
+      "entry_point": "upsertModelCatalogVendor",
+      "disposition": "not-affected",
+      "evidence": "store 层写门改地址不挪绑定：credentialBindingWriteDoor.test「换地址不改绑定」与 settingsAddressSave.test「③ 对照」同时钉住；变异「store 层也挪绑定」两处都红。"
+    },
+    {
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "entry_point": "createGenerationProviderBootstrap",
+      "disposition": "enforced",
+      "evidence": "generationProviderBootstrap.test「keeps the direct-key APIMart provider on its officially registered domestic line and sends there」：国内线路上照样装配执行器、提交发往 https://api.apib.ai/v1/images/generations；既有「endpoint drifts」用例（非官方主机）照旧 fail-closed。"
+    },
+    {
+      "path": "electron/catalog/directKeyCredential.ts",
+      "entry_point": "publishBuiltinCuratedVendor",
+      "disposition": "enforced",
+      "evidence": "settingsAddressSave.test ②：主域被墙 key 存成未验证 → 改到国内线路 → 重新保存 key，验证请求发往 https://api.apib.ai/v1/balance、APIMart 重新发布；既有「scope drift fails closed」（evil.example）照旧不发布。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "锁的开关随数据漂：任何往内置连接名下添带 adapter 模型的流程（继续验证 → 自检、给已有连接加模型、AI 接入）都能让一台装机从「能改」变成「不能改」；主域被墙的每一个新用户都会走到「继续验证」这一步。",
+    "same_class_scan": [
+      "rg SECURITY_SCOPE_FIELDS / certificationOwnedConnection：锁只在 rendererCatalogMutation.ts 一处；同样按「名下任意模型带 adapter」判认证所有的还有 generationProviderBootstrap.hasCertificationOwnedConnection、apimartGenerationProvider.assertDirectKeyContract、directKeyCredential.hasCertificationOwnedAdapter（它们管执行器归属，不管地址，记入 residual_risks）。",
+      "door-map --write=upsertRendererCatalogVendor,sanitizeRendererVendorMutation,bindCredentialDestination --read=builtinVendorScopeMatches,codeDeclaredFallbackOrigins：10 扇门，见 doors。",
+      "rg 'upsertVendor(' src/：所有渲染层调用都在 src/ui/onboarding 的设置组件里；能力核的渲染层桥（mcpHostSurfaceOps / applyCanvasToolCall）不调它——Agent 够不着这个入口。",
+      "rg baseUrlHint 写入（electron/）：catalogCommit / integrationSession / serviceCatalog / declaredProviderRegistration / customCallDraft / seedBuiltins 都在主进程，未经设置页入口，本次不改。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/rendererCatalogMutation.ts",
+    "invariant": "设置页入口改地址不看认证标记；绑定只在用户这次保存会被拦时、经唯一派生函数跟随；官方线路判据只读凭据守卫那一张名单。",
+    "failure_mode": "认证连接上改鉴权放法 → 抛界面语言的人话、不写盘；程序写门改地址 → 绑定不动，带 key 请求被凭据守卫拦下（出站前、零字节）；地址落在非官方主机 → 内置连接判据照旧 false，自动发布与引擎 B 拒绝。",
+    "exception_policy": "none",
+    "strategy": "把「地址归用户在设置里改」写在唯一的设置页入口；把「官方备用线路是同一条内置连接」写在唯一的传输面判据并让它读凭据守卫那张表；首次接入页复用同一个地址栏组件，不另写编辑逻辑。",
+    "artifacts": [
+      "electron/catalog/rendererCatalogMutation.ts",
+      "electron/catalog/builtinVendorSeeds.ts",
+      "src/ui/onboarding/KnownVendorKeyConnectPage.tsx"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/settingsAddressSave.test.ts",
+    "electron/catalog/rendererCatalogMutation.test.ts",
+    "electron/capabilityCore/generationProviderBootstrap.test.ts",
+    "electron/ai/onboarding/modelListProbe.test.ts",
+    "src/ui/onboarding/approvedModelAccessArchitecture.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/settingsAddressSave.test.ts",
+    "electron/catalog/rendererCatalogMutation.test.ts",
+    "electron/capabilityCore/generationProviderBootstrap.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/catalog/rendererCatalogMutation.ts"
+    ],
+    "rationale": "地址从认证锁里移除、那句英文拒绝换成 desktopT 人话（中英两条）；没有保留旧行为的开关。连接状态说明里的英文外壳（Network error … Next: …）同批换成界面语言（electron/ai/onboarding/modelListProbe.ts，只改文案、不碰地址与绑定，不在本合同门表内）。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "判据全在本仓；没有第三方依赖决定这条不变量。",
+    "exit_criteria": []
+  },
+  "migration": "不迁移数据：已经带着认证标记的内置连接原样保留，只是不再挡地址；绑定只在用户下一次在设置里保存地址时（且会被拦时）跟随，不回溯改写任何已存绑定。",
+  "residual_risks": [
+    "「继续验证 → 自检」仍会给内置 APIMart 添带 adapter 的模型行，让 Agent 付款卡 / 外部 MCP / 全自动 Run（hasCertificationOwnedConnection / assertDirectKeyContract）与自动发布把整家当成认证所有而拒绝——地址已不受影响，但这几条路在点过自检的装机上仍与老装机不一致。已报协调会话。",
+    "主域被墙时不会自动走国内线路：key 验证（probeDirectKeyCredential）、首用前复验、引擎 B 执行器与文本大脑都直连 appFetch，没接 vendorBaseFallback 的自愈梯子；只有画布的提交 / 轮询 / 上传接了。新装机仍要用户手动换线路。已报协调会话。",
+    "一张声明卡（Agent）仍能给还没存过 key 的内置连接写地址；本次接入页已显示地址栏，用户存 key 前看得见 key 会去哪，但这条程序写门本身没收紧。",
+    "英文界面上连接状态的原因半句（systemProxy.describeNetworkError，如「DNS 解析失败…」）仍只有中文：渲染层的错误分类按这些中文子串匹配，改它要连带改分类，本次未动。",
+    "内置直连家若被用户指到非官方主机（例如 https://apib.ai/v1 官网地址），画布生成照常（绑定已随用户保存跟过去），但自动发布与引擎 B 仍按非官方主机拒绝；APIMart 官方国内接口主机是 https://api.apib.ai。"
+  ]
+}

@@ -9,7 +9,7 @@ import {
   looksLikeLogicalError,
   redactRequestSecrets,
 } from "../ai/requestPipeline";
-import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamMessage } from "../jsonUtils";
+import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamCode, pickUpstreamMessage } from "../jsonUtils";
 import { fetchVendorWithBaseFallback } from "./vendorBaseFallback";
 import type { Vendor } from "../catalog/types";
 import { vendorAuthSpec } from "../catalog/vendorAuthSpec";
@@ -58,6 +58,11 @@ export type VendorErrorStructured = {
   logicalCode?: number | string;
   /** 上游原话,截 256(防日志爆炸,§4.3)。 */
   upstreamMsg: string;
+  /**
+   * 上游**自己给的错误码**（`model_not_found` 这一类字符串标识；没有就不写）。状态码只说「请求有问题」，
+   * 这个码才是它说的原因——渲染层分类优先读它（classifyError 的 UPSTREAM_CODE_KINDS），不靠 400 猜「参数不对」。
+   */
+  upstreamCode?: string;
   /** 查表分类,不是猜:401/403→auth,402→balance,429→quota,400/422→input,5xx→server。 */
   category: VendorErrorCategory;
   retryable: boolean;
@@ -81,8 +86,13 @@ export class VendorRequestError extends Error {
 export const VENDOR_ERROR_IPC_MARKER = "NOMI_VENDOR_ERR_B64::";
 
 export function encodeVendorErrorMessage(error: VendorRequestError): string {
-  const b64 = Buffer.from(JSON.stringify(error.structured), "utf8").toString("base64");
-  return `${VENDOR_ERROR_IPC_MARKER}${b64}:: ${error.message}`;
+  return encodeStructuredErrorMessage(error.structured, error.message);
+}
+
+/** Reuse the established IPC marker for non-provider structured task errors. */
+export function encodeStructuredErrorMessage(structured: Record<string, unknown>, message: string): string {
+  const b64 = Buffer.from(JSON.stringify(structured), "utf8").toString("base64");
+  return `${VENDOR_ERROR_IPC_MARKER}${b64}:: ${message}`;
 }
 
 /** 状态码→类别查表(数字逻辑码与 HTTP 状态同表)。 */
@@ -318,6 +328,7 @@ async function requestVendor(
     // and status so the failure is diagnosable instead of opaque.
     const detail = rawUpstream && rawUpstream !== "No message available" ? rawUpstream : `(no detail from provider)`;
     const { category, retryable } = categorizeVendorFailure(response.ok ? undefined : response.status, logicalCode ?? undefined);
+    const upstreamCode = pickUpstreamCode(record);
     throw new VendorRequestError(`Provider request failed (${statusLabel}) at ${vendor.key} ${upperMethod} ${diagnosticUrl}: ${detail}`, {
       vendorKey: vendor.key,
       method: upperMethod,
@@ -325,6 +336,7 @@ async function requestVendor(
       ...(response.ok ? {} : { httpStatus: response.status }),
       ...(logicalCode != null ? { logicalCode } : {}),
       upstreamMsg: detail.slice(0, 256),
+      ...(upstreamCode ? { upstreamCode } : {}),
       category,
       retryable,
     });

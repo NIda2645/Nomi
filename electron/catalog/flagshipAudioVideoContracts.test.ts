@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyParamMap } from "./paramTranslate";
+import { applyParamMap, wireReferencedParamKeys } from "./paramTranslate";
 import { applyBuiltinSeeds } from "./seedBuiltins";
 import { normalizeMinimaxH3OfficialBody } from "./minimaxOfficial";
 import { FAL_OFFICIAL_ENDPOINT_COUNT, FAL_OFFICIAL_MODELS } from "./falOfficial";
@@ -7,6 +7,8 @@ import { KIE_SUNO_MUSIC_MAPPINGS, KIE_SUNO_UPLOAD_COVER_CREATE_OP, KIE_SUNO_UPLO
 import { RUNWAY_OFFICIAL_BLOCKERS, RUNWAY_OFFICIAL_ENDPOINTS, RUNWAY_VENDOR_SEED } from "./runwayOfficial";
 import { applyRequestTransform } from "../tasks/requestTransforms";
 import { selectTaskMapping, type CatalogState } from "./types";
+import { buildTemplateContext, renderTemplateValue } from "../ai/requestPipeline";
+import { getArchetypeById, resolveArchetypeVariant, specializeArchetypeForVariant } from "../shared/modelArchetypes";
 
 function emptyCatalog(): CatalogState {
   return { version: 11, vendors: [], models: [], mappings: [], apiKeysByVendor: {} };
@@ -285,5 +287,34 @@ describe("2026-08 flagship media contracts", () => {
       model: "happyhorse_1_0", promptImage: "runway://image", ratio: "16:9", duration: 5,
     }, { baseUrl: RUNWAY_VENDOR_SEED.baseUrl });
     expect(hhI2vBody).not.toHaveProperty("ratio");
+  });
+});
+
+// 2026-09-28 核查：Runway 的 `veo3.1` 撞上 veo-3.1 档案「快速」变体的识别串（identifierPatterns 含 "veo3.1"），
+// 于是这两行 Runway 节点在身份上被判成 fast 变体。钉住它**今天不造成错显示、错发送**的两条理由，
+// 任何一条被改掉（给 Veo 变体加 paramOverrides / 把 Runway body 的 model 改成模板）这里就红：
+//   ① Veo 的三个变体都没有 paramOverrides → 参数面与标准档完全一样；
+//   ② Runway 的 body 把 model 写成字面量 → 变体产出的 params.model 到不了线上。
+describe("Runway veo3.1 的变体判定不影响显示与发送", () => {
+  it("判成 fast 变体，但参数面不变、线上仍发 Runway 自己的 model 串", async () => {
+    const veo = getArchetypeById("veo-3.1")!;
+    for (const modelKey of ["veo3.1", "veo3.1_fast"]) {
+      expect(resolveArchetypeVariant(veo, { modelId: modelKey })?.id, modelKey).toBe("fast");
+    }
+    expect(specializeArchetypeForVariant(veo, "fast").modes).toEqual(veo.modes);
+    const state = applyBuiltinSeeds(emptyCatalog(), "2026-09-28T00:00:00.000Z").state;
+    for (const [modelKey, modeId, taskKind] of [
+      ["veo3.1", "t2v", "text_to_video"], ["veo3.1", "frame", "image_to_video"],
+      ["veo3.1_fast", "t2v", "text_to_video"], ["veo3.1_fast", "frame", "image_to_video"],
+    ] as const) {
+      const mapping = selectTaskMapping(state.mappings, "runway", taskKind, modelKey, modeId)!;
+      expect(wireReferencedParamKeys(mapping.create), `${modelKey}/${modeId}`).not.toContain("model");
+      const context = buildTemplateContext({
+        request: { prompt: "test" },
+        params: { model: "veo3.1-fast", aspect_ratio: "16:9", duration: 8, image_url: "runway://frame" },
+        model: {}, modelKey, apiKey: "placeholder",
+      });
+      expect((renderTemplateValue(mapping.create.body, context) as { model?: unknown }).model, `${modelKey}/${modeId}`).toBe(modelKey);
+    }
   });
 });

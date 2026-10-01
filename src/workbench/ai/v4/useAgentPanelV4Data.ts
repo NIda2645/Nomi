@@ -245,6 +245,7 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
     formatStages: (done, total) => t('agentPanelV4.taskStages', { done, total }),
     formatMoney: (currency, amount) => formatMoney(i18n.language, currency, amount),
     taskUnknown: t('agentPanelV4.taskUnknown'),
+    attachmentUnavailable: t('agentPanelV4.attachmentUnavailable'),
     answered: t('agentPanelV4.questionAnswered'),
     // 名字与 `/` 菜单、技能库画廊同一个 owner：菜单里选的是「分镜规划」，气泡上就得也叫「分镜规划」。
     skillLabel,

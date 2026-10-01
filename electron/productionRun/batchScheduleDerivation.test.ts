@@ -6,6 +6,7 @@ import type {
   ProductionGenerationPlan,
   ProductionGenerationShot,
   ProductionJob,
+  ProductionRun,
 } from "./productionRunTypes";
 import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
 
@@ -127,7 +128,7 @@ function anchorCheckpointGate(status: ProductionGate["status"], createdAt = NOW)
 /** Base input: two included shots, no anchor requirement, generous budget, running. */
 function baseInput(overrides: Partial<BatchDerivationInput> = {}): BatchDerivationInput {
   const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64))];
-  return {
+  const base = {
     runId: "op-batch",
     runStatus: "running",
     plan: sealedPlan(shots),
@@ -137,6 +138,23 @@ function baseInput(overrides: Partial<BatchDerivationInput> = {}): BatchDerivati
     anchorGate: undefined,
     now: NOW,
     ...overrides,
+  } as Omit<BatchDerivationInput, "run">;
+  return {
+    ...base,
+    run: {
+      runId: base.runId,
+      projectId: "project",
+      revision: 1,
+      status: base.runStatus,
+      stageId: "generate" as ProductionRun["stageId"],
+      playbook: { name: "production", version: "test" },
+      origin: { host: "test" },
+      budget: base.budget,
+      jobs: base.jobs,
+      generationPlan: base.plan,
+      createdAt: NOW,
+      updatedAt: NOW,
+    } as ProductionRun,
   };
 }
 
@@ -330,6 +348,14 @@ describe("P4 S4 deriveBatchPlan — budget halt", () => {
   });
 });
 
+describe("shot claim dispatch boundary", () => {
+  it("does not dispatch a current attempt claimed by canvas", () => {
+    const shots = [shot("shot-a", "a".repeat(64), { claim: { by: "canvas", attempt: 1, claimedAt: NOW } })];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs: [jobFor("shot-a", "a".repeat(64), "authorized")] }));
+    expect(result.shotDispatch).toEqual([]);
+  });
+});
+
 describe("P4 S4 deriveBatchPlan — stop semantics", () => {
   for (const status of ["pausing", "paused", "cancelled"] as const) {
     it(`dispatches nothing new when the run is ${status}`, () => {
@@ -339,11 +365,19 @@ describe("P4 S4 deriveBatchPlan — stop semantics", () => {
     });
   }
 
+  it("a shot nobody has approved (no job at all) is not part of the batch: not pending, not dispatched, does not block completion", () => {
+    const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64))];
+    const result = deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs: [jobFor("shot-a", "a".repeat(64), "ready")] }));
+    expect(result.progress).toMatchObject({ total: 1, completed: 1, inFlight: 0, pending: 0 });
+    expect(result.shotDispatch).toEqual([]);
+  });
+
   it("reports structured stop counts (stopped/completed/pending) from durable jobs", () => {
     const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64)), shot("shot-c", "c".repeat(64))];
     const jobs = [
       jobFor("shot-a", "a".repeat(64), "ready"), // completed
       jobFor("shot-b", "b".repeat(64), "provider_accepted"), // in-flight
+      jobFor("shot-c", "c".repeat(64), "authorized"), // approved, never dispatched (a shot with no job at all was never approved and is not part of the batch)
     ];
     const result = deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs, runStatus: "paused" }));
     expect(result.progress.completed).toBe(1);
@@ -475,5 +509,35 @@ describe("anchor-only batch（校验放行之后仍然照旧工作）", () => {
     const result = deriveBatchPlan(baseInput({ plan: sealedPlan(mixed), jobs: [anchorJobReady("anchor-1")] }));
     expect(result.checkpoint.status).toBe("should_open");
     expect(result.shotDispatch, "检查点没放行之前，镜头一个都不许派").toEqual([]);
+  });
+});
+
+// 批次歇下来时「有没有单元确定没成」只看**当前那次尝试**（2026-09-29）：重做成功之后，上一次失败的那个 job
+// 还躺在 jobs 里，不许再让整批被判「有镜头没成」而停下；当前尝试失败（失败 / 撤单 / 提交结果未知）才算，参考卡也算。
+describe("failedUnits — only the current attempt counts", () => {
+  it("a redone shot whose new attempt finished is not a failed unit; the superseded failure is ignored", () => {
+    const shots = [shot("shot-a", "a".repeat(64), { attemptCount: 2 }), shot("shot-b", "b".repeat(64))];
+    const jobs = [
+      jobFor("shot-a", "a".repeat(64), "needs_attention", 1),
+      jobFor("shot-a", "a".repeat(64), "ready", 2),
+      jobFor("shot-b", "b".repeat(64), "ready"),
+    ];
+    expect(deriveBatchPlan(baseInput({ plan: sealedPlan(shots), jobs })).failedUnits).toEqual([]);
+  });
+
+  it("the current attempt failing (failed, submission unknown) makes it a failed unit — anchors included", () => {
+    const plan = planWithAnchor();
+    const jobs = [
+      { ...jobFor("anchor-1", ANCHOR_HASH, "needs_attention"), model: "image-model" },
+      jobFor("shot-a", "a".repeat(64), "submission_unknown"),
+      jobFor("shot-b", "b".repeat(64), "authorized"),
+    ];
+    expect(deriveBatchPlan(baseInput({ plan, jobs })).failedUnits).toEqual(["anchor-1", "shot-a"]);
+  });
+
+  it("is reported even while the run is stopped (the rest verdict and the canvas read the same derivation)", () => {
+    const shots = [shot("shot-a", "a".repeat(64)), shot("shot-b", "b".repeat(64))];
+    const jobs = [jobFor("shot-a", "a".repeat(64), "needs_attention"), jobFor("shot-b", "b".repeat(64), "authorized")];
+    expect(deriveBatchPlan(baseInput({ runStatus: "needs_attention", plan: sealedPlan(shots), jobs })).failedUnits).toEqual(["shot-a"]);
   });
 });

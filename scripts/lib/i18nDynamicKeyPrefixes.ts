@@ -36,7 +36,7 @@ export const OVERBROAD_NAMESPACE_DEBT: readonly string[] = []
 export const DYNAMIC_KEY_PREFIXES: DynamicPrefix[] = [
   { prefix: 'shotTable.columns', members: ['index', 'thumbnail', 'duration'], why: '动态：表头紧凑/完整档遍历固定 leading 列；枚举来源 ShotTableGrid.tsx 的 leading 字面量元组，其余表头用完整键。' },
   { prefix: 'shotTable.facts', members: ['shotSize', 'motion', 'visual', 'dialogue', 'onScreenText', 'mood'], why: '动态：事实表按持久列顺序展示内置列；枚举来源 shotTableFacts.ts 的事实列集，自定义列直接显示用户标签。' },
-  { prefix: 'shotTable.status', members: ['ready', 'anchor-ignored', 'waiting-refs', 'missing-required', 'generating', 'failed', 'recoverable', 'done', 'locked'], why: '动态：表投影现役执行状态；枚举来源 storyboardRowStatus.ts 的 ShotRowExec.status，未另建状态机。' },
+  { prefix: 'shotTable.status', members: ['ready', 'anchor-ignored', 'missing-required', 'generating', 'failed', 'recoverable', 'done', 'locked'], why: '动态：表投影现役执行状态；枚举来源 storyboardRowStatus.ts 的 ShotRowExec.status，未另建状态机。' },
   // ── creationAi ──
   // ── agentPanelV4 ──
   { prefix: 'agentPanelV4.permission', why: "动态: Agent 面板 v4 的权限三档;枚举来源: PermissionTier = ProjectAgentApprovalPolicy['mode'] 的 step/safe-auto/project(permission.* 词条)" },
@@ -125,6 +125,7 @@ export const DYNAMIC_KEY_PREFIXES: DynamicPrefix[] = [
   { prefix: 'generationCommon.memory.kinds', why: '动态: 记忆条目类别;枚举来源: MemoryFold 的 fact.kind(memory.kinds.* 词条)' },
   { prefix: 'generationCommon.node.extractFrame', why: '动态: 抽帧首尾;枚举来源: extractVideoFrameToNode 的 which(node.extractFrame.* 词条)' },
   { prefix: 'generationCommon.observability.error', why: '动态: 可观测错误叙事;枚举来源: narrate.ts 的 error key(observability.error.${key}.reason/.hint 词条)' },
+  { prefix: 'generationCommon.observability.error.shotClaimed', why: '动态：production_shot_claimed 的四个 reason 枚举由 classifyGenerationError 的 claimCopy 提供。' },
   { prefix: 'generationCommon.observability.action', why: '动态: 可观测动作叙事;枚举来源: narrate.ts 的 ACTION_KEY[action](observability.action.${key}.main/.alt 词条)' },
   { prefix: 'generationCommon.production.artifactKind', why: '动态: 产物类型;枚举来源: ProductionRunTaskCard 的 preview.kind(production.artifactKind.* 词条)' },
   { prefix: 'generationCommon.production.batch.frozen', why: '动态: 批次冻结项;枚举来源: SpendConfirmDialog 的 frozen item(production.batch.frozen.* 词条)' },

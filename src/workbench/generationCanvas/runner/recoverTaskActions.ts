@@ -12,10 +12,13 @@ import { normalizeCatalogTaskResult } from './catalogTaskResultParse'
 import i18n from '../../../i18n'
 import { describeOpaqueFailure } from '../../observability/opaqueFailure'
 import type { MediaDimensions } from '../nodes/nodeSizing'
+import { awaitMediaTransfer, describePhaseSilence } from './generationPhaseDeadline'
 
 const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
 const RECOVER_POLL_INTERVAL_MS = 3000
 // 找回轮询自己的上限（10 分钟）：超了仍没终态 → 退回 recoverable，按钮重现，让用户稍后再试。
+// 它只在两次查询之间检查；**每一次**查询自己另有时限（awaitMediaTransfer）——2026-09-28 之前没有，
+// 一次不返回的查询让「重新拉取」本身也永远转圈，这个 10 分钟上限根本轮不到检查。
 const RECOVER_POLL_TIMEOUT_MS = 600000
 
 function delay(ms: number): Promise<void> {
@@ -94,7 +97,9 @@ export async function recoverNodeResult(nodeId: string, project: ProjectExecutio
   let current: TaskResultDto | null = null
   try {
     while (true) {
-      const response = await fetchWorkbenchTaskResultByVendor({
+      // 找回的这次查询里可能就包着整段下载（主进程查到成片就地落盘，且不为找回广播「开始落地」），
+      // 所以按一次媒体传输那一档给时限；到点抛错，由下面的 catch 落回「可找回」，按钮重现。
+      const response = await awaitMediaTransfer(fetchWorkbenchTaskResultByVendor({
         taskId: payload.taskId,
         vendor: payload.vendor,
         taskKind: payload.taskKind,
@@ -102,7 +107,7 @@ export async function recoverNodeResult(nodeId: string, project: ProjectExecutio
         modelKey: payload.modelKey || null,
         projectId: target.projectId,
         ...(payload.archetype ? { archetype: payload.archetype } : {}),
-      })
+      }), (waitedMs) => new Error(describePhaseSilence('still-generating', waitedMs)))
       current = response.result
       if (TERMINAL_STATUSES.has(current.status)) break
       if (Date.now() - startedAt > RECOVER_POLL_TIMEOUT_MS) {

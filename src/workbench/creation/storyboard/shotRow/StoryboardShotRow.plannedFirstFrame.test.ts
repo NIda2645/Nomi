@@ -54,9 +54,9 @@ function renderRow(shot: PlanShot, nodes: GenerationCanvasNode[] = []): string {
   const plan: StoryboardPlan = { title: 'fixture', anchors: [], shots: [shot] }
   const exec = deriveShotRowExec({ plan, shot, designId: DESIGN, nodes, mode: I2V })
   return renderToStaticMarkup(React.createElement(MantineProvider, null, React.createElement(StoryboardShotRow, {
-    shot, anchors: [], modelOptions: OPTIONS, danglingIds: [], exec,
+    shot, anchors: [], modelOptions: OPTIONS, exec,
     aspect: '16:9', frameBox: { width: 136, height: 77 }, aspectOverridden: false, aspectOptions: [],
-    onChangeAspect: () => {}, onUpdate: () => {}, onToggleAnchor: () => {}, onRemove: () => {},
+    onChangeAspect: () => {}, onUpdate: () => {}, onRemove: () => {},
   })))
 }
 

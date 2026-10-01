@@ -1,4 +1,6 @@
-// RunningHub 视频模型（apimart 兼容集）：Seedance2.0 / Veo3.1 / 可灵3.0 / Wan2.7 / 海螺2.3 / Sora2。
+// RunningHub 视频模型（apimart 兼容集）：Seedance2.0 / Veo3.1 / 可灵3.0 / Wan2.7 / 海螺2.3。
+// Sora 2（rhart-video-s-official）2026-09-28 退役：OpenAI 已于 2026-09-24 关停 Sora 2；已落盘的行由
+// seedBuiltins 的退役清单摘掉，这里同删（两处不同删，启动时会插回来来回抖）。
 // 端点 + body 参数逐字照官方注册表 models_registry.json；i2v 图字段名各模型不同（注释标）。
 // 轮询/状态映射复用 runninghub3d 单源（P1）。本地图经通用 ANON_UPLOAD_CHAIN 自动传公网。
 import type { HttpOperation, ProfileKind } from "./types";
@@ -24,9 +26,6 @@ const WAN_I2V = op("/alibaba/wan-2.7/image-to-video", { prompt: PROMPT, resoluti
 const HAILUO_T2V = op("/minimax/hailuo-2.3/t2v-standard", { prompt: PROMPT, duration: P("duration"), enablePromptExpansion: P("enablePromptExpansion") });
 const HAILUO_I2V = op("/minimax/hailuo-2.3/i2v-standard", { prompt: PROMPT, duration: P("duration"), enablePromptExpansion: P("enablePromptExpansion"), imageUrl: P("imageUrl") });
 
-const SORA_T2V = op("/rhart-video-s-official/text-to-video", { prompt: PROMPT, size: P("size"), duration: P("duration") });
-const SORA_I2V = op("/rhart-video-s-official/image-to-video", { prompt: PROMPT, duration: P("duration"), imageUrl: P("imageUrl") });
-
 // labelZh 与现有 apimart/kie 同模型**精确一致**（不加「(RunningHub)」后缀）→ 模型选择器按规范化 label
 // 去重合并成一条「N 家」，选中后用供应商下拉锁 RunningHub（治「一大堆/重复」，见 modelIdentity 去重）。
 export const RUNNINGHUB_VIDEO_CURATED_MODELS = [
@@ -35,7 +34,6 @@ export const RUNNINGHUB_VIDEO_CURATED_MODELS = [
   { modelKey: "kling-v3.0-pro", labelZh: "可灵 3.0", kind: "video" as const, archetypeId: "rh-kling-3.0" },
   { modelKey: "rh-wan-2.7", labelZh: "Wan 2.7", kind: "video" as const, archetypeId: "rh-wan-2.7" },
   { modelKey: "rh-hailuo-2.3", labelZh: "Hailuo 2.3", kind: "video" as const, archetypeId: "rh-hailuo-2.3" },
-  { modelKey: "rhart-video-s-official", labelZh: "Sora 2", kind: "video" as const, archetypeId: "rh-sora-2" },
 ];
 
 const mk = (id: string, taskKind: ProfileKind, modelKey: string, name: string, create: HttpOperation) => ({
@@ -53,6 +51,4 @@ export const RUNNINGHUB_VIDEO_CURATED_MAPPINGS = [
   mk("seed-rh-wan27-i2v", "image_to_video", "rh-wan-2.7", "Wan 2.7 · 图生视频", WAN_I2V),
   mk("seed-rh-hailuo23-t2v", "text_to_video", "rh-hailuo-2.3", "海螺 2.3 · 文生视频", HAILUO_T2V),
   mk("seed-rh-hailuo23-i2v", "image_to_video", "rh-hailuo-2.3", "海螺 2.3 · 图生视频", HAILUO_I2V),
-  mk("seed-rh-sora2-t2v", "text_to_video", "rhart-video-s-official", "Sora 2 · 文生视频", SORA_T2V),
-  mk("seed-rh-sora2-i2v", "image_to_video", "rhart-video-s-official", "Sora 2 · 图生视频", SORA_I2V),
 ];

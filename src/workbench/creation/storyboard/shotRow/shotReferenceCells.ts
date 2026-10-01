@@ -1,6 +1,7 @@
 import type { AssetSlot } from '../../../assets/AssetReference'
 import type { ArchetypeMode, ArchetypeReferenceSlot, ModelArchetype } from '../../../../../electron/shared/modelArchetypes/types'
 import type { PlanReferenceBinding } from '../../../generationCanvas/agent/storyboardPlan'
+import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
 import { bindingsOf, storyboardAssetSlots, type ReferenceBindingMap } from './shotReferenceSlots'
 
 /**
@@ -83,16 +84,19 @@ export function referenceColumnOf(
   return { kind: 'cells', cells }
 }
 
-/** 模式的人话名字：模型自己的叫法（picker 上显示的也是它），缺了才退回 id。 */
-function modeDisplayLabel(mode: ArchetypeMode): string {
-  return mode.vendorTerm.trim() || mode.id
+/**
+ * 模式的人话名字：**和这一行模式下拉显示的是同一个名字**（模型自己的叫法 vendorTerm，经 translateModelDisplayText
+ * 带上中英两份），缺了才退回 id。凡是要在句子里提到「这一行的模式」，都从这里取，不许自己拼 id 或直接拼档案里的中文。
+ */
+export function modeDisplayLabel(mode: ArchetypeMode): string {
+  return translateModelDisplayText(mode.vendorTerm.trim()) || mode.id
 }
 
 /**
  * 同一档案里另一个**吃参考**的模式。优先挑能挂首帧的那个——「切过去能干什么」
  * 要具体到槽，一句「换个模式」等于没说。
  */
-function referenceCapableSibling(
+export function referenceCapableSibling(
   mode: ArchetypeMode,
   archetype: ModelArchetype | null | undefined,
 ): { modeLabel: string; slotLabel: string } | undefined {
@@ -101,7 +105,7 @@ function referenceCapableSibling(
   if (!preferred) return undefined
   const slot = preferred.slots.find((entry) => entry.kind === 'first_frame') ?? preferred.slots[0]
   if (!slot) return undefined
-  return { modeLabel: modeDisplayLabel(preferred), slotLabel: slot.label }
+  return { modeLabel: modeDisplayLabel(preferred), slotLabel: translateModelDisplayText(slot.label) }
 }
 
 /**

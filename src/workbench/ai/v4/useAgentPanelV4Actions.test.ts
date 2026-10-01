@@ -506,6 +506,13 @@ describe('creation send-time storyboard target', () => {
     expect(fixture.say.mock.calls[0][2].storyboardTarget).not.toHaveProperty('targetRunId')
     fixture.state.activeDocumentId = 'doc-1'
   })
+  it('only the storyboard button states that the resulting plan should be opened', async () => {
+    fixture.say.mockResolvedValue({ ok: true })
+    await mountActions('creation').send('split it', { openStoryboardResult: true })
+    await mountActions('creation').send('write a storyboard in chat')
+    expect(fixture.say.mock.calls[0][2].storyboardTarget.openResult).toBe(true)
+    expect(fixture.say.mock.calls[1][2].storyboardTarget).not.toHaveProperty('openResult')
+  })
   it('hands the model this document\'s existing plans so it can name one', async () => {
     fixture.say.mockResolvedValue({ ok: true })
     fixture.state.storyboardDesignsByDocumentId = { 'doc-1': [{ id: 'op-a', title: 'Seaside' }, { id: 'op-b', title: 'Night' }] }

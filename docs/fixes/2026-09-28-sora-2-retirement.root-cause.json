@@ -1,0 +1,256 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-28-sora-2-retirement",
+  "problem_type": "上游已关停的 curated 模型仍留在目录里：用户能在模型框选中一个每次生成都必失败的模型",
+  "symptom": "OpenAI 官方文档写明 The Sora 2 models and Videos API were shut down on September 24, 2026，APIMart 文档里也已没有 Sora 2；但 APIMart `sora-2`（标准 / Pro 两个变体同一行）与 RunningHub `rhart-video-s-official` 仍是 curated 行，模型框照常列出「Sora 2」，选中生成只会失败。",
+  "direct_cause": "两行仍声明在 electron/catalog/apimartVideos.ts 的 APIMART_VIDEO_MODELS 与 electron/catalog/runninghubVideos.ts 的 RUNNINGHUB_VIDEO_CURATED_MODELS/MAPPINGS 里，applyBuiltinSeeds 每次启动按它们插入 / 对账；老装机里已落盘的行没有任何路径会移除。",
+  "class_root": "目录只有「加」的通道（curated 声明 → reconcileModels/reconcileMappings 插入与对账），上游下架没有自动退出的通道：退役必须同时做两件事——curated 源里删掉（新装机不再种）和退役清单里 prune（老装机摘掉已落盘的行）。只做前者老装机残留，只做后者启动时插回来与 prune 来回抖。",
+  "affected_population": [
+    "接了 APIMart 或 RunningHub 的桌面用户（新装机与老装机）",
+    "旧项目里用过 Sora 2 的视频节点（节点照样能打开，生成时给「这个模型已经下线了」+「换个模型」）"
+  ],
+  "scope_paths": [
+    "electron/catalog/seedBuiltins.ts",
+    "electron/catalog/apimartVideos.ts",
+    "electron/catalog/runninghubVideos.ts",
+    "electron/catalog/archetypeIdentifiers.generated.ts",
+    "electron/catalog/archetypeModes.generated.ts",
+    "electron/catalog/archetypeWireDefaults.video.generated.ts"
+  ],
+  "entry_points": [
+    "画布 / 分镜 / 批量的模型框（目录里没有这两行就不出现）",
+    "老项目里存着 sora-2 / rhart-video-s-official 的视频节点点生成（findExecutableModel 报 Model is retired → 错误卡「这个模型已经下线了」+「换个模型」）",
+    "Agent 可用模型清单与宿主派发（同一份目录，行不在就不可选）"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "关停事实来自用户 2026-09-28 拍板时给的证据（OpenAI 官方文档原文、APIMart 文档已无 Sora 2），本机无网络复核；退役机制（curated 删除 + prune 清单 + executableModel 的 Model is retired 签名）是仓内约定，照 Imagen 4 退役先例（6938c408d8）。",
+  "invariants": [
+    "退役清单里的 (vendor, modelKey) 与种子 mapping id，每次启动后都不在任何装机的目录里（新装机不种、老装机摘掉），重复启动幂等（changed=false）",
+    "curated 源不再声明退役的行，否则 fresh seed 断言红（防止与 prune 来回抖）",
+    "只摘我们种的那一行：按 vendor + modelKey / 种子 mapping id 精确命中，用户自建渠道里同名的模型与 mapping 不受影响",
+    "旧项目里存着退役模型的节点能打开，生成时落 model-retired（中文「这个模型已经下线了」+「换个模型」），不是英文报错"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/seedBuiltins.ts",
+    "tests": [
+      "electron/catalog/seedBuiltins.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/apimartGenerationQuery.ts",
+      "symbol": "APIMART_VIDEO_QUERY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/apimartVideos.ts",
+      "symbol": "ApimartVideoModel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/builtinVendorSeeds.ts",
+      "symbol": "RUNNINGHUB_VENDOR_SEED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghub3d.ts",
+      "symbol": "RUNNINGHUB_HDR"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghub3d.ts",
+      "symbol": "RUNNINGHUB_VENDOR_SEED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghub3d.ts",
+      "symbol": "RUNNINGHUB_QUERY_OP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghub3d.ts",
+      "symbol": "RUNNINGHUB_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghubImages.ts",
+      "symbol": "RUNNINGHUB_HDR"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghubImages.ts",
+      "symbol": "RUNNINGHUB_QUERY_OP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghubImages.ts",
+      "symbol": "RUNNINGHUB_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghubImages.ts",
+      "symbol": "RUNNINGHUB_VENDOR_SEED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghubVideos.ts",
+      "symbol": "RUNNINGHUB_HDR"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghubVideos.ts",
+      "symbol": "RUNNINGHUB_QUERY_OP"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghubVideos.ts",
+      "symbol": "RUNNINGHUB_STATUS_MAPPING"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/runninghubVideos.ts",
+      "symbol": "RUNNINGHUB_VENDOR_SEED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "APIMART_VIDEO_MODELS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "APIMART_VIDEO_QUERY"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "APIMART_VIDEO_STATUS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "RUNNINGHUB_3D_CURATED_MAPPINGS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "RUNNINGHUB_3D_CURATED_MODELS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "RUNNINGHUB_VENDOR_SEED"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "RUNNINGHUB_VIDEO_CURATED_MAPPINGS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "RUNNINGHUB_VIDEO_CURATED_MODELS"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "pruneRetiredModels"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "pruneRetiredMappings"
+    }
+  ],
+  "door_reduction": {
+    "before": 25,
+    "after": 25,
+    "why_not": "这些门本来就各司其职：curated 源（apimartVideos / runninghubVideos / runninghub3d 的共享轮询定义）是「新装机种什么」的唯一声明处，seedBuiltins.applyBuiltinSeeds 是唯一把声明写进用户目录、也唯一 prune 已落盘行的地方，其余是读取共享轮询 / 状态定义的同家其它目录（runninghubImages、builtinVendorSeeds、apimartGenerationQuery）。退役要改的正是声明处与 prune 这两扇，不需要也不应该合并掉按供应商分文件的目录源。"
+  },
+  "generality_proof": "修在唯一的写边界 applyBuiltinSeeds：新装机只从 curated 源种行（源里已删），老装机每次启动都经过同一段 prune，所以模型框、分镜、批量、Agent 清单、宿主派发读到的都是同一份已清理的目录，没有入口能绕过。旧节点走 findExecutableModel 的「记录不在 = 已退役」判据，这是全仓唯一的执行入口，给出统一的 model-retired 动作。类测试覆盖新装机、老装机、幂等与用户同名自建四种输入；变异校验：删掉四行 prune，老装机与同名两条测试红。",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/seedBuiltins.ts",
+      "symbol": "applyBuiltinSeeds",
+      "responsibility": "新装机按 curated 源种行、老装机按退役清单 prune 已落盘的行（RETIRED_APIMART_SORA_* / RETIRED_RUNNINGHUB_VIDEO_*），两者互斥且幂等。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/catalog/apimartVideos.ts",
+      "entry_point": "APIMART_VIDEO_MODELS",
+      "disposition": "enforced",
+      "evidence": "sora-2 行与两条 mapping 从 curated 源删除；seedBuiltins.test「新装机」断言 fresh seed 里没有 sora-2 与 seed-apimart-sora-2-* mapping，同家 veo3.1-fast 仍在。"
+    },
+    {
+      "path": "electron/catalog/runninghubVideos.ts",
+      "entry_point": "RUNNINGHUB_VIDEO_CURATED_MODELS",
+      "disposition": "enforced",
+      "evidence": "rhart-video-s-official 行、两条 mapping 与 SORA_T2V/SORA_I2V 从 curated 源删除；测试断言 fresh seed 里没有它，同家 kling-v3.0-pro 仍在。"
+    },
+    {
+      "path": "electron/catalog/executableModel.ts",
+      "entry_point": "findExecutableModel",
+      "disposition": "not-affected",
+      "evidence": "记录不在时抛 Model is retired（既有判据，未改）：旧节点点生成落 classifyError 的 model-retired → 中文「这个模型已经下线了」+「换个模型」。"
+    },
+    {
+      "path": "electron/catalog/modelKindHeuristic.ts",
+      "entry_point": "guessModelKind",
+      "disposition": "not-affected",
+      "evidence": "sora 关键词保留：用户自建渠道可能还有叫 sora 的模型，关键词只决定自建模型的类型猜测，不产生 curated 行。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "供应商会持续下架 / 关停模型（2026-07-30 的 Imagen 4 是上一例，这次是 Sora 2），而目录只有「加」的通道；每一次都需要 curated 删除 + prune 两处同改，漏一处就会残留或来回抖。",
+    "same_class_scan": [
+      "全量扫 sora（electron / src / scripts / skills）：curated 行两处（apimartVideos、runninghubVideos）、身份表两条（seedModelIdentity）、档案两个（videoCapabilities/sora2.ts 与 runninghubVideoArchetypes 的 RH_SORA_2_ARCHETYPE）、生成表三份；其余是提示词合集（sora2-viral / sora-official，保留）、示例视频 CDN 白名单（保留）、自建模型类型关键词（保留）与若干注释。",
+      "默认模型 / 技能 / 提示词库：没有任何地方把 sora-2 当默认模型或提供「用 Sora 2 生成」入口；提示词合集只是来源分类。",
+      "档案删除的依据：目录行被摘后，节点的档案只能从目录选项解析（resolveArchetypeForOption(null) 恒为 null），供应商断开自愈只在另一家提供同档案 / 同家族时才给建议——两家都退役后有没有档案行为一致，所以删档案并用 gen:archetype-defaults 重新生成（92 → 90 个档案）。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/seedBuiltins.ts",
+    "invariant": "退役清单里的行与 mapping 每次启动后都不在目录里，curated 源不再声明它们。",
+    "failure_mode": "老装机残留的行在启动时被 prune；若有人把 Sora 2 加回 curated 而没删退役清单，新装机测试立刻红（fresh seed 出现 sora-2）；旧节点生成时给 model-retired 的中文动作而不是英文报错。",
+    "exception_policy": "none",
+    "strategy": "照 Imagen 4 先例：curated 源与退役清单在同一次提交里同改，退役清单住唯一写边界 applyBuiltinSeeds，按 vendor + 种子 id 精确命中，不碰用户自建的同名记录。",
+    "artifacts": [
+      "electron/catalog/seedBuiltins.ts",
+      "electron/catalog/apimartVideos.ts",
+      "electron/catalog/runninghubVideos.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/seedBuiltins.test.ts",
+    "electron/catalog/vendorDocAuditWire.test.ts",
+    "electron/catalog/archetypeWireDefaults.test.ts",
+    "electron/capabilityCore/apimartGenerationProvider.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/seedBuiltins.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/shared/videoCapabilities/sora2.ts",
+      "electron/catalog/apimartVideos.ts",
+      "electron/catalog/runninghubVideos.ts"
+    ],
+    "rationale": "Sora 2 的 curated 行、mapping 与两个档案（APIMart sora-2 档案文件整份删除，RunningHub 档案从 runninghubVideoArchetypes 删除）同一次提交移除；生成表由 gen:archetype-defaults 重新生成。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及第三方依赖升级：退役的是供应商侧已关停的模型行。",
+    "exit_criteria": []
+  },
+  "migration": "老装机：下次启动 applyBuiltinSeeds 摘掉两家的 Sora 2 行与 mapping（幂等）。旧项目：节点的 modelKey / vendor 原样保留，模型框里不再显示该模型；点生成落「这个模型已经下线了」+「换个模型」，换成别的视频模型后参数面板照常（真机走查截图见报告）。模型框偏好里残留的 sora 2 canonical id 变成孤儿，无副作用。",
+  "residual_risks": [
+    "关停事实本机未联网复核，依据是用户拍板时给的官方文档原文。",
+    "用户自建渠道里若还有叫 sora-2 的模型，自 2026-09-28 起不再有 Sora 档案（按通用参数面展示）；上游已关停，这条路本身也不会成功。",
+    "提示词库里的 Sora 2 / Sora 官方合集保留（提示词换别的视频模型也能用），来源分类里仍会出现「Sora 2」字样。"
+  ]
+}

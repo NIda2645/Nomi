@@ -108,11 +108,5 @@ function auditPackagedMedia(input, platform, arch) {
   return { input: path.resolve(input), platform, arch, target, families }
 }
 
-if (require.main === module) {
-  const [input, platform = process.platform, arch = process.arch] = process.argv.slice(2)
-  if (!input)
-    throw new Error('Usage: node scripts/packaging/audit-packaged-media.cjs <app-or-resources-path> <platform> <arch>')
-  console.log(JSON.stringify(auditPackagedMedia(input, platform, arch), null, 2))
-}
-
+// 入口在 scripts/audit-package.mjs（包体审计的一部分，desktop-rc 每个平台打包后都跑）；这里只留判据。
 module.exports = { auditPackagedMedia, findUnpackedRoot, inspectExecutable }

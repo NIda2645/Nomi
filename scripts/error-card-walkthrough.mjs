@@ -175,7 +175,7 @@ if (!projectFile) {
     const mustNot = [
       ['参数不被接受', '审核拦截仍被说成参数错'],
       ['比例/尺寸', '仍在让用户去调比例（救不了）'],
-      ['额度问题', '仍在甩锅给根本没被请求到的服务商'],
+      ['没能认出这次失败的原因', '仍落进「认不出」（没走到该有的分类）——旧的探针是那句「额度问题」，F6 之后 unknown 不再说它'],
       ['invoking remote method', 'Electron IPC 包装前缀仍怼在用户脸上'],
     ]
     for (const [needle, why] of mustNot) {

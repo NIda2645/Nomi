@@ -377,6 +377,23 @@ const RETIRED_APIMART_IMAGE_MAPPING_IDS: readonly string[] = ["seed-apimart-imag
 // `deepseek-v3.1-250821` 早期误种；`deepseek-v3.2-think` 2026-09-06 实测退役（仍列在目录里但调用 400 ——
 // 教训同 imagen-4.0-apimart：目录列表不是可用性证据）。证据与回归见 apimartTextMigration.test.ts。
 const RETIRED_APIMART_TEXT_MODEL_KEYS: readonly string[] = ["deepseek-v3.1-250821", "deepseek-v3.2-think"];
+/**
+ * Sora 2 退役（2026-09-28 用户拍板，随 0.23.0 发出）：OpenAI 官方文档写明「The Sora 2 models and Videos API were
+ * shut down on September 24, 2026」，APIMart 文档里也已经没有 Sora 2——两家的 Sora 2 都只剩必死的请求。
+ * 两条目录都撤：APIMart `sora-2`（标准 / Pro 两个变体是同一行）与 RunningHub `rhart-video-s-official`。
+ * 旧项目里用过它的节点照样能打开：记录不在了，生成时 findExecutableModel 报「Model is retired」→
+ * 节点显示「这个模型已经下线了」+「换个模型」（classifyError 的 model-retired 那一档）。
+ *
+ * ⚠️ 与 APIMART_VIDEO_MODELS / RUNNINGHUB_VIDEO_CURATED_MODELS 互斥：curated 里必须**同时**删掉，否则
+ * reconcileModels 每次启动又插回来、和这里的 prune 来回抖。
+ */
+const RETIRED_APIMART_SORA_MODEL_KEYS: readonly string[] = ["sora-2"];
+const RETIRED_APIMART_SORA_MAPPING_IDS: readonly string[] = [
+  "seed-apimart-sora-2-text_to_video",
+  "seed-apimart-sora-2-image_to_video",
+];
+const RETIRED_RUNNINGHUB_VIDEO_MODEL_KEYS: readonly string[] = ["rhart-video-s-official"];
+const RETIRED_RUNNINGHUB_VIDEO_MAPPING_IDS: readonly string[] = ["seed-rh-sora2-t2v", "seed-rh-sora2-i2v"];
 
 const RETIRED_APIMART_VIDEO_MAPPING_IDS: readonly string[] = [
   "seed-apimart-seedance-2-apimart-fast-text_to_video",
@@ -563,6 +580,11 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
     }
   }
   if (pruneRetiredModels(models, KIE_VENDOR_SEED.key, RETIRED_KIE_VIDEO_MODEL_KEYS)) changed = true;
+  // Sora 2 退役（上游 2026-09-24 关停）：两家的行与 mapping 都摘，对老装机同样生效。
+  if (pruneRetiredModels(models, APIMART_VENDOR_SEED.key, RETIRED_APIMART_SORA_MODEL_KEYS)) changed = true;
+  if (pruneRetiredMappings(mappings, RETIRED_APIMART_SORA_MAPPING_IDS)) changed = true;
+  if (pruneRetiredModels(models, RUNNINGHUB_VENDOR_SEED.key, RETIRED_RUNNINGHUB_VIDEO_MODEL_KEYS)) changed = true;
+  if (pruneRetiredMappings(mappings, RETIRED_RUNNINGHUB_VIDEO_MAPPING_IDS)) changed = true;
 
   // 模型 insert + 对账（两家各跑同一套逻辑）。
   for (const contract of CURATED_VENDOR_CONTRACTS) {
@@ -592,6 +614,17 @@ export function applyBuiltinSeeds(state: CatalogState, now: string): { state: Ca
 
   if (!changed) return { state, changed: false };
   return { state: { ...state, vendors, models, mappings }, changed: true };
+}
+
+/**
+ * 这家**内置目录里**有哪些模型（curated 登记表里的 modelKey；不在表里的家返回空集）。
+ * 「用户自己加的模型」与「代码拥有的模型」只靠这张表分得开——`meta` 上的任何字段渲染层都写得动，
+ * 拿来判身份就是让用户自己给自己的行盖章。`certificationOwnership` 靠它判「标记落在谁身上」。
+ */
+export function builtinCatalogModelKeys(vendorKey: string): ReadonlySet<string> {
+  return new Set(CURATED_VENDOR_CONTRACTS
+    .filter((contract) => contract.vendorKey === vendorKey)
+    .flatMap((contract) => contract.models.map((model) => model.modelKey)));
 }
 
 /**

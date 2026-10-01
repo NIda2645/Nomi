@@ -1,6 +1,5 @@
 import { validateAnchorModelFit, type AnchorModelFitIssue } from './storyboardAnchorPolicy'
 import { effectiveShotDurationSec, type PlanAnchor, type PlanAnchorCarrier, type PlanAnchorKind, type PlanShot, type StoryboardPlan } from './storyboardPlan'
-import { hasMentions, mentionUrlsInOrder } from '../../assets/promptMentions'
 
 /**
  * 分镜方案的**纯编辑 + 校验**层（S3 字段编辑器的领域逻辑，与渲染解耦、可单测）。
@@ -147,17 +146,9 @@ export function addExternalReferenceAnchor(
   return { plan: { ...plan, anchors: [...plan.anchors, anchor] }, anchorId }
 }
 
-/** 文本中已有 @ 时，镜头绑定按 URL 重建；没有 @ 的旧纯文本仍保留旧绑定。 */
+/** 改一镜的提示词：只改提示词。@ 的素材住在参考列（referenceBindings），提示词编辑不再顺手改任何关系。 */
 export function updateShotPrompt(plan: StoryboardPlan, pos: number, prompt: string): StoryboardPlan {
-  const shot = plan.shots[pos]
-  if (!shot) return plan
-  const nextUrls = mentionUrlsInOrder(prompt)
-  const previousHadMentions = hasMentions(shot.prompt)
-  if (!previousHadMentions && nextUrls.length === 0) return updateShotAt(plan, pos, { prompt })
-  const idsByUrl = new Map(plan.anchors.flatMap((anchor) => anchor.referenceUrl ? [[anchor.referenceUrl, anchor.id] as const] : []))
-  const mentioned = new Set(nextUrls.flatMap((url) => idsByUrl.get(url) ? [idsByUrl.get(url)!] : []))
-  const textAnchorIds = shot.anchorIds.filter((id) => plan.anchors.find((anchor) => anchor.id === id)?.carrier === 'text')
-  return updateShotAt(plan, pos, { prompt, anchorIds: [...textAnchorIds, ...mentioned] })
+  return plan.shots[pos] ? updateShotAt(plan, pos, { prompt }) : plan
 }
 
 /** 改锚类型：carrier/scope 跟随新类型的默认（风格→仅提示词+常驻）；用户随后仍可手动覆盖 carrier。 */
@@ -258,15 +249,6 @@ export function moveShot(plan: StoryboardPlan, from: number, to: number): Storyb
   return { ...plan, shots: renumber(shots) }
 }
 
-/** 勾/取消某镜对某锚的引用（参考多选 = 改 shot.anchorIds，从源头杜绝写错名字）。 */
-export function toggleShotAnchor(plan: StoryboardPlan, pos: number, anchorId: string): StoryboardPlan {
-  const shot = plan.shots[pos]
-  if (!shot) return plan
-  const has = shot.anchorIds.includes(anchorId)
-  const anchorIds = has ? shot.anchorIds.filter((id) => id !== anchorId) : [...shot.anchorIds, anchorId]
-  return updateShotAt(plan, pos, { anchorIds })
-}
-
 // ── 场（v5 场分组）：增删改名 + 表层分组 derive（组头/小结/折叠都吃这份）──
 
 /** 生成不与现有冲突的场 id（与 makeAnchorId 同法）。 */
@@ -351,14 +333,12 @@ export function totalDurationSec(shots: readonly PlanShot[]): number {
 export type PlanIssue =
   | AnchorModelFitIssue
   | { kind: 'no-shots' }
-  | { kind: 'dangling-ref'; shotIndex: number; anchorId: string }
   | { kind: 'empty-shot-prompt'; shotIndex: number }
   | { kind: 'anchor-no-name'; anchorId: string }
 
 /** 一个方案的全部待处理项；空数组 = 可生成。 */
 export function validatePlan(plan: StoryboardPlan): PlanIssue[] {
   const issues: PlanIssue[] = [...validateAnchorModelFit(plan)]
-  const anchorIds = new Set(plan.anchors.map((anchor) => anchor.id))
 
   // 视觉锚没名字 = 落画布后卡片没标题，且镜头按名引用不到 → 拦。
   for (const anchor of plan.anchors) {
@@ -373,18 +353,9 @@ export function validatePlan(plan: StoryboardPlan): PlanIssue[] {
 
   for (const shot of plan.shots) {
     if (!shot.prompt.trim()) issues.push({ kind: 'empty-shot-prompt', shotIndex: shot.index })
-    for (const id of shot.anchorIds) {
-      if (!anchorIds.has(id)) issues.push({ kind: 'dangling-ref', shotIndex: shot.index, anchorId: id })
-    }
   }
 
   return issues
-}
-
-/** 某镜引用的失效锚 id（镜卡渲染红 chip 用；anchorId 已不在 anchors 里）。 */
-export function danglingAnchorIdsForShot(plan: StoryboardPlan, shot: PlanShot): string[] {
-  const anchorIds = new Set(plan.anchors.map((anchor) => anchor.id))
-  return shot.anchorIds.filter((id) => !anchorIds.has(id))
 }
 
 // ── 镜头类型 + 批量作用域（「全部镜头」批量条与单镜卡共用的唯一真相源）──

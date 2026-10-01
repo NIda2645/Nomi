@@ -1,6 +1,6 @@
 # Nomi 全仓架构治理方案：单一事实、单向投影、入口收敛
 
-> 状态：✅ 架构定稿 + Phase 0 账本完成；Phase 1 生产迁移仍未放行。本稿完成问题定义、目标架构、生命周期映射规则、耐久提交策略、迁移/回滚方案和验收门槛；Phase -1 只读审计与 Phase 0 全仓账本均已完成。
+> 状态：✅ 架构定稿 + Phase 0 账本完成；Phase 1 第一道治理门 `check:concept-owners` 已落地（2026-09-29，见「Phase 1 进度」），生产迁移仍未放行。本稿完成问题定义、目标架构、生命周期映射规则、耐久提交策略、迁移/回滚方案和验收门槛；Phase -1 只读审计与 Phase 0 全仓账本均已完成。
 > 审计基线：`origin/main@1f39ea3cf`，证据窗口：2026-09-20 至 2026-09-26；已纳入制作镜头重开修复、Windows 付费走查 harness 和素材物化边界修复。
 > 质量审查：见 [`2026-09-26-architecture-solution-quality-checklist.md`](2026-09-26-architecture-solution-quality-checklist.md)。结论是“方案层可施工，实施证据尚未产生”。
 
@@ -30,7 +30,7 @@
 - `docs/audit/2026-09-26-generation-derived-facts-two-engines-structure-review.md` 明确指出画布引擎与 `capabilityCore`/`productionRun` 是两台生成发动机；变体只是刚收掉的一份副本，模式和参数面仍在同一风险带。
 - `docs/audit/2026-09-26-storyboard-false-alarms-structure-review.md` 同时记录 IPC 类型/schema 双写和分镜对画布参考槽判据的重抄。
 - 第一轮 Phase -1 实扫又确认：语义/分镜路径已经走 `PlanCandidate → ExecutionContractV1 → AuthorizationEnvelope → ProductionRun`，但旧画布直生成仍由 `generationRunController → catalogTaskActions → runtime.runTask/submissionLedger` 直接提交 provider，不创建 `ProductionRun`/授权 envelope/ProductionJob；这是第二条真实的付费执行生命周期，必须先登记边界或迁移目标。
-- `docs/engineering/concept-owners.json` 当前登记 38 个概念，其中“出价/待决身份”和“画布缩放”仍是有界 `pending`；登记表目前能提示风险，但 `check:concept-owners` 尚未实现，暂不能自动阻止第二个写口。
+- `docs/engineering/concept-owners.json` 当前登记 38 个概念，其中“出价/待决身份”和“画布缩放”仍是有界 `pending`；登记表目前能提示风险，但 `check:concept-owners` 尚未实现，暂不能自动阻止第二个写口。（2026-09-29 更新：门岗已落地、登记表升到 v2 共 76 个概念，见「Phase 1 进度」。）
 - 2026-09-25 至 2026-09-26 的 main 提交连续出现 `agent-run-node-state-single-owner`、`generation-variant-single-owner`、`storyboard-planned-first-frame-slot`、`storyboard-resolve-vendor-rejected`、`open-fit-reopen-remembered-echo`、`spend-card-patch-json-values`，说明发现速度很快，但系统仍在靠反复发现后收口。
 
 ## 先查别人
@@ -350,6 +350,8 @@ pilot 的放行阈值是：crash injection 下重复付费提交为 0；跨入�
 
 这道 AST 门岗只能抓形状，不能单独证明语义 owner。每个登记项还必须有运行时/谓词对等测试、变异测试和跨边界真实旅程；像 React Flow/kernel 这种“应用租约 + 框架内核”的双层 authority，要登记单向控制关系，而不是强行合并成一个实现。
 
+落地状态（2026-09-29）：v2 字段表与最小必填集见 [R33.4](../engineering-rules.md)；已实现的判据、做的取舍和还没做的两项扫描（UI 再分组、跨入口同一 handler）见下文「Phase 1 进度」。
+
 ### 2. 建立跨入口对等棘轮
 
 对每个高风险概念登记入口矩阵：GUI、Agent lane、MCP、生产 Run、恢复/重开、测试 harness。去掉 actor、trace、auth、lease、transport、idempotency 等显式 allowlist 字段后，相同输入必须生成相同的 canonical command/envelope；不在 allowlist 的差异一律失败。
@@ -399,6 +401,53 @@ Phase 0 已完成，交付包见 [`Phase 0 全仓架构账本`](2026-09-26-phase
 落地 owner registry、语义 parity、schema parity、生命周期 identity、durable commit/replay 五类门岗；每道门先用旧代码做阳性对照证明会红。durable commit 不能只作为验收愿望，必须在本阶段锁定本稿的“Run journal + intent log commit marker + side-ledger 可重建副本”组合，明确 source of truth、崩溃点 recovery、projection lag 和 repair API。没有门岗的概念不进入下一条新功能线。
 
 Phase 1 只落地治理门、schema/owner parity、lifecycle identity 和 durable commit/replay 的最小骨架，并用旧路径写红测；不在本阶段同时迁移业务入口。direct canvas paid generation 是 Phase 2 的第一条 vertical pilot，先让它通过同一 `ExecutionContractV1`、authorization、submission outbox、provider observation 和 artifact seam；只有明确为本地非付费操作的路径才保留独立 bounded context。禁止用长期双写把两条付费生命周期同时留下。
+
+#### Phase 1 进度（2026-09-29）：owner registry 门岗 `check:concept-owners` 落地
+
+**做了什么。** 只动门岗与账本，没碰 `electron/`、`src/` 的生产文件：
+
+- 登记表升到 v2（[`concept-owners.json`](../engineering/concept-owners.json)）：76 个概念 = 原 38 个 + 09-26 之后 main 上长出来的 32 个主人（#904、#906、#903、#907、v0.22.3 热修 295a7018a、#914、#916、#910、#918、#923 共 15 个；并入 main 之后又补 #925 的 1 个、#924 的 2 个、#921 的 5 个（其中 2 个是它用旧字段登的，转成 v2）、#926 的 9 个）+ 原 `check:identity-compare` 的 6 个身份比对。每条补齐计数键四元组、`fact_kind`、`migration_status`、`write_api`、`forbidden_derivations`、`allowed_consumers`；两条 pending 写明 `migration_strategy`。字段表见 [R33.4](../engineering-rules.md)。
+- 新门岗 `pnpm run check:concept-owners`（`scripts/check-concept-owners.mjs`，判据在 `concept-owners-lib.mjs`，取证在 `concept-owners-scan.mjs`，基线 `scripts/concept-owners-baseline.json`），已进 `gates:contracts`；20 条 node 测试覆盖每条判据的先红后绿、四处放行条件的反向控制，以及登记表坏掉时给出干净的红（不是堆栈）。
+- `check:identity-compare` 并入本门岗：脚本、基线、package 脚本同一提交删除；它基线里那两条「这是另一种身份」本来就是概念登记，现在是登记表里的身份概念，门岗逐字核 `identity_fields`。
+
+**怎么判。** 登记表先过结构关：字段齐、枚举对、计数键 `(subject, lifecycle, authority_kind, trust_domain)` 不重、一个写接口只归一个概念、`trust_domain` 与主人所在路径一致、主人今天还在（写接口在登记的文件里真有定义）。然后在**活代码**上判三件事：① 写接口和列为 `definition` 的旧形状，在主人之外有没有**同名定义**（第二写口；调用、别名、选择器、重导出都不算）；② pending 概念：碰暂定主人接口或 `reference` 旧路的文件必须在例外账 `allowed_consumers` 里，旧路的生产写门冻结进基线、再长一扇就红；③ 长得像身份比对的函数（原 identity-compare 判据）必须登记且维度对得上。合同侧：文件名日期 ≥ 2026-09-27 的根因合同，`shared_boundaries` 里每个边界都必须是某个登记概念的写接口，否则就是没登记的新概念；门表用来把合同归到它碰到的概念（`--map` 打印）。基线存「概念 + 文件 + 符号」、必须等于现状；和 merge-base 比，已登记概念的口子只减不增，新登记或这次才转 pending 的概念可以带着现状进来；概念从账上消失而主人还活着也红。
+
+**取舍（写在这里，别人再改有据可查）：**
+
+1. **最小必填集 = 计数键 + 判据真用得上的字段。** `subject / lifecycle / authority_kind / trust_domain` 是方案定义「唯一」的计数键；`owner / write_api / forbidden_derivations / allowed_consumers / migration_status` 是判据的输入；`fact_kind` 一个词、不写就会各写各的，一并必填。`trust_domain` 由主人路径派生、门岗逐条核，避免登记表里长出第二份真相。条件必填：pending 要 `migration_strategy`，身份比对要 `identity_fields`。**暂不强制** `parity_test / revision_source / replay_strategy`：机器还核不了「这条测试真是对拍」，强制只会逼出编造的路径或空壳 null；现有 32/76 条写了 `parity_test`，覆盖数每次在门岗输出里打印。
+2. **`fact_kind` 在方案四类外加一类 `rule`。** 准入、落家、变体、要不要弹确认这类纯判据不存状态，也不是投影（本方案明文：投影不许重新决定模式、变体、准入、状态），硬塞进四类之一就是在账上说谎。
+3. **红判在活代码上，合同门表只用来归属。** 门表是「宁可多数一扇」的普查（R21.3），拿每扇写门判红会逼作者少数门，那正是门表要消灭的「我扫过了」；合同是写的那一刻的快照，会过期，活代码不会。合同侧只收紧一件事：它声明的共享边界（不变量的主人）必须进账。
+4. **只判「定义」不判「调用」。** 画布、Agent、MCP 从同一个主人 import 是多个入口一个主人；在别处再定义一份同名的函数 / 表 / 类型才是第二个写口。另一个概念明确认领的同名定义（同名不同事）放行——那是账上写明、评审看得见的判断（例：两张 `CANONICAL_MODEL_IDS`，APIMart 出站模型名那张单独登记）。写接口登记在接口成员上的（依赖注入的钩子槽位，例：提交 outbox 的 `beforeDispatch`）是一份契约，别处给槽位填实现是接线，不查同名。
+5. **pending 冻结的是旧路，不是暂定主人。** 迁移本来就是把消费者一个个挪到暂定主人上（画布缩放的 `useCanvasLiveZoom`），所以暂定主人的接口只按例外账放行；与它竞争同一件事的旧路（直接画布按 `quoteId` 出价铸令牌的四个函数、写持久化视角的 `rememberCategoryViewport`、读它的 `categoryViewports`）写门冻结、读者锁在例外账。
+6. **两个登记表门岗只留一个：并掉 `check:identity-compare`，不并其余三个。** identity-compare 的基线条目是「这个比对是另一种身份、有自己的主人」——本质就是概念登记，留两本账等于「哪些概念存在」这件事自己有两个主人。`check:vocabularies`（字面量词表的普查，几百个值集合，不是概念主人）、`check:boundary-owners`（核历史合同声明的边界今天还在不在，是处置台账）、`framework-boundaries`（造轮子前的框架边界）登记的不是概念主人，不并。
+7. **合同受管起点定在 2026-09-27。** 登记表最后一次和 main 对账是 09-26（#897），从 09-27 起的合同边界都要进账——既管住以后，也让门岗本身验证这次补登没有漏（18 份受管合同的边界全部进账；两次并入 main，门岗都当场报出新合入 PR 没登记的边界，补登后转绿；#921 留下的两份同名实现——`productionShotPhase.ts` 的 `jobsForShot`、`productionQaVerdict.ts` 的 `latestJobForShot`——在生产文件里、本 PR 不改，记进基线带理由）。
+8. **没有 `--update-baseline`。** 同 `check:boundary-owners`：自动写基线等于把红一键洗绿；基线只能手改，并受 merge-base 棘轮约束。
+
+**先红后绿（拿现在这本账去判当年的代码，`--source-ref` 可复验）：**
+
+| 样例 | 命令 | 结果 |
+|---|---|---|
+| 09-22 参数准入，收口前 | `node scripts/check-concept-owners.mjs --source-ref d12adcce1 --concept 参数准入` | 红：`executionContract.ts:226 GENERATION_PLANNING_HINTS` 第二写口（主人应在 `generationPlanningParameters.ts`），外加 2 处主人不在 |
+| 同上，收口提交 | `--source-ref be8add09b --concept 参数准入` | 绿 |
+| 09-22 供应商落家，收口前 | `--source-ref be8add09b --concept 供应商落家` | 红：`src/config/modelIdentity.ts:108/112/114` 渲染层自己的分级表与 `vendorTier` 三处第二写口，外加 4 处主人不在 |
+| 同上，收口提交 | `--source-ref 15013afb4 --concept 供应商落家` | 绿 |
+| 人造样例（临时文件，跑完即删） | 在 `src/` 再定义一份 `compareVendorLanding`、多一处 `mintSpendGrant` 调用、多一个比两维身份的 `same*`，加一份边界没登记的 09-29 合同 | 红 5 处：第二写口 / pending 旧路新写门 / 例外账外入口 / 身份比对 / 合同边界未登记；删掉即绿 |
+
+09-22 另外两个概念复验不了：「花钱回滚」那份 `spendCardRollback.ts` 只在分支上出现过、没进 main 历史；「待决身份」是草稿键多绑了报价身份（键的维度问题），不是第二份定义，形状判据抓不到，归 pending 冻结与对等测试。
+
+**Phase 1 准入条件，现在的状态**（原表见 [依赖与迁移闸门](../audit/2026-09-26-phase-zero-dependency-gates.md)）：
+
+| 准入条件 | 状态 |
+|---|---|
+| `check:concept-owners` 对新增概念和第二写口 fail-closed | **形状层已落地**（本节）；没做：方案 §1 的「UI 按 raw status/flag 再分组」扫描、「跨入口是否汇到同一 handler」扫描、语义层对等（`parity_test` 32/76） |
+| direct canvas remote/paid 走同一 `ExecutionContractV1 → authorization → outbox → observation → artifact` 的真实 Electron/provider 证据 | 未满足 |
+| Run journal、intent log、approval/budget side-ledger 的 commit marker、恢复矩阵与 crash-injection 测试 | 未满足（耐久提交相关文件 #921 等在途分支正在改，本步不碰） |
+| 冷重启、重开、切项目、跨宿主、Windows storage 用稳定身份重建同一 Run | 未满足 |
+| 画布缩放五个 store 直接读取者迁移或登记长期例外 | 未迁；已冻进 pending 例外账：新读者、旧路新写门即红 |
+| `mcpGenerationToolCatalog.ts` 五个手写工具的统一 registry 评估 | 未满足 |
+| 每张施工卡的 red test、门表、旧路删除点、回滚与真实证据 owner | 未满足 |
+
+结论不变：Phase 1 只能继续做治理门和 red tests，生产 writer 仍不许切换。
 
 ### Phase 2：一条完整 vertical pilot，再扩展三条主线
 

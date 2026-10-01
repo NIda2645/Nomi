@@ -21,6 +21,7 @@ import { verifyShotsAndReport, isShotVerifyEnabled } from '../generationCanvas/a
 import { isAnchorFrozen, isVisualAnchorNode } from '../generationCanvas/model/anchorBibleKeys'
 import { assertDraftFilmReady, draftFilmTimelineFromState } from '../preview/timelineSubtitleTransitionContract'
 import { storyboardPlanToCreateNodesArgs } from '../generationCanvas/agent/storyboardPlan'
+import { projectPlanShotsOntoCreatedNodes } from '../creation/storyboard/exec/storyboardProjection'
 import { parseStoryboardPlan } from '../generationCanvas/agent/storyboardPlanSchema'
 import { resolveStoryboardImageDefault, resolveStoryboardVideoDefault } from '../generationCanvas/agent/availableModels'
 import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'
@@ -677,6 +678,8 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
         if (typeof nodeId === 'string' && nodeId.trim()) out[clientId] = nodeId
         return out
       }, {})
+      // 落地后按各镜当前模式投影「行上的提示词 + 参考图」进节点：与分镜表点生成同一个投影（对等测试 shotOutbound.parity）。
+      projectPlanShotsOntoCreatedNodes(plan, (id) => clientIdToNodeId[id] || resolveCanvasToolNodeId(id), useGenerationCanvasStore.getState())
       const nodeById = new Map(useGenerationCanvasStore.getState().nodes.map((node) => [node.id, node]))
       const bindings = args.nodes
         .map((created) => {

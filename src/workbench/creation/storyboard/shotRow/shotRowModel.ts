@@ -41,12 +41,18 @@ export function aspectControlOf(mode: ArchetypeMode | null | undefined): ModelPa
   return mode.params.find((control) => control.key === 'aspect_ratio' && control.type === 'select') ?? null
 }
 
-/** 该镜引用的视觉锚（生成参考图那类；文本锚只拼 prompt，不占参考槽）。 */
+/** 这一行参考列里摆着的绑定，是不是来自这张锚（binding.anchorId）。「引用」只有这一种读法：看得见的绑定。 */
+export function shotBindsAnchor(shot: PlanShot, anchorId: string): boolean {
+  return Object.values(shot.referenceBindings ?? {}).some((bindings) => Array.isArray(bindings) && bindings.some((binding) => binding?.anchorId === anchorId && Boolean(binding.url)))
+}
+
+/**
+ * 该镜引用的视觉锚 = 行上参考列里真摆着的、来自某张锚的绑定。
+ * 以前读的是 shot.anchorIds——那个关系发出去时会被展开成看不见的追加与参考边（「巨龙」变人物的成因）；
+ * 现在 anchorIds 不产生任何作用，等待 / 锁定 / 参考已变这些行状态只认看得见的绑定。
+ */
 export function referencedVisualAnchors(shot: PlanShot, anchors: readonly PlanAnchor[]): PlanAnchor[] {
-  const byId = new Map(anchors.map((anchor) => [anchor.id, anchor]))
-  return shot.anchorIds
-    .map((id) => byId.get(id))
-    .filter((anchor): anchor is PlanAnchor => !!anchor && (anchor.carrier ?? defaultCarrierForKind(anchor.kind)) === 'visual')
+  return anchors.filter((anchor) => (anchor.carrier ?? defaultCarrierForKind(anchor.kind)) === 'visual' && shotBindsAnchor(shot, anchor.id))
 }
 
 /**
@@ -54,7 +60,7 @@ export function referencedVisualAnchors(shot: PlanShot, anchors: readonly PlanAn
  *
  * 开了首帧的视频镜落画布是「首帧图节点 —first_frame 边→ 视频节点」（storyboardPlan.buildShotRowNodes），
  * 所以这里问的就是「一条首帧边落哪个槽」——判据归 `firstFrameEdgeSlot`（画布参考槽显示与容量判断同一条），
- * 不在分镜侧再写一份。首帧槽优先，没有就是 image_ref[0]（APIMart Seedance 2.0、Kling、Sora、Wan 的图生视频）。
+ * 不在分镜侧再写一份。首帧槽优先，没有就是 image_ref[0]（APIMart Seedance 2.0、Kling、Wan 的图生视频）。
  */
 export function plannedFirstFrameSlot(
   mode: ArchetypeMode | null | undefined,
@@ -68,8 +74,6 @@ export function plannedFirstFrameSlot(
 export type RequiredSlotCredits = {
   /** 计划首帧落的槽（`plannedFirstFrameSlot`）；无 → null。 */
   plannedFirstFrame: ArchetypeReferenceSlot | null
-  /** 引用的视觉锚张数（落画布时连参考边进 image_ref）。 */
-  visualAnchorCount: number
 }
 
 /**
@@ -77,7 +81,6 @@ export type RequiredSlotCredits = {
  * 判据只有一条：**按声明算** —— `min` 是唯一的必填信号，已绑定或生成时会供给的来源不足才缺。
  * - 计划首帧记在它生成时真正落的那个槽上（`plannedFirstFrameSlot`）。单值槽（首帧）里它和已绑定的那张
  *   至多算一个来源；数组槽（image_ref）里两者都会发出去，相加；
- * - image_ref 另可被引用的视觉锚满足（落画布时锚连 reference/character_ref 边），相加；
  * - 无模型/无档案（默认模型）→ 无契约可判，恒 []。
  *
  * 修过两次：以前「非 image_ref 的必填槽无条件返回 true」（Seedance 首帧/首尾帧、Veo 首尾帧永远红）；
@@ -95,20 +98,18 @@ export function missingRequiredSlotsOf(
     const bound = bindingsOf(bindings, slot.kind).length
     const planned = credits.plannedFirstFrame?.kind === slot.kind ? 1 : 0
     const own = slotAsArray(slot) ? bound + planned : Math.max(bound, planned)
-    const anchorCredit = slot.kind === 'image_ref' ? credits.visualAnchorCount : 0
-    return own + anchorCredit < slot.min
+    return own < slot.min
   })
 }
 
-/** 镜头行的那一份：绑定 = `shot.referenceBindings`，来源 = 计划首帧 + 引用的视觉锚。 */
+/** 镜头行的那一份：绑定 = `shot.referenceBindings`，来源 = 计划首帧。锚不再单独记功——它要算，就得摆成绑定。 */
 export function missingRequiredSlots(
   mode: ArchetypeMode | null | undefined,
   shot: PlanShot,
-  anchors: readonly PlanAnchor[],
+  _anchors?: readonly PlanAnchor[],
 ): ArchetypeReferenceSlot[] {
   return missingRequiredSlotsOf(mode, shot.referenceBindings, {
     plannedFirstFrame: plannedFirstFrameSlot(mode, shot),
-    visualAnchorCount: referencedVisualAnchors(shot, anchors).length,
   })
 }
 

@@ -21,6 +21,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { readPonytailMode } from './ponytail-mode.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // 测试时用 NOMI_PONYTAIL_DEFERRED_LOG_OVERRIDE 注入隔离路径，别碰真实账本。
@@ -78,24 +79,28 @@ if (malformed.length === 0 && pending.length === 0) {
   process.exit(0)
 }
 
-console.error(`\n⛔ check:ponytail-review：${pending.length} 条评审被延后且尚未补审${malformed.length ? `，另有 ${malformed.length} 行无法解析` : ''}\n`)
+// 提示模式（docs/engineering/ponytail-mode.json，2026-10-01 按门岗账本降级）：同样的内容，打印到 stdout、退出 0。
+const hint = readPonytailMode(repoRoot) === 'hint'
+const log = hint ? console.log : console.error
+log(`\n${hint ? '💡 提示（不阻断）' : '⛔'} check:ponytail-review：${pending.length} 条评审被延后且尚未补审${malformed.length ? `，另有 ${malformed.length} 行无法解析` : ''}\n`)
 for (const line of pending) {
   const { time, branch, sha, worktree, reason } = ROW.exec(line).groups
-  console.error(`  时间: ${time}`)
-  console.error(`  分支: ${branch || '(未知)'}`)
-  console.error(`  SHA:  ${sha.slice(0, 12)}   （提交前 HEAD）`)
-  console.error(`  路径: ${worktree || '(未知)'}`)
-  console.error(`  理由: ${reason || '(未写)'}`)
-  console.error()
+  log(`  时间: ${time}`)
+  log(`  分支: ${branch || '(未知)'}`)
+  log(`  SHA:  ${sha.slice(0, 12)}   （提交前 HEAD）`)
+  log(`  路径: ${worktree || '(未知)'}`)
+  log(`  理由: ${reason || '(未写)'}`)
+  log()
 }
-for (const line of malformed) console.error(`  无法解析的账本行：${line.slice(0, 200)}`)
-if (malformed.length) console.error()
-console.error(`账本：${LEDGER}`)
-console.error('处置方式：')
-console.error('  1. 在那棵 worktree 里补跑 pnpm run review:branch，处理完发现后：')
-console.error('     node ./scripts/check-ponytail-deferred.mjs --accept <sha>')
-console.error('  2. 清理已补审的旧记录：')
-console.error('     node ./scripts/check-ponytail-deferred.mjs --clear-reviewed')
-console.error('  3. 无法解析的行请人工修正或删除——读不懂的账本不算「没有延后」。')
-console.error()
-process.exit(1)
+for (const line of malformed) log(`  无法解析的账本行：${line.slice(0, 200)}`)
+if (malformed.length) log()
+log(`账本：${LEDGER}`)
+if (hint) log('当前是提示模式（docs/engineering/ponytail-mode.json）；Codex 恢复后把 mode 改回 enforce 即重新阻断。想现在补：')
+else log('处置方式：')
+log('  1. 在那棵 worktree 里补跑 pnpm run review:branch，处理完发现后：')
+log('     node ./scripts/check-ponytail-deferred.mjs --accept <sha>')
+log('  2. 清理已补审的旧记录：')
+log('     node ./scripts/check-ponytail-deferred.mjs --clear-reviewed')
+log('  3. 无法解析的行请人工修正或删除——读不懂的账本不算「没有延后」。')
+log()
+process.exit(hint ? 0 : 1)

@@ -1,9 +1,11 @@
 // 钉住启动器的核心不变量（替掉原 helpers/electronFixture.test.mjs，2026-08-11 收敛）。
 // 这条不变量就是本次修复的根因：漏掉这两个 env，窗口起不来且**毫无提示**，只会干等到超时。
 import fs from 'node:fs'
+import net from 'node:net'
 import path from 'node:path'
 import os from 'node:os'
 import vm from 'node:vm'
+import { spawn } from 'node:child_process'
 import { describe, expect, test } from 'vitest'
 import {
   buildNomiLaunchEnv,
@@ -13,7 +15,9 @@ import {
   prepareIsolatedCatalog,
   prepareLocalStorageSeed,
   launchNomiApp,
+  mainRequireArgs,
   repoRoot,
+  requireBeforePackagedMain,
   withLinuxNoSandbox,
   withLinuxSyntheticCredentialStorage,
   withPackagedPlaywrightOrigin,
@@ -60,6 +64,56 @@ describe('initial local storage fixture', () => {
     await expect(launchNomiApp({ executablePath: 'unused-by-isolation-guard', isolate: false, initialLocalStorage: { 'nomi:splash:v1': 'seen' } }))
       .rejects.toThrow('requires an isolated Nomi profile')
   })
+})
+
+describe('mainRequire（主进程入口前的 -r 模块）', () => {
+  test('每个绝对路径拼成一对 -r，顺序保持', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-main-require-'))
+    try {
+      const first = path.join(root, 'guard.cjs')
+      const second = path.join(root, 'probe.cjs')
+      fs.writeFileSync(first, '')
+      fs.writeFileSync(second, '')
+      expect(mainRequireArgs([first, second])).toEqual(['-r', first, '-r', second])
+      expect(mainRequireArgs(undefined)).toEqual([])
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  test('相对路径与不存在的文件当场拒（相对路径会被 Node 当包名去找，闸就静默没装上）', () => {
+    expect(() => mainRequireArgs(['scripts/walkthrough-network-guard.cjs'])).toThrow('absolute module paths')
+    expect(() => mainRequireArgs([path.join(os.tmpdir(), 'nomi-no-such-guard.cjs')])).toThrow('does not exist')
+  })
+
+  test('不许装进真实 profile', async () => {
+    await expect(launchNomiApp({ executablePath: 'unused-by-isolation-guard', isolate: false, mainRequire: [path.join(repoRoot, 'scripts', 'walkthrough-network-guard.cjs')] }))
+      .rejects.toThrow('mainRequire requires an isolated Nomi profile')
+  })
+
+  // 打包好的 App 静默忽略 `-r`：闸没装上、请求直奔真网。打包形态必须在主入口第一行之前真的装上。
+  test('打包形态：模块在 app.asar/dist-electron/main.js 第一行之前就已加载', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-packaged-premain-'))
+    const entryDir = path.join(root, 'resources', 'app.asar', 'dist-electron')
+    fs.mkdirSync(entryDir, { recursive: true })
+    const guard = path.join(root, 'guard.cjs')
+    const seen = path.join(root, 'seen.txt')
+    fs.writeFileSync(guard, 'globalThis.__nomiGuard = "installed-before-main"\n')
+    fs.writeFileSync(path.join(entryDir, 'main.js'), `require('node:fs').writeFileSync(${JSON.stringify(seen)}, String(globalThis.__nomiGuard))\n`)
+    const port = await new Promise((resolve) => {
+      const server = net.createServer().listen(0, '127.0.0.1', () => { const { port: free } = server.address(); server.close(() => resolve(free)) })
+    })
+    const child = spawn(process.execPath, [`--inspect-brk=127.0.0.1:${port}`, path.join(entryDir, 'main.js')], { stdio: 'ignore' })
+    const exited = new Promise((resolve) => child.once('exit', resolve))
+    try {
+      await requireBeforePackagedMain({ port, modules: [guard], timeout: 20_000 })
+      await exited
+      expect(fs.readFileSync(seen, 'utf8')).toBe('installed-before-main')
+    } finally {
+      child.kill()
+      fs.rmSync(root, { recursive: true, force: true })
+    }
+  }, 30_000)
 })
 
 describe('prepareIsolatedCatalog', () => {

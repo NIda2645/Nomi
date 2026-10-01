@@ -18,6 +18,7 @@
 //   const { app, win, projectsDir } = await launchNomiApp({ name: 'my-walk' })
 import { _electron as electron } from 'playwright'
 import fs from 'node:fs'
+import net from 'node:net'
 import os from 'node:os'
 import path from 'node:path'
 import { createRequire } from 'node:module'
@@ -99,6 +100,108 @@ app.once('session-created', (session) => {
   session.registerPreloadScript({ type: 'frame', filePath: ${JSON.stringify(framePath)} })
 })\n`)
   return ['-r', registerPath]
+}
+
+/**
+ * 在 App 主入口之前加载的主进程模块（Node 的 `-r`），给走查装仪表用——例如
+ * `scripts/walkthrough-network-guard.cjs` 那道「只放行本机」的网络闸。
+ *
+ * 为什么不走 `NODE_OPTIONS=--require`：Playwright 的 Electron 启动器会 `delete env.NODE_OPTIONS`
+ *（它自己也是用 `-r loader.js` 注入的），经 env 传进去的 --require 会被静默丢掉——走查以为装了闸，
+ * 其实没装。`-r` 必须排在 App 入口（`.`）之前才对主进程生效，所以由启动器来拼。
+ * 只收**绝对路径且文件存在**：相对路径会被 Node 当成包名去 node_modules 里找（MODULE_NOT_FOUND）。
+ */
+export function mainRequireArgs(modules) {
+  if (!Array.isArray(modules) || modules.length === 0) return []
+  return modules.flatMap((file) => {
+    if (typeof file !== 'string' || !path.isAbsolute(file)) throw new TypeError(`mainRequire needs absolute module paths: ${file}`)
+    if (!fs.existsSync(file)) throw new Error(`mainRequire module does not exist: ${file}`)
+    return ['-r', file]
+  })
+}
+
+/** 打包形态的主入口：app.asar 里的 dist-electron/main.js（与 package.json 的 main 一致）。 */
+export const PACKAGED_MAIN_ENTRY = /app\.asar[\\/]dist-electron[\\/]main\.js$/
+
+/**
+ * mainRequire / initialLocalStorage 的**打包形态**：在打包好的 App 主入口第一行之前 require 这些模块。
+ *
+ * 为什么不能照开发版拼 `-r`：`-r` 是 Electron 开发版 default_app 自己解析的参数；打包好的 App 直接跑
+ * app.asar 里的 main.js，`-r` 被**静默忽略**——走查以为装了网络模拟，请求其实全发到了真网上。
+ * 所以打包形态走 Node 调试口：App 带 `--inspect-brk=127.0.0.1:<port>` 起（启动器负责拼），这里另开一路
+ * 调试会话，在主入口第一行下断点，从那一帧 require 这些模块，再放行。Playwright 自己那一路会话不受影响。
+ * 调用方先调它、再起 App：它会等调试口出现。
+ */
+export async function requireBeforePackagedMain({ port, modules, timeout = DEFAULT_WINDOW_TIMEOUT_MS, entry = PACKAGED_MAIN_ENTRY }) {
+  const deadline = Date.now() + timeout
+  let socketUrl
+  while (!socketUrl) {
+    if (Date.now() > deadline) throw new Error(`inspector on 127.0.0.1:${port} never came up`)
+    try {
+      socketUrl = (await (await fetch(`http://127.0.0.1:${port}/json/list`)).json())[0]?.webSocketDebuggerUrl
+    } catch { /* 调试口还没起来 */ }
+    if (!socketUrl) await new Promise((resolve) => setTimeout(resolve, 100))
+  }
+  const socket = new WebSocket(socketUrl)
+  await new Promise((resolve, reject) => {
+    socket.onopen = resolve
+    socket.onerror = () => reject(new Error('inspector socket failed'))
+  })
+  let nextId = 0
+  const pending = new Map()
+  const send = (method, params = {}) => new Promise((resolve, reject) => {
+    const id = ++nextId
+    pending.set(id, { resolve, reject })
+    socket.send(JSON.stringify({ id, method, params }))
+  })
+  let breakpointId
+  let settle
+  const injected = new Promise((resolve, reject) => { settle = { resolve, reject } })
+  socket.onmessage = async (event) => {
+    const message = JSON.parse(String(event.data))
+    const waiter = message.id ? pending.get(message.id) : undefined
+    if (waiter) {
+      pending.delete(message.id)
+      if (message.error) waiter.reject(new Error(message.error.message)); else waiter.resolve(message.result)
+      return
+    }
+    if (message.method !== 'Debugger.paused') return
+    try {
+      // 只认自己那个断点（`--inspect-brk` 自带的「开头停一下」也会停在这里，原因报成 ambiguous）。
+      if ((message.params.hitBreakpoints ?? []).includes(breakpointId)) {
+        const expression = `${modules.map((file) => `require(${JSON.stringify(file)})`).join(';')};'loaded'`
+        const result = await send('Debugger.evaluateOnCallFrame', { callFrameId: message.params.callFrames[0].callFrameId, expression })
+        if (result.exceptionDetails) throw new Error(`require before main failed: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text}`)
+        await send('Debugger.resume')
+        settle.resolve()
+        return
+      }
+      await send('Debugger.resume')
+    } catch (error) {
+      settle.reject(error)
+    }
+  }
+  const timer = setTimeout(() => settle.reject(new Error(`main entry never paused (${entry})`)), Math.max(0, deadline - Date.now()))
+  try {
+    await send('Debugger.enable')
+    ;({ breakpointId } = await send('Debugger.setBreakpointByUrl', { urlRegex: entry.source, lineNumber: 0 }))
+    await send('Runtime.runIfWaitingForDebugger')
+    await injected
+  } finally {
+    clearTimeout(timer)
+    socket.close()
+  }
+}
+
+async function freeLoopbackPort() {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer()
+    server.on('error', reject)
+    server.listen(0, '127.0.0.1', () => {
+      const { port } = server.address()
+      server.close(() => resolve(port))
+    })
+  })
 }
 
 /**
@@ -204,7 +307,8 @@ export function withPackagedPlaywrightOrigin(args, isPackaged) {
  * @param {{width: number, height: number}} [options.viewportSize] Content viewport; defaults to ACCEPTANCE_VIEWPORT.
  * @param {number} [options.timeout]        等窗口上限（ms）
  * @param {number} [options.settleMs=1500]  domcontentloaded 后再等一会儿（渲染层挂载）
- * @param {Record<string,string>} [options.initialLocalStorage] Existing product preferences for an isolated dev fixture; omitted for first-run tests.
+ * @param {Record<string,string>} [options.initialLocalStorage] Existing product preferences for an isolated fixture (dev or packaged); omitted for first-run tests.
+ * @param {string[]} [options.mainRequire] 主进程入口前加载的模块（绝对路径，走查仪表专用；见 mainRequireArgs；打包形态见 requireBeforePackagedMain）
  * @param {(win: import('playwright').Page) => Promise<void>} [options.observeWindow] Optional measurement observer
  * @param {boolean} [options.syntheticCredentialStorage=false]  仅供隔离目录里的非秘密测试凭据；Linux CI 使用 basic 后端
  * @returns {Promise<{app: import('playwright').ElectronApplication, win: import('playwright').Page,
@@ -230,13 +334,13 @@ export async function launchNomiApp(options = {}) {
   if (syntheticCredentialStorage && !isolate) {
     throw new Error('syntheticCredentialStorage requires an isolated Nomi profile')
   }
+  if (options.mainRequire?.length && !isolate) {
+    throw new Error('mainRequire requires an isolated Nomi profile')
+  }
 
   // 开发 electron 二进制要靠 `.` 指到仓库根去加载 dist-electron；**打包好的 .app 自带产物**，
   // 再塞个 `.` 反而会被当成「要打开的路径」参数。所以这两件事都跟着「是不是开发构建」走。
   const isDevElectron = executablePath === require('electron')
-  if (options.initialLocalStorage && !isDevElectron) {
-    throw new Error('initialLocalStorage requires the development Electron executable')
-  }
   if (isDevElectron) {
     assertElectronBuildArtifacts(repoRoot)
     // Apple 会在首次启动时直接删除已吊销公证的 Electron.app。走查必须在 spawn 前复用
@@ -263,11 +367,21 @@ export async function launchNomiApp(options = {}) {
   if (isolate) for (const dir of [userDataDir, settingsDir, projectsDir, capabilityDir]) fs.mkdirSync(dir, { recursive: true })
   if (isolate) prepareIsolatedCatalog(settingsDir, { testedCatalogVersion: options.testedCatalogVersion })
 
+  // 主入口之前要加载的模块：开发版拼成 `-r` 对；打包版不认 `-r`，改走调试口（见 requireBeforePackagedMain）。
+  const preMainArgs = [
+    ...(options.initialLocalStorage ? prepareLocalStorageSeed(tempRoot, options.initialLocalStorage) : []),
+    ...mainRequireArgs(options.mainRequire),
+  ]
+  const packagedPreMain = !isDevElectron && preMainArgs.length
+    ? { port: await freeLoopbackPort(), modules: preMainArgs.filter((_, index) => index % 2 === 1) }
+    : null
+
   const launchOptions = {
     executablePath,
     args: withLinuxNoSandbox(withLinuxSyntheticCredentialStorage(
       withPackagedPlaywrightOrigin([
-        ...(options.initialLocalStorage ? prepareLocalStorageSeed(tempRoot, options.initialLocalStorage) : []),
+        ...(isDevElectron ? preMainArgs : []),
+        ...(packagedPreMain ? [`--inspect-brk=127.0.0.1:${packagedPreMain.port}`] : []),
         ...(isDevElectron ? ['.'] : []),
         ...(userDataDir ? [`--user-data-dir=${userDataDir}`] : []),
         ...extraArgs,
@@ -290,11 +404,22 @@ export async function launchNomiApp(options = {}) {
     if (logTail.length > 400) logTail.splice(0, logTail.length - 400)
   }
 
+  const preMainInjection = packagedPreMain ? requireBeforePackagedMain({ ...packagedPreMain, timeout }) : null
+  preMainInjection?.catch(() => undefined) // 下面等它；先挂上，免得 App 先起不来时报成未处理的拒绝
+
   let app
   try {
     app = await electron.launch(launchOptions)
   } catch (error) {
     throw new Error(diagnoseLaunchFailure(`Electron 起不来（electron.launch 失败/超时，${timeout}ms）`, name, error, logTail))
+  }
+  if (preMainInjection) {
+    try {
+      await preMainInjection
+    } catch (error) {
+      await app.close().catch(() => undefined)
+      throw new Error(`[${name}] 打包形态没能在主入口之前装上 ${packagedPreMain.modules.join(', ')}：${error.message}`)
+    }
   }
 
   try {

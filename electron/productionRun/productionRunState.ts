@@ -6,9 +6,9 @@ import type {
 } from "./productionRunTypes";
 
 const JOB_TRANSITIONS: Record<ProductionJobStatus, readonly ProductionJobStatus[]> = {
-  planned: ["authorization_required"],
-  authorization_required: ["authorized"],
-  authorized: ["submit_intent_persisted", "needs_attention"],
+  planned: ["authorization_required", "detached"],
+  authorization_required: ["authorized", "detached"],
+  authorized: ["submit_intent_persisted", "needs_attention", "detached"],
   submit_intent_persisted: ["submitting", "needs_attention"],
   // `needs_attention`：出站层能**证明**这次请求一个字节都没写出去时，这是一个确定的失败态。
   // 在这之前 `submitting` 只有「成了」和「不知道」两条出路，于是一次根本没发生过的提交
@@ -47,7 +47,8 @@ const RUN_TRANSITIONS: Record<ProductionRunStatus, readonly ProductionRunStatus[
   // running straight to completed. Multi-stage playbooks still use their
   // existing QA/assemble/export transitions.
   running: ["pausing", "needs_attention", "awaiting_script_review", "awaiting_storyboard_review", "awaiting_rough_cut_review", "awaiting_export", "completed", "cancelled"],
-  pausing: ["paused", "needs_attention"],
+  // pausing → running：急停后、在跑的那一镜还没收尾就点了继续（不必先等它落到 paused）。
+  pausing: ["paused", "needs_attention", "running"],
   paused: ["running", "cancelled"],
   needs_attention: ["running", "paused", "cancelled"],
   awaiting_rough_cut_review: ["running", "awaiting_export", "cancelled"],

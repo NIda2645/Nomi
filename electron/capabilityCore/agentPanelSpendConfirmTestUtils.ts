@@ -208,8 +208,8 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
   const provider = loopbackProvider(vendorOrigin, submits);
   createGenerationRuntimeAdapter({ providers: [provider] }); // sanity: the real adapter accepts this provider
   const submission = createProductionGenerationSubmission({
-    repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
-    projectRevision: 0, intentMacKey: "test-intent-key", providers: [provider],
+    repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
+    intentMacKey: "test-intent-key", providers: [provider],
     materializeOutput: async ({ providerTaskId }) => {
       // 真写一个字节到项目里：落地时的产物投影要读得到这个文件，读不到就只落占位、不回填 result。
       // 项目相对路径恒为 posix 形状（真物化器 writeDeterministicAsset 用的就是 path.posix.join）；

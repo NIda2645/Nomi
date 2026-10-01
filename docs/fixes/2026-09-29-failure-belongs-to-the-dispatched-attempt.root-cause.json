@@ -1,0 +1,200 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-failure-belongs-to-the-dispatched-attempt",
+  "problem_type": "失败被算到「现在选着的那一家」头上，而不是「发出去的那一家」：提示点名了没失败过的新供应商，模型健康记账同样记错",
+  "symptom": "2026-09-29 全功能走查 pb06（U12，failure-blamed-on-wrong-vendor）：第一家回 400 之后点提示里的「切到另一家」，节点换到了 B 家；旧失败还挂在节点上，切家提示按「节点现在选着谁」去点名，弹出「B 家：（旧失败的原因）· 切到 …」——而 B 家一笔失败都没有（同一条还连弹三次，见 2026-09-29-toast-identity-withdrawal-and-window-fit）。同一个形状还藏在模型健康记账里（nodeModelHealth 在失败落定那一刻读节点选着谁）：运行期间用户换了家，失败被记到没失败过的那一家，再连败一笔就被判「近期不稳」而避让。",
+  "direct_cause": "失败没有身份：GenerationNodeRunRecord 只记了运行的时间与状态，不记「这次发给了哪家的哪个模型」。于是所有要知道「谁失败了」的地方都只能在失败之后回头读节点当前的选择：① useNodeModelAutoSelect 的切家提示用 selectedVendor(节点) 点名；② nodeModelHealth 的 recordNodeModelFailure / recordNodeModelSuccess 读 nodeModelIdentity(节点)。运行期间（或失败之后）用户换了家，两处读到的就都是新家。",
+  "class_root": "「这次调用发给了谁」是提交那一刻就确定的事实（花钱前的确认已冻结 (模型, 供应商)，重试循环里不变），却被当成可以事后从可变状态（节点当前选择）推出来的东西：任何「失败之后再问是谁」读到的都是现在，不是当时。",
+  "affected_population": [
+    "任何换过供应商 / 模型的卡：失败之后换家、运行期间换家、项目重开后旧失败还挂在节点上",
+    "模型健康记账（近 24 小时连败 → 避让）与切家提示两个读者",
+    "旧项目里没有这一栏的失败记录（读不出是谁失败的 → 不点名，不出提示）"
+  ],
+  "scope_paths": [
+    "src/workbench/generationCanvas/model/generationCanvasSchema.ts",
+    "src/workbench/generationCanvas/model/generationCanvasTypes.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+    "src/workbench/generationCanvas/runner/generationRunController.ts",
+    "src/workbench/generationCanvas/runner/nodeModelHealth.ts",
+    "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+    "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts"
+  ],
+  "entry_points": [
+    "画布节点点生成（单个与批量都经 runGenerationNode）：运行开始写 attempt",
+    "失败之后的切家提示（useNodeModelAutoSelect 的失败 effect）：读失败记录上的 attempt",
+    "模型健康记账（recordNodeModelFailure / recordNodeModelSuccess）：读 run.attempt"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "内部状态归属问题（运行记录里该记什么），不涉及外部协议。",
+  "invariants": [
+    "运行开始时把 (供应商, 模型) 写进运行记录（attempt）：用的是与请求构造同一对选择器（selectedVendor / selectedModelKey），一次运行只写一次；没有选定模型的运行不写（不点名任何人）。",
+    "失败提示点名的是失败记录上的 attempt，不是节点现在选着谁；失败的那一对不是节点现在选着的那一对（用户已经换了家 / 换了模型）→ 这条失败不再描述这张卡，不出提示（节点上的错误卡自己仍把原因说清）。",
+    "模型健康记账记到 attempt 那一对：运行期间换家，失败记 A、成功清 A，B 不受影响。",
+    "attempt 随项目落盘（zod schema 的可选字段）：旧记录没有它照常加载；读不出是谁失败的就不点名、不记账。",
+    "提示的句子只在 useNodeModelAutoSelect 一处拼成：模板自己会在原因后面补句号，原因是供应商的整句话且自带句号时先剥掉（nodeRecoveryNotice.withoutTrailingStop），不叠成「…checkpoint..」「…再来。。」。",
+    "提示点名供应商给用户看的是显示名（内置家的名字 / 用户起的来源名称，读自下拉选项带的 vendorName；选项里没有才退回 key），不是内部 id；失败版与断开版两条提示都走同一个 vendorLabelFor。全功能走查的监视器认「某某家：失败原因」时显示名与 key 都认、认成 key（vendorKeyByLabel），否则提示一改它就对所有点名静默失明。"
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+    "tests": [
+      "src/workbench/generationCanvas/runner/failedAttemptIdentity.test.ts",
+      "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.test.ts",
+      "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+      "symbol": "failedAttemptOf"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+      "symbol": "failureDescribesCurrentSelection"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "failedAttemptOf"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "failureDescribesCurrentSelection"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "dispatchedAttempt"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "recordNodeModelSuccess"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "recordNodeModelFailure"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+      "symbol": "dispatchedAttempt"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/nodeModelHealth.ts",
+      "symbol": "recordNodeModelFailure"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/nodeModelHealth.ts",
+      "symbol": "recordNodeModelSuccess"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/model/generationCanvasSchema.ts",
+      "symbol": "generationNodeRunRecordSchema"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/model/generationCanvasTypes.ts",
+      "symbol": "GenerationNodeRunAttempt"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 12,
+    "why_not": "「谁失败了」的判定门从两扇（nodeModelHealth.nodeModelIdentity 读节点当前选择去记账、useNodeModelAutoSelect 读 selectedVendor 去点名）收成一扇：dispatchedAttempt 在提交那一刻写一次，其余全是读者。after 比 before 多，是因为修前只数了调用点（node scripts/door-map.mjs nodeModelIdentity recordNodeModelFailure recordNodeModelSuccess 在 main 上是 3 扇），修后清单把定义点（dispatchedAttempt、记账函数、运行记录的 schema 与类型）也列全了，不是判定门变多了；两个记账函数各自是成功 / 失败两个不同的入口，读者各自读 run.attempt，不该合并。"
+  },
+  "generality_proof": "【为什么不是只修了「切到另一家」这一条路】(1) attempt 读的是与请求构造同一对选择器（selectedVendor / selectedModelKey）：改选择器的语义，请求与记录同时变，不会各自漂移；重试循环里选择不会中途变（花钱前的确认已冻结）。(2) 所有生成运行都经 runGenerationNode 一个入口写它（单个、批量、分镜同一个函数）；失败提示、健康记账两个读者只读记录，不再读节点当前选择——nodeModelIdentity（读节点的旧函数）已删除。(3) 别的供应商 / 版本 / 平台：只搬运一对字符串，与供应商、平台无关。(4) 旧数据：schema 可选字段，旧记录无 attempt → 不点名、不记账（宁可少记也不冤记）；schema 拒绝空串。(5) 真机（pb06 中英各一遍）：第一家 400 → 点「切到另一家」→ 再生成成功，提示点名的是真正失败的那家、成功之后提示收走；pb07 里 ①②两笔失败的落盘运行记录都带着 attempt（读落盘项目断言）。(6) 变异校验（备份还原）：运行记录不写 attempt、失败提示不判「失败是否仍描述当前选择」、把「结果读不出来」也当成服务商的事——三个变异全部被 failedAttemptIdentity.test / useNodeModelAutoSelect.test 抓红（failedAttemptIdentity 用真的 runGenerationNode 加真的画布 store，只有磁盘与付费令牌是桩）。 (7) 提示句子的标点（2026-09-30 pb07 英文截图里叠成「checkpoint..」）：withoutTrailingStop 只在拼提示这一处用；两个变异（不剥、剥掉时忽略中文句号）被 useNodeModelAutoSelect.test 抓红；pb07 ④ 在真机上读屏上提示的文字断言没有叠在一起的句号。 (8) 点名用显示名（2026-09-30）：nodeRecoveryNotice.test / useNodeModelAutoSelect.test 钉住「选项带显示名就用显示名、没有才用 key、断开版同理」，tests/ux/full-walk/vendorClaims.test 钉住监视器显示名与 key 都认；三个变异（vendorLabelFor 恒返回 key / hook 又传 key / 监视器只认 key）全部被抓红；pb07 ① 在真 Electron 里断言提示点名显示名、不出现内部 id。",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+      "symbol": "dispatchedAttempt",
+      "responsibility": "这一次运行发给了哪家的哪个模型：提交那一刻从被执行的节点读出，写进运行记录，失败提示与健康记账都读它。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "runGenerationNode",
+      "disposition": "enforced",
+      "evidence": "运行开始写 attempt，成功 / 失败记账读 run.attempt；failedAttemptIdentity.test（真的 runGenerationNode + 真的画布 store）：失败记录带着发出去的那一对、运行期间换家后仍是原来那一对、没选定模型的运行不写、记账记到 A 而不是 B、schema 往返。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "entry_point": "useNodeModelAutoSelect",
+      "disposition": "enforced",
+      "evidence": "useNodeModelAutoSelect.test 11 条（真实失败记录）：失败提示点名 attempt 那一家、换家之后旧失败不再出提示、我们这一侧的失败不劝换供应商、旧记录没有 attempt 不点名。"
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/nodeModelHealth.ts",
+      "entry_point": "recordNodeModelFailure",
+      "disposition": "enforced",
+      "evidence": "改收 attempt（nodeModelIdentity 删除）；failedAttemptIdentity.test 里两条记账用例。"
+    },
+    {
+      "path": "src/workbench/capability/multiShotCanvasLanding.ts",
+      "entry_point": "appendNodeRun",
+      "disposition": "not-affected",
+      "evidence": "制作流程为分镜投影的运行记录（不由节点当前选择派发）不带 attempt：失败提示与记账读不出是谁失败 → 不点名（正确的默认）。要给它们真实的 attempt，得由制作调度按 job 的真实 (供应商, 模型) 来写，是制作流程 owner 的事（本次按任务书不碰 electron/productionRun）。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "只要有任何一个「事后回头读节点选择来回答谁失败了」的读者，用户换一次家就会把失败栽到别处；将来任何新读者（失败统计、任务中心的失败行、遥测）都会踩同一个坑，除非身份就在记录上。",
+    "same_class_scan": [
+      "node scripts/door-map.mjs nodeModelIdentity（main）：只有 nodeModelHealth 两处读；修后该函数删除。",
+      "git grep selectedVendor（src，非测试）里在失败之后被读来给失败点名的：只剩 useNodeModelAutoSelect 的「切家提示要不要出」（读来比对失败那一对是否仍是当前选择，不再用来点名）。",
+      "git grep recordNodeModelFailure / recordNodeModelSuccess：调用点只有 generationRunController 两处，都改读 run.attempt。",
+      "运行记录的其他生产者：multiShotCanvasLanding.appendNodeRun（制作流程投影，见 same_class_entry_points）。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+    "invariant": "失败的身份来自运行记录上的 attempt（提交那一刻写一次），不来自节点当前的选择。",
+    "failure_mode": "任何人让失败提示 / 健康记账重新读节点当前选择、或让运行不写 attempt，failedAttemptIdentity.test / useNodeModelAutoSelect.test 红。",
+    "exception_policy": "none",
+    "strategy": "身份收成运行记录上的一个可选字段，由 dispatchedAttempt（与请求构造同一对选择器）在运行开始写一次；失败读者通过 failedAttemptOf 读它，记账读 run.attempt；旧的按节点当前选择推断的函数删除。",
+    "artifacts": [
+      "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+      "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "src/workbench/generationCanvas/runner/nodeModelHealth.ts",
+      "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+      "src/workbench/generationCanvas/model/generationCanvasSchema.ts",
+      "src/workbench/generationCanvas/model/generationCanvasTypes.ts",
+      "src/workbench/generationCanvas/runner/failedAttemptIdentity.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/generationCanvas/runner/failedAttemptIdentity.test.ts",
+    "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.test.ts",
+    "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.test.ts",
+    "tests/ux/full-walk/playbooks/pb07-failure-kinds.walk.mjs",
+    "tests/ux/full-walk/vendorClaims.test.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/generationCanvas/runner/failedAttemptIdentity.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/runner/nodeModelHealth.ts"
+    ],
+    "rationale": "没有并行版：nodeModelIdentity（失败那一刻读节点选着谁）在原处删除，记账函数改收 attempt；useNodeModelAutoSelect 里按 selectedVendor 点名失败方的写法换成读 failedAttemptOf。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "无迁移：attempt 是运行记录上的可选字段，旧记录没有它照常加载；读不出是谁失败的就不点名、不记账。",
+  "residual_risks": [
+    "制作流程投影的运行记录（multiShotCanvasLanding.appendNodeRun）不带 attempt：那些失败不出切家提示、不入模型健康记账。要入账，需制作调度按 job 的真实供应商来写（制作流程 owner 的事，已报协调会话）。",
+    "节点上的 error 文本仍是「最后一次失败」的一份拷贝：换家再生成之前，旧失败留在节点上是设计（用户要能看到上次为什么失败），只是不再被当作新选的那一家的失败。"
+  ]
+}

@@ -310,10 +310,10 @@ node scripts/research/tikhub-search.mjs \
 
 **机器强制（`pnpm run check:prior-art`）**：
 
-- `docs/plan/<日期>-*.md`（日期 ≥ 2026-09-07）必须有 `## 先查别人` 一节，节内 ≥3 条**带出处**的条目。
+- `docs/plan/<日期>-*.md`（日期 ≥ 2026-09-07）**如果写了** `## 先查别人` 一节，节内必须 ≥3 条**带出处**的条目（没写不红：领域方案没有现成的可查，逼人写只会写出「查过了，没有」）。
   出处认三种：URL、`file:line`、**指向仓库里真实存在的文件的链接**（门岗会去确认那个文件在不在，
   指不到就不算）。没有出处的条目等于只写了句「查过了」。
-- PR 改 `src/` 或 `electron/` **超过 300 行**，正文必须引用一份合格的方案文档。这一条在 CI 的
+- PR **新增或修改了自写登记表**（`docs/engineering/self-written.json` 的 entries，或扩大 domainRoots）= 引入了通用能力，正文必须引用一份合格的方案文档、或自带一节合格的「先查别人」（旧的「改 `src/` / `electron/` 超过 300 行」已删：按行数计费，领域工作被逼着写「查过了，没有」，真造了轮子的小 PR 反而漏过去）。这一条在 CI 的
   contracts job 上跑，PR 正文经 `PRIOR_ART_PR_BODY` 注入（走 env 不走命令行：PR 正文是外人可写的文本）。
 - 老方案按日期阈值豁免——**追溯会让门岗一上线就一片红，而一片红的门岗等于不存在**（R17）。
 
@@ -361,10 +361,8 @@ node scripts/research/tikhub-search.mjs \
 | ① 数门 | `node scripts/door-map.mjs <mutator 符号或文件>` 的门表 + 一句「这条不变量该归哪扇门」的判断 | 门表进根因合同的 `doors`；`check:root-cause-contracts` 逐条核 path:line |
 | ② 修复 | 修在门表上那个支配全部写者的边界；`door_reduction` 记清减了几扇 | 改动的生产文件 ⊆ 门表；≥2 扇没减必须写 `why_not` |
 
-**机器强制（`pnpm run check:door-map`）**：变化中的合同里，日期 ≥ 2026-09-11 且判为 `recurring` 的那些，
-① 门表不能为空，② **PR 正文必须引用那份合同的路径**。在 CI 的 contracts job 上跑，PR 正文经
-`DOOR_MAP_PR_BODY` 注入（走 env 不走命令行，同 §16）。合同侧的字段校验由 `check:root-cause-contracts` 管，
-两道门不重叠：一道管「门表填没填对」，一道管「派工链上的人看不看得见它」。
+**机器强制（`pnpm run check:root-cause-contracts`）**：合同侧的字段校验——门表不能为空、每条 `{kind, path, symbol}` 的 path 存在且符号对得上、不许手写行号、不许重复。
+2026-10-01 起原来的 `check:door-map`（「`recurring` 合同的 PR 正文必须引用那份合同」）已删：用户按门岗账本拍板，门表由脚本（`node scripts/door-map.mjs`）生成，合同里的门表合法性才是要紧的，正文宣告只是纸面（窗口里 5 次红全是补引用 / 补门表）。派工两段式（先派数门工人）仍然是纪律，只是不再有一道门岗数正文。
 
 **派工模板要加的两行**（抄进 brief，不是提醒）：
 
@@ -386,6 +384,11 @@ node scripts/research/tikhub-search.mjs \
 每个概念的唯一 owner（**文件 : 符号**，只写到目录 = 没写）· 允许谁消费。
 owner 未定的概念照样要列，标 `pending` 并写清由哪份任务书收口。
 正本是 `docs/engineering/concept-owners.json`。
+
+**机器强制（`pnpm run check:concept-owners`，2026-09-29 起）**：登记表 v2 的结构与计数键、主人今天还在、
+第二写口（主人之外的同名定义）、pending 例外账与旧路写门冻结、身份比对维度，以及文件名日期 ≥ 2026-09-27 的
+根因合同的共享边界必须进账。占用表里写的「唯一 owner」就是登记表里的 `owner` / `write_api`；
+碰到没登记的概念就在同一个 PR 里登记，否则合同一进来就红（字段表见 R33.4）。
 
 **编排者这一侧多两件事**：
 

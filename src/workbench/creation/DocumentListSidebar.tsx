@@ -141,7 +141,7 @@ export default function DocumentListSidebar(): JSX.Element {
   }
 
   const createDesignForDocument = (documentId: string) => {
-    const design = addStoryboardDesign(documentId)
+    const design = addStoryboardDesign({ initiator: 'user', documentId })
     if (design) selectStoryboard(design.id, documentId)
   }
 

@@ -322,6 +322,7 @@ describe('applyCanvasToolCall propose_storyboard_plan', () => {
     const ws = useWorkbenchStore.getState()
     expect(ws.storyboardDesignsByDocumentId['doc-1']?.[0]?.plan).toEqual(PLAN)
     expect(ws.workspaceMode).toBe('creation')
+    expect(ws.activeStoryboardId).toBeNull() // Agent 新建的方案只进列表，打开是用户的动作
     expect(useGenerationCanvasStore.getState().nodes.map(node => node.kind)).toEqual(['shot_table']) // 只建表投影，不生成媒体
     expect(ack).toMatchObject({ status: 'applied', documentId: 'doc-1', storyboardDesignId: expect.any(String) })
     expect((ack as { message: string }).message).toContain('1 个锚')
@@ -335,6 +336,12 @@ describe('applyCanvasToolCall propose_storyboard_plan', () => {
     expect(useWorkbenchStore.getState().storyboardDesignsByDocumentId['doc-1']).toBeUndefined()
   })
 
+  it('用户正在分镜页看着方案时，Agent 写新方案不把他挪去创作页', async () => {
+    useWorkbenchStore.getState().setWorkspaceMode('storyboard')
+    await applyCanvasToolCall('propose_storyboard_plan', PLAN, undefined, undefined, 'doc-1')
+    expect(useWorkbenchStore.getState().workspaceMode).toBe('storyboard')
+  })
+
   it('规划期间用户切走后不抢回工作区，结果仍落原文稿', async () => {
     useWorkbenchStore.getState().setWorkspaceMode('generation')
     await applyCanvasToolCall('propose_storyboard_plan', PLAN, undefined, undefined, 'doc-1')
@@ -344,8 +351,8 @@ describe('applyCanvasToolCall propose_storyboard_plan', () => {
   })
 
   it('全新拆镜不会覆盖当前已确认的分镜设计', async () => {
-    await applyCanvasToolCall('propose_storyboard_plan', PLAN, undefined, undefined, 'doc-1')
-    const firstId = useWorkbenchStore.getState().activeStoryboardId!
+    const first = await applyCanvasToolCall('propose_storyboard_plan', PLAN, undefined, undefined, 'doc-1')
+    const firstId = (first as { storyboardDesignId: string }).storyboardDesignId
     useWorkbenchStore.getState().commitStoryboardPlan('doc-1', firstId)
 
     const nextPlan = { ...PLAN, title: '另一版' }

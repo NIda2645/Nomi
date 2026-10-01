@@ -272,6 +272,8 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
     const launch = (displayPrompt?: string): void => {
       void actions.send([t('agentResident.storyboardRequest'), displayPrompt].filter(Boolean).join('\n\n'), {
         skillKey: STORYBOARD_PLANNER_SKILL.key,
+        // 这是用户亲手点「拆分镜」：结果方案照常替他打开（Agent 自己决定建的方案才不打开）。
+        openStoryboardResult: true,
         ...(displayPrompt ? { displayText: displayPrompt } : {}),
       })
     }

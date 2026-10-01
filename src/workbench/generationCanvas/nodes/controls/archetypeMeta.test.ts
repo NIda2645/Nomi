@@ -736,7 +736,6 @@ describe('变体轴 — ensureArchetypeNodeMeta 初始化变体', () => {
 // ───── apimart 参数补全（2026-06-16）：fixedParams 注入 + flat 合并 + 新变体 model 串 ─────
 describe('apimart 参数补全 — fixedParams / flat 合并 / 变体 model', () => {
   const VEO = getArchetypeById('veo-3.1')!
-  const SORA = getArchetypeById('sora-2')!
   const HAILUO = getArchetypeById('hailuo-2.3')!
   const QWEN = getArchetypeById('qwen-image')!
   const OMNI = getArchetypeById('omni-flash-ext')!
@@ -760,19 +759,11 @@ describe('apimart 参数补全 — fixedParams / flat 合并 / 变体 model', ()
     expect(buildArchetypeInputParams(meta, VEO)).toEqual({ image_urls: ['F.png'], generation_type: 'frame', model: 'veo3.1-fast' })
   })
 
+  // Sora 2 已于 2026-09-28 退役（上游关停），档案随之删除；变体 model 串由下面三家继续覆盖。
   it('变体 model 串：选 Pro/quality/Fast → out.model = 变体 modelKey', () => {
-    expect(buildArchetypeInputParams({ archetype: { id: 'sora-2', modeId: 't2v', variantId: 'pro' } }, SORA).model).toBe('sora-2-pro')
     expect(buildArchetypeInputParams({ archetype: { id: 'veo-3.1', modeId: 't2v', variantId: 'quality' } }, VEO).model).toBe('veo3.1-quality')
     expect(buildArchetypeInputParams({ archetype: { id: 'hailuo-2.3', modeId: 't2v', variantId: 'fast' } }, HAILUO).model).toBe('MiniMax-Hailuo-2.3-Fast')
     expect(buildArchetypeInputParams({ archetype: { id: 'qwen-image', modeId: 't2i', variantId: 'pro' } }, QWEN).model).toBe('qwen-image-2.0-pro')
-  })
-
-  it('Sora Pro 变体：resolution 经 paramOverrides 放宽到 1080p（标准只 720p）', () => {
-    const std = specializeArchetypeForVariant(SORA, 'standard')
-    const pro = specializeArchetypeForVariant(SORA, 'pro')
-    const resOf = (a: ModelArchetype) => a.modes[0].params.find((p) => p.key === 'resolution')!.options.map((o) => o.value)
-    expect(resOf(std)).toEqual(['720p'])
-    expect(resOf(pro)).toEqual(['720p', '1024p', '1080p'])
   })
 
   it('Omni 参考图融合：fixedParams 注入 generation_type=reference（避 3 图被拒）', () => {
@@ -783,9 +774,9 @@ describe('apimart 参数补全 — fixedParams / flat 合并 / 变体 model', ()
   })
 
   it('duration 用数值 option 的 select：option value 是 number（发整数避 400）', () => {
-    const dur = SORA.modes[0].params.find((p) => p.key === 'duration')!
+    const dur = HAILUO.modes[0].params.find((p) => p.key === 'duration')!
     expect(dur.type).toBe('select')
-    expect(dur.options.map((o) => o.value)).toEqual([4, 8, 12, 16, 20])
+    expect(dur.options.map((o) => o.value)).toEqual([6, 10])
   })
 })
 

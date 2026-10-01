@@ -187,11 +187,13 @@ test('C61 configured cost thresholds retain the real small-window safety margin 
   const { shouldCompact } = await import('@earendil-works/pi-agent-core');
   for (const window of [128000, 1000000]) {
     const settings = laneCompactionSettings(window, 40000);
-    assert.equal(shouldCompact(40000, window, settings), false);
-    assert.equal(shouldCompact(40001, window, settings), true);
+    // trigger = 3/4 of the per-request budget (headroom for the turn that crosses it)
+    assert.equal(shouldCompact(30000, window, settings), false);
+    assert.equal(shouldCompact(30001, window, settings), true);
   }
   const small = laneCompactionSettings(32000);
   assert.ok(shouldCompact(25000, 32000, small));
+  assert.equal(small.keepRecentTokens <= 5000, true);
   for (const invalid of [0, -1, NaN, Infinity, 1.5]) assert.throws(() => laneCompactionSettings(128000, invalid));
 });
 

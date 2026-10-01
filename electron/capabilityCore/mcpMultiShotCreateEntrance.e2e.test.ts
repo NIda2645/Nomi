@@ -141,8 +141,8 @@ function harness(
   const provider = loopbackProvider(vendorOrigin, submits);
   createGenerationRuntimeAdapter({ providers: [provider] }); // sanity: the real adapter accepts this provider
   const submission = createProductionGenerationSubmission({
-    repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
-    projectRevision: 0, intentMacKey: "test-intent-key", providers: [provider],
+    repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1,
+    intentMacKey: "test-intent-key", providers: [provider],
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });

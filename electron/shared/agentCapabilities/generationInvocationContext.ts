@@ -17,6 +17,13 @@ export type StoryboardRequestTarget = Readonly<{
   /** The plan the attached shot references belong to. Present only together with `shotIds`. */
   designId?: string;
   shotIds?: readonly string[];
+  /**
+   * The user asked for this plan through the storyboard button, so the plan that results is opened for
+   * them. **Absent = the Agent decided to create it** (a chat request, a follow-up): the plan is saved
+   * to the list but not opened. "Who initiated" is stated here by the caller that knows, never guessed
+   * by the tool that creates the plan.
+   */
+  openResult?: true;
 }>;
 
 /** Model guidance describes the same immutable target enforced by the host. */
@@ -56,6 +63,11 @@ export function formatStoryboardRequestTarget(target: StoryboardRequestTarget | 
  */
 export type GenerationInvocationContext = Readonly<{
   storyboardTarget?: StoryboardRequestTarget;
+  /**
+   * `${vendor}/${modelId}` → 用户在界面上看到的模型名（渲染层随这条消息给的 `AgentModelEntry.displayName`）。
+   * 宿主递还给 Agent 的事实（例如「实际用的模型 ≠ 你的默认」）要带名字：Agent 对用户只说名字，不念 id。
+   */
+  modelNames?: Readonly<Record<string, string>>;
   sourceDocument?: Readonly<{
     documentId: string;
     revision: number;

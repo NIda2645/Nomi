@@ -1,0 +1,460 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-stuck-saving-retrieval-liveness",
+  "problem_type": "Unbounded wait: a refused provider-media response pinned its connection forever, and the generation phase waiting on it had no guaranteed exit",
+  "symptom": "A generation finished upstream, the node switched to \"saving to your computer\" (finalizing) and stayed there indefinitely; the stop request could not interrupt it; after a restart the node became recoverable and \"retrieve again\" spun forever as well. Introduced by 38fdecdf3 (shipped in v0.22.0), still present in 0.22.4.",
+  "direct_cause": "electron/hardenedFetch.ts rejected a response right after its headers (HTTP >= 400, a content type outside the allowlist including S3's default binary/octet-stream or a missing type, or a declared length over the cap) without discarding the body, then in finally cleared its timer and awaited a graceful close() of the per-request DNS-pinned undici Agent. close() only resolves once in-flight requests drain; an unread body of ~16 KB or more never drains (12 KB is buffered whole and does not hang), so the call never settled (reproduced beyond 330 s; a server-side disconnect does not release it). The renderer awaited the result-query IPC in catalogTaskActions waitForCatalogTaskResult with no time limit, and both the hard timeout and the cancel flag were read only at the top of each poll tick, so the node never left finalizing and stop had nothing to interrupt.",
+  "class_root": "Two invariants were missing at shared boundaries. (1) The retrieval primitive did not guarantee that every response it obtains is either consumed or released before it settles, nor that its own teardown is bounded by its own deadline, so any refusal path could pin a connection (forever on the direct route; leaked on the system-proxy and provider routes). (2) A generation run had no registry of the maximum time each non-terminal phase may last and no single wait primitive, so any main-process await that never returns, not only this one, could hold a node in a non-terminal phase indefinitely and uninterruptibly.",
+  "affected_population": [
+    "Every user whose provider result URL answers with an error page, an S3-default binary/octet-stream or untyped object, or an over-cap declaration of 16 KB or more on the direct (DNS-pinned) route: the node hangs in finalizing (all image/video/audio/3D models, all vendors)",
+    "Users on the system-proxy route or a provider-specific proxy route: the same refused responses leaked a pooled connection instead of hanging",
+    "Large videos on slow lines: the old 60 s wall clock failed them on every attempt",
+    "Agent paid-card and production-run outputs, save-to-disk, relay-frame source downloads, audio inputs and provider-docs discovery: all share the same retrieval primitive"
+  ],
+  "scope_paths": [
+    "electron/hardenedFetch.ts",
+    "electron/assets/providerMediaFetch.ts",
+    "electron/assets/localizeTaskAsset.ts",
+    "src/workbench/generationCanvas/runner/generationPhaseDeadline.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+    "src/workbench/generationCanvas/runner/localTaskControl.ts",
+    "src/workbench/generationCanvas/runner/recoverableTimeout.ts",
+    "src/workbench/generationCanvas/runner/generationRetryPolicy.ts",
+    "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+    "src/workbench/generationCanvas/runner/resultAssetLocalization.ts"
+  ],
+  "entry_points": [
+    "Normal generation result localization: main taskResultQuery / runtime → electron/assets/localizeTaskAsset.ts localizeTaskAsset → projectAssetStore importRemoteAsset → providerMediaFetch fetchProviderMedia → hardenedFetch (the reported path)",
+    "Agent paid card / production run: electron/capabilityCore/generationOutputMaterializer.ts materialize → fetchProviderMedia",
+    "Every other hardenedFetch / hardenedFetchText caller (22 doors in total): save-to-disk, relay-frame extraction, audio transcription input, Dreamina inputs, integration certification, verified asset cache, provider docs discovery, TikHub, local speech, prompt library",
+    "Renderer run: src/workbench/generationCanvas/runner/catalogTaskActions.ts runCatalogGenerationTask (all executors converge here) → result-query IPC, submission IPC, finalizing localization",
+    "Retrieve again: src/workbench/generationCanvas/runner/recoverTaskActions.ts recoverNodeResult; result localization rescue: resultAssetLocalization localizeRemoteResultUrl (also from projectAssetHealthCheck on project load)",
+    "Stop: NodeGeneratingOverlay / TaskCenterPanel → localTaskControl requestTaskCancel"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/nodejs/undici/blob/v6.19.8/lib/dispatcher/client.js",
+      "checked_at": "2026-09-29",
+      "purpose": "Checked in the installed undici 6.19.8 (node_modules/undici/lib/dispatcher/client.js and dispatcher-base.js), the package the per-request Agent comes from: Client[kClose] resolves only when in-flight requests drain (kSize reaches 0), whereas [kDestroy] errors pending requests and destroys the socket. A graceful close() therefore waits on an unread body forever; destroy() does not."
+    }
+  ],
+  "invariants": [
+    "Every response hardenedFetch obtains is either fully consumed or abandoned (body cancelled, nothing awaited) before hardenedFetch settles; every refusal path goes through abandonResponse.",
+    "hardenedFetch never waits on a graceful connection-pool shutdown: the per-request pinned dispatcher is destroyed, and that teardown is bounded by the request's own timer.",
+    "Provider media retrieval is bounded by an idle timeout (no progress) and a total cap derived from the declared size, with all numbers in one shared budget module read by both processes.",
+    "Every non-terminal GenerationProgressPhase has a registered maximum duration and expiry action in an exhaustive Record; a phase without an exit fails typecheck.",
+    "Every wait on main-process work inside a generation run settles within the deadline of the phase last reported, or immediately when the user stops the node.",
+    "Recoverable and stalled outcomes are never auto-retried: a retry resubmits a paid task."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/audioTaskRunner.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationOutputMaterializer.ts",
+      "symbol": "fetchProviderMedia"
+    },
+    {
+      "kind": "read",
+      "path": "electron/providerAdapter/certificationMedia.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "read",
+      "path": "electron/providerAdapter/docsDiscovery.ts",
+      "symbol": "hardenedFetchText"
+    },
+    {
+      "kind": "read",
+      "path": "electron/providerAdapter/providedDocs.ts",
+      "symbol": "hardenedFetchText"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "fetchWorkbenchTaskResultByVendor"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "RecoverableTimeoutError"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationPhaseDeadline.ts",
+      "symbol": "GENERATION_PHASE_DEADLINE"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/recoverableTimeout.ts",
+      "symbol": "RecoverableTimeoutError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/ai/antigravityTask.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/downloadAsset.ts",
+      "symbol": "fetchProviderMedia"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/localizeTaskAsset.ts",
+      "symbol": "hardenedFetchDiagnostics"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "fetchProviderMedia"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/providerMediaFetch.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/audioTaskRunner.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/catalogCommit.ts",
+      "symbol": "hardenedFetchText"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/dreaminaInputFiles.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/tikhubConnector.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/connectors/tikhubRoute.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/downloads/verifiedAssetCache.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/hardenedFetch.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/integrationCertification/integrationSession.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/localRuntime/localAiExternalProbe.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/localSpeech/localSpeechServer.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/promptLibrary/promptLibraryStore.ts",
+      "symbol": "hardenedFetchText"
+    },
+    {
+      "kind": "write",
+      "path": "electron/video/extractVideoFrame.ts",
+      "symbol": "hardenedFetch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "isTaskCancelRequested"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "awaitUnlessCancelled"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "awaitWithinPhase"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "isGenerationPhaseStalledError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "isRecoverableTimeoutError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "onTaskCancelRequested"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "localizeRemoteResultUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRetryPolicy.ts",
+      "symbol": "isGenerationPhaseStalledError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRetryPolicy.ts",
+      "symbol": "isRecoverableTimeoutError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "isTaskCancelRequested"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "isRecoverableTimeoutError"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/localTaskControl.ts",
+      "symbol": "markTaskCancelRequested"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/projectAssetHealthCheck.ts",
+      "symbol": "localizeRemoteResultUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "symbol": "awaitMediaTransfer"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "symbol": "fetchWorkbenchTaskResultByVendor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "symbol": "localizeRemoteResultUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/resultAssetLocalization.ts",
+      "symbol": "awaitMediaTransfer"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/videoDepth/startVideoDepthDerivation.ts",
+      "symbol": "isTaskCancelRequested"
+    }
+  ],
+  "door_reduction": {
+    "before": 33,
+    "after": 45,
+    "why_not": "No door was merged away. The 22 hardenedFetch / hardenedFetchText / fetchProviderMedia call sites are independent consumers of one primitive and all inherit its corrected lifecycle without caller changes; the renderer doors that start a wait (result query, re-fetch, localization, cancel reads, recoverable classification) keep their own responsibilities. The 12 doors added since the pre-fix count (33, door-map on origin/main a623dcd0d) are the enforcement call sites themselves: awaitWithinPhase / awaitUnlessCancelled / awaitMediaTransfer wrapping existing waits, markTaskCancelRequested / onTaskCancelRequested notifying waiters, isGenerationPhaseStalledError / isRecoverableTimeoutError keeping stalled and recoverable outcomes out of retry and poll-failure handling, GENERATION_PHASE_DEADLINE read by the primitive, hardenedFetchDiagnostics read by the failure log. None opens a new entry to the state."
+  },
+  "generality_proof": "The hang lived inside the one retrieval primitive that every provider-media path converges on (door map: 22 call sites, including generation localization, Agent/production materialization, save-to-disk, relay-frame extraction and certification). Restoring the release/teardown invariant there fixes every caller and every route at once, and the contract matrix proves it per route (direct, system proxy, provider route) and per response class (ok, HTTP >= 400 with a 2 MiB body, bad type, declared-too-large, stalled body, server disconnect). On the renderer, every executor (image/video/audio/3D/text) converges on runCatalogGenerationTask, whose phase clock is fed by the single progress funnel (including the main-process localization broadcast), so any reported phase is bounded by its registered deadline without per-call wiring, and the Record type makes an unregistered phase a compile error. The two waits outside a run (retrieve again, result localization) share the same media-transfer bound derived from the same shared budget.",
+  "invariant_owner_layer": {
+    "layer": "electron/hardenedFetch.ts",
+    "tests": [
+      "electron/hardenedFetch.test.ts",
+      "src/workbench/generationCanvas/runner/generationPhaseDeadline.test.ts"
+    ],
+    "why": "The release/teardown invariant is owned by the retrieval primitive and proven by its route × response contract matrix on real sockets; the liveness backstop is owned by src/workbench/generationCanvas/runner/generationPhaseDeadline.ts and proven by driving the real controller and catalog runner with a result query that never returns."
+  },
+  "shared_boundaries": [
+    {
+      "path": "electron/hardenedFetch.ts",
+      "symbol": "hardenedFetch",
+      "responsibility": "Consume or abandon every obtained response before settling; destroy the per-request pool within the request deadline; admit opaque bytes (missing type, binary/octet-stream) only for callers whose allowlist accepts application/octet-stream; attach host/route/status/type/size/elapsed diagnostics to failures."
+    },
+    {
+      "path": "electron/assets/providerMediaFetch.ts",
+      "symbol": "fetchProviderMedia",
+      "responsibility": "The one provider-media retrieval policy: idle timeout plus size-scaled total cap plus byte cap, all from electron/shared/assets/providerMediaRetrievalBudget.ts."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationPhaseDeadline.ts",
+      "symbol": "awaitWithinPhase",
+      "responsibility": "Exhaustive GENERATION_PHASE_DEADLINE registry and the single wait primitive for generation runs: settle, expire by the registered phase deadline, or stop, whichever comes first."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/assets/localizeTaskAsset.ts",
+      "entry_point": "localizeTaskAsset",
+      "disposition": "enforced",
+      "evidence": "The reported path: importRemoteAsset → fetchProviderMedia → hardenedFetch. Refusals now reject in milliseconds and write the structured localize-retrieval-failed warning (localizeTaskAsset.test.ts drives a real refused retrieval)."
+    },
+    {
+      "path": "electron/capabilityCore/generationOutputMaterializer.ts",
+      "entry_point": "materialize",
+      "disposition": "enforced",
+      "evidence": "Agent paid card and production outputs call fetchProviderMedia (door map), so they inherit the release/teardown fix and the same budget (providerMediaFetch.test.ts asserts the materializer receives the identical budget)."
+    },
+    {
+      "path": "electron/assets/downloadAsset.ts",
+      "entry_point": "fetchAssetBytes",
+      "disposition": "enforced",
+      "evidence": "Save-to-disk calls fetchProviderMedia with allowContentTypes any; same primitive and budget."
+    },
+    {
+      "path": "electron/video/extractVideoFrame.ts",
+      "entry_point": "resolveVideoLocalPath",
+      "disposition": "enforced",
+      "evidence": "Relay-frame source videos are fetched with hardenedFetch on the direct route; a refused source response previously hung the resolving phase the same way."
+    },
+    {
+      "path": "electron/providerAdapter/docsDiscovery.ts",
+      "entry_point": "discoverProviderDocs",
+      "disposition": "enforced",
+      "evidence": "Calls hardenedFetchText with a caller-owned proxy dispatcher and then awaits dispatcher.close(); a refused docs page of 16 KB or more used to leave its body unread, so that awaited close could wait indefinitely (the mechanism the matrix provider-route cells show as a leaked connection before the fix). abandonResponse releases it."
+    },
+    {
+      "path": "electron/providerAdapter/providedDocs.ts",
+      "entry_point": "fetchProvidedDocUrls",
+      "disposition": "enforced",
+      "evidence": "Same shape as discoverProviderDocs (hardenedFetchText + caller-owned dispatcher + awaited close); covered by the same release."
+    },
+    {
+      "path": "electron/ai/onboarding/modelListProbe.ts",
+      "entry_point": "fetchModelList",
+      "disposition": "not-affected",
+      "evidence": "Uses appFetch with an awaited dispatcher.close(), but reads every response body (res.text()) under an abort signal before closing, so no unread body can pin the pool."
+    },
+    {
+      "path": "electron/ai/onboarding/onboardingIpc.ts",
+      "entry_point": "probeOneProtocol",
+      "disposition": "not-affected",
+      "evidence": "Returns on an ok response without reading its body before an awaited close(), but the caller's 12 s AbortController stays attached to the body, so the worst case is bounded at 12 s; probe replies (max_tokens 1) are far below the ~16 KB threshold. Recorded in residual_risks for alignment by its owner."
+    },
+    {
+      "path": "electron/vendor/vendorHttp.ts",
+      "entry_point": "requestVendor",
+      "disposition": "not-affected",
+      "evidence": "Submission and query requests always buffer the full body (readBoundedResponseBytes) under their own 120 s abort before inspecting the status, and release their per-request dispatcher with void dispatcher.close(); nothing awaits a pool that still holds an unread body."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "entry_point": "recoverNodeResult",
+      "disposition": "enforced",
+      "evidence": "Each re-fetch query is bounded by awaitMediaTransfer and falls back to recoverable (generationPhaseDeadline.test.ts: a never-answering re-fetch returns the button)."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/projectAssetHealthCheck.ts",
+      "entry_point": "runProjectAssetHealthCheck",
+      "disposition": "enforced",
+      "evidence": "Calls localizeRemoteResultUrl, whose import IPC is now bounded by awaitMediaTransfer (resultAssetLocalization.test.ts)."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "runGenerationNode",
+      "disposition": "enforced",
+      "evidence": "Receives RecoverableTimeoutError (lands recoverable) or GenerationPhaseStalledError (lands error) from the runner; generationRetryPolicy excludes both by type so a message such as Failed to fetch can never trigger a paid resubmission."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any provider CDN error page, S3-default or untyped object, or oversized declaration of 16 KB or more on the direct route reproduces the hang for every user, model and future run, and any future main-process await that never returns would again hold a node forever without the phase registry.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs hardenedFetch hardenedFetchText fetchProviderMedia fetchWorkbenchTaskResultByVendor localizeRemoteResultUrl isTaskCancelRequested RecoverableTimeoutError isRecoverableTimeoutError on origin/main a623dcd0d: 33 doors; every retrieval converges on hardenedFetch (22 call sites), renderer waits live in catalogTaskActions, recoverTaskActions and projectAssetHealthCheck",
+      "Post-fix door map with the enforcement symbols added: 45 doors; every changed runner/assets file appears",
+      "git grep awaited close() on per-request dispatchers: hardenedFetch (fixed), docsDiscovery and providedDocs (fixed through the primitive), modelListProbe (reads every body), onboardingIpc probeOneProtocol (bounded by a 12 s abort; residual)",
+      "Zero-spend repro D:/tmp/stuck-saving-repro/hang-repro.ts on Electron 43.4.1 (Node 24.18.1, bundled undici 7.29.0) against this tree: before 4 cells HUNG > 15 s; after, every refused cell rejects in 1-4 ms, S3-typed and untyped bodies resolve (handed to byte validation), and the slow body times out at its 5 s limit",
+      "Mutation checks: reverting the hardenedFetch release/teardown turns 9 matrix cells red (3 hung, 6 leaked); removing the deadline from the wait primitive turns 7 liveness tests red; a bare await at the poll query (the original line) turns the 3 node-level liveness tests red, including the stop test"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/hardenedFetch.ts",
+    "invariant": "Every response obtained by the retrieval primitive is consumed or abandoned before it settles and its per-request pool is destroyed within the request deadline; every wait on main-process work inside a generation run is bounded by the registered deadline of the phase last reported and is interruptible by stop.",
+    "failure_mode": "A refused response rejects in milliseconds with diagnostics and releases its connection; a dead line fails at the idle timeout and a slow line at the size-scaled cap. If a main-process await still never returns, the node lands recoverable when a task id exists, otherwise fails honestly as uncharged or maybe-charged at the registered deadline; stop settles the run at once.",
+    "exception_policy": "none",
+    "strategy": "Fix the lifecycle at the primitive every retrieval converges on, move the retrieval budget into one shared module read by both processes, and give the renderer one exhaustive phase-deadline registry plus one wait primitive that every run await goes through, so a future hang anywhere in the main process is bounded without new per-call code.",
+    "artifacts": [
+      "electron/hardenedFetch.ts",
+      "electron/assets/providerMediaFetch.ts",
+      "electron/shared/assets/providerMediaRetrievalBudget.ts",
+      "electron/assets/localizeTaskAsset.ts",
+      "src/workbench/generationCanvas/runner/generationPhaseDeadline.ts",
+      "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "src/workbench/generationCanvas/runner/localTaskControl.ts",
+      "src/workbench/generationCanvas/runner/recoverableTimeout.ts",
+      "src/workbench/generationCanvas/runner/generationRetryPolicy.ts",
+      "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "src/workbench/generationCanvas/runner/resultAssetLocalization.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/hardenedFetch.test.ts",
+    "electron/assets/providerMediaFetch.test.ts",
+    "electron/assets/localizeTaskAsset.test.ts",
+    "src/workbench/generationCanvas/runner/generationPhaseDeadline.test.ts",
+    "src/workbench/generationCanvas/runner/resultAssetLocalization.test.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskActions.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/hardenedFetch.test.ts",
+    "src/workbench/generationCanvas/runner/generationPhaseDeadline.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/hardenedFetch.ts",
+      "electron/assets/providerMediaFetch.ts"
+    ],
+    "rationale": "The awaited graceful close() of per-request pools is deleted from hardenedFetch (replaced by destroy within the deadline) and the 60 s PROVIDER_MEDIA_FETCH_TIMEOUT_MS wall clock is deleted from providerMediaFetch in the same change; neither survives as a fallback."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "undici's graceful close() waiting for in-flight requests is its intended contract (installed 6.19.8 for the Agent, 7.29.0 bundled in Electron 43 for fetch); the defect was awaiting it while holding an unread body. The invariant is enforced in application code and holds across versions, so no upgrade or pin changes it.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted data or schema changes. Nodes already stuck from an older build are not rewritten: after a restart they follow the existing restart path to recoverable, and retrieve-again now has a bounded wait. New user-facing strings ship in zh-CN and en.",
+  "residual_risks": [
+    "DNS resolution inside authorizeOutboundDestination (dns.lookup) is not bounded by the request timer; it is bounded only by the OS resolver.",
+    "Production-run batch scheduler: deterministic localization failures are still re-kicked every 15 s without a cap and a hung driver can hold its dedupe slot (investigation fix item 6); deliberately deferred until shot-claim PR #921 lands. Its retrieval now fails fast instead of hanging, but the retry loop is unchanged.",
+    "Recoverable nodes do not persist their reason (the status patch clears node.error for recoverable). The last retrieval error now reaches the run's queue entry and task-center row data, but no UI renders it for recoverable rows; surfacing it needs a UI decision and mockup.",
+    "The renderer poll-tick budget (5 min) assumes main's 120 s per-request vendor timeout (vendorHttp, overridable through NOMI_VENDOR_HTTP_TIMEOUT_MS); a larger override can land a legitimately slow result query recoverable early (free re-fetch, no double charge).",
+    "queued and retrying are reported by the run controller and only span bounded local steps; their registry entries are declared but not enforced by awaitWithinPhase. comfyui-node / comfyui-queued are written by the ws bridge; the same run keeps reporting generating, which is what the clock enforces.",
+    "electron/ai/onboarding/onboardingIpc.ts probeOneProtocol returns on an ok response without reading the body before an awaited dispatcher.close(); bounded by its 12 s abort and tiny bodies, but it is the same shape and should release the body (owner lane decision).",
+    "Which exact response the reporting user hit is unproven (the path wrote no log before this change); the four sampled APIMart result hosts returned 200 with correct types and about 50 other models have no sample. Every failure now writes the structured warning.",
+    "APIMart query mappings in 0.22.4 collect every URL of a url array (apimartVendor.ts); not changed here.",
+    "No paid end-to-end generation and no walkthrough of a packaged build were run: evidence is the zero-spend local repro, the real-socket contract matrix and the controller-level liveness tests."
+  ],
+  "corrections": [
+    {
+      "contract": "docs/fixes/2026-09-28-apimart-production-boundaries.root-cause.json",
+      "field": "direct_cause",
+      "claim": "The shared query recipes only matched url[0] and omitted scalar url",
+      "finding": "Not true. electron/tasks/responseParsing.ts pathValues passes a non-array value straight through a numeric path segment, so the 0.22.3 mapping data.result.images.0.url.0 already extracted a scalar string url. Zero-spend check (D:/tmp/stuck-saving-repro/mapping-check.ts against this tree): a string url yields [a.png] under both the 0.22.3 and 0.22.4 mappings; the only thing the added url candidate changes is that a url array with several entries now yields all of them. The stuck-result symptom of that report is explained by this contract instead.",
+      "not_edited_in_place_because": "scripts/check-root-cause-contracts.mjs validates every changed contract as the contract of the current diff; editing that file here makes the gate require its vendorBaseFallback / apimartVendor artifacts and tests to change in this diff (7 errors, reproduced on this branch)."
+    }
+  ]
+}

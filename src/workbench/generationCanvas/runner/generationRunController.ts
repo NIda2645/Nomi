@@ -46,7 +46,7 @@ import {
   nodeUnmetReferenceDependency,
   type UnmetReferenceDependency,
 } from '../nodes/controls/referenceDependency'
-import { resolveTaskArchetype } from './catalogTaskResolve'
+import { dispatchedAttempt, resolveTaskArchetype } from './catalogTaskResolve'
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
 import {
@@ -270,7 +270,11 @@ export async function runGenerationNode(
 
   const now = Date.now()
   // 运行记录随原项目持久化（含 projectId）：找回/重启都只认它，不认「当时打开的是哪个」。
-  const run = { id: createRunId(id), status: 'queued' as const, startedAt: now, updatedAt: now, projectId: target.projectId }
+  // attempt = 这次发给哪家的哪个模型（提交那一刻从被执行的节点读出）：失败提示点名的是它，
+  // 健康记账记到的也是它——不是「失败时节点碰巧选着谁」（运行期间用户可以换家）。
+  // 花钱前的确认已冻结 (模型, 供应商)（captureApprovedGenerationInputs），重试循环里它不会中途变。
+  const attempt = dispatchedAttempt(initialNode)
+  const run = { id: createRunId(id), status: 'queued' as const, startedAt: now, updatedAt: now, projectId: target.projectId, ...(attempt ? { attempt } : {}) }
   let runFailure: unknown
   let progressDelivery: Promise<void> = Promise.resolve()
   let progressDeliveryFailure: unknown
@@ -359,7 +363,7 @@ export async function runGenerationNode(
         ?.assets?.autoSave?.({ url: result.url as string, suggestedName: title || undefined })
         .catch(() => undefined)
     }
-    if (landedInOpenProject) recordNodeModelSuccess(id)
+    if (landedInOpenProject) recordNodeModelSuccess(run.attempt)
     useGenerationQueueStore.getState().markSettled(batchId, id, 'success')
     if (landedInOpenProject) await persistActiveWorkbenchProjectNow().catch(() => {})
     return result
@@ -398,7 +402,7 @@ export async function runGenerationNode(
       useGenerationQueueStore.getState().markSettled(batchId, id, 'error', { error: blocked })
       throw error
     }
-    if (isRunTargetLoaded(target)) recordNodeModelFailure(id)
+    if (isRunTargetLoaded(target)) recordNodeModelFailure(run.attempt)
     // Store the RAW message (describeOpaqueFailure only fills in when there is none): NodeErrorReport
     // runs classifyGenerationError over it, and a plain string needs no persisted-shape migration.
     const rawMessage = describeOpaqueFailure(error)

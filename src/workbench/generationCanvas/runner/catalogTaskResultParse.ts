@@ -10,6 +10,7 @@ import type {
   GenerationResultType,
 } from '../model/generationCanvasTypes'
 import { asFiniteNumber, asTrimmedString, selectedModelKey } from './catalogTaskResolve'
+import { formatTaskFailureMessage } from './taskFailureMessage'
 import { readMediaDimensions, type MediaDimensions } from '../nodes/nodeSizing'
 
 // transcribe(Whisper) 也是「无 asset、文本在 raw」——同走文本支（raw.text 由 extractTextFromChatRaw 末尾捕获）。
@@ -83,12 +84,8 @@ function generationTypeForTask(taskKind: TaskKind): GenerationResultType {
  * （2026-07-30 用户真机报的就是它）。猜测逻辑已合并进主进程那个唯一读点。
  */
 function describeTaskFailure(result: TaskResultDto): string {
-  const suffix = [
-    result.id ? `taskId=${result.id}` : '',
-    result.kind ? `kind=${result.kind}` : '',
-  ].filter(Boolean).join(', ')
-  const prefix = asTrimmedString(result.error) || i18n.t('generationCommon.error.taskFailed')
-  return suffix ? `${prefix} (${suffix})` : prefix
+  // 格式的产出与解析成对住在 taskFailureMessage：分类器靠解析分清「供应商说的」与「我们自己的兜底句」。
+  return formatTaskFailureMessage(asTrimmedString(result.error), { taskId: result.id, kind: result.kind })
 }
 
 function readDurationSeconds(asset: { durationSeconds?: unknown } | null | undefined): number | undefined {

@@ -36,22 +36,6 @@ export const ROW_STATES: readonly LabState[] = [
     render: () => RowStage({ shot: { params: { aspect_ratio: '1:1' } } }),
   },
   {
-    id: 'sb-row-04-waiting-refs',
-    name: '行 · 等参考卡出图',
-    source: '合同 §3.1 waiting-refs',
-    coverage: 'shell',
-    render: () => RowStage({
-      shot: { anchorIds: ['a-linwei'], referenceBindings: {} },
-      exec: {
-        status: 'waiting-refs',
-        waitingRefs: [{
-          anchor: { id: 'a-linwei', kind: 'character', name: '林薇', description: '', carrier: 'visual' },
-          node: null,
-        }],
-      },
-    }),
-  },
-  {
     id: 'sb-row-05-missing-required',
     name: '行 · 缺必填参考（红）',
     source: '合同 §3.1 missing-required / §4.2 必填槽',

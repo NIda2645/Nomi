@@ -102,10 +102,10 @@ describe("Run-owned semantic generation submission", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "provider-task-1", raw: { accepted: true } }));
     const first = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -130,10 +130,10 @@ describe("Run-owned semantic generation submission", () => {
     const restartedSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-2" }));
     const restarted = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -155,10 +155,10 @@ describe("Run-owned semantic generation submission", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "provider-task-1" }));
     const first = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -181,10 +181,10 @@ describe("Run-owned semantic generation submission", () => {
     const restartedSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-2" }));
     const restarted = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       registry,
       provider: {
@@ -205,10 +205,10 @@ describe("Run-owned semantic generation submission", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "provider-task-observe-only" }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -230,10 +230,10 @@ describe("Run-owned semantic generation submission", () => {
     const query = vi.fn(async (providerTaskId: string) => ({ status: "processing", raw: { taskId: providerTaskId, progress: 42 } }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -263,7 +263,7 @@ describe("Run-owned semantic generation submission", () => {
   it("a fresh submission (re-kick / reopen / restart) polls with the durable model identity, never re-submits", async () => {
     const { root, repository } = setup();
     const deps = {
-      repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
+      repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
       intentMacKey: "test-intent-key", now: () => "2026-08-23T00:03:00.000Z",
     };
     const submit = vi.fn(async () => ({ providerTaskId: "provider-task-late" }));
@@ -296,10 +296,10 @@ describe("Run-owned semantic generation submission", () => {
     }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -343,10 +343,10 @@ describe("Run-owned semantic generation submission", () => {
     }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -381,10 +381,10 @@ describe("Run-owned semantic generation submission", () => {
     const materializeOutput = vi.fn();
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -406,14 +406,21 @@ describe("Run-owned semantic generation submission", () => {
 
   it("can resume after a crash before dispatch only with an explicit not-submitted disposition", async () => {
     const { root, repository } = setup();
-    const beforeDispatch = vi.fn(() => { throw new Error("crash before dispatch"); });
+    // 进程恰好在「提交意向已落盘、还没开始提交」这一刻倒下：写 submitting 的那一笔没有发生。
+    // （以前拿 beforeDispatch 抛错模拟这一刻；它现在是准入闸，排在第一笔耐久写之前，抛错时什么都还没写。）
+    const crashing = {
+      ...repository,
+      execute: (projectId: string, runId: string, command: Parameters<typeof repository.execute>[2]) => {
+        if (command.type === "job.status" && command.payload.status === "submitting") throw new Error("crash before dispatch");
+        return repository.execute(projectId, runId, command);
+      },
+    };
     const firstSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-1" }));
     const first = createProductionGenerationSubmission({
-      repository,
+      repository: crashing,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -421,7 +428,7 @@ describe("Run-owned semantic generation submission", () => {
         buildRequest: (input) => input,
         submit: firstSubmit,
       },
-      beforeDispatch,
+      beforeDispatch: () => undefined,
       now: () => "2026-08-23T00:00:00.000Z",
     });
     await expect(first.start({ projectId: "project-1", operationId: "op-1" })).rejects.toThrow("crash before dispatch");
@@ -431,10 +438,10 @@ describe("Run-owned semantic generation submission", () => {
     const secondSubmit = vi.fn(async () => ({ providerTaskId: "provider-task-1" }));
     const resumed = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -453,10 +460,10 @@ describe("Run-owned semantic generation submission", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "should-not-run" }));
     const runner = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider: {
         providerId: "fixture-provider",
@@ -482,10 +489,10 @@ describe("Run-owned semantic generation submission", () => {
     };
     const first = createProductionGenerationSubmission({
       repository,
+      beforeDispatch: () => undefined,
       projectRoot: root,
       immutableProjectUuid: "project-uuid-1",
       projectGeneration: 1,
-      projectRevision: 0,
       intentMacKey: "test-intent-key",
       provider,
       afterProviderAcceptance: () => { throw new Error("receipt lost after acceptance"); },
@@ -513,8 +520,7 @@ describe("historical batch observation", () => {
     const submit = vi.fn(async () => ({ providerTaskId: "historical-task" }));
     const materializeOutput = vi.fn(async (_input: { contract: unknown }) => ({ artifactId: "historic-artifact", kind: "image" as const, contentHash: "hash", projectRelativePath: "out.png" }));
     const submission = createProductionGenerationSubmission({
-      repository, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
-      intentMacKey: "test-intent-key", now: () => "2026-08-23T00:00:00.000Z", materializeOutput,
+      repository, beforeDispatch: () => undefined, projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", now: () => "2026-08-23T00:00:00.000Z", materializeOutput,
       provider: { providerId: "fixture-provider", capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },
         buildRequest: input => input, submit, query: async () => ({ status: "succeeded", raw: {} }),
         materialize: async () => ({ outputs: [{ kind: "image", url: "https://fixture.invalid/out.png" }] }) },

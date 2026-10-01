@@ -71,13 +71,6 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
       "i2v": "image_to_video"
     }
   },
-  "sora-2": {
-    "defaultModeId": "t2v",
-    "modes": {
-      "t2v": "text_to_video",
-      "i2v": "image_to_video"
-    }
-  },
   "veo-3.1": {
     "defaultModeId": "t2v",
     "modes": {
@@ -265,13 +258,6 @@ export const ARCHETYPE_MODE_MANIFEST: Record<string, { defaultModeId: string; mo
     }
   },
   "rh-hailuo-2.3": {
-    "defaultModeId": "text",
-    "modes": {
-      "text": "text_to_video",
-      "image": "image_to_video"
-    }
-  },
-  "rh-sora-2": {
     "defaultModeId": "text",
     "modes": {
       "text": "text_to_video",

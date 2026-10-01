@@ -259,6 +259,8 @@ export const zhGenerationCommon = {
   observability: {
     // 错误卡的动作按钮。main = 当主按钮时的说法，alt = 降为次要小字时的说法。
     action: {
+      reconcile: { main: '去对账', alt: '先去对账' },
+      viewTask: { main: '查看制作任务', alt: '去看制作任务' },
       retry: { main: '重试', alt: '仍要重试' },
       switchModel: { main: '换个模型', alt: '换个模型' },
       modelAccess: { main: '检查模型', alt: '检查模型' },
@@ -318,11 +320,11 @@ export const zhGenerationCommon = {
       },
       modelUnavailableUpstream: {
         reason: '这个模型服务商这边取不到',
-        hint: '服务商上游回的是「该模型不存在」。这次失败不计费。',
+        hint: '服务商回复说这个模型现在用不了（已下线或不存在）。重试没用，换个模型就能继续。',
       },
       modelRetired: {
         reason: '这个模型已经下线了',
-        hint: '它在服务商那边一直失败，我们把它从模型列表里移除了。换一个模型就能继续。',
+        hint: '它已经不在模型列表里了，重试也用不了。换个模型就能继续。',
       },
       accountGate: {
         reason: '账号权限不足',
@@ -370,12 +372,27 @@ export const zhGenerationCommon = {
         reason: '输出超长被截断',
         hint: '这一轮要返回的内容超过了模型的单轮输出上限，原样重试只会再次截断。请缩短这轮任务（如剧本分段拆镜头、减少镜头数），或换单轮输出上限更大的模型。',
       },
+      // 结果已经送达，读不出来发生在 Nomi 这一侧：不说「服务商失败」、不劝换一家、不替它声明计不计费。
+      outputUnreadable: {
+        reason: '生成的文件没能读出来',
+        hint: '服务商已经把结果发回来了，但 Nomi 没能读取这个文件（可能没传完整、文件损坏、格式暂不支持，或返回的根本不是图片 / 视频）。可以重试一次；反复出现请点「反馈问题」，把技术详情发给我们。',
+      },
+      // 认不出的失败如实说「认不出」：不编原因（不是「服务商临时故障」，更不是「额度」——今天没有价格，猜额度只会把人引去查账）。
+      // 服务商给了错误码就带上码（hintWithCode）；原文和完整报文留在「技术详情」里。重试 / 换模型是动作建议，不是对原因的判断。
       unknown: {
         reason: '生成失败',
-        hint: '可能是服务商临时故障或额度问题，建议稍等重试，或换一个模型。',
+        hint: 'Nomi 没能认出这次失败的原因，所以不去猜。完整的原始报文留在错误卡的「技术详情」里；可以重试一次，或换一个模型。',
+        hintWithCode: 'Nomi 没能认出这次失败的原因，所以不去猜。服务商给的错误码是 {{code}}，完整的原始报文留在错误卡的「技术详情」里；可以重试一次，或换一个模型。',
       },
       opaque: {
         detail: '这次生成结束时没有带回任何错误信息——这是 Nomi 这侧的缺口，不是你的操作问题。请用这张卡片上的「反馈此问题」把它发给我们，技术详情里是我们目前能拿到的全部线索。',
+      },
+      shotClaimed: {
+        generic: { reason: '这一镜由制作流程持有', hint: '请先查看制作任务状态，再决定下一步。' },
+        queued: { reason: '这一镜已在制作流程中排队', hint: '请先等制作流程完成，或去任务中心查看进度。' },
+        awaitingConfirmation: { reason: '这一镜在等待付费确认', hint: '请先完成制作流程的付费卡确认，再从画布生成。' },
+        inFlight: { reason: '这一镜制作流程已经在生成了', hint: '请先等待当前制作任务完成，不要再次提交。' },
+        needsReconcile: { reason: '这一镜可能已经提交并扣费', hint: '请去任务中心对账，先确认原制作任务的状态，不要重新生成。' },
       },
       webMedia: {
         reason: '网页媒体下载失败',
@@ -1218,7 +1235,7 @@ export const zhGenerationCommon = {
       directionGate: '方向定了才会拟分镜。这一步不调用模型，也不花钱。',
       sampleGate: '先看这一镜样片：满意就继续剩下的镜头，不满意只亏这一镜的钱。',
       shotGate: '第 {{index}} 镜（{{node}}）将用 {{provider}} · {{model}} 提交。批准前不会调用供应商，也不会产生这镜的费用。',
-      checkpointGate: '定妆照先出好了——过目后按已批预算开拍，这一步不新增花费。不满意哪张就重拍哪张。',
+      checkpointGate: '定妆照先出好了——过目后就开拍你已经确认过的那几镜，这一步不新增花费。不满意哪张就重拍哪张。',
       exportGate: '导出会把粗剪合成成片；这一步由你明确批准后才执行。',
       needsAttention: '自动流程已经暂停，请查看当前镜头或阶段并处理失败原因。',
       providerStale: 'Nomi 仍会查询已有任务，但不会因为等待过久而重复提交。',
@@ -1329,8 +1346,9 @@ export const zhGenerationCommon = {
       viewLarge: '查看大图：{{name}}',
       stillAlt: '{{name}} 的定妆照',
       stillLargeAlt: '定妆照大图',
-      budgetUnknown: '已批准的',
-      note: '确认后按已批准的 {{budget}} 预算开拍 {{count}} 镜——这一步不新增花费。不满意哪张就重拍哪张，只花那一张的钱。',
+      // 说明行按「有没有已知金额」分两句：今天价格未知，金额一个字都不提（以前拼成「按已批准的 已批准的 预算开拍」）。
+      note: '确认后开拍 {{count}} 镜——都是你已经确认过的，这一步不新增花费。不满意哪张就重拍哪张，只花那一张的钱。',
+      noteWithBudget: '确认后按已批准的 {{budget}} 开拍 {{count}} 镜——这一步不新增花费。不满意哪张就重拍哪张，只花那一张的钱。',
       defer: '先不拍',
       approve: '形象都对，开拍 {{count}} 镜',
       reworkSelected: '先重拍选中的，再回来过目',
@@ -1424,17 +1442,48 @@ export const zhGenerationCommon = {
       groupName: '分镜组·{{name}}',
       groupFallbackName: '分镜组',
       shotFallbackTitle: '镜头 {{shot}}',
+      // 没点就不叫排队中：卡正摆着它 → 等你确认；从没被批过、也没人在问 → 还没生成（都不转圈）。
+      awaitingConfirmation: '等你确认',
+      notGenerated: '还没生成',
       queued: '排队中',
       queuedNth: '排队中 · 第 {{index}}/{{total}}',
       stoppedBudget: '预算已用完，这镜还没开拍。提额后可继续拍剩下的。',
       stoppedManual: '已停止剩余镜头。想继续可从这里接着拍。',
+      // 已停的另外几种真实原因（2026-09-29：以前一律说成「预算已用完」）。没有能按的「继续」时，文案里说清能做什么。
+      stoppedAfterFailure: '前面有镜头没生成成功，这一镜还没开拍。选中它可以单独生成，或在任务面板取消这次制作。',
+      stoppedForRecovery: 'Nomi 重启后要先核对之前在跑的镜头，这一镜还没开拍。打开任务面板核对。',
+      stoppedCancelled: '这次制作已取消，这一镜没有开拍。选中它可以单独生成。',
+      // 上一版留下的、没记停下原因的制作：不猜原因，只说停了。
+      stoppedUnknown: '这次制作停下了，这一镜还没开拍。想继续可从这里接着拍。',
       raiseBudget: '提额续拍',
       continueRemaining: '继续剩余',
-      // P4 S6 返工/续拍的人话反馈（按结构化结果 code 翻译，禁拼串穿透 i18n 门）。
-      rework: {
-        noPriorAttempt: '这一镜还没生成过，先让它正常开拍',
-        unavailable: '暂时用不了，请稍后再试',
-        failed: '操作没成功，请稍后再试',
+      // 用户删掉占位节点、但这件事没能记进制作流程：被删的那一镜可能照样生成并计费。动作 = 打开任务面板（暂停 / 取消）。
+      detachFailed: '删掉的镜头没能从制作流程里撤下，它可能照样生成并计费。打开任务面板可以暂停或取消这次制作。',
+      // 返工 / 续拍没做成：每一种结构化的码一句人话——怎么了、钱怎么样了、能做什么（productionShotActions.ts 的表，
+      // 穷尽，没有兜底句；主进程原话只进日志）。这几步都在交给供应商之前，所以凡是没做成的都没有扣费。
+      actionFailure: {
+        requestInvalid: '这一镜的制作记录不完整（缺批次或镜头编号），没法从这里重做。选中它可以在画布上单独生成。',
+        bridgeUnavailable: '这个窗口连不上 Nomi 桌面端，这里做不了这一步。',
+        coreStarting: 'Nomi 的生成功能还在启动，过几秒再点一次。',
+        runNotOpen: '这个项目现在没打开，打开它再点一次。',
+        runMissing: '这一批的制作记录已经不在了，没法接着做。选中镜头可以在画布上单独生成。',
+        runUnreadable: '这一批的制作记录读不出来（文件可能损坏，或正被别的程序占用），这次没做成、没有扣费。关掉占用它的程序后再点一次。',
+        notMultishot: '这个节点不是多镜批次里的镜头，直接在节点上重新生成就行。',
+        projectUnavailable: '读不到这个项目的信息（项目文件夹可能被移动过），这次没做成、没有扣费。重开项目后再点一次。',
+        confirmationUnavailable: '这个窗口弹不出付费确认，这次没有开拍、没有扣费。回到 Nomi 主窗口再点一次。',
+        providerUnavailable: '这一镜用的模型现在接不上供应商（连接被删了，或 Key 没配好），这次没有开拍。到「模型接入」接好后再点一次。',
+        noPriorAttempt: '这一镜还没生成过，先让它正常开拍。',
+        previousAttemptUnsettled: '这一镜上一次还没出结果，等它出来再重做。',
+        queuedShotsPending: '还有镜头在排队，这一镜现在不能单独重做。可以选中它在画布上单独生成，或在任务面板取消这次制作。',
+        attemptLimit: '这一镜已经重做到上限了。可以选中它在画布上单独生成。',
+        runChanged: '这一批刚好有别的更新，这次没做成、没有扣费。再点一次。',
+        approvalStale: '确认的时候项目刚好有变动，这次没有开拍、没有扣费。再点一次，重新确认。',
+        approvalExpired: '确认框放太久已经失效，这次没有开拍、没有扣费。再点一次。',
+        runFinished: '这次制作已经结束了，没有能继续的镜头。',
+        notStopped: '这一批现在没有停着，不用继续。',
+        planNotSubmitted: '这份方案还没开拍，先在 Agent 面板里确认生成。',
+        ledgerWriteFailed: '没能把这一步写进项目记录（磁盘满了，或项目文件夹不能写入），这次没做成、没有扣费。腾出空间或检查权限后再点一次。',
+        internalError: '这是 Nomi 自己的问题：这一步没做成，没有扣费，错误已记进日志。可以从「反馈与分享」把它发给我们。',
       },
     },
     // 逐镜降级：从 S2 的结构化 code 翻人话徽标（禁拼串穿透 i18n 门）。
@@ -1480,6 +1529,13 @@ export const zhGenerationCommon = {
     otherProjectTask: '无法在这里找回：这条任务属于另一个项目，请回到发起它的项目里重新拉取。',
     retrievingResult: '正在重新拉取结果…',
     stillUpstream: '任务仍在上游进行，请稍后再次拉取。',
+  },
+  // 生成的某一步等不到回音、到点收场时的说法（runner/generationPhaseDeadline）。每句都说清钱在哪、下一步是什么。
+  phaseDeadline: {
+    resultSilent: '查结果等了 {{minutes}} 分钟没有回音，已停止等待。任务可能已在上游完成，可以免费重新拉取。',
+    savingSilent: '存到本机 {{minutes}} 分钟没有完成，已停止等待。可以免费重新拉取结果。',
+    stalledUncharged: '这一步 {{minutes}} 分钟没有任何进展，已停止等待。请求还没发给服务商、没有扣费，可以直接重试。',
+    stalledMaybeCharged: '提交后 {{minutes}} 分钟没有收到服务商回执，已停止等待。这次提交可能已被受理并扣费——重新生成前，请先到服务商后台核对。',
   },
   agentRuntime: {
     shotTitle: '镜头 {{index}}',
@@ -1755,6 +1811,8 @@ export const enGenerationCommon = {
   },
   observability: {
     action: {
+      reconcile: { main: 'Reconcile task', alt: 'Check task center' },
+      viewTask: { main: 'View production task', alt: 'Open task center' },
       retry: { main: 'Retry', alt: 'Retry anyway' },
       switchModel: { main: 'Switch model', alt: 'Switch model' },
       modelAccess: { main: 'Check models', alt: 'Check models' },
@@ -1812,11 +1870,11 @@ export const enGenerationCommon = {
       },
       modelUnavailableUpstream: {
         reason: 'The provider cannot reach this model',
-        hint: 'The provider upstream reports that this model does not exist. This failure is not billed.',
+        hint: 'The provider says this model is not available (retired or gone). Retrying will not help — switch to another model.',
       },
       modelRetired: {
         reason: 'This model has been removed',
-        hint: 'It kept failing at the provider, so we took it out of the model list. Pick another model to continue.',
+        hint: "It's no longer in the model list, so retrying won't help. Switch to another model to continue.",
       },
       accountGate: {
         reason: 'Insufficient account access',
@@ -1867,12 +1925,24 @@ export const enGenerationCommon = {
         reason: 'Output truncated',
         hint: 'The response exceeded the model’s output limit. Shorten the task or choose a model with a larger output limit.',
       },
+      outputUnreadable: {
+        reason: 'The generated file could not be read',
+        hint: 'The provider sent the result back, but Nomi could not read the file (it may be incomplete or damaged, in an unsupported format, or not an image / video at all). You can try once more; if it keeps happening, click “Report Issue” and send us the technical details.',
+      },
       unknown: {
         reason: 'Generation failed',
-        hint: 'The provider may be temporarily unavailable or out of credit. Try again later or choose another model.',
+        hint: 'Nomi could not tell what caused this failure, so it will not guess. The full original response is kept under “Technical details” on the error card. You can retry once, or choose another model.',
+        hintWithCode: 'Nomi could not tell what caused this failure, so it will not guess. The provider’s error code is {{code}}; the full original response is kept under “Technical details” on the error card. You can retry once, or choose another model.',
       },
       opaque: {
         detail: "This generation ended without carrying back any error information - that is a gap on Nomi's side, not something you did. Use \"Report this problem\" on this card to send it to us; the technical details hold everything we currently have.",
+      },
+      shotClaimed: {
+        generic: { reason: 'This shot is owned by the production workflow', hint: 'Check the production task status before deciding what to do next.' },
+        queued: { reason: 'This shot is queued in the production workflow', hint: 'Wait for production to finish, or check its progress in the task center.' },
+        awaitingConfirmation: { reason: 'This shot is waiting for payment confirmation', hint: 'Confirm the production payment card before generating it from the canvas.' },
+        inFlight: { reason: 'This shot is already being generated by production', hint: 'Wait for the current production task to finish instead of submitting it again.' },
+        needsReconcile: { reason: 'This shot may already be submitted and charged', hint: 'Reconcile the original production task in the task center before generating it again.' },
       },
       webMedia: {
         reason: 'Web media download failed',
@@ -2698,7 +2768,7 @@ export const enGenerationCommon = {
       directionGate: 'The storyboard is drafted only after the direction is set. This step calls no model and costs nothing.',
       sampleGate: 'Check this one sample shot: approve to continue the rest, or stop and only lose this shot.',
       shotGate: 'Shot {{index}} ({{node}}) will use {{provider}} · {{model}}. No provider call or charge for this shot occurs before approval.',
-      checkpointGate: 'The character stills are ready — review them, then shoot within the budget you already approved. This step adds no cost; reshoot any still you do not like.',
+      checkpointGate: 'The character stills are ready — review them, then shoot the shots you already confirmed. This step adds no cost; reshoot any still you do not like.',
       exportGate: 'Exporting assembles the rough cut into the final file; it runs only after you approve.',
       needsAttention: 'Automation is paused. Open the current shot or stage to resolve the failure.',
       providerStale: 'Nomi will keep checking the existing task without resubmitting it because of the delay.',
@@ -2808,8 +2878,10 @@ export const enGenerationCommon = {
       viewLarge: 'View larger: {{name}}',
       stillAlt: 'Character Still',
       stillLargeAlt: 'Character still, enlarged',
-      budgetUnknown: 'the approved',
-      note: 'On confirm, Nomi shoots {{count}} shots within the approved {{budget}} budget — this step adds no cost. Reshoot any you do not like; you only pay for that one.',
+      // The note has two versions depending on whether an amount is known: prices are unknown today, so no amount is mentioned
+      // (it used to read "within the approved the approved budget").
+      note: 'On confirm, Nomi shoots {{count}} shots — all ones you already confirmed, so this step adds no cost. Reshoot any you do not like; you only pay for that one.',
+      noteWithBudget: 'On confirm, Nomi shoots {{count}} shots within the approved {{budget}} — this step adds no cost. Reshoot any you do not like; you only pay for that one.',
       defer: 'Not yet',
       approve: 'Looks right — shoot {{count}} shots',
       reworkSelected: 'Reshoot the selected ones first',
@@ -2903,17 +2975,50 @@ export const enGenerationCommon = {
       groupName: 'Shot group · {{name}}',
       groupFallbackName: 'Shot group',
       shotFallbackTitle: 'Shot {{shot}}',
+      // Not clicked means not queued: on the card → waiting for the user; never approved and nobody asking → not generated.
+      awaitingConfirmation: 'Waiting for you',
+      notGenerated: 'Not generated',
       queued: 'Queued',
       queuedNth: 'Queued · {{index}}/{{total}}',
       stoppedBudget: 'Budget ran out before this shot. Raise it to keep filming the rest.',
       stoppedManual: 'Remaining shots stopped. Continue filming from here.',
+      // The other real reasons a run stops (2026-09-29: all of them used to read as "budget ran out"). Without a working
+      // "continue", the sentence itself says what the user can do.
+      stoppedAfterFailure: 'An earlier shot failed, so this one hasn\'t started. Select it to generate it on its own, or cancel the run in Tasks.',
+      stoppedForRecovery: 'After restarting, Nomi has to check the shots that were running, so this one hasn\'t started. Open Tasks to check them.',
+      stoppedCancelled: 'This run was cancelled before this shot started. Select it to generate it on its own.',
+      // A run from the previous version that never recorded why it stopped: say it stopped, never guess why.
+      stoppedUnknown: 'This run stopped before this shot started. Continue filming from here.',
       raiseBudget: 'Raise budget',
       continueRemaining: 'Continue remaining',
-      // P4 S6 rework/resume plain-language feedback (translated by structured result code — never a raw string).
-      rework: {
-        noPriorAttempt: 'This shot hasn\'t been generated yet — let it film first',
-        unavailable: 'Not available right now, please try again later',
-        failed: 'That didn\'t work, please try again later',
+      // The user deleted a placeholder but the production run never recorded it: that shot may still generate and bill.
+      detachFailed: 'The deleted shot could not be withdrawn from the production run, so it may still generate and bill. Open Tasks to pause or cancel the run.',
+      // Rework / resume did not go through: one sentence per structured code - what happened, what it cost, what to do
+      // (productionShotActions.ts, exhaustive, no catch-all line; raw main-process text stays in the log). All of these steps
+      // happen before anything reaches a provider, so nothing that failed here was charged.
+      actionFailure: {
+        requestInvalid: 'This shot\'s production record is incomplete (its run or shot id is missing), so it can\'t be redone from here. Select it to generate it on the canvas.',
+        bridgeUnavailable: 'This window isn\'t connected to the Nomi desktop app, so this can\'t be done here.',
+        coreStarting: 'Nomi\'s generation is still starting up. Try again in a few seconds.',
+        runNotOpen: 'This project isn\'t open. Open it and try again.',
+        runMissing: 'This run\'s production record is gone, so it can\'t continue. Select a shot to generate it on the canvas.',
+        runUnreadable: 'Couldn\'t read this run\'s production record (the file may be damaged or locked by another program). Nothing was done or charged. Close whatever is using it and try again.',
+        notMultishot: 'This node isn\'t a shot in a multi-shot batch. Regenerate it directly on the node.',
+        projectUnavailable: 'Couldn\'t read this project\'s details (its folder may have moved). Nothing was done or charged. Reopen the project and try again.',
+        confirmationUnavailable: 'This window can\'t show the spend confirmation, so nothing started and nothing was charged. Try again from the main Nomi window.',
+        providerUnavailable: 'This shot\'s model can\'t reach a provider right now (the connection was removed or its key isn\'t set), so nothing started. Reconnect it in Model Access, then try again.',
+        noPriorAttempt: 'This shot hasn\'t been generated yet. Let it film first.',
+        previousAttemptUnsettled: 'This shot\'s last attempt hasn\'t finished. Wait for it before redoing.',
+        queuedShotsPending: 'Other shots are still queued, so this one can\'t be redone on its own yet. Select it to generate it on the canvas, or cancel the run in Tasks.',
+        attemptLimit: 'This shot has reached its redo limit. Select it to generate it on the canvas.',
+        runChanged: 'This run just changed, so this didn\'t go through and nothing was charged. Try again.',
+        approvalStale: 'The project changed while you were confirming, so nothing started and nothing was charged. Try again and confirm once more.',
+        approvalExpired: 'The confirmation expired, so nothing started and nothing was charged. Try again.',
+        runFinished: 'This run has finished; there are no shots left to continue.',
+        notStopped: 'This run isn\'t stopped, so there\'s nothing to continue.',
+        planNotSubmitted: 'This plan hasn\'t started yet. Confirm it in the Agent panel first.',
+        ledgerWriteFailed: 'Couldn\'t save this step to the project record (the disk is full or the project folder isn\'t writable). Nothing was done or charged. Free up space or check permissions, then try again.',
+        internalError: 'This is a problem in Nomi itself: the step didn\'t go through and nothing was charged. The error is in the log - you can send it to us from Feedback & share.',
       },
     },
     // Per-shot degradation: translate S2 structured code into a plain-language badge (never a raw string).
@@ -2958,6 +3063,15 @@ export const enGenerationCommon = {
     otherProjectTask: 'This task belongs to another project. Open the project that started it to retrieve the result.',
     retrievingResult: 'Retrieving the result again…',
     stillUpstream: 'The task is still running upstream. Try retrieving it again later.',
+  },
+  phaseDeadline: {
+    resultSilent:
+      'The result check got no answer for {{minutes}} min, so Nomi stopped waiting. The task may have finished upstream; retrieve it again for free.',
+    savingSilent: 'Saving to this computer did not finish in {{minutes}} min, so Nomi stopped waiting. Retrieve the result again for free.',
+    stalledUncharged:
+      'This step made no progress for {{minutes}} min, so Nomi stopped waiting. Nothing was sent to the provider and nothing was charged; you can retry.',
+    stalledMaybeCharged:
+      'No receipt from the provider {{minutes}} min after submitting, so Nomi stopped waiting. The submission may have been accepted and charged. Check the provider dashboard before generating again.',
   },
   agentRuntime: {
     shotTitle: 'Shot {{index}}',

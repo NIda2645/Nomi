@@ -31,6 +31,7 @@ import { builtinVendorSeed, builtinVendorScopeMatches } from './builtinVendorSee
 import { credentialProbePlan } from './credentialProbePolicy'
 import { confirmCredentialProbeSpend } from './credentialProbeConfirm'
 import { hasBuiltinCuratedExecution } from './seedBuiltins'
+import { isCertificationOwnedConnection } from './certificationOwnership'
 import { buildHttpRequest, appendQueryParams } from '../ai/requestPipeline'
 import { readNestedRecord } from '../jsonUtils'
 import { appFetch } from '../appFetch'
@@ -108,13 +109,6 @@ export async function probeDirectKeyCredential(vendor: Vendor, apiKey: string, o
   }
 }
 
-function hasCertificationOwnedAdapter(state: Parameters<typeof hasBuiltinCuratedExecution>[0], vendorKey: string): boolean {
-  const hasAdapter = (meta: unknown): boolean => Boolean(meta && typeof meta === 'object' && !Array.isArray(meta)
-    && Object.prototype.hasOwnProperty.call(meta, 'adapter'))
-  return state.vendors.some((vendor) => vendor.key === vendorKey && hasAdapter(vendor.meta))
-    || state.models.some((model) => model.vendorKey === vendorKey && hasAdapter(model.meta))
-}
-
 /**
  * 把这家内置供应商重新置为已发布（凭据存下来之后调用）。
  *
@@ -131,7 +125,7 @@ export function publishBuiltinCuratedVendor(vendorKey: string): void {
   mutateCatalog((_tx, current) => {
     const vendor = current.vendors.find((item) => item.key === vendorKey)
     if (!vendor || vendor.enabled) return
-    if (hasCertificationOwnedAdapter(current, vendorKey)) return
+    if (isCertificationOwnedConnection(current, vendorKey)) return
     if (!builtinVendorScopeMatches(vendor)) return
     if (!hasBuiltinCuratedExecution(current, vendorKey)) return
     vendor.enabled = true

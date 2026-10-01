@@ -39,11 +39,22 @@ import { localizeRemoteResultUrl } from './resultAssetLocalization'
 import {
   LocalTaskCancelledError,
   isTaskCancelRequested,
+  onTaskCancelRequested,
   unwatchComfyuiProgress,
   watchComfyuiProgress,
 } from './localTaskControl'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
-import { RecoverableTimeoutError } from './recoverableTimeout'
+import { productionMetaOf } from '../model/productionMeta'
+import { RecoverableTimeoutError, isRecoverableTimeoutError, type RecoverableTimeoutDetail } from './recoverableTimeout'
+import {
+  awaitUnlessCancelled,
+  awaitWithinPhase,
+  createPhaseClock,
+  describePhaseSilence,
+  isGenerationPhaseStalledError,
+  type PhaseClock,
+  type PhaseWaitGuard,
+} from './generationPhaseDeadline'
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
 import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
 import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
@@ -319,8 +330,11 @@ export function buildCatalogTaskRequest(
   const cfgScale = asFiniteNumber(meta.cfgScale)
   const seed = asFiniteNumber(meta.seed)
   const referenceExtras = buildReferenceExtras(meta, references)
+  const productionMeta = productionMetaOf(node)
   const extras = {
     ...meta,
+    ...(productionMeta?.runId ? { productionRunId: productionMeta.runId } : {}),
+    ...(productionMeta?.shotId ? { productionShotId: productionMeta.shotId } : {}),
     modelKey,
     modelAlias: asTrimmedString(meta.modelAlias) || modelKey,
     nodeId: node.id,
@@ -370,6 +384,8 @@ async function waitForCatalogTaskResult(
   request: TaskRequestDto,
   initialResult: TaskResultDto,
   options: CatalogTaskRunOptions,
+  guard: PhaseWaitGuard,
+  receipt: RecoverableTimeoutDetail,
 ): Promise<TaskResultDto> {
   if (TERMINAL_STATUSES.has(initialResult.status)) return initialResult
   // 基准间隔按后端分档（慢道 3s / 快道 1.5s，见 resolvePollIntervalMs）；每轮实际等待还要叠
@@ -390,14 +406,11 @@ async function waitForCatalogTaskResult(
   // 且查结果失败【绝不】能冒泡出去——否则会落进外层 runGenerationNode 的重试循环重新 runTask 二次扣费
   // (单确认最多 ×3/节点、批量再乘节点数 = 用户报「平台冒出很多视频、被扣费」的根因)。查结果是免费的：
   // 抖动就免费重试查询；持续失败超 grace(或到硬超时) → 落可找回态(不重发)。recoverable 在外层不触发重试。
-  const recoverableTimeout = () => new RecoverableTimeoutError({
-    taskId: initialResult.id,
-    vendor,
-    taskKind: request.kind,
-    modelKey: asTrimmedString(request.extras?.modelKey),
-  })
+  // 落可找回时，最后一次查结果若是失败的，把那次失败原样交出去（它说得出下一步），不一律说「超时」。
+  const recoverableTimeout = (lastError?: unknown) => new RecoverableTimeoutError(receipt, { lastError })
   let current = initialResult
   let pollFailureStreakStartedAt: number | null = null
+  let lastPollError: unknown
   // 连续被限流的次数 → 指数退避的指数。查成功或换成别的失败原因即复位。
   let rateLimitStreak = 0
   const cancelNodeId = asTrimmedString(request.extras?.nodeId)
@@ -407,38 +420,46 @@ async function waitForCatalogTaskResult(
     const elapsedMs = Date.now() - startedAt
     if (elapsedMs > hardTimeoutMs) {
       // 超时≠失败：上游可能仍在跑/已出片 → 抛可找回错误，节点落 recoverable，给「重新拉取」入口。
-      throw recoverableTimeout()
+      // 最后一次查结果成功（只是还没跑完）时 lastPollError 已清空，这才是真的「超时」。
+      throw recoverableTimeout(lastPollError)
     }
     // S2:每个轮询 tick 回报进度(人话 + 已等秒数),不再静默吞掉 status。软超时后切「仍在生成·已超常规时长」。
+    // 这一报同时给阶段时钟重新起算：下面这一次查结果的时限从这里开始（generationPhaseDeadline）。
     const overSoft = elapsedMs > softTimeoutMs
     options.onProgress?.({
       phase: overSoft ? 'still-generating' : 'generating',
       message: narrateProgress(overSoft ? 'still-generating' : 'generating', { elapsedMs }),
       taskId: initialResult.id,
     })
-    await delay(nextPollDelayMs(pollIntervalMs, rateLimitStreak, options.pollRandom))
+    await awaitUnlessCancelled(delay(nextPollDelayMs(pollIntervalMs, rateLimitStreak, options.pollRandom)), guard.cancelled)
     try {
-      const response = await fetchResult({
+      // 这次查结果有时限（这一格的时限；主进程开始落地时换成落地的时限），用户点停止也立刻不再等。
+      const response = await awaitWithinPhase(fetchResult({
         taskId: initialResult.id,
         vendor,
         taskKind: request.kind,
         prompt: request.prompt,
         modelKey: asTrimmedString(request.extras?.modelKey) || null,
         projectId: options.projectTarget.projectId,
-      })
+      }), guard)
       if (cancelNodeId && isTaskCancelRequested(cancelNodeId)) throw new LocalTaskCancelledError()
       current = response.result
       pollFailureStreakStartedAt = null // 查成功 → 重置失败连击计数
+      lastPollError = undefined
       rateLimitStreak = 0
     } catch (error) {
       if (error instanceof LocalTaskCancelledError) throw error
+      // 时限到了（这次查结果一直没回音）：已经是结论，不当成一次可以再查的抖动——
+      // 再发一次只会在同一个卡住的地方再压一个请求。
+      if (isRecoverableTimeoutError(error) || isGenerationPhaseStalledError(error)) throw error
       // 查结果失败：免费重试(下一轮再查)，绝不冒泡触发重发。持续失败超 grace 或已到硬超时 → 落可找回。
       // 被限流才累计退避；别的失败（网络抖动等）复位，否则一次抖动就把间隔滚上去、白拖出片。
       rateLimitStreak = isRateLimitedPollError(error) ? rateLimitStreak + 1 : 0
+      lastPollError = error
       const now = Date.now()
       if (pollFailureStreakStartedAt == null) pollFailureStreakStartedAt = now
       if (now - pollFailureStreakStartedAt > POLL_FAILURE_GRACE_MS || now - startedAt > hardTimeoutMs) {
-        throw recoverableTimeout()
+        throw recoverableTimeout(error)
       }
       // 仍在 grace 内：回报「仍在生成」(对用户=后台还在等)，继续下一轮免费查询。
       options.onProgress?.({
@@ -455,24 +476,41 @@ export function runCatalogGenerationTask(
   node: GenerationCanvasNode,
   options: CatalogTaskRunOptions,
 ): Promise<GenerationNodeResult> {
+  // 这次运行的阶段时钟：每一次报进度都经过它（含主进程「开始落地」的广播），
+  // 每一个等主进程的 await 都照它设时限（generationPhaseDeadline）。
+  const clock = createPhaseClock()
+  const onProgress: NonNullable<CatalogTaskRunOptions['onProgress']> = (progress) => {
+    clock.report(progress.phase)
+    options.onProgress?.(progress)
+  }
   return withAssetLocalizationFeedback({
     projectId: options.projectTarget.projectId, nodeId: node.id,
     subscribe: getDesktopBridge()?.assets?.onLocalizationStarted,
-    report: () => options.onProgress?.({ phase: 'finalizing', message: narrateProgress('finalizing') }),
-  }, () => runCatalogGenerationTaskWithFeedback(node, options))
+    report: () => onProgress({ phase: 'finalizing', message: narrateProgress('finalizing') }),
+  }, () => runCatalogGenerationTaskWithFeedback(node, { ...options, onProgress }, clock))
 }
 
 async function runCatalogGenerationTaskWithFeedback(
   node: GenerationCanvasNode,
   options: CatalogTaskRunOptions,
+  clock: PhaseClock,
 ): Promise<GenerationNodeResult> {
   const projectId = options.projectTarget.projectId
+  // 服务商受理的回执（taskId）。拿到之前阶段到期只能诚实失败；拿到之后到期落「可找回」（免费重新拉取）。
+  let receipt: RecoverableTimeoutDetail | null = null
+  const guard: PhaseWaitGuard = {
+    clock,
+    cancelled: (stop) => onTaskCancelRequested(node.id, () => stop(new LocalTaskCancelledError())),
+    recoverable: (phase, stalledMs) => receipt
+      ? new RecoverableTimeoutError(receipt, { message: describePhaseSilence(phase, stalledMs) })
+      : null,
+  }
   // S2 进度报告:每个阶段说人话(narrate 注册表),治"卡 30 秒像死了"(bug② 根因之一:
   // 此前轮询拿到 status 后随手丢弃,且无任何阶段回报)。
   const report = (phase: GenerationProgressPhase, taskId?: string, ctx?: ProgressNarrationContext) =>
     options.onProgress?.({ phase, message: narrateProgress(phase, ctx), ...(taskId ? { taskId } : {}) })
   report('resolving')
-  const executableNode = await resolveExecutableNodeFromCatalog(node, options)
+  const executableNode = await awaitWithinPhase(resolveExecutableNodeFromCatalog(node, options), guard)
   const currentOptions = options.referenceContext
     ? { ...options, references: resolveGenerationReferences(executableNode, options.referenceContext) }
     : options
@@ -480,7 +518,7 @@ async function runCatalogGenerationTaskWithFeedback(
   const references = currentOptions.references
   if (getGenerationNodeExecutionKind(executableNode.kind) === 'video' && references?.relayFromVideoUrl) {
     const videoUrl = references.relayFromVideoUrl
-    await applyRelayFirstFrame(references, projectId)
+    await awaitWithinPhase(applyRelayFirstFrame(references, projectId), guard)
     for (const slot of readParameterReferenceSlots(executableNode.meta)) {
       // Generic image parameters can inherit explicit first_frame edges; video parameters keep the original clip.
       if (slot.mediaKind !== 'video' && references.parameterReferenceUrls?.[slot.key] === videoUrl) {
@@ -495,8 +533,15 @@ async function runCatalogGenerationTaskWithFeedback(
   // (测试注入)优先,保持单测可控。
   if (options.onTextDelta && TEXT_STREAM_KINDS.has(request.kind) && !options.runTask) {
     const runTextStream = options.runTextStream || runWorkbenchTextTaskStream
+    const onTextDelta = options.onTextDelta
     report('requesting')
-    const streamed = await runTextStream(vendor, request, projectId, { onDelta: options.onTextDelta })
+    // 流式文本每来一段就是一次进展：计时重新起算——长文本流得久是正常的，一段都不来才是卡住。
+    const streamed = await awaitWithinPhase(runTextStream(vendor, request, projectId, {
+      onDelta: (delta) => {
+        clock.heartbeat()
+        onTextDelta(delta)
+      },
+    }), guard)
     report('finalizing', streamed.id)
     return normalizeCatalogTaskResult(streamed, executableNode, options.onMediaDimensions)
   }
@@ -511,22 +556,28 @@ async function runCatalogGenerationTaskWithFeedback(
   }
   let watchedPromptId = ''
   if (requestedComfyPromptId) {
-    const registered = await watchComfyuiProgress({
+    const registered = await awaitWithinPhase(watchComfyuiProgress({
       promptId: requestedComfyPromptId,
       nodeId: asTrimmedString(request.extras?.nodeId),
       projectId,
       taskKind: request.kind,
       modelKey: asTrimmedString(request.extras?.modelKey) || null,
       vendorKey: vendor,
-    })
+    }), guard)
     if (registered) watchedPromptId = requestedComfyPromptId
   }
   let initialResult: TaskResultDto
   try {
-    initialResult = await runTask(vendor, request, projectId)
+    initialResult = await awaitWithinPhase(runTask(vendor, request, projectId), guard)
   } catch (error) {
     if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
     throw error
+  }
+  receipt = {
+    taskId: initialResult.id,
+    vendor,
+    taskKind: request.kind,
+    modelKey: asTrimmedString(request.extras?.modelKey),
   }
   if (isTaskCancelRequested(asTrimmedString(request.extras?.nodeId))) {
     if (initialResult.id.startsWith('local-')) await getDesktopBridge()?.tasks.cancel?.(initialResult.id)
@@ -537,19 +588,19 @@ async function runCatalogGenerationTaskWithFeedback(
   const comfyWatching = isComfyuiVendorKey(vendor) && Boolean(initialResult.id)
   if (comfyWatching && initialResult.id !== watchedPromptId) {
     if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
-    const registered = await watchComfyuiProgress({
+    const registered = await awaitWithinPhase(watchComfyuiProgress({
       promptId: initialResult.id,
       nodeId: asTrimmedString(request.extras?.nodeId),
       projectId,
       taskKind: request.kind,
       modelKey: asTrimmedString(request.extras?.modelKey) || null,
       vendorKey: vendor,
-    })
+    }), guard)
     watchedPromptId = registered ? initialResult.id : ''
   }
   let finalResult: TaskResultDto
   try {
-    finalResult = await waitForCatalogTaskResult(vendor, request, initialResult, options)
+    finalResult = await waitForCatalogTaskResult(vendor, request, initialResult, options, guard, receipt)
   } finally {
     if (watchedPromptId) unwatchComfyuiProgress(watchedPromptId)
   }
@@ -557,5 +608,5 @@ async function runCatalogGenerationTaskWithFeedback(
   const normalized = normalizeCatalogTaskResult(finalResult, executableNode, options.onMediaDimensions)
   // 结构闸：主进程漏本地化时，按运行提交时固定的项目补一次本地化，绝不让厂商临时 URL 落进节点
   // → 隔天过期播不了。切项目后结果仍落原项目。主进程已落地时这里判为非 http，零开销 no-op。
-  return localizeRemoteResultUrl(normalized, projectId, executableNode.id, options.onMediaDimensions)
+  return awaitWithinPhase(localizeRemoteResultUrl(normalized, projectId, executableNode.id, options.onMediaDimensions), guard)
 }

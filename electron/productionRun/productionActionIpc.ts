@@ -1,9 +1,10 @@
 import { ipcMain } from "electron";
 
-import type { ProductionActionResult } from "./productionRunTypes";
+import type { ProductionActionResult, ProductionShotActionResult } from "./productionRunTypes";
 import type { PendingSpendRead } from "../shared/contracts/pendingSpendConfirm";
 
 import { assertTrustedSender } from "../ipcSenderGuard";
+import { logError } from "../logging/logger";
 /**
  * P4 S6 返工/续拍 IPC（从 main.ts 抽出来守 800 行门岗 R9）。渲染层（占位节点重试钮 / 失败镜 onRetry / 续拍钮）
  * 经此转调 appIntegration 编排（scheduler 闭包住那）。守卫：projectId 须 = 当前打开项目（返工/续拍是「用户在本机对
@@ -11,8 +12,8 @@ import { assertTrustedSender } from "../ipcSenderGuard";
  */
 /** 能力核编排门面（appIntegration 的模块级导出；懒加载后转调）。main.ts 只传取当前项目 + 一个加载器。 */
 type CapabilityActions = {
-  reworkProductionShot: (input: { projectId: string; runId: string; shotId?: string }) => Promise<ProductionActionResult>;
-  resumeProductionBatch: (input: { projectId: string; runId: string; reason: "budget" | "manual" }) => Promise<ProductionActionResult>;
+  reworkProductionShot: (input: { projectId: string; runId: string; shotId?: string }) => Promise<ProductionShotActionResult>;
+  resumeProductionBatch: (input: { projectId: string; runId: string }) => Promise<ProductionShotActionResult>;
   /** 2026-09-11 Agent 面板付费确认卡：读 / 改参数 / 丢弃 / 确认并开跑。 */
   listPendingSpendConfirmations: (projectId: string) => PendingSpendRead;
   revisePendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }) => Promise<ProductionActionResult>;
@@ -24,18 +25,31 @@ export function registerProductionActionIpc(deps: {
   getActiveProjectId: () => string;
   loadCore: () => Promise<CapabilityActions>;
 }): void {
-  const rework = async (input: { projectId: string; runId: string; shotId?: string }) => (await deps.loadCore()).reworkProductionShot(input);
-  const resumeBatch = async (input: { projectId: string; runId: string; reason: "budget" | "manual" }) => (await deps.loadCore()).resumeProductionBatch(input);
+  /**
+   * 返工 / 续拍这两个通道**不往渲染层抛异常**：编排层把每一种可预期的失败都分好了类，能漏到这里的只剩 Nomi 自己的
+   * bug（能力核加载失败、不变量没守住）。原话连堆栈记进主进程日志，渲染层拿到的是如实的 internal_error，
+   * 而不是一次 IPC rejection——那会被渲染层当成「连不上桌面端」。
+   */
+  const shotAction = async (channel: string, run: (core: CapabilityActions) => Promise<ProductionShotActionResult>): Promise<ProductionShotActionResult> => {
+    try {
+      return await run(await deps.loadCore());
+    } catch (error) {
+      logError("production-run", `${channel}-internal-error`, error);
+      return { ok: false, code: "failed", failure: "internal_error" };
+    }
+  };
+  const rework = (input: { projectId: string; runId: string; shotId?: string }) => shotAction("rework", (core) => core.reworkProductionShot(input));
+  const resumeBatch = (input: { projectId: string; runId: string }) => shotAction("resume-batch", (core) => core.resumeProductionBatch(input));
   const objectOf = (payload: unknown): Record<string, unknown> =>
     payload && typeof payload === "object" && !Array.isArray(payload) ? (payload as Record<string, unknown>) : {};
   const str = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
-  const guardProject = (projectId: string, runId: string): ProductionActionResult | null => {
-    if (!projectId || !runId) return { ok: false, code: "failed", message: "missing projectId/runId" };
-    if (projectId !== deps.getActiveProjectId()) return { ok: false, code: "run_not_open" };
+  const guardProject = (projectId: string, runId: string): ProductionShotActionResult | null => {
+    if (!projectId || !runId) return { ok: false, code: "failed", failure: "request_invalid" };
+    if (projectId !== deps.getActiveProjectId()) return { ok: false, code: "failed", failure: "run_not_open" };
     return null;
   };
 
-  ipcMain.handle("nomi:production-runs:rework", async (event, payload: unknown): Promise<ProductionActionResult> => {
+  ipcMain.handle("nomi:production-runs:rework", async (event, payload: unknown): Promise<ProductionShotActionResult> => {
     assertTrustedSender(event);
     const raw = objectOf(payload);
     const projectId = str(raw.projectId);
@@ -108,14 +122,14 @@ export function registerProductionActionIpc(deps: {
       ...(rawShotIds === undefined ? {} : { shotIds: rawShotIds as string[] }) });
   });
 
-  ipcMain.handle("nomi:production-runs:resume-batch", async (event, payload: unknown): Promise<ProductionActionResult> => {
+  ipcMain.handle("nomi:production-runs:resume-batch", async (event, payload: unknown): Promise<ProductionShotActionResult> => {
     assertTrustedSender(event);
     const raw = objectOf(payload);
     const projectId = str(raw.projectId);
     const runId = str(raw.runId);
-    const reason = raw.reason === "budget" ? "budget" : "manual";
+    // 续额度还是直接接着拍由主进程照 Run 记下的停下原因定，渲染层不再传「为什么停」。
     const rejected = guardProject(projectId, runId);
     if (rejected) return rejected;
-    return resumeBatch({ projectId, runId, reason });
+    return resumeBatch({ projectId, runId });
   });
 }

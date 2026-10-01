@@ -20,7 +20,7 @@ import { IconActionButton, NomiSegmented } from '../../design'
 import type { NodeKind } from '../../config/models'
 import { useModelOptionsState } from '../../config/useModelOptions'
 import { dedupeModelOptions } from '../../config/modelIdentity'
-import { modelProviderLabel } from '../common/useDedupedModelSelect'
+import { modelDisplayLabel, modelProviderLabel } from '../common/useDedupedModelSelect'
 import { useVendorPreferenceOrder } from '../common/useVendorPreference'
 import { saveModelBoxOrder, setModelHidden, useModelBoxPreference } from '../common/useModelBoxPreference'
 import { buildModelBoxRows, mergeModelOrderForKind, moveModelRow, type ModelBoxRow } from './modelBoxOrder'
@@ -57,7 +57,7 @@ function RowChips({ chips, muted = false }: { chips: ModelBoxRow['chips']; muted
 }
 
 export function ModelBoxOrderSection(): JSX.Element | null {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   const [kind, setKind] = React.useState<NodeKind>('image')
   const { options } = useModelOptionsState(kind)
   const orderedVendorKeys = useVendorPreferenceOrder()
@@ -66,8 +66,9 @@ export function ModelBoxOrderSection(): JSX.Element | null {
 
   const deduped = React.useMemo(() => dedupeModelOptions([...options]), [options])
   const rows = React.useMemo(
-    () => buildModelBoxRows(deduped, preference, orderedVendorKeys, modelProviderLabel),
-    [deduped, preference, orderedVendorKeys],
+    () => buildModelBoxRows(deduped, preference, orderedVendorKeys, modelProviderLabel, modelDisplayLabel),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- i18n.language：切语言要重算行名
+    [deduped, preference, orderedVendorKeys, i18n.language],
   )
 
   // 顺序写在主进程（版本化原子 JSON）。写失败必须**说出来**：这个控件唯一的反馈就是行序变了，

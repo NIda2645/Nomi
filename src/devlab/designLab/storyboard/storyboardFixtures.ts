@@ -109,9 +109,7 @@ export function labExec(over?: Partial<ShotRowExec>): ShotRowExec {
     node: null,
     keyframeNode: null,
     recoverableNode: null,
-    waitingRefs: [],
     ignoredAnchors: [],
-    unlockedRefs: [],
     missingSlots: [],
     plannedFirstFrame: null,
     changedRefs: [],
@@ -137,8 +135,6 @@ export function labAnchorRuntime(anchor: PlanAnchor, over?: Partial<AnchorCardRu
     progressPercent: null,
     locked: false,
     referencedByCount: 0,
-    consumedByShotCount: over?.referencedByCount ?? 0,
-    waitingShotCount: 0,
     ...over,
   }
 }

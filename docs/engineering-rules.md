@@ -76,17 +76,19 @@
 
 写完用户能预读/反驳；执行完回填结果。
 
-## R5 先查别人（一条规则，五个触发面 · 含旧 R6 / R20 / R29 / R31）
+## R5 P0 的执行：怎么找到现成的（一条规则，五个触发面 · 含旧 R6 / R20 / R29 / R31）
 
-**一句话**：动手前先去看别人已经做好的是什么——**凭记忆判断 = 没查**。
+**一句话**：动手前先去看别人已经做好的是什么——**凭记忆判断 = 没查**；**查完的结论默认是接入（P0），自写才是要登记的例外**。
+
+**P0 与 R5 的分工**（2026-10-01）：P0 是原则（Nomi 自己写的只有领域本身）；R5 是执行手册（怎么找到现成的）。此前 R5 写成了一个动作——查完写一节、照样自写——所以 #945 引了出处照样自写了 `laneContextFit`。现在默认值反过来：领域目录（`docs/engineering/self-written.json` 的 `domainRoots`）里写代码不需要任何手续；领域目录之外新增模块 = 自写一项通用能力，必须登记（`entries`：查过哪些现成方案带出处、为什么不接入只认领域约束、什么时候重新评估），登记表的变化才触发 R5.2 的查证文档要求。
 
 **为什么是一条规则而不是五条**：R5 / R6 / R20 / R29 / R31 约束的是同一个动作，只有触发面和交付物不同。分成五个号的代价看得见：旧 R31 不得不自带一张四行表来解释自己和另外三条的区别——**需要一张表解释四条规则怎么区分，就是它们该合并的证据**。合并后 L1 只记一条，「这次属于哪一档」到下表查。
 
 | 档 | 触发面 | 交付物 | 门岗 | 旧号 |
 |---|---|---|---|---|
 | R5.1 | 用第三方库 / 框架 / 模型的某个 API | Context7（或官方站）实查，照官方语义写 | `model-doc-check.sh` hook、`check:archetype-sources` | R5 |
-| R5.2 | 做方案 | 同用户任务/同媒介/同载体的近邻开源，给 `file:line`；派工前的反方 prior-art 报告 | `check:prior-art` | R6 |
-| R5.3 | 要写一段**通用能力** | build-vs-buy 三问的答案（通用吗 / 别人怎么做 / 在不在护城河上）| — | R20 |
+| R5.2 | 做方案 | 同用户任务/同媒介/同载体的近邻开源，给 `file:line`；派工前的反方 prior-art 报告。**只有引入通用能力（自写登记表有变化）时才强制**，领域方案不要求这一节；写了就必须带 ≥3 条出处 | `check:prior-art` | R6 |
+| R5.3 | 要写一段**通用能力** | build-vs-buy 三问的答案（通用吗 / 别人怎么做 / 在不在护城河上），结论默认接入；确要自写 → 登记进 `docs/engineering/self-written.json` | `check:self-written`（领域目录外新增文件无登记即报，`enforceFrom` 前警告、后阻断） | R20 |
 | R5.4 | 引入/接入/升级框架 SDK 运行时**或它没用过的层** | 四列表 + 参考实现逐层对照 + framework-surface 逐字段裁决，三份都进 `framework-boundaries.json` | `check:framework-boundary`、`check:framework-surface`、`check:dependency-capabilities` | R29 |
 | R5.5 | **外部也读写**的格式 / 协议 / 契约 | 「规范链接 / 我们的偏差 / 偏差理由」三格，登记进 `standard-formats.json` | `check:standard-formats` | R31 |
 
@@ -624,6 +626,7 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 3. 做 R14.1「同一语义有几份定义」横扫
 4. 落 `docs/audit/<date>-*.md`：现状 + 分级问题（带 file:line）+ 立即/中期/长期路线
 5. 清掉 P0，方案级取舍留用户拍板（R3）；关键论断亲自实跑核实
+6. **自写登记复查**（P0）：`docs/engineering/self-written.json` 里 `status` 为 `to-replace` / `under-review` 的、`revisitBy` 到期的、以及「框架后来已经提供了」的项，逐条列进替换计划（`pnpm run audit:self-written` 列清单）；复查结论改登记表，不许只在审计文档里说
 
 ### R14.1 固定维度：同一语义有几份定义
 
@@ -796,7 +799,7 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 3. **先问「存量是债还是本来就对」**：是债才进基线；本来就对的写法应该在扫描器里判成合规，否则等于把正确代码标成永远清不掉的债。
 4. **门岗红了先读它红在哪条判据**，别改预算或抬基线挤 PR——那是 P2 的症状修法。
 
-**这一族现有成员**：重活 `check:heavy-path`（R17.1）｜测试等待 `check:test-waits`（R17.2，硬零）｜分层边界 `check:boundaries`（R17.3）｜token `check:tokens`｜词表 `check:vocabularies`｜i18n `check:i18n`（硬零）｜框架边界 `check:framework-boundary`｜框架接触面 `check:framework-surface`｜标准格式 `check:standard-formats`｜真实素材 `check:real-media-fixture`。
+**这一族现有成员**：重活 `check:heavy-path`（R17.1）｜测试等待 `check:test-waits`（R17.2，硬零）｜分层边界 `check:boundaries`（R17.3）｜token `check:tokens`｜词表 `check:vocabularies`｜i18n `check:i18n`（硬零）｜框架边界 `check:framework-boundary`｜框架接触面 `check:framework-surface`｜标准格式 `check:standard-formats`｜真实素材 `check:real-media-fixture`｜概念 owner `check:concept-owners`（R33.4）。
 
 ### R17.1 重活门岗（用户体感「卡死」的一族）
 
@@ -950,7 +953,7 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 - 老合同按日期阈值豁免（`scripts/root-cause-contracts.mjs` 的 `DOOR_MAP_SINCE`），追溯只会把 400 份历史合同一次性打红。
 
 派工侧的另一半（复发类修复先派数门工人、任务书与 PR 必须引用门表）见 R27 与
-[`docs/engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)，门岗是 `check:door-map`。
+[`docs/engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)。2026-10-01 起门岗 `check:door-map` 已并入 `check:root-cause-contracts`：合同的 `doors` 校验（必填、path 存在、符号对得上）一直在后者，被删的只是「PR 正文必须引用合同」那一半（用户按门岗账本拍板，门表由脚本生成，不再靠正文宣告）。
 方案：[`docs/plan/2026-09-11-door-map-rule.md`](plan/2026-09-11-door-map-rule.md)。
 
 ## R22 验证分层与测试预算
@@ -1098,17 +1101,37 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 
 有 → **打回**。**测试绿不作为放行理由**：第二份实现天生自洽，它自带的那套测试当然绿（R14.1 的同一个道理，换到并行场景）。
 
-### R33.4 概念登记表 `docs/engineering/concept-owners.json`
+### R33.4 概念登记表 `docs/engineering/concept-owners.json` 与门岗 `check:concept-owners`
 
 概念 → owner → 消费方的**唯一正本**。纪律：
 
 - **只登记碰到的概念，不回头补全仓**——这是一本随改动长大的账，不是一次性普查。
-- 改动碰到还没登记的概念 → **当场登记**，与改动同一个 commit。
+- 改动碰到还没登记的概念 → **当场登记**，与改动同一个 commit。文件名日期 ≥ 2026-09-27 的根因合同，`shared_boundaries` 里的每个边界都必须是某个登记概念的写接口——门岗机器核，不登记就红。
 - **同一个概念出现第二个写口即违规**：这是本表存在的唯一判据。
-- `pending: true` 的条目必须在 `notes` 里写清由**哪份任务书 / 哪条分支**收口。
-- schema（极简，刻意不长）：`concepts: [{ name, owner: { path, symbol?, pending? }, consumers: [path], since, notes }]`。owner 只写真实存在的文件；不确定就标 `pending`，**不许编一个路径填进去**。
+- `pending` 的条目必须写 `migration_strategy`：由**哪张施工卡 / 哪条分支**收口、收口的判据是什么。
+- owner 只写真实存在的文件；不确定就标 `pending`，**不许编一个路径填进去**。
 
-**语义级门岗不在本条的落地范围**：把根因合同的门表（R21.3 `node scripts/door-map.mjs`）映射到登记概念、做成只减不增的棘轮，列为**发版后第一批 TODO**（`docs/roadmap/TODO.md` T-QA-24）。本轮只立表不立门；加门岗前先验它会红（R17）。
+**schema v2**（2026-09-29 起；字段取自方案「横切治理层 §1」，按「计数键 + 判据真用得上」定最小必填集，理由见方案「Phase 1 进度」）：
+
+| 字段 | 必填 | 说明 |
+|---|---|---|
+| `name` | 是 | 业务层面的叫法，全表唯一 |
+| `subject` | 是 | 这个概念决定的那件事的稳定标识，点分小写（如 `generation.parameter-admission`） |
+| `lifecycle` · `authority_kind` · `trust_domain` | 是 | 与 `subject` 组成计数键：同一组四元组只许一个主人。`trust_domain` 由 owner 路径派生，门岗逐条核 |
+| `fact_kind` | 是 | durable / state-machine / value-object / projection / rule |
+| `migration_status` | 是 | converged / pending（取代旧的 `owner.pending`） |
+| `migration_strategy` | pending 必填 | 由谁、按什么判据收口 |
+| `owner` | 是 | `{ path, symbol }`，必须同时出现在 `write_api` 里 |
+| `write_api` | 是 | 这个概念全部合法的写 / 判据入口 `{ path, symbol }`；一个写接口只归一个概念 |
+| `forbidden_derivations` | 是（可空） | 已知的第二形状 `{ symbol, kind, why }`：`definition` = 主人之外不许定义；`reference` = 例外账之外不许碰（pending 的旧路写门另外冻结） |
+| `allowed_consumers` | 是（可空） | 允许的消费者；pending 概念这就是例外账，账外的文件碰它即红 |
+| `identity_fields` | 身份比对必填 | 比对函数逐字比的字段，门岗核维度（原 `check:identity-compare`，2026-09-29 并入） |
+| `parity_test` | 否 | 对拍 / 类级测试；写了就必须存在。暂不强制，覆盖数门岗每次打印 |
+| `since` · `notes` | 是 | |
+
+**门岗 `pnpm run check:concept-owners`**（进 gates；判据住 `scripts/concept-owners-lib.mjs`）：结构与计数键；主人今天还在；**第二写口**——写接口与 `definition` 旧形状在主人之外的**同名定义**（调用、别名、选择器、重导出都不算；另一个概念明确认领的同名定义放行；登记在接口成员上的写接口是注入钩子的槽位，别处给槽位填实现不算）；pending 例外账与旧路写门冻结；身份比对必须登记且维度对得上；受管合同的边界必须进账。基线 `scripts/concept-owners-baseline.json` 存「概念 + 文件 + 符号」、必须等于现状；和 merge-base 比，已登记概念的口子只减不增，概念从账上消失而主人还在也红；没有 `--update`。复验历史代码：`node scripts/check-concept-owners.mjs --source-ref <提交> --concept <名字或 subject>`。
+
+**它只抓形状**：同一件事换个名字再写一份，门岗看不见——那一半归 `parity_test`、变异测试、真实旅程和 R33.3 收货那一问。
 
 ### R33.5 对等矩阵是分歧的报警器
 

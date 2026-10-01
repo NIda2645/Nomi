@@ -72,7 +72,7 @@ export function V4UserBubble({
       {chips?.length ? (
         <div className="mb-1.5 flex flex-wrap gap-1.5">
           {chips.map((chip) => (
-            <BubbleChip key={chip.label} chip={chip} onDark={!darkMode} />
+            <BubbleChip key={chip.id ?? chip.label} chip={chip} onDark={!darkMode} />
           ))}
         </div>
       ) : null}
