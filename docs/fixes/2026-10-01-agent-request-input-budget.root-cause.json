@@ -1,123 +1,123 @@
 {
   "schema_version": 3,
   "id": "2026-10-01-agent-request-input-budget",
-  "problem_type": "A budget enforced only between turns is not a per-request bound: inside one turn every step re-sends all earlier tool results, so input grows without limit",
-  "symptom": "Long Agent conversations (read the script, write it back, repeat) send 88K to 146K input tokens in a single model request although the lane's registered budget is 80K; one turn costs 750K tokens in total, and real users hit 'Assistant request exceeded the context window'.",
-  "direct_cause": "pi compacts only after a turn when the measured context is over the threshold; within a turn the lane's transform_context hook returned only a system prompt, so every request carried every earlier tool result and every large write argument verbatim.",
-  "class_root": "The input budget had an owner for the number (laneContextBudget) but no owner for the per-request enforcement: nothing guaranteed that the request actually sent is within the budget.",
+  "problem_type": "A compaction threshold configured as 'the budget' and a keep-recent size left at pi's default (tuned for Latin text) do not bound a Chinese-first conversation: the request that crosses the threshold is already over budget and the compaction keeps almost everything",
+  "symptom": "Long Agent conversations (read the script, write it back, repeat) send 88K to 146K input tokens in one model request although the registered budget is 80K, rounds slow from 15s to over 100s, and real users hit 'Assistant request exceeded the context window'.",
+  "direct_cause": "pi compaction was on (80K trigger) but (1) it measures between turns, so the request that crosses the trigger is sent at trigger + one turn of tool results; (2) its cut point counts the retained tail as chars/4, about 3-4x too low for Chinese, so the default keepRecentTokens of 20K kept about 80K real tokens (27 of 30 messages) and a compaction at 87K shrank nothing.",
+  "class_root": "The lane translated the cost budget into pi's settings by copying the number, with no owner for the two facts that make the translation true: the trigger needs headroom below the per-request ceiling, and the retained tail must be sized in pi's own estimator units, not real tokens.",
   "affected_population": [
     "Every Agent turn with several tool calls that return large results (read_script, look_at_canvas, list_models)",
     "Every provider and model (the bound is on our request, not a provider setting)",
     "New and upgraded profiles alike"
   ],
   "entry_points": [
-    "laneHost transform_context: runs before every model request of every turn",
-    "pi compaction (between turns) remains the long-term memory mechanism"
+    "laneCompactionSettings: the only place pi's compaction settings are built (AgentHarness.create and configureLaneContextBudget both read it)",
+    "pi threshold compaction (between turns) is the only mechanism; there is no second compactor"
   ],
   "external_sources": [],
-  "internal_only_reason": "Repository-internal invariants (per-request input size, who classifies a renderer refusal, how long a receipt may stay preparing); the framework only provides the hook point (documented in pi-agent-core types: transformContext / transform_context 'Context window management').",
+  "internal_only_reason": "Repository-internal invariants (what the budget translates to, who classifies a renderer refusal, how long a receipt may stay preparing); compaction itself is pi's.",
   "invariants": [
-    "Every model request's estimated input (system prompt + tool definitions + messages) is within the lane budget unless the irreducible part alone exceeds it",
-    "Only old large tool results, then old large call arguments, are dropped from the request view; the latest tool result, latest assistant message and every user message never are",
-    "The persisted transcript is never edited; a dropped result says what happened and how to get it back (call the tool again)"
+    "The compaction trigger is below the per-request budget by one turn of headroom (3/4), so the request that crosses it still fits the budget",
+    "keepRecentTokens is expressed in pi's estimator units so that the retained tail is about 20K real tokens for Chinese text",
+    "Compaction itself (cut point, summary, durable entry) stays entirely pi's; the lane only supplies settings"
   ],
-  "generality_proof": "The guard runs in the one hook every request of every turn passes through, and its rules depend only on the messages' own sizes, not on tool names or scenarios; the class test feeds a long multi-read turn, write-heavy turns, and an irreducible case.",
+  "generality_proof": "Every lane opens through laneCompactionSettings; the table test fixes trigger and keepRecentTokens for 128K and 1M windows and a 32K small window, and the real-model long conversation measures the resulting per-request input.",
   "same_class_entry_points": [
-    {
-      "path": "electron/agentLane/laneHost.mts",
-      "entry_point": "transform_context hook",
-      "disposition": "enforced",
-      "evidence": "Every model request of every turn passes the hook; it calls fitContextToBudget with the lane budget and the tool-definition reserve."
-    },
     {
       "path": "electron/agentLane/laneContextBudget.mts",
       "entry_point": "laneCompactionSettings",
-      "disposition": "not-affected",
-      "evidence": "pi's between-turn compaction threshold; kept as is, it complements the per-request guard."
+      "disposition": "enforced",
+      "evidence": "Single builder of pi's compaction settings; both the harness creation and configureLaneContextBudget call it."
+    },
+    {
+      "path": "electron/agentLane/laneHost.mts",
+      "entry_point": "AgentHarness.create compaction option",
+      "disposition": "enforced",
+      "evidence": "Passes laneCompactionSettings(model.contextWindow, limits.contextTokenBudget); no literal numbers."
     },
     {
       "path": "electron/agentLane/laneTools.mts",
       "entry_point": "truncateForModel",
       "disposition": "not-affected",
-      "evidence": "The source-side cap on a single tool result; the guard handles accumulation, not one oversized result."
+      "evidence": "Source-side cap on one tool result; unrelated to accumulation."
     }
   ],
   "recurrence": {
     "classification": "recurring",
-    "reason": "Any new tool that returns large results, or any longer conversation, produces the same growth; the registered budget was not binding per request.",
+    "reason": "Any longer conversation or any Chinese-heavy tool result reproduces the same overshoot; the translation was not tested against a real model.",
     "same_class_scan": [
-      "door-map fitContextToBudget / estimateRequestTokens: one call site (laneHost)",
-      "pb04 full-walk: 10 requests over budget before, 0 after",
-      "the other transform_context consumer (system prompt composition) does not touch messages"
+      "door-map laneCompactionSettings: one definition, two call sites (laneHost create, configureLaneContextBudget)",
+      "pb04 full-walk with a 100K provider limit: 3 overflow errors before, 0 after",
+      "no other file sets compaction settings"
     ]
   },
   "prevention": {
     "kind": "centralized-boundary",
-    "enforcement_path": "electron/agentLane/laneContextFit.ts",
-    "invariant": "Per-request estimated input is within the lane budget.",
-    "failure_mode": "When the irreducible part alone exceeds the budget the guard reports overBudgetBy and leaves messages intact (fail visible), and the tool-result source cap bounds the latest result.",
+    "enforcement_path": "electron/agentLane/laneContextBudget.mts",
+    "invariant": "pi compaction trigger leaves one turn of headroom under the per-request budget and keeps a tail sized for Chinese text.",
+    "failure_mode": "If a single turn grows by more than the headroom the request can exceed the budget once; pi's overflow recovery (compaction on a provider overflow error) is the backstop.",
     "exception_policy": "none",
-    "strategy": "One pure function in the one hook; concept agent-lane.request-input-budget registered; walk invariant 8 (input tokens per request) measures it on a real turn.",
+    "strategy": "Settings only, in the one builder; concept agent-lane.request-input-budget registered; walk invariant 8 measures per-request input on a real turn.",
     "artifacts": [
-      "electron/agentLane/laneContextFit.ts",
-      "electron/agentLane/laneHost.mts",
+      "electron/agentLane/laneContextBudget.mts",
+      "tests/agent-runtime/lane-context-budget.test.mts",
       "docs/engineering/concept-owners.json"
     ]
   },
   "invariant_owner_layer": {
-    "layer": "electron/agentLane/laneContextFit.ts",
+    "layer": "electron/agentLane/laneContextBudget.mts",
     "tests": [
-      "electron/agentLane/laneContextFit.test.ts"
+      "tests/agent-runtime/lane-context-budget.test.mts"
     ],
-    "why": "The guard is a pure function proven by feeding long turns, write-heavy turns, user-message protection, idempotence and the irreducible case; the real-app proof is the pb04 per-request token measurement."
+    "why": "The translation is a pure function proven by a table test; the real-app proof is the pb04 per-request token measurement and the real-model long conversation."
   },
   "regression_tests": [
-    "electron/agentLane/laneContextFit.test.ts"
+    "tests/agent-runtime/lane-context-budget.test.mts"
   ],
   "class_regression_tests": [
-    "electron/agentLane/laneContextFit.test.ts"
+    "tests/agent-runtime/lane-context-budget.test.mts"
   ],
   "legacy_paths": {
     "status": "not-applicable",
     "removed_paths": [],
-    "rationale": "There was no per-request bound before; nothing to remove."
+    "rationale": "A hand-written per-request fitter (laneContextFit) was tried first and deleted within this same change in favour of pi compaction settings; nothing pre-existing was removed."
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
-    "rationale": "Uses the documented transform_context hook of the installed pi version; no upgrade changes the invariant.",
+    "rationale": "Uses pi's public compaction settings (reserveTokens, keepRecentTokens); no upgrade changes the invariant.",
     "exit_criteria": []
   },
-  "migration": "None: only the request view changes; transcripts and settings are untouched.",
+  "migration": "None: settings only; transcripts untouched.",
   "residual_risks": [
-    "The size estimate is bytes/3 (conservative for English, close for Chinese); a provider tokenizer can differ.",
-    "Images and PDFs in user messages are not elided (user content)."
+    "pi's tail estimate is chars/4; Latin-heavy content keeps less than 20K real tokens in the tail (safe direction).",
+    "One turn growing by more than a quarter of the budget can still send one request over it; pi's overflow recovery covers that."
   ],
   "doors": [
     {
       "kind": "write",
       "path": "electron/agentLane/laneHost.mts",
-      "symbol": "fitContextToBudget"
+      "symbol": "laneCompactionSettings"
     },
     {
       "kind": "write",
-      "path": "electron/agentLane/laneContextFit.ts",
-      "symbol": "estimateRequestTokens"
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "symbol": "configureLaneContextBudget"
     }
   ],
   "door_reduction": {
     "before": 2,
     "after": 2,
-    "why_not": "fitContextToBudget has exactly one caller (laneHost transform_context); estimateRequestTokens is used inside the guard and by its tests."
+    "why_not": "Two call sites of one builder already; the change moves numbers into the builder."
   },
   "scope_paths": [
     "electron/agentLane/laneHost.mts",
-    "electron/agentLane/laneContextFit.ts"
+    "electron/agentLane/laneContextBudget.mts"
   ],
   "shared_boundaries": [
     {
-      "path": "electron/agentLane/laneContextFit.ts",
-      "symbol": "fitContextToBudget",
-      "responsibility": "The only place that decides what to drop when one model request would exceed the input budget; edits the view of that request only."
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "symbol": "laneCompactionSettings",
+      "responsibility": "The only place that turns the lane's input budget into pi's compaction settings."
     }
   ]
 }

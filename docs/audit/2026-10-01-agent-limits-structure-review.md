@@ -5,11 +5,11 @@
 
 模块粒度太粗，同簇的合同几乎都是别的 lane 的。本评审只看这两份合同各自落在的那一层，回答「这一层的结构要不要先动」。
 
-## 一、`electron/agentLane`：预算有数字、没有每次请求的执行者
+## 一、`electron/agentLane`：预算翻译成 pi 设置时少了两个事实
 
-**观察。** `laneContextBudget.mts` 登记了 80K 的预算并把它翻成 pi 的压缩门槛，但 pi 的压缩只在**回合之间**量一次；一个回合里连着十几次请求，每次都把前面全部工具结果原样带上（pb04：单次最大 146K，一回合合计 751K）。预算只有「数字」的主人，没有「每次请求是否真在预算内」的主人。
+**观察。** `laneContextBudget.mts` 登记了 80K 的预算并把它翻成 pi 的压缩门槛，压缩确实开着、也确实触发了；但 pb04 与真模型 10 轮显示单次请求仍到 94K-146K。原因在翻译：① pi 只在回合之间量，跨线那次请求按「线 + 一个回合的工具结果」发出；② pi 切点按 chars/4 估保留的尾巴，中文低估 3-4 倍，默认 20,000 实际留下约 8 万 token，压缩几乎没缩小东西。
 
-**结构裁决。** 每次请求的预算执行只住 `fitContextToBudget`（`laneContextFit.ts`，登记为 `agent-lane.request-input-budget`），接在 pi 留给宿主的 `transform_context` 口上，只改这一次的视图。先收旧的大工具结果、再收旧的大写入参数，最新结果与用户的话从不收。**是否需要先做结构改造：** 不需要——口子只有一个（`laneHost` 的 `transform_context`），已由类测试和 pb04 的每请求 token 测量钉住。
+**结构裁决。** 预算的唯一主人仍是 `laneCompactionSettings`（`agent-lane.request-input-budget`），它补上这两个事实：触发线取预算的 3/4，`keepRecentTokens` 按 pi 的估算单位给 5,000。压缩本身全是 pi 的，不再有第二个执行者（`laneContextFit` 写了又删）。**是否需要先做结构改造：** 不需要。
 
 ## 二、`electron/capabilityCore`：回复归类与回执时限，各缺一个主人
 
@@ -28,4 +28,4 @@
 
 ## 防回
 
-`check:root-cause-contracts` / `check:door-map` 管合同与门表；`check:concept-owners` 管三个概念的唯一主人；`laneContextFit.test.ts` 钉每次请求的预算；`canvasReadSurfacePort.test.ts` 逐码钉归类表；`projectAgentProposalReceiptStore.test.ts` 钉时限（注入时钟）；`check:symptom-cluster` 在同一层再聚到第三份时要求重新评审。
+`check:root-cause-contracts` / `check:door-map` 管合同与门表；`check:concept-owners` 管三个概念的唯一主人；`lane-context-budget.test.mts` 钉触发线与保留尾巴；`canvasReadSurfacePort.test.ts` 逐码钉归类表；`projectAgentProposalReceiptStore.test.ts` 钉时限（注入时钟）；`check:symptom-cluster` 在同一层再聚到第三份时要求重新评审。
