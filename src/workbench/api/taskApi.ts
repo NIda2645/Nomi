@@ -18,6 +18,15 @@ export type TaskKind =
 
 export type TaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
 
+/**
+ * 每个任务状态是「还在路上」还是「有结果了」——`generation.completed` 只在「有结果」时报，这是唯一一份判据。
+ * 用 satisfies Record<TaskStatus,…> 写：给 TaskStatus 加新成员而不在这里归类，编译就红（测试也会红）。
+ */
+export const TASK_STATUS_PHASE = { queued: 'in-flight', running: 'in-flight', succeeded: 'terminal', failed: 'terminal' } as const satisfies Record<TaskStatus, 'in-flight' | 'terminal'>
+function isTerminalTaskStatus(status: TaskStatus): status is 'succeeded' | 'failed' {
+  return TASK_STATUS_PHASE[status] === 'terminal'
+}
+
 export type TaskAssetDto = {
   type: 'image' | 'video' | 'audio'
   url: string
@@ -202,7 +211,7 @@ export async function runWorkbenchTaskByVendor(
       request: withTaskProjectIdentity(request, projectId),
     }) as TaskResultDto
     if (capability) {
-      if (response.status === 'succeeded' || response.status === 'failed') {
+      if (isTerminalTaskStatus(response.status)) {
         trackGenerationOutcome(desktop, capability, startedAt, response.status === 'succeeded' ? 'success' : 'failure', response.error)
       } else {
         // 还在跑（queued/running）：这不是一个结果。最终结果在轮询到终态时报（fetchWorkbenchTaskResultByVendor），
@@ -252,7 +261,7 @@ export async function fetchWorkbenchTaskResultByVendor(
     ...(projectId ? { projectId } : {}),
   }) as FetchWorkbenchTaskResultResponseDto
   const pending = inFlightGenerations.get(payload.taskId)
-  if (pending && (response.result.status === 'succeeded' || response.result.status === 'failed')) {
+  if (pending && isTerminalTaskStatus(response.result.status)) {
     inFlightGenerations.delete(payload.taskId)
     trackGenerationOutcome(desktop, pending.capability, pending.startedAt, response.result.status === 'succeeded' ? 'success' : 'failure', response.result.error)
   }
