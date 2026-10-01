@@ -65,6 +65,12 @@ export const titleOf = (html) => {
   return match ? decodeEntities(match[1]).trim() : null
 }
 
+/** 第一个 <h1> 里读者看得见的字。 */
+export function h1TextOf(html) {
+  const match = /<h1\b[^>]*>([\s\S]*?)<\/h1>/i.exec(html)
+  return match ? decodeEntities(match[1].replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim() : null
+}
+
 /** 每页 <script type="application/ld+json"> 里的原文（还没解析）。 */
 export function jsonLdBlocks(html) {
   return [...html.matchAll(/<script\b[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/gi)].map((match) => match[1])
