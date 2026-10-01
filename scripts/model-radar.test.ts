@@ -10,6 +10,7 @@ import {
   elsewhereVendors,
   hasKnownWire,
   isCovered,
+  modelRadarResultDir,
   normalizeToken,
   offlineFileName,
   parseApimart,
@@ -19,6 +20,7 @@ import {
   stripLocale,
   usableApiKeyFromRecord,
 } from "./model-radar";
+import path from "node:path";
 import type { RadarEntry } from "./model-radar";
 import type { Mapping } from "../electron/catalog/types";
 
@@ -508,5 +510,13 @@ describe("注解 annotateEntries / annotateDiff（把 wire/elsewhere 贴到 adde
       (slug) => (slug === "veo3" ? ["runway"] : []),
     );
     expect(annotated.uncovered).toEqual([{ ...e("veo3", "video"), wire: "known", elsewhere: ["runway"] }]);
+  });
+});
+
+describe("运行结果的位置", () => {
+  it("latest.json / liveness.json 落在 intake 缓存目录（仓库外），可用 NOMI_INTAKE_CACHE 改", () => {
+    expect(modelRadarResultDir({ NOMI_INTAKE_CACHE: "/tmp/nomi-cache" })).toBe(path.join("/tmp/nomi-cache", "model-radar"));
+    const repoRoot = path.resolve(__dirname, "..");
+    expect(path.relative(repoRoot, modelRadarResultDir({ NOMI_INTAKE_CACHE: path.join(repoRoot, "..", "elsewhere") })).startsWith("..")).toBe(true);
   });
 });

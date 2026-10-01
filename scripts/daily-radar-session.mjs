@@ -5,24 +5,38 @@
 // 为什么从 CLAUDE.md 的一段指令改成 hook：必须每次发生的事写成 hook，不写成指令（调研报告 §一.2；官方：CLAUDE.md 是 advisory，
 // hook 是 deterministic）。原先靠 agent 在第一条消息里自觉去跑，跑没跑、跑败了有没有说成「没有新东西」都没人管。
 //
-// 不变量：**脚本跑败 = 明说「今天没查成」，绝不能说成「没有新反馈 / 没有新模型」**——失败的输出里不含任何「无新增」措辞。
-// 一天只成功跑一次（标记 .claude/radar-last-run.json，按本机日期）；失败的下次会话重试，成功的不重跑。
-// 细则与分诊规矩见 docs/engineering/daily-radars.md。普通 stdout 在 SessionStart 会进上下文（官方 hooks 文档）。
-import { spawnSync } from 'node:child_process'
+// 三条不变量：
+//  1. **脚本跑败 = 明说「今天没查成」，绝不能说成「没有新反馈 / 没有新模型」**。
+//  2. **一台机器一天只跑一次，摘要放仓库外，后开的会话直接拿缓存摘要。** 用户反馈雷达的增量状态（seenKeys）是整台机器共享的：
+//     若标记放在各自的 worktree 里，一天里第一个开起来的会话（常常是某个实施会话）会把「新反馈」吃掉，之后协调会话再跑就是
+//     「新增 0 条」——从后门把「没看到」变成「没有新反馈」。所以标记和当天摘要都在 intake 的缓存目录（NOMI_INTAKE_CACHE 可改）。
+//     失败的不记成功，下次会话重试。
+//  3. **hook 不许动工作树里任何文件**（含未跟踪文件）：运行结果都在仓库外；模型雷达的基线快照只由 --update-baseline 写；
+//     hook 路径不发任何扣费请求（模型雷达带 --no-liveness，跳过每周一次的付费存活探测）。
+// 两个雷达并行跑，缩短开会话的等待。细则见 docs/engineering/daily-radars.md。普通 stdout 在 SessionStart 会进上下文。
+import { spawn } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { resolveCacheDir } from './lib/intake-radar/store.mjs'
 
+const TRIAGE = '分诊只由协调会话做；其他会话看到不动手、不写待办。'
 export const RADARS = [
-  { key: 'intake', label: '用户反馈雷达', script: 'intake:radar', argv: ['scripts/intake-radar.mjs'], next: '有新反馈或有突增时才起 nomi-intake-radar 技能做分诊（真 bug / 配置问题 / 体验问题 / 数据上报问题，挂私有待办）' },
-  { key: 'models', label: '供应商模型雷达', script: 'radar:models', argv: ['node_modules/tsx/dist/cli.mjs', 'scripts/model-radar.ts'], next: '`新增 > 0` 时才起 nomi-model-radar 技能做分诊；要接某个先出接入方案，点头后才写码；快照等用户看过再 -- --update-baseline' },
+  { key: 'intake', label: '用户反馈雷达', script: 'intake:radar', argv: ['scripts/intake-radar.mjs'],
+    next: `有新反馈或有突增时，由协调会话起 nomi-intake-radar 技能分诊。${TRIAGE}` },
+  // --no-liveness：每周一次的存活探测会发付费请求，hook 路径里不许有任何扣费请求。
+  { key: 'models', label: '供应商模型雷达', script: 'radar:models', argv: ['node_modules/tsx/dist/cli.mjs', 'scripts/model-radar.ts', '--no-liveness'],
+    next: `\`新增 > 0\` 时由协调会话起 nomi-model-radar 技能分诊；要接某个先出接入方案，点头后才写码；快照等用户看过再 -- --update-baseline。${TRIAGE}` },
 ]
 const TAIL_LINES = 14
 const TAIL_CHARS = 1200
 const TIMEOUT_MS = 60_000
+const LOCK_STALE_MS = 150_000
+const LOCK_WAIT_MS = 100_000
 
 const pad = (n) => String(n).padStart(2, '0')
 export const localDate = (now) => `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+const localTime = (now) => `${pad(now.getHours())}:${pad(now.getMinutes())}`
 
 const tail = (text) => {
   const lines = String(text || '').split('\n').map((l) => l.trimEnd()).filter(Boolean)
@@ -30,14 +44,32 @@ const tail = (text) => {
   return out.length > TAIL_CHARS ? `…${out.slice(-TAIL_CHARS)}` : out
 }
 
+/** 标记与当天摘要的位置：intake 缓存目录（仓库外；NOMI_INTAKE_CACHE 可改，测试用）。 */
+export function radarStateFile(env = process.env) {
+  return path.join(resolveCacheDir(env), 'daily-radar.json')
+}
+
 // 直接用 node 跑脚本本体（等价于 package.json 里 intake:radar / radar:models 的命令），不经 pnpm：
 // hook 的 PATH 里不一定有 pnpm（Windows 上从 cmd 起子进程就找不到），而找不到它只会让雷达天天「没查成」。
 function defaultRun(root, radar) {
-  const result = spawnSync(process.execPath, radar.argv, { cwd: root, encoding: 'utf8', timeout: TIMEOUT_MS, windowsHide: true })
-  return { status: result.status, signal: result.signal, stdout: result.stdout, stderr: result.stderr, error: result.error }
+  return new Promise((resolve) => {
+    let stdout = ''
+    let stderr = ''
+    let settled = false
+    const done = (result) => { if (!settled) { settled = true; clearTimeout(timer); resolve(result) } }
+    let child
+    try {
+      child = spawn(process.execPath, radar.argv, { cwd: root, windowsHide: true })
+    } catch (error) { return resolve({ status: null, stdout, stderr, error }) }
+    const timer = setTimeout(() => { child.kill(); done({ status: null, signal: 'SIGTERM', stdout, stderr, error: Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }) }) }, TIMEOUT_MS)
+    child.stdout.on('data', (chunk) => { stdout += chunk })
+    child.stderr.on('data', (chunk) => { stderr += chunk })
+    child.on('error', (error) => done({ status: null, stdout, stderr, error }))
+    child.on('close', (status, signal) => done({ status, signal, stdout, stderr }))
+  })
 }
 
-function readMarker(file) {
+export function readState(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')) } catch { return {} }
 }
 
@@ -53,31 +85,38 @@ export function latestPaperRadarDate(root, readdir = fs.readdirSync) {
 }
 
 /**
- * 纯逻辑（可测）：返回 { text, marker }。run(root, radar) 注入，便于喂假结果。
+ * 纯逻辑（可测）：返回 { text, state }。run(root, radar) 注入；两个雷达**并行**。
+ * state = 机器级的当天标记 + 摘要：今天已成功的直接给缓存摘要（带跑的时间），失败的重跑。
  */
-export function runDailyRadar({ root, now = new Date(), run = defaultRun, marker = {}, readdir = fs.readdirSync }) {
+export async function runDailyRadar({ root, now = new Date(), run = defaultRun, state = {}, readdir = fs.readdirSync }) {
   const today = localDate(now)
-  const state = marker.date === today ? { ...marker } : { date: today }
-  const lines = []
+  const next = state.date === today ? { ...state } : { date: today }
 
-  for (const radar of RADARS) {
-    if (state[radar.key]?.ok) {
-      lines.push(`【${radar.label}】今天已跑过（${state[radar.key].at}），不重跑；要重跑：pnpm run ${radar.script}`)
+  const outcomes = await Promise.all(RADARS.map(async (radar) => {
+    if (next[radar.key]?.ok) return { radar, cached: next[radar.key] }
+    return { radar, result: await run(root, radar), at: localTime(now) }
+  }))
+
+  const lines = []
+  for (const { radar, cached, result, at } of outcomes) {
+    if (cached) {
+      lines.push(`【${radar.label}】今天 ${cached.at} 已在本机跑过（别的会话先开了；摘要如下，新增数以当时为准；要重跑：pnpm run ${radar.script}）：`)
+      lines.push(cached.text || '（当时脚本没有输出）')
+      lines.push(`→ ${radar.next}`)
       continue
     }
-    const result = run(root, radar)
-    const at = `${pad(now.getHours())}:${pad(now.getMinutes())}`
     if (result.status === 0) {
-      state[radar.key] = { ok: true, at }
-      lines.push(`【${radar.label}】已跑（pnpm run ${radar.script}）：`)
-      lines.push(tail(result.stdout) || '（脚本没有输出）')
+      const text = tail(result.stdout) || '（脚本没有输出）'
+      next[radar.key] = { ok: true, at, text }
+      lines.push(`【${radar.label}】已跑（${at}，pnpm run ${radar.script}）：`)
+      lines.push(text)
       lines.push(`→ ${radar.next}`)
     } else {
       const why = result.error?.code === 'ETIMEDOUT' || result.signal ? `超时（>${TIMEOUT_MS / 1000}s）`
         : result.error ? `没能启动：${result.error.message}`
           : `脚本退出码 ${result.status}`
-      state[radar.key] = { ok: false, at }
-      lines.push(`【${radar.label}】今天没查成：${why}。这是脚本报错，**不是没有新东西**——不要说成「没有新反馈 / 没有新模型」。手动重跑：pnpm run ${radar.script}`)
+      next[radar.key] = { ok: false, at, why }
+      lines.push(`【${radar.label}】今天没查成：${why}。这是脚本报错，**不是没有新东西**——不要说成「没有新反馈 / 没有新模型」。下次会话会重试；手动重跑：pnpm run ${radar.script}`)
       const detail = tail(result.stderr || result.stdout)
       if (detail) lines.push(detail)
     }
@@ -87,23 +126,43 @@ export function runDailyRadar({ root, now = new Date(), run = defaultRun, marker
   if (paper === today) lines.push(`【论文雷达】今天已有 docs/research/${today}-radar.md，跳过。`)
   else lines.push(`【论文雷达】今天还没有 docs/research/${today}-radar.md（最新：${paper ?? '无'}）→ 静默跑 nomi-research-radar 技能（额度默认授权），回答时带出当天最该动的 1-2 件事。`)
   lines.push('【三日竞品雷达】首轮检查到期 / 未完成周期（nomi-competitive-radar；入口 docs/research/competitive/README.md）；失败不能记「无更新」，研究建议不能自动变成开发或发布授权。')
-  return { text: lines.join('\n'), marker: state }
+  return { text: lines.join('\n'), state: next }
 }
 
-function main() {
-  const root = process.env.CLAUDE_PROJECT_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-  const markerFile = path.join(root, '.claude', 'radar-last-run.json')
-  const { text, marker } = runDailyRadar({ root, marker: readMarker(markerFile) })
+/** 一台机器同一时刻只让一个会话跑雷达（两个会话同时开时，后者等前者写好缓存）。 */
+export function tryLock(lockFile, now = Date.now()) {
   try {
-    fs.mkdirSync(path.dirname(markerFile), { recursive: true })
-    fs.writeFileSync(markerFile, JSON.stringify(marker))
-  } catch { /* 标记写不进去只会让下次再跑一遍 */ }
-  process.stdout.write(`${text}\n`)
+    fs.mkdirSync(path.dirname(lockFile), { recursive: true })
+    try { if (now - fs.statSync(lockFile).mtimeMs > LOCK_STALE_MS) fs.rmSync(lockFile, { force: true }) } catch { /* 没有锁 */ }
+    fs.closeSync(fs.openSync(lockFile, 'wx'))
+    return true
+  } catch { return false }
+}
+export const unlock = (lockFile) => { try { fs.rmSync(lockFile, { force: true }) } catch { /* 无所谓 */ } }
+
+/** 会话级入口（含读写缓存与锁）；测试通过 env.NOMI_INTAKE_CACHE 指到临时目录。 */
+export async function runSession({ root, env = process.env, now = () => new Date(), run = defaultRun, readdir = fs.readdirSync, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), lockWaitMs = LOCK_WAIT_MS }) {
+  const stateFile = radarStateFile(env)
+  const lockFile = `${stateFile}.lock`
+  let waited = 0
+  while (!tryLock(lockFile)) {
+    if (waited >= lockWaitMs) return '【每日雷达】另一个会话的雷达跑了超过 100 秒还没出结果；不是没有新东西。稍后重开会话会拿到缓存摘要，或手动跑 pnpm run intake:radar / pnpm run radar:models。'
+    await sleep(2000)
+    waited += 2000
+  }
+  try {
+    const { text, state } = await runDailyRadar({ root, now: now(), run, state: readState(stateFile), readdir })
+    try { fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.writeFileSync(stateFile, JSON.stringify(state)) } catch { /* 写不进去只会让下次再跑一遍 */ }
+    return text
+  } finally {
+    unlock(lockFile)
+  }
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { main() } catch (error) {
-    process.stdout.write(`【每日雷达】今天没查成：雷达 hook 自己出错（${error instanceof Error ? error.message : String(error)}）。不是没有新东西；请手动跑 pnpm run intake:radar 与 pnpm run radar:models。\n`)
-  }
-  process.exit(0)
+  const root = process.env.CLAUDE_PROJECT_DIR || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+  runSession({ root })
+    .then((text) => process.stdout.write(`${text}\n`))
+    .catch((error) => process.stdout.write(`【每日雷达】今天没查成：雷达 hook 自己出错（${error instanceof Error ? error.message : String(error)}）。不是没有新东西；请手动跑 pnpm run intake:radar 与 pnpm run radar:models。\n`))
+    .finally(() => process.exit(0))
 }
