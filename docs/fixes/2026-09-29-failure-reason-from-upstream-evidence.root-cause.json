@@ -2,8 +2,8 @@
   "schema_version": 3,
   "id": "2026-09-29-failure-reason-from-upstream-evidence",
   "problem_type": "生成失败的原因说错：按 HTTP 状态码猜原因（400 一律「参数不被接受」），供应商自己给的码与话没带过来；标题不分界面语言；本机这一侧的失败也被说成供应商的事；认不出的失败还编原因（「服务商临时故障或额度问题」）",
-  "symptom": "2026-09-29 全功能走查 pb06（U12），中英各一遍：夹具供应商对第一笔回 HTTP 400、错误码 model_not_found、原话「This model has been deprecated and is no longer available. Please switch to another model or provider.」——节点错误卡与右上角切家提示却说「参数不被接受·请检查比例 / 尺寸」，让用户去改与问题无关的设置（failure-reason-misstated 每一遍 2 处）；认不出类别的失败，标题直接是供应商的原话（任何语言），中文界面顶着一整句英文；结果已经送达却读不出来（本机判 decode_failed）同样被说成「服务商临时故障」并劝换一家。制作流程转来的一条（F6）：参考卡失败时错误卡写「可能是服务商临时故障或额度问题」——这是 unknown 的固定文案，对任何没有分类器认得的失败都这么说，其中「额度」是猜的（今天没有价格，猜额度只会把人引去查账）。 同一条走查（pb07 ④，418 + 认不出的话 + 码 render_farm_state）在最终构建上，中文那一遍过、英文那一遍红：标题是「Invalid API key」——分类器把夹具回环地址里随机端口 59401 的「401」当成了鉴权失败（中文那一遍只是随机到的端口没撞上）。",
-  "direct_cause": "① electron/vendor/vendorHttp.ts 的 categorizeVendorFailure 把 HTTP 400 / 422 一律派生成 category=input，classifyGenerationError 见到 category=input 就落「参数不被接受」——而 400 只说「请求有问题」，从不说为什么（模型已下线、审核拦了、余额不足都可以回 400）。上游自己给的错误码（OpenAI 兼容信封的 error.code，如 model_not_found；官方 schema：code 是 string 或 null）与它的话在主进程结构化载荷里只带了话（upstreamMsg），码没带，分类器只能读状态码。② 界面语言没有规矩：供应商的话（任意语言）直接当标题——classifyGenerationError 的 unknown 兜底把 raw 首行当 reason。③ 「是不是服务商那一侧的事」没有出处：切家提示对任何失败都点名供应商，读不出产物、本地护栏也不例外。④ 异步任务失败的文本格式（原话 + (taskId=…, kind=…) 后缀）由 catalogTaskResultParse 产出、分类器拿正则各读各的（后缀会混进标题）。⑤ 「模型已下线」那一类只认 Google 家族一句固定原话和几个泛词，认不出 OpenAI 兼容一族说的「model … deprecated / no longer available」。⑥ 目录里没有一类认得的失败（unknown）说的是一句固定的**猜测**（「可能是服务商临时故障或额度问题，建议稍等重试」）：对不认识的失败编了两个原因，其中「额度」没有任何证据。 ⑦ classifyError 的 legacy 关键词嗅探（detectLegacyErrorKind）读的是整句 raw，而 raw 里有一大半是我们自己拼的诊断外壳——供应商键、方法、带随机端口与任务 id 的 URL、taskId 后缀；「401」「402」「429」三个裸子串于是从端口号与 id 里读出鉴权 / 余额 / 限流。生产里同一个洞：任何带随机 id 的 URL（…/tasks/5c1429ab）都能让一条 404 / 418 变成「额度问题」——正是 F6 不许编的那种原因。",
+  "symptom": "2026-09-29 全功能走查 pb06（U12），中英各一遍：夹具供应商对第一笔回 HTTP 400、错误码 model_not_found、原话「This model has been deprecated and is no longer available. Please switch to another model or provider.」——节点错误卡与右上角切家提示却说「参数不被接受·请检查比例 / 尺寸」，让用户去改与问题无关的设置（failure-reason-misstated 每一遍 2 处）；认不出类别的失败，标题直接是供应商的原话（任何语言），中文界面顶着一整句英文；结果已经送达却读不出来（本机判 decode_failed）同样被说成「服务商临时故障」并劝换一家。制作流程转来的一条（F6）：参考卡失败时错误卡写「可能是服务商临时故障或额度问题」——这是 unknown 的固定文案，对任何没有分类器认得的失败都这么说，其中「额度」是猜的（今天没有价格，猜额度只会把人引去查账）。 同一条走查（pb07 ④，418 + 认不出的话 + 码 render_farm_state）在最终构建上，中文那一遍过、英文那一遍红：标题是「Invalid API key」——分类器把夹具回环地址里随机端口 59401 的「401」当成了鉴权失败（中文那一遍只是随机到的端口没撞上）。 验收页复核（2026-09-30）：模型已下线那张错误卡末尾写着「这次失败不计费 / This failure is not billed」——证据只有 apimart 一家回的 credits_cost: 0，中转站计不计费 Nomi 不知道。",
+  "direct_cause": "① electron/vendor/vendorHttp.ts 的 categorizeVendorFailure 把 HTTP 400 / 422 一律派生成 category=input，classifyGenerationError 见到 category=input 就落「参数不被接受」——而 400 只说「请求有问题」，从不说为什么（模型已下线、审核拦了、余额不足都可以回 400）。上游自己给的错误码（OpenAI 兼容信封的 error.code，如 model_not_found；官方 schema：code 是 string 或 null）与它的话在主进程结构化载荷里只带了话（upstreamMsg），码没带，分类器只能读状态码。② 界面语言没有规矩：供应商的话（任意语言）直接当标题——classifyGenerationError 的 unknown 兜底把 raw 首行当 reason。③ 「是不是服务商那一侧的事」没有出处：切家提示对任何失败都点名供应商，读不出产物、本地护栏也不例外。④ 异步任务失败的文本格式（原话 + (taskId=…, kind=…) 后缀）由 catalogTaskResultParse 产出、分类器拿正则各读各的（后缀会混进标题）。⑤ 「模型已下线」那一类只认 Google 家族一句固定原话和几个泛词，认不出 OpenAI 兼容一族说的「model … deprecated / no longer available」。⑥ 目录里没有一类认得的失败（unknown）说的是一句固定的**猜测**（「可能是服务商临时故障或额度问题，建议稍等重试」）：对不认识的失败编了两个原因，其中「额度」没有任何证据。 ⑦ classifyError 的 legacy 关键词嗅探（detectLegacyErrorKind）读的是整句 raw，而 raw 里有一大半是我们自己拼的诊断外壳——供应商键、方法、带随机端口与任务 id 的 URL、taskId 后缀；「401」「402」「429」三个裸子串于是从端口号与 id 里读出鉴权 / 余额 / 限流。生产里同一个洞：任何带随机 id 的 URL（…/tasks/5c1429ab）都能让一条 404 / 418 变成「额度问题」——正是 F6 不许编的那种原因。 ⑧ 目录里「不扣费」一族的话没有资格判据：请求发出去之后（被服务商拒绝）花没花钱 Nomi 不知道，文案却照着一家的证据对所有供应商这么说。",
   "class_root": "「这次失败是什么原因、是谁的事」是一个要由证据回答的判断，仓库里却有几处各自回答：状态码派生的类别（vendorHttp）被当成原因；分类器读的证据只有 upstreamMsg 加状态码；切家提示自己认定「失败了就是供应商的事」；异步任务的失败文本由产出方与解析方各写一份格式。没有一张目录既定义证据的种类与优先级（Nomi 机器码 → 上游自己的码 → 供应商说的话 → 状态码派生的类别），又声明每一类归谁（vendorSide）、文案是哪种语言。",
   "affected_population": [
     "所有走 classifyGenerationError 的失败展示：节点错误卡、切家提示、任务中心、状态条、Agent 车道横幅（五个读者）",
@@ -45,7 +45,8 @@
     "上游自己的错误码经同一个 pickUpstreamCode 随失败载荷带过 IPC（三条通道）；没有码、或「码」是一句话就不写这一栏。",
     "异步任务失败的文本格式只由 taskFailureMessage 一处产出与解析（成对），取原话时不带 taskId / kind 后缀。",
     "认不出的失败（unknown）如实说「认不出」：不编原因（没有「临时故障 / 额度」），供应商给了码（上游 error.code 或业务码）就带上码，原文（「服务商原话」）与完整报文（「技术详情」）是入口；重试 / 换个模型是动作建议，不是对原因的判断。",
-    "关键词嗅探只读认得出来源的话（legacyEvidence 一处决定）：结构化载荷的 upstreamMsg，或异步任务失败格式里的原话——外壳（供应商键、方法、URL、taskId 后缀）一个字都不读；来源不明的串（老项目落盘的 node.error、非 vendor 错误、只有 {code, reason} 的载荷）整句读，但先抠掉 URL，三位状态码只认独立的词（「HTTP 401」算，端口 59401、任务 id a4029b、业务码 42901 不算）。判据不读自己写的字。"
+    "关键词嗅探只读认得出来源的话（legacyEvidence 一处决定）：结构化载荷的 upstreamMsg，或异步任务失败格式里的原话——外壳（供应商键、方法、URL、taskId 后缀）一个字都不读；来源不明的串（老项目落盘的 node.error、非 vendor 错误、只有 {code, reason} 的载荷）整句读，但先抠掉 URL，三位状态码只认独立的词（「HTTP 401」算，端口 59401、任务 id a4029b、业务码 42901 不算）。判据不读自己写的字。",
+    "「不扣费 / 未计费」一族的话只有 Nomi 自己确知请求没发出去的类别（narrate.NEVER_SENT_KINDS：出站策略拦下、素材上传失败、素材本机检查不过）才说得出口；请求发出去之后——被服务商拒绝、结果已送达读不出来、下载被拦——花没花钱 Nomi 不知道，任何文案都不许替它说，也不按供应商分情况。noChargeClaims.test 把目录里的每一条字符串（中英）读出来逐条过这一关。"
   ],
   "invariant_owner_layer": {
     "layer": "src/workbench/observability/classifyError.ts",
@@ -55,7 +56,8 @@
       "electron/ai/aiSdkVendorError.test.ts",
       "electron/ai/runtimeVendorError.test.ts",
       "electron/vendor/upstreamEvidenceParity.test.ts",
-      "src/workbench/observability/legacyEvidence.test.ts"
+      "src/workbench/observability/legacyEvidence.test.ts",
+      "src/workbench/observability/noChargeClaims.test.ts"
     ]
   },
   "doors": [
@@ -160,7 +162,7 @@
     "after": 19,
     "why_not": "「谁来决定这次失败说什么」一直只有一扇：classifyGenerationError（五个读者，修前修后不变）。after 比 before 多，是两件事：一是清单现在把 owner 的定义点（pickUpstreamCode、narrateIsVendorSideFailure、tagNomiError、taskFailureMessage、文案 key）也列全了，修前只数了调用点；二是「上游自己的码」是新增的一路证据，三条传输通道（vendorHttp、aiSdkVendorError、runtimeVendorError）各多一个调用点——它们各自是不同的传输入口，都读同一个 pickUpstreamCode，不能合并。修前 9 扇 = 5 个读者 + vendorHttp / aiSdkVendorError / runtimeVendorError 三条通道的 upstreamMsg 产出点 + catalogTaskResultParse 的失败后缀（node scripts/door-map.mjs classifyGenerationError pickUpstreamMessage upstreamMessageFromBody describeTaskFailure 在 main 上去掉 onboarding 模型清单探测两处无关调用后的数）。"
   },
-  "generality_proof": "【为什么不是只对「模型已下线」这一个说法有效】(1) 不写「某某家」的分支：证据是上游响应体里的 error.code / 供应商的话，与供应商名、域名、URL、模型名无关；码表登记的是各家共用的标识码（OpenAI 兼容信封的 error.code，官方 OpenAPI schema 里是 string 或 null），没登记的码不猜，落回话与状态码。(2) 三条传输通道读同一个 pickUpstreamCode（键优先级表一份），customCallRunner 展开 structured 重包时不丢；vendorHttp.test / aiSdkVendorError.test / runtimeVendorError.test 各覆盖一条通道（含「数字业务码」「整句话」不当码收），upstreamEvidenceParity.test 再把三条通道放在同一张表上——同一份响应体必须带出同一份证据，新增字段而漏掉哪条通道就红（变异校验：三条通道各去掉一次，全部抓红）。(3) 语言：标题规则读 i18n.language，中英对称，两边各有单测（中文界面英文原话不进标题、英文界面中文原话不进标题）。(4) 旧数据：node.error 里落盘的旧串（没有 upstreamCode 的载荷）仍走「话 + 状态码」两路，不会变成未分类；文案 key 只增不改。(5) 新类别：VENDOR_SIDE_BY_KIND 与 ACTION_BY_KIND 是穷举 Record，新增一类不声明 vendorSide 与主次动作即类型错误；vendorSide 只有这张表一个出处（reportFor 不再按调用点另判一遍）。(6) 真机（pb06 + pb07，中英各一遍，开发构建、真 Electron）：模型下线那一笔说「模型不可用」，参数错误那一笔仍说「参数不被接受」，读不出来那一笔说「生成的文件没能读出来」且不劝换一家；main 上同样的 pb06 每一遍 13 处违反（其中 12 处属于本合同与 2026-09-29-failure-belongs-to-the-dispatched-attempt、2026-09-29-toast-identity-withdrawal-and-window-fit 三份合同的六条规则），本分支这六条规则零触发。(7) 变异校验（备份还原，逐个跑）：去掉 output-unreadable 分支、码表里删 model_not_found、把 output-unreadable 标成服务商那一侧、标题不看界面语言、让 URL 路径里的 /model/ 也当证据、把任意字符串都当错误码——六个变异全部被 classifyGenerationError.test / vendorHttp.test 抓红；另有三个（三条通道各自漏带上游码）被 upstreamEvidenceParity.test 抓红；认不出的失败这一条又有五个变异（三个出口各自漏带码、narrate 不认码、文案改回猜测）全部被抓红。真机 pb07 ④（中英各一遍）：418 + 英文原话 + 码 render_farm_state → 中文标题「生成失败」、说明「Nomi 没能认出这次失败的原因，所以不去猜。服务商给的错误码是 render_farm_state…」，英文界面对称。 (8) 证据不读自己写的字：嗅探读什么由 legacyEvidence 一处决定（认得出来源的话 → 只读它；有结构化载荷却没有话 → 空；来源不明的老串 → 抠掉 URL 再读，状态码只认整词）。legacyEvidence.test 40 条：五种端口 / 路径 / 任务 id 形状的 URL × unknown 的三个出口、中英、供应商键带三位数字（用户自己起的名字）、任务格式里的 id、只有 {code, reason} 的载荷，以及「供应商原话里写 401 / 402 / 429 仍照认」「独立的状态码照认」的正例（没有矫枉过正）；把这份测试放到未修的分类器上跑，40 条里 30 条红（10 条正例本来就该绿）；八个变异（证据读整句 / 有原话时仍读外壳 / 状态码当任意子串 / URL 不抠 / 任务失败格式不当原话 / 左边界放过点号 / 右边界不设 / 来源不明的串一个字都不读）全部被抓红。",
+  "generality_proof": "【为什么不是只对「模型已下线」这一个说法有效】(1) 不写「某某家」的分支：证据是上游响应体里的 error.code / 供应商的话，与供应商名、域名、URL、模型名无关；码表登记的是各家共用的标识码（OpenAI 兼容信封的 error.code，官方 OpenAPI schema 里是 string 或 null），没登记的码不猜，落回话与状态码。(2) 三条传输通道读同一个 pickUpstreamCode（键优先级表一份），customCallRunner 展开 structured 重包时不丢；vendorHttp.test / aiSdkVendorError.test / runtimeVendorError.test 各覆盖一条通道（含「数字业务码」「整句话」不当码收），upstreamEvidenceParity.test 再把三条通道放在同一张表上——同一份响应体必须带出同一份证据，新增字段而漏掉哪条通道就红（变异校验：三条通道各去掉一次，全部抓红）。(3) 语言：标题规则读 i18n.language，中英对称，两边各有单测（中文界面英文原话不进标题、英文界面中文原话不进标题）。(4) 旧数据：node.error 里落盘的旧串（没有 upstreamCode 的载荷）仍走「话 + 状态码」两路，不会变成未分类；文案 key 只增不改。(5) 新类别：VENDOR_SIDE_BY_KIND 与 ACTION_BY_KIND 是穷举 Record，新增一类不声明 vendorSide 与主次动作即类型错误；vendorSide 只有这张表一个出处（reportFor 不再按调用点另判一遍）。(6) 真机（pb06 + pb07，中英各一遍，开发构建、真 Electron）：模型下线那一笔说「模型不可用」，参数错误那一笔仍说「参数不被接受」，读不出来那一笔说「生成的文件没能读出来」且不劝换一家；main 上同样的 pb06 每一遍 13 处违反（其中 12 处属于本合同与 2026-09-29-failure-belongs-to-the-dispatched-attempt、2026-09-29-toast-identity-withdrawal-and-window-fit 三份合同的六条规则），本分支这六条规则零触发。(7) 变异校验（备份还原，逐个跑）：去掉 output-unreadable 分支、码表里删 model_not_found、把 output-unreadable 标成服务商那一侧、标题不看界面语言、让 URL 路径里的 /model/ 也当证据、把任意字符串都当错误码——六个变异全部被 classifyGenerationError.test / vendorHttp.test 抓红；另有三个（三条通道各自漏带上游码）被 upstreamEvidenceParity.test 抓红；认不出的失败这一条又有五个变异（三个出口各自漏带码、narrate 不认码、文案改回猜测）全部被抓红。真机 pb07 ④（中英各一遍）：418 + 英文原话 + 码 render_farm_state → 中文标题「生成失败」、说明「Nomi 没能认出这次失败的原因，所以不去猜。服务商给的错误码是 render_farm_state…」，英文界面对称。 (8) 证据不读自己写的字：嗅探读什么由 legacyEvidence 一处决定（认得出来源的话 → 只读它；有结构化载荷却没有话 → 空；来源不明的老串 → 抠掉 URL 再读，状态码只认整词）。legacyEvidence.test 40 条：五种端口 / 路径 / 任务 id 形状的 URL × unknown 的三个出口、中英、供应商键带三位数字（用户自己起的名字）、任务格式里的 id、只有 {code, reason} 的载荷，以及「供应商原话里写 401 / 402 / 429 仍照认」「独立的状态码照认」的正例（没有矫枉过正）；把这份测试放到未修的分类器上跑，40 条里 30 条红（10 条正例本来就该绿）；八个变异（证据读整句 / 有原话时仍读外壳 / 状态码当任意子串 / URL 不抠 / 任务失败格式不当原话 / 左边界放过点号 / 右边界不设 / 来源不明的串一个字都不读）全部被抓红。 (9) 不扣费的资格（2026-09-30）：noChargeClaims.test 读目录（generationCommon.observability.error）里的每一条字符串，两种语言各一遍——请求没出门的类别确实说了（探针活着的证明），其余一条都不许说；两个变异（中 / 英各把「这次失败不计费」加回模型已下线的说明）被抓红。",
   "shared_boundaries": [
     {
       "path": "src/workbench/observability/classifyError.ts",
@@ -270,13 +272,15 @@
     "electron/ai/runtimeVendorError.test.ts",
     "electron/vendor/upstreamEvidenceParity.test.ts",
     "tests/ux/full-walk/playbooks/pb07-failure-kinds.walk.mjs",
-    "src/workbench/observability/legacyEvidence.test.ts"
+    "src/workbench/observability/legacyEvidence.test.ts",
+    "src/workbench/observability/noChargeClaims.test.ts"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts",
     "electron/vendor/vendorHttp.test.ts",
     "electron/vendor/upstreamEvidenceParity.test.ts",
-    "src/workbench/observability/legacyEvidence.test.ts"
+    "src/workbench/observability/legacyEvidence.test.ts",
+    "src/workbench/observability/noChargeClaims.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -297,6 +301,7 @@
     "其他自己写生成失败文案、不经目录的地方（本次只登记、不动）：① catalogTaskActions.ts / catalogTaskResolve.ts / relayFrameResolver.ts 里写死的中文 throw（英文界面里是中文）；② generationRunController.reportAuthorizationFailure 直接印 error.message；③ productionShotActions.reportResult 的兜底文案「稍后再试」（制作流程 owner 的 lane）；④ laneCommandFailure.laneFailureText 的 showableRaw 要求「必须有汉字」，与目录的标题语言规矩不是同一条。已报协调会话。",
     "码表现在只登记了「模型已下线」一族（model_not_found 等）：审核 / 余额 / 配额等其他类别仍主要靠话与状态码；加码是加一行加一条用例，需要真实供应商的码样本（用户真机遇到时补）。",
     "HTTP 400 且没有任何证据的失败仍落「参数不被接受」——这是设计：它是没有证据时的落点，不是判断。",
-    "classifyError 里其余 detect*（余额 / 账号闸 / 内容审核 / 模型未开通 / 路由未开通）读 upstream + raw 的短语判据，raw 里带 URL 与供应商键；短语取窄（不含裸数字），只有极小的碰撞面（例如 URL 里恰好有「group」且原话里有「not enabled」），本次未改；若真机再撞到，统一改成读 legacyEvidence 同一段字。"
+    "classifyError 里其余 detect*（余额 / 账号闸 / 内容审核 / 模型未开通 / 路由未开通）读 upstream + raw 的短语判据，raw 里带 URL 与供应商键；短语取窄（不含裸数字），只有极小的碰撞面（例如 URL 里恰好有「group」且原话里有「not enabled」），本次未改；若真机再撞到，统一改成读 legacyEvidence 同一段字。",
+    "目录以外、扫到的「不扣费」类文案（只登记、不动；按判据它们说的都是 Nomi 自己确知没发出去的事，归各自的 lane）：generationCommon 里制作流程那几组（productionRun 失败原因、stalledUncharged、计划卡的「确认前不调用不扣费」）、resources.ts 的批量队列暂停说明、electron/capabilityCore/mcpToolResults.ts 的「未提交的任务不计费」、agentPanelV4 的设计实验室夹具文案（供应商 500 · 未扣费，只在实验室里出现）。另有一条方向相反的：outboundBlocked（下载被拦）的说明写着「钱已经付过 / 重新生成会再扣一次钱」——也是 Nomi 不确知的花费断言，本次按任务书只改「不扣费」一族，这条未动，留给协调会话定。"
   ]
 }

@@ -2,8 +2,8 @@
   "schema_version": 3,
   "id": "2026-09-29-toast-identity-withdrawal-and-window-fit",
   "problem_type": "一条提示的身份、撤回与位置没有所有者：同一件事叠成 ×3、事情过去了提示还挂着、整条伸出窗口连关闭钮都点不到",
-  "symptom": "2026-09-29 全功能走查 pb06（U10 + U12）：① 1280×800 与最小窗 1100×720 下，失败提示整条伸出窗口右沿，动作按钮被截半、关闭钮在视口外点不到（overlay-out-of-viewport 与 close-button-unreachable 每一遍各 3 处）；② 同一次失败叠成「×3」而供应商那边只失败了 1 次（9c-repeated-toast 每一遍 2 处）；③ 换家后重新生成成功，那条 ttl:false 的失败提示还挂在屏上说这张卡失败（stale-failure-toast）。",
-  "direct_cause": "① 位置：Mantine Notifications 给每条提示内联 max-height（notificationMaxHeight，写死 160）并 overflow:hidden；容器里那一列是隐式 auto 网格列，会增长到内容的 min-content，一个不可折行的动作名或一长句就把整列撑出窗口（NomiAppProviders 的容器只写了 grid，没有约束列宽）。② 去重：toast 所有者按 id 合并、同原因就 +1，分不清「同一次失败被 effect 重新宣布」与「又失败了一次」——useNodeModelAutoSelect 的 effect 在依赖变化时重复 push，每次都算一次发生。③ 撤回：前提失效（节点成功 / 换家 / 被删）之后谁来收提示没有所有者——showUndoToast 自己私有一份监视加退订，切家提示（ttl:false）什么都没有，于是成功之后还挂着。④ 身份：切家提示的 id 由 providerSwitchToastId(节点, 失败方, 模型, 目标, 目标模型) 拼出，换家一次 id 就变，旧提示成了没人撤的孤儿。",
+  "symptom": "2026-09-29 全功能走查 pb06（U10 + U12）：① 1280×800 与最小窗 1100×720 下，失败提示整条伸出窗口右沿，动作按钮被截半、关闭钮在视口外点不到（overlay-out-of-viewport 与 close-button-unreachable 每一遍各 3 处）；② 同一次失败叠成「×3」而供应商那边只失败了 1 次（9c-repeated-toast 每一遍 2 处）；③ 换家后重新生成成功，那条 ttl:false 的失败提示还挂在屏上说这张卡失败（stale-failure-toast）。 2026-09-30 验收页复核又指出两处：动作按钮被截成「切到 Agent R…」「Switch to Ag…」（按钮占掉行宽的 40% 还被省略号截断，正文被挤成英文一行约 20 个字符、中文约 11 个字的窄条）；提示开头点名的是供应商内部 id（agent-runtime-loopback），不是用户认得的显示名。",
+  "direct_cause": "① 位置：Mantine Notifications 给每条提示内联 max-height（notificationMaxHeight，写死 160）并 overflow:hidden；容器里那一列是隐式 auto 网格列，会增长到内容的 min-content，一个不可折行的动作名或一长句就把整列撑出窗口（NomiAppProviders 的容器只写了 grid，没有约束列宽）。② 去重：toast 所有者按 id 合并、同原因就 +1，分不清「同一次失败被 effect 重新宣布」与「又失败了一次」——useNodeModelAutoSelect 的 effect 在依赖变化时重复 push，每次都算一次发生。③ 撤回：前提失效（节点成功 / 换家 / 被删）之后谁来收提示没有所有者——showUndoToast 自己私有一份监视加退订，切家提示（ttl:false）什么都没有，于是成功之后还挂着。④ 身份：切家提示的 id 由 providerSwitchToastId(节点, 失败方, 模型, 目标, 目标模型) 拼出，换家一次 id 就变，旧提示成了没人撤的孤儿。 ⑦ ToastMessage 把动作按钮固定在正文右侧，并写死 `max-w-[40%] truncate`：动作标签天然很长（带供应商名 / 模型名），被省略号截断，正文只剩行宽的 60%。",
   "class_root": "「一条提示是什么事、什么时候不再成立、放在哪」是提示所有者（toast store 与它的容器）的事，却被分给了三处：调用方拼身份、调用方私有监视前提、容器与内容各管一半的尺寸。任何新的持续性提示（ttl:false）都要重新回答这三件事，答错一件就是一次走查违反。",
   "affected_population": [
     "所有 ttl:false 或带动作按钮的持续性提示：切家提示、撤销提示（showUndoToast 的 13 处调用）、画布反馈（notify 的 background 级）",
@@ -43,7 +43,8 @@
     "被关掉 / 撤回的事件不再冒出来（同一个 occurrence），同一张卡的下一次事件照常弹。",
     "前提不成立就撤回，靠状态变化、不靠定时器：调用方交出 validWhile { isValid, subscribe }，所有者订阅、前提变了就问、不成立就收，提示消失时退订；判定抛错按不成立处理（宁可少一条提示，不留一句过期的话）。",
     "整条提示在窗口里：容器列宽 minmax(0,1fr)、每条提示最大高度随窗口（TOAST_MAX_HEIGHT）、文字区在上限内滚动；提示根节点永远装得下它的内容（不被削）；关闭钮在视口内、点得到；1280×800 与最小窗、中英、右侧面板打开都成立。",
-    "切家提示一张卡一条（id 按节点）；前提 = 这条失败仍描述这张卡（失败记录上的 attempt 就是节点现在选着的那一对、节点仍处在这次失败里）；节点重跑 / 成功 / 换家 / 被删就撤回。"
+    "切家提示一张卡一条（id 按节点）；前提 = 这条失败仍描述这张卡（失败记录上的 attempt 就是节点现在选着的那一对、节点仍处在这次失败里）；节点重跑 / 成功 / 换家 / 被删就撤回。",
+    "动作按钮上的字永远完整：正文至少 TOAST_MIN_BODY_WIDTH（12.5rem），动作放得进同一行（「撤销」「重试」）就留在右侧，放不进（带供应商名 / 模型名的长动作）就整个折到正文下面、靠右，长标签在按钮里折行（overflow-wrap:anywhere），不截断，也不靠把正文挤成窄条来换；正文再长在自己的文字区里滚动，按钮那一行的位置预留（TOAST_ACTION_ROW_RESERVE）。"
   ],
   "invariant_owner_layer": {
     "layer": "src/ui/toast.tsx",
@@ -120,7 +121,7 @@
     "after": 12,
     "why_not": "「一条提示的身份与撤回」的门在修前是散的：调用方拼身份（providerSwitchToastId）、showUndoToast 私有的监视与退订、useNodeModelAutoSelect 什么都不管——修后收成所有者一处（useToastStore.push 的 id / occurrence / validWhile），调用方只交出「这是哪件事、前提怎么问」。after 比 before 多，是因为修前只数了 useToastStore 的调用点（node scripts/door-map.mjs useToastStore providerSwitchToastId 在 main 上是 4 扇），修后清单把所有者的定义点（toast.tsx、容器 NomiAppProviders、nodeRecoveryNotice 里的身份与前提监视）也列全了；各调用方是不同的产品入口（画布反馈、撤销、切家），不该合并成一个。"
   },
-  "generality_proof": "【为什么不是只修了切家提示这一条】(1) 所有者一处：toast store 是唯一的 push / remove / 去重 / 撤回入口（notificationPolicy、showUndoToast、useNodeModelAutoSelect 都经它）；showUndoToast 原来私有的监视加退订并入 validWhile（删旧，13 个调用方接口不变）。(2) 身份 / 撤回与内容无关：任何调用方给 id + occurrence + validWhile 就得到同样的语义；不给的行为不变（回归用例钉住）。(3) 位置在容器（NomiAppProviders 的列宽）与所有者（TOAST_MAX_HEIGHT），不在每条提示里各写 max-width：真实 Chromium + 生产 CSS + 真实 NomiAppProviders 的 e2e（tests/ux/failure-toast-layout.e2e.mjs）在 1280×800 与从 electron/main.ts 读出的最小窗、中英、右侧面板打开、超长动作名、目录里最长的一句文案（所有 vendorSide 类里取最长，英文 457 字）、同一失败 ×3 的场景全部断言「在窗口内、× 点得到、没被削、只有一条」；把容器改回旧样子（去掉列宽约束，或高度写回固定的 160），该 e2e 分别红（变异校验 C2d / C2e）。(4) 真机（pb06，中英各一遍，真 Electron）：main 上每一遍 12 处相关违反（overlay 3、close 3、9c 2、reason 2、wrong-vendor 1、stale 1），本分支零。(5) 变异校验（备份还原）：×N 不看 occurrence、不撤回、关掉的事件复活、去掉 grid 列约束、把最大高度改回写死的 160——五个变异全部被抓红（前三个 vitest，后两个真实 Chromium）。",
+  "generality_proof": "【为什么不是只修了切家提示这一条】(1) 所有者一处：toast store 是唯一的 push / remove / 去重 / 撤回入口（notificationPolicy、showUndoToast、useNodeModelAutoSelect 都经它）；showUndoToast 原来私有的监视加退订并入 validWhile（删旧，13 个调用方接口不变）。(2) 身份 / 撤回与内容无关：任何调用方给 id + occurrence + validWhile 就得到同样的语义；不给的行为不变（回归用例钉住）。(3) 位置在容器（NomiAppProviders 的列宽）与所有者（TOAST_MAX_HEIGHT），不在每条提示里各写 max-width：真实 Chromium + 生产 CSS + 真实 NomiAppProviders 的 e2e（tests/ux/failure-toast-layout.e2e.mjs）在 1280×800 与从 electron/main.ts 读出的最小窗、中英、右侧面板打开、超长动作名、目录里最长的一句文案（所有 vendorSide 类里取最长，英文 457 字）、同一失败 ×3 的场景全部断言「在窗口内、× 点得到、没被削、只有一条」；把容器改回旧样子（去掉列宽约束，或高度写回固定的 160），该 e2e 分别红（变异校验 C2d / C2e）。(4) 真机（pb06，中英各一遍，真 Electron）：main 上每一遍 12 处相关违反（overlay 3、close 3、9c 2、reason 2、wrong-vendor 1、stale 1），本分支零。(5) 变异校验（备份还原）：×N 不看 occurrence、不撤回、关掉的事件复活、去掉 grid 列约束、把最大高度改回写死的 160——五个变异全部被抓红（前三个 vitest，后两个真实 Chromium）。 (6) 动作按钮与正文（2026-09-30）：e2e 新增两条断言——按钮文字没被截断（scrollWidth / scrollHeight 不大于可见尺寸；省略号只改绘制，文字还在 DOM 里，比对文字内容证明不了什么）、正文宽 ≥ owner 的最小宽度（像素由浏览器按 owner 的 TOAST_MIN_BODY_WIDTH 换算）——和六个场景（中等长度动作、不可断词的超长动作名、超长正文、短动作并排、两条失败、右侧面板让位）。在旧布局上 20 个「场景 × 窗口尺寸 × 语言」全红（例：「切到 Agent Runtime Loopback B · Fixture Image B」内容宽 299 > 可见宽 104；正文 148px < 200px）；四个变异（按钮重新截断 / 去掉最小正文宽 / 去掉 overflow-wrap / 去掉按钮行的预留高度）全部被抓红。",
   "shared_boundaries": [
     {
       "path": "src/ui/toast.tsx",
@@ -198,7 +199,8 @@
     "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.test.ts",
     "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.test.ts",
     "src/utils/showInfoToast.test.ts",
-    "tests/ux/failure-toast-layout.e2e.mjs"
+    "tests/ux/failure-toast-layout.e2e.mjs",
+    "tests/ux/full-walk/vendorClaims.test.mjs"
   ],
   "class_regression_tests": [
     "src/ui/toastOccurrence.test.ts",
@@ -219,7 +221,6 @@
   },
   "migration": "无数据迁移：occurrence / validWhile 是新增的可选入参，不给的调用方行为不变；providerSwitchToastId 已无调用方。",
   "residual_risks": [
-    "动作按钮的标签在窄容器里会被截成「切到 Agent R…」（按钮自身 truncate）：容器现在保证整条提示不出窗口，但动作名很长时读不全；改成折行还是保留截断是设计决定（要出样张），本次不动。",
     "提示正文在窄窗口里偏长（英文最长的一类要在文字区里滚动）：要不要把「建议」从提示里拿掉、只留原因，是产品取舍，交协调会话。",
     "右侧面板让位规则只认 model / tasks / director 三个面板（[data-nomi-right-panel]）；Agent 面板不让位，提示会盖住它的顶部——沿用原有行为。"
   ]

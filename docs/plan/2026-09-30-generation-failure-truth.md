@@ -34,13 +34,13 @@
 2. **失败原因**只有 `classifyGenerationError` 一张目录：证据顺序 Nomi 机器码 → 上游自己的码 → 供应商说的话 → 状态码派生的类别；上游码经 `pickUpstreamCode` 走三条传输通道（vendorHttp / AI SDK 文本 / Agent 的 pi 运行时），三通道对等测试钉死；每一类在 `narrate` 的穷举表里声明 vendorSide；标题永远是界面语言；认不出的失败如实说认不出并带码；关键词嗅探只读认得出来源的话（`legacyEvidence`）。
 3. **失败属于发出去的那一次**：运行开始时把 (供应商, 模型) 写进运行记录（`attempt`，可选字段，随项目落盘）；切家提示与模型健康记账读它。
 4. **提示的身份、撤回、位置**归 `src/ui/toast.tsx`：`occurrence`、`validWhile`、容器列宽与随窗口的高度上限；提示句子只在 `useNodeModelAutoSelect` 一处拼。
-5. 概念登记（`concept-owners.json`）、结构评审（`docs/audit/2026-09-30-vendor-transport-and-ui-toast-structure-review.md`）、全功能走查 pb07（零花费，真 Electron）。
+5. **提示版面补两刀（验收页复核）**：动作按钮上的字永远完整——正文至少 12.5rem，放不进同一行的长动作折到正文下面、长标签折行不截断（`src/ui/toast.tsx`，设计系统 §4.5 同步改）；提示点名供应商用显示名不用内部 id；目录里「这次失败不计费」这类话只有请求没发出去的类别才许说（`NEVER_SENT_KINDS` + `noChargeClaims.test`）。
+6. 概念登记（`concept-owners.json`）、结构评审（`docs/audit/2026-09-30-vendor-transport-and-ui-toast-structure-review.md`）、全功能走查 pb07（零花费，真 Electron）。
 
 ## 不动项
 
 - 制作流程（`productionShotActions`、`electron/productionRun/*`）、Agent 付费卡（`*Spend*`、`spendCard*`）、`electron/agentLane/*`：别的线持有的概念，不碰。
 - 供应商接入、价格、额度相关的任何东西；不新增 IPC、不改窗口最小尺寸、不动设计 token。
-- 动作按钮在最小窗里被截成「切到 Agent R…」属于按钮自身截断，不在这次范围（整条提示不出窗口即可）。
 
 ## 回滚
 
