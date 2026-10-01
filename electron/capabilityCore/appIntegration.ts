@@ -508,7 +508,8 @@ export async function startCapabilityCore(
             .flatMap((summary) => { try { const run = generationService.repository.read(projectId, summary.runId); return run ? [run] : [] } catch { return [] } })
           const withdrawn = await withdrawStalePresentations({
             listRuns: () => runs,
-            withdraw: (owner, operationId, now) => operationStore.withdraw(owner, operationId, now),
+            // 关的原因要一路带到账上（「被停」），回执据此说「没决定是因为上一次被停了」——少传一个参数就会变成「用户关了卡」。
+            withdraw: (owner, operationId, now, reason) => operationStore.withdraw(owner, operationId, now, reason),
             onError: (operationId, error) => logWarn('production-run', 'withdraw-stale-presentation-failed', { operationId }, error),
           }, projectId)
           if (withdrawn.length > 0) logInfo('production-run', 'withdrew-stale-presentations', { projectId, operationIds: withdrawn.join(',') })

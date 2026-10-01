@@ -339,7 +339,7 @@ try {
         } catch {
           // 派不出去时如实写清卡在哪：Run 的状态、每镜的 job、批准信封的到期时间对比现在。
           const after = readRun(projectRoot, operationId)
-          const expiresAt = after?.generationPlan?.authorizationEnvelope?.expiresAt
+          const expiresAt = after?.gates?.filter((gate) => gate.scope === 'budget_envelope' && gate.authorizationEnvelope).at(-1)?.authorizationEnvelope?.expiresAt
           const lapsed = expiresAt && Date.parse(expiresAt) <= Date.now()
           throw new Error(`点了「继续剩余」，剩下的镜头没有派出去（夹具只收到 ${walk.fixture.images.length - before} 笔）：Run ${after?.status} · ${jobsOf(after)}`
             + `${lapsed ? ` · 批准信封 ${expiresAt} 到期（现在 ${new Date().toISOString()}）——派发时核「授权过期」，一直拒` : ''}`)
@@ -403,7 +403,7 @@ try {
           await expect.poll(() => readRun(projectRoot, operationId)?.gates?.find((gate) => gate.scope === 'anchor_checkpoint')?.status ?? null,
             { timeout: stationTimeout({ operations: 8 }) }).toBe('waiting')
           const run = readRun(projectRoot, operationId)
-          return `参考卡 ${jobsOf(run)}；封信封时项目版本 ${run.generationPlan?.authorizationEnvelope?.projectRevision}`
+          return `参考卡 ${jobsOf(run)}；封信封时项目版本 ${run.gates?.filter((gate) => gate.scope === 'budget_envelope' && gate.authorizationEnvelope).at(-1)?.authorizationEnvelope?.projectRevision}`
         })
         await openTaskCard(win)
         await shot('T1', 'zh-checkpoint-card')

@@ -47,7 +47,7 @@ function readRunEnvelope(projectRoot, runId) {
   if (!fs.existsSync(snapshot)) return null
   const run = JSON.parse(fs.readFileSync(snapshot, 'utf8')).run
   return {
-    state: run?.generationPlan?.state, envelope: run?.generationPlan?.authorizationEnvelope, budget: run?.budget,
+    state: run?.generationPlan?.state, envelope: run?.gates?.filter((gate) => gate.scope === 'budget_envelope' && gate.authorizationEnvelope).at(-1)?.authorizationEnvelope, budget: run?.budget,
     artifacts: Array.isArray(run?.artifacts) ? run.artifacts : [],
   }
 }

@@ -390,6 +390,12 @@
       "entry_point": "anchorsOf",
       "disposition": "enforced",
       "evidence": "The look checkpoint waits only for reference cards that were approved in this batch (included and sealed), the same rule anchorCheckpoint uses; a reference card still undecided on the card does not hold back the shots already approved (batchScheduleDerivation.test.ts)."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "entry_point": "reconcileOpenProjectHook (stale presentation sweep)",
+      "disposition": "enforced",
+      "evidence": "A card left open by a previous process is closed with the reason stopped: the sweep wiring now passes the closer through to the presentation writer (it used to drop it, so the outcome read as user_closed); agentPanelSpendConfirm.e2e.test.ts asserts the recorded closer and agent-spend-waiting-owner.walk.mjs checks it after a real restart."
     }
   ],
   "recurrence": {

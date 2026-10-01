@@ -154,7 +154,8 @@ try {
     { message: '按下确认之后必须有结论', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
   expect(hostRefusals, `宿主不许拒（实际：${hostRefusals.join(' ')}）`).toHaveLength(0)
   expect(flattenRequestText((await recorded(approved.received, 'generate returns approved')).body),
-    '模型读到「用户批了、已经开始生成」').toContain('The user approved the priced card')
+    // 付费卡逐镜（2026-09-30）：回执渲染宿主的逐镜结局——这张卡上的每一镜都在生成，才说「都在生成」。
+    '模型读到「用户批了、已经开始生成」').toContain('All 1 shot(s) on the card are generating')
 
   // 同回合第二次 generate：上一批已经结清，所以宿主把它当成「同一镜再来一次」——**重新摆一张卡**，要花钱必须再点一次
   // （这是既有的产品路径：`agentPanelSpendBatches` 的「new confirmation … distinct attempt」）。模型自己花不了第二笔。

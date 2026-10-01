@@ -126,7 +126,7 @@ try {
     return rect.width>0 && rect.height>0 && style.visibility==='visible' && Boolean(hit && element.contains(hit))
   })).toBe(true)
   await input.click()
-  await win.keyboard.press('Meta+A')
+  await win.keyboard.press('ControlOrMeta+A')
   const draftPrompt = 'T7 isolated payment draft / 未批准草稿'
   await win.keyboard.insertText(draftPrompt)
   await expect(input).toHaveText(draftPrompt)

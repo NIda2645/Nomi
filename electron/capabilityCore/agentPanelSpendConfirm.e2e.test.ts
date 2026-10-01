@@ -521,7 +521,7 @@ describe('reliability: scoped presentation and dismissal', () => {
     const { handler, withWindow } = buildActions(base, 'http://127.0.0.1:1', []);
     await handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-1'] }, lease });
     const runs = () => [base.repository.read(PROJECT_ID, OPERATION_ID)!];
-    const withdraw = (projectId: string, operationId: string, at: string) => base.operations.withdraw(projectId, operationId, at);
+    const withdraw = (projectId: string, operationId: string, at: string, reason: "stopped") => base.operations.withdraw(projectId, operationId, at, reason);
     const presentedAt = runs()[0].generationPlan!.updatedAt;
     // 本进程启动早于这次出价 → 有人在等 → 不动。
     expect(await withdrawStalePresentations({ listRuns: runs, withdraw, processStartedAt: '2000-01-01T00:00:00.000Z' }, PROJECT_ID)).toEqual([]);
@@ -531,6 +531,8 @@ describe('reliability: scoped presentation and dismissal', () => {
     expect(await withdrawStalePresentations({ listRuns: runs, withdraw, processStartedAt: later, now }, PROJECT_ID)).toEqual([OPERATION_ID]);
     expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
     expect(runs()[0].generationPlan!.state).toBe('draft');
+    // 关的原因是「被停」（问这句话的那个回合随上一个进程没了），不是「用户关了卡」：回执据此说真话。
+    expect(runs()[0].generationPlan!.presentations?.at(-1)?.closed?.by).toBe('stopped');
     // 已经收回的 / × 过的：再扫一遍是 no-op。
     expect(await withdrawStalePresentations({ listRuns: runs, withdraw, processStartedAt: later, now }, PROJECT_ID)).toEqual([]);
   });

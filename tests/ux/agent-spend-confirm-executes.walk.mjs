@@ -71,7 +71,7 @@ function readRun(projectRoot, runId) {
   if (!fs.existsSync(snapshot)) return null
   const run = JSON.parse(fs.readFileSync(snapshot, 'utf8')).run
   return {
-    envelope: run?.generationPlan?.authorizationEnvelope,
+    envelope: run?.gates?.filter((gate) => gate.scope === 'budget_envelope' && gate.authorizationEnvelope).at(-1)?.authorizationEnvelope,
     artifacts: Array.isArray(run?.artifacts) ? run.artifacts : [],
   }
 }
@@ -166,7 +166,8 @@ try {
   expect(walk.fixture.images, '按下确认之后，供应商必须真的收到一次生成请求').not.toHaveLength(0)
   // 确认把结论递回正在等的那个回合：`generate` 此刻才返回，而且说的是真话——已经开跑。
   expect(flattenRequestText((await recorded(plannerDone.received, 'generate returns once the user approved the card')).body),
-    '模型读到「用户批了、已经开始生成」').toContain('The user approved the priced card')
+    // 付费卡逐镜（2026-09-30）：回执渲染宿主的逐镜结局——这张卡上的每一镜都在生成，才说「都在生成」。
+    '模型读到「用户批了、已经开始生成」').toContain('All 1 shot(s) on the card are generating')
   const submitted = walk.fixture.images[0].body
   expect(JSON.stringify(submitted), '发出去的就是卡上那一镜').toContain('六棱柱')
   // 卡上改的那处提示词**真的到了线缆上**（loopback 供应商收到的请求体里就有它）。
