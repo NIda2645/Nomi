@@ -58,6 +58,28 @@ try {
         // 再长的话必须在文字区里滚动（够得着），根节点自己永远装得下它的内容。
         const clipped = await toasts.evaluateAll((nodes) => nodes.filter((node) => node.scrollHeight > node.clientHeight + 1).map((node) => `${node.scrollHeight}>${node.clientHeight}`))
         assert.deepEqual(clipped, [], `${label} 的文字被削掉了一截（内容高 > 可见高）`)
+        await expectActionAndBodyIntact(label)
+      }
+      /**
+       * 动作按钮上的字永远完整——被省略号 / 被削掉的字是 bug，不是「长标签的代价」（2026-09-30：「切到 Agent R…」「Switch to Ag…」）；
+       * 正文也不能为了给按钮让位被挤成窄条（那一天英文一行约 20 个字符、中文约 11 个字）。
+       * 截断看 scrollWidth / scrollHeight：省略号只改绘制，完整的字还在 DOM 里，比对文字内容证明不了什么。
+       */
+      const expectActionAndBodyIntact = async (label) => {
+        const MIN_BODY_PX = await page.evaluate(() => window.__toastFixture.minBodyWidthPx())
+        const actions = toasts.locator('button:not(.mantine-Notification-closeButton)')
+        const cut = await actions.evaluateAll((buttons) => buttons
+          .filter((button) => button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1)
+          .map((button) => `「${String(button.textContent).trim().slice(0, 48)}」内容宽 ${button.scrollWidth} > 可见宽 ${button.clientWidth}`))
+        const narrow = await page.locator('[data-toast-message]').evaluateAll((nodes, min) => nodes
+          .map((node) => Math.round(node.getBoundingClientRect().width)).filter((width) => width < min), MIN_BODY_PX)
+        // 两条各报各的（一次报全），不让第一条把第二条藏起来。
+        const problems = [
+          ...(cut.length ? [`动作按钮文字被截断：${cut.join('；')}`] : []),
+          ...(narrow.length ? [`正文被挤成了窄条（宽度 ${narrow.join('/')}px < ${MIN_BODY_PX}px）`] : []),
+        ]
+        assert.deepEqual(problems, [], `${label}：${problems.join(' ｜ ')}`)
+        if (await actions.count() > 0) await expectHittable(actions.first(), `${label} 的动作按钮`)
       }
       /** 用户真会遇到的失败（模型已下线这一条）：整句话不用滚动就能读完。 */
       const expectReadableWithoutScrolling = async (label) => {
@@ -82,10 +104,42 @@ try {
         await screenshotSettled(page, { path: path.join(evidence, `${tag}-longest-catalog-message.png`) })
       })
 
-      await check('an action label with no break opportunities cannot shove the toast out either', async () => {
-        await page.evaluate(() => window.__toastFixture.showFailure({ actionLabel: 'Switch-to-a-provider-with-an-extraordinarily-long-display-name-GPT-Image-2-Ultra' }))
+      await check('an action label that is one unbreakable token cannot shove the toast out either — it wraps inside its own button', async () => {
+        // No spaces and no hyphens: the browser has no break opportunity in it, only overflow-wrap:anywhere can keep it inside the button.
+        await page.evaluate(() => window.__toastFixture.showFailure({ actionLabel: 'SwitchToAProviderWithAnExtraordinarilyLongDisplayNameGPTImage2UltraNoSpacesAndNoHyphensAtAll' }))
         await expect(toasts).toHaveCount(1)
         await expectInside('失败提示（超长动作名）')
+        await screenshotSettled(page, { path: path.join(evidence, `${tag}-long-action-label.png`) })
+      })
+
+      await check('a message longer than anything the catalog can say scrolls inside its own area; the action stays whole and the toast stays inside', async () => {
+        await page.evaluate(() => window.__toastFixture.showOverlongMessage())
+        await expect(toasts).toHaveCount(1)
+        await expectInside('失败提示（超长正文）')
+        // The scenario really is long enough to need the scroll area (otherwise it proves nothing about the room kept for the action row).
+        const scrolls = await page.locator('[data-toast-message]').evaluate((node) => node.scrollHeight > node.clientHeight + 1)
+        assert.equal(scrolls, true, '超长正文没有撑到需要滚动——这个场景没有在测「给动作按钮那一行留位置」')
+        await screenshotSettled(page, { path: path.join(evidence, `${tag}-overlong-message.png`) })
+      })
+
+      await check('a mid-length action (Switch to APIMart) goes under the text instead of squeezing it', async () => {
+        await page.evaluate((label) => window.__toastFixture.showFailure({ actionLabel: label }), locale === 'en' ? 'Switch to APIMart' : '切到 APIMart')
+        await expect(toasts).toHaveCount(1)
+        await expectInside('失败提示（中等长度动作）')
+        await screenshotSettled(page, { path: path.join(evidence, `${tag}-mid-length-action.png`) })
+      })
+
+      await check('a short action (Undo) stays beside the text instead of taking a row of its own', async () => {
+        await page.evaluate((label) => window.__toastFixture.showFailure({ actionLabel: label }), locale === 'en' ? 'Undo' : '撤销')
+        await expect(toasts).toHaveCount(1)
+        await expectInside('失败提示（短动作）')
+        const beside = await page.evaluate(() => {
+          const body = document.querySelector('[data-toast-message]').getBoundingClientRect()
+          const action = document.querySelector('[data-toast-action]').getBoundingClientRect()
+          return action.left >= body.right - 1 && action.top < body.bottom
+        })
+        assert.equal(beside, true, '短动作没有和正文并排（白白占了一行）')
+        await screenshotSettled(page, { path: path.join(evidence, `${tag}-short-action.png`) })
       })
 
       await check('with a right panel open the toast steps aside and is still inside', async () => {
@@ -101,6 +155,7 @@ try {
         await expect(toasts).toHaveCount(2)
         await waitForVisualQuiescence(page)
         for (let index = 0; index < 2; index += 1) await expectOverlayReachable(toasts.nth(index), `第 ${index + 1} 条失败提示`)
+        await expectActionAndBodyIntact('两条失败提示')
       })
 
       await check('the same failure announced three times is one toast, without a repeat count', async () => {

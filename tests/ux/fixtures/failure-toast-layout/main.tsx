@@ -10,7 +10,8 @@ import i18n from '../../../../src/i18n'
 import { NomiAppProviders } from '../../../../src/NomiAppProviders'
 import { NomiColorSchemeProvider } from '../../../../src/theme/NomiColorSchemeProvider'
 import { notifications } from '@mantine/notifications'
-import { useToastStore } from '../../../../src/ui/toast'
+import { TOAST_MIN_BODY_WIDTH, useToastStore } from '../../../../src/ui/toast'
+import { providerFailedValues } from '../../../../src/workbench/generationCanvas/nodes/nodeRecoveryNotice'
 import { classifyGenerationError } from '../../../../src/workbench/observability/classifyError'
 import { GENERATION_ERROR_KINDS, narrateGenerationError, narrateIsVendorSideFailure } from '../../../../src/workbench/observability/narrate'
 
@@ -28,14 +29,15 @@ Object.assign(window, { __toastFixture: {
   /** The generation-failure toast, built the way useNodeModelAutoSelect builds it (same catalog, same strings). */
   showFailure: (input: { id?: string; occurrence?: string; vendor?: string; upstreamMsg?: string; actionLabel?: string } = {}) => {
     const report = classifyGenerationError(walkFailure(input.upstreamMsg ?? 'This model has been deprecated and is no longer available. Please switch to another model or provider.'))
-    const vendor = input.vendor ?? 'agent-runtime-loopback'
+    // The toast names the vendor's display name (what Model Access shows), never its id — same as useNodeModelAutoSelect.
+    const vendor = input.vendor ?? 'Agent Runtime Loopback'
     return useToastStore.getState().push({
       id: input.id ?? 'node-recovery:probe',
       ...(input.occurrence ? { occurrence: input.occurrence } : {}),
       reason: report.kind,
       type: 'warning',
       ttl: false,
-      message: i18n.t('generationCommon.node.providerFailed', { vendor, reason: report.reason, hint: report.hint }),
+      message: i18n.t('generationCommon.node.providerFailed', providerFailedValues(vendor, report)),
       actionLabel: input.actionLabel ?? i18n.t('generationCommon.node.switchProvider', { model: 'Fixture Image B', vendor: 'Agent Runtime Loopback B' }),
       onAction: () => {},
     })
@@ -51,13 +53,37 @@ Object.assign(window, { __toastFixture: {
     const longest = copies.reduce((best, copy) => (copy.reason.length + copy.hint.length > best.reason.length + best.hint.length ? copy : best))
     useToastStore.getState().push({
       id: 'node-recovery:longest', reason: longest.kind, type: 'warning', ttl: false,
-      message: i18n.t('generationCommon.node.providerFailed', { vendor: 'agent-runtime-loopback', reason: longest.reason, hint: longest.hint }),
+      message: i18n.t('generationCommon.node.providerFailed', providerFailedValues('Agent Runtime Loopback', longest)),
       actionLabel: i18n.t('generationCommon.node.switchProvider', { model: 'Fixture Image B', vendor: 'Agent Runtime Loopback B' }),
       onAction: () => {},
     })
     return { kind: longest.kind, length: longest.reason.length + longest.hint.length }
   },
+  /**
+   * A message longer than anything the catalog can say today (the longest entry, three times over): it has to scroll inside
+   * its own area while the action button stays whole and the toast stays inside the window.
+   */
+  showOverlongMessage: () => {
+    const params = { model: 'model', registered: 'text', requested: 'image' }
+    const copies = GENERATION_ERROR_KINDS.filter((kind) => narrateIsVendorSideFailure(kind)).map((kind) => ({ kind, ...narrateGenerationError(kind, params) }))
+    const longest = copies.reduce((best, copy) => (copy.reason.length + copy.hint.length > best.reason.length + best.hint.length ? copy : best))
+    useToastStore.getState().push({
+      id: 'node-recovery:overlong', reason: longest.kind, type: 'warning', ttl: false,
+      message: i18n.t('generationCommon.node.providerFailed', providerFailedValues('Agent Runtime Loopback', { reason: longest.reason, hint: Array.from({ length: 3 }, () => longest.hint).join(' ') })),
+      actionLabel: i18n.t('generationCommon.node.switchProvider', { model: 'Fixture Image B', vendor: 'Agent Runtime Loopback B' }),
+      onAction: () => {},
+    })
+  },
   show: (input: ToastInput) => useToastStore.getState().push(input),
+  /** The owner's minimum body width (src/ui/toast.tsx TOAST_MIN_BODY_WIDTH), converted to px by the browser itself. */
+  minBodyWidthPx: () => {
+    const probe = document.createElement('div')
+    probe.style.cssText = `position:absolute;visibility:hidden;width:${TOAST_MIN_BODY_WIDTH}`
+    document.body.appendChild(probe)
+    const width = probe.getBoundingClientRect().width
+    probe.remove()
+    return width
+  },
   clear: () => notifications.clean(),
   /** What the shell does when a right panel is open: it marks the panel, and the container steps left of it. */
   openPanel: (name: 'model' | 'tasks' | 'director') => {
