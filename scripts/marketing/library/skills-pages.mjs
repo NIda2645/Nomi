@@ -2,14 +2,24 @@
 // 方法类（导演、编剧、流程）和配方类（广告、角色与场景）共用一个模板：配方类多一张效果图。
 import { contentByLocale } from '../content.mjs'
 import { buildMetadata } from '../metadata.mjs'
+import { fitDescription } from '../seo-limits.mjs'
 import { escapeAttr, escapeText, localizedPath, otherLocale, renderDocument } from '../shell.mjs'
-import { copyFor, localized, renderAttribution, renderBreadcrumbs, renderCopyButton, renderDownloadBand, renderLibraryHero, renderNodeCard, renderPromptText } from './common.mjs'
+import { authorCredit, copyFor, localized, renderAttribution, renderBreadcrumbs, renderCopyButton, renderDownloadBand, renderLibraryHero, renderNodeCard, renderPromptText } from './common.mjs'
 import { libraryGroups, libraryPaths } from './data.mjs'
 import { renderMarkdown } from './markdown.mjs'
 import { libraryCss } from './styles.mjs'
 
 const appliesToLabel = (item, locale) => item.appliesTo.map((kind) => copyFor(locale).kindWord[kind] ?? kind).join(' · ')
 const colon = (locale) => (locale === 'zh-CN' ? '：' : ': ')
+
+/**
+ * 技能页的 meta 描述：用目录里的技能摘要；太短（配方类摘要常只有十几个字）就接一句「哪一组、在哪里能用」，
+ * 太长就在句内停顿处截断。摘要是 App 里的目录文字，官网不改它，只是把它收进 50–160 字（seo-limits.mjs）。
+ */
+export function skillMetaDescription(item, group, locale) {
+  const suffix = copyFor(locale).skill.descriptionSuffix(localized(locale, group.label), item.nomiTools.length > 0)
+  return fitDescription(localized(locale, item.summary), { locale, suffix })
+}
 
 /** 配方类技能里「配方 / Recipe」那一节就是提示词本身：做成可复制的提示词块，其余照常渲 Markdown。 */
 const RECIPE_HEADINGS = new Set(['配方', 'Recipe'])
@@ -153,7 +163,7 @@ ${renderDownloadBand(locale)}`
     htmlLang: content.htmlLang,
     ogLocale: content.ogLocale,
     image: item.preview?.[1280],
-    meta: { title: copy.skill.metaTitle(title, groupLabel), description: localized(locale, item.summary), imageAlt: title },
+    meta: { title: copy.skill.metaTitle(title, groupLabel), description: skillMetaDescription(item, group, locale), imageAlt: title },
     alternates: { 'zh-CN': path, en: localizedPath('en', path) },
     breadcrumbs: crumbs.map((crumb) => ({ name: crumb.name, path: localizedPath(locale, crumb.path) })),
     graph: [{
@@ -165,7 +175,7 @@ ${renderDownloadBand(locale)}`
       codeRepository: `${runtimeFacts.repositoryUrl}/tree/main/${item.repositoryPath}`,
       programmingLanguage: 'Markdown',
       runtimePlatform: 'Agent Skills (SKILL.md)',
-      author: { '@type': item.source.author === 'Nomi contributors' ? 'Organization' : 'Person', name: item.source.author },
+      author: { '@type': item.source.author === 'Nomi contributors' ? 'Organization' : 'Person', name: authorCredit(item.source.author).name, ...(authorCredit(item.source.author).url ? { sameAs: item.source.author } : {}) },
       ...(item.source.author === 'Nomi contributors' ? {} : { isBasedOn: item.source.url }),
     }],
   }, runtimeFacts)

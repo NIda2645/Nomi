@@ -59,9 +59,33 @@ export function renderNodeCard({ nodeTitle, title, subtitle, body, chips = [], m
 </article>`
 }
 
-/** 出处与许可证：作者、原仓库（钉到提交）、Nomi 改了什么；非 AGPL 的附许可证全文（折叠）。 */
-export function renderAttribution({ source, license, licenseText, repositoryPath, locale, shared }) {
+/**
+ * 目录里 `source.author` 有两种写法：人名或组织名（jnMetaCode、Nomi contributors），
+ * 或原作者那条帖子的链接（https://x.com/<账号>/status/…）。后一种页面上写成 `@账号` 并链到那条帖子。
+ */
+export function authorCredit(author) {
+  if (!/^https?:\/\//.test(author)) return { name: author, url: null }
+  const url = new URL(author)
+  const handle = /^\/([^/]+)\/status\//.exec(url.pathname)?.[1]
+  return { name: handle ? `@${handle}` : url.hostname, url: author }
+}
+
+/** 原仓库的叫法：`github.com/owner/repo/blob/…` → `owner/repo`，其余用域名。 */
+const repositoryLabel = (url) => /^https:\/\/github\.com\/([^/]+\/[^/]+)/.exec(url)?.[1] ?? new URL(url).hostname
+
+/**
+ * 出处与许可证：原仓库（钉到提交）、作者、Nomi 改了什么；非 AGPL 的附许可证全文（折叠）。
+ * `authors` 是这一块署名对应的全部作者（同一个来源地址下可能有好几位，页面按来源地址合并成一块，一位都不能丢）。
+ */
+export function renderAttribution({ source, authors = [source.author], license, licenseText, repositoryPath, locale, shared }) {
   const copy = copyFor(locale)
+  const credits = [...new Set(authors)].map(authorCredit)
+  const named = credits.filter((credit) => !credit.url)
+  const posted = credits.filter((credit) => credit.url)
+  const sourceLabel = named.length ? named.map((credit) => credit.name).join(' · ') : repositoryLabel(source.url)
+  const postedRow = posted.length
+    ? `<div><dt>${escapeText(copy.authors)}</dt><dd>${posted.map((credit) => `<a href="${escapeAttr(credit.url)}" ${externalAttrs}>${escapeText(credit.name)}</a>`).join(' · ')}</dd></div>`
+    : ''
   const revision = source.revision ? ` · <code>${escapeText(source.revision.slice(0, 7))}</code>` : ''
   const fileLink = repositoryPath ? `<a href="${escapeAttr(`${shared.repositoryUrl}/tree/main/${repositoryPath}`)}" ${externalAttrs}>${escapeText(copy.viewOnGithub)} ↗</a>` : ''
   const fullText = licenseText && license !== 'AGPL-3.0-only'
@@ -69,7 +93,8 @@ export function renderAttribution({ source, license, licenseText, repositoryPath
     : ''
   return `<aside class="attribution" aria-label="${escapeAttr(copy.source)}">
   <dl>
-    <div><dt>${escapeText(copy.source)}</dt><dd><a href="${escapeAttr(source.url)}" ${externalAttrs}>${escapeText(source.author)}</a>${revision}</dd></div>
+    <div><dt>${escapeText(copy.source)}</dt><dd><a href="${escapeAttr(source.url)}" ${externalAttrs}>${escapeText(sourceLabel)}</a>${revision}</dd></div>
+    ${postedRow}
     <div><dt>${escapeText(copy.license)}</dt><dd>${escapeText(license)}</dd></div>
     ${source.changes ? `<div><dt>${escapeText(copy.changes)}</dt><dd>${escapeText(source.changes)}</dd></div>` : ''}
   </dl>

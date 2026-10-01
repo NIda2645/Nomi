@@ -50,7 +50,7 @@ const english = {
   path: '/en/features',
   meta: {
     title: 'Nomi features: an AI video studio from one sentence to a finished film',
-    description: 'What Nomi does: agent-driven film making, a storyboard, a generation canvas with versions, a 3D director’s stage, any model, and a timeline that exports MP4. Open source, local-first, models at provider prices.',
+    description: 'What Nomi does: agent-driven filmmaking, storyboard, versioned canvas, 3D director’s stage, any model, timeline and MP4 export. Open source, local-first.',
     imageAlt: 'Nomi features',
   },
   eyebrow: 'Features',

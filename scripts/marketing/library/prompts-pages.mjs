@@ -3,7 +3,7 @@
 import { contentByLocale } from '../content.mjs'
 import { buildMetadata } from '../metadata.mjs'
 import { escapeAttr, escapeText, externalAttrs, localizedPath, otherLocale, renderDocument } from '../shell.mjs'
-import { copyFor, localized, renderAttribution, renderCopyButton, renderDownloadBand, renderLibraryHero, renderNodeCard, renderPromptText } from './common.mjs'
+import { authorCredit, copyFor, localized, renderAttribution, renderCopyButton, renderDownloadBand, renderLibraryHero, renderNodeCard, renderPromptText } from './common.mjs'
 import { collectionsWithPages, libraryGroups, libraryPaths } from './data.mjs'
 import { libraryCss } from './styles.mjs'
 
@@ -29,6 +29,9 @@ function metadataFor(locale, runtimeFacts, { path, title, description, imageAlt,
 }
 
 const groupKindWord = (group, locale) => copyFor(locale).kindWord[group.items[0].appliesTo[0]] ?? ''
+
+/** 合集在这种语言的页面上叫什么：copy 里登记了就用登记的，没有就用 App 提示词来源里的名字。 */
+const collectionName = (collection, locale) => copyFor(locale).collectionLabels[collection.id] ?? collection.label
 
 export function renderPromptIndex(locale, runtimeFacts, data) {
   const copy = copyFor(locale)
@@ -61,7 +64,7 @@ export function renderPromptIndex(locale, runtimeFacts, data) {
   const withPages = new Set(collectionsWithPages(data).map((collection) => collection.id))
   const collectionCards = data.collections.map((collection) => renderNodeCard({
     nodeTitle: `${copy.kindWord[collection.promptType]} · ${collection.license}`,
-    title: collection.label,
+    title: collectionName(collection, locale),
     body: collection.sourceUrl.replace('https://github.com/', ''),
     meta: collection.prompts.length ? copy.prompts.count(collection.prompts.length) : null,
     href: withPages.has(collection.id) ? libraryPaths.collection(collection.id) : null,
@@ -119,14 +122,20 @@ export function renderEffectGroup(locale, runtimeFacts, data, group) {
   const label = localized(locale, group.label)
   const path = libraryPaths.effectGroup(group.id)
   const crumbs = crumbsFor(locale, [{ name: label, path }])
-  const sources = [...new Map(group.items.map((item) => [item.source.url, item])).values()]
+  // 同一个来源地址下的几条合成一块署名，但每一位作者都要署上，一位都不能被去重吃掉。
+  const bySource = new Map()
+  for (const item of group.items) {
+    const entry = bySource.get(item.source.url) ?? { item, authors: [] }
+    bySource.set(item.source.url, { item, authors: [...new Set([...entry.authors, item.source.author])] })
+  }
+  const sources = [...bySource.values()]
   const others = libraryGroups(data, 'effect').filter((other) => other.id !== group.id)
   const hasSlots = group.items.some((item) => /\{[^{}\n]+\}/.test(item.body))
   const showSummary = new Set(group.items.map((item) => localized(locale, item.summary))).size > 1
   const main = `${renderLibraryHero({
     eyebrow: copy.effectGroup.eyebrow,
     titleLead: `${group.items.length} ${locale === 'zh-CN' ? '条' : ''}`.trim(),
-    titleEmphasis: locale === 'zh-CN' ? `${label}提示词` : `${label.toLowerCase()} prompts`,
+    titleEmphasis: locale === 'zh-CN' ? `${label}提示词` : `${label.toLowerCase()} ${group.items.length === 1 ? 'prompt' : 'prompts'}`,
     lede: copy.groupIntro[group.id],
     crumbs,
     locale,
@@ -141,7 +150,7 @@ export function renderEffectGroup(locale, runtimeFacts, data, group) {
   <div class="wrap"><div class="measure">
     <h2>${escapeText(copy.effectGroup.howtoTitle)}</h2>
     <p class="body">${escapeText(copy.effectGroup.howto)}</p>
-    ${sources.map((item) => renderAttribution({ source: item.source, license: item.license, licenseText: item.licenseText, repositoryPath: null, locale, shared: runtimeFacts })).join('\n')}
+    ${sources.map(({ item, authors }) => renderAttribution({ source: item.source, authors, license: item.license, licenseText: item.licenseText, repositoryPath: null, locale, shared: runtimeFacts })).join('\n')}
   </div></div>
 </section>
 <section class="block lib-section">
@@ -158,7 +167,7 @@ ${renderDownloadBand(locale)}`
     name: localized(locale, item.title),
     text: item.body,
     license: item.license,
-    author: { '@type': 'Person', name: item.source.author },
+    author: { '@type': 'Person', name: authorCredit(item.source.author).name, ...(authorCredit(item.source.author).url ? { sameAs: item.source.author } : {}) },
     isBasedOn: item.source.url,
   }))
   const metadata = metadataFor(locale, runtimeFacts, {
@@ -196,7 +205,8 @@ ${renderDownloadBand(locale)}`
 export function renderCollection(locale, runtimeFacts, collection) {
   const copy = copyFor(locale)
   const path = libraryPaths.collection(collection.id)
-  const crumbs = crumbsFor(locale, [{ name: collection.label, path }])
+  const label = collectionName(collection, locale)
+  const crumbs = crumbsFor(locale, [{ name: label, path }])
   const entries = collection.prompts.map((prompt, index) => {
     const textId = `prompt-${collection.id}-${index + 1}`
     return `<article class="collection-entry" id="p${index + 1}">
@@ -204,7 +214,7 @@ export function renderCollection(locale, runtimeFacts, collection) {
   <div class="prompt-block">${renderPromptText(prompt.prompt, textId)}${renderCopyButton(textId, locale)}</div>
 </article>`
   }).join('\n')
-  const main = `${renderLibraryHero({ eyebrow: copy.collection.eyebrow, titleLead: collection.label, titleEmphasis: copy.prompts.count(collection.prompts.length), lede: copy.collection.lede(collection.label), crumbs, locale })}
+  const main = `${renderLibraryHero({ eyebrow: copy.collection.eyebrow, titleLead: label, titleEmphasis: copy.prompts.count(collection.prompts.length), lede: copy.collection.lede(label), crumbs, locale })}
 <section class="block effect-list">
   <div class="wrap"><div class="measure">
     <aside class="attribution"><dl>
@@ -217,9 +227,9 @@ export function renderCollection(locale, runtimeFacts, collection) {
 ${renderDownloadBand(locale)}`
   const metadata = metadataFor(locale, runtimeFacts, {
     path,
-    title: copy.collection.metaTitle(collection.label, collection.prompts.length),
-    description: copy.collection.metaDescription(collection.label, collection.prompts.length, collection.license),
-    imageAlt: collection.label,
+    title: copy.collection.metaTitle(label, collection.prompts.length),
+    description: copy.collection.metaDescription(label, collection.prompts.length, collection.license),
+    imageAlt: label,
     crumbs,
     pageType: 'CollectionPage',
   })
