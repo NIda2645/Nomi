@@ -1,6 +1,6 @@
 # 付费卡逐镜：点了的生成，去掉的不生成
 
-> 状态：🚧 进行中（2026-09-30：协调会话已拍板 Q1–Q9。2026-10-01：A1 已实现；A2（第 9–12 条）已实现；用户拍板加「生成剩下 N 张」，已按样张与随后的位置反馈实现；A1–A3 合成一个 PR #947，验收只在 A3 头上做一次）。
+> 状态：🚧 进行中（2026-09-30：协调会话已拍板 Q1–Q9。2026-10-01：A1 已实现；A2（第 9–12 条）已实现；用户拍板加「生成剩下 N 张」，已按样张与随后的位置反馈实现；A3（第 13–14 条、删掉 Run 级预算停、合计行单位跟标题）已实现；A1–A3 合成一个 PR #947，验收只在 A3 头上做一次）。
 > 质量体系按 `docs/plan/2026-09-29-quality-system.md`：测试表、真实路径测试、中英截图、验收页。
 
 ## 用户那条路
@@ -29,8 +29,8 @@
 | 11 失败只给存在的出路（A2） | 宿主给没发起的那一档点名是哪一种（`productionShotActionFailureOf` 的闭集，`ProductionActionResult.failure`）；渲染层 `spendCardFailure.spendActionFailureCopy` 照它挑一句，「改一下再按」只在卡此刻真能改时出现 | 卡 |
 | 12 没点不叫排队中（A2） | 画布小标读宿主的逐镜决定：等你确认 / 还没生成 / 已去掉（`productionShotPhase.deriveProductionShotState`，#940 + A1 已落地，A2 核验） | 画布 |
 | 「生成剩下 N 张」（用户 2026-10-01） | 宿主 `appIntegrationSpendConfirm.confirmRemainingShots`：卡上还没决定的每一张各走一次 `confirmOneShot`（各封一份授权、各派一次，没有总价授权） | 卡（动作行最左那颗） |
-| 13 时效跟着点击（A3，F1） | 同意窗口的唯一主人：每一次点击（生成这张、放行形象、继续剩余）续这次点到的那几镜；没人点的自动路径过期就如实停下、给按钮 | 派发、画布小标 |
-| 14 批准只核批过的那一份（A3，F4） | 批准那一刻核信封自己的事实，不核活的项目文档版本 | — |
+| 13 时效跟着点击（A3，F1） | 判据 `productionDispatchConsent.dispatchConsentOpen`（离用户最近一次点头不超过同意窗口）；续的唯一写口 `productionDispatchConsentEdits.renewDispatchConsent`（只有带真人手势章的「继续」与放行形象调它）；点「生成这张」本身就是一次新批准。过期 → 派发抛 `DispatchConsentLapsedError` → 批次停在 `consent_expired` | 派发闸、批次调度器、画布小标 |
+| 14 批准只核批过的那一份（A3，F4） | `productionRunApprovalReceipt.createGateApprovalOwner`：封了信封的付费门，收据比信封封好时的版本（`revisionRuleFor` → sealed），不读项目此刻的版本 | Run 服务的门决议 |
 
 ## A1 的结构
 
@@ -50,6 +50,16 @@
 4. **失败只给存在的出路**：宿主对「没发起」的那一档点名是哪一种（与重做 / 续拍同一个闭集），卡照它说；认不出时才说「改一下再按」，而且只在卡此刻真能改时说，改不了就说改不了、该怎么办。「可能已提交」只看**这一镜自己的**作业——以前整个 Run 一起看，前一张发出去后，后面任何一张在发出前失败都会说成「可能已提交」。
 5. **没点不叫排队中**：#940 + A1 已经让画布小标读宿主的逐镜决定；A2 在真机走查里再核一遍（卡没点时这两张写的是「等你确认」）。
 
+## A3 的结构（第 13–14 条 + 删掉 Run 级预算停）
+
+1. **同意跟着点击走（第 13 条）**：一份付费授权被用户点头的最近一刻 = 批准它的那一下（`gate.decidedAt`），或之后续过的那一下（`gate.consentRenewedAt`）。派发闸只问 `dispatchConsentOpen`：离这一刻不超过同意窗口（10 分钟）才派。以前的两道核对——派发时按信封封好那一刻起的 10 分钟判、出站箱又按批准记录的到期时间判一次——都删了。
+2. **谁能续**：只有用户在 Nomi 窗口里的那一下：停下后点「继续」（受信 resume-batch IPC → `run.control` resume，带真人手势章）、放行形象检查点（渲染层 IPC 的 `gate.decide`，带真人手势章）。续的是批过、还没发出去的那几镜所在的门（`dispatchConsentRenewalGateIds`），只在门上记一个时间，信封、收据、批准记录一个字不动。MCP 宿主、Agent、调度器自己的「继续」不续：没人点，同意就不该被延长。点卡上「生成这张」是一次新的批准，自带新的 `decidedAt`。
+3. **过期如实停下**：派发时过了窗口 → `DispatchConsentLapsedError`（不是失败、不是没发出去）→ 调度器这一趟不再碰它，歇下来时把批次停在 `consent_expired`；画布小标写「这镜还没开拍，需要你再确认一次。」并给「继续」，那一下就是确认。绝不一直挂「排队中」。
+4. **删掉 Run 级预算停**：授权按镜批之后，派生里那道「按 Run 总额度逐镜累加、超了就停」只会停下用户亲手批过的镜，停下之后画布说「预算已用完 · 提额续拍」——今天根本没有价格。删掉的：派生的 `BudgetHalt` / `BudgetExhaustedError`、调度器的两处预算停、调度器与派生的单价输入、授权准备里「先批一部分」的第一波上限（Run 有硬上限时盖不住就整份拒，不批一半）、续额度那条路（`prepareProductionGenerationContinuationAuthorization` / `GenerationContinuationNotNeededError` / `deriveGenerationContinuationAuthorizationState` / reducer `generation.continue_authorization` / 「继续」里的续额度分支）、停下原因 `budget` 和它的画布文案。账本 reserve 那道硬墙还在：撞上它（只可能是账不一致）算这一镜派不出去，不再叫预算停。重做的天花板也把别的镜批过、还在排队的那份钱算进去（以前只算账本三项，「参考卡重拍一次，等着形象放行的镜」会撞墙）。
+5. **旧数据**：上一版盘上记成 `budget` 的 Run，读盘时由 `normalizeLegacyStopReason` 当作没记原因——画布说中性的「已停，这镜还没开拍。」并给「继续」。已经在盘上的续额度门照旧是有效的付费门。
+6. **批准绑信封（第 14 条）**：Run 服务核收据时，封了信封的付费门比信封封好时的版本（命令里说的版本也必须就是它）；`runOwnedGenerationGateAuthority` 里请求门、批门、确认前后共四处活版本核对删了，连 `projectRevisionResolver` 这个依赖都没有了。创意门、信任降档、没有信封的旧付费门照旧比项目此刻的版本。
+7. **合计行单位跟标题（用户 2026-10-01 拍板）**：翻页行右端的合计写「2 张 · 合计 ¥0.60」（视频「2 段」，英文与标题同词「2 images · ¥0.60 total」），和标题、「生成剩下」读同一个 `orderWording`（有视频就说视频），不另写第二条规则。
+
 ## 「生成剩下 N 张」（用户 2026-10-01 拍板，样张 `docs/design/mockups/2026-10-01-paid-card-generate-remaining/`）
 
 - **行为**：等于把卡上还没决定的每一张各点一次「生成这张」——每张各记一笔授权，没有总价授权；去掉过的不在 N 里。点完卡和画布上每个节点的状态跟逐张点完全一致（同一份逐镜结局驱动）。宿主核两件事：点名的就是此刻卡上那一叠（报价指纹 + 镜号逐个对上），每一张开拍前它在卡上的样子没被别人改过。哪一张没成就停在那一张，它和后面的照旧在卡上；中途点 × 剩下的不再生成（× 不排队）。渲染层先把每一页卡上摆着的那一份落进候选（和逐张点同一段），再递「用户点的是这几张」。
@@ -67,6 +77,9 @@
 | 待确认付费卡投影 | `electron/productionRun/productionPendingSpend.ts#projectPendingSpendConfirm` | 面板付费卡 | 只投影没决定的镜 |
 | 付费卡上的动作 | `electron/capabilityCore/appIntegrationSpendConfirm.ts` | IPC → 面板 | 逐镜确认、去掉、×；「生成剩下 N 张」（逐张走同一个 `confirmOneShot`） |
 | 一镜是图还是视频（新，`generation.shot-kind`） | `electron/shared/generationShotKind.ts#resolveShotTaskKind`（定）+ `semanticGenerationCandidate.admitShotIdentity`（核）+ `generationShotKind`（读） | 建镜头的路、卡投影、画布落地 | A2 新登记 |
+| 这一镜现在派出去还算不算同意过（新，`production.dispatch-consent`） | `electron/shared/productionDispatchConsent.ts#dispatchConsentOpen`（判）+ `productionDispatchConsentEdits.renewDispatchConsent`（续） | 派发闸、`productionRunControl`（继续）、`productionRunService`（放行形象）、reducer、调度器 | A3 新登记 |
+| 付费门的批准绑哪一份事实（新，`production.spend-approval-binding`） | `electron/productionRun/productionRunApprovalReceipt.ts#createGateApprovalOwner` | Run 服务、`runOwnedGenerationGateAuthority` | A3 新登记 |
+| 制作为什么停下（`production.run-stop-reason`） | `productionRunLifecycle.applyRunStatus` | 同前 | A3 改形状：删 `budget`、加 `consent_expired`、旧 `budget` 读成 unknown（`normalizeLegacyStopReason`） |
 
 不碰（别的 lane 正持有）：`electron/shared/agentLane/laneProjection.ts`、`electron/agentLane/laneModelContext.ts`、`electron/agentLane/laneContextBudget.mts`、`laneDesktopTools.ts` / `projectAgentProposalReceiptStore.ts`、`workbenchDocumentSlice` 的分镜激活。`tests/ux/full-walk/` 现在没人持有（协调会话 2026-10-01）：A1 跟着改目录里的两个 i18n 键、PB01 的步骤（点完第 1 页卡还在、只剩第 2 张，再 ×）和监视器的 `card-scope-mismatch` 判据（按钮许诺几镜就只发几镜、标题数还没决定的镜、没点的镜不许悄悄没了——按宿主的出价账查）。
 
@@ -153,6 +166,16 @@ A2 与「生成剩下 N 张」新写或改写的：
 | 建镜头时核「模型 + 模式」 | `semanticGenerationCandidate.admitShotIdentity` | 有：我们自己的 `moduleRegistry.resolve`（派发前编译合同用的就是它） | 直接复用这一个判据，只是提前到落盘之前；没有再写一份目录解析 | 复用 |
 | 失败时说哪一句 | 宿主 `ProductionActionResult.failure` + 渲染层 `spendCardFailure.spendActionFailureCopy` | 有：重做 / 续拍那一套失败闭集与文案表（`productionShotActionFailureOf`、`SHOT_ACTION_FAILURE_COPY`） | 直接复用那个闭集和那张表；新写的只有「卡能不能改」这一个判据和三句卡上特有的话（卡刚变了 / 这张已不在卡上 / 卡改不了） | 复用 + 薄映射 |
 | 「生成剩下 N 张」 | `appIntegrationSpendConfirm.confirmRemainingShots` | 产品层有：Runway Workflows「Run all」、Higgsfield 一次生成一组（见「先查别人」产品层表）；框架层没有：AI SDK 审批是一次调用一个是 / 否，pi 只能整次放行或挡下 | 照产品层的形状给一颗点名数量的按钮；执行上每张仍走逐张那一条路（各一份授权）——「每张各记一笔授权、不出总价授权」是用户拍板的花钱语义，框架里没有对应物 | 我们独有（按镜头花钱） |
+
+A3 新写或改写的：
+
+| 机制 | 落在哪 | 别人有没有现成的 | 用不用、为什么 | 结论 |
+|---|---|---|---|---|
+| 同意窗口（批了之后多久派出去还算数） | `productionDispatchConsent.dispatchConsentOpen` | 形状有：Stripe 授权各自带有效期、过期释放要重新授权；OAuth 令牌过期要用户（或刷新令牌）续。框架层没有：AI SDK 审批批完立即执行，没有「批了、过一会儿才执行」这一段；pi 的 `before_tool` 只管放不放这一次调用 | 照 Stripe / OAuth 的形状（每份授权各自的时效，过期就再确认一次）；判据落在我们自己的派发闸上——钱花在第三方供应商、用户自己的 Key 上，只有我们的账知道哪一镜批了还没发 | 我们独有（领域） |
+| 续同意（点击 = 续） | `productionDispatchConsentEdits.renewDispatchConsent`，调用方 `productionRunControl`（继续）、`productionRunService`（放行形象） | 有：真人手势章（受信 IPC 边界自己盖，`RunCommand.humanGesture`，09-10 起付费门就认它当人证） | 直接复用手势章当「这一下是真人点的」的证据，没有另造一套证明；新写的只有「续哪几道门」这一个判据和一条 reducer 命令 | 复用 + 薄写口 |
+| 过期如实停下 | 调度器 `settleAtRest` 加一种原因 `consent_expired` | 有：我们自己的停下原因（09-29 起停的那一刻记原因，界面只读它） | 复用同一个停下写口与画布小标，只加一个原因、一句话、一颗「继续」 | 复用 |
+| 批准绑信封 | `productionRunApprovalReceipt.revisionRuleFor` | 原则有：RFC 9396 §9（执行批准过程中批准的那份授权细节） | 照规范，判据只能写在我们自己的收据核对里 | 我们独有（照规范） |
+| 删掉的 | Run 级预算停、续额度那条路、四处活版本核对、出站箱的到期核对 | — | 加新必删旧（P1） | 删 |
 
 **和 B（付费卡并进对话）重叠的部分，这次没做死：**
 

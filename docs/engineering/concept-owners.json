@@ -2695,9 +2695,23 @@
         {
           "path": "electron/shared/productionRunStop.ts",
           "symbol": "isStoppedRunStatus"
+        },
+        {
+          "path": "electron/shared/productionRunStop.ts",
+          "symbol": "normalizeLegacyStopReason"
         }
       ],
       "forbidden_derivations": [
+        {
+          "symbol": "BudgetExhaustedError",
+          "kind": "definition",
+          "why": "Run 级预算停批（2026-10-01 删）：授权按镜批之后它只会停下用户亲手批过的镜，界面再说「预算已用完 · 提额续拍」——今天根本没有价格。停下原因里没有预算。"
+        },
+        {
+          "symbol": "prepareProductionGenerationContinuationAuthorization",
+          "kind": "definition",
+          "why": "续额度（提额续拍）那条路随 Run 级预算停一起删了（2026-10-01）：「继续」只有一条路，run.control resume。"
+        },
         {
           "symbol": "HALT_ERROR_CODES",
           "kind": "definition",
@@ -2723,10 +2737,12 @@
         "electron/shared/productionShotPhase.ts",
         "electron/shared/decideShotClaim.ts",
         "electron/capabilityCore/appIntegrationProductionActions.ts",
-        "electron/agentLane/laneDesktopTasks.ts"
+        "electron/agentLane/laneDesktopTasks.ts",
+        "electron/productionRun/productionRunRepository.ts",
+        "electron/productionRun/multiShotBatchScheduler.ts"
       ],
       "since": "2026-09-29",
-      "notes": "2026-09-29 用户实见：Agent 付费卡确认 → 定妆照出图 → 检查点放行后视频镜派不出去 → Run 进 needs_attention → 画布说「预算已用完 · 提额续拍」，点进去额度全是 0（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。原因从来没被记下，界面只好从状态反推。现在「为什么停」是停下那一刻的事实：停它的一方在 run.status 命令的 payload.reason 里说（预算 / 失败 / 用户暂停 / 用户取消 / 重启后核对），applyRunStatus 落成 run.stop；新停下不说原因即拒绝写入；停着之间的挪动沿用原来记下的；离开停着的状态即清掉。读口只有 runStopReason：画布小标（deriveProductionShotState）、续拍入口（appIntegrationProductionActions）、Agent 读 Run（projection 的 stopReason → mcpToolResults）、Agent 任务列表（laneDesktopTasks）都读它。上一版停下时没记的读作 unknown，绝不猜成预算。渲染层 IPC 的 run.status 白名单不透传 reason，所以渲染层写不出一次「停下」——停只能经 run.control（暂停 / 取消），原因在那里写。"
+      "notes": "2026-09-29 用户实见：Agent 付费卡确认 → 定妆照出图 → 检查点放行后视频镜派不出去 → Run 进 needs_attention → 画布说「预算已用完 · 提额续拍」，点进去额度全是 0（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。原因从来没被记下，界面只好从状态反推。现在「为什么停」是停下那一刻的事实：停它的一方在 run.status 命令的 payload.reason 里说（预算 / 失败 / 用户暂停 / 用户取消 / 重启后核对），applyRunStatus 落成 run.stop；新停下不说原因即拒绝写入；停着之间的挪动沿用原来记下的；离开停着的状态即清掉。读口只有 runStopReason：画布小标（deriveProductionShotState）、续拍入口（appIntegrationProductionActions）、Agent 读 Run（projection 的 stopReason → mcpToolResults）、Agent 任务列表（laneDesktopTasks）都读它。上一版停下时没记的读作 unknown，绝不猜成预算。渲染层 IPC 的 run.status 白名单不透传 reason，所以渲染层写不出一次「停下」——停只能经 run.control（暂停 / 取消），原因在那里写。 2026-10-01 付费卡①：停下原因里删掉了「预算」（Run 级预算停批与续额度那条路一起删了，授权按镜批之后它只会停下用户批过的镜），加了 consent_expired（批过的镜离用户最后一次点头超过同意窗口还没发出去、没人续——画布说「这镜还没开拍，需要你再确认一次」并给「继续」，判据归 production.dispatch-consent）。上一版盘上记成 budget 的 Run 读盘时由 normalizeLegacyStopReason 当作没记原因，读出来是中性的「已停」（unknown），绝不再说成预算用完。"
     },
     {
       "name": "制作 Run 的生命周期收尾与解除（急停收尾落到已暂停、重做解除失败停下）",
@@ -2868,7 +2884,7 @@
         "electron/capabilityCore/mcpStdioServer.ts"
       ],
       "since": "2026-09-29",
-      "notes": "2026-09-29 用户实见：定妆照检查点放行后视频镜派不出去（「Generation authorization no longer matches the current project or Run」），批次停下（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。派发时要核的是「批过的那一份」，只有它：封进信封的项目身份（immutableProjectUuid + projectGeneration）、Run、计划版本、那道门，以及每个 job 的合同哈希、供应商、模型、第几次、幂等键、线上报文哈希、参考图、单价上限、到期时间——收据签的就是这份信封的摘要。项目文档的版本号不在里面：它只是「用户看报价那一刻项目是不是最新」的前提，在批准那一刻由收据那一侧核（productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后 Nomi 自己把占位和参考卡结果落上画布就会让它前进。所以派发不再读活的文档版本（createProductionGenerationSubmission 连这个依赖都没有了），也没有「重试时重新封一次」这种补法。批准那一刻的版本绑定是否也该松开，归付费卡审批那条 lane，不在这里。2026-09-30 付费卡逐镜（形状变化，主人不变）：每一份授权住在自己那道门上（`gate.authorizationEnvelope`），一次点击一道门；job 的 `authorizationDigest` 指着批它的那道门，派发只核那道门的信封——计划级的那份授权（`generationPlan.authorizationEnvelope`）删了。同一镜点一下就是一道门，别的镜还没点就没有门、没有 job，调度器无从派发。"
+      "notes": "2026-09-29 用户实见：定妆照检查点放行后视频镜派不出去（「Generation authorization no longer matches the current project or Run」），批次停下（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。派发时要核的是「批过的那一份」，只有它：封进信封的项目身份（immutableProjectUuid + projectGeneration）、Run、计划版本、那道门，以及每个 job 的合同哈希、供应商、模型、第几次、幂等键、线上报文哈希、参考图、单价上限、到期时间——收据签的就是这份信封的摘要。项目文档的版本号不在里面：它只是「用户看报价那一刻项目是不是最新」的前提，在批准那一刻由收据那一侧核（productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后 Nomi 自己把占位和参考卡结果落上画布就会让它前进。所以派发不再读活的文档版本（createProductionGenerationSubmission 连这个依赖都没有了），也没有「重试时重新封一次」这种补法。批准那一刻的版本绑定也已松开（2026-10-01 付费卡① 第 14 条，归 production.spend-approval-binding）：付费门的收据比的是它自己那份信封封好时的版本，不再读项目此刻的版本。2026-09-30 付费卡逐镜（形状变化，主人不变）：每一份授权住在自己那道门上（`gate.authorizationEnvelope`），一次点击一道门；job 的 `authorizationDigest` 指着批它的那道门，派发只核那道门的信封——计划级的那份授权（`generationPlan.authorizationEnvelope`）删了。同一镜点一下就是一道门，别的镜还没点就没有门、没有 job，调度器无从派发。 2026-10-01 付费卡① 第 13 条：派发时「这一镜现在派出去还算不算用户同意过」不在这里另判（以前拿信封封好那一刻起的 10 分钟判、出站箱又按批准记录的到期时间判一次），改由 production.dispatch-consent 一个判据答，过期抛 DispatchConsentLapsedError，批次停在 consent_expired。"
     },
     {
       "name": "分镜一镜发出去什么（提示词 + 参考图）",
@@ -3435,6 +3451,83 @@
       ],
       "since": "2026-10-01",
       "notes": "付费卡① 第 9 条（合同 docs/fixes/2026-10-01-paid-card-shot-kind.root-cause.json）。建镜头时种类只从「点名的模型在目录里声明的模式 + 明写的 taskKind / mode / modeId」来（resolveShotTaskKind，两样都没有就请 Agent 写明，不按提示词猜）；每条建镜头的路（单镜 / 多镜 create、整只给候选、改草稿）落盘前都过 admitShotIdentity（和派发前编译合同同一个 registry.resolve，参考卡只能是图片）。建好之后卡标题、卡体、画布节点、派发都只读 generationShotKind（宿主投影成 PendingSpendShot.kind，渲染层只读这一格，不再自己解读 mode 或模型目录）。模式 → 媒体种类的映射住在 capabilityModeManifest.modelKindForTaskKind（模型准入用的同一张表），这里不另抄。"
+    },
+    {
+      "name": "这一镜现在派出去还算不算用户同意过（同意窗口）",
+      "subject": "production.dispatch-consent",
+      "lifecycle": "spend-authority",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/productionDispatchConsent.ts",
+        "symbol": "dispatchConsentOpen"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/productionDispatchConsent.ts",
+          "symbol": "dispatchConsentOpen"
+        },
+        {
+          "path": "electron/shared/productionDispatchConsent.ts",
+          "symbol": "latestDispatchConsentAt"
+        },
+        {
+          "path": "electron/shared/productionDispatchConsent.ts",
+          "symbol": "dispatchConsentRenewalGateIds"
+        },
+        {
+          "path": "electron/productionRun/productionDispatchConsentEdits.ts",
+          "symbol": "renewDispatchConsent"
+        },
+        {
+          "path": "electron/productionRun/productionDispatchConsentEdits.ts",
+          "symbol": "applyDispatchConsentRenewal"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/productionRun/productionRunStopReason.e2e.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionGenerationSubmission.ts",
+        "electron/productionRun/productionRunControl.ts",
+        "electron/productionRun/productionRunService.ts",
+        "electron/productionRun/productionRunReducer.ts",
+        "electron/productionRun/multiShotBatchScheduler.ts"
+      ],
+      "since": "2026-10-01",
+      "notes": "付费卡① 第 13 条：付费批次的确认以前 10 分钟就过期（信封封好那一刻起算），派发时还要核，出站箱又按批准记录的到期时间判一次——放行形象检查点、暂停后点「继续剩余」、第二天重开项目这些「批准之后过一会儿才派」的路只要晚于 10 分钟就永远派不出去，镜头一直挂着「排队中」，而用户那时明明刚点过一下。现在一份付费授权被用户点头的最近一刻 = 批准它的那一下（gate.decidedAt）或之后续过的那一下（gate.consentRenewedAt）；派发闸（productionGenerationSubmission.prepareAuthorizedSubmission）只读 dispatchConsentOpen，过了窗口抛 DispatchConsentLapsedError，调度器接住、批次停在 consent_expired（不是失败、也不是排队）。续只有一个写口 renewDispatchConsent → reducer 的 generation.consent_renew（applyDispatchConsentRenewal 只许续批过的付费门），调用方只有两处、都要受信 IPC 盖的真人手势章：Nomi 窗口里点「继续」（productionRunControl resume）和放行形象检查点（productionRunService 的 gate.decide 钩子）。MCP 宿主 / Agent / 调度器自己的继续都不续：没人点，同意就不该被延长。点卡上「生成这张」就是一次新的批准，自带新的 decidedAt。出站箱那道 approval-expired 核对删了（approvalPolicy.authorizeSubmission）。"
+    },
+    {
+      "name": "付费门的批准绑的是哪一份事实（收据比哪一个项目版本）",
+      "subject": "production.spend-approval-binding",
+      "lifecycle": "spend-authority",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+        "symbol": "createGateApprovalOwner"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+          "symbol": "createGateApprovalOwner"
+        },
+        {
+          "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+          "symbol": "assertCurrentProjectRevision"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/productionRun/productionRunApprovalReceipt.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionRunService.ts",
+        "electron/capabilityCore/runOwnedGenerationGateAuthority.ts"
+      ],
+      "since": "2026-10-01",
+      "notes": "付费卡① 第 14 条：以前批准付费门时到处核「收据上的项目版本 == 项目此刻的版本」（Run 服务的收据核对，加上 runOwnedGenerationGateAuthority 里请求门、批门、确认前后共四处），于是确认卡开着的时候 Nomi 往画布上落了别的镜、用户改了下一镜，这一下「生成这张」就被拒成「确认时项目有变动」，而卡上的东西一个字没变。现在封了信封的付费门，收据比的是它自己那份信封封好时的版本（revisionRuleFor → sealed），命令里说的版本也必须就是它；发出去的东西本来就由合同哈希、线上报文哈希、幂等键逐字钉死，和项目版本无关。创意门、信任降档、没有信封的旧付费门照旧比项目此刻的版本（assertCurrentProjectRevision）。runOwnedGenerationGateAuthority 那四处活版本核对删了，它连 projectRevisionResolver 这个依赖都没有了。"
     }
   ]
 }
