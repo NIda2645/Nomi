@@ -270,3 +270,29 @@ test('端到端：新建一个同类文件，警告期放行并出警告，阻�
   assert.equal(quiet.status, 0, quiet.stderr)
   assert.doesNotMatch(quiet.stderr, /落在领域目录之外/)
 })
+
+test('端到端：新增文件路径带中文时门岗仍然认得出（git 默认会把中文路径转义成八进制串，按行读会漏判）', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'self-written-cjk-'))
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }))
+  const write = (file, content) => {
+    fs.mkdirSync(path.dirname(path.join(root, file)), { recursive: true })
+    fs.writeFileSync(path.join(root, file), content)
+  }
+  git(root, 'init', '-q')
+  git(root, 'config', 'user.email', 't@example.com')
+  git(root, 'config', 'user.name', 't')
+  git(root, 'config', 'commit.gpgsign', 'false')
+  write(SELF_WRITTEN_FILE, JSON.stringify(registry()))
+  write('electron/productionRun/seed.ts', 'export const seed = 1\n')
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'base')
+  const base = git(root, 'rev-parse', 'HEAD').trim()
+  write('electron/agentLane/中文通用能力.ts', FIT_FILE.content)
+  git(root, 'add', '-A')
+  git(root, 'commit', '-q', '-m', 'add generic capability with a CJK file name')
+  const run = spawnSync(process.execPath, [path.join(here, 'check-self-written.mjs')], {
+    encoding: 'utf8', env: { ...process.env, SELF_WRITTEN_REPO_ROOT: root, SELF_WRITTEN_BASE_REF: base, SELF_WRITTEN_TODAY: '2026-10-09' },
+  })
+  assert.equal(run.status, 1, run.stdout + run.stderr)
+  assert.match(run.stderr, /electron\/agentLane\/中文通用能力\.ts/)
+})

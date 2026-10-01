@@ -13,6 +13,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { gitPaths } from './lib/gitPaths.mjs'
 import { SELF_WRITTEN_FILE, evaluateSelfWritten, staticPrefixOf } from './self-written-lib.mjs'
 
 const repoRoot = process.env.SELF_WRITTEN_REPO_ROOT
@@ -44,8 +45,8 @@ const base = resolveBase()
 let added = []
 let baseNote = ''
 if (base) {
-  const names = git(['diff', '--name-only', '--diff-filter=A', '-M', base, 'HEAD', '--', 'src', 'electron'])
-    .split('\n').map((line) => line.trim()).filter(Boolean)
+  // 走 gitPaths（加 -z、按 NUL 切）：git 默认会把中文路径转义成八进制串，按行读会漏判（check:git-path-quoting）
+  const names = gitPaths(['diff', '--name-only', '--diff-filter=A', '-M', base, 'HEAD', '--', 'src', 'electron'], { cwd: repoRoot, maxBuffer: 64 * 1024 * 1024 })
   added = names.map((file) => {
     let content = ''
     try { content = execFileSync('git', ['show', `HEAD:${file}`], { cwd: repoRoot, encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }) } catch { /* 读不到当空文件 */ }
