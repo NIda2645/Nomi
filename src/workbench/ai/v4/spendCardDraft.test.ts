@@ -24,6 +24,7 @@ function shot(id: string, overrides: Partial<PendingSpendShot> = {}): PendingSpe
     prompt: '六棱柱',
     providerId: 'apimart',
     modelId: 'gpt-image-2',
+    kind: 'image',
     parameters: { size: '1024x1024', quality: 'standard' },
     price: { known: true, amount: 0.3 },
     ...overrides,

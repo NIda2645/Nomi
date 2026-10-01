@@ -1,5 +1,5 @@
 import { currentPresentation, generationPresentationOutcome, presentationIsOpen } from "../shared/productionGenerationPresentation";
-import { anySubmissionMayHaveReachedProvider } from "../shared/productionShotJobs";
+import { anySubmissionMayHaveReachedProvider, jobsForShot } from "../shared/productionShotJobs";
 import { withSpendReferencePreviews, resolveSpendReferenceInputs, projectSpendReferenceAssets, type SpendReferenceAssets } from './pendingSpendReferences';
 import { generationPlanInputSchema } from '../shared/agentCapabilities/generationPlanSchemas';
 import { sameProjectAgentBinding } from '../shared/projectBinding';
@@ -38,6 +38,7 @@ import type { ModelPricing } from "../productionRun/shotPricing";
 import type { ProductionActionResult, ProductionRun } from "../productionRun/productionRunTypes";
 import { listPendingSpendConfirms, projectPendingSpendConfirm } from "../productionRun/productionPendingSpend";
 import { decideGenerationSpend } from "./generationSpendDecision";
+import { productionShotActionFailureOf } from "./appIntegrationProductionActions";
 import { spendAnsweredByPolicy } from "./policySpendDecision";
 import type { PendingSpendConfirm, PendingSpendRead } from "../shared/contracts/pendingSpendConfirm";
 import { readResidentSurfaceLifecycle } from "./residentSurfaceLifecycle";
@@ -107,7 +108,10 @@ function failed(error: unknown, started = true): ProductionActionResult {
   if (safe === 'generation_execution_failed' || safe === 'generation_not_started') {
     logWarn("capability", "spend-confirm-failed", { code: safe }, error);
   }
-  return { ok: false, code: "failed", message: safe, ...(reason && reason !== safe ? { reason } : {}) };
+  // 没发起的那一档还要说清是哪一种（第 11 条：卡上只给存在的出路）。按错误类型认，与重做 / 续拍同一个闭集；
+  // 发起过的那一档只说「结果未知、先去核对」，种类不改变那句话，所以不带。
+  const failure = safe === 'generation_not_started' ? productionShotActionFailureOf(error) : undefined;
+  return { ok: false, code: "failed", message: safe, ...(reason && reason !== safe ? { reason } : {}), ...(failure ? { failure } : {}) };
 }
 
 /**
@@ -179,6 +183,15 @@ export async function discardPendingSpendConfirmation(input: { projectId: string
 export async function confirmPendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string; shotId?: string }): Promise<ProductionActionResult> {
   if (!actions) return { ok: false, code: "unavailable" };
   return actions.confirmPendingSpend(input);
+}
+
+/**
+ * 付费卡上「生成剩下 N 张 / 段」（2026-10-01 用户拍板）：卡上还没决定的每一张各点一次「生成这张」。
+ * `shotIds` 必须就是此刻卡上那一叠（去掉过的不在里面）；每张各封一份只盖它自己的授权，没有总价授权。
+ */
+export async function confirmRemainingSpendShots(input: { projectId: string; operationId: string; quoteId: string; shotIds: readonly string[] }): Promise<ProductionActionResult> {
+  if (!actions) return { ok: false, code: "unavailable" };
+  return actions.confirmRemainingShots(input);
 }
 
 /** 付费卡上「去掉这张 / 这段」：这一镜不生成，卡上剩下的镜照旧等人决定。 */
@@ -275,12 +288,18 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    * 价格由下一次投影现算——数只有一个产地。
    */
   /**
-   * 这一笔到底有没有可能离开过这台机器。判据是账本里的作业状态，不是异常的长相，
+   * 这一下点到的那一镜到底有没有可能离开过这台机器。判据是账本里的作业状态，不是异常的长相，
    * 而且只有一个 owner（`productionShotJobs.anySubmissionMayHaveReachedProvider`）。
    * 一个作业都读不到 = 连 Run 都没有 = 更没发起。
+   *
+   * **只看这一镜自己的作业**（`jobsForShot`）：多镜卡上前面几张早就发出去了，第 3 张在发出前失败时，
+   * 不许借它们的状态说「可能已提交」（2026-10-01「生成剩下 N 张」写测试时抓到的：整个 Run 一起看，
+   * 第 2 张只要第 1 张发过就永远是「结果未知」）。
    */
-  const anySubmissionStarted = (projectId: string, operationId: string): boolean =>
-    anySubmissionMayHaveReachedProvider(deps.runs.read(projectId, operationId)?.jobs ?? []);
+  const anySubmissionStarted = (projectId: string, operationId: string, shotId: string): boolean => {
+    const run = deps.runs.read(projectId, operationId);
+    return run ? anySubmissionMayHaveReachedProvider(jobsForShot(run, shotId)) : false;
+  };
 
   /**
    * 卡上的动作按这一份计划排成一条队：连点两下、连按回车、点完这张立刻点下一张，都一个接一个跑完，
@@ -449,12 +468,53 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
       );
       return { ok: true, code: "spend_confirmed" };
     } catch (error) {
-      return failed(error, anySubmissionStarted(input.projectId, input.operationId));
+      return failed(error, anySubmissionStarted(input.projectId, input.operationId, shotId));
     } finally {
       // 这一镜决定了之后卡上还剩没决定的镜 → 卡照旧开着、等的那个回合继续等；一镜不剩 → 宿主已经把这一次出价关了，递过去。
       settleWaiterIfClosed(input.projectId, input.operationId);
     }
   };
+
+  /** 这一镜此刻在卡上的样子（不含页码与节点：那两样随别的镜决定而变，和「这一镜要发什么」无关）。 */
+  const shownShot = (pending: PendingSpendConfirm | undefined, shotId: string): string | undefined => {
+    const shot = pending?.shots.find((entry) => entry.shotId === shotId);
+    if (!shot) return undefined;
+    const { index: _index, nodeId: _nodeId, ...content } = shot;
+    return JSON.stringify(content);
+  };
+
+  /**
+   * 「生成剩下 N 张 / 段」（2026-10-01 用户拍板）= 把卡上还没决定的每一张各点一次「生成这张」。
+   *
+   * 不是另一条花钱的路：每一张走的就是 `confirmOneShot`——各封一份只盖它自己的授权、各铸一张收据、各派一次，
+   * 没有总价授权；去掉过的不在里面。所以点完之后卡、画布小标、回执和逐张点完一模一样（同一份逐镜结局驱动）。
+   *
+   * 用户按下去的那一刻看到的就是要发的：`quoteId` 必须是此刻这张卡、点名的必须恰好是卡上那一叠；
+   * 每张开拍前再核一次它在卡上的样子没被别人改过（前面几张批下去会换报价，但不该换这一张要发的内容）。
+   * 哪一张没成就停在那一张——它和它后面的镜照旧留在卡上，和逐张点到那里停下一模一样。用户中途点 × 收回出价，
+   * 剩下的不再生成（× 不排队，正是为了能打断它）。
+   */
+  const confirmRemainingShots = (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotIds: readonly string[] }>): Promise<ProductionActionResult> =>
+    serialized(input.projectId, input.operationId, async () => {
+      if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
+      const pending = pendingFor(input.projectId, input.operationId);
+      if (!pending) return { ok: false, code: "failed", message: "no pending generation to confirm" };
+      if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"), false);
+      const onCard = pending.shots.map((shot) => shot.shotId);
+      if (onCard.length < 2 || input.shotIds.length !== onCard.length || input.shotIds.some((shotId, index) => shotId !== onCard[index])) {
+        return failed(new Error("generation_scope_invalid"), false);
+      }
+      const seen = new Map(onCard.map((shotId) => [shotId, shownShot(pending, shotId)]));
+      for (const shotId of input.shotIds) {
+        const current = pendingFor(input.projectId, input.operationId);
+        // 卡已经关了（用户点了 ×，或宿主把这一次出价收回了）：剩下的没决定，不再生成。
+        if (!current || !current.shots.some((shot) => shot.shotId === shotId)) break;
+        if (shownShot(current, shotId) !== seen.get(shotId)) return failed(new Error("generation_quote_changed"), false);
+        const result = await confirmOneShot({ projectId: input.projectId, operationId: input.operationId, quoteId: current.quoteId, shotId });
+        if (!result.ok) return result;
+      }
+      return { ok: true, code: "spend_confirmed" };
+    });
 
   /** 「去掉这张 / 这段」（第 2 条）：这一镜不生成，占位留在画布上。连点两下 → 第二下原样回成功。 */
   const removePendingSpendShot = (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotId: string }>): Promise<ProductionActionResult> =>
@@ -477,5 +537,5 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
       }
     });
 
-  return { listPendingSpend, revisePendingSpend, discardPendingSpend, confirmPendingSpend, removePendingSpendShot };
+  return { listPendingSpend, revisePendingSpend, discardPendingSpend, confirmPendingSpend, removePendingSpendShot, confirmRemainingShots };
 }

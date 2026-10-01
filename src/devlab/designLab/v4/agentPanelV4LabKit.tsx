@@ -39,6 +39,8 @@ export const V4_LAB_SLOT_HANDLERS = Object.freeze({
    * 一颗没接线的钮和一颗设计上就没有的钮，在截图里长得一模一样（2026-09-21 实测栽过）。
    */
   onReject: () => undefined,
+  /** 付费卡「生成剩下 N 张」（2026-10-01）：同上，不接这颗钮在取景里就整个消失。 */
+  onBatch: () => undefined,
 })
 
 export const V4_PANEL_WIDTH = 390
@@ -269,12 +271,16 @@ function buildFixtures(t: TFunction) {
     },
     // 夹具的字段要和**生产投影** `projectSpendCard` 对得上，否则实验室画的是另一张卡
     // ——这个坑这条 lane 上已经踩过两次（卡头「需要你定一下」、幽灵的「换模型」按钮）。
-    // 生产投影今天产出：问话式 `title` + `badge` + `totalLead` + `confirmLabel`，**没有** alternateLabel。
+    // 生产投影今天产出（多镜、报得出价）：问话式 `title` + `badge` + 翻页器 + 翻页行右端的 `totalLead`
+    // + 动作行最左的「生成剩下 N 段」+ 右边「去掉这段」和主按钮（2026-10-01 排布）。
     spend: {
       kind: 'spend',
       title: t('agentPanelV4.slotSpendTitle'),
       badge: t('agentPanelV4.slotSpendBadge'),
+      pager: { index: 0, total: 4, keyHint: t('agentPanelV4.pagerKeyHint') },
       totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: 4, amount: '¥1.20' }),
+      alternateLabel: t('agentPanelV4.spendRemoveThisVideo'),
+      batchLabel: t('agentPanelV4.spendConfirmRemainingVideo', { count: 4 }),
       params: ['Kling O1', '4 × 3s', 'std', '¥1.20'],
       confirmLabel: t('agentPanelV4.slotGenerate'),
     },

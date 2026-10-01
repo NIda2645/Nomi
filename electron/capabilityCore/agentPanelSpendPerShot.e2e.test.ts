@@ -7,27 +7,15 @@ import { afterEach, describe, expect, it } from "vitest";
 import { generationPresentationOutcome } from "../shared/productionGenerationPresentation";
 import { registerSpendWaiter } from "./spendDecisionWaiters";
 import {
-  PROJECT_ID, OPERATION_ID, lease, now, candidate, startLoopbackVendor, harness, buildActions, callTool, resetSpendFixture, advanceClock,
+  PROJECT_ID, OPERATION_ID, now, candidate, startLoopbackVendor, harness, buildActions, callTool, resetSpendFixture, advanceClock,
+  imageDraft, shotsSent,
 } from "./agentPanelSpendConfirmTestUtils";
 
 afterEach(resetSpendFixture);
 
-/** Agent 起草的几张图（`draft_shots`：落画布、不出卡），然后 `generate` 把它们摆到卡上。 */
-async function imageDraft(base: ReturnType<typeof harness>, handler: ReturnType<typeof buildActions>["handler"], count = 2) {
-  const shots = Array.from({ length: count }, (_, offset) => offset + 1).map((index) => ({
-    shotId: `shot-${index}`,
-    role: "shot" as const,
-    candidate: { ...candidate("image-model", { size: "1024x1024" }), candidateId: `candidate-${index}`, prompt: `第 ${index} 张：渔港清晨` },
-  }));
-  await base.operations.create({ operationId: OPERATION_ID, projectId: PROJECT_ID, candidate: shots[0].candidate, shots,
-    cardHidden: true, origin: { host: "nomi", actorId: "agent-panel" }, now: now() });
-  await base.canvasLanding.settleCanvasLanding(PROJECT_ID);
-  await handler({ capability: "present", params: { operationId: OPERATION_ID }, lease });
-}
-
-function promptsSent(bodies: ReadonlyArray<Record<string, unknown>>, submits: readonly string[]): readonly string[] {
-  // loopback 记下的是请求体；哪一镜由幂等键里的 shotId 认。
-  return submits.map((key) => /shot-\d+/.exec(key)?.[0] ?? key);
+/** 供应商收到了哪几镜（请求体不用看：哪一镜由幂等键里的 shotId 认）。 */
+function promptsSent(_bodies: ReadonlyArray<Record<string, unknown>>, submits: readonly string[]): readonly string[] {
+  return shotsSent(submits);
 }
 
 type PerShotActions = ReturnType<typeof buildActions>["withWindow"] & {

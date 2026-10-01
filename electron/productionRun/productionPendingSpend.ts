@@ -1,4 +1,5 @@
 import { sumBudgetAmounts } from "./budgetLedger";
+import { generationShotKind } from "../shared/generationShotKind";
 import { createHash } from "node:crypto";
 // 「有一笔生成在等你点头」的**宿主投影**（纯函数，唯一 owner）。
 //
@@ -47,8 +48,8 @@ type PricingResolver = (providerId: string, modelId: string) => ModelPricing | u
 function shotsOf(plan: ProductionGenerationPlan, undecided: readonly string[], resolvePricing: PricingResolver): PendingSpendShot[] {
   const wanted = new Set(undecided);
   const source = plan.shots?.length
-    ? plan.shots.filter((shot) => wanted.has(shot.shotId)).map((shot) => ({ shotId: shot.shotId, nodeId: shot.nodeId, candidate: shot.candidate }))
-    : wanted.has(plan.candidate.candidateId) ? [{ shotId: plan.candidate.candidateId, nodeId: plan.nodeId, candidate: plan.candidate }] : [];
+    ? plan.shots.filter((shot) => wanted.has(shot.shotId)).map((shot) => ({ shotId: shot.shotId, nodeId: shot.nodeId, role: shot.role, candidate: shot.candidate }))
+    : wanted.has(plan.candidate.candidateId) ? [{ shotId: plan.candidate.candidateId, nodeId: plan.nodeId, role: undefined, candidate: plan.candidate }] : [];
   return source.map((entry, index) => ({
     shotId: entry.shotId,
     ...(entry.nodeId ? { nodeId: entry.nodeId } : {}),
@@ -56,6 +57,8 @@ function shotsOf(plan: ProductionGenerationPlan, undecided: readonly string[], r
     prompt: entry.candidate.prompt ?? "",
     providerId: entry.candidate.providerId,
     modelId: entry.candidate.modelId,
+    // 图还是视频：和画布节点、派发读的是同一个函数（第 9 条），卡上标题与卡体都只读这一格。
+    kind: generationShotKind(entry),
     ...(entry.candidate.mode ? { mode: entry.candidate.mode } : {}),
     ...(entry.candidate.modeId ? { modeId: entry.candidate.modeId } : {}),
     ...(entry.candidate.variantId ? { variantId: entry.candidate.variantId } : {}),

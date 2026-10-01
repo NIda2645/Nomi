@@ -244,6 +244,7 @@ function SpendComposerCard({
         prompt: String(candidate.prompt ?? ''),
         providerId: String(KLING.vendor ?? ''),
         modelId: String(candidate.meta?.modelKey || ''),
+        kind: 'video' as const,
         mode: 'text_to_video',
         parameters: {},
         price: quote ? { known: true as const, amount: quote.amount } : { known: false as const },

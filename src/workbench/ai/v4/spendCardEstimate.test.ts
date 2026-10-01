@@ -21,7 +21,7 @@ const OPTIONS: ModelOption[] = [
 function shot(id: string, overrides: Partial<PendingSpendShot> = {}): PendingSpendShot {
   return {
     shotId: id, nodeId: `node-${id}`, index: 1, prompt: '六棱柱',
-    providerId: 'apimart', modelId: 'gpt-image-2',
+    providerId: 'apimart', modelId: 'gpt-image-2', kind: 'image',
     parameters: { size: '1024x1024' }, price: { known: true, amount: 0.3 },
     ...overrides,
   }

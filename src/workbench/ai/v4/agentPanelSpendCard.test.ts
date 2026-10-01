@@ -12,7 +12,8 @@ import type { GenerationCanvasNode } from '../../generationCanvas/model/generati
 const t = (key: string, options?: Record<string, unknown>): string =>
   options ? `${key}(${Object.entries(options).map(([k, v]) => `${k}=${String(v)}`).join(',')})` : key
 
-function shot(index: number, amount: number | null, modelId = 'kling', mode?: string) {
+/** 一镜。`kind` 是宿主给的那一格（`generationShotKind`）——卡只读它，不再自己去解读 `mode`。 */
+function shot(index: number, amount: number | null, modelId = 'kling', kind: 'image' | 'video' = 'image') {
   return {
     shotId: `s${index}`,
     nodeId: `node-${index}`,
@@ -20,7 +21,8 @@ function shot(index: number, amount: number | null, modelId = 'kling', mode?: st
     prompt: `镜头 ${index}`,
     providerId: 'kie',
     modelId,
-    mode,
+    kind,
+    mode: kind === 'video' ? 'text_to_video' : 'text_to_image',
     parameters: { duration: '3' },
     price: amount === null ? { known: false as const } : { known: true as const, amount },
   }
@@ -96,7 +98,7 @@ describe('付费卡投影', () => {
   })
 
   it('没有「全部」：翻页器旁不再有范围切换，每一页都只有「生成这张 / 这段」和「去掉这张 / 这段」', () => {
-    const data = projectSpendCard(pending([shot(1, 0.3), { ...shot(2, 0.3), mode: 'image_to_video' }]), { page: 1 }, t, { locale: 'zh-CN' })!
+    const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3, 'kling', 'video')]), { page: 1 }, t, { locale: 'zh-CN' })!
     expect(data.pager).toMatchObject({ index: 1, total: 2 })
     expect(JSON.stringify(data.pager)).not.toContain('scope')
     expect(data.confirmLabel).toBe('agentPanelV4.spendConfirmThisVideoPriced(amount=¥0.30)')
@@ -116,10 +118,18 @@ describe('付费卡投影', () => {
   })
 
   it('图片单说图片、视频单才说视频——付钱前那一刻不许让人怀疑它搞错了', () => {
-    const image = projectSpendCard(pending([{ ...shot(1, 0.3), mode: 'text_to_image' }]), { page: 0 }, t, { locale: 'zh-CN' })!
+    const image = projectSpendCard(pending([shot(1, 0.3)]), { page: 0 }, t, { locale: 'zh-CN' })!
     expect(image.title).toContain('spendParamsTitleImage')
-    const video = projectSpendCard(pending([{ ...shot(1, 0.3), mode: 'image_to_video' }]), { page: 0 }, t, { locale: 'zh-CN' })!
+    const video = projectSpendCard(pending([shot(1, 0.3, 'kling', 'video')]), { page: 0 }, t, { locale: 'zh-CN' })!
     expect(video.title).toContain('spendParamsTitle(')
+  })
+
+  // 第 9 条：标题、按钮都只读宿主给的那一格。`mode` 字符串怎么写都不该让卡改口——
+  // 以前卡读 `mode`、卡体读模型目录、画布读节点种类，于是标题说视频、卡体是图片模型。
+  it('图还是视频只读宿主给的 kind：mode 字符串里有 video 也不改口', () => {
+    const data = projectSpendCard(pending([{ ...shot(1, 0.3), mode: 'image_to_video_legacy' }]), { page: 0 }, t, { locale: 'zh-CN' })!
+    expect(data.title).toBe('agentPanelV4.spendParamsTitleImage(count=1)')
+    expect(data.confirmLabel).toContain('spendConfirmThisImage')
   })
 
   it('没有镜头就不出卡', () => {
@@ -164,6 +174,43 @@ describe('节点 → 候选补丁', () => {
     const patch = candidatePatchFromNode(node({ duration: undefined, modelKey: 'seedance' }), base)!
     expect(patch.parameters).toBeUndefined()
     expect(patch.modelId).toBe('seedance')
+  })
+})
+
+describe('「生成剩下 N 张 / 段」（2026-10-01 用户拍板）', () => {
+  it('2 张：从第 1 页起就在，写明张数；N 就是标题那个数', () => {
+    const data = projectSpendCard(pending([shot(1, null), shot(2, null)]), { page: 0 }, t, { locale: 'zh-CN' })!
+    expect(data.batchLabel).toBe('agentPanelV4.spendConfirmRemainingImage(count=2)')
+    expect(data.title).toContain('count=2')
+  })
+
+  it('翻到第 2 页也还是同一颗（它管的是整叠，不是这一页）', () => {
+    const data = projectSpendCard(pending([shot(1, null), shot(2, null), shot(3, null)]), { page: 2 }, t, { locale: 'zh-CN' })!
+    expect(data.batchLabel).toBe('agentPanelV4.spendConfirmRemainingImage(count=3)')
+  })
+
+  it('只剩 1 张时不出现：它和「生成这张」是同一件事', () => {
+    const data = projectSpendCard(pending([shot(1, null)]), { page: 0 }, t, { locale: 'zh-CN' })!
+    expect(data.batchLabel).toBeUndefined()
+  })
+
+  it('张 / 段跟标题同一条规则：有视频就说段', () => {
+    const data = projectSpendCard(pending([shot(1, null), shot(2, null, 'kling', 'video')]), { page: 0 }, t, { locale: 'zh-CN' })!
+    expect(data.title).toContain('spendParamsTitle(')
+    expect(data.batchLabel).toBe('agentPanelV4.spendConfirmRemainingVideo(count=2)')
+  })
+
+  it('报得出价时也不带合计：这一叠的合计已经印在翻页那一行（同一个数不说两遍）', () => {
+    const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3)]), { page: 0 }, t, { locale: 'zh-CN' })!
+    expect(data.batchLabel).toBe('agentPanelV4.spendConfirmRemainingImage(count=2)')
+    expect(data.batchLabel).not.toContain('¥')
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalLeadBatch(count=2,amount=¥0.60)')
+  })
+
+  it('报不出价时哪儿都不写数，也没有任何价格未知、预算之类的话', () => {
+    const data = projectSpendCard(pending([shot(1, null), shot(2, null)]), { page: 0 }, t, { locale: 'zh-CN' })!
+    expect(data.totalLead).toBeUndefined()
+    expect(JSON.stringify(data)).not.toMatch(/¥|Unavailable|Budget|budget|预算/)
   })
 })
 

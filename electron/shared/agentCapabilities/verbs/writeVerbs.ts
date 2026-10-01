@@ -35,10 +35,11 @@ export const draftShotSchema = z.object({
   storyboard: storyboardAuthorFieldsSchema.optional().describe("Original author fields; anchors require kind and carrier."),
   title: z.string().trim().min(1).max(120).optional().describe("Short human title in the user's language, shown on the canvas node and spend card."),
   prompt: z.string().trim().min(1).max(8_000).optional().describe("Prompt in the user's language. Required for a new shot; when revising (operationId + shotId) send it only to change it."),
-  taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer it (a named modeId decides it)."),
+  // 2026-09-30（付费卡① 第 9 条）：种类不再按提示词猜。点名了模型（或 modeId）就由它定；两样都没点名时必须写明。
+  taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce. A named model or modeId decides it, so omit it then; give it when you name neither, or when the model makes both images and videos."),
   role: z.enum(["anchor", "shot"]).optional().describe("anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot."),
   durationSec: z.number().positive().max(600).optional().describe("Clip length in seconds; omit for stills. The only place for length, never parameters."),
-  modelId: z.string().trim().min(1).optional().describe("Catalog model id from list_models; omit for the user's default."),
+  modelId: z.string().trim().min(1).optional().describe("Catalog model id from list_models. Omit it to use the user's default for this shot's taskKind."),
   // 2026-09-22：`taskKind` 与 `modeId` 是同一件事实的两种写法。模式定了，种类就定了
   // （`transportTaskKindForModeId` 从档案扫出来），所以说明书直接告诉模型「写了模式就别再写种类」——
   // 两个都填正是它自己给自己造矛盾的地方（run2 A3/A6 三次）。
@@ -181,7 +182,7 @@ export function writeVerbs(): VerbDeclaration[] {
     promptGuidelines: [...READ_GUIDELINES, ...CANVAS_NODE_PROMPT_GUIDELINES],
     schema: z.object({
       operationId: z.string().trim().min(1).max(160).optional().describe("operationId from an earlier draft_shots call, to update it."),
-      taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce for every shot; omit to infer per shot."),
+      taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("Default kind for shots that give none of their own; omit it when the named models decide."),
       candidate: z.object({
         providerId: z.string().trim().min(1).describe("Provider id from list_models."),
         modelId: z.string().trim().min(1).describe("Model id from list_models."),

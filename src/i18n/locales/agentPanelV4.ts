@@ -458,11 +458,25 @@ export const zhAgentPanelV4 = {
   /** 次动作：这一镜不生成，占位留在画布上，卡上剩下的照旧等人。 */
   spendRemoveThisImage: '去掉这张',
   spendRemoveThisVideo: '去掉这段',
+  /**
+   * 「生成剩下 N 张 / 段」（2026-10-01 用户拍板）：等于把卡上还没决定的每一张各点一次「生成这张」，每张各记一笔授权。
+   * N 只数还没决定的；张 / 段跟标题同一条规则（有视频就说段）；报得出价时也不带合计（左下已印）。只剩 1 张时不出现。
+   */
+  spendConfirmRemainingImage_one: '生成剩下 {{count}} 张',
+  spendConfirmRemainingImage_other: '生成剩下 {{count}} 张',
+  spendConfirmRemainingVideo_one: '生成剩下 {{count}} 段',
+  spendConfirmRemainingVideo_other: '生成剩下 {{count}} 段',
   spendParamsDecline: '不要',
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
   spendActionFailed: '暂时无法确认这一步的结果，请查看任务状态后再操作。',
   spendActionNotStarted: '这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。',
+  /** 第 11 条：卡此刻改不了时不许说「改一下再按」，说改不了、该怎么办。 */
+  spendActionNotStartedLocked: '这一步没成，Nomi 没有开始生成，也没有花钱。这张卡现在改不了：点 × 关掉，告诉 Nomi 要怎么改，它会重新起草。',
+  /** 按下去的那一刻卡上的内容刚变了（报价换了一份）：没发起，看一眼现在的样子再按。 */
+  spendActionCardChanged: '卡上的内容刚变了，Nomi 没有开始生成，也没有花钱。看一眼现在的样子再按。',
+  /** 这一张已经不在卡上（刚被决定，或卡已关掉）。 */
+  spendActionShotGone: '这一张已经不在卡上了，Nomi 没有为它开始生成，也没有花钱。',
 
   // 「全自动」档（2026-09-10 用户拍板 · 增量 2）
   autoModeConfirmTitle: '切到「全自动」？',
@@ -903,9 +917,16 @@ export const enAgentPanelV4 = {
   spendConfirmThisVideoPriced: 'Generate this one {{amount}}',
   spendRemoveThisImage: 'Remove',
   spendRemoveThisVideo: 'Remove',
+  spendConfirmRemainingImage_one: 'Generate remaining {{count}}',
+  spendConfirmRemainingImage_other: 'Generate remaining {{count}}',
+  spendConfirmRemainingVideo_one: 'Generate remaining {{count}}',
+  spendConfirmRemainingVideo_other: 'Generate remaining {{count}}',
   spendParamsDecline: 'No',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
+  spendActionNotStartedLocked: 'That did not go through. Nomi has not started generating and has not spent anything. This card can\'t be changed right now: close it with × and tell Nomi what to change, and it will draft it again.',
+  spendActionCardChanged: 'The card just changed, so Nomi has not started generating and has not spent anything. Check what it shows now, then press again.',
+  spendActionShotGone: 'This one is no longer on the card, so Nomi has not started generating it and has not spent anything.',
 
   autoModeConfirmTitle: 'Switch to Full auto?',
   autoModeConfirmBody: 'Nomi will make undoable edits directly and **paid generation will run without showing you a quote each time** — this confirmation is your authorisation for them. Irreversible actions are still confirmed every time.',

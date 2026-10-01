@@ -22,11 +22,11 @@ export type SpendCardView = Readonly<{
 /** 这一镜的价格文本；算不出 → `undefined`（调用方据此走「算不出」那一档）。 */
 
 /**
- * 这一单是视频还是图片。判据是候选自己的 `mode`（`text_to_image` / `image_to_video` …），
- * 不是猜的：agent 建的草稿两种都有，标题一律写「视频」会让用户在**付钱前那一刻**怀疑它搞错了。
+ * 这一单是视频还是图片：只读宿主给的 `kind`（2026-09-30 第 9 条）。它和画布节点、派发读的是同一个答案；
+ * 以前这里自己去解读 `mode` 字符串，卡体却读模型目录、画布读另一种写法，于是标题说视频、卡体是图片模型。
  */
 function isVideoOrder(shots: readonly PendingSpendShot[]): boolean {
-  return shots.some((shot) => /video/i.test(shot.mode ?? ''))
+  return shots.some((shot) => shot.kind === 'video')
 }
 
 /** 每一镜都有价、且都是同一个数 = 「整齐」。不整齐时算式退成「逐镜不同」。 */
@@ -114,10 +114,16 @@ export function projectSpendCard(
         }
       : {}),
     price,
-    // 页脚左下只在多镜且报得出合计时印「N 镜 · 合计 ¥X」；报不出价时什么都不印——「价格未知 · 以供应商账单为准」
-    // 这一句随「仍要生成」一起删了（第 7 条：今天不真的钱话不说，2026-09-30）。
+    // 「N 镜 · 合计 ¥X」只在多镜且报得出合计时印（住在翻页那一行的右端）；报不出价时什么都不印——
+    // 「价格未知 · 以供应商账单为准」这一句随「仍要生成」一起删了（第 7 条：今天不真的钱话不说，2026-09-30）。
     ...(total !== undefined && shots.length > 1
       ? { totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: shots.length, amount: money(total) }) }
+      : {}),
+    // 整叠的动作「生成剩下 N 张 / 段」（2026-10-01 用户拍板）：N 就是卡上还没决定的镜（= 标题那个数，去掉的不算），
+    // 张 / 段跟标题同一条规则（有视频就说段）；报得出价也不带合计（翻页行右端已经印着这个数）。
+    // 只剩 1 张时它和「生成这张」是同一件事，不画。
+    ...(shots.length > 1
+      ? { batchLabel: t(isVideoOrder(shots) ? 'agentPanelV4.spendConfirmRemainingVideo' : 'agentPanelV4.spendConfirmRemainingImage', { count: shots.length }) }
       : {}),
     // 主按钮只生成这一页这一镜（第 1 条），次动作「去掉这张 / 这段」只让这一镜不生成（第 2 条）。
     // 这一镜报得出价时按钮带上这一下花多少（第 7 条：可以带，但没有任何一条路径依赖它）；报不出就只说动作。

@@ -219,7 +219,9 @@ export function revisionsForConfirm(
  */
 export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanvasNode, option?: ModelOption, canvasInputs: readonly SpendReferenceInput[] = []): GenerationCanvasNode | undefined {
   const archetype = resolveArchetypeForModel({ modelKey: shot.modelId, vendorKey: shot.providerId, meta: option?.meta })
-  const kind = option?.kind ?? archetype?.kind ?? placed?.kind
+  // 卡体那张生成框的种类只读宿主给的那一格（第 9 条）：和卡标题、画布节点、派发同一个答案。
+  // 以前这里读模型目录自己的种类，画布读另一套，卡就会标题说视频、卡体是图片模型，还改不动。
+  const kind = shot.kind
   if (!isGenerationNodeKind(kind)) return undefined
   return applySpendReferences({
     id: shot.nodeId ?? `spend:${shot.shotId}`,

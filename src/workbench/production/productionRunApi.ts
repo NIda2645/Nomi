@@ -27,4 +27,5 @@ export const productionRunApi = {
   confirmSpend: (projectId: string, operationId: string, quoteId: string, shotId?: string) => bridge().confirmSpend(projectId, operationId, quoteId, shotId),
   /** 付费卡上「去掉这张 / 这段」：这一镜不生成。 */
   removeSpendShot: (projectId: string, operationId: string, quoteId: string, shotId: string) => bridge().removeSpendShot(projectId, operationId, quoteId, shotId),
+  confirmSpendRemaining: (projectId: string, operationId: string, quoteId: string, shotIds: readonly string[]) => bridge().confirmSpendRemaining(projectId, operationId, quoteId, shotIds),
 }

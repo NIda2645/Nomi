@@ -9,7 +9,7 @@ const REF_URL = 'nomi-local://asset/project-1/ref-cat.png'
 
 const shot: PendingSpendShot = {
   shotId: 'shot-2', nodeId: 'node-2', index: 2, prompt: '清晨的渔港', providerId: 'apimart', modelId: 'doubao-seedance-2.0',
-  modeId: 'omni', variantId: 'fast', parameters: { resolution: '480p', duration: 4 }, price: { known: false },
+  kind: 'video', modeId: 'omni', variantId: 'fast', parameters: { resolution: '480p', duration: 4 }, price: { known: false },
 }
 
 /** 画布上那一镜的占位节点（同一个模型档案），一张图片节点连到它。 */

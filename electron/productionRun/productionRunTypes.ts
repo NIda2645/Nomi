@@ -550,6 +550,13 @@ export type ProductionActionResult = {
    * 只放 Nomi 自己的码，供应商与凭据文本照旧只进主进程日志。
    */
   reason?: string;
+  /**
+   * **没发起的那一档是哪一种**（2026-09-30 付费卡① 第 11 条）：窗口弹不出确认、供应商没接好、项目刚变了……
+   * 与重做 / 续拍同一个闭集（`productionShotActionFailureOf` 按错误类型认，不读原话），渲染层照它说人话。
+   * 只在 `message === "generation_not_started"` 时带；认不出（`internal_error`）时卡上才说「改一下再按」，
+   * 而且只在卡确实能改的时候。
+   */
+  failure?: ProductionShotActionFailure;
 };
 
 export type CreateProductionRunInput = {

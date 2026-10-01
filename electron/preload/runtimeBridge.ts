@@ -34,6 +34,8 @@ export const runtimeBridge = {
       ipcRenderer.invoke("nomi:production-runs:confirm-spend", { projectId, operationId, quoteId, ...(shotId === undefined ? {} : { shotId }) }),
     removeSpendShot: (projectId: string, operationId: string, quoteId: string, shotId: string) =>
       ipcRenderer.invoke("nomi:production-runs:remove-spend-shot", { projectId, operationId, quoteId, shotId }),
+    confirmSpendRemaining: (projectId: string, operationId: string, quoteId: string, shotIds: readonly string[]) =>
+      ipcRenderer.invoke("nomi:production-runs:confirm-spend-remaining", { projectId, operationId, quoteId, shotIds: [...shotIds] }),
   },
   tasks: {
     cancel: (taskId: string) => ipcRenderer.invoke("nomi:tasks:cancel", taskId) as Promise<{ ok: boolean }>,

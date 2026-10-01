@@ -351,6 +351,27 @@ async function draft(base: ReturnType<typeof harness>): Promise<void> {
   await base.canvasLanding.settleCanvasLanding(PROJECT_ID);
 }
 
+/**
+ * Agent 起草的几张图（`draft_shots`：落画布、不出卡），然后 `generate` 把它们摆到卡上。
+ * 逐镜点（`agentPanelSpendPerShot`）和「生成剩下 N 张」（`agentPanelSpendRemaining`）共用这一份起草，不各抄一遍。
+ */
+export async function imageDraft(base: ReturnType<typeof harness>, handler: ReturnType<typeof buildActions>["handler"], count = 2) {
+  const shots = Array.from({ length: count }, (_, offset) => offset + 1).map((index) => ({
+    shotId: `shot-${index}`,
+    role: "shot" as const,
+    candidate: { ...candidate("image-model", { size: "1024x1024" }), candidateId: `candidate-${index}`, prompt: `第 ${index} 张：渔港清晨` },
+  }));
+  await base.operations.create({ operationId: OPERATION_ID, projectId: PROJECT_ID, candidate: shots[0].candidate, shots,
+    cardHidden: true, origin: { host: "nomi", actorId: "agent-panel" }, now: now() });
+  await base.canvasLanding.settleCanvasLanding(PROJECT_ID);
+  await handler({ capability: "present", params: { operationId: OPERATION_ID }, lease });
+}
+
+/** 供应商收到了哪几镜：loopback 记下的是幂等键，哪一镜由键里的 shotId 认。 */
+export function shotsSent(submits: readonly string[]): readonly string[] {
+  return submits.map((key) => /shot-\d+/.exec(key)?.[0] ?? key);
+}
+
 export function resetSpendFixture() {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
   clock = NOW_BASE;

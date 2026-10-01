@@ -36,4 +36,6 @@ export type DesktopProductionRunBridge = {
   confirmSpend: (projectId: string, operationId: string, quoteId: string, shotId?: string) => Promise<ProductionActionResult>;
   /** 付费卡上「去掉这张 / 这段」：这一镜不生成。 */
   removeSpendShot: (projectId: string, operationId: string, quoteId: string, shotId: string) => Promise<ProductionActionResult>;
+  /** 付费卡上「生成剩下 N 张 / 段」：点名的这几张（= 卡上还没决定的全部）各批一份、各派一份。 */
+  confirmSpendRemaining: (projectId: string, operationId: string, quoteId: string, shotIds: readonly string[]) => Promise<ProductionActionResult>;
 };

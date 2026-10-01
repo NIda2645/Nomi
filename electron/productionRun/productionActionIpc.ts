@@ -20,6 +20,7 @@ type CapabilityActions = {
   discardPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string }) => Promise<ProductionActionResult>;
   confirmPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string }) => Promise<ProductionActionResult>;
   removePendingSpendShot: (input: { projectId: string; operationId: string; quoteId: string; shotId: string }) => Promise<ProductionActionResult>;
+  confirmRemainingSpendShots: (input: { projectId: string; operationId: string; quoteId: string; shotIds: readonly string[] }) => Promise<ProductionActionResult>;
 };
 
 export function registerProductionActionIpc(deps: {
@@ -118,6 +119,18 @@ export function registerProductionActionIpc(deps: {
     // 一下点击只批一镜（付费卡逐镜）：渲染层只递「用户点的是哪一镜」，批不批、派不派由主进程决定。
     const shotId = str(raw.shotId) || undefined;
     return (await deps.loadCore()).confirmPendingSpendConfirmation({ ...scoped, quoteId: str(raw.quoteId), ...(shotId ? { shotId } : {}) });
+  });
+
+  ipcMain.handle("nomi:production-runs:confirm-spend-remaining", async (event, payload: unknown): Promise<ProductionActionResult> => {
+    assertTrustedSender(event);
+    const scoped = spendOperation(payload);
+    if ("ok" in scoped) return scoped;
+    const raw = objectOf(payload);
+    // 「生成剩下 N 张」：渲染层只递「用户点的是这几张」，它们必须就是卡上还没决定的那一叠（宿主核）；
+    // 每张各封一份授权、各派一份由主进程决定。
+    const shotIds = Array.isArray(raw.shotIds) ? raw.shotIds.map(str).filter(Boolean) : [];
+    if (shotIds.length === 0) return { ok: false, code: "failed", message: "generation_scope_invalid" };
+    return (await deps.loadCore()).confirmRemainingSpendShots({ ...scoped, quoteId: str(raw.quoteId), shotIds });
   });
 
   ipcMain.handle("nomi:production-runs:remove-spend-shot", async (event, payload: unknown): Promise<ProductionActionResult> => {
