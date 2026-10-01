@@ -87,12 +87,15 @@ export function exemptionOf(path, content) {
 export function pathMatches(pattern, path) {
   const p = String(pattern).replaceAll('\\', '/')
   const file = String(path).replaceAll('\\', '/')
-  if (p.endsWith('/')) return file.startsWith(p)
-  if (p.includes('*')) {
-    const regex = new RegExp(`^${p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')}$`)
-    return regex.test(file)
+  const globbed = p.includes('*') || p.includes('[')
+  if (!globbed) {
+    if (p.endsWith('/')) return file.startsWith(p)
+    return file === p || file.startsWith(`${p}/`)
   }
-  return file === p || file.startsWith(`${p}/`)
+  // glob：`**` 跨目录、`*` 不跨目录、`[A-Z]` 字符类；以 / 结尾 = 该目录整棵子树
+  const body = p.replace(/[.+^${}()|\\]/g, '\\$&').replace(/\*\*/g, '\u0000').replace(/\*/g, '[^/]*').replace(/\u0000/g, '.*')
+  const tail = p.endsWith('/') ? '.*' : ''
+  return new RegExp(`^${body}${tail}$`).test(file)
 }
 
 function hasSource(text) {
@@ -117,6 +120,15 @@ export function validateRegistry(registry, { exists = () => true, today } = {}) 
       errors.push(`${label}: reason 必须写清它为什么是领域（Nomi 独有的东西），而不是一个词`)
     }
     if (!exists(root.path)) stale.push(`${label}: 路径不存在（陈旧登记）`)
+  }
+  for (const zone of registry.genericZones ?? []) {
+    if (typeof zone?.path !== 'string' || !zone.path.trim()) errors.push('genericZones 条目缺 path')
+    else if (typeof zone.reason !== 'string' || zone.reason.trim().length < 4) errors.push(`genericZones[${zone.path}]: 缺 reason`)
+  }
+  for (const root of roots ?? []) {
+    if (root?.exclude !== undefined && !(Array.isArray(root.exclude) && root.exclude.every((item) => typeof item === 'string'))) {
+      errors.push(`domainRoots[${root?.path ?? '?'}]: exclude 必须是字符串数组`)
+    }
   }
   const ids = new Set()
   const entries = Array.isArray(registry.entries) ? registry.entries : null
@@ -170,13 +182,16 @@ export function evaluateSelfWritten({ registry, added, today, exists = () => tru
   const bucket = enforcing ? errors : warnings
   for (const message of shape.stale) bucket.push(message)
 
-  const roots = (registry?.domainRoots ?? []).map((root) => root.path)
+  const roots = registry?.domainRoots ?? []
+  const generic = (registry?.genericZones ?? []).map((zone) => zone.path)
+  const inDomain = (path) => !generic.some((zone) => pathMatches(zone, path))
+    && roots.some((root) => pathMatches(root.path, path) && !(root.exclude ?? []).some((pattern) => pathMatches(pattern, path)))
   const covered = (registry?.entries ?? []).flatMap((entry) => entry.paths ?? [])
   const violations = []
   for (const { path, content } of added ?? []) {
     if (!isGatedCodeFile(path)) continue
     if (exemptionOf(path, content)) continue
-    if (roots.some((root) => pathMatches(root, path))) continue
+    if (inDomain(path)) continue
     if (covered.some((pattern) => pathMatches(pattern, path))) continue
     violations.push(path)
   }

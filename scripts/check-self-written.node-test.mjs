@@ -164,6 +164,60 @@ test('真实登记表：形状完整、领域目录与登记路径都存在', ()
   assert.deepEqual(shape.stale, [])
 })
 
+test('领域目录是概念级的：顶层树里混着的通用代码（hooks、协议层、缓存、IPC、存储、深比较）新文件一律要登记', () => {
+  const real = JSON.parse(fs.readFileSync(path.join(repoRoot, SELF_WRITTEN_FILE), 'utf8'))
+  const flagged = (file) => evaluateSelfWritten({
+    registry: real, added: [{ path: file, content: 'export function f() { return 1 }\n' }], today: '2026-10-20', exists: () => true,
+  }).violations.length === 1
+  // 领域：不报
+  for (const file of [
+    'electron/productionRun/newShotThing.ts',
+    'electron/capabilityCore/canvasNewThing.ts',
+    'electron/capabilityCore/generationNewThing.ts',
+    'electron/shared/agentCapabilities/newVerb.ts',
+    'electron/catalog/newVendorAdapter.ts',
+    'src/workbench/generationCanvas/nodes/NewNode.tsx',
+    'src/workbench/production/NewRunCard.tsx',
+    'src/workbench/creation/newStoryboardThing.ts',
+  ]) assert.equal(flagged(file), false, `${file} 是领域，不该报`)
+  // 通用：报（这些在旧版「整棵顶层树都算领域」下全部漏过去）
+  for (const file of [
+    'electron/capabilityCore/mcpNewProtocolPart.ts',
+    'electron/agentLane/laneContextFitLike.ts',
+    'electron/downloads/newDownloader.ts',
+    'electron/preload/newBridge.ts',
+    'electron/events/eventLogRepository2.ts',
+    'electron/settings/newPortableConfig.ts',
+    'electron/browser/chrome/newChromeThing.ts',
+    'electron/tasks/taskCacheV2.ts',
+    'electron/backgroundNewThing.ts',
+    'src/workbench/ai/v4/useAgentPanelNewPolling.ts',
+    'src/workbench/generation/useNewDockThing.ts',
+    'src/workbench/ai/v4/shareEqualDeep.ts',
+    'src/workbench/generation/dockCollapsePrefs.ts',
+    'src/workbench/ai/hooks/anything.ts',
+    'src/workbench/common/NewMarkdown.tsx',
+    'src/workbench/api/newApi.ts',
+    'src/ui/newToast.tsx',
+    'src/design/NewPopover.tsx',
+  ]) assert.equal(flagged(file), true, `${file} 是通用代码，应该报`)
+})
+
+test('exclude 与 genericZones 的语义：exclude 只作用于它所在的领域目录；genericZones 覆盖一切领域目录', () => {
+  const reg = registry({
+    domainRoots: [{ path: 'electron/tasks/', reason: '生成任务的提交、轮询、取片与本地化', exclude: ['electron/tasks/taskCache*'] }],
+    genericZones: [{ path: '**/hooks/', reason: '通用 hooks 子树' }],
+  })
+  const run = (file) => evaluateSelfWritten({ registry: reg, added: [{ path: file, content: 'export const x = 1\n' }], today: '2026-10-20' }).violations
+  assert.deepEqual(run('electron/tasks/taskSpendV2.ts'), [])
+  assert.deepEqual(run('electron/tasks/taskCacheV2.ts'), ['electron/tasks/taskCacheV2.ts'])
+  const hooks = evaluateSelfWritten({
+    registry: registry({ domainRoots: [{ path: 'src/workbench/ai/', reason: 'Agent 面板与对话投影的界面' }], genericZones: [{ path: '**/hooks/', reason: '通用 hooks 子树' }] }),
+    added: [{ path: 'src/workbench/ai/hooks/useX.ts', content: 'export const x = 1\n' }], today: '2026-10-20',
+  })
+  assert.deepEqual(hooks.violations, ['src/workbench/ai/hooks/useX.ts'])
+})
+
 // —— 端到端：真 git 仓库里跑 CLI ——
 function git(cwd, ...args) {
   const run = spawnSync('git', args, { cwd, encoding: 'utf8' })
