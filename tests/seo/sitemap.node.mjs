@@ -27,6 +27,55 @@ test('renderSitemap is a pure, deterministic, XML-safe template over given entri
   assert.doesNotMatch(xml, /&(?!(amp|lt|gt|quot|apos);)/)
 })
 
+test('renderSitemap writes hreflang alternates that mirror the page head (zh, en, x-default -> zh)', () => {
+  const entries = [{
+    path: '/models',
+    updatedAt: '2026-01-01',
+    changefreq: 'weekly',
+    priority: '0.8',
+    alternates: [
+      { lang: 'zh-CN', path: '/models' },
+      { lang: 'en', path: '/en/models' },
+      { lang: 'x-default', path: '/models' },
+    ],
+  }]
+  const xml = renderSitemap('https://nomiaqm.com', entries)
+  assert.match(xml, /xmlns:xhtml="http:\/\/www\.w3\.org\/1999\/xhtml"/)
+  assert.match(xml, /<xhtml:link rel="alternate" hreflang="zh-CN" href="https:\/\/nomiaqm\.com\/models" \/>/)
+  assert.match(xml, /<xhtml:link rel="alternate" hreflang="en" href="https:\/\/nomiaqm\.com\/en\/models" \/>/)
+  assert.match(xml, /<xhtml:link rel="alternate" hreflang="x-default" href="https:\/\/nomiaqm\.com\/models" \/>/)
+})
+
+test('every real entry lists both language versions and x-default pointing at the Chinese page', () => {
+  const siteData = loadSiteData()
+  const { entries } = computeSitemapEntries({ siteData, runtimeFacts, previousDates: loadPageDates(), today: '2026-09-28' })
+  for (const entry of entries) {
+    const byLang = Object.fromEntries(entry.alternates.map(({ lang, path: alternatePath }) => [lang, alternatePath]))
+    assert.deepEqual(Object.keys(byLang).sort(), ['en', 'x-default', 'zh-CN'], entry.path)
+    assert.equal(byLang['x-default'], byLang['zh-CN'], `${entry.path}: x-default points at the Chinese page`)
+    assert.ok([byLang['zh-CN'], byLang.en].includes(entry.path), `${entry.path} is one of its own alternates`)
+  }
+})
+
+test('a release (version bump) alone moves no lastmod except the page that shows the version', () => {
+  const siteData = loadSiteData()
+  const first = computeSitemapEntries({ siteData, runtimeFacts, previousDates: {}, today: '2026-01-01' })
+  const bumped = computeSitemapEntries({ siteData, runtimeFacts: Object.freeze({ ...runtimeFacts, version: '99.0.0' }), previousDates: first.dates, today: '2026-06-01' })
+  const moved = Object.keys(bumped.dates).filter((route) => bumped.dates[route].date !== first.dates[route].date).sort()
+  // 快速上手页上有读者看得见的「最新版本」文字，它的内容确实变了；其余每页只是 JSON-LD 里的 softwareVersion 变了，不算内容变化。
+  assert.deepEqual(moved, ['/en/quickstart', '/quickstart'])
+})
+
+test('a real content change moves exactly that page lastmod to today', () => {
+  const siteData = loadSiteData()
+  const first = computeSitemapEntries({ siteData, runtimeFacts, previousDates: {}, today: '2026-01-01' })
+  const tampered = { ...first.dates, '/models': { hash: 'stale-hash', date: '2026-01-01' } }
+  const second = computeSitemapEntries({ siteData, runtimeFacts, previousDates: tampered, today: '2026-06-01' })
+  assert.equal(second.dates['/models'].date, '2026-06-01')
+  assert.equal(second.dates['/models'].hash, first.dates['/models'].hash)
+  assert.equal(second.dates['/prompts'].date, '2026-01-01', 'untouched pages keep their date')
+})
+
 test('computed entries cover the real site once each, with clean routes and no retired pages', () => {
   const siteData = loadSiteData()
   const { entries } = computeSitemapEntries({ siteData, runtimeFacts, previousDates: loadPageDates(), today: '2026-09-28' })

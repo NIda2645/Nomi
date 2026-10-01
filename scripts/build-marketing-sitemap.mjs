@@ -17,17 +17,25 @@ const escapeXml = (value) => String(value)
   .replaceAll('"', '&quot;')
   .replaceAll("'", '&apos;')
 
-/** 纯 XML 模板：给定一份已经算好的 entries（见 computeSitemapEntries），跟 siteData/日期无关，方便单测。 */
+/**
+ * 纯 XML 模板：给定一份已经算好的 entries（见 computeSitemapEntries），跟 siteData/日期无关，方便单测。
+ * 每条带 `alternates`（hreflang）时，按 sitemap 的 xhtml 扩展写出中英互指——跟页面 <head> 里的 hreflang 是同一份数据。
+ */
 export function renderSitemap(siteUrl, entries) {
   const baseUrl = String(siteUrl).replace(/\/$/, '')
-  const urls = entries.map((page) => `  <url>
+  const urls = entries.map((page) => {
+    const alternates = (page.alternates ?? [])
+      .map(({ lang, path: alternatePath }) => `\n    <xhtml:link rel="alternate" hreflang="${escapeXml(lang)}" href="${escapeXml(`${baseUrl}${alternatePath}`)}" />`)
+      .join('')
+    return `  <url>
     <loc>${escapeXml(`${baseUrl}${page.path}`)}</loc>
     <lastmod>${escapeXml(page.updatedAt)}</lastmod>
     <changefreq>${escapeXml(page.changefreq)}</changefreq>
-    <priority>${escapeXml(page.priority)}</priority>
-  </url>`).join('\n')
+    <priority>${escapeXml(page.priority)}</priority>${alternates}
+  </url>`
+  }).join('\n')
   return `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
 ${urls}
 </urlset>
 `

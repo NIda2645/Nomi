@@ -3,6 +3,13 @@ const localizedImage = {
   en: '/assets/social-preview-en.jpg',
 }
 
+/** 每页的 hreflang：中英互指，x-default 指中文那一版。页面 <head> 与 sitemap 都读这一份。 */
+export const alternateLinks = (alternates) => [
+  { lang: 'zh-CN', path: alternates['zh-CN'] },
+  { lang: 'en', path: alternates.en },
+  { lang: 'x-default', path: alternates['zh-CN'] },
+]
+
 /**
  * 一个公开页面的 SEO / 分享 / 结构化数据。
  * page = { path, htmlLang, ogLocale, meta, alternates: { 'zh-CN': path, en: path }, breadcrumbs?, graph?, image? }——
@@ -32,11 +39,7 @@ export function buildMetadata(locale, page, shared) {
     title: page.meta.title,
     description: page.meta.description,
     canonical,
-    alternates: [
-      { lang: 'zh-CN', href: `${shared.siteUrl}${page.alternates['zh-CN']}` },
-      { lang: 'en', href: `${shared.siteUrl}${page.alternates.en}` },
-      { lang: 'x-default', href: `${shared.siteUrl}${page.alternates['zh-CN']}` },
-    ],
+    alternates: alternateLinks(page.alternates).map(({ lang, path }) => ({ lang, href: `${shared.siteUrl}${path}` })),
     openGraph: {
       locale: page.ogLocale,
       title: page.meta.title,

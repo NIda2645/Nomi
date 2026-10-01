@@ -5,6 +5,7 @@ import { shared } from '../marketing/content.mjs'
 import { loadSiteData } from '../marketing/library/data.mjs'
 import { loadPageDates } from '../marketing/page-dates.mjs'
 import { computeSitemapEntries } from '../marketing/pages.mjs'
+import { descriptionInRange } from '../marketing/seo-limits.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_BASE_URL = 'https://nomiaqm.com'
@@ -65,7 +66,7 @@ export function auditHtml(html, url, options = {}) {
   const expectedApplicationId = `${new URL(url).origin}/#application`
   const checks = [
     ['META-TITLE', hasText(html, /<title>[^<]+\S<\/title>/i), 'title', 'Add a unique, descriptive title.'],
-    ['META-DESCRIPTION', description.length >= 50 && description.length <= 160, 'description', 'Add a page-specific 50–160 character meta description.'],
+    ['META-DESCRIPTION', descriptionInRange(description), 'description', 'Add a page-specific 50–160 character meta description.'],
     ['META-CANONICAL', getTagAttribute(getLink(html, 'canonical'), 'href') === url, 'canonical', 'Point canonical to the exact public URL, including locale and trailing slash.'],
     ['META-OG', ['og:title', 'og:description', 'og:image', 'og:image:alt'].every((key) => hasMeta(html, 'property', key)), 'Open Graph title/description/image/alt', 'Add a complete Open Graph card so shared links have the right preview.'],
     ['META-TWITTER', ['twitter:card', 'twitter:title', 'twitter:description', 'twitter:image'].every((key) => hasMeta(html, 'name', key)), 'Twitter card fields', 'Add Twitter card fields matching the Open Graph identity.'],
