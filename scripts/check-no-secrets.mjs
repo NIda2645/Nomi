@@ -306,7 +306,7 @@ function scan(files, staged) {
 }
 
 // ============================================================================
-// 私有待办编号（2026-10-01）：`T-RL-12` / `T-AG-41` / `T-QA-62` 这类编号是**私有待办正本**里的条目，
+// 私有待办编号（2026-10-01）：形如 `T-<两位前缀>-<数字>` 的编号是**私有待办正本**里的条目，
 // 公开仓库里出现它们 = 把私有待办的存在与结构泄露出来（编号本身不是凭证，但它指向一份不公开的账）。
 // 老文件里约 130 处历史编号不追溯——**只查新增的行**，所以改一个含历史编号的老文件、没新增编号，不红。
 //   · pre-commit（staged）：只看 `git diff --cached` 里新增的行；
@@ -342,7 +342,7 @@ export function parseAddedLines(diffText) {
 function scanPrivateTodoIds(addedByFile) {
   const hits = [];
   for (const [file, lines] of addedByFile) {
-    if (isAllowed(file)) continue; // 本扫描器自己（含正则定义）与安全文档
+    // 不走路径白名单：本扫描器自己、安全文档也不许写真实编号（规则的正则里没有数字，不会自己命中自己；测试里的编号运行时拼）。
     for (const { no, text } of lines) {
       for (const m of text.matchAll(PRIVATE_TODO_ID)) {
         hits.push({ f: `${file}:${no}`, kind: "私有待办编号", detail: `${m[0]} —— ${PRIVATE_TODO_ID_ADVICE}` });
