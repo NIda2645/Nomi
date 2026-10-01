@@ -14,7 +14,7 @@
    - 旧转录迁移层 `laneLegacy*` 共 860 行：一次性，迁移窗口过了就删。
 4. **#945 的 `laneContextFit` 不是重造压缩，但注释里有一句和 pi 不符。** 它挂在 pi 留给宿主的 `transform_context` 口上，pi 的压缩从设计上不动「保留的最近一段」。注释说「pi 的压缩只在回合之间量一次」，与 pi 文档和源码不符：pi 在同一个 run 里、每批工具结果落地后就量并压（`compaction.md:29-35`，`drive/checkpoint.js:59-61`，`tool-placement.js:157`）。#945 站得住的理由只能是「回合内旧工具结果收起」这一手段 pi 没有；真正该先做的是一个半天的重放实验，而不是改代码。
 5. **0.24 的 B 和 C1 可以直接照 pi 的机制做，不需要新依赖。** pi 的转录是「助手消息里的 toolCall 段 + 独立 toolResult 消息，按 `toolCallId` 配对」；pi 的待决确认是「按 id 匹配、阻塞到回复、可超时、可取消」。我们的投影已经按 id 引用、不复制状态（`laneContracts.ts:111-135`）。B：把付费卡当成和 `task` 同款的按引用 join 段、轮询换成事件触发重投影；C1：在投影层纯函数 `laneProjection.ts` 里把同一 `toolCallId` 的 tool-call / pending / tool-result 合成一个 ToolUIPart 形状的段。主进程保持 pi 原生形状，界面拿到 ToolUIPart 形状。
-6. **一处是「没想到」不是「有意不同」：Windows。** pi 0.85.1 有 `powershell` 工具（`pi-coding-agent/dist/core/tools/index.d.ts:7`）和 Git Bash / `shellPath` 方案（`docs/windows.md:1-40`），lane 只接了 bash。T-AG-56 要先看清根因是「没有 Git Bash」还是「OS 沙箱起不来」：前者 pi 有现成解，后者 pi 也没有。
+6. **一处是「没想到」不是「有意不同」：Windows。** pi 0.85.1 有 `powershell` 工具（`pi-coding-agent/dist/core/tools/index.d.ts:7`）和 Git Bash / `shellPath` 方案（`docs/windows.md:1-40`），lane 只接了 bash。Windows 上命令沙箱起不来的问题要先看清根因是「没有 Git Bash」还是「OS 沙箱起不来」：前者 pi 有现成解，后者 pi 也没有。
 
 ## 0. 读了什么、没读什么
 
@@ -49,7 +49,7 @@
 | 动态装载 `addedToolNames`；单工具 `executionMode` | `laneNativeAssembly.mts` 让 pi 持有工具激活；`laneToolGroups.mts` 按任务组点亮；`laneTools.mts:218-222` 按 `mutates` 设 sequential / parallel | 一致 | — |
 | 库路径没有工具超时，`AbortSignal` 透传，工具自己管 | `laneTools.mts:137-245`：每个工具必须声明 `execution.timeoutMs`，付费类不许声称超过读类上限 | 有意不同（领域：花钱的写类工具必须有硬预算，不能无限等） | — |
 | 无「同一工具连撞同一堵墙」计数 | `laneRepeatedFailure.mts`（131 行） | 有意不同（领域：模型读不懂中文供应商报错，会把同一次真钱调用连发） | — |
-| Windows：默认 Git Bash（`shellPath` 可改），另有可选 `powershell` 工具（`dist/core/tools/index.d.ts:7`；`docs/windows.md:1-40`） | 只接 bash（`laneCodingTools.mts`、`laneNativeDesktop.mts` 无 powershell 引用） | **没想到** | 0.23 内先定位 T-AG-56 真因；缺 bash 就接 `createPowerShellTool`，不自研 |
+| Windows：默认 Git Bash（`shellPath` 可改），另有可选 `powershell` 工具（`dist/core/tools/index.d.ts:7`；`docs/windows.md:1-40`） | 只接 bash（`laneCodingTools.mts`、`laneNativeDesktop.mts` 无 powershell 引用） | **没想到** | 0.23 内先定位 Windows 沙箱起不来的真因；缺 bash 就接 `createPowerShellTool`，不自研 |
 
 ### 转录渲染
 
@@ -135,13 +135,13 @@
 
 | 问题 | 我们（file:line） | pi 有没有 | 结论 |
 |---|---|---|---|
-| 上下文超窗（T-AG-41 / #945） | `laneContextBudget.mts:12-18`；#945 的 `laneContextFit.ts`（接 `transform_context`） | 有一半。pi 在同一个 run 内每批工具后量并压（`compaction.md:33-35`；`checkpoint.js:60`），溢出时压一次重试一次（`response.js:139-143`），能把超大回合拆成前缀摘要 + 保留尾巴（`compaction.js:420-440`）。pi 没有的是「不摘要、只把旧的大工具结果换成占位」。用户看到的 `Assistant request exceeded the context window` 恰是 pi 在「已用过一次溢出恢复」或「没有可压的」时写的串 | 先做实验再定留删：拿 pb04 那段 146K 的真实转录在 pi 的 `prepareCompaction` 上重放——(a) 阈值压缩本该在哪批工具后触发、有没有触发；(b) 摘要请求本身会不会超窗。(a) 没触发 = `laneCompactionSettings` 的换算问题，改配置；(b) 超窗 = 把收起放在摘要之前；都正常 = 删 #945 的收起。#945 注释里的前提必须改对 |
-| 写入回执卡死（T-AG-52 / 64） | `projectAgentProposalReceiptStore.ts:180, 350-405`；`laneReceiptAuthority.mts` | pi 对工具调用本身有耐久恢复：中断的工具补合成结果，带「外部结果未知」标记（`tools.js:7, 99-113`）；工具可通过 `onUpdate` 写耐久进度快照（`tools.js:263, 355`）。pi 没有「渲染层应用画布写入后回执、可撤销」这个语义 | 保留回执生命周期（领域）。可借：长写入用 `onUpdate` 把 preparing 写进 pi 检查点，崩溃恢复由 pi 补「结果未知」，我们只补领域那一半。#945 的已知拒绝落终态是这条线上的正确补丁 |
-| 附件（T-AG-50） | `laneDesktopAttachments.ts`、`laneDesktopInput.ts`（字节只在供应商请求时解析，落盘的是不可变素材声明） | pi 支持 `images: ImageContent[]` 随 prompt / steer / follow_up（`sdk.md:187-209`；`rpc.md:51-112`），没有素材库，不落声明 | 有意不同（领域：附件是项目素材库里的素材，转录只存 id 声明，重开后按当前素材解析）。交给供应商时仍是 pi 的 `ImageContent` 形状 |
-| 默认模型（T-AG-49 / 62） | `laneDesktopModelDefaults.ts:1-18`；`laneModelContext.ts` | pi 只有一种默认（驱动 LLM，`settings.md:30-31`）；「各生成任务的默认生成模型」pi 没有 | 保留（领域）。模型被告知的默认与宿主补的默认由同一个函数回答 |
-| Windows 命令沙箱起不来（T-AG-56） | `laneCodingSandbox.mts:21-27` | pi 没有内置沙箱（`security.md:31-37`），Windows 靠 Git Bash（`shellPath`）或 `powershell` 工具（`windows.md:1-40`） | 先分清是哪一个问题：没有 bash 可用 → pi 有现成解（接 `createPowerShellTool`，不自研）；OS 沙箱起不来 → pi 也没有，我们的 `active:false` 降级就是答案。0.23 内定位 |
-| Agent 先用文字问「要生成吗」而不出卡（T-AG-61） | `laneAskUserTool.ts`；`lanePromptSections.ts` | pi 没有这种机制；手段是工具的 `promptGuidelines` 与 `before_tool` 拦截（`extensions.md:792-809`） | 工具设计 + 提示词问题，不是框架问题。用 `promptGuidelines` 写明「要用户确认就出卡，不要文字问」，走查加断言 |
-| Agent 话里念 id（T-AG-65） | `laneModelContext.ts`（标题↔id 索引）；`laneContextBudget.mts:44` | pi 没有；只给 content / details 两个口，不管模型嘴里说什么 | 提示词 + 压缩指令（压缩提示词已写「用户用标题称呼节点，不要编 id」）；补一条工具 `promptGuidelines` |
+| 上下文超窗（#945） | `laneContextBudget.mts:12-18`；#945 的 `laneContextFit.ts`（接 `transform_context`） | 有一半。pi 在同一个 run 内每批工具后量并压（`compaction.md:33-35`；`checkpoint.js:60`），溢出时压一次重试一次（`response.js:139-143`），能把超大回合拆成前缀摘要 + 保留尾巴（`compaction.js:420-440`）。pi 没有的是「不摘要、只把旧的大工具结果换成占位」。用户看到的 `Assistant request exceeded the context window` 恰是 pi 在「已用过一次溢出恢复」或「没有可压的」时写的串 | 先做实验再定留删：拿 pb04 那段 146K 的真实转录在 pi 的 `prepareCompaction` 上重放——(a) 阈值压缩本该在哪批工具后触发、有没有触发；(b) 摘要请求本身会不会超窗。(a) 没触发 = `laneCompactionSettings` 的换算问题，改配置；(b) 超窗 = 把收起放在摘要之前；都正常 = 删 #945 的收起。#945 注释里的前提必须改对 |
+| 写入回执卡死 | `projectAgentProposalReceiptStore.ts:180, 350-405`；`laneReceiptAuthority.mts` | pi 对工具调用本身有耐久恢复：中断的工具补合成结果，带「外部结果未知」标记（`tools.js:7, 99-113`）；工具可通过 `onUpdate` 写耐久进度快照（`tools.js:263, 355`）。pi 没有「渲染层应用画布写入后回执、可撤销」这个语义 | 保留回执生命周期（领域）。可借：长写入用 `onUpdate` 把 preparing 写进 pi 检查点，崩溃恢复由 pi 补「结果未知」，我们只补领域那一半。#945 的已知拒绝落终态是这条线上的正确补丁 |
+| 附件 | `laneDesktopAttachments.ts`、`laneDesktopInput.ts`（字节只在供应商请求时解析，落盘的是不可变素材声明） | pi 支持 `images: ImageContent[]` 随 prompt / steer / follow_up（`sdk.md:187-209`；`rpc.md:51-112`），没有素材库，不落声明 | 有意不同（领域：附件是项目素材库里的素材，转录只存 id 声明，重开后按当前素材解析）。交给供应商时仍是 pi 的 `ImageContent` 形状 |
+| 默认模型 | `laneDesktopModelDefaults.ts:1-18`；`laneModelContext.ts` | pi 只有一种默认（驱动 LLM，`settings.md:30-31`）；「各生成任务的默认生成模型」pi 没有 | 保留（领域）。模型被告知的默认与宿主补的默认由同一个函数回答 |
+| Windows 命令沙箱起不来 | `laneCodingSandbox.mts:21-27` | pi 没有内置沙箱（`security.md:31-37`），Windows 靠 Git Bash（`shellPath`）或 `powershell` 工具（`windows.md:1-40`） | 先分清是哪一个问题：没有 bash 可用 → pi 有现成解（接 `createPowerShellTool`，不自研）；OS 沙箱起不来 → pi 也没有，我们的 `active:false` 降级就是答案。0.23 内定位 |
+| Agent 先用文字问「要生成吗」而不出卡 | `laneAskUserTool.ts`；`lanePromptSections.ts` | pi 没有这种机制；手段是工具的 `promptGuidelines` 与 `before_tool` 拦截（`extensions.md:792-809`） | 工具设计 + 提示词问题，不是框架问题。用 `promptGuidelines` 写明「要用户确认就出卡，不要文字问」，走查加断言 |
+| Agent 话里念 id | `laneModelContext.ts`（标题↔id 索引）；`laneContextBudget.mts:44` | pi 没有；只给 content / details 两个口，不管模型嘴里说什么 | 提示词 + 压缩指令（压缩提示词已写「用户用标题称呼节点，不要编 id」）；补一条工具 `promptGuidelines` |
 | 服务商原始 JSON 报错直接摆给用户 | `laneProviderGuard.mts`；`src/workbench/observability/classifyError.ts`；`details.failure` 信封 | pi 只有 `errorMessage` 原文 + 英文正则判重试（`retry.js:167-174`），没有面向用户的措辞 | 保留（领域：多语言 + 中转供应商）；`failure` 信封按 `code` 查 i18n 是对的做法 |
 | 付费卡每 1.5 秒轮询；「等用户」有两三种表示 | 轮询 `useAgentPanelSpendConfirm.ts:52`；等待在 `laneApprovalGate.hold`（`laneContracts.ts:490-512`）；卡内容 `productionPendingSpend.ts`；ask_user 也是 hold | pi 的待决确认只有一种：id 匹配、阻塞、可超时、可取消（`rpc.md:1184-1260, 1352-1376`） | 照 pi 收成一种表示。「等」已经只有一个 owner（审批闸）；剩下的是卡内容的读取方式（轮询）与 ask_user 的卡。0.24 B 去掉轮询 |
 
@@ -250,7 +250,7 @@
 
 | # | 没想到的那一层 | 参考实现 | 补在哪个阶段前 | 状态 |
 |---|---|---|---|---|
-| N-1 | Windows：PowerShell 工具 / `shellPath` | `docs/windows.md:1-40`；`dist/core/tools/index.d.ts:7` | 0.23：先定位 T-AG-56，确认缺 bash 就接 | 未补 |
+| N-1 | Windows：PowerShell 工具 / `shellPath` | `docs/windows.md:1-40`；`dist/core/tools/index.d.ts:7` | 0.23：先定位 Windows 沙箱问题，确认缺 bash 就接 | 未补 |
 | N-2 | 一次工具调用一个段（审批并入同一个段） | `rpc.md:1184-1260`；转录按 `toolCallId` 配对 | 0.24 C1 | 未补 |
 | N-3 | 付费卡去轮询、事件触发重投影 | 同上 | 0.24 B（前置：枚举不走 lane 的待决付费来源） | 未补 |
 | N-4 | 上下文超窗：先确认 pi 的回合内阈值压缩有没有触发 | `compaction.md:33-35`；`checkpoint.js:60` | 0.23：#945 的重放实验 | 未补 |
@@ -265,7 +265,7 @@
 
 | 时机 | 做什么 | 规模 |
 |---|---|---|
-| 0.23 内 | 问 1 第 1 条的重放实验（半天）；改 #945 注释里「pi 只在回合之间量一次」那句；定位 T-AG-56 | 小 |
+| 0.23 内 | 问 1 第 1 条的重放实验（半天）；改 #945 注释里「pi 只在回合之间量一次」那句；定位 Windows 沙箱问题 | 小 |
 | 0.23 内 | `framework-boundaries.json` 的 pi 条目登记 `referenceConformance`，删掉泛泛的 pi 对照欠账（本 PR） | 小 |
 | 0.24 B / C1 | 问 2 的做法；同一刀里把 1.5 秒轮询换成事件触发 | 中 / 大 |
 | 0.24 两台发动机收敛 | `electron/ai/` 的 AI SDK 栈改走 pi-ai 单次调用 | 大 |
