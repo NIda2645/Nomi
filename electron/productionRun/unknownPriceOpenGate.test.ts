@@ -135,6 +135,8 @@ function sealAndApprove(
           contract: entry.contract,
           included: true,
         })),
+        // 这一次封印盖的镜：首波就是整批（逐镜点击时只有点到的那几镜）。
+        scope: shots.map((entry) => entry.shotId),
         planHash: "plan-hash-1",
       }
     : undefined;

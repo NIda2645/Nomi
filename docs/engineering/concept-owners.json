@@ -1367,7 +1367,7 @@
         "electron/shared/decideShotClaim.ts"
       ],
       "since": "2026-09-29",
-      "notes": "批次「做完没有」（调度器 progress → onBatchComplete）和排队「第 n / N」都按这一个函数数镜：没勾进这一批（included:false，判据 shotIncluded 同住一处）或最新那次尝试已被制作放手（detached：删了节点 / 画布接手 / 返工门被拒）的镜不算。以前调度器只滤 included:false，被画布拿走的镜被数成「在跑」，批次永远收不了尾（合同 docs/fixes/2026-09-28-production-shot-claim.root-cause.json）。参考卡（anchor）刻意只按 included 数：它挡着形象检查点，被拿走也不许悄悄放行付费镜。封印 / 待确认花费 / 预览里那十几处 included !== false 管的是「这次付费范围」，不是这条。"
+      "notes": "批次「做完没有」（调度器 progress → onBatchComplete）和排队「第 n / N」都按这一个函数数镜：没勾进这一批（included:false，判据 shotIncluded 同住一处）或最新那次尝试已被制作放手（detached：删了节点 / 画布接手 / 返工门被拒）的镜不算。以前调度器只滤 included:false，被画布拿走的镜被数成「在跑」，批次永远收不了尾（合同 docs/fixes/2026-09-28-production-shot-claim.root-cause.json）。参考卡（anchor）刻意只按 included 数：它挡着形象检查点，被拿走也不许悄悄放行付费镜。封印 / 待确认花费 / 预览里那十几处 included !== false 管的是「这次付费范围」，不是这条。2026-09-30 付费卡逐镜：形象检查点只等这一批批过的参考卡（`batchScheduleDerivation.anchorsOf` 要求勾进这一批且有封印合同，与 `anchorCheckpoint.currentAnchorCheckpointGate` 同一条）——卡上还没点的参考卡没有合同，不挡已经批过的那几张。"
     },
     {
       "name": "安装包内容（随包依赖与包体预算）",
@@ -2868,7 +2868,7 @@
         "electron/capabilityCore/mcpStdioServer.ts"
       ],
       "since": "2026-09-29",
-      "notes": "2026-09-29 用户实见：定妆照检查点放行后视频镜派不出去（「Generation authorization no longer matches the current project or Run」），批次停下（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。派发时要核的是「批过的那一份」，只有它：封进信封的项目身份（immutableProjectUuid + projectGeneration）、Run、计划版本、那道门，以及每个 job 的合同哈希、供应商、模型、第几次、幂等键、线上报文哈希、参考图、单价上限、到期时间——收据签的就是这份信封的摘要。项目文档的版本号不在里面：它只是「用户看报价那一刻项目是不是最新」的前提，在批准那一刻由收据那一侧核（productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后 Nomi 自己把占位和参考卡结果落上画布就会让它前进。所以派发不再读活的文档版本（createProductionGenerationSubmission 连这个依赖都没有了），也没有「重试时重新封一次」这种补法。批准那一刻的版本绑定是否也该松开，归付费卡审批那条 lane，不在这里。"
+      "notes": "2026-09-29 用户实见：定妆照检查点放行后视频镜派不出去（「Generation authorization no longer matches the current project or Run」），批次停下（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。派发时要核的是「批过的那一份」，只有它：封进信封的项目身份（immutableProjectUuid + projectGeneration）、Run、计划版本、那道门，以及每个 job 的合同哈希、供应商、模型、第几次、幂等键、线上报文哈希、参考图、单价上限、到期时间——收据签的就是这份信封的摘要。项目文档的版本号不在里面：它只是「用户看报价那一刻项目是不是最新」的前提，在批准那一刻由收据那一侧核（productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后 Nomi 自己把占位和参考卡结果落上画布就会让它前进。所以派发不再读活的文档版本（createProductionGenerationSubmission 连这个依赖都没有了），也没有「重试时重新封一次」这种补法。批准那一刻的版本绑定是否也该松开，归付费卡审批那条 lane，不在这里。2026-09-30 付费卡逐镜（形状变化，主人不变）：每一份授权住在自己那道门上（`gate.authorizationEnvelope`），一次点击一道门；job 的 `authorizationDigest` 指着批它的那道门，派发只核那道门的信封——计划级的那份授权（`generationPlan.authorizationEnvelope`）删了。同一镜点一下就是一道门，别的镜还没点就没有门、没有 job，调度器无从派发。"
     },
     {
       "name": "分镜一镜发出去什么（提示词 + 参考图）",
@@ -3207,6 +3207,112 @@
         ],
         "since": "2026-10-01",
         "notes": "CI 选档、本机 gates、交付收据三处共用这一个函数，不许任何一处自己再判一遍「这个 diff 要不要跑 X」。画布 full 档的清单（CANVAS_DISPLAY_OWNER_PATTERNS）对着本表里画布显示相关概念的 owner 与写口列，parity_test 逐个概念核对；generationCanvas 每个子目录必须表态。合同 docs/fixes/2026-10-01-canvas-classifier-display-owners.root-cause.json。"
+    },
+    {
+      "name": "付费卡这一次出价（摆哪几镜、哪几镜被去掉、卡怎么关的）",
+      "subject": "production.spend-card-presentation",
+      "lifecycle": "spend-authority",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+        "symbol": "presentGenerationPlan"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+          "symbol": "presentGenerationPlan"
+        },
+        {
+          "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+          "symbol": "removePresentedShot"
+        },
+        {
+          "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+          "symbol": "withdrawGenerationPresentation"
+        },
+        {
+          "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+          "symbol": "settlePresentation"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/agentPanelSpendPerShot.e2e.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionRunReducer.ts",
+        "electron/productionRun/productionRunRepository.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "付费卡逐镜（2026-09-29 用户拍板「点了的生成，去掉的不生成」）。卡问的是哪几镜、用户去掉了哪几镜、卡是怎么关的（每一镜都定了 / × / 打字岔开 / 停下），只记在 `generationPlan.presentations` 这一本只追加的账上，只经这四个写口改（全部经 `productionRunReducer` 的命令；`settlePresentation` 是仓库在决定那一步里顺手收尾，不多一个版本号）。以前的 `cardHidden` 只读进来折成一条出价记录（`normalizeLegacyPresentation`），不再写。一镜生成没生成不在这里记：那是它自己那道门批没批（`production.dispatch-authorization-scope`）。渲染层只把用户在这一页的动作传过来（生成这一镜 / 去掉这一镜 / 关掉），不保存第二份逐镜状态。"
+    },
+    {
+      "name": "这一次出价的逐镜结局（卡上还剩哪几镜、回执说的那一个值）",
+      "subject": "production.spend-card-outcome",
+      "lifecycle": "spend-authority",
+      "authority_kind": "projection",
+      "trust_domain": "shared",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/productionGenerationPresentation.ts",
+        "symbol": "generationPresentationOutcome"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/productionGenerationPresentation.ts",
+          "symbol": "generationPresentationOutcome"
+        },
+        {
+          "path": "electron/shared/productionGenerationPresentation.ts",
+          "symbol": "undecidedShotIds"
+        },
+        {
+          "path": "electron/shared/productionGenerationPresentation.ts",
+          "symbol": "shotApprovedInCurrentPresentation"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/shared/productionGenerationPresentation.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionPendingSpend.ts",
+        "electron/productionRun/productionGenerationSeal.ts",
+        "electron/productionRun/productionGenerationPresentationEdits.ts",
+        "electron/productionRun/productionGenerationOperationStore.ts",
+        "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+        "electron/capabilityCore/generationTransportAdapters.ts",
+        "electron/shared/productionShotPhase.ts",
+        "electron/shared/agentLane/generateOutcomeReceipt.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "从出价账（`production.spend-card-presentation`）+ 每道门批没批 + job 有没有可能到过供应商，派生出一个值：在生成的 / 点了但发出前就失败的 / 用户去掉的 / 画布接手的 / 没决定的 + 原因。卡上摆哪几镜（`undecidedShotIds` → `productionPendingSpend`）、封印给哪几镜（`productionGenerationSeal.sealScopeOf`）、画布占位写什么（`productionShotPhase`）、回给模型的那句话（`generateOutcomeReceipt.describeGenerateOutcome`）都读这一个值，不各算一份。以后它原样成为 generate 工具调用的输出（Agent 消息层研究 §4.4）。「在这一次出价里点过」按门的先后算（出价开出来时记下 `fromGate`），不按时间戳比。"
+    },
+    {
+      "name": "generate 回执（逐镜结局读成人话）",
+      "subject": "agent-lane.generate-receipt",
+      "lifecycle": "execution",
+      "authority_kind": "projection",
+      "trust_domain": "shared",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/agentLane/generateOutcomeReceipt.ts",
+        "symbol": "describeGenerateOutcome"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/agentLane/generateOutcomeReceipt.ts",
+          "symbol": "describeGenerateOutcome"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/shared/agentLane/generateOutcomeReceipt.test.ts",
+      "allowed_consumers": [
+        "electron/agentLane/laneExtendedTools.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "以前 `laneExtendedTools.generateReceipt` 的批准一支写死「generation has started… No card is waiting… Do not call generate again」：卡上只点了 1 张，Agent 也告诉用户两张都在生成（用户实见）。现在回执只渲染宿主给的逐镜结局（`production.spend-card-outcome`），「都开始了」只在每一镜都在生成时才说；不自己加判断。"
     }
   ]
 }

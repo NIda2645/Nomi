@@ -5,7 +5,7 @@
 // 真实创作者会做的两件事，一条剧本里都做一遍（两条路走的是两台发动机，正好对照）：
 //   A. 画布上：把一张参考图连到自己的卡上，点 ↑ 生成（画布直生成那条路）；
 //   B. Agent：让 Agent 画一张「照着这张参考图」的图，卡还在等的时候，用户在画布上把参考图连到 Agent 起草的那张占位卡上，
-//      再在付费卡上按「仍要生成」（制作流程那条路）。
+//      再在付费卡上按「生成这张」（制作流程那条路；0.22.1 时这颗按钮叫「仍要生成」）。
 // 乱用：B 里先连线、后确认——用户就是这么做的（看到占位卡，顺手把参考图拖过去）。
 //
 // 零花费：A 用本机回环的「Fixture 图片」模型（画布直生成只认目录里的地址，回环那家就在本机）；
@@ -89,7 +89,7 @@ try {
     await connectNodes(win(), 'ref-photo', placeholderId, edges)
   }, { surfaces: ['canvasGesture'] })
 
-  await monitor.step('在付费卡上点「仍要生成」', async () => {
+  await monitor.step('在付费卡上点「生成这张」', async () => {
     await monitor.consentSpendCard(card(), { label: '单镜卡的主按钮（画布上已连参考）' })
     await clickOrFail(card().locator(INTERVENTION_CONFIRM), '付费卡主按钮', { noWaitAfter: true })
   })

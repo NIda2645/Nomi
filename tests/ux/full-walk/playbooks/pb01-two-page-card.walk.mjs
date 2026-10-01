@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 剧本 PB01 · 「让 Agent 画两张图，付费卡两页，我只在第 1 页点了『仍要生成』」
+// 剧本 PB01 · 「让 Agent 画两张图，付费卡两页，我只在第 1 页点了『生成这张』」
 //
 // 已知问题（0.22.1）：点付费卡里的「仍要生成」就直接开跑，第二张卡还没确认；Agent 说「已经开始跑」。
 // 这是一个真实创作者会做的事：让 Agent 起草两镜、在付费卡上翻一翻、在第 1 页按下去。
@@ -7,12 +7,12 @@
 // 乱用：翻到第 2 页再翻回来才按；点完再点一下出好的那张图看看（节点角标）。
 // 变体由跑器指派：base（中文）/ en（英文界面，同一条路）。
 //
-// 零花费：大脑与供应商都是本机夹具；目录里不种价（= 今天每一台干净装机），所以卡上是「仍要生成」。
+// 零花费：大脑与供应商都是本机夹具；目录里不种价（= 今天每一台干净装机），卡上不说价格的话，主按钮是「生成这张」。
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect } from '../../_assert.mjs'
 import { findNodeHitPoint } from '../../_canvasHit.mjs'
 import { stationTimeout } from '../../_station-budget.mjs'
 import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR } from '../../agent-runtime-fixture.mjs'
-import { APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM, expandResidentPanel, sendCanvas } from '../../agent-runtime-walk-support.mjs'
+import { APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM, closeSpendCard, expandResidentPanel, sendCanvas } from '../../agent-runtime-walk-support.mjs'
 import { clickVisiblePart } from '../actions.mjs'
 import { operationIdOf, scriptTurn } from '../brain.mjs'
 import { startPlaybook } from '../launch.mjs'
@@ -64,9 +64,15 @@ try {
     await expect(card().locator('[data-v4-block="pager"]')).toContainText('1/2')
   })
 
-  await monitor.step('在第 1 页点「仍要生成」', async () => {
+  await monitor.step('在第 1 页点「生成这张」', async () => {
     await monitor.consentSpendCard(card(), { label: '第 1 页的主按钮' })
     await clickOrFail(card().locator(INTERVENTION_CONFIRM), '付费卡主按钮（第 1 页）', { noWaitAfter: true })
+  })
+
+  // 付费卡逐镜（2026-09-30）：点了的生成，没点的留在卡上等人——卡不消失、只剩第 2 张；用户不想要它，就点 × 关掉。
+  await monitor.step('卡还在、只剩第 2 张；点 × 关掉（第 2 张不生成）', async () => {
+    await expect.poll(async () => card().locator('[data-v4-block="pager"]').count(), { message: '卡只剩第 2 张（翻页器没了）', timeout: DEFAULT_TIMEOUT_MS }).toBe(0)
+    await closeSpendCard(card(), '关掉付费卡（第 2 张不生成）')
   })
 
   await monitor.step('等出图、等这一轮 Agent 说完', async () => {

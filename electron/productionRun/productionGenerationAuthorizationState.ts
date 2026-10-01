@@ -77,6 +77,7 @@ function authorizationUnits(
   plan: ProductionGenerationPlan,
   topLevelContract: ExecutionContractV1,
   sealedShots: readonly ProductionGenerationShot[] | undefined,
+  scope: ReadonlySet<string> | undefined,
 ): AuthorizationUnit[] {
   if (!sealedShots) {
     return [{
@@ -86,7 +87,7 @@ function authorizationUnits(
     }];
   }
   return sealedShots
-    .filter((shot) => shot.included !== false)
+    .filter((shot) => shot.included !== false && (!scope || scope.has(shot.shotId)))
     .map((shot) => {
       if (!shot.contract) throw new Error(`Generation shot is missing its sealed contract: ${shot.shotId}`);
       return {
@@ -108,6 +109,8 @@ export function deriveSealedGenerationAuthorizationState(input: Readonly<{
   plan: ProductionGenerationPlan;
   topLevelContract: ExecutionContractV1;
   sealedShots?: readonly ProductionGenerationShot[];
+  /** 这一次封印盖的镜（逐镜点击）；缺省 = 勾进这一批的全部。 */
+  scope?: ReadonlySet<string>;
   preparation: unknown;
   now: string;
 }>): SealedGenerationAuthorizationState {
@@ -136,7 +139,7 @@ export function deriveSealedGenerationAuthorizationState(input: Readonly<{
     throw new Error(`Duplicate gate: ${envelope.gateId}`);
   }
 
-  const units = authorizationUnits(input.plan, input.topLevelContract, input.sealedShots);
+  const units = authorizationUnits(input.plan, input.topLevelContract, input.sealedShots, input.scope);
   if (units.length !== envelope.jobs.length) {
     throw new Error("Generation authorization job set does not match the sealed plan");
   }

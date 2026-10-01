@@ -211,7 +211,6 @@ export function V4Intervention({
   labels,
   onConfirm,
   onPage,
-  onScope,
   onReject,
   onEscalate,
   onAlternate,
@@ -240,8 +239,6 @@ export function V4Intervention({
   onConfirm?: () => void
   /** 翻到第几张卡（`data.pager` 在时才有意义）。 */
   onPage?: (index: number) => void
-  /** 切范围：这一镜 / 全部（`data.pager.scope` 在时才有意义）。 */
-  onScope?: (value: 'each' | 'all') => void
   /** 拒绝。`reason` 是渐进披露出来的那一行，可为空。 */
   onReject?: (reason?: string) => void
   /** 「不再问 →」——**这一个能力**以后不再问，不是整个项目（2026-09-06 拍板 ②）。 */
@@ -358,7 +355,7 @@ export function V4Intervention({
         {/* 翻页 + 范围切换单独占一行，压在主按钮正上方：它们决定按钮上印的那个数，
             所以要挨着它；而挤进同一行会让 390px 的卡横向溢出（实测 350px 可用宽放不下）。 */}
         {pager && !rejecting && data.kind !== 'reject-reason' ? (
-          <V4Pager pager={pager} onPage={onPage} onScope={onScope} />
+          <V4Pager pager={pager} onPage={onPage} />
         ) : null}
         <V4Row as="div" className="text-caption">
           {rejecting || data.kind === 'reject-reason' ? (

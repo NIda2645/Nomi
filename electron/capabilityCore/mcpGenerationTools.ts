@@ -21,6 +21,7 @@ import {
 } from "../productionRun/shotPricing";
 import {
   createMultiShotCreateHelpers,
+  resolveGateScope,
   type AssertReferencesResolvable,
   type GenerationOperationDraftShot,
   type GenerationSealMultiShot,
@@ -38,7 +39,6 @@ import {
 } from "./mcpGenerationVideoResolve";
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { ProjectLeaseV2 } from "./projectLease";
-import type { ProductionGenerationAuthorizationEnvelopeV1 } from "../productionRun/productionGenerationAuthorization";
 import {
   classifyGenerationProviderCapabilities,
   type GenerationProviderCapabilityProfile,
@@ -344,9 +344,10 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
    * INCLUDED video shots (anchors ride separately as chips) into the serializable gate projection using
    * the same S2 pricing/degradation single source of truth. Returns undefined for a single-shot op.
    */
-  const multiShotGateProjectionFor = (operation: GenerationOperation): MultiShotGateProjection | undefined => {
+  const multiShotGateProjectionFor = (operation: GenerationOperation, scope?: readonly string[]): MultiShotGateProjection | undefined => {
     if (!operation.shots || operation.shots.length === 0) return undefined;
-    const { rows: includedVideo, anchorChipShots: anchors } = gateRowsFor(operation.shots);
+    // 这一道门只盖这一次点到的那几镜：签进挑战里的展示就是它们，不是整份草稿。
+    const { rows: includedVideo, anchorChipShots: anchors } = gateRowsFor(scope ? operation.shots.filter((shot) => scope.includes(shot.shotId)) : operation.shots);
     if (includedVideo.length === 0) return undefined;
     const normalized = (candidate: PlanCandidate) => normalizeVideoCandidate(candidate, deps.videoModelCandidates);
     const durationValues = includedVideo.map((shot) => shotDurationSeconds(normalized(shot.candidate)));
@@ -608,8 +609,22 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     if (input.capability === "gate_request") {
       if (current.sourceDocumentId) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "This draft came from a storyboard; use the original storyboard confirmation instead of requesting a gate here.");
-      const candidate = normalizeVideoCandidate(current.candidate, deps.videoModelCandidates);
-      const contract = contractFor(candidate, input.lease.projectId);
+      // 逐镜（2026-09-30）：这一次封哪几镜——卡上点到的那几镜；不点名 = 还没封过的全部。一次没点完、盖着别的镜的
+      // 那份等人授权先撤掉（只解封它盖着的镜），再按这一次的范围封（`resolveGateScope`）。
+      let base = current;
+      let decision = resolveGateScope(base, params.shotIds);
+      if (decision.kind === "abandon-then-seal") {
+        if (!deps.operations.abandonWaitingAuthorization) throw Object.assign(new Error("generation_scope_invalid"), { code: "generation_scope_invalid" });
+        base = await deps.operations.abandonWaitingAuthorization(input.lease.projectId, operationId, now()) as typeof current;
+        decision = resolveGateScope(base, params.shotIds);
+      }
+      const needsSeal = decision.kind === "seal";
+      const scope = decision.kind === "abandon-then-seal" ? undefined : decision.scope;
+      const candidate = normalizeVideoCandidate(base.candidate, deps.videoModelCandidates);
+      // 已经在跑的计划再封一镜：顶层那份合同在第一次封印时就冻住了，原样沿用（封过的候选不许再编译一遍）。
+      const contract = base.contract && base.candidate.sealedContractHash === base.contract.contractHash
+        ? base.contract
+        : contractFor(candidate, input.lease.projectId);
       const readiness = resolveProviderReadiness(deps, candidate);
       if (!readiness.providerReady) throw new GenerationProviderCapabilityError(contract.providerId, readiness.missingForSubmit.length ? readiness.missingForSubmit : ["configured_provider"]);
       const gateResolved = deps.registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode }); // J06
@@ -619,24 +634,24 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // and the plan hash; the store forwards them to the reducer (which freezes the batch + hard cap). A
       // single-shot draft passes no bundle (byte-identical to today). Top contract = shots[0]'s contract
       // (顶层 candidate = shots[0].candidate), so the reducer's top-level match holds.
-      const multiShotSeal = current.state === "draft" ? sealMultiShotFor(current, input.lease.projectId) : undefined;
+      const multiShotSeal = needsSeal && scope ? sealMultiShotFor(base, input.lease.projectId, scope) : undefined;
       // 2026-09-21：这里从前逐镜 `assertKnownShotPrice`，价格算不出就整批拒绝
       // （`generation_pricing_unknown`）。用户拍板删掉：内置 204 个模型一条 pricing 都没有，
       // 这条拒绝等于「我们没建价格标尺 → 你不准干活」。要防的「未知被当成 0 元」由授权信封的
       // 类型守（`price.maximum: number | null` + `budget.unknownJobCount`），不靠拒绝生成来防。
       const price = priceForCandidate(candidate);
-      const authorization = current.state === "draft" && deps.prepareAuthorization
-        ? await deps.prepareAuthorization({ lease: input.lease, operation: current, contract, ...(multiShotSeal ? { multiShot: multiShotSeal } : {}) })
+      const authorization = needsSeal && deps.prepareAuthorization
+        ? await deps.prepareAuthorization({ lease: input.lease, operation: base, contract, ...(multiShotSeal ? { multiShot: multiShotSeal } : {}) })
         : undefined;
-      const sealed = current.state === "draft"
+      const sealed = needsSeal
         ? await deps.operations.seal(input.lease.projectId, operationId, contract, now(), multiShotSeal, authorization)
-        : current;
+        : base;
       // P4 S2: the receipt's cost ceiling is the known derived price. 价格算不出 → `null`，
       // 卡上走「暂时算不出价格」那一档；**永远不是 ¥0**。
       const expiresAt = new Date(Date.parse(now()) + 10 * 60 * 1000).toISOString();
       // P4 S4: for a multi-shot operation, build the real display.shots (the S3a card's data) and use the
       // PLAN-LEVEL cost as the receipt ceiling. A single-shot op omits `shots` → flat card, unchanged.
-      const multiShot = multiShotGateProjectionFor(sealed);
+      const multiShot = multiShotGateProjectionFor(sealed, scope);
       if (multiShot) {
         const knownSubtotal = multiShot.shots.reduce((sum, shot) => (shot.price.known ? sum + shot.price.amount : sum), 0)
           + (multiShot.anchorChips ?? []).reduce((sum, chip) => (chip.price.known ? sum + chip.price.amount : sum), 0);
@@ -698,14 +713,17 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       // committed. A model may still issue its explicit start tool on the next
       // turn; treat that replay as an observation instead of attempting a
       // second provider submission.
-      if (current.state === "submitted") return { operation: current, taskRef: generationTaskReference(operationId), operationId, nextAction: "observe" };
-      if (current.state !== "sealed" || !current.contract || current.authorization?.status !== "approved") refuseToModel(GENERATION_ARGUMENT_REFUSAL, "Confirm the generation plan before starting: the user has not approved this draft yet.");
+      // 单镜只发一次：已提交就是观察。多镜每点一次批一份（2026-09-30 逐镜）：已在跑的计划又批了一镜，要再推一下调度器——
+      // 它只派有任务、批过的镜，同一镜不会派两次，所以重放也只是观察。
+      if (current.state === "submitted" && !current.shots?.length) return { operation: current, taskRef: generationTaskReference(operationId), operationId, nextAction: "observe" };
+      if ((current.state !== "sealed" && current.state !== "submitted") || !current.contract || current.authorization?.status !== "approved") refuseToModel(GENERATION_ARGUMENT_REFUSAL, "Confirm the generation plan before starting: the user has not approved this draft yet.");
       return deps.start?.(current, input.lease) ?? { operationId, state: current.state, nextAction: "provider_not_configured" };
     }
     // 宿主内部用（不在任何模型可见的方法表里）：问这句话的那个回合没了 → 收回这一次出价，计划留着。
     if (input.capability === "withdraw") {
       if (current.sourceDocumentId) return { operation: current, taskRef: generationTaskReference(operationId), nextAction: "present" };
-      return { operation: await deps.operations.withdraw(input.lease.projectId, operationId, now()), taskRef: generationTaskReference(operationId), nextAction: "present" };
+      const reason = params.reason === "user_wrote" || params.reason === "stopped" ? params.reason : "user_closed";
+      return { operation: await deps.operations.withdraw(input.lease.projectId, operationId, now(), reason), taskRef: generationTaskReference(operationId), nextAction: "present" };
     }
     if (input.capability === "cancel") return { operation: await deps.operations.cancel(input.lease.projectId, operationId, now()), nextAction: "create" };
     if (input.capability === "reconcile") {

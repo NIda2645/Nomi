@@ -478,7 +478,7 @@ describe('ProductionRunService driver round 1', () => {
         buildRequest: (input) => input,
         submit: async () => ({ providerTaskId: 'unused' }),
       }],
-      multiShot: { shots, planHash: 'semantic-plan-hash' },
+      multiShot: { shots, scope: shots.map((shot) => shot.shotId), planHash: 'semantic-plan-hash' },
       resolveShotPrice: () => ({ known: true, amount: 1 }),
       maximumSpend: 10,
       receiptId: 'receipt-semantic',

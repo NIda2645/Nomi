@@ -11,7 +11,9 @@ import { productionRunPaths, productionRunsRoot } from "./productionRunPaths";
 import { createProductionRunLock } from "./productionRunLock";
 import { applyProductionCommand, type ProductionCommandEffect } from "./productionRunReducer";
 import { settleRunLifecycle } from "./productionRunLifecycle";
+import { settlePresentation } from "./productionGenerationPresentationEdits";
 import { normalizeLegacySpendAuthority } from "../shared/productionSpendAuthority";
+import { draftCardHidden, normalizeLegacyPresentation } from "../shared/productionGenerationPresentation";
 import { assertProductionPolicyReady } from "./productionPolicyReadiness";
 import {
   applyBudgetEntry,
@@ -161,7 +163,7 @@ function budgetEntryFromPayload(value: unknown): BudgetLedgerEntry {
  * （normalizeLegacySpendAuthority，2026-09-30 起授权按门存）。只改内存里的投影，不回写盘。
  */
 function withReadDefaults(stored: ProductionRun): ProductionRun {
-  const run = normalizeLegacySpendAuthority(stored);
+  const run = normalizeLegacyPresentation(normalizeLegacySpendAuthority(stored));
   if (Number.isSafeInteger(run.budget?.unknownInFlight)) return run;
   return { ...run, budget: { ...run.budget, unknownInFlight: 0 } };
 }
@@ -185,7 +187,7 @@ function summarize(run: ProductionRun): ProductionRunSummary {
     ...(run.generationPlan ? {
       generationPlan: {
         state: run.generationPlan.state,
-        ...(run.generationPlan.cardHidden === true ? { cardHidden: true } : {}),
+        ...(draftCardHidden(run.generationPlan) ? { cardHidden: true } : {}),
       },
     } : {}),
     runId: run.runId,
@@ -433,7 +435,14 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
       generationPlan: {
         operationId,
         state: "draft",
-        ...(input.cardHidden === true ? { cardHidden: true } : {}),
+        // 草稿要不要当场摆上卡：`draft_shots` 建的不摆（空列表 = 从没摆过）；其余旧入口照旧当场摆上（旧默认「卡可见」）。
+        presentations: input.cardHidden === true ? [] : [{
+          shotIds: input.shots && input.shots.length > 0
+            ? input.shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId)
+            : [input.candidate.candidateId],
+          openedAt: timestamp,
+          fromGate: 0,
+        }],
         candidate: structuredClone(input.candidate),
         // P4 S6.5: seed draft shots (candidate/role/included; no sub-contract until seal). Single-shot
         // drafts omit shots entirely — the read path stays on the top-level candidate (老 Run 零迁移).
@@ -580,8 +589,14 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     // 生命周期收尾挂在这个唯一写入口上（productionRunLifecycle.settleRunLifecycle）：哪条命令让 Run 欠下一步
     // （例如急停后最后一件交给供应商的活收了尾），那一步作为自己的 run.status.changed 事件跟这条命令一起落盘。
     // 所以没有哪个驱动需要记得去收尾——老驱动、多镜调度器、观察器、恢复流程写到这里都一样。
-    const settled = settleRunLifecycle(effect.run, timestamp);
-    const steps = settled ? [effect, settled] : [effect];
+    const steps: ProductionCommandEffect[] = [effect];
+    const lifecycle = settleRunLifecycle(effect.run, timestamp);
+    if (lifecycle) steps.push(lifecycle);
+    // 同一个写入口上的第二个收尾：付费卡这一次出价全决定了（每一镜都点了「生成这张」或「去掉这张」）就自己关掉
+    // （productionGenerationPresentationEdits.settlePresentation）。哪条命令让最后一镜决定了都一样。它是那条命令自己的
+    // 结果，并进同一步落盘，不另起一个修订号（调用方按「一条命令一个修订号」续写的序号不会被它打乱）。
+    const closed = settlePresentation(steps.at(-1)!.run, timestamp);
+    if (closed) steps[steps.length - 1] = { ...steps[steps.length - 1], run: closed.run };
     let cursor = latestEvent?.cursor ?? 0;
     let next: ProductionRun = current;
     const events: RunEvent[] = steps.map((step, index) => {

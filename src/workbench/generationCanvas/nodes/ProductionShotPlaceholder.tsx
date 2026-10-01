@@ -73,11 +73,13 @@ export function ProductionShotPlaceholder({ node, reportFeedback }: { reportFeed
   // 节点自己在跑（制作投影的「生成中」或用户手动的一次）：那一段由 NodeGeneratingOverlay 画，这里不叠第二层。
   if (node.status === 'running' || node.status === 'queued') return null
 
-  if (state.phase === 'awaiting_confirmation' || state.phase === 'not_generated') {
-    // 在等用户点头 / 从没被批过：中性小标，不转圈、不说排队（它们不在任何队列里）。
+  if (state.phase === 'awaiting_confirmation' || state.phase === 'not_generated' || state.phase === 'removed') {
+    // 在等用户点头 / 从没被批过 / 用户在卡上去掉了：中性小标，不转圈、不说排队（它们不在任何队列里）。
     const label = t(state.phase === 'awaiting_confirmation'
       ? 'generationCommon.production.canvasLanding.awaitingConfirmation'
-      : 'generationCommon.production.canvasLanding.notGenerated')
+      : state.phase === 'removed'
+        ? 'generationCommon.production.canvasLanding.removedNotGenerated'
+        : 'generationCommon.production.canvasLanding.notGenerated')
     return (
       <div
         className="absolute left-2 top-2 z-[4] inline-flex items-center gap-1 rounded-full bg-nomi-paper/85 px-2 py-0.5 text-micro text-nomi-ink-60 shadow-nomi-sm"

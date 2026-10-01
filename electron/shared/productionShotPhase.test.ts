@@ -41,7 +41,10 @@ function run(opts: {
     planVersion: 1, snapshotCursor: 0, stages: [], gates: [], jobs: opts.jobs ?? [], artifacts: [],
     generationPlan: {
       operationId: 'run-1', state: opts.planState ?? 'submitted', candidate, nodeId: opts.shots ? undefined : 'single-node',
-      ...(opts.cardHidden ? { cardHidden: true } : {}),
+      // 草稿摆到卡上 = 一次开着的出价（付费卡逐镜：`plan.presentations`）；`cardHidden` 的草稿还没摆给用户。
+      ...((opts.planState ?? 'submitted') === 'draft' && !opts.cardHidden
+        ? { presentations: [{ shotIds: opts.shots ? opts.shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId) : ['cand-1'], openedAt: NOW, fromGate: 0 }] }
+        : {}),
       ...(opts.shots ? { shots: opts.shots.map((shot) => ({
         shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), ...(shot.included !== undefined ? { included: shot.included } : {}),
         ...(shot.nodeId ? { nodeId: shot.nodeId } : {}), candidate: { ...candidate, candidateId: shot.shotId }, updatedAt: NOW,
@@ -207,6 +210,18 @@ describe('deriveProductionShotState · 用户还没点头', () => {
   // 见根因合同 residual_risks。这里是已提交批次里返工 / 续拍的新 job 退回授权前（productionGenerationAuthorizationState）。
   it('批次在跑，这一镜的新 job 退回人工门前（返工 / 续拍待授权）→ 等你确认，不说「排队中」', () => {
     expect(phaseOf(run({ status: 'running', shots, jobs: [job('s1', 'authorization_required')] }), 's1')).toEqual({ phase: 'awaiting_confirmation' })
+  })
+
+  it('逐镜（付费卡①）：已在跑的计划上，这一次出价里没决定的镜 → 等你确认；去掉的 → 已去掉，不生成；× 之后没决定的 → 还没生成', () => {
+    const base = run({ shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3', included: false }], jobs: [job('s1', 'authorized')] })
+    const presentation = { shotIds: ['s1', 's2', 's3'], openedAt: NOW, fromGate: 0, removed: [{ shotId: 's3', at: NOW }] }
+    const open: ProductionRun = { ...base, generationPlan: { ...base.generationPlan!, presentations: [presentation] } }
+    expect(phaseOf(open, 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 1 })
+    expect(phaseOf(open, 's2')).toEqual({ phase: 'awaiting_confirmation' })
+    expect(phaseOf(open, 's3')).toEqual({ phase: 'removed' })
+    const closed: ProductionRun = { ...open, generationPlan: { ...open.generationPlan!, presentations: [{ ...presentation, closed: { at: NOW, by: 'user_closed' } }] } }
+    expect(phaseOf(closed, 's2')).toEqual({ phase: 'not_generated' })
+    expect(phaseOf(closed, 's3')).toEqual({ phase: 'removed' })
   })
 
   it('没点过头就被取消的草稿 → 还没生成，不显「已停」也不给续拍钮', () => {

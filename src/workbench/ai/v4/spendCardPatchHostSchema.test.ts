@@ -28,7 +28,7 @@ describe('付费卡改稿 → 宿主 schema · 报告里那一幕', () => {
     }))
     const node = projectSpendNode(shots[0]!)!
     const filled = { ...node, meta: { ...(node.meta as Record<string, unknown>), size: '16:9' } }
-    const draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, shots[0]!, filled, 'all')
+    const draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, shots[0]!, filled)
     const revisions = revisionsForConfirm(shots, draft)
     expect(revisions.length, '补了默认值 = 有改稿要送').toBeGreaterThan(0)
     for (const revision of revisions) {

@@ -107,7 +107,7 @@ function setup(shots: ProductionGenerationShot[], provider: GenerationProvider) 
     candidate: shots[0].candidate,
     contract: top,
     providers: [provider],
-    multiShot: { shots, planHash: "plan-hash-batch" },
+    multiShot: { shots, scope: shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId), planHash: "plan-hash-batch" },
     resolveShotPrice: () => ({ known: true, amount: 6 }),
     receiptId: "receipt-plan",
     now: now(),

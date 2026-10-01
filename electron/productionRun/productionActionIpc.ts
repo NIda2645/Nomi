@@ -18,7 +18,8 @@ type CapabilityActions = {
   listPendingSpendConfirmations: (projectId: string) => PendingSpendRead;
   revisePendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }) => Promise<ProductionActionResult>;
   discardPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string }) => Promise<ProductionActionResult>;
-  confirmPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }) => Promise<ProductionActionResult>;
+  confirmPendingSpendConfirmation: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string }) => Promise<ProductionActionResult>;
+  removePendingSpendShot: (input: { projectId: string; operationId: string; quoteId: string; shotId: string }) => Promise<ProductionActionResult>;
 };
 
 export function registerProductionActionIpc(deps: {
@@ -114,12 +115,19 @@ export function registerProductionActionIpc(deps: {
     const scoped = spendOperation(payload);
     if ("ok" in scoped) return scoped;
     const raw = objectOf(payload);
-    const rawShotIds = raw.shotIds;
-    if (rawShotIds !== undefined && (!Array.isArray(rawShotIds) || rawShotIds.some((id) => typeof id !== "string"))) {
-      return { ok: false, code: "failed", message: "generation_scope_invalid" };
-    }
-    return (await deps.loadCore()).confirmPendingSpendConfirmation({ ...scoped, quoteId: str(raw.quoteId),
-      ...(rawShotIds === undefined ? {} : { shotIds: rawShotIds as string[] }) });
+    // 一下点击只批一镜（付费卡逐镜）：渲染层只递「用户点的是哪一镜」，批不批、派不派由主进程决定。
+    const shotId = str(raw.shotId) || undefined;
+    return (await deps.loadCore()).confirmPendingSpendConfirmation({ ...scoped, quoteId: str(raw.quoteId), ...(shotId ? { shotId } : {}) });
+  });
+
+  ipcMain.handle("nomi:production-runs:remove-spend-shot", async (event, payload: unknown): Promise<ProductionActionResult> => {
+    assertTrustedSender(event);
+    const scoped = spendOperation(payload);
+    if ("ok" in scoped) return scoped;
+    const raw = objectOf(payload);
+    const shotId = str(raw.shotId);
+    if (!shotId) return { ok: false, code: "failed", message: "generation_scope_invalid" };
+    return (await deps.loadCore()).removePendingSpendShot({ ...scoped, quoteId: str(raw.quoteId), shotId });
   });
 
   ipcMain.handle("nomi:production-runs:resume-batch", async (event, payload: unknown): Promise<ProductionShotActionResult> => {

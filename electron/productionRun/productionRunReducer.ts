@@ -11,7 +11,6 @@ import type {
   ProductionGate,
   ProductionJob,
   ProductionJobStatus,
-  ProductionGenerationPlan,
   ProductionRun,
   ProductionStage,
   RunCommand,
@@ -22,19 +21,22 @@ import {
   applyGenerationAuthorizationGateDecision,
   deriveGenerationContinuationAuthorizationState,
   deriveGenerationReauthorizationState,
-  deriveSealedGenerationAuthorizationState,
 } from "./productionGenerationAuthorizationState";
-import { generationSealShotPrices, sealGenerationShots, isShotIncluded, SealBudgetExceededError } from "./productionGenerationSeal";
-import { checkSealAffordability } from "./shotPricing";
+import { applyGenerationSeal, isShotIncluded } from "./productionGenerationSeal";
 import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import {
   applyGenerationCandidatePatch,
-  presentGenerationPlan,
-  withdrawGenerationPresentation,
-  policyAdmittingUserRevisedIdentity,
+  applyGenerationRevise,
+  revokeWaitingAndUnseal,
   revokeWaitingGenerationAuthorization,
   unsealedGenerationPlanFields,
 } from "./productionGenerationPlanEdits";
+import {
+  parsePresentationCloser,
+  presentGenerationPlan,
+  removePresentedShot,
+  withdrawGenerationPresentation,
+} from "./productionGenerationPresentationEdits";
 
 export { SealBudgetExceededError } from "./productionGenerationSeal";
 
@@ -221,77 +223,16 @@ export function applyProductionCommand(
     case "generation.present":
       return { run: presentGenerationPlan(current, command.payload.shotIds, now), eventType: "generation.plan.presented", message: current.runId };
     case "generation.withdraw": {
-      const withdrawn = withdrawGenerationPresentation(current, now);
+      const withdrawn = withdrawGenerationPresentation(current, now, parsePresentationCloser(command.payload.reason));
       return { run: withdrawn, eventType: "generation.plan.withdrawn", message: current.generationPlan?.operationId ?? current.runId };
     }
-    case "generation.seal": {
-      const currentPlan = current.generationPlan;
-      if (!currentPlan || currentPlan.state !== "draft") throw new Error("Generation plan is not editable");
-      const contract = record(command.payload, "contract") as ProductionGenerationPlan["contract"];
-      if (!contract || typeof contract.contractHash !== "string" || contract.contractHash.trim() === "") throw new Error("Invalid generation contract");
-      if (contract.candidateId !== currentPlan.candidate.candidateId || contract.candidateRevision !== currentPlan.candidate.revision) {
-        throw new Error("Generation contract does not match the current draft");
-      }
-      // P4 S1 multi-shot seal: freeze per-shot sub-contracts (included shots only) + the plan-level hash.
-      // Single-shot seal (no shots[] in payload) stays byte-identical to today.
-      const sealedShots = sealGenerationShots(currentPlan, command.payload.shots);
-      // P4 S2 seal precheck: when the caller supplies per-shot prices (derived from the catalog), the
-      // reducer enforces the hard spend ceiling at the single source of truth. Absent shotPrices →
-      // byte-identical to today (no precheck, no costCertainty) so the single-shot chain is untouched.
-      const shotPrices = generationSealShotPrices(command.payload.shotPrices);
-      let costCertainty: ProductionGenerationPlan["costCertainty"];
-      if (shotPrices) {
-        // Precheck order = included shots in their declared order (checkbox order), single default shot
-        // when there is no shots[] payload. maxAffordableShots is counted in exactly this order.
-        const orderedShots = sealedShots
-          ? sealedShots.filter(isShotIncluded).map((shot) => ({ shotId: shot.shotId, price: shotPrices.get(shot.shotId) ?? { known: false as const } }))
-          : [{ shotId: currentPlan.candidate.candidateId, price: shotPrices.get(currentPlan.candidate.candidateId) ?? { known: false as const } }];
-        const affordability = checkSealAffordability({
-          shots: orderedShots,
-          maxSpend: current.policy.maxSpend,
-          existingLiability: [current.budget.reserved, current.budget.actual, current.budget.unsettled],
-        });
-        if (!affordability.ok) throw new SealBudgetExceededError(affordability.maxAffordableShots, affordability.knownSubtotal, affordability.maxSpend);
-        costCertainty = affordability.hasUnknownPrice ? "partial" : "known";
-      }
-      const authorization = command.payload.authorization === undefined
-        ? undefined
-        : deriveSealedGenerationAuthorizationState({
-            run: current,
-            plan: currentPlan,
-            topLevelContract: contract,
-            ...(sealedShots ? { sealedShots } : {}),
-            preparation: command.payload.authorization,
-            now,
-          });
-      return {
-        run: {
-          ...current,
-          ...(authorization
-            ? {
-                gates: [...current.gates, authorization.gate],
-                jobs: [...current.jobs, ...authorization.jobs],
-              }
-            : {}),
-          generationPlan: {
-            ...currentPlan,
-            candidate: { ...currentPlan.candidate, sealedContractHash: contract.contractHash },
-            contract,
-            state: "sealed",
-            // 这一份授权（信封）住在它自己那道门上（authorization.gate），计划上不再挂一份。
-            ...(sealedShots ? { shots: sealedShots.map(shot => {
-              const job = authorization?.jobs.find(candidate => candidate.metadata?.shotId === shot.shotId);
-              return job ? { ...shot, attemptCount: job.attempt } : shot;
-            }) } : {}),
-            ...(costCertainty ? { costCertainty } : {}),
-            updatedAt: now,
-          },
-          updatedAt: now,
-        },
-        eventType: "generation.plan.sealed",
-        message: currentPlan.operationId,
-      };
-    }
+    case "generation.shot.remove":
+      return { run: removePresentedShot(current, text(command.payload, "shotId"), now), eventType: "generation.shot.removed", message: text(command.payload, "shotId") };
+    case "generation.seal":
+      return applyGenerationSeal(current, command, now);
+    // 一次点击没点完（封了门、还没决）留下的那份等人的授权：下一次点击之前由调用方先撤掉，只解封它盖着的那几镜。
+    case "generation.authorization.abandon":
+      return { run: revokeWaitingAndUnseal(current, now, "Abandon"), eventType: "generation.authorization.abandoned", message: current.generationPlan?.operationId ?? current.runId };
     case "generation.trial_narrow": {
       // Trial-first changes the provider payload and spend scope. Revoke the unapproved authority,
       // return to draft, and force the normal prepare -> seal -> gate path to create a new digest.
@@ -329,55 +270,8 @@ export function applyProductionCommand(
         message: currentPlan.operationId,
       };
     }
-    case "generation.revise": {
-      // 2026-09-11 付费卡上改参数：用户在 agent 面板的确认卡上改了提示词/时长/模型。
-      //
-      // 为什么不能沿用框架的「改了直接跑」（pi `before_tool` 的 `{ args }` 返回值会重新校验，
-      // 技术上做得到）：pi **不改写转录里那条 assistant toolCall**，于是面板收据上写的
-      // 和实际执行的会分叉——而用户是照着收据点的头。钱这条轴上「收据 = 实际执行」是
-      // 领域约束，不是偏好。所以改参数必须撤掉旧授权、重新计价、重新封印、重新出卡。
-      //
-      // 两种进来的状态：
-      //   · `sealed` + 付费门 `waiting` —— 走 `trial_narrow` 那条同族路（撤授权 → 回 draft）。
-      //   · `draft` —— 还没封印，直接改（此时它与 `generation.patch` 等价，但入口只留一个：
-      //     卡上那一个动作不该按内部状态分裂成两条命令）。
-      const currentPlan = current.generationPlan;
-      if (!currentPlan) throw new Error("Generation plan not found");
-      if (currentPlan.state === "submitted" || currentPlan.state === "cancelled") {
-        throw new Error("A submitted or cancelled generation plan cannot be revised");
-      }
-      if (currentPlan.state === "draft") {
-        const patched = applyGenerationCandidatePatch(currentPlan, command, now);
-        return {
-          run: {
-            ...current,
-            // 卡上换模型是**真人**按的，不该撞上那道防 agent 的白名单（#748 已知缺口）。
-            policy: policyAdmittingUserRevisedIdentity(current.policy, currentPlan, patched),
-            generationPlan: patched,
-            updatedAt: now,
-          },
-          eventType: "generation.plan.updated",
-          message: currentPlan.operationId,
-        };
-      }
-      const revoked = revokeWaitingGenerationAuthorization(current, currentPlan, now, "Revise");
-      const unsealed = unsealedGenerationPlanFields(currentPlan, now);
-      const patched = applyGenerationCandidatePatch(unsealed, command, now);
-      return {
-        run: {
-          ...current,
-          planVersion: revoked.planVersion,
-          gates: revoked.gates,
-          jobs: revoked.jobs,
-          // 同上：撤掉旧授权之后仍要重新出卡、重新由真人按一次，放行的只是判据里的身份，不是那笔钱。
-          policy: policyAdmittingUserRevisedIdentity(current.policy, currentPlan, patched),
-          generationPlan: patched,
-          updatedAt: now,
-        },
-        eventType: "generation.plan.updated",
-        message: currentPlan.operationId,
-      };
-    }
+    case "generation.revise":
+      return applyGenerationRevise(current, command, now);
     // **计划级终态**：用户不要这份草稿了（左侧栏删草稿 / 外部宿主撤草稿）。报价卡上的 × 不走这里
     // ——它收回的只是这一次出价，走 `generation.withdraw`（2026-09-22 下午用户拍板改窄裁决 D）。
     case "generation.cancel": {
@@ -388,10 +282,12 @@ export function applyProductionCommand(
       // 挂在一份已经终结的计划上。
       const revoked = currentPlan.state === "sealed"
         ? revokeWaitingGenerationAuthorization(current, currentPlan, now, "Cancel") : undefined;
+      // 这一次出价若还开着，跟着关（用户不要这份草稿了，卡上的镜一镜都不生成）。
+      const closedPlan = withdrawGenerationPresentation({ ...current, ...(revoked ?? {}),
+        generationPlan: revoked ? unsealedGenerationPlanFields(currentPlan, now) : currentPlan }, now, "user_closed").generationPlan!;
       return {
         run: { ...current, ...(revoked ?? {}),
-          generationPlan: { ...(revoked ? unsealedGenerationPlanFields(currentPlan, now) : currentPlan),
-            state: "cancelled", updatedAt: now },
+          generationPlan: { ...closedPlan, state: "cancelled", updatedAt: now },
           updatedAt: now },
         eventType: "generation.plan.cancelled",
         message: currentPlan.operationId,
@@ -552,7 +448,12 @@ export function applyProductionCommand(
     case "gate.add": {
       const gate = record(command.payload, "gate") as ProductionGate;
       if (current.gates.some((item) => item.gateId === gate.gateId)) throw new Error(`Duplicate gate: ${gate.gateId}`);
-      return { run: { ...current, gates: [...current.gates, gate], updatedAt: now }, eventType: "gate.waiting", message: gate.gateId };
+      // 形象确认只留一张在等（付费卡逐镜）：参考卡是一张一张点的，这一批多了一张参考卡，旧的那张等待就作废，
+      // 换成盖住这一批的新的一张——不让一张盖着旧参考卡集合的确认永远挂在那里。
+      const gates = gate.scope === "anchor_checkpoint"
+        ? current.gates.map((item) => item.scope === "anchor_checkpoint" && item.status === "waiting" ? { ...item, status: "revoked" as const, decidedAt: now } : item)
+        : current.gates;
+      return { run: { ...current, gates: [...gates, gate], updatedAt: now }, eventType: "gate.waiting", message: gate.gateId };
     }
     case "gate.set_candidates": {
       // B1：方向门候选挂到 waiting 的 gate 上（driver 拟好后调）。只允许方向门、只在 waiting 时设。

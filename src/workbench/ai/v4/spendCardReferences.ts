@@ -1,6 +1,6 @@
 import type { PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
 import type { SpendReferenceInput } from '../../../../electron/shared/contracts/pendingSpendConfirm'
-import type { GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
+import type { GenerationCanvasEdge, GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
 import { resolveReferenceSlots } from '../../generationCanvas/runner/referenceSlots'
 import { referenceSlotAccept, referenceSlotStorage } from '../../generationCanvas/nodes/controls/archetypeMeta'
 import { readParameterReferenceSlots, parameterReferenceMetaPatch } from '../../generationCanvas/model/parameterReferenceSlots'
@@ -12,6 +12,27 @@ function slotRole(kind: string, numbered: boolean): ReferenceRole {
 }
 export function pendingReferenceInputs(shot: PendingSpendShot): SpendReferenceInput[] {
   return (shot.references ?? []).map(({ url, ...reference }) => ({ reference, ...(url ? { url } : {}) }))
+}
+
+/**
+ * 画布上连到这一镜占位节点的参考图（付费卡第 4 条：卡上所见即所发）。读的是画布自己那一份槽位解析
+ * （`resolveReferenceSlots`，和节点生成时同一个），只读、不写画布。只收已经能用的（有 url）：连了线但源还没出图的，
+ * 此刻发不出去，卡上也不说它会被发出去。
+ */
+export function canvasReferenceInputs(
+  placed: GenerationCanvasNode | undefined,
+  nodes: readonly GenerationCanvasNode[],
+  edges: readonly GenerationCanvasEdge[],
+): SpendReferenceInput[] {
+  if (!placed) return []
+  const inputs: SpendReferenceInput[] = []
+  for (const slot of resolveReferenceSlots(placed, nodes as GenerationCanvasNode[], edges as GenerationCanvasEdge[])) {
+    for (const fill of slot.fills) {
+      if (fill.origin.type !== 'edge' || !fill.url) continue
+      inputs.push({ url: fill.url, kind: referenceSlotAccept(slot.slotKind), role: slotRole(slot.slotKind, slot.numbered) })
+    }
+  }
+  return inputs
 }
 
 /** Bidirectional presentation adapter over the existing slot resolver, never a second graph. */

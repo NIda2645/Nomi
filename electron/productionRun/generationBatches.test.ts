@@ -71,10 +71,18 @@ function draftRun(shots: ProductionGenerationShot[], top: PlanCandidate): Produc
 }
 
 
-function prepare(run: ProductionRun, priceAmount = 3) {
+/**
+ * 和宿主 gate_request 同一条规则选这一次封哪几镜：点名的；或卡上这一次出价里的那几镜；或勾进这一批、还没封过的全部。
+ * 只编译这几镜的合同，其余的镜原样随行（付费卡逐镜：每点一次封一份，只盖那一次点到的镜）。
+ */
+function prepare(run: ProductionRun, priceAmount = 3, scope?: readonly string[]) {
   const plan = run.generationPlan!;
+  const presented = plan.presentations?.at(-1);
+  const sealing = new Set(scope ?? (presented && !presented.closed
+    ? presented.shotIds
+    : plan.shots!.filter(shot => shot.included !== false && !shot.contract).map(shot => shot.shotId)));
   const shots = plan.shots!.map(shot => {
-    if (shot.included === false) return shot;
+    if (shot.included === false || !sealing.has(shot.shotId)) return shot;
     const contract = compileExecutionContract(shot.candidate, registry);
     return { ...shot, candidate: { ...shot.candidate, sealedContractHash: contract.contractHash }, contract };
   });
@@ -83,13 +91,15 @@ function prepare(run: ProductionRun, priceAmount = 3) {
     run,
     lease: { projectId: run.projectId, immutableProjectUuid: "uuid", projectGeneration: 1, revocationEpoch: 0 },
     projectRevision: 0, operation: { operationId: run.runId, projectId: run.projectId, candidate: plan.candidate, planVersion: run.planVersion },
-    contract, multiShot: { shots, planHash: "same-content" }, providers: [provider()],
+    contract, multiShot: { shots, planHash: "same-content", scope: [...sealing] }, providers: [provider()],
     resolveShotPrice: () => ({ known: true, amount: priceAmount }), maximumSpend: run.policy.maxSpend, now: NOW,
   });
-  return { contract, shots, planHash: "same-content", authorization };
+  return { contract, shots, planHash: "same-content", scope: [...sealing], authorization };
 }
-function apply(run: ProductionRun, type: "generation.seal" | "generation.present", payload: Record<string, unknown>) {
-  return applyProductionCommand(run, { commandId: `test-${run.planVersion}-${type}`, expectedRevision: run.revision, type, payload, issuedAt: NOW }, NOW).run;
+/** 下一轮出价发生在上一轮的门之后（`at`）：「这一次出价里批过没有」按时间先后判。 */
+const LATER = "2026-09-11T01:00:00.000Z";
+function apply(run: ProductionRun, type: "generation.seal" | "generation.present", payload: Record<string, unknown>, at = NOW) {
+  return applyProductionCommand(run, { commandId: `test-${run.planVersion}-${type}`, expectedRevision: run.revision, type, payload, issuedAt: at }, at).run;
 }
 function initial() {
   const a = candidate("cand-a", "shot a");
@@ -102,7 +112,9 @@ function initial() {
 }
 function settledFirst() {
   const run = initial(); const sealed = apply(run, "generation.seal", prepare(run));
+  // 第一批跑完：那道门批过了（跑完的 job 一定有一份批过的授权盖着）。
   return { ...sealed, budget: { ...sealed.budget, actual: 3, authorized: 3 },
+    gates: sealed.gates.map(gate => ({ ...gate, status: "approved" as const, decidedAt: NOW })),
     jobs: sealed.jobs.map(job => ({ ...job, status: "ready" as const })),
     generationPlan: { ...sealed.generationPlan!, state: "submitted" as const } };
 }
@@ -154,7 +166,7 @@ describe("successive generation batches", () => {
   });
   it("new execution of the same shot receives a new attempt, even with a revised contract", () => {
     const first = settledFirst();
-    let draft = apply(first, "generation.present", { shotIds: ["shot-a"] });
+    let draft = apply(first, "generation.present", { shotIds: ["shot-a"] }, LATER);
     draft = { ...draft, generationPlan: { ...draft.generationPlan!, shots: draft.generationPlan!.shots!.map(shot => shot.shotId === "shot-a" ? { ...shot, candidate: { ...shot.candidate, prompt: "changed", revision: 2 } } : shot) } };
     const payload = prepare(draft);
     expect(payload.authorization.envelope.jobs[0].attempt).toBe(2);

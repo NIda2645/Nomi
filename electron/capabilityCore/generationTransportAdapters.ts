@@ -1,3 +1,4 @@
+import type { GeneratePresentationOutcome } from "../shared/productionGenerationPresentation";
 import { resolveGenerationShotScope } from '../shared/agentCapabilities/generationShotScope';
 import { productionTaskAbsenceCode } from '../productionRun/productionRunErrors';
 import { GenerationProviderCapabilityError, GenerationProviderObservationError, GenerationRuntimeBindingError } from './generationRuntimeAdapter';
@@ -31,7 +32,12 @@ export type PiGenerationTransportAdapter = Readonly<{
    * 宿主内部：收回对 `operationId` 的**这一次出价**（回 draft / 未 present，计划留着）。模型够不着——
    * 它不是一个工具。等用户的那个回合没了（按停止 / 关窗）或用户改了主意（待决时打字）时由 lane 端口调。
    */
-  withdrawPresentation(operationId: string): Promise<void>;
+  withdrawPresentation(operationId: string, reason: "user_wrote" | "stopped"): Promise<void>;
+  /**
+   * 宿主内部：这一次出价（付费卡）的结局——每一镜是在生成、被用户去掉，还是没决定（为什么）。`generate` 的回执只读它。
+   * 读不到（没有出价 / 读失败）→ `undefined`，回执照实说「不知道」，不替宿主编。
+   */
+  readPresentationOutcome(operationId: string): Promise<GeneratePresentationOutcome | undefined>;
   dispose(): void;
 }>;
 
@@ -443,15 +449,31 @@ export function createPiGenerationTransportAdapter(
    */
   const draftedFromDocument = new Map<string, string>();
 
+  /** 这次调用落到的那份计划有没有任何一笔可能到过供应商（账本事实，宿主现算）。没落到任何计划上 = 没有。 */
+  const submissionStarted = async (operationId: string | undefined): Promise<boolean> => {
+    if (!operationId) return false;
+    try {
+      const signal = new AbortController().signal;
+      const read = await plan("read", { operationId }, await lease(signal), signal) as { operation?: { submissionStarted?: boolean } };
+      return read?.operation?.submissionStarted !== false;
+    } catch {
+      // 读不到就不下结论：宁可让模型多核对一次，也不要哄它说钱没花。
+      return true;
+    }
+  };
+
   return Object.freeze({
     async tryExecute(call, signal, context) {
       if (!GENERATION_TOOL_NAMES.has(call.toolName)) return null;
       if (disposed) return { ok: false, code: "surface_port_unavailable", message: "surface_port_unavailable" };
       if (signal.aborted) return { ok: false, code: "generation_cancelled", message: "generation_cancelled", denied: true };
+      // 这次调用落到了哪份计划上（入参点名的，或这一次刚起草的）。失败时拿它去问账本「有没有东西发出去过」。
+      let addressed: string | undefined;
       try {
         const parsed = parsedArgs(call);
         const canonicalCall = canonicalGenerationCall(call, parsed);
         const args = canonicalCall.args as Record<string, unknown>;
+        addressed = typeof args.operationId === "string" && args.operationId.trim() ? args.operationId.trim() : undefined;
         const currentLease = await lease(signal);
         const storyboardTarget = context?.storyboardTarget;
         // A document-admitted storyboard call may only address a plan that already belongs to
@@ -506,6 +528,7 @@ export function createPiGenerationTransportAdapter(
         let releasePolicyClaim = claimPolicyDecision(claimed);
         try {
         const result = await plan(capability, args, currentLease, signal, context);
+          addressed = draftedOperationIdOrNone(result, args) ?? addressed;
           // 记下「这份方案是这条 lane 从哪份文稿起草的」。只记 create 成功的那一刻，键是宿主发的 id。
           if (capability === "create" && storyboardTarget) {
             const drafted = draftedOperationIdOrNone(result, args);
@@ -525,14 +548,31 @@ export function createPiGenerationTransportAdapter(
           releasePolicyClaim?.();
         }
       } catch (error) {
-        return safeFailure(error);
+        const failure = safeFailure(error);
+        // 「结果可能未知」只有在真的有提交意图落过盘时才是真的。认不出的异常先落到兜底码，这里问账本一句：
+        // 这份计划（没有计划就更没有）有没有任何一笔走到过提交意图——没有就是「没发出去、没扣费」，
+        // 模型和面板据此都说真话，不让用户去核对一笔根本不存在的扣费（23:30 第 3 点）。
+        if (failure.code === "generation_execution_failed" && !(await submissionStarted(addressed))) {
+          return { ...failure, code: "generation_not_started", message: (failure.message ?? "generation_execution_failed").replace("generation_execution_failed", "generation_not_started") };
+        }
+        return failure;
       }
     },
-    async withdrawPresentation(operationIdToWithdraw) {
+    async withdrawPresentation(operationIdToWithdraw, reason) {
       if (disposed) return;
       // 不挂调用方的 signal：这一步多半正是在 abort 之后跑的，而它要做的恰恰是把那次 abort 留下的卡收走。
       const signal = new AbortController().signal;
-      await plan("withdraw", { operationId: operationIdToWithdraw }, await lease(signal), signal);
+      await plan("withdraw", { operationId: operationIdToWithdraw, reason }, await lease(signal), signal);
+    },
+    async readPresentationOutcome(operationIdToRead) {
+      if (disposed) return undefined;
+      const signal = new AbortController().signal;
+      try {
+        const read = await plan("read", { operationId: operationIdToRead }, await lease(signal), signal) as { operation?: { presentationOutcome?: GeneratePresentationOutcome } };
+        return read?.operation?.presentationOutcome;
+      } catch {
+        return undefined;
+      }
     },
     dispose() { disposed = true; },
   });

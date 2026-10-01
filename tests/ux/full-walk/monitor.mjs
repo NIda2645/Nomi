@@ -633,22 +633,55 @@ export function createInvariantMonitor(options) {
     }
   }
 
-  /** 卡的范围自相矛盾（标题说 N 镜、按钮只发 1 镜）或发出去的镜数对不上卡上写的：在收尾 / settle 时判。 */
+  /**
+   * 付费卡的范围（2026-09-30 逐镜：「点了的生成，去掉的不生成」）。在收场 / 收尾时判，三件事：
+   * ① 标题数的就是点下去那一刻卡上还没决定的镜（宿主那一刻摆着几镜，标题就说几镜）；
+   * ② 按钮许诺几镜就只发几镜——「生成这张」= 只发这一页这一镜；同一张卡上别的镜没有自己的那一下，不许跟着发出去；
+   * ③ 没点的镜不许悄悄没了（U01）：没发出去的，要么还摆在卡上，要么是用户自己去掉 / 关掉 / 打字岔开的——
+   *    宿主的出价记录（`generationPlan.presentations`）里查得到；查不到 = 被悄悄拿掉了。
+   */
   async function checkConsentScopes() {
+    const runs = readRuns()
     for (const consent of consents.filter((entry) => entry.kind === 'spend-card' && !entry.scopeChecked)) {
-      const sentCount = consent.scope.reduce((sum, entry) => sum + entry.submissions.length, 0)
-      const others = submissions.filter((submission) => submission.consent !== consent.id && submission.at >= consent.at
-        && consent.allShots.some((shot) => normalizePrompt(shot.prompt) && (submission.prompt.includes(normalizePrompt(shot.prompt)) || normalizePrompt(shot.prompt).includes(submission.prompt))))
-      if (consent.declaredCount > 1 && consent.declaredCount !== sentCount + others.length) {
+      const promised = new Set(consent.scope.map((entry) => entry.shotId))
+      const siblings = consent.allShots.filter((shot) => !promised.has(shot.shotId))
+      const later = submissions.filter((submission) => submission.at >= consent.at)
+      const sentFor = (shot) => later.filter((submission) => promptMatches(submission.prompt, shot.prompt))
+      // 跟着这一下发出去、却没有任何一次点头盖住的同卡别的镜（有自己那一下的，算在那一下头上）。
+      const tagAlong = later.filter((submission) => !submission.consent && siblings.some((shot) => promptMatches(submission.prompt, shot.prompt)))
+      const run = runs.find((entry) => entry.runId === consent.runId)
+      const dropped = siblings.filter((shot) => sentFor(shot).length === 0 && !hostAccountsForUnsent(run, shot.shotId))
+      const problems = [
+        ...(consent.allShots.length > 0 && consent.declaredCount !== consent.allShots.length
+          ? [`标题写「${consent.dom.title}」（${consent.declaredCount} 镜），点下去那一刻卡上还没决定的是 ${consent.allShots.length} 镜`] : []),
+        ...(tagAlong.length > 0
+          ? [`按钮是「${consent.dom.confirmLabel}」（${consent.scope.length} 镜），点完供应商还收到同一张卡上别的 ${tagAlong.length} 镜`] : []),
+        ...(dropped.length > 0
+          ? [`没点的 ${dropped.length} 镜（${dropped.map((shot) => shot.shotId).join('、')}）既没发出去、也不在卡上，用户也没去掉或关掉它们——被悄悄拿掉了`] : []),
+      ]
+      if (problems.length > 0) {
         await violate({
           invariant: 3, rule: 'card-scope-mismatch', key: consent.id,
-          module: 'src/workbench/ai/v4/agentPanelSpendCard.ts（标题按整单计数） + useAgentPanelSpendConfirm.ts（逐镜只发当前页）',
-          message: `付费卡标题写「${consent.dom.title}」（${consent.declaredCount} 镜），按钮是「${consent.dom.confirmLabel}」，点完供应商实际收到 ${sentCount + others.length} 镜`,
-          snapshot: { consent, submissions: submissions.filter((submission) => submission.at >= consent.at) },
+          module: 'electron/productionRun/productionGenerationPresentationEdits.ts + electron/shared/productionGenerationPresentation.ts（出价记录：卡上摆哪几镜、哪几镜是用户去掉 / 关掉的）+ src/workbench/ai/v4/agentPanelSpendCard.ts（标题数还没决定的镜）',
+          message: `付费卡「${consent.dom.title}」上点了「${consent.dom.confirmLabel}」：${problems.join('；')}`,
+          snapshot: { consent, submissions: later, presentations: run?.generationPlan?.presentations ?? null },
         })
       }
       consent.scopeChecked = true
     }
+  }
+
+  /** 宿主有没有给这一镜「没生成」一个用户看得见的交代：还摆在卡上、用户去掉的、或用户关掉 / 打字岔开 / 停下那一刻还没决定。 */
+  function hostAccountsForUnsent(run, shotId) {
+    return (run?.generationPlan?.presentations ?? []).some((presentation) => (presentation.shotIds ?? []).includes(shotId) && (
+      !presentation.closed
+      || (presentation.removed ?? []).some((entry) => entry.shotId === shotId)
+      || presentation.closed.by !== 'resolved'))
+  }
+
+  function promptMatches(sent, shown) {
+    const normalized = normalizePrompt(shown)
+    return Boolean(normalized) && (sent === normalized || sent.includes(normalized) || normalized.includes(sent))
   }
 
   // ── 铁律 1（网络闸）────────────────────────────────────────────────────────────────────────
@@ -696,17 +729,20 @@ export function createInvariantMonitor(options) {
           })
           continue
         }
-        if (name !== 'generate' || !/generation has started/i.test(text)) continue
+        // 「都开始了」的两种说法：旧回执写死的那句，和逐镜回执（2026-09-30）只在每一镜都在生成时才说的那句。
+        if (name !== 'generate' || !/generation has started|all \d+ shot\(s\) on the card are generating/i.test(text)) continue
         const operationId = /"operationId":"([^"]+)"/.exec(text)?.[1] ?? /operationId[=:]\s*"?([\w-]+)/.exec(text)?.[1]
         const run = readRuns().find((candidate) => candidate.runId === operationId || candidate.generationPlan?.operationId === operationId) ?? readRuns().at(-1)
-        const shots = run?.generationPlan?.shots ?? []
+        // 逐镜之后「都」指的是这一次出价卡上摆的那几镜（宿主的出价记录）；没有出价记录的旧数据按整份草稿判。
+        const presented = run?.generationPlan?.presentations?.at(-1)?.shotIds
+        const shots = (run?.generationPlan?.shots ?? []).filter((shot) => !presented || presented.includes(shot.shotId))
         const excluded = shots.filter((shot) => shot.included === false)
         const withJobs = new Set((run?.jobs ?? []).map((job) => job.metadata?.shotId).filter(Boolean))
         const notStarted = shots.filter((shot) => shot.included === false || !withJobs.has(shot.shotId))
         if (shots.length > 1 && (excluded.length > 0 || notStarted.length > 0) && /no card is waiting|do not call generate again/i.test(text)) {
           await violate({
             invariant: 4, rule: 'receipt-claims-whole-draft-started', key: message.tool_call_id,
-            module: 'electron/agentLane/laneExtendedTools.ts generateReceipt（approved 一支写死「generation has started / no card is waiting / do not call generate again」）',
+            module: 'electron/shared/productionGenerationPresentation.ts generationPresentationOutcome（宿主的逐镜结局）→ electron/shared/agentLane/generateOutcomeReceipt.ts describeGenerateOutcome（回执只渲染它）；旧版：laneExtendedTools.ts generateReceipt 写死「generation has started」',
             message: `宿主告诉模型「generation has started…No card is waiting…Do not call generate again for this draft」，而这份草稿 ${shots.length} 镜里有 ${notStarted.length} 镜没开拍（${excluded.length} 镜已被移出这一批）`,
             snapshot: { receipt: text.slice(0, 4000), runStatus: run?.status, shots: shots.map((shot) => ({ shotId: shot.shotId, included: shot.included ?? true, hasJob: withJobs.has(shot.shotId) })) },
           })

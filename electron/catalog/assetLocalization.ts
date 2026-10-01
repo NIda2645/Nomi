@@ -53,7 +53,7 @@ export type LocalAsset = {
 
 export class AnonymousAssetConsentRequiredError extends Error {
   constructor() {
-    super("参考素材需要上传到公共临时托管。KIE 视频文件上传免费，配置 KIE 后可优先使用；继续前请确认公共链接和有效期风险。");
+    super("参考素材需要上传到公共临时托管：素材会离开本机，链接短期有效，并存在隐私风险。可以在设置里换上传通道；继续前请确认。");
     this.name = "AnonymousAssetConsentRequiredError";
   }
 }

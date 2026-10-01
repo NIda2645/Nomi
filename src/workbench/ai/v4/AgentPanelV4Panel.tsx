@@ -59,10 +59,9 @@ export type V4InterventionHandlers = Readonly<{
   onConfirm?: () => void
   /** 翻页（付费卡多镜时）。 */
   onPage?: (index: number) => void
-  /** 范围切换：这一镜 / 全部（付费卡多镜时）。 */
-  onScope?: (value: 'each' | 'all') => void
   onReject?: (reason?: string) => void
   onEscalate?: () => void
+  /** 次动作（付费卡上是「去掉这张 / 这段」）。 */
   onAlternate?: () => void
   /** 用户答了反问（chip 或卡内那一行，同一个动作）。 */
   onAnswer?: (reply: V4QuestionReply, questions: readonly string[]) => void

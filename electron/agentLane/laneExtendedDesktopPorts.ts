@@ -210,7 +210,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
         ({ ok: true, result: { ...(presented.result as Record<string, unknown>), [GENERATE_USER_DECISION_KEY]: userDecision } })
       if (!host.canAskUser) {
         // 卡摆出去了却没有人能点它（没有窗口的 lane）：收回这次出价，照实说。这是真错误，error 形状是对的。
-        await generation.withdrawPresentation(operationId)
+        await generation.withdrawPresentation(operationId, 'stopped')
         return { ok: false, code: 'generation_approval_unavailable', message: 'This session has no window where the user could approve the spend, so nothing was generated.' }
       }
       let outcome: Awaited<ReturnType<typeof host.waitForUser>['outcome']>
@@ -220,19 +220,24 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
         forward = (decision) => { wait.settle(decision) }
         outcome = await wait.outcome
       }
-      if (outcome.kind === 'confirmed') return decided({ outcome: 'approved' })
-      // × 那条路上 `discardPendingSpend` 已经把这一次出价收回了（计划回到 draft / 未 present），这里不再动它。
-      if (outcome.kind === 'declined') return decided({ outcome: 'declined' })
-      // 另外两种结局（用户打了字 / 回合被停下）同样不是「不要这份草稿」：收回的只是这一次出价，计划留着。
+      // 卡关了（每一镜都决定了，或者 × ——那条路上宿主已经把这一次出价关好了）：每一镜的结局只问宿主，这里不替它说。
+      if (outcome.kind === 'confirmed' || outcome.kind === 'declined') {
+        const shots = await generation.readPresentationOutcome(operationId)
+        // 读不到结局就不编：卡上可能已经有镜在生成，照实说「结果要去核对」，而不是「都开始了」或「什么都没发生」。
+        if (!shots) return { ok: false, code: 'generation_execution_failed', message: 'generation_execution_failed' }
+        return decided({ outcome: 'card_closed', shots })
+      }
+      // 另外两种结局（用户打了字 / 回合被停下）同样不是「不要这份草稿」：收回的只是这一次出价（没决定的镜不生成），计划留着。
       if (outcome.kind === 'redirected') {
-        await generation.withdrawPresentation(operationId)
-        return decided({ outcome: 'redirected', userSaid: outcome.text })
+        await generation.withdrawPresentation(operationId, 'user_wrote')
+        const shots = await generation.readPresentationOutcome(operationId)
+        return decided({ outcome: 'redirected', userSaid: outcome.text, ...(shots ? { shots } : {}) })
       }
       // 回合被停下 / 窗口关了：**不等**收回落盘就把钩子还给 pi。这一支多半跑在退出路上，等它就是让 pi 的
       // abort 收不了尾——进程带着一个 `cancel_requested` 的半截回合退出，重开后这条对话永远停在「在跑」，
       // 用户之后打的每一句都安静地排在后面（走查 agent-spend-waiting-owner 实测）。收回本身是幂等的，
       // 这里没赶上的那一次由启动清扫（`stalePresentationSweep`）兜住。
-      void generation.withdrawPresentation(operationId).catch(() => undefined)
+      void generation.withdrawPresentation(operationId, 'stopped').catch(() => undefined)
       return { ok: false, code: 'generation_cancelled', message: 'generation_cancelled', denied: true }
     } finally {
       release()

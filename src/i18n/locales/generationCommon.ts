@@ -25,9 +25,10 @@ export const zhGenerationCommon = {
     failed: '没能确认 ComfyUI 已取消任务；它可能仍在本地运行',
   },
   spendHostingDisclosure: {
-    message: '这次要用到参考图，需先上传到公共临时托管——素材会离开本机，链接短期有效，并存在隐私风险。配置 KIE 后可改用它（免费，且会优先使用）。',
+    // 只说事实（2026-10-01）：不说「免费」，也不替用户推荐某一家上传通道。
+    message: '这次要用到参考图，需先上传到公共临时托管——素材会离开本机，链接短期有效，并存在隐私风险。可以在设置里换上传通道。',
     remember: '记住我的选择，以后不再问',
-    autonomousBlocked: '这次生成要用到本机素材，需要先上传到公共临时托管，但自动任务不会替你做这个决定。请先在设置里配置 KIE 上传（免费），或把「匿名素材托管」策略改为允许，然后重试。',
+    autonomousBlocked: '这次生成要用到本机素材，需要先上传到公共临时托管，但自动任务不会替你做这个决定。请先在设置里换一个上传通道，或把「匿名素材托管」策略改为允许，然后重试。',
   },
   provenance: {
     dialogAria: '生成记录',
@@ -1445,6 +1446,8 @@ export const zhGenerationCommon = {
       // 没点就不叫排队中：卡正摆着它 → 等你确认；从没被批过、也没人在问 → 还没生成（都不转圈）。
       awaitingConfirmation: '等你确认',
       notGenerated: '还没生成',
+      // 付费卡上点了「去掉这张 / 这段」：不生成，占位留着。
+      removedNotGenerated: '已去掉，不生成',
       queued: '排队中',
       queuedNth: '排队中 · 第 {{index}}/{{total}}',
       stoppedBudget: '预算已用完，这镜还没开拍。提额后可继续拍剩下的。',
@@ -1579,9 +1582,9 @@ export const enGenerationCommon = {
     failed: 'Nomi could not confirm that ComfyUI cancelled the job. It may still be running locally.',
   },
   spendHostingDisclosure: {
-    message: 'This generation uses a reference image, so it must first be uploaded to a public temporary host—the asset leaves this computer, the link is short-lived, and there is a privacy risk. Configure KIE to use its free upload channel instead (it is preferred).',
+    message: 'This generation uses a reference image, so it must first be uploaded to a public temporary host—the asset leaves this computer, the link is short-lived, and there is a privacy risk. You can change the upload channel in Settings.',
     remember: 'Remember my choice and do not ask again',
-    autonomousBlocked: 'This generation needs a local asset uploaded to a public temporary host, and an automated run will not make that choice for you. Configure KIE upload (free) in settings, or set the anonymous asset hosting policy to allow, then retry.',
+    autonomousBlocked: 'This generation needs a local asset uploaded to a public temporary host, and an automated run will not make that choice for you. Change the upload channel in Settings, or set the anonymous asset hosting policy to allow, then retry.',
   },
   provenance: {
     dialogAria: 'Generation record',
@@ -2977,6 +2980,7 @@ export const enGenerationCommon = {
       // Not clicked means not queued: on the card → waiting for the user; never approved and nobody asking → not generated.
       awaitingConfirmation: 'Waiting for you',
       notGenerated: 'Not generated',
+      removedNotGenerated: 'Removed — not generated',
       queued: 'Queued',
       queuedNth: 'Queued · {{index}}/{{total}}',
       stoppedBudget: 'Budget ran out before this shot. Raise it to keep filming the rest.',

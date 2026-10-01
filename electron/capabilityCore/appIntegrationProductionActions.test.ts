@@ -71,7 +71,7 @@ function setup({ withReceipts = false, providers = [provider], readiness = "read
   sealAndApproveProductionGeneration({
     repository, projectId: PROJECT, operationId: RUN, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
     candidate: shots[0].candidate, contract: shots[0].contract!, providers: [provider],
-    multiShot: { shots, planHash: "plan-hash-actions" }, resolveShotPrice: () => ({ known: false }), receiptId: "receipt-plan", now: now(),
+    multiShot: { shots, scope: shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId), planHash: "plan-hash-actions" }, resolveShotPrice: () => ({ known: false }), receiptId: "receipt-plan", now: now(),
   });
   let run = repository.read(PROJECT, RUN)!;
   run = repository.execute(PROJECT, RUN, { commandId: "submit", expectedRevision: run.revision, type: "generation.submit", payload: {}, issuedAt: now() }).run;

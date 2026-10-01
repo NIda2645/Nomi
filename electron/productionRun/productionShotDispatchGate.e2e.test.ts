@@ -72,7 +72,7 @@ function setup(shots?: ProductionGenerationShot[]) {
     policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["video-model"], maxSpend: null, maxAttemptsPerJob: 3 } });
   sealAndApproveProductionGeneration({
     repository, projectId: PROJECT, operationId: RUN, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
-    candidate, contract, providers: [provider([])], ...(shots ? { multiShot: { shots, planHash: "plan-hash-gate" } } : {}),
+    candidate, contract, providers: [provider([])], ...(shots ? { multiShot: { shots, scope: shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId), planHash: "plan-hash-gate" } } : {}),
     resolveShotPrice: () => ({ known: true, amount: 6 }), receiptId: "receipt-plan", now: now(),
   });
   if (shots) {

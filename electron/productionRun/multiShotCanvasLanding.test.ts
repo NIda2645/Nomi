@@ -85,10 +85,10 @@ describe('buildMaterializeShotsPayload', () => {
   // 它在 33 镜的计划上说不通：卡上只摆 3 镜，× 终结整份计划，另外 30 个占位成了孤儿。已随裁决删。
   it('× 收回出价之后计划回到未 present 的 draft：占位照旧投影，一个不少', () => {
     const multi = run([shot('s1'), shot('s2')])
-    multi.generationPlan = { ...multi.generationPlan!, state: 'draft', cardHidden: true }
+    multi.generationPlan = { ...multi.generationPlan!, state: 'draft', presentations: [{ shotIds: ['s1', 's2'], openedAt: NOW, fromGate: 0, closed: { at: NOW, by: 'user_closed' } }] }
     expect(buildMaterializeShotsPayload(multi, { projectRoot: '/tmp/x' })?.shots).toHaveLength(2)
     const single = run([shot('cat')])
-    single.generationPlan = { ...single.generationPlan!, shots: undefined, state: 'draft', cardHidden: true }
+    single.generationPlan = { ...single.generationPlan!, shots: undefined, state: 'draft', presentations: [{ shotIds: ['cat'], openedAt: NOW, fromGate: 0, closed: { at: NOW, by: 'user_closed' } }] }
     expect(buildMaterializeShotsPayload(single, { projectRoot: '/tmp/x' })?.shots).toHaveLength(1)
   })
 

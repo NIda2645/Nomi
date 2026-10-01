@@ -1,6 +1,6 @@
 # 付费卡逐镜：点了的生成，去掉的不生成
 
-> 状态：🚧 进行中（2026-09-30：协调会话已拍板 Q1–Q9；分三个叠着的 PR——A1 / A2 / A3，验收只在 A3 头上做一次）。
+> 状态：🚧 进行中（2026-09-30：协调会话已拍板 Q1–Q9；分三个叠着的 PR——A1 / A2 / A3，验收只在 A3 头上做一次。2026-10-01：A1 已实现，主人按下表落地）。
 > 质量体系按 `docs/plan/2026-09-29-quality-system.md`：测试表、真实路径测试、中英截图、验收页。
 
 ## 用户那条路
@@ -17,12 +17,13 @@
 
 | 规则 | 主人（唯一写口） | 读者 |
 |---|---|---|
-| 1 点了才生成、2 去掉的不生成、3 不悄悄消失 | Run 宿主：`generation.present` 开一次出价、`generation.shot.decide`（生成这张 / 去掉这张）、`generation.presentation.close`（× / 打字 / 被停） | 卡投影 `productionPendingSpend`、回执、画布小标 |
-| 4 卡上所见即所发 | 封印那一刻编译这一镜的合同（参考图含画布连线） | 卡、派发 |
-| 5 告诉 Agent 的就是发生的 | 宿主一个值 `GenerateOutcome`（在生成的 / 用户去掉的 / 没决定的 + 原因），`generateReceipt` 只渲染 | 内部 lane、外部 MCP（同一个函数，对等测试） |
+| 1 点了才生成 | 点「生成这张」= `generation.seal` 只封这一镜（`productionGenerationSeal.sealScopeOf` / `applyGenerationSeal`）→ 它自己那道门 → 批准；派发只认批这个 job 的那道门 | 批次调度器 |
+| 2 去掉的不生成、3 不悄悄消失 | 出价账 `generationPlan.presentations`，只经 `productionGenerationPresentationEdits` 四个写口：`presentGenerationPlan`（开一次出价）、`removePresentedShot`（去掉这张）、`withdrawGenerationPresentation`（× / 打字 / 被停）、`settlePresentation`（都决定完了，在决定那一步里收尾） | 卡投影 `productionPendingSpend`、回执、画布小标 |
+| 4 卡上所见即所发 | 卡上那一页摆着的那一份（`candidatePatchFromNode`，参考图含画布连线 `canvasReferenceInputs`）在点的那一刻经 `generation.revise` 落到这一镜，再封印 | 卡、派发 |
+| 5 告诉 Agent 的就是发生的 | 宿主一个值 `generationPresentationOutcome`（在生成的 / 发出前就失败的 / 用户去掉的 / 画布接手的 / 没决定的 + 原因），`describeGenerateOutcome` 只渲染 | 内部 lane；外部 MCP 从 operation 视图拿同一个值（`presentationOutcome`） |
 | 6 一个主人 | `production.dispatch-authorization-scope`：每点一次封一份只盖这一镜的授权，**信封存在它自己那道门上**；派发核「批这个 job 的那一份」 | 批次调度器、老驱动 |
-| 7 不说今天不真的钱话 | 卡投影不出「仍要生成」「价格未知」「逐镜 / 全部」 | 卡 |
-| 8 不双扣 | `generation.shot.decide` 幂等（同一镜第二次点：已有授权即原样返回） | — |
+| 7 不说今天不真的钱话 | 卡投影不出「仍要生成」「价格未知」「逐镜 / 全部」；上传托管那句只说事实，不说哪家免费、不替用户推荐 | 卡、Agent 确认框 |
+| 8 不双扣 | 宿主确认按 operation 串行；同一镜已经批过（这一次出价里）就原样返回、不再封 | — |
 | 9 种类 / 模型 / 参数一个值（A2） | 唯一构造器：矛盾的镜头当场拒绝 | 卡标题、卡体、画布节点、派发 |
 | 10 卡可改（A2） | 卡上的改动走 `generation.revise`（只动没决定的镜），不碰画布 | 卡 |
 | 11 失败只给存在的出路（A2） | 失败码 → 文案表 | 卡 |
@@ -35,21 +36,23 @@
 1. **授权按门存**：付费门（`budget_envelope`）自己带着那份冻住的信封；`plan` 上单独的那份授权（`authorizationEnvelope` / `authorizationDigest` / `authorizationGateId` / 计划级批准收据）同一次改动里删掉（P1）。派发按 job 的 `authorizationDigest` 找到批它的那道门，核门上的信封、门的批准、审批账本那一行。重做、续额度都只是「又一份」，不再要求「之前批过的都已发出」（`queued_shots_pending` 随之删掉）。老 Run 读盘时把计划级那份搬到它自己那道门上（唯一归一点在仓库读路径）。
 2. **逐镜决定**：每一镜有自己的决定（生成 / 去掉，带时间）；计划有一次出价（开着 / 关了，关的原因：都决定完了 / 用户点 × / 用户打字 / 被停）。卡只投影「这次出价里还没决定的镜」，标题数它们。点「生成这张」= 封这一镜、铸收据、决它那道门、派它；点「去掉这张」= 记下来、不派；没有没决定的镜时出价自动关（都决定完了）。
 3. **回执**：等待在卡关掉时才结束；宿主给一个值，回执只渲染它。「都开始了、别再调 generate」只在每一镜都在生成时才出现。
-4. **失败说真话**：`generate` 失败时读账本「有没有任何提交意图落过盘」，没有就是「没发出去、没扣费」，面板同一句。
+4. **失败说真话**：`generate` 失败时读账本「有没有任何一笔可能到过供应商」（`productionShotJobs.jobMayHaveReachedProvider`），没有就是「没发出去、没扣费」，面板同一句。
 5. **参考图**：卡和封印都带上画布上连到这一镜占位节点的参考图；卡上拿掉不动画布连线。
 6. **删掉**：卡上的「逐镜 / 全部」切换和「全部」那条路、「仍要生成」、「价格未知 · 以供应商账单为准」、宿主「取消勾选其余再封印」那一段、写死的「已开始」回执。
+7. **上传托管那句**：Agent 确认框和托管同意的报错只说事实——素材会上传到公共临时托管、链接短期有效、有隐私风险、可以在设置里换上传通道；不说「免费」，不替用户推荐某一家。
 
 ## 概念占用表（R33）
 
 | 概念 | 唯一 owner | 允许谁消费 | 这次 |
 |---|---|---|---|
 | `production.dispatch-authorization-scope` | `electron/productionRun/productionGenerationSubmission.ts#prepareAuthorizedSubmission` | 批次调度器、老驱动 | 形状变了：核「批这个 job 的那道门」上的信封，不再核计划级那一份（不新增条目，改形状说明） |
-| 逐镜决定与出价（新） | `electron/productionRun/productionGenerationPresentation.ts` | 卡投影、回执、画布小标、重启清扫 | 新登记 |
-| 生成回执（新） | `electron/shared/agentLane/generateOutcome.ts` | 内部 lane 回执、外部 MCP 回执 | 新登记 |
+| 付费卡这一次出价（新，`production.spend-card-presentation`） | `electron/productionRun/productionGenerationPresentationEdits.ts#presentGenerationPlan`（四个写口，都经 reducer） | reducer、仓库 | 新登记 |
+| 这一次出价的逐镜结局（新，`production.spend-card-outcome`） | `electron/shared/productionGenerationPresentation.ts#generationPresentationOutcome` | 卡投影、封印范围、画布小标、operation 视图、确认路径、回执 | 新登记 |
+| generate 回执（新，`agent-lane.generate-receipt`） | `electron/shared/agentLane/generateOutcomeReceipt.ts#describeGenerateOutcome` | 内部 lane 回执 | 新登记 |
 | 待确认付费卡投影 | `electron/productionRun/productionPendingSpend.ts#projectPendingSpendConfirm` | 面板付费卡 | 只投影没决定的镜 |
 | 付费卡上的动作 | `electron/capabilityCore/appIntegrationSpendConfirm.ts` | IPC → 面板 | 逐镜确认、去掉、× |
 
-不碰（别的 lane 正持有）：`electron/shared/agentLane/laneProjection.ts`、`electron/agentLane/laneModelContext.ts`、`electron/agentLane/laneContextBudget.mts`、`laneDesktopTools.ts` / `projectAgentProposalReceiptStore.ts`、`workbenchDocumentSlice` 的分镜激活、`tests/ux/full-walk/`（另一条 lane 在改）。
+不碰（别的 lane 正持有）：`electron/shared/agentLane/laneProjection.ts`、`electron/agentLane/laneModelContext.ts`、`electron/agentLane/laneContextBudget.mts`、`laneDesktopTools.ts` / `projectAgentProposalReceiptStore.ts`、`workbenchDocumentSlice` 的分镜激活。`tests/ux/full-walk/` 现在没人持有（协调会话 2026-10-01）：A1 跟着改目录里的两个 i18n 键、PB01 的步骤（点完第 1 页卡还在、只剩第 2 张，再 ×）和监视器的 `card-scope-mismatch` 判据（按钮许诺几镜就只发几镜、标题数还没决定的镜、没点的镜不许悄悄没了——按宿主的出价账查）。
 
 ## 不动项
 
@@ -80,6 +83,57 @@
   - Google OAuth 的增量授权：每次只请求新增的那一项，之前批过的继续有效（https://developers.google.com/identity/protocols/oauth2/web-server#incrementalAuth）——第 2 镜的授权不替换第 1 镜那一份。
   - RFC 9396 §9：资源服务器执行的是「批准过程中批准的那份授权细节」（https://www.rfc-editor.org/rfc/rfc9396.html#section-9）——派发核批它的那一份，批准那一刻核信封自己的事实（规则 14）。
 - 反方：一份授权盖整批（今天的形状）实现更小，但「只批这一镜」只能靠删掉别的镜，卡上还能改的镜又没法提前封；排队中的镜挡住下一次点击（乙方案，已否）。
+
+### 产品层：别人的确认卡怎么问、失败怎么交代钱（2026-10-01 补，A2 / A3 定界面之前）
+
+先读了仓库里的竞品资料（`docs/research/competitive/2026-09-25/report.md`、`libtv-design-notes.md`），再上网核对。能打开原文的直接引原文；打不开的写明只看到搜索摘录、算未核实。
+
+| 产品 | 多张一起时怎么确认 | 确认时给不给看参考 / 模型 / 参数 | 失败时怎么交代钱 | 出处 |
+|---|---|---|---|---|
+| Runway Workflows（节点画布） | 两种都有：节点上「Run」只跑这一个节点；右上角「Run all」跑整条工作流。文档没写运行前有确认 | 参数在节点上（画布即所见） | 只有以生成错误结束的才自动退回：出错横幅出现后几分钟内积分回来，用量表里那一笔消失；生成完成但不满意不退 | https://help.runwayml.com/hc/en-us/articles/45763528999699-Introduction-to-Workflows 、https://help.runwayml.com/hc/en-us/articles/34266159290003-Can-I-have-credits-refunded |
+| Higgsfield Popcorn（分镜，最多 8 帧） | 一次 Generate 出一整组（帧之间要保持同一个人、同一束光，模型层面就是一组）；按钮上先写好积分再点 | 输入是提示词 + 最多 4 张参考图，提示词里按编号点名 | 生成块上直接写「Failed, Credits refunded」；排队中取消当场退；已经在后台跑的取消不了，失败自动退；例外（某模型一开始就扣）在帮助里点名 | https://higgsfield.ai/creator-hub/help-center/ai-models/how-do-i-use-popcorn 、https://higgsfield.ai/creator-hub/help-center/troubleshooting/generation-is-stuck-or-failed |
+| LibTV（我们 2026-09-25 实测，单张图） | Agent 有手动 / 自动两档：手动 = 每次生成前问，自动 = Agent 直接花积分；确认卡写「1 个图片提示词已预备」「预计消耗 15 积分」，按钮有自动确认 / 取消 / 确认生成；全局设置里有积分预算阈值。多张一起的卡**没实测过** | 卡上能点开看提示词；模型、参数、费用在节点上 | 余额不够直接拦下、不开跑；失败 / 退还**未验证** | `docs/research/competitive/2026-09-25/libtv-design-notes.md` §状态表、§7 |
+| TapNow | **未核实**：本机登录研究还没做（竞品周期里排着）；评测文章原文打不开，搜索摘录说它的 Agent 在方案确认后一次把图和视频全生成、用户抱怨积分一下子烧完 | 未核实 | 未核实 | 竞品 README 周期待办；摘录来自 view.inews.qq.com/a/20260401A06K4T00（打不开，不作证据） |
+| Claude Code（Agent 审批） | 每一次调用单独问：是 / 「是，并且不再问」/ 否；「不再问」存成按仓库 + 命令（或域名）的规则，改文件的只到这次会话结束。只有在**这一问能把它会放行的东西都摆出来**时才给更宽的选项，存下的规则只盖选项点名的那些 | 问的时候摆出完整命令 / 路径 | — | https://code.claude.com/docs/en/permissions （Permission system 表、「Sometimes a permission prompt offers only a one-time approval…」一段） |
+| Cursor（Agent 审批） | 三种运行档：Auto-review（白名单直接跑、能进沙箱的进沙箱、其余交分类器或问人）/ Allowlist / Run Everything（每次调用都自动跑）；白名单按命令前缀、MCP 工具写在 `permissions.json` 里，是一项设置，不是卡上的按钮。改代码是先落盘、再给 Keep All / Undo All（可撤回） | 问的时候摆出命令 | — | https://cursor.com/docs/agent/security/run-modes 、https://cursor.com/docs/reference/permissions |
+
+**结论（不改 A1 的设计，只报给协调会话）：**
+
+1. 「明说范围的全部」在主流里**普遍存在**：Runway 有 Run all，Higgsfield 一次生成一组且价格先写在按钮上；Agent 产品里，更宽的批准都**点名范围**（这条命令、这个域名、这次会话、某个运行档），而且只在能把会放行的东西都摆出来时才给。这和用户 2026-09-29 的「点了的生成，去掉的不生成」**有一处出入**：我们现在只有逐镜点，没有一个点名数量的「生成剩下 N 张」。
+2. 但两点前提我们今天不具备或不同：① 它们按钮上的「全部」都带着**已知的价格**（积分），我们走中转、价格未知，「生成剩下 N 张」没有一个数能告诉用户这一下花多少；② 它们的钱在平台自己账上，失败就退；我们的钱花在第三方供应商、用户自己的 Key 上，Nomi 退不了，只能如实说「没发出去、没扣费」或「可能已提交，去供应商后台核对」——这一条 A1 已经照 Higgsfield 那种「失败块上直接说钱」的做法做了。
+3. 失败交代钱：Runway / Higgsfield 都在**失败的那一块上**直接写钱回没回来、去哪儿核对（用量表 / Usage）。A1 的「没发出去、没扣费 / 可能已提交」同一个方向；A3 的停下与重来文案沿用这一条。
+4. 确认时给看什么：Higgsfield 把参考图编号写进提示词、Runway 一切在节点上；LibTV 的卡只说提示词条数和费用，模型参数留在节点上。我们的卡逐页摆出模型、参数和参考图（含画布连线来的），比它们都全，A2 不需要再加。
+
+建议交给用户拍的那一题（附默认）：要不要在**翻完所有没决定的镜之后**，多给一个点名数量的「生成剩下 N 张」（每张仍各封一份授权、卡上不写价格、去掉的不算在 N 里）？默认：**加**——它仍是「点了的生成」（这一下点名了 N 张），去掉的照样不生成，和 9-29 否掉的「全有或全无」不是一回事；33 张的卡逐张点要 33 下，是真实摩擦。代价：多一个控件（要过 §1.5 控件层级）、测试表多几行；价格未知时用户点之前看不到总花费。
+
+## 自己写了什么、为什么必须自己写
+
+用户 2026-10-01 的原则：除非这件事必须我们独自设计，否则一律接入别人做好的；自己写的每一处都要说清楚为什么非写不可。对照的对象：
+
+- **pi**：`node_modules/@earendil-works/pi-coding-agent/docs/rpc.md`「Extension UI Protocol」（`ctx.ui.confirm` 在 RPC 下是 `extension_ui_request` / `extension_ui_response`，按 `id` 配对、阻塞到回复、可设 `timeout` 到点自动给默认值）、`docs/extensions.md` 的 `tool_call`（可阻塞、可改参数）、`ui_prompt_start` / `ui_prompt_end`（「在等人」）、`input`（用户打字可拦截）。Nomi 的 lane 用的是 `@earendil-works/pi-agent-core` 的 harness 钩子 `before_tool`，也就是同一种「拦住工具调用、等人」。
+- **AI SDK**：工具审批 `needsApproval` → part 进 `approval-requested` → `addToolApprovalResponse({ id, approved })`，批了才跑 `execute`、否了是 `output-denied`；`toModelOutput` 把工具输出映射成模型看到的内容（https://ai-sdk.dev/cookbook/next/human-in-the-loop 、https://ai-sdk.dev/docs/ai-sdk-core/tools-and-tool-calling ）。
+- **成熟库 / 规范**：Stripe 授权与扣款分离、RFC 9396（见「先查别人」）。
+
+| 机制（A1 新写或改写） | 落在哪 | 别人有没有现成的 | 用不用、为什么 | 结论 |
+|---|---|---|---|---|
+| 卡开着时把 `generate` 挡住 | `laneHost.mts` 的 `before_tool` → `laneExtendedDesktopPorts` | 有：pi 的 `before_tool` / `tool_call` 拦截 | **用了**：等待就发生在 pi 的钩子里，不计工具超时 | 接入 pi |
+| 确认卡的请求 / 回复配对 | `spendDecisionWaiters`（按 项目 + operation 配对）、`GenerateUserDecision` | 有：pi `ctx.ui.confirm`（按 id 配对、阻塞到回复）；AI SDK `addToolApprovalResponse({ id, approved })` | confirm 本身不用：它是一次性的是 / 否，而这张卡要逐镜点好几下、能改模型 / 参数 / 参考图、能去掉某一镜；答案必须是宿主账本（重启后还在，外部 MCP 宿主和画布读同一份），不是进程里的一次对话框回复；`timeout` 到点给默认值和「花钱不许替用户默认」冲突。等待注册表只是把账本上的「卡关了」接到挡着的钩子上 | 薄胶水是我们的；**和 B 重叠，留接口**（见下） |
+| 卡开着时用户打字 | `laneExtendedDesktopPorts` 的 redirected | 有：pi `input` 事件 / steer | 打字交给 Agent 走 pi（lane 已有）；我们只在出价账上记一笔「用户打了字」 | 接入 pi + 一行账 |
+| 逐镜授权信封（每点一次一份，住在自己那道门上） | `productionSpendAuthority.ts`、`prepareProductionGenerationAuthorization`、`productionGenerationSeal` | 没有能直接用的：AI SDK 审批是一次调用一个是 / 否，不带内容、不能只批其中几项；pi 只能整次放行或挡下；Stripe 手动扣款「每笔各自冻结金额与有效期」只是形状参考 | 按镜头花钱、冻结合同哈希 / 报文哈希 / 幂等键 / 参考图，钱花在第三方供应商、用的是用户自己的 Key——这笔账只有我们记得了 | 我们独有（领域） |
+| 派发只认「批这个 job 的那道门」 | `prepareAuthorizedSubmission` + `authorizationGateForJob` | 原则有：RFC 9396 §9（执行批准过程中批准的那份）；AI SDK 批完执行时不核「执行的是不是批的那份」 | 原则照 RFC 9396，执行只能写在我们自己的派发闸里 | 我们独有（照规范） |
+| 出价账（卡摆了哪几镜、谁去掉、怎么关的） | `productionGenerationPresentationEdits`、`generationPlan.presentations` | 没有：AI SDK 的 tool part 状态机管的是一次调用的审批；一次调用里 N 镜各自决定没有对应物 | 「点了的生成，去掉的不生成」是用户拍板的语义 | 我们独有；B / C1 时它是那一个 part 下面的子状态 |
+| 逐镜结局（一个值） | `generationPresentationOutcome` | 形状有：AI SDK tool part 的 `output`（任意 JSON 值） | 形状对齐 `output`，C1 原样带走；内容（在生成 / 去掉 / 没决定 + 原因）是领域的 | 内容我们独有，形状对齐 AI SDK |
+| 回执（值 → 给模型的话） | `describeGenerateOutcome` | 有：AI SDK `toModelOutput`；pi `tool_result` 钩子可改结果 | lane 跑在 pi 上，不装 AI SDK 运行时（框架中立），所以先写成纯函数；C1 时它就是 `toModelOutput` 那个函数 | 暂时自己写，C1 并进 `toModelOutput` |
+| 双击 / 回车去重、确认串行 | `appIntegrationSpendConfirm`（按 operation 串行，这一镜在这一次出价里批过就原样返回） | 只在界面那一层有：pi / AI SDK 的回复按 id 配对，同一个 id 第二次回复无效 | 花钱的去重必须落在宿主账本上：两个窗口、外部 MCP、重启都要挡得住；提交那一层沿用已有的幂等出站（`submitOnce`） | 我们独有（付费幂等） |
+| 失败说真话（有没有可能到过供应商） | `productionShotJobs.jobMayHaveReachedProvider` | 没有：工具失败在 pi / AI SDK 里只是一个错误，不知道钱花没花 | 只有我们的出站账本知道一笔有没有写出去 | 我们独有 |
+| 画布连线的参考图摆上卡 | `canvasReferenceInputs` | 有：画布自己那一份槽位解析 `resolveReferenceSlots`（React Flow 的边） | 直接读已有的主人，没有再写一份解析 | 复用 |
+| 旧数据归一 | `normalizeLegacySpendAuthority`、`normalizeLegacyPresentation` | 没有 | 我们自己的旧格式 | 我们独有（必然） |
+
+**和 B（付费卡并进对话）重叠的部分，这次没做死：**
+
+- 等待：`generate` 挡在 pi 的 `before_tool` 里，等的是 `spendDecisionWaiters` 递来的「卡关了」（confirmed / declined），结论再去宿主读（`readPresentationOutcome`）。B 可以把这一跳换成对话投影里那个 tool part 的审批状态，出价账和逐镜结局不用动。
+- 回合拿到的东西：`GenerateUserDecision`（`card_closed` / `redirected` 都带着逐镜结局那一个值）——它就是 C1 要放进 tool part `output` 的值。
+- 卡的数据：仍由宿主读口 `productionPendingSpend` 投影，渲染层照旧轮询它；B 删轮询时只换取数的方式，卡上的动作（生成这一镜 / 去掉这一镜 / ×）和宿主写口不变。
 
 ## 测试表
 

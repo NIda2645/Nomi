@@ -45,7 +45,17 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
   const vendor = await startLoopbackVendor();
   const base = harness();
   const submits: string[] = [];
-  const { withWindow, handler, submission } = buildActions(base, vendor.origin, submits);
+  // 付费卡逐镜：每一镜各点一次「生成这张」。用户点得快——调度器在他点完之后才跑一轮（`holdDispatch` 放开后 `dispatchNow`）。
+  let hold = true;
+  const { withWindow, handler, submission, dispatchNow } = buildActions(base, vendor.origin, submits, { holdDispatch: () => hold });
+  const clickEach = async (shotIds: readonly string[]) => {
+    for (const shotId of shotIds) {
+      const card = withWindow.listPendingSpend(PROJECT_ID)[0];
+      expect(card?.shots[0]?.shotId, `卡上排在第一页的是 ${shotId}`).toBe(shotId);
+      expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: card.quoteId, shotId }))
+        .toEqual({ ok: true, code: "spend_confirmed" });
+    }
+  };
   try {
     const shots = Array.from({ length: 33 }, (_, i) => ({ shotId: `shot-${i + 1}`,
       role: i < 6 ? "anchor" as const : "shot" as const,
@@ -58,7 +68,11 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
     const firstIds = shots.slice(0, 3).map(shot => shot.shotId);
     await handler({ capability: "present", params: { operationId: OPERATION_ID, shotIds: firstIds }, lease });
     const firstQuote = withWindow.listPendingSpend(PROJECT_ID)[0];
-    expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: firstQuote.quoteId })).toEqual({ ok: true, code: "spend_confirmed" });
+    await clickEach(firstIds);
+    expect(withWindow.listPendingSpend(PROJECT_ID), "三张参考卡都点过了，卡关掉").toEqual([]);
+    hold = false;
+    await dispatchNow();
+    hold = true;
     const first = base.repository.read(PROJECT_ID, OPERATION_ID)!;
     expect(first.jobs.map(job => job.metadata?.shotId)).toEqual(firstIds);
     expect(first.jobs.every(job => job.status === "ready")).toBe(true);
@@ -70,10 +84,12 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
 
     const remainingIds = shots.slice(3).map(shot => shot.shotId);
     await handler({ capability: "present", params: { operationId: OPERATION_ID, shotIds: remainingIds }, lease });
-    expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: firstQuote.quoteId })).toMatchObject({ ok: false });
+    expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: firstQuote.quoteId, shotId: remainingIds[0] })).toMatchObject({ ok: false });
     const secondQuote = withWindow.listPendingSpend(PROJECT_ID)[0];
     expect(secondQuote.shots.map(shot => shot.shotId)).toEqual(remainingIds);
-    expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: secondQuote.quoteId })).toMatchObject({ ok: true });
+    await clickEach(remainingIds);
+    hold = false;
+    await dispatchNow();
     let second = base.repository.read(PROJECT_ID, OPERATION_ID)!;
     expect(submits).toHaveLength(6); // The old checkpoint cannot approve the second anchor batch.
     const nextGate = second.gates.find(gate => gate.scope === "anchor_checkpoint" && gate.status === "waiting")!;
@@ -103,7 +119,7 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
       .resolves.toMatchObject({ jobId: first.jobs[0].jobId, nextAction: "completed" });
   } finally { await vendor.close(); }
 // This journey performs 33 real loopback submissions and durable filesystem event writes.
-}, 60_000);
+}, 300_000);
 
 describe("S08: pending spend decisions have one durable winner", () => {
   for (const action of ["discard", "revise"] as const) {

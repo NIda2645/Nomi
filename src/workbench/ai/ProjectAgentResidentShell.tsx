@@ -161,7 +161,8 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
     onConfirm: spend.confirm,
     onReject: spend.discard,
     onPage: spend.setPage,
-    onScope: spend.setScope,
+    // 次动作 =「去掉这张 / 这段」：这一镜不生成，卡上剩下的照旧等人（付费卡逐镜）。
+    onAlternate: spend.remove,
   }
   const autoModeSlotHandlers = { onConfirm: autoMode.confirm, onReject: autoMode.cancel }
   // 计划行的两根线（勾选 / 收起）与「这张卡是谁给的」无关——三个数据源都可能带清单，

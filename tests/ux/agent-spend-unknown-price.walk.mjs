@@ -4,8 +4,9 @@
 //
 // 开闸前的答案：卡上写「暂时算不出价格」、主按钮退成「仍要生成」——**按下去必然失败**，
 // 原因（`generation_pricing_unknown`）只进 console，用户只看到一个按了没反应的按钮（TODO T-MO-25）。
-// 2026-09-21 用户拍板开闸后，这一条要证的是三件事：
-//   ① 卡上那句话还在、按钮还是「仍要生成」，而且**整张卡上没有任何 ¥0**（未知≠免费）；
+// 2026-09-21 用户拍板开闸后，这一条要证的是三件事（2026-09-30 付费卡逐镜：「仍要生成」和「价格未知 · 以供应商账单为准」
+// 那一行都删了——今天不真的钱话不说；主按钮只说「生成这张」）：
+//   ① 卡上不说任何价格的话、按钮是「生成这张」，而且**整张卡上没有任何 ¥0**（未知≠免费）；
 //   ② 按下去**真的过了价格那道闸**——宿主为一个算不出价的镜头铸出了付费授权信封，
 //      盘上那份 Run 里 `price.maximum === null`、`budget.unknownJobCount === 1`（不是 0）；
 //   ③ 英文一样（EN 串长 1.5-2 倍，截断只有眼睛看得出）。
@@ -94,25 +95,18 @@ try {
   // ── ① 卡上说的是「算不出」，不是「免费」──
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   const cardProbe = await proveProbe(card, 'The unpriced paid confirmation still reaches the intervention slot')
-  const priceProbe = await proveProbe(card.locator(PRICE_UNAVAILABLE),
-    'the card renders a data-v4-price slot at all（同一个属性、同一处 DOM）')
-  // 2026-09-22 换壳：这句话从卡体的价格行搬到了**页脚左下**（离按钮两厘米），
-  // 措辞也按用户拍板改成「价格未知 · 以供应商账单为准」——它比「暂时算不出」
-  // 多说了一件用户真正要知道的事：钱还是会扣，只是由供应商算。锚点没变。
-  await expect(card.locator(PRICE_UNAVAILABLE), '页脚左下印的是「价格未知 · 以供应商账单为准」（warning 色）')
-    .toHaveText('价格未知 · 以供应商账单为准')
-  // 「合计」那一格不在。基线由上面那条证过：同一个 `data-v4-price` 属性**测得到东西**，
-  // 所以这里的「没看到」不是探针失灵——而是这张卡确实在「算不出」那一档，根本没有合计可印。
-  await expectAbsent(card.locator(PRICE_TOTAL), { provenBy: priceProbe, message: '算不出价时根本没有「合计」那一格' })
-  // 主按钮只说动作（金额在页脚左下）。`toHaveText` 换成两条更准的：
-  // 文案对 + **一个金额符号都不许有**——原来那条断的其实就是后半句。
-  await expect(card.locator(INTERVENTION_CONFIRM), '主按钮退成「仍要生成」').toContainText('仍要生成')
+  const confirmProbe = await proveProbe(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮在（下面那几条「不在」都以它为基线）')
+  // 付费卡逐镜（2026-09-30 第 7 条）：算不出价时卡上不说任何价格的话——「价格未知 · 以供应商账单为准」那一行删了，
+  // 「合计」那一格也没有（根本没有合计可印）。整个 `data-v4-price` 锚点都不在。
+  await expectAbsent(card.locator(PRICE_UNAVAILABLE), { provenBy: confirmProbe, message: '没有「价格未知」那一行' })
+  await expectAbsent(card.locator(PRICE_TOTAL), { provenBy: confirmProbe, message: '算不出价时根本没有「合计」那一格' })
+  await expect(card, '卡上一句价格的话都没有').not.toContainText('价格未知')
+  // 主按钮只说这一镜的动作。
+  await expect(card.locator(INTERVENTION_CONFIRM), '主按钮是「生成这张」').toContainText('生成这张')
   await expect(card.locator(INTERVENTION_CONFIRM), '主按钮上不印金额').not.toContainText('¥')
   // 算不出价**绝不拦**生成（用户 2026-09-21 硬性拍板）：按钮必须是可点的。
   await expect(card.locator(INTERVENTION_CONFIRM), '算不出价时主按钮照样可点').toBeEnabled()
-  // 那句交代**只说一遍**（2026-09-22）：页脚左下已经是「价格未知 · 以供应商账单为准」，
-  // 正文下原来那句「…花多少事后才知道」是同一件事的第二遍，已删。这里改钉「没有第二遍」。
-  await expect(card, '同一件事不说两遍').not.toContainText('花多少事后才知道')
+  await expect(card, '正文下也没有「花多少事后才知道」那句').not.toContainText('花多少事后才知道')
   // **整张卡上不许有 ¥0 / 0.00**：三种可能（免费 / 算不出 / 真的零元）里，只有印 0 会被读成「这次免费」。
   const zhCardText = (await card.innerText()).replace(/\s+/g, ' ')
   expect(zhCardText, `卡上不许出现任何代表未知的 0（实际文本：${zhCardText}）`).not.toMatch(/[¥￥$]\s?0(?!\d)/)
@@ -132,11 +126,11 @@ try {
     if (text.includes('[spend-confirm] host refused')) hostRefusals.push(text)
   })
   const nodeId = (await readProject(win, projectId)).payload.generationCanvas.nodes[0].id
-  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮「仍要生成」', { noWaitAfter: true })
+  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮「生成这张」', { noWaitAfter: true })
 
   // ②-a 供应商真的收到了请求（这台夹具的 `/v1/images/generations` 就是 apimart 的 create）
   await expect.poll(() => walk.fixture.images.length,
-    { message: '按下「仍要生成」之后，供应商必须真的收到一次生成请求', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
+    { message: '按下「生成这张」之后，供应商必须真的收到一次生成请求', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
   expect(hostRefusals, `宿主不许再拒（实际：${hostRefusals.join(' ')}）`).toHaveLength(0)
   await recorded(plannerDone.received, 'generate returns once the user approved the card')
 
@@ -196,14 +190,13 @@ try {
   // 2026-09-22 裁决 A：`generate` **等**用户答完那张卡才返回——结果要到卡被答掉之后才有（见下）。
 
   const enCard = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
-  // 同上：换壳后这一格在页脚左下，措辞是新的那一句（zh/en 一起改的）。
-  await expect(enCard.locator(PRICE_UNAVAILABLE), 'EN：Price unknown · billed by provider')
-    .toHaveText('Price unknown · billed by provider')
-  const enPriceProbe = await proveProbe(enCard.locator(PRICE_UNAVAILABLE), 'EN：the card renders a data-v4-price slot at all')
-  await expectAbsent(enCard.locator(PRICE_TOTAL), { provenBy: enPriceProbe, message: 'EN：算不出价时没有 Total 那一格' })
-  // 按钮上多了一个 ⏎ 字形（换壳后主按钮的固定后缀），所以 `toHaveText` 换成
-  // 「含这句文案」+「一个货币符号都没有」——后半句才是这条断言原本要守的东西。
-  await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：Generate anyway').toContainText('Generate anyway')
+  // 同上：英文卡上也不说任何价格的话。
+  const enConfirmProbe = await proveProbe(enCard.locator(INTERVENTION_CONFIRM), 'EN：the primary button is there (baseline for the absences below)')
+  await expectAbsent(enCard.locator(PRICE_UNAVAILABLE), { provenBy: enConfirmProbe, message: 'EN：no "Price unknown" line' })
+  await expectAbsent(enCard.locator(PRICE_TOTAL), { provenBy: enConfirmProbe, message: 'EN：算不出价时没有 Total 那一格' })
+  await expect(enCard, 'EN：no price wording at all').not.toContainText('Price unknown')
+  // 按钮上多了一个 ⏎ 字形（换壳后主按钮的固定后缀），所以 `toHaveText` 换成「含这句文案」+「一个货币符号都没有」。
+  await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：Generate this one').toContainText('Generate this one')
   await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：主按钮上不印金额').not.toContainText('¥')
   await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：算不出价时主按钮照样可点').toBeEnabled()
   await expect(enCard, 'EN：said once, in the footer').not.toContainText('only learn the cost afterwards')

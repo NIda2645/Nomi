@@ -1,3 +1,4 @@
+import { currentPresentation, presentationIsOpen } from '../shared/productionGenerationPresentation';
 import { spendAuthorizationGates } from "../shared/productionSpendAuthority";
 import { createPendingSpendActions } from './appIntegrationSpendConfirm';
 import { registerSpendWaiter, spendDecisionAwaited } from './spendDecisionWaiters';
@@ -389,21 +390,18 @@ it('C09: a delayed close cannot dismiss a newer displayed quote', async () => {
   expect(base.repository.read(PROJECT_ID, OPERATION_ID)).toEqual(before);
 });
 
-it('C09: subset confirmation never approves an edit that arrives during presentation', async () => {
+// 逐镜（2026-09-30）：点一镜不再先收窄这一批（没有 present 那一步可插队），等价的风险是「卡摆出来之后、点下去之前
+// 这一镜被改了」——确认带的是卡上那一份的报价指纹，对不上就拒，用户没看过的改动一个都不批。
+it('C09: a per-shot confirmation never approves an edit made after the card was displayed', async () => {
   const base = harness();
   const submits: string[] = [];
   const { withWindow } = buildActions(base, 'http://127.0.0.1:1', submits);
   const shots = [1, 2].map(i => ({ shotId: `shot-${i}`, candidate: { ...candidate('image-model', {}), candidateId: `candidate-${i}` } }));
   await base.operations.create({ operationId: OPERATION_ID, projectId: PROJECT_ID, candidate: shots[0].candidate, shots, origin: { host: 'nomi' }, now: now() });
   const displayed = withWindow.listPendingSpend(PROJECT_ID)[0];
-  const present = base.operations.present.bind(base.operations);
-  base.operations.present = async (...args) => {
-    const result = await present(...args);
-    await base.operations.patch(PROJECT_ID, OPERATION_ID, { prompt: 'unseen replacement' }, now(), 'shot-1');
-    return result;
-  };
+  await base.operations.patch(PROJECT_ID, OPERATION_ID, { prompt: 'unseen replacement' }, now(), 'shot-1');
   const result = await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID,
-    quoteId: displayed.quoteId, shotIds: ['shot-1'] });
+    quoteId: displayed.quoteId, shotId: 'shot-1' });
   expect(result).toMatchObject({ ok: false });
   expect(submits).toEqual([]);
   expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!.state).toBe('draft');
@@ -483,7 +481,7 @@ describe('reliability: scoped presentation and dismissal', () => {
     expect(withWindow.listPendingSpend(PROJECT_ID)).toEqual([]);
     const after = base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!;
     expect(after.state, '没有人说「不要这份草稿」：计划还是 draft').toBe('draft');
-    expect(after.cardHidden, '只是不再摆在用户面前').toBe(true);
+    expect(currentPresentation(after)?.closed?.by, '只是不再摆在用户面前：这一次出价按 × 关了').toBe('user_closed');
     expect(after.shots).toEqual(before);
     expect([...base.renderer.nodes.entries()]).toEqual(nodes);
     // 对同一份草稿再 generate = 重新出价，同一个 operationId 再出一张卡。
@@ -504,13 +502,13 @@ describe('reliability: scoped presentation and dismissal', () => {
     expect(withWindow.listPendingSpend(PROJECT_ID), '收回之后面板上不许再有那张卡').toEqual([]);
     const plan = base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!;
     expect(plan.state, '不是 cancelled：没有人说过「不要这份草稿」').toBe('draft');
-    expect(plan.cardHidden).toBe(true);
+    expect(presentationIsOpen(plan)).toBe(false);
     expect(plan.shots).toHaveLength(33);
     expect([...base.renderer.nodes.entries()]).toEqual(nodes);
     // 幂等：再收一次什么都不变（重启清扫与「按停止」可能先后各来一次）。
     const revision = base.repository.read(PROJECT_ID, OPERATION_ID)!.revision;
     await handler({ capability: 'withdraw', params: { operationId: OPERATION_ID }, lease });
-    expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan!.cardHidden).toBe(true);
+    expect(presentationIsOpen(base.repository.read(PROJECT_ID, OPERATION_ID)!.generationPlan)).toBe(false);
     expect(base.repository.read(PROJECT_ID, OPERATION_ID)!.revision).toBeGreaterThanOrEqual(revision);
     // 用户再说一句「生成」= 对同一份草稿重新出价。
     await handler({ capability: 'present', params: { operationId: OPERATION_ID, shotIds: ['shot-1'] }, lease });

@@ -1,9 +1,11 @@
+import { anySubmissionMayHaveReachedProvider } from "../shared/productionShotJobs";
 import { GenerationOperationNotFoundError, ProductionRunNotFoundError } from './productionRunErrors';
 import type { GenerationOperation, GenerationOperationStore } from "../capabilityCore/mcpGenerationTools";
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
 import type { ProductionRunService } from "./productionRunService";
 import { spendAuthorizationGates } from "../shared/productionSpendAuthority";
+import { draftCardHidden, generationPresentationOutcome } from "../shared/productionGenerationPresentation";
 
 type GenerationRunOwner = Pick<ProductionRunService, "createGenerationDraft" | "readFull" | "command">;
 
@@ -11,6 +13,7 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
   const plan = run.generationPlan;
   if (!plan) return null;
   const latest = spendAuthorizationGates(run).at(-1);
+  const outcome = generationPresentationOutcome(run);
   return {
     operationId: plan.operationId,
     ...(run.origin.sourceDocument ? { sourceDocumentId: run.origin.sourceDocument.documentId } : {}),
@@ -18,7 +21,9 @@ function operationFromRun(run: ReturnType<ProductionRunService["readFull"]>): Ge
     runRevision: run.revision,
     candidate: structuredClone(plan.candidate),
     state: plan.state,
-    ...(plan.cardHidden === true ? { cardHidden: true } : {}),
+    ...(draftCardHidden(plan) ? { cardHidden: true } : {}),
+    ...(outcome ? { presentationOutcome: outcome } : {}),
+    submissionStarted: anySubmissionMayHaveReachedProvider(run.jobs),
     ...(plan.contract ? { contract: structuredClone(plan.contract) } : {}),
     ...(latest ? { authorization: { gateId: latest.gateId, digest: latest.authorizationDigest,
       envelope: structuredClone(latest.authorizationEnvelope), status: latest.status } } : {}),
@@ -143,6 +148,36 @@ export function createProductionGenerationOperationStore(
       notifyPlanChanged(operation.projectId, operation.operationId);
       return operation;
     },
+    async abandonWaitingAuthorization(projectId, operationId, now) {
+      read(projectId, operationId);
+      const revision = owner.readFull(projectId, operationId).revision;
+      const result = await owner.command(projectId, operationId, {
+        commandId: `generation.authorization.abandon:${operationId}:${revision}`,
+        expectedRevision: revision,
+        type: "generation.authorization.abandon",
+        payload: {},
+        issuedAt: now,
+      });
+      const operation = operationFromRun(result.run);
+      if (!operation) throw new Error("Production Run lost its generation plan");
+      notifyPlanChanged(operation.projectId, operation.operationId);
+      return operation;
+    },
+    async removeShot(projectId, operationId, shotId, now) {
+      read(projectId, operationId);
+      const revision = owner.readFull(projectId, operationId).revision;
+      const result = await owner.command(projectId, operationId, {
+        commandId: `generation.shot.remove:${operationId}:${shotId}:${revision}`,
+        expectedRevision: revision,
+        type: "generation.shot.remove",
+        payload: { shotId },
+        issuedAt: now,
+      });
+      const operation = operationFromRun(result.run);
+      if (!operation) throw new Error("Production Run lost its generation plan");
+      notifyPlanChanged(operation.projectId, operation.operationId);
+      return operation;
+    },
     async present(projectId, operationId, now, shotIds, target) {
       read(projectId, operationId);
       const run = owner.readFull(projectId, operationId);
@@ -174,7 +209,7 @@ export function createProductionGenerationOperationStore(
         // shots/planHash/shotPrices). Single-shot seal sends only { contract } (byte-identical to today).
         payload: {
           contract,
-          ...(multiShot ? { shots: multiShot.shots, planHash: multiShot.planHash, ...(multiShot.shotPrices ? { shotPrices: multiShot.shotPrices } : {}) } : {}),
+          ...(multiShot ? { shots: multiShot.shots, scope: multiShot.scope, planHash: multiShot.planHash, ...(multiShot.shotPrices ? { shotPrices: multiShot.shotPrices } : {}) } : {}),
           ...(authorization ? { authorization } : {}),
         },
         issuedAt: now,
@@ -183,14 +218,14 @@ export function createProductionGenerationOperationStore(
       if (!operation) throw new Error("Production Run lost its generation plan");
       return operation;
     },
-    async withdraw(projectId, operationId, now) {
+    async withdraw(projectId, operationId, now, reason) {
       const current = read(projectId, operationId);
       const revision = owner.readFull(projectId, operationId).revision;
       const result = await owner.command(projectId, operationId, {
         commandId: `generation.withdraw:${operationId}:v${current.planVersion}:${current.state}:${revision}`,
         expectedRevision: revision,
         type: "generation.withdraw",
-        payload: {},
+        payload: { ...(reason ? { reason } : {}) },
         issuedAt: now,
       });
       const operation = operationFromRun(result.run);

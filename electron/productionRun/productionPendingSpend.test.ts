@@ -1,3 +1,4 @@
+import { normalizeLegacyPresentation } from "../shared/productionGenerationPresentation";
 import { describe, expect, it } from "vitest";
 
 import type { PlanCandidate } from "../capabilityCore/executionContract";
@@ -33,9 +34,12 @@ function candidate(id: string, modelId: string, parameters: Record<string, unkno
   };
 }
 
+/**
+ * 夹具按上一版的形状写（没有 `presentations`）：和仓库读盘一样先过唯一的归一点——「草稿没藏卡 = 卡开着」。
+ */
 function run(overrides: Partial<ProductionRun> = {}): ProductionRun {
   const top = candidate("cand-a", "priced", { duration: "3" });
-  return {
+  return normalizeLegacyPresentation({
     schemaVersion: 1, runId: "op-a", projectId: "project-1", revision: 3,
     status: "draft", stageId: "generate", playbook: { name: "generation.single-shot", version: "1.0.0" },
     origin: { host: "nomi", actorId: "project-agent-host" },
@@ -45,7 +49,7 @@ function run(overrides: Partial<ProductionRun> = {}): ProductionRun {
     generationPlan: { operationId: "op-a", state: "draft", candidate: top, nodeId: "node-a", updatedAt: NOW },
     createdAt: NOW, updatedAt: NOW,
     ...overrides,
-  };
+  });
 }
 
 describe("付费卡的宿主投影", () => {
@@ -86,17 +90,22 @@ describe("付费卡的宿主投影", () => {
     expect(pending?.gateId).toBe("gate-1");
   });
 
-  it("门已经批过 / 计划已提交 / 已取消 → 不出卡（那已经不是「等你决定」了）", () => {
+  it("这一次出价里每一镜都决定了 / 卡关了 / 计划取消了 → 不出卡（那已经不是「等你决定」了）", () => {
+    // 逐镜（付费卡①）：卡在不在只看这一次出价——每一镜都有一份批过的授权盖着，就没有要问的了。
     const decided = run({
-      gates: [{ gateId: "gate-1", scope: "budget_envelope", status: "approved", planHash: "d1", authorizationDigest: "d1", authorizationEnvelope: { gateId: "gate-1", jobs: [] } as never, title: "", summary: "", jobIds: [], createdAt: NOW, expiresAt: NOW } as ProductionRun["gates"][number]],
+      gates: [{ gateId: "gate-1", scope: "budget_envelope", status: "approved", planHash: "d1", authorizationDigest: "d1",
+        authorizationEnvelope: { gateId: "gate-1", jobs: [{ shotId: "cand-a" }] } as never, title: "", summary: "", jobIds: [], createdAt: NOW, expiresAt: NOW } as ProductionRun["gates"][number]],
     });
-    decided.generationPlan = { ...decided.generationPlan!, state: "sealed" };
+    // 那道门是在这一次出价里点出来的（出价开着时 Run 上还没有付费门：fromGate 0）。
+    decided.generationPlan = { ...decided.generationPlan!, state: "sealed", presentations: [{ shotIds: ["cand-a"], openedAt: NOW, fromGate: 0 }] };
     expect(projectPendingSpendConfirm(decided, resolvePricing)).toBeUndefined();
-    for (const state of ["submitted", "cancelled"] as const) {
-      const other = run();
-      other.generationPlan = { ...other.generationPlan!, state };
-      expect(projectPendingSpendConfirm(other, resolvePricing)).toBeUndefined();
-    }
+    const closed = run();
+    closed.generationPlan = { ...closed.generationPlan!, state: "submitted",
+      presentations: [{ shotIds: ["cand-a"], openedAt: NOW, fromGate: 0, closed: { at: NOW, by: "user_closed" } }] };
+    expect(projectPendingSpendConfirm(closed, resolvePricing)).toBeUndefined();
+    const cancelled = run();
+    cancelled.generationPlan = { ...cancelled.generationPlan!, state: "cancelled" };
+    expect(projectPendingSpendConfirm(cancelled, resolvePricing)).toBeUndefined();
   });
 
   it("外部 MCP 宿主发起的那笔不进面板：它的用户此刻没在看这块面板", () => {
@@ -105,15 +114,16 @@ describe("付费卡的宿主投影", () => {
   });
 
   it("多镜只投影被勾选的那些，序号从 1 起（翻页器印的就是它）", () => {
-    const multi = run();
-    multi.generationPlan = {
-      ...multi.generationPlan!,
+    const base = run();
+    const multi = run({ generationPlan: {
+      ...base.generationPlan!,
+      presentations: undefined,
       shots: [
         { shotId: "s1", candidate: candidate("c1", "priced"), nodeId: "node-1", updatedAt: NOW },
         { shotId: "s2", candidate: candidate("c2", "priced"), included: false, updatedAt: NOW },
         { shotId: "s3", candidate: candidate("c3", "unpriced"), nodeId: "node-3", updatedAt: NOW },
       ],
-    };
+    } });
     const pending = projectPendingSpendConfirm(multi, resolvePricing)!;
     expect(pending.shots.map((shot) => shot.shotId)).toEqual(["s1", "s3"]);
     expect(pending.shots.map((shot) => shot.index)).toEqual([1, 2]);

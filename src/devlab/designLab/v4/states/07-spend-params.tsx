@@ -141,8 +141,6 @@ type CardFixture = {
   metaByShot?: Record<number, Record<string, unknown>>
   /** 报不出价那一档。 */
   priceUnknown?: boolean
-  /** 打开时范围停在哪一档（「全部模式」那一格用 `all`）。 */
-  scope?: 'each' | 'all'
   /** 挂载后自动点开的那一件。截图截不出「点一下会怎样」，所以展开态一律**真的点一下**。 */
   openTrigger?: 'model' | 'panel'
 }
@@ -167,7 +165,6 @@ function SpendComposerCard({
   page = 0,
   metaByShot = {},
   priceUnknown = false,
-  scope = 'each',
   openTrigger,
   inPanel = false,
   waiting,
@@ -176,7 +173,6 @@ function SpendComposerCard({
   const labels = useV4Labels()
   const [ready, setReady] = React.useState(false)
   const [index, setIndex] = React.useState(page)
-  const [activeScope, setActiveScope] = React.useState<'each' | 'all'>(scope)
   const cardRef = React.useRef<HTMLDivElement>(null)
 
   React.useLayoutEffect(() => {
@@ -191,11 +187,10 @@ function SpendComposerCard({
       selectedNodeIds: [],
     })
     setIndex(page)
-    setActiveScope(scope)
     setReady(true)
     // 夹具是每一格重建一次的常量对象，深比较无意义；这几个基元决定了这一格是什么样。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shots, page, priceUnknown, scope])
+  }, [shots, page, priceUnknown])
 
   // 节点从 store 订阅（不是从上面那次 setState 的返回值拿）：用户在提示词里打字、在参数条里
   // 改画质，写的都是 store，价格行必须跟着那份**唯一**的 meta 走。
@@ -257,7 +252,7 @@ function SpendComposerCard({
     knownSubtotal: quotes.reduce((sum, quote) => sum + (quote?.amount ?? 0), 0),
     unknownShotCount: quotes.filter((quote) => !quote).length,
   }
-  const data = projectSpendCard(pendingSpend, { page: index, scope: activeScope }, fx.t, {
+  const data = projectSpendCard(pendingSpend, { page: index }, fx.t, {
     // 「Nomi 选的」= 模型还是 Nomi 当初挑的那个。用户在卡上一改模型，这句话跟着消失。
     locale: fx.locale,
     agentPickedModelIds: [String(KLING.modelKey ?? '')],
@@ -281,7 +276,7 @@ function SpendComposerCard({
     return (
       <div ref={cardRef}>
         <AgentPanelV4Panel
-          slotHandlers={{ ...V4_LAB_SLOT_HANDLERS, onPage: setIndex, onScope: setActiveScope }}
+          slotHandlers={{ ...V4_LAB_SLOT_HANDLERS, onPage: setIndex }}
           flow={fx.flows.creation}
           slot={data}
           slotComposer={composer}
@@ -301,7 +296,6 @@ function SpendComposerCard({
           data={data}
           labels={cardLabels}
           onPage={setIndex}
-          onScope={setActiveScope}
           composer={composer}
         />
       </div>
@@ -411,14 +405,6 @@ export const V4_SPEND_PARAMS_STATES: readonly LabState[] = [
     mirrors: MIRRORS,
     coverage: 'component-only',
     render: () => <SpendComposerCard shots={1} />,
-  },
-  {
-    id: 'v4-spend-params-all',
-    name: '付费卡 · 范围切到「全部」（主按钮改口成「生成 4 镜 ¥1.20」，没有第二颗文字按钮）',
-    source: SOURCE,
-    mirrors: 'src/workbench/ai/v4/AgentPanelV4Cards.tsx:184',
-    coverage: 'component-only',
-    render: () => <SpendComposerCard scope="all" />,
   },
   {
     id: 'v4-spend-params-model-open',

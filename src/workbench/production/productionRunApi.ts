@@ -23,5 +23,8 @@ export const productionRunApi = {
   pendingSpend: (projectId: string) => bridge().pendingSpend(projectId),
   reviseSpend: (input: { projectId: string; operationId: string; quoteId: string; shotId?: string; patch: Record<string, unknown> }) => bridge().reviseSpend(input),
   discardSpend: (projectId: string, operationId: string, quoteId: string) => bridge().discardSpend(projectId, operationId, quoteId),
-  confirmSpend: (projectId: string, operationId: string, quoteId: string, shotIds?: readonly string[]) => bridge().confirmSpend(projectId, operationId, quoteId, shotIds),
+  /** 付费卡上「生成这张 / 这段」：只批这一镜。 */
+  confirmSpend: (projectId: string, operationId: string, quoteId: string, shotId?: string) => bridge().confirmSpend(projectId, operationId, quoteId, shotId),
+  /** 付费卡上「去掉这张 / 这段」：这一镜不生成。 */
+  removeSpendShot: (projectId: string, operationId: string, quoteId: string, shotId: string) => bridge().removeSpendShot(projectId, operationId, quoteId, shotId),
 }

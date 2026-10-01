@@ -18,7 +18,7 @@ import {
   type ProductionGenerationAuthorizationEnvelopeV1,
 } from "./productionGenerationAuthorization";
 import type { ShotPrice } from "./shotPricing";
-import { authorizedReferenceUrls } from "../shared/productionSpendAuthority";
+import { authorizationGateForJob, authorizedReferenceUrls, spendAuthorizationGates } from "../shared/productionSpendAuthority";
 
 /**
  * 一镜的授权上限。**目录算不出 → `null`，不是 0**（2026-09-21 用户拍板：价格未知不许挡住生成）。
@@ -83,8 +83,10 @@ function unitsFor(
   if (!multiShot) {
     return [{ shotId: operation.candidate.candidateId, candidate: operation.candidate, contract }];
   }
+  // 这一次封印盖的镜（逐镜点击）：调用方必须说清楚，没有「缺省 = 整批」这条暗路。
+  const scope = new Set(multiShot.scope);
   return multiShot.shots
-    .filter((shot) => shot.included !== false)
+    .filter((shot) => shot.included !== false && scope.has(shot.shotId))
     .map((shot) => {
       if (!shot.contract) throw new Error(`Included generation shot has no sealed contract: ${shot.shotId}`);
       return {
@@ -94,6 +96,22 @@ function unitsFor(
         contract: shot.contract,
       };
     });
+}
+
+/**
+ * 这个 Run 已经担下的钱：账本里的预留 + 实付 + 待结，再加上**批过、还没派出去**的作业的价格上限。
+ *
+ * 后一项是逐镜之后才有的（2026-09-30 付费卡逐镜）：第 1 镜批了还在排队（还没预留），用户又点了第 2 镜——
+ * 第 2 份授权的天花板必须把第 1 份也算进去，否则调度器派完第 1 镜，第 2 镜会撞上一个只够一镜的天花板，被当成「预算停批」卡住。
+ * 算不出价的作业不进金额（未知不当 0，也不当无穷，见 `jobPriceCeiling`）。只给新封的那一份用：重做与续拍要盖的
+ * 正是那些批过、没派出去的作业，再把它们算进已担负债就是同一笔钱算两遍。
+ */
+export function committedLiability(run: ProductionRun): number {
+  const approvedUndispatched = run.jobs
+    .filter((job) => job.status === "authorized")
+    .map((job) => authorizationGateForJob(run, job)?.authorizationEnvelope.jobs.find((entry) => entry.jobId === job.jobId)?.price.maximum ?? null)
+    .filter((amount): amount is number => typeof amount === "number");
+  return sumBudgetAmounts([run.budget.reserved, run.budget.actual, run.budget.unsettled, ...approvedUndispatched]);
 }
 
 /** Attempts belong to a durable shot, including executions of earlier candidate revisions. */
@@ -190,7 +208,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   if (maximumSpend !== undefined && maximumSpend !== null && (!Number.isFinite(maximumSpend) || maximumSpend < 0)) {
     throw new Error("Generation authorization spend ceiling is invalid");
   }
-  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
+  const liability = committedLiability(input.run);
   const completeMaximum = sumBudgetAmounts([liability, jobMaximum]);
   const completeBatchFits = maximumSpend === undefined || maximumSpend === null || !budgetExceeds(completeMaximum, maximumSpend);
   const initialCeiling = completeBatchFits ? jobMaximum : Math.max(0, maximumSpend - liability);
@@ -205,7 +223,8 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     projectRevision: input.projectRevision,
     runId,
     planVersion: planVersion as number,
-    gateId: `generation-authorization:${runId}:v${planVersion}`,
+    // 同一个计划版本里可以有好几份授权（卡上每点一次一份），门号按这是第几份付费门来分。
+    gateId: `generation-authorization:${runId}:v${planVersion}:n${spendAuthorizationGates(input.run).length + 1}`,
     costScope: input.multiShot ? `generation.multi-shot:${runId}` : `generation.single-shot:${runId}`,
     expiresAt,
     jobs,

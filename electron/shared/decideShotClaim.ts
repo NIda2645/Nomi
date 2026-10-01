@@ -2,6 +2,7 @@ import type { ProductionJob, ProductionJobStatus, ProductionRun } from "../produ
 import { latestJobForShot, shotIncluded } from "./productionShotJobs";
 import { isStoppedRunStatus } from "./productionRunStop";
 import { spendAuthorizationGates } from "./productionSpendAuthority";
+import { draftCardHidden } from "./productionGenerationPresentation";
 
 export type ShotClaimRequester = "canvas" | "production";
 export type ShotClaimHolder = "canvas" | "production" | "none";
@@ -86,7 +87,7 @@ export function decideShotClaim(
   if (detached) return decision("canvas", "canvas_detached", requester);
 
   if (plan.state !== "submitted") {
-    if (plan.cardHidden === true) return decision("canvas", "shot_excluded", requester);
+    if (draftCardHidden(plan)) return decision("canvas", "shot_excluded", requester);
     if (gateRejected) return decision("canvas", "gate_rejected", requester);
     return isStoppedRunStatus(run.status)
       ? decision("canvas", "run_stopped", requester)

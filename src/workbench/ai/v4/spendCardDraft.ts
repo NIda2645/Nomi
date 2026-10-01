@@ -48,16 +48,22 @@ const spendCandidatePatchSchema = z.object({
 }).strict().readonly()
 export type SpendCandidatePatch = z.infer<typeof spendCandidatePatchSchema>
 
-/** Both editable layers share the same persistence contract. Parameter values remain model-owned. */
+/**
+ * 每一镜各自的改动。2026-09-30 起只有这一层：卡上每一页的主按钮只生成那一镜（付费卡逐镜），
+ * 「逐镜 / 全部」范围切换和它的「全部」那一层一起删了（P1）。Parameter values remain model-owned.
+ */
 const spendDraftSchema = z.object({
-  all: spendCandidatePatchSchema,
   perShot: z.record(spendCandidatePatchSchema).readonly(),
 }).strict().readonly()
 export type SpendDraft = z.infer<typeof spendDraftSchema>
 
-export const EMPTY_SPEND_DRAFT: SpendDraft = Object.freeze({ all: Object.freeze({}), perShot: Object.freeze({}) })
+/** 上一版存下的账本多一层「全部」。只在读盘那一处认它，读进来就压进每一镜——他打过的字一个不丢。 */
+const legacySpendDraftSchema = z.object({
+  all: spendCandidatePatchSchema,
+  perShot: z.record(spendCandidatePatchSchema).readonly(),
+}).strict()
 
-export type SpendScope = 'each' | 'all'
+export const EMPTY_SPEND_DRAFT: SpendDraft = Object.freeze({ perShot: Object.freeze({}) })
 
 /** 这一镜的有效候选（参数逐键浅合并；后者赢）。 */
 export function mergeCandidatePatch(
@@ -71,17 +77,9 @@ export function mergeCandidatePatch(
   return merged as SpendCandidatePatch
 }
 
-/**
- * 这一镜最终会被封印的那一份（逐镜层压全部层）。`view` 给的是**卡体此刻该显示哪一层**：
- * `'all'` 只叠公共层，`'each'`（默认）叠到逐镜层。
- */
-export function effectivePatchForShot(
-  draft: SpendDraft,
-  shotId: string,
-  view: SpendScope = 'each',
-): SpendCandidatePatch {
-  if (view === 'all') return draft.all
-  return mergeCandidatePatch(draft.all, draft.perShot[shotId] ?? {})
+/** 这一镜最终会被封印的那一份：就是这一镜自己的改动。 */
+export function effectivePatchForShot(draft: SpendDraft, shotId: string): SpendCandidatePatch {
+  return draft.perShot[shotId] ?? {}
 }
 
 /** 有效候选 = 宿主投影的那一镜 ⊕ 覆写。只回算价与落盘认识的那几个字段。 */
@@ -164,29 +162,18 @@ export function candidatePatchFromNode(
   return Object.keys(patch).length > 0 ? (patch as SpendCandidatePatch) : undefined
 }
 
-/**
- * 用户在卡上动了一下之后的新账本。
- *
- * `scope` 决定这一下落到哪一层：「全部」落公共层、「逐镜」落这一镜层——**另一层原样留着**
- * （切模式不丢覆写）。每层相对下层计算：全部对宿主，逐镜对「宿主＋全部」。
- * 因此逐镜改回宿主原值时，仍能明确盖过全部层的不同值。
- */
+/** 用户在卡上动了一下之后的新账本：这一下只落在这一页这一镜上（相对宿主那一份算），别的镜原样留着。 */
 export function draftAfterNodeEdit(
   draft: SpendDraft,
   shot: PendingSpendShot,
   node: GenerationCanvasNode,
-  scope: SpendScope,
   option?: ModelOption,
 ): SpendDraft {
-  if (scope === 'all') return { all: candidatePatchFromNode(node, shot, option) ?? {}, perShot: draft.perShot }
-  const inherited = { ...shot, ...draft.all, parameters: { ...shot.parameters, ...draft.all.parameters } }
-  const patch = candidatePatchFromNode(node, inherited, option, draft.all.referenceInputs) ?? {}
-  return { all: draft.all, perShot: { ...draft.perShot, [shot.shotId]: patch } }
+  return { perShot: { ...draft.perShot, [shot.shotId]: candidatePatchFromNode(node, shot, option) ?? {} } }
 }
 
 /** 这一批到底有没有被改过（没有 → 确认那一刻不必先发 `generation.revise`）。 */
 export function draftIsEmpty(draft: SpendDraft): boolean {
-  if (Object.keys(draft.all).length > 0) return false
   return Object.values(draft.perShot).every((patch) => Object.keys(patch).length === 0)
 }
 
@@ -208,8 +195,8 @@ export function revisionsForConfirm(
     .map((shot) => {
       const patch = effectivePatchForShot(draft, shot.shotId)
       if (!patch.referenceInputs) return { shotId: shot.shotId, patch }
-      // The 'all' layer may carry the visible shot's pinned reference. Other shots
-      // request the same media by URL; they cannot claim that identity was theirs.
+      // A shot may only claim a pinned reference identity it already had; any other
+      // media it asks for travels by URL (the host resolves and re-pins it).
       const referenceInputs = patch.referenceInputs.map(input => {
         if (!('reference' in input) || !input.url || !input.reference.kind) return input
         const retained = shot.references?.some(reference => reference.assetId === input.reference.assetId
@@ -224,7 +211,11 @@ export function revisionsForConfirm(
 }
 
 /** Candidate data is the editor input; a placed canvas node supplies geometry only. */
-export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanvasNode, option?: ModelOption): GenerationCanvasNode | undefined {
+/**
+ * 卡体那张生成框：宿主那一镜的候选 + 画布上连到它占位节点的参考图（`canvasInputs`，第 4 条：画布上连着的参考图算数，
+ * 卡上看得见）。卡上拿掉其中一张只改卡，不动画布连线。
+ */
+export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanvasNode, option?: ModelOption, canvasInputs: readonly SpendReferenceInput[] = []): GenerationCanvasNode | undefined {
   const archetype = resolveArchetypeForModel({ modelKey: shot.modelId, vendorKey: shot.providerId, meta: option?.meta })
   const kind = option?.kind ?? archetype?.kind ?? placed?.kind
   if (!isGenerationNodeKind(kind)) return undefined
@@ -242,7 +233,13 @@ export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanv
       // 候选上写着变体就一并带上：卡上这张框显示的变体与宿主派发的，问的是同一个 owner、同一组输入。
       ...(archetype ? { archetype: { id: archetype.id, modeId: shot.modeId ?? archetype.defaultModeId, ...(shot.variantId ? { variantId: shot.variantId } : {}) } } : {}),
     },
-  }, pendingReferenceInputs(shot))
+  }, withCanvasReferences(pendingReferenceInputs(shot), canvasInputs))
+}
+
+/** 候选自己的参考 ∪ 画布连线来的参考（同一张图不重复放）。 */
+function withCanvasReferences(own: readonly SpendReferenceInput[], canvas: readonly SpendReferenceInput[]): SpendReferenceInput[] {
+  const urls = new Set(own.map((input) => input.url).filter((url): url is string => Boolean(url)))
+  return [...own, ...canvas.filter((input) => !input.url || !urls.has(input.url))]
 }
 
 /**
@@ -262,20 +259,29 @@ export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanv
  *
  * ── 为什么键里没有镜头维度 ──
  *
- * 有，但不在键里：镜头分层是这本账本**自己的结构**（`perShot`，逐镜压全部——见文件顶部）。
- * 把 `shotId` 提进键 = 一次生成有 N 本账本，「全部」那一层就没有家了；那正是 R33 说的第二本账本。
+ * 有，但不在键里：镜头分层是这本账本**自己的结构**（`perShot`）。
+ * 把 `shotId` 提进键 = 一次生成有 N 本账本，翻页、去掉一镜、点完一镜都要在几本之间搬字；那正是 R33 说的第二本账本。
  * 一次生成一本，一个键派生，`node scripts/door-map.mjs spendDraftKey` 数得出来。
  */
 export function spendDraftKey(pending: { projectId: string; runId: string; operationId: string }): string {
   return 'nomi:spend-draft:' + JSON.stringify([pending.projectId, pending.runId, pending.operationId])
 }
-export function readSpendDraft(key: string): SpendDraft {
+export function readSpendDraft(key: string, shotIds: readonly string[] = []): SpendDraft {
   try {
     const raw = localStorage.getItem(key)
     if (!raw) return EMPTY_SPEND_DRAFT
     const value: unknown = JSON.parse(raw)
     // Validate without applying reference-schema transforms to saved user input.
-    return spendDraftSchema.safeParse(value).success ? value as SpendDraft : EMPTY_SPEND_DRAFT
+    if (spendDraftSchema.safeParse(value).success) return value as SpendDraft
+    if (!legacySpendDraftSchema.safeParse(value).success) return EMPTY_SPEND_DRAFT
+    // 上一版的「全部」那一层：压进每一镜（这一镜自己的改动压在上面），读盘归一只在这一处。
+    const legacy = value as { all: SpendCandidatePatch; perShot: Readonly<Record<string, SpendCandidatePatch>> }
+    const perShot: Record<string, SpendCandidatePatch> = {}
+    for (const shotId of new Set([...shotIds, ...Object.keys(legacy.perShot)])) {
+      const patch = mergeCandidatePatch(legacy.all, legacy.perShot[shotId] ?? {})
+      if (Object.keys(patch).length > 0) perShot[shotId] = patch
+    }
+    return { perShot }
   } catch { return EMPTY_SPEND_DRAFT }
 }
 /**
@@ -297,7 +303,7 @@ export function retainSpendDraft(key: string, draft: SpendDraft): void {
 
 /** 这一次生成上次留下的未提交改动（换了 `operationId` 就是另一本，读不到就是空）。 */
 export function restoreSpendDraft(pending: PendingSpendConfirm): SpendDraft {
-  return readSpendDraft(spendDraftKey(pending))
+  return readSpendDraft(spendDraftKey(pending), pending.shots.map((shot) => shot.shotId))
 }
 
 /**
@@ -318,7 +324,7 @@ export function consumeSpendDraft(
     if (!Object.keys(patch).length) continue
     perShot[shot.shotId] = patch
   }
-  const remaining = { all: {}, perShot }
+  const remaining = { perShot }
   // 空账本 = 把这一笔的键删掉（`retainSpendDraft` 自己做），所以不需要先清一次再写。
   retainSpendDraft(spendDraftKey(pending), remaining)
   return remaining

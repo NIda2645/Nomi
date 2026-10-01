@@ -1,3 +1,5 @@
+import type { GenerationPresentationCloser, ProductionGateStatus } from "../productionRun/productionRunTypes";
+import type { GeneratePresentationOutcome } from "../shared/productionGenerationPresentation";
 // 生成 operation 的**数据形状与存储接口**（从 `mcpGenerationTools.ts` 拆出：那个文件顶着 800 行门岗，
 // 而这一段是纯类型、零运行时）。两份 store（内存版 / Run 账本版）与规划 handler 都从这里取同一份。
 import type { ExecutionContractV1, PlanCandidate } from "./executionContract";
@@ -44,6 +46,10 @@ export type GenerationOperation = Readonly<{
    * 给 gate_request 回执与 start 前置判断读；派发永远按「批这个 job 的那道门」核，不读这一格。
    */
   authorization?: GenerationOperationAuthorization;
+  /** 这一次出价（付费卡）的结局：宿主从 Run 现算，Agent 的 generate 回执只读它。 */
+  presentationOutcome?: GeneratePresentationOutcome;
+  /** 账本里有没有任何一笔**可能**到过供应商（`productionShotJobs.anySubmissionMayHaveReachedProvider`）。`false` = 一个字节都没离开过这台机器、没花钱。 */
+  submissionStarted?: boolean;
   updatedAt: string;
 }>;
 
@@ -51,7 +57,8 @@ export type GenerationOperationAuthorization = Readonly<{
   gateId: string;
   digest: string;
   envelope: ProductionGenerationAuthorizationEnvelopeV1;
-  status: "waiting" | "approved" | "rejected" | "expired" | "revoked";
+  /** 就是那道门的状态（同一个词表，不另起一份）。 */
+  status: ProductionGateStatus;
 }>;
 
 export type GenerationAuthorizationPreparation = Readonly<{
@@ -81,7 +88,11 @@ export type GenerationOperationStore = {
    * 用户在卡待决时打字、以及「问这句话的那个回合没了」（重启 / 按停止 / 关窗，裁决 C）。
    * 幂等；钱的事已经定了的（门已决 / 已提交 / 已终结）原样返回。
    */
-  withdraw(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
+  withdraw(projectId: string, operationId: string, now: string, reason?: GenerationPresentationCloser): GenerationOperation | Promise<GenerationOperation>;
+  /** 一次点击没点完（门封了、还没决）留下的那份等人的授权：撤掉，只解封它盖着的那几镜。下一次点击封新的一份之前调。 */
+  abandonWaitingAuthorization?(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
+  /** 付费卡上「去掉这张」：这一镜不生成（这一次出价里记下，以后也不再自动摆上卡）。 */
+  removeShot?(projectId: string, operationId: string, shotId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   /** P4 S4 试拍首镜: invalidate the waiting authority and return a narrowed plan to draft for re-seal. */
   trialNarrow?(projectId: string, operationId: string, now: string): GenerationOperation | Promise<GenerationOperation>;
   /**

@@ -707,7 +707,9 @@ describe("semantic MCP generation tools", () => {
       ];
       // 最近一份授权（那道门上的信封）：gate_request 回执的摘要与成本范围都读它。
       const authorization = { gateId: "generation-authorization:op-multi:v3", digest: "plan-hash-x", status: "waiting" as const,
-        envelope: { costScope: "generation.multi-shot:op-multi", budget: { currency: "CNY", maximum: 18, ledgerCeiling: 18, unknownJobCount: 0 } } as never };
+        envelope: { costScope: "generation.multi-shot:op-multi", budget: { currency: "CNY", maximum: 18, ledgerCeiling: 18, unknownJobCount: 0 },
+          // 这道门盖着哪几镜（逐镜之后，门自己的信封说了算）。
+          jobs: [{ shotId: "anchor-1" }, { shotId: "shot-a" }, { shotId: "shot-b" }] } as never };
       const operation = { operationId: "op-multi", projectId: "project-1", candidate: candidate(), state: "sealed" as const, contract: sealedContract, shots, authorization, planVersion: 3, updatedAt: "2026-08-23T00:00:00.000Z" };
       return {
         create: () => operation,

@@ -448,18 +448,13 @@ export const zhAgentPanelV4 = {
   spendParamsUnavailable: '暂时算不出价格',
   spendParamsPerItem: '逐镜 · {{count}} 镜',
   spendParamsShot: '镜头 {{number}}',
-  /** 确认钮：动词 + 这一刻的合计。改了参数它当场跟着变。 */
-  spendParamsConfirm: '生成 {{amount}}',
   spendTotalLeadBatch: '{{count}} 镜 · 合计 {{amount}}',
-  /** 算不出价时页脚左下印的那句（用户硬性拍板：算不出价**绝不拦**生成）。 */
-  spendTotalUnknown: '价格未知 · 以供应商账单为准',
-  spendParamsConfirmUnknown: '仍要生成',
-  /** 范围切到「全部」后的同一颗主按钮：多印一句「几镜」，因为这时的数不再是眼前这一页的。 */
-  spendParamsConfirmAll: '生成 {{count}} 镜 {{amount}}',
-  /** 范围切换两档（2026-09-10 v3：批量不再是第二颗文字按钮，是同一个决定的范围）。 */
-  spendParamsScopeEach: '逐镜',
-  spendParamsScopeAll: '全部',
-  spendParamsScopeAria: '生成范围',
+  /** 主按钮只生成这一页这一镜（2026-09-30 付费卡逐镜）：图片说「这张」，视频说「这段」。 */
+  spendConfirmThisImage: '生成这张',
+  spendConfirmThisVideo: '生成这段',
+  /** 次动作：这一镜不生成，占位留在画布上，卡上剩下的照旧等人。 */
+  spendRemoveThisImage: '去掉这张',
+  spendRemoveThisVideo: '去掉这段',
   spendParamsDecline: '不要',
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
@@ -898,14 +893,11 @@ export const enAgentPanelV4 = {
   spendParamsUnavailable: 'Price unavailable right now',
   spendParamsPerItem: 'Per shot ({{count}})',
   spendParamsShot: 'Shot {{number}}',
-  spendParamsConfirm: 'Generate {{amount}}',
   spendTotalLeadBatch: '{{count}} shots · {{amount}} total',
-  spendTotalUnknown: 'Price unknown · billed by provider',
-  spendParamsConfirmUnknown: 'Generate anyway',
-  spendParamsConfirmAll: 'Generate {{count}} shots {{amount}}',
-  spendParamsScopeEach: 'Per shot',
-  spendParamsScopeAll: 'All',
-  spendParamsScopeAria: 'Generation scope',
+  spendConfirmThisImage: 'Generate this one',
+  spendConfirmThisVideo: 'Generate this one',
+  spendRemoveThisImage: 'Remove',
+  spendRemoveThisVideo: 'Remove',
   spendParamsDecline: 'No',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',

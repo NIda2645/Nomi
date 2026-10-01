@@ -232,7 +232,9 @@ function toTask(runId: string, shot: ProductionGenerationShot): DispatchTask {
  * checkpoint is where a person approves the look before the paid video shots run.
  */
 function anchorsOf(plan: ProductionGenerationPlan): ProductionGenerationShot[] {
-  return (plan.shots ?? []).filter((shot) => shot.role === "anchor" && shotIncluded(shot));
+  // 逐镜（付费卡①）：卡上还没点的参考卡没有合同、也不是这一批的活——形象确认只等批过的那几张
+  // （与 `anchorCheckpoint.currentAnchorCheckpointGate` 同一条：勾进这一批、有封印合同的参考卡）。
+  return (plan.shots ?? []).filter((shot) => shot.role === "anchor" && shotIncluded(shot) && Boolean(shot.contract));
 }
 
 /**

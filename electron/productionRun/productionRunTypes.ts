@@ -260,15 +260,35 @@ export type ProductionGenerationShot = {
   updatedAt: string;
 };
 
+/** 这一次出价是怎么关掉的。`resolved` = 卡上每一镜都决定了（生成或去掉）；其余三种是还有镜没决定就关了。 */
+export type GenerationPresentationCloser = "resolved" | "user_closed" | "user_wrote" | "stopped";
+
+export type GenerationPresentation = {
+  /** 这一次摆到卡上的那几镜（按计划顺序；单镜旧形态 = 顶层候选的 candidateId）。 */
+  shotIds: string[];
+  openedAt: string;
+  /**
+   * 这一次出价开出来时，Run 上已经有几道付费门（`spendAuthorizationGates` 的个数）。在它之后建的门才算「在这一次出价里点的」
+   * ——按门的先后算，不按时间戳比：两次操作落在同一毫秒时，时间戳分不出先后。
+   */
+  fromGate: number;
+  /** 用户在卡上点了「去掉这张」的那几镜（按点的先后）。去掉的镜不生成、以后也不再自动摆上卡。 */
+  removed?: Array<{ shotId: string; at: string }>;
+  /** 缺席 = 卡还开着。 */
+  closed?: { at: string; by: GenerationPresentationCloser };
+};
+
 export type ProductionGenerationPlan = {
   operationId: string;
   state: "draft" | "sealed" | "cancelled" | "submitted";
   /**
-   * 草稿建好了，但报价卡还没摆到用户面前（Agent lane 的 `draft_shots`：落画布、带单价、不出卡、不花钱）。
-   * `generation.present`（`generate` 动词）把它清掉；`projectPendingSpendConfirm` 是唯一读它的投影点。
-   * 缺省/旧 Run 没有这个字段 = 卡可见，行为逐字不变。
+   * 每一次把卡摆到用户面前（`generate` 动词 → `generation.present`）一条，只追加（2026-09-30 付费卡逐镜）。
+   * 最后一条就是这一次出价：摆了哪几镜、什么时候、关了没有、为什么关。卡上每一镜点「生成这张」「去掉这张」
+   * 之后，这一次出价里还没决定的镜才留在卡上；一镜都不剩时这一条自己关掉（`resolved`）。
+   * 唯一读口 `electron/shared/productionGenerationPresentation.ts`，唯一写口 `electron/productionRun/productionGenerationPresentationEdits.ts`
+   * （都经 reducer 的命令）。旧 Run 的 `cardHidden` 读盘时归一成它。
    */
-  cardHidden?: boolean;
+  presentations?: GenerationPresentation[];
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
   /**
@@ -458,7 +478,8 @@ export type ProductionRunSummary = Pick<
    * Run 状态都还停在 `draft`——只看 Run 状态，它们就是任务面板里永远「等待开始」的那几行。
    * 判「算不算一个任务」的规则住在渲染层（`isProductionRunTask`），它要的只是这两格。
    */
-  generationPlan?: Pick<ProductionGenerationPlan, "state" | "cardHidden">;
+  /** `cardHidden` 是投影出来的：草稿还没有一次开着的出价（`draftCardHidden`）。 */
+  generationPlan?: Pick<ProductionGenerationPlan, "state"> & { cardHidden?: boolean };
 };
 
 /**
@@ -510,7 +531,8 @@ export type ProductionActionResult = {
     | "run_not_open" // 该项目不是当前打开的项目（守卫）
     | "revised" // 付费卡上改了参数：旧授权已撤、计划回到草稿等重新封印
     | "discarded" // 付费卡上按了 ×：这份草稿被丢弃
-    | "spend_confirmed" // 付费卡上确认了：收据已签、门已批、已开跑
+    | "spend_confirmed" // 付费卡上「生成这张」：这一镜的收据已签、门已批、已开跑
+    | "shot_removed" // 付费卡上「去掉这张」：这一镜不生成
     | "unavailable" // 能力核未就绪 / provider 未配置
     | "failed"; // 其它失败（账本事实在 message，语义码在 reason）
   /**

@@ -235,20 +235,6 @@ export type InterventionData = Readonly<{
     index: number
     total: number
     /**
-     * 范围切换：这一镜，还是全部。
-     *
-     * v2 把「全部生成 ¥1.20」做成动作行上的**第二颗文字按钮**，v3 拿掉了——
-     * 2026-09-10 拍板的按钮规则是「一屏一个主动作、批量不是第二颗文字按钮」。
-     * 批量本来也不是第二个决定，它是同一个决定（生成）的**范围**；
-     * 范围该长成一个切换，切完主按钮自己改口。缺省 = 单镜卡，不渲染。
-     */
-    scope?: Readonly<{
-      value: 'each' | 'all'
-      eachLabel: string
-      allLabel: string
-      ariaLabel: string
-    }>
-    /**
      * 键盘翻页提示（「←→」这种极小字）。
      *
      * 卡聚焦时左右方向键翻页；提示只用两个箭头字符，占不到 20px——
