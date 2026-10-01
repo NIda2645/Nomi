@@ -1,0 +1,467 @@
+{
+  "_comment": [
+    "自写登记表（P0「只写我们独有的」，2026-10-01）。Nomi 自己写的只有领域本身；领域目录之外新增一个模块，就是在自写一项通用能力——必须登记在这里，理由只认领域约束。",
+    "门岗 pnpm run check:self-written：diff（merge-base..HEAD）里在 src/、electron/ 新增的代码文件，不在 domainRoots、也没被任何 entry 认领就报。enforceFrom 之前只出警告，之后阻断合并。",
+    "存量不追溯：门岗只看**新增**文件，下面没覆盖到的老文件不会红；但同目录再长新文件，就要登记（这正是它要咬的事——#945 的 laneContextFit 就是在这种目录里新长出来的）。",
+    "status：justified = 合理自写（revisitWhen 写重新评估的触发条件）；to-replace = 已确认要换成现成的，必须绑 plan；under-review = 还没结论，必须有 reviewBy 日期。",
+    "entries 里改任何一项、或扩大 domainRoots，PR 正文必须引用带出处的查证（check:prior-art 管这一条）。周期审计（R14）固定复查 to-replace / under-review / revisitBy 到期的项。",
+    "首批登记取自 docs/research/2026-10-01-pi-coding-agent-reference-conformance/report.md 的「问 3」，加上仓库里明显的自写通用能力。"
+  ],
+  "enforceFrom": "2026-10-09",
+  "domainRoots": [
+    { "path": "electron/productionRun/", "reason": "ProductionRun：按镜头花钱的持久编排——调度、暂停收尾、返工与续拍、预算账本，Nomi 独有" },
+    { "path": "electron/capabilityCore/", "reason": "能力契约与动词：画布 / 文稿 / 时间轴 / 生成的领域读写、生成派发、报价与审批语义（其中 MCP 协议件另有登记）" },
+    { "path": "electron/shared/", "reason": "跨进程领域契约与规则：镜头阶段、镜头认领、审批结局、能力契约、Agent 投影" },
+    { "path": "electron/catalog/", "reason": "多供应商模型目录、中转地址、单价换算：Nomi 的供应商面，没有第三方等价物" },
+    { "path": "electron/providerAdapter/", "reason": "各家生成供应商 API 的差异适配，只有我们接的这批供应商才有" },
+    { "path": "electron/integrationCertification/", "reason": "接入认证：证明某供应商 / 模型真能按我们的契约生成" },
+    { "path": "electron/vendor/", "reason": "供应商请求与出站守卫的领域面：付费取片必须证明连的是供应商" },
+    { "path": "electron/tasks/", "reason": "生成任务的提交、轮询、取片与本地化，按真钱语义处理失败" },
+    { "path": "electron/connectors/", "reason": "创作向外部数据连接器（拆解参考片、素材来源）" },
+    { "path": "electron/comfyui/", "reason": "本地 ComfyUI 生成后端的适配与进度" },
+    { "path": "electron/export/", "reason": "时间轴导出成片：领域的最终产物" },
+    { "path": "electron/assets/", "reason": "项目素材库：导入、本地化、解码判定、素材声明" },
+    { "path": "electron/video/", "reason": "创作向视频处理：抽帧、拼接、深度、运镜渲染" },
+    { "path": "electron/image/", "reason": "创作向图像处理：参考图预处理、抠图、首尾帧绘制等服务画布的操作" },
+    { "path": "electron/audio/", "reason": "创作向音频任务：配音、音乐、对白拆解" },
+    { "path": "electron/director/", "reason": "导演台与运镜：镜头语言的领域模型" },
+    { "path": "electron/workspace/", "reason": "项目工作区：项目、文稿、画布的盘上形态" },
+    { "path": "electron/projects/", "reason": "项目库：Nomi 的项目目录、最近项目与项目身份" },
+    { "path": "electron/conversations/", "reason": "项目内的对话记录" },
+    { "path": "electron/memory/", "reason": "项目记忆：创作事实的沉淀" },
+    { "path": "electron/promptLibrary/", "reason": "创作提示词库：用户沉淀的提示词与模板" },
+    { "path": "electron/review/", "reason": "成片 / 镜头评审与技术检查" },
+    { "path": "electron/skills/", "reason": "创作技能库的存取（格式本身用标准 SKILL.md，发现与解析交给 pi）" },
+    { "path": "electron/settings/", "reason": "Nomi 的设置面：模型默认、审批档位、隐私开关" },
+    { "path": "electron/localSpeech/", "reason": "本地转写 provider 的编排：引擎是 whisper.cpp，我们只编排下载、校验、分段与回落规则" },
+    { "path": "electron/localRuntime/", "reason": "本地 AI 运行时的探测与描述，只对我们接的这几类本地后端有意义" },
+    { "path": "electron/events/", "reason": "项目事件日志与制作事件：Run 与 Agent 回合的事实记录" },
+    { "path": "electron/onboarding/", "reason": "首次使用引导与演示素材" },
+    { "path": "electron/experience/", "reason": "创作经验的抽取与沉淀" },
+    { "path": "electron/parity/", "reason": "生成入口一致性账：每个能发出供应商请求的入口都有裁决" },
+    { "path": "electron/browser/", "reason": "创作向内置浏览器：从网页抓取素材与提示词的采集面" },
+    { "path": "electron/downloads/", "reason": "已校验素材缓存：供应商返回的素材落盘前的完整性判定" },
+    { "path": "electron/preload/", "reason": "渲染层与主进程之间的 Nomi 专属桥契约" },
+    { "path": "src/workbench/", "reason": "工作台界面本体：创作、生成画布、时间轴、制作流程、Agent 面板，产品本身" },
+    { "path": "src/ui/", "reason": "产品页面与业务组件（项目库、模型接入、社区等）" },
+    { "path": "src/design/", "reason": "Nomi 设计系统：token-only，品牌本身" },
+    { "path": "src/theme/", "reason": "Nomi 的光 / 暗主题 token 翻转" },
+    { "path": "src/i18n/", "reason": "界面文案本身（zh-CN / en）" },
+    { "path": "src/config/", "reason": "已知供应商与模型框偏好等产品配置" },
+    { "path": "src/desktop/", "reason": "渲染层看到的桌面桥类型：Nomi 专属契约" },
+    { "path": "src/media/", "reason": "创作媒体的播放与状态呈现" },
+    { "path": "src/devlab/", "reason": "设计实验室：Nomi 界面的样张与状态集，不进产物" }
+  ],
+  "entries": [
+    {
+      "id": "lane-approval-gate",
+      "capability": "工具调用审批闸：在 before_tool 里停下等用户，四个动作、七种结局，关窗 / 切项目 / 按停止统一收尾",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneApprovalGate.ts",
+        "electron/agentLane/laneAskUserTool.ts",
+        "electron/agentLane/laneNativeApproval.ts",
+        "electron/shared/agentLane/laneApproval.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi harness 的 before_tool 钩子（只有钩子，没有对话框）", "source": "node_modules/@earendil-works/pi-agent-core/dist/harness/hooks.d.ts:17" },
+        { "name": "pi RPC 的 extension_ui_request / response（属于 AgentSession 栈，harness 不提供）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/rpc.md:1184" },
+        { "name": "pi 九层对照「控制流」「扩展 API」两层的逐项结论", "source": "docs/research/2026-10-01-pi-coding-agent-reference-conformance/report.md" }
+      ],
+      "whyNotIntegrated": "领域约束：花钱与写画布必须由用户批准，且批准有七种结局（确认 / 拒绝 / 改口 / 停止 / 关窗 / 重启…）要给用户不同的话；pi 的确认只有 yes / no / 取消，harness 层连对话框都没有。形状（按 id 匹配、阻塞到回复、取消是一等结局）已经照 pi 的协议抄了。",
+      "revisitWhen": "pi 的 harness 层提供带结局枚举的待决确认原语时；或 0.24 B（付费卡并进投影）落地后复查是否还有第二份「等」"
+    },
+    {
+      "id": "lane-provider-watchdog",
+      "capability": "供应商流的首字节 / 空闲看门狗，以及把中文供应商报文归一成 pi 重试判据认得的标记",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneProviderGuard.mts",
+        "electron/agentLane/laneStreamObserver.mts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi-ai 的 timeoutMs 透传与 CLI 的 httpIdleTimeoutMs（库路径不装 dispatcher）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/settings.md:176" },
+        { "name": "pi 的 RetryPolicy（只有三个数，没有分类器钩子，判据是英文正则）", "source": "node_modules/@earendil-works/pi-ai/dist/utils/retry.d.ts:8" }
+      ],
+      "whyNotIntegrated": "领域约束：中转供应商的错误是中文、状态码混用（500 + 余额不足），而重试等于再花一次真钱；pi 的重试判据没有钩子，只能改输入文本，这是它留给宿主的唯一口子。看门狗部分是否能被 pi-ai 的 timeoutMs 透传替掉一半，尚未做 spike。",
+      "revisitWhen": "做完「pi-ai timeoutMs 透传能否替掉首字节 / 空闲看门狗」的半天 spike 后；或 pi 给重试加分类器钩子时",
+      "revisitBy": "2026-11-15"
+    },
+    {
+      "id": "lane-repeated-failure",
+      "capability": "同一个工具连着撞同一堵墙的计数与止损",
+      "status": "justified",
+      "paths": ["electron/agentLane/laneRepeatedFailure.mts"],
+      "alternativesChecked": [
+        { "name": "pi 的循环停止条件（四条路，没有「连续同错」）", "source": "node_modules/@earendil-works/pi-agent-core/dist/agent-loop.js:78" }
+      ],
+      "whyNotIntegrated": "领域约束：模型读不懂中文供应商报错时会把同一次付费调用原样连发六次，每次都是真钱；pi 假设错误正文足够可行动，没有这条规则。",
+      "revisitWhen": "pi 提供 shouldStopAfterTurn 之外的连续失败止损原语时"
+    },
+    {
+      "id": "lane-tool-surface",
+      "capability": "能力契约 → pi 工具面：模型可见 schema 的唯一生成点、三条描述通道的渲染、延迟工具组、动词传输",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneTools.mts",
+        "electron/agentLane/laneToolSchema.mts",
+        "electron/agentLane/laneToolGroups.mts",
+        "electron/agentLane/lanePromptSections.ts",
+        "electron/agentLane/laneToolCatalog.ts",
+        "electron/agentLane/laneVerbTransport.ts",
+        "electron/agentLane/laneCanvasTools.ts",
+        "electron/agentLane/laneDocumentTools.ts",
+        "electron/agentLane/laneTimelineTools.ts",
+        "electron/agentLane/laneModelRead.mts",
+        "electron/agentLane/laneDesktopTools.ts",
+        "electron/agentLane/laneExtendedTools.ts",
+        "electron/agentLane/laneExtendedDesktopPorts.ts",
+        "electron/agentLane/laneNativeAssembly.mts",
+        "electron/agentLane/laneNativeDesktop.mts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 的工具定义（description / promptSnippet / promptGuidelines / prepareArguments / addedToolNames，在用）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/sdk.md:579" },
+        { "name": "pi 九层对照「工具」层的逐项结论", "source": "docs/research/2026-10-01-pi-coding-agent-reference-conformance/report.md" }
+      ],
+      "whyNotIntegrated": "这是对 pi 工具形状的适配，不是第二份工具系统：领域能力契约（画布 / 分镜 / 时间轴 / 生成的动词、效果类、超时预算、审批语义）是我们的，pi 只负责工具的激活、校验与执行。",
+      "revisitWhen": "pi 的工具定义新增我们另写了一份的字段（例如内建超时预算、效果类）时，用 framework-surface 门岗逐字段裁决"
+    },
+    {
+      "id": "lane-coding-tools",
+      "capability": "pi 自带 coding 工具的接入：路径包容、bash 的 OS 沙箱策略、execute 签名转接",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneCodingTools.mts",
+        "electron/agentLane/laneCodingPaths.mts",
+        "electron/agentLane/laneCodingSandbox.mts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 的 7 个 coding 工具与 BashOperations 插槽（在用，一个执行器都不自研）", "source": "electron/agentLane/laneCodingTools.mts:1" },
+        { "name": "pi 的 sandbox 示例（@anthropic-ai/sandbox-runtime，同一个包在用）", "source": "electron/agentLane/laneCodingSandbox.mts:1" },
+        { "name": "pi 的 powershell 工具与 Git Bash / shellPath 的 Windows 方案（尚未接）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/windows.md:1" }
+      ],
+      "whyNotIntegrated": "只出策略不出执行：沙箱 allowWrite 从项目根 derive、不读用户可编辑配置（领域约束：用户是创作者，可编辑的沙箱配置等于留后门）。Windows 的 PowerShell 工具 pi 有、我们没接，是缺口而不是理由。",
+      "revisitWhen": "T-AG-56 定位出真因：缺 bash 就接 createPowerShellTool；OS 沙箱起不来则沿用 active:false 降级",
+      "revisitBy": "2026-10-31"
+    },
+    {
+      "id": "lane-session-io",
+      "capability": "会话落盘与历史读：pi 的 JsonlSessionRepo 之上的权限、原子替换、分页与输入还原",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneSession.mts",
+        "electron/agentLane/laneFileSystem.mts",
+        "electron/agentLane/laneHistory.mts",
+        "electron/agentLane/laneHistoryPage.mts",
+        "electron/agentLane/laneOriginalInput.mts",
+        "electron/agentLane/laneInputIntent.mts",
+        "electron/agentLane/laneInputAdmission.mts",
+        "electron/agentLane/laneInputPreparation.ts",
+        "electron/agentLane/laneContinuation.mts",
+        "electron/agentLane/laneRestoredInput.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 的 JsonlSessionRepo / Session / Branch API（在用）", "source": "electron/agentLane/laneSession.mts:17" },
+        { "name": "pi 会话文件不指定 mode（世界可读）", "source": "docs/research/2026-09-07-pi-reference-implementation-conformance.md" }
+      ],
+      "whyNotIntegrated": "适配层，不是第二份持久化：会话里是用户的原稿正文，所以文件 0600 / 目录 0700、原子替换由我们注入的 FileSystem 保证（领域约束：隐私承诺）。",
+      "revisitWhen": "pi 的 JsonlSessionRepo 自己默认 0600，或提供注入 mode 的选项时"
+    },
+    {
+      "id": "lane-workspace",
+      "capability": "一个项目多条对话（多 lane）与项目级选择",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneWorkspace.mts",
+        "electron/agentLane/laneWorkspaceSelection.ts",
+        "electron/agentLane/laneProjectSession.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 的 /tree /fork /clone 与按 cwd 的会话目录（会话元数据没有项目选择）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/sessions.md:69" }
+      ],
+      "whyNotIntegrated": "领域约束：对话按创作项目绑定，不按 cwd；用户要一边改第三场戏、一边另起一条问片种怎么排。会话列表仍归 pi 的 repo，我们只记项目级选择。",
+      "revisitWhen": "pi 的会话元数据支持项目归属时"
+    },
+    {
+      "id": "lane-skills",
+      "capability": "技能目录的投影与策略、选中技能的提示词注入、CJS 侧加载接缝",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneSkillCatalog.mts",
+        "electron/agentLane/laneSkillPrompt.mts",
+        "electron/agentLane/laneNativeLoader.cts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 的 loadSourcedSkills / formatSkillInvocation（在用，发现与解析全交给 pi）", "source": "electron/agentLane/laneSkillCatalog.mts:14" }
+      ],
+      "whyNotIntegrated": "只做投影与策略（哪些技能对创作者可见、选中技能怎么进提示词），发现与解析不自写；pi 包是 ESM-only，CJS 侧只能经动态 import 接缝。",
+      "revisitWhen": "pi 的技能策略（可见性、按项目启停）有公开接口时"
+    },
+    {
+      "id": "lane-legacy-migration",
+      "capability": "旧版本转录 → pi 会话的一次性迁移",
+      "status": "to-replace",
+      "plan": "docs/plan/2026-09-07-agent-runtime-rebuild.md",
+      "paths": [
+        "electron/agentLane/laneLegacyFiles.ts",
+        "electron/agentLane/laneLegacyImportLane.mts",
+        "electron/agentLane/laneLegacyImportPlan.mts",
+        "electron/agentLane/laneLegacyIntegrity.mts",
+        "electron/agentLane/laneLegacyMigration.mts",
+        "electron/agentLane/laneLegacyPriorArchive.mts",
+        "electron/agentLane/laneLegacySources.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 没有旧格式迁移的需要，也没有导入旧转录的接口", "source": "docs/research/2026-09-07-pi-reference-implementation-conformance.md" }
+      ],
+      "whyNotIntegrated": "领域约束：用户有旧版本落下的对话历史，不能丢。这是一次性代码，迁移窗口结束后整体删除，登记成待替换（实为待删）以免被当成长期自写。",
+      "revisitWhen": "旧转录迁移窗口结束（旧版本用户基本升完）后整体删除 laneLegacy*"
+    },
+    {
+      "id": "lane-trace",
+      "capability": "pi 条目的可重建视图：耗时记录、位置脱敏、回执权威关联",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneTrace.mts",
+        "electron/agentLane/laneTraceRecorder.mts",
+        "electron/agentLane/laneTraceRedaction.mts",
+        "electron/agentLane/laneReceiptAuthority.mts",
+        "electron/agentLane/laneReceiptCommands.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 的 custom entry（耐久事实走它，在用）", "source": "electron/agentLane/laneTrace.mts:1" },
+        { "name": "pi 的遥测 span 契约（默认关，不是运行日志）", "source": "docs/research/2026-09-07-pi-reference-implementation-conformance.md" }
+      ],
+      "whyNotIntegrated": "视图不是第二个写者：原始 pi 消息仍是唯一文本权威；脱敏与回执关联是领域约束（隐私承诺、画布写入回执与撤销）。",
+      "revisitWhen": "pi 提供转录脱敏或回执关联原语时"
+    },
+    {
+      "id": "lane-host-seams",
+      "capability": "lane 宿主与进程接缝：宿主生命周期、IPC、命令编解码、ESM 动态加载端口、单次调用",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneHost.mts",
+        "electron/agentLane/laneRuntimePort.ts",
+        "electron/agentLane/laneIpc.ts",
+        "electron/agentLane/laneCommandCodec.ts",
+        "electron/agentLane/laneSingleShot.mts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 的 createAgentSession / AgentSessionRuntime（官方嵌入入口，我们走更底层的 AgentHarness）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/sdk.md:44" },
+        { "name": "pi --mode rpc 子进程集成", "source": "node_modules/@earendil-works/pi-coding-agent/docs/sdk.md:1150" }
+      ],
+      "whyNotIntegrated": "pi 包是 ESM-only，Electron 主进程只能动态 import；宿主只做三件事（lane 生命周期、把 Nomi 的闸挂到 before_tool / after_tool、投影推送）。AgentSession / RPC 两条官方路都会多一台状态机或一个进程，与「进程内耐久」冲突——但「进程内 AgentSession 能否承载」尚未评估（见 pi 九层对照的开放问题）。",
+      "revisitWhen": "评估完「进程内 AgentSession 能否承载 lane」之后；或 pi 的 CLI 开始使用 AgentHarness 时",
+      "revisitBy": "2026-11-30"
+    },
+    {
+      "id": "lane-context-config",
+      "capability": "压缩设置换算与摘要指令、模型 provider 装配、桌面领域端口的适配",
+      "status": "justified",
+      "paths": [
+        "electron/agentLane/laneContextBudget.mts",
+        "electron/agentLane/laneModelContext.ts",
+        "electron/agentLane/laneModelProvider.mts",
+        "electron/agentLane/laneDesktopModelDefaults.ts",
+        "electron/agentLane/laneDesktopRuntime.ts",
+        "electron/agentLane/laneDesktopInput.ts",
+        "electron/agentLane/laneDesktopAttachments.ts",
+        "electron/agentLane/laneDesktopTasks.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "pi 的 compact() 与 CompactionSettings（在用，只出配置与领域摘要指令）", "source": "electron/agentLane/laneContextBudget.mts:1" },
+        { "name": "pi 的 createProvider / ModelCost / calculateCost（在用）", "source": "electron/agentLane/laneModelProvider.mts:81" },
+        { "name": "pi 的默认模型设置（只有驱动 LLM 一种，没有生成模型默认）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/settings.md:30" }
+      ],
+      "whyNotIntegrated": "都是配置与适配：压缩摘要提示词要保留节点 id、modelKey / modeId（pi 的六节摘要为写代码调）；provider 装配把目录单价换成 pi 的 ModelCost；桌面端口把领域事实（默认生成模型、附件声明、任务状态）交给 lane。",
+      "revisitWhen": "pi 的压缩提示词可按领域注入字段，或提供附件 / 默认模型的宿主原语时"
+    },
+    {
+      "id": "ai-sdk-text-stack",
+      "capability": "文本任务的第二台 LLM 调用栈（AI SDK ai@4）",
+      "status": "to-replace",
+      "plan": "docs/plan/2026-10-01-tech-stack-line-0.24.md",
+      "paths": [
+        "electron/ai/streamTextTask.ts",
+        "electron/ai/buildAiSdkModel.ts",
+        "electron/ai/vendorLanguageModel.ts",
+        "electron/ai/aiSdkVendorError.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "lane 已走的 pi-ai 单次调用（laneSingleShot：一次 provider 调用，无循环无会话）", "source": "electron/agentLane/laneSingleShot.mts:1" },
+        { "name": "pi 九层对照问 3：文本任务改走 pi-ai，删掉 AI SDK 栈与 ai@4 钉死", "source": "docs/research/2026-10-01-pi-coding-agent-reference-conformance/report.md" }
+      ],
+      "whyNotIntegrated": "没有领域理由：这是历史上先接入的栈，lane 后来走了 pi-ai，于是出现两台调用栈。归 0.24「两台发动机收敛」（S4），也是 AI SDK 版本裁决（S5）的前置。",
+      "revisitWhen": "0.24 S4 开工时按 plan 迁移；迁完整体删除"
+    },
+    {
+      "id": "spend-card-polling",
+      "capability": "付费确认卡每 1.5 秒轮询 Run 账本",
+      "status": "to-replace",
+      "plan": "docs/research/2026-09-29-agent-message-layer-conformance/report.md",
+      "paths": ["src/workbench/ai/v4/useAgentPanelSpendConfirm.ts"],
+      "alternativesChecked": [
+        { "name": "pi 的待决确认是一种表示：按 id 匹配、阻塞到回复、可取消；我们的投影按引用 join、推送完整投影", "source": "node_modules/@earendil-works/pi-coding-agent/docs/rpc.md:1184" },
+        { "name": "事件触发重投影（laneHost 已在 lane 事件上推完整投影）", "source": "electron/shared/agentLane/laneProjection.ts:1" }
+      ],
+      "whyNotIntegrated": "没有领域理由用轮询：卡的内容（可编辑的报价）是领域，但「内容变了就通知」是通用机制。0.24 B 把付费卡并进对话投影，去掉轮询。",
+      "revisitWhen": "0.24 B 落地时删轮询（前置：枚举不走 lane 的待决付费来源）"
+    },
+    {
+      "id": "telemetry-pipeline",
+      "capability": "用量事件与 Agent 轨迹的出站管线：白名单事件、同意合同、发件箱、自建接收端",
+      "status": "justified",
+      "paths": [
+        "electron/telemetry/",
+        "electron/settings/telemetryIpc.ts",
+        "infra/feedback-worker/"
+      ],
+      "alternativesChecked": [
+        { "name": "Sentry / PostHog / Aptabase 等第三方 SDK（方案四列表里逐个比过）", "source": "infra/feedback-worker/src/worker.mjs:3" },
+        { "name": "OpenTelemetry error.type 等通行字段（字段命名已对齐，未引入 SDK）", "source": "docs/plan/2026-10-01-generation-result-reasons.md" }
+      ],
+      "whyNotIntegrated": "领域约束：对用户的承诺是「数据只去我们的端点」。第三方 SDK 的代价不是钱，是这句承诺无法自证——只要它在进程里，「不收别的」就只能靠对方文档。传输自建，白名单 / 同意合同 / 脱敏沿用仓库里已有的一套。",
+      "revisitWhen": "出现可在进程内审计、且字段白名单由我们强制的开源遥测 SDK 时；或隐私承诺的表述改变时"
+    },
+    {
+      "id": "validation-policy",
+      "capability": "一个 diff 要跑哪些验证（单测 / 桌面 / 旅程 / 画布 critical·full / 性能 / 打包）的分类器",
+      "status": "under-review",
+      "reviewBy": "2026-11-15",
+      "paths": [
+        "scripts/validation-policy.mjs",
+        "scripts/select-quality-gate-profile.mjs",
+        "scripts/test-focused.mjs"
+      ],
+      "alternativesChecked": [
+        { "name": "dorny/paths-filter（按路径模式输出各 lane 是否命中）", "source": "https://github.com/dorny/paths-filter" },
+        { "name": "Nx affected（按依赖图而不是路径正则决定受影响面）", "source": "https://nx.dev/ci/features/affected" },
+        { "name": "分类器为什么按概念表对照而不是补文件名", "source": "docs/audit/2026-10-01-scripts-validation-judgement-structure-review.md" }
+      ],
+      "whyNotIntegrated": "尚未下结论。能被替换的是「路径 → lane」的匹配本身（paths-filter 能做）；暂不能替的是三件事：删除 / 重命名 / 空 diff fail-closed、画布 critical 与 full 的分档只升不降、清单对着 concept-owners 概念表核对。评估方向：paths-filter 出路径集 + 自写的薄 fail-closed 层。",
+      "revisitWhen": "出评估结论（paths-filter 加薄层是否够用）；或分类器再收到一份根因合同时先看这一项"
+    },
+    {
+      "id": "full-walk-monitor",
+      "capability": "全功能走查的九条铁律监视器（跑完整旅程，每一步收尾核对铁律）",
+      "status": "justified",
+      "paths": ["tests/ux/full-walk/"],
+      "alternativesChecked": [
+        { "name": "Playwright Test 的 reporter 与 fixtures 机制（运行器在用，监视器规则无现成的）", "source": "https://playwright.dev/docs/test-reporters" },
+        { "name": "监视器的纪律：违反不中断剧本、证据只从真相源读", "source": "tests/ux/full-walk/monitor.mjs:1" }
+      ],
+      "whyNotIntegrated": "领域约束：九条铁律是 Nomi 的产品不变量（批准范围 = 派发范围、界面不露内部 id、付费卡图 / 视频一致……），没有通用测试框架自带；运行器与浏览器自动化已经是 Playwright，自写的只有规则与判据。",
+      "revisitWhen": "监视器规则能以 Playwright 自定义 matcher / reporter 的形式表达而不损失「违反不中断」语义时"
+    },
+    {
+      "id": "mcp-protocol",
+      "capability": "MCP 协议层：JSON-RPC over stdio、握手、工具 / 资源 / 提示、进度与取消、参数校验",
+      "status": "under-review",
+      "reviewBy": "2026-11-15",
+      "paths": [
+        "electron/capabilityCore/mcpProtocol.ts",
+        "electron/capabilityCore/mcpStdioLine.ts",
+        "electron/capabilityCore/mcpStdioServer.ts",
+        "electron/capabilityCore/mcpArgValidation.ts",
+        "electron/capabilityCore/mcpTransportSchemaFromZod.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "官方 MCP TypeScript SDK（server、stdio 传输、工具 / 资源 / 提示）", "source": "https://github.com/modelcontextprotocol/typescript-sdk" },
+        { "name": "仓库里没有 @modelcontextprotocol/sdk 依赖，协议层手写", "source": "package.json:1" }
+      ],
+      "whyNotIntegrated": "尚未评估，不能当成合理自写。需要回答的是：官方 SDK 是否覆盖我们用到的 MCP Apps（内嵌 widget）、elicitation、取消与进度、以及按 Nomi 审批语义的拦截；能覆盖则接 SDK，Nomi 只留领域能力投影与审批。",
+      "revisitWhen": "出评估结论；注意 capabilityCore 是领域目录，门岗拦不住这里新增协议件——评估前不要再手写新的协议件，要加先跟协调会话说"
+    },
+    {
+      "id": "network-stack",
+      "capability": "代理 / SOCKS / 系统代理探测与出站主机策略（含硬化 fetch）",
+      "status": "under-review",
+      "reviewBy": "2026-11-30",
+      "paths": [
+        "electron/proxySettings.ts",
+        "electron/systemProxy.ts",
+        "electron/socksDispatcher.ts",
+        "electron/proxyIpc.ts",
+        "electron/proxyProbe.ts",
+        "electron/hardenedFetch.ts",
+        "electron/appFetch.ts",
+        "electron/networkHostPolicy.ts",
+        "electron/networkOutboundPolicy.ts",
+        "electron/providerNetwork.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "undici ProxyAgent（HTTP 代理 dispatcher）", "source": "https://undici.nodejs.org/#/docs/api/ProxyAgent" },
+        { "name": "socks-proxy-agent（SOCKS 代理）", "source": "https://www.npmjs.com/package/socks-proxy-agent" },
+        { "name": "Electron session.setProxy（Chromium 侧代理配置）", "source": "https://www.electronjs.org/docs/latest/api/session#sessetproxyconfig" }
+      ],
+      "whyNotIntegrated": "尚未下结论。领域约束成立的部分：付费取片的出站策略（fake-ip / 私网需要确证，请求发出前拒绝要说明「没计费」）是 Nomi 的真钱语义；代理 / SOCKS 的 dispatcher 本身看起来有现成的。评估方向：代理层接现成库，只留出站策略这层领域判定。",
+      "revisitWhen": "出评估结论；评估前这里不得新增网络栈文件"
+    },
+    {
+      "id": "durable-json",
+      "capability": "原子写 JSON 与 fsync 屏障",
+      "status": "under-review",
+      "reviewBy": "2026-11-30",
+      "paths": [
+        "electron/jsonFile.ts",
+        "electron/durability.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "write-file-atomic（临时文件 + rename，npm 通用）", "source": "https://www.npmjs.com/package/write-file-atomic" },
+        { "name": "pi 的 publishFileAtomically 与 FileSystem.renameFile 语义（lane 侧已注入）", "source": "docs/research/2026-09-07-pi-reference-implementation-conformance.md" }
+      ],
+      "whyNotIntegrated": "尚未下结论。领域理由成立的部分：project.json 是用户最贵的数据，且测试里需要关 fsync 的唯一开关（durability.ts 是全仓唯一决定要不要 fsync 的地方）；原子写本身有现成库。评估：原子写换库、保留 fsync 开关。",
+      "revisitWhen": "出评估结论"
+    },
+    {
+      "id": "logging-and-crash",
+      "capability": "主进程运行日志、脱敏与崩溃日志",
+      "status": "under-review",
+      "reviewBy": "2026-11-30",
+      "paths": [
+        "electron/logging/",
+        "electron/crashLog.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "electron-log（主进程 / 渲染进程日志、文件轮转）", "source": "https://www.npmjs.com/package/electron-log" },
+        { "name": "Electron crashReporter", "source": "https://www.electronjs.org/docs/latest/api/crash-reporter" }
+      ],
+      "whyNotIntegrated": "尚未下结论。领域理由成立的部分：日志不记提示词、密钥与文件路径，脱敏规则（redact）是隐私承诺的一部分；日志落盘与轮转本身有现成库。评估：落盘交给 electron-log，只留脱敏规则。",
+      "revisitWhen": "出评估结论"
+    },
+    {
+      "id": "gate-family",
+      "capability": "仓库门岗族：一百多个 check:* 脚本（棘轮、登记表、合同、文档记账）",
+      "status": "under-review",
+      "reviewBy": "2026-10-31",
+      "paths": [
+        "scripts/check-*.mjs",
+        "scripts/run-gates-contracts.mjs"
+      ],
+      "alternativesChecked": [
+        { "name": "eslint 自定义规则 / eslint-plugin-boundaries（谁能 import 谁）", "source": "https://github.com/javierbrea/eslint-plugin-boundaries" },
+        { "name": "dependency-cruiser（依赖图规则）", "source": "https://github.com/sverweij/dependency-cruiser" },
+        { "name": "knip（未用导出 / 依赖）", "source": "https://knip.dev" },
+        { "name": "门岗账本：每道门岗红过几次、真问题 / 纸面 / 误报各占多少", "source": "docs/audit/2026-10-01-gate-ledger.md" }
+      ],
+      "whyNotIntegrated": "尚未下结论。大部分门岗检查的是 Nomi 自己的登记表与合同（概念 owner、根因合同、真实素材登记），没有现成工具；但「只加不减」本身是问题。结论等门岗账本出来后由用户按保留 / 合并 / 降级 / 删除逐项拍板。",
+      "revisitWhen": "门岗账本的保留 / 降级 / 删除清单被拍板后；之后每次周期审计重跑账本"
+    },
+    {
+      "id": "self-written-gate",
+      "capability": "自写登记门岗本身（diff 里新增模块有没有被领域目录或登记表认领）",
+      "status": "justified",
+      "paths": [
+        "scripts/check-self-written.mjs",
+        "scripts/self-written-lib.mjs"
+      ],
+      "alternativesChecked": [
+        { "name": "eslint-plugin-boundaries（管 import 方向，不管新增模块有没有人负责）", "source": "https://github.com/javierbrea/eslint-plugin-boundaries" },
+        { "name": "dependency-cruiser（依赖图规则，同上）", "source": "https://github.com/sverweij/dependency-cruiser" },
+        { "name": "已有的 check:boundaries / check:concept-owners（管边界与概念写口，不管通用能力登记）", "source": "scripts/check-boundaries.mjs:1" }
+      ],
+      "whyNotIntegrated": "没有现成工具回答「这次 diff 新增的模块，是领域代码、还是登记过的通用能力、还是没人认领」。判据是 Nomi 的领域目录清单，本质上是登记表读取加 git diff，不是通用能力。",
+      "revisitWhen": "出现能读自定义「模块归属清单」并对 diff 新增文件做归属断言的现成门岗时"
+    }
+  ]
+}
