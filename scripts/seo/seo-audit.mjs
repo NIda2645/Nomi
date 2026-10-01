@@ -1,28 +1,10 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { shared } from '../marketing/content.mjs'
-import { loadSiteData } from '../marketing/library/data.mjs'
-import { loadPageDates } from '../marketing/page-dates.mjs'
-import { computeSitemapEntries } from '../marketing/pages.mjs'
 import { descriptionInRange } from '../marketing/seo-limits.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_BASE_URL = 'https://nomiaqm.com'
-const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
-const runtimeFacts = Object.freeze({ ...shared, version: packageJson.version })
-
-/**
- * 每周巡检默认查哪些页面：不再是手写的 5 个，而是生成器真实产出的全部页面（方案 §8：
- * 「SEO 监测的页面清单改成读生成器输出，新页面自动纳入每周检查」）。跟 sitemap 用同一份计算
- * （marketing/pages.mjs 的 computeSitemapEntries），页面清单只有一个 owner。
- */
-const marketingPages = computeSitemapEntries({
-  siteData: loadSiteData(),
-  runtimeFacts,
-  previousDates: loadPageDates(),
-  today: new Date().toISOString().slice(0, 10),
-}).entries
 
 const parseAttributes = (tag) => Object.fromEntries(
   [...tag.matchAll(/([\w:-]+)\s*=\s*["']([^"']*)["']/g)].map((match) => [match[1].toLowerCase(), match[2]]),
@@ -91,6 +73,16 @@ export function auditHtml(html, url, options = {}) {
 
 const extractSitemapEntries = (xml) => [...xml.matchAll(/<url>\s*<loc>([^<]+)<\/loc>\s*<lastmod>([^<]+)<\/lastmod>[\s\S]*?<\/url>/gi)]
   .map((match) => ({ url: match[1].trim(), lastmod: match[2].trim() }))
+
+/**
+ * 每周巡检默认查哪些页面：仓库里提交的 marketing/sitemap.xml 列的全部页面——它是页面生成器的输出，
+ * check:site 保证它是新的。不再是手写的 5 个；新页面一上线就自动进每周检查（方案 §8）。
+ * 读的是一份纯 XML，所以每周巡检这条流水线仍然不需要 pnpm install。
+ */
+export const loadMarketingPages = (file = path.join(root, 'marketing/sitemap.xml')) => extractSitemapEntries(fs.readFileSync(file, 'utf8'))
+  .map(({ url, lastmod }) => ({ path: new URL(url).pathname, updatedAt: lastmod }))
+
+const marketingPages = loadMarketingPages()
 
 export function auditSitemap(xml, manifest = marketingPages, baseUrl = DEFAULT_BASE_URL) {
   const failures = []

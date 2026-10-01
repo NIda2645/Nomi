@@ -44,7 +44,7 @@
 | 页面 | 地址 | 数量（中文，英文同数） | 数据从哪来 |
 |---|---|---|---|
 | 模型库 | `/models` | 1 | 同下 |
-| 单个模型 | `/models/<slug>` | 约 45（非退役的图片 + 视频模型，按 App 同一套去重） | 模型档案 + 目录分档 + 人写的介绍 |
+| 单个模型 | `/models/<slug>` | 写好介绍的才出页（2026-10-01 是 39 个；非退役、能用 API Key 接的图片和视频模型，按 App 同一套去重） | 模型档案 + 目录分档 + 人写的介绍 |
 | 提示词库 | `/prompts` | 1 | 同下 |
 | 效果分类 | `/prompts/<group>` | 7（运镜 23、构图 8、角色设定 4、修图 2、场景 1、分镜 1、去 AI 感 1；条数太少的并进相近分类，由 App 的分组决定，不另起） | `skills/*/SKILL.md` 里 `library.kind: effect` 的 40 条 |
 | 表情预设 | `/prompts/expressions` | 1 | `electron/promptLibrary/builtinExpressionPack.json`（25 条，Nomi 自有，带图） |
@@ -54,7 +54,7 @@
 | 功能介绍 | `/features` | 1 | `scripts/marketing/content.mjs` + 真实产品截图 |
 | 新手教程 | `/quickstart`（沿用已收录的地址） | 1 | 见 §7 |
 
-合计约 113 个页面 × 2 种语言。`/handbook` 并进新手教程后永久跳转（`_redirects` 301），不留两份上手说明。
+合计 106 个页面 × 2 种语言（2026-10-01 的实际数；模型页随写好的介绍增加）。`/handbook` 并进新手教程后永久跳转（`_redirects` 301），不留两份上手说明。
 
 **导航**（连带面，§12 单独问）：顶栏从「功能 · 快速上手 · 开源 · 社区」改成「功能 · 模型 · 提示词 · 技能 · 上手 · 社区」，四处同时变（首页、快速上手、所有新页面、英文版）；「开源」挪到页脚和功能页。页脚加上三个库的链接。
 
@@ -161,6 +161,29 @@
 | D 上线后 | 接 Google Search Console（用户用自己的账号验证域名）；看 4 周收录与曝光 | 用户 + 协调会话 | 有第一方数据再调 |
 
 **门岗**（加进 `check:site`）：数据与页面新鲜度；每个出页的模型都有介绍、每篇介绍都对得上一个模型（无孤儿）；每篇介绍至少一条官方出处且有核对日期；站内链接全部指向存在的页面或文件；中英页面一一对应；结构化数据能解析；页面上不出现价格（`¥`、`$`、「元」「积分」「credits」跟数字）；非 AGPL 条目都有署名和许可证。每条门岗先验证它会红。
+
+### 阶段 B 进度（2026-10-01，分支 `claude/site-libraries`）
+
+阶段 B 的代码、门岗和每周同步任务已经做完，等 PR 评审；C 验收和上线部署由协调会话做。做了什么：
+
+| 项 | 在哪 | 说明 |
+|---|---|---|
+| 页面清单只有一份 | `scripts/marketing/pages.mjs` | 页面生成器、sitemap 和每周 SEO 巡检都读它；手写的 `site-manifest.mjs` 已删；地址 ↔ 文件的换算只在 `routes.mjs` |
+| sitemap | `scripts/build-marketing-sitemap.mjs`、`marketing/data/page-dates.json` | `lastmod` 是页面内容哈希变了的那天，内容没变日期不动；发版只改 JSON-LD 里的版本号，不算内容变化；每条带中英互指的 hreflang；`--check` 只核对不改写 |
+| `/handbook` | `marketing/_redirects` | `/handbook` 与 `/handbook.html` 301 到 `/quickstart`；手册页、它的生成器和 `check:handbook` 已删；App 里的手册面板不动 |
+| 数据按今天的 App 目录重导 | `scripts/site/export-site-data.mts` | 同一模型的渠道行并进模型本身、Sora 2 退役后，模型从 84 条变成 68 条；其中 39 个有介绍、上官网（中英各 106 个页面）；Muse Image 的介绍改挂合并后的身份 |
+| 门岗 | `scripts/check-site-*.mjs`，接进 `check:site` | 数据新鲜度、模型介绍（含孤儿）、不写价格、站内链接、中英对应、结构化数据、描述 50–160 字、许可证署名；每道都有单元测试里的「会红」用例，另在真实页面副本上逐条破坏验证过 |
+| 页面清理 | `scripts/build-marketing-site.mjs` | 生成器不再产出的页面（模型退役、介绍删掉）生成时删掉，`--check` 报出 |
+| 每周数据同步 | `.github/workflows/site-data-sync.yml` | 每周一重导数据、重建页面，有变化就开只含 `marketing/` 的 PR；正文列出缺介绍的模型和孤儿介绍（`scripts/site/model-intro-status.mjs`） |
+| 静态合同 | `tests/ux/marketing-libraries.static.mjs` | 模型库卡片、模型页档案卡、效果页复制按钮、非 AGPL 署名与许可证全文、面包屑、顶栏六项，中英各查一遍 |
+
+还剩：
+
+- **13 个能用 API Key 接、没退役的模型还没写介绍**，所以不在官网上（清单见每周同步 PR 正文）；中英两篇都写好才会上。
+- **C 验收**：全站走查（中英 × 桌面/手机截图）、线上跑 SEO 监测（今天起它查 sitemap 里的全部页面，不再只查 5 个）、抽样 Lighthouse。
+- **D 上线后**：接 Search Console。
+- **App 里的上手手册面板**：等界面大改时一起换（§12 第 3 条）。`HandbookPanel.tsx` 第 4 行的注释还提到已经删除的 `marketing/handbook.html`，那个文件属于 App，这次没动。
+- 运镜等效果的真实示例视频（要花额度，二期）。
 
 ## 11. 不动什么 / 风险 / 回滚
 

@@ -69,6 +69,20 @@ test('SEO Observatory public paths all resolve to real generated pages', () => {
   assert.ok(!config.publicPaths.includes('/handbook'), 'the retired handbook is not in the audited path list')
 })
 
+test('the weekly SEO audit checks every page in the committed sitemap and needs no installed dependencies', async () => {
+  const { loadMarketingPages } = await import('../../scripts/seo/seo-audit.mjs')
+  const listed = (read('marketing/sitemap.xml').match(/<url>/g) || []).length
+  assert.ok(listed > 100, 'the sitemap lists the libraries, not just the four onboarding pages')
+  assert.equal(loadMarketingPages().length, listed)
+  // .github/workflows/seo-radar.yml 不装依赖就直接跑 `pnpm seo:audit`：只要它没有安装步骤，
+  // 这个脚本就只许 import Node 内置模块和一个零依赖的界限文件（给它加了依赖，每周巡检会在 CI 上悄悄变成 ERR_MODULE_NOT_FOUND）。
+  if (!/pnpm install/.test(read('.github/workflows/seo-radar.yml'))) {
+    const imports = [...read('scripts/seo/seo-audit.mjs').matchAll(/^import [^\n]* from '([^']+)'/gm)].map((match) => match[1])
+    for (const specifier of imports) assert.ok(specifier.startsWith('node:') || specifier === '../marketing/seo-limits.mjs', `seo-audit.mjs may not import ${specifier} while the radar workflow installs nothing`)
+    assert.doesNotMatch(read('scripts/marketing/seo-limits.mjs'), /^import /m, 'seo-limits.mjs stays dependency-free')
+  }
+})
+
 test('public onboarding links use the final clean routes', () => {
   for (const file of ['marketing/index.html', 'marketing/en/index.html', 'marketing/quickstart.html', 'marketing/en/quickstart.html']) {
     const html = read(file)
