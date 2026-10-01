@@ -3,6 +3,7 @@ model: agnes image 2.1
 maker: Agnes AI
 checkedAt: 2026-09-28
 headline: Agnes AI's image model tuned for dense, complex compositions, with tiered resolution up to 4K and support for text-to-image, editing and multi-image composition.
+description: "Agnes AI's image model tuned for dense, complex compositions: tiered resolution up to 4K, text-to-image, editing and multi-image composition."
 sources:
   - title: Agnes Image 2.1 Flash official docs (Agnes AI)
     url: https://agnes-ai.com/doc/agnes-image-21-flash

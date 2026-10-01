@@ -4,6 +4,7 @@ maker: Alibaba Tongyi Lab
 released: 2025-11-26
 checkedAt: 2026-09-28
 headline: Alibaba Tongyi Lab's 6B open-weight speed model that generates in 8 steps on consumer GPUs, with accurate bilingual text and the top open-source score on Artificial Analysis.
+description: "Alibaba Tongyi Lab's 6B open-weight speed model: 8-step generation on consumer GPUs, accurate bilingual text, top open-source score on Artificial Analysis."
 sources:
   - title: Tongyi-MAI/Z-Image official repository (GitHub README, with version history)
     url: https://github.com/Tongyi-MAI/Z-Image

@@ -15,7 +15,6 @@ export const shared = Object.freeze({
   groupQr: '/assets/group-wechat-2026-10-01.jpg',
   authorQr: '/assets/qingyang-wechat.jpg',
   quickstartUrl: '/quickstart',
-  handbookUrl: '/handbook',
   mcpGuideUrl: 'https://github.com/aqm857886159/Nomi/blob/main/docs/guide/capability-core-cli-mcp.md',
   // 0.22 宣传片：一个文件。首屏整片播放；功能段只循环播放它里面对应的那几秒（不另剪短版）。
   film: '/assets/video/nomi-0.22-film.mp4',
@@ -220,7 +219,7 @@ const english = {
   ogLocale: 'en_US',
   meta: {
     title: 'Nomi — Pro-grade AI video. Models at their real price.',
-    description: 'Open-source, local-first AI video studio. The agent splits your story into shots, generates keyframes and video, and lays them on the timeline — on the models you connect, at your provider’s price. No subscription, no markup.',
+    description: 'Open-source, local-first AI video studio: an agent turns your story into shots, keyframes and video on models you connect, at provider price. No subscription.',
     imageAlt: 'Nomi: pro-grade AI video, models at their real price',
   },
   nav: {
@@ -321,7 +320,7 @@ const english = {
     path: '/en/quickstart',
     meta: {
       title: 'Nomi quick start: from download to your first shot',
-      description: 'Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ.',
+      description: 'Get started with Nomi in four steps: install, connect a model, tell the agent what to make, then keep the good takes and export. FAQ: cost, GPU, privacy.',
       imageAlt: 'Nomi quick start',
     },
     eyebrow: 'Quick start',

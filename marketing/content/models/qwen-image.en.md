@@ -4,6 +4,7 @@ maker: Alibaba Qwen
 released: 2025-08-04
 checkedAt: 2026-09-28
 headline: Alibaba Qwen's fully open-source image model line, first released August 2025 and updated continuously, known for strong Chinese text rendering with downloadable weights.
+description: "Alibaba Qwen's fully open-source image model line, first released August 2025 and updated continuously, known for strong Chinese text rendering."
 sources:
   - title: QwenLM/Qwen-Image official repository (GitHub README, with full version history)
     url: https://github.com/QwenLM/Qwen-Image

@@ -4,6 +4,7 @@ maker: Runway
 released: 2025-12-01
 checkedAt: 2026-09-28
 headline: Runway’s current flagship video model, with both text-to-video and image-to-video support and more realistic physics — liquids, collisions and momentum — than Gen-4.
+description: "Runway’s current flagship video model: text-to-video and image-to-video, with more realistic physics than Gen-4 — liquids, collisions and momentum."
 sources:
   - title: Introducing Runway Gen-4.5 (Runway Research announcement, 2025-12-01)
     url: https://runway.com/research/introducing-runway-gen-4.5

@@ -4,6 +4,7 @@ maker: ShengShu Technology
 released: 2026-01-30
 checkedAt: 2026-09-28
 headline: ShengShu Technology's video model that generates up to 16 seconds of native audio-synced video, with reference-to-video to keep characters and scenes consistent.
+description: "ShengShu Technology's video model: up to 16 seconds of native audio-synced video, with reference-to-video to keep characters and scenes consistent."
 sources:
   - title: Vidu Q3 product page (Vidu)
     url: https://www.vidu.com/vidu-q3

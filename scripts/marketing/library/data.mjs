@@ -4,7 +4,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import yaml from 'js-yaml'
+import { editorialFileName, parseEditorial } from './editorial.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const DATA_FILE = path.join(root, 'marketing/data/site-data.json')
@@ -15,34 +15,32 @@ export function loadSiteData() {
 }
 
 /**
- * 官网列哪些模型：认得的（有档案）、没退役、至少有一家能用 API Key 接，而且**中英两份介绍都写好了**。
+ * 目录里哪些模型有资格上官网：认得的（有档案）、没退役、至少有一家能用 API Key 接。
  * 即梦会员、本地 ComfyUI、Codex 登录额度这类本地桥接是「渠道」不是模型，不单独成页。
+ * 这条资格只有这一处定义：页面生成（publicModels）、介绍门岗和每周同步的「缺介绍」清单都读它。
+ */
+export function catalogEligibleModels(data) {
+  return data.models.filter((model) => model.recognized && model.lifecycle !== 'legacy' && model.vendors.some((vendor) => vendor.authType !== 'none'))
+}
+
+/**
+ * 官网列哪些模型：有资格上官网，而且**中英两份介绍都写好了**。
  * 没写介绍的新模型不上官网（方案 §4 / §12）：每周同步把它们列进「缺介绍」清单，写好再上。
  */
 export function publicModels(data) {
   const tierOrder = { flagship: 0, value: 1, companion: 2 }
-  return data.models
-    .filter((model) => model.recognized && model.lifecycle !== 'legacy' && model.vendors.some((vendor) => vendor.authType !== 'none'))
+  return catalogEligibleModels(data)
     .filter((model) => modelEditorial(model.slug, 'zh-CN') && modelEditorial(model.slug, 'en'))
     .map((model, index) => ({ model, index }))
     .sort((left, right) => (tierOrder[left.model.lifecycle] ?? 3) - (tierOrder[right.model.lifecycle] ?? 3) || left.index - right.index)
     .map(({ model }) => model)
 }
 
-/** 人写的模型介绍：`marketing/content/models/<slug>.<zh-CN|en>.md`。没写的模型不出详情页（方案 §4）。 */
+/** 人写的模型介绍：`marketing/content/models/<slug>.<zh-CN|en>.md`。没写的模型不出详情页（方案 §4）。格式见 editorial.mjs。 */
 export function modelEditorial(slug, locale) {
-  const file = path.join(EDITORIAL_DIR, `${slug}.${locale}.md`)
+  const file = path.join(EDITORIAL_DIR, editorialFileName(slug, locale))
   if (!fs.existsSync(file)) return null
-  const raw = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
-  const match = /^---\n([\s\S]*?)\n---\n([\s\S]*)$/.exec(raw)
-  if (!match) throw new Error(`模型介绍缺少前言：${path.relative(root, file)}`)
-  // JSON_SCHEMA：日期保持字符串（默认 schema 会把 2026-07-31 变成带本机时区的 Date）。
-  const front = yaml.load(match[1], { schema: yaml.JSON_SCHEMA })
-  // released 可以不写：查不到官方发布日期就不写，页面上也就不显示（不许推测一个日期填进去）。
-  for (const key of ['model', 'maker', 'checkedAt', 'headline', 'sources']) {
-    if (!front?.[key]) throw new Error(`模型介绍缺少 ${key}：${path.relative(root, file)}`)
-  }
-  return { ...front, body: match[2].trim() }
+  return parseEditorial(fs.readFileSync(file, 'utf8'), path.relative(root, file))
 }
 
 /** 分组展示顺序（只管顺序，不管分组本身——分组来自 SKILL.md 的 library.group）。 */

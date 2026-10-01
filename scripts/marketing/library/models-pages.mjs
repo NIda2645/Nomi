@@ -2,8 +2,10 @@
 import { contentByLocale } from '../content.mjs'
 import { buildMetadata } from '../metadata.mjs'
 import { escapeAttr, escapeText, externalAttrs, localizedPath, otherLocale, renderDocument } from '../shell.mjs'
+import { DESCRIPTION_LENGTH, descriptionLength } from '../seo-limits.mjs'
 import { copyFor, localized, renderBreadcrumbs, renderDownloadBand, renderLibraryHero, renderNodeCard } from './common.mjs'
 import { libraryGroups, libraryPaths, modelEditorial, publicModels } from './data.mjs'
+import { TIPS_SECTION_INDEX } from './editorial.mjs'
 import { renderMarkdown } from './markdown.mjs'
 import { libraryCss } from './styles.mjs'
 
@@ -24,6 +26,23 @@ function apiVendors(model, locale) {
 function intentLabels(model, locale) {
   const labels = copyFor(locale).intents[model.kind] ?? {}
   return model.facts.intents.map((intent) => labels[intent]).filter(Boolean)
+}
+
+/**
+ * 模型页的 meta 描述：介绍前言里写了 description 就用它，否则用一句话定位（headline）。
+ * 短于下限就补一句「在 Nomi 里支持哪几种生成」（跟能力表同一个数据来源，不引入新说法）；
+ * 超过上限直接报错、不自动截断——截半句话比超长更糟，由写介绍的人在前言里补一条 description。
+ */
+export function modelMetaDescription(model, editorial, locale) {
+  const base = String(editorial.description ?? editorial.headline).trim()
+  const text = descriptionLength(base) < DESCRIPTION_LENGTH.min
+    ? `${base}${locale === 'zh-CN' ? '' : ' '}${copyFor(locale).model.capabilitySentence(intentLabels(model, locale))}`
+    : base
+  const length = descriptionLength(text)
+  if (length < DESCRIPTION_LENGTH.min || length > DESCRIPTION_LENGTH.max) {
+    throw new Error(`模型页描述长度 ${length} 不在 ${DESCRIPTION_LENGTH.min}–${DESCRIPTION_LENGTH.max} 之内：${model.slug}.${locale}（在介绍前言里写一条 description）`)
+  }
+  return text
 }
 
 /** 各家档案对清晰度的写法不一（4k / 4K / 1080P）：统一成 720p、1080p、2K、4K。 */
@@ -172,7 +191,7 @@ export function renderModelDetail(locale, runtimeFacts, data, model) {
     { name, path: libraryPaths.model(model.slug) },
   ]
   const { html: articleHtml, toc } = renderMarkdown(editorial.body)
-  const tipsAnchor = toc[2]?.id ?? toc[0]?.id ?? ''
+  const tipsAnchor = toc[TIPS_SECTION_INDEX]?.id ?? toc[0]?.id ?? ''
   // 每个值单独不折行，换行只发生在值与值之间（手机上不会把「首尾帧」拆成两行）。
   const specs = specRows(model, locale)
     .map(([label, values]) => `<div><dt>${escapeText(label)}</dt><dd>${values.map((value) => `<span>${escapeText(value)}</span>`).join('')}</dd></div>`)
@@ -239,7 +258,7 @@ ${renderDownloadBand(locale)}`
     path,
     htmlLang: content.htmlLang,
     ogLocale: content.ogLocale,
-    meta: { title: copy.model.metaTitle(name), description: editorial.headline, imageAlt: name },
+    meta: { title: copy.model.metaTitle(name), description: modelMetaDescription(model, editorial, locale), imageAlt: name },
     alternates: { 'zh-CN': libraryPaths.model(model.slug), en: localizedPath('en', libraryPaths.model(model.slug)) },
     breadcrumbs: crumbs.map((crumb) => ({ name: crumb.name, path: localizedPath(locale, crumb.path) })),
     graph: [article],

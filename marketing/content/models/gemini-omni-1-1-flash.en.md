@@ -4,6 +4,7 @@ maker: Google DeepMind
 released: 2026-08-27
 checkedAt: 2026-09-28
 headline: Google's video-focused entry in its any-to-any multimodal family, built for conversational video creation and editing, and now the model that replaces Veo inside the Gemini app.
+description: "Google's video-focused entry in its any-to-any multimodal family, built for conversational video creation and editing, now replacing Veo inside the Gemini app."
 sources:
   - title: Gemini Omni 1.1 Flash lets you build with more control (Google blog, 2026-08-27)
     url: https://blog.google/innovation-and-ai/technology/developers-tools/build-with-gemini-omni-1-1-flash/

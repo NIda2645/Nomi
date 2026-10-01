@@ -3,6 +3,7 @@ model: agnes video 2.5
 maker: Agnes AI
 checkedAt: 2026-09-28
 headline: Agnes AI's video model with three modes behind one endpoint — text-only, first/last-frame keyframing, and multi-reference from images, audio or video — plus a faster 2.5 Flash variant.
+description: "Agnes AI's video model with three modes behind one endpoint: text-only, first/last-frame keyframing and multi-reference, plus a faster 2.5 Flash variant."
 sources:
   - title: Agnes Video 2.5 - Agnes-Ai Docs (Agnes AI official docs)
     url: https://wiki.agnes-ai.com/en/docs/agnes-video-25

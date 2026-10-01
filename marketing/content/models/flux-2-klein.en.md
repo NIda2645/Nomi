@@ -5,6 +5,7 @@ maker: Black Forest Labs
 released: 2026-01-15
 checkedAt: 2026-09-28
 headline: Black Forest Labs' open-weight image model with 4-step distilled inference for sub-second generation; BFL says the 9B build matches or beats models five times its size.
+description: "Black Forest Labs' open-weight image model: 4-step distilled inference, sub-second generation; BFL says the 9B build matches or beats models 5x its size."
 sources:
   - title: "FLUX.2 [klein]: Towards Interactive Visual Intelligence (Black Forest Labs blog, 2026-01-15)"
     url: https://bfl.ai/blog/flux2-klein-towards-interactive-visual-intelligence

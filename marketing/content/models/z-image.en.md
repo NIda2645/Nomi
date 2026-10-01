@@ -4,6 +4,7 @@ maker: Alibaba Tongyi Lab
 released: 2026-01-27
 checkedAt: 2026-09-28
 headline: The full 6B foundation model behind Z-Image-Turbo, trading generation speed for more diversity and fine-tunability — Tongyi Lab's base for LoRA and downstream work.
+description: "The full 6B foundation model behind Z-Image-Turbo, trading speed for more diversity and fine-tunability — Tongyi Lab's base for LoRA and downstream work."
 sources:
   - title: Tongyi-MAI/Z-Image official repository (GitHub README, with version history)
     url: https://github.com/Tongyi-MAI/Z-Image
