@@ -15,13 +15,17 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import fs0 from 'node:fs'
+import os from 'node:os'
+import { execFileSync } from 'node:child_process'
+import ffmpeg from '@ffmpeg-installer/ffmpeg'
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { BRAIN } from './_agentVideoPaid.mjs'
 import { openPaidWalk } from './_paidRun.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { laneMessages, readLaneTranscripts } from './agent-lane-observer.mjs'
 import {
-  APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_MODEL, MODEL_POPOVER,
+  APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_ADD_FILE, COMPOSER_CHIP, COMPOSER_MODEL, MODEL_POPOVER,
   chooseAssistantModel, closeSpendCard, newConversation, openCanvas, readProject, sendCanvas, waitForV4TurnIdle,
 } from './agent-runtime-walk-support.mjs'
 
@@ -33,6 +37,12 @@ const IMAGE_OTHER = { vendorKey: 'apimart', modelKey: 'gpt-image-2' }
 const ASK = process.env.NOMI_REAL_ASK || '帮我画一张雨后水洼里漂着一只红色纸船的图，1:1，就一张。起草好就直接提交生成，我在确认卡上点头。'
 const ARG_REJECTED = /Validation failed for tool|capability_input_invalid|generation_input_invalid|Unrecognized key\(s\)|must be (array|string|number|object)|Required/i
 
+const imageTmp = fs0.mkdtempSync(path.join(os.tmpdir(), 'real-two-images-'))
+const twoImages = ['red', 'blue'].map((color) => {
+  const file = path.join(imageTmp, `${color}.png`)
+  execFileSync(ffmpeg.path, ['-y', '-f', 'lavfi', '-i', `color=c=${color}:s=256x256`, '-frames:v', '1', file], { stdio: 'pipe' })
+  return file
+})
 const paid = await openPaidWalk('agent-default-model-real.paid.mjs', 'agent-default-model-real', [BRAIN, IMAGE_DEFAULT, IMAGE_OTHER])
 const { walk } = paid
 let failure
@@ -77,6 +87,16 @@ try {
       await expect(win.locator(`${CANVAS_PANEL} [data-v4-block="empty"]`), '新对话的空态').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
       const noShare = win.getByRole('button', { name: '不分享', exact: true }).first()
       if (await noShare.isVisible().catch(() => false)) await noShare.click()
+      if (process.env.NOMI_REAL_ATTACH_TWO === '1') {
+        // 「把这两张合成一张」得真有两张：每轮随消息挂两张图（本机 ffmpeg 现生成的纯色图，不是素材库里的用户素材）。
+        const chooser = win.waitForEvent('filechooser', { timeout: stationTimeout() })
+        await clickOrFail(win.locator(`${CANVAS_PANEL} ${COMPOSER_ADD_FILE}`), '输入框的「+」')
+        await (await chooser).setFiles(twoImages)
+        await expect(win.locator(`${CANVAS_PANEL} ${COMPOSER} ${COMPOSER_CHIP}`).nth(1), '两张图都挂上了').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
+        // 两张图落进项目素材才算上传完（发送前不能还在上传）。
+        await expect.poll(() => fs0.existsSync(path.join(projectRoot, 'assets')) && fs0.readdirSync(path.join(projectRoot, 'assets'), { recursive: true }).filter((name) => String(name).endsWith('.png')).length,
+          { message: '两张图落进项目素材', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThanOrEqual(2)
+      }
       await sendCanvas(win, ASK)
       const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
       // 等这一轮落地（卡在等人时输入框仍是运行态，所以先等「卡出现」或「回合结束」二者其一）。
