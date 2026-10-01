@@ -16,14 +16,15 @@ export function renderBreadcrumbs(crumbs, locale) {
   return `<nav class="crumbs" aria-label="breadcrumb"><ol>${items}</ol></nav>`
 }
 
+/** 两段标题之间：中文不留空格（「23 条运镜提示词」），英文留（「Models at … price」前面要有空格）。页头和下载条共用。 */
+const titleJoiner = (locale) => (locale === 'zh-CN' ? '' : ' ')
+
 /** 库页页头：比首页首屏矮一截。`anchors` 是分组锚点条 [{ id, label, count }]。 */
 export function renderLibraryHero({ eyebrow, titleLead, titleEmphasis, lede, anchors = [], crumbs, locale }) {
   const chips = anchors.length
     ? `<nav class="group-anchors" aria-label="${escapeAttr(eyebrow)}">${anchors.map((anchor) => `<a href="#${escapeAttr(anchor.id)}">${escapeText(anchor.label)}${anchor.count != null ? `<span>${anchor.count}</span>` : ''}</a>`).join('')}</nav>`
     : ''
-  // 中文两段标题之间不留空格（「23 条运镜提示词」），英文留。
-  const joiner = locale === 'zh-CN' ? '' : ' '
-  const emphasis = titleEmphasis ? `${joiner}<em>${escapeText(titleEmphasis)}</em>` : ''
+  const emphasis = titleEmphasis ? `${titleJoiner(locale)}<em>${escapeText(titleEmphasis)}</em>` : ''
   return `<section class="lib-hero">
   <div class="wrap">
     ${crumbs ? renderBreadcrumbs(crumbs, locale) : ''}
@@ -109,7 +110,7 @@ export function renderDownloadBand(locale, { title, body } = {}) {
   return `<section class="download-band">
   <div class="wrap download-band-inner">
     <div>
-      <h2>${escapeText(title ?? content.hero.titleLead + content.hero.titleEmphasis)}</h2>
+      <h2>${escapeText(title ?? `${content.hero.titleLead}${titleJoiner(locale)}${content.hero.titleEmphasis}`)}</h2>
       <p>${escapeText(body ?? content.hero.meta)}</p>
     </div>
     <a class="button primary" data-download-nomi href="#download-options">${escapeText(content.hero.download)}</a>

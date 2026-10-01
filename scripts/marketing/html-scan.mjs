@@ -87,6 +87,11 @@ export function visibleText(html) {
   ).replace(/\s+/g, ' ').trim()
 }
 
+/** 读者读到的、由我们写的文字：`visibleText` 再去掉原样展示的块（<pre>、<code>：提示词原文、技能里的代码片段）。 */
+export function proseText(html) {
+  return visibleText(html.replace(/<(pre|code)\b[\s\S]*?<\/\1>/gi, ' '))
+}
+
 /** 页面里指向站内的引用：<a>/<link> 的 href，<img>/<video>/<source>/<script>/<iframe> 的 src，<video> 的 poster。只收以 / 开头（不含 //）的。 */
 export function internalReferences(html) {
   const references = []

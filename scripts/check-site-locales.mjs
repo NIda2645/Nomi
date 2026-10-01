@@ -9,16 +9,20 @@
 //   4. sitemap.xml 列的页面正好是磁盘上的页面，每条的 xhtml:link 跟页面 <head> 里的 hreflang 一致；
 //   5. 英文页的标题、描述和 <h1> 里没有汉字（模型名、合集名没有英文叫法时，生成器会把中文原名漏到英文页上）。
 //      页面正文里原样展示的中文技能全文不在此限（那是方案 §12 说好的，并标了语言）。
+//   6. 英文页正文里没有「句号、问号、感叹号后面直接贴着大写字母」（两段文字拼在一起时漏了空格，
+//      如 `video.Models`）。<pre>、<code> 里原样展示的提示词和代码不在此限。
 //
 // 用法：node scripts/check-site-locales.mjs [--root <官网副本目录>]
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { shared } from './marketing/content.mjs'
-import { alternatesOf, canonicalOf, h1TextOf, htmlLangOf, listHtmlFiles, metaContent, readRelative, rootFromArgs, titleOf } from './marketing/html-scan.mjs'
+import { alternatesOf, canonicalOf, h1TextOf, htmlLangOf, listHtmlFiles, metaContent, proseText, readRelative, rootFromArgs, titleOf } from './marketing/html-scan.mjs'
 import { counterpartOutputPath, isEnglishOutputPath, routeFromOutputPath } from './marketing/routes.mjs'
 
 const HAN = /\p{Script=Han}/u
+const RUN_TOGETHER = /[a-z0-9)’”][.!?][A-Z][a-z]/g
+const RUN_TOGETHER_REPORTED_PER_PAGE = 3
 const asTable = (alternates) => Object.fromEntries([...alternates].sort((left, right) => left.lang.localeCompare(right.lang)).map(({ lang, href }) => [lang, href]))
 
 /** sitemap.xml → `Map<loc, Array<{ lang, href }>>`；同一个 loc 出现两次会报重复。 */
@@ -64,6 +68,9 @@ export function findLocaleProblems({ pages, siteUrl, sitemapXml = null }) {
       for (const [label, text] of [['标题', titleOf(html)], ['描述', metaContent(html, 'name', 'description')], ['<h1>', h1TextOf(html)]]) {
         if (text && HAN.test(text)) problems.push(`${file}: 英文页的${label}里混进了中文「${text.match(HAN)[0]}」：${text.slice(0, 50)}`)
       }
+      const prose = proseText(html)
+      const joined = [...new Set([...prose.matchAll(RUN_TOGETHER)].map((match) => prose.slice(Math.max(0, match.index - 20), match.index + 30)))]
+      for (const context of joined.slice(0, RUN_TOGETHER_REPORTED_PER_PAGE)) problems.push(`${file}: 英文页正文里两句话贴在一起（句号后面没有空格）：…${context}…`)
     }
   }
 

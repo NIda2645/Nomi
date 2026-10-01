@@ -90,6 +90,26 @@ test('red: an English page must not leak Chinese into its title, description or 
   assert.deepEqual(run(chineseBody), [], 'Chinese skill text in the page body is allowed on English pages')
 })
 
+test('red: two English sentences glued together (no space after the full stop) are reported; verbatim blocks are not', () => {
+  const english = (body) => goodPages().get('marketing/en/models.html').replace('<body></body>', `<body>${body}</body>`)
+  const glued = goodPages()
+  glued.set('marketing/en/models.html', english('<h2>Pro-grade AI video.Models at their real price.</h2>'))
+  const problems = run(glued)
+  assert.ok(problems.some((problem) => /marketing\/en\/models\.html: 英文页正文里两句话贴在一起.*video\.Models at/.test(problem)), JSON.stringify(problems))
+
+  const verbatim = goodPages()
+  verbatim.set('marketing/en/models.html', english('<pre class="prompt-text">Wide shot.Camera pushes in.</pre><p>Run <code>a.B</code> twice.</p>'))
+  assert.deepEqual(run(verbatim), [], 'prompt payloads and code are shown as they are')
+
+  const fine = goodPages()
+  fine.set('marketing/en/models.html', english('<p>Works with Node.js and kie.ai. See e.g. the Sora page. Version 2.5 is out!</p>'))
+  assert.deepEqual(run(fine), [], 'file names, domains, abbreviations and version numbers are not sentences glued together')
+
+  const chinese = goodPages()
+  chinese.set('marketing/models.html', goodPages().get('marketing/models.html').replace('<body></body>', '<body><p>Pro-grade AI video.Models</p></body>'))
+  assert.deepEqual(run(chinese), [], 'the rule is for English pages only')
+})
+
 test('parseSitemap reads every url with its alternates', () => {
   const entries = parseSitemap(sitemapFor(goodPages()))
   assert.equal(entries.length, 4)
