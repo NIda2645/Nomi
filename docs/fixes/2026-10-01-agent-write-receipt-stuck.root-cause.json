@@ -1,0 +1,261 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-agent-write-receipt-stuck",
+  "problem_type": "A known refusal is reported as an unknown outcome, so the write receipt never reaches a terminal state and every later write is blocked",
+  "symptom": "After one Agent write fails, every following write_script fails with 'Project Agent proposal receipt already has an unfinished operation' and the user sees 'this step's result did not reconcile — don't count it as done' (full-walk rule agent-write-receipt-stuck, pb04).",
+  "direct_cause": "The renderer answered the write with surface_port_stale (it checks the document anchor before touching the document and refused). The main process listed surface_port_stale among 'uncertain' codes and raised capability_receipt_unresolved, which by design keeps the preparing receipt as recovery evidence; nothing ever closed it, and preparing had no time limit.",
+  "class_root": "Two missing invariants: (1) classification of a renderer reply into known-refusal vs unknown-outcome had no owner and was over-broad; (2) the preparing state had no owner-set deadline, so any dead write could block the receipt forever.",
+  "affected_population": [
+    "Every user whose Agent writes to the document or canvas while the target changed since the message was sent",
+    "Document, canvas and timeline writes share the port",
+    "New and upgraded profiles alike"
+  ],
+  "entry_points": [
+    "canvasReadSurfacePort handleReply: every renderer reply to a mutating request",
+    "projectAgentProposalReceiptStore: read/write/transition/clear all pass current()"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Repository-internal invariants (per-request input size, who classifies a renderer refusal, how long a receipt may stay preparing); the framework only provides the hook point (documented in pi-agent-core types: transformContext / transform_context 'Context window management').",
+  "invariants": [
+    "A renderer refusal raised before the target is touched (surface_port_stale) is reported as itself and the call site abandons the preparing receipt (terminal)",
+    "Only interruptions that may happen after dispatch (cancelled, unavailable, suspended, binding stale) stay capability_receipt_unresolved",
+    "A receipt may stay preparing for at most the owner's deadline (write tool budget + margin); the first door to touch an older preparing settles it to undone",
+    "While inside the deadline a blocked write is told when the old one settles and to read the script first"
+  ],
+  "generality_proof": "Classification sits in the single reply handler all mutating surface requests use; the deadline sits in the receipt service's single read path (current()) that all four doors use, so no entry can read a forever-preparing receipt.",
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneDesktopTools.ts",
+      "entry_point": "write (document / canvas)",
+      "disposition": "enforced",
+      "evidence": "A definite refusal decision abandons the preparing receipt (existing branch for non-unresolved failures); unresolved keeps evidence until the deadline."
+    },
+    {
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "entry_point": "createProjectAgentProposalReceiptService",
+      "disposition": "enforced",
+      "evidence": "The external MCP host reads the same service, so the deadline applies to it too."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any renderer-side pre-check refusal on any mutating capability would take the same path; any other dead write (timeout, killed process) leaves a preparing receipt.",
+    "same_class_scan": [
+      "debug logging of the replies in a real pb04 run: the 5th mutating reply was {code: surface_port_stale}",
+      "grep of the renderer for surface_port_stale on the write path: all raised by pre-mutation target checks (documentWriteTarget, documentSessionPort)",
+      "door-map: receipt service has lane and MCP consumers"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+    "invariant": "Known refusal is never reported as unknown; preparing is time-limited.",
+    "failure_mode": "Unknown outcomes stay visible as unresolved and are settled at the deadline instead of blocking forever.",
+    "exception_policy": "none",
+    "strategy": "Classify at the reply handler (test table of codes), settle expired preparing in current() (clock-injected tests), register both concepts.",
+    "artifacts": [
+      "electron/capabilityCore/canvasReadSurfacePort.ts",
+      "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/canvasReadSurfacePort.ts",
+    "tests": [
+      "electron/capabilityCore/canvasReadSurfacePort.test.ts",
+      "electron/capabilityCore/projectAgentProposalReceiptStore.test.ts"
+    ],
+    "why": "The reply-classification table is pinned per code against the real port runtime; the deadline is pinned with an injected clock against the real on-disk receipt journal; the real-app proof is the pb04 receipt state."
+  },
+  "regression_tests": [
+    "electron/capabilityCore/canvasReadSurfacePort.test.ts",
+    "electron/capabilityCore/projectAgentProposalReceiptStore.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/canvasReadSurfacePort.test.ts",
+    "electron/capabilityCore/projectAgentProposalReceiptStore.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/canvasReadSurfacePort.ts"
+    ],
+    "rationale": "surface_port_stale is removed from the uncertain list."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Nomi's own IPC and journal logic.",
+    "exit_criteria": []
+  },
+  "migration": "A receipt already stuck on disk is settled by the deadline the first time it is touched after upgrade; no data migration.",
+  "residual_risks": [
+    "The real cause of the stale refusal (anchor captured at send time vs writes earlier in the same turn) is not changed here; it is now reported truthfully and no longer blocks later writes.",
+    "cancelled / unavailable / suspended outcomes still wait up to the deadline (about 75 s) before later writes are allowed."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+      "symbol": "createCanvasReadSurfacePortRuntime"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "createProjectAgentProposalReceiptService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "createProjectAgentProposalReceiptService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/projectAgentReceiptResolver.ts",
+      "symbol": "createProjectAgentProposalReceiptService"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "createProjectAgentProposalReceiptService"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/projectAgentReceiptResolver.ts",
+      "symbol": "createProjectAgentProposalReceiptService"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+      "symbol": "PROJECT_AGENT_PREPARING_DEADLINE_MS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneApprovalGate.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/rendererBridge.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "read",
+      "path": "src/design/SwipeToDeleteRow.tsx",
+      "symbol": "settle"
+    },
+    {
+      "kind": "read",
+      "path": "src/ui/app-shell/AgentTopbarChip.tsx",
+      "symbol": "settle"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeVideoPlaybackGuard.tsx",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneApprovalGate.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/rendererBridge.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/protocol/fileResponseStream.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/providerAdapter/service.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "src/design/confirmDialog.tsx",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "src/design/SwipeToDeleteRow.tsx",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "src/ui/toast.tsx",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/composer/useComposerAttachments.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/projectAgentDraftRecovery.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/components/viewportAnimationCoordinator.ts",
+      "symbol": "settle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "symbol": "settle"
+    }
+  ],
+  "door_reduction": {
+    "before": 25,
+    "after": 25,
+    "why_not": "The reply handler and the receipt service are single shared boundaries; the doors listed are their callers (lane and MCP hosts), each of which needs the service."
+  },
+  "scope_paths": [
+    "electron/capabilityCore/canvasReadExecutionRuntime.ts",
+    "electron/agentLane/laneDesktopRuntime.ts",
+    "electron/capabilityCore/mcpStdioServer.ts",
+    "electron/capabilityCore/projectAgentReceiptResolver.ts",
+    "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+    "electron/agentLane/laneApprovalGate.ts",
+    "electron/capabilityCore/rendererBridge.ts",
+    "src/design/SwipeToDeleteRow.tsx",
+    "src/ui/app-shell/AgentTopbarChip.tsx",
+    "src/workbench/generationCanvas/nodes/NodeVideoPlaybackGuard.tsx",
+    "electron/agentLane/laneExtendedDesktopPorts.ts",
+    "electron/capabilityCore/canvasReadSurfacePort.ts",
+    "electron/protocol/fileResponseStream.ts",
+    "electron/providerAdapter/service.ts",
+    "src/design/confirmDialog.tsx",
+    "src/ui/toast.tsx",
+    "src/workbench/ai/composer/useComposerAttachments.ts",
+    "src/workbench/ai/projectAgentDraftRecovery.ts",
+    "src/workbench/generationCanvas/components/viewportAnimationCoordinator.ts",
+    "src/workbench/onboarding/journeyTourStore.ts"
+  ],
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+      "symbol": "createCanvasReadSurfacePortRuntime",
+      "responsibility": "Classifies a renderer reply to a mutating request: a refusal raised before the target is touched is a known outcome; only possibly-dispatched interruptions stay unresolved."
+    },
+    {
+      "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+      "symbol": "createProjectAgentProposalReceiptService",
+      "responsibility": "Owns the preparing deadline: an expired preparing receipt is settled to a terminal state by whichever door touches it first."
+    }
+  ]
+}

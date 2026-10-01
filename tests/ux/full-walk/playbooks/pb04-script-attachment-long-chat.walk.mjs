@@ -22,11 +22,14 @@ import {
 } from '../../agent-runtime-walk-support.mjs'
 import { scriptTurn } from '../brain.mjs'
 import { startPlaybook } from '../launch.mjs'
+import { laneMessages, readLaneTranscripts } from '../../agent-lane-observer.mjs'
 
 const pb = await startPlaybook({
   id: 'pb04-script-attachment-long-chat',
   needs: ['loopbackProvider', 'fixtureTextModel'],
   seed: () => ({ nodes: [], groups: [], edges: [] }),
+  // 给夹具一个真实的上下文窗口（NOMI_PB04_CONTEXT_LIMIT）：超了就回 400「超出窗口」，复现用户反馈的那条路。缺省不设（与以往逐字相同）。
+  ...(process.env.NOMI_PB04_CONTEXT_LIMIT ? { fixtureOptions: { contextLimitTokens: Number(process.env.NOMI_PB04_CONTEXT_LIMIT) } } : {}),
 })
 const { smoke, fixture, monitor, outputDir } = pb
 const EN = pb.locale === 'en'
@@ -120,4 +123,23 @@ try {
   harnessError = error
   console.error('[full-walk] pb04 故障：', error?.stack ?? error)
 }
+// 用户反馈的两句话在这一场里各出现了几次（从 Agent 转录读，关 App 之前）：
+//   · 「Assistant request exceeded the context window」——模型请求被供应商以「超出上下文窗口」拒掉；
+//   · 「这一步的结果没对上账，先别按已完成算」——写入回执没拿到结果（capability_receipt_unresolved）及其后「已有未完成操作」的连环拒绝。
+await monitor.screenshot('final-panel').catch(() => undefined)
+try {
+  const evidence = { contextOverflowRequests: fixture.requests.filter((request) => request.contextOverflow).length, contextWindowErrors: 0, receiptUnresolved: 0, receiptBlocked: 0 }
+  for (const session of readLaneTranscripts(smoke.project.projectRoot)) {
+    for (const message of laneMessages(session)) {
+      if (message.role === 'assistant' && message.stopReason === 'error' && /context (window|length)/i.test(String(message.errorMessage ?? ''))) evidence.contextWindowErrors += 1
+      if (message.role === 'toolResult' && message.isError) {
+        const text = (Array.isArray(message.content) ? message.content : []).map((part) => part?.text ?? '').join(' ')
+        if (/capability_receipt_unresolved/.test(text)) evidence.receiptUnresolved += 1
+        if (/unfinished operation/.test(text)) evidence.receiptBlocked += 1
+      }
+    }
+  }
+  fs.writeFileSync(path.join(outputDir, 'user-reports-evidence.json'), JSON.stringify(evidence, null, 2))
+  console.log(`[pb04-evidence] ${JSON.stringify(evidence)}`)
+} catch (error) { console.error('[pb04-evidence] 没取到：', error?.message ?? error) }
 process.exit(await pb.finish(harnessError))

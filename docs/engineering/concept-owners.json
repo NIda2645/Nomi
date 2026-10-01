@@ -3181,32 +3181,109 @@
       "notes": "合同 docs/fixes/2026-09-29-failure-reason-from-upstream-evidence.root-cause.json：状态码（400/422）只说「请求有问题」，从不说为什么；上游自己的错误码（model_not_found 一类）才是它说的原因。三条把上游失败带过 IPC 的通道——图 / 视频 / JSON 请求（vendorHttp.requestVendor）、AI SDK 文本请求（aiSdkVendorError.vendorErrorFromAiSdkError）、Agent 的 pi 运行时（runtimeVendorError.describeRuntimeError，读响应体走 upstreamCodeFromBody）——都经同一个 pickUpstreamCode 把它随失败载荷（VendorErrorStructured.upstreamCode）带过去，classifyGenerationError 按码归类。键优先级表与 pickUpstreamMessage 同住一处。customCallRunner 只是把已有的载荷脱敏后原样（展开 structured）重包，不丢这一栏。"
     },
     {
-        "name": "一个 diff 要跑哪些验证（验证分档：单测 / 桌面 / 真实旅程 / 画布 critical·full / 性能 / 打包）",
-        "subject": "delivery.validation-policy",
-        "lifecycle": "delivery",
-        "authority_kind": "decision",
-        "trust_domain": "tooling",
-        "fact_kind": "rule",
-        "migration_status": "converged",
-        "owner": {
-            "path": "scripts/validation-policy.mjs",
-            "symbol": "classifyValidationPolicy"
-        },
-        "write_api": [
-            {
-                "path": "scripts/validation-policy.mjs",
-                "symbol": "classifyValidationPolicy"
-            }
-        ],
-        "forbidden_derivations": [],
-        "parity_test": "scripts/validation-policy.node-test.mjs",
-        "allowed_consumers": [
-            "scripts/select-quality-gate-profile.mjs",
-            "scripts/run-gates-tests.mjs",
-            "scripts/git-delivery.mjs"
-        ],
-        "since": "2026-10-01",
-        "notes": "CI 选档、本机 gates、交付收据三处共用这一个函数，不许任何一处自己再判一遍「这个 diff 要不要跑 X」。画布 full 档的清单（CANVAS_DISPLAY_OWNER_PATTERNS）对着本表里画布显示相关概念的 owner 与写口列，parity_test 逐个概念核对；generationCanvas 每个子目录必须表态。合同 docs/fixes/2026-10-01-canvas-classifier-display-owners.root-cause.json。"
+      "name": "每一次模型请求的输入预算（超了怎么收：用 pi 自带的压缩，这里只出配置）",
+      "subject": "agent-lane.request-input-budget",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/agentLane/laneContextBudget.mts",
+        "symbol": "laneCompactionSettings"
+      },
+      "write_api": [
+        {
+          "path": "electron/agentLane/laneContextBudget.mts",
+          "symbol": "laneCompactionSettings"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneHost.mts"
+      ],
+      "since": "2026-10-01",
+      "notes": "预算数字与它换算成 pi 压缩配置（reserveTokens / keepRecentTokens）只住 laneCompactionSettings；压缩本身（切点、摘要、保留尾巴）全是 pi 的，我们不写第二份。"
+    },
+    {
+      "name": "写入回执「准备中」的时限与终态",
+      "subject": "agent-proposal.receipt-preparing-deadline",
+      "lifecycle": "execution",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+        "symbol": "createProjectAgentProposalReceiptService"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+          "symbol": "createProjectAgentProposalReceiptService"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneDesktopRuntime.ts",
+        "electron/capabilityCore/mcpStdioServer.ts",
+        "electron/capabilityCore/projectAgentReceiptResolver.ts"
+      ],
+      "since": "2026-10-01",
+      "notes": "回执停在 preparing 的最长时间由回执自己的主人定（PROJECT_AGENT_PREPARING_DEADLINE_MS = 写工具预算 + 收尾余量），任何一扇门（read/write/transition/clear）第一次碰到过期的 preparing 就把它落到终态 undone。这是兜底，不是修复：写入被明确拒绝时由调用方当场收场（见 capability.surface-write-outcome）。"
+    },
+    {
+      "name": "渲染层写入回复的结局归类（明确拒绝 / 结局不明）",
+      "subject": "capability.surface-write-outcome",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+        "symbol": "createCanvasReadSurfacePortRuntime"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+          "symbol": "createCanvasReadSurfacePortRuntime"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/capabilityCore/canvasReadExecutionRuntime.ts"
+      ],
+      "since": "2026-10-01",
+      "notes": "一次改动型请求渲染层回了错误码：它在碰文稿之前验目标发现对不上而拒绝（surface_port_stale）= 结局已知，什么都没执行，如实往上报；被取消 / 端口不可用 / 被挂起 / 绑定过期可能发生在派发之后 = 结局不明，才是 capability_receipt_unresolved。把已知拒绝当不明会让回执永远停在 preparing（pb04 走查 agent-write-receipt-stuck 的第一根因）。"
+    },
+    {
+      "name": "一个 diff 要跑哪些验证（验证分档：单测 / 桌面 / 真实旅程 / 画布 critical·full / 性能 / 打包）",
+      "subject": "delivery.validation-policy",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "scripts/validation-policy.mjs",
+        "symbol": "classifyValidationPolicy"
+      },
+      "write_api": [
+        {
+          "path": "scripts/validation-policy.mjs",
+          "symbol": "classifyValidationPolicy"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "scripts/validation-policy.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/select-quality-gate-profile.mjs",
+        "scripts/run-gates-tests.mjs",
+        "scripts/git-delivery.mjs"
+      ],
+      "since": "2026-10-01",
+      "notes": "CI 选档、本机 gates、交付收据三处共用这一个函数，不许任何一处自己再判一遍「这个 diff 要不要跑 X」。画布 full 档的清单（CANVAS_DISPLAY_OWNER_PATTERNS）对着本表里画布显示相关概念的 owner 与写口列，parity_test 逐个概念核对；generationCanvas 每个子目录必须表态。合同 docs/fixes/2026-10-01-canvas-classifier-display-owners.root-cause.json。"
     }
   ]
 }

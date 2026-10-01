@@ -325,6 +325,32 @@ describe("dedicated renderer CanvasReadPort", () => {
     await expect(writing).resolves.toEqual({ applied: true, revision: 5, contentHash: "next" });
   });
 
+  describe("a renderer refusal on a write is a known outcome, not an unknown one", () => {
+    const write = (test: ReturnType<typeof setup>, captured: Awaited<ReturnType<ReturnType<typeof setup>["capture"]>>["captured"]) =>
+      test.runtime.createDocumentWritePort(captured, "document-a").write({
+        operation: "replace", content: "new text",
+        target: { kind: "document", documentId: "document-a", anchor: { kind: "range", from: 1, to: 3, selectedTextHash: "h" } },
+        preconditions: { document: { revision: 4, contentHash: "old" } }, signal: new AbortController().signal,
+      });
+
+    it("surface_port_stale: the renderer checked the target BEFORE touching the document and refused — the host says so (nothing ran), it does not call it unresolved", async () => {
+      const test = setup();
+      const { captured, binding } = await test.capture();
+      const writing = write(test, captured);
+      test.replyDocumentWrite({ requestId: "read-5", binding: structuredClone(binding), error: { code: "surface_port_stale" } });
+      await expect(writing).rejects.toMatchObject({ code: "surface_port_stale" });
+    });
+
+    it.each(["capability_cancelled", "surface_port_unavailable", "surface_port_suspended", "project_binding_stale"] as const)(
+      "%s: the renderer may have been interrupted after dispatch — the outcome stays unresolved", async (code) => {
+        const test = setup();
+        const { captured, binding } = await test.capture();
+        const writing = write(test, captured);
+        test.replyDocumentWrite({ requestId: "read-5", binding: structuredClone(binding), error: { code } });
+        await expect(writing).rejects.toMatchObject({ code: "capability_receipt_unresolved" });
+      });
+  });
+
   it("captures raw Canvas evidence and executes only main-issued write authority on independent channels", async () => {
     const test = setup();
     const { captured, binding } = await test.capture();
