@@ -310,7 +310,10 @@ export function createInvariantMonitor(options) {
       if (distinct.size <= 1) continue
       await violate({
         invariant: 3, rule: 'card-kind-mismatch', key: `${consent.id}|${shot.shotId}`,
-        module: 'electron/capabilityCore/semanticGenerationCandidate.ts inferGenerationTaskKind（提示词里有「镜头 / 动画」等词就判视频，与点名的模型无关）+ 候选 mode 缺省取 taskKind + 卡标题读 mode / 卡体读模型种类 / 画布节点读 shot.kind——四处各读各的，没有唯一主人',
+        // 2026-10-01（付费卡① 第 9 条）：种类只有一个主人——建镜头时 generationShotKind.resolveShotTaskKind 定、
+        // semanticGenerationCandidate.admitShotIdentity 核，之后四处都读 generationShotKind。这条规则还红，
+        // 说明有一个读者绕开了它（或者一条建镜头的路没过核对）。删掉的按提示词猜种类的旧路不该再出现。
+        module: 'electron/shared/generationShotKind.ts（resolveShotTaskKind 定种类 / generationShotKind 唯一读口）+ electron/capabilityCore/semanticGenerationCandidate.ts admitShotIdentity（建镜头时核模型 + 模式）——这条还红就是有读者绕开了唯一主人',
         message: `付费卡对「${shot.shotId}」说的自相矛盾：${Object.entries(facts).map(([name, value]) => `${name}=${value ?? '无'}`).join('，')}（标题「${consent.dom.title}」，模型 ${shot.providerId}/${shot.model}，模式 ${shot.mode ?? '无'}）`,
         snapshot: { facts, shot: { ...shot, surfaceText: undefined }, title: consent.dom.title },
       })

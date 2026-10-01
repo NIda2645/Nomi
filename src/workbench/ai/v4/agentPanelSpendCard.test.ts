@@ -224,9 +224,10 @@ describe('「N 镜」汇总只在多镜时出现', () => {
     expect(data.price?.breakdown).toBe('')
     expect(data.totalLead).toContain('count=2')
   })
-  it('多镜但报不出合计：页脚什么价格话都不说，正文下补一句「N 镜」', () => {
+  it('多镜但报不出合计：页脚什么价格话都不说，正文下也不再补一句「N 镜」', () => {
     const data = projectSpendCard(pending([shot(1, 0.3), shot(2, null)]), { page: 0 }, t, { locale: 'zh-CN' })!
-    expect(data.price?.breakdown).toContain('spendParamsBreakdownNoUnit')
+    // 标题和「生成剩下 N 张」都已经说了几张；正文下不再印第三遍（2026-10-01 样张没有这一行）。
+    expect(data.price?.breakdown).toBe('')
     expect(data.totalLead).toBeUndefined()
   })
 })

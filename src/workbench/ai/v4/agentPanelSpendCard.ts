@@ -76,11 +76,12 @@ export function projectSpendCard(
     // · 单镜：标题已经写着「生成这 1 段视频？」，再印「1 镜」是把同一件事说两遍；
     // · 多镜且整齐、报得出合计：页脚左下已经是「N 镜 · 合计 ¥X」，再印「N 镜」同样是重复；
     // · 多镜但**逐镜不同**：印「N 镜 · 逐镜不同」并带逐镜折叠口——这是页脚说不出的；
-    // · 多镜但**报不出合计**：页脚是「价格未知…」那句、没有镜数，所以这里补一句「N 镜」。
+    // · 多镜但**报不出合计**：什么都不印。以前这里补一句「N 镜」，因为页脚那句「价格未知…」没有镜数；
+    //   那句随「仍要生成」删了，标题和「生成剩下 N 张」都已经说了几张，再印一行就是第三遍（2026-10-01 样张没有这一行）。
     breakdown: shots.length <= 1
       ? ''
       : total === undefined
-        ? t('agentPanelV4.spendParamsBreakdownNoUnit', { count: shots.length })
+        ? ''
         : uniform
           ? ''
           : t('agentPanelV4.spendParamsBreakdownMixed', { count: shots.length }),

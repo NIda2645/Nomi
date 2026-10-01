@@ -1,6 +1,6 @@
 # 付费卡逐镜：点了的生成，去掉的不生成
 
-> 状态：🚧 进行中（2026-09-30：协调会话已拍板 Q1–Q9；分三个叠着的 PR——A1 / A2 / A3，验收只在 A3 头上做一次。2026-10-01：A1 已实现，主人按下表落地）。
+> 状态：🚧 进行中（2026-09-30：协调会话已拍板 Q1–Q9。2026-10-01：A1 已实现；A2（第 9–12 条）已实现；用户拍板加「生成剩下 N 张」，已按样张与随后的位置反馈实现；A1–A3 合成一个 PR #947，验收只在 A3 头上做一次）。
 > 质量体系按 `docs/plan/2026-09-29-quality-system.md`：测试表、真实路径测试、中英截图、验收页。
 
 ## 用户那条路
@@ -24,10 +24,11 @@
 | 6 一个主人 | `production.dispatch-authorization-scope`：每点一次封一份只盖这一镜的授权，**信封存在它自己那道门上**；派发核「批这个 job 的那一份」 | 批次调度器、老驱动 |
 | 7 不说今天不真的钱话 | 卡投影不出「仍要生成」「价格未知」「逐镜 / 全部」；上传托管那句只说事实，不说哪家免费、不替用户推荐 | 卡、Agent 确认框 |
 | 8 不双扣 | 宿主确认按 operation 串行；同一镜已经批过（这一次出价里）就原样返回、不再封 | — |
-| 9 种类 / 模型 / 参数一个值（A2） | 唯一构造器：矛盾的镜头当场拒绝 | 卡标题、卡体、画布节点、派发 |
-| 10 卡可改（A2） | 卡上的改动走 `generation.revise`（只动没决定的镜），不碰画布 | 卡 |
-| 11 失败只给存在的出路（A2） | 失败码 → 文案表 | 卡 |
-| 12 没点不叫排队中（A2） | 画布小标读宿主的逐镜决定：等你确认 / 还没生成 / 已去掉 | 画布 |
+| 9 种类 / 模型 / 参数一个值（A2） | 建镜头时定种类：`generationShotKind.resolveShotTaskKind`（只看点名的模型 + 明写的种类）；每条建镜头的路落盘前过 `semanticGenerationCandidate.admitShotIdentity`（和派发同一个 `registry.resolve`） | 只读 `generationShotKind`：卡投影（`PendingSpendShot.kind`）、卡标题与卡体、画布落地、派发 |
+| 10 卡可改（A2） | 卡上的改动走 `generation.revise`（只动没决定的镜），不碰画布；真改不了时卡体在原处说为什么（共用 composer 的只读理由） | 卡 |
+| 11 失败只给存在的出路（A2） | 宿主给没发起的那一档点名是哪一种（`productionShotActionFailureOf` 的闭集，`ProductionActionResult.failure`）；渲染层 `spendCardFailure.spendActionFailureCopy` 照它挑一句，「改一下再按」只在卡此刻真能改时出现 | 卡 |
+| 12 没点不叫排队中（A2） | 画布小标读宿主的逐镜决定：等你确认 / 还没生成 / 已去掉（`productionShotPhase.deriveProductionShotState`，#940 + A1 已落地，A2 核验） | 画布 |
+| 「生成剩下 N 张」（用户 2026-10-01） | 宿主 `appIntegrationSpendConfirm.confirmRemainingShots`：卡上还没决定的每一张各走一次 `confirmOneShot`（各封一份授权、各派一次，没有总价授权） | 卡（动作行最左那颗） |
 | 13 时效跟着点击（A3，F1） | 同意窗口的唯一主人：每一次点击（生成这张、放行形象、继续剩余）续这次点到的那几镜；没人点的自动路径过期就如实停下、给按钮 | 派发、画布小标 |
 | 14 批准只核批过的那一份（A3，F4） | 批准那一刻核信封自己的事实，不核活的项目文档版本 | — |
 
@@ -41,6 +42,20 @@
 6. **删掉**：卡上的「逐镜 / 全部」切换和「全部」那条路、「仍要生成」、「价格未知 · 以供应商账单为准」、宿主「取消勾选其余再封印」那一段、写死的「已开始」回执。
 7. **上传托管那句**：Agent 确认框和托管同意的报错只说事实——素材会上传到公共临时托管、链接短期有效、有隐私风险、可以在设置里换上传通道；不说「免费」，不替用户推荐某一家。
 
+## A2 的结构（第 9–12 条）
+
+1. **种类只有一个答案**：删掉按提示词关键词判种类的 `inferGenerationTaskKind`。建镜头时种类只从「点名的模型在目录里声明的模式 + 明写的 taskKind / mode / modeId」来（`resolveShotTaskKind`）；两样都没有就请 Agent 写明，不猜。每条建镜头的路（单镜 / 多镜 create、整只给候选、改草稿）落盘前都过 `admitShotIdentity`：模型 + 模式在目录里真有这一对，参考卡只能是图片；矛盾的当场拒绝，说清这个模型能做什么。换模型（没另写种类）时这一镜还是同一种任务，模式按新模型目录里的拼法跟过去，新模型做不了就拒绝。
+2. **四处读同一个函数**：宿主把 `generationShotKind` 投影成 `PendingSpendShot.kind`；卡标题（张 / 段）、主按钮措辞、卡体那张生成框都只读这一格，画布落地也调同一个函数（以前它用 `/image/` 判模式，图生视频会落成图片节点）。
+3. **卡可改**：第 9 条之后卡体那张框的种类恒为图或视频，每一镜都有能改的框；真改不了时（写入面失效）共用 composer 在原处说为什么。
+4. **失败只给存在的出路**：宿主对「没发起」的那一档点名是哪一种（与重做 / 续拍同一个闭集），卡照它说；认不出时才说「改一下再按」，而且只在卡此刻真能改时说，改不了就说改不了、该怎么办。「可能已提交」只看**这一镜自己的**作业——以前整个 Run 一起看，前一张发出去后，后面任何一张在发出前失败都会说成「可能已提交」。
+5. **没点不叫排队中**：#940 + A1 已经让画布小标读宿主的逐镜决定；A2 在真机走查里再核一遍（卡没点时这两张写的是「等你确认」）。
+
+## 「生成剩下 N 张」（用户 2026-10-01 拍板，样张 `docs/design/mockups/2026-10-01-paid-card-generate-remaining/`）
+
+- **行为**：等于把卡上还没决定的每一张各点一次「生成这张」——每张各记一笔授权，没有总价授权；去掉过的不在 N 里。点完卡和画布上每个节点的状态跟逐张点完全一致（同一份逐镜结局驱动）。宿主核两件事：点名的就是此刻卡上那一叠（报价指纹 + 镜号逐个对上），每一张开拍前它在卡上的样子没被别人改过。哪一张没成就停在那一张，它和后面的照旧在卡上；中途点 × 剩下的不再生成（× 不排队）。渲染层先把每一页卡上摆着的那一份落进候选（和逐张点同一段），再递「用户点的是这几张」。
+- **长相**：从第 1 页起就在、写明张数（「生成剩下 N 张 / 段」，en「Generate remaining N」）；张 / 段跟标题同一条规则（有视频就说段）；只剩 1 张时不画；报不出价时哪儿都不写数，报得出价时也不带合计。
+- **位置**（样张拍板后按用户反馈调整，以实现为准）：翻页那一行只有翻页器和 `←→`，报得出价时这一叠的合计贴这一行最右端；「生成剩下 N 张」在动作行最左，右边是「去掉这张」和主按钮（一组）。英文一行放不下时左边那颗整颗换到上一行、靠左，右边两颗保持一组靠右；中文一行放下。设计系统 §1.8 记了这条例外，并注明 9-10 那版「批量是主按钮的一个状态」在付费卡上已被取代。
+
 ## 概念占用表（R33）
 
 | 概念 | 唯一 owner | 允许谁消费 | 这次 |
@@ -50,7 +65,8 @@
 | 这一次出价的逐镜结局（新，`production.spend-card-outcome`） | `electron/shared/productionGenerationPresentation.ts#generationPresentationOutcome` | 卡投影、封印范围、画布小标、operation 视图、确认路径、回执 | 新登记 |
 | generate 回执（新，`agent-lane.generate-receipt`） | `electron/shared/agentLane/generateOutcomeReceipt.ts#describeGenerateOutcome` | 内部 lane 回执 | 新登记 |
 | 待确认付费卡投影 | `electron/productionRun/productionPendingSpend.ts#projectPendingSpendConfirm` | 面板付费卡 | 只投影没决定的镜 |
-| 付费卡上的动作 | `electron/capabilityCore/appIntegrationSpendConfirm.ts` | IPC → 面板 | 逐镜确认、去掉、× |
+| 付费卡上的动作 | `electron/capabilityCore/appIntegrationSpendConfirm.ts` | IPC → 面板 | 逐镜确认、去掉、×；「生成剩下 N 张」（逐张走同一个 `confirmOneShot`） |
+| 一镜是图还是视频（新，`generation.shot-kind`） | `electron/shared/generationShotKind.ts#resolveShotTaskKind`（定）+ `semanticGenerationCandidate.admitShotIdentity`（核）+ `generationShotKind`（读） | 建镜头的路、卡投影、画布落地 | A2 新登记 |
 
 不碰（别的 lane 正持有）：`electron/shared/agentLane/laneProjection.ts`、`electron/agentLane/laneModelContext.ts`、`electron/agentLane/laneContextBudget.mts`、`laneDesktopTools.ts` / `projectAgentProposalReceiptStore.ts`、`workbenchDocumentSlice` 的分镜激活。`tests/ux/full-walk/` 现在没人持有（协调会话 2026-10-01）：A1 跟着改目录里的两个 i18n 键、PB01 的步骤（点完第 1 页卡还在、只剩第 2 张，再 ×）和监视器的 `card-scope-mismatch` 判据（按钮许诺几镜就只发几镜、标题数还没决定的镜、没点的镜不许悄悄没了——按宿主的出价账查）。
 
@@ -129,6 +145,15 @@
 | 画布连线的参考图摆上卡 | `canvasReferenceInputs` | 有：画布自己那一份槽位解析 `resolveReferenceSlots`（React Flow 的边） | 直接读已有的主人，没有再写一份解析 | 复用 |
 | 旧数据归一 | `normalizeLegacySpendAuthority`、`normalizeLegacyPresentation` | 没有 | 我们自己的旧格式 | 我们独有（必然） |
 
+A2 与「生成剩下 N 张」新写或改写的：
+
+| 机制 | 落在哪 | 别人有没有现成的 | 用不用、为什么 | 结论 |
+|---|---|---|---|---|
+| 建镜头时定种类（不按提示词猜） | `generationShotKind.resolveShotTaskKind` | 没有：AI SDK / pi 的工具调用只校验入参形状，「这个模型能出什么」是我们目录里的事实 | 判据就是我们自己的模型目录（每个模型发布了哪些模式），删掉的是我们自己的提示词启发式 | 我们独有（领域） |
+| 建镜头时核「模型 + 模式」 | `semanticGenerationCandidate.admitShotIdentity` | 有：我们自己的 `moduleRegistry.resolve`（派发前编译合同用的就是它） | 直接复用这一个判据，只是提前到落盘之前；没有再写一份目录解析 | 复用 |
+| 失败时说哪一句 | 宿主 `ProductionActionResult.failure` + 渲染层 `spendCardFailure.spendActionFailureCopy` | 有：重做 / 续拍那一套失败闭集与文案表（`productionShotActionFailureOf`、`SHOT_ACTION_FAILURE_COPY`） | 直接复用那个闭集和那张表；新写的只有「卡能不能改」这一个判据和三句卡上特有的话（卡刚变了 / 这张已不在卡上 / 卡改不了） | 复用 + 薄映射 |
+| 「生成剩下 N 张」 | `appIntegrationSpendConfirm.confirmRemainingShots` | 产品层有：Runway Workflows「Run all」、Higgsfield 一次生成一组（见「先查别人」产品层表）；框架层没有：AI SDK 审批是一次调用一个是 / 否，pi 只能整次放行或挡下 | 照产品层的形状给一颗点名数量的按钮；执行上每张仍走逐张那一条路（各一份授权）——「每张各记一笔授权、不出总价授权」是用户拍板的花钱语义，框架里没有对应物 | 我们独有（按镜头花钱） |
+
 **和 B（付费卡并进对话）重叠的部分，这次没做死：**
 
 - 等待：`generate` 挡在 pi 的 `before_tool` 里，等的是 `spendDecisionWaiters` 递来的「卡关了」（confirmed / declined），结论再去宿主读（`readPresentationOutcome`）。B 可以把这一跳换成对话投影里那个 tool part 的审批状态，出价账和逐镜结局不用动。
@@ -137,4 +162,4 @@
 
 ## 测试表
 
-见任务书第 1–25 行；A1 覆盖 1–18，A2 覆盖 19–22，A3 覆盖 23–25。
+见任务书第 1–25 行；A1 覆盖 1–18，A2 覆盖 19–22，A3 覆盖 23–25。「生成剩下 N 张」另记几行（PR 正文测试表末尾），同在 A3 头上的验收页里。

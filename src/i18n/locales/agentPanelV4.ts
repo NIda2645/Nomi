@@ -442,8 +442,6 @@ export const zhAgentPanelV4 = {
   /** 「怎么算出来的」那半行。数由报价给，语序在这里。 */
   /** 逐镜参数已经不一样了：那句算式不再成立，改说「逐镜不同」，数字交给下面的逐镜折叠口。 */
   spendParamsBreakdownMixed: '{{count}} 镜 · 逐镜不同',
-  /** 报不出价时的算式：**不印单价、不印时长**。报不出价却印着 ¥0.10/秒，等于自己编了一个数。 */
-  spendParamsBreakdownNoUnit: '{{count}} 镜',
   spendParamsTotalLabel: '合计',
   spendParamsUnavailable: '暂时算不出价格',
   spendParamsPerItem: '逐镜 · {{count}} 镜',
@@ -905,7 +903,6 @@ export const enAgentPanelV4 = {
   spendParamsTitleImage_other: 'Generate these {{count}} images?',
   spendParamsModelPicked: 'Nomi picked',
   spendParamsBreakdownMixed: '{{count}} shots · settings differ',
-  spendParamsBreakdownNoUnit: '{{count}} shots',
   spendParamsTotalLabel: 'Total',
   spendParamsUnavailable: 'Price unavailable right now',
   spendParamsPerItem: 'Per shot ({{count}})',
