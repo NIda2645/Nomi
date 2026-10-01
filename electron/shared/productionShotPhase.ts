@@ -8,7 +8,7 @@
 //
 // 现在：主进程的画布落地投影（`multiShotCanvasLanding.buildMaterializeShotsPayload`）用这里判出每一镜的段，
 // 把「生成中 / 失败 / 结束」写进节点自己的运行记录——和普通生成同一份状态、同一套画法；
-// 渲染层只剩「排队中 / 已停」两块制作专属的小标（它们没有普通生成的对应物），也读这里。
+// 渲染层只剩制作专属的小标（等你确认 / 还没生成 / 排队中 / 已停——它们没有普通生成的对应物），也读这里。
 // 同一个输入，两端的判定逐字相同，不会一个说在生成、一个说已停。
 //
 // 真相源 = Run 的 jobs[] + status（纯派生，无第二份状态）。
@@ -17,10 +17,17 @@ import { runStopReason } from "./productionRunStop";
 export { decideShotClaim } from "./decideShotClaim";
 import { shotCountsTowardBatch, shotIncluded } from "./productionShotJobs";
 
-export type ProductionShotPhase = "queued" | "generating" | "stopped" | "failed" | "done";
+/**
+ * - `awaiting_confirmation`：卡正摆着它 / 它那道付费门在等人——在等**用户**，不是在排队；
+ * - `not_generated`：从没被批过（没有任何一次任务），此刻也没人在问——它不在任何队列里；
+ * - `queued`：批过了（有任务、还没派出去），等轮到它；
+ * - `stopped`：批过了、没派出去，而这次制作停着；
+ * - `generating` / `failed` / `done`：由节点自己的运行记录画（主进程落地投影写进去）。
+ */
+export type ProductionShotPhase = "awaiting_confirmation" | "not_generated" | "queued" | "generating" | "stopped" | "failed" | "done";
 
 type ProductionShotStateFields = {
-  /** 这一镜最新的那次任务（排队中且还没派发时没有）。投影用它的 jobId 当节点运行记录的身份。 */
+  /** 这一镜最新的那次任务（从没被批过时没有）。投影用它的 jobId 当节点运行记录的身份。 */
   job?: ProductionJob;
   /** 排队中：第 n / N（n=本镜在待生成序列里的位次，从 1 起；N=总镜数）。仅 queued 有。 */
   queueIndex?: number;
@@ -157,15 +164,25 @@ export function productionShotIdForNode(run: ProductionRun, nodeId: string): str
 }
 
 /**
- * 一镜此刻的段。找不到这一镜 → null。
+ * 报价卡此刻正摆着这一镜：草稿、卡没被藏起来（`cardHidden` 只在「起草了、还没摆给用户」时为 true），这一镜勾进了这一批。
+ * 已封印、门在等人的那几镜有 `authorization_required` 的任务，走上面的人工门表。
+ */
+function planCardAwaitsUser(run: ProductionRun, shot: { included?: boolean } | undefined): boolean {
+  const plan = run.generationPlan;
+  return Boolean(plan && plan.state === "draft" && plan.cardHidden !== true && shot?.included !== false);
+}
+
+/**
+ * 一镜此刻的段。找不到这一镜 → null；制作已经放手（`detached`：画布接手 / 占位被删）→ null。其余每一种都有自己的段，
+ * 不再用 null 表示「还没点头」——null 在画布上什么都不画，用户分不清「在等我」「没人管」还是「我们忘了」。
  *
- * - 没派发、run 也没停：本次付费范围里的镜「排队中（第 n/N）」；**不在本次付费范围里（`included:false`）
- *   又从没派发过的镜不属于任何队列**——返回 null。以前它们也显「排队中」，而这批跑完了它们还在「排队」，
- *   是一句永远不会兑现的话（2026-09-25 走查：只确认了第 1 镜，第 2 镜一直挂着「排队中」）。
- * - 禁「永远等待生成」假进度：没有 job 绝不显「生成中」。
- * - **用户还没点头 = 什么都不说**（2026-09-24）：草稿（`draft_shots` 建的、报价卡还在等）、job 还停在人工门前、
- *   没点头就取消——返回 null。以前这些都落到「排队中」：Agent 按「先别生成」建的草稿挂着「排队中 · 第 1/1」，
- *   读起来像已经在排队花钱（那一刻 0 job、0 请求）。「派出去了没有」只看两件事：`jobAwaitsHuman`（人工门表），与没有 job 时计划是否已提交、这一镜是否勾进了这一批。
+ * **没点就不叫排队中**（付费卡① 第 12 条）。「排队」只说一件事：这一镜被批过、有任务、还没派出去。判据只看账本：
+ * - 最新那次任务还停在人工门前（`jobAwaitsHuman`：报价卡 / 返工·续拍待授权）→ 等你确认；
+ * - 一次任务都没有 = 从没被批过：卡正摆着它（草稿、卡没藏）→ 等你确认；否则 → 还没生成。调度器只派有任务的镜
+ *   （`batchScheduleDerivation.needsDispatch`），所以没有任务的镜说「排队中」是一句永远不会兑现的话
+ *   （2026-09-25 走查：只确认了第 1 镜，第 2 镜一直挂着「排队中」；2026-09-30 用户实见：没确认的视频节点挂着「排队中 · 第 1/1」）；
+ * - 有任务、还在派发前：Run 停着 → 已停（原因照 Run 记下的说）；否则 → 排队中（第 n/N）。
+ * - 禁「永远等待生成」假进度：没有任务绝不显「生成中」。
  */
 export function deriveProductionShotState(run: ProductionRun | null | undefined, shotId: string | undefined): ProductionShotState | null {
   if (!run || !shotId || !run.generationPlan) return null;
@@ -174,8 +191,8 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   if (!single && !shot) return null;
   if (single && shotId !== run.generationPlan.candidate.candidateId) return null;
   const job = latestJob(jobsForShot(run, shotId));
-  // 最新那次任务还停在人工门前（报价卡 / 返工·续拍待授权）：什么都还没发生。
-  if (job && jobAwaitsHuman(job.status)) return null;
+  // 最新那次任务还停在人工门前（报价卡 / 返工·续拍待授权）：在等用户点头，供应商那边什么都还没发生。
+  if (job && jobAwaitsHuman(job.status)) return { phase: "awaiting_confirmation", job };
   // 最新那次任务已脱离制作（画布认领了这一镜、计划被拒 / 脱离画布）：制作不会再派它，
   // 节点上既不是「排队中」也不是「已停 · 提额续拍」——点那个按钮续的会是别的镜头。
   if (job?.status === "detached") return null;
@@ -192,16 +209,15 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   }
   if (job && jobPhase === "generating") return { phase: "generating", job };
 
-  // 没有 job 时，只有计划已提交、这一镜又勾进了这一批，它才真的在排队（批次会自己轮到它）。
-  // 否则是用户还没点头（草稿 / 报价卡在等 / 没点头就取消），或者这镜没被勾进这一批：它不在任何队列里。
-  if (!job && (run.generationPlan.state !== "submitted" || shot?.included === false)) return null;
-  // 无 job 或 job 还在派发前的档：run 停着 → 显「已停」，原因照 Run 记下的说；否则「排队中（第 n/N）」。
+  // 一次任务都没有 = 从没被批过：不在任何队列里。卡正摆着它就是在等用户，否则就是还没生成。
+  if (!job) return { phase: planCardAwaitsUser(run, shot) ? "awaiting_confirmation" : "not_generated" };
+  // 有任务、还在派发前的档（批过了，等轮到它）：run 停着 → 显「已停」，原因照 Run 记下的说；否则「排队中（第 n/N）」。
   const stopReason = runStopReason(run);
-  if (stopReason) return { phase: "stopped", ...(job ? { job } : {}), stoppedReason: stopReason };
+  if (stopReason) return { phase: "stopped", job, stoppedReason: stopReason };
   // 排队位次：anchor 不进视频序列（它先于镜跑），显纯「排队中」；单镜也没有序列可言。
-  if (single || shot?.role === "anchor") return { phase: "queued", ...(job ? { job } : {}) };
+  if (single || shot?.role === "anchor") return { phase: "queued", job };
   const videoShots = queueShotsOf(run);
   const total = videoShots.length;
   const index = videoShots.findIndex((candidate) => candidate.shotId === shotId);
-  return { phase: "queued", ...(job ? { job } : {}), ...(index >= 0 && total > 0 ? { queueIndex: index + 1, queueTotal: total } : {}) };
+  return { phase: "queued", job, ...(index >= 0 && total > 0 ? { queueIndex: index + 1, queueTotal: total } : {}) };
 }

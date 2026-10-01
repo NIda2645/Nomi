@@ -1442,6 +1442,9 @@ export const zhGenerationCommon = {
       groupName: '分镜组·{{name}}',
       groupFallbackName: '分镜组',
       shotFallbackTitle: '镜头 {{shot}}',
+      // 没点就不叫排队中：卡正摆着它 → 等你确认；从没被批过、也没人在问 → 还没生成（都不转圈）。
+      awaitingConfirmation: '等你确认',
+      notGenerated: '还没生成',
       queued: '排队中',
       queuedNth: '排队中 · 第 {{index}}/{{total}}',
       stoppedBudget: '预算已用完，这镜还没开拍。提额后可继续拍剩下的。',
@@ -2972,6 +2975,9 @@ export const enGenerationCommon = {
       groupName: 'Shot group · {{name}}',
       groupFallbackName: 'Shot group',
       shotFallbackTitle: 'Shot {{shot}}',
+      // Not clicked means not queued: on the card → waiting for the user; never approved and nobody asking → not generated.
+      awaitingConfirmation: 'Waiting for you',
+      notGenerated: 'Not generated',
       queued: 'Queued',
       queuedNth: 'Queued · {{index}}/{{total}}',
       stoppedBudget: 'Budget ran out before this shot. Raise it to keep filming the rest.',

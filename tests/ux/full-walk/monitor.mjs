@@ -22,6 +22,8 @@ import { laneMessages, readLaneTranscripts } from '../agent-lane-observer.mjs'
 import { appFramesOf, classifyEgress, REQUIRED_GUARD_LAYERS, vendorHostsOf } from './egress.mjs'
 import { INVARIANTS, invariantById, loadDictionaries, loadLimits, UI_LOCALES, uiText, uiTextPattern } from './invariants.mjs'
 import { ensurePageProbe, readPageProbe } from './pageProbe.mjs'
+import { unseenPromptAdditions } from './promptTruth.mjs'
+import { finishedNodeSpinner, snapshotAgeMs } from './spinnerVerdict.mjs'
 import { DESIGN_ROOTS, rootOfRule } from './rules.mjs'
 
 /** 夹具模型的显示名（只有中文 labelZh）：EN 界面上看到它们不是漏译。 */
@@ -259,7 +261,10 @@ export function createInvariantMonitor(options) {
     const allShots = (pending?.shots ?? []).map((shot) => ({
       shotId: shot.shotId, nodeId: shot.nodeId ?? null, index: shot.index, prompt: shot.prompt,
       providerId: shot.providerId, model: shot.modelId, params: shot.parameters ?? {}, refs: (shot.references ?? []).length,
-      canvasRefs: canvasRefsOf(shot.nodeId),
+      canvasRefs: canvasRefsOf(shot.nodeId), surfaceText: dom.text,
+      // 「这一镜到底是图还是视频」的四份说法（铁律 3：同一件事，四处读法必须一致）：候选的模式、模型自己的种类（目录）、画布占位节点的种类，加上卡标题一份（在下面对整张卡判）。
+      mode: shot.mode ?? null, modelKind: catalogKindOf(shot.providerId, shot.modelId),
+      nodeKind: (canvas.nodes ?? []).find((node) => node.id === shot.nodeId)?.kind ?? null,
     }))
     // 按钮承诺的范围：按钮上写了「N 镜」= N 镜（全部）；没写而卡在翻页 = 只有眼前这一页。
     const buttonScope = buttonCount > 1 || !pagerMatch ? allShots : allShots.filter((_, index) => index === pageIndex)
@@ -271,7 +276,57 @@ export function createInvariantMonitor(options) {
     }
     consents.push(consent)
     fs.writeFileSync(path.join(outputDir, `${consent.id}-spend-card.json`), JSON.stringify(consent, null, 2))
+    await checkCardCoherence(consent)
+    await checkQueuedBeforeConsent(consent)
     return consent
+  }
+
+  /** 模型自己的种类（image / video / text / audio）：只从 App 用的那份目录读，读不到 = null（不判）。 */
+  function catalogKindOf(vendorKey, modelKey) {
+    try {
+      const catalog = JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))
+      const hit = (catalog.models ?? []).find((model) => model.modelKey === modelKey && (!vendorKey || model.vendorKey === vendorKey))
+      return hit?.kind ?? null
+    } catch { return null }
+  }
+
+  /**
+   * 付费卡上「这是图还是视频」只有一个答案：卡标题、候选的模式、模型自己的种类、画布占位节点的种类，四样必须一致。
+   * 任何两样不一致，用户在付钱前那一刻看到的就是自相矛盾的一张卡（标题说视频、模型是图片模型、节点又是视频）。
+   */
+  async function checkCardCoherence(consent) {
+    const kindOfText = (value) => (/video|视频/i.test(String(value ?? '')) ? 'video' : /image|图|封面/i.test(String(value ?? '')) ? 'image' : null)
+    const titleKind = /视频|video/i.test(consent.dom.title) ? 'video' : /图片|image|张/i.test(consent.dom.title) ? 'image' : null
+    for (const shot of consent.allShots) {
+      const facts = { 卡标题: titleKind, 候选模式: kindOfText(shot.mode), 模型种类: shot.modelKind, 画布节点: shot.nodeKind }
+      const distinct = new Set(Object.values(facts).filter(Boolean))
+      if (distinct.size <= 1) continue
+      await violate({
+        invariant: 3, rule: 'card-kind-mismatch', key: `${consent.id}|${shot.shotId}`,
+        module: 'electron/capabilityCore/semanticGenerationCandidate.ts inferGenerationTaskKind（提示词里有「镜头 / 动画」等词就判视频，与点名的模型无关）+ 候选 mode 缺省取 taskKind + 卡标题读 mode / 卡体读模型种类 / 画布节点读 shot.kind——四处各读各的，没有唯一主人',
+        message: `付费卡对「${shot.shotId}」说的自相矛盾：${Object.entries(facts).map(([name, value]) => `${name}=${value ?? '无'}`).join('，')}（标题「${consent.dom.title}」，模型 ${shot.providerId}/${shot.model}，模式 ${shot.mode ?? '无'}）`,
+        snapshot: { facts, shot: { ...shot, surfaceText: undefined }, title: consent.dom.title },
+      })
+    }
+  }
+
+  /** 用户还没点头，节点上就写着「排队中 · 第 n/N」：这句话是「已经派进队列、下一步就花钱」，而此刻一个请求都没发。 */
+  async function checkQueuedBeforeConsent(consent) {
+    const patterns = uiClaimPatterns().filter((entry) => entry.claim === 'queued')
+    const nodeIds = consent.allShots.map((shot) => shot.nodeId).filter(Boolean)
+    if (nodeIds.length === 0) return
+    const shown = await win().evaluate(({ ids, sources }) => ids.flatMap((id) => {
+      const text = String(document.querySelector(`[data-node-id="${id}"]`)?.innerText ?? '').replace(/\s+/g, ' ')
+      return sources.some((source) => new RegExp(source).test(text)) ? [{ id, text: text.slice(0, 200) }] : []
+    }), { ids: nodeIds, sources: patterns.map((entry) => entry.source) }).catch(() => [])
+    for (const hit of shown) {
+      await violate({
+        invariant: 4, rule: 'ui-queued-before-consent', key: `${consent.id}|${hit.id}`,
+        module: 'electron/shared/productionShotPhase.ts deriveProductionShotState（没有 job、计划 state=submitted 就判「排队中」；此刻付费卡还在等用户点头）',
+        message: `付费卡还在等用户点头（供应商 ${submissions.length} 笔提交），画布节点 ${hit.id} 已经写着「排队中」：${hit.text.slice(0, 80)}`,
+        snapshot: { hit, submissions: submissions.length },
+      })
+    }
   }
 
   /** 用户自己在节点上点生成之前调用：读下这个节点此刻摆的模型 / 参数 / 参考（节点就是那张生成框的唯一输入）。 */
@@ -281,18 +336,61 @@ export function createInvariantMonitor(options) {
     const node = (canvas.nodes ?? []).find((candidate) => candidate.id === nodeId)
     const incoming = (canvas.edges ?? []).filter((edge) => edge.target === nodeId)
     const meta = node?.meta ?? {}
+    // 用户这一刻在这张卡上看得见的全部文字（提示词框 + 卡面 + 底栏）：铁律 3「提示词的每一句都看得见」拿它当「看得见」的边界。
+    const surfaceText = await win().evaluate((id) => String(document.querySelector(`[data-node-id="${id}"]`)?.innerText ?? ''), nodeId).catch(() => '')
     const consent = {
       id: `c${consents.length + 1}`, kind: 'node-generate', at: Date.now(), step: currentStep?.label ?? null, label: label ?? null, nodeId,
       scope: [{
         nodeId, prompt: node?.prompt ?? '', model: meta.modelKey ?? meta.imageModel ?? meta.videoModel ?? null, providerId: meta.modelVendor ?? null,
         params: { aspect_ratio: meta.aspect_ratio ?? meta.aspectRatio ?? null, resolution: meta.resolution ?? null, duration: meta.duration ?? null },
         refs: incoming.length + (Array.isArray(node?.references) ? node.references.length : 0),
-        remaining: count, submissions: [],
+        surfaceText, remaining: count, submissions: [],
       }],
       declaredCount: count, buttonCount: count,
     }
     consents.push(consent)
     fs.writeFileSync(path.join(outputDir, `${consent.id}-node-generate.json`), JSON.stringify({ consent, node, incoming }, null, 2))
+    return consent
+  }
+
+  /**
+   * 用户在**分镜表**上点头之前调用（行内 ↑ 生成 / 「生成剩余」/ Agent 端上来的确认框——三者摆在用户眼前的都是这几行）：
+   * 逐行读下用户此刻看得见的东西——提示词框里的字（他写的那句）、参考列里摆着几格、整个分镜编辑器此刻的全部文字。
+   * 只读 DOM：用户看到什么，就是什么；不读方案对象（那是状态，不是他看见的）。
+   */
+  async function consentStoryboardRows(shotIndexes, { kind = 'storyboard-row', label } = {}) {
+    const rows = await win().evaluate((indexes) => {
+      const editor = document.querySelector('[data-storyboard-editor="true"]')
+      const editorText = String(editor?.innerText ?? '')
+      return indexes.map((index) => {
+        const row = editor?.querySelector(`[data-storyboard-row="${index}"]`)
+        const box = row?.querySelector('[data-storyboard-prompt-block] [contenteditable="true"]')
+        return {
+          index, found: Boolean(row),
+          prompt: String(box?.innerText ?? ''),
+          // 参考列里摆着几格（一格一个槽，叠放格里可以有多张）+ 提示词里 @ 出来的参考签。
+          refCells: row ? row.querySelectorAll('[data-storyboard-ref-stack]').length : 0,
+          mentionChips: box ? box.querySelectorAll('[data-mention-chip], [data-type="mention"], .prompt-mention').length : 0,
+          rowText: String(row?.innerText ?? ''),
+          editorText,
+        }
+      })
+    }, shotIndexes)
+    const missing = rows.filter((row) => !row.found)
+    if (missing.length) throw new Error(`分镜表上找不到第 ${missing.map((row) => row.index).join('、')} 镜的行`)
+    const consent = {
+      id: `c${consents.length + 1}`, kind, at: Date.now(), step: currentStep?.label ?? null, label: label ?? null,
+      scope: rows.map((row) => ({
+        shotId: `row-${row.index}`, prompt: row.prompt, refs: row.refCells + row.mentionChips, surfaceText: row.editorText,
+        remaining: 1, submissions: [],
+      })),
+      declaredCount: rows.length, buttonCount: rows.length,
+    }
+    consents.push(consent)
+    fs.writeFileSync(path.join(outputDir, `${consent.id}-${kind}.json`), JSON.stringify({
+      consent: { ...consent, scope: consent.scope.map(({ surfaceText, ...rest }) => rest) },
+      rows: rows.map(({ editorText, ...rest }) => rest),
+    }, null, 2))
     return consent
   }
 
@@ -490,6 +588,10 @@ export function createInvariantMonitor(options) {
       problems.push({ field: 'duration', shown: shownDuration, sent: sent.duration })
     }
     if (Number(entry.refs ?? 0) !== Number(submission.refs ?? 0)) problems.push({ field: 'references', shown: entry.refs ?? 0, sent: submission.refs ?? 0 })
+    // 提示词：发出去的 = 用户看到的那句 + 只许追加「他在同一个界面上看得见的字」。
+    // 看不见的追加 = 用户写了「巨龙」、供应商收到「巨龙 + 一段人物特征」。
+    const unseen = unseenPromptAdditions({ shown: entry.prompt, sentRaw: body.prompt ?? body.input?.prompt, surfaceText: entry.surfaceText })
+    if (unseen.length) problems.push({ field: 'prompt-unseen-addition', shown: entry.prompt, sent: submission.prompt, unseen })
     // 付费卡那一镜在画布上的占位卡：用户在画布上连了参考线，他看到的就是「这一镜带参考」。
     if (consent.kind === 'spend-card' && Number(entry.canvasRefs ?? 0) > Number(submission.refs ?? 0)) {
       problems.push({ field: 'references-on-canvas', shown: entry.canvasRefs, sent: submission.refs ?? 0 })
@@ -499,12 +601,18 @@ export function createInvariantMonitor(options) {
         invariant: 3, rule: `sent-${problem.field}`, key: `${consent.id}|${entry.shotId ?? entry.nodeId}|${problem.field}`,
         module: problem.field === 'references-on-canvas'
           ? 'src/workbench/ai/v4/spendCardDraft.ts projectSpendNode（只认候选里的参考，resolveReferenceSlots(node, [], []) 不看画布连线）→ 制作 Run 候选'
-          : problem.field === 'references'
-            ? (consent.kind === 'spend-card' ? '付费卡 → 执行合同 → 出站请求（参考图在哪一层丢）' : 'src/workbench/generationCanvas/runner（画布直生成的参考槽编译）')
-            : (consent.kind === 'spend-card' ? '付费卡投影 ↔ 执行合同编译' : '节点 composer ↔ 画布执行编译'),
+          : problem.field === 'prompt-unseen-addition'
+            ? 'electron/shared/storyboard/storyboardPromptCompiler.ts buildShotPrompt / buildKeyframePrompt（anchorPromptBits 把引用锚的身份特征、文本锚整段追加进提示词；分镜行上只显示用户写的那一句）'
+            : problem.field === 'references'
+              ? (consent.kind === 'spend-card' ? '付费卡 → 执行合同 → 出站请求（参考图在哪一层丢）'
+                : consent.kind.startsWith('storyboard') ? 'src/workbench/generationCanvas/agent/storyboardPlan.ts storyboardShotToCreateNodesArgs（引用锚的定妆卡按 anchorIds 连成参考边；分镜行的参考列只画 referenceBindings，看不到这几张）'
+                  : 'src/workbench/generationCanvas/runner（画布直生成的参考槽编译）')
+              : (consent.kind === 'spend-card' ? '付费卡投影 ↔ 执行合同编译' : '节点 composer ↔ 画布执行编译'),
         message: problem.field === 'references-on-canvas'
           ? `画布上这一镜的占位卡连着 ${problem.shown} 张参考图，确认付费卡后供应商收到 ${problem.sent} 张`
-          : `${consent.kind === 'spend-card' ? '付费卡' : '节点'}上显示 ${problem.field}=${JSON.stringify(problem.shown)}，供应商收到的是 ${JSON.stringify(problem.sent)}`,
+          : problem.field === 'prompt-unseen-addition'
+            ? `用户在界面上看到并确认的提示词是「${normalizePrompt(problem.shown).slice(0, 40)}」，供应商收到的多了他在这个界面上看不见的 ${problem.unseen.length} 段：${problem.unseen.map((line) => `「${line.slice(0, 40)}」`).join('、')}`
+            : `${consent.kind === 'spend-card' ? '付费卡' : consent.kind.startsWith('storyboard') ? '分镜表' : '节点'}上显示 ${problem.field}=${JSON.stringify(problem.shown)}，供应商收到的是 ${JSON.stringify(problem.sent)}`,
         snapshot: { consent, shown: entry, sent: submission, body },
       })
     }
@@ -753,8 +861,14 @@ export function createInvariantMonitor(options) {
           continue
         }
         if (present && terminal && !node.runs?.some((run) => ['running', 'queued'].includes(run.status))) {
-          const lingering = now - Math.max(spinner.firstSeen, node.runs?.[0]?.completedAt ?? 0)
-          if (lingering > limits.savedFeedbackWindowMs.value) {
+          // 只认「最后一次真的看见它」，快照过期就不下结论（F7：满载时读到几秒前的快照，转圈早收了还报「还在」）。
+          const seen = finishedNodeSpinner({ spinner, completedAt: node.runs?.[0]?.completedAt ?? 0, readAt: probe.readAt, sampledAt: probe.spinnersSampledAt })
+          if (seen.verdict === 'stale-snapshot') {
+            notes.push({ at: now, kind: 'spinner-snapshot-stale', node: node.id, ageMs: snapshotAgeMs({ readAt: probe.readAt, sampledAt: probe.spinnersSampledAt }) })
+            continue
+          }
+          const lingering = seen.lingeringMs ?? 0
+          if (seen.verdict === 'fresh-present' && lingering > limits.savedFeedbackWindowMs.value) {
             await violate({
               invariant: 5, rule: 'spinner-on-finished-node', key: `${node.id}|${spinner.desc}`,
               module: 'src/workbench/generationCanvas/nodes（节点状态已终态，转圈没收）',
@@ -1180,7 +1294,7 @@ export function createInvariantMonitor(options) {
 
   return {
     step, settle, check, finish, setLocale,
-    consentSpendCard, consentNodeGenerate, consentDialog, consentFullAuto, revokeConsents, recordDeclaredDefault, recordAttachment,
+    consentSpendCard, consentNodeGenerate, consentStoryboardRows, consentDialog, consentFullAuto, revokeConsents, recordDeclaredDefault, recordAttachment,
     violate, note: (entry) => notes.push({ at: Date.now(), ...entry }),
     readProject, readRuns, screenshot,
     get violations() { return violations },
