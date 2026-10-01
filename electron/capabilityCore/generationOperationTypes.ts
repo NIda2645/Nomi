@@ -35,7 +35,7 @@ export type GenerationOperation = Readonly<{
   runRevision?: number;
   candidate: PlanCandidate;
   state: GenerationOperationState;
-  /** 草稿建好但报价卡还没摆到用户面前（见 `ProductionGenerationPlan.cardHidden`）。 */
+  /** 草稿建好但报价卡还没摆到用户面前（由出价账派生：`productionGenerationPresentation.draftCardHidden`）。 */
   cardHidden?: boolean;
   contract?: ExecutionContractV1;
   /** P4 S4: multi-shot entries (anchors + video shots). Absent = single-shot (today's flat path). */

@@ -93,10 +93,11 @@ const c19Created = c19Repository.createGenerationDraft({ projectId: c19ProjectId
   shots: ['one', 'two'].map(id => ({ shotId: `shot-${id}`, candidate: { ...c19Candidate, candidateId: `c19-${id}` } })) })
 // 2026-09-22：× = 收回这一次出价（`generation.withdraw`）——计划留在 draft、只是不再摆在用户面前。
 // （途中那一版 `generation.dismiss` 已删；当天上午那一版 `cancel("declined")` 被用户下午的拍板推翻。）
+// 2026-09-30 付费卡逐镜：收回记在这一次出价上（`presentations` 最后一条带 `closed`，× = `user_closed`）。
 c19Repository.execute(c19ProjectId, c19RunId, { commandId: 'c19-withdraw-before-open', expectedRevision: c19Created.revision,
-  type: 'generation.withdraw', payload: {}, issuedAt: new Date().toISOString() })
+  type: 'generation.withdraw', payload: { reason: 'user_closed' }, issuedAt: new Date().toISOString() })
 const c19AuthorityBefore = { run: c19Repository.read(c19ProjectId, c19RunId), approvals: c19Repository.readApprovals(c19ProjectId, c19RunId) }
-if (!c19AuthorityBefore.run.generationPlan.cardHidden) throw new Error('C19 setup must persist a genuinely withdrawn quote')
+if (c19AuthorityBefore.run.generationPlan.presentations?.at(-1)?.closed?.by !== 'user_closed') throw new Error('C19 setup must persist a genuinely withdrawn quote')
 
 // Preserve the actual fixture's durable graph before hydration. Runtime measurement is
 // not a user edit and intentionally does not schedule a project save.

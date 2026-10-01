@@ -395,7 +395,7 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
      * their sealed sub-contract is compiled at seal. Absent → single-shot draft (byte-identical to today).
      */
     shots?: ReadonlyArray<Pick<ProductionGenerationShot, "shotId" | "role" | "included" | "candidate">>;
-    /** 见 `ProductionGenerationPlan.cardHidden`。 */
+    /** true = 起草了、还没摆给用户：不开出价（`presentations` 为空）。缺省 = 建好就摆上卡。 */
     cardHidden?: boolean;
   }): ProductionRun {
     const projectId = String(input.projectId || "").trim();

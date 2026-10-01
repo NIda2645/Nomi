@@ -158,9 +158,10 @@ try {
   await expectAbsent(card, {provenBy:cardProof,message:'关闭后付款卡退出介入槽'})
   // × 把结论递回正在等的那个回合：`generate` 以**成功形状**返回「用户没同意这次」，模型照着收尾。
   const declinedTurn = flattenRequestText((await recorded(plannerDone.received, 'generate returns once the user closed the card')).body)
-  expect(declinedTurn, '模型读到的是「他关了这张卡」，不是一个错误').toContain('closed the priced card without approving')
-  expect(declinedTurn, '而且要读到「收回的是这次出价，草稿还在」——否则它会替他重新起草一份')
-    .toContain('withdrew this quote, not the draft')
+  // 付费卡逐镜（2026-09-30）：回执渲染宿主的逐镜结局——没决定的这一镜「没生成、没花钱」，原因是他关了卡。
+  expect(declinedTurn, '模型读到的是「他关了这张卡」，不是一个错误').toContain('the user closed the card (×) before deciding them')
+  expect(declinedTurn, '而且要读到「草稿和占位都还在」——否则它会替他重新起草一份')
+    .toContain('The draft keeps them with their placeholders')
   // 「× 之后画布不多也不少」：落地轮询在这段时间里对这份计划又跑过好几趟。
   await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.map(entry => entry.id).sort(),
     { timeout: DEFAULT_TIMEOUT_MS, message: '× 一个节点都不删：这次操作落的占位和用户自建的那个都在' })

@@ -37,11 +37,11 @@ function pending(shots: ReturnType<typeof shot>[]): PendingSpendConfirm {
 }
 
 describe('付费卡投影', () => {
-  it('单镜：没有翻页器；主按钮「生成这张」，次动作「去掉这张」；报得出的价照实印在价格行', () => {
+  it('单镜：没有翻页器；主按钮「生成这张」（报得出价时带上这一下花多少），次动作「去掉这张」', () => {
     const data = projectSpendCard(pending([shot(1, 0.3)]), { page: 0 }, t, { locale: 'zh-CN' })!
     expect(data.kind).toBe('spend')
     expect(data.pager).toBeUndefined()
-    expect(data.confirmLabel).toBe('agentPanelV4.spendConfirmThisImage')
+    expect(data.confirmLabel).toBe('agentPanelV4.spendConfirmThisImagePriced(amount=¥0.30)')
     expect(data.alternateLabel).toBe('agentPanelV4.spendRemoveThisImage')
     expect(data.price?.total).toContain('¥0.30')
   })
@@ -88,8 +88,8 @@ describe('付费卡投影', () => {
     const data = projectSpendCard(pending([shot(1, 0.5), shot(2, 0.3)]), { page: 1 }, t, { locale: 'zh-CN' })!
     expect(data.price?.breakdown).toContain('spendParamsBreakdownMixed')
     expect(data.price?.perItem).toHaveLength(2)
-    // 主按钮只说「生成这张」：这一下只生成这一页这一镜（价钱不再挂在按钮上，没有路径依赖它）。
-    expect(data.confirmLabel).toBe('agentPanelV4.spendConfirmThisImage')
+    // 主按钮只生成这一页这一镜，带的是**这一镜**的价（这一下花多少）；没有任何一条路径依赖它。
+    expect(data.confirmLabel).toBe('agentPanelV4.spendConfirmThisImagePriced(amount=¥0.30)')
     // 页脚左下印的是**整单合计**，带镜数——逐镜确认时用户始终看得见整单要花多少。
     // 两格说的是两件事，所以这里两个数不一样才是对的（0.30 vs 0.80）。
     expect(data.totalLead).toBe('agentPanelV4.spendTotalLeadBatch(count=2,amount=¥0.80)')
@@ -99,7 +99,7 @@ describe('付费卡投影', () => {
     const data = projectSpendCard(pending([shot(1, 0.3), { ...shot(2, 0.3), mode: 'image_to_video' }]), { page: 1 }, t, { locale: 'zh-CN' })!
     expect(data.pager).toMatchObject({ index: 1, total: 2 })
     expect(JSON.stringify(data.pager)).not.toContain('scope')
-    expect(data.confirmLabel).toBe('agentPanelV4.spendConfirmThisVideo')
+    expect(data.confirmLabel).toBe('agentPanelV4.spendConfirmThisVideoPriced(amount=¥0.30)')
     expect(data.alternateLabel).toBe('agentPanelV4.spendRemoveThisVideo')
   })
 
@@ -139,6 +139,13 @@ describe('节点 → 候选补丁', () => {
 
   it('一个字都没改 → 不发命令（防抖之外的第二道闸：空改动不推进 planVersion）', () => {
     expect(candidatePatchFromNode(node({}), base)).toBeUndefined()
+  })
+
+  it('数组参数按值比：节点上那一份和候选里那一份不是同一个对象，没动过就不发命令（点「生成这张」不白推一版计划）', () => {
+    const withArray = { ...base, parameters: { ...base.parameters, image_urls: ['https://example.test/a.png'] } }
+    expect(candidatePatchFromNode(node({ image_urls: ['https://example.test/a.png'] }), withArray)).toBeUndefined()
+    expect(candidatePatchFromNode(node({ image_urls: ['https://example.test/b.png'] }), withArray)?.parameters)
+      .toMatchObject({ image_urls: ['https://example.test/b.png'] })
   })
 
   it('改时长 → 参数整组带过去（候选认识的键才带，不另立第二份词表）', () => {
@@ -183,11 +190,11 @@ describe('页脚左下只印主按钮说不出的那件事', () => {
     expect(data.totalLead).toBeUndefined()
     expect(data.price?.total).toContain('¥0.30')
   })
-  it('多镜且报得出合计：左下「N 镜 · 合计」，主按钮只说这一镜', () => {
+  it('多镜且报得出合计：左下「N 镜 · 合计」，主按钮只说这一镜（带这一镜的价）', () => {
     const each = projectSpendCard(pending([shot(1, 0.5), shot(2, 0.3)]), { page: 1 }, t, { locale: 'zh-CN' })!
     expect(each.totalLead).toContain('count=2')
     expect(each.totalLead).toContain('¥0.80')
-    expect(each.confirmLabel).toBe('agentPanelV4.spendConfirmThisImage')
+    expect(each.confirmLabel).toBe('agentPanelV4.spendConfirmThisImagePriced(amount=¥0.30)')
   })
 })
 

@@ -452,6 +452,9 @@ export const zhAgentPanelV4 = {
   /** 主按钮只生成这一页这一镜（2026-09-30 付费卡逐镜）：图片说「这张」，视频说「这段」。 */
   spendConfirmThisImage: '生成这张',
   spendConfirmThisVideo: '生成这段',
+  /** 这一镜报得出价时，按钮带上这一下花多少（报不出就不带，没有任何一条路径依赖它）。 */
+  spendConfirmThisImagePriced: '生成这张 {{amount}}',
+  spendConfirmThisVideoPriced: '生成这段 {{amount}}',
   /** 次动作：这一镜不生成，占位留在画布上，卡上剩下的照旧等人。 */
   spendRemoveThisImage: '去掉这张',
   spendRemoveThisVideo: '去掉这段',
@@ -896,6 +899,8 @@ export const enAgentPanelV4 = {
   spendTotalLeadBatch: '{{count}} shots · {{amount}} total',
   spendConfirmThisImage: 'Generate this one',
   spendConfirmThisVideo: 'Generate this one',
+  spendConfirmThisImagePriced: 'Generate this one {{amount}}',
+  spendConfirmThisVideoPriced: 'Generate this one {{amount}}',
   spendRemoveThisImage: 'Remove',
   spendRemoveThisVideo: 'Remove',
   spendParamsDecline: 'No',

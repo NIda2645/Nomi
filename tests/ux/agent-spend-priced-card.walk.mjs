@@ -11,7 +11,8 @@
 // 这条链第一次能在真实界面上被断言。
 //
 // 四条（全部是真人视角看得见的事）：
-//   ① 卡上印的是**具体金额**（¥0.30）；主按钮只说「生成这张」（2026-09-30 付费卡逐镜：按钮不依赖价格）；
+//   ① 卡上印的是**具体金额**（¥0.30）；主按钮是「生成这张」并带着这一镜的价（2026-09-30 付费卡逐镜：
+//      报得出价时可以带，没有任何一条路径依赖它）；
 //   ② 按下去：供应商真的收到一次生成请求，送的就是卡上那一镜；
 //   ③ **账本记的是同一个数**：盘上那份 Run 的授权信封里 `price.maximum === 0.3`，
 //      `budget.unknownJobCount` 是 0（这一镜的价是知道的），预留额度也是同一个数；
@@ -109,8 +110,9 @@ try {
   await expect(card.locator(PRICE_TOTAL), '价格位印的就是目录里那一行算出来的钱').toContainText('0.30')
   // 基线由上面那条证过：同一个 `data-v4-price` 属性**测得到东西**，所以这里的「没看到」不是探针失灵。
   await expectAbsent(card.locator(PRICE_UNAVAILABLE), { provenBy: totalProbe, message: '有价这一档不该出现「暂时算不出价格」' })
-  // 付费卡逐镜（第 1、7 条）：主按钮只生成这一镜、只说「生成这张」；价格印在价格行上，没有路径依赖它。
+  // 付费卡逐镜（第 1、7 条）：主按钮只生成这一镜；报得出价时带上这一下花多少（用户按下去之前就知道）。
   await expect(card.locator(INTERVENTION_CONFIRM), '主按钮是「生成这张」').toContainText('生成这张')
+  await expect(card.locator(INTERVENTION_CONFIRM), '主按钮上带着这一镜的价').toContainText('0.30')
   expect(walk.fixture.images, '卡还没按之前，一次供应商生成都没发生').toHaveLength(0)
   await walk.snap('priced-card-zh')
 
@@ -163,6 +165,7 @@ try {
   await expect(enCard.locator(PRICE_TOTAL), 'EN：价格位印的是同一个数').toContainText('0.30')
   await expectAbsent(enCard.locator(PRICE_UNAVAILABLE), { provenBy: enTotalProbe, message: 'EN：有价这一档没有 unavailable 那一格' })
   await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：Generate this one').toContainText('Generate this one')
+  await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：主按钮上也带着这一镜的价').toContainText('0.30')
   await walk.snap('priced-card-en')
   // EN 这张只是来看长相的；看完就答（关掉），让等它的那个回合收尾。
   await closeSpendCard(enCard, 'close the EN card')

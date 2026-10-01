@@ -120,8 +120,10 @@ export function projectSpendCard(
       ? { totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: shots.length, amount: money(total) }) }
       : {}),
     // 主按钮只生成这一页这一镜（第 1 条），次动作「去掉这张 / 这段」只让这一镜不生成（第 2 条）。
-    // 按钮不再依赖价格：价格知道与否，这一下做的事都一样。
-    confirmLabel: t(currentIsVideo ? 'agentPanelV4.spendConfirmThisVideo' : 'agentPanelV4.spendConfirmThisImage'),
+    // 这一镜报得出价时按钮带上这一下花多少（第 7 条：可以带，但没有任何一条路径依赖它）；报不出就只说动作。
+    confirmLabel: current.price.known
+      ? t(currentIsVideo ? 'agentPanelV4.spendConfirmThisVideoPriced' : 'agentPanelV4.spendConfirmThisImagePriced', { amount: money(current.price.amount) })
+      : t(currentIsVideo ? 'agentPanelV4.spendConfirmThisVideo' : 'agentPanelV4.spendConfirmThisImage'),
     alternateLabel: t(currentIsVideo ? 'agentPanelV4.spendRemoveThisVideo' : 'agentPanelV4.spendRemoveThisImage'),
   })
 }

@@ -156,7 +156,9 @@ export function candidatePatchFromNode(
     // 参数条上有控件、节点和候选都没有值的键（如没填的 seed）= 这一镜不带它，不是「值为 undefined」。
     const value = generationJsonValueSchema.safeParse(next === undefined ? shot.parameters[key] : next)
     if (value.success) parameters[key] = value.data
-    if (next !== undefined && next !== shot.parameters[key]) parametersChanged = true
+    // 按值比，不按引用比：参考槽这类数组值，节点上那一份和候选里那一份永远不是同一个对象——按引用比会让
+    // 一张没动过的卡在点「生成这张」时也去改一次候选（白推一版计划）。
+    if (next !== undefined && JSON.stringify(next) !== JSON.stringify(shot.parameters[key])) parametersChanged = true
   }
   if (parametersChanged) patch.parameters = parameters
   return Object.keys(patch).length > 0 ? (patch as SpendCandidatePatch) : undefined

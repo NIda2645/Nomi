@@ -30,7 +30,7 @@ let stale: NodeWriteAccess | undefined
 let model!: ReturnType<typeof useAgentPanelSpendConfirm>
 const feedback: string[] = []
 const calls: unknown[] = []
-const fixture = { nodes, pending, calls,
+const fixture = { nodes, edges: [], pending, calls,
   refresh: () => refresh?.(),
   edit: () => model.node && model.writeAccess.updateNode(model.node.id, { prompt: 'edited' }),
   confirm: () => model.confirm(),
@@ -40,12 +40,10 @@ const fixture = { nodes, pending, calls,
   slotKey: slot.metaKey,
   upload: () => { uploads++; return new Promise(resolve => { releaseUpload = resolve }) },
   setRefresh: (callback: () => void) => { refresh = callback },
-  snapshot: () => ({ busy: model.busy, page: model.page, scope: model.scope, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
+  snapshot: () => ({ busy: model.busy, page: model.page, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
     meta: model.node?.meta, refs: model.node?.meta?.[slot.metaKey], prompt: model.node?.prompt, uploads, completed, feedback, staleNode: stale?.latestNode('a')?.id, staleWritable: stale?.canWrite?.() }),
   change: (field: string) => {
     if (field === 'page') model.setPage(1)
-    else if (field === 'scope') model.setScope('all')
-    else if (field === 'each') model.setScope('each')
     else { Object.assign(pending, field === 'quote' ? { quoteId: 'quote-next' } : field === 'operation' ? { operationId: 'operation-next' } : { candidateRevision: 2 }); refresh?.() }
   },
   // 重新出价：宿主收回这一次出价（× / 待决时打字 / 重启）之后，同一份草稿再 `generate`
