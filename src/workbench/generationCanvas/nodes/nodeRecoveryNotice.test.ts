@@ -14,6 +14,8 @@ import {
   failureNoticeStillHolds,
   nodeNoticeValidity,
   nodeRecoveryToastId,
+  providerFailedValues,
+  vendorLabelFor,
 } from './nodeRecoveryNotice'
 
 const A = { vendorKey: 'vendor-a', modelKey: 'image-model' }
@@ -110,6 +112,29 @@ function showFailureNotice() {
   })
   return { nodeId: node.id, failed }
 }
+
+// 2026-09-30：提示开头写的是 `agent-runtime-loopback` 这样的内部 key，真用户该看到 APIMart / 自己起的来源名称。
+describe('the notice names the vendor by its display name, not its id', () => {
+  const options = [
+    { vendor: 'vendor-a', vendorName: 'APIMart' },
+    { vendor: 'vendor-b' },
+    { vendor: 'vendor-c', vendorName: '   ' },
+  ]
+
+  it('reads the display name the model options carry', () => {
+    expect(vendorLabelFor(options, 'vendor-a')).toBe('APIMart')
+  })
+
+  it('falls back to the key only when no option carries a name for that vendor', () => {
+    expect(vendorLabelFor(options, 'vendor-b')).toBe('vendor-b')
+    expect(vendorLabelFor(options, 'vendor-c')).toBe('vendor-c')
+    expect(vendorLabelFor(options, 'vendor-z')).toBe('vendor-z')
+  })
+
+  it('the failure notice values carry the label and drop the reason’s own full stop', () => {
+    expect(providerFailedValues('APIMart', { reason: 'The provider said no.', hint: 'Try again.' })).toEqual({ vendor: 'APIMart', reason: 'The provider said no', hint: 'Try again.' })
+  })
+})
 
 describe('lifecycle on the real store and the real toast owner', () => {
   beforeEach(() => {

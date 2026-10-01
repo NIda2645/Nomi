@@ -9,6 +9,7 @@
 //   · 提示的身份 —— 一张卡同一时刻只有一条（id 按节点），「同一次失败」用运行记录定（occurrence）。
 //
 // 撤回不在这里、也不靠定时器：这里只回答「前提还成立吗」，谁来问、何时问归 toast 所有者（ToastValidity）。
+import type { ModelOption } from '../../../config/models'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { selectedModelKey, selectedVendor } from '../runner/catalogTaskResolve'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
@@ -25,6 +26,24 @@ export function nodeRecoveryToastId(nodeId: string): string {
  */
 export function withoutTrailingStop(reason: string): string {
   return reason.replace(/[.。]+\s*$/, '')
+}
+
+/**
+ * 提示里点名一家供应商给用户看：显示名（内置家的名字 / 用户在「模型接入」里起的来源名称），不是内部 id——
+ * 2026-09-30 提示开头写的是 `agent-runtime-loopback` 这样的 key，真用户该看到 APIMart。显示名从下拉的选项里读
+ * （选项带着目录里这一家的名字）；选项里找不到（这一家的模型已不在下拉里）才退回 key：那时 key 是用户唯一对得上号的线索。
+ */
+export function vendorLabelFor(options: readonly Pick<ModelOption, 'vendor' | 'vendorName'>[], vendorKey: string): string {
+  const named = options.find((option) => option.vendor === vendorKey && option.vendorName?.trim())
+  return named?.vendorName?.trim() || vendorKey
+}
+
+/** 切家提示（失败版）的插值：只在这一处算——点名用显示名，原因自带句号时先剥掉（模板自己补句号）。 */
+export function providerFailedValues(
+  vendorLabel: string,
+  report: Readonly<{ reason: string; hint: string }>,
+): { vendor: string; reason: string; hint: string } {
+  return { vendor: vendorLabel, reason: withoutTrailingStop(report.reason), hint: report.hint }
 }
 
 export type FailedAttempt = Readonly<{

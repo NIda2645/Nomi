@@ -46,7 +46,8 @@ import {
   failureNoticeStillHolds,
   nodeNoticeValidity,
   nodeRecoveryToastId,
-  withoutTrailingStop,
+  providerFailedValues,
+  vendorLabelFor,
 } from './nodeRecoveryNotice'
 
 type UseNodeModelAutoSelectArgs = {
@@ -258,6 +259,8 @@ export function useNodeModelAutoSelect({
     const latestMeta = getLatestMeta()
     const currentVendor = readMeta(latestMeta, 'modelVendor') || readMeta(latestMeta, 'vendor')
     const sourceVendor = failure && failed ? failed.vendorKey : currentVendor
+    // 点名给用户看的是显示名，不是 key（key 只用来认「是哪一家」）。
+    const sourceVendorLabel = vendorLabelFor(modelOptions, sourceVendor)
     const sourceArchetype = resolveArchetypeForModel({
       modelKey: selectedModelValue,
       modelAlias: readMeta(latestMeta, 'modelAlias'),
@@ -290,8 +293,8 @@ export function useNodeModelAutoSelect({
       type: 'warning',
       ttl: false,
       message: failure
-        ? t('generationCommon.node.providerFailed', { vendor: sourceVendor, reason: withoutTrailingStop(failure.reason), hint: failure.hint })
-        : t('generationCommon.node.providerDisconnected', { vendor: sourceVendor }),
+        ? t('generationCommon.node.providerFailed', providerFailedValues(sourceVendorLabel, failure))
+        : t('generationCommon.node.providerDisconnected', { vendor: sourceVendorLabel }),
       actionLabel: t('generationCommon.node.switchProvider', { model: target.label, vendor: target.vendorName }),
       validWhile: nodeNoticeValidity({
         nodeId: node.id,

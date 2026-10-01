@@ -17,7 +17,7 @@
 import { DEFAULT_TIMEOUT_MS, expect, expectAbsent, proveProbe } from '../../_assert.mjs'
 import { panCanvasUntilInside } from '../../_canvasHit.mjs'
 import { stationTimeout } from '../../_station-budget.mjs'
-import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR } from '../../agent-runtime-fixture.mjs'
+import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, FIXTURE_VENDOR_NAME } from '../../agent-runtime-fixture.mjs'
 import { clickNodeGenerate, zoomOutUntilVisible } from '../actions.mjs'
 import { uiText } from '../invariants.mjs'
 import { startPlaybook } from '../launch.mjs'
@@ -93,6 +93,13 @@ try {
     await expect(card(), '卡上说的是「参数不被接受」——真的参数错误，这条话不能被「按上游原话归类」带没').toContainText(reasonOf('input'), { timeout: DEFAULT_TIMEOUT_MS })
     // 这是服务商那一侧的失败，本场又有第二家可切：切家提示有资格出现。它出现，就是下一步「不该出现」的基线。
     noticeProof = await proveProbe(switchNotice(), '服务商这一侧的失败（参数错误）会弹出切家提示（本场有第二家可切）')
+    // 提示点名的是这一家的显示名（「模型接入」里看到的名字），不是内部 id；动作按钮上的字完整，没有省略号。
+    const noticeText = await switchNotice().first().innerText()
+    expect(noticeText, '提示点名的是供应商的显示名').toContain(FIXTURE_VENDOR_NAME)
+    expect(noticeText, '提示里不出现供应商的内部 id').not.toContain(FIXTURE_VENDOR)
+    const actionCut = await switchNotice().first().locator('button:not(.mantine-Notification-closeButton)').first()
+      .evaluate((button) => button.scrollWidth > button.clientWidth + 1 || button.scrollHeight > button.clientHeight + 1)
+    expect(actionCut, '切家按钮上的字完整（没被省略号 / 被削掉）').toBe(false)
     await showWholeCard()
     await monitor.screenshot('param-error-card')
   }, { surfaces: ['modal', 'canvasGesture', 'canvasViewport'] })

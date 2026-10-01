@@ -57,6 +57,8 @@ function pngWithTrailingBytes() {
 }
 
 export const FIXTURE_VENDOR = 'agent-runtime-loopback'
+/** 这家在目录里的显示名——界面（失败提示）点名它用的是这个，不是上面那个 key。 */
+export const FIXTURE_VENDOR_NAME = 'Agent Runtime Loopback'
 export const FIXTURE_TEXT_MODEL = 'agent-runtime-text'
 export const FIXTURE_IMAGE_MODEL = 'agent-runtime-image'
 // v4 的模型弹层每行只印**显示名**（`labelZh || modelKey`），没有 per-row 挂点，
@@ -237,7 +239,7 @@ async function modelCatalog(baseURL, { generationProvider, apimartKey, extraImag
     // 内置 apimart 排在前面，走查的 SDK 就会去连 apimart 的真实地址而不是这台 loopback 夹具
     // （表现是 `textRequests: 0`、整条走查干等到超时）。夹具这家必须排第一。
     vendors: [{
-      key: FIXTURE_VENDOR, name: 'Agent Runtime Loopback', enabled: true, baseUrlHint: baseURL,
+      key: FIXTURE_VENDOR, name: FIXTURE_VENDOR_NAME, enabled: true, baseUrlHint: baseURL,
       authType: 'none', authHeader: null, authQueryParam: null, providerKind: 'openai-compatible',
       createdAt: NOW, updatedAt: NOW,
     }, ...(extraImageVendor ? [{

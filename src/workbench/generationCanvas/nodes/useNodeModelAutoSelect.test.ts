@@ -116,6 +116,31 @@ it('a vendor-side failure in a shape the catalog has no dedicated class for stil
   expect(mocks.push.mock.calls[0][0].message).toContain('"vendor":"apimart"')
 })
 
+// 红（旧代码把供应商 key 塞进提示）：真用户看到的是 `apimart` 这样的内部 id，而「模型接入」里他认得的是 APIMart。
+it('the failure notice names the vendor by the display name the model options carry, not by its key', () => {
+  const named = { ...current, vendorName: 'APIMart' } as ModelOption
+  mount(failedCard(), { modelOptions: [named, alternative], selectedModelOption: named })
+  expect(mocks.push).toHaveBeenCalledTimes(1)
+  const message: string = mocks.push.mock.calls[0][0].message
+  const values = JSON.parse(message.slice(message.indexOf('{'))) as { vendor: string }
+  expect(values.vendor).toBe('APIMart')
+})
+
+it('a vendor whose options carry no display name is named by its key (the only handle the user has)', () => {
+  mount(failedCard())
+  const message: string = mocks.push.mock.calls[0][0].message
+  expect(JSON.parse(message.slice(message.indexOf('{'))).vendor).toBe('apimart')
+})
+
+it('the disconnection notice names the pinned vendor by display name too, when the options still know it', () => {
+  const pinned = { ...current, vendorName: 'APIMart', value: 'other-model', modelKey: 'other-model' } as ModelOption
+  const node = failedCard({ status: 'idle', error: undefined, runs: [] })
+  mount(node, { selectedModelOption: null, modelOptions: [pinned, alternative] })
+  const message: string = mocks.push.mock.calls[0][0].message
+  expect(message).toContain('providerDisconnected')
+  expect(JSON.parse(message.slice(message.indexOf('{'))).vendor).toBe('APIMart')
+})
+
 // 红（旧代码把原因原样塞进模板）：供应商的话是界面语言、还带着句号时，模板再补一个句号，
 // 屏上就是「…the third checkpoint.. Nomi could not…」（2026-09-30 pb07 英文截图）。
 it('a vendor sentence that already ends with a full stop is not followed by a second one in the notice', () => {
