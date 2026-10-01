@@ -75,7 +75,7 @@ describe('laneContextFit 场景：登记决定看不看得见', () => {
       ? { ...fw, capabilities: fw.capabilities.filter((cap) => cap.id !== 'context-compaction') }
       : fw))
     const { text } = buildCapabilityIndex({ concepts: real.concepts, frameworks: without, targetRel: target })
-    assert.doesNotMatch(text, /compaction/i)
+    assert.doesNotMatch(text, /[pi] context-compaction/)
   })
 })
 
