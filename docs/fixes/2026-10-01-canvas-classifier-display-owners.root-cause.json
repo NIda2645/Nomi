@@ -1,0 +1,124 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-canvas-classifier-display-owners",
+  "problem_type": "验证分档漏判：画布显示的主人改动只拿到 critical 或根本没有画布档",
+  "symptom": "#934 改了制作镜头占位的状态判定，画布上看得见，Canvas Acceptance（full 档）被跳过，S5 回归进了 main；#940、#937 同样只跑了 critical，靠协调会话手动跑全量才补上。",
+  "direct_cause": "scripts/validation-policy.mjs 的 FULL_CANVAS_PATTERNS 只认 reactFlow/ 与几个具名走查；generationCanvas/nodes、spend、store 等产出显示的目录只算 critical，electron/shared/productionShotPhase.ts 这类主进程侧的显示主人连 critical 都没有（electron/ 只触发 desktop）。而 S5 的 canvas-landing / canvas-reconcile / batch-production 只在 full 档里（tests/ux/canvas-real-suite.mjs FULL_CANVAS_SCENARIOS）。",
+  "class_root": "分类器靠「想起来一个补一个文件名」维护，而不是对着「谁决定画布上显示什么」这一类概念的 owner 清单；画布显示的主人散在 electron/shared、electron/productionRun、src/workbench/production、generationCanvas 子树四处，任何一处新增文件或新增目录都默认落到较低档。",
+  "migration": "新增 CANVAS_DISPLAY_OWNER_PATTERNS（清单对着 concept-owners.json 画布显示相关概念的 owner 与写口列），同时并进 CANVAS_PATTERNS 与 FULL_CANVAS_PATTERNS；没有旧实现要删，旧的零散判断（nodes 目录里的 critical）被这张表取代，已有测试里把 nodes/ 当 critical 的例子改成 components/。",
+  "affected_population": [
+    "改了 electron/shared 的镜头阶段 / 批次成员 / 认领 / 停下原因 / 节点状态的 PR",
+    "改了 electron/productionRun 画布落地投影与 Run 状态机的 PR",
+    "改了 src/workbench/production 的镜头认领与落地写入点的 PR",
+    "改了 generationCanvas 的 nodes / spend / store / runner / model / agent / events / adapters 的 PR"
+  ],
+  "scope_paths": [
+    "scripts/validation-policy.mjs",
+    "scripts/validation-policy.node-test.mjs",
+    "scripts/validation-policy-canvas-escapes.json"
+  ],
+  "entry_points": [
+    "scripts/validation-policy.mjs#classifyValidationPolicy",
+    "scripts/validation-policy.mjs#CANVAS_PATTERNS",
+    "scripts/validation-policy.mjs#FULL_CANVAS_PATTERNS"
+  ],
+  "invariants": [
+    "concept-owners.json 里画布显示相关概念的 owner 文件改动，canvas 档必为 full",
+    "generationCanvas 的每个子目录都明确归档（full 或 critical-only），新目录没表态测试即红",
+    "档位只升不降（raiseCanvas 的既有不变量不变）"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "scripts/git-delivery.mjs",
+      "symbol": "classifyValidationPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/run-gates-tests.mjs",
+      "symbol": "classifyValidationPolicy"
+    },
+    {
+      "kind": "write",
+      "path": "scripts/select-quality-gate-profile.mjs",
+      "symbol": "classifyValidationPolicy"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 3,
+    "why_not": "三个调用方（交付收据、本机 gates、CI 选档）本来就共用 classifyValidationPolicy 这一个函数，没有各自的第二份判据；本次改的是函数内部的数据表，门数不变也不该变。"
+  },
+  "regression_tests": [
+    "scripts/validation-policy.node-test.mjs"
+  ],
+  "residual_risks": [
+    "清单仍是路径模式：新增在表外的显示主人（不在 generationCanvas 子树也不在上面几个目录）会再次漏判；子目录表态测试只管 generationCanvas 一棵树。"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "纯内部 CI 分档问题，不依赖任何第三方库行为。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "同一机制三次复发：#833（reactFlow 把手层级）、#934、#940/#937 都是「画布显示的改动拿到比该有的更低的验证档」，每次都靠人在 main 上撞出来。",
+    "same_class_scan": [
+      "scripts/validation-policy.mjs:119 FULL_CANVAS_PATTERNS 原先只有 reactFlow 与具名走查",
+      "scripts/validation-policy.mjs:104 JOURNEY_PATTERNS 另一个靠文件名模式的档",
+      "tests/ux/canvas-real-suite.mjs:12 CRITICAL_CANVAS_SCENARIOS 与 :19 FULL_CANVAS_SCENARIOS 的覆盖差"
+    ]
+  },
+  "generality_proof": "档位只由 classifyValidationPolicy 一个函数决定（三个调用方共用），所以把「谁决定画布显示」做成它的数据表加一条「子目录必须表态」的测试，就同时封住了已知文件和未来新增目录这两条回来的路。",
+  "shared_boundaries": [
+    {
+      "path": "scripts/validation-policy.mjs",
+      "symbol": "classifyValidationPolicy",
+      "responsibility": "决定一个 diff 要跑哪些验证面，包括画布 critical / full 档"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/validation-policy.mjs",
+      "entry_point": "FULL_CANVAS_PATTERNS",
+      "disposition": "enforced",
+      "evidence": "原先漏掉显示主人，现在并入 CANVAS_DISPLAY_OWNER_PATTERNS，测试用 #934/#940/#937 的真实文件清单钉住。"
+    },
+    {
+      "path": "scripts/validation-policy.mjs",
+      "entry_point": "JOURNEY_PATTERNS",
+      "disposition": "not-affected",
+      "evidence": "journey 档由 REAL_USER_TEST_MANIFEST 登记的走查决定，既有测试「registered product journeys cannot fall back to focused-only」按清单钉住，不靠画布目录模式。"
+    }
+  ],
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/validation-policy.mjs",
+    "invariant": "画布显示的主人改动必得 full 画布验收；generationCanvas 新子目录必须表态",
+    "failure_mode": "scripts/validation-policy.node-test.mjs 红（随 check:quality-gate-workflow 在 CI contracts 里跑）",
+    "exception_policy": "none",
+    "strategy": "数据表按概念 owner 清单列、子目录表态测试兜新增，不再靠补文件名",
+    "artifacts": [
+      "scripts/validation-policy.mjs",
+      "scripts/validation-policy.node-test.mjs",
+      "scripts/validation-policy-canvas-escapes.json"
+    ]
+  },
+  "class_regression_tests": [
+    "scripts/validation-policy.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有旧实现要删：本次只扩充分类器的数据表，并改了两个把 nodes/ 当 critical 的既有测试样例。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及依赖。",
+    "exit_criteria": []
+  },
+  "invariant_owner_layer": {
+    "layer": "scripts/validation-policy.mjs",
+    "tests": [
+      "scripts/validation-policy.node-test.mjs"
+    ],
+    "why": "classifyValidationPolicy 是 CI 选档、本机 gates、交付收据三处共用的唯一分类函数；「谁决定画布显示」做成它的数据表，并由它自己的测试（含真实 PR 文件清单与子目录表态）守住。"
+  }
+}

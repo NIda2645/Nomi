@@ -215,13 +215,6 @@
       "why": "本地转写整条链（下引擎 → 校验 → 解包 → 起 sidecar → 分段 → 合并）只有喂真实连续语流才证得了；合成 TTS 没有口音、没有中英混说、没有自然停顿，接缝与幻觉这两类问题在它上面永远不出现"
     },
     {
-      "class": "transcription-english",
-      "test": null,
-      "assets": [],
-      "status": "debt",
-      "debtId": "local-speech-english-real-media"
-    },
-    {
       "class": "walkthrough-agent-tools",
       "test": "tests/ux/agent-storyboard-real-model.walk.mjs",
       "assets": [

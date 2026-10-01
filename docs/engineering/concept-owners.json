@@ -3181,7 +3181,7 @@
       "notes": "合同 docs/fixes/2026-09-29-failure-reason-from-upstream-evidence.root-cause.json：状态码（400/422）只说「请求有问题」，从不说为什么；上游自己的错误码（model_not_found 一类）才是它说的原因。三条把上游失败带过 IPC 的通道——图 / 视频 / JSON 请求（vendorHttp.requestVendor）、AI SDK 文本请求（aiSdkVendorError.vendorErrorFromAiSdkError）、Agent 的 pi 运行时（runtimeVendorError.describeRuntimeError，读响应体走 upstreamCodeFromBody）——都经同一个 pickUpstreamCode 把它随失败载荷（VendorErrorStructured.upstreamCode）带过去，classifyGenerationError 按码归类。键优先级表与 pickUpstreamMessage 同住一处。customCallRunner 只是把已有的载荷脱敏后原样（展开 structured）重包，不丢这一栏。"
     },
     {
-      "name": "每一次模型请求的输入预算（超了怎么收）",
+      "name": "每一次模型请求的输入预算（超了怎么收：用 pi 自带的压缩，这里只出配置）",
       "subject": "agent-lane.request-input-budget",
       "lifecycle": "execution",
       "authority_kind": "decision",
@@ -3189,13 +3189,13 @@
       "fact_kind": "rule",
       "migration_status": "converged",
       "owner": {
-        "path": "electron/agentLane/laneContextFit.ts",
-        "symbol": "fitContextToBudget"
+        "path": "electron/agentLane/laneContextBudget.mts",
+        "symbol": "laneCompactionSettings"
       },
       "write_api": [
         {
-          "path": "electron/agentLane/laneContextFit.ts",
-          "symbol": "fitContextToBudget"
+          "path": "electron/agentLane/laneContextBudget.mts",
+          "symbol": "laneCompactionSettings"
         }
       ],
       "forbidden_derivations": [],
@@ -3203,7 +3203,7 @@
         "electron/agentLane/laneHost.mts"
       ],
       "since": "2026-10-01",
-      "notes": "预算数字住 laneContextBudget.mts（LANE_CONTEXT_TOKEN_BUDGET）；「这一次请求超了预算时收什么、不收什么」只住 fitContextToBudget：pi 的压缩只在回合之间量一次，管不到一个回合里连着十几次请求。收起的只有旧的大工具结果、其次旧的大调用参数；最新结果、最新助手消息、用户的话从不收；只改这一次的视图，不动落盘转录。收完仍超就如实报 overBudgetBy，由工具结果的源头上限（laneTools truncateForModel）负责。"
+      "notes": "预算数字与它换算成 pi 压缩配置（reserveTokens / keepRecentTokens）只住 laneCompactionSettings；压缩本身（切点、摘要、保留尾巴）全是 pi 的，我们不写第二份。"
     },
     {
       "name": "写入回执「准备中」的时限与终态",
@@ -3256,6 +3256,34 @@
       ],
       "since": "2026-10-01",
       "notes": "一次改动型请求渲染层回了错误码：它在碰文稿之前验目标发现对不上而拒绝（surface_port_stale）= 结局已知，什么都没执行，如实往上报；被取消 / 端口不可用 / 被挂起 / 绑定过期可能发生在派发之后 = 结局不明，才是 capability_receipt_unresolved。把已知拒绝当不明会让回执永远停在 preparing（pb04 走查 agent-write-receipt-stuck 的第一根因）。"
+    },
+    {
+      "name": "一个 diff 要跑哪些验证（验证分档：单测 / 桌面 / 真实旅程 / 画布 critical·full / 性能 / 打包）",
+      "subject": "delivery.validation-policy",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "scripts/validation-policy.mjs",
+        "symbol": "classifyValidationPolicy"
+      },
+      "write_api": [
+        {
+          "path": "scripts/validation-policy.mjs",
+          "symbol": "classifyValidationPolicy"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "scripts/validation-policy.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/select-quality-gate-profile.mjs",
+        "scripts/run-gates-tests.mjs",
+        "scripts/git-delivery.mjs"
+      ],
+      "since": "2026-10-01",
+      "notes": "CI 选档、本机 gates、交付收据三处共用这一个函数，不许任何一处自己再判一遍「这个 diff 要不要跑 X」。画布 full 档的清单（CANVAS_DISPLAY_OWNER_PATTERNS）对着本表里画布显示相关概念的 owner 与写口列，parity_test 逐个概念核对；generationCanvas 每个子目录必须表态。合同 docs/fixes/2026-10-01-canvas-classifier-display-owners.root-cause.json。"
     }
   ]
 }
