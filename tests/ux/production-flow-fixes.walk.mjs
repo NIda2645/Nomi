@@ -317,7 +317,7 @@ try {
         await fitView(win)
         await expect.poll(async () => (await faces(win, nodeIds)).some((face) => face.placeholder === 'stopped'), { timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
         const all = await faces(win, nodeIds)
-        if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? '') || face.action === 'resume-budget')) throw new Error(`升级后挂着预算文案：${JSON.stringify(all)}`)
+        if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? ''))) throw new Error(`升级后挂着预算文案：${JSON.stringify(all)}`)
         return `${readRun(projectRoot, operationId).status} · stop=${JSON.stringify(readRun(projectRoot, operationId).stop ?? null)} · ${jobsOf(readRun(projectRoot, operationId))} · ${JSON.stringify(all.map((face) => [face.placeholderText, face.action]).filter(([text]) => text))}`
       })
       await zoomShot(win, 'U1', 'zh-legacy-paused', [nodeIds.at(-1)])
@@ -461,7 +461,7 @@ try {
           await expect.poll(async () => (await faces(win, [video1.nodeId, video2.nodeId])).every((face) => face.placeholder === 'stopped'),
             { timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
           const all = await faces(win, [video1.nodeId, video2.nodeId])
-          if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? '') || face.action === 'resume-budget')) {
+          if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? ''))) {
             throw new Error(`视频镜上挂着预算文案：${JSON.stringify(all.map((face) => [face.placeholderText, face.action]))}`)
           }
           return JSON.stringify(all.map((face) => [face.placeholderText, face.action]))

@@ -94,7 +94,7 @@ describe('付费卡投影', () => {
     expect(data.confirmLabel).toBe('agentPanelV4.spendConfirmThisImagePriced(amount=¥0.30)')
     // 页脚左下印的是**整单合计**，带镜数——逐镜确认时用户始终看得见整单要花多少。
     // 两格说的是两件事，所以这里两个数不一样才是对的（0.30 vs 0.80）。
-    expect(data.totalLead).toBe('agentPanelV4.spendTotalLeadBatch(count=2,amount=¥0.80)')
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalLeadImage(count=2,amount=¥0.80)')
   })
 
   it('没有「全部」：翻页器旁不再有范围切换，每一页都只有「生成这张 / 这段」和「去掉这张 / 这段」', () => {
@@ -194,17 +194,20 @@ describe('「生成剩下 N 张 / 段」（2026-10-01 用户拍板）', () => {
     expect(data.batchLabel).toBeUndefined()
   })
 
-  it('张 / 段跟标题同一条规则：有视频就说段', () => {
+  it('张 / 段跟标题同一条规则：有视频就说段——标题、「生成剩下」、合计行三处读同一个（2026-10-01 用户拍板合计行也跟它走）', () => {
     const data = projectSpendCard(pending([shot(1, null), shot(2, null, 'kling', 'video')]), { page: 0 }, t, { locale: 'zh-CN' })!
     expect(data.title).toContain('spendParamsTitle(')
     expect(data.batchLabel).toBe('agentPanelV4.spendConfirmRemainingVideo(count=2)')
+    const priced = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.5, 'kling', 'video')]), { page: 0 }, t, { locale: 'zh-CN' })!
+    expect(priced.title).toContain('spendParamsTitle(')
+    expect(priced.totalLead).toBe('agentPanelV4.spendTotalLeadVideo(count=2,amount=¥0.80)')
   })
 
   it('报得出价时也不带合计：这一叠的合计已经印在翻页那一行（同一个数不说两遍）', () => {
     const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3)]), { page: 0 }, t, { locale: 'zh-CN' })!
     expect(data.batchLabel).toBe('agentPanelV4.spendConfirmRemainingImage(count=2)')
     expect(data.batchLabel).not.toContain('¥')
-    expect(data.totalLead).toBe('agentPanelV4.spendTotalLeadBatch(count=2,amount=¥0.60)')
+    expect(data.totalLead).toBe('agentPanelV4.spendTotalLeadImage(count=2,amount=¥0.60)')
   })
 
   it('报不出价时哪儿都不写数，也没有任何价格未知、预算之类的话', () => {
@@ -219,7 +222,7 @@ describe('「N 镜」汇总只在多镜时出现', () => {
     const data = projectSpendCard(pending([shot(1, 0.3)]), { page: 0 }, t, { locale: 'zh-CN' })!
     expect(data.price?.breakdown).toBe('')
   })
-  it('多镜且整齐：页脚左下已经是「N 镜 · 合计」，正文下不再重复一行「N 镜」', () => {
+  it('多镜且整齐：翻页行右端已经是「N 张 / 段 · 合计」，正文下不再重复一行「N 镜」', () => {
     const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3)]), { page: 0 }, t, { locale: 'zh-CN' })!
     expect(data.price?.breakdown).toBe('')
     expect(data.totalLead).toContain('count=2')
@@ -238,7 +241,7 @@ describe('页脚左下只印主按钮说不出的那件事', () => {
     expect(data.totalLead).toBeUndefined()
     expect(data.price?.total).toContain('¥0.30')
   })
-  it('多镜且报得出合计：左下「N 镜 · 合计」，主按钮只说这一镜（带这一镜的价）', () => {
+  it('多镜且报得出合计：翻页行右端「N 张 · 合计」，主按钮只说这一镜（带这一镜的价）', () => {
     const each = projectSpendCard(pending([shot(1, 0.5), shot(2, 0.3)]), { page: 1 }, t, { locale: 'zh-CN' })!
     expect(each.totalLead).toContain('count=2')
     expect(each.totalLead).toContain('¥0.80')

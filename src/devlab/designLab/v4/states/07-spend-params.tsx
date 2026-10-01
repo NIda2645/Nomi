@@ -368,7 +368,7 @@ export const V4_SPEND_PARAMS_STATES: readonly LabState[] = [
   },
   {
     id: 'v4-panel-spend-batch',
-    name: '⑤ 多镜付费卡在真面板里（逐镜翻页 + 左下「N 镜 · 合计」）',
+    name: '⑤ 多镜付费卡在真面板里（逐镜翻页 + 翻页行右端「N 张 · 合计」）',
     source: '2026-09-22 卡族换壳收尾：多镜批量卡正文沿用现有形态，只换外壳与页脚',
     coverage: 'component-only',
     span: 2,

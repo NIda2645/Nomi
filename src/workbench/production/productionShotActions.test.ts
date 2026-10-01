@@ -26,11 +26,11 @@ describe('production action feedback ownership', () => {
     expect(present.mock.calls).toEqual([['']])
     expect(notificationsStore.getState().notifications).toHaveLength(0)
   })
-  it.each(['resumed', 'resume_declined'] as const)('keeps resume %s silent and never tells the main process why the run stopped', async (code) => {
+  it.each(['resumed'] as const)('keeps resume %s silent and never tells the main process why the run stopped', async (code) => {
     api.resumeBatch.mockResolvedValue({ ok: code === 'resumed', code })
     const present = vi.fn()
     await resumeProductionBatch('project', 'run', present)
-    // 续额度还是接着拍由主进程照 Run 记下的停下原因定：渲染层只说「继续」。
+    // 这一下点击续哪几镜的同意、怎么接着拍由主进程定：渲染层只说「继续」。
     expect(api.resumeBatch).toHaveBeenCalledWith('project', 'run')
     expect(present.mock.calls).toEqual([['']])
   })

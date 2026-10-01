@@ -1451,15 +1451,16 @@ export const zhGenerationCommon = {
       removedNotGenerated: '已去掉，不生成',
       queued: '排队中',
       queuedNth: '排队中 · 第 {{index}}/{{total}}',
-      stoppedBudget: '预算已用完，这镜还没开拍。提额后可继续拍剩下的。',
       stoppedManual: '已停止剩余镜头。想继续可从这里接着拍。',
       // 已停的另外几种真实原因（2026-09-29：以前一律说成「预算已用完」）。没有能按的「继续」时，文案里说清能做什么。
       stoppedAfterFailure: '前面有镜头没生成成功，这一镜还没开拍。选中它可以单独生成，或在任务面板取消这次制作。',
       stoppedForRecovery: 'Nomi 重启后要先核对之前在跑的镜头，这一镜还没开拍。打开任务面板核对。',
       stoppedCancelled: '这次制作已取消，这一镜没有开拍。选中它可以单独生成。',
-      // 上一版留下的、没记停下原因的制作：不猜原因，只说停了。
-      stoppedUnknown: '这次制作停下了，这一镜还没开拍。想继续可从这里接着拍。',
-      raiseBudget: '提额续拍',
+      // 上一版留下的、没记停下原因（或记着这一版已经没有的原因）的制作：不猜原因，只说停了。
+      stoppedUnknown: '已停，这镜还没开拍。',
+      // 批过的镜离你上一次点头太久、没人替你续（付费卡① 第 13 条）：点「继续」那一下就是确认。
+      stoppedConsentExpired: '这镜还没开拍，需要你再确认一次。',
+      resume: '继续',
       continueRemaining: '继续剩余',
       // 用户删掉占位节点、但这件事没能记进制作流程：被删的那一镜可能照样生成并计费。动作 = 打开任务面板（暂停 / 取消）。
       detachFailed: '删掉的镜头没能从制作流程里撤下，它可能照样生成并计费。打开任务面板可以暂停或取消这次制作。',
@@ -2986,16 +2987,19 @@ export const enGenerationCommon = {
       removedNotGenerated: 'Removed — not generated',
       queued: 'Queued',
       queuedNth: 'Queued · {{index}}/{{total}}',
-      stoppedBudget: 'Budget ran out before this shot. Raise it to keep filming the rest.',
       stoppedManual: 'Remaining shots stopped. Continue filming from here.',
       // The other real reasons a run stops (2026-09-29: all of them used to read as "budget ran out"). Without a working
       // "continue", the sentence itself says what the user can do.
       stoppedAfterFailure: 'An earlier shot failed, so this one hasn\'t started. Select it to generate it on its own, or cancel the run in Tasks.',
       stoppedForRecovery: 'After restarting, Nomi has to check the shots that were running, so this one hasn\'t started. Open Tasks to check them.',
       stoppedCancelled: 'This run was cancelled before this shot started. Select it to generate it on its own.',
-      // A run from the previous version that never recorded why it stopped: say it stopped, never guess why.
-      stoppedUnknown: 'This run stopped before this shot started. Continue filming from here.',
-      raiseBudget: 'Raise budget',
+      // A run from an older version that never recorded why it stopped (or recorded a reason this version no longer has):
+      // say it stopped, never guess why.
+      stoppedUnknown: 'Stopped — this shot hasn\'t started.',
+      // The approved shots waited too long after your last go-ahead and nobody renewed it (paid card rule 13): the
+      // "Continue" click is the confirmation.
+      stoppedConsentExpired: 'This shot hasn\'t started — it needs your go-ahead again.',
+      resume: 'Continue',
       continueRemaining: 'Continue remaining',
       // The user deleted a placeholder but the production run never recorded it: that shot may still generate and bill.
       detachFailed: 'The deleted shot could not be withdrawn from the production run, so it may still generate and bill. Open Tasks to pause or cancel the run.',

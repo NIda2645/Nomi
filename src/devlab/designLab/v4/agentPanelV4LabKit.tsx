@@ -278,7 +278,8 @@ function buildFixtures(t: TFunction) {
       title: t('agentPanelV4.slotSpendTitle'),
       badge: t('agentPanelV4.slotSpendBadge'),
       pager: { index: 0, total: 4, keyHint: t('agentPanelV4.pagerKeyHint') },
-      totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: 4, amount: '¥1.20' }),
+      // 单位跟标题同一条规则（这一叠是视频，说「段」；2026-10-01 用户拍板）。
+      totalLead: t('agentPanelV4.spendTotalLeadVideo', { count: 4, amount: '¥1.20' }),
       alternateLabel: t('agentPanelV4.spendRemoveThisVideo'),
       batchLabel: t('agentPanelV4.spendConfirmRemainingVideo', { count: 4 }),
       params: ['Kling O1', '4 × 3s', 'std', '¥1.20'],

@@ -37,15 +37,13 @@ const FIXTURE_MODEL_LABELS = new Set([FIXTURE_TEXT_MODEL_LABEL, FIXTURE_IMAGE_MO
  */
 /** 界面上说「因为什么停了」的那几句 → Run 记下的停下原因必须是它（run.stop.reason）。 */
 const STOP_CLAIM_REASON = Object.freeze({
-  'budget-exhausted': 'budget',
-  'raise-budget': 'budget',
+  'consent-expired': 'consent_expired',
   'stopped-after-failure': 'failed',
   'stopped-for-recovery': 'restart_recovery',
 })
 const UI_CLAIM_TEXTS = Object.freeze([
   Object.freeze({ claim: 'maybe-submitted', key: 'agentToolFailure.generation_execution_failed' }),
-  Object.freeze({ claim: 'budget-exhausted', key: 'generationCommon.production.canvasLanding.stoppedBudget' }),
-  Object.freeze({ claim: 'raise-budget', key: 'generationCommon.production.canvasLanding.raiseBudget' }),
+  Object.freeze({ claim: 'consent-expired', key: 'generationCommon.production.canvasLanding.stoppedConsentExpired' }),
   Object.freeze({ claim: 'stopped-after-failure', key: 'generationCommon.production.canvasLanding.stoppedAfterFailure' }),
   Object.freeze({ claim: 'stopped-for-recovery', key: 'generationCommon.production.canvasLanding.stoppedForRecovery' }),
   // 返工 / 续拍没做成时「这是 Nomi 自己的问题」那一句：说它的那一刻，就有一种失败在源头没被分类（2026-09-29 起没有笼统的「稍后再试」）。

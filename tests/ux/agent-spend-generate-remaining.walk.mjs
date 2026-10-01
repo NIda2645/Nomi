@@ -54,7 +54,7 @@ async function present(walk, win, count, locale) {
     label: `the agent drafts ${count} image shots (${tag})`,
     match: (body) => flattenRequestText(body).includes(tag),
     reply: { type: 'tool', id: planCall, name: 'draft_shots', args: {
-      shots: Array.from({ length: count }, (_, index) => ({
+      shots: [...Array(count).keys()].map((index) => ({
         title: `${tag}-${index + 1}`, prompt: `${tag} 第 ${index + 1} 张：渔港清晨`, taskKind: 'text_to_image', candidate,
       })),
     } },
@@ -115,8 +115,12 @@ async function expectLayout(card, locale, { wrapped }) {
   }
 }
 
-/** 整窗一张 + 卡的近景一张（整窗图里卡太小，字看不清）。 */
+/**
+ * 整窗一张 + 卡的近景一张（整窗图里卡太小，字看不清）。拍之前把鼠标挪到标题上：刚点过的那颗按钮还停在悬停态
+ * （主按钮悬停是强调色），截出来像是另一种按钮样式（2026-10-01 验收截图里「只剩 1 张」那张就是这样）。
+ */
 async function snapCard(walk, card, label) {
+  await card.locator(TITLE).hover({ position: { x: 2, y: 2 } })
   const file = await walk.snap(label)
   await card.screenshot({ path: file.replace(/\.png$/, '-card.png') })
 }

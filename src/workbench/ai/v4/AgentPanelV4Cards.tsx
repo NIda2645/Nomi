@@ -356,7 +356,7 @@ export function V4Intervention({
   const slotFooter = hasActions ? (
     <>
         {/* ── 翻页那一行 = 「这一叠」：第几页 + 一共多少（2026-10-01 用户看样张后拍板）──
-            翻页器本身一个像素不动（提问卡也用它）；报得出价时右端印这一叠的合计「N 镜 · 合计 ¥X」。
+            翻页器本身一个像素不动（提问卡也用它）；报得出价时右端印这一叠的合计「N 张 / 段 · 合计 ¥X」（单位跟标题同一条规则）。
             单独占一行、压在动作行正上方：挤进动作行会让 390px 的卡横向溢出（实测 350px 可用宽放不下）。 */}
         {(pager || data.totalLead) && !rejecting && data.kind !== 'reject-reason' ? (
           <V4Row as="div" data-v4-block="pager-row">

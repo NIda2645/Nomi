@@ -29,6 +29,16 @@ function isVideoOrder(shots: readonly PendingSpendShot[]): boolean {
   return shots.some((shot) => shot.kind === 'video')
 }
 
+/**
+ * 这一叠说「图片 · 张」还是「视频 · 段」：标题、「生成剩下 N 张 / 段」、翻页行右端的「N 张 · 合计」**只读这一个**
+ * （有视频就说视频，2026-10-01 用户拍板合计行也跟它走）。三处各自判一次，迟早有一处先漂。
+ */
+function orderWording(shots: readonly PendingSpendShot[]) {
+  return isVideoOrder(shots)
+    ? { title: 'agentPanelV4.spendParamsTitle', remaining: 'agentPanelV4.spendConfirmRemainingVideo', totalLead: 'agentPanelV4.spendTotalLeadVideo' } as const
+    : { title: 'agentPanelV4.spendParamsTitleImage', remaining: 'agentPanelV4.spendConfirmRemainingImage', totalLead: 'agentPanelV4.spendTotalLeadImage' } as const
+}
+
 /** 每一镜都有价、且都是同一个数 = 「整齐」。不整齐时算式退成「逐镜不同」。 */
 function isUniform(shots: readonly PendingSpendShot[]): boolean {
   const first = shots[0]?.price
@@ -74,7 +84,7 @@ export function projectSpendCard(
   const price: NonNullable<InterventionData['price']> = {
     // 正文下那一行只在它**说得出页脚说不出的事**时才印（由数据 derive，不写死）：
     // · 单镜：标题已经写着「生成这 1 段视频？」，再印「1 镜」是把同一件事说两遍；
-    // · 多镜且整齐、报得出合计：页脚左下已经是「N 镜 · 合计 ¥X」，再印「N 镜」同样是重复；
+    // · 多镜且整齐、报得出合计：翻页行右端已经是「N 张 / 段 · 合计 ¥X」，再印「N 镜」同样是重复；
     // · 多镜但**逐镜不同**：印「N 镜 · 逐镜不同」并带逐镜折叠口——这是页脚说不出的；
     // · 多镜但**报不出合计**：什么都不印。以前这里补一句「N 镜」，因为页脚那句「价格未知…」没有镜数；
     //   那句随「仍要生成」删了，标题和「生成剩下 N 张」都已经说了几张，再印一行就是第三遍（2026-10-01 样张没有这一行）。
@@ -100,10 +110,11 @@ export function projectSpendCard(
         }
       : {}),
   }
+  const wording = orderWording(shots)
   return Object.freeze({
     kind: 'spend' as const,
     // 标题里**不印金额**：金额随参数变，两个地方印同一个数就一定有一个先漂。
-    title: t(isVideoOrder(shots) ? 'agentPanelV4.spendParamsTitle' : 'agentPanelV4.spendParamsTitleImage', { count: shots.length }),
+    title: t(wording.title, { count: shots.length }),
     badge,
     ...(shots.length > 1
       ? {
@@ -115,16 +126,17 @@ export function projectSpendCard(
         }
       : {}),
     price,
-    // 「N 镜 · 合计 ¥X」只在多镜且报得出合计时印（住在翻页那一行的右端）；报不出价时什么都不印——
+    // 「N 张 · 合计 ¥X」只在多镜且报得出合计时印（住在翻页那一行的右端）；报不出价时什么都不印——
     // 「价格未知 · 以供应商账单为准」这一句随「仍要生成」一起删了（第 7 条：今天不真的钱话不说，2026-09-30）。
+    // 单位跟标题同一条规则（2026-10-01 用户拍板：图片说张、视频说段，英文与标题同词）。
     ...(total !== undefined && shots.length > 1
-      ? { totalLead: t('agentPanelV4.spendTotalLeadBatch', { count: shots.length, amount: money(total) }) }
+      ? { totalLead: t(wording.totalLead, { count: shots.length, amount: money(total) }) }
       : {}),
     // 整叠的动作「生成剩下 N 张 / 段」（2026-10-01 用户拍板）：N 就是卡上还没决定的镜（= 标题那个数，去掉的不算），
     // 张 / 段跟标题同一条规则（有视频就说段）；报得出价也不带合计（翻页行右端已经印着这个数）。
     // 只剩 1 张时它和「生成这张」是同一件事，不画。
     ...(shots.length > 1
-      ? { batchLabel: t(isVideoOrder(shots) ? 'agentPanelV4.spendConfirmRemainingVideo' : 'agentPanelV4.spendConfirmRemainingImage', { count: shots.length }) }
+      ? { batchLabel: t(wording.remaining, { count: shots.length }) }
       : {}),
     // 主按钮只生成这一页这一镜（第 1 条），次动作「去掉这张 / 这段」只让这一镜不生成（第 2 条）。
     // 这一镜报得出价时按钮带上这一下花多少（第 7 条：可以带，但没有任何一条路径依赖它）；报不出就只说动作。

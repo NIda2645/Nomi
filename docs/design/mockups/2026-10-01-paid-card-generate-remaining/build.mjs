@@ -51,16 +51,16 @@ const L = {
     auto: '自动', outputs: '1 个',
     remove: '去掉这张', confirm: '生成这张',
     remaining: (n) => `生成剩下 ${n} 张`,
-    total: (n, amount) => `${n} 镜 · 合计 ${amount}`, newTag: '新增',
+    total: (n, amount) => `${n} 张 · 合计 ${amount}`, newTag: '新增',
   },
   en: {
     titleImages: (n) => `Generate these ${n} images?`, titleImage: 'Generate this image?',
     badge: 'Paid · Nomi picked', modeLabel: 'Generation mode', t2i: 'Text-to-image', i2i: 'Image-to-image', t2iHint: 'Generate an image from text',
     prompts: ['An orange cat sunbathing on the windowsill', 'An orange cat napping on the sofa'],
-    auto: 'Auto', outputs: '1 outputs',
+    auto: 'Auto', outputs: '1 output',
     remove: 'Remove', confirm: 'Generate this one',
     remaining: (n) => `Generate remaining ${n}`,
-    total: (n, amount) => `${n} shots · ${amount} total`, newTag: 'New',
+    total: (n, amount) => `${n} images · ${amount} total`, newTag: 'New',
   },
 }
 
@@ -129,7 +129,7 @@ const boards = (lang) => {
       zh ? '去掉的不算：标题、页码、按钮一起变成 31，三处是同一个数。' : 'Removed shots don\'t count: title, pager and button all say 31 — one number.',
       card(lang, { title: t.titleImages(31), page: 1, total: 31, remaining: 31 })),
     artboard(zh ? '④ 2 张 · 报得出价时' : '④ 2 images · when the price is known',
-      zh ? '主按钮照旧带这一张的价；左下「2 镜 · 合计」就是「生成剩下 2 张」要花的数，按钮上不再印第二遍（默认，待确认）。' : 'The primary keeps this shot\'s price; the lower-left total is exactly what "Generate remaining 2" spends, so the button doesn\'t print it again (default, please confirm).',
+      zh ? '主按钮照旧带这一张的价；左下「2 张 · 合计」就是「生成剩下 2 张」要花的数，按钮上不再印第二遍（默认，待确认）。' : 'The primary keeps this shot\'s price; the lower-left total is exactly what "Generate remaining 2" spends, so the button doesn\'t print it again (default, please confirm).',
       card(lang, { title: t.titleImages(2), page: 1, total: 2, remaining: 2, price: '¥0.30', lead: t.total(2, '¥0.60') })),
   ].join('\n')
 }
@@ -250,7 +250,7 @@ th { background: var(--nomi-ink-05); color: var(--nomi-ink); }
   <div class="table-wrap"><table>
     <tr><th>问题</th><th>默认（样张就是这么画的）</th><th>另一种</th></tr>
     <tr><td>只剩 1 张时，还显示「生成剩下 1 张」吗？</td><td>不显示：它和「生成这张」是同一件事，两颗按钮做一件事让人犹豫该点哪颗</td><td>照样显示，位置不跳</td></tr>
-    <tr><td>报得出价时，「生成剩下 N 张」上带不带合计？</td><td>不带：左下「N 镜 · 合计」就是这几张的合计，同一个数印两处，改参数时总有一处先漂</td><td>带上合计，左下那句删掉</td></tr>
+    <tr><td>报得出价时，「生成剩下 N 张」上带不带合计？</td><td>不带：左下「N 张 · 合计」就是这几张的合计，同一个数印两处，改参数时总有一处先漂</td><td>带上合计，左下那句删掉</td></tr>
     <tr><td>一张卡里图和视频都有时，按钮说张还是段？</td><td>跟标题同一条规则：有视频就说「段」（标题今天也这么说）</td><td>标题和按钮都改说「镜」（「生成这 3 镜？」「生成剩下 3 镜」）</td></tr>
   </table></div>
 

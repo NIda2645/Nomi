@@ -18,8 +18,9 @@
 //      `budget.unknownJobCount` 是 0（这一镜的价是知道的），预留额度也是同一个数；
 //   ④ 产物真的落回草稿那一刻建的那个节点，卡收起来；一分钱没花（供应商是本机 loopback）。
 //   ⑤ 英文一样（EN 串长 1.5-2 倍，截断只有眼睛看得出）。
-//   ⑥ 两张一起摆（2026-10-01）：这一叠的合计「2 镜 · 合计 ¥0.60」印在**翻页那一行的右端**、一行放得下
-//      （以前在动作行左边，英文挤成三行）；「生成剩下 2 张」在动作行最左，按钮上不再印合计；中英各拍一张。
+//   ⑥ 两张一起摆（2026-10-01）：这一叠的合计「2 张 · 合计 ¥0.60」印在**翻页那一行的右端**、一行放得下
+//      （以前在动作行左边，英文挤成三行）；单位跟标题同一条规则（图片说张、英文与标题同词「2 images」）；
+//      「生成剩下 2 张」在动作行最左，按钮上不再印合计；中英各拍一张。
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -99,6 +100,8 @@ async function twoShotPricedCard(walk, win, { locale, ask, planCall, done, promp
   const total = card.locator(`[data-v4-block="pager-row"] ${PRICE_TOTAL}`)
   await proveProbe(total, `${locale}：两张的卡上有这一叠的合计`)
   await expect(total, `${locale}：合计 = 两张 × 0.30`).toContainText('0.60')
+  // 单位跟标题同一条规则（2026-10-01 用户拍板）：图片说「张」，英文与标题同词。
+  await expect(total, `${locale}：合计的单位和标题一样`).toContainText(locale === 'zh' ? '2 张 · 合计' : '2 images')
   const totalBox = await total.boundingBox()
   const pagerBox = await card.locator('[data-v4-block="pager"]').boundingBox()
   expect(Math.abs((totalBox?.y ?? 0) + (totalBox?.height ?? 0) / 2 - ((pagerBox?.y ?? 0) + (pagerBox?.height ?? 0) / 2)),
