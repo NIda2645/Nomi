@@ -156,13 +156,14 @@ export function reorderShotBinding(
  */
 export function shotReferenceMetaPatch(
   mode: ArchetypeMode | null | undefined,
-  shot: PlanShot,
+  /** 只收 `compileShotOutbound(shot).referenceBindings`——「发出去哪些参考图」的唯一来源，不直接读 shot。 */
+  bindings: ReferenceBindingMap | undefined,
 ): Record<string, unknown> {
   const patch: Record<string, unknown> = {}
   for (const slot of mode?.slots ?? []) {
     const storage = referenceSlotStorage(slot)
     if (!storage) continue
-    const urls = shotBindingsOf(shot, slot.kind).map((binding) => binding.url)
+    const urls = bindingsOf(bindings, slot.kind).map((binding) => binding.url)
     patch[storage.metaKey] = storage.isArray ? urls : urls[0] ?? ''
   }
   return patch

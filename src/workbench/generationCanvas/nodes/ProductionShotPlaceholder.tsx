@@ -1,4 +1,5 @@
-// P4 S5 — 制作（Agent 付费卡 / 多镜批次）落到画布的节点上，**只属于制作**的两块小标：排队中 / 已停。
+// P4 S5 — 制作（Agent 付费卡 / 多镜批次）落到画布的节点上，**只属于制作**的小标：等你确认 / 还没生成 / 排队中 / 已停。
+// 每一段都有自己的标记（`data-shot-placeholder-state`）：没点就不叫排队中（付费卡① 第 12 条），在等用户就说在等用户。
 //
 // 「生成中」与「失败」不在这里画（2026-09-25）：那两段写进节点自己的运行记录（主进程画布落地投影 →
 // materialize-shots → 节点 runs[0]），由普通生成那一套 NodeGeneratingOverlay / NodeErrorReport 画——
@@ -71,6 +72,23 @@ export function ProductionShotPlaceholder({ node, reportFeedback }: { reportFeed
   if (!runId || !state || node.result?.url) return null
   // 节点自己在跑（制作投影的「生成中」或用户手动的一次）：那一段由 NodeGeneratingOverlay 画，这里不叠第二层。
   if (node.status === 'running' || node.status === 'queued') return null
+
+  if (state.phase === 'awaiting_confirmation' || state.phase === 'not_generated') {
+    // 在等用户点头 / 从没被批过：中性小标，不转圈、不说排队（它们不在任何队列里）。
+    const label = t(state.phase === 'awaiting_confirmation'
+      ? 'generationCommon.production.canvasLanding.awaitingConfirmation'
+      : 'generationCommon.production.canvasLanding.notGenerated')
+    return (
+      <div
+        className="absolute left-2 top-2 z-[4] inline-flex items-center gap-1 rounded-full bg-nomi-paper/85 px-2 py-0.5 text-micro text-nomi-ink-60 shadow-nomi-sm"
+        data-shot-placeholder-state={state.phase}
+        data-production-shot-node={node.id}
+        aria-label={label}
+      >
+        {label}
+      </div>
+    )
+  }
 
   if (state.phase === 'queued') {
     // 排队中（第 n/N）：左上角小徽标（同 NodeQueuedBadge 语言）+ 棋盘格占位（节点本来就没生成出来）。

@@ -339,7 +339,7 @@
         "electron/productionRun/batchScheduleDerivation.ts"
       ],
       "since": "2026-09-25",
-      "notes": "2026-09-25 用户报「Agent 付费卡生产的视频早就出好了，节点一直转圈」（合同 docs/fixes/2026-09-25-agent-run-node-state-single-owner.root-cause.json）。一镜「排队 / 生成中 / 已停 / 失败 / 完成」只由这一个函数判（job 状态走穷尽 mapper productionJobPhase）。生成中 / 失败 / 结果由主进程画布落地投影（buildMaterializeShotsPayload；跟随者 canvasLandingHost.followRunChange 挂在仓库 execute 的事件旁路上）写进**节点自己的运行记录**——与普通生成同一份状态，由 NodeGeneratingOverlay / NodeErrorReport 画；渲染层 ProductionShotPlaceholder 只画制作专属的排队 / 已停两块小标，读的也是这个函数。不许再出现第二份「这一镜在不在生成」的判据或第二套画法。 2026-09-24 追加（合同 docs/fixes/2026-09-24-draft-shot-dispatch-honesty.root-cause.json）：「用户还没点头」也归这里判——草稿（draft_shots，报价卡没出或在等）、job 还停在人工门前（jobAwaitsHuman，Record 穷举）、没有 job 且不在「计划已提交、勾进这一批」范围里的镜一律返回 null，画布上什么都不说；调度器的「还在等人」也读 jobAwaitsHuman。"
+      "notes": "2026-09-25 用户报「Agent 付费卡生产的视频早就出好了，节点一直转圈」（合同 docs/fixes/2026-09-25-agent-run-node-state-single-owner.root-cause.json）。一镜「排队 / 生成中 / 已停 / 失败 / 完成」只由这一个函数判（job 状态走穷尽 mapper productionJobPhase）。生成中 / 失败 / 结果由主进程画布落地投影（buildMaterializeShotsPayload；跟随者 canvasLandingHost.followRunChange 挂在仓库 execute 的事件旁路上）写进**节点自己的运行记录**——与普通生成同一份状态，由 NodeGeneratingOverlay / NodeErrorReport 画；渲染层 ProductionShotPlaceholder 只画制作专属的排队 / 已停两块小标，读的也是这个函数。不许再出现第二份「这一镜在不在生成」的判据或第二套画法。 2026-09-24 追加（合同 docs/fixes/2026-09-24-draft-shot-dispatch-honesty.root-cause.json）：「用户还没点头」也归这里判——草稿（draft_shots，报价卡没出或在等）、job 还停在人工门前（jobAwaitsHuman，Record 穷举）、没有 job 且不在「计划已提交、勾进这一批」范围里的镜一律返回 null，画布上什么都不说；调度器的「还在等人」也读 jobAwaitsHuman。 2026-09-30（付费卡① 第 12 条「没点就不叫排队中」，合同 docs/fixes/2026-09-30-shot-phase-every-state-has-a-marker.root-cause.json）：每一种状态都有自己的段，不再用 null 表示「还在等」——job 停在人工门前或草稿卡正摆着 → awaiting_confirmation（等你确认）；一次任务都没有 = 从没被批过 → not_generated（还没生成），不管计划到了哪一步；排队 / 已停只给有任务、还没派出去的镜（调度器只派有任务的镜）。批次成员（productionShotJobs.shotCountsTowardBatch，排队 n/N 的分母与批次收尾同一条）同步要求至少有一次任务。已停的原因只读 Run 记下的 stop，不从错因码猜（#934）。"
     },
     {
       "name": "供应商产物取回线路",
@@ -2855,6 +2855,53 @@
       ],
       "since": "2026-09-29",
       "notes": "2026-09-29 用户实见：定妆照检查点放行后视频镜派不出去（「Generation authorization no longer matches the current project or Run」），批次停下（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。派发时要核的是「批过的那一份」，只有它：封进信封的项目身份（immutableProjectUuid + projectGeneration）、Run、计划版本、那道门，以及每个 job 的合同哈希、供应商、模型、第几次、幂等键、线上报文哈希、参考图、单价上限、到期时间——收据签的就是这份信封的摘要。项目文档的版本号不在里面：它只是「用户看报价那一刻项目是不是最新」的前提，在批准那一刻由收据那一侧核（productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后 Nomi 自己把占位和参考卡结果落上画布就会让它前进。所以派发不再读活的文档版本（createProductionGenerationSubmission 连这个依赖都没有了），也没有「重试时重新封一次」这种补法。批准那一刻的版本绑定是否也该松开，归付费卡审批那条 lane，不在这里。"
+    },
+    {
+      "name": "分镜一镜发出去什么（提示词 + 参考图）",
+      "subject": "storyboard.shot-outbound",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+        "symbol": "compileShotOutbound"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+          "symbol": "compileShotOutbound"
+        },
+        {
+          "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+          "symbol": "projectShotNode"
+        },
+        {
+          "path": "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+          "symbol": "ignoredShotAnchors"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "anchorPromptBits",
+          "kind": "definition",
+          "why": "2026-09-30 之前把引用锚的身份特征 / 文本锚整段追加进提示词（「巨龙」变人物的成因）；已删，不许再长一份"
+        },
+        {
+          "symbol": "referenceOrderForShot",
+          "kind": "definition",
+          "why": "按 anchorIds 给自动连的参考边排序；自动连图已删，不许恢复"
+        }
+      ],
+      "parity_test": "src/workbench/creation/storyboard/exec/shotOutbound.parity.test.ts",
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+        "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+        "src/workbench/capability/capabilityApplyHandler.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "规则（09-30 用户拍板）：一镜发出去的 = 这一行写的提示词 + 这一行上看得见的参考图，别的什么都不加。行内生成 / 生成剩余 / Agent 确认框 / 放到画布 / production.materialize-storyboard / 方案投影都只从 compileShotOutbound 取；对等测试逐字节比六个入口。anchorIds 留在旧方案里不再产生任何作用。根因合同 docs/fixes/2026-09-30-storyboard-outbound-owner.root-cause.json。"
     },
     {
       "name": "一条用户消息在对话记录里的形状（含附件）",

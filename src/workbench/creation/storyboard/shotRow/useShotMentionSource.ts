@@ -7,23 +7,24 @@
  * - 持久化格式 `@[asset:url]`（promptMentions.ts 单源）
  *
  * 候选来源：
- *   「当前绑定」 = 该镜已在 anchorIds 的 visual 锚（有 resultUrl 才进；文本锚进提示词不进参考槽）
- *   「某镜结果」 = 画布结果（选中后加入 anchorIds，复用来源节点，不复制结果）
- *   「素材库」   = 项目图片/视频/音频资产（选中后加入 anchorIds）
- *   「上传」     = useComposerAttachments 完成的上传（同样加入 anchorIds）
+ *   「当前绑定」 = 这一行参考列里已摆着的、来自某张锚的绑定（有 resultUrl 才进）
+ *   「某镜结果」 = 画布结果
+ *   「素材库」   = 项目图片/视频/音频资产
+ *   「上传」     = useComposerAttachments 完成的上传
  *
- * onMentionSelect 语义：
- *   - 「当前绑定」：锚已在 anchorIds，url 已有 → 直接返回 chip index（1-based）
- *   - 「所有锚」（未绑定的）：先把锚加入 anchorIds，再返回 chip index
- *   - 「素材库」：暂不自动加锚（@引用直接为图片 url，落画布时提示词 projection 处理）
- *   返回 null = 拒绝插入（无 resultUrl / 槽满等）
+ * onMentionSelect 语义（2026-09-30）：@ 一个素材 = **往这一行的参考列里放一张**（referenceBindings），
+ * chip 编号就是它在参考列里的位置。发出去的参考图只有参考列里摆着的——@ 不再往 anchorIds 里记关系，
+ * 那个关系会被展开成看不见的追加与参考边（「巨龙」变人物的成因）。
+ *   - 「当前绑定」：参考列里已有这张 → 直接返回 chip index（1-based）
+ *   - 其余：交给 onBindReference 放进参考列；这一行当前模式没有能收它的槽 → 返回 null（拒绝插入，不假装会用）
  */
 import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { useAssetPool } from '../../../assets/useAssetPool'
 import type { MentionSuggestionItem } from '../../../assets/AssetMentionSuggestionList'
 import type { AnchorCardRuntime } from '../exec/storyboardRowStatus'
-import type { PlanAnchor } from '../../../generationCanvas/agent/storyboardPlan'
+import type { PlanAnchor, PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
+import { shotBindsAnchor } from './shotRowModel'
 import { useComposerAttachments } from '../../../ai/composer/useComposerAttachments'
 import type { ComposerAttachment } from '../../../ai/composer/composerAttachmentTypes'
 import { useOpenProjectId } from '../../../project/useOpenProjectId'
@@ -50,18 +51,16 @@ export type ShotMentionCallbacks = {
 /**
  * 分镜行 @ 引用候选源。
  *
- * @param shot      当前镜头（读 anchorIds 以判断「已绑定」）
+ * @param shot      当前镜头（读 referenceBindings 以判断「已绑定」）
  * @param anchors   完整锚列表（plan.anchors）
  * @param anchorCards   锚 runtime 列表（含 resultUrl；deriveAnchorCardRuntimes 产出）
- * @param onToggleAnchor 绑定/解绑锚（toggleShotAnchor 的包装，用于「未绑定锚」选中时先绑定）
+ * @param onBindReference 把选中的素材放进这一行的参考列；放不进（模式没有槽 / 槽满）返回 false
  */
 export function useShotMentionSource(
-  shot: { anchorIds: string[] },
+  shot: PlanShot,
   anchors: readonly PlanAnchor[],
   anchorCards: readonly AnchorCardRuntime[],
-  onToggleAnchor: (anchorId: string) => void,
-  onRememberAnchorUrl: (anchorId: string, url: string) => void,
-  onAddExternalReference: (item: MentionSuggestionItem) => void,
+  onBindReference: (reference: { url: string; name: string; kind: 'image' | 'video' | 'audio'; anchorId?: string; sourceNodeId?: string }) => boolean,
   projectId?: string | null,
 ): ShotMentionCallbacks {
   const openProjectId = useOpenProjectId()
@@ -76,25 +75,22 @@ export function useShotMentionSource(
   const boundVisualCards = React.useMemo(
     () =>
       anchorCards.filter(
-        (card) => card.visual && card.resultUrl && shot.anchorIds.includes(card.anchor.id),
+        (card) => card.visual && card.resultUrl && shotBindsAnchor(shot, card.anchor.id),
       ),
-    [anchorCards, shot.anchorIds],
+    [anchorCards, shot],
   )
 
   // 未绑定的锚（「所有锚」组，选中后先绑再插 chip；包含 visual 有图和无图的，以及文本锚）
   const unboundCards = React.useMemo(
-    () => anchorCards.filter((card) => !shot.anchorIds.includes(card.anchor.id) && card.visual && card.resultUrl),
-    [anchorCards, shot.anchorIds],
+    () => anchorCards.filter((card) => !shotBindsAnchor(shot, card.anchor.id) && card.visual && card.resultUrl),
+    [anchorCards, shot],
   )
 
-  // 有序参考 url（当前绑定组，供 chip 编号）
-  const currentReferenceUrls = React.useMemo(() => {
-    const resultByAnchorId = new Map(boundVisualCards.map((card) => [card.anchor.id, card.resultUrl!]))
-    return shot.anchorIds.flatMap((id) => {
-      const anchor = anchors.find((candidate) => candidate.id === id)
-      return [resultByAnchorId.get(id) || anchor?.referenceUrl || ''].filter(Boolean)
-    })
-  }, [anchors, boundVisualCards, shot.anchorIds])
+  // 有序参考 url = 这一行参考列里摆着的全部绑定（供 chip 编号；发出去的就是它们）
+  const currentReferenceUrls = React.useMemo(
+    () => Object.values(shot.referenceBindings ?? {}).flatMap((bindings) => (Array.isArray(bindings) ? bindings : []).map((binding) => binding?.url).filter((url): url is string => Boolean(url))),
+    [shot.referenceBindings],
+  )
 
   // 素材库图片/视频资产（library 组）
   const libraryAssets = React.useMemo(
@@ -134,14 +130,14 @@ export function useShotMentionSource(
         })
       })
 
-      // 「其他锚」组（未绑定但有图的，选中后先加 anchorIds）
+      // 「其他锚」组（参考列里还没摆、但有图的：选中后放进参考列）
       unboundCards.forEach((card) => {
         const url = card.resultUrl!
         if (seen.has(url)) return
         const label = card.anchor.name.trim() || t('storyboardEditor.unnamed')
         if (!textMatches(label, query)) return
         seen.add(url)
-        // 用 canvas 组渲染「连上」角标来区分「需要先绑定」
+        // 用 canvas 组渲染「连上」角标来区分「选中后要先放进参考列」
         out.push({
           key: `anchor:${card.anchor.id}`,
           url,
@@ -199,29 +195,19 @@ export function useShotMentionSource(
       if (item.group === 'current') {
         // 已绑定锚：直接给 chip index（1-based）
         const idx = currentReferenceUrls.indexOf(item.url)
-        if (idx < 0) return null
-        const card = boundVisualCards.find((candidate) => candidate.resultUrl === item.url)
-        if (card) onRememberAnchorUrl(card.anchor.id, item.url)
-        return idx + 1
+        return idx < 0 ? null : idx + 1
       }
-
-      if (item.group === 'canvas' && item.key.startsWith('anchor:')) {
-        // 「其他锚」选中：先绑 anchorIds，然后算 index；镜头结果同组但走下方素材链。
-        const anchorId = item.key.replace(/^anchor:/, '')
-        const anchor = anchors.find((candidate) => candidate.id === anchorId)
-        if (!anchor) return null
-        // 先绑定（异步不等，React batch 更新；index 从绑定后的 boundVisualCards derive）
-        onToggleAnchor(anchorId)
-        onRememberAnchorUrl(anchorId, item.url)
-        // 绑定后该锚会进 boundVisualCards，新 index = 当前 length（追加到末尾）
-        return currentReferenceUrls.length + 1
-      }
-
-      // 画布结果 / 素材库 / composer 上传：仍沿用 anchorIds 这条绑定链，URL 只作为锚卡的来源事实。
-      onAddExternalReference(item)
-      return currentReferenceUrls.includes(item.url) ? currentReferenceUrls.indexOf(item.url) + 1 : currentReferenceUrls.length + 1
+      const anchorId = item.group === 'canvas' && item.key.startsWith('anchor:') ? item.key.replace(/^anchor:/, '') : undefined
+      if (anchorId && !anchors.some((candidate) => candidate.id === anchorId)) return null
+      const sourceNodeId = item.group === 'canvas' && item.key.startsWith('shot-result:')
+        ? item.key.slice('shot-result:'.length).split(':')[0]
+        : undefined
+      const bound = onBindReference({ url: item.url, name: item.label, kind: item.kind ?? 'image', ...(anchorId ? { anchorId } : {}), ...(sourceNodeId ? { sourceNodeId } : {}) })
+      if (!bound) return null
+      const existing = currentReferenceUrls.indexOf(item.url)
+      return existing >= 0 ? existing + 1 : currentReferenceUrls.length + 1
     },
-    [anchors, boundVisualCards, currentReferenceUrls, onAddExternalReference, onRememberAnchorUrl, onToggleAnchor],
+    [anchors, currentReferenceUrls, onBindReference],
   )
 
   return { mentionSearch, onMentionSelect, currentReferenceUrls, mentionUpload }

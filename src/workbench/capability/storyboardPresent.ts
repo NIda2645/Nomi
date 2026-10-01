@@ -52,7 +52,7 @@ export async function presentStoryboard(data: Record<string, unknown>) {
       gesture: { source: 'agent' as const, txnId: crypto.randomUUID(), canWrite: () => { project.assertCurrent(); return !project.signal.aborted } } }
     const runtimes = () => deriveStoryboardRowRuntimes({ plan, designId,
       nodes: useGenerationCanvasStore.getState().nodes, imageModelOptions, videoModelOptions })
-    const anchors = deriveAnchorCardRuntimes({ plan, designId, nodes: canvas.nodes, rows: runtimes() })
+    const anchors = deriveAnchorCardRuntimes({ plan, designId, nodes: canvas.nodes })
     // 每一次问都可能被他拒掉，所以逐次收结局，最后合成一个（规则见 `mergeRunOutcomes`）。
     const outcomes: GenerationRunOutcome[] = []
     for (const entry of anchors.filter(value => scope.includes(value.anchor.id))) {

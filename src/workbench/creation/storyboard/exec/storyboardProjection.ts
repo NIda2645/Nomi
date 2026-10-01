@@ -9,8 +9,9 @@ import { overriddenShotFields, nodeShotField } from '../../../generationCanvas/m
 import { effectiveShotValue } from '../shotRow/shotRowModel'
 import { buildPlannedNodeMeta } from '../../../generationCanvas/agent/plannedNodeMeta'
 import type { AgentModelEntry } from '../../../generationCanvas/agent/availableModels'
-import { renderShotNodePrompt, renderShotKeyframePrompt, effectiveShotDurationSec, type PlanShot, type StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
+import { renderShotNodePrompt, renderShotKeyframePrompt, effectiveShotDurationSec, stableShotId, type PlanShot, type StoryboardPlan } from '../../../generationCanvas/agent/storyboardPlan'
 import { shotReferenceMetaPatch } from '../shotRow/shotReferenceSlots'
+import { compileShotOutbound } from '../../../generationCanvas/agent/storyboardPromptCompiler'
 import { resolveKeyframeParams, resolveShotParams } from '../../../generationCanvas/agent/storyboardShotScope'
 import type { ArchetypeMode } from '../../../../../electron/shared/modelArchetypes/types'
 const PRIMITIVE = new Set(['string', 'number', 'boolean'])
@@ -55,7 +56,7 @@ export function projectShotNode(
   // buildArchetypeInputParams 按档案的 inputKey/asArray 构造 —— 分镜侧零供应商分支（P4）。
   // 空绑定也写空值：用户刚删掉的首帧不能还留在节点上被发出去。
   if (part === 'shot' && mode !== undefined) {
-    Object.assign(meta, shotReferenceMetaPatch(mode, shot))
+    Object.assign(meta, shotReferenceMetaPatch(mode, compileShotOutbound(shot, 'shot').referenceBindings))
   }
   for (const field of fields) {
     if (field === 'prompt') continue
@@ -68,14 +69,32 @@ export function projectShotNode(
   return patch
 }
 
+/**
+ * 一镜按它**当前选的模型 / 模式**投影进一个已存在的节点（prompt + 参考图的落节点写入点）。
+ * 投影方案时（projectStoryboardDesign）与 production.materialize-storyboard 落地后共用这一处，
+ * 不各自解析模式——两条路上同一镜的提示词和参考图因此逐字节相同（shotOutbound.parity.test.ts）。
+ */
+export function projectShotOntoNodeByPlanMode(plan: StoryboardPlan, shot: PlanShot, node: GenerationCanvasNode): Partial<GenerationCanvasNode> {
+  const entries = buildModelEntryIndex(buildAgentModelEntries(shot.modelKey ? [{ value: shot.modelKey, label: shot.modelKey, vendor: shot.modelVendor, kind: shot.shotKind ?? 'video' }] : []))
+  const profile = resolveArchetypeForModel({ modelKey: shot.modelKey ?? '', vendorKey: shot.modelVendor })
+  const mode = profile?.modes.find(candidate => candidate.id === (shot.modeId ?? profile.defaultModeId)) ?? null
+  return projectShotNode(plan, shot, node, 'shot', entries, mode)
+}
+
+/** 整方案落画布之后：把每一镜按当前模型 / 模式投影进它落出来的节点（nodeIdOf：clientId → 真实节点 id）。 */
+export function projectPlanShotsOntoCreatedNodes(plan: StoryboardPlan, nodeIdOf: (clientId: string) => string, store: ReturnType<typeof useGenerationCanvasStore.getState>): void {
+  for (const shot of plan.shots) {
+    const node = store.nodes.find((candidate) => candidate.id === nodeIdOf(stableShotId(shot)))
+    if (node) store.updateNode(node.id, projectShotOntoNodeByPlanMode(plan, shot, node), { origin: 'storyboard-projection', history: false })
+  }
+}
+
 /** Called only for explicit plan edits, never project hydration. Dependency supplied by the composition root. */
 export function projectStoryboardDesign(design: Pick<StoryboardDesign, 'id' | 'plan'>, canvas: ReturnType<typeof useGenerationCanvasStore.getState>): void {
   for (const shot of design.plan.shots) {
     const entries = buildModelEntryIndex(buildAgentModelEntries(shot.modelKey ? [{ value: shot.modelKey, label: shot.modelKey, vendor: shot.modelVendor, kind: shot.shotKind ?? 'video' }] : []))
-    const profile = resolveArchetypeForModel({ modelKey: shot.modelKey ?? '', vendorKey: shot.modelVendor })
-    const mode = profile?.modes.find(candidate => candidate.id === (shot.modeId ?? profile.defaultModeId)) ?? null
     const node = findShotNode(canvas.nodes, design.id, shot)
-    if (node && !node.regeneratedFrom && !node.derivedFrom) canvas.updateNode(node.id, projectShotNode(design.plan, shot, node, 'shot', entries, mode), { origin: 'storyboard-projection', history: false })
+    if (node && !node.regeneratedFrom && !node.derivedFrom) canvas.updateNode(node.id, projectShotOntoNodeByPlanMode(design.plan, shot, node), { origin: 'storyboard-projection', history: false })
     const keyframe = findShotKeyframeNode(canvas.nodes, design.id, shot)
     if (keyframe) canvas.updateNode(keyframe.id, projectShotNode(design.plan, shot, keyframe, 'keyframe', entries), { origin: 'storyboard-projection', history: false })
   }

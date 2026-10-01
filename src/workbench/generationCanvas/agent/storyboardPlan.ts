@@ -4,10 +4,8 @@ import i18n from '../../../i18n'
 import {
   anchorCarriesOwnMaterial,
   buildAnchorSheetPrompt,
-  buildKeyframePrompt,
-  buildShotPrompt,
+  compileShotOutbound,
   isVisualAnchor,
-  referenceOrderForShot,
 } from './storyboardPromptCompiler'
 import { resolveKeyframeParams, resolveShotParams } from './storyboardShotScope'
 
@@ -139,13 +137,6 @@ export type StoryboardPlanToArgsOptions = {
   storyboardDesignId?: string
 }
 
-/** 锚类型 → 该锚连到镜头的参考边语义。 */
-function edgeModeForAnchor(kind: PlanAnchorKind): GenerationCanvasEdgeMode {
-  if (kind === 'character') return 'character_ref'
-  if (kind === 'scene' || kind === 'style') return 'style_ref'
-  return 'reference' // prop 走通用参考槽（无道具专用 mode）
-}
-
 /**
  * 锚类型 → 画布节点种类。角色/场景有专用卡；**道具无专用节点种类 → 用 image（通用参考图节点）**
  * ——直接用 'prop' 当 kind 会让画布 registry 查不到定义而崩（defaultSize undefined，R13 真机抓出）。
@@ -247,29 +238,20 @@ function buildAnchorCardNode(anchor: PlanAnchor, options: StoryboardPlanToArgsOp
 
 /** 单镜建行选项（B 单行 materialize）：已建过的依赖节点传真实 id 复用，不重建。 */
 export type StoryboardShotRowArgsOptions = StoryboardPlanToArgsOptions & {
-  /** 已建过的锚节点：anchor.id → 画布真实节点 id（normalizePlannedEdges 认真实 id，直接当 sourceClientId）。 */
-  existingAnchorNodeIdByAnchorId?: Record<string, string>
   /** 已建过的首帧图节点（图片+视频镜）：真实节点 id，复用不重建。 */
   existingKeyframeNodeId?: string
-  /**
-   * 该行解析后的模式**不吃任何参考**（mode.slots 为空，如 t2v/t2i）时置 true：不连锚边。
-   * 连了也会在投影层被静默丢（正是「静默丢参考裸跑」一族），且会让批量波次替一条吃不进的边
-   * 空等定妆——诚实跳过。文本锚照旧拼 prompt，不受影响。
-   */
-  omitAnchorReferenceEdges?: boolean
 }
 
 /**
  * 一镜 → 节点+边（不含锚卡节点本身）。整方案转换与单行 materialize（B）共用的唯一构造器：
  * - 图片镜头 → image 节点（无 duration、绑图片模型）；视频镜头 → video 节点（带 duration、绑视频模型）。
- *   缺省 shotKind 按 video 兜底（旧草稿兼容）；引用的视觉锚 → 参考边（图片/视频镜头都连，锁身份）。
+ *   缺省 shotKind 按 video 兜底（旧草稿兼容）；参考图只来自行上的 referenceBindings（由 projectShotNode 投影进 meta），这里不连任何锚边。
  * - 图片+视频模式派生首帧图节点，再用 first_frame 边喂视频。
  * - 模型：用户为该镜选的 modelKey/modeId 优先，没选 → 按种类取默认兜底。
  * - **不连 shot→shot 链**：视频→视频会落到尚未实现的「首帧接力抽帧」必裸跑；镜头连贯靠共享锚参考。
  */
 function buildShotRowNodes(
   plan: StoryboardPlan,
-  anchorById: Map<string, PlanAnchor>,
   shot: PlanShot,
   options: StoryboardShotRowArgsOptions,
 ): { nodes: PlanCreatedNode[]; edges: PlanCreatedEdge[] } {
@@ -280,20 +262,6 @@ function buildShotRowNodes(
   const isImageShot = shot.shotKind === 'image'
   const hasKeyframe = !isImageShot && shot.keyframe?.enabled === true
   const keyframeTargetId = hasKeyframe ? (options.existingKeyframeNodeId || shotKeyframeClientId(shot)) : id
-  // 该镜引用的视觉锚（定妆卡）——连 character_ref/style_ref/reference 参考边。
-  // 视频镜头：图→视频 i2v 参考；图片镜头：图→图 参考（同样锁角色/场景身份，图片模型的参考槽）。
-  const visualAnchorIds = shot.anchorIds.filter((anchorId) => {
-    const anchor = anchorById.get(anchorId)
-    return Boolean(anchor) && isVisualAnchor(anchor!)
-  })
-  const referenceOrder = referenceOrderForShot(shot, anchorById)
-  const externalReferences = visualAnchorIds
-    .map((anchorId) => anchorById.get(anchorId))
-    .filter((anchor): anchor is PlanAnchor => Boolean(anchor && anchorCarriesOwnMaterial(anchor) && !anchor.referenceSourceNodeId))
-    .sort((a, b) => (referenceOrder.get(a.id) ?? 0) - (referenceOrder.get(b.id) ?? 0))
-  const externalImageUrls = externalReferences.filter((anchor) => (anchor.referenceKind ?? 'image') === 'image').map((anchor) => anchor.referenceUrl!)
-  const externalVideoUrls = externalReferences.filter((anchor) => anchor.referenceKind === 'video').map((anchor) => anchor.referenceUrl!)
-  const externalAudioUrls = externalReferences.filter((anchor) => anchor.referenceKind === 'audio').map((anchor) => anchor.referenceUrl!)
   // 图片镜头绑图片模型默认、视频镜头绑视频模型默认；用户在编辑器为该镜选的 modelKey 永远优先。
   const defaultModelKey = isImageShot ? options.defaultImageModelKey : options.defaultVideoModelKey
   const defaultModeId = isImageShot ? options.defaultImageModeId : options.defaultVideoModeId
@@ -311,12 +279,12 @@ function buildShotRowNodes(
   if (hasKeyframe && !options.existingKeyframeNodeId) {
     const keyframeModelKey = shot.keyframe?.modelKey || options.defaultImageModelKey
     const keyframeVendor = shot.keyframe?.modelKey ? shot.keyframe.modelVendor : imageDefaultVendor
-    const keyframeModeId = shot.keyframe?.modeId || (shot.keyframe?.modelKey ? undefined : (visualAnchorIds.length > 0 ? options.defaultImageRefModeId || options.defaultImageModeId : options.defaultImageModeId))
+    const keyframeModeId = shot.keyframe?.modeId || (shot.keyframe?.modelKey ? undefined : options.defaultImageModeId)
     nodes.push({
       clientId: keyframeTargetId,
       kind: 'image',
       title: i18n.t('generationCommon.agentRuntime.shotKeyframeTitle', { index: shot.index }),
-      prompt: buildKeyframePrompt(shot, anchorById),
+      prompt: compileShotOutbound(shot, 'keyframe').prompt,
       storyboardKeyframe: true,
       ...(keyframeModelKey ? { modelKey: keyframeModelKey } : {}),
       ...(keyframeVendor ? { modelVendor: keyframeVendor } : {}),
@@ -338,7 +306,7 @@ function buildShotRowNodes(
     // 图片镜头 → image 节点（纯图生图静态画面，无 duration）；视频镜头 → video 节点（带 duration）。
     kind: isImageShot ? 'image' : 'video',
     title: i18n.t('generationCommon.agentRuntime.shotTitle', { index: shot.index }),
-    prompt: buildShotPrompt(shot, anchorById),
+    prompt: compileShotOutbound(shot, 'shot').prompt,
     ...(modelKey ? { modelKey } : {}),
     ...(modelVendor ? { modelVendor } : {}),
     ...(modeId ? { modeId } : {}),
@@ -361,23 +329,8 @@ function buildShotRowNodes(
       ),
       // 图片镜停留时长（v5）：写进节点 meta，buildClipFromGenerationNode/顺播读取（默认值同源 DEFAULT_IMAGE_SECONDS）。
       ...(isImageShot ? { imageDurationSec: effectiveShotDurationSec(shot) } : {}),
-      ...(externalImageUrls.length ? { referenceImageUrls: externalImageUrls } : {}),
-      ...(externalVideoUrls.length ? { referenceVideoUrls: externalVideoUrls } : {}),
-      ...(externalAudioUrls.length ? { referenceAudioUrls: externalAudioUrls } : {}),
     },
   })
-  // 定妆卡 → 这一镜参考边（角色 character_ref / 场景·风格 style_ref / 道具 reference）。图片/视频镜头都连；
-  // 已建过的锚用真实节点 id 连（复用）；该行模式吃不进参考时按 omitAnchorReferenceEdges 跳过。
-  if (!options.omitAnchorReferenceEdges) {
-    const referenceTargetId = hasKeyframe ? keyframeTargetId : id
-    for (const anchorId of visualAnchorIds) {
-      const anchor = anchorById.get(anchorId)!
-      const sourceId = options.existingAnchorNodeIdByAnchorId?.[anchorId] || anchorId
-      // 自带素材且**不是**指向已有节点的那种：素材随 params 走 URL，没有边可连。
-      if (anchorCarriesOwnMaterial(anchor) && !anchor.referenceSourceNodeId) continue
-      edges.push({ sourceClientId: anchor.referenceSourceNodeId || sourceId, targetClientId: referenceTargetId, mode: edgeModeForAnchor(anchor.kind), order: referenceOrder.get(anchorId) })
-    }
-  }
   if (hasKeyframe) {
     edges.push({ sourceClientId: keyframeTargetId, targetClientId: id, mode: 'first_frame' })
   }
@@ -386,12 +339,12 @@ function buildShotRowNodes(
 
 /** 该镜落到节点上的最终提示词（文本锚拼接后）——行编辑写回节点（B sync）与建节点同一渲染。 */
 export function renderShotNodePrompt(plan: StoryboardPlan, shot: PlanShot): string {
-  return buildShotPrompt(shot, new Map(plan.anchors.map((anchor) => [anchor.id, anchor])))
+  return compileShotOutbound(shot, 'shot').prompt
 }
 
 /** 该镜首帧图节点的最终提示词（keyframe.prompt > ffDesc > shot.prompt，文本锚拼接后）。 */
 export function renderShotKeyframePrompt(plan: StoryboardPlan, shot: PlanShot): string {
-  return buildKeyframePrompt(shot, new Map(plan.anchors.map((anchor) => [anchor.id, anchor])))
+  return compileShotOutbound(shot, 'keyframe').prompt
 }
 
 /**
@@ -406,7 +359,6 @@ export function storyboardPlanToCreateNodesArgs(
   plan: StoryboardPlan,
   options: StoryboardPlanToArgsOptions = {},
 ): PlanCreateNodesArgs {
-  const anchorById = new Map(plan.anchors.map((anchor) => [anchor.id, anchor]))
   const nodes: PlanCreatedNode[] = []
   const edges: PlanCreatedEdge[] = []
 
@@ -423,7 +375,7 @@ export function storyboardPlanToCreateNodesArgs(
   // 布局按数组顺序排格子，若 LLM 把镜头乱序吐出来，画布空间顺序就会与镜头编号错位。钉死「数组序=镜序」。
   const orderedShots = [...plan.shots].sort((a, b) => a.index - b.index)
   for (const shot of orderedShots) {
-    const row = buildShotRowNodes(plan, anchorById, shot, options)
+    const row = buildShotRowNodes(plan, shot, options)
     nodes.push(...row.nodes)
     edges.push(...row.edges)
   }
@@ -448,35 +400,21 @@ export function storyboardPlanToCreateNodesArgs(
 }
 
 /**
- * 单行 materialize（分镜表 v5 B）：把**一镜**转成 create_canvas_nodes 参数——该行引用的视觉锚
- * 里还没建节点的一并按需建立（已建过的经 existingAnchorNodeIdByAnchorId 用真实 id 连边复用），
- * 图片+视频镜按需建首帧图节点。与整方案转换共用同一构造器（buildAnchorCardNode/buildShotRowNodes）。
+ * 单行 materialize（分镜表 v5 B）：把**一镜**转成 create_canvas_nodes 参数——只建这一镜自己（图片+视频镜
+ * 按需带首帧图节点）。**不再顺手建它引用的定妆卡**：定妆卡不再喂给任何镜，没有理由因为生成一镜而多出一张卡。
+ * 与整方案转换共用同一构造器（buildShotRowNodes）。
  */
 export function storyboardShotToCreateNodesArgs(
   plan: StoryboardPlan,
   shot: PlanShot,
   options: StoryboardShotRowArgsOptions = {},
 ): PlanCreateNodesArgs {
-  const anchorById = new Map(plan.anchors.map((anchor) => [anchor.id, anchor]))
-  const existing = options.existingAnchorNodeIdByAnchorId ?? {}
-  const nodes: PlanCreatedNode[] = []
-  // 该行引用、且还没建过节点的视觉锚 → 一并建卡（吃不进参考的行不建：锚卡只为连边而生）。
-  if (!options.omitAnchorReferenceEdges) {
-    for (const anchorId of shot.anchorIds) {
-      const anchor = anchorById.get(anchorId)
-      if (!anchor || !isVisualAnchor(anchor) || anchorCarriesOwnMaterial(anchor)) continue
-      if (existing[anchorId]) continue
-      nodes.push(buildAnchorCardNode(anchor, options))
-    }
-  }
-  const anchorCount = nodes.length
-  const row = buildShotRowNodes(plan, anchorById, shot, options)
-  nodes.push(...row.nodes)
+  const row = buildShotRowNodes(plan, shot, options)
   return {
     summary: `${plan.title.trim() || '分镜方案'} · shot-${shot.index}`,
-    nodes,
+    nodes: row.nodes,
     edges: row.edges,
-    anchorCount,
+    anchorCount: 0,
     groupCategoryId: 'shots',
   }
 }

@@ -1,4 +1,3 @@
-import { anchorsConsumedBy } from '../../../../../electron/shared/modelArchetypes/anchorPolicy'
 import { NodeGenerationStatus } from '../../../generationCanvas/nodes/NodeGenerationStatus'
 import { StoryboardOverrideBadge } from '../../../generationCanvas/nodes/StoryboardOverrideBadge'
 import { resolveStoryboardOverride } from '../exec/storyboardOverrideActions'
@@ -33,6 +32,7 @@ import StoryboardShotFrame from './StoryboardShotFrame'
 import StoryboardFrameActions from './StoryboardFrameActions'
 import StoryboardVariantsDrawer from './StoryboardVariantsDrawer'
 import ShotReferenceZone from './ShotReferenceZone'
+import { modeDisplayLabel, referenceCapableSibling } from './shotReferenceCells'
 import ShotComposerBar from './ShotComposerBar'
 import PromptSkeletonSegments from './PromptSkeletonSegments'
 import type { ShotVariant } from './shotVariants'
@@ -55,8 +55,6 @@ type Props = {
   shot: PlanShot
   anchors: PlanAnchor[]
   modelOptions?: ModelOption[]
-  /** 这镜引用了、但锚已不存在的 id（展开态红标 + 阻断确认）。 */
-  danglingIds: string[]
   exec?: ShotRowExec | undefined
   /** 这一行生效的画幅（storyboardShotScope.effectiveShotAspect）。 */
   aspect: string
@@ -85,7 +83,6 @@ type Props = {
   mentionUpload?: MentionUploadControls
   storyboardProfile?: StoryboardProfile
   onGenerate?: (() => void) | undefined
-  onJumpToAnchor?: ((anchorId: string) => void) | undefined
   onOpenPreview?: (() => void) | undefined
   onRegenerate?: (() => void) | undefined
   /** 可找回态的**免费**续查（`recoverNodeResult`）；与 onGenerate/onRegenerate 那两条付费路径分开。 */
@@ -112,7 +109,6 @@ type Props = {
   onRerunFreshRefs?: (() => void) | undefined
   onResolveOverride?: (field: string, action: 'adopt' | 'discard') => void
   onUpdate: (patch: PlanShotPatch) => void
-  onToggleAnchor: (anchorId: string) => void
   onRemove: () => void
   promptInvalid?: boolean
   /**
@@ -175,7 +171,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
   const {
     shot, anchors, modelOptions, exec, aspect, frameBox, aspectOverridden, aspectOptions, onChangeAspect,
     skipped, onToggleSkip, variants = [], adoptedVariantId, onAdoptVariant, onDeleteVariant, onGenerateVariants, outputTag,
-    onGenerate, onJumpToAnchor, onOpenPreview, onRegenerate, onRecover, onToggleLock, onAgentHandoff,
+    onGenerate, onOpenPreview, onRegenerate, onRecover, onToggleLock, onAgentHandoff,
     onInsertAbove, onInsertBelow, targetShots, allShots, sourcePosition, onSaveAsReference, onSetAsFirstFrame,
     onRerunFreshRefs, onUpdate, onRemove, promptInvalid, durationWarning,
     mentionSearch, onMentionSelect, currentRefUrls, mentionUpload, storyboardProfile, sourceSegment,
@@ -197,6 +193,14 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
   // 档案按 (modelKey, modelVendor) 取：同名两家的档案/参数可以不同，按名字取会拿到另一家的模式表。
   const resolved = resolveShotArchetypeMode(findModelOptionByIdentifier(modelOptions ?? [], shot.modelKey, shot.modelVendor, orderedVendorKeys), shot.modeId)
   const resolvedMode = resolved?.mode ?? null
+  // 行上摆着、当前模式用不上的参考图：一句话点名（模式名与下拉同一个出口；换哪个模式才带得上也说出来）。
+  const ignoredNames = (exec?.ignoredAnchors ?? []).map((anchor) => anchor.name).join(t('storyboardEditor.anchorPolicy.nameSeparator'))
+  const ignoredSwitch = resolvedMode ? referenceCapableSibling(resolvedMode, resolved?.archetype ?? null) : undefined
+  const ignoredReferenceNotice = resolvedMode && ignoredNames
+    ? ignoredSwitch
+      ? t('storyboardEditor.anchorPolicy.rowIgnored', { names: ignoredNames, mode: modeDisplayLabel(resolvedMode), other: ignoredSwitch.modeLabel })
+      : t('storyboardEditor.anchorPolicy.rowIgnoredNoAlt', { names: ignoredNames, mode: modeDisplayLabel(resolvedMode) })
+    : null
 
 
   /**
@@ -308,7 +312,6 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
         aspect={aspect}
         box={frameBox}
         onGenerate={onGenerate}
-        onJumpToAnchor={onJumpToAnchor}
         onOpenPreview={onOpenPreview}
         selected={props.selected}
         onSelect={props.onSelect}
@@ -352,8 +355,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
       {exec?.node ? <StoryboardOverrideBadge node={exec.node} onResolve={(field, action) => props.onResolveOverride ? props.onResolveOverride(field, action) : resolveStoryboardOverride(exec.node!.id, field, action)} /> : null}
       {exec?.ignoredAnchors?.length ? (
         <span className="text-micro text-nomi-ink-40" data-storyboard-anchor-ignored={shot.index} title={exec.ignoredAnchors.map(anchor => `${anchor.name}: ${anchor.reason}`).join('\n')}>
-          {t(resolved?.archetype.modes.every(mode => anchorsConsumedBy(mode).includes('none'))
-            ? 'storyboardEditor.anchorPolicy.modelUnsupported' : 'storyboardEditor.anchorPolicy.rowIgnored')}
+          {ignoredReferenceNotice}
         </span>
       ) : null}
       {skipped ? (
@@ -522,6 +524,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
           missingSlots={exec ? exec.missingSlots : missingRequiredSlots(resolvedMode, shot, anchors)}
           plannedFirstFrame={exec?.plannedFirstFrame ?? null}
           anchors={anchors}
+          hideNoRefNotice={Boolean(exec?.ignoredAnchors?.length)}
           onTriggerMention={triggerAtMention}
           mentionEnabled={Boolean(mentionSearch)}
         />
