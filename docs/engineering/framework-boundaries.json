@@ -514,6 +514,24 @@
           ]
         },
         {
+          "id": "context-compaction",
+          "provides": "自动压缩 compaction（只调 reserveTokens / keepRecentTokens）：超阈值时在回合之间摘要旧消息、保留尾巴、落可回放条目；切点与摘要全是 pi 的",
+          "evidence": "@earendil-works/pi-agent-core dist/harness/compaction/compaction.js:144 `shouldCompact`、dist/harness/runtime/drive/structural.js:837 `prepareCompactionThreshold`；@earendil-works/pi-coding-agent docs/compaction.md；我们的唯一设置入口 electron/agentLane/laneContextBudget.mts `laneCompactionSettings`",
+          "scope": ["electron/agentLane/"],
+          "forbidden": [
+            {
+              "id": "compaction-disabled",
+              "pattern": "compaction:\\s*\\{\\s*enabled:\\s*false",
+              "why": "关掉 pi 的压缩后，长对话的上下文只能由宿主自己裁剪——那正是 laneContextFit 那份自写件（写了又删）重新长出来的地方。"
+            },
+            {
+              "id": "hand-rolled-context-trimming",
+              "pattern": "fitContextToBudget|elideOldToolResults|pruneToolResults|trimContextToBudget",
+              "why": "自己裁剪每次请求的消息视图，等于第二个压缩器：失去 pi 的切点规则、摘要和可回放的 compaction 条目；该调的是 laneCompactionSettings 的 reserveTokens / keepRecentTokens。"
+            }
+          ]
+        },
+        {
           "id": "steering",
           "provides": "AgentSession.steer() / followUp()：把用户的新指令按流式状态排进当前回合或下一回合",
           "evidence": "@earendil-works/pi-coding-agent@0.85.1 dist/core/agent-session.d.ts:375 `steer(text, images?)`、:383 `followUp(text, images?)`；pi-agent-core dist/agent.d.ts:84/86",

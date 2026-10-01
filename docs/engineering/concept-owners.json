@@ -3528,6 +3528,84 @@
       ],
       "since": "2026-10-01",
       "notes": "付费卡① 第 14 条：以前批准付费门时到处核「收据上的项目版本 == 项目此刻的版本」（Run 服务的收据核对，加上 runOwnedGenerationGateAuthority 里请求门、批门、确认前后共四处），于是确认卡开着的时候 Nomi 往画布上落了别的镜、用户改了下一镜，这一下「生成这张」就被拒成「确认时项目有变动」，而卡上的东西一个字没变。现在封了信封的付费门，收据比的是它自己那份信封封好时的版本（revisionRuleFor → sealed），命令里说的版本也必须就是它；发出去的东西本来就由合同哈希、线上报文哈希、幂等键逐字钉死，和项目版本无关。创意门、信任降档、没有信封的旧付费门照旧比项目此刻的版本（assertCurrentProjectRevision）。runOwnedGenerationGateAuthority 那四处活版本核对删了，它连 projectRevisionResolver 这个依赖都没有了。"
+    },
+    {
+      "name": "新建文件时给 agent 看的「已有能力清单」（从两张登记表现算，不入库）",
+      "subject": "agent-rules.existing-capability-index",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/build-capability-index.mjs",
+        "symbol": "buildCapabilityIndex"
+      },
+      "write_api": [
+        {
+          "path": "scripts/build-capability-index.mjs",
+          "symbol": "buildCapabilityIndex"
+        }
+      ],
+      "parity_test": "scripts/build-capability-index.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/edit-time-reminder.mjs"
+      ],
+      "notes": "清单只读 concept-owners.json 与 framework-boundaries.json，每次现算，不写文件、不入库，不许另起第三份「已有能力」登记；登记表漏登的能力这里就列不出来（pi 的 context-compaction 就是这样漏过 laneContextFit 的），所以补登记是前置。"
+    },
+    {
+      "name": "「同一文件近 14 天第 3 次 fix → 先过重写判据」与「新建文件 → 给能力清单」的触发判决",
+      "subject": "agent-rules.edit-time-reminder-verdict",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/edit-time-reminder.mjs",
+        "symbol": "decideEditTimeReminder"
+      },
+      "write_api": [
+        {
+          "path": "scripts/edit-time-reminder.mjs",
+          "symbol": "decideEditTimeReminder"
+        }
+      ],
+      "parity_test": "scripts/edit-time-reminder.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/claude-hooks/edit-time-reminder.sh"
+      ],
+      "notes": "什么时候提醒（新建 = 路径不存在；反复修 = 近 14 天 fix/hotfix 提交 ≥3）只住 decideEditTimeReminder；阈值是试用值（到 2026-10-15 用提交历史校准）。只提醒、不拦、fail-open；回馈走 PreToolUse 的 hookSpecificOutput.additionalContext（普通 stdout 不进上下文）。"
+    },
+    {
+      "name": "「同一层被反复补」的簇何时算已答复（补 / 重写 / 删的选择 + 特征测试）",
+      "subject": "agent-rules.rewrite-decision-cluster",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/symptom-cluster-lib.mjs",
+        "symbol": "evaluateClusters"
+      },
+      "write_api": [
+        {
+          "path": "scripts/symptom-cluster-lib.mjs",
+          "symbol": "evaluateClusters"
+        }
+      ],
+      "parity_test": "scripts/check-symptom-cluster.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/check-symptom-cluster.mjs"
+      ],
+      "notes": "同一模块 7 天内第三份根因合同时，簇里最新那份必须带有效的 rewrite_decision（decision + characterization_test）才算答复；评审文档那条路已删，不并存。字段校验（测试文件存在、选 rewrite 时测试在 diff 里）在 root-cause-contracts 的 validateRewriteDecision，那里只校验、不判簇。"
     }
   ]
 }
