@@ -40,8 +40,25 @@ describe('按目标路径筛选', () => {
     assert.doesNotMatch(text, /\[pi\] other/)
   })
 
-  test('什么都没命中就是空串，不塞凑数的内容', () => {
+  test('什么都没命中且没给依赖 → 空串，不塞凑数的内容', () => {
     assert.equal(buildCapabilityIndex({ concepts, frameworks, targetRel: 'scripts/x.mjs' }).text, '')
+  })
+
+  test('命中少于 3 条 → 追加一行运行时依赖名（确定、永远完整）；够 3 条就不追加', () => {
+    const dependencies = ['ai', '@ai-sdk/openai', 'zod']
+    const thin = buildCapabilityIndex({ concepts, frameworks, dependencies, targetRel: 'electron/ai/new.ts' })
+    assert.match(thin.text, /package\.json 运行时依赖（先看有没有现成的）：ai、@ai-sdk\/openai、zod/)
+    assert.equal(thin.dependencies, 3)
+    const many = Array.from({ length: 4 }, (_, i) => concept(`c.${i}`, `electron/agentLane/file${i}.ts`))
+    const full = buildCapabilityIndex({ concepts: many, frameworks, dependencies, targetRel: 'electron/agentLane/new.ts' })
+    assert.doesNotMatch(full.text, /运行时依赖/)
+  })
+
+  test('依赖名这一行也守总长上限（先砍它，再砍别的）', () => {
+    const dependencies = Array.from({ length: 400 }, (_, i) => `some-package-name-${i}`)
+    const result = buildCapabilityIndex({ concepts: [], frameworks: [], dependencies, targetRel: 'electron/ai/new.ts' })
+    assert.ok(result.bytes <= DEFAULT_MAX_BYTES, `超了 ${result.bytes}`)
+    assert.ok(result.dependencies > 0 && result.dependencies < 400)
   })
 })
 
@@ -54,9 +71,20 @@ describe('大小上限', () => {
   })
 
   test('真实登记表下，常见新建位置的清单都在上限内', () => {
-    for (const target of ['electron/agentLane/laneNew.ts', 'electron/capabilityCore/new.ts', 'src/workbench/ai/lane/new.ts', 'src/workbench/generationCanvas/new.tsx', 'electron/catalog/new.ts']) {
+    for (const target of ['electron/agentLane/laneNew.ts', 'electron/capabilityCore/new.ts', 'src/workbench/ai/lane/new.ts', 'src/workbench/generationCanvas/new.tsx', 'electron/catalog/new.ts', 'electron/ai/new.ts', 'electron/providerAdapter/new.ts']) {
       const { bytes } = buildCapabilityIndex({ ...real, targetRel: target })
       assert.ok(bytes <= DEFAULT_MAX_BYTES, `${target} 清单 ${bytes} 字节超上限`)
+    }
+  })
+})
+
+describe('大目录不再给空清单（electron/ai 是 AI SDK 文本栈，最容易长轮子）', () => {
+  test('真实登记表下，electron/ai 与 electron/mcp 这类登记没覆盖的目录至少给出依赖名', () => {
+    for (const target of ['electron/ai/x.ts', 'electron/mcp/x.ts', 'src/workbench/canvas/x.ts']) {
+      const result = buildCapabilityIndex({ ...real, targetRel: target })
+      assert.ok(result.text.length > 0, `${target} 清单是空的`)
+      assert.match(result.text, /package\.json 运行时依赖/)
+      assert.match(result.text, /@ai-sdk\/openai/)
     }
   })
 })

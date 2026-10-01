@@ -65,7 +65,7 @@
 |---|---|---|
 | 常用命令大表（约 3.9 KB） | `docs/engineering/commands.md` | CLAUDE.md「常用命令」一节直接指向；`self-check.sh`【命令全表】块（消息含 gates / check: / 门岗 / 命令）；`package.json` 是真相源 |
 | push 前分层（R22）、交付身份（R11）、Ponytail（R25） | `docs/engineering/delivery-and-review.md` | `self-check.sh`【交付】块（消息含 合并 / merge / 收据 / verify-merged / preflight / 开 PR / 交工 / Ponytail / review:branch / 推送）；pre-push 闸门自己拦没过的、没收据的 |
-| 三个每日雷达 + 三日竞品雷达 | `docs/engineering/daily-radars.md`；技能 `nomi-*-radar` | **SessionStart hook `daily-radar.sh` 直接跑脚本并注入结果**；失败明说「今天没查成」；一天一次、失败下次重试 |
+| 三个每日雷达 + 三日竞品雷达 | `docs/engineering/daily-radars.md`；技能 `nomi-*-radar` | **SessionStart hook `daily-radar.sh` 直接跑脚本并注入结果**；失败明说「今天没查成」；**一台机器一天一次，标记与摘要在仓库外，后开的会话拿缓存摘要**；失败下次重试；两个雷达并行；hook 不动工作树、不发扣费请求（`--no-liveness`）；分诊只由协调会话做 |
 | P2 / P3 / P5 全文 | `docs/engineering/principles-detail.md`；CLAUDE.md 各留一两行 | `self-check.sh`【修根因】【报完成前】【设计流程】块都带指针；P2 另有 `root-cause-remediation` 技能 |
 | 三闸段（CLAUDE.md） | 删（和 `self-check.sh` 逐句重复） | 常驻 640 字节仍在每轮注入三刻与贯穿原则 |
 | L0 ① 里的 R5.1 / R5.4 / R5.5 细节 | `self-check.sh`【先查别人 · R5】块；`stack-currency-check.sh`（PreToolUse · 写 docs/plan 或动 package.json）追加一句 R5.4 / R5.5 | 消息含 框架 / SDK / 依赖 / 协议 / 规范 / 格式 / 导入导出 / MCP / 技能包 等；或写方案文档 / 动 package.json 的那一刻 |
@@ -85,6 +85,12 @@
 
 - **合并**：CI 绿 + 扫描干净就合；最多 3 个合并在等收据（`quality-gate.yml` 按 SHA 分组，每个合并提交各跑一套），任何一个收据红了立刻停止再合，交人定修还是回滚。落在 `docs/engineering/delivery-and-review.md`、编排手册 §19.3、hook 的【交付】块。
 - **PR 切法**：一个概念一个 PR、按阶段攒；PR 内提交小而清楚、合并保留每个提交；跨概念 / 热修 / 别的线等着它 / 大到审不过来才拆。落在编排手册 §19.3a、CLAUDE.md R27 一行。
+
+### 清单在登记没覆盖的目录
+
+命中少于 3 条时，清单追加一行 `package.json` 运行时依赖名（确定、永远完整，约 0.4 KB，仍守 2.5 KB 总上限）——`electron/ai`（AI SDK 文本栈）、`electron/mcp` 这类最容易长轮子的目录，登记表给不出东西，至少让人看到「依赖里已经有 `ai`、`@ai-sdk/*`、`zod`……」。
+
+**登记缺口（不在本 PR 补，记给协调会话）**：Vercel AI SDK（`ai`、`@ai-sdk/*`，用在 `electron/ai`、`electron/providerAdapter`、`electron/vendor`）在 `framework-boundaries.json` 里**根本没登记**（只在依赖能力清单里）；MCP 没有对应框架依赖（`package.json` 里没有 `@modelcontextprotocol/*`，`electron/capabilityCore/mcp*.ts` 是手写的），也**没登记**，是自写登记表的候选。React Flow **已登记**，scope 覆盖 `src/workbench/generationCanvas/`（真实代码都在那里；`src/workbench/canvas/`、`electron/mcp/` 这两个目录本来就不存在），不需要补 scope。
 
 ### 没做的
 
