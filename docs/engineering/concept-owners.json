@@ -3336,6 +3336,32 @@
         "scripts/claude-hooks/edit-time-reminder.sh"
       ],
       "notes": "什么时候提醒（新建 = 路径不存在；反复修 = 近 14 天 fix/hotfix 提交 ≥3）只住 decideEditTimeReminder；阈值是试用值（到 2026-10-15 用提交历史校准）。只提醒、不拦、fail-open；回馈走 PreToolUse 的 hookSpecificOutput.additionalContext（普通 stdout 不进上下文）。"
+    },
+    {
+      "name": "「同一层被反复补」的簇何时算已答复（补 / 重写 / 删的选择 + 特征测试）",
+      "subject": "agent-rules.rewrite-decision-cluster",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/symptom-cluster-lib.mjs",
+        "symbol": "evaluateClusters"
+      },
+      "write_api": [
+        {
+          "path": "scripts/symptom-cluster-lib.mjs",
+          "symbol": "evaluateClusters"
+        }
+      ],
+      "parity_test": "scripts/check-symptom-cluster.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/check-symptom-cluster.mjs"
+      ],
+      "notes": "同一模块 7 天内第三份根因合同时，簇里最新那份必须带有效的 rewrite_decision（decision + characterization_test）才算答复；评审文档那条路已删，不并存。字段校验（测试文件存在、选 rewrite 时测试在 diff 里）在 root-cause-contracts 的 validateRewriteDecision，那里只校验、不判簇。"
     }
   ]
 }
