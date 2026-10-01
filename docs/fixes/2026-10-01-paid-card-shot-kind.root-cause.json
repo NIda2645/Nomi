@@ -1,0 +1,201 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-paid-card-shot-kind",
+  "problem_type": "A generation shot's kind (image or video) had no single owner: it was guessed from the prompt when the shot was built, the model was then chosen separately, and the card title, the card body, the canvas node and dispatch each re-derived the kind from a different field",
+  "symptom": "Asked for a cover at 3:4, the Agent built a canvas node labelled as a video shot; the paid card title asked to generate one video, while the card body showed an image model and image sizes that could not be changed. Pressing the button said the step did not go through and that the user could adjust and press again, although nothing on the card could be adjusted. The video node also read queued although nothing had been confirmed.",
+  "direct_cause": "electron/capabilityCore/semanticGenerationCandidate.ts inferGenerationTaskKind decided video whenever the prompt contained words such as shot, video or animation, regardless of the named model, so a named image model was paired with a video mode; nothing compared the pair with the catalog until sealing. Afterwards src/workbench/ai/v4/agentPanelSpendCard.ts read /video/ on the mode for the title, src/workbench/ai/v4/spendCardDraft.ts read the model catalog's own kind for the card body, and electron/productionRun/multiShotCanvasLanding.ts read /image/ on the mode for the canvas node (so an image-to-video shot landed as an image node).",
+  "class_root": "The kind was a guess made once and then re-guessed by every reader: the constructor did not take it from the model and the stated kind, did not check the model and mode against the catalog, and there was no one function the readers shared, so any reader could disagree with any other and a contradictory shot could be stored and shown.",
+  "affected_population": [
+    "Every Agent draft created through draft_shots or the short generate path without a taskKind",
+    "External MCP hosts that create plans with an explicit candidate",
+    "Agent revisions that switch a shot's model",
+    "Multi-shot plans with image-to-video shots landing on the canvas",
+    "The paid card's title, card body and per-shot buttons"
+  ],
+  "scope_paths": [
+    "electron/shared/generationShotKind.ts",
+    "electron/capabilityCore/semanticGenerationCandidate.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/capabilityCore/generationPlanPatch.ts",
+    "electron/productionRun/multiShotCanvasLanding.ts",
+    "electron/productionRun/productionPendingSpend.ts"
+  ],
+  "entry_points": [
+    "Agent draft_shots and the short generate path: electron/capabilityCore/mcpGenerationTools.ts create (single and multi) → semanticGenerationCandidate.semanticCandidateFromParams → shotTaskKind → resolveShotTaskKind",
+    "Explicit candidates from external MCP hosts: mcpGenerationTools.ts create → admitShotIdentity",
+    "Agent revisions: mcpGenerationTools.ts plan patch → generationPlanPatch.resolvePlanPatch → declaredModeForModel → admitShotIdentity",
+    "Readers: electron/productionRun/productionPendingSpend.ts (card projection kind) and electron/productionRun/multiShotCanvasLanding.ts (canvas node kind) → generationShotKind"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Which media a shot produces is decided by Nomi's own model catalog (published modes per model) and the shot the Agent described; no third-party library or external format decides it.",
+  "invariant_owner_layer": {
+    "layer": "electron/shared/generationShotKind.ts",
+    "tests": [
+      "electron/shared/generationShotKind.test.ts",
+      "electron/capabilityCore/semanticGenerationCandidate.test.ts",
+      "electron/capabilityCore/mcpGenerationTools.test.ts",
+      "src/workbench/ai/v4/agentPanelSpendCard.test.ts"
+    ],
+    "why": "resolveShotTaskKind is the only place a kind is decided (from the named model's catalog modes and the stated kind, never the prompt), admitShotIdentity is the only admission every construction path calls before saving, and generationShotKind is the only reader the card projection and the canvas landing use; the renderer only reads the projected kind field."
+  },
+  "invariants": [
+    "A shot's kind comes only from the named model and the stated kind (taskKind, mode or modeId); with neither, the host asks instead of guessing from the prompt.",
+    "No construction path stores a shot whose model cannot do its mode, and a reference card is always an image.",
+    "Switching a shot's model keeps its kind; a model that cannot do that kind is refused, not silently given another kind.",
+    "The card title, the card body, the canvas node and dispatch read the same kind for the same shot."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "generationShotKind"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "generationShotKind"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "symbol": "declaredModeForModel"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "symbol": "admitShotIdentity"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "admitShotIdentity"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "symbol": "resolveShotTaskKind"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "symbol": "shotTaskKind"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/generationShotKind.ts",
+      "symbol": "resolveShotTaskKind"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/generationShotKind.ts",
+      "symbol": "generationShotKind"
+    }
+  ],
+  "door_reduction": {
+    "before": 9,
+    "after": 9,
+    "why_not": "Before the fix the kind had four independent derivations (prompt heuristic at construction, /video/ on the mode for the card title, the catalog's model kind for the card body, /image/ on the mode for the canvas node); they are now one decision (resolveShotTaskKind), one admission (admitShotIdentity, called by every construction path: single create, multi create and plan patch) and one reader (generationShotKind, used by the card projection and the canvas landing). The remaining doors are those distinct callers of the same three functions; each construction path must call the admission itself because each builds its candidate differently."
+  },
+  "generality_proof": "The same decision and admission serve the Agent's short path, multi-shot drafts, explicit candidates from external MCP hosts and plan patches; the same reader serves the card projection and the canvas landing, and the renderer consumes only the projected kind. A new construction path that skips admitShotIdentity would still have its contradictory pair refused when the contract is compiled at seal, but the card would never be shown for it because every current path admits first.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/generationShotKind.ts",
+      "symbol": "resolveShotTaskKind",
+      "responsibility": "Decides a new shot's task kind from the stated kind and the named model's catalog modes; refuses when neither decides it, when the model cannot do the stated kind, or when the model does both images and videos."
+    },
+    {
+      "path": "electron/shared/generationShotKind.ts",
+      "symbol": "generationShotKind",
+      "responsibility": "The one answer to \"is this shot an image or a video\" that the card projection and the canvas landing read."
+    },
+    {
+      "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "symbol": "admitShotIdentity",
+      "responsibility": "Checks every constructed shot's model and mode against the catalog (the same registry.resolve dispatch uses) and refuses contradictions with what the model can do; a reference card must be an image."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "createGenerationPlanningHandler create (single and multi)",
+      "disposition": "enforced",
+      "evidence": "Both arities call admitShotIdentity on every shot before the draft is stored; a contradictory shot leaves no draft behind (mcpGenerationTools.test.ts, rule 9 block)."
+    },
+    {
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "entry_point": "resolvePlanPatch",
+      "disposition": "enforced",
+      "evidence": "A model or mode change follows the new model's spelling of the same kind and is admitted; a model that cannot do that kind is refused and the draft is unchanged (mcpGenerationTools.test.ts)."
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "storyboard planner shots (scriptText / long-form)",
+      "disposition": "enforced",
+      "evidence": "Planner shots take an explicit kind (anchors image, shots video or image-to-video by the user's taskKind and references) and pass the same admission in the multi create path."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "revisePendingSpend (card edits)",
+      "disposition": "not-affected",
+      "evidence": "The card's model picker only offers models of the shot's own kind (it reads the projected kind); a within-kind model that lacks the exact mode is refused when the contract is compiled at seal, which happens before anything is submitted."
+    },
+    {
+      "path": "src/workbench/ai/v4/agentPanelSpendCard.ts",
+      "entry_point": "projectSpendCard / spendCardDraft.projectSpendNode",
+      "disposition": "enforced",
+      "evidence": "The title, the per-shot button wording and the card body read only PendingSpendShot.kind; a mode string mentioning video does not change them (agentPanelSpendCard.test.ts)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Kind guessed from the prompt had already caused a refusal of an explicit image-to-video mode id (2026-09-22) and then the cover-built-as-video card; the readers had drifted apart three ways.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs --write=resolveShotTaskKind,admitShotIdentity,declaredModeForModel,shotTaskKind --read=generationShotKind",
+      "rg \"inferGenerationTaskKind\" electron src -> no definition or caller left (full-walk monitor text only names it as history)",
+      "rg \"/video/i.test|/image/i.test\" src/workbench/ai electron/productionRun -> no kind derivation from a mode string left on the card or the landing"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/generationShotKind.ts",
+    "invariant": "A shot's kind is decided once from the named model and the stated kind, admitted against the catalog before it is stored, and read through one function.",
+    "failure_mode": "A contradictory shot is refused at construction with what the model can do; a shot without a model or a kind is refused with how to state it.",
+    "exception_policy": "none",
+    "strategy": "Delete the prompt heuristic; decide the kind from the named model and the stated kind; admit every constructed shot against the catalog; route the card projection and the canvas landing through one reader; give the renderer the projected kind instead of letting it parse modes.",
+    "artifacts": [
+      "electron/shared/generationShotKind.ts",
+      "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "regression_tests": [
+    "electron/shared/generationShotKind.test.ts",
+    "electron/capabilityCore/semanticGenerationCandidate.test.ts",
+    "electron/capabilityCore/modeIdDecidesTaskKind.test.ts",
+    "electron/capabilityCore/mcpGenerationTools.test.ts",
+    "electron/capabilityCore/mcpGenerationParity.test.ts",
+    "src/workbench/ai/v4/agentPanelSpendCard.test.ts",
+    "src/workbench/ai/v4/spendCardPatchHostSchema.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/shared/generationShotKind.test.ts",
+    "electron/capabilityCore/mcpGenerationTools.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/semanticGenerationCandidate.ts"
+    ],
+    "rationale": "inferGenerationTaskKind (the prompt keyword heuristic) is deleted in place, together with the card's /video/ mode parsing, the card body's catalog kind lookup and the landing's /image/ mode parsing; all readers use generationShotKind."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency decides a shot's kind.",
+    "exit_criteria": []
+  },
+  "migration": "Stored shots keep their mode; generationShotKind reads it the same way for old and new drafts (an unrecognised mode is read as video, the canvas landing's long-standing fallback, now shared by every reader). No data is rewritten.",
+  "residual_risks": [
+    "A shot without a named model and without a stated kind is now refused once; an Agent that never states the kind pays one extra round trip (the tool descriptions say when to state it).",
+    "Audio and 3D modes are still read as video by the spend card and the landing, as the landing always did; the production spend path does not carry those kinds today."
+  ]
+}

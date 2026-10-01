@@ -171,7 +171,7 @@ it("partial consumption keeps the remaining shots' edits across new quotes", () 
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b'), shot('c')] }
     const draft = { perShot: { a: { prompt: 'A edited' }, b: { prompt: 'B edited', parameters: { quality: 'high' } }, c: { prompt: 'C edited' } } }
-    // 点了「生成这张」的那一镜会把报价推进一版；剩下没决定的那几镜仍然读得回来（T-QA-27 的那一半）。
+    // 点了「生成这张」的那一镜会把报价推进一版；剩下没决定的那几镜仍然读得回来（确认中途失败时，没提交的手改不许丢的那一半）。
     const successor = { ...pending, quoteId: 'q2', planVersion: 2 }
     const remaining = consumeSpendDraft(pending, draft, ['a'])
     expect(effectivePatchForShot(remaining, 'a')).toEqual({})

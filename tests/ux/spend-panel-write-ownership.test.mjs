@@ -245,7 +245,7 @@ it('a refused revision on one shot keeps its unsubmitted edit across quote refre
   expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('b')
 })
 
-// T-QA-30（2026-09-22，与上面那条同根）：× 收回的是**这一次出价**，不是这份草稿
+// 2026-09-22（与上面那条同根）：× 收回的是**这一次出价**，不是这份草稿
 // （裁决 D）。同一个 operationId 再 `generate` = 重新出价，报价指纹必然换一份——而用户在卡上
 // **没提交**的那句话是「这一次操作」的东西，不是「这一次报价」的东西，必须原样还在。
 // 阳性对照写在同一条里：换一次 operationId 就是另一本账本，一个字都带不过去。

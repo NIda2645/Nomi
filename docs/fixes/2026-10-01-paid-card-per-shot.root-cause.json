@@ -70,7 +70,8 @@
     "The Agent receipt renders only the host's per-shot outcome; it says all shots are generating only when every shot on the card is.",
     "What the card shows for a shot (model, parameters, references including canvas-connected ones) is what that shot's click sends.",
     "A repeated click on the same shot dispatches it once; a failure says nothing was spent only when no job may have reached the provider.",
-    "The paid confirmation path says no money word that is not true today: no price-unknown line, no generate-anyway label, and the upload-channel disclosure states facts (public temporary host, short-lived link, privacy risk, the channel can be changed in Settings) without calling any provider free or recommending one."
+    "The paid confirmation path says no money word that is not true today: no price-unknown line, no generate-anyway label, and the upload-channel disclosure states facts (public temporary host, short-lived link, privacy risk, the channel can be changed in Settings) without calling any provider free or recommending one.",
+    "A failure on one shot is judged on that shot's own jobs: an earlier shot on the same card that went out does not make a later not-started failure read as \"may have been submitted\"."
   ],
   "doors": [
     {
@@ -396,6 +397,12 @@
       "entry_point": "reconcileOpenProjectHook (stale presentation sweep)",
       "disposition": "enforced",
       "evidence": "A card left open by a previous process is closed with the reason stopped: the sweep wiring now passes the closer through to the presentation writer (it used to drop it, so the outcome read as user_closed); agentPanelSpendConfirm.e2e.test.ts asserts the recorded closer and agent-spend-waiting-owner.walk.mjs checks it after a real restart."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "confirmRemainingShots (\"generate the remaining N\" on the card, 2026-10-01)",
+      "disposition": "enforced",
+      "evidence": "Confirms each undecided shot through the same per-shot confirmOneShot (its own gate, receipt and dispatch; no total authorization), only when the named shots are exactly the card's current stack and each shot is unchanged since the click; stops at the first failure and when the card is closed part way (agentPanelSpendRemaining.e2e.test.ts)."
     }
   ],
   "recurrence": {
@@ -435,7 +442,9 @@
     "tests/ux/agent-spend-confirm-executes.walk.mjs",
     "tests/ux/full-walk/playbooks/pb01-two-page-card.walk.mjs",
     "electron/shared/productionShotJobs.test.ts",
-    "electron/capabilityCore/generationTransportAdapters.test.ts"
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "electron/capabilityCore/agentPanelSpendRemaining.e2e.test.ts",
+    "src/workbench/ai/v4/spendCardFailure.test.ts"
   ],
   "class_regression_tests": [
     "electron/shared/productionGenerationPresentation.test.ts",

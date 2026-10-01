@@ -48,7 +48,7 @@ import {
 import { priceDisagreements, pricingResolverFromModelOptions, repricePendingSpend, type SpendPriceDisagreement } from './spendCardEstimate'
 import type { InterventionData } from './agentPanelV4Types'
 import { missingCardReasonOfReadFailure, missingInterventionCard, type MissingCardReason } from './missingInterventionCard'
-import { spendActionFailureCopy, type SpendActionOutcome } from './spendActionFailure'
+import { spendActionFailureCopy, type SpendActionOutcome } from './spendCardFailure'
 
 /** 和任务中心同一个节拍：付费卡是同一批 Run 事实的另一个读者，不另立一套刷新频率。 */
 const POLL_INTERVAL_MS = 1500

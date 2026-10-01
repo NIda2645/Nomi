@@ -603,7 +603,7 @@
                   "type": "string"
                 },
                 "modelId": {
-                  "description": "Catalog model id from list_models; omit for the user's default.",
+                  "description": "Catalog model id from list_models. Omit it to use the user's default for this shot's taskKind.",
                   "minLength": 1,
                   "type": "string"
                 },
@@ -899,7 +899,7 @@
                   "type": "object"
                 },
                 "taskKind": {
-                  "description": "What to produce; omit to infer it (a named modeId decides it).",
+                  "description": "What to produce. A named model or modeId decides it, so omit it then; give it when you name neither, or when the model makes both images and videos.",
                   "enum": [
                     "text_to_image",
                     "image_edit",
@@ -922,7 +922,7 @@
             "type": "array"
           },
           "taskKind": {
-            "description": "What to produce for every shot; omit to infer per shot.",
+            "description": "Default kind for shots that give none of their own; omit it when the named models decide.",
             "enum": [
               "text_to_image",
               "image_edit",

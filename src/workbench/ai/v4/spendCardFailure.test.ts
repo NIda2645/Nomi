@@ -2,7 +2,7 @@
 // 用户那一幕：卡改不了，点下去却两次弹「这一步没成……可以改一下再按一次」。
 import { describe, expect, it } from 'vitest'
 
-import { spendActionFailureCopy } from './spendActionFailure'
+import { spendActionFailureCopy } from './spendCardFailure'
 
 describe('付费卡上一下没做成时说哪一句', () => {
   it('账本说可能已经发出去：只说「结果未知、先去核对」，不管种类、不管卡能不能改', () => {
