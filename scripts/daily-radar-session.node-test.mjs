@@ -11,11 +11,13 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, test } from 'node:test'
-import { RADARS, latestPaperRadarDate, localDate, radarStateFile, runDailyRadar, runSession, tryLock, unlock } from './daily-radar-session.mjs'
+import { RADARS, latestPaperRadarDate, localDate, radarStateFile, runDailyRadar, runSession, skillExists, tryLock, unlock } from './daily-radar-session.mjs'
 
 const NOW = new Date(2026, 9, 2, 9, 5) // 2026-10-02 09:05 本机时间
 const LATER = new Date(2026, 9, 2, 14, 30)
 const readdir = (names) => () => names
+const allSkills = () => true
+const noSkills = () => false
 const tmp = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix))
 const cleanup = (...dirs) => dirs.forEach((dir) => fs.rmSync(dir, { recursive: true, force: true }))
 
@@ -24,7 +26,7 @@ const failRun = (status = 1, stderr = 'boom') => async () => ({ status, stdout: 
 
 describe('成功', () => {
   test('两个脚本都成功 → 带出结果与「分诊只由协调会话做」，状态记下今天与摘要', async () => {
-    const { text, state } = await runDailyRadar({ root: '/x', now: NOW, run: okRun(), readdir: readdir([]) })
+    const { text, state } = await runDailyRadar({ root: '/x', now: NOW, run: okRun(), readdir: readdir([]), hasSkill: allSkills })
     assert.match(text, /【用户反馈雷达】已跑/)
     assert.match(text, /intake:radar 结果行/)
     assert.match(text, /【供应商模型雷达】已跑/)
@@ -179,9 +181,9 @@ describe('锁', () => {
 
 describe('论文雷达与竞品雷达的提醒', () => {
   test('今天已有 → 跳过；没有 → 提醒起技能', async () => {
-    const have = await runDailyRadar({ root: '/x', now: NOW, run: okRun(), readdir: readdir(['2026-10-01-radar.md', '2026-10-02-radar.md', 'other.md']) })
+    const have = await runDailyRadar({ root: '/x', now: NOW, run: okRun(), readdir: readdir(['2026-10-01-radar.md', '2026-10-02-radar.md', 'other.md']), hasSkill: allSkills })
     assert.match(have.text, /今天已有 docs\/research\/2026-10-02-radar\.md，跳过/)
-    const lack = await runDailyRadar({ root: '/x', now: NOW, run: okRun(), readdir: readdir(['2026-09-28-radar.md']) })
+    const lack = await runDailyRadar({ root: '/x', now: NOW, run: okRun(), readdir: readdir(['2026-09-28-radar.md']), hasSkill: allSkills })
     assert.match(lack.text, /今天还没有.*最新：2026-09-28/)
     assert.match(lack.text, /nomi-research-radar/)
     assert.match(lack.text, /nomi-competitive-radar/)
@@ -189,5 +191,56 @@ describe('论文雷达与竞品雷达的提醒', () => {
 
   test('目录读不了 → 当作没有（提醒仍给）', () => {
     assert.equal(latestPaperRadarDate('/x', () => { throw new Error('nope') }), null)
+  })
+})
+
+describe('技能在不在：不存在的技能不能叫人去跑', () => {
+  const run = async () => ({ status: 0, stdout: '新增 2' })
+
+  test('技能都不在 → 明说「在这台机器上没有」「今天没查成」，一个「静默跑」都没有', async () => {
+    const { text } = await runDailyRadar({ root: '/x', now: NOW, run, readdir: readdir(['2026-09-07-radar.md']), hasSkill: noSkills })
+    assert.match(text, /技能 nomi-research-radar 在这台机器上没有，今天没查成/)
+    assert.match(text, /技能 nomi-competitive-radar 在这台机器上没有/)
+    assert.match(text, /技能 nomi-intake-radar 在这台机器上没有/)
+    assert.match(text, /技能 nomi-model-radar 在这台机器上没有/)
+    assert.match(text, /docs\/plan\/2026-08-27-vendor-model-radar\.md/, '模型雷达缺技能时指向方案里的分诊规则')
+    assert.doesNotMatch(text, /静默跑/)
+    assert.doesNotMatch(text, /起 nomi-(intake|model)-radar 技能分诊/)
+    assert.match(text, /最新一份.*2026-09-07/)
+  })
+
+  test('技能都在 → 照旧提醒，且论文雷达、三日竞品雷达、分诊前面都有「只由协调会话做」', async () => {
+    const { text } = await runDailyRadar({ root: '/x', now: NOW, run, readdir: readdir([]), hasSkill: allSkills })
+    assert.match(text, /【论文雷达】只由协调会话做：.*静默跑 nomi-research-radar 技能/)
+    assert.match(text, /【三日竞品雷达】只由协调会话做：/)
+    assert.match(text, /起 nomi-intake-radar 技能分诊/)
+    assert.match(text, /分诊只由协调会话做/)
+  })
+
+  test('论文雷达今天已有 → 不管技能在不在都只说跳过', async () => {
+    const { text } = await runDailyRadar({ root: '/x', now: NOW, run, readdir: readdir(['2026-10-02-radar.md']), hasSkill: noSkills })
+    assert.match(text, /今天已有 docs\/research\/2026-10-02-radar\.md，跳过/)
+  })
+
+  test('skillExists 认三处：仓库 agent-skills、项目 .claude/skills、用户目录 ~/.claude/skills', () => {
+    const root = path.join(os.tmpdir(), 'nomi-skill-root')
+    const home = path.join(os.tmpdir(), 'nomi-skill-home')
+    const at = (...parts) => path.join(...parts, 'SKILL.md')
+    assert.equal(skillExists('x', { root, home, exists: () => false }), false)
+    for (const found of [at(root, 'agent-skills', 'x'), at(root, '.claude', 'skills', 'x'), at(home, '.claude', 'skills', 'x')]) {
+      assert.equal(skillExists('x', { root, home, exists: (file) => file === found }), true, found)
+    }
+    assert.equal(skillExists('x', { root, home, exists: (file) => file === at(root, 'agent-skills', 'other') }), false)
+  })
+
+  test('真实仓库里：这两个技能现在确实不存在（hook 才会明说没有）；有的两个确实存在', () => {
+    const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), '..')
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-empty-home-'))
+    try {
+      assert.equal(skillExists('nomi-intake-radar', { root: repo, home }), true)
+      assert.equal(skillExists('nomi-competitive-radar', { root: repo, home }), true)
+      assert.equal(skillExists('nomi-research-radar', { root: repo, home }), false)
+      assert.equal(skillExists('nomi-model-radar', { root: repo, home }), false)
+    } finally { cleanup(home) }
   })
 })

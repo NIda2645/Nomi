@@ -16,17 +16,23 @@
 // 两个雷达并行跑，缩短开会话的等待。细则见 docs/engineering/daily-radars.md。普通 stdout 在 SessionStart 会进上下文。
 import { spawn } from 'node:child_process'
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { resolveCacheDir } from './lib/intake-radar/store.mjs'
 
 const TRIAGE = '分诊只由协调会话做；其他会话看到不动手、不写待办。'
+const MODEL_TRIAGE_PLAN = 'docs/plan/2026-08-27-vendor-model-radar.md'
 export const RADARS = [
-  { key: 'intake', label: '用户反馈雷达', script: 'intake:radar', argv: ['scripts/intake-radar.mjs'],
-    next: `有新反馈或有突增时，由协调会话起 nomi-intake-radar 技能分诊。${TRIAGE}` },
+  { key: 'intake', label: '用户反馈雷达', script: 'intake:radar', argv: ['scripts/intake-radar.mjs'], skill: 'nomi-intake-radar',
+    next: (hasSkill) => (hasSkill
+      ? `有新反馈或有突增时，由协调会话起 nomi-intake-radar 技能分诊。${TRIAGE}`
+      : `技能 nomi-intake-radar 在这台机器上没有，今天没法按技能分诊（不是没有新反馈）；把「新增 N 条」告诉协调会话。${TRIAGE}`) },
   // --no-liveness：每周一次的存活探测会发付费请求，hook 路径里不许有任何扣费请求。
-  { key: 'models', label: '供应商模型雷达', script: 'radar:models', argv: ['node_modules/tsx/dist/cli.mjs', 'scripts/model-radar.ts', '--no-liveness'],
-    next: `\`新增 > 0\` 时由协调会话起 nomi-model-radar 技能分诊；要接某个先出接入方案，点头后才写码；快照等用户看过再 -- --update-baseline。${TRIAGE}` },
+  { key: 'models', label: '供应商模型雷达', script: 'radar:models', argv: ['node_modules/tsx/dist/cli.mjs', 'scripts/model-radar.ts', '--no-liveness'], skill: 'nomi-model-radar',
+    next: (hasSkill) => (hasSkill
+      ? `\`新增 > 0\` 时由协调会话起 nomi-model-radar 技能分诊；要接某个先出接入方案，点头后才写码；快照等用户看过再 -- --update-baseline。${TRIAGE}`
+      : `技能 nomi-model-radar 在这台机器上没有；\`新增 > 0\` 时按 ${MODEL_TRIAGE_PLAN} 的分诊规则由协调会话处理；要接某个先出接入方案，点头后才写码；快照等用户看过再 -- --update-baseline。${TRIAGE}`) },
 ]
 const TAIL_LINES = 14
 const TAIL_CHARS = 1200
@@ -42,6 +48,18 @@ const tail = (text) => {
   const lines = String(text || '').split('\n').map((l) => l.trimEnd()).filter(Boolean)
   const out = lines.slice(-TAIL_LINES).join('\n')
   return out.length > TAIL_CHARS ? `…${out.slice(-TAIL_CHARS)}` : out
+}
+
+/**
+ * 技能在这台机器上有没有：仓库里 agent-skills/<名>/SKILL.md、项目 .claude/skills、用户目录 ~/.claude/skills 任一处。
+ * 没有就不能叫人「去跑」它——叫人去跑一个不存在的东西，等于让这一步静悄悄地不发生（论文雷达最新一份就这么停在 09-07）。
+ */
+export function skillExists(name, { root, home = os.homedir(), exists = fs.existsSync } = {}) {
+  return [
+    path.join(root, 'agent-skills', name, 'SKILL.md'),
+    path.join(root, '.claude', 'skills', name, 'SKILL.md'),
+    path.join(home, '.claude', 'skills', name, 'SKILL.md'),
+  ].some((file) => exists(file))
 }
 
 /** 标记与当天摘要的位置：intake 缓存目录（仓库外；NOMI_INTAKE_CACHE 可改，测试用）。 */
@@ -88,7 +106,7 @@ export function latestPaperRadarDate(root, readdir = fs.readdirSync) {
  * 纯逻辑（可测）：返回 { text, state }。run(root, radar) 注入；两个雷达**并行**。
  * state = 机器级的当天标记 + 摘要：今天已成功的直接给缓存摘要（带跑的时间），失败的重跑。
  */
-export async function runDailyRadar({ root, now = new Date(), run = defaultRun, state = {}, readdir = fs.readdirSync }) {
+export async function runDailyRadar({ root, now = new Date(), run = defaultRun, state = {}, readdir = fs.readdirSync, hasSkill = (name) => skillExists(name, { root }) }) {
   const today = localDate(now)
   const next = state.date === today ? { ...state } : { date: today }
 
@@ -102,7 +120,7 @@ export async function runDailyRadar({ root, now = new Date(), run = defaultRun, 
     if (cached) {
       lines.push(`【${radar.label}】今天 ${cached.at} 已在本机跑过（别的会话先开了；摘要如下，新增数以当时为准；要重跑：pnpm run ${radar.script}）：`)
       lines.push(cached.text || '（当时脚本没有输出）')
-      lines.push(`→ ${radar.next}`)
+      lines.push(`→ ${radar.next(hasSkill(radar.skill))}`)
       continue
     }
     if (result.status === 0) {
@@ -110,7 +128,7 @@ export async function runDailyRadar({ root, now = new Date(), run = defaultRun, 
       next[radar.key] = { ok: true, at, text }
       lines.push(`【${radar.label}】已跑（${at}，pnpm run ${radar.script}）：`)
       lines.push(text)
-      lines.push(`→ ${radar.next}`)
+      lines.push(`→ ${radar.next(hasSkill(radar.skill))}`)
     } else {
       const why = result.error?.code === 'ETIMEDOUT' || result.signal ? `超时（>${TIMEOUT_MS / 1000}s）`
         : result.error ? `没能启动：${result.error.message}`
@@ -124,8 +142,10 @@ export async function runDailyRadar({ root, now = new Date(), run = defaultRun, 
 
   const paper = latestPaperRadarDate(root, readdir)
   if (paper === today) lines.push(`【论文雷达】今天已有 docs/research/${today}-radar.md，跳过。`)
-  else lines.push(`【论文雷达】今天还没有 docs/research/${today}-radar.md（最新：${paper ?? '无'}）→ 静默跑 nomi-research-radar 技能（额度默认授权），回答时带出当天最该动的 1-2 件事。`)
-  lines.push('【三日竞品雷达】首轮检查到期 / 未完成周期（nomi-competitive-radar；入口 docs/research/competitive/README.md）；失败不能记「无更新」，研究建议不能自动变成开发或发布授权。')
+  else if (hasSkill('nomi-research-radar')) lines.push(`【论文雷达】只由协调会话做：今天还没有 docs/research/${today}-radar.md（最新：${paper ?? '无'}）→ 静默跑 nomi-research-radar 技能（额度默认授权），回答时带出当天最该动的 1-2 件事。`)
+  else lines.push(`【论文雷达】技能 nomi-research-radar 在这台机器上没有，今天没查成（不是没有新论文；最新一份 docs/research/ 下的 radar 是 ${paper ?? '无'}）。恢复还是撤掉由协调会话去问用户，别的会话不动手。`)
+  if (hasSkill('nomi-competitive-radar')) lines.push('【三日竞品雷达】只由协调会话做：首轮检查到期 / 未完成周期（nomi-competitive-radar；入口 docs/research/competitive/README.md）；失败不能记「无更新」，研究建议不能自动变成开发或发布授权。')
+  else lines.push('【三日竞品雷达】技能 nomi-competitive-radar 在这台机器上没有，今天没查成（不是没有更新）；由协调会话处理。')
   return { text: lines.join('\n'), state: next }
 }
 
@@ -141,7 +161,7 @@ export function tryLock(lockFile, now = Date.now()) {
 export const unlock = (lockFile) => { try { fs.rmSync(lockFile, { force: true }) } catch { /* 无所谓 */ } }
 
 /** 会话级入口（含读写缓存与锁）；测试通过 env.NOMI_INTAKE_CACHE 指到临时目录。 */
-export async function runSession({ root, env = process.env, now = () => new Date(), run = defaultRun, readdir = fs.readdirSync, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), lockWaitMs = LOCK_WAIT_MS }) {
+export async function runSession({ root, env = process.env, now = () => new Date(), run = defaultRun, readdir = fs.readdirSync, hasSkill, sleep = (ms) => new Promise((r) => setTimeout(r, ms)), lockWaitMs = LOCK_WAIT_MS }) {
   const stateFile = radarStateFile(env)
   const lockFile = `${stateFile}.lock`
   let waited = 0
@@ -151,7 +171,7 @@ export async function runSession({ root, env = process.env, now = () => new Date
     waited += 2000
   }
   try {
-    const { text, state } = await runDailyRadar({ root, now: now(), run, state: readState(stateFile), readdir })
+    const { text, state } = await runDailyRadar({ root, now: now(), run, state: readState(stateFile), readdir, ...(hasSkill ? { hasSkill } : {}) })
     try { fs.mkdirSync(path.dirname(stateFile), { recursive: true }); fs.writeFileSync(stateFile, JSON.stringify(state)) } catch { /* 写不进去只会让下次再跑一遍 */ }
     return text
   } finally {
