@@ -231,6 +231,16 @@
         "symbol": "capabilityEffectClassOf"
       },
       "reason": "「按契约与 operation 覆盖解出效果类」这条不变量现在由同文件的 capabilityEffectClassOf 承担，lane 审批闸 laneApprovalGate 的 subjectOf 直接调它。resolveCapabilityEffectClass 是它按别名查契约的一层包装，旧 projectAgentHost 在 36f343204 删除后已无调用方，2026-09-24 同类扫描（docs/fixes/2026-09-24-stale-tool-name-lists.root-cause.json）一并删除。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-03-seo-clean-route-drift.root-cause.json",
+      "path": "scripts/marketing/site-manifest.mjs",
+      "symbol": "marketingPages",
+      "anchor": {
+        "path": "scripts/marketing/pages.mjs",
+        "symbol": "sitePages"
+      },
+      "reason": "2026-10-01 手写的 5 页清单 site-manifest.mjs 删除（它只列了首页、快速上手和手册，模型库等页面从没进过），官网页面清单收进由生成器派生的 pages.mjs 的 sitePages；「干净地址在 sitemap、巡检、页面里只有一份真相」这条不变量现在由它承担（见 docs/fixes/2026-10-01-site-data-drift.root-cause.json）。"
     }
   ],
   "retirements": [
