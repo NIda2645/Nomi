@@ -29,6 +29,8 @@ function assertProject(projectId: string): void {
 /** 建或整份替换一份 Agent 方案。替换只在模型**指名**了已有 id 时发生。 */
 export function upsertAgentStoryboardDesign(data: Record<string, unknown>): { status: 'saved'; designId: string } {
   const { documentId, designId } = targetDocument(data.projectId, data.documentId, data.designId)
+  // 谁发起的由主进程按用户那句话的目标显式给出；缺了或不认识就拒——不在这里猜。
+  if (data.initiator !== 'user' && data.initiator !== 'agent') throw new Error('storyboard_initiator_required')
   assertProject(data.projectId as string)
   const plan = storyboardPlanSchema.parse(data.plan) as StoryboardPlan
   const store = useWorkbenchStore.getState()
@@ -36,7 +38,7 @@ export function upsertAgentStoryboardDesign(data: Record<string, unknown>): { st
   const existing = (store.storyboardDesignsByDocumentId[documentId] ?? []).find(design => design.id === designId)
   const saved = existing
     ? store.setStoryboardPlan(plan, documentId, designId, true)
-    : store.addStoryboardDesign(documentId, plan, { id: designId, title: plan.title })
+    : store.addStoryboardDesign({ initiator: data.initiator, documentId, source: plan, identity: { id: designId, title: plan.title } })
   if (!saved || saved.id !== designId) throw new Error('storyboard_design_save_rejected')
   return { status: 'saved', designId }
 }

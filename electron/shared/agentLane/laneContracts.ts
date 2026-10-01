@@ -14,7 +14,7 @@ import type { CanvasWriteApprovalAuthority } from '../agentCapabilities/transpor
 
 import type { NomiModelConfig } from './laneModelConfig'
 import type { LaneLegacyFacts } from './laneLegacyNote'
-import type { ProjectAgentAttachmentClaim } from '../workbenchInput'
+import type { ProjectAgentAttachmentClaim, ProjectAgentAttachmentRef } from '../workbenchInput'
 import type { LaneToolNextAction } from './laneToolNextAction'
 import type { LaneToolPublicFailure } from './laneToolFailureEnvelope'
 import type { LaneDraftIntent } from './laneDesktopContracts'
@@ -37,6 +37,19 @@ export interface LanePartIdentity {
   readonly contentIndex: number
 }
 
+/**
+ * 一条用户消息上挂着的一个附件。`assetId`/`version` 是转录里那条 `nomi.input` 自己带的 claim（事实原样搬上来）；
+ * `display` 是**主进程投影时**按 assetId 现查的展示快照（文件名 / 类型 / 大小）。查不到（文件已被删）就缺席——
+ * 渲染层据此画「附件不可用」，而不是把那颗附件签从历史里抹掉（那等于改写用户做过的事）。
+ */
+export type LaneUserAttachment = Readonly<{ assetId: string; version: number; display?: NonNullable<ProjectAgentAttachmentRef['display']> }>
+
+/**
+ * claim → 展示快照。**每次投影都重问一遍**（与任务卡同一条纪律：不缓存一份「上次的答案」）；
+ * 不传 = 只有 claim、没有展示信息，那是诚实的「这一刻没 join 到」。
+ */
+export type LaneAttachmentResolver = (claims: readonly ProjectAgentAttachmentClaim[]) => readonly LaneUserAttachment[]
+
 export type LanePart =
   | (LanePartIdentity & { readonly kind: 'error'; readonly text: string })
   | (LanePartIdentity & {
@@ -50,6 +63,8 @@ export type LanePart =
        * 对话里一个字都看不到它，用户只能猜「到底用上没有」（2026-09-10 用户反馈 #6）。
        */
       readonly storyboardTarget?: StoryboardRequestTarget
+      /** 发这句话时挂着的附件（顺序 = 用户挂的顺序）。缺席 = 这句话没挂附件。 */
+      readonly attachments?: readonly LaneUserAttachment[]
       readonly skillKey?: string
       /** 主进程确实注入了这份技能的凭据。`name` 是 SKILL.md 的标识（与 skillKey 同值），不是显示名。 */
       readonly skillSnapshot?: { name: string; contentHash: string }

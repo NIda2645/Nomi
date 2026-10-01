@@ -1,0 +1,179 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-30-storyboard-open-is-a-user-action",
+  "problem_type": "Program-initiated creation changes what the user is looking at because the store decides activation without knowing who initiated the creation",
+  "symptom": "While the Agent drafts a multi-shot plan the storyboard table opens by itself although the user never clicked it (full-walk rule surface-creationSelection, playbook pb05).",
+  "direct_cause": "addStoryboardDesign always set activeStoryboardId (and activeDocumentId) to the new design; setStoryboardPlan did the same when it created one; propose_storyboard_plan then forced the workspace mode back to creation.",
+  "class_root": "'Who initiated this creation' was not an input to the code that decides activation, so every caller inherited 'the new thing becomes the visible thing' and only the human callers happened to also want it.",
+  "affected_population": [
+    "Every user while the Agent (or any program) creates a storyboard plan",
+    "Users viewing another plan, the source document, or another workspace mode when a plan is created"
+  ],
+  "scope_paths": [
+    "src/workbench/creation/DocumentListSidebar.tsx",
+    "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+    "src/workbench/workbenchDocumentSlice.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+    "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+    "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+    "src/workbench/onboarding/journeyTourStore.ts"
+  ],
+  "entry_points": [
+    "addStoryboardDesign (sidebar new/duplicate = user, agentStoryboardDesign = agent)",
+    "setStoryboardPlan create branch (propose_storyboard_plan = agent, shot table = user)",
+    "the draft result the Agent reads (storyboardSaved)"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Repository-internal invariant (which owner shapes a transcript user message, who reads the declared default, who may change what the user is looking at); no third-party documentation or source decides it.",
+  "invariants": [
+    "Only a user action changes which plan/document the user is viewing",
+    "The initiator is a required input (StoryboardInitiator) of every creating call - no default",
+    "The Agent is told the plan was saved but not opened and where to open it (storyboardSaved)"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "addStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/DocumentListSidebar.tsx",
+      "symbol": "addStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+      "symbol": "addStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/workbenchDocumentSlice.ts",
+      "symbol": "addStoryboardDesign"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/workbenchDocumentSlice.ts",
+      "symbol": "activationAfterCreate"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "storyboardSavedFact"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/exec/storyboardOverrideActions.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/creation/storyboard/StoryboardPlanEditor.tsx",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts",
+      "symbol": "setStoryboardPlan"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "symbol": "setStoryboardPlan"
+    }
+  ],
+  "door_reduction": {
+    "before": 12,
+    "after": 12,
+    "why_not": "The creating doors serve different initiators (sidebar buttons, Agent tools, the shot table, the guided tour). Each keeps existing because it is a different user-visible entry; what changed is that all of them now go through activationAfterCreate with an explicit initiator. Editing doors (StoryboardPlanEditor, storyboardOverrideActions) never create and are unaffected."
+  },
+  "generality_proof": "activationAfterCreate is the only expression that assigns the active plan after a creation; TypeScript requires the initiator at addStoryboardDesign and at the create argument of setStoryboardPlan, so a new caller cannot compile without declaring who is acting.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/workbenchDocumentSlice.ts",
+      "symbol": "activationAfterCreate",
+      "responsibility": "Decides from the explicit initiator whether the new design becomes the visible one."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "entry_point": "propose_storyboard_plan",
+      "disposition": "enforced",
+      "evidence": "Agent path passes 'agent' and no longer forces the workspace mode."
+    },
+    {
+      "path": "src/workbench/onboarding/journeyTourStore.ts",
+      "entry_point": "setStoryboardPlan",
+      "disposition": "not-affected",
+      "evidence": "The user-started guided tour omits the create argument and keeps the editing behaviour (the plan it just wrote is the one it shows)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every new program-driven creator (another Agent tool, importer, MCP) would inherit the same activation unless the initiator is forced.",
+    "same_class_scan": [
+      "door-map addStoryboardDesign: 3 write doors",
+      "door-map setStoryboardPlan: 6 write doors, only agent/user create branches can reveal",
+      "setActiveStoryboardId callers are UI selections"
+    ]
+  },
+  "prevention": {
+    "kind": "type-system",
+    "enforcement_path": "src/workbench/workbenchDocumentSlice.ts",
+    "invariant": "Creation never activates unless initiator is 'user'.",
+    "failure_mode": "A caller that omits the initiator does not compile (addStoryboardDesign) or cannot create (createNew is explicit).",
+    "exception_policy": "none",
+    "strategy": "Required StoryboardInitiator input plus one activation function; concept workbench.storyboard-activation registered.",
+    "artifacts": [
+      "src/workbench/workbenchDocumentSlice.ts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/creation/storyboard/agentStoryboardDesign.test.ts",
+    "src/workbench/generationCanvas/agent/applyCanvasToolCall.test.ts",
+    "electron/capabilityCore/mcpGenerationTools.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/creation/storyboard/agentStoryboardDesign.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+      "src/workbench/workbenchDocumentSlice.ts"
+    ],
+    "rationale": "The unconditional activation in addStoryboardDesign and the forced setWorkspaceMode('creation') after propose_storyboard_plan are deleted."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Zustand store logic is Nomi's own.",
+    "exit_criteria": []
+  },
+  "migration": "No persisted state changes: activeStoryboardId is not persisted across sessions.",
+  "residual_risks": [
+    "The planner button in the storyboard editor now leaves the new plan unopened (opened by the user from the left list); this is the intended rule but changes that flow.",
+    "Other program-driven surface changes (task center, panels) are outside this contract."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/workbenchDocumentSlice.ts",
+    "tests": [
+      "src/workbench/creation/storyboard/agentStoryboardDesign.test.ts",
+      "src/workbench/generationCanvas/agent/applyCanvasToolCall.test.ts"
+    ],
+    "why": "activationAfterCreate in the workbench document slice is the only place that assigns the visible plan after creation; tests drive the real store through the Agent upsert, propose_storyboard_plan and the user paths."
+  }
+}

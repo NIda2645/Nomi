@@ -25,6 +25,7 @@ const intentSchema = z.object({
     designId: z.string().min(1).max(240).optional(),
     shotIds: z.array(z.string().min(1).max(240)).min(1).max(128).optional(),
     requestId: z.string().min(1).max(256),
+    openResult: z.literal(true).optional(),
   }).strict().optional(),
   documentId: z.string().max(256).optional(),
   // `admissionSurface` is deliberately absent: it decides whether a destructive verb may run

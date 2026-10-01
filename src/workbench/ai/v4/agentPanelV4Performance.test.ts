@@ -49,6 +49,7 @@ const laneLabels: LaneViewModelLabels = {
   formatStages: (done, total) => `${done}/${total}`,
   formatMoney: (currency, amount) => `${currency}${amount}`,
   taskUnknown: 'task-unknown',
+  attachmentUnavailable: 'attachment-unavailable',
   answered: 'answered',
   skillLabel: (key) => key,
 }

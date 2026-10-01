@@ -22,6 +22,7 @@ import { resolveArchetypeForModel } from "../../../../electron/shared/modelArche
 import { preloadModelOptions } from "../../../config/modelCatalogCache";
 import { pickImplicitVendorMatch } from "../../../config/modelIdentity";
 import i18n from "../../../i18n";
+import { translateModelDisplayText } from "../../../i18n/modelDisplayText";
 
 import type { AgentModelEntry } from "../../../../electron/shared/agentCapabilities/availableModels";
 export type { AgentModelEntry, AgentModelMode, AgentModelSlot } from "../../../../electron/shared/agentCapabilities/availableModels";
@@ -87,6 +88,8 @@ export function buildAgentModelEntries(options: readonly ModelOption[]): AgentMo
       modelAlias: option.modelAlias ?? null,
       vendor: option.vendor ?? null,
       label: option.label,
+      // 界面上这个模型叫什么：与卡上 / 模型框 / 设置同一个函数翻出来（身份与落盘的 `label` 不随语言变）。
+      displayName: translateModelDisplayText(option.label),
       kind,
       ...(archetype ? { archetypeId: archetype.id } : {}),
       defaultModeId: archetype?.defaultModeId ?? "chat",

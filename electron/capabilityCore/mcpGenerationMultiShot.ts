@@ -453,6 +453,18 @@ export function storyboardPlanFromDraftSubjects(subjects: readonly GenerationOpe
   return plan;
 }
 
+/**
+ * 「方案已存、**没有替用户打开**」这一条事实。写给模型的回执必须带它——Agent 新建的方案只进创作页左栏的列表，
+ * 打开是用户的动作；模型要靠这一条才知道该在回话里告诉用户去哪点开，而不是含糊地说「已生成」。
+ */
+export type StoryboardSavedFact = Readonly<{ designId: string; title: string; opened: boolean; openFrom: string }>;
+export function storyboardSavedFact(designId: string, title: string, opened: boolean): StoryboardSavedFact {
+  return { designId, title, opened,
+    openFrom: opened
+      ? 'The user asked for this plan with the storyboard button, so it is already open for them.'
+      : 'Creation page, left column: the plan row under its source document. It is NOT opened for the user — tell them it is written and where to open it.' };
+}
+
 type RequestRenderer = (op: string, payload: unknown, timeoutMs: number) => Promise<unknown>;
 /** Author bodies are small; a renderer that cannot answer inside this window is not going to. */
 const STORYBOARD_RENDERER_TIMEOUT_MS = 15_000;
@@ -463,7 +475,7 @@ const STORYBOARD_RENDERER_TIMEOUT_MS = 15_000;
  * saved a plan the user never receives.
  */
 export async function upsertStoryboardDesign(request: RequestRenderer,
-  input: {projectId:string;documentId:string;designId:string;plan:StoryboardPlan}): Promise<void> {
+  input: {projectId:string;documentId:string;designId:string;plan:StoryboardPlan;initiator:'user'|'agent'}): Promise<void> {
   const reply = await request('storyboard.upsert-design', input, STORYBOARD_RENDERER_TIMEOUT_MS) as {status?:unknown;designId?:unknown} | null;
   if (!reply || reply.status!=='saved' || reply.designId!==input.designId) throw new Error('storyboard_design_save_rejected');
 }

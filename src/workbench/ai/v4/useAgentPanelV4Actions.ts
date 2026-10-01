@@ -78,7 +78,7 @@ export type AgentPanelV4Actions = Readonly<{
   error: string
   clearError: () => void
   /** True means the lane accepted the input, not that the model or generation succeeded. */
-  send: (text: string, options?: { skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => Promise<boolean>
+  send: (text: string, options?: { skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary'; openStoryboardResult?: true }) => Promise<boolean>
   stop: () => void
   approve: () => void
   reject: (reason?: string) => void
@@ -136,7 +136,7 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
     void command().catch((caught: unknown) => setError(friendlyError(caught, t)))
   }, [t])
 
-  const send = React.useCallback(async (rawText: string, options?: { skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary' }) => {
+  const send = React.useCallback(async (rawText: string, options?: { skillKey?: string; displayText?: string; continueFromEntryId?: string; retryFromEntryId?: string; choice?: 'primary' | 'secondary'; openStoryboardResult?: true }) => {
     const text = rawText.trim()
     if (!text) return false
     setError('')
@@ -178,6 +178,7 @@ export function useAgentPanelV4Actions(surface: ResidentSurface, data: AgentPane
         targetKind: 'storyboard', requestId: admissionId,
         plans: Object.freeze(designsForDocument.map(design => Object.freeze({ id: design.id, title: design.title }))),
         ...(selectedShotIds && referenceDesignId ? {designId:referenceDesignId,shotIds:selectedShotIds} : {}),
+        ...(options?.openStoryboardResult ? { openResult: true as const } : {}),
       }) : undefined
       // Start both reads in this synchronous input turn; prepareInput binds its own
       // opening epoch before either promise can settle or the user can switch projects.

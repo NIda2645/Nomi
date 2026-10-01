@@ -10,7 +10,7 @@
 // 「先说什么后做什么」在数据里就不存在了；这道门送出去的是 `LaneProjection`，
 // 一串**有序的段**，顺序是记下来的不是推出来的。
 import type {
-  LaneApprovalDecision, LaneHandle, LanePendingApproval, LaneProjection, LaneSkillIndexEntry, LaneTaskFacts, LaneWorkspaceHandle,
+  LaneApprovalDecision, LaneAttachmentResolver, LaneHandle, LanePendingApproval, LaneProjection, LaneSkillIndexEntry, LaneTaskFacts, LaneWorkspaceHandle,
 } from '../shared/agentLane/laneContracts'
 import { LaneDomainFailure } from '../shared/agentLane/laneToolContract'
 import type { LaneToolEffect, LaneToolFailureShape, LaneToolNextAction, LaneToolSpec } from '../shared/agentLane/laneToolContract'
@@ -23,6 +23,7 @@ import type { LaneApprovalSubjectResolver } from '../shared/agentLane/laneApprov
 import type { AgentModelEntry } from '../shared/agentCapabilities/availableModels'
 import type { ModelAvailabilityFacts } from '../shared/agentCapabilities/modelSpecProjection'
 import type { SkillRecord } from '../skills/skillStore'
+import type { LaneDeclaredDefaults } from './laneModelContext'
 
 export type { LaneHandle, LaneProjection }
 export type { LaneToolEffect, LaneToolFailureShape, LaneToolNextAction, LaneToolSpec }
@@ -217,6 +218,16 @@ export interface OpenLaneOptions {
    * 不给一个「排队中」——那会让用户以为有东西在跑。
    */
   tasks?: LaneTaskFactsResolver
+  /**
+   * 用户消息上的附件 claim → 展示快照（文件名 / 类型 / 大小）。给函数不给快照，理由同 `tasks`：
+   * 素材索引在主进程、每一刻都可能变。不传 = 历史里的附件只有 claim，渲染层画「附件不可用」。
+   */
+  attachments?: LaneAttachmentResolver
+  /**
+   * 用户在设置里声明的默认图片 / 视频模型（此刻真能用的）。**给函数不给快照**：用户在设置里改了默认，
+   * 下一次模型请求的索引就该跟上。不传 = 索引里没有默认那一段（影子夹具 / 没有设置的宿主）。
+   */
+  modelDefaults?: () => LaneDeclaredDefaults
   /**
    * 传输层看门狗的两个预算（毫秒）。缺省是 `laneHost` 的 `LANE_FIRST_RESPONSE_MS` /
    * `LANE_IDLE_MS`。

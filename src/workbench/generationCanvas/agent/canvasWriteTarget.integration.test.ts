@@ -303,7 +303,7 @@ describe('storyboard target identity across the shared proposal boundary', () =>
   it.each(['selection', 'content'] as const)('rejects an approval when storyboard %s changes but the canvas stays empty', async change => {
     const input: CanvasWriteInput = { operation: 'patch_shots', select: { kind: 'all' }, patch: { promptAppend: 'Rain' } }
     const request = buildRequest(input)
-    if (change === 'selection') useWorkbenchStore.getState().addStoryboardDesign('identity-doc', { ...plan, title: 'Other' })
+    if (change === 'selection') useWorkbenchStore.getState().addStoryboardDesign({ initiator: 'user', documentId: 'identity-doc', source: { ...plan, title: 'Other' } })
     else useWorkbenchStore.getState().setStoryboardPlan({ ...plan, title: 'Edited while awaiting approval' }, 'identity-doc', 'identity-board')
     const before = structuredClone(useWorkbenchStore.getState().storyboardDesignsByDocumentId)
     await expect(executeCanvasWriteTarget(request, readGenerationCanvasSnapshot)).rejects.toMatchObject({ code: 'capability_target_stale' })
@@ -326,7 +326,7 @@ describe('storyboard receipt preparation race', () => {
     const originalId = useWorkbenchStore.getState().activeStoryboardId
     // Creating a design now projects a canvas table. Seed both before the
     // receipt owns the write boundary; the race under test is selection only.
-    useWorkbenchStore.getState().addStoryboardDesign('race-doc', { ...plan, title: 'Other' })
+    useWorkbenchStore.getState().addStoryboardDesign({ initiator: 'user', documentId: 'race-doc', source: { ...plan, title: 'Other' } })
     const otherId = useWorkbenchStore.getState().activeStoryboardId
     useWorkbenchStore.getState().setActiveStoryboardId(originalId, 'race-doc')
     const request = buildRequest({ operation: 'propose_storyboard_plan', title: 'Replacement', anchors: [], shots: plan.shots.map(({ index, shotKind, durationSec, anchorIds, prompt }) => ({ index, shotKind, durationSec, anchorIds, prompt })) })
@@ -346,7 +346,7 @@ describe('storyboard receipt preparation race', () => {
     useWorkbenchStore.getState().hydrateStoryboardDesigns({})
     useWorkbenchStore.getState().setStoryboardPlan(plan, 'race-doc')
     const request = buildRequest({ operation: 'propose_storyboard_plan', title: 'Replacement', anchors: [], shots: plan.shots.map(({ index, shotKind, durationSec, anchorIds, prompt }) => ({ index, shotKind, durationSec, anchorIds, prompt })) })
-    receiptHarness.onPrepare = () => { useWorkbenchStore.getState().addStoryboardDesign('race-doc', { ...plan, title: 'Other' }) }
+    receiptHarness.onPrepare = () => { useWorkbenchStore.getState().addStoryboardDesign({ initiator: 'user', documentId: 'race-doc', source: { ...plan, title: 'Other' } }) }
     await expect(executeCanvasWriteTarget(request, readGenerationCanvasSnapshot)).rejects.toMatchObject({ code: 'capability_target_stale' })
     expect(useWorkbenchStore.getState().storyboardDesignsByDocumentId['race-doc'].map(d => d.plan.shots[0].prompt)).toEqual(['Original', 'Original'])
     expect(receiptHarness.commits).toEqual([])

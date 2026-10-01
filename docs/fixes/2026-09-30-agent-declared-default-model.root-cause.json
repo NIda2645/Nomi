@@ -1,0 +1,175 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-30-agent-declared-default-model",
+  "problem_type": "A user preference is honoured by one consumer (the host filling an omitted model) but never told to another (the model choosing one), so the declaration is ignored whenever the second consumer decides first",
+  "symptom": "Settings say image default = X, yet asking the Agent to draw a picture ends with a spend card for a different model (full-walk rule agent-ignores-declared-default, playbook pb03).",
+  "direct_cause": "The model index handed to the Agent listed models and the default mode of each, but never the model the user declared as default; the host only fills a default when the Agent omits the model, and the Agent always named one from the index.",
+  "class_root": "The declared default had one interpreter (createGenerationDefaultModelResolver) but only one of its two consumers received its answer; the other consumer (the Agent) had to guess, and nothing told the Agent when its guess differed from the declaration.",
+  "affected_population": [
+    "Every user who set image or video default models in Settings or the Agent panel",
+    "All four declared task kinds (text_to_image, image_edit, text_to_video, image_to_video)",
+    "Single-shot and multi-shot drafts"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneDesktopModelDefaults.ts",
+    "electron/capabilityCore/appIntegration.ts",
+    "electron/capabilityCore/mcpStdioServer.ts",
+    "electron/capabilityCore/generationDefaultModelResolver.ts",
+    "electron/settings/generationModelDefaultsIpc.ts",
+    "electron/agentLane/laneContextBudget.mts",
+    "electron/agentLane/laneHost.mts",
+    "electron/agentLane/laneModelContext.ts",
+    "electron/capabilityCore/mcpGenerationTools.ts",
+    "electron/agentLane/laneDesktopRuntime.ts"
+  ],
+  "entry_points": [
+    "laneHost transform_context: model index per request",
+    "semanticCandidateFromParams: host fills an omitted model from the default",
+    "mcpGenerationTools create (single and multi-shot): the draft result handed back to the Agent"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Repository-internal invariant (which owner shapes a transcript user message, who reads the declared default, who may change what the user is looking at); no third-party documentation or source decides it.",
+  "invariants": [
+    "Whether the user's declared default is usable right now is answered only by createGenerationDefaultModelResolver",
+    "What the Agent is told, what the host fills when the model is omitted, and what is reported as a deviation all come from that one function",
+    "A draft whose model differs from the declared default is reported back to the Agent as state (modelDeviatesFromUserDefault) so a switch is never silent"
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopModelDefaults.ts",
+      "symbol": "readGenerationDefaultModelResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "readGenerationDefaultModelResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "symbol": "readGenerationDefaultModelResolver"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationDefaultModelResolver.ts",
+      "symbol": "readGenerationModelDefaults"
+    },
+    {
+      "kind": "read",
+      "path": "electron/settings/generationModelDefaultsIpc.ts",
+      "symbol": "readGenerationModelDefaults"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "symbol": "formatLaneModelIndex"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "formatLaneModelIndex"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneModelContext.ts",
+      "symbol": "formatLaneModelIndex"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "declaredDefaultDeviations"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "createDesktopLaneAttachments"
+    }
+  ],
+  "door_reduction": {
+    "before": 10,
+    "after": 10,
+    "why_not": "appIntegration and mcpStdioServer are the two hosts that fill defaults (in-app and external MCP); laneDesktopModelDefaults is the new Agent-index reader of the same resolver; generationModelDefaultsIpc reads the raw setting only to hand it to the settings UI. Each reads the one owner rather than keeping its own copy."
+  },
+  "generality_proof": "The Agent-facing index, the host default fill and the deviation report all call the same resolver output, so a change to how defaults resolve (catalog availability, keys, published modes) changes all three together. The deviation check runs at draft creation for single and multi-shot drafts, covering every route by which a model can be named.",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/generationDefaultModelResolver.ts",
+      "symbol": "createGenerationDefaultModelResolver",
+      "responsibility": "The only interpreter of the declared default: saved (vendor, model) plus catalog availability and published modes."
+    },
+    {
+      "path": "electron/agentLane/laneDesktopModelDefaults.ts",
+      "symbol": "readLaneDeclaredDefaults",
+      "responsibility": "Hands the resolver's answer to the Agent's model index without re-interpreting it."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "draftShotFromPlan",
+      "disposition": "enforced",
+      "evidence": "Multi-shot drafts are checked by declaredDefaultDeviations in mcpGenerationTools create."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/defaultNodeModelSelection.ts",
+      "entry_point": "resolveDefaultModelOption",
+      "disposition": "not-affected",
+      "evidence": "Canvas new nodes read the same saved setting in the renderer; convergence onto the resolver is registered as a pending migration in concept-owners (renderer matching is not touched here)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new consumer that needs 'the default model' (another Agent tool, MCP client, planner) would face the same choice of interpreting the setting itself or not at all.",
+    "same_class_scan": [
+      "door-map of readGenerationDefaultModelResolver: appIntegration, mcpStdioServer and the new Agent reader",
+      "door-map of readGenerationModelDefaults: resolver and settings IPC only",
+      "renderer readers of generationModelDefaults found in defaultNodeModelSelection.ts and availableModels.ts: registered as pending"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneDesktopModelDefaults.ts",
+    "invariant": "The Agent index, the host fill and the deviation report share one resolver answer.",
+    "failure_mode": "When no default is declared or usable, nothing is asserted to the Agent; when the model deviates, the draft result says so explicitly.",
+    "exception_policy": "none",
+    "strategy": "Register generation.declared-default-model as a concept owner; test the index text, the resolver mapping and the deviation facts in single and multi-shot drafts.",
+    "artifacts": [
+      "electron/agentLane/laneDesktopModelDefaults.ts",
+      "electron/capabilityCore/semanticGenerationCandidate.ts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "regression_tests": [
+    "electron/agentLane/laneModelContext.test.ts",
+    "electron/agentLane/laneDesktopModelDefaults.test.ts",
+    "electron/capabilityCore/mcpGenerationTools.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/mcpGenerationTools.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No path told the Agent the default before; the host fill is unchanged."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "The invariant is Nomi's own settings and catalog logic.",
+    "exit_criteria": []
+  },
+  "migration": "Settings file format is unchanged; nothing to migrate.",
+  "residual_risks": [
+    "A real model can still ignore the index; the deviation report gives it a second chance and the spend card still needs the user's click.",
+    "Canvas new-node default matching still lives in the renderer (pending migration)."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/generationDefaultModelResolver.ts",
+    "tests": [
+      "electron/capabilityCore/generationDefaultModelResolver.test.ts",
+      "electron/agentLane/laneDesktopModelDefaults.test.ts",
+      "electron/capabilityCore/mcpGenerationTools.test.ts"
+    ],
+    "why": "The resolver owns which default is usable; the Agent index, the host fill and the deviation report are proven to read it (mapping test, index text test, single and multi-shot deviation tests)."
+  }
+}

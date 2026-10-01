@@ -2918,6 +2918,109 @@
       "notes": "规则（09-30 用户拍板）：一镜发出去的 = 这一行写的提示词 + 这一行上看得见的参考图，别的什么都不加。行内生成 / 生成剩余 / Agent 确认框 / 放到画布 / production.materialize-storyboard / 方案投影都只从 compileShotOutbound 取；对等测试逐字节比六个入口。anchorIds 留在旧方案里不再产生任何作用。根因合同 docs/fixes/2026-09-30-storyboard-outbound-owner.root-cause.json。"
     },
     {
+      "name": "一条用户消息在对话记录里的形状（含附件）",
+      "subject": "agent-lane.user-message-shape",
+      "lifecycle": "projection",
+      "authority_kind": "projection",
+      "trust_domain": "shared",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/agentLane/laneProjection.ts",
+        "symbol": "projectLaneSnapshot"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/agentLane/laneProjection.ts",
+          "symbol": "projectLaneSnapshot"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneHost.mts",
+        "electron/agentLane/laneHistory.mts",
+        "electron/agentLane/laneDesktopAttachments.ts",
+        "src/workbench/ai/lane/laneViewModel.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "发出去的那条用户消息、重开项目后的历史里，附件签是同一份事实：转录里 nomi.input 自己带的 claim 由 projectLaneSnapshot 原样搬上 user 段，文件名由主进程按 assetId 现查（laneDesktopAttachments，与「发给模型」同一个 resolveProjectAgentAttachmentClaims）。渲染层只读 part.attachments 画签，不自己另存、不自己推算；解不出来画「附件不可用」，不让签消失。"
+    },
+    {
+      "name": "用户按任务声明的默认模型（图片 / 视频默认）",
+      "subject": "generation.declared-default-model",
+      "lifecycle": "preference",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "pending",
+      "migration_strategy": "Agent 已只从主进程 createGenerationDefaultModelResolver 读（模型索引 + 宿主补默认 + 偏离回执）；画布新节点（defaultNodeModelSelection.resolveDefaultModelOption）与分镜落画布（availableModels.pickSavedDefaultModel）仍在渲染层各按同一份设置各自匹配。收口：让这两处读主进程 resolver 的结果（IPC），删掉渲染层按 (vendorKey, modelKey) 匹配设置的代码；判据是渲染层不再出现读 generationModelDefaults 后自己匹配模型的实现。",
+      "owner": {
+        "path": "electron/capabilityCore/generationDefaultModelResolver.ts",
+        "symbol": "createGenerationDefaultModelResolver"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/generationDefaultModelResolver.ts",
+          "symbol": "createGenerationDefaultModelResolver"
+        },
+        {
+          "path": "electron/settings/generationModelDefaultsSettings.ts",
+          "symbol": "writeGenerationModelDefaults"
+        },
+        {
+          "path": "electron/agentLane/laneDesktopModelDefaults.ts",
+          "symbol": "readLaneDeclaredDefaults"
+        },
+        {
+          "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+          "symbol": "declaredDefaultDeviations"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneDesktopModelDefaults.ts",
+        "electron/capabilityCore/appIntegration.ts",
+        "electron/capabilityCore/mcpStdioServer.ts",
+        "src/workbench/generationCanvas/nodes/defaultNodeModelSelection.ts",
+        "src/workbench/generationCanvas/agent/availableModels.ts",
+        "src/workbench/generationCanvas/model/generationModelDefaults.ts",
+        "src/workbench/settings/DefaultGenerationModelsSection.tsx",
+        "electron/settings/generationModelDefaultsIpc.ts",
+        "electron/agentLane/laneDesktopRuntime.ts",
+        "electron/capabilityCore/mcpGenerationTools.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "设置里的「图片默认 / 视频默认」只存 (vendorKey, modelKey) 两段（generation-model-defaults.json）；「此刻真能用的默认是谁」只有 createGenerationDefaultModelResolver 回答。Agent 被告知的默认（laneDesktopModelDefaults → 模型索引）与宿主没点名时实际补上的默认、以及偏离默认时递还给模型的事实（declaredDefaultDeviations）是同一个函数的答案。"
+    },
+    {
+      "name": "新建的分镜方案要不要替用户打开（谁发起的）",
+      "subject": "workbench.storyboard-activation",
+      "lifecycle": "live-interaction",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/workbenchDocumentSlice.ts",
+        "symbol": "activationAfterCreate"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/workbenchDocumentSlice.ts",
+          "symbol": "activationAfterCreate"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "src/workbench/creation/DocumentListSidebar.tsx",
+        "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+        "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+        "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "新建方案之后用户正在看的那份（activeStoryboardId / activeDocumentId）变不变，只由 activationAfterCreate 按显式的 StoryboardInitiator 决定：'user' 才打开，'agent' 只入列表。发起人是 addStoryboardDesign / setStoryboardPlan(createNew) 的必填输入，没有默认值；打开 / 切换永远是用户的动作（与「程序不挪画布」同一条）。"
+    },
+    {
       "name": "生成产物能不能解码（出没出画面）",
       "subject": "asset.generated-media-decode",
       "lifecycle": "materialized-artifact",

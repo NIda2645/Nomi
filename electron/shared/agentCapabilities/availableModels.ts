@@ -45,6 +45,11 @@ export type AgentModelEntry = {
   modelAlias: string | null;
   vendor: string | null;
   label: string;
+  /**
+   * 用户在界面上看到的这个模型的名字（卡上、模型框、设置里同一个，按界面语言翻好）。**Agent 对用户提到模型时只许说它**，
+   * `modelId` / `vendor` 是给工具参数用的内部标识，用户不认。缺席 = 渲染层没给，Agent 退回 `label`。
+   */
+  displayName?: string;
   kind: "text" | "image" | "video" | "audio" | "model3d";
   /** Media models have a stable archetype; chat models are catalog-defined and need none. */
   archetypeId?: string;
