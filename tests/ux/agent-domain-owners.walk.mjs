@@ -136,7 +136,7 @@ try {
 
   // ═══ ② 默认模型（行 5/6/7/8）══════════════════════════════════════════════════════════
   // 守规矩的模型读索引里「图片默认（文生图）：显示名（modelId: X，vendor: 家——仅供工具参数）」那一行；读到就不点名、让宿主补。
-  const toldDefault = (body, kind) => new RegExp(`${kind}[^\n]*modelId: ([^，\s)]+)，vendor: ${FIXTURE_APIMART_VENDOR}`).exec(flattenRequestText(body))?.[1] ?? null
+  const toldDefault = (body, kind) => new RegExp(`${kind}[^\\n]*modelId: ([^，\\s)]+)，vendor: ${FIXTURE_APIMART_VENDOR}`).exec(flattenRequestText(body))?.[1] ?? null
   const cardText = async (panel = CANVAS_PANEL) => (await spendCard(panel).innerText()).replace(/\s+/g, ' ').trim()
 
   let imageLabel = ''
