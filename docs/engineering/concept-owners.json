@@ -3207,6 +3207,58 @@
         ],
         "since": "2026-10-01",
         "notes": "CI 选档、本机 gates、交付收据三处共用这一个函数，不许任何一处自己再判一遍「这个 diff 要不要跑 X」。画布 full 档的清单（CANVAS_DISPLAY_OWNER_PATTERNS）对着本表里画布显示相关概念的 owner 与写口列，parity_test 逐个概念核对；generationCanvas 每个子目录必须表态。合同 docs/fixes/2026-10-01-canvas-classifier-display-owners.root-cause.json。"
+    },
+    {
+      "name": "新建文件时给 agent 看的「已有能力清单」（从两张登记表现算，不入库）",
+      "subject": "agent-rules.existing-capability-index",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/build-capability-index.mjs",
+        "symbol": "buildCapabilityIndex"
+      },
+      "write_api": [
+        {
+          "path": "scripts/build-capability-index.mjs",
+          "symbol": "buildCapabilityIndex"
+        }
+      ],
+      "parity_test": "scripts/build-capability-index.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/edit-time-reminder.mjs"
+      ],
+      "notes": "清单只读 concept-owners.json 与 framework-boundaries.json，每次现算，不写文件、不入库，不许另起第三份「已有能力」登记；登记表漏登的能力这里就列不出来（pi 的 context-compaction 就是这样漏过 laneContextFit 的），所以补登记是前置。"
+    },
+    {
+      "name": "「同一文件近 14 天第 3 次 fix → 先过重写判据」与「新建文件 → 给能力清单」的触发判决",
+      "subject": "agent-rules.edit-time-reminder-verdict",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/edit-time-reminder.mjs",
+        "symbol": "decideEditTimeReminder"
+      },
+      "write_api": [
+        {
+          "path": "scripts/edit-time-reminder.mjs",
+          "symbol": "decideEditTimeReminder"
+        }
+      ],
+      "parity_test": "scripts/edit-time-reminder.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/claude-hooks/edit-time-reminder.sh"
+      ],
+      "notes": "什么时候提醒（新建 = 路径不存在；反复修 = 近 14 天 fix/hotfix 提交 ≥3）只住 decideEditTimeReminder；阈值是试用值（到 2026-10-15 用提交历史校准）。只提醒、不拦、fail-open；回馈走 PreToolUse 的 hookSpecificOutput.additionalContext（普通 stdout 不进上下文）。"
     }
   ]
 }
