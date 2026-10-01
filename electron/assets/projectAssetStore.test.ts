@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { resolveFfmpegPath } from "../export/ffmpegRunner";
 import { writeWorkspaceManifest } from '../workspace/workspaceManifest';
+import { matchNomiErrorCode } from '../shared/nomiErrorCodes';
 
 const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-asset-store-"));
 
@@ -215,6 +216,28 @@ describe("writeAsset canonical media filename", () => {
     ["unknown bytes", Buffer.from("not-media"), "video/mp4", "unknown_bytes"],
   ])("fails closed before persisting generated %s", (_label, bytes, contentType, reason) => {
     expect(() => writeAsset("project-1", bytes, "output.bin", contentType, { kind: "generated" })).toThrow(reason);
+    expect(fs.existsSync(path.join(projectRoot, "assets", "generated"))).toBe(false);
+  });
+
+  // 边界处的同一件事（判定本身的类级用例在 generatedMediaDecode.test.ts）：一张完整的图，IEND 之后带了尾数据，
+  // 供应商已经出图——旧判定（-xerror 一有解码抱怨就退 1）把它当失败、什么都没落盘。
+  it.each(["writeAsset", "writeDeterministicAsset"] as const)("%s keeps a generated PNG that carries bytes after its IEND chunk", (entry) => {
+    const bytes = Buffer.concat([mediaFixture("valid.png"), Buffer.alloc(100, 0x41)]);
+    const stored = (entry === "writeAsset"
+      ? writeAsset("project-1", bytes, "output.png", "image/png", { kind: "generated" })
+      : writeDeterministicAsset("project-1", bytes, "output.png", "image/png", { kind: "generated" }, "task-trailing:output-1")) as {
+      data?: { relativePath?: string; contentType?: string };
+    };
+    expect(stored.data?.contentType).toBe("image/png");
+    expect(fs.existsSync(path.join(projectRoot, stored.data?.relativePath || ""))).toBe(true);
+  });
+
+  it("an undecodable generated image is refused with the machine code (so the UI says 'unreadable', not 'provider failed')", () => {
+    const garbage = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(Array.from({ length: 4000 }, (_, index) => (index * 131 + 7) & 255))]);
+    let thrown: unknown;
+    try { writeAsset("project-1", garbage, "output.jpg", "image/jpeg", { kind: "generated" }); } catch (error) { thrown = error; }
+    expect((thrown as Error).message).toContain("decode_failed");
+    expect(matchNomiErrorCode((thrown as Error).message)).toBe("output-unreadable");
     expect(fs.existsSync(path.join(projectRoot, "assets", "generated"))).toBe(false);
   });
 

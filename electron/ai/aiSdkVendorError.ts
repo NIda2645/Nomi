@@ -24,6 +24,7 @@
  * 不含 electron import，可在纯 Node 单测直接导入（aiSdkVendorError.test.ts）。
  */
 import { APICallError, RetryError } from "ai";
+import { isJsonRecord, pickUpstreamCode } from "../jsonUtils";
 import { VendorRequestError, categorizeVendorFailure } from "../vendor/vendorHttp";
 
 /** 上游报文里的人话：{error:{message}} / {error} / {message} / {msg} 四种常见信封。 */
@@ -58,6 +59,16 @@ export function upstreamMessageFromBody(body: string): string {
   return trimmed.replace(/\s+/g, " ").slice(0, 300);
 }
 
+/** 上游响应体里它**自己给的错误码**（与图/视频侧同一个 `pickUpstreamCode`，键优先级表全仓一份）。 */
+export function upstreamCodeFromBody(body: string): string {
+  try {
+    const parsed: unknown = JSON.parse(body.trim());
+    return isJsonRecord(parsed) ? pickUpstreamCode(parsed) : "";
+  } catch {
+    return "";
+  }
+}
+
 /** 拆 RetryError 套壳，拿到真正的最后一次失败。深度上限防自引用死循环。 */
 function unwrapRetry(error: unknown, depth = 0): unknown {
   if (depth >= 4 || !RetryError.isInstance(error)) return error;
@@ -85,6 +96,7 @@ export function vendorErrorFromAiSdkError(error: unknown, ctx: AiSdkErrorContext
   const upstreamMsg =
     (unwrapped.responseBody ? upstreamMessageFromBody(unwrapped.responseBody) : "") ||
     (unwrapped.message || "").trim();
+  const upstreamCode = unwrapped.responseBody ? upstreamCodeFromBody(unwrapped.responseBody) : "";
   // 分类只认 vendorHttp 那张表（单一真相）——APICallError 自带的 isRetryable 不另开一路，
   // 免得同一个 429 在图像侧和文本侧给出两个不同的「要不要重试」。
   const { category, retryable } = categorizeVendorFailure(httpStatus);
@@ -102,6 +114,7 @@ export function vendorErrorFromAiSdkError(error: unknown, ctx: AiSdkErrorContext
     url: unwrapped.url || "",
     ...(httpStatus != null ? { httpStatus } : {}),
     upstreamMsg: upstreamMsg.slice(0, 256),
+    ...(upstreamCode ? { upstreamCode } : {}),
     category,
     retryable,
   });

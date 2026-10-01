@@ -70,6 +70,31 @@ export function providerFailedPatterns(dictionaries = loadDictionaries()) {
   return UI_LOCALES.map((locale) => ({ locale, pattern: new RegExp(uiTextPattern(uiText(locale, PROVIDER_FAILED_KEY, dictionaries), { anchored: true })) }))
 }
 
+/**
+ * 一份模型目录里有的供应商：显示名 / key → key。切家提示点名的是**显示名**（内置家的名字、用户起的来源名称；
+ * 读不到显示名才写 key）——认「某某家：……」时只认真有这一家的，免得把随便一句「X: Y. Z」当成点名；
+ * 点名认成 key，才能去和「哪一家真的失败过」对账（提交记录里记的是 key）。
+ */
+export function vendorKeyByLabel(catalog) {
+  const byLabel = new Map()
+  for (const vendor of catalog?.vendors ?? []) {
+    if (!vendor?.key) continue
+    byLabel.set(vendor.key, vendor.key)
+    if (typeof vendor.name === 'string' && vendor.name.trim()) byLabel.set(vendor.name.trim(), vendor.key)
+  }
+  return byLabel
+}
+
+/** 一条提示的文字是不是「某某家：失败原因。建议」——是就返回它点名的那一家（key）与原因，不是（或点名的不是这一场有的家）返回 null。 */
+export function vendorFailedClaim(text, vendors, patterns = providerFailedPatterns()) {
+  for (const { locale: textLocale, pattern } of patterns) {
+    const match = pattern.exec(text)
+    const vendor = match?.groups ? vendors.get(match.groups.vendor) : undefined
+    if (vendor) return { vendor, reason: match.groups.reason, textLocale }
+  }
+  return null
+}
+
 const normalizePrompt = (value) => String(value ?? '').replace(/\s+/g, ' ').trim()
 
 /** 页内观察者 250ms 采一次面、React 提交再加一帧：一步收尾后这么久里冒出来的面变化仍算这一步的（测量误差，不是产品时限）。 */
@@ -690,12 +715,9 @@ export function createInvariantMonitor(options) {
     }
   }
 
-  /** 这一场配置里有的供应商 key（切家提示点名的是 key）：认「某某家：……」时只认真有这一家的，免得把随便一句「X: Y. Z」当成点名。 */
-  function knownVendorKeys() {
-    try {
-      const catalog = JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))
-      return new Set((catalog.vendors ?? []).map((vendor) => vendor?.key).filter(Boolean))
-    } catch { return new Set() }
+  /** 这一场配置里有的供应商（显示名 / key → key），读自隔离设置目录里的模型目录。 */
+  function sceneVendors() {
+    try { return vendorKeyByLabel(JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))) } catch { return new Map() }
   }
 
   /** 界面上的状态文字：出现时读后台对一对。toast 可能在步骤收尾前就自己关了，所以页内观察者记下的 toast 文字也一起核。 */
@@ -703,19 +725,15 @@ export function createInvariantMonitor(options) {
     let claims = []
     const patterns = uiClaimPatterns()
     const vendorFailed = providerFailedPatterns()
-    const vendors = knownVendorKeys()
+    const vendors = sceneVendors()
     const toastClaims = Object.values(probe?.toasts ?? {}).flatMap((toast) => (toast.texts ?? []).flatMap((text) => {
       const found = []
       for (const { claim, source } of patterns) {
         if (new RegExp(source).test(text) && !found.some((entry) => entry.claim === claim)) found.push({ claim, text: text.slice(0, 160), node: `toast:${toast.id}` })
       }
       // 「某某家：失败原因。建议」——这条提示点名了一家供应商，说它失败了、原因是什么。
-      for (const { locale: textLocale, pattern } of vendorFailed) {
-        const match = pattern.exec(text)
-        if (!match?.groups || !vendors.has(match.groups.vendor)) continue
-        found.push({ claim: 'vendor-failed', vendor: match.groups.vendor, reason: match.groups.reason, textLocale, text: text.slice(0, 200), node: `toast:${toast.id}` })
-        break
-      }
+      const named = vendorFailedClaim(text, vendors, vendorFailed)
+      if (named) found.push({ claim: 'vendor-failed', ...named, text: text.slice(0, 200), node: `toast:${toast.id}` })
       return found
     }))
     try {

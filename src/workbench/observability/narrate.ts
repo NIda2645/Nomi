@@ -125,9 +125,15 @@ export type GenerationErrorKind =
   | 'server'
   | 'input'
   | 'output-truncated'
+  // 供应商**已经把结果发回来了**，但 Nomi 在本机没能把这个文件读出来（解码不出画面 / 认不出格式 /
+  // 是网页冒充的）。与 unknown 分开：unknown 的说法是「可能是服务商临时故障或额度问题，换一个模型」——
+  // 对一份已经送达的产物，那是把我们这一侧读文件失败栽给服务商，还劝用户换一家（2026-09-29 Seedream 5.0）。
+  // 机器码 NOMI_ERR::output-unreadable::（electron/assets/generatedMediaDecode.ts 抛），不靠英文句子认。
+  | 'output-unreadable'
   | 'unknown'
 
-const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
+/** 目录（generationCommon.observability.error）里每一类失败的词条 key——单源；noChargeClaims.test 也读它。 */
+export const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   auth: 'auth',
   balance: 'balance',
   quota: 'quota',
@@ -151,8 +157,22 @@ const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   server: 'server',
   input: 'input',
   'output-truncated': 'outputTruncated',
+  'output-unreadable': 'outputUnreadable',
   unknown: 'unknown',
 }
+
+/**
+ * 请求**还没离开本机**的失败类别：Nomi 自己确知没发出去，所以只有它们说得出「没有扣费 / 未计费」。
+ * 请求发出去之后——被服务商拒绝、结果已送达却读不出来、下载被拦——花没花钱 Nomi 不知道，任何文案都不许替它说
+ * （2026-09-30：「这次失败不计费」只有 apimart 一家的 credits_cost: 0 作证据，中转站计不计费我们不知道）。
+ * noChargeClaims.test 逐条守着这条：目录里只有这些类别的文案允许出现「不扣费」一族的话。
+ */
+export const NEVER_SENT_KINDS: readonly GenerationErrorKind[] = [
+  'outbound-blocked-submit',
+  'outbound-blocked-credential-origin',
+  'asset-upload-failed',
+  'asset-invalid',
+]
 
 /**
  * `params` 给需要说出**具体事实**的类别插值（目前只有 model-kind-mismatch：要说清「哪个模型、
@@ -166,11 +186,12 @@ export function narrateGenerationError(
   const key = ERROR_KEY_BY_KIND[kind]
   const reason = i18n.t(`generationCommon.observability.error.${key}.reason`, params)
   // These failures occur before the provider is called; never infer billing from a generic failure.
-  const uncharged = kind === 'outbound-blocked-submit' || kind === 'outbound-blocked-credential-origin'
-    || kind === 'asset-upload-failed' || kind === 'asset-invalid'
+  const uncharged = NEVER_SENT_KINDS.includes(kind)
+  // 认不出的失败：服务商给了错误码就把码带进说明（不编原因，码是用户和我们排查的入口）。
+  const hintKey = kind === 'unknown' && params?.code ? 'hintWithCode' : 'hint'
   return {
     reason: uncharged ? `${reason} · ${i18n.t('generationCommon.observability.progress.notCharged')}` : reason,
-    hint: i18n.t(`generationCommon.observability.error.${key}.hint`, params),
+    hint: i18n.t(`generationCommon.observability.error.${key}.${hintKey}`, params),
   }
 }
 
@@ -253,8 +274,52 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorActions> = {
   'content-policy': RETRY_FIRST,
   input: RETRY_FIRST,
   'output-truncated': RETRY_FIRST,
+  // 只有重试：读不出来发生在我们这一侧，换供应商不是它的解法，更不能把它说成服务商的失败。
+  'output-unreadable': { primary: 'retry', secondary: null },
   unknown: RETRY_FIRST,
 }
+
+/**
+ * 这一类失败是不是「服务商那一侧的事」。任何一句点名供应商说「它失败了」的话（切家提示：「某某家：原因。建议」）
+ * 都必须先过这一问——我们自己这一侧的失败（读不出产物 / 素材本身不行 / 我们的出站策略拦了 / 目录没配好 / 类型登记错 /
+ * 模型已下线 / 输出被截断）点名供应商就是栽赃，换一家也不是它的解法（2026-09-29 pb06：本机判失败之后提示劝换一家）。
+ * 穷举 Record：新增一类不回答这个问题 → typecheck 红（同上面的动作表）。
+ * `unknown` 例外由分类器按证据定（有供应商说的话才算）——这里只给它一个保守的 false。
+ */
+const VENDOR_SIDE_BY_KIND: Record<GenerationErrorKind, boolean> = {
+  auth: true,
+  balance: true,
+  quota: true,
+  'poll-timeout': true,
+  network: true,
+  'model-config': false,
+  'model-kind-mismatch': false,
+  'model-not-open': true,
+  'model-unavailable-upstream': true,
+  'model-retired': false,
+  'image-route-disabled': true,
+  'account-gate': true,
+  'content-policy': true,
+  'input-image-blocked': true,
+  'asset-upload-failed': false,
+  'asset-too-large': true,
+  'asset-invalid': false,
+  'outbound-blocked': false,
+  'outbound-blocked-submit': false,
+  'outbound-blocked-credential-origin': false,
+  server: true,
+  input: true,
+  'output-truncated': false,
+  'output-unreadable': false,
+  unknown: false,
+}
+
+export function narrateIsVendorSideFailure(kind: GenerationErrorKind): boolean {
+  return VENDOR_SIDE_BY_KIND[kind]
+}
+
+/** 全部失败类别——就是上面那张穷举表的键，不另抄一份（单测 / 走查要遍历「目录能说的每一句」时读它）。 */
+export const GENERATION_ERROR_KINDS = Object.keys(VENDOR_SIDE_BY_KIND) as readonly GenerationErrorKind[]
 
 /** 主动作 + 次动作（都出自上面那张表）。次动作 `null` = 不摆第二颗按钮。 */
 export function narrateGenerationErrorActions(kind: GenerationErrorKind): {

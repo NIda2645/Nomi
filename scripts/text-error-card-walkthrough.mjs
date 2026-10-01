@@ -115,8 +115,9 @@ try {
   if ((await win.getByText('服务商故障', { exact: false }).count()) === 0) {
     fail('标题不是「服务商故障」——structured category 没被采信')
   }
-  if ((await win.getByText('额度问题', { exact: false }).count()) > 0) {
-    fail('又出现「可能是…额度问题」——500 被当成 unknown 了（正是这次要修的病）')
+  // 落进 unknown 的失败现在说的是「没能认出这次失败的原因」（F6 之前是「可能是…额度问题」）；500 有结构化分类，不该出现它。
+  if ((await win.getByText('没能认出这次失败的原因', { exact: false }).count()) > 0) {
+    fail('出现「没能认出这次失败的原因」——500 被当成 unknown 了（正是这次要修的病）')
   }
 
   // ② 展开「技术详情」——report.raw 就显示在这里，标记漏剥的话乱码在这一格现原形

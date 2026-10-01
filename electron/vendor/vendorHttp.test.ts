@@ -68,6 +68,22 @@ describe("requestJson 结构化错误(S4-0,修压扁根因)", () => {
     expect(String(error.message)).not.toContain("no detail from provider");
   });
 
+  // 上游自己给的错误码是它说的**原因**；400 只说「请求有问题」。码不带过去，渲染层就只剩状态码可猜——
+  // 「模型已下线」被说成「参数不被接受」正是这么来的（2026-09-29 走查）。
+  it.each([
+    ["OpenAI / new-api 信封 { error: { code } }", { error: { message: "This model has been deprecated and is no longer available.", code: "model_not_found" } }, "model_not_found"],
+    ["顶层字符串码 { code }", { code: "model_not_found", message: "no available channel" }, "model_not_found"],
+    ["没有码就不写这个字段", { error: { message: "Bad Request" } }, undefined],
+    ["纯数字业务码不是标识码（走 logicalCode）", { code: 1004, msg: "x" }, undefined],
+    ["形状不对的码不收（防把一句话当码）", { error: { message: "x", code: "this is a sentence, not an identifier" } }, undefined],
+  ])("structured.upstreamCode — %s", async (_label, body, expected) => {
+    stubFetch(() => new Response(JSON.stringify(body), { status: 400 }));
+    const error = await requestJson(vendor, "k", "POST", "https://api.kie.ai/v1/images/generations", {}, {}, {}).catch((e) => e);
+    assert(error instanceof VendorRequestError);
+    expect(error.structured.upstreamCode).toBe(expected);
+    expect(error.structured.category).toBe("input");
+  });
+
   it("redacts the exact opaque API credential from upstream message, structured detail, and encoded result", async () => {
     const secret = "opaqueCredentialValue987654";
     stubFetch(() => new Response(JSON.stringify({ message: `invalid credential ${secret}` }), { status: 400 }));
