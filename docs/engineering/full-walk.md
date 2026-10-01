@@ -29,6 +29,7 @@ node tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs   # 单跑一条
 - 付费小额组（`*.paid.mjs`）：只在 `NOMI_SPEND_OK=1` 时跑，护栏、凭据副本与收据全走 `tests/ux/_paidRun.mjs`；没开就在报告里记「跳过（付费）」。
 - 目前只支持开发构建：网络闸靠启动器的 `mainRequire`（`-r`）在 App 入口之前装进主进程，打包版不接受；`--packaged` 会被明确拒绝，不假装支持。
 - 界面上的话（「预算已用完」「可能已经提交」「某某家：失败原因」……）监视器一律从 `src/i18n/resources.ts` 的中英文案生成认法，不在走查里另写原话——文案改了，认法跟着变。
+- 界面露出检查（规则 `ui-leaked-internals`，`outcomeText.mjs`）：Agent 面板、提示条、状态行、任务卡里**可见**的文字不许出现原始 JSON 形状、内部 id（`apimart/…`、`cand-op-…`、`op-<uuid>`、`[nomi-classified:`）、价格 / 预算字样；用户自己的内容（`[data-user-content]`、用户那一条消息）取文字时就剔掉。main 上已有的违例登记在 `outcomeDebts.json`：带到期日、绑修它的 PR，未过期记进报告的 `knownDebts`、不算红，过期即红；修掉的 PR 同时删掉那一行。
 
 ## 加一条剧本 / 改了一块功能
 
