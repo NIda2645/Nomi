@@ -26,6 +26,9 @@ export const RULE_ROOTS = Object.freeze({
   'sent-references': rooted('A', 'P0-4'),
   'sent-references-on-canvas': rooted('A', 'P0-3'),
   // B 界面和 Agent 的话是拼出来的，不是读出来的：说的话不从状态的主人那里读
+  'sent-prompt-unseen-addition': rooted('B', 'P0-4'),
+  'card-kind-mismatch': rooted('B', 'P0-4'),
+  'ui-queued-before-consent': rooted('B', 'P0-2'),
   'sent-model': rooted('B', 'P0-4'),
   'sent-aspect_ratio': rooted('B', 'P0-4'),
   'sent-resolution': rooted('B', 'P0-4'),
