@@ -5,7 +5,7 @@
 // 用法：先 pnpm run build，再 node tests/ux/telemetry-consent-copy.walk.mjs
 //       EVIDENCE_DIR=<目录> 指定截图落点
 import { launchNomiApp } from './_launchApp.mjs'
-import { expect, clickOrFail, DEFAULT_TIMEOUT_MS, screenshotSettled } from './_assert.mjs'
+import { expect, expectAbsent, proveProbe, clickOrFail, DEFAULT_TIMEOUT_MS, screenshotSettled } from './_assert.mjs'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -55,6 +55,7 @@ for (const spec of LOCALES) {
     await win.waitForFunction(() => /projectId=/.test(location.href), undefined, { timeout: DEFAULT_TIMEOUT_MS })
     const card = win.locator('[data-v4-block="consent"]').first()
     await expect(card, '新用户该看到同意卡').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
+    const proof = await proveProbe(win.locator('[data-v4-block="consent"]'), '新用户能看到同意卡')
     const cardText = await card.innerText()
     expect(cardText, `同意卡缺「${spec.needle}」`).toContain(spec.needle)
     if (spec.locale === 'en') expect(CJK.test(cardText), `英文同意卡里混了中文：${cardText}`).toBe(false)
@@ -66,7 +67,7 @@ for (const spec of LOCALES) {
     await win.waitForTimeout(800)
     await win.reload()
     await win.waitForTimeout(2000)
-    await expect(win.locator('[data-v4-block="consent"]'), '已开启的用户又被弹了同意卡').toHaveCount(0)
+    await expectAbsent(win.locator('[data-v4-block="consent"]'), { provenBy: proof, message: '已开启的用户又被弹了同意卡' })
     await snap('after-enabled-no-new-card')
     console.log(`✅ ${spec.locale}: 两处说明含「${spec.needle}」，已开启用户不再弹卡`)
   } catch (error) {
