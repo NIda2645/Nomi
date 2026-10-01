@@ -26,8 +26,7 @@ import { ASK_USER_VERB_NAME } from '../shared/agentCapabilities/askUser.js';
 // 「不重试」说的是不写重试循环：`LANE_RETRY_POLICY` 是**配置**，退避、事件、状态全是 pi 的。
 //
 // 对照今天的宿主：`electron/projectAgentHost/` 是 52 个生产文件、9 688 行。
-import { LANE_CONTEXT_TOKEN_BUDGET, configureLaneContextBudget, laneCompactionSettings } from './laneContextBudget.mjs';
-import { fitContextToBudget } from './laneContextFit.js';
+import { configureLaneContextBudget, laneCompactionSettings } from './laneContextBudget.mjs';
 import { formatLaneModelIndex } from './laneModelContext.js';
 import { convertToLlm } from '@earendil-works/pi-agent-core';
 import { draftInputFromMessage, isLaneInputMessage } from '../shared/agentLane/laneInputMessage.js';
@@ -217,7 +216,6 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   // `configured_tools_unavailable` before it can reach the provider.
   const registeredToolNames = new Set(tools.map((tool) => tool.name));
   // 工具定义也是请求输入的一部分（每次请求都带）；估一次，从预算里先扣掉。
-  const toolDefinitionTokens = Math.ceil(Buffer.byteLength(JSON.stringify(tools.map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.parameters }))), 'utf8') / 3);
   // Every descriptor assembled by the desktop surface is resident for this
   // lane. The native menu may contain projected aliases, but only registered
   // descriptors can be handed to the harness.
@@ -410,11 +408,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
         })}`);
       }).join('\n') : '';
     const systemPrompt = [await systemPromptForRun(event.runId), catalogInput ? formatLaneModelIndex(catalogInput.context, options.modelDefaults?.()) : '', input?.context.systemPrompt, input?.context.skillPrompt, quote, authority].filter(Boolean).join('\n\n');
-    // 每一次请求的输入都在预算内：pi 的压缩只在回合之间量一次，管不到「一个回合里连着十几次请求、每次都把前面
-    // 所有工具结果原样带上」。这里是它留给宿主的口（transform_context 的 messages）；只改这一次的视图，不动落盘转录。
-    const fitted = fitContextToBudget({ messages: event.messages, systemPrompt, budget: options.limits?.contextTokenBudget ?? LANE_CONTEXT_TOKEN_BUDGET,
-      reservedTokens: toolDefinitionTokens });
-    return { systemPrompt, ...(fitted.messages === event.messages ? {} : { messages: [...fitted.messages] }) };
+    return { systemPrompt };
   });
 
   harness.hooks.on('before_tool', async (event, hookContext) => {
