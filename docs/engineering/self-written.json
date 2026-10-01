@@ -641,6 +641,21 @@
       ],
       "whyNotIntegrated": "没有现成工具回答「这次 diff 新增的模块，是领域代码、还是登记过的通用能力、还是没人认领」。判据是 Nomi 的领域目录清单，本质上是登记表读取加 git diff，不是通用能力。",
       "revisitWhen": "出现能读自定义「模块归属清单」并对 diff 新增文件做归属断言的现成门岗时"
+    },
+    {
+      "id": "vitest-flaky-annotation",
+      "capability": "把重试后才通过的测试变成 PR 检查结果里的 warning 注解（疑似不稳定）",
+      "status": "justified",
+      "paths": [
+        "scripts/vitest-flaky-reporter.mjs"
+      ],
+      "alternativesChecked": [
+        { "name": "vitest 自带 github-actions reporter（flaky 只进 Job Summary，不出注解；判据 diagnostic().flaky 我们直接复用）", "source": "https://vitest.dev/guide/reporters#github-actions-reporter" },
+        { "name": "vitest 自带 json reporter（要再写脚本读结果、还得多一步 CI，比 reporter 更重）", "source": "https://vitest.dev/guide/reporters#json-reporter" },
+        { "name": "vitest TestCase.diagnostic() 的 flaky / retryCount 字段（我们的判据来源，不自己判定）", "source": "https://vitest.dev/api/advanced/test-case#diagnostic" }
+      ],
+      "whyNotIntegrated": "现成能力只把 flaky 写进 Job Summary，没人读；合并前要用 gh api 读 check-run 注解。这份 reporter 只做格式转换（flaky → ::warning），不自己判定什么是 flaky。",
+      "revisitWhen": "vitest 的 github-actions reporter 提供 flaky 注解开关时，删掉这份 reporter"
     }
   ]
 }

@@ -46,6 +46,11 @@ function delegatedOwner(annotation) {
   if (annotation.level === 'warning' && annotation.title === 'docs-autosync') {
     return 'docs-autosync workflow on main'
   }
+  // 「疑似不稳定」：vitest 重试后才通过的测试，由 scripts/vitest-flaky-reporter.mjs 打成 warning——只提示、不阻断，
+  // 有主体（那份 reporter）、主体真的会跑，所以是委派不是豁免。真失败是 failure 注解，不受这条影响。
+  if (annotation.level === 'warning' && annotation.title === '疑似不稳定') {
+    return 'vitest retry flaky hint'
+  }
   // 非阻断的核心冒烟格（2026-09-22 用户拍板，docs/plan/2026-09-22-core-flow-smoke-three-defenses.md）：
   // 它红了 job 级 continue-on-error 只放过 needs.core-smoke.result，**注解还在**——
   // `##[error]Process completed with exit code 1.` 会以 failure 注解进到本环，

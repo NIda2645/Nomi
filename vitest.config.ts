@@ -49,6 +49,11 @@ export default defineConfig({
     // 「文件 / 测试名 / 重试几次」。自己一行代码都没写——这就是现成能力。本机不重试：红就是红，不被重试盖住。
     // 重试只在真失败时才多跑一次，全绿的一次运行零额外耗时。
     retry: process.env.GITHUB_ACTIONS === "true" ? 1 : 0,
+    // 显式写 reporters 就不再自动补 github-actions，所以 CI 里三个都要列：default / github-actions（失败注解 + Job Summary）/
+    // 我们的十来行 reporter（把重试后才过的变成「疑似不稳定」warning 注解，PR 检查结果里能读到）。本机保持 vitest 默认。
+    ...(process.env.GITHUB_ACTIONS === "true"
+      ? { reporters: ["default", "github-actions", fileURLToPath(new URL("./scripts/vitest-flaky-reporter.mjs", import.meta.url))] }
+      : {}),
     // 浏览器 fixture 的 beforeAll/beforeEach 也要共享同一份 CI 资源余量；默认 10s 会在
     // full lane 的多个 Vite/Chromium fixture 并行初始化时误报超时。长 hook 仍受测试本身的
     // assertions 和 process 退出约束，不改变产品运行时。
