@@ -71,7 +71,8 @@ try {
 
   // 付费卡逐镜（2026-09-30）：点了的生成，没点的留在卡上等人——卡不消失、只剩第 2 张；用户不想要它，就点 × 关掉。
   await monitor.step('卡还在、只剩第 2 张；点 × 关掉（第 2 张不生成）', async () => {
-    await expect.poll(async () => card().locator('[data-v4-block="pager"]').count(), { message: '卡只剩第 2 张（翻页器没了）', timeout: DEFAULT_TIMEOUT_MS }).toBe(0)
+    await expect(card().locator('[data-v4-block="slot-title"]'), '卡还在、标题只数还没决定的第 2 张')
+      .toContainText(EN ? 'Generate this image?' : '生成这 1 张图片？', { timeout: DEFAULT_TIMEOUT_MS })
     await closeSpendCard(card(), '关掉付费卡（第 2 张不生成）')
   })
 

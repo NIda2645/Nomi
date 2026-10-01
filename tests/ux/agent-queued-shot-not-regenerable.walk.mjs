@@ -157,8 +157,8 @@ try {
   walk.fixture.holdSubmits(true)
   await clickOrFail(card.locator(INTERVENTION_CONFIRM), '第 1 页「生成这张」', { noWaitAfter: true })
   await expect.poll(() => walk.fixture.images.length, { message: '第一镜的生成请求到了供应商', timeout: stationTimeout({ operations: 4 }) }).toBe(1)
-  // 卡还开着、只剩第 2 镜（翻页器没了）：再点一次「生成这张」。
-  await expect.poll(async () => card.locator('[data-v4-block="pager"]').count(), { message: '卡翻到只剩第 2 镜', timeout: stationTimeout({ operations: 2 }) }).toBe(0)
+  // 卡还开着、只剩第 2 镜（标题只数还没决定的那一镜）：再点一次「生成这张」。
+  await expect(card.locator('[data-v4-block="slot-title"]'), '卡还在、只剩第 2 镜').toContainText('生成这 1 张', { timeout: stationTimeout({ operations: 2 }) })
   await clickOrFail(card.locator(INTERVENTION_CONFIRM), '第 2 页「生成这张」', { noWaitAfter: true })
   await recorded(goDone.received, 'generate returns once both shots are answered')
   expect(readRun(projectRoot, operationId)?.generationPlan?.state, '计划已提交').toBe('submitted')
