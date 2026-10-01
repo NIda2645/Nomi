@@ -23,10 +23,10 @@
 
 ## 先查别人
 
-- **官方 hooks**：PreToolUse 回馈机制见上；`UserPromptSubmit` / `SessionStart` 的普通 stdout 才直接进上下文。结论：用 JSON 的 `additionalContext`，不写普通 stdout。
-- **同类自家做法**：`scripts/claude-hooks/stack-currency-check.sh`、`model-doc-check.sh` 已经是同一形状（PreToolUse · Write|Edit · additionalContext · fail-open）。结论：沿用同一形状与注册方式，不另造机制；判断逻辑放进可被 node-test 直接测的 `.mjs`，`.sh` 只是薄壳（python3 在这台机器上是商店别名，不依赖它）。
-- **清单从哪来**：RepoReuse（arXiv 2609.35357）——接口级清单有效、塞全源码无效；所以只放「模块 — 一句话职责 — 入口」，来源是现有两张登记表（`concept-owners.json`、`framework-boundaries.json`），不另起第三份。
-- **重写判据**：Feathers 特征测试、Fowler Strangler Fig / Preparatory Refactoring、Sandi Metz The Wrong Abstraction、反方 Spolsky——见调研报告 §一、§二；阈值（14 天、第 3 次）没有权威数字，试用到 10-15 用我们自己的提交历史回测。
+- **官方 hooks**：PreToolUse 的 `hookSpecificOutput.additionalContext` 进上下文，位置在工具结果旁边；普通 stdout 只进调试日志，只有 `UserPromptSubmit` / `SessionStart` 等的普通 stdout 直接进上下文；UserPromptSubmit 的用户消息走 stdin JSON，没有文档化的 `CLAUDE_USER_PROMPT` 环境变量——https://code.claude.com/docs/en/hooks 。结论：PreToolUse 用 JSON 的 `additionalContext`；`self-check.sh` 改读 stdin。
+- **同类自家做法**：`scripts/claude-hooks/stack-currency-check.sh:7` 与 `scripts/claude-hooks/model-doc-check.sh:7` 已是同一形状（PreToolUse · Write|Edit · additionalContext · fail-open）。结论：沿用同一形状与注册方式，不另造机制；判断逻辑放进可被 node-test 直接测的 `.mjs`，`.sh` 只是薄壳（python3 在这台机器上是商店别名，不依赖它）。
+- **清单从哪来**：RepoReuse——接口级清单让复用率 30.0% → 67.8%、塞全源码无改善（29.2%）——https://arxiv.org/abs/2609.35357 ；所以只放「模块 — 一句话职责 — 入口」，来源是现有两张登记表（`docs/engineering/concept-owners.json:1`、`docs/engineering/framework-boundaries.json:1`），不另起第三份。
+- **重写判据**：Strangler Fig（一个模块、逐步替换）——https://martinfowler.com/bliki/StranglerFigApplication.html ；The Wrong Abstraction（参数加条件分支就是抽象错了）——https://sandimetz.com/blog/2016/1/20/the-wrong-abstraction ；反方 Spolsky（旧代码里埋着 bug 修复，所以先钉住旧行为）——https://www.joelonsoftware.com/2000/04/06/things-you-should-never-do-part-i/ ；调研全文 `docs/research/2026-10-01-ai-collaboration-rules/report.md:1`。阈值（14 天、第 3 次）没有权威数字，试用到 10-15 用我们自己的提交历史回测。
 
 ## 自己写了什么、为什么必须自己写
 
