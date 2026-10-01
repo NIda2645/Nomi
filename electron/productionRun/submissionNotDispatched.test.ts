@@ -128,7 +128,7 @@ function scheduler(root: string, repository: ReturnType<typeof createProductionR
   });
   return createMultiShotBatchScheduler({
     repository, submission, projectId: "project-1", runId: "op-batch",
-    perShotPrice: () => ({ known: true, amount: 6 }), now,
+    now,
   });
 }
 

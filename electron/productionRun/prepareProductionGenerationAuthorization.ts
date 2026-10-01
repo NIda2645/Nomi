@@ -1,5 +1,5 @@
 import { resolveProductionReferenceUrls } from "../capabilityCore/productionReferenceUrls";
-import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
+import { sumBudgetAmounts } from "./budgetLedger";
 import type { ExecutionContractV1, PlanCandidate } from "../capabilityCore/executionContract";
 import {
   createGenerationRuntimeAdapter,
@@ -62,10 +62,6 @@ export type PreparedProductionGenerationReauthorization = PreparedProductionGene
   parentJobId: string;
 }>;
 
-export type PreparedProductionGenerationContinuationAuthorization = PreparedProductionGenerationAuthorization & Readonly<{
-  jobIds: readonly string[];
-}>;
-
 export const REWORKABLE_JOB_STATUSES = new Set<ProductionJob["status"]>([
   "ready",
   "adopted",
@@ -102,9 +98,10 @@ function unitsFor(
  * 这个 Run 已经担下的钱：账本里的预留 + 实付 + 待结，再加上**批过、还没派出去**的作业的价格上限。
  *
  * 后一项是逐镜之后才有的（2026-09-30 付费卡逐镜）：第 1 镜批了还在排队（还没预留），用户又点了第 2 镜——
- * 第 2 份授权的天花板必须把第 1 份也算进去，否则调度器派完第 1 镜，第 2 镜会撞上一个只够一镜的天花板，被当成「预算停批」卡住。
- * 算不出价的作业不进金额（未知不当 0，也不当无穷，见 `jobPriceCeiling`）。只给新封的那一份用：重做与续拍要盖的
- * 正是那些批过、没派出去的作业，再把它们算进已担负债就是同一笔钱算两遍。
+ * 第 2 份授权的天花板必须把第 1 份也算进去，否则调度器派完第 1 镜，第 2 镜会撞上账本 reserve 那道只够一镜的硬墙。
+ * 算不出价的作业不进金额（未知不当 0，也不当无穷，见 `jobPriceCeiling`）。新封的一份和重做都用它：重做的是一镜
+ * 已经收尾的尝试（`REWORKABLE_JOB_STATUSES` 里没有 `authorized`），别的镜批过、还在排队的那份钱照样要算进去
+ * ——以前重做只算账本里的三项，于是「参考卡重拍一次，等着形象放行的镜」会撞上那道墙（2026-10-01）。
  */
 export function committedLiability(run: ProductionRun): number {
   const approvedUndispatched = run.jobs
@@ -135,8 +132,6 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   multiShot?: GenerationSealMultiShot;
   providers: readonly GenerationProvider[];
   resolveShotPrice: (contract: ExecutionContractV1) => ShotPrice;
-  /** Optional Run hard cap for the first wave; the frozen job set may cost more and halt before later jobs. */
-  maximumSpend?: number | null;
   now: string;
   ttlMs?: number;
   referenceUrlsByContract?: Readonly<Record<string, Readonly<Record<string, string>>>>;
@@ -204,15 +199,10 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
   // 已知价之和；未知的那几镜单独数一次，两个数都不许折进对方。
   const jobMaximum = sumKnownJobCeilings(jobs);
   const unknownJobCount = countUnknownJobPrices(jobs);
-  const maximumSpend = input.maximumSpend;
-  if (maximumSpend !== undefined && maximumSpend !== null && (!Number.isFinite(maximumSpend) || maximumSpend < 0)) {
-    throw new Error("Generation authorization spend ceiling is invalid");
-  }
-  const liability = committedLiability(input.run);
-  const completeMaximum = sumBudgetAmounts([liability, jobMaximum]);
-  const completeBatchFits = maximumSpend === undefined || maximumSpend === null || !budgetExceeds(completeMaximum, maximumSpend);
-  const initialCeiling = completeBatchFits ? jobMaximum : Math.max(0, maximumSpend - liability);
-  const ledgerCeiling = Math.max(input.run.budget.authorized, sumBudgetAmounts([liability, initialCeiling]));
+  // 这一份授权盖的就是这一次点到的那几镜的全部（2026-10-01 删掉了「Run 有硬上限时只先批一部分、其余等派到时停批再续」：
+  // 那是整批一份授权时的做法，逐镜之后它只会批出一份派不完的授权）。Run 的硬上限照旧在落门时由
+  // `productionGenerationAuthorizationState` 判：盖不住就整份拒，不批一半。
+  const ledgerCeiling = Math.max(input.run.budget.authorized, sumBudgetAmounts([committedLiability(input.run), jobMaximum]));
   const expiresAt = new Date(issuedAt + (input.ttlMs ?? 10 * 60 * 1000)).toISOString();
   const runId = input.operation.operationId;
   const envelope = createProductionGenerationAuthorizationEnvelope({
@@ -230,7 +220,7 @@ export function prepareProductionGenerationAuthorization(input: Readonly<{
     jobs,
     budget: {
       currency,
-      maximum: initialCeiling,
+      maximum: jobMaximum,
       ledgerCeiling,
       unknownJobCount,
     },
@@ -273,17 +263,6 @@ export class GenerationReworkRefusedError extends Error {
   constructor(readonly refusal: GenerationReworkRefusal, message: string) {
     super(message);
     this.name = "GenerationReworkRefusedError";
-  }
-}
-
-/**
- * 续额度用不着：剩下的镜头要么已经交出去了（`nothing_left`），要么现有授权本来就盖得住（`already_covered`）。
- * 这不是失败——续拍直接接着拍就行，不用再让人批一次钱。以前它和真正的失败一样抛普通 Error，续拍于是报「没成功」。
- */
-export class GenerationContinuationNotNeededError extends Error {
-  constructor(readonly why: "nothing_left" | "already_covered", message: string) {
-    super(message);
-    this.name = "GenerationContinuationNotNeededError";
   }
 }
 
@@ -362,7 +341,7 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
   const issuedAt = Date.parse(input.now);
   if (!Number.isFinite(issuedAt)) throw new Error("Generation reauthorization time is invalid");
   const shotScope = input.shotId ?? unit.candidate.candidateId;
-  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
+  const liability = committedLiability(input.run);
   const envelope = createProductionGenerationAuthorizationEnvelope({
     schemaVersion: PRODUCTION_GENERATION_AUTHORIZATION_VERSION,
     immutableProjectUuid: input.lease.immutableProjectUuid,
@@ -409,113 +388,5 @@ export function prepareProductionGenerationReauthorization(input: Readonly<{
     ...(input.shotId ? { shotId: input.shotId } : {}),
     attempt,
     parentJobId: parent.jobId,
-  };
-}
-
-/** Prepare a fresh spend gate for the current-attempt jobs that a capped batch has not submitted yet. */
-export function prepareProductionGenerationContinuationAuthorization(input: Readonly<{
-  lease: GenerationAuthorizationProjectIdentity;
-  projectRevision: number;
-  run: ProductionRun;
-  providers: readonly GenerationProvider[];
-  resolveShotPrice: (contract: ExecutionContractV1) => ShotPrice;
-  now: string;
-  ttlMs?: number;
-}>): PreparedProductionGenerationContinuationAuthorization {
-  const plan = input.run.generationPlan;
-  if (
-    input.run.projectId !== input.lease.projectId
-    || !plan
-    || plan.state !== "submitted"
-    || !plan.shots?.length
-  ) {
-    throw new Error("A submitted multi-shot authorization is required before paid continuation");
-  }
-  if (!Number.isSafeInteger(input.projectRevision) || input.projectRevision < 0) {
-    throw new Error("Generation continuation requires the current project revision");
-  }
-
-  const adapter = createGenerationRuntimeAdapter({ providers: input.providers });
-  const jobs = plan.shots
-    .filter((shot) => shot.included !== false && shot.contract)
-    .flatMap((shot) => {
-      const contract = shot.contract!;
-      const attempt = Number.isSafeInteger(shot.attemptCount) && (shot.attemptCount as number) > 0
-        ? shot.attemptCount as number
-        : 1;
-      const jobId = productionGenerationJobId(input.run.runId, contract.contractHash, attempt, shot.shotId);
-      const existing = input.run.jobs.find((job) => job.jobId === jobId);
-      if (!existing || existing.status !== "authorized" || existing.providerTaskId) return [];
-      const price = input.resolveShotPrice(contract);
-      const providerIdempotencyKey = productionGenerationProviderIdempotencyKey(
-        input.run.runId,
-        contract.contractHash,
-        attempt,
-        shot.shotId,
-      );
-      if (existing.providerIdempotencyKey !== providerIdempotencyKey) {
-        throw new Error(`Generation continuation job identity changed: ${shot.shotId}`);
-      }
-      const referenceUrls = authorizedReferenceUrls(input.run, contract.contractHash);
-      const prepared = adapter.prepareAuthorization({ contract, providerIdempotencyKey, referenceUrls });
-      return [{
-        jobId,
-        shotId: shot.shotId,
-        attempt,
-        target: {
-          kind: "generation-operation" as const,
-          operationId: input.run.runId,
-          candidateRevision: shot.candidate.revision,
-        },
-        contractHash: contract.contractHash,
-        providerId: contract.providerId,
-        modelId: contract.modelId,
-        mode: contract.mode,
-        parameters: contract.parameters,
-        references: contract.references,
-        ...(referenceUrls ? { referenceUrls } : {}),
-        providerWirePayloadHash: prepared.providerRequestHash,
-        providerIdempotencyKey,
-        price: { currency: input.run.budget.currency, maximum: jobPriceCeiling(price) },
-      }];
-    });
-  if (jobs.length === 0) throw new GenerationContinuationNotNeededError("nothing_left", "This generation Run has no unsubmitted jobs to continue");
-
-  const remainingMaximum = sumKnownJobCeilings(jobs);
-  const unknownJobCount = countUnknownJobPrices(jobs);
-  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
-  const completeMaximum = sumBudgetAmounts([liability, remainingMaximum]);
-  // 「已经覆盖了」这句话过去只问金额。价格未知的续批**金额永远是 0**，于是它会被这条判据当成
-  // 「不用再开门」而卡死在这里——续批那条路因此对未知价永远走不通。判据补上未知那根轴：
-  // 还有未知价的镜头要跑，就仍然需要一次人的决定（或全自动档的代答）。
-  if (unknownJobCount === 0 && !budgetExceeds(completeMaximum, input.run.budget.authorized)) {
-    throw new GenerationContinuationNotNeededError("already_covered", "The current generation authorization already covers the remaining jobs");
-  }
-  const issuedAt = Date.parse(input.now);
-  if (!Number.isFinite(issuedAt)) throw new Error("Generation continuation time is invalid");
-  const continuationNumber = input.run.gates.filter((gate) => gate.costScope?.startsWith(`generation.continuation:${input.run.runId}:`)).length + 1;
-  const envelope = createProductionGenerationAuthorizationEnvelope({
-    schemaVersion: PRODUCTION_GENERATION_AUTHORIZATION_VERSION,
-    immutableProjectUuid: input.lease.immutableProjectUuid,
-    projectGeneration: input.lease.projectGeneration,
-    projectId: input.run.projectId,
-    projectRevision: input.projectRevision,
-    runId: input.run.runId,
-    planVersion: input.run.planVersion,
-    gateId: `generation-authorization:${input.run.runId}:v${input.run.planVersion}:continuation-${continuationNumber}`,
-    costScope: `generation.continuation:${input.run.runId}:${continuationNumber}`,
-    expiresAt: new Date(issuedAt + (input.ttlMs ?? 10 * 60 * 1000)).toISOString(),
-    jobs,
-    budget: {
-      currency: input.run.budget.currency,
-      maximum: remainingMaximum,
-      ledgerCeiling: Math.max(input.run.budget.authorized, completeMaximum),
-      unknownJobCount,
-    },
-  });
-  return {
-    envelope,
-    authorizationDigest: productionGenerationAuthorizationDigest(envelope),
-    jobIds: jobs.map((job) => job.jobId),
   };
 }

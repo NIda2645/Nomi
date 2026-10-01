@@ -51,12 +51,6 @@ export type ReauthorizedGenerationState = Readonly<{
   gate: ProductionGate;
 }>;
 
-export type ContinuedGenerationState = Readonly<{
-  generationPlan: ProductionGenerationPlan;
-  jobs: readonly ProductionJob[];
-  gate: ProductionGate;
-}>;
-
 function preparationFrom(value: unknown): AuthorizationPreparation {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Generation authorization preparation is required");
@@ -380,105 +374,6 @@ export function deriveGenerationReauthorizationState(input: Readonly<{
     updatedAt: input.now,
   };
   return { generationPlan, job, gate };
-}
-
-/** Validate a fresh budget continuation over existing, current-attempt jobs that have never submitted. */
-export function deriveGenerationContinuationAuthorizationState(input: Readonly<{
-  run: ProductionRun;
-  preparation: unknown;
-  now: string;
-}>): ContinuedGenerationState {
-  const plan = input.run.generationPlan;
-  if (!plan || plan.state !== "submitted" || !plan.shots?.length) {
-    throw new Error("A submitted multi-shot authorization is required before paid continuation");
-  }
-  const { envelope, authorizationDigest } = preparationFrom(input.preparation);
-  if (
-    envelope.projectId !== input.run.projectId
-    || envelope.runId !== input.run.runId
-    || envelope.planVersion !== input.run.planVersion
-  ) {
-    throw new Error("Generation continuation does not belong to the current Run plan");
-  }
-  if (Date.parse(envelope.expiresAt) <= Date.parse(input.now)) throw new Error("Generation continuation has expired");
-  if (input.run.gates.some((gate) => gate.gateId === envelope.gateId)) throw new Error(`Duplicate gate: ${envelope.gateId}`);
-  const liability = sumBudgetAmounts([input.run.budget.reserved, input.run.budget.actual, input.run.budget.unsettled]);
-  if (
-    envelope.budget.currency !== input.run.budget.currency
-    // 续批必须**抬高**已授权的上限——除非它要续的全是价格未知的镜头：那种续批一分钱的已知负债
-    // 都不加（未知不进金额），上限当然不动，但它仍然是一次真实的、需要人点头的新授权。
-    || (envelope.budget.unknownJobCount === 0 && envelope.budget.ledgerCeiling <= input.run.budget.authorized)
-    || (input.run.policy.maxSpend !== null && budgetExceeds(envelope.budget.ledgerCeiling, input.run.policy.maxSpend))
-    || budgetExceeds(liability + envelope.budget.maximum, envelope.budget.ledgerCeiling)
-  ) {
-    throw new Error("Generation continuation does not safely extend the Run budget");
-  }
-
-  const replacementById = new Map<string, ProductionJob>();
-  for (const authorized of envelope.jobs) {
-    const shot = plan.shots.find((candidate) => candidate.shotId === authorized.shotId);
-    const contract = shot?.contract;
-    const existing = input.run.jobs.find((job) => job.jobId === authorized.jobId);
-    if (!shot || !contract || !existing || existing.status !== "authorized" || existing.providerTaskId) {
-      throw new Error(`Generation continuation job is not safely pending: ${authorized.shotId}`);
-    }
-    const expectedJobId = productionGenerationJobId(input.run.runId, contract.contractHash, authorized.attempt, shot.shotId);
-    const expectedIdempotencyKey = productionGenerationProviderIdempotencyKey(
-      input.run.runId,
-      contract.contractHash,
-      authorized.attempt,
-      shot.shotId,
-    );
-    if (
-      authorized.jobId !== expectedJobId
-      || authorized.providerIdempotencyKey !== expectedIdempotencyKey
-      || existing.providerIdempotencyKey !== expectedIdempotencyKey
-      || authorized.contractHash !== contract.contractHash
-      || authorized.providerId !== contract.providerId
-      || authorized.modelId !== contract.modelId
-      || authorized.mode !== contract.mode
-      || !sameJson(authorized.parameters, contract.parameters)
-      || !sameJson(authorized.references, contract.references)
-      || authorized.target.kind !== "generation-operation"
-      || authorized.target.operationId !== plan.operationId
-      || authorized.target.candidateRevision !== shot.candidate.revision
-    ) {
-      throw new Error(`Generation continuation does not match the sealed shot: ${authorized.shotId}`);
-    }
-    replacementById.set(existing.jobId, {
-      ...existing,
-      status: "authorization_required",
-      authorizationDigest,
-      updatedAt: input.now,
-    });
-  }
-  if (replacementById.size !== envelope.jobs.length) throw new Error("Generation continuation job set is invalid");
-  const jobs = input.run.jobs.map((job) => replacementById.get(job.jobId) ?? job);
-  const gate: ProductionGate = {
-    gateId: envelope.gateId,
-    scope: "budget_envelope",
-    status: "waiting",
-    planHash: authorizationDigest,
-    authorizationDigest,
-    authorizationEnvelope: envelope,
-    costScope: envelope.costScope,
-    requestedSpend: envelope.budget.maximum,
-    ...(envelope.budget.unknownJobCount > 0 ? { requestedUnknownJobs: envelope.budget.unknownJobCount } : {}),
-    jobIds: envelope.jobs.map((job) => job.jobId),
-    title: "Confirm generation continuation spend",
-    summary: "Approve the frozen remaining provider requests and their maximum additional cost.",
-    createdAt: input.now,
-    expiresAt: envelope.expiresAt,
-  };
-  const continuedShotIds = new Set(envelope.jobs.map((job) => job.shotId));
-  const generationPlan: ProductionGenerationPlan = {
-    ...plan,
-    shots: plan.shots.map((shot) => continuedShotIds.has(shot.shotId)
-      ? { ...shot, approvedReceiptId: undefined, approvedAt: undefined, updatedAt: input.now }
-      : shot),
-    updatedAt: input.now,
-  };
-  return { generationPlan, jobs, gate };
 }
 
 export function applyGenerationAuthorizationGateDecision(input: Readonly<{

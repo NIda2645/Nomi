@@ -11,7 +11,6 @@ import type {
   HumanApprovalDisplay,
   HumanApprovalReceiptV1,
 } from "./approvalReceipt";
-import { assertCurrentProjectRevision, type ProjectRevisionResolver } from "../productionRun/productionRunApprovalReceipt";
 import type { DispatchContext } from "./dispatcher";
 import type { GenerationOperationStore } from "./mcpGenerationTools";
 import type { ProjectLeaseV2 } from "./projectLease";
@@ -36,7 +35,6 @@ export function createRunOwnedGenerationGateAuthority(input: Readonly<{
   operations: GenerationOperationStore;
   planning: NonNullable<DispatchContext["generationPlanning"]>;
   receipts: ApprovalReceiptAuthority;
-  projectRevisionResolver: ProjectRevisionResolver;
   now?: () => string;
 }>) {
   const now = input.now ?? (() => new Date().toISOString());
@@ -70,7 +68,8 @@ export function createRunOwnedGenerationGateAuthority(input: Readonly<{
     ) {
       throw new Error("Generation gate does not match the sealed Run authorization");
     }
-    assertCurrentProjectRevision(lease.projectId, envelope.projectRevision, input.projectRevisionResolver);
+    // 这里不再核项目此刻的版本（付费卡① 第 14 条）：批的是这份信封里冻住的事实（门、合同哈希、线上报文哈希），
+    // 收据也逐字绑它们和信封封好时的版本。卡开着时 Nomi 往画布上落别的镜，项目版本照常前进，不让这一下点击失败。
     const currentMs = Date.parse(now());
     const expiryMs = Date.parse(envelope.expiresAt);
     if (!Number.isFinite(currentMs) || !Number.isFinite(expiryMs) || expiryMs <= currentMs) {
@@ -130,7 +129,6 @@ export function createRunOwnedGenerationGateAuthority(input: Readonly<{
     const envelope = gate?.authorizationEnvelope;
     const digest = gate?.authorizationDigest;
     assertReceiptMatchesAuthorization(receipt, lease, operationId, envelope, digest, gate?.gateId);
-    assertCurrentProjectRevision(lease.projectId, envelope?.projectRevision, input.projectRevisionResolver);
     if (!gate || gate.status !== "waiting" || gate.authorizationDigest !== digest || gate.planHash !== digest) {
       throw new Error("Generation authorization gate is not waiting for this receipt");
     }
@@ -163,13 +161,11 @@ export async function decideRunOwnedGenerationGate(input: Readonly<{
   authorization: PreparedProductionGenerationAuthorization;
   display: HumanApprovalDisplay;
   commandPrefix: string;
-  projectRevisionResolver: ProjectRevisionResolver;
   now?: () => string;
 }>): Promise<{ approved: boolean; run: ProductionRun }> {
   const now = input.now ?? (() => new Date().toISOString());
   const { envelope } = input.authorization;
   const digest = input.authorization.authorizationDigest;
-  assertCurrentProjectRevision(input.lease.projectId, envelope.projectRevision, input.projectRevisionResolver);
   const challenge = input.receipts.requestChallenge({
     challengeKey: `${envelope.costScope}:${digest}`,
     immutableProjectUuid: envelope.immutableProjectUuid,
@@ -205,8 +201,8 @@ export async function decideRunOwnedGenerationGate(input: Readonly<{
     return { approved: false, run: decision.run };
   }
   const receipt = input.receipts.verifyReceipt(receiptToken);
+  // 批的是信封里冻住的事实，不是项目此刻的版本（付费卡① 第 14 条）：确认框开着时别的镜照常落画布。
   assertReceiptMatchesAuthorization(receipt, input.lease, input.operationId, envelope, digest, envelope.gateId);
-  assertCurrentProjectRevision(input.lease.projectId, envelope.projectRevision, input.projectRevisionResolver);
   const approving = input.owner.readFull(input.lease.projectId, input.operationId);
   const decision = await input.owner.command(input.lease.projectId, input.operationId, {
     commandId: `${input.commandPrefix}-decide:${envelope.gateId}:${receipt.receiptId}`,

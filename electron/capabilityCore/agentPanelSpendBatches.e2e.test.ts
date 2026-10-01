@@ -97,7 +97,7 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
     second = base.repository.execute(PROJECT_ID, OPERATION_ID, { commandId: "second-look-approved", expectedRevision: second.revision,
       type: "gate.decide", payload: { gateId: nextGate.gateId, status: "approved" }, issuedAt: now() }).run;
     const scheduler = createMultiShotBatchScheduler({ repository: base.repository, submission, projectId: PROJECT_ID,
-      runId: OPERATION_ID, perShotPrice: () => ({ known: true, amount: 0.3 }), now });
+      runId: OPERATION_ID, now });
     await scheduler.runToQuiescence();
     await scheduler.runToQuiescence();
     await base.canvasLanding.landCanvasBestEffort(PROJECT_ID, OPERATION_ID);

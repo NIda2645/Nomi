@@ -370,7 +370,6 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
           ...(multiShot ? { multiShot } : {}),
           providers: providerBootstrap.providers,
           resolveShotPrice,
-          maximumSpend: authorizationRun?.policy.maxSpend,
             run: authorizationRun,
           now: new Date().toISOString(),
         }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
@@ -419,7 +418,6 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
                 submission,
                 projectId: lease.projectId,
                 runId: operation.operationId,
-                perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
                 onBatchComplete: () => productionRuns.advanceSemanticProduction(lease.projectId, operation.operationId),
               })
             },
@@ -483,7 +481,6 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
         operations: operationStore,
         planning: generationPlanning,
         receipts: approvalReceiptAuthority,
-        projectRevisionResolver,
       })
     : undefined
   const generationAuthorities = {

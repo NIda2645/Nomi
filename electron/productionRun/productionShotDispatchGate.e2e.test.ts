@@ -132,7 +132,7 @@ describe("the production dispatch gate runs before anything about the attempt is
     const vendor = provider(submits, () => { if (submits.length === 1) press(); });
 
     await createMultiShotBatchScheduler({ repository, submission: submission(root, repository, gate.guard, vendor), projectId: PROJECT, runId: RUN,
-      perShotPrice: () => ({ known: true, amount: 6 }), now }).runToQuiescence();
+      now }).runToQuiescence();
 
     expect(submits, "only shot 1 was already at the provider when the user stopped the batch").toHaveLength(1);
     expect(submits[0]).toContain("shot-1");

@@ -92,7 +92,7 @@ function prepare(run: ProductionRun, priceAmount = 3, scope?: readonly string[])
     lease: { projectId: run.projectId, immutableProjectUuid: "uuid", projectGeneration: 1, revocationEpoch: 0 },
     projectRevision: 0, operation: { operationId: run.runId, projectId: run.projectId, candidate: plan.candidate, planVersion: run.planVersion },
     contract, multiShot: { shots, planHash: "same-content", scope: [...sealing] }, providers: [provider()],
-    resolveShotPrice: () => ({ known: true, amount: priceAmount }), maximumSpend: run.policy.maxSpend, now: NOW,
+    resolveShotPrice: () => ({ known: true, amount: priceAmount }), now: NOW,
   });
   return { contract, shots, planHash: "same-content", scope: [...sealing], authorization };
 }
@@ -189,12 +189,13 @@ describe("successive generation batches", () => {
   });
 });
 
-it("carries unbilled successful reservations into the next authorization without relaxing the hard cap", () => {
+// 2026-10-01：盖不住就整份拒，不再「先批一部分、派到时停批再续」（那条路随 Run 级预算停一起删了）。
+it("carries unbilled successful reservations into the next authorization and refuses it whole when the hard cap cannot cover it", () => {
   const first = settledFirst();
   const unbilled = { ...first, budget: { ...first.budget, actual: 0, reserved: 3 }, policy: { ...first.policy, maxSpend: 5 } };
   const draft = apply(unbilled, "generation.present", { shotIds: ["shot-b"] });
   const payload = prepare(draft);
-  expect(payload.authorization.envelope.budget).toMatchObject({ maximum: 2, ledgerCeiling: 5 });
+  expect(payload.authorization.envelope.budget).toMatchObject({ maximum: 3, ledgerCeiling: 6 });
   expect(draft.budget).toEqual(unbilled.budget);
   expect(() => apply(draft, "generation.seal", { ...payload, shotPrices: [{ shotId: "shot-b", price: { known: true, amount: 3 } }] })).toThrow(/hard spend ceiling/);
 });

@@ -16,6 +16,7 @@ import {
 } from "./productionGenerationAuthorization";
 import { nextGenerationAttempt } from "./prepareProductionGenerationAuthorization";
 import { authorizationGateForJob } from "../shared/productionSpendAuthority";
+import { DispatchConsentLapsedError, dispatchConsentOpen } from "../shared/productionDispatchConsent";
 import { createProductionRunRuntimeEnvelope } from "./productionRunRuntimeEnvelope";
 import { createProductionRunIntentLog } from "./productionRunIntentLog";
 import { productionRunPaths } from "./productionRunPaths";
@@ -382,9 +383,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     ) {
       throw new Error("Generation submission is not covered by the approved Run authorization");
     }
-    if (Date.parse(now()) >= Date.parse(authorizationEnvelope.expiresAt)) {
-      throw new Error("Generation authorization has expired");
-    }
+    // 「现在派出去还算不算用户同意过」只有一个判据（付费卡① 第 13 条，`productionDispatchConsent`）：离他最近一次点头
+    // ——批准这一镜，或之后放行形象、停下后点「继续」——不超过同意窗口。以前这里拿信封封好那一刻起的 10 分钟判，
+    // 于是放行形象、急停后继续、第二天重开这些「批准之后过一会儿才派」的路永远派不出去，镜头一直「排队中」。
+    // 过了窗口 = 没有人替他续：这一镜不派，调度器接住这个错，批次如实停下等他再点一次（不是失败）。
+    if (!dispatchConsentOpen(gate, now())) throw new DispatchConsentLapsedError(gateId, jobId);
 
     // This is the last zero-side-effect check. If provider serialization drifted since the gate,
     // nothing below (Run events, ledger, intents, runtime envelope or provider) is touched.

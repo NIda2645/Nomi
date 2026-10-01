@@ -28,6 +28,7 @@ import { assertCallerDeclaredTrustLevel, trustLevelFromApprovalPolicy } from './
 import { createGateApprovalOwner } from './productionRunApprovalReceipt'
 import { isAnchorCheckpointGate } from './anchorCheckpoint'
 import { kickBatchSchedulerForRun } from './batchSchedulerKick'
+import { renewDispatchConsent } from './productionDispatchConsentEdits'
 import { recoverStoryboardContentHashes } from './productionRunStoryboardHashRecovery'
 import type { ApprovalReceiptAuthority } from '../capabilityCore/approvalReceipt'
 import {
@@ -529,7 +530,13 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
     // 免费空 tick（derivation 对 rejected 只在有新 attempt 时才重派锚，见 batchScheduleDerivation）。scheduler
     // 构造依赖 appIntegration 接线，故经晚绑定插槽（batchSchedulerKick.ts 有为什么）。
     if (runCommand.type === 'gate.decide' && decidedGate && isAnchorCheckpointGate(decidedGate)) {
+      // 付费卡① 第 13 条：用户在 Nomi 窗口里放行形象 = 他对等着这一下才开拍的那几镜点了头，续上它们的同意。
+      // MCP / Agent 的决议没有真人手势章，不续——派到时同意过了窗口就如实停下，等他自己点。
+      const renewed = runCommand.payload.status === 'approved' && runCommand.humanGesture === true
+        ? renewDispatchConsent(repository, safeProjectId, safeRunId, result.run, 'anchor_release', runCommand.issuedAt)
+        : undefined
       kickBatchSchedulerForRun(safeProjectId, safeRunId)
+      if (renewed) return { run: renewed.run, events: [...result.events, ...renewed.events] }
     }
     return result
   }

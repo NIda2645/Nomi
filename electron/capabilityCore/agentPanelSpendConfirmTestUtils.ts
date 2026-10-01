@@ -235,7 +235,7 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
   const runBatch = async (operationId: string) => {
     const scheduler = createMultiShotBatchScheduler({
       repository, submission, projectId: PROJECT_ID, runId: operationId,
-      perShotPrice: () => (hooks.unpriced ? { known: false } : { known: true, amount: PRICING.cost }), now,
+      now,
     });
     await scheduler.runToQuiescence();
     await canvasLanding.landCanvasBestEffort(PROJECT_ID, operationId);
@@ -248,7 +248,6 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     prepareAuthorization: ({ lease: projectLease, operation, contract, multiShot }) => prepareProductionGenerationAuthorization({
       lease: projectLease, projectRevision: 0, operation, contract,
       run: requiredHarnessRun(operation.projectId, operation.operationId),
-      maximumSpend: requiredHarnessRun(operation.projectId, operation.operationId).policy.maxSpend,
       ...(multiShot ? { multiShot } : {}),
       providers: [provider],
       resolveShotPrice: (shotContract) => {
@@ -292,7 +291,7 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     now,
     randomId: () => `receipt-sequence-${++receiptSequence}`,
   });
-  const authority = createRunOwnedGenerationGateAuthority({ owner: owner as never, operations, planning: handler, receipts, projectRevisionResolver: () => 0, now });
+  const authority = createRunOwnedGenerationGateAuthority({ owner: owner as never, operations, planning: handler, receipts, now });
   const actions = (rendererTarget: () => { webContentsId: number; frameId: number; origin: string } | null) => createPendingSpendActions({
     isProjectOpen: () => true,
     runs: { read: (projectId, runId) => repository.read(projectId, runId), list: (projectId) => repository.list(projectId) },

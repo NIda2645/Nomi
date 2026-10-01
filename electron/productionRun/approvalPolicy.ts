@@ -11,7 +11,6 @@ export type EffectiveAutomationPolicy = {
 export type SubmissionAuthorizationFailure =
   | "approval-run-mismatch"
   | "plan-changed"
-  | "approval-expired"
   | "approval-revoked"
   | "untrusted-host"
   | "job-not-approved"
@@ -67,7 +66,9 @@ export function authorizeSubmission(input: SubmissionAuthorizationInput): Submis
   if (input.runId !== undefined && approval.runId !== input.runId) return { ok: false, reason: "approval-run-mismatch" };
   if (approval.planHash !== input.planHash) return { ok: false, reason: "plan-changed" };
   if (approval.revokedAt) return { ok: false, reason: "approval-revoked" };
-  if (Date.parse(input.now) >= Date.parse(approval.expiresAt)) return { ok: false, reason: "approval-expired" };
+  // 这里不判「批准过没过期」（2026-10-01 付费卡① 第 13 条删）：同意还算不算数只有一个判据，派发闸
+  // `productionGenerationSubmission.prepareAuthorizedSubmission` 读 `productionDispatchConsent`（会被放行形象 / 继续续上）。
+  // 以前这里按批准记录上的 `expiresAt` 再判一次，是第二个、而且不会被续的判据——续过的镜照样在这里被拒。
   if (!policy.trustedHosts.includes(input.originHost)) return { ok: false, reason: "untrusted-host" };
   if (!approval.jobIds.includes(job.jobId)) return { ok: false, reason: "job-not-approved" };
   if (!approval.allowedProviders.includes(job.provider) || !policy.allowedProviders.includes(job.provider)) {

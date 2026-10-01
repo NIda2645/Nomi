@@ -124,7 +124,7 @@ function buildScheduler(root: string, repository: ReturnType<typeof createProduc
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });
-  return createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-batch", perShotPrice: () => ({ known: true, amount: 6 }), now });
+  return createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-batch", now });
 }
 
 /** 真 dispatcher 的最小 ctx：productionRuns = 真 service（与生产同一条 ctx.productionRuns.command 路）。 */
@@ -181,7 +181,6 @@ describe("P4 §3.2 — anchor checkpoint approval through the REAL production en
       expect(kicked).toHaveLength(1);
       const resumed = await kicked[0];
       expect(resumed.progress.completed).toBe(2);
-      expect(resumed.halt).toBeUndefined();
       expect(submits).toHaveLength(3); // 1 anchor + 2 shots — the re-kick double-submits nothing
       expect(new Set(submits).size).toBe(submits.length); // ≤1 real submit per job
 
@@ -228,6 +227,64 @@ describe("P4 §3.2 — anchor checkpoint approval through the REAL production en
       expect(blockedShotJob).toMatchObject({ status: "authorized" });
       expect(blockedShotJob?.providerTaskId).toBeUndefined();
       expect(run.artifacts.filter((a) => a.status === "ready")).toHaveLength(1); // the anchor still is kept
+    } finally {
+      await vendor.close();
+    }
+  });
+});
+
+// 付费卡① 第 13 条（2026-10-01）：放行形象那一下是用户对等着它才开拍的那几镜的点头。在 Nomi 窗口里点的
+// （受信 IPC 盖了真人手势章）续上它们的同意；MCP / Agent 经 dispatcher 放行的没有那个章，不续——派到时同意已经过了
+// 窗口，批次如实停在 consent_expired，等他自己点「继续」。以前这条路晚于 10 分钟就永远派不出去，镜一直「排队中」。
+describe("releasing the look renews consent only when a person clicked it (paid card rule 13)", () => {
+  const ELEVEN_MINUTES = 11 * 60 * 1000;
+
+  async function parkedAtCheckpoint() {
+    const shots = [shotEntry("anchor-1", "阿雨 定妆照", "anchor"), shotEntry("shot-1", "雨夜推门", "shot"), shotEntry("shot-2", "货架对视", "shot")];
+    const vendor = await startLoopbackVendor();
+    const submits: string[] = [];
+    const provider = loopbackProvider(vendor.origin, submits);
+    const { root, repository } = setup(shots, provider);
+    await buildScheduler(root, repository, provider).runToQuiescence();
+    expect(submits).toHaveLength(1);
+    const service = createProductionRunService({ repository, projectRootResolver: (p) => (p === "project-1" ? root : null) });
+    const kicked: Array<Promise<BatchOutcome>> = [];
+    registerBatchSchedulerKicker(() => {
+      kicked.push(buildScheduler(root, repository, provider).runToQuiescence());
+    });
+    const gateId = currentAnchorCheckpointGate(repository.read("project-1", "op-batch")!)!.gateId;
+    return { vendor, submits, repository, service, kicked, gateId };
+  }
+
+  it("Nomi 窗口里放行形象（真人手势），哪怕离批准已经 11 分钟：续上等着的两镜，批次接着拍完", async () => {
+    const { vendor, submits, repository, service, kicked, gateId } = await parkedAtCheckpoint();
+    try {
+      clock += ELEVEN_MINUTES;
+      const decided = await service.command("project-1", "op-batch", {
+        commandId: "release-look", expectedRevision: repository.read("project-1", "op-batch")!.revision, type: "gate.decide",
+        payload: { gateId, status: "approved" }, issuedAt: now(), humanGesture: true,
+      });
+      expect(decided.run.gates.filter((gate) => gate.scope === "budget_envelope").map((gate) => gate.consentRenewedBy)).toEqual(["anchor_release"]);
+      expect(kicked).toHaveLength(1);
+      expect((await kicked[0]).progress.completed).toBe(2);
+      expect(submits).toHaveLength(3);
+      expect(repository.read("project-1", "op-batch")?.stop).toBeUndefined();
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("Agent 经 dispatcher 放行（没有手势章），离批准已经 11 分钟：一镜都不派，停在 consent_expired，不是一直排队", async () => {
+    const { vendor, submits, repository, kicked, gateId, service } = await parkedAtCheckpoint();
+    try {
+      clock += ELEVEN_MINUTES;
+      await dispatch("production.decide-gate", { projectId: "project-1", runId: "op-batch", gateId, decision: "approved" }, dispatcherContext(service) as never);
+      expect(kicked).toHaveLength(1);
+      await kicked[0];
+      expect(submits, "只有早先那张参考卡").toHaveLength(1);
+      const run = repository.read("project-1", "op-batch")!;
+      expect(run.gates.some((gate) => gate.consentRenewedAt), "没人点，同意不被延长").toBe(false);
+      expect(run).toMatchObject({ status: "needs_attention", stop: { reason: "consent_expired" } });
     } finally {
       await vendor.close();
     }

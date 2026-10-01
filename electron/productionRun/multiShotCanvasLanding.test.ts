@@ -133,12 +133,12 @@ describe('buildMaterializeShotsPayload projects each shot\'s run state onto its 
     expect(payload!.shots.find((s) => s.shotId === 's2')?.generation).toEqual({ state: 'ended' })
   })
 
-  it('供应商拒了的镜 → failed（带人话原因，节点显示普通生成那张失败卡）；预算停批时没开拍的镜 → ended（已停小标另管）', () => {
+  it('供应商拒了的镜 → failed（带人话原因，节点显示普通生成那张失败卡）；批次停下时没开拍的镜 → ended（已停小标另管）', () => {
     // 「为什么停」只读 Run 在停下那一刻记下的事实（run.stop），不再由某个 job 的错因码决定。
     const halted = { ...run([shot('s1'), shot('s2')], [
       job('s1', 'needs_attention', { errorCode: 'provider_task_failed', errorMessage: '供应商拒绝了这次生成' }),
       job('s2', 'authorized'),
-    ]), status: 'needs_attention' as const, stop: { reason: 'budget' as const, at: NOW } }
+    ]), status: 'needs_attention' as const, stop: { reason: 'consent_expired' as const, at: NOW } }
     const payload = buildMaterializeShotsPayload(halted, { projectRoot: null })
     expect(payload!.shots.find((s) => s.shotId === 's1')?.generation)
       .toEqual({ state: 'failed', runRecordId: 'production-job-s1', startedAt: Date.parse(NOW), message: '供应商拒绝了这次生成' })

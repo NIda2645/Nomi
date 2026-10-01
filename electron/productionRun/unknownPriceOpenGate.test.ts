@@ -1,7 +1,7 @@
 // 未知价开闸（2026-09-21 用户拍板：「我们现在都没有建立价格的标尺，不能因此不让用户处理问题」）。
 //
 // 这一组守两件**同时**成立的事——缺任何一件这次改动就白做了：
-//   ① 价格未知**不挡住生成**：首波 / 重拍 / 续批，一条都不许因为没价格被拒；
+//   ① 价格未知**不挡住生成**：首波 / 重拍，一条都不许因为没价格被拒（续批那条路 2026-10-01 随 Run 级预算停一起删了）；
 //   ② 价格未知**绝不被当成 0 元**：信封、账本、收据上它都有自己的位置（`price.maximum: null`
 //      与 `budget.unknownJobCount`），而已知价那条硬上限一个字没松。
 //
@@ -19,7 +19,6 @@ import { createModuleRegistry } from "../capabilityCore/moduleRegistry";
 import type { ProjectLeaseV2 } from "../capabilityCore/projectLease";
 import {
   prepareProductionGenerationAuthorization,
-  prepareProductionGenerationContinuationAuthorization,
   prepareProductionGenerationReauthorization,
 } from "./prepareProductionGenerationAuthorization";
 import { createProductionGenerationSubmission } from "./productionGenerationSubmission";
@@ -119,12 +118,8 @@ function setup(options: Readonly<{ maxSpend?: number | null; shotIds?: readonly 
   return { root, repository, provider, submit, submission, top, shots, contract: compileExecutionContract(top, registry) };
 }
 
-/** 封印首波并让门通过，返回封印后的 Run。 */
-function sealAndApprove(
-  base: ReturnType<typeof setup>,
-  resolveShotPrice: (shotId: string) => ShotPrice,
-  maximumSpend?: number | null,
-) {
+/** 为首波封一份授权（不落进 Run）。 */
+function prepareFirstWave(base: ReturnType<typeof setup>, resolveShotPrice: (shotId: string) => ShotPrice) {
   const { repository, provider, top, shots, contract } = base;
   const multiShot = shots.length
     ? {
@@ -149,9 +144,15 @@ function sealAndApprove(
     run: repository.read("project-1", "op-1")!,
     providers: [provider],
     resolveShotPrice: (shotContract) => resolveShotPrice(shotContract.candidateId),
-    ...(maximumSpend === undefined ? {} : { maximumSpend }),
     now: NOW,
   });
+  return { authorization, multiShot };
+}
+
+/** 封印首波并让门通过，返回封印后的 Run。 */
+function sealAndApprove(base: ReturnType<typeof setup>, resolveShotPrice: (shotId: string) => ShotPrice) {
+  const { repository, contract } = base;
+  const { authorization, multiShot } = prepareFirstWave(base, resolveShotPrice);
   const sealed = repository.execute("project-1", "op-1", {
     commandId: "seal",
     expectedRevision: 0,
@@ -230,46 +231,16 @@ describe("未知价：每一条路径都能生成，而且没有一处把它写�
     expect(run.jobs.find((job) => job.attempt === 2)).toMatchObject({ status: "authorization_required" });
   });
 
-  it("续批：剩下的全是未知价时，「已经覆盖了」不再把这条路堵死", async () => {
-    const base = setup({ shotIds: ["shot-a", "shot-b"] });
-    sealAndApprove(base, () => ({ known: false }));
-    let run = base.repository.read("project-1", "op-1")!;
-    run = base.repository.execute("project-1", "op-1", {
-      commandId: "submit-plan",
-      expectedRevision: run.revision,
-      type: "generation.submit",
-      payload: {},
-      issuedAt: NOW,
-    }).run;
-
-    // 未知价的续批一分钱已知负债都不加 → 金额判据恒「已经覆盖了」。它必须由未知那根轴救回来。
-    const continuation = prepareProductionGenerationContinuationAuthorization({
-      lease,
-      projectRevision: 12,
-      run,
-      providers: [base.provider],
-      resolveShotPrice: () => ({ known: false }),
-      now: LATER,
-    });
-    expect(continuation.envelope.budget).toMatchObject({ maximum: 0, unknownJobCount: 2 });
-    expect(continuation.envelope.jobs.every((job) => job.price.maximum === null)).toBe(true);
-  });
-
-  it("混合批次：已知的那部分超上限仍然被截断，未知的不占额度也不被算进去", () => {
+  it("混合批次：未知的不占额度也不被算进去；已知的超了 Run 的硬上限就整份拒，不批一半", () => {
     const base = setup({ maxSpend: 10, shotIds: ["shot-a", "shot-b", "shot-c"] });
-    // shot-a 已知 6、shot-b 未知、shot-c 已知 6 → 已知合计 12 > 10，信封只覆盖得起 10。
-    const { authorization } = sealAndApprove(
-      base,
-      (shotId) => (shotId === "shot-b" ? { known: false } : { known: true, amount: 6 }),
-      10,
-    );
-    expect(authorization.envelope.budget.maximum).toBe(10);
-    expect(authorization.envelope.budget.ledgerCeiling).toBe(10);
-    // 未知那一镜仍然在 job 表里（它能跑），只是不在金额里。
-    expect(authorization.envelope.budget.unknownJobCount).toBe(1);
+    // shot-a 已知 6、shot-b 未知、shot-c 已知 6 → 已知合计 12 > 10。
+    const price = (shotId: string): ShotPrice => (shotId === "shot-b" ? { known: false } : { known: true, amount: 6 });
+    const { authorization } = prepareFirstWave(base, price);
+    // 已知之和 12 没有因为「多了一镜未知」被悄悄抬高或压低——未知不参与任何金额运算；它仍然在 job 表里（它能跑）。
+    expect(authorization.envelope.budget).toMatchObject({ maximum: 12, ledgerCeiling: 12, unknownJobCount: 1 });
     expect(authorization.envelope.jobs.map((job) => job.price.maximum)).toEqual([6, null, 6]);
-    // 已知之和 12 没有因为「多了一镜未知」被悄悄抬高或压低——未知不参与任何金额运算。
-    expect(authorization.envelope.budget.maximum).toBeLessThan(12);
+    // 盖不住就整份拒（2026-10-01 以前是只批得起的那 10、派到第三镜时停批再续——那条路随 Run 级预算停一起删了）。
+    expect(() => sealAndApprove(base, price)).toThrow(/hard spend ceiling/);
   });
 
   it("信任降档仍然对未知 fail-closed：「以后 ¥X 内不再问」给不出 X 就不许问", () => {

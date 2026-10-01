@@ -4,8 +4,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 // 「继续剩余 / 重做这一镜」这两个用户动作在主进程的那一半：
-// - 继续走哪条路只看 Run 在停下那一刻记下的原因——不是预算停下的，一律直接接着拍，绝不弹续额度确认
-//   （以前渲染层按画布上猜出的「预算」传 budget，没有价格时也弹出额度全是 0 的续拍卡）；
+// - 继续只有一条路：这一下点击就是用户的确认——续上批过、还没发出去的那几镜的同意（付费卡① 第 13 条），直接接着拍，
+//   不弹第二个确认（2026-10-01 删掉了「因预算停下 → 先续额度」那一支：授权按镜批之后没有 Run 级额度可续）；
 // - 急停后在跑的那一镜还没收尾（pausing）也能接着拍；
 // - 重做一镜时，停下的原因若随重做解除（因失败而停），批次接着走——否则这一镜永远不开拍；
 // - 每一种没做成都回自己的语义码，没有笼统的「操作没成功」，主进程原话不回给界面。
@@ -58,10 +58,17 @@ type SetupOptions = {
   providers?: readonly GenerationProvider[];
   readiness?: ProductionDriverReadiness;
   project?: WorkspaceProjectRecordV2 | null;
+  /** 项目此刻的版本（Run 服务的收据核对读它）。缺省恒为 0。 */
+  projectRevision?: () => number;
 };
 
+/** 批过的付费门上记的「谁续过同意」（付费卡① 第 13 条）。 */
+const renewedBy = (repository: ReturnType<typeof createProductionRunRepository>) => repository.read(PROJECT, RUN)!.gates
+  .filter((gate) => gate.scope === "budget_envelope")
+  .map((gate) => gate.consentRenewedBy);
+
 /** 两镜整批已确认、已提交、已开跑（running），还没有一镜交给供应商。 */
-function setup({ withReceipts = false, providers = [provider], readiness = "ready", project }: SetupOptions = {}) {
+function setup({ withReceipts = false, providers = [provider], readiness = "ready", project, projectRevision = () => 0 }: SetupOptions = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-production-actions-"));
   roots.push(root);
   const repository = createProductionRunRepository({ projectDirResolver: (projectId) => (projectId === PROJECT ? root : null), now });
@@ -92,7 +99,7 @@ function setup({ withReceipts = false, providers = [provider], readiness = "read
     projectRootResolver: () => root,
     requestRenderer: async () => { throw new Error("no renderer in this test"); },
     approvalReceiptAuthority: receipts,
-    projectRevisionResolver: () => 0,
+    projectRevisionResolver: projectRevision,
   });
   const kickScheduler = vi.fn();
   const hooks = createProductionActionHooks({
@@ -106,7 +113,6 @@ function setup({ withReceipts = false, providers = [provider], readiness = "read
     driverReadiness: () => readiness,
     kickScheduler,
     ...(withReceipts ? { receiptAuthority: receipts, confirmGenerationInNomi } : {}),
-    projectRevisionResolver: () => 0,
   });
   return { repository, service, hooks, kickScheduler, confirmGenerationInNomi };
 }
@@ -135,8 +141,8 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-describe("「继续剩余」：接着拍，续额度只在真因预算停下时才走", () => {
-  it("用户急停后（paused）：直接接着拍，Run 回到 running，不走续额度确认", async () => {
+describe("「继续剩余」：一条路——这一下点击续上同意、直接接着拍", () => {
+  it("用户急停后（paused）：直接接着拍，Run 回到 running，不弹第二个确认；批过、还没发出去的镜续上了同意", async () => {
     const { repository, hooks, confirmGenerationInNomi } = setup({ withReceipts: true });
     const running = repository.read(PROJECT, RUN)!;
     applyRunControl(repository, PROJECT, RUN, running, { commandId: "user-pause", expectedRevision: running.revision, type: "run.control", payload: { action: "pause" }, issuedAt: now() });
@@ -146,7 +152,8 @@ describe("「继续剩余」：接着拍，续额度只在真因预算停下时�
     const resumed = repository.read(PROJECT, RUN)!;
     expect(resumed.status).toBe("running");
     expect(resumed.stop, "离开停着的状态，停下的原因就清掉").toBeUndefined();
-    expect(confirmGenerationInNomi, "不是预算停下的，不弹续额度确认").not.toHaveBeenCalled();
+    expect(confirmGenerationInNomi, "点「继续」就是确认，不再弹一个").not.toHaveBeenCalled();
+    expect(renewedBy(repository), "两镜都批了、都还没发出去：这一下点击续上的就是它们").toEqual(["resume"]);
   });
 
   it("急停后在跑的那一镜还没收尾（pausing）：也能接着拍，不再报「not resumable」", async () => {
@@ -162,20 +169,15 @@ describe("「继续剩余」：接着拍，续额度只在真因预算停下时�
     expect(repository.read(PROJECT, RUN)?.status).toBe("running");
   });
 
-  it.each([["failed" as const], ["restart_recovery" as const]])("因 %s 停下：直接接着拍，不走续额度确认", async (reason) => {
-    const { repository, hooks } = setup();
+  it.each([["failed" as const], ["restart_recovery" as const], ["consent_expired" as const]])("因 %s 停下：直接接着拍，并续上同意", async (reason) => {
+    const { repository, hooks, confirmGenerationInNomi } = setup({ withReceipts: true });
     stop(repository, "needs_attention", reason);
     await expect(hooks.resumeProductionBatch({ projectId: PROJECT, runId: RUN })).resolves.toEqual({ ok: true, code: "resumed" });
     expect(repository.read(PROJECT, RUN)?.status).toBe("running");
+    expect(confirmGenerationInNomi).not.toHaveBeenCalled();
+    expect(renewedBy(repository)).toEqual(["resume"]);
   });
 
-  it("真因预算停下（只有知道价格时才可能）：才走续额度确认那条路", async () => {
-    const { repository, hooks } = setup();
-    stop(repository, "needs_attention", "budget");
-    // 这台装配没有确认口：走进续额度那条路就只能回 confirmation_unavailable——证明它走了那条路，而不是直接接着拍。
-    await expect(hooks.resumeProductionBatch({ projectId: PROJECT, runId: RUN })).resolves.toEqual({ ok: false, code: "failed", failure: "confirmation_unavailable" });
-    expect(repository.read(PROJECT, RUN)?.status, "没确认续额度就不接着拍").toBe("needs_attention");
-  });
 
   it("供应商接不上：不把 Run 改成 running（那是假继续），如实说缺的是供应商", async () => {
     const { repository, hooks } = setup({ readiness: "provider_missing" });
@@ -216,6 +218,28 @@ describe("「重做这一镜」", () => {
     expect(run.status, "停下的原因（失败）随重做解除").toBe("running");
     expect(run.jobs.filter((job) => job.metadata?.shotId === "shot-1").map((job) => job.status)).toEqual(["needs_attention", "authorized"]);
     expect(kickScheduler).toHaveBeenCalledWith(PROJECT, RUN);
+  });
+
+  // 付费卡① 第 14 条（2026-10-01）：批的是确认框里那份信封的事实，不是项目此刻的版本。确认框开着时别的镜落了画布、
+  // 项目版本前进了——以前 Run 服务按活的版本核收据，这一下被拒成「确认时项目有变动」，而框里的东西一个字没变。
+  it("确认框开着时项目往前走了（别的镜落了画布）：重做照样批下来，批的就是框里那一份", async () => {
+    let revision = 0;
+    const { repository, hooks, confirmGenerationInNomi } = setup({ withReceipts: true, projectRevision: () => revision });
+    settleShots(repository);
+    stop(repository, "needs_attention", "failed");
+    const confirm = confirmGenerationInNomi.getMockImplementation()!;
+    confirmGenerationInNomi.mockImplementationOnce(async (input) => {
+      revision = 5; // 用户读确认框的这几秒里，Nomi 往画布上落了别的镜
+      return confirm(input);
+    });
+
+    await expect(hooks.reworkProductionShot({ projectId: PROJECT, runId: RUN, shotId: "shot-1" })).resolves.toEqual({ ok: true, code: "reworked" });
+    const run = repository.read(PROJECT, RUN)!;
+    const reworked = run.jobs.find((job) => job.metadata?.shotId === "shot-1" && job.attempt === 2)!;
+    const gate = authorizationGateForJob(run, reworked)!;
+    expect(gate.status).toBe("approved");
+    expect(gate.authorizationEnvelope?.projectRevision, "批的是封信封那一刻的那一份").toBe(0);
+    expect(reworked.status).toBe("authorized");
   });
 
   it("用户自己暂停的批次：重做一镜不替他改主意，批次仍停着", async () => {

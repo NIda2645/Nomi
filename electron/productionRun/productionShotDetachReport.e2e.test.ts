@@ -124,7 +124,7 @@ async function runScheduler(root: string, repository: ReturnType<typeof createPr
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.mp4` }),
     now,
   });
-  await createMultiShotBatchScheduler({ repository, submission, projectId: PROJECT, runId: RUN, perShotPrice: () => ({ known: true, amount: 6 }), now }).runToQuiescence();
+  await createMultiShotBatchScheduler({ repository, submission, projectId: PROJECT, runId: RUN, now }).runToQuiescence();
 }
 
 const shot2 = (run: ProductionRun | null) => ({

@@ -43,6 +43,15 @@ function suppliedReceiptHandles(command: RunCommand): { receiptId: string; suppl
  */
 type ReceiptExpectations = Partial<Record<keyof HumanApprovalReceiptV1, unknown>> & { projectRevision?: unknown }
 
+/**
+ * 收据上的项目版本要和**哪一个**版本相等：
+ *  · `live`：项目此刻的版本（创意门、信任降档——批的就是「项目现在这个样子」）；
+ *  · `sealed`：付费门自己那份信封封好时的版本（付费卡① 第 14 条，2026-10-01）。批的是信封里冻住的那几镜：合同哈希、
+ *    线上报文哈希、幂等键逐字钉死了发出去的东西。确认卡开着的时候 Nomi 自己往画布上落了别的镜、用户改了下一镜，项目
+ *    版本都会前进——以前这里拿活的版本比，于是用户点「生成这张」被拒成「项目有变动」，而卡上的东西一个字没变。
+ */
+type ReceiptRevisionRule = { kind: 'live' } | { kind: 'sealed'; projectRevision: number }
+
 function verifySuppliedReceipt(
   authority: ApprovalReceiptAuthority,
   projectId: string,
@@ -50,12 +59,15 @@ function verifySuppliedReceipt(
   command: RunCommand,
   expectations: ReceiptExpectations,
   projectRevisionResolver: ProjectRevisionResolver | undefined,
+  revisionRule: ReceiptRevisionRule = { kind: 'live' },
 ): GateApprovalReceipt {
   const { receiptId, suppliedToken } = suppliedReceiptHandles(command)
   try {
     const token = suppliedToken || authority.resolveReceiptToken(receiptId)
     const receipt = authority.verifyReceipt(token)
-    const projectRevision = assertCurrentProjectRevision(projectId, expectations.projectRevision ?? receipt.projectRevision, projectRevisionResolver)
+    const projectRevision = revisionRule.kind === 'sealed'
+      ? sealedProjectRevision(revisionRule.projectRevision, expectations.projectRevision)
+      : assertCurrentProjectRevision(projectId, expectations.projectRevision ?? receipt.projectRevision, projectRevisionResolver)
     const expected: Array<[keyof HumanApprovalReceiptV1, unknown]> = [
       ['projectId', projectId],
       ['runId', runId],
@@ -74,6 +86,21 @@ function verifySuppliedReceipt(
     if (error instanceof HumanApprovalRequiredError || error instanceof ReceiptScopeError || error instanceof ReceiptExpiredError) throw error
     throw new ReceiptScopeError(error instanceof Error ? error.message : 'Approval receipt is invalid')
   }
+}
+
+/** 付费门：命令里说的版本（若说了）必须就是信封封好时的那个；比的是事实，不读项目此刻的版本。 */
+function sealedProjectRevision(sealed: number, claimed: unknown): number {
+  if (claimed !== undefined && claimed !== null && String(claimed) !== String(sealed)) {
+    throw new ReceiptScopeError('Approval receipt project revision does not match the sealed authorization')
+  }
+  return sealed
+}
+
+/** 这道门的收据比哪一个项目版本：付费门比它自己那份信封（第 14 条），其余比项目此刻的版本。 */
+function revisionRuleFor(current: ProductionRun, gateId: unknown): ReceiptRevisionRule {
+  const gate = typeof gateId === 'string' ? current.gates.find((item) => item.gateId === gateId.trim()) : undefined
+  const sealed = gate && isSpendGate(gate) ? gate.authorizationEnvelope?.projectRevision : undefined
+  return typeof sealed === 'number' && Number.isSafeInteger(sealed) ? { kind: 'sealed', projectRevision: sealed } : { kind: 'live' }
 }
 
 /** `gate.decide` 的期望绑定：用户在**这道门、这份合同、这个项目版本**上表的态。 */
@@ -139,7 +166,7 @@ export function createGateApprovalOwner(
     }
     // 带了收据就必须验得动。没有权威 = 验不动 = 拒，绝不「验不了就放行」。
     if (!authority) throw new HumanApprovalRequiredError('The main-process approval receipt authority is not assembled for this production service')
-    return verifySuppliedReceipt(authority, projectId, runId, command, gateExpectations(command), projectRevisionResolver)
+    return verifySuppliedReceipt(authority, projectId, runId, command, gateExpectations(command), projectRevisionResolver, revisionRuleFor(current, command.payload.gateId))
   }
 
   /**
@@ -188,7 +215,7 @@ export function createGateApprovalOwner(
     const { receiptId, suppliedToken } = suppliedReceiptHandles(command)
     if (!receiptId && !suppliedToken) return { current }
     if (!authority) throw new HumanApprovalRequiredError('The main-process approval receipt authority is not assembled for this production service')
-    return { current, gateReceipt: verifySuppliedReceipt(authority, projectId, runId, command, gateExpectations(command), projectRevisionResolver) }
+    return { current, gateReceipt: verifySuppliedReceipt(authority, projectId, runId, command, gateExpectations(command), projectRevisionResolver, revisionRuleFor(current, gateId)) }
   }
 
   return {

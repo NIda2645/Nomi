@@ -151,7 +151,6 @@ describe("semantic MCP one-confirmation journey", () => {
       operations,
       planning,
       receipts,
-      projectRevisionResolver: () => 1,
       now: () => "2026-08-23T00:00:00.000Z",
     });
     const runTask = vi.fn(async () => ({ status: "succeeded" }));

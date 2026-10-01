@@ -19,10 +19,10 @@ import { trustLevelOf } from "./productionRunTypes";
 import { validateProductionExecutionBinding } from "./productionExecutionBinding";
 import {
   applyGenerationAuthorizationGateDecision,
-  deriveGenerationContinuationAuthorizationState,
   deriveGenerationReauthorizationState,
 } from "./productionGenerationAuthorizationState";
 import { applyGenerationSeal, isShotIncluded } from "./productionGenerationSeal";
+import { applyDispatchConsentRenewal } from "./productionDispatchConsentEdits";
 import { budgetExceeds, sumBudgetAmounts } from "./budgetLedger";
 import {
   applyGenerationCandidatePatch,
@@ -222,6 +222,10 @@ export function applyProductionCommand(
     }
     case "generation.present":
       return { run: presentGenerationPlan(current, command.payload.shotIds, now), eventType: "generation.plan.presented", message: current.runId };
+    // 用户的一下点击（放行形象 / 继续）续它批过、还没发出去的那几镜的同意（付费卡① 第 13 条）。
+    // 写口只有 `productionDispatchConsentEdits.renewDispatchConsent`，判据在 `productionDispatchConsent`。
+    case "generation.consent_renew":
+      return applyDispatchConsentRenewal(current, command, now);
     case "generation.withdraw": {
       const withdrawn = withdrawGenerationPresentation(current, now, parsePresentationCloser(command.payload.reason));
       return { run: withdrawn, eventType: "generation.plan.withdrawn", message: current.generationPlan?.operationId ?? current.runId };
@@ -366,24 +370,6 @@ export function applyProductionCommand(
         },
         eventType: "generation.attempt.authorization_requested",
         message: reauthorized.job.jobId,
-      };
-    }
-    case "generation.continue_authorization": {
-      const continued = deriveGenerationContinuationAuthorizationState({
-        run: current,
-        preparation: command.payload.authorization,
-        now,
-      });
-      return {
-        run: {
-          ...current,
-          generationPlan: continued.generationPlan,
-          gates: [...current.gates, continued.gate],
-          jobs: [...continued.jobs],
-          updatedAt: now,
-        },
-        eventType: "generation.continuation.authorization_requested",
-        message: continued.gate.gateId,
       };
     }
     case "stage.upsert": {

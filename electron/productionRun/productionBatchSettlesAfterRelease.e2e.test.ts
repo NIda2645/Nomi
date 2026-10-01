@@ -146,7 +146,7 @@ async function driveBatch(root: string, repository: Repository, service: ReturnT
     now,
   });
   return await createMultiShotBatchScheduler({
-    repository, submission, projectId: PROJECT, runId: RUN, perShotPrice: () => ({ known: true, amount: 6 }), now,
+    repository, submission, projectId: PROJECT, runId: RUN, now,
     onBatchComplete: () => service.advanceSemanticProduction(PROJECT, RUN),
   }).runToQuiescence();
 }

@@ -75,13 +75,17 @@ export type ProductionRunStatus =
 /**
  * 一次制作**为什么停下**：停的那一刻由停它的那一方写进 `run.status` 命令（`payload.reason`），界面只读这个事实。
  * 以前界面从 Run 状态反推——`needs_attention` 一律被说成「预算已用完 · 提额续拍」，而今天根本没有价格。
- * - `budget`：已知价的镜头把批过的额度用完了（只有知道价格时才可能）；
  * - `failed`：有镜头、审片、组装或导出没成功，这一批靠自己走不下去了；
  * - `user_paused`：用户按了急停；
  * - `user_cancelled`：用户取消了这次制作；
- * - `restart_recovery`：Nomi 重启后要先核对之前在跑的任务。
+ * - `restart_recovery`：Nomi 重启后要先核对之前在跑的任务；
+ * - `consent_expired`：批过的镜离用户最后一次点头已经过了同意窗口还没发出去，没有人替他续——停下来等他再点一次
+ *   （2026-10-01 付费卡① 第 13 条，判据在 `productionDispatchConsent`）。
+ *
+ * 2026-10-01 删掉了 `budget`（「批过的额度用完了」）：授权按镜存之后，一镜派不派只看批它的那一份，Run 级的额度停
+ * 没有剩下的用处，今天又根本没有价格。上一版记成 `budget` 的旧 Run 读盘时当作没记原因（中性的「已停」）。
  */
-export type ProductionRunStopReason = "budget" | "failed" | "user_paused" | "user_cancelled" | "restart_recovery";
+export type ProductionRunStopReason = "failed" | "user_paused" | "user_cancelled" | "restart_recovery" | "consent_expired";
 
 export type ProductionRunStop = {
   reason: ProductionRunStopReason;
@@ -362,6 +366,12 @@ export type ProductionGate = {
   createdAt: string;
   expiresAt: string;
   decidedAt?: string;
+  /**
+   * 用户为这道付费门批的镜**续过同意**的最近一刻（2026-10-01 付费卡① 第 13 条）：放行形象检查点、停下之后点「继续」。
+   * 派发判「还算不算同意过」读它与 `decidedAt` 里更晚的那个（`productionDispatchConsent`）。信封与收据都不动。
+   */
+  consentRenewedAt?: string;
+  consentRenewedBy?: "anchor_release" | "resume";
   /** B1：方向门被批准时用户选中的候选 key（decide payload choiceKey → 事件留痕）。 */
   decidedChoiceKey?: string;
   /** The approved storyboard revision this contract was materialized from. */
@@ -516,7 +526,7 @@ export type ProductionShotActionFailure =
 /** 返工 / 续拍的结构化结果（appIntegration 编排 → IPC → 渲染层）。declined = 用户在确认框里说了不，不扣费、不报错。 */
 export type ProductionShotActionResult =
   | { ok: true; code: "reworked" | "resumed" }
-  | { ok: false; code: "rework_declined" | "resume_declined" }
+  | { ok: false; code: "rework_declined" }
   | { ok: false; code: "failed"; failure: ProductionShotActionFailure };
 
 /**
@@ -583,6 +593,10 @@ export type Approval = {
   maxSpend: number;
   maxAttemptsPerJob: number;
   decidedAt: string;
+  /**
+   * 批准那一刻这道门的决议截止时间（门自己的 `expiresAt` 抄过来，记录用）。**派发不读它**：一镜现在派出去还算不算
+   * 同意过，唯一判据是 `productionDispatchConsent`（2026-10-01 付费卡① 第 13 条删掉了出站箱按它再判一次的那道核对）。
+   */
   expiresAt: string;
   revokedAt?: string;
 };

@@ -84,8 +84,8 @@ describe('deriveProductionShotState', () => {
   it('批被停 / 取消时到达这一镜 → 已停，原因照 Run 记下的说；供应商拒 → 失败（带原因）', () => {
     expect(phaseOf(run({ status: 'paused', stop: 'user_paused', shots: [{ shotId: 's1' }], jobs: [job('s1', 'cancelled_remote')] }), 's1'))
       .toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
-    expect(phaseOf(run({ status: 'needs_attention', stop: 'budget', shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention')] }), 's1'))
-      .toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+    expect(phaseOf(run({ status: 'needs_attention', stop: 'consent_expired', shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention')] }), 's1'))
+      .toEqual({ phase: 'stopped', stoppedReason: 'consent_expired' })
     expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention', { errorCode: 'provider_task_failed', errorMessage: '内容被拦截' })] }), 's1'))
       .toEqual({ phase: 'failed', failureMessage: '内容被拦截' })
     // 错因码不再决定「为什么停」：以前 budget_exhausted / restart_recovery_required 这类码会被说成「预算已用完」。
@@ -95,14 +95,14 @@ describe('deriveProductionShotState', () => {
 
   it('Run 整体停了：批过、没派出去的镜 → 已停，原因只读停下那一刻记下的事实', () => {
     const idle = (status: ProductionRunStatus, stop?: ProductionRunStopReason) => phaseOf(run({ status, stop, shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] }), 's1')
-    expect(idle('needs_attention', 'budget')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+    expect(idle('needs_attention', 'consent_expired')).toEqual({ phase: 'stopped', stoppedReason: 'consent_expired' })
     expect(idle('needs_attention', 'failed')).toEqual({ phase: 'stopped', stoppedReason: 'failed' })
     expect(idle('needs_attention', 'restart_recovery')).toEqual({ phase: 'stopped', stoppedReason: 'restart_recovery' })
     expect(idle('pausing', 'user_paused')).toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
     expect(idle('paused', 'user_paused')).toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
     expect(idle('cancelled', 'user_cancelled')).toEqual({ phase: 'stopped', stoppedReason: 'user_cancelled' })
     // 从没被批过的镜不是「被停下」的：它本来就不在这一批里，停不停都还没生成（不给它挂续拍钮）。
-    expect(phaseOf(run({ status: 'needs_attention', stop: 'budget', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'not_generated' })
+    expect(phaseOf(run({ status: 'needs_attention', stop: 'consent_expired', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'not_generated' })
   })
 
   it('上一版留下的、没记停下原因的 Run：说「停了」，绝不猜成预算', () => {
@@ -113,9 +113,9 @@ describe('deriveProductionShotState', () => {
     expect(phaseOf(run({ status: 'running', shots: [{ shotId: 's1' }], jobs: authorized }), 's1')?.phase).toBe('queued')
   })
 
-  it('预算停批后画布接手了这一镜（job 已脱离）→ null：节点上不再挂「已停 · 提额续拍」', () => {
-    const halted = run({ status: 'needs_attention', stop: 'budget', shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3' }], jobs: [job('s1', 'ready'), job('s2', 'authorized'), job('s3', 'authorized')] })
-    expect(phaseOf(halted, 's2')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+  it('批次停着时画布接手了这一镜（job 已脱离）→ null：节点上不再挂「已停 · 继续」', () => {
+    const halted = run({ status: 'needs_attention', stop: 'consent_expired', shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3' }], jobs: [job('s1', 'ready'), job('s2', 'authorized'), job('s3', 'authorized')] })
+    expect(phaseOf(halted, 's2')).toEqual({ phase: 'stopped', stoppedReason: 'consent_expired' })
     const claimed = applyProductionCommand(halted, {
       commandId: 'claim-s2', expectedRevision: halted.revision, type: 'shot.claim',
       payload: { shotId: 's2', by: 'canvas' }, issuedAt: NOW,
@@ -124,7 +124,7 @@ describe('deriveProductionShotState', () => {
     // 画布接手的那一镜：制作不会再派它，按钮续的只会是别的镜头 → 不给它挂续拍入口。
     expect(deriveProductionShotState(claimed, 's2')).toBeNull()
     // 没被接手的那一镜照旧：已停，可以提额续拍。
-    expect(phaseOf(claimed, 's3')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+    expect(phaseOf(claimed, 's3')).toEqual({ phase: 'stopped', stoppedReason: 'consent_expired' })
   })
 
   it('返工：同一镜多个 attempt 取最新那一次', () => {

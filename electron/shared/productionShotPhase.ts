@@ -52,7 +52,7 @@ export type ProductionShotState =
  * （以前是三份手抄的 Set，新状态会静悄悄落进「排队中」）。
  * null = 这个状态本身说明不了什么（还没派发 / 身份待核），交给 Run 状态判「排队中」还是「已停」；
  * 已脱离（detached）也是 null，但 deriveProductionShotState 会先把它排除——制作不再拥有这一镜。
- * failed 是候选：有预算/急停错因时再细分成 stopped（见下）。
+ * failed 是候选：随批次一起停下（急停 / 撤单）时再细分成 stopped（见下）。
  */
 export function productionJobPhase(status: ProductionJobStatus): ProductionShotPhase | null {
   switch (status) {

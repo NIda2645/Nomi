@@ -480,7 +480,6 @@ describe('ProductionRunService driver round 1', () => {
       }],
       multiShot: { shots, scope: shots.map((shot) => shot.shotId), planHash: 'semantic-plan-hash' },
       resolveShotPrice: () => ({ known: true, amount: 1 }),
-      maximumSpend: 10,
       receiptId: 'receipt-semantic',
       now: '2026-08-31T00:00:00.000Z',
     })

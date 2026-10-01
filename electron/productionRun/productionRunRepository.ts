@@ -14,6 +14,7 @@ import { settleRunLifecycle } from "./productionRunLifecycle";
 import { settlePresentation } from "./productionGenerationPresentationEdits";
 import { normalizeLegacySpendAuthority } from "../shared/productionSpendAuthority";
 import { draftCardHidden, normalizeLegacyPresentation } from "../shared/productionGenerationPresentation";
+import { normalizeLegacyStopReason } from "../shared/productionRunStop";
 import { assertProductionPolicyReady } from "./productionPolicyReadiness";
 import {
   applyBudgetEntry,
@@ -160,10 +161,11 @@ function budgetEntryFromPayload(value: unknown): BudgetLedgerEntry {
  */
 /**
  * 读盘归一（唯一一处）：旧 Run 缺的账本计数补 0；旧 Run 挂在计划上的那份授权搬到它自己那道门上
- * （normalizeLegacySpendAuthority，2026-09-30 起授权按门存）。只改内存里的投影，不回写盘。
+ * （normalizeLegacySpendAuthority，2026-09-30 起授权按门存）；这一版不认识的停下原因（上一版的 `budget`）
+ * 当作没记原因（normalizeLegacyStopReason，2026-10-01）。只改内存里的投影，不回写盘。
  */
 function withReadDefaults(stored: ProductionRun): ProductionRun {
-  const run = normalizeLegacyPresentation(normalizeLegacySpendAuthority(stored));
+  const run = normalizeLegacyStopReason(normalizeLegacyPresentation(normalizeLegacySpendAuthority(stored)));
   if (Number.isSafeInteger(run.budget?.unknownInFlight)) return run;
   return { ...run, budget: { ...run.budget, unknownInFlight: 0 } };
 }

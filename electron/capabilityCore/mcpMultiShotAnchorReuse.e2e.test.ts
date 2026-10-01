@@ -164,7 +164,7 @@ function harness(vendorOrigin: string, submits: string[]) {
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });
-  const buildScheduler = () => createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-reuse", perShotPrice: () => ({ known: true, amount: 6 }), now });
+  const buildScheduler = () => createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-reuse", now });
   const handler = createGenerationPlanningHandler({
     registry,
     operations,
@@ -203,7 +203,7 @@ function harness(vendorOrigin: string, submits: string[]) {
     now,
     randomId: () => `receipt-sequence-${++receiptSequence}`,
   });
-  const generationAuthority = createRunOwnedGenerationGateAuthority({ owner: owner as never, operations, planning: handler, receipts, projectRevisionResolver: () => 0, now });
+  const generationAuthority = createRunOwnedGenerationGateAuthority({ owner: owner as never, operations, planning: handler, receipts, now });
   return { root, repository, handler, buildScheduler, generationAuthority, receipts };
 }
 

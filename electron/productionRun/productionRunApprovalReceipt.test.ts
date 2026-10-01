@@ -178,6 +178,28 @@ describe('production approval receipt scope', () => {
       .toThrowError(expect.objectContaining({ code: 'receipt_invalid', message: 'Approval receipt is invalid' }))
   })
 
+  // 付费卡① 第 14 条（2026-10-01）：封了信封的付费门，收据比的是信封封好时的版本，不读项目此刻的版本；
+  // 创意门（以及没有信封的旧付费门）照旧比项目此刻的版本。
+  it('binds a sealed paid gate to its envelope revision, not to the live project revision', () => {
+    const { authority, receiptId, command } = fixture()
+    const sealed = (projectRevision: number) => ({
+      ...run,
+      gates: [{ ...gate('gate-1', 'budget_envelope'), authorizationEnvelope: { projectRevision } }, gate('gate-free', 'stage')],
+    }) as unknown as ProductionRun
+    // 卡开着的时候项目往前走了（别的镜落了画布）：收据照样算数。
+    expect(owner(authority, () => 5).verifyGateDecision('project-1', 'run-1', sealed(2), command({})))
+      .toMatchObject({ receipt: { receiptId, projectRevision: 2 } })
+    // 命令自己说的版本和信封对不上：拒。
+    expect(() => owner(authority, () => 5).verifyGateDecision('project-1', 'run-1', sealed(2), command({ projectRevision: 3 })))
+      .toThrowError(expect.objectContaining({ code: 'receipt_invalid' }))
+    // 收据是在另一份信封（另一个版本）上签的：拒——哪怕那正是项目此刻的版本。
+    expect(() => owner(authority, () => 4).verifyGateDecision('project-1', 'run-1', sealed(4), command({})))
+      .toThrowError(expect.objectContaining({ code: 'receipt_invalid' }))
+    // 没有信封的付费门照旧比项目此刻的版本。
+    expect(() => owner(authority, () => 5).verifyGateDecision('project-1', 'run-1', run, command({})))
+      .toThrowError(expect.objectContaining({ code: 'receipt_invalid' }))
+  })
+
   it('rejects an explicitly stale command revision even when the signed receipt is current', () => {
     const { authority, command } = fixture()
     expect(() => owner(authority).verifyGateDecision('project-1', 'run-1', run, command({ projectRevision: 3 })))

@@ -292,7 +292,6 @@ export async function startCapabilityCore(
         submission,
         projectId,
         runId,
-        perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
         onBatchComplete: () => generationService.advanceSemanticProduction(projectId, runId),
       })
     }
@@ -358,7 +357,6 @@ export async function startCapabilityCore(
             ...(multiShot ? { multiShot } : {}),
             providers: providerBootstrap.providers,
             resolveShotPrice,
-            maximumSpend: authorizationRun?.policy.maxSpend,
             run: authorizationRun,
             now: new Date().toISOString(),
           }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
@@ -414,7 +412,6 @@ export async function startCapabilityCore(
               submission,
               projectId: lease.projectId,
               runId: operation.operationId,
-              perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
               onBatchComplete: () => generationService.advanceSemanticProduction(lease.projectId, operation.operationId),
             })
             // Durable, restart-safe kick; slow providers are re-kicked until quiescent.
@@ -469,7 +466,6 @@ export async function startCapabilityCore(
       operations: operationStore,
       planning: generationPlanning,
       receipts: defaults.approvalReceiptAuthority!,
-      projectRevisionResolver,
     })
     try {
       const requestGenerationGate = authorities.requestGenerationGate ?? runOwnedGenerationAuthority.requestGenerationGate
@@ -599,7 +595,6 @@ export async function startCapabilityCore(
       kickScheduler: kickSchedulerForRun,
       receiptAuthority: defaults.approvalReceiptAuthority,
       confirmGenerationInNomi: defaults.confirmGenerationInNomi,
-      projectRevisionResolver,
     })
     reworkProductionShotHook = reworkProductionShot
     resumeProductionBatchHook = resumeProductionBatch
