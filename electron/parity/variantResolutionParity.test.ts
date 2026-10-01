@@ -104,7 +104,7 @@ describe("这一镜跑哪个变体：画布 / 付费卡 === 宿主派发（真�
         const label = `${row.vendorKey}/${row.modelKey} variantId=${variantId ?? "（未指定）"}`;
         const host = videoCandidateForPlan(planCandidate(row, variantId ? { variantId } : {}), row.candidates);
         const node = projectSpendNode({
-          shotId: "shot-1", index: 1, prompt: "p", providerId: row.vendorKey, modelId: row.modelKey,
+          shotId: "shot-1", index: 1, prompt: "p", providerId: row.vendorKey, modelId: row.modelKey, kind: "video",
           modeId: archetype.defaultModeId, parameters: {}, price: { known: false },
           ...(variantId ? { variantId } : {}),
         });

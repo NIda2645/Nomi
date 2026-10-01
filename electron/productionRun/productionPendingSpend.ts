@@ -47,9 +47,10 @@ type PricingResolver = (providerId: string, modelId: string) => ModelPricing | u
 /** 卡上摆的那几镜 = 这一次出价里**还没决定**的镜（按计划顺序），页码按它们重排。 */
 function shotsOf(plan: ProductionGenerationPlan, undecided: readonly string[], resolvePricing: PricingResolver): PendingSpendShot[] {
   const wanted = new Set(undecided);
+  // 图还是视频：和画布节点、派发读的是同一个函数（第 9 条），在这里就从这一镜本身读出来，卡上标题与卡体都只读这一格。
   const source = plan.shots?.length
-    ? plan.shots.filter((shot) => wanted.has(shot.shotId)).map((shot) => ({ shotId: shot.shotId, nodeId: shot.nodeId, role: shot.role, candidate: shot.candidate }))
-    : wanted.has(plan.candidate.candidateId) ? [{ shotId: plan.candidate.candidateId, nodeId: plan.nodeId, role: undefined, candidate: plan.candidate }] : [];
+    ? plan.shots.filter((shot) => wanted.has(shot.shotId)).map((shot) => ({ shotId: shot.shotId, nodeId: shot.nodeId, kind: generationShotKind(shot), candidate: shot.candidate }))
+    : wanted.has(plan.candidate.candidateId) ? [{ shotId: plan.candidate.candidateId, nodeId: plan.nodeId, kind: generationShotKind({ candidate: plan.candidate }), candidate: plan.candidate }] : [];
   return source.map((entry, index) => ({
     shotId: entry.shotId,
     ...(entry.nodeId ? { nodeId: entry.nodeId } : {}),
@@ -57,8 +58,7 @@ function shotsOf(plan: ProductionGenerationPlan, undecided: readonly string[], r
     prompt: entry.candidate.prompt ?? "",
     providerId: entry.candidate.providerId,
     modelId: entry.candidate.modelId,
-    // 图还是视频：和画布节点、派发读的是同一个函数（第 9 条），卡上标题与卡体都只读这一格。
-    kind: generationShotKind(entry),
+    kind: entry.kind,
     ...(entry.candidate.mode ? { mode: entry.candidate.mode } : {}),
     ...(entry.candidate.modeId ? { modeId: entry.candidate.modeId } : {}),
     ...(entry.candidate.variantId ? { variantId: entry.candidate.variantId } : {}),
