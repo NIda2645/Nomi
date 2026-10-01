@@ -489,3 +489,23 @@ test('generationCanvas 的每个子目录都必须明确归档：产出画布显
     assert.equal(level, full.has(dir) ? 'full' : 'critical', dir)
   }
 })
+
+test('画布显示相关概念在 concept-owners.json 里的 owner 与写口，改了都必须 full 画布验收（清单对着概念表，不靠人记）', () => {
+  const registry = JSON.parse(fs.readFileSync(new URL('../docs/engineering/concept-owners.json', import.meta.url), 'utf8'))
+  const displaySubjects = new Set([
+    'production.shot-phase',
+    'production.shot-generation-ownership',
+    'production.shot-jobs',
+    'production.run-stop-reason',
+    'production.run-lifecycle-settle',
+    'production.node-run-record',
+  ])
+  const concepts = registry.concepts.filter((concept) => displaySubjects.has(concept.subject))
+  assert.equal(concepts.length, displaySubjects.size, '概念表里少了画布显示相关的概念——改名了就在这里同步，别让清单悄悄失效')
+  for (const concept of concepts) {
+    const paths = [concept.owner?.path, ...(concept.write_api ?? []).map((entry) => entry.path)].filter(Boolean)
+    for (const file of new Set(paths)) {
+      assert.equal(classifyValidationPolicy([file]).canvas, 'full', `${concept.subject} 的 ${file}`)
+    }
+  }
+})
