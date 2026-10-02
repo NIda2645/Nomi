@@ -147,6 +147,17 @@ export function evaluatePlans({ plans, threshold = PRIOR_ART_THRESHOLD_DATE, fil
   return errors
 }
 
+/**
+ * 只评本次改动动过的计划文档（2026-10-02）。老方案里的 file:line / 链接是写它那天指向的文件；之后任何一次
+ * 删除或搬家都会让它们「指不到」，于是每删一个脚本就多一份历史方案变红——门岗红灯里 prior-art 60 次，
+ * 绝大多数是这一类登记摩擦。判据的本意是「新写的方案要有可复核的检索」，不是「历史方案的链接永远活着」。
+ * changed = null（算不出本次改动）→ 退回全量判，不拿算不出来当通过。
+ */
+export function scopePlansToChanged(plans, changed) {
+  if (!changed) return plans
+  return new Map([...plans].filter(([file]) => changed.has(file)))
+}
+
 /** PR 正文里引用到的计划文档路径（去重，保序）。 */
 export function referencedPlans(body) {
   const found = new Set()

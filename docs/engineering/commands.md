@@ -31,3 +31,12 @@
 | `pnpm run check:self-written` | 自写登记门岗（P0：diff 里在 `src/`、`electron/` 新增、落在领域目录之外又没被登记表认领的代码文件就报；`enforceFrom` 之前警告、之后阻断；测试 / 类型声明 / 纯接线豁免）|
 | `pnpm run check:framework-surface` | 框架接触面门岗（登记框架公开的**每个字段**都要有一条裁决：派生/常量/不用/上游默认/带到期日的债；上游升级加字段即红）|
 | `npx skills experimental_install` | 从 `skills-lock.json` 还原 `.claude/skills/`（换机/协作者用） |
+
+## 体系工具（2026-10-02）
+
+| 命令 | 用途 |
+|---|---|
+| `node scripts/merge-preflight.mjs <PR 号>`（`pnpm run merge:preflight -- <PR 号>`）| 协调会话合并前扫描：四类判定、设计卡格、独立验收、逃逸合同；只打印结论 |
+| `pnpm run eng:metrics` | 工程三个数一行（逃逸率 · 30 天复发 · 门岗误报 · 到期合同）；SessionStart 也会打印；不作为任何通过条件 |
+| `node scripts/gen-rules-view.mjs` | 由 `docs/engineering/rules.json` 重新生成可读视图 `rules.md` |
+| `pnpm run handoff:report -- <branch>` | 交接体检报告（原 `check:handoff`，不是门岗） |

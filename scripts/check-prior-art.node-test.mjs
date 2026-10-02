@@ -11,6 +11,7 @@ import {
   planDate,
   referencedPlans,
   resolveFromPlan,
+  scopePlansToChanged,
 } from './prior-art-lib.mjs'
 
 const GOOD_SECTION = `# 方案
@@ -130,3 +131,24 @@ test('相对路径解析：../ 与 ./ 都按方案文档所在目录算，外链
   assert.equal(resolveFromPlan('docs/plan/2026-09-08-x.md', 'c.md'), 'docs/plan/c.md')
   assert.equal(resolveFromPlan('docs/plan/2026-09-08-x.md', 'https://example.com/a.md'), null)
 })
+
+// 2026-10-02：只评本次改动动过的方案。历史方案里的链接指向的文件之后被删，不该让每次删除都多一份方案变红。
+test('历史方案的链接后来指不到了：没动它就不判；动了它就照判；算不出改动集就全量判', () => {
+  const stale = [
+    '## 先查别人',
+    '',
+    '- 仓库已有：见 [旧脚本](../../scripts/gone.mjs)',
+    '- 依赖：见 [旧文](../../scripts/gone2.mjs)',
+    '- 生态：见 [旧测试](../../scripts/gone3.mjs)',
+    '',
+  ].join('\n')
+  const plans = new Map([['docs/plan/2026-09-20-old.md', stale], ['docs/plan/2026-10-05-new.md', stale]])
+  const fileExists = () => false
+  assert.equal(evaluatePlans({ plans, fileExists }).length, 2, '全量判时两份都红')
+  const onlyNew = scopePlansToChanged(plans, new Set(['docs/plan/2026-10-05-new.md']))
+  const errors = evaluatePlans({ plans: onlyNew, fileExists })
+  assert.equal(errors.length, 1)
+  assert.match(errors[0], /2026-10-05-new\.md/)
+  assert.equal(scopePlansToChanged(plans, null), plans, '算不出改动集 → 全量，不拿算不出来当通过')
+})
+

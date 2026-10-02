@@ -24,6 +24,7 @@ import {
   PRIOR_ART_THRESHOLD_DATE,
   evaluatePlans,
   evaluatePullRequest,
+  scopePlansToChanged,
 } from './prior-art-lib.mjs'
 import { SELF_WRITTEN_FILE, registryChanges } from './self-written-lib.mjs'
 
@@ -86,7 +87,19 @@ function registryChangedInDiff() {
 const plans = collectPlans()
 /** 第三种出处（链接指向仓库里真实存在的文件）要真去看一眼——指不到的链接不算出处。 */
 const fileExists = (candidate) => fs.existsSync(path.join(repoRoot, candidate))
-const errors = evaluatePlans({ plans, threshold: PRIOR_ART_THRESHOLD_DATE, fileExists })
+/** 本次改动动过的 docs/plan/*.md（含未跟踪）；算不出 base 返回 null。 */
+function changedPlanFiles() {
+  const base = resolveBase()
+  if (!base) return null
+  try {
+    const names = new Set(git(['diff', '--name-only', '--no-renames', base, '--', 'docs/plan']).split('\n'))
+    for (const name of git(['ls-files', '--others', '--exclude-standard', '--', 'docs/plan']).split('\n')) names.add(name)
+    return new Set([...names].map((name) => name.trim()).filter((name) => name.endsWith('.md')))
+  } catch {
+    return null
+  }
+}
+const errors = evaluatePlans({ plans: scopePlansToChanged(plans, changedPlanFiles()), threshold: PRIOR_ART_THRESHOLD_DATE, fileExists })
 const governed = [...plans.keys()].filter((file) => {
   const match = /(?:^|\/)(\d{4}-\d{2}-\d{2})-/.exec(file)
   return match && match[1] >= PRIOR_ART_THRESHOLD_DATE
