@@ -166,6 +166,7 @@
 
 | 文件 | 一句话 | 状态 |
 |---|---|---|
+| [2026-10-02-acp-agent-host.md](2026-10-02-acp-agent-host.md) | **右侧面板做开放宿主**：内置 pi 不动，用户自己的 Codex / Gemini / Claude Agent 经 ACP 接入；session/new 交出 Nomi 的 MCP，外部 Agent 的生成先建节点 + 连线、出付费卡即返回；七片切片与待核实清单 | ⏳ |
 | [2026-09-04-mcp-semantic-operation-matrix.md](2026-09-04-mcp-semantic-operation-matrix.md) | MCP 语义操作矩阵：document/canvas 真实生产链路 H/B/E/T/N、scoped V8 收据与 timeline/media/export blocked evidence | ✅ |
 | [2026-09-05-resident-composer-receipt-fix.md](2026-09-05-resident-composer-receipt-fix.md) | main 红修复：Resident composer 收据旅程改走真实审批流（PR #507） | ✅ |
 | [agent-compaction-runtime-projection.md](agent-compaction-runtime-projection.md) | Agent compaction runtime 元数据的 Host 状态、持久化、恢复与 renderer 投影契约 | 🚧 |
