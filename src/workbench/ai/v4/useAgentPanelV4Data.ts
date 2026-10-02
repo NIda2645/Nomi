@@ -242,7 +242,6 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
     formatCost: (amount) => t('agentPanelV4.costUsd', { amount: amount.toFixed(2) }),
     retryLabel: (attempt, maxAttempts) => t('agentPanelV4.retrying', { attempt, maxAttempts }),
     unknown: t('agentPanelV4.contextUnknown'),
-    free: t('agentPanelV4.contextCostFree'),
     taskTitle: t('agentPanelV4.taskRun'),
     formatStages: (done, total) => t('agentPanelV4.taskStages', { done, total }),
     formatMoney: (currency, amount) => formatMoney(i18n.language, currency, amount),

@@ -26,7 +26,6 @@ const labels: LaneViewModelLabels = {
   formatCost: (usd) => `$${usd.toFixed(2)}`,
   retryLabel: (attempt, maxAttempts) => `[retry ${attempt}/${maxAttempts}]`,
   unknown: '—',
-  free: '免费',
   taskTitle: '生成任务',
   formatStages: (done, total) => `${done} / ${total} 阶段`,
   formatMoney: (currency, amount) => `${currency} ${amount.toFixed(2)}`,

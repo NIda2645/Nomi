@@ -142,7 +142,6 @@ export const zhAgentPanelV4 = {
   // 这一段是运行时真的会印给用户看的字。缺数据时**整件不渲染**，不用这里的字兜底。
   contextUnknown: '—',
   retrying: '正在重试 {{attempt}}/{{maxAttempts}}',
-  contextCostFree: '免费',
   queueAlreadyConsumed: '这条指令已经送出，无法取消。',
   queueNotFound: '队列已经变化，请查看当前队列。',
   contextUsedOnly: '已用 {{amount}}',
@@ -361,7 +360,7 @@ export const zhAgentPanelV4 = {
   slotDelete: '删除',
   slotTrim: '修剪镜头 2 尾部 0.4 秒',
   slotReversible: '可撤销',
-  slotTrimScope: '已在时间轴高亮，未落盘 · 不计费',
+  slotTrimScope: '已在时间轴高亮，未落盘',
   slotRejectReason: '拒绝原因（可选）',
   slotRejectSample: '这次先不删，保留镜头待复核',
   slotSpendTitle: '生成这 4 段视频？',
@@ -624,7 +623,6 @@ export const enAgentPanelV4 = {
 
   contextUnknown: '—',
   retrying: 'Retrying {{attempt}}/{{maxAttempts}}',
-  contextCostFree: 'Free',
   queueAlreadyConsumed: 'This instruction was already sent and cannot be cancelled.',
   queueNotFound: 'The queue has changed. Check the current queue.',
   contextUsedOnly: 'Used {{amount}}',
@@ -823,7 +821,7 @@ export const enAgentPanelV4 = {
   slotDelete: 'Delete',
   slotTrim: 'Trim 0.4s off the end of shot 2',
   slotReversible: 'Undoable',
-  slotTrimScope: 'Highlighted on the timeline, not written · no charge',
+  slotTrimScope: 'Highlighted on the timeline, not written',
   slotRejectReason: 'Reason for declining (optional)',
   slotRejectSample: 'Not this time — keep the shot for review',
   slotSpendTitle: 'Generate these 4 video shots?',

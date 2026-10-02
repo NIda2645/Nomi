@@ -22,10 +22,9 @@ const labels: LaneViewModelLabels = {
   formatTokens: (value) => `${value}t`,
   formatCost: (usd) => `$${usd.toFixed(4)}`,
   retryLabel: (attempt, maxAttempts) => `[retry ${attempt}/${maxAttempts}]`,
-  // 这两句在生产里是 i18n 的 `contextUnknown` / `contextCostFree`。测试里写成醒目的假串，
+  // 这一句在生产里是 i18n 的 `contextUnknown`。测试里写成醒目的假串，
   // 是为了让「本层自己编了一个字」当场露馅——占位符长什么样是调用方的事，不是这一层的。
   unknown: '[unknown]',
-  free: '[free]',
   taskTitle: '[task]',
   formatStages: (done, total) => `${done}/${total} stages`,
   formatMoney: (currency, amount) => `${currency} ${amount.toFixed(2)}`,
@@ -494,7 +493,7 @@ describe('laneViewModel', () => {
     expect(unpriced.usage.used).toBe(1_024)
   })
 
-  it('G3d · 不适用：免费模型说「免费」，不会思考的模型整行不画——两者都不是「不可知」', () => {
+  it('G3d · 不适用：不按 token 计的模型花费行与不会思考的模型推理行都整行不画——两者都不是「不可知」', () => {
     next = 0
     const model = laneViewModel(projection([], {
       usage: usageOf({
@@ -502,8 +501,8 @@ describe('laneViewModel', () => {
         reasoningTokens: { state: 'not-applicable', reason: 'model-has-no-reasoning' },
       }),
     }), labels)
-    // 「查过了，不花钱」是一个答案，和「我们不知道」是两句不同的话。
-    expect(model.usage.cost).toBe('[free]')
+    // 界面不谈钱：不按 token 计的模型不替它印「免费」，整行不画（和「我们不知道」的 `—` 也不是一回事）。
+    expect(model.usage.cost).toBeUndefined()
     // 推理没有这么一句更好的话可说，所以整行不渲染——画一个永远是 `—` 的行只会占地方。
     expect(model.usage.reasoning).toBeUndefined()
   })

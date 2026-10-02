@@ -90,17 +90,6 @@ export interface LaneViewModelLabels {
    * 也不是让整行凭空消失（消失会让人以为这一项不存在）。
    */
   unknown: string
-  /**
-   * 「这个模型不按 token 计费」那句话。三态里的 `not-applicable` 走它（花费行）。
-   *
-   * **本层不给它默认值，也不在 i18n 里预先放一条词条。** 影子期没有任何生产调用方接到
-   * `laneViewModel`（`laneShadowStructure.test.ts` 正是在钉这件事），所以此刻往
-   * `agentPanelV4.*` 里写一条 `contextCostFree` 就是一个谁也到不了的死键——
-   * `check:i18n` 的死键门会直接拦下来，而它拦得对：预先摆一条没人能用的词条，
-   * 和预先摆一段没人调用的代码是同一件事（P1）。接线那一刻由调用方从 i18n 取词传进来，
-   * 与旁边的 `unknown`（今天已经是活的 `agentPanelV4.contextUnknown`）走同一条路。
-   */
-  free: string
   /** 任务卡的标题（「生成任务」）。卡上其余文字全是数字，所以只需要这一句。 */
   taskTitle: string
   /** 「{done} / {total} 阶段」。两个数分开传，是因为不同语言的量词位置不同。 */
@@ -473,9 +462,8 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
   }
 
   const { usage } = projection
-  // 花费的 `not-applicable` 有一句比「不渲染」更有用的话：这个模型免费。其余两行没有。
-  const cost = usage.cost.state === 'not-applicable'
-    ? labels.free : metricText(usage.cost, labels.formatCost, labels.unknown)
+  // 花费的 `not-applicable`（这个模型不按 token 计）整行不画：界面不谈钱，不替它说「免费」。
+  const cost = metricText(usage.cost, labels.formatCost, labels.unknown)
   const reasoning = metricText(usage.reasoningTokens, labels.formatTokens, labels.unknown)
   return {
     items: mergeAssistantTextPerTurn(items, turnOf, (at) => skillOfTurn.get(at)),
