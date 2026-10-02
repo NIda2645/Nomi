@@ -9,7 +9,7 @@
       "authority_kind": "writer",
       "trust_domain": "main",
       "fact_kind": "state-machine",
-      "migration_status": "converged",
+      "migration_status": "pending",
       "owner": {
         "path": "electron/agentLane/laneApprovalGate.ts",
         "symbol": "createLaneApprovalGate"
@@ -26,6 +26,10 @@
         {
           "path": "electron/shared/agentLane/laneApproval.ts",
           "symbol": "laneApprovalGrantable"
+        },
+        {
+          "path": "electron/agentLane/laneApprovalGate.ts",
+          "symbol": "settleHold"
         }
       ],
       "forbidden_derivations": [],
@@ -37,7 +41,8 @@
         "electron/agentLane/laneExtendedTools.ts"
       ],
       "since": "2026-09-22",
-      "notes": "「一次调用停在 before_tool 里等人」的运行时那一半住这里；判据（纯函数）在 electron/shared/agentLane/laneApproval.ts，两者是同一个概念的判据面与运行面，不是两个 owner。渲染层只做只读投影，不许自己判断等不等、也不许替它补偿。"
+      "notes": "「一次调用停在 before_tool 里等人」的运行时那一半住这里；判据（纯函数）在 electron/shared/agentLane/laneApproval.ts，两者是同一个概念的判据面与运行面，不是两个 owner。渲染层只做只读投影，不许自己判断等不等、也不许替它补偿。 2026-10-01：登记 settleHold 为写接口（等待的唯一兑现口；hold 是同一个对象上的入口，因为 hold 这个名字太通用、全仓有不相干的同名局部，按名字扫会误报，所以只登记 settleHold，hold 靠 createLaneApprovalGate 的 pending 写门冻结管住），并按实查把状态从 converged 改为 pending：全仓还有闸卡投影与付费卡轮询两种平行表示，见 migration_strategy。",
+      "migration_strategy": "全仓「等用户」只留一种表示：laneApprovalGate 的 hold（替一次调用停在 before_tool 里等人，race signal、被打断兑现 cancelled、cancelAll 收尾）。现在还剩两种平行表示，等 0.24 版收敛线 B 并进来：① LaneProjection.pending / LanePendingApproval（闸卡自己的投影，preflight 那条路，和 hold 是同一道等待的两种画法）；② 付费卡的 1.5 秒轮询（src/workbench/ai/v4/useAgentPanelSpendConfirm.ts POLL_INTERVAL_MS——渲染层自己去问「还在不在等」，没有直接读这一个主人）。收口判据：渲染层不再自己轮询判断等不等，pending 只剩 hold 的只读投影。收敛前冻结：不许新增第三条写入口，新代码要「停下来等用户」只许走 hold / settleHold。"
     },
     {
       "name": "出价/待决身份",
@@ -339,7 +344,7 @@
         "electron/productionRun/batchScheduleDerivation.ts"
       ],
       "since": "2026-09-25",
-      "notes": "2026-09-25 用户报「Agent 付费卡生产的视频早就出好了，节点一直转圈」（合同 docs/fixes/2026-09-25-agent-run-node-state-single-owner.root-cause.json）。一镜「排队 / 生成中 / 已停 / 失败 / 完成」只由这一个函数判（job 状态走穷尽 mapper productionJobPhase）。生成中 / 失败 / 结果由主进程画布落地投影（buildMaterializeShotsPayload；跟随者 canvasLandingHost.followRunChange 挂在仓库 execute 的事件旁路上）写进**节点自己的运行记录**——与普通生成同一份状态，由 NodeGeneratingOverlay / NodeErrorReport 画；渲染层 ProductionShotPlaceholder 只画制作专属的排队 / 已停两块小标，读的也是这个函数。不许再出现第二份「这一镜在不在生成」的判据或第二套画法。 2026-09-24 追加（合同 docs/fixes/2026-09-24-draft-shot-dispatch-honesty.root-cause.json）：「用户还没点头」也归这里判——草稿（draft_shots，报价卡没出或在等）、job 还停在人工门前（jobAwaitsHuman，Record 穷举）、没有 job 且不在「计划已提交、勾进这一批」范围里的镜一律返回 null，画布上什么都不说；调度器的「还在等人」也读 jobAwaitsHuman。"
+      "notes": "2026-09-25 用户报「Agent 付费卡生产的视频早就出好了，节点一直转圈」（合同 docs/fixes/2026-09-25-agent-run-node-state-single-owner.root-cause.json）。一镜「排队 / 生成中 / 已停 / 失败 / 完成」只由这一个函数判（job 状态走穷尽 mapper productionJobPhase）。生成中 / 失败 / 结果由主进程画布落地投影（buildMaterializeShotsPayload；跟随者 canvasLandingHost.followRunChange 挂在仓库 execute 的事件旁路上）写进**节点自己的运行记录**——与普通生成同一份状态，由 NodeGeneratingOverlay / NodeErrorReport 画；渲染层 ProductionShotPlaceholder 只画制作专属的排队 / 已停两块小标，读的也是这个函数。不许再出现第二份「这一镜在不在生成」的判据或第二套画法。 2026-09-24 追加（合同 docs/fixes/2026-09-24-draft-shot-dispatch-honesty.root-cause.json）：「用户还没点头」也归这里判——草稿（draft_shots，报价卡没出或在等）、job 还停在人工门前（jobAwaitsHuman，Record 穷举）、没有 job 且不在「计划已提交、勾进这一批」范围里的镜一律返回 null，画布上什么都不说；调度器的「还在等人」也读 jobAwaitsHuman。 2026-09-30（付费卡① 第 12 条「没点就不叫排队中」，合同 docs/fixes/2026-09-30-shot-phase-every-state-has-a-marker.root-cause.json）：每一种状态都有自己的段，不再用 null 表示「还在等」——job 停在人工门前或草稿卡正摆着 → awaiting_confirmation（等你确认）；一次任务都没有 = 从没被批过 → not_generated（还没生成），不管计划到了哪一步；排队 / 已停只给有任务、还没派出去的镜（调度器只派有任务的镜）。批次成员（productionShotJobs.shotCountsTowardBatch，排队 n/N 的分母与批次收尾同一条）同步要求至少有一次任务。已停的原因只读 Run 记下的 stop，不从错因码猜（#934）。"
     },
     {
       "name": "供应商产物取回线路",
@@ -1591,10 +1596,11 @@
         "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
         "src/workbench/generationCanvas/runner/outboundBlockedRecovery.ts",
         "src/workbench/observability/classifyError.ts",
-        "src/workbench/observability/narrate.ts"
+        "src/workbench/observability/narrate.ts",
+        "electron/assets/generatedMediaDecode.ts"
       ],
       "since": "2026-09-27",
-      "notes": "PR #907（同上合同）：本地、出请求之前的素材失败原来不带机器码，渲染层分不清是素材坏了还是供应商拒了。现在过 IPC 的失败带 asset-invalid 这类机器码，渲染层按码分类、不按中文文案猜；码表只有 NomiErrorCode 这一份，打码与认码只经 tagNomiError / matchNomiErrorCode。"
+      "notes": "PR #907（同上合同）：本地、出请求之前的素材失败原来不带机器码，渲染层分不清是素材坏了还是供应商拒了。现在过 IPC 的失败带 asset-invalid 这类机器码，渲染层按码分类、不按中文文案猜；码表只有 NomiErrorCode 这一份，打码与认码只经 tagNomiError / matchNomiErrorCode。 2026-09-29：新增 output-unreadable（供应商已经把结果发回来、本机读不出来；electron/assets/generatedMediaDecode.ts 统一抛，渲染层按码归类）。"
     },
     {
       "name": "哪些推送的 ref 带新内容、需要评审收据",
@@ -2498,6 +2504,18 @@
         {
           "path": "src/workbench/observability/classifyError.ts",
           "symbol": "classifyGenerationError"
+        },
+        {
+          "path": "src/workbench/observability/narrate.ts",
+          "symbol": "narrateIsVendorSideFailure"
+        },
+        {
+          "path": "src/workbench/generationCanvas/runner/taskFailureMessage.ts",
+          "symbol": "formatTaskFailureMessage"
+        },
+        {
+          "path": "src/workbench/generationCanvas/runner/taskFailureMessage.ts",
+          "symbol": "parseTaskFailureMessage"
         }
       ],
       "forbidden_derivations": [],
@@ -2506,10 +2524,11 @@
         "src/workbench/generationCanvas/nodes/NodeErrorReport.tsx",
         "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
         "src/workbench/observability/generationFeedback.ts",
-        "src/workbench/taskCenter/taskCenterEntries.ts"
+        "src/workbench/taskCenter/taskCenterEntries.ts",
+        "src/workbench/generationCanvas/runner/catalogTaskResultParse.ts"
       ],
       "since": "2026-09-29",
-      "notes": "PR #926（同上合同）：把生成错误映射成人话与下一步动作的唯一一处；内部签名（已退役 / 类型不符 / 缺文本大脑 / NOMI_ERR 码）不进「服务商原话」框——退役这条曾经漏了。"
+      "notes": "PR #926（同上合同）：把生成错误映射成人话与下一步动作的唯一一处；内部签名（已退役 / 类型不符 / 缺文本大脑 / NOMI_ERR 码）不进「服务商原话」框——退役这条曾经漏了。 2026-09-29（合同 docs/fixes/2026-09-29-failure-reason-from-upstream-evidence.root-cause.json）：分类按上游自己的码与话归类（状态码派生的 input 只是没有证据时的落点）；标题永远是界面语言，供应商说的话只进「服务商原话」；每一类声明它是不是服务商那一侧的事（vendorSide，narrate 的穷举表），点名供应商的界面只在它为 true 时才有资格；结果已送达而本机读不出来 = output-unreadable（只有重试）。异步任务失败的文本格式产出与解析成对住在 taskFailureMessage。 F6（2026-09-30）：目录里没有一类认得的失败（unknown）如实说「认不出」——不编原因（旧文案「可能是服务商临时故障或额度问题」里的「额度」是猜的），供应商给了码（upstreamCode / logicalCode）就带上码（narrate 的 hint / hintWithCode），原文与完整报文是入口。 2026-09-30（F6 续）：legacy 关键词嗅探读什么由 legacyEvidence 一处决定——只读认得出来源的话（结构化载荷的 upstreamMsg / 异步任务失败格式里的原话），来源不明的老串抠掉 URL 后整句读、三位状态码只认整词；判据不读诊断外壳里的端口 / id / 供应商键（pb07 英文那一遍曾把端口 59401 读成「401」而报「API Key 无效」）。 2026-09-30（验收页复核）：「不扣费」一族的话只有 Nomi 自己确知请求没发出去的类别（narrate.NEVER_SENT_KINDS）才说得出口，请求发出去之后花没花钱 Nomi 不知道、不按供应商分情况；noChargeClaims.test 把目录的每一条字符串读出来过这一关。"
     },
     {
       "name": "模型框里模型的显示名（按当前语言翻译，不进身份）",
@@ -2654,6 +2673,702 @@
       "notes": "内置家的连接身份由代码拥有：鉴权放法与种子一致，接口地址是种子地址或代码登记的官方备用线路（vendor/vendorBaseFallback.codeDeclaredFallbackOrigins，与凭据守卫同一张名单——APIMart 的国内线路 api.apib.ai 在里面）。内置家自动发布、Agent 生成器装配、生成器出请求都问它，不一致就 fail-closed。合同 docs/fixes/2026-09-29-settings-address-is-the-users.root-cause.json。"
     },
     {
+      "name": "制作 Run 为什么停下（停下原因）",
+      "subject": "production.run-stop-reason",
+      "lifecycle": "execution",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "durable",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionRunLifecycle.ts",
+        "symbol": "applyRunStatus"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "applyRunStatus"
+        },
+        {
+          "path": "electron/shared/productionRunStop.ts",
+          "symbol": "runStopReason"
+        },
+        {
+          "path": "electron/shared/productionRunStop.ts",
+          "symbol": "parseRunStopReason"
+        },
+        {
+          "path": "electron/shared/productionRunStop.ts",
+          "symbol": "isStoppedRunStatus"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "HALT_ERROR_CODES",
+          "kind": "definition",
+          "why": "从 job 的 errorCode / Run 的 needs_attention 反推「预算停下」——那天根本没有价格，界面却说「预算已用完 · 提额续拍」（2026-09-29 删掉）。停下原因只读 run.stop。"
+        },
+        {
+          "symbol": "STOPPED_RUNS",
+          "kind": "definition",
+          "why": "「停着的状态」手抄一份（认领判据以前的写法）；只许 isStoppedRunStatus。"
+        },
+        {
+          "symbol": "runIsStopped",
+          "kind": "definition",
+          "why": "画布小标自己判「停没停」的旧助手；只许 runStopReason / isStoppedRunStatus。"
+        }
+      ],
+      "parity_test": "electron/productionRun/productionRunStopReason.e2e.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionRunLifecycle.ts",
+        "electron/productionRun/productionRunReducer.ts",
+        "electron/productionRun/batchScheduleDerivation.ts",
+        "electron/productionRun/productionRunProjections.ts",
+        "electron/shared/productionShotPhase.ts",
+        "electron/shared/decideShotClaim.ts",
+        "electron/capabilityCore/appIntegrationProductionActions.ts",
+        "electron/agentLane/laneDesktopTasks.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "2026-09-29 用户实见：Agent 付费卡确认 → 定妆照出图 → 检查点放行后视频镜派不出去 → Run 进 needs_attention → 画布说「预算已用完 · 提额续拍」，点进去额度全是 0（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。原因从来没被记下，界面只好从状态反推。现在「为什么停」是停下那一刻的事实：停它的一方在 run.status 命令的 payload.reason 里说（预算 / 失败 / 用户暂停 / 用户取消 / 重启后核对），applyRunStatus 落成 run.stop；新停下不说原因即拒绝写入；停着之间的挪动沿用原来记下的；离开停着的状态即清掉。读口只有 runStopReason：画布小标（deriveProductionShotState）、续拍入口（appIntegrationProductionActions）、Agent 读 Run（projection 的 stopReason → mcpToolResults）、Agent 任务列表（laneDesktopTasks）都读它。上一版停下时没记的读作 unknown，绝不猜成预算。渲染层 IPC 的 run.status 白名单不透传 reason，所以渲染层写不出一次「停下」——停只能经 run.control（暂停 / 取消），原因在那里写。"
+    },
+    {
+      "name": "制作 Run 的生命周期收尾与解除（急停收尾落到已暂停、重做解除失败停下）",
+      "subject": "production.run-lifecycle-settle",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionRunLifecycle.ts",
+        "symbol": "settleRunLifecycle"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "settleRunLifecycle"
+        },
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "applyOwedLifecycleStep"
+        },
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "isStillAtProvider"
+        },
+        {
+          "path": "electron/productionRun/productionRunLifecycle.ts",
+          "symbol": "retryLiftsStop"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "settlePauseIfQuiet",
+          "kind": "definition",
+          "why": "每个驱动在自己循环尾巴上各调一次的旧收尾；多镜调度器没调，批次急停后永远停在「暂停中」（2026-09-29 删掉）。收尾挂在仓库写入口上，驱动不许再自己收。"
+        },
+        {
+          "symbol": "ACTIVE_JOB_STATUSES",
+          "kind": "definition",
+          "why": "「还在供应商那边」的手抄状态表（与 productionJobPhase 的 generating 重复一份）；只许 isStillAtProvider。"
+        }
+      ],
+      "parity_test": "electron/productionRun/productionRunStopReason.e2e.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionRunRepository.ts",
+        "electron/productionRun/productionRunReducer.ts",
+        "electron/productionRun/productionRunService.ts",
+        "electron/capabilityCore/mcpToolResults.ts",
+        "electron/capabilityCore/appIntegrationProductionActions.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "2026-09-29 用户实见「多镜急停后永远停在暂停中，继续剩余按不动」（合同同上）。生命周期里唯一「自己发生」的一步：急停（pausing）之后交给供应商的最后一件活收了尾，Run 落成 paused。它挂在唯一写入口 productionRunRepository.executeUnlocked 上，每条命令之后判一次，那一步作为自己的 run.status.changed 事件与命令同一次落盘——老驱动、多镜调度器、观察器、恢复流程谁写下最后一笔都一样，驱动里不再有收尾调用。上一版留下的「pausing 而手上已无活」由重开项目的恢复（resumeUnfinishedRuns）发 run.lifecycle.settle 补上那一步，欠不欠只由 settleRunLifecycle 判。retryLiftsStop（穷举）决定用户重做一镜时哪种停下随之解除：失败 / 上一版没记原因的解除，预算 / 用户暂停 / 用户取消 / 重启核对不解除。"
+    },
+    {
+      "name": "继续之后叫醒谁来驱动这个 Run",
+      "subject": "production.run-driver-wake",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionRunService.ts",
+        "symbol": "wakeRunDriver"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionRunService.ts",
+          "symbol": "wakeRunDriver"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/appIntegrationRunObservation.test.ts",
+      "allowed_consumers": [],
+      "since": "2026-09-29",
+      "notes": "2026-09-29：任务卡 / MCP / 画布的「继续」都经 run.control resume；以前服务只踢 driveGeneration，多镜批次状态回到 running 却一镜都不派（派发归批次调度器）。「谁来驱动」只在 wakeRunDriver 判：多镜批次踢批次调度器（批次收齐后它自己交给 driveGeneration 收尾），其余归 driveGeneration。一趟驱动还在跑时来的踢由 appIntegrationRunObservation 记一笔、收尾时补踢（与 driveGeneration 的 generationRerunRequested 同一个做法），不丢唤醒。"
+    },
+    {
+      "name": "画布返工 / 续拍没做成怎么跟用户说（失败码 → 人话）",
+      "subject": "production.shot-action-failure",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+        "symbol": "productionShotActionFailureOf"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+          "symbol": "productionShotActionFailureOf"
+        },
+        {
+          "path": "electron/productionRun/productionRunTypes.ts",
+          "symbol": "ProductionShotActionFailure"
+        },
+        {
+          "path": "src/workbench/production/productionShotActions.ts",
+          "symbol": "SHOT_ACTION_FAILURE_COPY"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/appIntegrationProductionActions.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionActionIpc.ts",
+        "electron/capabilityCore/appIntegration.ts",
+        "src/workbench/production/productionRunApi.ts",
+        "src/desktop/productionRunBridgeTypes.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "2026-09-29 用户实见：点「继续剩余」弹「操作没成功，请稍后再试 · run status pausing is not resumable」（合同同上）。以前所有失败都落进那一句，前面拼主进程英文原话。现在每一种没做成都有自己的码：主进程 productionShotActionFailureOf 只认源头的错误类型（返工被拒、版本冲突、写锁被占、状态机不允许、确认过期 / 对不上、没有人证、供应商没注册、记录解析失败）与 Node 的 errno（磁盘满 / 没有写权限），不读英文原话；渲染层 SHOT_ACTION_FAILURE_COPY 穷尽地一码一句（怎么了、钱怎么样了、能做什么），没有兜底句。唯一不细分的 internal_error 是 Nomi 自己的不变量没守住（bug）：如实说「这是 Nomi 的问题、没有扣费、已记日志、可以反馈」，不装成「稍后再试」。IPC 两个通道不往渲染层抛异常，渲染层的 catch 因此只剩「桥不通」（bridge_unavailable）一种。"
+    },
+    {
+      "name": "派发时核的授权范围（批过的那一份）",
+      "subject": "production.dispatch-authorization-scope",
+      "lifecycle": "spend-authority",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/productionRun/productionGenerationSubmission.ts",
+        "symbol": "prepareAuthorizedSubmission"
+      },
+      "write_api": [
+        {
+          "path": "electron/productionRun/productionGenerationSubmission.ts",
+          "symbol": "prepareAuthorizedSubmission"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/productionRun/productionGenerationAuthorizationFlow.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/multiShotBatchScheduler.ts",
+        "electron/capabilityCore/appIntegration.ts",
+        "electron/capabilityCore/mcpStdioServer.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "2026-09-29 用户实见：定妆照检查点放行后视频镜派不出去（「Generation authorization no longer matches the current project or Run」），批次停下（合同 docs/fixes/2026-09-29-production-flow-stop-reason-and-lifecycle.root-cause.json）。派发时要核的是「批过的那一份」，只有它：封进信封的项目身份（immutableProjectUuid + projectGeneration）、Run、计划版本、那道门，以及每个 job 的合同哈希、供应商、模型、第几次、幂等键、线上报文哈希、参考图、单价上限、到期时间——收据签的就是这份信封的摘要。项目文档的版本号不在里面：它只是「用户看报价那一刻项目是不是最新」的前提，在批准那一刻由收据那一侧核（productionRunApprovalReceipt.assertCurrentProjectRevision），批准之后 Nomi 自己把占位和参考卡结果落上画布就会让它前进。所以派发不再读活的文档版本（createProductionGenerationSubmission 连这个依赖都没有了），也没有「重试时重新封一次」这种补法。批准那一刻的版本绑定是否也该松开，归付费卡审批那条 lane，不在这里。"
+    },
+    {
+      "name": "分镜一镜发出去什么（提示词 + 参考图）",
+      "subject": "storyboard.shot-outbound",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "shared",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+        "symbol": "compileShotOutbound"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/storyboard/storyboardPromptCompiler.ts",
+          "symbol": "compileShotOutbound"
+        },
+        {
+          "path": "src/workbench/creation/storyboard/exec/storyboardProjection.ts",
+          "symbol": "projectShotNode"
+        },
+        {
+          "path": "src/workbench/generationCanvas/agent/storyboardAnchorPolicy.ts",
+          "symbol": "ignoredShotAnchors"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "anchorPromptBits",
+          "kind": "definition",
+          "why": "2026-09-30 之前把引用锚的身份特征 / 文本锚整段追加进提示词（「巨龙」变人物的成因）；已删，不许再长一份"
+        },
+        {
+          "symbol": "referenceOrderForShot",
+          "kind": "definition",
+          "why": "按 anchorIds 给自动连的参考边排序；自动连图已删，不许恢复"
+        }
+      ],
+      "parity_test": "src/workbench/creation/storyboard/exec/shotOutbound.parity.test.ts",
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/agent/storyboardPlan.ts",
+        "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
+        "src/workbench/capability/capabilityApplyHandler.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "规则（09-30 用户拍板）：一镜发出去的 = 这一行写的提示词 + 这一行上看得见的参考图，别的什么都不加。行内生成 / 生成剩余 / Agent 确认框 / 放到画布 / production.materialize-storyboard / 方案投影都只从 compileShotOutbound 取；对等测试逐字节比六个入口。anchorIds 留在旧方案里不再产生任何作用。根因合同 docs/fixes/2026-09-30-storyboard-outbound-owner.root-cause.json。"
+    },
+    {
+      "name": "一条用户消息在对话记录里的形状（含附件）",
+      "subject": "agent-lane.user-message-shape",
+      "lifecycle": "projection",
+      "authority_kind": "projection",
+      "trust_domain": "shared",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/agentLane/laneProjection.ts",
+        "symbol": "projectLaneSnapshot"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/agentLane/laneProjection.ts",
+          "symbol": "projectLaneSnapshot"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneHost.mts",
+        "electron/agentLane/laneHistory.mts",
+        "electron/agentLane/laneDesktopAttachments.ts",
+        "src/workbench/ai/lane/laneViewModel.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "发出去的那条用户消息、重开项目后的历史里，附件签是同一份事实：转录里 nomi.input 自己带的 claim 由 projectLaneSnapshot 原样搬上 user 段，文件名由主进程按 assetId 现查（laneDesktopAttachments，与「发给模型」同一个 resolveProjectAgentAttachmentClaims）。渲染层只读 part.attachments 画签，不自己另存、不自己推算；解不出来画「附件不可用」，不让签消失。"
+    },
+    {
+      "name": "用户按任务声明的默认模型（图片 / 视频默认）",
+      "subject": "generation.declared-default-model",
+      "lifecycle": "preference",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "pending",
+      "migration_strategy": "Agent 已只从主进程 createGenerationDefaultModelResolver 读（模型索引 + 宿主补默认 + 偏离回执）；画布新节点（defaultNodeModelSelection.resolveDefaultModelOption）与分镜落画布（availableModels.pickSavedDefaultModel）仍在渲染层各按同一份设置各自匹配。收口：让这两处读主进程 resolver 的结果（IPC），删掉渲染层按 (vendorKey, modelKey) 匹配设置的代码；判据是渲染层不再出现读 generationModelDefaults 后自己匹配模型的实现。",
+      "owner": {
+        "path": "electron/capabilityCore/generationDefaultModelResolver.ts",
+        "symbol": "createGenerationDefaultModelResolver"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/generationDefaultModelResolver.ts",
+          "symbol": "createGenerationDefaultModelResolver"
+        },
+        {
+          "path": "electron/settings/generationModelDefaultsSettings.ts",
+          "symbol": "writeGenerationModelDefaults"
+        },
+        {
+          "path": "electron/agentLane/laneDesktopModelDefaults.ts",
+          "symbol": "readLaneDeclaredDefaults"
+        },
+        {
+          "path": "electron/capabilityCore/semanticGenerationCandidate.ts",
+          "symbol": "declaredDefaultDeviations"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneDesktopModelDefaults.ts",
+        "electron/capabilityCore/appIntegration.ts",
+        "electron/capabilityCore/mcpStdioServer.ts",
+        "src/workbench/generationCanvas/nodes/defaultNodeModelSelection.ts",
+        "src/workbench/generationCanvas/agent/availableModels.ts",
+        "src/workbench/generationCanvas/model/generationModelDefaults.ts",
+        "src/workbench/settings/DefaultGenerationModelsSection.tsx",
+        "electron/settings/generationModelDefaultsIpc.ts",
+        "electron/agentLane/laneDesktopRuntime.ts",
+        "electron/capabilityCore/mcpGenerationTools.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "设置里的「图片默认 / 视频默认」只存 (vendorKey, modelKey) 两段（generation-model-defaults.json）；「此刻真能用的默认是谁」只有 createGenerationDefaultModelResolver 回答。Agent 被告知的默认（laneDesktopModelDefaults → 模型索引）与宿主没点名时实际补上的默认、以及偏离默认时递还给模型的事实（declaredDefaultDeviations）是同一个函数的答案。"
+    },
+    {
+      "name": "新建的分镜方案要不要替用户打开（谁发起的）",
+      "subject": "workbench.storyboard-activation",
+      "lifecycle": "live-interaction",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/workbenchDocumentSlice.ts",
+        "symbol": "activationAfterCreate"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/workbenchDocumentSlice.ts",
+          "symbol": "activationAfterCreate"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "src/workbench/creation/DocumentListSidebar.tsx",
+        "src/workbench/creation/storyboard/agentStoryboardDesign.ts",
+        "src/workbench/generationCanvas/agent/applyCanvasToolCall.ts",
+        "src/workbench/generationCanvas/nodes/shotTable/shotTableActions.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "新建方案之后用户正在看的那份（activeStoryboardId / activeDocumentId）变不变，只由 activationAfterCreate 按显式的 StoryboardInitiator 决定：'user' 才打开，'agent' 只入列表。发起人是 addStoryboardDesign / setStoryboardPlan(createNew) 的必填输入，没有默认值；打开 / 切换永远是用户的动作（与「程序不挪画布」同一条）。"
+    },
+    {
+      "name": "生成产物能不能解码（出没出画面）",
+      "subject": "asset.generated-media-decode",
+      "lifecycle": "materialized-artifact",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/assets/generatedMediaDecode.ts",
+        "symbol": "verifyGeneratedMediaDecodes"
+      },
+      "write_api": [
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "verifyGeneratedMediaDecodes"
+        },
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "interpretDecodeRun"
+        },
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "decodeInvocation"
+        },
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "decodeTimeoutMs"
+        },
+        {
+          "path": "electron/assets/generatedMediaDecode.ts",
+          "symbol": "generatedMediaValidationError"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/assets/generatedMediaDecode.test.ts",
+      "allowed_consumers": [
+        "electron/assets/projectAssetStore.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "合同 docs/fixes/2026-09-29-generated-media-decode-verdict.root-cause.json：供应商已经出了图、Nomi 却判 decode_failed——旧判定把「解码器一句抱怨都没有」当成「能解码」（-xerror + -err_detect explode），IEND 之后多几个字节的完整 PNG 也被拒收。现在「能不能解码」= 解码器把第一帧拿出来、宽高为正（三态：decodable / undecodable / unverified），ffmpeg 原话进日志、不进判决；超时随文件大小放宽。生成产物校验的所有失败（解码 / 冒充网页 / 认不出字节 / 类型不符 / 格式不支持）统一带机器码 output-unreadable。另外两处仍用严格判据、刻意不并进来：mediaProbe.decodeMediaInput 只服务模型 / 工作流认证（providerAdapter/certificationMedia.ts，certifyOutput 才走）——认证要的是「产物干净」的证据，不是「能不能显示」；antigravityArtifacts.validateAntigravityImage 是 Antigravity 本机通道自己的安全校验（精确的 PNG / JPEG / WebP 终止字节 + -xerror，输入图与输出图都过它），受信域和错误码（ANTIGRAVITY_IMAGE_INVALID）都是它自己的。"
+    },
+    {
+      "name": "一次运行发给了哪家的哪个模型（失败点名与健康记账的身份）",
+      "subject": "generation.dispatched-attempt",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+        "symbol": "dispatchedAttempt"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+          "symbol": "dispatchedAttempt"
+        },
+        {
+          "path": "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+          "symbol": "failedAttemptOf"
+        },
+        {
+          "path": "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts",
+          "symbol": "failureDescribesCurrentSelection"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "nodeModelIdentity",
+          "kind": "definition",
+          "why": "「失败那一刻读节点现在选着谁」当失败的身份——运行期间用户换了家，失败就记到没失败过的那家头上（模型健康记账与切家提示都栽过）；失败的身份只许来自运行记录上的 attempt"
+        }
+      ],
+      "parity_test": "src/workbench/generationCanvas/runner/failedAttemptIdentity.test.ts",
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/runner/generationRunController.ts",
+        "src/workbench/generationCanvas/runner/nodeModelHealth.ts",
+        "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "合同 docs/fixes/2026-09-29-failure-belongs-to-the-dispatched-attempt.root-cause.json：runGenerationNode 在运行开始时用同一对选择器（selectedVendor / selectedModelKey，与 buildCatalogTaskRequest 同读）把「发给谁」写进运行记录（GenerationNodeRunRecord.attempt，随项目落盘）；之后失败提示点名的是它、模型健康记账记到的也是它，不再读「失败时节点碰巧选着谁」。没有这一栏的运行记录（旧项目；multiShotCanvasLanding 为制作流程投影的记录）读不出是谁失败的——不点名、不出切家提示，节点错误卡照旧把原因说清。"
+    },
+    {
+      "name": "一条提示的身份、去重、撤回与位置（同一件事一条、前提不成立就收、整条留在窗口里）",
+      "subject": "feedback.toast-identity",
+      "lifecycle": "live-interaction",
+      "authority_kind": "gateway",
+      "trust_domain": "renderer",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/ui/toast.tsx",
+        "symbol": "useToastStore"
+      },
+      "write_api": [
+        {
+          "path": "src/ui/toast.tsx",
+          "symbol": "useToastStore"
+        },
+        {
+          "path": "src/ui/toast.tsx",
+          "symbol": "buildToastNotification"
+        },
+        {
+          "path": "src/ui/toast.tsx",
+          "symbol": "TOAST_MAX_HEIGHT"
+        },
+        {
+          "path": "src/NomiAppProviders.tsx",
+          "symbol": "NomiAppProviders"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "providerSwitchToastId",
+          "kind": "definition",
+          "why": "「按 (节点, 失败方, 模型, 目标, 目标模型) 拼身份」的第二套提示身份——换家之后 id 变了，旧提示成了没人撤的孤儿；一张卡一个 id，「同一次失败」由 occurrence 定，撤回由所有者的 validWhile 管"
+        }
+      ],
+      "parity_test": "src/ui/toastOccurrence.test.ts",
+      "allowed_consumers": [
+        "src/ui/notificationPolicy.ts",
+        "src/utils/showUndoToast.ts",
+        "src/utils/showInfoToast.ts",
+        "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+        "src/workbench/generationCanvas/nodes/nodeRecoveryNotice.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "合同 docs/fixes/2026-09-29-toast-identity-withdrawal-and-window-fit.root-cause.json：提示的身份与撤回都归所有者。occurrence = 「同一件事被重新宣布」还是「又发生一次」（×N 只在真的又发生 N 次时出现，关掉过的事件不再冒出来）；validWhile = 前提不成立就撤回（靠状态变化，不靠定时器；showUndoToast 原来私有的监视并入它）；位置归容器：grid 隐式列 minmax(0,1fr)、高度上限 TOAST_MAX_HEIGHT 随窗口、文字区在上限内滚动。不给 occurrence / validWhile 的调用方照旧（每次 push 算一次发生）。 2026-09-30（验收页复核）：动作按钮上的字永远完整——正文至少 TOAST_MIN_BODY_WIDTH，放不进同一行的长动作折到正文下面、长标签折行不截断；提示点名供应商用显示名（nodeRecoveryNotice.vendorLabelFor），不写内部 id。"
+    },
+    {
+      "name": "上游自己给的错误码怎么从响应体挑出来",
+      "subject": "provider.upstream-error-code",
+      "lifecycle": "provider-observation",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/jsonUtils.ts",
+        "symbol": "pickUpstreamCode"
+      },
+      "write_api": [
+        {
+          "path": "electron/jsonUtils.ts",
+          "symbol": "pickUpstreamCode"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/vendor/upstreamEvidenceParity.test.ts",
+      "allowed_consumers": [
+        "electron/vendor/vendorHttp.ts",
+        "electron/ai/aiSdkVendorError.ts",
+        "electron/ai/runtimeVendorError.ts"
+      ],
+      "since": "2026-09-29",
+      "notes": "合同 docs/fixes/2026-09-29-failure-reason-from-upstream-evidence.root-cause.json：状态码（400/422）只说「请求有问题」，从不说为什么；上游自己的错误码（model_not_found 一类）才是它说的原因。三条把上游失败带过 IPC 的通道——图 / 视频 / JSON 请求（vendorHttp.requestVendor）、AI SDK 文本请求（aiSdkVendorError.vendorErrorFromAiSdkError）、Agent 的 pi 运行时（runtimeVendorError.describeRuntimeError，读响应体走 upstreamCodeFromBody）——都经同一个 pickUpstreamCode 把它随失败载荷（VendorErrorStructured.upstreamCode）带过去，classifyGenerationError 按码归类。键优先级表与 pickUpstreamMessage 同住一处。customCallRunner 只是把已有的载荷脱敏后原样（展开 structured）重包，不丢这一栏。"
+    },
+    {
+      "name": "每一次模型请求的输入预算（超了怎么收：用 pi 自带的压缩，这里只出配置）",
+      "subject": "agent-lane.request-input-budget",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/agentLane/laneContextBudget.mts",
+        "symbol": "laneCompactionSettings"
+      },
+      "write_api": [
+        {
+          "path": "electron/agentLane/laneContextBudget.mts",
+          "symbol": "laneCompactionSettings"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneHost.mts"
+      ],
+      "since": "2026-10-01",
+      "notes": "预算数字与它换算成 pi 压缩配置（reserveTokens / keepRecentTokens）只住 laneCompactionSettings；压缩本身（切点、摘要、保留尾巴）全是 pi 的，我们不写第二份。"
+    },
+    {
+      "name": "写入回执「准备中」的时限与终态",
+      "subject": "agent-proposal.receipt-preparing-deadline",
+      "lifecycle": "execution",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+        "symbol": "createProjectAgentProposalReceiptService"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/projectAgentProposalReceiptStore.ts",
+          "symbol": "createProjectAgentProposalReceiptService"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/agentLane/laneDesktopRuntime.ts",
+        "electron/capabilityCore/mcpStdioServer.ts",
+        "electron/capabilityCore/projectAgentReceiptResolver.ts"
+      ],
+      "since": "2026-10-01",
+      "notes": "回执停在 preparing 的最长时间由回执自己的主人定（PROJECT_AGENT_PREPARING_DEADLINE_MS = 写工具预算 + 收尾余量），任何一扇门（read/write/transition/clear）第一次碰到过期的 preparing 就把它落到终态 undone。这是兜底，不是修复：写入被明确拒绝时由调用方当场收场（见 capability.surface-write-outcome）。"
+    },
+    {
+      "name": "渲染层写入回复的结局归类（明确拒绝 / 结局不明）",
+      "subject": "capability.surface-write-outcome",
+      "lifecycle": "execution",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+        "symbol": "createCanvasReadSurfacePortRuntime"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/canvasReadSurfacePort.ts",
+          "symbol": "createCanvasReadSurfacePortRuntime"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/capabilityCore/canvasReadExecutionRuntime.ts"
+      ],
+      "since": "2026-10-01",
+      "notes": "一次改动型请求渲染层回了错误码：它在碰文稿之前验目标发现对不上而拒绝（surface_port_stale）= 结局已知，什么都没执行，如实往上报；被取消 / 端口不可用 / 被挂起 / 绑定过期可能发生在派发之后 = 结局不明，才是 capability_receipt_unresolved。把已知拒绝当不明会让回执永远停在 preparing（pb04 走查 agent-write-receipt-stuck 的第一根因）。"
+    },
+    {
+      "name": "一个 diff 要跑哪些验证（验证分档：单测 / 桌面 / 真实旅程 / 画布 critical·full / 性能 / 打包）",
+      "subject": "delivery.validation-policy",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "scripts/validation-policy.mjs",
+        "symbol": "classifyValidationPolicy"
+      },
+      "write_api": [
+        {
+          "path": "scripts/validation-policy.mjs",
+          "symbol": "classifyValidationPolicy"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "scripts/validation-policy.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/select-quality-gate-profile.mjs",
+        "scripts/run-gates-tests.mjs",
+        "scripts/git-delivery.mjs"
+      ],
+      "since": "2026-10-01",
+      "notes": "CI 选档、本机 gates、交付收据三处共用这一个函数，不许任何一处自己再判一遍「这个 diff 要不要跑 X」。画布 full 档的清单（CANVAS_DISPLAY_OWNER_PATTERNS）对着本表里画布显示相关概念的 owner 与写口列，parity_test 逐个概念核对；generationCanvas 每个子目录必须表态。合同 docs/fixes/2026-10-01-canvas-classifier-display-owners.root-cause.json。"
+    },
+    {
+      "name": "新建文件时给 agent 看的「已有能力清单」（从两张登记表现算，不入库）",
+      "subject": "agent-rules.existing-capability-index",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/build-capability-index.mjs",
+        "symbol": "buildCapabilityIndex"
+      },
+      "write_api": [
+        {
+          "path": "scripts/build-capability-index.mjs",
+          "symbol": "buildCapabilityIndex"
+        }
+      ],
+      "parity_test": "scripts/build-capability-index.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/edit-time-reminder.mjs"
+      ],
+      "notes": "清单只读 concept-owners.json 与 framework-boundaries.json，每次现算，不写文件、不入库，不许另起第三份「已有能力」登记；登记表漏登的能力这里就列不出来（pi 的 context-compaction 就是这样漏过 laneContextFit 的），所以补登记是前置。"
+    },
+    {
+      "name": "「同一文件近 14 天第 3 次 fix → 先过重写判据」与「新建文件 → 给能力清单」的触发判决",
+      "subject": "agent-rules.edit-time-reminder-verdict",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/edit-time-reminder.mjs",
+        "symbol": "decideEditTimeReminder"
+      },
+      "write_api": [
+        {
+          "path": "scripts/edit-time-reminder.mjs",
+          "symbol": "decideEditTimeReminder"
+        }
+      ],
+      "parity_test": "scripts/edit-time-reminder.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/claude-hooks/edit-time-reminder.sh"
+      ],
+      "notes": "什么时候提醒（新建 = 路径不存在；反复修 = 近 14 天 fix/hotfix 提交 ≥3）只住 decideEditTimeReminder；阈值是试用值（到 2026-10-15 用提交历史校准）。只提醒、不拦、fail-open；回馈走 PreToolUse 的 hookSpecificOutput.additionalContext（普通 stdout 不进上下文）。"
+    },
+    {
+      "name": "「同一层被反复补」的簇何时算已答复（补 / 重写 / 删的选择 + 特征测试）",
+      "subject": "agent-rules.rewrite-decision-cluster",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/symptom-cluster-lib.mjs",
+        "symbol": "evaluateClusters"
+      },
+      "write_api": [
+        {
+          "path": "scripts/symptom-cluster-lib.mjs",
+          "symbol": "evaluateClusters"
+        }
+      ],
+      "parity_test": "scripts/check-symptom-cluster.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/check-symptom-cluster.mjs"
+      ],
+      "notes": "同一模块 7 天内第三份根因合同时，簇里最新那份必须带有效的 rewrite_decision（decision + characterization_test）才算答复；评审文档那条路已删，不并存。字段校验（测试文件存在、选 rewrite 时测试在 diff 里）在 root-cause-contracts 的 validateRewriteDecision，那里只校验、不判簇。"
+    },
+    {
       "name": "凭据请求重定向策略",
       "subject": "network.credential-redirect-policy",
       "lifecycle": "execution",
@@ -2662,27 +3377,28 @@
       "fact_kind": "rule",
       "migration_status": "converged",
       "owner": {
-        "path": "electron/vendor/vendorBaseFallback.ts",
-        "symbol": "fetchVendorWithBaseFallback"
+        "path": "electron/credentialRedirectPolicy.ts",
+        "symbol": "withCredentialRedirectPolicy"
       },
       "write_api": [
         {
-          "path": "electron/vendor/vendorBaseFallback.ts",
-          "symbol": "fetchVendorWithBaseFallback"
-        },
-        {
-          "path": "electron/ai/onboarding/onboardingIpc.ts",
-          "symbol": "probeOneProtocol"
+          "path": "electron/credentialRedirectPolicy.ts",
+          "symbol": "withCredentialRedirectPolicy"
         }
       ],
       "forbidden_derivations": [],
       "allowed_consumers": [
+        "electron/appFetch.ts",
+        "tests/setup/networkTransport.ts",
         "electron/vendor/vendorHttp.ts",
+        "electron/vendor/vendorBaseFallback.ts",
         "electron/ai/onboarding/onboardingIpc.ts",
-        "electron/ai/onboarding/modelListProbe.ts"
+        "electron/ai/onboarding/modelListProbe.ts",
+        "electron/audioTaskRunner.ts",
+        "electron/networkErrorDetails.ts"
       ],
       "since": "2026-09-30",
-      "notes": "带凭据或自定义鉴权头的供应商与接入探测请求必须在共享出站边界拒绝重定向，避免后续 origin 收到凭据或 POST body。vendor fallback 的首发与官方备用域重发、onboarding 协议探测分别是同一规则的两个执行入口；模型列表分页沿用 manual + 逐跳 origin/path 校验。合同 docs/fixes/2026-09-30-credential-redirect-leak.root-cause.json。"
+      "notes": "带凭据的出站请求（除标准头之外还带任何头：Authorization、Cookie、API key、供应商自取名的鉴权头）不跟随跳转：fetch 跨域跳转只去掉 Authorization，自定义鉴权头与 307/308 的 POST 正文会原样带去第二个网站。规则只在 withCredentialRedirectPolicy 里判一次，唯一出站入口 appFetch（与单测的传输替身）应用，走原生 redirect:error，不在各调用点各写一遍；调用方自己指定 redirect（hardenedFetch 手动逐跳去头、模型列表分页 manual + 校验）时尊重它。失败识别 networkErrorDetails.isRedirectRefusal；用户看到的话：生成路径是 nomiErrorCodes 的 credential-redirect 码 + generationCommon 词表 credentialRedirect，接入向导与转写路径是 desktopStrings 的 network.credentialRedirect。合同 docs/fixes/2026-09-30-credential-redirect-leak.root-cause.json。"
     }
   ]
 }

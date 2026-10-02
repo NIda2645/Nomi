@@ -21,11 +21,11 @@ import { resolvePullRequestBody } from './lib/prBody.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-// 判据本身一行都不重写：直接跑 CI 跑的那两个门岗，正文由 NOMI_PR_BODY 交给它们，
+// 判据本身一行都不重写：直接跑 CI 跑的那个门岗（2026-10-01 起只剩 prior-art——check:door-map 的「PR 正文引用合同」
+// 那一半已删，门表合法性由 check:root-cause-contracts 的 doors 校验管），正文由 NOMI_PR_BODY 交给它们，
 // 保证「本地说绿」和「CI 说绿」用的是同一份实现和同一份正文。
 const GATES = [
   { name: 'check:prior-art', script: 'scripts/check-prior-art.mjs' },
-  { name: 'check:door-map', script: 'scripts/check-door-map.mjs' },
 ]
 
 function main() {
@@ -35,7 +35,7 @@ function main() {
     return 0
   }
 
-  // 一次跑完两条再汇总，不第一条红就停——两条各红一次 = 两轮 push，正是本批要治的形状。
+  // 一次跑完再汇总，不第一条红就停——各红一次 = 多轮 push，正是本批要治的形状。
   const results = GATES.map(({ name, script }) => {
     const run = spawnSync(process.execPath, [path.join(repoRoot, script), '--pr'], {
       cwd: repoRoot,

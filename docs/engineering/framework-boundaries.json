@@ -69,28 +69,25 @@
   "referenceConformanceDebt": [
     {
       "_comment": "参考实现逐层对照的**债**（R29 第二份必交物）。登记的是欠账不是豁免：每条绑一个到期日，到期不交门岗就红。清掉一条 = 从这里删一行并在框架条目上写 referenceConformance。id = 框架 id 或 capabilityInventory 里的包名。",
-      "id": "pi",
-      "doc": "docs/research/2026-09-07-pi-reference-implementation-conformance.md",
-      "due": "2026-10-15",
-      "why": "九层对照已交（doc 字段那份，2026-09-07 合入 main），它照出 24 条「压根没想到」。债剩下的是**把它们清掉**，不是再写一份对照。到 2026-09-07 阶段 2 为止：阶段 2 前必补的 9 条已销 7 条（G-01 根级 anyOf / G-02 失败必须 throw / G-03 描述三通道+重建系统提示词两段 / G-05 枚举用 enum 形态 / G-09 addedToolNames 已判并写结论，本阶段销；G-04 工具输出截断 / G-08 唯一校验点带容忍梯，阶段 1 已销），剩 2 条各自带票：G-06（改名后旧会话的旧形状 tool call 折旧，阶段 4 迁移旧转录前必补）、G-07（路径参数 containPath()，阶段 3 接生成/导出类工具时才有落点）。阶段 3 前必补的 8 条（G-10～G-17）与 G-18 跨进程会话锁尚未开工。销账明细见 docs/plan/2026-09-07-agent-runtime-rebuild.md §12.10。 本次发布修复只涉及 src/workbench 画布几何与宿主调度，不触碰 pi 运行时边界；将到期日顺延至 2026-10-15，与阶段 3 runtime conformance 评审窗口对齐，保留原有清账条件与落点，不把债当作已完成。"
-    },
-    {
       "id": "xyflow-react",
       "doc": "docs/research/2026-10-07-xyflow-reference-implementation-conformance.md",
-      "due": "2026-10-07",
-      "why": "生成画布的交互内核（R23 单内核）。React Flow 官方 examples 是同一套 API 的参考实现，我们的画布已经在 sub-flows、受控视口、节点类型注册这些层上各走了自己的路（2026-09-07 已就 sub-flows 单独查过一轮，见 docs/research/2026-09-07-react-flow-subflows-vs-frame.md），但九层从没并排摆过。id 从包名 @xyflow/react 改成框架 id xyflow-react：PR #550 把它从「只在 capabilityInventory 里的包」升成了登记框架，债要挂在框架 id 上才认得出（同一笔债，没有新增）。"
+      "due": "2026-12-15",
+      "plan": "docs/plan/2026-10-01-tech-stack-line-0.24.md",
+      "why": "生成画布的交互内核（R23 单内核）。React Flow 官方 examples 是同一套 API 的参考实现，我们的画布已经在 sub-flows、受控视口、节点类型注册这些层上各走了自己的路（2026-09-07 已就 sub-flows 单独查过一轮，见 docs/research/2026-09-07-react-flow-subflows-vs-frame.md），但九层从没并排摆过。id 从包名 @xyflow/react 改成框架 id xyflow-react：PR #550 把它从「只在 capabilityInventory 里的包」升成了登记框架，债要挂在框架 id 上才认得出（同一笔债，没有新增）。 2026-10-01 顺延：技术栈线推到 0.24，本笔跟 S7（画布内核对照），新到期日 2026-12-15，见 plan 字段。"
     },
     {
       "id": "ai",
       "doc": "docs/research/2026-10-07-vercel-ai-sdk-reference-implementation-conformance.md",
-      "due": "2026-10-07",
-      "why": "Vercel AI SDK 是模型调用与流式转录那条线的底座，AI Elements demo 是它的参考实现。工具、转录渲染、控制流三层我们各写了一份宿主侧的版本，没有对照过它的分层。"
+      "due": "2026-11-30",
+      "plan": "docs/plan/2026-10-01-tech-stack-line-0.24.md",
+      "why": "Vercel AI SDK 是模型调用与流式转录那条线的底座，AI Elements demo 是它的参考实现。工具、转录渲染、控制流三层我们各写了一份宿主侧的版本，没有对照过它的分层。 2026-10-01 顺延：技术栈线推到 0.24，本笔跟 S5（AI SDK 主版本裁决），新到期日 2026-11-30，见 plan 字段。"
     },
     {
       "id": "@mantine/core",
       "doc": "docs/research/2026-10-31-mantine-reference-implementation-conformance.md",
-      "due": "2026-10-31",
-      "why": "组件层。排在最后是因为它离「重造框架能力」最远（我们的设计系统是 token-only 自持的，D2 意义上的护城河在别处），但扩展 API 与安全两层仍值得并排看一次，尤其是 Mantine 官方 demo 怎么处理受控/非受控与可访问性。"
+      "due": "2026-12-31",
+      "plan": "docs/plan/2026-10-01-tech-stack-line-0.24.md",
+      "why": "组件层。排在最后是因为它离「重造框架能力」最远（我们的设计系统是 token-only 自持的，D2 意义上的护城河在别处），但扩展 API 与安全两层仍值得并排看一次，尤其是 Mantine 官方 demo 怎么处理受控/非受控与可访问性。 2026-10-01 顺延：技术栈线推到 0.24，本笔跟 S6（Tailwind 4 与 AI Elements 评估），新到期日 2026-12-31，见 plan 字段。"
     }
   ],
   "frameworks": [
@@ -125,6 +122,7 @@
       "version": "0.85.1",
       "fourColumnTable": "docs/plan/2026-09-07-agent-runtime-rebuild.md",
       "historyContextConformance": "docs/research/2026-09-19-pi-history-read-side/prior-art.md",
+      "referenceConformance": {"doc": "docs/research/2026-10-01-pi-coding-agent-reference-conformance/report.md", "upstreamVersion": "0.85.1", "verifiedAt": "2026-10-01", "note": "参考实现 = pi coding agent 0.85.1（docs + dist/core 公共面 + pi-agent-core harness 运行时源码）。九层全在、未裁剪。09-07 那份（docs/research/2026-09-07-pi-reference-implementation-conformance.md）的 24 条没想到：已关 19、部分 2、待核 2；新的没想到 N-1…N-6 带阶段列在报告末尾。开放问题：进程内改用 AgentSession 未评估。"},
       "why": "2026-09-06 #546 架构评审：接入时只接了最底层的 agent loop，pi 已提供的会话持久化、有序转录、重试、价格与 steer/followUp 各被我们重写了一份，而且更差。这张表把那次评审的结论钉成机器判据。",
       "surface": {
         "why": "2026-09-07 真实事故：electron/agentLane/laneTools.mts:175 给所有 lane 工具硬写 executionMode:'sequential'，而 pi 的 AgentHarnessTool.executionMode 逐工具可选；同一个对象字面量里 replay 已经改成从 mutates 派生。四列表与逐层对照都看的是「层」，看不见「字段」，所以两份都没拦住。",
@@ -512,6 +510,24 @@
               "id": "max-retries-zero",
               "pattern": "maxRetries:\\s*0",
               "why": "把 provider 重试压到 0 是同一件事的第二处开关；两处都在，说明宿主整条重试路径都自持，pi 的策略被架空。"
+            }
+          ]
+        },
+        {
+          "id": "context-compaction",
+          "provides": "自动压缩 compaction（只调 reserveTokens / keepRecentTokens）：超阈值时在回合之间摘要旧消息、保留尾巴、落可回放条目；切点与摘要全是 pi 的",
+          "evidence": "@earendil-works/pi-agent-core dist/harness/compaction/compaction.js:144 `shouldCompact`、dist/harness/runtime/drive/structural.js:837 `prepareCompactionThreshold`；@earendil-works/pi-coding-agent docs/compaction.md；我们的唯一设置入口 electron/agentLane/laneContextBudget.mts `laneCompactionSettings`",
+          "scope": ["electron/agentLane/"],
+          "forbidden": [
+            {
+              "id": "compaction-disabled",
+              "pattern": "compaction:\\s*\\{\\s*enabled:\\s*false",
+              "why": "关掉 pi 的压缩后，长对话的上下文只能由宿主自己裁剪——那正是 laneContextFit 那份自写件（写了又删）重新长出来的地方。"
+            },
+            {
+              "id": "hand-rolled-context-trimming",
+              "pattern": "fitContextToBudget|elideOldToolResults|pruneToolResults|trimContextToBudget",
+              "why": "自己裁剪每次请求的消息视图，等于第二个压缩器：失去 pi 的切点规则、摘要和可回放的 compaction 条目；该调的是 laneCompactionSettings 的 reserveTokens / keepRecentTokens。"
             }
           ]
         },
@@ -1097,9 +1113,9 @@
                   },
                   "onError": {
                     "verdict": "debt",
-                    "due": "2026-10-15",
+                    "due": "2026-12-15",
                     "owner": "阶段 · 画布可观测性",
-                    "why": "内核的错误（缺 nodeType、边指向不存在的节点等）现在全落进浏览器 console，没有一条进 Nomi 的日志体系——2026-09-06 盘点的结论正是「无统一落盘日志」。这一格该接，先记债。 2026-09-22 重定到期日 09-21 → 10-15：这一格要的是画布可观测性那条线的落点（内核错误接进哪套日志），阶段还没开工；它一到期就把每个 PR 的 Contracts 打红，所以只挪日期、不动判据，owner 未变。"
+                    "why": "内核的错误（缺 nodeType、边指向不存在的节点等）现在全落进浏览器 console，没有一条进 Nomi 的日志体系——2026-09-06 盘点的结论正是「无统一落盘日志」。这一格该接，先记债。 2026-09-22 重定到期日 09-21 → 10-15：这一格要的是画布可观测性那条线的落点（内核错误接进哪套日志），阶段还没开工；它一到期就把每个 PR 的 Contracts 打红，所以只挪日期、不动判据，owner 未变。 2026-10-01 重定到期日 10-15 → 12-15：技术栈线推到 0.24，这一格跟 S7（画布内核对照），见 docs/plan/2026-10-01-tech-stack-line-0.24.md；判据一字未改，owner 未变。"
                   },
                   "isValidConnection": {
                     "verdict": "unused",
@@ -1125,9 +1141,9 @@
                   },
                   "colorMode": {
                     "verdict": "debt",
-                    "due": "2026-10-15",
+                    "due": "2026-12-15",
                     "owner": "画布交互 · 光暗双模式",
-                    "why": "Nomi 是光/暗双模式（token 翻转），内核这颗恒为默认 'light'——它决定 React Flow 自己那部分 DOM 上的 .dark 类。现在看不出问题是因为内核那部分几乎全被自定义组件盖住了，但「盖住」不是判据。要么接上主题，要么证明它一格都不影响，两件都还没做。 2026-09-15 重定到期日 09-14 → 09-22：这一格要的是设计面裁决（光暗双模式要不要交给内核那部分 DOM），不是工程实现；合并列车期间不替设计面下裁决。它一到期就把每个 PR 的 Contracts 打红，所以只挪日期、不动判据。 2026-09-22 重定到期日 09-22 → 10-15：设计面裁决仍未下，判据一字未改，owner 未变。"
+                    "why": "Nomi 是光/暗双模式（token 翻转），内核这颗恒为默认 'light'——它决定 React Flow 自己那部分 DOM 上的 .dark 类。现在看不出问题是因为内核那部分几乎全被自定义组件盖住了，但「盖住」不是判据。要么接上主题，要么证明它一格都不影响，两件都还没做。 2026-09-15 重定到期日 09-14 → 09-22：这一格要的是设计面裁决（光暗双模式要不要交给内核那部分 DOM），不是工程实现；合并列车期间不替设计面下裁决。它一到期就把每个 PR 的 Contracts 打红，所以只挪日期、不动判据。 2026-09-22 重定到期日 09-22 → 10-15：设计面裁决仍未下，判据一字未改，owner 未变。 2026-10-01 重定到期日 10-15 → 12-15：技术栈线推到 0.24，这一格跟 S7（画布内核对照），见 docs/plan/2026-10-01-tech-stack-line-0.24.md；判据一字未改，owner 未变。"
                   },
                   "debug": {
                     "verdict": "upstream-default",
@@ -1136,9 +1152,9 @@
                   },
                   "ariaLabelConfig": {
                     "verdict": "debt",
-                    "due": "2026-10-15",
+                    "due": "2026-12-15",
                     "owner": "i18n · 内核自带无障碍文案",
-                    "why": "React Flow 自带的 a11y 文案（节点/边的 aria-label、键盘操作说明）是英文常量，而 R15 要求所有用户可见文字走 i18n。自定义组件那部分我们已经用 t() 了（GenerationCanvasReactFlowNodes.tsx:309 起），内核这部分没有——这是 check:i18n 扫不到的一块（它扫的是我们的源码）。 2026-09-15 重定到期日 09-14 → 09-22：这一格要的是 i18n 面裁决（内核自带 a11y 文案归谁、要不要整体替换），不是工程实现；合并列车期间不替 i18n 面下裁决。只挪日期、不动判据。 2026-09-22 重定到期日 09-22 → 10-15：i18n 面裁决仍未下，判据一字未改，owner 未变。"
+                    "why": "React Flow 自带的 a11y 文案（节点/边的 aria-label、键盘操作说明）是英文常量，而 R15 要求所有用户可见文字走 i18n。自定义组件那部分我们已经用 t() 了（GenerationCanvasReactFlowNodes.tsx:309 起），内核这部分没有——这是 check:i18n 扫不到的一块（它扫的是我们的源码）。 2026-09-15 重定到期日 09-14 → 09-22：这一格要的是 i18n 面裁决（内核自带 a11y 文案归谁、要不要整体替换），不是工程实现；合并列车期间不替 i18n 面下裁决。只挪日期、不动判据。 2026-09-22 重定到期日 09-22 → 10-15：i18n 面裁决仍未下，判据一字未改，owner 未变。 2026-10-01 重定到期日 10-15 → 12-15：技术栈线推到 0.24，这一格跟 S7（画布内核对照），见 docs/plan/2026-10-01-tech-stack-line-0.24.md；判据一字未改，owner 未变。"
                   },
                   "zIndexMode": {
                     "verdict": "upstream-default",

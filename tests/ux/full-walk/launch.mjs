@@ -20,6 +20,8 @@ export function readPlaybookEnvironment(env = process.env) {
     variant: env.NOMI_FULL_WALK_VARIANT || 'base',
     locale: env.NOMI_FULL_WALK_LOCALE === 'en' ? 'en' : env.NOMI_FULL_WALK_LOCALE === 'zh-CN' ? 'zh-CN' : null,
     runDir: env.NOMI_FULL_WALK_RUN_DIR || null,
+    // 取证的 run 钉死明暗：App 默认按本地时间「天黑自动暗」，同一份证据白天夜里拍出来就不是同一个主题，改前 / 改后并排时对不上。
+    colorScheme: env.NOMI_FULL_WALK_COLOR_SCHEME === 'light' ? 'light' : env.NOMI_FULL_WALK_COLOR_SCHEME === 'dark' ? 'dark' : null,
   }
 }
 
@@ -83,7 +85,7 @@ export async function startPlaybook({ id, seed = null, needs, locale = 'zh-CN', 
       name: `fw-${id}`,
       seed,
       needs,
-      preferences,
+      preferences: { ...(environment.colorScheme ? { 'nomi-color-scheme': environment.colorScheme } : {}), ...preferences },
       emptyViewport,
       locale: effectiveLocale,
       syntheticCredentialStorage: true,

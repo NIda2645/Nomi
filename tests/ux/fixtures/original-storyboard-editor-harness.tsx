@@ -28,7 +28,7 @@ const planFor = (id: string) => ({ title: `Plan ${id}`, anchors: [], shots: [{ i
   prompt: `Prompt ${id}`, anchorIds: [], durationSec: mediaKind === 'video' ? 5 : 0, modelVendor: 'agent-runtime-loopback',
   modelKey: mediaKind === 'video' ? 'pf-video' : 'agent-runtime-image',
   params: mediaKind === 'video' ? { duration: 5, resolution: '720p' } : { size: '1024x1024' } }] })
-const designs = Object.fromEntries(['a', 'b'].map(id => [id, store.addStoryboardDesign('doc', planFor(id), { id: `design-${id}`, title: `Plan ${id}` })!]))
+const designs = Object.fromEntries(['a', 'b'].map(id => [id, store.addStoryboardDesign({ initiator: 'user', documentId: 'doc', source: planFor(id), identity: { id: `design-${id}`, title: `Plan ${id}` } })!]))
 store.setActiveStoryboardId(designs.a.id, 'doc')
 if (query.has('confirm')) {
   useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [{ id: 'result-node', kind: 'image', title: 'Result', position: { x: 0, y: 0 }, categoryId: 'shots', status: 'success', result: { id: 'result', type: 'image', url: '/favicon.ico', createdAt: 1 }, meta: { storyboardDesignId: designs.a.id, shotId: 'shot-a' } }], edges: [], groups: [] })

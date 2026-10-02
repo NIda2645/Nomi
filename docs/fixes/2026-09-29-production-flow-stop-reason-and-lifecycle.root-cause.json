@@ -1,0 +1,477 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-production-flow-stop-reason-and-lifecycle",
+  "problem_type": "Lifecycle facts owned by nobody: why a production Run stopped was never recorded, the pausing -> paused step lived in each driver, the dispatch check bound the authorization to a value outside the approved scope, and rework/resume failures had no codes",
+  "symptom": "One user path (2026-09-29): confirm the Agent paid card -> anchor stills generate -> approve the look checkpoint -> the video shots never dispatch -> the canvas says \"预算已用完，这镜还没开拍。提额后可继续拍剩下的\" and \"提额续拍\" opens a continuation card whose amounts are all 0 (no prices exist today). Around it: after an emergency stop a multi-shot batch stays \"暂停中\" forever and \"继续剩余\" answers \"操作没成功，请稍后再试 · run status pausing is not resumable\"; a run stopped for restart recovery also reads as \"budget\"; when an anchor fails the Run stays running and every video shot stays \"排队中\"; redoing a failed shot in a stopped batch confirms and charges nothing but never starts; claim-gate refusals are logged as batch-dispatch-failed.",
+  "direct_cause": "(1) electron/productionRun/productionGenerationSubmission.ts prepareAuthorizedSubmission compared authorizationEnvelope.projectRevision with the live project document revision; Nomi's own canvas landing (placeholders, anchor results) advances that revision after approval, so every approve-then-dispatch-later path (checkpoint release, resume, reopen) threw \"Generation authorization no longer matches the current project or Run\" and the shot went needs_attention. (2) electron/shared/productionShotPhase.ts derived the stop reason from run.status === \"needs_attention\" plus job errorCodes (HALT_ERROR_CODES) and defaulted to budget; ProductionShotPlaceholder rendered budget copy and the raise-budget button, and the resume IPC took a renderer-guessed reason. (3) pausing -> paused was settlePauseIfQuiet called at the tail of productionRunDriverOps.driveGeneration (two places); the multi-shot scheduler never called it and appIntegrationRunObservation skipped pausing runs, so the in-flight job was never polled to completion; applyRunControl refused resume from pausing. (4) appIntegrationProductionActions returned { code: \"failed\", message: error.message } and the renderer appended that English text to one generic sentence. (5) multiShotBatchScheduler settled needs_attention only when the whole batch completed, so a failed anchor (checkpoint pending_anchors) left the Run running. (6) Rework on a batch stopped for failure re-authorized the shot but the stopped batch dispatched nothing.",
+  "class_root": "Run lifecycle facts had no owner. Five writer families (old driver x7, multi-shot scheduler x3, single-shot lifecycle x2, service recovery x2, run control x3) moved a Run into needs_attention / pausing / paused / cancelled without saying why, so every reader (canvas, resume entry, Agent) had to re-derive the reason from status and error codes, each differently; the one transition that depends only on durable job state (pausing -> paused) was a call each driver had to remember; the dispatch check verified a live value (the project document revision) instead of the approved scope; and failure reasons were not classified where they happen, so the UI could only say one generic sentence plus the raw text.",
+  "migration": "No schema migration. New stops carry run.stop { reason, at } written by applyRunStatus; runs stopped by an older build have no stop and read as \"unknown\" (never budget; the canvas says \"这次制作停下了\" with a continue button). Runs an older build left in pausing with nothing still at the provider are settled on the next project open: resumeUnfinishedRuns asks settleRunLifecycle whether a step is owed and issues run.lifecycle.settle, which lands paused without inventing a reason. The dispatch check simply stops reading the live revision; envelopes sealed by older builds keep their recorded revision as history. Removed in the same change: settlePauseIfQuiet and its three driver call sites, ACTIVE_JOB_STATUSES, HALT_ERROR_CODES / runIsStopped / STOPPED_RUNS, the projectRevision dependency of createProductionGenerationSubmission, the rework/resume codes on the spend-card result type, the actionFailure.generic and actionFailure.unavailable copy.",
+  "affected_population": [
+    "Every multi-shot batch with anchors confirmed from the Agent paid card or MCP: the checkpoint release could never dispatch the video shots (reported path)",
+    "Every stopped Run shown on the canvas: failed, restart-recovery and legacy stops were all shown as budget with a raise-budget button while no prices exist",
+    "Every multi-shot batch paused with a shot in flight: stuck in pausing, continue refused",
+    "Every rework / resume failure on the canvas: generic sentence plus raw English",
+    "The Agent (MCP nomi_read, in-app task list): could not tell why a Run stopped",
+    "Users upgrading with a Run an older build left in pausing"
+  ],
+  "scope_paths": [
+    "electron/productionRun/",
+    "electron/shared/productionRunStop.ts",
+    "electron/shared/productionShotPhase.ts",
+    "electron/shared/decideShotClaim.ts",
+    "electron/capabilityCore/appIntegrationProductionActions.ts",
+    "electron/capabilityCore/appIntegration.ts",
+    "electron/capabilityCore/appIntegrationRunObservation.ts",
+    "electron/capabilityCore/mcpToolResults.ts",
+    "electron/agentLane/laneDesktopTasks.ts",
+    "src/workbench/production/productionShotActions.ts",
+    "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx"
+  ],
+  "entry_points": [
+    "Stop writers (every run.status into a stopped status): electron/productionRun/productionRunDriverOps.ts (7), electron/productionRun/multiShotBatchScheduler.ts (budget halt, failed units), electron/productionRun/singleShotRunLifecycle.ts (2), electron/productionRun/productionRunService.ts resumeUnfinishedRuns (2), electron/productionRun/productionRunControl.ts applyRunControl (pause / cancel); renderer run.status via electron/productionRun/productionRunIpc.ts (reason stripped by the whitelist)",
+    "Stop readers: electron/shared/productionShotPhase.ts deriveProductionShotState (canvas), electron/capabilityCore/appIntegrationProductionActions.ts (continue / redo), electron/productionRun/productionRunProjections.ts -> electron/capabilityCore/mcpToolResults.ts (Agent run read), electron/agentLane/laneDesktopTasks.ts (Agent task list), electron/shared/decideShotClaim.ts and electron/productionRun/batchScheduleDerivation.ts (stopped set)",
+    "pausing -> paused: every command that settles the last job still at the provider (scheduler observe, old driver, single-shot observation, recovery), plus runs an older build left in pausing",
+    "Dispatch authorization: electron/productionRun/productionGenerationSubmission.ts prepareAuthorizedSubmission, reached from the scheduler (checkpoint release, resume, reopen kick), single-shot start and the MCP stdio server",
+    "Canvas actions: src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx (继续剩余), NodeResultStack.tsx and useProductionNodeRetry.ts (重做这一镜) -> electron/productionRun/productionActionIpc.ts -> electron/capabilityCore/appIntegrationProductionActions.ts"
+  ],
+  "invariants": [
+    "A Run enters a stopped status only through applyRunStatus, and a new stop without payload.reason is refused; the reason is recorded as run.stop at that moment and cleared when the Run moves again.",
+    "Every reader of why a Run stopped (canvas, continue / redo, Agent run read, Agent task list) reads runStopReason; nothing infers it from status or error codes; a stop without a recorded reason reads as unknown, never budget.",
+    "No Run stays in pausing once nothing is still at the provider: the step lands in the same repository write as the command that settled the last job, whichever driver wrote it; on project open the same owner settles runs an older build left behind.",
+    "After a continue, the driver that owns the Run is woken (wakeRunDriver); a kick that arrives while a drive is running is remembered and replayed when it ends.",
+    "Dispatch verifies exactly the approved scope sealed in the envelope (project identity, run, plan version, gate, and per job contract hash, provider, model, attempt, idempotency key, wire payload hash, references, price ceiling, expiry) and never a live document value.",
+    "A multi-shot batch at rest stops for budget if the derivation halts it, and for failure if some unit's current attempt failed and nobody is being asked to look at the stills; a superseded failed attempt does not count.",
+    "Every rework / resume failure reaches the UI as a code of ProductionShotActionFailure, rendered from one exhaustive catalog; no main-process text and no catch-all sentence reach the screen."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneDesktopTasks.ts",
+      "symbol": "runStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "ProductionShotActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "GenerationReworkRefusedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "ProductionRunControlRefusedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "ProductionShotActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "runStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "retryLiftsStop"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "GenerationContinuationNotNeededError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationRunObservation.ts",
+      "symbol": "kickedDuringDrive"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpToolResults.ts",
+      "symbol": "ProductionRunStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpToolResults.ts",
+      "symbol": "isStillAtProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "isStoppedRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "GenerationReworkRefusedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "GenerationContinuationNotNeededError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "ProductionShotActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunControl.ts",
+      "symbol": "ProductionRunControlRefusedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunLifecycle.ts",
+      "symbol": "ProductionRunStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunLifecycle.ts",
+      "symbol": "isStoppedRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunLifecycle.ts",
+      "symbol": "isStillAtProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunProjections.ts",
+      "symbol": "runStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "isStillAtProvider"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunState.ts",
+      "symbol": "RUN_TRANSITIONS"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "ProductionRunStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/singleShotRunLifecycle.ts",
+      "symbol": "RUNNING_SOURCES"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/decideShotClaim.ts",
+      "symbol": "isStoppedRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionRunStop.ts",
+      "symbol": "ProductionRunStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionRunStop.ts",
+      "symbol": "isStoppedRunStatus"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "ProductionRunStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "runStopReason"
+    },
+    {
+      "kind": "read",
+      "path": "src/desktop/productionRunBridgeTypes.ts",
+      "symbol": "ProductionShotActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionRunApi.ts",
+      "symbol": "ProductionShotActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionShotActions.ts",
+      "symbol": "ProductionShotActionResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/production/productionShotActions.ts",
+      "symbol": "SHOT_ACTION_FAILURE_COPY"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "submissionReadinessForRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "productionShotActionFailureOf"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "stopRun"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "settleAtRest"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "prepareAuthorizedSubmission"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunDriverOps.ts",
+      "symbol": "executeInternal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunLifecycle.ts",
+      "symbol": "settleRunLifecycle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "applyRunStatus"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "applyOwedLifecycleStep"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "settleRunLifecycle"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "executeInternal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "wakeRunDriver"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "settleRunLifecycle"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeResultStack.tsx",
+      "symbol": "reworkProductionShot"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/useProductionNodeRetry.ts",
+      "symbol": "reworkProductionShot"
+    }
+  ],
+  "door_reduction": {
+    "before": 29,
+    "after": 55,
+    "why_not": "Before = 29 (door-map on the f91ae82ad snapshot over the comparable symbols: settlePauseIfQuiet, prepareAuthorizedSubmission, executeInternal, resumeProductionBatch, reworkProductionShot, haltRun, settleAttentionIfUnitsFailed, ACTIVE_JOB_STATUSES, HALT_ERROR_CODES, runIsStopped, STOPPED_RUNS, RUN_TRANSITIONS, RUNNING_SOURCES, ProductionActionResult). That count hides the defect: the stop reason had no writer at all and each reader re-derived it inline, and the pause settle had two driver doors while the third driver had none. After = the doors below. Per fact there is now one writer: applyRunStatus (every stop, via the reducer), settleRunLifecycle (the repository write path; resumeUnfinishedRuns only asks it and issues run.lifecycle.settle), wakeRunDriver, settleAtRest/stopRun inside the scheduler, prepareAuthorizedSubmission, productionShotActionFailureOf. The remaining write doors are the existing stop writers (executeInternal callers in the driver and service, the single-shot lifecycle) that must each still decide to stop and now say why, and the two canvas actions with their IPC; the read doors are consumers of the single owners (canvas, continue / redo, Agent projection and task list, claim and derivation stopped set, in-flight exposure, the typed errors the classifier recognises). They are separate surfaces that each need the fact; merging them would move UI and IPC concerns into the ledger."
+  },
+  "regression_tests": [
+    "electron/productionRun/productionRunStopReason.e2e.test.ts",
+    "electron/capabilityCore/appIntegrationProductionActions.test.ts",
+    "src/workbench/production/productionShotActions.test.ts",
+    "electron/shared/productionShotPhase.test.ts",
+    "electron/capabilityCore/appIntegrationRunObservation.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
+    "electron/productionRun/multiShotCanvasLanding.test.ts"
+  ],
+  "residual_risks": [
+    "Approval-time binding: decideRunOwnedGenerationGate / verifySuppliedReceipt still require the live project revision to equal the envelope's at the moment the user confirms. If a sibling shot lands on the canvas while a redo or continuation dialog is open, the confirmation is refused (shown as approval_stale, nothing charged). Same class as the dispatch binding fixed here; it belongs to the paid-card approval lane that follows this PR, so it is deliberately not changed here.",
+    "A queued anchor deleted from the canvas still holds the look checkpoint (pending_anchors with no failed unit), so the batch rests without stopping; options are written in the PR body and not implemented (coordinator decision).",
+    "A legacy (non-semantic playbook) Run that was pausing with a job in flight at shutdown now settles to paused when recovery marks the job submission_unknown, so the later needs_attention(restart_recovery) is refused by the state machine; the job itself still shows submission_unknown and continuing re-runs reconciliation. Legacy playbooks no longer start new runs.",
+    "internal_error remains for violations of Nomi's own invariants (bugs); it says so, says nothing was charged and points to Feedback & share, and the error is logged at ERROR in the main process."
+  ],
+  "internal_only_reason": "Pure internal lifecycle and state ownership inside Nomi's own production ledger, scheduler, dispatch and IPC; no third-party API or format behavior is involved.",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new driver, recovery path or IPC entry that stops a Run, settles the last job of a paused batch, dispatches after a later approval, or fails an action would reproduce the same symptoms, because before this change each of those facts had to be re-derived or re-implemented at the caller.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs settlePauseIfQuiet ACTIVE_JOB_STATUSES HALT_ERROR_CODES runIsStopped STOPPED_RUNS prepareAuthorizedSubmission on the f91ae82ad snapshot: 7 doors (driver pause settles productionRunDriverOps.ts:432/575, inference productionShotPhase.ts:197/199/210, stopped set decideShotClaim.ts:89-108, in-flight table mcpToolResults.ts:556 and productionRunControl.ts:23/52, dispatch check productionGenerationSubmission.ts:458)",
+      "Every run.status write into a stopped status was scanned by hand from the reducer's transition table and now passes a reason: productionRunDriverOps.ts (7), singleShotRunLifecycle.ts (2), productionRunService.ts (2), multiShotBatchScheduler.ts stopRun, productionRunControl.ts (pause / cancel); the renderer cannot stop a Run because productionRunIpc.ts strips reason from run.status",
+      "Post-fix door map with explicit read/write classification (node scripts/door-map.mjs --write=applyRunStatus,settleRunLifecycle,applyOwedLifecycleStep,wakeRunDriver,productionShotActionFailureOf,prepareAuthorizedSubmission,stopRun,settleAtRest,executeInternal,submissionReadinessForRun,resumeProductionBatch,reworkProductionShot --read=runStopReason,isStoppedRunStatus,isStillAtProvider,retryLiftsStop,SHOT_ACTION_FAILURE_COPY,RUN_TRANSITIONS,ProductionRunStopReason,ProductionShotActionResult,ProductionRunControlRefusedError,GenerationReworkRefusedError,GenerationContinuationNotNeededError,kickedDuringDrive,RUNNING_SOURCES): 55 doors, 22 write / 33 read; every production file this change touches is on it"
+    ]
+  },
+  "generality_proof": "Each fix sits at the boundary every caller already crosses. Every stop goes through the run.status reducer, so applyRunStatus sees all of them and refuses a silent one (tested); readers only have runStopReason. Every durable write goes through productionRunRepository.executeUnlocked, so settleRunLifecycle sees the last job settle no matter which driver wrote it (tested with a bare job.status write that touches no driver), and resumeUnfinishedRuns covers old data that no command will ever touch again (tested with a legacy journal line). Every provider dispatch goes through prepareAuthorizedSubmission, which now has no live-document input at all, so no later path can re-bind it. Every canvas action result crosses one IPC pair that never throws and one exhaustive catalog typed with satisfies Record, so a new failure without copy fails typecheck. The batch rest verdict is one function called from every quiescent return of the scheduler, fed by the pure derivation.",
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/productionRunLifecycle.ts",
+    "tests": [
+      "electron/productionRun/productionRunStopReason.e2e.test.ts",
+      "electron/capabilityCore/appIntegrationProductionActions.test.ts"
+    ],
+    "why": "The run lifecycle module owns the stop fact (applyRunStatus), the automatic pausing -> paused step (settleRunLifecycle, hooked into the repository write path) and which stops a redo lifts (retryLiftsStop); the stop-reason e2e drives the real repository, scheduler and submission, and the action test drives the real service with a real receipt authority."
+  },
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/productionRunLifecycle.ts",
+      "symbol": "applyRunStatus",
+      "responsibility": "The only way into a stopped status: records run.stop from payload.reason, refuses a new stop without a reason, carries the recorded reason between stopped states and clears it when the Run moves."
+    },
+    {
+      "path": "electron/productionRun/productionRunLifecycle.ts",
+      "symbol": "settleRunLifecycle",
+      "responsibility": "The pausing -> paused step, evaluated after every repository write and on project open; no driver settles a pause."
+    },
+    {
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "wakeRunDriver",
+      "responsibility": "Chooses which driver a continued Run needs (batch scheduler for semantic multi-shot, driveGeneration otherwise)."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "prepareAuthorizedSubmission",
+      "responsibility": "Dispatch verifies exactly the approved envelope scope and no live document value."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "productionShotActionFailureOf",
+      "responsibility": "Classifies every rework / resume failure by error type or errno into ProductionShotActionFailure; never reads the message."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "entry_point": "settleAtRest",
+      "disposition": "enforced",
+      "evidence": "Budget and failure stops pass their reason through applyRunStatus; the failed-anchor rest now stops the batch (productionRunStopReason.e2e.test.ts first case) and the pause settle call was deleted (pause case settles through the write path)."
+    },
+    {
+      "path": "electron/productionRun/productionRunDriverOps.ts",
+      "entry_point": "driveGeneration",
+      "disposition": "enforced",
+      "evidence": "All seven needs_attention writes pass reason failed; both settlePauseIfQuiet calls were replaced by a plain read, the settle now lands in the repository write."
+    },
+    {
+      "path": "electron/productionRun/singleShotRunLifecycle.ts",
+      "entry_point": "settleSingleShotAttention",
+      "disposition": "enforced",
+      "evidence": "Both stop writes pass reason failed through the same reducer."
+    },
+    {
+      "path": "electron/productionRun/productionRunService.ts",
+      "entry_point": "resumeUnfinishedRuns",
+      "disposition": "enforced",
+      "evidence": "Recovery stops pass restart_recovery; legacy pausing runs are settled via run.lifecycle.settle (legacy case in productionRunStopReason.e2e.test.ts)."
+    },
+    {
+      "path": "electron/productionRun/productionRunControl.ts",
+      "entry_point": "applyRunControl",
+      "disposition": "enforced",
+      "evidence": "Pause and cancel pass user_paused / user_cancelled; resume is allowed from pausing; the second settle write was deleted; refusals are typed (ProductionRunControlRefusedError)."
+    },
+    {
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "entry_point": "run.status (renderer)",
+      "disposition": "not-affected",
+      "evidence": "The whitelist forwards only status (awaiting_export from the rough-cut review), never reason, so a renderer stop would be refused by applyRunStatus; renderer stops go through run.control."
+    },
+    {
+      "path": "electron/capabilityCore/mcpStdioServer.ts",
+      "entry_point": "createProductionGenerationSubmission",
+      "disposition": "enforced",
+      "evidence": "The MCP stdio server builds the same submission without a projectRevision dependency, so its dispatch uses the same scope check."
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/productionRun/productionRunLifecycle.ts",
+    "invariant": "Stopping a Run requires a recorded reason written by one function; the only automatic lifecycle step runs in the one repository write path; readers only read the recorded fact.",
+    "failure_mode": "A caller that stops a Run without a reason gets \"run.status <status> needs a stop reason\" and nothing is written; a new failure code without copy fails typecheck (satisfies Record); an unclassified exception is logged at ERROR and shown as internal_error, never as raw text.",
+    "exception_policy": "none",
+    "strategy": "Move each lifecycle fact to the boundary every caller already crosses (reducer for stops, repository write for the pause settle, dispatch for the approved scope, IPC plus one catalog for action failures) and delete the per-caller copies.",
+    "artifacts": [
+      "electron/productionRun/productionRunLifecycle.ts",
+      "electron/shared/productionRunStop.ts",
+      "electron/productionRun/productionRunRepository.ts",
+      "electron/productionRun/productionRunReducer.ts",
+      "electron/productionRun/multiShotBatchScheduler.ts",
+      "electron/productionRun/batchScheduleDerivation.ts",
+      "electron/productionRun/productionGenerationSubmission.ts",
+      "electron/productionRun/productionRunService.ts",
+      "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "src/workbench/production/productionShotActions.ts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/productionRun/productionRunStopReason.e2e.test.ts",
+    "electron/capabilityCore/appIntegrationProductionActions.test.ts",
+    "src/workbench/production/productionShotActions.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/productionRun/productionRunControl.ts",
+      "electron/productionRun/productionRunDriverOps.ts",
+      "electron/shared/productionShotPhase.ts",
+      "electron/shared/decideShotClaim.ts",
+      "electron/productionRun/productionGenerationSubmission.ts",
+      "src/i18n/locales/generationCommon.ts"
+    ],
+    "rationale": "Removed in the same change: settlePauseIfQuiet and ACTIVE_JOB_STATUSES (productionRunControl.ts) with both driver calls (productionRunDriverOps.ts) and the scheduler wrapper; HALT_ERROR_CODES / runIsStopped (productionShotPhase.ts) and STOPPED_RUNS (decideShotClaim.ts); the projectRevision dependency and dispatch comparison (productionGenerationSubmission.ts); the generic and unavailable action-failure copy (generationCommon.ts). None survives as a fallback."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency is involved; the invariants are enforced in Nomi's own ledger, scheduler and IPC.",
+    "exit_criteria": []
+  }
+}

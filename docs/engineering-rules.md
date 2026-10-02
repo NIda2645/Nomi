@@ -76,17 +76,19 @@
 
 写完用户能预读/反驳；执行完回填结果。
 
-## R5 先查别人（一条规则，五个触发面 · 含旧 R6 / R20 / R29 / R31）
+## R5 P0 的执行：怎么找到现成的（一条规则，五个触发面 · 含旧 R6 / R20 / R29 / R31）
 
-**一句话**：动手前先去看别人已经做好的是什么——**凭记忆判断 = 没查**。
+**一句话**：动手前先去看别人已经做好的是什么——**凭记忆判断 = 没查**；**查完的结论默认是接入（P0），自写才是要登记的例外**。
+
+**P0 与 R5 的分工**（2026-10-01）：P0 是原则（Nomi 自己写的只有领域本身）；R5 是执行手册（怎么找到现成的）。此前 R5 写成了一个动作——查完写一节、照样自写——所以 #945 引了出处照样自写了 `laneContextFit`。现在默认值反过来：领域目录（`docs/engineering/self-written.json` 的 `domainRoots`）里写代码不需要任何手续；领域目录之外新增模块 = 自写一项通用能力，必须登记（`entries`：查过哪些现成方案带出处、为什么不接入只认领域约束、什么时候重新评估），登记表的变化才触发 R5.2 的查证文档要求。
 
 **为什么是一条规则而不是五条**：R5 / R6 / R20 / R29 / R31 约束的是同一个动作，只有触发面和交付物不同。分成五个号的代价看得见：旧 R31 不得不自带一张四行表来解释自己和另外三条的区别——**需要一张表解释四条规则怎么区分，就是它们该合并的证据**。合并后 L1 只记一条，「这次属于哪一档」到下表查。
 
 | 档 | 触发面 | 交付物 | 门岗 | 旧号 |
 |---|---|---|---|---|
 | R5.1 | 用第三方库 / 框架 / 模型的某个 API | Context7（或官方站）实查，照官方语义写 | `model-doc-check.sh` hook、`check:archetype-sources` | R5 |
-| R5.2 | 做方案 | 同用户任务/同媒介/同载体的近邻开源，给 `file:line`；派工前的反方 prior-art 报告 | `check:prior-art` | R6 |
-| R5.3 | 要写一段**通用能力** | build-vs-buy 三问的答案（通用吗 / 别人怎么做 / 在不在护城河上）| — | R20 |
+| R5.2 | 做方案 | 同用户任务/同媒介/同载体的近邻开源，给 `file:line`；派工前的反方 prior-art 报告。**只有引入通用能力（自写登记表有变化）时才强制**，领域方案不要求这一节；写了就必须带 ≥3 条出处 | `check:prior-art` | R6 |
+| R5.3 | 要写一段**通用能力** | build-vs-buy 三问的答案（通用吗 / 别人怎么做 / 在不在护城河上），结论默认接入；确要自写 → 登记进 `docs/engineering/self-written.json` | `check:self-written`（领域目录外新增文件无登记即报，`enforceFrom` 前警告、后阻断） | R20 |
 | R5.4 | 引入/接入/升级框架 SDK 运行时**或它没用过的层** | 四列表 + 参考实现逐层对照 + framework-surface 逐字段裁决，三份都进 `framework-boundaries.json` | `check:framework-boundary`、`check:framework-surface`、`check:dependency-capabilities` | R29 |
 | R5.5 | **外部也读写**的格式 / 协议 / 契约 | 「规范链接 / 我们的偏差 / 偏差理由」三格，登记进 `standard-formats.json` | `check:standard-formats` | R31 |
 
@@ -624,6 +626,7 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 3. 做 R14.1「同一语义有几份定义」横扫
 4. 落 `docs/audit/<date>-*.md`：现状 + 分级问题（带 file:line）+ 立即/中期/长期路线
 5. 清掉 P0，方案级取舍留用户拍板（R3）；关键论断亲自实跑核实
+6. **自写登记复查**（P0）：`docs/engineering/self-written.json` 里 `status` 为 `to-replace` / `under-review` 的、`revisitBy` 到期的、以及「框架后来已经提供了」的项，逐条列进替换计划（`pnpm run audit:self-written` 列清单）；复查结论改登记表，不许只在审计文档里说
 
 ### R14.1 固定维度：同一语义有几份定义
 
@@ -899,13 +902,29 @@ pnpm run delivery:verify-merged -- --expected-sha <merge-commit-sha>
 
 **填 `none` 是允许的、诚实的答案**——代价是必须附一份结构工单。这条的全部意义就是：让「没人管」变成一条**记在账上的债**，而不是无声地成为没人管。老合同按日期阈值豁免（`scripts/root-cause-contracts.mjs` 的 `INVARIANT_OWNER_LAYER_SINCE`），追溯只会把 200 多份历史合同一次性打红。
 
-### R21.2 同一层七天内第三份合同 = 先出结构评审，不是再修一次（2026-09-07）
+### R21.2 重写判据：同一处被反复补，先选「补 / 重写 / 删」并钉住旧行为（2026-09-07；2026-10-02 起与「同一层七天内第三份合同」合并）
 
-根因流程是**逐件**执行的：每份合同都诚实地问过「同类问题还能不能从别的入口回来」，但它问的范围是那一件事。「这个模块这周已经是第三份合同了」这个信号**此前没有 owner**——每个修的人只看得见自己那一件，而三件挨着出现恰恰是「这一层的结构不对」最便宜的证据。人不会去数，那是机器的活。
+> **试用到 2026-10-15，用我们自己的提交历史回测校准。** 下面的 14 天、第 3 次、「第三个特例」都是试用值，没有权威数字（调研报告 §五）。校准办法：对近 90 天每个被改动 ≥3 次的文件，看第三次之后是否又出现第四、五次 fix，据此调阈值；`.claude/reuse-reminders.log` 里的触发记录是另一半数据。校准前提醒只是提醒，不拦。
 
-**门岗**：`pnpm run check:symptom-cluster`（`scripts/check-symptom-cluster.mjs`，判据在 `scripts/symptom-cluster-lib.mjs`）。同一模块键（路径前两段，如 `electron/harness`）在 **7 天窗口**内累计 **≥3 份**根因合同 → 红，要求存在一份日期不早于该窗口最后一份合同、且正文点名该模块的 `docs/audit/*.md` 结构评审。整簇都在 2026-09-07 之后才受管；历史聚簇（当前 37 个）报出来但不追溯。
+**为什么**：同一处被反复补，往往是抽象选错了（Sandi Metz：参数加条件分支就是抽象错了）；只靠提示压不住修补堆积（SlopCodeBench）。根因流程又是**逐件**执行的——每份合同都问过「同类问题还能不能从别的入口回来」，但问的范围是那一件事，「这一处这周已经是第三次了」这个信号此前没有 owner，人也不会去数。
 
-**门岗只判做没做，不判做得好不好**——一道试图判质量的门岗会开始误判，然后被绕过（R17）。评审的分量是人的验收项。
+**判据（出现任一条就停止打补丁）**：① 同一文件 14 天内第三次因 bug 修改；② 要给现有函数加第三个特例分支或参数；③ 改一处要读两处以上的旁路逻辑。
+
+**此时必须选定「补 / 重写 / 删」之一，并给出特征测试路径**：
+- 选**重写**：先写特征测试钉住旧行为（Feathers——它只能发现变化，不能证明结果正确；反方 Spolsky：旧代码里埋着大量 bug 修复，所以先钉住再动）；范围限**一个模块**（Strangler Fig，不重写整个系统）；**同一次提交删掉旧的**（P1）。
+- 选**补**或**删**：同样写明特征测试，说明为什么不重写。
+
+**怎么落在合同里（机器管的部分，不再交评审文档）**：根因合同可带
+
+```json
+"rewrite_decision": { "decision": "patch | rewrite | delete", "characterization_test": "<特征测试路径>" }
+```
+
+- 字段本身可选；**同一模块键（路径前两段，如 `electron/harness`）7 天窗口内累计 ≥3 份根因合同**时，`pnpm run check:symptom-cluster`（`scripts/check-symptom-cluster.mjs`，判据在 `scripts/symptom-cluster-lib.mjs`）要求簇里**最新那份**合同带有效的 `rewrite_decision`。整簇都在 2026-10-02 之后才受管；更早的聚簇已按旧规矩（结构评审文档）处理过，不追溯，**评审文档这条路已删，不并存**。
+- 写了就必须成立（`check:root-cause-contracts`，`scripts/root-cause-contracts.mjs` 的 `validateRewriteDecision`）：选项在 patch / rewrite / delete 里；`characterization_test` 是存在的测试文件；**选 rewrite 时那份测试必须出现在本次 diff 里**。
+- **门岗只判做没做，不判做得好不好**——一道试图判质量的门岗会开始误判，然后被绕过（R17）。选得对不对是人的验收项。
+
+**动手那一刻的提醒（只提醒、不拦、出错静默放行）**：`scripts/claude-hooks/edit-time-reminder.sh`（PreToolUse · Write|Edit）——改的文件近 14 天已有 ≥3 次 fix 提交时，提醒先过本判据；在 `src/`、`electron/` 新建文件时，附一份接口级「已有能力清单」（`scripts/build-capability-index.mjs` 从 `concept-owners.json` 与 `framework-boundaries.json` 现算）并要一行「已查过 / 没找到」。提醒随工具结果一起到，不是写入前；它让 agent 立刻自查，拦不住这一次写入。
 
 **派工/自验清单必须显式点名本闸（2026-09-01 教训）**：凡改动触及 electron/ 高风险 pattern（`*ipc.ts` / `*store.ts` / `runtime.ts` / catalog 核心 / validator 等），任务 brief 与自验清单必须写明「跑 `pnpm run check:root-cause-contracts`、改动作者自写契约」——不点名就会漏：曾有 4 个返工 PR 因 brief 验证档只列 typecheck/lint/focused，集体被本闸拦下返场补契约（同批次里自写了契约的 2 个 PR 一次过闸）。
 
@@ -950,7 +969,7 @@ R21.1 问「这条不变量归哪层管」，R21.2 问「这一层这周是不�
 - 老合同按日期阈值豁免（`scripts/root-cause-contracts.mjs` 的 `DOOR_MAP_SINCE`），追溯只会把 400 份历史合同一次性打红。
 
 派工侧的另一半（复发类修复先派数门工人、任务书与 PR 必须引用门表）见 R27 与
-[`docs/engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)，门岗是 `check:door-map`。
+[`docs/engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)。2026-10-01 起门岗 `check:door-map` 已并入 `check:root-cause-contracts`：合同的 `doors` 校验（必填、path 存在、符号对得上）一直在后者，被删的只是「PR 正文必须引用合同」那一半（用户按门岗账本拍板，门表由脚本生成，不再靠正文宣告）。
 方案：[`docs/plan/2026-09-11-door-map-rule.md`](plan/2026-09-11-door-map-rule.md)。
 
 ## R22 验证分层与测试预算

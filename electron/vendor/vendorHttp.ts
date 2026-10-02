@@ -9,11 +9,12 @@ import {
   looksLikeLogicalError,
   redactRequestSecrets,
 } from "../ai/requestPipeline";
-import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamMessage } from "../jsonUtils";
+import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamCode, pickUpstreamMessage } from "../jsonUtils";
 import { fetchVendorWithBaseFallback } from "./vendorBaseFallback";
 import type { Vendor } from "../catalog/types";
 import { vendorAuthSpec } from "../catalog/vendorAuthSpec";
-import { networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
+import { isRedirectRefusal, networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
+import { tagNomiError } from "../shared/nomiErrorCodes";
 import { BoundedResponseError, readBoundedResponseBytes } from "./boundedResponse";
 import { providerDispatcher } from "../providerNetwork";
 import { authorizeSubmitDestination } from "./vendorOutboundGuard";
@@ -58,6 +59,11 @@ export type VendorErrorStructured = {
   logicalCode?: number | string;
   /** 上游原话,截 256(防日志爆炸,§4.3)。 */
   upstreamMsg: string;
+  /**
+   * 上游**自己给的错误码**（`model_not_found` 这一类字符串标识；没有就不写）。状态码只说「请求有问题」，
+   * 这个码才是它说的原因——渲染层分类优先读它（classifyError 的 UPSTREAM_CODE_KINDS），不靠 400 猜「参数不对」。
+   */
+  upstreamCode?: string;
   /** 查表分类,不是猜:401/403→auth,402→balance,429→quota,400/422→input,5xx→server。 */
   category: VendorErrorCategory;
   retryable: boolean;
@@ -235,6 +241,18 @@ async function requestVendor(
     // abort = 我们的超时，给一条说人话的 timeout 错误（仍归 network 类、可重试），而不是裸 "aborted"。
     const aborted = (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"))
       || (error instanceof BoundedResponseError && error.code === "response_timeout");
+    // 带密钥的请求被跳转：appFetch 按「凭据请求不跟随跳转」拒了。不是网络问题，重试只会再撞同一个跳转。
+    if (isRedirectRefusal(error)) {
+      const upstreamMsg = tagNomiError("credential-redirect", "provider endpoint redirected; request stopped to protect the key");
+      throw new VendorRequestError(`Provider request refused redirect at ${vendor.key} ${upperMethod} ${diagnosticUrl}: ${upstreamMsg}`, {
+        vendorKey: vendor.key,
+        method: upperMethod,
+        url: diagnosticUrl,
+        upstreamMsg,
+        category: "network",
+        retryable: false,
+      });
+    }
     const upstreamMsg = aborted
       ? `请求超时（${Math.round(timeoutMs / 1000)}s 无响应）`
       : networkMessage(error);
@@ -323,6 +341,7 @@ async function requestVendor(
     // and status so the failure is diagnosable instead of opaque.
     const detail = rawUpstream && rawUpstream !== "No message available" ? rawUpstream : `(no detail from provider)`;
     const { category, retryable } = categorizeVendorFailure(response.ok ? undefined : response.status, logicalCode ?? undefined);
+    const upstreamCode = pickUpstreamCode(record);
     throw new VendorRequestError(`Provider request failed (${statusLabel}) at ${vendor.key} ${upperMethod} ${diagnosticUrl}: ${detail}`, {
       vendorKey: vendor.key,
       method: upperMethod,
@@ -330,6 +349,7 @@ async function requestVendor(
       ...(response.ok ? {} : { httpStatus: response.status }),
       ...(logicalCode != null ? { logicalCode } : {}),
       upstreamMsg: detail.slice(0, 256),
+      ...(upstreamCode ? { upstreamCode } : {}),
       category,
       retryable,
     });

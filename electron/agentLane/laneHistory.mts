@@ -12,7 +12,7 @@ import type { LaneHandle } from '../shared/agentLane/laneContracts.js';
 import { projectLaneSnapshot } from '../shared/agentLane/laneProjection.js';
 import { openLaneSession } from './laneSession.mjs';
 
-export async function openLaneHistory(options: Pick<OpenLaneOptions, 'projectDir' | 'laneName' | 'tasks'>): Promise<LaneHandle> {
+export async function openLaneHistory(options: Pick<OpenLaneOptions, 'projectDir' | 'laneName' | 'tasks' | 'attachments'>): Promise<LaneHandle> {
   const context = BACKGROUND_CONTEXT;
   const opened = await openLaneSession(options, context);
   const laneName = options.laneName ?? 'main';
@@ -33,7 +33,7 @@ export async function openLaneHistory(options: Pick<OpenLaneOptions, 'projectDir
       configuration: { model: { provider: '', modelId: '' }, thinkingLevel: 'off', activeToolNames: [] },
     };
     const model = { pricing: 'unpriced' as const, supportedThinkingLevels: ['off' as const] };
-    let projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId()), history: history.state() };
+    let projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId(), options.attachments), history: history.state() };
     const listeners = new Set<(next: typeof projection) => void>();
     const unavailable = () => { throw new Error('Model is not configured'); };
     let closing: Promise<void> | undefined;
@@ -47,7 +47,7 @@ export async function openLaneHistory(options: Pick<OpenLaneOptions, 'projectDir
         if (command.kind === 'abort') return {};
         if (command.kind === 'history-older') {
           await history.older(command.before);
-          projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId()), history: history.state() };
+          projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId(), options.attachments), history: history.state() };
           for (const listener of listeners) listener(projection);
           return {};
         }
@@ -55,7 +55,7 @@ export async function openLaneHistory(options: Pick<OpenLaneOptions, 'projectDir
       },
       appendTaskNote: async () => unavailable(),
       refreshTasks: () => {
-        projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId()), history: history.state() };
+        projection = { ...projectLaneSnapshot(snapshot, model, undefined, options.tasks, history.entries(), history.previousInputId(), options.attachments), history: history.state() };
         for (const listener of listeners) listener(projection);
       },
       close: () => closing ??= (async () => {

@@ -23,10 +23,12 @@ import { parseModelListPage, type ModelListResult, type ModelListDescriptor, typ
 import { modelListErrorRedactor } from "./modelListSafety";
 import { createExplicitProxyDispatcher } from "../../systemProxy";
 import { desktopT } from "../../desktopStrings";
+import { isRedirectRefusal } from "../../networkErrorDetails";
 import type { Dispatcher } from "undici";
 export type { ModelListFailureKind } from "./modelListResponse";
 
 export async function describeNetworkErrorLazy(error: unknown): Promise<string> {
+  if (isRedirectRefusal(error)) return desktopT("network.credentialRedirect");
   const { describeNetworkError } = await import("../../systemProxy");
   // 这句话直接出现在设置页地址栏下面（连接状态说明），不能是英文原话（2026-09-29）。
   return desktopT("network.unreachable", { reason: describeNetworkError(error) });

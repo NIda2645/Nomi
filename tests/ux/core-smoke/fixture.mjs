@@ -227,6 +227,8 @@ export function buildCoreSmokeProject({ fixture, projectsDir, name, seed }) {
     // 用过的项目：连文档 / 分镜方案 / 分类都用真实快照里那份（它们是用户真的写过的东西）。
     ? { ...structuredClone(snapshot.payload), timeline }
     : { categories: structuredClone(snapshot.payload.categories), timeline }
+  // 场景自带的整块 payload 补丁（如分镜方案 + 文稿）：只在场景声明了才有，其余场景一个字节不变。
+  if (own.payload) Object.assign(payload, own.payload)
   payload.generationCanvas = {
     nodes: [...ownNodes, ...background.nodes],
     edges: [...ownEdges, ...background.edges],

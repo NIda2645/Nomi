@@ -1,0 +1,167 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-30-shot-phase-every-state-has-a-marker",
+  "problem_type": "The shot-phase owner answered \"nothing to show\" (null) for several real states and called a shot without any job queued, so a canvas test that counts one marker per production placeholder lost a marker when #934 stopped guessing stop reasons, and an unapproved shot could still read as queued",
+  "symptom": "tests/ux/p4-s5-canvas-landing.e2e.mjs S5 on main after #934: \"适应视图 + 缩小后仍不足 4 个占位\". All 4 placeholder nodes were on the canvas, but only 2 carried data-shot-placeholder-state (both queued); shot-1 showed the generating surface and shot-3 carried nothing. On ae47842f5 (the parent before #934) S5 passed. Separately (2026-09-30 user report, paid card item 12): a video node that nobody had confirmed showed 排队中 · 第 1/1.",
+  "direct_cause": "#934 made \"stopped\" read only the reason the Run recorded when it stopped (run.stop) instead of guessing it from a job error code. The S5 fixture built its stopped shot the old way — Run still running, one job needs_attention with errorCode budget_exhausted — so shot-3 now derives failed, which is drawn by the node's own run record (written by the landing projection, not by this e2e), and the placeholder rendered nothing. The same owner also returned queued for any included shot without a job once the plan was submitted, and null for drafts, waiting cards and never-approved shots.",
+  "class_root": "deriveProductionShotState used null for three different real states (waiting for the user, never approved, not in the batch) and used \"no job\" as evidence of being queued. The scheduler only dispatches shots that have a job (batchScheduleDerivation.needsDispatch), so \"no job → queued\" is a promise that never comes true, and \"null → draw nothing\" left the canvas unable to say \"waiting for you\" or \"not generated\". Tests that count one marker per placeholder then depend on which states happen to draw something.",
+  "affected_population": [
+    "Every production placeholder whose shot has no job: agent drafts (draft_shots), shots on a card still waiting, shots left undecided after a card closed, shots excluded from a batch",
+    "Every canvas acceptance run on main after #934 (S5 red blocks other PRs' Canvas Acceptance)"
+  ],
+  "scope_paths": [
+    "electron/shared/productionShotPhase.ts",
+    "electron/shared/productionShotJobs.ts",
+    "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+    "tests/ux/p4-s5-canvas-landing.e2e.mjs",
+    "tests/ux/agent-draft-not-queued.walk.mjs"
+  ],
+  "entry_points": [
+    "Renderer production placeholder (ProductionShotPlaceholder) — the only surface that draws the production-only chips",
+    "Main-process canvas landing projection (multiShotCanvasLanding.buildMaterializeShotsPayload) — reads generating / failed only",
+    "Batch progress and queue numbering (shotCountsTowardBatch) — scheduler progress and the n/N on the queued chip"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The invariant is Nomi's own generation lifecycle (job statuses, plan state, run stop reason); no third-party library or external format decides it.",
+  "invariant_owner_layer": {
+    "layer": "electron/shared/productionShotPhase.ts",
+    "tests": [
+      "electron/shared/productionShotPhase.test.ts",
+      "electron/productionRun/batchScheduleDerivation.test.ts"
+    ],
+    "why": "It is already the single owner of \"which phase is this shot in\" for the landing projection and the placeholder; giving every real state its own phase there means no surface can fall back to \"draw nothing\" or \"queued\" by accident."
+  },
+  "invariants": [
+    "A shot is queued or stopped only if it has a job that has passed the human gate and has not been dispatched yet.",
+    "A shot without any job is awaiting_confirmation when the draft card is showing it, otherwise not_generated — never queued, never stopped.",
+    "A job still at the human gate is awaiting_confirmation.",
+    "Batch membership (progress, completion, queue n/N) counts only shots with at least one job."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "shotCountsTowardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "symbol": "deriveProductionShotState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "shotCountsTowardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "shotCountsTowardBatch"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+      "symbol": "deriveProductionShotState"
+    }
+  ],
+  "door_reduction": {
+    "before": 5,
+    "after": 5,
+    "why_not": "All five are the two owners (deriveProductionShotState in productionShotPhase.ts, shotCountsTowardBatch in productionShotJobs.ts) and their readers in different processes answering different questions: the landing projection writes generating / failed into node run records, the placeholder draws the production-only chips, the scheduler and the queue chip share one batch-membership rule. None keeps its own copy of the rule."
+  },
+  "generality_proof": "Every phase the owner returns now has exactly one rendering: generating / failed / done by the node's own run record, awaiting_confirmation / not_generated / queued / stopped by the placeholder with its own data-shot-placeholder-state. The \"no job\" branch is decided once for drafts, waiting cards, sealed-without-jobs, submitted plans and cancelled drafts alike, and the batch-membership rule the queue chip uses is the same function the scheduler uses.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "deriveProductionShotState",
+      "responsibility": "One phase for every known shot; queued / stopped only for approved, undispatched work."
+    },
+    {
+      "path": "electron/shared/productionShotJobs.ts",
+      "symbol": "shotCountsTowardBatch",
+      "responsibility": "A shot counts toward the batch only once it has a job and production has not let go of it."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+      "entry_point": "ProductionShotPlaceholder",
+      "disposition": "enforced",
+      "evidence": "Draws a neutral chip with its own data-shot-placeholder-state for awaiting_confirmation (等你确认 / Waiting for you) and not_generated (还没生成 / Not generated); queued and stopped unchanged."
+    },
+    {
+      "path": "electron/productionRun/multiShotCanvasLanding.ts",
+      "entry_point": "buildMaterializeShotsPayload",
+      "disposition": "not-affected",
+      "evidence": "Only generating and failed write node run records; the two new phases write nothing, exactly like the null they replace."
+    },
+    {
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "entry_point": "deriveBatchPlan",
+      "disposition": "enforced",
+      "evidence": "videoShotsOf reads shotCountsTowardBatch, which now requires a job; needsDispatch already required one, so a shot nobody approved is neither pending nor blocking completion (new test)."
+    },
+    {
+      "path": "tests/ux/p4-s5-canvas-landing.e2e.mjs",
+      "entry_point": "S5 fixture",
+      "disposition": "enforced",
+      "evidence": "Records the budget stop on the Run (status needs_attention + stop.reason budget) the way the lifecycle owner does, gives queued shots an authorized job, and shows running and stopped as the two screens the product really produces."
+    },
+    {
+      "path": "tests/ux/agent-draft-not-queued.walk.mjs",
+      "entry_point": "draft and waiting-card faces",
+      "disposition": "enforced",
+      "evidence": "Draft node says only 还没生成 / Not generated, waiting-card node says only 等你确认 / Waiting for you; still no queue, no task count, no spend."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Third time the same owner mis-states a shot nobody approved (2026-09-24 draft 排队中, 2026-09-25 unticked shot 排队中, 2026-09-30 unconfirmed video node 排队中 · 第 1/1), and the per-shot paid card makes \"submitted plan, shot without a job\" the normal case.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs deriveProductionShotState shotCountsTowardBatch",
+      "rg \"data-shot-placeholder-state\" tests/ux -> S5, draft-not-queued, inflight-reload, queued-not-regenerable, queued-shots.paid, s6-rework, production-flow-fixes, shot-claim.paid; only S5 and draft-not-queued assert the states that changed",
+      "rg \"budget_exhausted\" electron -> no producer writes it as a job error code for a stop any more; it only survived in the S5 fixture"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/productionShotPhase.ts",
+    "invariant": "Not clicked means not queued; every real state has its own phase and its own marker.",
+    "failure_mode": "A shot without a job can only be awaiting_confirmation or not_generated; ProductionShotPhase is a closed union checked by check:vocabularies.",
+    "exception_policy": "none",
+    "strategy": "Replace null-for-real-states and no-job-means-queued inside the single owner, make batch membership require a job, and update the two tests that encoded the removed guesses.",
+    "artifacts": [
+      "electron/shared/productionShotPhase.ts",
+      "electron/shared/productionShotJobs.ts",
+      "src/workbench/generationCanvas/nodes/ProductionShotPlaceholder.tsx",
+      "scripts/vocabularies-baseline.json"
+    ]
+  },
+  "regression_tests": [
+    "electron/shared/productionShotPhase.test.ts",
+    "electron/productionRun/batchScheduleDerivation.test.ts",
+    "tests/ux/p4-s5-canvas-landing.e2e.mjs",
+    "tests/ux/agent-draft-not-queued.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/shared/productionShotPhase.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/shared/productionShotPhase.ts"
+    ],
+    "rationale": "Two branches of deriveProductionShotState were replaced in place: null for jobs at the human gate / drafts / never-approved shots, and \"no job + submitted plan + included shot → queued / stopped\". Nothing else read the removed branches."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency controls plan or job lifecycle.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data changes; the phase is derived on every read.",
+  "residual_risks": [
+    "Why CI did not stop #934: its Canvas Acceptance was classified as skipped by the validation scope; the coordinating session tracks that classifier gap separately.",
+    "The 2026-09-24 approved mockup said draft and waiting-card nodes show nothing; this change shows a neutral 还没生成 / 等你确认 chip instead, per paid-card item 12 and the coordinating session's instruction that every state has a marker. Reverting to nothing visible is a one-place change in ProductionShotPlaceholder.",
+    "Per-shot paid card (next PR) adds 已去掉，不生成 for removed shots and reads the open presentation instead of cardHidden."
+  ]
+}

@@ -80,7 +80,7 @@ jobs:
     env:
       VOCAB_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}
       ROOT_CAUSE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before || inputs.base_ref }}
-      # 正文侧判据（check:prior-art R27 / check:door-map R21）不再读 `github.event.pull_request.body`。
+      # 正文侧判据（check:prior-art R27）不再读 `github.event.pull_request.body`。
       # 那是 **push 那一刻**的正文快照：推完再把方案链接补进正文，正在跑的这轮仍判「没引用」，
       # 只能空提交重推换一轮 40 分钟（2026-09-17 PR #804 就栽在正文比 push 晚 19 秒）。
       # 现在正文由 scripts/lib/prBody.mjs 用 gh **现取**，所以改完正文重跑这个 job 就能变绿。

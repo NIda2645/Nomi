@@ -15,7 +15,7 @@ const SAVED_LABEL_KEY = 'generationCommon.observability.progress.saved'
 
 /** 注入页面的函数本体（`win.evaluate(installProbe, options)`）。幂等：已经装过就只回报 already。 */
 function installProbe({ savedTexts }) {
-  const VERSION = 5
+  const VERSION = 6
   if (window.__nomiFullWalk?.version === VERSION) return 'already'
   const state = {
     version: VERSION, installedAt: Date.now(), inputs: [], surfaces: [], current: null,
@@ -100,6 +100,8 @@ function installProbe({ savedTexts }) {
   }
   const sampleSpinners = () => {
     const now = Date.now()
+    // 这份快照是几点采的：机器满载时定时器会被饿住，监视器读到的可能是几秒前的账（F7），要能看出来。
+    state.spinnersSampledAt = now
     const seen = new Set()
     const consider = (el, kind) => {
       if (!(el instanceof Element) || !visible(el)) return
@@ -196,6 +198,7 @@ export async function readPageProbe(win) {
     return JSON.parse(JSON.stringify({
       installedAt: state.installedAt, current: state.current, inputs: state.inputs, surfaces: state.surfaces,
       spinners: state.spinners, savedLabels: state.savedLabels, versionPills: state.versionPills, toasts: state.toasts,
+      spinnersSampledAt: state.spinnersSampledAt ?? null, readAt: Date.now(),
     }))
   })
 }

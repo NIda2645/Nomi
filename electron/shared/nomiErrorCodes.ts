@@ -32,6 +32,15 @@ export type NomiErrorCode =
   // 这里没有网络要修——要么是有人在用户没看见的时候改了地址，要么是他确实换了供应商地址而
   // 还没重新保存密钥。正确的动作是回接入页重新保存一次，不是去看代理。
   | 'outbound-blocked-credential-origin'
+  // 带着密钥的请求，对方回了一个跳转（3xx）。Nomi 不跟着走——自定义鉴权头和 POST 正文会被带去第二个网站
+  // （fetch 只会在跨域时去掉 Authorization）。请求**已经**到过用户配置的那个地址，所以与上面几条不同：
+  // 这里不能说「没发出去 / 没扣费」。下一步是把服务商地址改成跳转后的地址。
+  | 'credential-redirect'
+  // 供应商**已经把结果发回来了**，但 Nomi 在本机落盘前的校验没能把它当成可用的媒体读出来
+  // （解码不出画面、字节认不出、是网页冒充、格式不受支持……见 electron/assets/generatedMediaDecode.ts）。
+  // 与 asset-* 不同：那几条是**参考素材**的问题（请求没发出去）；这条是**产物**的问题（请求已经完成）。
+  // 所以它不能说「服务商失败了」、不能劝换一家——失败发生在我们这一侧读文件的那一步。
+  | 'output-unreadable'
 
 const MARKER_PREFIX = 'NOMI_ERR::'
 const MARKER_SUFFIX = '::'

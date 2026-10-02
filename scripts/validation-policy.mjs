@@ -109,7 +109,31 @@ const JOURNEY_PATTERNS = [
 
 const DESKTOP_PATTERNS = [/^src\/desktop\/bridge\.(?:ts|tsx|js|jsx)$/]
 
+// 「谁决定画布上显示什么」——改它们等于改画布上用户看得见的状态，必须跑 full 画布验收
+// （canvas-landing / canvas-reconcile / batch-production 只在 full 档里）。
+// 来历：#934 改了制作镜头占位的状态判定、#940 / #937 也碰了这一类，只拿到 critical，
+// S5 回归就这样进了 main（画布显示归属那次回归）。清单对着 docs/engineering/concept-owners.json 里
+// 画布显示相关概念的 owner 与写口列的（production.shot-phase / shot-jobs / shot-generation-ownership /
+// run-stop-reason / run-lifecycle-settle / node-run-record），再加画布子树里产出显示的目录。
+// generationCanvas 的每个子目录必须在 scripts/validation-policy.node-test.mjs 里表态
+// （产出显示 → 这里；只管手势 / 样式 → critical），新目录没表态测试就红——
+// 不再靠「想起来再补一个文件名」。
+const CANVAS_DISPLAY_OWNER_PATTERNS = [
+  // 主进程 / 共享层：一镜的阶段、批次成员、认领、停下原因、节点状态
+  /^electron\/shared\/(?:productionShot[^/]*|productionRunStop|decideShotClaim|generationShotEnvelope)(?:\.|$)/,
+  /^electron\/shared\/canvas\//,
+  // 主进程画布落地投影与 Run 状态机（谁写节点运行记录、谁收尾）
+  /^electron\/productionRun\/(?:canvasLandingHost|canvasShotClaim|multiShotCanvasLanding|productionRunCanvasLandingReducer|productionRunLifecycle|productionRunReducer|productionRunProjections|batchScheduleDerivation|batchSchedulerKick|multiShotBatchScheduler)(?:\.|$)/,
+  // 渲染层：落地投影写入点与制作侧的镜头认领 / 动作
+  /^src\/workbench\/capability\/multiShotCanvasLanding(?:\.|$)/,
+  /^src\/workbench\/production\/(?:ProductionCanvasLandingHost|productionCanvasLandingStore|productionShotOwnership|productionShotActions|reportDetachedShotNodes|watchDeletedProductionNodes)(?:\.|$)/,
+  // 画布子树里产出显示的目录（reactFlow 另有自己的 full 规则）
+  /^src\/workbench\/generationCanvas\/(?:nodes|spend|store|runner|model|agent|events|adapters)\//,
+  /^src\/workbench\/generationCanvas\/[^/]+\.(?:ts|tsx)$/,
+]
+
 const CANVAS_PATTERNS = [
+  ...CANVAS_DISPLAY_OWNER_PATTERNS,
   /^src\/workbench\/generationCanvas(?:\/|$)/,
   /^src\/workbench\/settings\/CanvasGestureSection\.tsx$/,
   /^src\/utils\/canvasGesturePreference(?:\.test)?\.ts$/,
@@ -117,6 +141,7 @@ const CANVAS_PATTERNS = [
 ]
 
 const FULL_CANVAS_PATTERNS = [
+  ...CANVAS_DISPLAY_OWNER_PATTERNS,
   /^src\/workbench\/generationCanvas\/reactFlow(?:\/|$)/,
   /^tests\/ux\/(?:canvas-real-suite|react-flow|canvas-drag-pan|group-ports|canvas-shortcuts|canvas-node-context|canvas-context-menu|canvas-batch|canvas-magnetic-handle|canvas-open-fit|selection-toolbar|group-baseline|group-reference).*/,
 ]

@@ -1,0 +1,123 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-agent-request-input-budget",
+  "problem_type": "A compaction threshold configured as 'the budget' and a keep-recent size left at pi's default (tuned for Latin text) do not bound a Chinese-first conversation: the request that crosses the threshold is already over budget and the compaction keeps almost everything",
+  "symptom": "Long Agent conversations (read the script, write it back, repeat) send 88K to 146K input tokens in one model request although the registered budget is 80K, rounds slow from 15s to over 100s, and real users hit 'Assistant request exceeded the context window'.",
+  "direct_cause": "pi compaction was on (80K trigger) but (1) it measures between turns, so the request that crosses the trigger is sent at trigger + one turn of tool results; (2) its cut point counts the retained tail as chars/4, about 3-4x too low for Chinese, so the default keepRecentTokens of 20K kept about 80K real tokens (27 of 30 messages) and a compaction at 87K shrank nothing.",
+  "class_root": "The lane translated the cost budget into pi's settings by copying the number, with no owner for the two facts that make the translation true: the trigger needs headroom below the per-request ceiling, and the retained tail must be sized in pi's own estimator units, not real tokens.",
+  "affected_population": [
+    "Every Agent turn with several tool calls that return large results (read_script, look_at_canvas, list_models)",
+    "Every provider and model (the bound is on our request, not a provider setting)",
+    "New and upgraded profiles alike"
+  ],
+  "entry_points": [
+    "laneCompactionSettings: the only place pi's compaction settings are built (AgentHarness.create and configureLaneContextBudget both read it)",
+    "pi threshold compaction (between turns) is the only mechanism; there is no second compactor"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Repository-internal invariants (what the budget translates to, who classifies a renderer refusal, how long a receipt may stay preparing); compaction itself is pi's.",
+  "invariants": [
+    "The compaction trigger is below the per-request budget by one turn of headroom (3/4), so the request that crosses it still fits the budget",
+    "keepRecentTokens is expressed in pi's estimator units so that the retained tail is about 20K real tokens for Chinese text",
+    "Compaction itself (cut point, summary, durable entry) stays entirely pi's; the lane only supplies settings"
+  ],
+  "generality_proof": "Every lane opens through laneCompactionSettings; the table test fixes trigger and keepRecentTokens for 128K and 1M windows and a 32K small window, and the real-model long conversation measures the resulting per-request input.",
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "entry_point": "laneCompactionSettings",
+      "disposition": "enforced",
+      "evidence": "Single builder of pi's compaction settings; both the harness creation and configureLaneContextBudget call it."
+    },
+    {
+      "path": "electron/agentLane/laneHost.mts",
+      "entry_point": "AgentHarness.create compaction option",
+      "disposition": "enforced",
+      "evidence": "Passes laneCompactionSettings(model.contextWindow, limits.contextTokenBudget); no literal numbers."
+    },
+    {
+      "path": "electron/agentLane/laneTools.mts",
+      "entry_point": "truncateForModel",
+      "disposition": "not-affected",
+      "evidence": "Source-side cap on one tool result; unrelated to accumulation."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any longer conversation or any Chinese-heavy tool result reproduces the same overshoot; the translation was not tested against a real model.",
+    "same_class_scan": [
+      "door-map laneCompactionSettings: one definition, two call sites (laneHost create, configureLaneContextBudget)",
+      "pb04 full-walk with a 100K provider limit: 3 overflow errors before, 0 after",
+      "no other file sets compaction settings"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/agentLane/laneContextBudget.mts",
+    "invariant": "pi compaction trigger leaves one turn of headroom under the per-request budget and keeps a tail sized for Chinese text.",
+    "failure_mode": "If a single turn grows by more than the headroom the request can exceed the budget once; pi's overflow recovery (compaction on a provider overflow error) is the backstop.",
+    "exception_policy": "none",
+    "strategy": "Settings only, in the one builder; concept agent-lane.request-input-budget registered; walk invariant 8 measures per-request input on a real turn.",
+    "artifacts": [
+      "electron/agentLane/laneContextBudget.mts",
+      "tests/agent-runtime/lane-context-budget.test.mts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "invariant_owner_layer": {
+    "layer": "electron/agentLane/laneContextBudget.mts",
+    "tests": [
+      "tests/agent-runtime/lane-context-budget.test.mts"
+    ],
+    "why": "The translation is a pure function proven by a table test; the real-app proof is the pb04 per-request token measurement and the real-model long conversation."
+  },
+  "regression_tests": [
+    "tests/agent-runtime/lane-context-budget.test.mts"
+  ],
+  "class_regression_tests": [
+    "tests/agent-runtime/lane-context-budget.test.mts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "A hand-written per-request fitter (laneContextFit) was tried first and deleted within this same change in favour of pi compaction settings; nothing pre-existing was removed."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "Uses pi's public compaction settings (reserveTokens, keepRecentTokens); no upgrade changes the invariant.",
+    "exit_criteria": []
+  },
+  "migration": "None: settings only; transcripts untouched.",
+  "residual_risks": [
+    "pi's tail estimate is chars/4; Latin-heavy content keeps less than 20K real tokens in the tail (safe direction).",
+    "One turn growing by more than a quarter of the budget can still send one request over it; pi's overflow recovery covers that."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "laneCompactionSettings"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "symbol": "configureLaneContextBudget"
+    }
+  ],
+  "door_reduction": {
+    "before": 2,
+    "after": 2,
+    "why_not": "Two call sites of one builder already; the change moves numbers into the builder."
+  },
+  "scope_paths": [
+    "electron/agentLane/laneHost.mts",
+    "electron/agentLane/laneContextBudget.mts"
+  ],
+  "shared_boundaries": [
+    {
+      "path": "electron/agentLane/laneContextBudget.mts",
+      "symbol": "laneCompactionSettings",
+      "responsibility": "The only place that turns the lane's input budget into pi's compaction settings."
+    }
+  ]
+}

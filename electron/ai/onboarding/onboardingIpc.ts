@@ -72,9 +72,7 @@ async function probeOneProtocol(
   let dispatcher: Dispatcher | undefined;
   try {
     dispatcher = proxyUrl ? createExplicitProxyDispatcher(proxyUrl) : undefined;
-    // Protocol probes carry user credentials and a request body. Refuse redirects
-    // so neither can be replayed to an untrusted cross-origin hop.
-    const res = await appFetch(url, { method: "POST", headers, body: JSON.stringify(body), signal, redirect: "error", ...(dispatcher ? { dispatcher } : {}) });
+    const res = await appFetch(url, { method: "POST", headers, body: JSON.stringify(body), signal, ...(dispatcher ? { dispatcher } : {}) });
     if (res.ok) return { ok: true, status: res.status };
     const text = await res.text().catch(() => "");
     // 404/405/501/502/503 多为「路由/协议不对」→ 换下一个协议；401/403/400 多为鉴权/请求问题（不是协议错）。

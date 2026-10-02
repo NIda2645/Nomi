@@ -9,7 +9,7 @@ import {
 } from './productionShotPhase'
 import { decideShotClaim } from './decideShotClaim'
 import { applyProductionCommand } from '../productionRun/productionRunReducer'
-import type { ProductionGenerationPlan, ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus } from '../productionRun/productionRunTypes'
+import type { ProductionGenerationPlan, ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStatus, ProductionRunStopReason } from '../productionRun/productionRunTypes'
 
 // 制作里「一镜在哪一段」的唯一判定：主进程的画布落地投影与渲染层的排队 / 已停小标读的是同一个函数。
 
@@ -24,7 +24,11 @@ function job(shotId: string, status: ProductionJobStatus, extra: Partial<Product
 
 function run(opts: {
   status?: ProductionRunStatus
+  /** 停下的那一刻记下的原因（reducer 写的 run.stop）；不给 = 上一版留下的、没记原因的 Run。 */
+  stop?: ProductionRunStopReason
   planState?: ProductionGenerationPlan['state']
+  /** 起草了、还没摆给用户（桌面 lane 的 draft_shots）。 */
+  cardHidden?: boolean
   shots?: Array<{ shotId: string; role?: 'anchor' | 'shot'; nodeId?: string; included?: boolean }>
   jobs?: ProductionJob[]
 }): ProductionRun {
@@ -37,12 +41,14 @@ function run(opts: {
     planVersion: 1, snapshotCursor: 0, stages: [], gates: [], jobs: opts.jobs ?? [], artifacts: [],
     generationPlan: {
       operationId: 'run-1', state: opts.planState ?? 'submitted', candidate, nodeId: opts.shots ? undefined : 'single-node',
+      ...(opts.cardHidden ? { cardHidden: true } : {}),
       ...(opts.shots ? { shots: opts.shots.map((shot) => ({
         shotId: shot.shotId, ...(shot.role ? { role: shot.role } : {}), ...(shot.included !== undefined ? { included: shot.included } : {}),
         ...(shot.nodeId ? { nodeId: shot.nodeId } : {}), candidate: { ...candidate, candidateId: shot.shotId }, updatedAt: NOW,
       })) } : {}),
       updatedAt: NOW,
     },
+    ...(opts.stop ? { stop: { reason: opts.stop, at: NOW } } : {}),
     createdAt: NOW, updatedAt: NOW,
   }
 }
@@ -55,10 +61,16 @@ const phaseOf = (r: ProductionRun, shotId: string) => {
 }
 
 describe('deriveProductionShotState', () => {
-  it('没 job 的本批镜 → 排队中（第 n/N），不是假「生成中」', () => {
-    const r = run({ shots: [{ shotId: 's1' }, { shotId: 's2' }] })
+  it('批过、还没派出去的镜 → 排队中（第 n/N），不是假「生成中」', () => {
+    const r = run({ shots: [{ shotId: 's1' }, { shotId: 's2' }], jobs: [job('s1', 'authorized'), job('s2', 'authorized')] })
     expect(phaseOf(r, 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 2 })
     expect(phaseOf(r, 's2')).toEqual({ phase: 'queued', queueIndex: 2, queueTotal: 2 })
+  })
+
+  it('没点就不叫排队中：一次任务都没有的镜从没被批过 → 还没生成，也不占排队的分母', () => {
+    const r = run({ shots: [{ shotId: 's1' }, { shotId: 's2' }], jobs: [job('s1', 'authorized')] })
+    expect(phaseOf(r, 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 1 })
+    expect(phaseOf(r, 's2')).toEqual({ phase: 'not_generated' })
   })
 
   it('受理 / 轮询中 → 生成中；ready/adopted → 完成', () => {
@@ -66,22 +78,40 @@ describe('deriveProductionShotState', () => {
     expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'adopted')] }), 's1')).toEqual({ phase: 'done' })
   })
 
-  it('预算 / 急停错因 → 已停（可续拍）；供应商拒 → 失败（带原因）', () => {
-    expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention', { errorCode: 'budget_exhausted' })] }), 's1'))
+  it('批被停 / 取消时到达这一镜 → 已停，原因照 Run 记下的说；供应商拒 → 失败（带原因）', () => {
+    expect(phaseOf(run({ status: 'paused', stop: 'user_paused', shots: [{ shotId: 's1' }], jobs: [job('s1', 'cancelled_remote')] }), 's1'))
+      .toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
+    expect(phaseOf(run({ status: 'needs_attention', stop: 'budget', shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention')] }), 's1'))
       .toEqual({ phase: 'stopped', stoppedReason: 'budget' })
-    expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'cancelled_remote')] }), 's1'))
-      .toEqual({ phase: 'stopped', stoppedReason: 'stopped' })
     expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention', { errorCode: 'provider_task_failed', errorMessage: '内容被拦截' })] }), 's1'))
       .toEqual({ phase: 'failed', failureMessage: '内容被拦截' })
+    // 错因码不再决定「为什么停」：以前 budget_exhausted / restart_recovery_required 这类码会被说成「预算已用完」。
+    expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'needs_attention', { errorCode: 'budget_exhausted' })] }), 's1'))
+      .toEqual({ phase: 'failed' })
   })
 
-  it('Run 整体停了：没派发的镜 → 已停（预算 halt / 手动急停分开说）', () => {
-    expect(phaseOf(run({ status: 'needs_attention', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
-    expect(phaseOf(run({ status: 'paused', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'stopped' })
+  it('Run 整体停了：批过、没派出去的镜 → 已停，原因只读停下那一刻记下的事实', () => {
+    const idle = (status: ProductionRunStatus, stop?: ProductionRunStopReason) => phaseOf(run({ status, stop, shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] }), 's1')
+    expect(idle('needs_attention', 'budget')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
+    expect(idle('needs_attention', 'failed')).toEqual({ phase: 'stopped', stoppedReason: 'failed' })
+    expect(idle('needs_attention', 'restart_recovery')).toEqual({ phase: 'stopped', stoppedReason: 'restart_recovery' })
+    expect(idle('pausing', 'user_paused')).toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
+    expect(idle('paused', 'user_paused')).toEqual({ phase: 'stopped', stoppedReason: 'user_paused' })
+    expect(idle('cancelled', 'user_cancelled')).toEqual({ phase: 'stopped', stoppedReason: 'user_cancelled' })
+    // 从没被批过的镜不是「被停下」的：它本来就不在这一批里，停不停都还没生成（不给它挂续拍钮）。
+    expect(phaseOf(run({ status: 'needs_attention', stop: 'budget', shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'not_generated' })
+  })
+
+  it('上一版留下的、没记停下原因的 Run：说「停了」，绝不猜成预算', () => {
+    // 这正是用户实见的那一格：needs_attention 以前一律被说成「预算已用完 · 提额续拍」，而那天根本没有价格。
+    const authorized = [job('s1', 'authorized')]
+    expect(phaseOf(run({ status: 'needs_attention', shots: [{ shotId: 's1' }], jobs: authorized }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'unknown' })
+    expect(phaseOf(run({ status: 'paused', shots: [{ shotId: 's1' }], jobs: authorized }), 's1')).toEqual({ phase: 'stopped', stoppedReason: 'unknown' })
+    expect(phaseOf(run({ status: 'running', shots: [{ shotId: 's1' }], jobs: authorized }), 's1')?.phase).toBe('queued')
   })
 
   it('预算停批后画布接手了这一镜（job 已脱离）→ null：节点上不再挂「已停 · 提额续拍」', () => {
-    const halted = run({ status: 'needs_attention', shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3' }], jobs: [job('s1', 'ready'), job('s2', 'authorized'), job('s3', 'authorized')] })
+    const halted = run({ status: 'needs_attention', stop: 'budget', shots: [{ shotId: 's1' }, { shotId: 's2' }, { shotId: 's3' }], jobs: [job('s1', 'ready'), job('s2', 'authorized'), job('s3', 'authorized')] })
     expect(phaseOf(halted, 's2')).toEqual({ phase: 'stopped', stoppedReason: 'budget' })
     const claimed = applyProductionCommand(halted, {
       commandId: 'claim-s2', expectedRevision: halted.revision, type: 'shot.claim',
@@ -103,14 +133,14 @@ describe('deriveProductionShotState', () => {
   })
 
   it('锚卡排队不占镜号；只有参考卡的批次按参考卡计序（不出「1/0」）', () => {
-    const r = run({ shots: [{ shotId: 'a1', role: 'anchor' }, { shotId: 's1' }] })
+    const r = run({ shots: [{ shotId: 'a1', role: 'anchor' }, { shotId: 's1' }], jobs: [job('a1', 'authorized'), job('s1', 'authorized')] })
     expect(phaseOf(r, 'a1')).toEqual({ phase: 'queued' })
     expect(phaseOf(r, 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 1 })
   })
 
-  it('不在本次付费范围、又从没派发过的镜不在任何队列里 → null（不再挂一句永远不兑现的「排队中」）', () => {
+  it('不在本次付费范围、又从没派发过的镜不在任何队列里 → 还没生成（不再挂一句永远不兑现的「排队中」）', () => {
     const r = run({ shots: [{ shotId: 's1' }, { shotId: 's2', included: false }], jobs: [job('s1', 'ready')] })
-    expect(deriveProductionShotState(r, 's2')).toBeNull()
+    expect(phaseOf(r, 's2')).toEqual({ phase: 'not_generated' })
   })
 
   it('被画布拿走的镜（删了节点 / 画布接手）不再占排队位次：分母与调度器的批次进度同一条规则', () => {
@@ -138,46 +168,54 @@ describe('deriveProductionShotState', () => {
 
 // 2026-09-24 真模型走查：Agent 按「先别生成」只调 draft_shots，节点却挂「排队中 · 第 1/1」、任务按钮亮 1
 //（那一刻 0 job、0 请求）。用户还没点头的每一种状态都不许说「排队中」，也不许说「已停」再给一颗续拍钮。
+// 2026-09-30 起它们各有自己的段（以前一律 null，画布上什么都不画）：卡正摆着 → 等你确认；没人在问 → 还没生成。
 describe('deriveProductionShotState · 用户还没点头', () => {
   const PRE_DISPATCH_RUN_STATUSES: ProductionRunStatus[] = [
     'draft', 'awaiting_direction', 'awaiting_script_review', 'awaiting_storyboard_review', 'awaiting_contract', 'ready',
   ]
   const shots = [{ shotId: 'a1', role: 'anchor' as const }, { shotId: 's1' }]
 
-  it('draft_shots 建的草稿（Run draft、计划 draft、0 个 job）→ null（报告里那一幕，单镜与多镜都一样）', () => {
-    expect(deriveProductionShotState(run({ status: 'draft', planState: 'draft', shots: [{ shotId: 'shot-1' }] }), 'shot-1')).toBeNull()
-    expect(deriveProductionShotState(run({ status: 'draft', planState: 'draft' }), 'cand-1')).toBeNull()
+  it('draft_shots 建的草稿（Run draft、计划 draft、卡还没摆、0 个 job）→ 还没生成（报告里那一幕，单镜与多镜都一样）', () => {
+    expect(phaseOf(run({ status: 'draft', planState: 'draft', cardHidden: true, shots: [{ shotId: 'shot-1' }] }), 'shot-1')).toEqual({ phase: 'not_generated' })
+    expect(phaseOf(run({ status: 'draft', planState: 'draft', cardHidden: true }), 'cand-1')).toEqual({ phase: 'not_generated' })
+  })
+
+  it('草稿摆到卡上了（卡没藏）→ 等你确认；卡上没勾进这一批的镜 → 还没生成', () => {
+    expect(phaseOf(run({ status: 'draft', planState: 'draft', shots: [{ shotId: 's1' }, { shotId: 's2', included: false }] }), 's1')).toEqual({ phase: 'awaiting_confirmation' })
+    expect(phaseOf(run({ status: 'draft', planState: 'draft', shots: [{ shotId: 's1' }, { shotId: 's2', included: false }] }), 's2')).toEqual({ phase: 'not_generated' })
+    expect(phaseOf(run({ status: 'draft', planState: 'draft' }), 'cand-1')).toEqual({ phase: 'awaiting_confirmation' })
   })
 
   for (const status of PRE_DISPATCH_RUN_STATUSES) {
     for (const planState of ['draft', 'sealed'] as const) {
-      it(`Run ${status} + 计划 ${planState}、没有 job → 每一镜（含参考卡）都是 null`, () => {
+      it(`Run ${status} + 计划 ${planState}、没有 job → 每一镜（含参考卡）都不说排队：草稿卡摆着 = 等你确认，否则 = 还没生成`, () => {
         const r = run({ status, planState, shots })
-        expect(deriveProductionShotState(r, 's1')).toBeNull()
-        expect(deriveProductionShotState(r, 'a1')).toBeNull()
+        const expected = planState === 'draft' ? 'awaiting_confirmation' : 'not_generated'
+        expect(phaseOf(r, 's1')).toEqual({ phase: expected })
+        expect(phaseOf(r, 'a1')).toEqual({ phase: expected })
       })
     }
-    it(`Run ${status} + 最新的 job 停在人工门前（authorization_required / planned）→ null`, () => {
+    it(`Run ${status} + 最新的 job 停在人工门前（authorization_required / planned）→ 等你确认`, () => {
       for (const jobStatus of ['authorization_required', 'planned'] as const) {
         const r = run({ status, planState: 'sealed', shots, jobs: [job('s1', jobStatus)] })
-        expect(deriveProductionShotState(r, 's1'), jobStatus).toBeNull()
+        expect(phaseOf(r, 's1'), jobStatus).toEqual({ phase: 'awaiting_confirmation' })
       }
     })
   }
 
   // 注意不是「逐镜确认档」：那一档等人时 job 仍是 authorized、等的是另一道镜头门（productionRunDriverOps），这里管不到，
   // 见根因合同 residual_risks。这里是已提交批次里返工 / 续拍的新 job 退回授权前（productionGenerationAuthorizationState）。
-  it('批次在跑，这一镜的新 job 退回人工门前（返工 / 续拍待授权）→ null，不说「排队中」', () => {
-    expect(deriveProductionShotState(run({ status: 'running', shots, jobs: [job('s1', 'authorization_required')] }), 's1')).toBeNull()
+  it('批次在跑，这一镜的新 job 退回人工门前（返工 / 续拍待授权）→ 等你确认，不说「排队中」', () => {
+    expect(phaseOf(run({ status: 'running', shots, jobs: [job('s1', 'authorization_required')] }), 's1')).toEqual({ phase: 'awaiting_confirmation' })
   })
 
-  it('没点过头就被取消的草稿 → null，不显「已停」也不给续拍钮', () => {
-    expect(deriveProductionShotState(run({ status: 'cancelled', planState: 'cancelled', shots }), 's1')).toBeNull()
+  it('没点过头就被取消的草稿 → 还没生成，不显「已停」也不给续拍钮', () => {
+    expect(phaseOf(run({ status: 'cancelled', planState: 'cancelled', shots }), 's1')).toEqual({ phase: 'not_generated' })
   })
 
-  it('点过头之后照旧：计划已提交、还没 job → 排队中；job 过了人工门还没提交（authorized）→ 排队中', () => {
-    expect(phaseOf(run({ shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 1 })
+  it('点过头之后：job 过了人工门还没提交（authorized）→ 排队中；计划已提交但这一镜一次任务都没有 → 还没生成', () => {
     expect(phaseOf(run({ shots: [{ shotId: 's1' }], jobs: [job('s1', 'authorized')] }), 's1')).toEqual({ phase: 'queued', queueIndex: 1, queueTotal: 1 })
+    expect(phaseOf(run({ shots: [{ shotId: 's1' }] }), 's1')).toEqual({ phase: 'not_generated' })
   })
 })
 
@@ -211,15 +249,14 @@ describe('派出去了没有', () => {
     expect(all.filter(jobAwaitsHuman)).toEqual(['planned', 'authorization_required'])
   })
 
-  it('没有 job 时：计划没提交 → 不在任何队列；提交后勾进的排队、勾掉的不排；单镜提交了就排', () => {
-    for (const planState of ['draft', 'sealed', 'cancelled'] as const) {
-      expect(deriveProductionShotState(run({ planState, shots: [{ shotId: 's1' }] }), 's1'), planState).toBeNull()
+  it('没有 job = 没被批过：不管计划到了哪一步都不在任何队列里（草稿卡摆着 = 等你确认，其余 = 还没生成）', () => {
+    expect(deriveProductionShotState(run({ planState: 'draft', shots: [{ shotId: 's1' }] }), 's1')?.phase).toBe('awaiting_confirmation')
+    for (const planState of ['sealed', 'submitted', 'cancelled'] as const) {
+      expect(deriveProductionShotState(run({ planState, shots: [{ shotId: 's1' }, { shotId: 's2', included: false }] }), 's1')?.phase, planState).toBe('not_generated')
+      expect(deriveProductionShotState(run({ planState, shots: [{ shotId: 's1' }, { shotId: 's2', included: false }] }), 's2')?.phase, planState).toBe('not_generated')
     }
-    const submitted = run({ shots: [{ shotId: 's1' }, { shotId: 's2', included: false }] })
-    expect(deriveProductionShotState(submitted, 's1')?.phase).toBe('queued')
-    expect(deriveProductionShotState(submitted, 's2')).toBeNull()
-    expect(deriveProductionShotState(run({}), 'cand-1')?.phase).toBe('queued')
-    expect(deriveProductionShotState(run({ planState: 'draft' }), 'cand-1')).toBeNull()
+    expect(deriveProductionShotState(run({}), 'cand-1')?.phase).toBe('not_generated')
+    expect(deriveProductionShotState(run({ planState: 'draft' }), 'cand-1')?.phase).toBe('awaiting_confirmation')
   })
 })
 

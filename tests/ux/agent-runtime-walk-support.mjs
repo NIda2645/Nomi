@@ -394,15 +394,19 @@ export async function approvePendingIntervention(win, panel) {
  *   `videoResultPath` 透传给夹具（出片地址的路径段）；`env` 追加到被测 App 的进程环境（如把公网出口指到一个
  *   只记账不放行的本地代理，证明走查碰不到真供应商）。都不传 = 老样子。
  */
-export async function createRuntimeWalk(name, { generationProvider = 'loopback', videoResultPath, env: extraEnv = {} } = {}) {
+export async function createRuntimeWalk(name, { generationProvider = 'loopback', videoResultPath, env: extraEnv = {}, profileDir } = {}) {
   const args = process.argv.slice(2)
   if (args.length && (args.length !== 2 || args[0] !== '--packaged' || !path.isAbsolute(args[1]))) {
     throw new Error('Usage: node <walk.mjs> [--packaged /absolute/Nomi.app/Contents/MacOS/Nomi]')
   }
   const executablePath = args[1]
   const mode = executablePath ? 'packaged' : 'development'
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), `nomi-pi-${name}-`))
+  // `profileDir`：「从上一版升级上来的资料」——上一版留下的整份资料（userData / 项目 / 设置）原地换新版本打开。
+  // 必须原地：工作区登记里存的是项目的绝对路径，拷到别处会指回旧目录。模型目录每次按这台夹具的端口重写。
+  if (profileDir && !fs.existsSync(path.join(profileDir, 'user-data'))) throw new Error(`profileDir 不是一份走查资料：${profileDir}`)
+  const tempRoot = profileDir ?? fs.mkdtempSync(path.join(os.tmpdir(), `nomi-pi-${name}-`))
   const settingsDir = path.join(tempRoot, 'settings')
+  if (profileDir) fs.rmSync(path.join(settingsDir, 'model-catalog.json'), { force: true })
   // 显式给出、并原样交给启动器：付费走查要在起 App 之前往这里放凭据钥匙（Windows 的 Local State，
   // 见 _realProfile.mjs），它必须和 App 真正用的 userData 是同一个目录，不能靠两边各自猜默认值。
   const userDataDir = path.join(tempRoot, 'user-data')

@@ -108,6 +108,8 @@ export interface LaneViewModelLabels {
   formatMoney(currency: string, amount: number): string
   /** join 不到领域事实时卡上那句脚注（「任务详情在任务中心」）。 */
   taskUnknown: string
+  /** 历史里那条用户消息挂过的附件，文件现在解不出来时签上写的那句（「附件不可用」）。 */
+  attachmentUnavailable: string
   /**
    * 反问答完之后那一行收据的头两个字（「已回答」）。
    *
@@ -394,9 +396,14 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
       // **确实注入了**这份技能，有它才出回复头上那行凭据（S20）。
       const skillName = part.skillKey ? labels.skillLabel(part.skillKey) : undefined
       if (skillName && part.skillSnapshot) skillOfTurn.set(turn, skillName)
-      const chip: V4Chip | undefined = part.skillKey && skillName
+      const skillChip: V4Chip | undefined = part.skillKey && skillName
         ? { kind: 'skill', label: skillName, ...labels.skillMedia?.(part.skillKey) } : undefined
-      push({ kind: 'user', text: part.text, ...(chip ? { chips: [chip] } : {}) })
+      // 附件签只读这条消息自己的 claim 投影（主进程 join 好的文件名）；解不出来的照样画一颗「附件不可用」，
+      // 不让它从历史里消失。
+      const fileChips: V4Chip[] = (part.attachments ?? []).map(attachment => ({
+        id: attachment.assetId, kind: 'file' as const, label: attachment.display?.fileName ?? labels.attachmentUnavailable }))
+      const chips = [...fileChips, ...(skillChip ? [skillChip] : [])]
+      push({ kind: 'user', text: part.text, ...(chips.length ? { chips } : {}) })
       continue
     }
     if (part.kind === 'assistant-text') {

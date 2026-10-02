@@ -45,7 +45,7 @@ beforeEach(() => {
   const store = useWorkbenchStore.getState()
   store.hydrateWorkbenchDocuments([{ id: 'doc', version: 1, title: 'Doc', updatedAt: 1, contentJson: { type: 'doc', content: [] } }], 'doc')
   store.hydrateStoryboardDesigns({})
-  store.addStoryboardDesign('doc', structuredClone(plan), { id: 'run', title: plan.title })
+  store.addStoryboardDesign({ initiator: 'agent', documentId: 'doc', source: structuredClone(plan), identity: { id: 'run', title: plan.title } })
   useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [], selectedNodeIds: [] })
 })
 it('executes the original materializer and batch action for exact scope, and reports that he approved', async () => {

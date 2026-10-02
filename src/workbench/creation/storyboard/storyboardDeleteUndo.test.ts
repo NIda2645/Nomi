@@ -29,10 +29,10 @@ describe('local storyboard deletion inverse', () => {
     expect(restoredStoryboardPlan({ ...after, title: 'Later' }, undo).shots).toEqual(before.shots)
     expect(() => restoredStoryboardPlan({ ...after, shots: after.shots.map(shot => ({ ...shot, prompt: 'Changed' })) }, undo)).toThrow('Legacy storyboard row changed')
   })
-  it('rejects a missing anchor and stale row object before any deletion', () => {
+  it('rejects a stale row object before any deletion; a deleted anchor no longer blocks undo (anchorIds do nothing)', () => {
     const before = plan(); before.anchors = [{ id: 'a', kind: 'character', carrier: 'text', name: 'A', description: 'A' }]; before.shots[0].anchorIds = ['a']
     const { plan: after, undo } = deleteStoryboardRows(before, [before.shots[0]], [], null)
-    expect(() => restoredStoryboardPlan({ ...after, anchors: [] }, undo)).toThrow('reference')
+    expect(() => restoredStoryboardPlan({ ...after, anchors: [] }, undo)).not.toThrow()
     expect(() => deleteStoryboardRows(before, [{ ...before.shots[0] }], [], null)).toThrow('target changed')
   })
   it('groups multi-node deletion into one original Undo barrier', () => {

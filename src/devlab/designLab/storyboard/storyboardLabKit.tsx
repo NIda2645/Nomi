@@ -116,7 +116,6 @@ export function RowStage(overrides: RowOverrides & { clip?: boolean; width?: num
         shot={shot}
         anchors={LAB_ANCHORS}
         modelOptions={shot.shotKind === 'image' ? LAB_IMAGE_MODELS : LAB_VIDEO_MODELS}
-        danglingIds={[]}
         exec={exec}
         aspect={effectiveShotAspect(plan, shot)}
         frameBox={tableFrameMediaBox([effectiveShotAspect(plan, shot)])}
@@ -148,7 +147,6 @@ export function RowStage(overrides: RowOverrides & { clip?: boolean; width?: num
         isDragOver={overrides.isDragOver ?? false}
         draggable
         onUpdate={NOOP}
-        onToggleAnchor={NOOP}
         onRemove={NOOP}
       />
     </TableStage>

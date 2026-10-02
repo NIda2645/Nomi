@@ -219,14 +219,12 @@ export async function restorePrimaryIfHealthy(vendorKey: string): Promise<void> 
 export async function fetchVendorWithBaseFallback(url: string, init: RequestInit): Promise<Response> {
   const first = rewriteVendorUrl(url);
   try {
-    // Credentialed vendor requests must never auto-follow a redirect: the next
-    // hop could be a different origin that receives custom auth headers/body.
-    return await appFetch(first, { ...init, redirect: "error" });
+    return await appFetch(first, init);
   } catch (error) {
     if (!(await maybeResolveVendorBase(first, error))) throw error;
     const second = rewriteVendorUrl(url);
     if (second === first) throw error;
-    return await appFetch(second, { ...init, redirect: "error" });
+    return await appFetch(second, init);
   }
 }
 

@@ -13,8 +13,8 @@ import i18n from '../../../i18n'
 import { describeOpaqueFailure } from '../../observability/opaqueFailure'
 import type { MediaDimensions } from '../nodes/nodeSizing'
 import { awaitMediaTransfer, describePhaseSilence } from './generationPhaseDeadline'
+import { isTerminalTaskStatus } from '../../../../electron/shared/taskStatus'
 
-const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
 const RECOVER_POLL_INTERVAL_MS = 3000
 // 找回轮询自己的上限（10 分钟）：超了仍没终态 → 退回 recoverable，按钮重现，让用户稍后再试。
 // 它只在两次查询之间检查；**每一次**查询自己另有时限（awaitMediaTransfer）——2026-09-28 之前没有，
@@ -109,7 +109,7 @@ export async function recoverNodeResult(nodeId: string, project: ProjectExecutio
         ...(payload.archetype ? { archetype: payload.archetype } : {}),
       }), (waitedMs) => new Error(describePhaseSilence('still-generating', waitedMs)))
       current = response.result
-      if (TERMINAL_STATUSES.has(current.status)) break
+      if (isTerminalTaskStatus(current.status)) break
       if (Date.now() - startedAt > RECOVER_POLL_TIMEOUT_MS) {
         // 仍没出来 → 退回可找回态，按钮重现，稍后可再拉。
         await deliverRunOutcome(target, id, { kind: 'status', status: 'recoverable', error: i18n.t('generationCommon.recoverable.stillUpstream') })

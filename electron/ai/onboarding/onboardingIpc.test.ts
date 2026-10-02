@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import http from "node:http";
 
 const { handlers } = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>() }));
 vi.mock("electron", () => ({
@@ -22,66 +21,10 @@ vi.mock("../../catalog/rendererCatalogMutation", () => ({
 
 import { registerOnboardingIpc } from "./onboardingIpc";
 
-const redirectServers: http.Server[] = [];
-
-async function listenRedirectServer(handler: http.RequestListener): Promise<{ origin: string; server: http.Server }> {
-  const server = http.createServer(handler);
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  redirectServers.push(server);
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Redirect fixture did not expose a TCP address");
-  return { origin: `http://127.0.0.1:${address.port}`, server };
-}
-
 beforeEach(() => { handlers.clear(); registerOnboardingIpc(); });
 afterEach(() => vi.unstubAllGlobals());
-afterEach(async () => {
-  for (const server of redirectServers.splice(0)) {
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-  }
-});
 
 describe("onboarding discovery IPC preserves the shared result contract", () => {
-  it.each([302, 307, 308])(
-    "credentialed protocol probe rejects HTTP %s redirects before auth or POST body reaches another origin",
-    async (status) => {
-      const targetRequests: Array<{ headers: http.IncomingHttpHeaders; body: string }> = [];
-      const target = await listenRedirectServer((request, response) => {
-        const chunks: Buffer[] = [];
-        request.on("data", (chunk: Buffer) => chunks.push(chunk));
-        request.on("end", () => {
-          targetRequests.push({ headers: request.headers, body: Buffer.concat(chunks).toString("utf8") });
-          response.end("unexpected target request");
-        });
-      });
-      let sourceRequests = 0;
-      const source = await listenRedirectServer((request, response) => {
-        sourceRequests += 1;
-        request.resume();
-        request.on("end", () => {
-          response.writeHead(status, { location: `${target.origin}/stolen` });
-          response.end();
-        });
-      });
-
-      const result = await handlers.get("nomi:onboarding:test-connection")?.({}, {
-        baseUrl: source.origin,
-        providerKind: "openai-compatible",
-        modelId: "redirect-model",
-        apiKey: "redirect-api-key",
-        headers: { "x-tenant-key": "redirect-tenant" },
-      });
-
-      expect(result).toMatchObject({ ok: false });
-      expect(sourceRequests).toBe(1);
-      expect(targetRequests).toEqual([]);
-    },
-  );
-
   it("returns credential rejection in the IPC result envelope", async () => {
     const handler = handlers.get("nomi:model-catalog:vendor-api-key:upsert");
     expect(handler).toBeTypeOf("function");

@@ -44,7 +44,7 @@ describe('real character reference at the shared storyboard write boundary', () 
       const mode = archetype.modes.find(mode => mode.id === shot.modeId)!
       expect(anchorsConsumedBy(mode), `shot ${shot.index}`).not.toContain('none')
       expect(shot.referenceBindings?.image_ref).toEqual([{ url: anchor.referenceUrl, name: anchor.name, anchorId: anchor.id }])
-      expect(Object.values(shotReferenceMetaPatch(mode, shot)).flat()).toContain(anchor.referenceUrl)
+      expect(Object.values(shotReferenceMetaPatch(mode, shot.referenceBindings)).flat()).toContain(anchor.referenceUrl)
     }
     expect(input.shots.every(shot => shot.modeId === 't2v')).toBe(true)
   })
@@ -54,13 +54,14 @@ describe('real character reference at the shared storyboard write boundary', () 
     input.shots[0].modelVendor = 'another-vendor'
     expect(() => normalizeStoryboardAnchorDefaults(input, entries)).toThrow()
   })
-  it('preserves no-image models and exposes the existing inline warning', async () => {
+  it('preserves no-image models: nothing is bound, nothing is sent, nothing to warn about', async () => {
     const input = fixture()
     input.shots = [{ ...input.shots[0], shotKind: 'image', durationSec: 0, modelKey: 'imagen-4', modelVendor: 'google', modeId: 't2i' }]
     const plan = await write(input)
     expect(plan.shots[0].modeId).toBe('t2i')
     expect(plan.shots[0].referenceBindings).toBeUndefined()
-    expect(validateAnchorModelFit(plan)[0].ignoredAnchors[0].anchorId).toBe('hero')
+    // 文生图模型：没有槽可放，行上就什么都没有——没有东西被发出去，也就没有东西可「被忽略」。
+    expect(validateAnchorModelFit(plan)).toEqual([])
   })
   it('does not replace text anchors, unreferenced images, or a keyframe chain', async () => {
     for (const variant of ['text', 'unreferenced', 'keyframe'] as const) {
@@ -84,19 +85,15 @@ describe('real character reference at the shared storyboard write boundary', () 
     input.shots[0].anchorIds = input.anchors.map(anchor => anchor.id)
     await expect(write(input)).rejects.toThrow()
   })
-  it('a bound external image is ready without waiting for a nonexistent generated anchor', async () => {
+  it('a bound external image is ready; no row waits for any anchor card', async () => {
     const plan = await write(fixture())
     const input = { plan, designId: 'd', nodes: [], imageModelOptions: [], videoModelOptions: [{ value: 'MiniMax-H3', modelKey: 'MiniMax-H3', vendor: 'apimart', label: 'H3' }] }
     const rows = deriveStoryboardRowRuntimes(input)
     expect(rows.every(row => row.exec.status === 'ready')).toBe(true)
+    // 锚的卡有没有出图、源节点在不在，都不让行等：发出去的只有参考列里已经摆着的那张图。
     const nodeBacked = structuredClone(plan)
     nodeBacked.anchors[0].referenceSourceNodeId = 'missing-source-node'
-    expect(deriveStoryboardRowRuntimes({ ...input, plan: nodeBacked })[0].exec.status).toBe('waiting-refs')
-    // 2026-09-18 反转：`referenceBindings` 没了**不**该把行拖进等待。它今天根本不投影到节点
-    // （v6 合同 §9.3 记着这笔债），materialize 发出去的是 `params.referenceImageUrls`，来源是
-    // `shot.anchorIds`。旧断言把「槽里没填」当成「素材到不了模型」，而 @ 引用素材库/上传、
-    // 结果即收两条真实入口从来不写 referenceBindings——那正是用户看到的
-    // 「明明挂了图却说在等参考图、还被批量排除」。等待只由**素材怎么走**决定（见上一条）。
+    expect(deriveStoryboardRowRuntimes({ ...input, plan: nodeBacked })[0].exec.status).toBe('ready')
     const unbound = structuredClone(plan)
     unbound.shots.forEach(shot => { shot.referenceBindings = undefined })
     expect(deriveStoryboardRowRuntimes({ ...input, plan: unbound })[0].exec.status).toBe('ready')

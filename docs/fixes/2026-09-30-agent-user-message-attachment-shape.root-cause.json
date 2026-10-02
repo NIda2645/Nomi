@@ -1,0 +1,160 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-30-agent-user-message-attachment-shape",
+  "problem_type": "A fact recorded in the transcript (the attachment claim on a user input) is dropped by the projection that owns the transcript's user-message shape, so every consumer downstream loses it",
+  "symptom": "Attach a txt to the Agent composer and send: the sent user message no longer shows the attachment chip, and after reopening the project the history bubble never has it either (full-walk rule attachment-gone-after-send, playbook pb04).",
+  "direct_cause": "projectLaneSnapshot built the 'user' part from text/skill/storyboard fields only; LaneInputMessage.context.attachments (persisted by pi with the message) was never copied, and the panel view model had nothing to draw a chip from.",
+  "class_root": "There was no single owner for 'what a user message looks like in the conversation record'. The persisted claim, the projected part and the rendered bubble each carried a different subset, so any field added to the input context could silently stop at the projection.",
+  "affected_population": [
+    "Every user who attaches a file or image to an Agent message (new installs and upgraded profiles)",
+    "Every reopened project whose history contains a message with attachments",
+    "Queued/restored drafts keep their claims separately and are unaffected"
+  ],
+  "scope_paths": [
+    "electron/agentLane/laneHistory.mts",
+    "electron/agentLane/laneHost.mts",
+    "electron/agentLane/laneLegacyMigration.mts",
+    "electron/shared/agentLane/laneProjection.ts",
+    "src/devlab/designLab/v4/laneDrivenFixtures.ts",
+    "electron/agentLane/laneDesktopRuntime.ts",
+    "src/workbench/ai/v4/useAgentPanelV4Data.ts"
+  ],
+  "entry_points": [
+    "projectLaneSnapshot builds the user part for both the live lane (laneHost) and the read-only reopened history (laneHistory)",
+    "laneViewModel turns the part into the bubble chips",
+    "createDesktopLaneInput.providerContent resolves the same claims into model-visible content"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Repository-internal invariant (which owner shapes a transcript user message, who reads the declared default, who may change what the user is looking at); no third-party documentation or source decides it.",
+  "invariants": [
+    "A user message's attachments are read only from that message's own recorded claims, projected by projectLaneSnapshot, and rendered from part.attachments - no second store, no 'currently selected' inference",
+    "A claim the host cannot resolve is still shown (as unavailable), never dropped",
+    "The chip the user sees and the content the model receives are resolved by the same resolveProjectAgentAttachmentClaims"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHistory.mts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneHost.mts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneLegacyMigration.mts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/v4/laneDrivenFixtures.ts",
+      "symbol": "projectLaneSnapshot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/agentLane/laneDesktopRuntime.ts",
+      "symbol": "createDesktopLaneAttachments"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/v4/laneDrivenFixtures.ts",
+      "symbol": "laneViewModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "laneViewModel"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 8,
+    "why_not": "laneHost (live projection), laneHistory (reopened read-only history, three refresh points), laneLegacyMigration (cold summary, no attachments to show) and the design-lab fixture are the only callers of the one pure function; the fix adds the attachments to that function, so every caller gets it through the same door rather than each getting its own."
+  },
+  "generality_proof": "The fix lives inside the single projection function that all five call sites share, and the resolver rides on the same options object as tasks, so the live lane and the reopened history cannot diverge. Any future field on the input context now has an obvious home (the same function) and the class test pins that a message without the field stays unchanged.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/agentLane/laneProjection.ts",
+      "symbol": "projectLaneSnapshot",
+      "responsibility": "The only place a transcript user message becomes a LanePart; carries the message's own attachment claims."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/agentLane/laneHistory.mts",
+      "entry_point": "openLaneHistory",
+      "disposition": "enforced",
+      "evidence": "Reopened history calls projectLaneSnapshot with options.attachments at all three refresh points."
+    },
+    {
+      "path": "electron/agentLane/laneHost.mts",
+      "entry_point": "openLane",
+      "disposition": "enforced",
+      "evidence": "Live lane passes options.attachments at both projection sites."
+    },
+    {
+      "path": "electron/agentLane/laneDesktopInput.ts",
+      "entry_point": "createDesktopLaneInput.providerContent",
+      "disposition": "not-affected",
+      "evidence": "Model-visible content already resolves message.context.attachments through buildAgentUserContent; pb04 shows the marker line reaches the provider request (attachment-delivered)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any field added to the composer context (skills, storyboard targets, attachments) can stop at the projection the same way; skillKey and storyboardTarget had each been patched in by hand earlier.",
+    "same_class_scan": [
+      "grep of laneProjection.ts user part: skillKey, storyboardTarget, skillSnapshot were copied individually, attachments were not",
+      "node scripts/door-map.mjs projectLaneSnapshot: 5 call sites, all share the one function",
+      "queued drafts (draftInputFromMessage) already keep attachment claims - checked, not affected"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/agentLane/laneProjection.ts",
+    "invariant": "Every user part carries exactly the attachments recorded on its own message.",
+    "failure_mode": "An unresolvable claim degrades to a visible 'attachment unavailable' chip instead of vanishing or throwing.",
+    "exception_policy": "none",
+    "strategy": "Register the user-message shape as a concept owner (agent-lane.user-message-shape) so a second derivation in the renderer or another projector is a gate failure; test the projection and the view model against the same shapes.",
+    "artifacts": [
+      "electron/shared/agentLane/laneProjection.ts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "regression_tests": [
+    "electron/shared/agentLane/laneProjection.test.ts",
+    "src/workbench/ai/lane/laneViewModel.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/shared/agentLane/laneProjection.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "Nothing rendered attachments in history before, so there is no old path to remove."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "pi persists the custom input message untouched; the projection is Nomi's own code.",
+    "exit_criteria": []
+  },
+  "migration": "Old transcripts already contain the claims on their nomi.input messages, so they display the chips on next open without any data migration.",
+  "residual_risks": [
+    "Assets deleted after sending show as 'attachment unavailable' by design.",
+    "The one-tool-call-one-part message model change (agent message layer step C1) is a separate, later change and is not touched here."
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/shared/agentLane/laneProjection.ts",
+    "tests": [
+      "electron/shared/agentLane/laneProjection.test.ts",
+      "src/workbench/ai/lane/laneViewModel.test.ts"
+    ],
+    "why": "The user-message shape is owned by projectLaneSnapshot and proven by projection tests (attachments kept per message, unresolved claims kept) and the view model test (chips, unavailable label)."
+  }
+}

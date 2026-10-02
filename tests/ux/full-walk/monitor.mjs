@@ -21,7 +21,10 @@ import {
 import { laneMessages, readLaneTranscripts } from '../agent-lane-observer.mjs'
 import { appFramesOf, classifyEgress, REQUIRED_GUARD_LAYERS, vendorHostsOf } from './egress.mjs'
 import { INVARIANTS, invariantById, loadDictionaries, loadLimits, UI_LOCALES, uiText, uiTextPattern } from './invariants.mjs'
+import { activeDebt, collectVisibleTextInPage, findLeaks } from './outcomeText.mjs'
 import { ensurePageProbe, readPageProbe } from './pageProbe.mjs'
+import { unseenPromptAdditions } from './promptTruth.mjs'
+import { finishedNodeSpinner, snapshotAgeMs } from './spinnerVerdict.mjs'
 import { DESIGN_ROOTS, rootOfRule } from './rules.mjs'
 
 /** 夹具模型的显示名（只有中文 labelZh）：EN 界面上看到它们不是漏译。 */
@@ -33,11 +36,21 @@ const FIXTURE_MODEL_LABELS = new Set([FIXTURE_TEXT_MODEL_LABEL, FIXTURE_IMAGE_MO
  * （「budget exhausted」「may already have been submitted」「stopped the remaining shots」）和产品真实英文一条都对不上，
  * 英文界面那一档于是对这些话全瞎。两种语言都认：英文界面里冒出一句中文状态话，照样要核它说得对不对（漏译另由铁律 7 判）。
  */
+/** 界面上说「因为什么停了」的那几句 → Run 记下的停下原因必须是它（run.stop.reason）。 */
+const STOP_CLAIM_REASON = Object.freeze({
+  'budget-exhausted': 'budget',
+  'raise-budget': 'budget',
+  'stopped-after-failure': 'failed',
+  'stopped-for-recovery': 'restart_recovery',
+})
 const UI_CLAIM_TEXTS = Object.freeze([
   Object.freeze({ claim: 'maybe-submitted', key: 'agentToolFailure.generation_execution_failed' }),
   Object.freeze({ claim: 'budget-exhausted', key: 'generationCommon.production.canvasLanding.stoppedBudget' }),
   Object.freeze({ claim: 'raise-budget', key: 'generationCommon.production.canvasLanding.raiseBudget' }),
-  Object.freeze({ claim: 'operation-failed-try-later', key: 'generationCommon.production.canvasLanding.rework.failed' }),
+  Object.freeze({ claim: 'stopped-after-failure', key: 'generationCommon.production.canvasLanding.stoppedAfterFailure' }),
+  Object.freeze({ claim: 'stopped-for-recovery', key: 'generationCommon.production.canvasLanding.stoppedForRecovery' }),
+  // 返工 / 续拍没做成时「这是 Nomi 自己的问题」那一句：说它的那一刻，就有一种失败在源头没被分类（2026-09-29 起没有笼统的「稍后再试」）。
+  Object.freeze({ claim: 'action-internal-error', key: 'generationCommon.production.canvasLanding.actionFailure.internalError' }),
   Object.freeze({ claim: 'stopped-remaining', key: 'generationCommon.production.canvasLanding.stoppedManual' }),
   Object.freeze({ claim: 'queued', key: 'generationCommon.production.canvasLanding.queued', anchored: true }),
 ])
@@ -58,6 +71,31 @@ export function providerFailedPatterns(dictionaries = loadDictionaries()) {
   return UI_LOCALES.map((locale) => ({ locale, pattern: new RegExp(uiTextPattern(uiText(locale, PROVIDER_FAILED_KEY, dictionaries), { anchored: true })) }))
 }
 
+/**
+ * 一份模型目录里有的供应商：显示名 / key → key。切家提示点名的是**显示名**（内置家的名字、用户起的来源名称；
+ * 读不到显示名才写 key）——认「某某家：……」时只认真有这一家的，免得把随便一句「X: Y. Z」当成点名；
+ * 点名认成 key，才能去和「哪一家真的失败过」对账（提交记录里记的是 key）。
+ */
+export function vendorKeyByLabel(catalog) {
+  const byLabel = new Map()
+  for (const vendor of catalog?.vendors ?? []) {
+    if (!vendor?.key) continue
+    byLabel.set(vendor.key, vendor.key)
+    if (typeof vendor.name === 'string' && vendor.name.trim()) byLabel.set(vendor.name.trim(), vendor.key)
+  }
+  return byLabel
+}
+
+/** 一条提示的文字是不是「某某家：失败原因。建议」——是就返回它点名的那一家（key）与原因，不是（或点名的不是这一场有的家）返回 null。 */
+export function vendorFailedClaim(text, vendors, patterns = providerFailedPatterns()) {
+  for (const { locale: textLocale, pattern } of patterns) {
+    const match = pattern.exec(text)
+    const vendor = match?.groups ? vendors.get(match.groups.vendor) : undefined
+    if (vendor) return { vendor, reason: match.groups.reason, textLocale }
+  }
+  return null
+}
+
 const normalizePrompt = (value) => String(value ?? '').replace(/\s+/g, ' ').trim()
 
 /** 页内观察者 250ms 采一次面、React 提交再加一帧：一步收尾后这么久里冒出来的面变化仍算这一步的（测量误差，不是产品时限）。 */
@@ -70,6 +108,13 @@ export function sentReferenceCount(body) {
   return pick(body?.image_urls) || pick(body?.input_urls) || pick(body?.reference_images) || pick(body?.image)
     || pick(body?.first_frame_url) + pick(body?.last_frame_url)
     || pick(input.image_urls) || pick(input.input_urls) || pick(body?.extra_body?.image)
+}
+
+/** 节点参考槽里摆着的图（referenceSlotStorage 写的那几个 meta 键）。 */
+function nodeSlotReferenceCount(meta) {
+  const arrays = ['referenceImageUrls', 'referenceVideoUrls', 'referenceAudioUrls'].reduce((sum, key) => sum + (Array.isArray(meta?.[key]) ? meta[key].filter(Boolean).length : 0), 0)
+  const singles = ['firstFrameUrl', 'lastFrameUrl', 'sourceVideoUrl'].reduce((sum, key) => sum + (typeof meta?.[key] === 'string' && meta[key].trim() ? 1 : 0), 0)
+  return arrays + singles
 }
 
 function sentParams(body) {
@@ -224,7 +269,10 @@ export function createInvariantMonitor(options) {
     const allShots = (pending?.shots ?? []).map((shot) => ({
       shotId: shot.shotId, nodeId: shot.nodeId ?? null, index: shot.index, prompt: shot.prompt,
       providerId: shot.providerId, model: shot.modelId, params: shot.parameters ?? {}, refs: (shot.references ?? []).length,
-      canvasRefs: canvasRefsOf(shot.nodeId),
+      canvasRefs: canvasRefsOf(shot.nodeId), surfaceText: dom.text,
+      // 「这一镜到底是图还是视频」的四份说法（铁律 3：同一件事，四处读法必须一致）：候选的模式、模型自己的种类（目录）、画布占位节点的种类，加上卡标题一份（在下面对整张卡判）。
+      mode: shot.mode ?? null, modelKind: catalogKindOf(shot.providerId, shot.modelId),
+      nodeKind: (canvas.nodes ?? []).find((node) => node.id === shot.nodeId)?.kind ?? null,
     }))
     // 按钮承诺的范围：按钮上写了「N 镜」= N 镜（全部）；没写而卡在翻页 = 只有眼前这一页。
     const buttonScope = buttonCount > 1 || !pagerMatch ? allShots : allShots.filter((_, index) => index === pageIndex)
@@ -236,7 +284,57 @@ export function createInvariantMonitor(options) {
     }
     consents.push(consent)
     fs.writeFileSync(path.join(outputDir, `${consent.id}-spend-card.json`), JSON.stringify(consent, null, 2))
+    await checkCardCoherence(consent)
+    await checkQueuedBeforeConsent(consent)
     return consent
+  }
+
+  /** 模型自己的种类（image / video / text / audio）：只从 App 用的那份目录读，读不到 = null（不判）。 */
+  function catalogKindOf(vendorKey, modelKey) {
+    try {
+      const catalog = JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))
+      const hit = (catalog.models ?? []).find((model) => model.modelKey === modelKey && (!vendorKey || model.vendorKey === vendorKey))
+      return hit?.kind ?? null
+    } catch { return null }
+  }
+
+  /**
+   * 付费卡上「这是图还是视频」只有一个答案：卡标题、候选的模式、模型自己的种类、画布占位节点的种类，四样必须一致。
+   * 任何两样不一致，用户在付钱前那一刻看到的就是自相矛盾的一张卡（标题说视频、模型是图片模型、节点又是视频）。
+   */
+  async function checkCardCoherence(consent) {
+    const kindOfText = (value) => (/video|视频/i.test(String(value ?? '')) ? 'video' : /image|图|封面/i.test(String(value ?? '')) ? 'image' : null)
+    const titleKind = /视频|video/i.test(consent.dom.title) ? 'video' : /图片|image|张/i.test(consent.dom.title) ? 'image' : null
+    for (const shot of consent.allShots) {
+      const facts = { 卡标题: titleKind, 候选模式: kindOfText(shot.mode), 模型种类: shot.modelKind, 画布节点: shot.nodeKind }
+      const distinct = new Set(Object.values(facts).filter(Boolean))
+      if (distinct.size <= 1) continue
+      await violate({
+        invariant: 3, rule: 'card-kind-mismatch', key: `${consent.id}|${shot.shotId}`,
+        module: 'electron/capabilityCore/semanticGenerationCandidate.ts inferGenerationTaskKind（提示词里有「镜头 / 动画」等词就判视频，与点名的模型无关）+ 候选 mode 缺省取 taskKind + 卡标题读 mode / 卡体读模型种类 / 画布节点读 shot.kind——四处各读各的，没有唯一主人',
+        message: `付费卡对「${shot.shotId}」说的自相矛盾：${Object.entries(facts).map(([name, value]) => `${name}=${value ?? '无'}`).join('，')}（标题「${consent.dom.title}」，模型 ${shot.providerId}/${shot.model}，模式 ${shot.mode ?? '无'}）`,
+        snapshot: { facts, shot: { ...shot, surfaceText: undefined }, title: consent.dom.title },
+      })
+    }
+  }
+
+  /** 用户还没点头，节点上就写着「排队中 · 第 n/N」：这句话是「已经派进队列、下一步就花钱」，而此刻一个请求都没发。 */
+  async function checkQueuedBeforeConsent(consent) {
+    const patterns = uiClaimPatterns().filter((entry) => entry.claim === 'queued')
+    const nodeIds = consent.allShots.map((shot) => shot.nodeId).filter(Boolean)
+    if (nodeIds.length === 0) return
+    const shown = await win().evaluate(({ ids, sources }) => ids.flatMap((id) => {
+      const text = String(document.querySelector(`[data-node-id="${id}"]`)?.innerText ?? '').replace(/\s+/g, ' ')
+      return sources.some((source) => new RegExp(source).test(text)) ? [{ id, text: text.slice(0, 200) }] : []
+    }), { ids: nodeIds, sources: patterns.map((entry) => entry.source) }).catch(() => [])
+    for (const hit of shown) {
+      await violate({
+        invariant: 4, rule: 'ui-queued-before-consent', key: `${consent.id}|${hit.id}`,
+        module: 'electron/shared/productionShotPhase.ts deriveProductionShotState（没有 job、计划 state=submitted 就判「排队中」；此刻付费卡还在等用户点头）',
+        message: `付费卡还在等用户点头（供应商 ${submissions.length} 笔提交），画布节点 ${hit.id} 已经写着「排队中」：${hit.text.slice(0, 80)}`,
+        snapshot: { hit, submissions: submissions.length },
+      })
+    }
   }
 
   /** 用户自己在节点上点生成之前调用：读下这个节点此刻摆的模型 / 参数 / 参考（节点就是那张生成框的唯一输入）。 */
@@ -246,18 +344,69 @@ export function createInvariantMonitor(options) {
     const node = (canvas.nodes ?? []).find((candidate) => candidate.id === nodeId)
     const incoming = (canvas.edges ?? []).filter((edge) => edge.target === nodeId)
     const meta = node?.meta ?? {}
+    // 用户这一刻在这张卡上看得见的全部文字（提示词框 + 卡面 + 底栏）：铁律 3「提示词的每一句都看得见」拿它当「看得见」的边界。
+    const surfaceText = await win().evaluate((id) => String(document.querySelector(`[data-node-id="${id}"]`)?.innerText ?? ''), nodeId).catch(() => '')
     const consent = {
       id: `c${consents.length + 1}`, kind: 'node-generate', at: Date.now(), step: currentStep?.label ?? null, label: label ?? null, nodeId,
       scope: [{
         nodeId, prompt: node?.prompt ?? '', model: meta.modelKey ?? meta.imageModel ?? meta.videoModel ?? null, providerId: meta.modelVendor ?? null,
         params: { aspect_ratio: meta.aspect_ratio ?? meta.aspectRatio ?? null, resolution: meta.resolution ?? null, duration: meta.duration ?? null },
-        refs: incoming.length + (Array.isArray(node?.references) ? node.references.length : 0),
-        remaining: count, submissions: [],
+        // 节点上摆着几张参考：连进来的线 + 参考槽里的图（meta 里的数组 / 单值槽）——用户在这张卡上看得见的都算。
+        refs: incoming.length + (Array.isArray(node?.references) ? node.references.length : 0) + nodeSlotReferenceCount(meta),
+        surfaceText, remaining: count, submissions: [],
       }],
       declaredCount: count, buttonCount: count,
     }
     consents.push(consent)
     fs.writeFileSync(path.join(outputDir, `${consent.id}-node-generate.json`), JSON.stringify({ consent, node, incoming }, null, 2))
+    return consent
+  }
+
+  /**
+   * 用户在**分镜表**上点头之前调用（行内 ↑ 生成 / 「生成剩余」/ Agent 端上来的确认框——三者摆在用户眼前的都是这几行）：
+   * 逐行读下用户此刻看得见的东西——提示词框里的字（他写的那句）、参考列里摆着几格、整个分镜编辑器此刻的全部文字。
+   * 只读 DOM：用户看到什么，就是什么；不读方案对象（那是状态，不是他看见的）。
+   */
+  async function consentStoryboardRows(shotIndexes, { kind = 'storyboard-row', label } = {}) {
+    const rows = await win().evaluate((indexes) => {
+      // 参考列里摆着几张：叠放格读它自己的计数，单张格数一个（一个槽一个格，装几张都只占一格）。
+      const shownReferenceCount = (row) => [...row.querySelectorAll('[data-storyboard-ref-slot]')].reduce((sum, slot) => {
+        const stack = slot.querySelector('[data-storyboard-ref-stack-count]')
+        if (stack) return sum + (Number(stack.getAttribute('data-storyboard-ref-stack-count')) || 0)
+        return sum + (slot.querySelector('[data-storyboard-ref-tile]') ? 1 : 0)
+      }, 0)
+      const editor = document.querySelector('[data-storyboard-editor="true"]')
+      const editorText = String(editor?.innerText ?? '')
+      return indexes.map((index) => {
+        const row = editor?.querySelector(`[data-storyboard-row="${index}"]`)
+        const box = row?.querySelector('[data-storyboard-prompt-block] [contenteditable="true"]')
+        return {
+          index, found: Boolean(row),
+          prompt: String(box?.innerText ?? ''),
+          // 参考列里摆着几格（一格一个槽，叠放格里可以有多张）+ 提示词里 @ 出来的参考签。
+          // 行自己点名「这张参考图不会发出去」（当前模式没有对应的槽）的，不算「摆着要发的」——那句话就是用户确认时看到的事实。
+          refCells: !row || row.querySelector('[data-storyboard-anchor-ignored]') ? 0 : shownReferenceCount(row),
+          mentionChips: box ? box.querySelectorAll('[data-mention-chip], [data-type="mention"], .prompt-mention').length : 0,
+          rowText: String(row?.innerText ?? ''),
+          editorText,
+        }
+      })
+    }, shotIndexes)
+    const missing = rows.filter((row) => !row.found)
+    if (missing.length) throw new Error(`分镜表上找不到第 ${missing.map((row) => row.index).join('、')} 镜的行`)
+    const consent = {
+      id: `c${consents.length + 1}`, kind, at: Date.now(), step: currentStep?.label ?? null, label: label ?? null,
+      scope: rows.map((row) => ({
+        shotId: `row-${row.index}`, prompt: row.prompt, refs: row.refCells + row.mentionChips, surfaceText: row.editorText,
+        remaining: 1, submissions: [],
+      })),
+      declaredCount: rows.length, buttonCount: rows.length,
+    }
+    consents.push(consent)
+    fs.writeFileSync(path.join(outputDir, `${consent.id}-${kind}.json`), JSON.stringify({
+      consent: { ...consent, scope: consent.scope.map(({ surfaceText, ...rest }) => rest) },
+      rows: rows.map(({ editorText, ...rest }) => rest),
+    }, null, 2))
     return consent
   }
 
@@ -455,6 +604,10 @@ export function createInvariantMonitor(options) {
       problems.push({ field: 'duration', shown: shownDuration, sent: sent.duration })
     }
     if (Number(entry.refs ?? 0) !== Number(submission.refs ?? 0)) problems.push({ field: 'references', shown: entry.refs ?? 0, sent: submission.refs ?? 0 })
+    // 提示词：发出去的 = 用户看到的那句 + 只许追加「他在同一个界面上看得见的字」。
+    // 看不见的追加 = 用户写了「巨龙」、供应商收到「巨龙 + 一段人物特征」。
+    const unseen = unseenPromptAdditions({ shown: entry.prompt, sentRaw: body.prompt ?? body.input?.prompt, surfaceText: entry.surfaceText })
+    if (unseen.length) problems.push({ field: 'prompt-unseen-addition', shown: entry.prompt, sent: submission.prompt, unseen })
     // 付费卡那一镜在画布上的占位卡：用户在画布上连了参考线，他看到的就是「这一镜带参考」。
     if (consent.kind === 'spend-card' && Number(entry.canvasRefs ?? 0) > Number(submission.refs ?? 0)) {
       problems.push({ field: 'references-on-canvas', shown: entry.canvasRefs, sent: submission.refs ?? 0 })
@@ -464,12 +617,18 @@ export function createInvariantMonitor(options) {
         invariant: 3, rule: `sent-${problem.field}`, key: `${consent.id}|${entry.shotId ?? entry.nodeId}|${problem.field}`,
         module: problem.field === 'references-on-canvas'
           ? 'src/workbench/ai/v4/spendCardDraft.ts projectSpendNode（只认候选里的参考，resolveReferenceSlots(node, [], []) 不看画布连线）→ 制作 Run 候选'
-          : problem.field === 'references'
-            ? (consent.kind === 'spend-card' ? '付费卡 → 执行合同 → 出站请求（参考图在哪一层丢）' : 'src/workbench/generationCanvas/runner（画布直生成的参考槽编译）')
-            : (consent.kind === 'spend-card' ? '付费卡投影 ↔ 执行合同编译' : '节点 composer ↔ 画布执行编译'),
+          : problem.field === 'prompt-unseen-addition'
+            ? 'electron/shared/storyboard/storyboardPromptCompiler.ts buildShotPrompt / buildKeyframePrompt（anchorPromptBits 把引用锚的身份特征、文本锚整段追加进提示词；分镜行上只显示用户写的那一句）'
+            : problem.field === 'references'
+              ? (consent.kind === 'spend-card' ? '付费卡 → 执行合同 → 出站请求（参考图在哪一层丢）'
+                : consent.kind.startsWith('storyboard') ? 'src/workbench/generationCanvas/agent/storyboardPlan.ts storyboardShotToCreateNodesArgs（引用锚的定妆卡按 anchorIds 连成参考边；分镜行的参考列只画 referenceBindings，看不到这几张）'
+                  : 'src/workbench/generationCanvas/runner（画布直生成的参考槽编译）')
+              : (consent.kind === 'spend-card' ? '付费卡投影 ↔ 执行合同编译' : '节点 composer ↔ 画布执行编译'),
         message: problem.field === 'references-on-canvas'
           ? `画布上这一镜的占位卡连着 ${problem.shown} 张参考图，确认付费卡后供应商收到 ${problem.sent} 张`
-          : `${consent.kind === 'spend-card' ? '付费卡' : '节点'}上显示 ${problem.field}=${JSON.stringify(problem.shown)}，供应商收到的是 ${JSON.stringify(problem.sent)}`,
+          : problem.field === 'prompt-unseen-addition'
+            ? `用户在界面上看到并确认的提示词是「${normalizePrompt(problem.shown).slice(0, 40)}」，供应商收到的多了他在这个界面上看不见的 ${problem.unseen.length} 段：${problem.unseen.map((line) => `「${line.slice(0, 40)}」`).join('、')}`
+            : `${consent.kind === 'spend-card' ? '付费卡' : consent.kind.startsWith('storyboard') ? '分镜表' : '节点'}上显示 ${problem.field}=${JSON.stringify(problem.shown)}，供应商收到的是 ${JSON.stringify(problem.sent)}`,
         snapshot: { consent, shown: entry, sent: submission, body },
       })
     }
@@ -557,12 +716,9 @@ export function createInvariantMonitor(options) {
     }
   }
 
-  /** 这一场配置里有的供应商 key（切家提示点名的是 key）：认「某某家：……」时只认真有这一家的，免得把随便一句「X: Y. Z」当成点名。 */
-  function knownVendorKeys() {
-    try {
-      const catalog = JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))
-      return new Set((catalog.vendors ?? []).map((vendor) => vendor?.key).filter(Boolean))
-    } catch { return new Set() }
+  /** 这一场配置里有的供应商（显示名 / key → key），读自隔离设置目录里的模型目录。 */
+  function sceneVendors() {
+    try { return vendorKeyByLabel(JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))) } catch { return new Map() }
   }
 
   /** 界面上的状态文字：出现时读后台对一对。toast 可能在步骤收尾前就自己关了，所以页内观察者记下的 toast 文字也一起核。 */
@@ -570,19 +726,15 @@ export function createInvariantMonitor(options) {
     let claims = []
     const patterns = uiClaimPatterns()
     const vendorFailed = providerFailedPatterns()
-    const vendors = knownVendorKeys()
+    const vendors = sceneVendors()
     const toastClaims = Object.values(probe?.toasts ?? {}).flatMap((toast) => (toast.texts ?? []).flatMap((text) => {
       const found = []
       for (const { claim, source } of patterns) {
         if (new RegExp(source).test(text) && !found.some((entry) => entry.claim === claim)) found.push({ claim, text: text.slice(0, 160), node: `toast:${toast.id}` })
       }
       // 「某某家：失败原因。建议」——这条提示点名了一家供应商，说它失败了、原因是什么。
-      for (const { locale: textLocale, pattern } of vendorFailed) {
-        const match = pattern.exec(text)
-        if (!match?.groups || !vendors.has(match.groups.vendor)) continue
-        found.push({ claim: 'vendor-failed', vendor: match.groups.vendor, reason: match.groups.reason, textLocale, text: text.slice(0, 200), node: `toast:${toast.id}` })
-        break
-      }
+      const named = vendorFailedClaim(text, vendors, vendorFailed)
+      if (named) found.push({ claim: 'vendor-failed', ...named, text: text.slice(0, 200), node: `toast:${toast.id}` })
       return found
     }))
     try {
@@ -647,28 +799,24 @@ export function createInvariantMonitor(options) {
         })
         continue
       }
-      if (claim.claim === 'budget-exhausted' || claim.claim === 'raise-budget') {
-        const budgetRecord = runs.some((run) => (run.jobs ?? []).some((job) => ['budget_exhausted', 'budget_halt'].includes(job.errorCode)))
-        if (budgetRecord) continue
+      if (STOP_CLAIM_REASON[claim.claim]) {
+        // 「为什么停」是 Run 在停下那一刻记下的事实（run.stop.reason，electron/productionRun/productionRunLifecycle.ts applyRunStatus）：
+        // 界面说的原因，后台得真有一个 Run 是因为它停的。
+        const expected = STOP_CLAIM_REASON[claim.claim]
+        if (runs.some((run) => run.stop?.reason === expected)) continue
         await violate({
           invariant: 4, rule: `ui-${claim.claim}`, key: `${claim.claim}|${claim.node}`,
-          module: 'electron/shared/productionShotPhase.ts deriveProductionShotState（run.status==="needs_attention" 一律判成预算原因）',
-          message: `界面说「${claim.text}」，而任何一个 Run 都没有预算停批记录（没有 budget_exhausted / budget_halt）`,
-          snapshot: { claim, runs: runs.map((run) => ({ runId: run.runId, status: run.status, budget: run.budget ?? null, jobs: (run.jobs ?? []).map((job) => ({ shotId: job.metadata?.shotId, status: job.status, errorCode: job.errorCode ?? null })) })) },
+          module: 'electron/shared/productionRunStop.ts runStopReason → electron/shared/productionShotPhase.ts deriveProductionShotState（界面说的停下原因与 Run 记下的不一致）',
+          message: `界面说「${claim.text}」，而没有哪个 Run 记下的停下原因是 ${expected}`,
+          snapshot: { claim, runs: runs.map((run) => ({ runId: run.runId, status: run.status, stop: run.stop ?? null, budget: run.budget ?? null })) },
         })
-      } else if (claim.claim === 'operation-failed-try-later') {
-        const stuck = runs.filter((run) => run.status === 'pausing')
-        const hostSaid = (mainLogTail?.() ?? []).filter((line) => /not resumable|pausing|attempt limit|production-run|rework|command/i.test(line)).slice(-12)
-        // 「稍后再试」只在失败是暂时的时候才是真话。宿主拒绝的是一个**定了的**原因（尝试次数用完 / Run 卡在 pausing），
-        // 再等多久、再按几次都一样。
-        const deterministic = /attempt limit|not resumable|exceeds/i.test(`${claim.text} ${hostSaid.join(' ')}`) || stuck.length > 0
+      } else if (claim.claim === 'action-internal-error') {
+        const hostSaid = (mainLogTail?.() ?? []).filter((line) => /production-action|internal-error|production-run/i.test(line)).slice(-12)
         await violate({
-          invariant: 4, rule: 'ui-operation-failed-try-later', key: `${claim.claim}|${claim.node}`,
-          module: 'src/workbench/production/productionShotActions.ts reportResult（兜底文案一律「稍后再试」，把主进程英文原话拼在前面）',
-          message: `界面说「${claim.text.slice(0, 80)}」${deterministic
-            ? `——宿主拒绝的是一个定了的原因（${stuck.length ? `Run 停在 pausing：${stuck.map((run) => run.runId.slice(-8)).join('、')}` : '尝试次数上限'}），「稍后再试」不会好`
-            : '，宿主拒绝的真原因没说出来'}`,
-          snapshot: { claim, hostSaid, runs: runs.map((run) => ({ runId: run.runId, status: run.status })) },
+          invariant: 4, rule: 'ui-action-internal-error', key: `${claim.claim}|${claim.node}`,
+          module: 'electron/capabilityCore/appIntegrationProductionActions.ts productionShotActionFailureOf（这一种失败在源头没被分类）',
+          message: `界面说「${claim.text.slice(0, 80)}」——返工 / 续拍撞上了一种还没有语义码的失败（主进程日志 production-action-internal-error 那一行就是它）`,
+          snapshot: { claim, hostSaid, runs: runs.map((run) => ({ runId: run.runId, status: run.status, stop: run.stop ?? null })) },
         })
       } else if (claim.claim === 'stopped-remaining') {
         const run = runs.at(-1)
@@ -729,8 +877,14 @@ export function createInvariantMonitor(options) {
           continue
         }
         if (present && terminal && !node.runs?.some((run) => ['running', 'queued'].includes(run.status))) {
-          const lingering = now - Math.max(spinner.firstSeen, node.runs?.[0]?.completedAt ?? 0)
-          if (lingering > limits.savedFeedbackWindowMs.value) {
+          // 只认「最后一次真的看见它」，快照过期就不下结论（F7：满载时读到几秒前的快照，转圈早收了还报「还在」）。
+          const seen = finishedNodeSpinner({ spinner, completedAt: node.runs?.[0]?.completedAt ?? 0, readAt: probe.readAt, sampledAt: probe.spinnersSampledAt })
+          if (seen.verdict === 'stale-snapshot') {
+            notes.push({ at: now, kind: 'spinner-snapshot-stale', node: node.id, ageMs: snapshotAgeMs({ readAt: probe.readAt, sampledAt: probe.spinnersSampledAt }) })
+            continue
+          }
+          const lingering = seen.lingeringMs ?? 0
+          if (seen.verdict === 'fresh-present' && lingering > limits.savedFeedbackWindowMs.value) {
             await violate({
               invariant: 5, rule: 'spinner-on-finished-node', key: `${node.id}|${spinner.desc}`,
               module: 'src/workbench/generationCanvas/nodes（节点状态已终态，转圈没收）',
@@ -925,6 +1079,34 @@ export function createInvariantMonitor(options) {
     }
   }
 
+  /**
+   * 7d：用户看得见的地方（Agent 面板 / 提示条 / 状态行 / 任务卡）不许露出服务商原始 JSON、内部 id、价格预算字样。
+   * main 上已有的违例登记在 outcomeDebts.json（带到期日、绑修它的 PR）：未过期的记进报告的 knownDebts，不算红；过期即红。
+   */
+  const knownDebts = []
+  async function checkOutcomeText() {
+    const regions = await win().evaluate(collectVisibleTextInPage).catch(() => [])
+    const debts = JSON.parse(fs.readFileSync(new URL('./outcomeDebts.json', import.meta.url), 'utf8')).debts
+    const today = new Date().toISOString().slice(0, 10)
+    for (const { source, text } of regions) {
+      for (const leak of findLeaks(text)) {
+        const debt = activeDebt(debts, { rule: 'ui-leaked-internals', kind: leak.kind, text, today })
+        if (debt) {
+          if (!knownDebts.some((entry) => entry.kind === leak.kind && entry.match === leak.match)) {
+            knownDebts.push({ kind: leak.kind, match: leak.match, source, boundTo: debt.boundTo, until: debt.until })
+          }
+          continue
+        }
+        await violate({
+          invariant: 7, rule: 'ui-leaked-internals', key: `${source}|${leak.kind}|${leak.match.slice(0, 40)}`,
+          module: '界面文字的出处：Agent 面板 / 提示条 / 任务卡的文案不许拼供应商原话、内部 id 或价格预算词',
+          message: `${source} 里露出${{ 'raw-json': '原始 JSON（工具入参或服务商回包）', 'internal-id': '内部 id', 'price-wording': '价格 / 预算字样' }[leak.kind]}：「${leak.match.slice(0, 80)}」`,
+          snapshot: { source, kind: leak.kind, match: leak.match, text: text.slice(0, 600) },
+        })
+      }
+    }
+  }
+
   // ── 铁律 8：不白烧 token ─────────────────────────────────────────────────────────────────
 
   function readTranscriptMessages() {
@@ -1046,6 +1228,7 @@ export function createInvariantMonitor(options) {
     await checkSurfaces(probe)
     await checkOverlays()
     await checkRawEnglish(probe)
+    await checkOutcomeText()
     await checkTokens()
     await checkNuisance(probe)
     lastCheckAt = Date.now()
@@ -1120,6 +1303,7 @@ export function createInvariantMonitor(options) {
       harnessError: error ? String(error?.stack ?? error).slice(0, 4000) : null,
       invariants: INVARIANTS.map((entry) => ({ id: entry.id, title: entry.title['zh-CN'], violations: violations.filter((violation) => violation.invariant === entry.id).length })),
       violations,
+      knownDebts,
       steps: steps.map(({ label, user, ok, error: stepError, t0, t1, failShot, mainLog }) => ({ label, user, ok, error: stepError, durationMs: (t1 ?? Date.now()) - t0, failShot: failShot ?? null, ...(mainLog ? { mainLog } : {}) })),
       consents: consents.map((consent) => ({ ...consent, scope: consent.scope?.map(({ submissions: attached, ...rest }) => ({ ...rest, submissions: attached?.length ?? 0 })) })),
       submissions,
@@ -1156,7 +1340,7 @@ export function createInvariantMonitor(options) {
 
   return {
     step, settle, check, finish, setLocale,
-    consentSpendCard, consentNodeGenerate, consentDialog, consentFullAuto, revokeConsents, recordDeclaredDefault, recordAttachment,
+    consentSpendCard, consentNodeGenerate, consentStoryboardRows, consentDialog, consentFullAuto, revokeConsents, recordDeclaredDefault, recordAttachment,
     violate, note: (entry) => notes.push({ at: Date.now(), ...entry }),
     readProject, readRuns, screenshot,
     get violations() { return violations },
