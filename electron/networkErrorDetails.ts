@@ -32,6 +32,26 @@ export function networkFailureDetails(error: unknown): { code?: string; message:
   return fallback ? { message: fallback } : undefined;
 }
 
+/**
+ * True when fetch refused a redirect (`redirect: "error"`, the credentialed-request rule in appFetch).
+ * undici reports it as a `fetch failed` whose cause chain ends in `unexpected redirect`; no Location is exposed.
+ */
+export function isRedirectRefusal(error: unknown): boolean {
+  const pending: unknown[] = [error];
+  const visited = new Set<object>();
+  for (let index = 0; index < pending.length && index < 12; index += 1) {
+    const current = pending[index];
+    if (!current || typeof current !== 'object' || visited.has(current)) continue;
+    visited.add(current);
+    try {
+      const value = current as { message?: unknown; cause?: unknown };
+      if (typeof value.message === 'string' && /unexpected redirect/i.test(value.message)) return true;
+      if (value.cause) pending.push(value.cause);
+    } catch { /* keep inspecting the bounded chain */ }
+  }
+  return false;
+}
+
 /** A diagnostic endpoint never includes URL credentials, query parameters or fragments. */
 export function safeNetworkUrl(value: string): string {
   try {

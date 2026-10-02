@@ -436,7 +436,7 @@ test('GitHub output exposes every policy dimension with stable snake-case names'
   })
 })
 
-// ---- T-QA-62：谁决定画布上显示什么，改了它就必须跑 full 画布验收 ----
+// ---- 画布显示归属：谁决定画布上显示什么，改了它就必须跑 full 画布验收 ----
 // 「Canvas Acceptance」= 画布 full 档（canvas-landing / canvas-reconcile / batch-production 都只在 full 里）。
 // #934 / #940 / #937 都改了画布显示的主人，却只拿到 critical，S5 回归就这样进了 main。
 

@@ -528,7 +528,7 @@ describe('动作表：每类主 / 次动作都写在表里，改一类不许带�
     'model-kind-mismatch': true, 'model-not-open': true, 'model-unavailable-upstream': true, 'model-retired': true,
     'image-route-disabled': true, 'account-gate': true, 'content-policy': true, 'input-image-blocked': true,
     'asset-upload-failed': true, 'asset-too-large': true, 'asset-invalid': true, 'outbound-blocked': true,
-    'outbound-blocked-submit': true, 'outbound-blocked-credential-origin': true, server: true, input: true,
+    'outbound-blocked-submit': true, 'outbound-blocked-credential-origin': true, 'credential-redirect': true, server: true, input: true,
     'output-truncated': true, 'output-unreadable': true, unknown: true,
   }
 

@@ -167,7 +167,11 @@ describe("model discovery URLs and credential safety", () => {
   it("does not automatically follow a cross-host redirect carrying custom auth", async () => {
     const fetchSpy = vi.fn().mockResolvedValue(response(302, "", { location: "https://attacker.test/models" }));
     vi.stubGlobal("fetch", fetchSpy);
-    expect(await probe("https://gateway.test/v1", { "X-Private": "secret" })).toMatchObject({ ok: false, failureKind: "invalid_response" });
+    const result = await probe("https://gateway.test/v1", { "X-Private": "secret" });
+    expect(result).toMatchObject({ ok: false, failureKind: "redirect" });
+    // 用户看到的是一句人话，并且带着跳转目标（只有主机和路径），不是一个裸的「HTTP 302」。
+    expect(result).toMatchObject({ error: expect.stringContaining("attacker.test/models") });
+    expect(JSON.stringify(result)).not.toContain("secret");
     expect(fetchSpy).toHaveBeenCalledWith("https://gateway.test/v1/models", expect.objectContaining({ redirect: "manual" }));
     expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
