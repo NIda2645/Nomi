@@ -9,7 +9,7 @@
       "authority_kind": "writer",
       "trust_domain": "main",
       "fact_kind": "state-machine",
-      "migration_status": "pending",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/agentLane/laneApprovalGate.ts",
         "symbol": "createLaneApprovalGate"
@@ -26,10 +26,6 @@
         {
           "path": "electron/shared/agentLane/laneApproval.ts",
           "symbol": "laneApprovalGrantable"
-        },
-        {
-          "path": "electron/agentLane/laneApprovalGate.ts",
-          "symbol": "settleHold"
         }
       ],
       "forbidden_derivations": [],
@@ -41,8 +37,7 @@
         "electron/agentLane/laneExtendedTools.ts"
       ],
       "since": "2026-09-22",
-      "notes": "「一次调用停在 before_tool 里等人」的运行时那一半住这里；判据（纯函数）在 electron/shared/agentLane/laneApproval.ts，两者是同一个概念的判据面与运行面，不是两个 owner。渲染层只做只读投影，不许自己判断等不等、也不许替它补偿。 2026-10-01：登记 settleHold 为写接口（等待的唯一兑现口；hold 是同一个对象上的入口，因为 hold 这个名字太通用、全仓有不相干的同名局部，按名字扫会误报，所以只登记 settleHold，hold 靠 createLaneApprovalGate 的 pending 写门冻结管住），并按实查把状态从 converged 改为 pending：全仓还有闸卡投影与付费卡轮询两种平行表示，见 migration_strategy。",
-      "migration_strategy": "全仓「等用户」只留一种表示：laneApprovalGate 的 hold（替一次调用停在 before_tool 里等人，race signal、被打断兑现 cancelled、cancelAll 收尾）。现在还剩两种平行表示，等 0.24 版收敛线 B 并进来：① LaneProjection.pending / LanePendingApproval（闸卡自己的投影，preflight 那条路，和 hold 是同一道等待的两种画法）；② 付费卡的 1.5 秒轮询（src/workbench/ai/v4/useAgentPanelSpendConfirm.ts POLL_INTERVAL_MS——渲染层自己去问「还在不在等」，没有直接读这一个主人）。收口判据：渲染层不再自己轮询判断等不等，pending 只剩 hold 的只读投影。收敛前冻结：不许新增第三条写入口，新代码要「停下来等用户」只许走 hold / settleHold。"
+      "notes": "「一次调用停在 before_tool 里等人」的运行时那一半住这里；判据（纯函数）在 electron/shared/agentLane/laneApproval.ts，两者是同一个概念的判据面与运行面，不是两个 owner。渲染层只做只读投影，不许自己判断等不等、也不许替它补偿。"
     },
     {
       "name": "出价/待决身份",
@@ -3289,6 +3284,84 @@
       ],
       "since": "2026-10-01",
       "notes": "CI 选档、本机 gates、交付收据三处共用这一个函数，不许任何一处自己再判一遍「这个 diff 要不要跑 X」。画布 full 档的清单（CANVAS_DISPLAY_OWNER_PATTERNS）对着本表里画布显示相关概念的 owner 与写口列，parity_test 逐个概念核对；generationCanvas 每个子目录必须表态。合同 docs/fixes/2026-10-01-canvas-classifier-display-owners.root-cause.json。"
+    },
+    {
+      "name": "新建文件时给 agent 看的「已有能力清单」（从两张登记表现算，不入库）",
+      "subject": "agent-rules.existing-capability-index",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/build-capability-index.mjs",
+        "symbol": "buildCapabilityIndex"
+      },
+      "write_api": [
+        {
+          "path": "scripts/build-capability-index.mjs",
+          "symbol": "buildCapabilityIndex"
+        }
+      ],
+      "parity_test": "scripts/build-capability-index.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/edit-time-reminder.mjs"
+      ],
+      "notes": "清单只读 concept-owners.json 与 framework-boundaries.json，每次现算，不写文件、不入库，不许另起第三份「已有能力」登记；登记表漏登的能力这里就列不出来（pi 的 context-compaction 就是这样漏过 laneContextFit 的），所以补登记是前置。"
+    },
+    {
+      "name": "「同一文件近 14 天第 3 次 fix → 先过重写判据」与「新建文件 → 给能力清单」的触发判决",
+      "subject": "agent-rules.edit-time-reminder-verdict",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/edit-time-reminder.mjs",
+        "symbol": "decideEditTimeReminder"
+      },
+      "write_api": [
+        {
+          "path": "scripts/edit-time-reminder.mjs",
+          "symbol": "decideEditTimeReminder"
+        }
+      ],
+      "parity_test": "scripts/edit-time-reminder.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/claude-hooks/edit-time-reminder.sh"
+      ],
+      "notes": "什么时候提醒（新建 = 路径不存在；反复修 = 近 14 天 fix/hotfix 提交 ≥3）只住 decideEditTimeReminder；阈值是试用值（到 2026-10-15 用提交历史校准）。只提醒、不拦、fail-open；回馈走 PreToolUse 的 hookSpecificOutput.additionalContext（普通 stdout 不进上下文）。"
+    },
+    {
+      "name": "「同一层被反复补」的簇何时算已答复（补 / 重写 / 删的选择 + 特征测试）",
+      "subject": "agent-rules.rewrite-decision-cluster",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/symptom-cluster-lib.mjs",
+        "symbol": "evaluateClusters"
+      },
+      "write_api": [
+        {
+          "path": "scripts/symptom-cluster-lib.mjs",
+          "symbol": "evaluateClusters"
+        }
+      ],
+      "parity_test": "scripts/check-symptom-cluster.node-test.mjs",
+      "allowed_consumers": [
+        "scripts/check-symptom-cluster.mjs"
+      ],
+      "notes": "同一模块 7 天内第三份根因合同时，簇里最新那份必须带有效的 rewrite_decision（decision + characterization_test）才算答复；评审文档那条路已删，不并存。字段校验（测试文件存在、选 rewrite 时测试在 diff 里）在 root-cause-contracts 的 validateRewriteDecision，那里只校验、不判簇。"
     },
     {
       "name": "Agent 面板上用户看得见的失败文字与工具收据文字（不含原始 JSON / 内部 id）",

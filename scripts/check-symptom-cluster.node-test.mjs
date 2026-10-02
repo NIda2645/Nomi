@@ -10,11 +10,13 @@ import {
   modulesOf,
 } from './symptom-cluster-lib.mjs'
 
-const contract = (file, scopes, entries = []) => ({
+const contract = (file, scopes, entries = [], rewriteDecision) => ({
   file,
   date: contractDate(file),
   modules: modulesOf({ scope_paths: scopes, entry_points: entries }),
+  ...(rewriteDecision ? { rewriteDecision } : {}),
 })
+const OLD = '2026-09-07' // 测试用的旧阈值：fixture 日期都在 9 月，生产阈值是 10-02
 
 test('模块键：三段及以上取前两段，两段取目录', () => {
   assert.equal(moduleKey('electron/harness/runtime/pi/session.mts'), 'electron/harness')
@@ -51,35 +53,50 @@ test('7 天内第三份合同才成簇；跨过窗口就不成簇', () => {
   assert.deepEqual(findClusters({ contracts: spread }), [])
 })
 
-test('成簇且无结构评审 → 红；有一份日期够新且点名该模块的评审 → 绿', () => {
+test('成簇且最新合同没写 rewrite_decision → 红；写了有效的选择 → 绿', () => {
+  const decision = { decision: 'rewrite', characterization_test: 'electron/harness/x.test.ts' }
+  const files = ['docs/fixes/2026-09-07-a.root-cause.json', 'docs/fixes/2026-09-09-b.root-cause.json', 'docs/fixes/2026-09-12-c.root-cause.json']
+  const build = (newest) => findClusters({
+    contracts: files.map((file, index) => contract(file, ['electron/harness/x.ts'], [], index === 2 ? newest : undefined)),
+  })
+  const red = evaluateClusters({ clusters: build(undefined), threshold: OLD })
+  assert.equal(red.length, 1)
+  assert.match(red[0], /已有 3 份根因合同/)
+  assert.match(red[0], /rewrite_decision/)
+
+  assert.equal(evaluateClusters({ clusters: build({ decision: 'maybe', characterization_test: 'a.test.ts' }), threshold: OLD }).length, 1, '选项不在 patch/rewrite/delete 里，不算')
+  assert.equal(evaluateClusters({ clusters: build({ decision: 'patch', characterization_test: '  ' }), threshold: OLD }).length, 1, '没给特征测试路径，不算')
+  assert.deepEqual(evaluateClusters({ clusters: build(decision), threshold: OLD }), [])
+  for (const choice of ['patch', 'rewrite', 'delete']) {
+    assert.deepEqual(evaluateClusters({ clusters: build({ ...decision, decision: choice }), threshold: OLD }), [], choice)
+  }
+})
+
+test('只有簇里**最新**那份合同带选择才算（旧合同带着不算）', () => {
+  const decision = { decision: 'patch', characterization_test: 'electron/harness/x.test.ts' }
   const clusters = findClusters({
     contracts: [
-      contract('docs/fixes/2026-09-07-a.root-cause.json', ['electron/harness/x.ts']),
+      contract('docs/fixes/2026-09-07-a.root-cause.json', ['electron/harness/x.ts'], [], decision),
       contract('docs/fixes/2026-09-09-b.root-cause.json', ['electron/harness/y.ts']),
       contract('docs/fixes/2026-09-12-c.root-cause.json', ['electron/harness/z.ts']),
     ],
   })
-  const red = evaluateClusters({ clusters, audits: [] })
-  assert.equal(red.length, 1)
-  assert.match(red[0], /已有 3 份根因合同/)
+  assert.equal(evaluateClusters({ clusters, threshold: OLD }).length, 1)
+})
 
-  const tooOld = evaluateClusters({
-    clusters,
-    audits: [{ file: 'docs/audit/2026-09-08-x.md', date: '2026-09-08', text: '评审了 electron/harness' }],
+test('生产阈值 2026-10-02：9 月的簇不追溯（那些已按旧规矩处理过）', () => {
+  const clusters = findClusters({
+    contracts: [
+      contract('docs/fixes/2026-09-20-a.root-cause.json', ['electron/harness/x.ts']),
+      contract('docs/fixes/2026-09-21-b.root-cause.json', ['electron/harness/y.ts']),
+      contract('docs/fixes/2026-09-22-c.root-cause.json', ['electron/harness/z.ts']),
+    ],
   })
-  assert.equal(tooOld.length, 1, '评审日期早于簇的最后一份合同，不算')
-
-  const wrongModule = evaluateClusters({
-    clusters,
-    audits: [{ file: 'docs/audit/2026-09-13-x.md', date: '2026-09-13', text: '评审了 src/workbench' }],
+  assert.deepEqual(evaluateClusters({ clusters }), [])
+  const october = findClusters({
+    contracts: ['02', '03', '04'].map((day) => contract(`docs/fixes/2026-10-${day}-x.root-cause.json`, ['electron/harness/x.ts'])),
   })
-  assert.equal(wrongModule.length, 1, '评审没点名这个模块，不算')
-
-  const green = evaluateClusters({
-    clusters,
-    audits: [{ file: 'docs/audit/2026-09-13-x.md', date: '2026-09-13', text: '本次评审 electron/harness 这一层' }],
-  })
-  assert.deepEqual(green, [])
+  assert.equal(evaluateClusters({ clusters: october }).length, 1)
 })
 
 test('整簇早于阈值 → 不追溯；混合窗口只要有一份早于阈值也不追溯', () => {
@@ -91,7 +108,7 @@ test('整簇早于阈值 → 不追溯；混合窗口只要有一份早于阈值
     ],
   })
   assert.equal(old.length, 1)
-  assert.deepEqual(evaluateClusters({ clusters: old, audits: [] }), [])
+  assert.deepEqual(evaluateClusters({ clusters: old, threshold: '2026-10-02' }), [])
 })
 
 test('新窗口不许藏在老窗口后面（实测栽过：只报最密的那一个，新增三份合同一条都报不出来）', () => {
@@ -107,7 +124,7 @@ test('新窗口不许藏在老窗口后面（实测栽过：只报最密的那�
     contract('docs/fixes/2026-09-21-y.root-cause.json', ['electron/harness/y.ts']),
     contract('docs/fixes/2026-09-22-z.root-cause.json', ['electron/harness/z.ts']),
   ]
-  const errors = evaluateClusters({ clusters: findClusters({ contracts }), audits: [] })
+  const errors = evaluateClusters({ clusters: findClusters({ contracts }), threshold: OLD })
   assert.equal(errors.length, 1, '新窗口必须被报出来')
   assert.match(errors[0], /2026-09-20 到 2026-09-22/)
   assert.ok(!errors[0].includes('2026-08-01'), '老窗口不该混进这条')
@@ -118,7 +135,7 @@ test('同一模块多个重叠窗口只报最密的一条（刷屏的门岗没�
     contract(`docs/fixes/2026-09-${day}-x.root-cause.json`, ['electron/harness/x.ts']))
   const clusters = findClusters({ contracts })
   assert.ok(clusters.length > 1, '窗口本身有多个')
-  const errors = evaluateClusters({ clusters, audits: [] })
+  const errors = evaluateClusters({ clusters, threshold: OLD })
   assert.equal(errors.length, 1)
   assert.match(errors[0], /已有 5 份根因合同/)
 })
