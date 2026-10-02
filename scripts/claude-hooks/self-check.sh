@@ -87,8 +87,8 @@ if hit 'gates|check:|门岗|命令|pnpm run'; then
   echo ""
 fi
 # 交付 / 合并 / 交工评审
-if hit '合并|merge|收据|verify-merged|preflight|开 ?PR|交工|Ponytail|review:branch|推送'; then
-  echo "【交付 · R11/R22/R25】开任务先 pnpm run delivery:preflight｜合并规矩（只由协调会话做；其他会话开 PR 后把号发给它，不自己合）：CI 绿 + 扫描干净就合，最多 3 个在等收据，任何一个收据红了立刻停、交人定修还是回滚｜交工前 pnpm run review:branch（PR 正文 ## Ponytail 节逐条表态）｜细则 docs/engineering/delivery-and-review.md"
+if hit '合并|merge|收据|verify-merged|preflight|开 ?PR|交工|推送'; then
+  echo "【交付 · R11/R22】开任务先 pnpm run delivery:preflight｜合并规矩（只由协调会话做；其他会话开 PR 后把号发给它，不自己合）：CI 绿 + 扫描干净就合，最多 3 个在等收据，任何一个收据红了立刻停、交人定修还是回滚｜细则 docs/engineering/delivery-and-review.md"
   echo ""
 fi
 

@@ -7,6 +7,8 @@ import { gitPaths } from "./lib/gitPaths.mjs";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
+  DETECTED_BY,
+  classifyFindings,
   inheritLegacyContractHashes,
   isHighRiskProductionFile,
   validateRootCauseChange,
@@ -232,8 +234,6 @@ test("match: 交付闸门的执行体算高风险，提醒型 hook 不算", () =
     "scripts/claude-hooks/pre-push-check.sh",
     "scripts/claude-hooks/secret-guard.sh",
     "scripts/stamp-gates-ok.mjs",
-    "scripts/ponytail-review-branch.mjs",
-    "scripts/ponytail-review-hook.mjs",
     "scripts/install-claude-hooks.cjs",
     "scripts/install-git-hooks.cjs",
   ]) {
@@ -914,4 +914,37 @@ test("rewrite_decision: 补 / 删 → 测试存在即可；重写 → 那份测�
 
   const touched = validateWithDecision({ decision: "rewrite", characterization_test: characterization }, [characterization]);
   assert.equal(touched.ok, true, touched.errors.join("\n"));
+});
+
+// 2026-10-02：检查降为警告档，只对 schema 不合法阻断；v3 加 detected_by / recurrence_check_on。
+test("classifyFindings: schema 问题阻断，门表 / 高风险没带合同降为警告", () => {
+  const { blocking, warnings } = classifyFindings([
+    "x: schema_version must be 3",
+    "x: detected_by is required for recurring / high-risk / escaped-bug contracts",
+    "High-risk production file is not covered by a root-cause contract: electron/a.ts",
+    "x: doors is required — 列出这条不变量碰到的状态的全部写入口与读入口",
+    "x: invariant_owner_layer is required",
+  ]);
+  assert.equal(blocking.length, 2);
+  assert.equal(warnings.length, 3);
+});
+
+test("detected_by / recurrence_check_on: 新合同属 recurring、高风险或逃逸 bug 时必填，枚举与日期格式固定", () => {
+  assert.deepEqual(DETECTED_BY, ["user", "post-release", "walkthrough", "ci", "review"]);
+  const base = { ...completeContract, __file: "docs/fixes/2026-10-05-fixture-media-boundary.root-cause.json" };
+  const changedFiles = [base.__file, ...base.regression_tests, ...base.scope_paths];
+  const run = (contract) => validateRootCauseChange({
+    changedFiles,
+    contracts: [contract],
+    existingFiles: new Set(changedFiles),
+  }).errors.join(" | ");
+  assert.match(run(base), /detected_by is required/);
+  assert.match(run(base), /recurrence_check_on is required/);
+  assert.match(run({ ...base, detected_by: "nobody", recurrence_check_on: "2026-11-04" }), /detected_by must be one of/);
+  assert.match(run({ ...base, detected_by: "user", recurrence_check_on: "soon" }), /recurrence_check_on must be a YYYY-MM-DD/);
+  const ok = run({ ...base, detected_by: "ci", recurrence_check_on: "2026-11-04" });
+  assert.doesNotMatch(ok, /detected_by|recurrence_check_on/);
+  // 老合同（日期前缀早于 2026-10-02）豁免
+  const old = run({ ...completeContract, __file: "docs/fixes/2026-09-20-fixture-media-boundary.root-cause.json" });
+  assert.doesNotMatch(old, /detected_by|recurrence_check_on/);
 });

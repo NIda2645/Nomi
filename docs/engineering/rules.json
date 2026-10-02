@@ -95,7 +95,7 @@
       "rule": "独立验收（暂停点②）：四类改动合并前由另一条线验收，PR 正文 `## 独立验收` 带报告链接和验收线编号，编号不得与实现线相同；红灯用固定复现命令一字不改；班组报告是声明不是证据。",
       "disease": "干活的给自己打分；门岗只证没变坏、证不了做到了",
       "enforcement": ["coordinator-tool:scripts/merge-preflight.mjs"],
-      "evidence": "取代 Ponytail 评审（其适配器不可用、处理大 diff 时崩）",
+      "evidence": "取代原交工前评审（其适配器不可用、处理大 diff 时崩）",
       "owner": "协调会话",
       "review_on": "2026-12-01",
       "delete_when": "逃逸率连续 2 个周期低于 10%",

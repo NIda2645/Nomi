@@ -109,10 +109,6 @@ const LAYER_WEIGHT = { UI: 30, IPC: 28, MAIN: 26, CORE: 14, LOG: 0 }
 // ---------------------------------------------------------------------------
 const BY_DESIGN = [
   {
-    match: (rel) => /ponytail-review-hook\.mjs$/.test(rel),
-    reason: 'Ponytail hook 故意丢弃 stdout/stderr（见 memory：zero-bytes is by design）；真信号是 report 大小。',
-  },
-  {
     match: (rel) => layerOf(rel) === 'LOG',
     reason: '日志/遥测自身的兜底：写日志失败再抛会把主流程一起拖倒，属于可观测性降级而非功能失败。',
   },

@@ -58,12 +58,12 @@ test('降为提示的：advisory 名单只有 ledger（有机器补齐主体）�
   assert.deepEqual([...advisory].sort(), ['check:ledger', 'check:symptom-cluster'])
 })
 
-test('Ponytail 降为提示不是删除：评审本体、收据、延后账本都还在，重新开起来只要改一个值', () => {
+test('Ponytail 已整套删除：脚本、模式开关、延后账本、check 与 review:branch 都不在了', () => {
   for (const file of ['scripts/ponytail-review-branch.mjs', 'scripts/ponytail-review-hook.mjs', 'scripts/check-ponytail-deferred.mjs', 'docs/engineering/ponytail-mode.json']) {
-    assert.ok(fs.existsSync(path.join(repoRoot, file)), `${file} 不见了`)
+    assert.ok(!fs.existsSync(path.join(repoRoot, file)), file + ' 应该已删除（用合并前独立验收代替）')
   }
-  assert.ok(pkg.scripts['review:branch'])
-  assert.ok(gates.includes('check:ponytail-review'), 'check:ponytail-review 仍在链里（提示模式下退出 0）')
+  assert.ok(!pkg.scripts['review:branch'])
+  assert.ok(!gates.includes('check:ponytail-review'))
 })
 
 test('每轮注入的交付账本提醒已从 L0 hook 删掉；gen:ledger / ledger:brief 仍可按需跑', () => {

@@ -1,6 +1,6 @@
 # 多智能体编排手册 — 派工 / 收货 / 接力的机器化纪律
 
-> **谁读这份**：任何在本仓调度多个执行体（Codex / Opus 子 agent / 后台命令）替自己干活的会话。这是把 2026-08~09 一连串实战事故（合并列车连折六班、cutover-transplant 607 文件误植、ponytail ENOBUFS 撞钩子）反推出来的**编排者纪律**，一手来源沉在会话记忆里，这里提炼成仓库级、可照抄的做法。
+> **谁读这份**：任何在本仓调度多个执行体（Codex / Opus 子 agent / 后台命令）替自己干活的会话。这是把 2026-08~09 一连串实战事故（合并列车连折六班、cutover-transplant 607 文件误植、本地钩子 ENOBUFS）反推出来的**编排者纪律**，一手来源沉在会话记忆里，这里提炼成仓库级、可照抄的做法。
 >
 > **一句话心智模型**：活会话会死，盘上现场不死。编排者的全部本事是「把判断留在自己手里、把执行和状态外化到 git/PR/docs、用机器（哨兵/门岗/延迟数）代替信任」。凡靠「我记得」「agent 说它做了」的地方，迟早翻车——本手册每一节都是某次翻车的疤。
 >
@@ -39,21 +39,20 @@
 
 **反例**：M1 三线撞车——两个核账班 chip 都指向同一 `-r2` 分支，用户点开后互相踩掉对方的 commit。
 
-### 2.1 交工链：review:branch → 处理 findings → gates →（碰面分支）ci-chain → push → PR
+### 2.1 交工链：gates →（碰面分支）ci-chain → push → PR → 合并前独立验收
 
-**原则**（2026-09-15 起）：任务书里的交工链是**一条连续动作**，不许拆散执行、不许跳步：
+**原则**：任务书里的交工链是**一条连续动作**，不许拆散、不许跳步（2026-10-02 起评审收据一环已删，用合并前独立验收代替，见 IA）：
 
-> `pnpm run review:branch` → 处理 findings（改完就回第一步，树变了收据即失效）→ `pnpm run gates` →
-> **集成 / 碰面分支再加一步** `pnpm run test:e2e:ci-chain` → `git push` → 开 PR，
-> 正文带 `## Ponytail` 节逐条写「已改」/「不改，因为…」。
+> `pnpm run gates` → **集成 / 碰面分支再加一步** `pnpm run test:e2e:ci-chain` → `git push` → 开 PR，
+> 正文带 `## 设计卡`（四类改动 9 格全填，其余只填 ★ 格）；四类改动合并前另由一条线验收，正文带 `## 独立验收`。
 
-**为什么多这一步**（2026-09-18 加）：CI 的 desktop-linux job 那七条走查，`pnpm run gates` **一条都不含**。
+**为什么多 ci-chain 这一步**（2026-09-18 加）：CI 的 desktop-linux job 那七条走查，`pnpm run gates` **一条都不含**。
 2026-09-17 PR #804 本地连过五轮 gates 全绿，CI 仍连红三轮，每轮红的还是另一条不同的走查。
 `test:e2e:ci-chain` 按 CI 同序把七步一次跑完（红了继续跑，最后一张汇总表），只持一次 gates 锁。
 **判据**：每轮红的是不是同一条——每轮不同 = 发现被串行化了，不是「没找到根因」。
 功能 lane 不必跑它（`gates` 的 focused 档够用），它是给集成 / 碰面 / 开 PR 的分支的。
 
-机制细节在 [R25](../engineering-rules.md#r25-交工前-ponytail-评审)。**为什么写成链**：五门戳 30 分钟过期、评审收据绑的是树——任何一步回头改代码，后面两张凭据同时失效。写成连续步骤，执行体才不会「先审后改」把评审做成摆设，或「先盖戳后改」把戳做成摆设。最后那节逐条表态目前靠纪律（无机器核，债到 2026-10-15），任务书必须把它写进报告格式里。
+**为什么写成链**：五门戳 30 分钟过期——任何一步回头改代码，戳随之失效。写成连续步骤，执行体才不会「先盖戳后改」把戳做成摆设。
 
 ## 3. 收货三查：采纳任何分支 / 底座前的第一动作
 
@@ -99,13 +98,13 @@
 
 **原则**：远落后 main（几十到近千 commit）的分支上车，用 **`gh pr update-branch` 服务端并线**，别在本地 `git merge origin/main` 后 push——追平 merge 的巨 diff 会撞本地钩子上限。
 
-- **病因**：打捞类分支落后 main 45~944 commit 时，本地 merge 后 push 的 diff 高达 15-88MB，远超 ponytail pre-push 评审的 1.5MB 上限（`execFileSync` 默认 buffer 也炸）→ `spawnSync git ENOBUFS` 挡 push。
+- **病因**：打捞类分支落后 main 45~944 commit 时，本地 merge 后 push 的 diff 高达 15-88MB，会撞本地钩子的体积上限（`execFileSync` 默认 buffer 也炸）→ `spawnSync git ENOBUFS` 挡 push。
 - 根因是量具错配：追平 merge 的 push 内容 99% 是 main 已有的 commit，本地钩子却要整包评审。
 - **上车流程**：`gh pr update-branch <n>`（服务端把 main 并进分支，不经本地钩子）→ CI 在 merge tree 上跑验证 → 全绿 `gh pr merge <n> --merge`。
-- 需要补小修（如 docs 索引）时：先 `update-branch` 让 remote tip ≈ main，再只 push 那个小 commit（几个文件，ponytail 安全）。
+- 需要补小修（如 docs 索引）时：先 `update-branch` 让 remote tip ≈ main，再只 push 那个小 commit（几个文件，不撞钩子上限）。
 - **验证在本地、并线在服务端**：本地五门（`pnpm run gates`）照跑，只是并线动作交给远端。合流模型注意：2026-09-02 起本仓 `strict` 已关（PR 凭自身绿即合，见 §12），`update-branch` 从「合并前强制」降级为「工具」——远落后分支要提前拿 merge tree 的 CI 结论、或本地钩子撞 ENOBUFS 时仍用它。
 
-**反例**：此前至少三个班都撞过 ponytail ENOBUFS，反复试「本地 merge 再 push」反复被挡，直到改用服务端 `update-branch` 才通。
+**反例**：此前至少三个班都撞过本地钩子 ENOBUFS，反复试「本地 merge 再 push」反复被挡，直到改用服务端 `update-branch` 才通。
 
 ## 7. 验收锚：红灯用固定复现命令一字不改
 
@@ -456,7 +455,6 @@ owner 未定的概念照样要列，标 `pending` 并写清由哪份任务书收
 ### 19.5 额度：上限会让工人悄无声息地停下
 
 - 工人会话和子 agent 撞到会话额度上限时会直接停掉，**没有任何通知会发给协调会话**。额度恢复后，协调会话主动对所有在途工人跑一遍 `get_session` / `list_events`，把停了的唤醒。
-- Codex 限流（429）时 Ponytail 跑不了：用 `review:branch -- --defer` 先推，在 PR 正文的 `## Ponytail` 节写明「延后：codex 429」，等恢复后补审。可以挂一个后台探针，每 5 分钟试一次 `codex exec`，一旦能用就自动补审。
 - 同时进行的实现 lane 控制在 3 个左右。
 
 ### 19.6 发版前的测试分层

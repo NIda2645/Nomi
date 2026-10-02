@@ -2,7 +2,7 @@
 // push 绕口留痕门岗（2026-09-03）。
 //
 // 起因：编排者连续多次用 `git -c core.hooksPath=/dev/null push` 绕过 native pre-push 钩子
-// （ponytail-review + 门岗链），且这些推送来自子 agent worktree，Claude Code PreToolUse
+// （门岗链），且这些推送来自子 agent worktree，Claude Code PreToolUse
 // 钩子在那些会话里**不激活**——两层防线同时失效。
 //
 // 设计原则：「留痕而非禁止」——禁止只会逼出更脏的绕法；留痕让绕口行为变得可审计、
