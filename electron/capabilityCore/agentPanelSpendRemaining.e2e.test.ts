@@ -102,7 +102,7 @@ describe("「生成剩下 N 张」= 卡上还没决定的每一张各点一次�
       const card = withWindow.listPendingSpend(PROJECT_ID)[0];
       advanceClock(1000);
       expect(await withWindow.confirmRemainingShots({ ...TARGET, quoteId: card.quoteId, shotIds: card.shots.map((shot) => shot.shotId) }))
-        .toMatchObject({ ok: true });
+        .toMatchObject({ ok: true, batchStopped: { sent: 1, notSent: 2 } });
       expect(shotsSent(submits), "只有点 × 之前批下的那张").toEqual(["shot-1"]);
       expect(withWindow.listPendingSpend(PROJECT_ID), "× 关掉了卡").toEqual([]);
       expect(generationPresentationOutcome(base.repository.read(PROJECT_ID, OPERATION_ID)!)).toMatchObject({
@@ -110,6 +110,56 @@ describe("「生成剩下 N 张」= 卡上还没决定的每一张各点一次�
         generating: ["shot-1"],
         undecided: [{ shotId: "shot-2", reason: "user_closed" }, { shotId: "shot-3", reason: "user_closed" }],
       });
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  // 2026-10-02 真 App 实测：每批下一张卡上的报价就换一版，用户点 × 时带的是他卡上那一版——往往已经是前一张批下去之前的。
+  // 拿「报价对不上」把它挡回去，等于让他追着一张一直在变的卡点 ×。这一叠在跑时，× 认它出过的每一版。
+  it("中途点 ×、带的是这一叠开跑时那一版报价（已经旧了一版）：照样停下，剩下的不再生成", async () => {
+    const vendor = await startLoopbackVendor();
+    const base = harness();
+    const submits: string[] = [];
+    let startQuote = "";
+    let closeAfterFirst = true;
+    let discarded: unknown;
+    const built = buildActions(base, vendor.origin, submits, {
+      afterAuthorize: async () => {
+        if (!closeAfterFirst) return;
+        closeAfterFirst = false;
+        expect(built.withWindow.listPendingSpend(PROJECT_ID)[0].quoteId, "批下第 1 张之后报价已经换了一版").not.toBe(startQuote);
+        discarded = await built.withWindow.discardPendingSpend({ ...TARGET, quoteId: startQuote });
+      },
+    });
+    const { withWindow, handler } = built;
+    try {
+      await imageDraft(base, handler, 3);
+      const card = withWindow.listPendingSpend(PROJECT_ID)[0];
+      startQuote = card.quoteId;
+      advanceClock(1000);
+      expect(await withWindow.confirmRemainingShots({ ...TARGET, quoteId: card.quoteId, shotIds: card.shots.map((shot) => shot.shotId) }))
+        .toMatchObject({ ok: true, batchStopped: { sent: 1, notSent: 2 } });
+      expect(discarded).toMatchObject({ ok: true, code: "discarded" });
+      expect(shotsSent(submits), "只有点 × 之前批下的那张").toEqual(["shot-1"]);
+      expect(withWindow.listPendingSpend(PROJECT_ID), "× 关掉了卡").toEqual([]);
+    } finally {
+      await vendor.close();
+    }
+  });
+
+  it("这一叠不在跑时，× 带着旧报价照旧被挡回去（只在「生成剩下」跑着时才认它出过的那几版）", async () => {
+    const vendor = await startLoopbackVendor();
+    const base = harness();
+    const submits: string[] = [];
+    const { withWindow, handler } = buildActions(base, vendor.origin, submits);
+    try {
+      await imageDraft(base, handler, 3);
+      const card = withWindow.listPendingSpend(PROJECT_ID)[0];
+      advanceClock(1000);
+      expect(await withWindow.confirmPendingSpend({ ...TARGET, quoteId: card.quoteId, shotId: "shot-1" })).toMatchObject({ ok: true });
+      expect(await withWindow.discardPendingSpend({ ...TARGET, quoteId: card.quoteId })).toMatchObject({ ok: false, message: "generation_quote_changed" });
+      expect(withWindow.listPendingSpend(PROJECT_ID)[0]?.shots.map((shot) => shot.shotId), "卡还开着，剩下两张照旧等人").toEqual(["shot-2", "shot-3"]);
     } finally {
       await vendor.close();
     }

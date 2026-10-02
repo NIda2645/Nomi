@@ -325,6 +325,17 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     return next;
   };
 
+  /**
+   * 正在跑的「生成剩下 N 张」→ 这一叠跑到现在出过的每一版报价（付费卡①，2026-10-02）。
+   *
+   * 每批下一张，卡上的报价就换一版；用户在跑的过程中点 ×，那一下带着的是他卡上那一版——往往已经是前一两张批下去之前的。
+   * × 不排队，要的就是能打断它；拿「报价对不上」把它挡回去，等于让用户追着一张一直在变的卡点 ×（真 App 实测：
+   * 6 张一直发完，× 一下都没进去）。所以这一叠在跑时，× 认它出过的任何一版；不在跑时照旧只认此刻那一版。
+   */
+  const runningBatches = new Map<string, Set<string>>();
+  const batchQuotes = (projectId: string, operationId: string): ReadonlySet<string> | undefined =>
+    runningBatches.get(`${projectId}:${operationId}`);
+
   /** 这一镜在这一次出价里已经决定了（点过「生成这张」或「去掉这张」），宿主现算。 */
   const shotAlreadyDecided = (projectId: string, operationId: string, shotId: string): boolean => {
     const run = deps.runs.read(projectId, operationId);
@@ -422,8 +433,10 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
     const pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to discard" };
-    if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
-    // × 不排队：它可以打断一下还没批下来的「生成这张」（那一下就算没点成），已经批下来的那一镜照样在生成。
+    const ofRunningBatch = Boolean(input.quoteId && batchQuotes(input.projectId, input.operationId)?.has(input.quoteId));
+    if (!input.quoteId || (input.quoteId !== pending.quoteId && !ofRunningBatch)) return failed(new Error("generation_quote_changed"));
+    // × 不排队：它可以打断一下还没批下来的「生成这张」（那一下就算没点成），已经批下来的那一镜照样在生成；
+    // 「生成剩下 N 张」跑到一半时，批到哪一张就停在哪一张（`confirmRemainingShots` 在两张之间看卡还在不在）。
     try {
       // 没决定的镜不生成（关的原因记成 user_closed）。
       await deps.operations.withdraw(input.projectId, input.operationId, now(), "user_closed");
@@ -520,15 +533,35 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
         return failed(new Error("generation_scope_invalid"), false);
       }
       const seen = new Map(onCard.map((shotId) => [shotId, shownShot(pending, shotId)]));
-      for (const shotId of input.shotIds) {
-        const current = pendingFor(input.projectId, input.operationId);
-        // 卡已经关了（用户点了 ×，或宿主把这一次出价收回了）：剩下的没决定，不再生成。
-        if (!current || !current.shots.some((shot) => shot.shotId === shotId)) break;
-        if (shownShot(current, shotId) !== seen.get(shotId)) return failed(new Error("generation_quote_changed"), false);
-        const result = await confirmOneShot({ projectId: input.projectId, operationId: input.operationId, quoteId: current.quoteId, shotId });
-        if (!result.ok) return result;
+      const key = `${input.projectId}:${input.operationId}`;
+      const quotes = new Set([pending.quoteId]);
+      runningBatches.set(key, quotes);
+      let sent = 0;
+      try {
+        for (const shotId of input.shotIds) {
+          const current = pendingFor(input.projectId, input.operationId);
+          // 卡已经关了（用户点了 ×，或宿主把这一次出价收回了）：剩下的没决定，不再生成。照实说批下去几张、没发几张。
+          if (!current || !current.shots.some((shot) => shot.shotId === shotId)) {
+            return { ok: true, code: "spend_confirmed", batchStopped: { sent, notSent: input.shotIds.length - sent } };
+          }
+          quotes.add(current.quoteId);
+          if (shownShot(current, shotId) !== seen.get(shotId)) return failed(new Error("generation_quote_changed"), false);
+          const result = await confirmOneShot({ projectId: input.projectId, operationId: input.operationId, quoteId: current.quoteId, shotId });
+          if (!result.ok) {
+            // × 恰好落在这一张批下来之前（它的核对读到卡已经关了）：这一张也没发，和停在两张之间是同一件事。
+            // 账本说这一张可能已经出去了（`generation_execution_failed`）就不能算进「没发」，原样交给卡去说「先去核对」。
+            const closedUnderIt = !pendingFor(input.projectId, input.operationId) && result.message !== "generation_execution_failed";
+            return closedUnderIt ? { ok: true, code: "spend_confirmed", batchStopped: { sent, notSent: input.shotIds.length - sent } } : result;
+          }
+          sent += 1;
+          // 批下这一张换出来的那一版报价，用户卡上可能马上就是它。
+          const after = pendingFor(input.projectId, input.operationId);
+          if (after) quotes.add(after.quoteId);
+        }
+        return { ok: true, code: "spend_confirmed" };
+      } finally {
+        if (runningBatches.get(key) === quotes) runningBatches.delete(key);
       }
-      return { ok: true, code: "spend_confirmed" };
     });
 
   /** 「去掉这张 / 这段」（第 2 条）：这一镜不生成，占位留在画布上。连点两下 → 第二下原样回成功。 */

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { projectSpendCard } from './agentPanelSpendCard'
+import { projectSpendCard, spendBatchStoppedKey } from './agentPanelSpendCard'
 import { candidatePatchFromNode } from './spendCardDraft'
 import type { PendingSpendConfirm } from '../../../desktop/productionRunBridgeTypes'
 import type { GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
@@ -214,6 +214,27 @@ describe('「生成剩下 N 张 / 段」（2026-10-01 用户拍板）', () => {
     const data = projectSpendCard(pending([shot(1, null), shot(2, null)]), { page: 0 }, t, { locale: 'zh-CN' })!
     expect(data.totalLead).toBeUndefined()
     expect(JSON.stringify(data)).not.toMatch(/¥|Unavailable|Budget|budget|预算/)
+  })
+})
+
+describe('「生成剩下 N 张」在跑（2026-10-02：卡不能装成还在等人点）', () => {
+  it('标题说正在发第几张；不摆「生成这张」「去掉这张」「生成剩下」、翻页和合计；动作行只说怎么停', () => {
+    const data = projectSpendCard(pending([shot(1, 0.3), shot(2, 0.3), shot(3, 0.3)]), { page: 1, batch: { current: 2, total: 6, stopping: false } }, t, { locale: 'zh-CN' })!
+    expect(data.title).toBe('agentPanelV4.spendBatchProgressImage(current=2,total=6)')
+    expect(data.progress).toEqual({ hint: 'agentPanelV4.spendBatchStopHint' })
+    expect(data.batchLabel).toBeUndefined()
+    expect(data.pager).toBeUndefined()
+    expect(data.totalLead).toBeUndefined()
+  })
+
+  it('点了 × 之后说正在停、已经发出的照常生成；张 / 段跟标题同一条规则', () => {
+    const stopping = projectSpendCard(pending([shot(1, null), shot(2, null)]), { page: 0, batch: { current: 1, total: 2, stopping: true } }, t, { locale: 'zh-CN' })!
+    expect(stopping.title).toBe('agentPanelV4.spendBatchStopping')
+    expect(stopping.progress).toEqual({ hint: 'agentPanelV4.spendBatchStoppingHint' })
+    const video = projectSpendCard(pending([shot(1, null), shot(2, null, 'kling', 'video')]), { page: 0, batch: { current: 1, total: 2, stopping: false } }, t, { locale: 'zh-CN' })!
+    expect(video.title).toBe('agentPanelV4.spendBatchProgressVideo(current=1,total=2)')
+    expect(spendBatchStoppedKey([shot(1, null), shot(2, null, 'kling', 'video')])).toBe('agentPanelV4.spendBatchStoppedVideo')
+    expect(spendBatchStoppedKey([shot(1, null), shot(2, null)])).toBe('agentPanelV4.spendBatchStoppedImage')
   })
 })
 

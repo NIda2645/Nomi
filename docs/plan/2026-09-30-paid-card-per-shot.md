@@ -74,6 +74,20 @@
 - **长相**：从第 1 页起就在、写明张数（「生成剩下 N 张 / 段」，en「Generate remaining N」）；张 / 段跟标题同一条规则（有视频就说段）；只剩 1 张时不画；报不出价时哪儿都不写数，报得出价时也不带合计。
 - **位置**（样张拍板后按用户反馈调整，以实现为准）：翻页那一行只有翻页器和 `←→`，报得出价时这一叠的合计贴这一行最右端；「生成剩下 N 张」在动作行最左，右边是「去掉这张」和主按钮（一组）。英文一行放不下时左边那颗整颗换到上一行、靠左，右边两颗保持一组靠右；中文一行放下。设计系统 §1.8 记了这条例外，并注明 9-10 那版「批量是主按钮的一个状态」在付费卡上已被取代。
 
+### 「生成剩下」跑到一半停下（2026-10-02，真 App 实测抓到的；中途表见验收页）
+
+- **抓到了什么**：最终 head 上点「生成剩下 6 张」再点 ×，6 张全发。两层原因：渲染层的 × 走 `act()`，「生成剩下」要走半分钟，`busy` 一直是 true，× 被吞掉；宿主那头每批下一张报价就换一版，× 带着的那一版会被「报价对不上」挡回去。宿主级测试一直绿，是因为它直接调宿主的收回，绕过了渲染层的闸。
+- **改成什么**：
+  - × 任何时候直接送到宿主，不排在卡上别的动作后面。还在落候选的那一段，每改完一张看一眼，要停就收回出价；已经交给宿主，就立刻把 × 送过去。
+  - 宿主在两张之间看卡还在不在。这一叠在跑时，× 认它出过的每一版报价（`runningBatches`）。停下时回 `batchStopped`（批下几张、没发几张），卡关掉时照这个说「发出了 K 张，剩下 N−K 张没发」，提示留 8 秒。
+  - 跑的过程中卡说「正在发出 k/N」，动作行只说「按 × 停下剩下的」，不摆「去掉这张 / 生成这张 / 生成剩下」、翻页和合计；卡体只给看（`inert`，写口也关着）。点了 × 到宿主停稳之前，说「正在停下…」「已经发出的照常生成」。
+  - 单张「生成这张 / 去掉这张」在路上的那一两秒，动作行置灰（`actionsDisabled`）。
+- **没在这里做**：
+  - 每张约 3 秒、主进程占着界面线程（每读一次 Run 都重新做工作区路径核对；每次取生成目录都整份重建注册表），这两段是原有代码，另开一条线修。
+  - 断网时「生成剩下」会把剩下的全批掉再一张张发失败，记为 0.23 的已知限制，0.24 改成网络发不出去就停下这一批。
+
+根因合同：`docs/fixes/2026-10-02-generate-remaining-stop.root-cause.json`。新登记概念：`agent-panel.spend-batch-stop`。
+
 ## 概念占用表（R33）
 
 | 概念 | 唯一 owner | 允许谁消费 | 这次 |
@@ -84,6 +98,7 @@
 | generate 回执（新，`agent-lane.generate-receipt`） | `electron/shared/agentLane/generateOutcomeReceipt.ts#describeGenerateOutcome` | 内部 lane 回执 | 新登记 |
 | 待确认付费卡投影 | `electron/productionRun/productionPendingSpend.ts#projectPendingSpendConfirm` | 面板付费卡 | 只投影没决定的镜 |
 | 付费卡上的动作 | `electron/capabilityCore/appIntegrationSpendConfirm.ts` | IPC → 面板 | 逐镜确认、去掉、×；「生成剩下 N 张」（逐张走同一个 `confirmOneShot`） |
+| 「生成剩下」跑到一半的停下（新，`agent-panel.spend-batch-stop`） | `electron/capabilityCore/appIntegrationSpendConfirm.ts#confirmRemainingShots`（+ `discardPendingSpend`） | IPC、面板（× 直接送、照投影画进度、照 `batchStopped` 说那一句） | 2026-10-02 新登记 |
 | 一镜是图还是视频（新，`generation.shot-kind`） | `electron/shared/generationShotKind.ts#resolveShotTaskKind`（定）+ `semanticGenerationCandidate.admitShotIdentity`（核）+ `generationShotKind`（读） | 建镜头的路、卡投影、画布落地 | A2 新登记 |
 | 这一镜现在派出去还算不算同意过（新，`production.dispatch-consent`） | `electron/shared/productionDispatchConsent.ts#dispatchConsentOpen`（判）+ `productionDispatchConsentEdits.renewDispatchConsent`（续） | 派发闸、`productionRunControl`（继续）、`productionRunService`（放行形象）、reducer、调度器 | A3 新登记 |
 | 付费门的批准绑哪一份事实（新，`production.spend-approval-binding`） | `electron/productionRun/productionRunApprovalReceipt.ts#createGateApprovalOwner` | Run 服务、`runOwnedGenerationGateAuthority` | A3 新登记 |

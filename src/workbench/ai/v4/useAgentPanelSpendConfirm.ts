@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { productionRunApi } from '../../production/productionRunApi'
-import { toast } from '../../../ui/toast'
+import { toast, useToastStore } from '../../../ui/toast'
 import { useGenerationCanvasStore } from '../../generationCanvas/store/generationCanvasStore'
 import { GENERATION_NODE_KINDS, getGenerationNodeCatalogKind } from '../../generationCanvas/model/generationNodeKinds'
 import { preloadModelOptions, MODEL_REFRESH_EVENT } from '../../../config/modelCatalogCache'
@@ -30,7 +30,7 @@ import type { ModelOption, NodeKind } from '../../../config/models'
 import type { NodeWriteAccess } from '../../generationCanvas/nodes/nodeWriteAccess'
 import type { GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
 import type { PendingSpendConfirm, PendingSpendRead, PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
-import { projectSpendCard, spendCardPage } from './agentPanelSpendCard'
+import { projectSpendCard, spendBatchStoppedKey, spendCardPage } from './agentPanelSpendCard'
 import { logRendererWarn } from '../../../desktop/rendererLog'
 import {
   spendDraftKey, restoreSpendDraft, retainSpendDraft, consumeSpendDraft,
@@ -75,6 +75,10 @@ export type AgentPanelSpendConfirm = Readonly<{
   slot: InterventionData | undefined
   page: number
   busy: boolean
+  /**
+   * 「生成剩下 N 张」正在一张一张走：卡体那张框这时只给看、不给改（改了也发不出去——这一叠在点下去那一刻已经落进候选）。
+   */
+  batchRunning: boolean
   /** 本地估算 ↔ 正式报价对不上的那些镜（正常为空）。以正式报价为准，卡上已原地更新。 */
   disagreements: readonly SpendPriceDisagreement[]
   setPage: (index: number) => void
@@ -84,8 +88,26 @@ export type AgentPanelSpendConfirm = Readonly<{
   confirmRemaining: () => void
   /** 「去掉这张 / 这段」：这一镜不生成，卡上剩下的照旧等人。 */
   remove: () => void
+  /** × = 收回这一次出价。**任何时候都直接送到宿主**（不排在卡上别的动作后面）：「生成剩下」跑到一半点它，就停在那一张。 */
   discard: () => void
 }>
+
+/**
+ * 正在跑的那一次「生成剩下 N 张」（渲染层这一侧）。`handedOver`：false = 还在把每一页摆着的那一份落进候选（渲染层自己在
+ * 一张一张改），true = 已经交给宿主、宿主在一张一张批。`quoteId` = 渲染层知道的最新一版报价（× 带它去）。
+ * 它不是第二份逐镜状态：卡上还剩几张、哪几张批了，照旧只读宿主那份投影。
+ */
+type BatchRun = {
+  operationId: string
+  total: number
+  shots: readonly PendingSpendShot[]
+  handedOver: boolean
+  stopRequested: boolean
+  quoteId: string
+}
+
+/** 落候选那一段和「生成剩下」之间的两根线：要不要停、改完换出来的报价是哪一版。 */
+type BatchControl = Readonly<{ shouldStop: () => boolean; onQuote: (quoteId: string) => void }>
 
 export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
   const { t, i18n } = useTranslation()
@@ -94,6 +116,9 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
   const draftOwner = React.useRef<string | undefined>(undefined)
   const [page, setPage] = React.useState(0)
   const [busy, setBusy] = React.useState(false)
+  // 「生成剩下 N 张」这一次：ref 给动作读（× 在跑的中途要读到最新的），state 给卡画进度。
+  const batchRef = React.useRef<BatchRun | null>(null)
+  const [batchView, setBatchView] = React.useState<Readonly<{ operationId: string; total: number; stopping: boolean }> | null>(null)
   const [disagreements, setDisagreements] = React.useState<readonly SpendPriceDisagreement[]>([])
   const [modelOptions, setModelOptions] = React.useState<readonly ModelOption[]>([])
   // 「读不到」是一种**结果**，不是一种空。它一路留到槽里，渲成一张会说话的卡。
@@ -254,7 +279,8 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
 
   const writeAccess = React.useMemo<NodeWriteAccess>(() => {
     const nodeId = draftNode?.id
-    const canWrite = () => Boolean(nodeId && writeScope.active && currentWriteScope.current === writeScope)
+    // 「生成剩下」在跑时不收改动：这一叠在点下去那一刻已经落进候选，此刻改了只会是「卡上看到的」≠「发出去的」。
+    const canWrite = () => Boolean(nodeId && writeScope.active && currentWriteScope.current === writeScope && !batchRef.current)
     return Object.freeze({
       canWrite,
       updateNode: (requestedNodeId: string, patch: Partial<GenerationCanvasNode>) => {
@@ -285,15 +311,20 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     }
     if (!repriced) return undefined
     const remembered = originalModelIds.current
-    const card = projectSpendCard(repriced, { page: index }, t, {
+    // 进度只由两样事实算：点下去那一刻卡上那一叠（`total`）和宿主此刻还剩几张没批（投影）。正在发的是第几张 = 批完的 + 1。
+    const batch = batchView && batchView.operationId === repriced.operationId
+      ? { current: Math.min(batchView.total, Math.max(1, batchView.total - repriced.shots.length + 1)), total: batchView.total, stopping: batchView.stopping }
+      : undefined
+    const card = projectSpendCard(repriced, { page: index, ...(batch ? { batch } : {}) }, t, {
       locale: i18n.language,
       ...(remembered?.operationId === repriced.operationId ? { agentPickedModelIds: remembered.modelIds } : {}),
     })
     // 2026-09-22：× 不再问那一句「你在卡上改的内容会一起丢掉」——它已经不为真。
     // 裁决 D（× 只收回这一次出价）之后草稿和节点都留着，而账本锚 `operationId` 之后
     // **没提交的手改也跟着留**（同一个 operationId 再出价就在卡上）。没有东西丢，就不拦他一下。
-    return card
-  }, [readFailure, repriced, index, t, i18n.language])
+    // 「生成这张 / 去掉这张」还在路上：动作行置灰（这一两秒里再点也不会生效，让它看得见）；× 照旧能点。
+    return card && busy && !batch ? { ...card, actionsDisabled: true as const } : card
+  }, [readFailure, repriced, index, t, i18n.language, batchView, busy])
 
   /**
    * 卡上四个动作共用的一次执行。**宿主说不行就必须让用户看见**：
@@ -331,10 +362,12 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       })
   }, [pending, busy, refresh, t, writeAccess])
 
-  const persistEdits = async (target: PendingSpendConfirm, shotIds: readonly string[] | undefined, ledger: SpendDraft): Promise<SpendActionOutcome & { quoteId?: string; remaining: SpendDraft }> => {
+  const persistEdits = async (target: PendingSpendConfirm, shotIds: readonly string[] | undefined, ledger: SpendDraft, control?: BatchControl): Promise<SpendActionOutcome & { quoteId?: string; remaining: SpendDraft; stopped?: true }> => {
     let quoteId = target.quoteId
     let remaining = ledger
     for (const revision of revisionsForConfirm(target.shots, ledger, shotIds)) {
+      // 「生成剩下」还在落候选时用户点了 ×：不再往下改，带着此刻这一版报价去收回出价。
+      if (control?.shouldStop()) return { ok: true, quoteId, remaining, stopped: true }
       const result = await productionRunApi.reviseSpend({
         projectId: target.projectId, operationId: target.operationId, quoteId,
         shotId: revision.shotId, patch: { ...revision.patch },
@@ -342,6 +375,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       if (!result.ok) return { ...result, remaining }
       if (!result.quoteId) return { ok: false, message: 'generation_quote_changed', remaining }
       quoteId = result.quoteId
+      control?.onQuote(quoteId)
       // A later revision can fail; preserve the still-unsubmitted shots before any refresh.
       remaining = consumeSpendDraft(target, remaining, [revision.shotId])
     }
@@ -355,8 +389,9 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
    * （`candidatePatchFromNode`，和卡上改一下时同一张映射表），不只看账本——画布连线不是一次手改，但它照样要发出去。
    * 正式报价与本地估算对不上时以宿主为准、卡上原地换数，停在更新后的卡上等用户再按（不弹第二张卡）。
    */
-  const persistShown = async (target: PendingSpendConfirm, entries: readonly PendingSpendShot[]): Promise<
+  const persistShown = async (target: PendingSpendConfirm, entries: readonly PendingSpendShot[], control?: BatchControl): Promise<
     | Readonly<{ ok: true; approved: PendingSpendConfirm; remaining: SpendDraft }>
+    | Readonly<{ stopped: true }>
     | SpendActionOutcome
   > => {
     const shotIds = entries.map((entry) => entry.shotId)
@@ -371,8 +406,12 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     if (draftIsEmpty({ perShot: Object.fromEntries(shotIds.map((shotId) => [shotId, effectivePatchForShot(ledger, shotId)])) })) {
       return { ok: true, approved: target, remaining: draft }
     }
-    const saved = await persistEdits(target, shotIds, ledger)
+    const saved = await persistEdits(target, shotIds, ledger, control)
     let remaining = saved.remaining
+    if (saved.stopped) {
+      if (draftOwner.current === spendDraftKey(target)) setDraft(remaining)
+      return { stopped: true }
+    }
     if (!saved.ok) {
       if (draftOwner.current === spendDraftKey(target)) setDraft(remaining)
       return saved
@@ -398,6 +437,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     slot,
     page: index,
     busy,
+    batchRunning: batchView !== null,
     disagreements,
     setPage,
     /**
@@ -431,16 +471,55 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     confirmRemaining: () => act(async (target) => {
       // 只剩 1 张时卡上没有这颗按钮；真走到这里就是卡刚变了。
       if (target.shots.length < 2) return { ok: false, message: 'generation_scope_invalid' }
-      const saved = await persistShown(target, target.shots)
-      if (!('approved' in saved)) return saved
-      const { approved } = saved
-      const shotIds = approved.shots.map((entry) => entry.shotId)
-      const confirmed = await productionRunApi.confirmSpendRemaining(approved.projectId, approved.operationId, approved.quoteId, shotIds)
-      if (confirmed.ok) {
-        const remaining = consumeSpendDraft(approved, saved.remaining, shotIds)
-        if (draftOwner.current === spendDraftKey(approved)) setDraft(remaining)
+      const run: BatchRun = { operationId: target.operationId, total: target.shots.length, shots: target.shots, handedOver: false, stopRequested: false, quoteId: target.quoteId }
+      batchRef.current = run
+      setBatchView({ operationId: run.operationId, total: run.total, stopping: false })
+      // 停下之后那一句只说事实：批下去几张、没发几张（2026-10-02 协调会话：「发出了 K 张，剩下 N−K 张没发」）。
+      // 这是钱的结果，卡这时已经关了，它是唯一说这件事的地方：留 8 秒（普通提示 3 秒读不完就没了）。
+      const sayStopped = (sent: number, notSent: number): void => {
+        useToastStore.getState().push({ message: t(spendBatchStoppedKey(run.shots), { sent, notSent, total: run.total }), type: 'info', ttl: 8000, reason: 'spend-batch-stopped' })
       }
-      return confirmed
+      // 还没交给宿主就停了：一张都没批，收回出价（带渲染层知道的最新一版报价）。
+      const stopBeforeDispatch = async (projectId: string): Promise<SpendActionOutcome> => {
+        const withdrawn = await productionRunApi.discardSpend(projectId, run.operationId, run.quoteId)
+        // 收回不成（卡已经被别处关了）也照实说：这一叠一张都没发。
+        if (withdrawn.ok || withdrawn.message === 'no pending generation to discard') {
+          sayStopped(0, run.total)
+          return { ok: true }
+        }
+        return withdrawn
+      }
+      try {
+        const saved = await persistShown(target, target.shots, { shouldStop: () => run.stopRequested, onQuote: (quoteId) => { run.quoteId = quoteId } })
+        if ('stopped' in saved) return await stopBeforeDispatch(target.projectId)
+        if (!('approved' in saved)) return run.stopRequested ? await stopBeforeDispatch(target.projectId) : saved
+        const { approved } = saved
+        run.quoteId = approved.quoteId
+        if (run.stopRequested) return await stopBeforeDispatch(approved.projectId)
+        run.handedOver = true
+        const shotIds = approved.shots.map((entry) => entry.shotId)
+        const confirmed = await productionRunApi.confirmSpendRemaining(approved.projectId, approved.operationId, approved.quoteId, shotIds)
+        if (confirmed.ok) {
+          const remaining = consumeSpendDraft(approved, saved.remaining, shotIds)
+          if (draftOwner.current === spendDraftKey(approved)) setDraft(remaining)
+        }
+        // 跑到一半卡被关了（用户点了 ×，或宿主收回了这一次出价）：宿主数着批下去几张。
+        if (confirmed.ok && confirmed.batchStopped) sayStopped(confirmed.batchStopped.sent, confirmed.batchStopped.notSent)
+        // × 落在宿主开跑之前（它读到卡已经关了）：一张都没批。
+        else if (!confirmed.ok && run.stopRequested && confirmed.message === 'no pending generation to confirm') {
+          sayStopped(0, run.total)
+          return { ok: true }
+        }
+        // 这一叠因为别的原因停在半路、卡还开着，而用户已经点过 ×：照他的意思把卡关掉（剩下的本来也不会再发）。
+        else if (!confirmed.ok && run.stopRequested) {
+          const latest = await refresh()
+          if (latest && latest.operationId === run.operationId) await productionRunApi.discardSpend(latest.projectId, latest.operationId, latest.quoteId)
+        }
+        return confirmed
+      } finally {
+        if (batchRef.current === run) batchRef.current = null
+        setBatchView(null)
+      }
     }),
     /**
      * 「去掉这张 / 这段」= 这一镜不生成（第 2 条）。占位留在画布上，它在卡上没提交的改动跟着丢掉；
@@ -468,6 +547,37 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
      * 留 30 个孤儿；撤了之后落地轮询又会把它们补回来（那正是「点了 ×，画布上多出一个节点」那条红）。
      * 两个自洽方向里用户选了「都留着」。
      */
-    discard: () => act(async (target) => productionRunApi.discardSpend(target.projectId, target.operationId, target.quoteId)),
+    //
+    // 2026-10-02（付费卡①，真 App 实测）：× 以前和别的动作一样走 `act`，卡上有一下在路上（`busy`）就被吞掉——
+    // 「生成剩下 6 张」要走半分钟，这半分钟里点 × 一下都进不去，6 张全发。× 是停下，不排队：
+    //   · 「生成剩下」在跑：记下「要停」。还在落候选就由那一段自己停下、收回出价；已经交给宿主就立刻把 × 送过去，
+    //     宿主在两张之间看见卡关了就停（它认这一叠出过的每一版报价，见 `appIntegrationSpendConfirm.runningBatches`）；
+    //   · 别的一下在路上（「生成这张」「去掉这张」）：照样立刻送过去——还没批下来的那一镜就不批了，批下来的照常生成；
+    //   · 卡上没有动作在路上：和以前一样。
+    discard: () => {
+      const target = pendingRef.current
+      const run = batchRef.current
+      if (run && target && run.operationId === target.operationId) {
+        if (run.stopRequested) return
+        run.stopRequested = true
+        setBatchView({ operationId: run.operationId, total: run.total, stopping: true })
+        if (run.handedOver) {
+          void productionRunApi.discardSpend(target.projectId, run.operationId, run.quoteId)
+            .then((result) => { if (!result.ok) logRendererWarn('spend-batch-stop-refused', { code: result.message ?? result.code }) })
+            .catch((error: unknown) => logRendererWarn('spend-batch-stop-refused', { code: 'ipc' }, error))
+        }
+        return
+      }
+      if (busy && target) {
+        void productionRunApi.discardSpend(target.projectId, target.operationId, target.quoteId)
+          .then((result) => {
+            if (!result.ok && result.message !== 'no pending generation to discard') toast(t(spendActionFailureCopy(result, writeAccess.canWrite?.() === true)), 'error')
+          })
+          .catch((error: unknown) => logRendererWarn('spend-confirm-refused', { code: 'discard-ipc' }, error))
+          .finally(() => { void refresh() })
+        return
+      }
+      act(async (current) => productionRunApi.discardSpend(current.projectId, current.operationId, current.quoteId))
+    },
   }
 }

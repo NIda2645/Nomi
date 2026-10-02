@@ -567,6 +567,11 @@ export type ProductionActionResult = {
    * 而且只在卡确实能改的时候。
    */
   failure?: ProductionShotActionFailure;
+  /**
+   * 「生成剩下 N 张」跑到一半卡被关掉时才有（付费卡①，2026-10-02）：卡关掉之前批下、照常生成的有几张（`sent`），
+   * 没发的有几张（`notSent`）。只由 `confirmRemainingShots` 写；卡上那句「发出了 K 张，剩下 N−K 张没发」只读它。
+   */
+  batchStopped?: Readonly<{ sent: number; notSent: number }>;
 };
 
 export type CreateProductionRunInput = {

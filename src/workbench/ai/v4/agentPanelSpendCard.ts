@@ -17,6 +17,11 @@ type Translate = (key: string, options?: Record<string, unknown>) => string
 
 export type SpendCardView = Readonly<{
   page: number
+  /**
+   * 「生成剩下 N 张」正在一张一张走（2026-10-02）：`total` 是点下去那一刻卡上那一叠，`current` 是正在发的第几张，
+   * `stopping` = 用户已经点了 ×、宿主还没停稳。缺席 = 卡在等人点。
+   */
+  batch?: Readonly<{ current: number; total: number; stopping: boolean }>
 }>
 
 /** 这一镜的价格文本；算不出 → `undefined`（调用方据此走「算不出」那一档）。 */
@@ -35,8 +40,16 @@ function isVideoOrder(shots: readonly PendingSpendShot[]): boolean {
  */
 function orderWording(shots: readonly PendingSpendShot[]) {
   return isVideoOrder(shots)
-    ? { title: 'agentPanelV4.spendParamsTitle', remaining: 'agentPanelV4.spendConfirmRemainingVideo', totalLead: 'agentPanelV4.spendTotalLeadVideo' } as const
-    : { title: 'agentPanelV4.spendParamsTitleImage', remaining: 'agentPanelV4.spendConfirmRemainingImage', totalLead: 'agentPanelV4.spendTotalLeadImage' } as const
+    ? { title: 'agentPanelV4.spendParamsTitle', remaining: 'agentPanelV4.spendConfirmRemainingVideo', totalLead: 'agentPanelV4.spendTotalLeadVideo', progress: 'agentPanelV4.spendBatchProgressVideo', stopped: 'agentPanelV4.spendBatchStoppedVideo' } as const
+    : { title: 'agentPanelV4.spendParamsTitleImage', remaining: 'agentPanelV4.spendConfirmRemainingImage', totalLead: 'agentPanelV4.spendTotalLeadImage', progress: 'agentPanelV4.spendBatchProgressImage', stopped: 'agentPanelV4.spendBatchStoppedImage' } as const
+}
+
+/**
+ * 「生成剩下 N 张」被停下时那一句（「发出了 K 张，剩下 N−K 张没发」）用哪个键：张 / 段跟卡标题同一条规则，
+ * 读点下去那一刻卡上那一叠（卡这时已经关了）。
+ */
+export function spendBatchStoppedKey(shots: readonly PendingSpendShot[]): 'agentPanelV4.spendBatchStoppedVideo' | 'agentPanelV4.spendBatchStoppedImage' {
+  return orderWording(shots).stopped
 }
 
 /** 每一镜都有价、且都是同一个数 = 「整齐」。不整齐时算式退成「逐镜不同」。 */
@@ -111,6 +124,17 @@ export function projectSpendCard(
       : {}),
   }
   const wording = orderWording(shots)
+  const batch = view.batch
+  if (batch) {
+    // 「生成剩下 N 张」在一张一张走（2026-10-02）：卡不能装成还在等人点——标题说进度，动作行只说怎么停，
+    // 不摆「去掉这张 / 生成这张」、翻页和合计（正在被自动批的那几张谁也点不了）。右上那颗 × 就是停下。
+    return Object.freeze({
+      kind: 'spend' as const,
+      title: batch.stopping ? t('agentPanelV4.spendBatchStopping') : t(wording.progress, { current: batch.current, total: batch.total }),
+      badge,
+      progress: { hint: t(batch.stopping ? 'agentPanelV4.spendBatchStoppingHint' : 'agentPanelV4.spendBatchStopHint') },
+    })
+  }
   return Object.freeze({
     kind: 'spend' as const,
     // 标题里**不印金额**：金额随参数变，两个地方印同一个数就一定有一个先漂。

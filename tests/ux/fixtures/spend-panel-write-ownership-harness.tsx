@@ -32,17 +32,19 @@ let staleId = ''
 let model!: ReturnType<typeof useAgentPanelSpendConfirm>
 const feedback: string[] = []
 const calls: unknown[] = []
-const fixture = { nodes, edges: [], pending, calls,
+const toasts: { message: string; kind: string }[] = []
+const fixture = { nodes, edges: [], pending, calls, toasts,
   refresh: () => refresh?.(),
   edit: () => model.node && model.writeAccess.updateNode(model.node.id, { prompt: 'edited' }),
   confirm: () => model.confirm(),
+  confirmRemaining: () => model.confirmRemaining(),
   discard: () => model.discard(),
   detach: () => { nodes.splice(0); pending.shots.forEach(shot => { delete (shot as {nodeId?: string}).nodeId }); refresh?.() },
   narrow: () => { (pending.shots as unknown[]).splice(0, 1); refresh?.() },
   slotKey: slot.metaKey,
   upload: () => { uploads++; return new Promise(resolve => { releaseUpload = resolve }) },
   setRefresh: (callback: () => void) => { refresh = callback },
-  snapshot: () => ({ busy: model.busy, page: model.page, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
+  snapshot: () => ({ busy: model.busy, batchRunning: model.batchRunning, title: model.slot?.title, progress: model.slot?.progress?.hint, page: model.page, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
     meta: model.node?.meta, refs: model.node?.meta?.[slot.metaKey], prompt: model.node?.prompt, uploads, completed, feedback, staleNode: stale?.latestNode(staleId)?.id, staleWritable: stale?.canWrite?.() }),
   change: (field: string) => {
     if (field === 'page') model.setPage(1)

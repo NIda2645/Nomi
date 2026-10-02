@@ -381,7 +381,10 @@ export function V4Intervention({
         {/* 动作行可以折成两行：放不下一行时，左边的整颗换到上一行（靠左），右边这一张的两颗保持一组、靠右——
             不截断、不挤压、主按钮不被挤到下一行（2026-10-01）。中文在默认面板宽下一行放得下。 */}
         <V4Row as="div" className="flex-wrap text-caption" data-v4-block="actions">
-          {rejecting || data.kind === 'reject-reason' ? (
+          {data.progress ? (
+            // 动作已经交出去、正在一张一张走（付费卡「生成剩下 N 张」）：不摆任何按钮，只说怎么停——右上那颗 × 就是停下。
+            <span className="text-caption text-nomi-ink-60" data-v4-block="slot-progress">{data.progress.hint}</span>
+          ) : rejecting || data.kind === 'reject-reason' ? (
             <>
               <span className="flex-1" />
               <WorkbenchButton size="sm" onClick={() => { setRejecting(false); setReason('') }} data-v4-control="cancel-reject">
@@ -402,7 +405,7 @@ export function V4Intervention({
                   「生成剩下 N 张」（付费卡多镜时，2026-10-01 用户拍板）在最左：整叠的动作在左、这一张的动作在右，
                   最贵的那颗离主按钮最远，不容易误点。「不再问 →」「收起清单」这类次要的东西也在这一侧。 */}
               {data.batchLabel && onBatch ? (
-                <WorkbenchButton size="sm" className="shrink-0" onClick={onBatch} data-v4-control="batch">
+                <WorkbenchButton size="sm" className="shrink-0" onClick={onBatch} disabled={data.actionsDisabled === true} data-v4-control="batch">
                   {data.batchLabel}
                 </WorkbenchButton>
               ) : null}
@@ -427,7 +430,7 @@ export function V4Intervention({
                 {data.alternateLabel ? (
                   // 次动作 = 现役描边按钮（agent 专章 §8.2：主次只用颜色分，深底=主、描边=次；
                   // 文字链不与按钮同排）。
-                  <WorkbenchButton size="sm" onClick={onAlternate} data-v4-control="alternate">
+                  <WorkbenchButton size="sm" onClick={onAlternate} disabled={data.actionsDisabled === true} data-v4-control="alternate">
                     {data.alternateLabel}
                   </WorkbenchButton>
                 ) : null}
@@ -435,6 +438,7 @@ export function V4Intervention({
                   variant="primary"
                   size="sm"
                   onClick={onConfirm}
+                  disabled={data.actionsDisabled === true}
                   data-v4-control="confirm"
                   // `data-v4-price` 这个走查锚点**跟着那个数走**：多镜时它挂在翻页那一行右端的合计上；
                   // 单镜且报得出价时那一格不出现（同一个数不说两遍），数只印在这颗按钮上，锚点也就挂在这里。

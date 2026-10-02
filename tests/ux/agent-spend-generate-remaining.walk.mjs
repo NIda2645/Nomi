@@ -4,6 +4,7 @@
 // 我让 Agent 画几张图，卡摆出来：动作行最左是「生成剩下 N 张」，右边是「去掉这张」和主按钮「生成这张」。
 // 点一下「生成剩下」= 卡上还没决定的每一张各点一次「生成这张」：每张各记一笔授权，点完卡关掉，
 // 画布上每个节点和逐张点完一模一样。只剩 1 张时它不出现；去掉的不算在 N 里。
+// 它跑起来以后的样子（正在发出 k/N）和跑到一半点 × 停下，在 `agent-spend-stop-midway.walk.mjs`。
 //
 // 这条走查同时是样张的机器对账（`docs/design/mockups/contracts/2026-10-01-paid-card-generate-remaining.intent.mjs`）：
 //   · 翻页那一行只有翻页器和 `←→`（这一档报不出价，没有合计）；
@@ -17,74 +18,15 @@ import { clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { assertMockupContract } from './_contract.mjs'
 import generateRemainingContract from '../../docs/design/mockups/contracts/2026-10-01-paid-card-generate-remaining.intent.mjs'
-import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
+import { BATCH, COPY, TITLE, createPresenter } from './_spendRemainingWalk.mjs'
 import {
-  APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_ALTERNATE, INTERVENTION_CONFIRM,
-  closeSpendCard, createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas,
+  CANVAS_PANEL, INTERVENTION_ALTERNATE, INTERVENTION_CONFIRM,
+  closeSpendCard, createRuntimeWalk, openCanvas, readProject, recorded,
 } from './agent-runtime-walk-support.mjs'
 
 process.env.NOMI_WALK_UNPRICED_MODEL = '1'
 
-const BATCH = '[data-v4-control="batch"]'
-const TITLE = '[data-v4-block="slot-title"]'
-const candidate = { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL }
-
-const COPY = {
-  zh: {
-    title: (count) => `生成这 ${count} 张图片`,
-    batch: (count) => `生成剩下 ${count} 张`,
-    ask: (tag, count) => `${tag}：画 ${count} 张渔港清晨，画完给我确认。`,
-  },
-  en: {
-    title: (count) => (count === 1 ? 'Generate this image' : `Generate these ${count} images`),
-    batch: (count) => `Generate remaining ${count}`,
-    ask: (tag, count) => `${tag}: draw ${count} harbour mornings and let me confirm.`,
-  },
-}
-
-let round = 0
-
-/** Agent 起草 `count` 张图、再 `generate` 把它们摆上卡（`generate` 等用户答完卡才返回）。 */
-async function present(walk, win, count, locale) {
-  round += 1
-  const tag = `S_REMAIN_${round}`
-  const planCall = `s-remain-${round}`
-  const generateCall = `${planCall}-generate`
-  const planner = walk.fixture.expectText({
-    label: `the agent drafts ${count} image shots (${tag})`,
-    match: (body) => flattenRequestText(body).includes(tag),
-    reply: { type: 'tool', id: planCall, name: 'draft_shots', args: {
-      shots: [...Array(count).keys()].map((index) => ({
-        title: `${tag}-${index + 1}`, prompt: `${tag} 第 ${index + 1} 张：渔港清晨`, taskKind: 'text_to_image', candidate,
-      })),
-    } },
-  })
-  let operationId
-  const drafted = walk.fixture.expectText({
-    label: `the draft result carries the host-generated operationId (${tag})`,
-    match: (body) => {
-      const result = (body.messages ?? []).find((message) => message.role === 'tool' && message.tool_call_id === planCall)
-      if (!result) return false
-      operationId = /"operationId":"([^"]+)"/.exec(String(result.content))?.[1]
-      return true
-    },
-    reply: { type: 'hold' },
-  })
-  const turnDone = walk.fixture.expectText({
-    label: `generate returns once the card is answered (${tag})`,
-    match: (body) => (body.messages ?? []).some((message) => message.role === 'tool' && message.tool_call_id === generateCall),
-    reply: { type: 'text', text: `${tag}_DONE` },
-  })
-  await sendCanvas(win, COPY[locale].ask(tag, count))
-  await recorded(planner.received, `${tag} draft request`)
-  // 草稿要落 count 个节点：33 张在这台机器上超过默认的 60 秒安全网，按工作量给。
-  await recorded(drafted.received, `${tag} draft result`, stationTimeout({ operations: Math.max(4, count) }))
-  drafted.release({ type: 'tool', id: generateCall, name: 'generate', args: { operationId } })
-  const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
-  await expect(card.locator(TITLE), `${tag}：卡上问的是这 ${count} 张`).toContainText(COPY[locale].title(count),
-    { timeout: stationTimeout({ operations: Math.max(4, Math.ceil(count / 4)) }) })
-  return { card, operationId, turnDone, tag }
-}
+const present = createPresenter('S_REMAIN')
 
 /** 动作行三颗按钮此刻在屏上的位置（中文要一行放下；英文放不下时左边那颗换到上一行）。 */
 async function actionBoxes(card) {
@@ -206,6 +148,8 @@ try {
 
   await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'en'))
   await win.reload()
+  // 上一轮落下的图这时可能还在写盘，重载要多等一会儿才回到画布。
+  await expect(win.locator(`${CANVAS_PANEL} [data-v4-control="input"]`), '换成英文之后回到画布、Agent 面板的输入框在').toBeVisible({ timeout: stationTimeout({ operations: 8 }) })
   await batchRound(walk, win, projectId, 'en', { wrapped: true })
   await oneLeftRound(walk, win, 'en')
   await manyShotsRound(walk, win, 'en', { wrapped: true })

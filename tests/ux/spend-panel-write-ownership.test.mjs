@@ -10,7 +10,8 @@ let server, browser, page, cacheDir
 const ports = {
   projectCanvasReadSurface: `export const withProjectAction = fn => fn({ binding: { projectId: 'project' }, assertCurrent() {} }); export const isProjectExecutionContextCurrent = () => true; export const isProjectImportCancellation = () => false;`,
   bridge: `export const getDesktopBridge = () => ({ productionRuns: { pendingSpend() {} } });`,
-  productionRunApi: `export const productionRunApi = { reviseSpend: async input => { window.spendOwnership.calls.push(input); if (window.spendOwnership.revise) return window.spendOwnership.revise(input); return {ok: !window.spendOwnership.failRevision} }, discardSpend: async (...args) => {window.spendOwnership.calls.push({discard: args}); return {ok:!window.spendOwnership.failDiscard}}, confirmSpend: async (...args) => { window.spendOwnership.calls.push({confirm: args}); return {ok:!window.spendOwnership.failConfirm} }, pendingSpend: async () => ({ surface: 'ready', rows: [structuredClone(window.spendOwnership.pending)] }) };`,
+  productionRunApi: `export const productionRunApi = { reviseSpend: async input => { window.spendOwnership.calls.push(input); if (window.spendOwnership.revise) return window.spendOwnership.revise(input); return {ok: !window.spendOwnership.failRevision} }, discardSpend: async (...args) => {window.spendOwnership.calls.push({discard: args}); return {ok:!window.spendOwnership.failDiscard}}, confirmSpend: async (...args) => { window.spendOwnership.calls.push({confirm: args}); return {ok:!window.spendOwnership.failConfirm} }, confirmSpendRemaining: async (...args) => { window.spendOwnership.calls.push({remaining: args}); return window.spendOwnership.remaining ? window.spendOwnership.remaining(...args) : {ok:true} }, pendingSpend: async () => ({ surface: 'ready', rows: [structuredClone(window.spendOwnership.pending)] }) };`,
+  toast: `export const toast = (message, kind) => { window.spendOwnership.toasts.push({ message, kind }) }; export const useToastStore = { getState: () => ({ push: (input) => { window.spendOwnership.toasts.push({ message: input.message, kind: input.type, ttl: input.ttl }); return 'toast' } }) };`,
   modelCatalogCache: `export const preloadModelOptions = async () => []; export const MODEL_REFRESH_EVENT = 'fixture-refresh';`,
   generationCanvasStore: `export const useGenerationCanvasStore = Object.assign(selector => selector({ nodes: window.spendOwnership.nodes, edges: window.spendOwnership.edges, updateNode() { throw new Error('canvas write forbidden') } }), { getState: () => ({ nodes: window.spendOwnership.nodes, edges: window.spendOwnership.edges }) });`,
   assetUploadApi: `export const importWorkbenchLocalAssetFile = (...args) => window.spendOwnership.upload(...args);`,
@@ -299,4 +300,62 @@ it('a storage quota failure never interrupts the card and never leaks the previo
   await page.waitForFunction(() => window.spendOwnership.snapshot().operation === 'operation-next')
   expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
   expect(await page.evaluate(() => window.spendOwnership.calls)).toEqual([])
+})
+
+// 2026-10-02 真 App 实测：「生成剩下 6 张」要走半分钟，这半分钟里卡上那颗 × 走的是 act()，被 busy 闸吞掉，6 张全发。
+// 宿主级测试一直绿，是因为它绕过了渲染层的 busy 闸、直接调宿主的收回。这两条走真闸：渲染层的 act() 在 busy 时点 ×。
+it('「生成剩下」交给宿主之后点 ×：× 立刻送到主进程，不排在那一下后面；卡关掉时照实说发了几张、剩几张没发', async () => {
+  await page.evaluate(() => {
+    const f = window.spendOwnership
+    f.revise = () => ({ ok: true, quoteId: 'quote' })
+    f.remaining = () => new Promise(resolve => { f.releaseRemaining = resolve })
+  })
+  await page.evaluate(() => window.spendOwnership.confirmRemaining())
+  await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.remaining))
+  const running = await page.evaluate(() => window.spendOwnership.snapshot())
+  expect(running.busy).toBe(true)
+  expect(running.batchRunning).toBe(true)
+  expect(running.progress).toBe('按 × 停下剩下的')
+  expect(running.title).toMatch(/^正在发出 1\/2 段$/)
+  await page.evaluate(() => window.spendOwnership.discard())
+  await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard))
+  const calls = await page.evaluate(() => window.spendOwnership.calls)
+  // × 没等宿主那一叠跑完：此刻那一叠还在路上，收回已经送到了。带的是这一叠交出去时那一版报价（宿主认这一叠出过的每一版）。
+  expect(calls.filter(call => call.remaining)).toHaveLength(1)
+  expect(calls.find(call => call.discard).discard).toEqual(['project', 'operation', 'quote'])
+  expect((await page.evaluate(() => window.spendOwnership.snapshot())).title).toBe('正在停下…')
+  await page.evaluate(() => window.spendOwnership.releaseRemaining({ ok: true, code: 'spend_confirmed', batchStopped: { sent: 1, notSent: 1 } }))
+  await page.waitForFunction(() => window.spendOwnership.toasts.length > 0)
+  expect(await page.evaluate(() => window.spendOwnership.toasts)).toEqual([{ message: '发出了 1 段，剩下 1 段没发。', kind: 'info', ttl: 8000 }])
+  const after = await page.evaluate(() => window.spendOwnership.snapshot())
+  expect(after.busy).toBe(false)
+  expect(after.batchRunning).toBe(false)
+})
+
+it('「生成剩下」还在落候选时点 ×：不再往下改、不交给宿主，带着最新那一版报价收回出价；说一张都没发', async () => {
+  await page.evaluate(() => window.spendOwnership.edit())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
+  await page.evaluate(() => window.spendOwnership.change('page'))
+  await page.waitForFunction(() => window.spendOwnership.snapshot().page === 1)
+  await page.evaluate(() => window.spendOwnership.edit())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
+  await page.evaluate(() => {
+    const f = window.spendOwnership
+    let revisions = 0
+    f.revise = () => {
+      revisions += 1
+      return revisions === 1 ? new Promise(resolve => { f.releaseRevise = () => resolve({ ok: true, quoteId: 'quote-r1' }) }) : { ok: true, quoteId: `quote-r${revisions}` }
+    }
+  })
+  await page.evaluate(() => window.spendOwnership.confirmRemaining())
+  await page.waitForFunction(() => typeof window.spendOwnership.releaseRevise === 'function')
+  await page.evaluate(() => window.spendOwnership.discard())
+  await page.evaluate(() => window.spendOwnership.releaseRevise())
+  await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard))
+  const calls = await page.evaluate(() => window.spendOwnership.calls)
+  expect(calls.filter(call => call.remaining), '没交给宿主').toEqual([])
+  expect(calls.filter(call => call.shotId), '只改了第一张就停').toHaveLength(1)
+  expect(calls.find(call => call.discard).discard).toEqual(['project', 'operation', 'quote-r1'])
+  await page.waitForFunction(() => window.spendOwnership.toasts.length > 0)
+  expect(await page.evaluate(() => window.spendOwnership.toasts)).toEqual([{ message: '发出了 0 段，剩下 2 段没发。', kind: 'info', ttl: 8000 }])
 })
