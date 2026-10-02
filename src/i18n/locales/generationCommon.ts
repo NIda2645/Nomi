@@ -268,7 +268,7 @@ export const zhGenerationCommon = {
       fixModelKind: { main: '改成{{kind}}并重试', alt: '改成{{kind}}' },
     },
     releaseConfirm: {
-      message: '只有在服务商后台确认没有这一笔时再继续。如果其实已经收下，再生成会重复提交。',
+      message: '只有在服务商后台确认没有这一笔时再继续。点「继续」会马上重新生成这一镜；如果其实已经收下，会重复提交。',
       continue: '继续',
       cancel: '取消',
       failed: '没能记录你的核对结果，这一镜还没有放行。再点一次。',
@@ -1371,7 +1371,7 @@ export const zhGenerationCommon = {
     },
     reconcile: {
       releaseTitle: '我核对过了，重新生成',
-      releaseMessage: '只有在服务商后台确认没有这一笔时再继续。如果其实已经收下，再生成会重复提交。',
+      releaseMessage: '只有在服务商后台确认没有这一笔时再继续。点「继续」会马上重新生成这一镜；如果其实已经收下，会重复提交。',
       releaseContinue: '继续',
       submittedAt: '提交时间 {{time}}',
       questionTitle: '核对供应商任务',
@@ -1840,7 +1840,7 @@ export const enGenerationCommon = {
       fixModelKind: { main: 'Set to {{kind}} and retry', alt: 'Set to {{kind}}' },
     },
     releaseConfirm: {
-      message: 'Only continue if you have confirmed in the provider dashboard that this request is not there. If it was in fact received, generating again will submit it twice.',
+      message: 'Only continue if you have confirmed in the provider dashboard that this request is not there. Continue generates this shot again right away; if it was in fact received, it will be submitted twice.',
       continue: 'Continue',
       cancel: 'Cancel',
       failed: 'Your check could not be recorded, so this shot was not released. Try again.',
@@ -2923,7 +2923,7 @@ export const enGenerationCommon = {
     },
     reconcile: {
       releaseTitle: "I've checked, generate again",
-      releaseMessage: 'Only continue if you have confirmed in the provider dashboard that this request is not there. If it was in fact received, generating again will submit it twice.',
+      releaseMessage: 'Only continue if you have confirmed in the provider dashboard that this request is not there. Continue generates this shot again right away; if it was in fact received, it will be submitted twice.',
       releaseContinue: 'Continue',
       submittedAt: 'Submitted {{time}}',
       questionTitle: 'Reconcile provider task',

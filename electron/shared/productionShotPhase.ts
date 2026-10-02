@@ -227,3 +227,10 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   const index = videoShots.findIndex((candidate) => candidate.shotId === shotId);
   return { phase: "queued", job, ...(index >= 0 && total > 0 ? { queueIndex: index + 1, queueTotal: total } : {}) };
 }
+
+/** 这个 Run 里提交结果未知的镜（供应商可能已经收下）：镜 id（没有就用任务 id）。常驻 Agent 读任务状态时据此被告知别再 generate。 */
+export function unknownSubmissionShotLabels(run: Pick<ProductionRun, "jobs"> | null | undefined): string[] {
+  return (run?.jobs ?? [])
+    .filter((job) => job.status === "submission_unknown" || job.status === "reconciling")
+    .map((job) => (typeof job.metadata?.shotId === "string" && job.metadata.shotId ? job.metadata.shotId : job.jobId));
+}
