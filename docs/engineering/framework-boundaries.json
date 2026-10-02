@@ -11,11 +11,9 @@
   ],
   "capabilityInventory": {
     "_comment": [
-      "机器抽取的能力词表要覆盖哪些依赖（2026-09-07 加）。上面的 frameworks 是**人手写**的，",
-      "只覆盖已经出过四列表的那几项能力——它天生只包含已知的东西。这里换一条腿：",
-      "scripts/gen-dependency-capabilities.mjs 从 node_modules 的 .d.ts 导出符号与 README 标题",
-      "机器抽出词表，落到 docs/engineering/dependency-capabilities.generated.json，",
-      "给「还不知道自己不知道」的人当原料。加一个包 = 往这个数组里加一行，然后重跑生成器。"
+      "哪些在用的依赖必须有框架登记或债登记（2026-09-07 加；check:framework-boundary 逐个核）。",
+      "2026-10-02：原先由 gen-dependency-capabilities 机器抽取能力词表（check:dependency-capabilities，零红）已删，",
+      "这里只保留「在用的包清单」这一半。加一个包 = 往这个数组里加一行。"
     ],
     "packages": [
       "@earendil-works/pi-coding-agent",

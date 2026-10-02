@@ -19,6 +19,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { gitPaths } from './lib/gitPaths.mjs'
 import { resolvePullRequestBody } from './lib/prBody.mjs'
 import {
   PRIOR_ART_THRESHOLD_DATE,
@@ -92,8 +93,8 @@ function changedPlanFiles() {
   const base = resolveBase()
   if (!base) return null
   try {
-    const names = new Set(git(['diff', '--name-only', '--no-renames', base, '--', 'docs/plan']).split('\n'))
-    for (const name of git(['ls-files', '--others', '--exclude-standard', '--', 'docs/plan']).split('\n')) names.add(name)
+    const names = new Set(gitPaths(['diff', '--no-renames', '--name-only', base, '--', 'docs/plan'], { cwd: repoRoot }))
+    for (const name of gitPaths(['ls-files', '--others', '--exclude-standard', '--', 'docs/plan'], { cwd: repoRoot })) names.add(name)
     return new Set([...names].map((name) => name.trim()).filter((name) => name.endsWith('.md')))
   } catch {
     return null
