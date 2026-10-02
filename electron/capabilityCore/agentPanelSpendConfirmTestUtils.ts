@@ -12,6 +12,7 @@ import { createGenerationPlanningHandler, type GenerationOperation, type Generat
 import { PROJECT_LEASE_ALGORITHM, PROJECT_LEASE_AUDIENCE, PROJECT_LEASE_VERSION, type ProjectLeaseV2 } from "./projectLease";
 import { createRunOwnedGenerationGateAuthority } from "./runOwnedGenerationGateAuthority";
 import { createPendingSpendActions } from "./appIntegrationSpendConfirm";
+import { resolvePlanPatch } from "./generationPlanPatch";
 import { createPiGenerationTransportAdapter } from "./generationTransportAdapters";
 import type { ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 import { createCanvasLandingHost } from "../productionRun/canvasLandingHost";
@@ -309,6 +310,8 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     committedBinding: () => ({ projectId: PROJECT_ID, immutableProjectUuid: "project-uuid-1", projectGeneration: 1 }),
     leaseFor: async () => lease,
     resolvePricing: () => (hooks.unpriced ? undefined : PRICING),
+    // 与生产同一条并入规则（同一个目录）：卡上改一下也过 resolvePlanPatch。
+    normalizePatch: (base, patch) => resolvePlanPatch({ baseCandidate: base, userPatch: patch, registry }).normalizedPatch,
     now,
   });
   const window = () => ({ webContentsId: 1, frameId: 0, origin: "app://nomi" });

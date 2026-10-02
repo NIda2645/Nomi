@@ -32,6 +32,7 @@ import { logWarn } from "../logging/logger";
 import type { ApprovalReceiptAuthority } from "./approvalReceipt";
 import type { DispatchContext } from "./dispatcher";
 import type { GenerationOperationStore, GenerationReviseInput } from "./mcpGenerationTools";
+import type { PlanCandidate } from "./executionContract";
 import type { ProjectBinding } from "../shared/projectBinding";
 import type { ProjectLeaseV2 } from "./projectLease";
 import type { ModelPricing } from "../productionRun/shotPricing";
@@ -66,6 +67,13 @@ export type PendingSpendActionDeps = Readonly<{
   committedBinding: () => ProjectBinding | null;
   leaseFor: (binding: ProjectBinding) => Promise<ProjectLeaseV2>;
   resolvePricing: (providerId: string, modelId: string) => ModelPricing | undefined;
+  /**
+   * 候选补丁并进这一镜的那条规则（`generationPlanPatch.resolvePlanPatch`：换模型 / 换生成方式时种类跟过去、
+   * 这一对在目录里真有、点名的参数当场判）。Agent 改草稿走的就是它；卡上改一下也只能走它——以前卡这一条直接把
+   * 补丁并进候选，于是卡上切到「图生图」只改了模式 id、种类还是文生图，派发时按文生图挑供应商 mapping，
+   * 带参考图的那一下在出站前被拒（2026-10-02 pb02）。必填：少接一根线编译期就红。
+   */
+  normalizePatch: (base: PlanCandidate, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>) => Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
   now?: () => string;
 }>;
 
@@ -215,6 +223,7 @@ export function pendingSpendDependencies(input: Readonly<{
   committedSelection: () => (ProjectBinding & { canonicalRootDigest?: string }) | null;
   leaseFor: (binding: ProjectBinding) => Promise<ProjectLeaseV2>;
   resolvePricing: (providerId: string, modelId: string) => ModelPricing | undefined;
+  normalizePatch: PendingSpendActionDeps["normalizePatch"];
 }>): PendingSpendActionDeps {
   return {
     isProjectOpen: input.isProjectOpen,
@@ -238,6 +247,7 @@ export function pendingSpendDependencies(input: Readonly<{
     },
     leaseFor: input.leaseFor,
     resolvePricing: input.resolvePricing,
+    normalizePatch: input.normalizePatch,
   };
 }
 
@@ -377,9 +387,14 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
           values: referenceInputs ?? (Array.isArray(patch.references) ? patch.references.map(reference => ({ reference })) : patch.references), existing: shot.references ?? [], assets: referenceAssets, assertCurrent });
       }
       assertCurrent();
-      generationPlanInputSchema.parse({ operation: 'patch', operationId: input.operationId, patch,
+      // 并进这一镜的规则只有一条（Agent 改草稿同一条）：种类跟着模型 / 生成方式走，这一对在目录里真有。
+      // 按解封后的样子判：`generation.revise` 本来就先撤掉还在等人的那份授权、解封这一镜，再并补丁。
+      const sealed = (plan?.shots?.length ? plan.shots.find(shot => shot.shotId === shotId)?.candidate : plan?.candidate) as PlanCandidate | undefined;
+      if (!sealed) throw new Error('generation_shot_not_found');
+      const merged = deps.normalizePatch({ ...sealed, sealedContractHash: undefined }, patch as Partial<Omit<PlanCandidate, "candidateId" | "revision">>);
+      generationPlanInputSchema.parse({ operation: 'patch', operationId: input.operationId, patch: merged,
         ...(input.shotId ? { shotId: input.shotId } : {}) });
-      const revised = await deps.operations.revise(input.projectId, input.operationId, { ...revision, patch }, now());
+      const revised = await deps.operations.revise(input.projectId, input.operationId, { ...revision, patch: merged as Record<string, unknown> }, now());
       const successor = pendingFor(input.projectId, input.operationId);
       if (!successor || successor.planVersion !== revised.planVersion || successor.candidateRevision !== revised.candidate.revision) throw new Error('generation_quote_changed');
       return { ok: true, code: "revised", quoteId: successor.quoteId };

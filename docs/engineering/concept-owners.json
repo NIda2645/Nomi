@@ -3492,6 +3492,39 @@
       "notes": "付费卡① 第 9 条（合同 docs/fixes/2026-10-01-paid-card-shot-kind.root-cause.json）。建镜头时种类只从「点名的模型在目录里声明的模式 + 明写的 taskKind / mode / modeId」来（resolveShotTaskKind，两样都没有就请 Agent 写明，不按提示词猜）；每条建镜头的路（单镜 / 多镜 create、整只给候选、改草稿）落盘前都过 admitShotIdentity（和派发前编译合同同一个 registry.resolve，参考卡只能是图片）。建好之后卡标题、卡体、画布节点、派发都只读 generationShotKind（宿主投影成 PendingSpendShot.kind，渲染层只读这一格，不再自己解读 mode 或模型目录）。模式 → 媒体种类的映射住在 capabilityModeManifest.modelKindForTaskKind（模型准入用的同一张表），这里不另抄。"
     },
     {
+      "name": "一份补丁怎么并进这一镜的候选（种类跟着模型 / 生成方式走）",
+      "subject": "generation.candidate-patch-merge",
+      "lifecycle": "author",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/generationPlanPatch.ts",
+        "symbol": "resolvePlanPatch"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/generationPlanPatch.ts",
+          "symbol": "resolvePlanPatch"
+        },
+        {
+          "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+          "symbol": "normalizePatch"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/generationPlanPatch.test.ts",
+      "allowed_consumers": [
+        "electron/capabilityCore/mcpGenerationTools.ts",
+        "electron/capabilityCore/appIntegration.ts",
+        "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+        "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts"
+      ],
+      "since": "2026-10-02",
+      "notes": "全功能走查 pb02（合同 docs/fixes/2026-10-02-card-revise-merge-rule.root-cause.json）：付费卡上切到「图生图」只改了模式 id，种类还是文生图，派发按文生图挑供应商的 mapping，带参考图的那一下在出站前被拒。候选补丁只有一条并入规则 resolvePlanPatch：换模型或换生成方式（modeId）时种类跟过去（modeTransportFor，和画布挑桶、视频候选归一同一个函数），按目录里这个模型的拼法写回，再核这一对在目录里真有。Agent 改草稿（mcpGenerationTools patch）和卡上改一下（appIntegrationSpendConfirm.revise，经必填注入的 normalizePatch 槽位）都走它；generation.revise / generation.patch 只把它返回的那一份写进计划（applyGenerationCandidatePatch）。"
+    },
+    {
       "name": "这一镜现在派出去还算不算用户同意过（同意窗口）",
       "subject": "production.dispatch-consent",
       "lifecycle": "spend-authority",

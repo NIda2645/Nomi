@@ -10,7 +10,8 @@ import { verbToTransportCall } from "../agentLane/laneVerbTransport";
 import { createPiGenerationTransportAdapter } from "./generationTransportAdapters";
 import type { ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 import { canvasLandingOperationId } from "../productionRun/multiShotCanvasLanding";
-import { PROJECT_ID, OPERATION_ID, lease, now, PRICING, candidate, startLoopbackVendor, harness, buildActions, callTool, draft, resetSpendFixture, advanceClock } from "./agentPanelSpendConfirmTestUtils";
+import { PROJECT_ID, OPERATION_ID, lease, now, PRICING, candidate, startLoopbackVendor, harness, buildActions, callTool, draft, resetSpendFixture, advanceClock, registry } from "./agentPanelSpendConfirmTestUtils";
+import { resolvePlanPatch } from "./generationPlanPatch";
 
 afterEach(resetSpendFixture);
 
@@ -187,7 +188,7 @@ describe("Agent 面板付费卡：确认 → 真的开始生成（零额度 loop
     }
   });
 
-  it("跨任务类别换模型仍被白名单挡下：那换掉的是整个花钱量级，不叫「改一下」", async () => {
+  it("跨任务类别换模型：卡上改一下也过并入规则，目录里没有这一对就当场拒——那换掉的是整个花钱量级，不叫「改一下」", async () => {
     const vendor = await startLoopbackVendor();
     const base = harness();
     const submits: string[] = [];
@@ -195,17 +196,16 @@ describe("Agent 面板付费卡：确认 → 真的开始生成（零额度 loop
     try {
       await draft(base);
       advanceClock(1000);
+      // 以前卡这一条把补丁原样并进候选，要等到确认那一下才被白名单挡下；现在和 Agent 改草稿同一条规则，改的那一下就拒。
       expect(await withWindow.revisePendingSpend({ quoteId: withWindow.listPendingSpend(PROJECT_ID)[0].quoteId,
         projectId: PROJECT_ID, operationId: OPERATION_ID,
         patch: { modelId: "video-model", mode: "image-to-video" },
-      })).toMatchObject({ ok: true });
-      advanceClock(1000);
-      const confirmed = await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: withWindow.listPendingSpend(PROJECT_ID)[0]?.quoteId ?? "stale" });
-      expect(confirmed.ok).toBe(false);
-      // 被拒得干净：没花钱，草稿还在，用户还能改回去。
+      })).toMatchObject({ ok: false, message: "generation_not_started" });
+      // 被拒得干净：没花钱，草稿还在、还是原来那个模型，用户还能接着改。
       expect(submits).toHaveLength(0);
       expect(vendor.bodies).toHaveLength(0);
       expect(withWindow.listPendingSpend(PROJECT_ID)).toHaveLength(1);
+      expect(withWindow.listPendingSpend(PROJECT_ID)[0].shots[0]?.modelId).toBe("image-model");
     } finally {
       await vendor.close();
     }
@@ -641,6 +641,7 @@ for (const pauseAt of ['lease','gate'] as const) it(`project replacement during 
   const actions=createPendingSpendActions({isProjectOpen:()=>true,runs:{read:base.repository.read,list:base.repository.list},operations:base.operations,
     planning:built.handler,receipts:built.receipts,rendererTarget:()=>({webContentsId:1,frameId:0,origin:'app://nomi'}),
     committedBinding:()=>binding,leaseFor:async()=>{if(pauseAt==='lease')await pause();return lease},resolvePricing:()=>PRICING,now,
+    normalizePatch:(baseCandidate,patch)=>resolvePlanPatch({baseCandidate,userPatch:patch,registry}).normalizedPatch,
     requestGenerationGate:async input=>{const gate=await built.authority.requestGenerationGate(input);if(pauseAt==='gate')await pause();return gate},
     authorizeGeneration:async()=>{authorized++;throw new Error('authorization must not be reached')},
   });

@@ -49,6 +49,7 @@ import { readGenerationDefaultModelResolver } from './generationDefaultModelReso
 import { readCatalog } from '../catalog/catalogStore'
 import { recommendVideoGeneration } from '../shared/videoCapabilities'
 import { deriveUsableVideoModelCandidates } from './usableVideoModelCandidates'
+import { resolvePlanPatch } from './generationPlanPatch'
 import { installCatalogRowLookup } from './modelSpecRead'
 import { canvasReadSurfaceRuntime } from './canvasReadSurfaceRuntime'
 import type { CanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
@@ -480,6 +481,8 @@ export async function startCapabilityCore(
         requestGenerationGate, authorizeGeneration, receipts: defaults.approvalReceiptAuthority!,
         rendererTarget: rendererTargetIdentity, committedSelection: canvasReadSurfaceRuntime.getCommittedProjectSelection,
         leaseFor: residentGeneration.leaseFor, resolvePricing: resolveModelPricing,
+        // 卡上改一下与 Agent 改草稿走同一条并入规则（同一个目录、同一份视频候选）。
+        normalizePatch: (base, patch) => resolvePlanPatch({ baseCandidate: base, userPatch: patch, registry: generationRegistry, videoModelCandidates: deriveUsableVideoModelCandidates() }).normalizedPatch,
       }))
       // 两条面（lane 的生成适配器、面板的付费卡）装齐了才算 ready：它们由同一份相回答。
       markResidentSurfaceReady(residentGeneration.factory)
