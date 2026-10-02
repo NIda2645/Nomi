@@ -13,38 +13,29 @@ export function redactResidentSensitiveText(value: string): string {
     .replace(/((?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|secret|password|authorization|lease(?:handle)?|credential)\s*[:=]\s*)[^\s,;]+/gi, '$1[redacted]')
 }
 
-/** 值一旦挂在这些键下就不出现在展示里——名字命中即抹，不看值长什么样。 */
-const SECRET_KEY_PATTERN = /(api[_-]?key|access[_-]?token|refresh[_-]?token|^key$|secret|password|passphrase|authorization|credential|lease(handle)?|cookie|session[_-]?id)/i
+/**
+ * 用户看得见的地方（Agent 面板的失败行、工具卡展开体）**不许出现**的两类东西：
+ *   · 服务商 / 工具的原始 JSON（`{"error":{"code":…}}`、整段入参 / 回包）；
+ *   · 内部标识：供应商路由键（`apimart/…`）、候选 / 操作 / 生成事务 id、`[nomi-classified: …]` 分类标记。
+ * 判据是**形状**不是词：一句人话里不会出现 `"code":`，也不会出现 `op-<uuid>`。
+ * 走查监视器（`tests/ux/full-walk/outcomeText.mjs`）用同一组形状在真实界面上验收。
+ */
+const INTERNAL_SHAPES: readonly RegExp[] = [
+  /[{[]\s*"[\w$-]+"\s*:/,
+  /"(?:message|code|type|param)"\s*:\s*(?:"|\d|null)/,
+  /invalid_request_error|insufficient_quota|rate_limit_exceeded|authentication_error/,
+  /\b(?:apimart|kie)\/[a-z0-9][\w.-]*/i,
+  /\bcand-op-[\w-]+/,
+  /\bgen-v2-[\w-]+/,
+  /\bop-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/i,
+  /\[nomi-classified:/,
+]
 
-const MAX_ARG_STRING = 200
-
-/** `/Users/x/Movies/a.mp4` → `…/a.mp4`：路径在收据里唯一的信息量是文件名。 */
-function shortenPath(value: string): string {
-  return value.replace(/(?:[A-Za-z]:)?[/\\](?:[^\s/\\:*?"<>|]+[/\\]){2,}([^\s/\\:*?"<>|]+)/g, '…/$1')
+export function leaksInternals(text: string): boolean {
+  return INTERNAL_SHAPES.some((shape) => shape.test(text))
 }
 
-/**
- * 入参 → 一段可以给人看的 JSON。
- *
- * 短对象压成一行（`{ "scope": "timeline", "range": "all" }`，拍板基线里就是这个样子），
- * 长的保留缩进——340px 宽的一列里，一行 200 字的 JSON 和没有内容是一回事。
- */
-export function redactToolArguments(args: unknown): string {
-  if (args === undefined || args === null) return ''
-  let text: string
-  try {
-    text = JSON.stringify(args, (key, value: unknown) => {
-      if (SECRET_KEY_PATTERN.test(key)) return '[redacted]'
-      if (typeof value === 'string') {
-        const shortened = shortenPath(value)
-        return shortened.length > MAX_ARG_STRING ? `${shortened.slice(0, MAX_ARG_STRING)}…` : shortened
-      }
-      return value
-    }, 2) ?? ''
-  } catch {
-    // 循环引用 / BigInt：入参本来就不该长这样，但收据不能因此炸掉整条流。
-    return ''
-  }
-  const collapsed = text.replace(/\s*\n\s*/g, ' ')
-  return redactResidentSensitiveText(collapsed.length <= 72 ? collapsed : text)
+/** 我们自己加在服务商报文后面的分类标记（`laneProviderGuard` 追加，给重试判据读的）。界面上永远不印。 */
+export function stripClassificationMarkers(text: string): string {
+  return text.replace(/\s*\[nomi-classified:[^\]]*\]/g, '').trim()
 }

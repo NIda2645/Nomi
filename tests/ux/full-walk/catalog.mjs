@@ -43,6 +43,11 @@ export const FULL_WALK_PLAYBOOKS = Object.freeze([
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' }), Object.freeze({ id: 'en', locale: 'en' })]),
   }),
   Object.freeze({
+    id: 'pb09-agent-failure-and-receipts', script: 'tests/ux/full-walk/playbooks/pb09-agent-failure-and-receipts.walk.mjs', paid: false,
+    title: Object.freeze({ 'zh-CN': 'Agent 写稿后的工具收据，和服务商整条回错时面板上那一行', en: 'Tool receipts after the Agent writes, and the row shown when the provider returns a raw error' }),
+    variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' }), Object.freeze({ id: 'en', locale: 'en' })]),
+  }),
+  Object.freeze({
     id: 'pb05-pause-resume', script: 'tests/ux/full-walk/playbooks/pb05-pause-resume.walk.mjs', paid: false,
     title: Object.freeze({ 'zh-CN': '全自动起草三镜视频，中途暂停、继续剩余、在 Agent 里按停止', en: 'Full-auto three video shots, pause, resume, stop the Agent' }),
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
@@ -195,7 +200,7 @@ export const FULL_WALK_JOURNEYS = Object.freeze([
       { id: 'attached', kind: 'user', visibleText: ['agentPanelV4.attachmentUnavailable'], actions: ['发送', '移除'], owner: 'src/workbench/ai/composer/useComposerAttachments.ts#useComposerAttachments', deadline: USER },
       { id: 'sent-to-model', kind: 'terminal', visibleText: [], actions: [], owner: 'electron/agentLane/laneDesktopInput.ts#createDesktopLaneInput' },
     ].map(Object.freeze)),
-    scripts: Object.freeze(['tests/ux/full-walk/playbooks/pb04-script-attachment-long-chat.walk.mjs']),
+    scripts: Object.freeze(['tests/ux/full-walk/playbooks/pb04-script-attachment-long-chat.walk.mjs', 'tests/ux/full-walk/playbooks/pb09-agent-failure-and-receipts.walk.mjs']),
     invariants: Object.freeze([3, 5, 8]),
     metric: Object.freeze({ gap: '附件上传成功 / 失败、模型是否读到附件都没有上报' }),
   }),

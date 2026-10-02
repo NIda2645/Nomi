@@ -35,7 +35,7 @@ export function V4ToolReceipt({
   undoLabel?: string
   onUndo?: () => void
 }): JSX.Element {
-  const expandable = Boolean(receipt.input || receipt.output)
+  const expandable = Boolean(receipt.output)
   // 答完的反问不红：协议上它是一次 `output-denied`（lane 只有准 / 不准），但用户没有拒绝
   // 任何东西——他回答了一个问题。红色在这条面板上只说一件事「这里出问题了」，
   // 给一次正常的作答打上它，等于每答一个问题就在历史里留一条假警报。
@@ -103,7 +103,6 @@ export function V4ToolReceipt({
         {row}
       </V4Row>
       <div className="mt-1 rounded-nomi-sm border border-nomi-line-soft bg-nomi-paper px-2.5 py-2 text-caption text-nomi-ink-60">
-        {receipt.input ? <ReceiptBlock labelKey="agentPanelV4.input" value={receipt.input} /> : null}
         {receipt.output ? <ReceiptBlock labelKey="agentPanelV4.output" value={receipt.output} markdown /> : null}
       </div>
     </details>
