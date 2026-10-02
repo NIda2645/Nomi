@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { marketingPages } from '../marketing/site-manifest.mjs'
+import { descriptionInRange } from '../marketing/seo-limits.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const DEFAULT_BASE_URL = 'https://nomiaqm.com'
@@ -48,7 +48,7 @@ export function auditHtml(html, url, options = {}) {
   const expectedApplicationId = `${new URL(url).origin}/#application`
   const checks = [
     ['META-TITLE', hasText(html, /<title>[^<]+\S<\/title>/i), 'title', 'Add a unique, descriptive title.'],
-    ['META-DESCRIPTION', description.length >= 50 && description.length <= 160, 'description', 'Add a page-specific 50–160 character meta description.'],
+    ['META-DESCRIPTION', descriptionInRange(description), 'description', 'Add a page-specific 50–160 character meta description.'],
     ['META-CANONICAL', getTagAttribute(getLink(html, 'canonical'), 'href') === url, 'canonical', 'Point canonical to the exact public URL, including locale and trailing slash.'],
     ['META-OG', ['og:title', 'og:description', 'og:image', 'og:image:alt'].every((key) => hasMeta(html, 'property', key)), 'Open Graph title/description/image/alt', 'Add a complete Open Graph card so shared links have the right preview.'],
     ['META-TWITTER', ['twitter:card', 'twitter:title', 'twitter:description', 'twitter:image'].every((key) => hasMeta(html, 'name', key)), 'Twitter card fields', 'Add Twitter card fields matching the Open Graph identity.'],
@@ -73,6 +73,16 @@ export function auditHtml(html, url, options = {}) {
 
 const extractSitemapEntries = (xml) => [...xml.matchAll(/<url>\s*<loc>([^<]+)<\/loc>\s*<lastmod>([^<]+)<\/lastmod>[\s\S]*?<\/url>/gi)]
   .map((match) => ({ url: match[1].trim(), lastmod: match[2].trim() }))
+
+/**
+ * 每周巡检默认查哪些页面：仓库里提交的 marketing/sitemap.xml 列的全部页面——它是页面生成器的输出，
+ * check:site 保证它是新的。不再是手写的 5 个；新页面一上线就自动进每周检查（方案 §8）。
+ * 读的是一份纯 XML，所以每周巡检这条流水线仍然不需要 pnpm install。
+ */
+export const loadMarketingPages = (file = path.join(root, 'marketing/sitemap.xml')) => extractSitemapEntries(fs.readFileSync(file, 'utf8'))
+  .map(({ url, lastmod }) => ({ path: new URL(url).pathname, updatedAt: lastmod }))
+
+const marketingPages = loadMarketingPages()
 
 export function auditSitemap(xml, manifest = marketingPages, baseUrl = DEFAULT_BASE_URL) {
   const failures = []

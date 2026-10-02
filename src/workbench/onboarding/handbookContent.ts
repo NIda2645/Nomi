@@ -1,11 +1,10 @@
 /**
  * 新手上手手册的唯一内容源（纯数据 + 文案，无 React、无样式）。
  *
- * 两处出口共用这一份：
- *   ① App 内 `HandbookPanel.tsx`（React overlay，把 iconKey 映射成已登记的 tabler 组件）
- *   ② `scripts/build-handbook-html.mjs`（渲成独立 marketing/handbook.html，发群 + 挂官网）
- * 改文案只改这里，两处自动同步。iconKey = tabler 图标名去掉 `Icon` 前缀的 kebab（如 `pencil`）：
- * html 渲 `ti ti-<iconKey>`；React panel 用 HANDBOOK_ICON map（key→vendor 组件，都已登记，build 安全）。
+ * 出口只有一处：App 内 `HandbookPanel.tsx`（React overlay，把 iconKey 映射成已登记的 tabler 组件）。
+ * （原来的第二处出口——渲成官网 /handbook 页——2026-09-28 随官网并进「快速上手」退役，/handbook 现在 301 到 /quickstart。）
+ * 改文案只改这里。iconKey = tabler 图标名去掉 `Icon` 前缀的 kebab（如 `pencil`）：
+ * React panel 用 HANDBOOK_ICON map（key→vendor 组件，都已登记，build 安全）。
  */
 
 export type HandbookPipelineStep = { iconKey: string; label: string; accent?: boolean }
