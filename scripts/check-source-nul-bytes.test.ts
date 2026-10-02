@@ -27,6 +27,27 @@ afterEach(() => {
   probeFile = null
 })
 
+/** 超时时留证据：门岗会逐个 readFileSync 未跟踪文件，卡住最可能是读到 FIFO / 设备 / 无限流 / 正在写的巨型文件。 */
+function describeUntrackedFiles(): string {
+  try {
+    const listed = execFileSync('git', ['ls-files', '--others', '--exclude-standard', '-z'], { cwd: repoRoot, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS, killSignal: 'SIGKILL' })
+    const files = listed.split(NUL).filter(Boolean).slice(0, 50)
+    if (files.length === 0) return '（无未跟踪文件）'
+    return files.map((relative) => {
+      try {
+        const stat = fs.lstatSync(path.join(repoRoot, relative))
+        const kind = stat.isSymbolicLink() ? '软链接' : stat.isFile() ? '文件' : '其他'
+        const target = stat.isSymbolicLink() ? ` -> ${fs.readlinkSync(path.join(repoRoot, relative))}` : ''
+        return `- ${relative}  [${kind}, ${stat.size} 字节]${target}`
+      } catch (error) {
+        return `- ${relative}  [lstat 失败: ${(error as Error).message}]`
+      }
+    }).join('\n')
+  } catch (error) {
+    return `（列未跟踪文件也失败: ${(error as Error).message}）`
+  }
+}
+
 function runGate(): { code: number; output: string } {
   try {
     const stdout = execFileSync('node', [GATE], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: CHILD_TIMEOUT_MS, killSignal: 'SIGKILL' })
@@ -34,7 +55,7 @@ function runGate(): { code: number; output: string } {
   } catch (error) {
     const failure = error as { status?: number; stdout?: string; stderr?: string; code?: string }
     // 超时不是「门岗判红」：不能让它混进 code !== 0，否则下面的红例会在门岗根本没跑完时假绿。
-    if (failure.code === 'ETIMEDOUT') throw new Error(`门岗子进程 ${CHILD_TIMEOUT_MS}ms 内没有返回，已被杀掉`)
+    if (failure.code === 'ETIMEDOUT') throw new Error(`门岗子进程 ${CHILD_TIMEOUT_MS}ms 内没有返回，已被杀掉。超时当时的未跟踪文件（前 50 个）：\n${describeUntrackedFiles()}`)
     return { code: failure.status ?? 1, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}` }
   }
 }
