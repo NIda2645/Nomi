@@ -25,7 +25,7 @@ export const FULL_WALK_PLAYBOOKS = Object.freeze([
   Object.freeze({
     id: 'pb02-reference-image', script: 'tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs', paid: false,
     title: Object.freeze({ 'zh-CN': '连着参考图生成（画布直生成 / Agent 付费卡两条路）', en: 'Generate with a connected reference (canvas and Agent paths)' }),
-    variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
+    variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' }), Object.freeze({ id: 'en', locale: 'en' })]),
   }),
   Object.freeze({
     id: 'pb03-default-models', script: 'tests/ux/full-walk/playbooks/pb03-default-models.walk.mjs', paid: false,

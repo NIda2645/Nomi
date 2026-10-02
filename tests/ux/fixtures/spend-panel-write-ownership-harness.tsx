@@ -27,6 +27,8 @@ let releaseUpload: ((value: unknown) => void) | undefined
 let uploads = 0
 let completed = 0
 let stale: NodeWriteAccess | undefined
+// 上传那一刻卡上那张框的 id（卡自己的 id，不是画布占位节点的 id）：退役之后拿同一个 id 也读不到、写不进。
+let staleId = ''
 let model!: ReturnType<typeof useAgentPanelSpendConfirm>
 const feedback: string[] = []
 const calls: unknown[] = []
@@ -41,7 +43,7 @@ const fixture = { nodes, edges: [], pending, calls,
   upload: () => { uploads++; return new Promise(resolve => { releaseUpload = resolve }) },
   setRefresh: (callback: () => void) => { refresh = callback },
   snapshot: () => ({ busy: model.busy, page: model.page, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
-    meta: model.node?.meta, refs: model.node?.meta?.[slot.metaKey], prompt: model.node?.prompt, uploads, completed, feedback, staleNode: stale?.latestNode('a')?.id, staleWritable: stale?.canWrite?.() }),
+    meta: model.node?.meta, refs: model.node?.meta?.[slot.metaKey], prompt: model.node?.prompt, uploads, completed, feedback, staleNode: stale?.latestNode(staleId)?.id, staleWritable: stale?.canWrite?.() }),
   change: (field: string) => {
     if (field === 'page') model.setPage(1)
     else { Object.assign(pending, field === 'quote' ? { quoteId: 'quote-next' } : field === 'operation' ? { operationId: 'operation-next' } : { candidateRevision: 2 }); refresh?.() }
@@ -52,13 +54,14 @@ const fixture = { nodes, edges: [], pending, calls,
   back: () => model.setPage(0),
   finish: () => releaseUpload?.({ id: 'asset', data: { url: 'nomi-local://asset/reference.png' } }),
   unmount: () => root.unmount(),
-  staleWrite: () => stale?.updateNode('a', { prompt: 'late mutation' }),
+  staleWrite: () => stale?.updateNode(staleId, { prompt: 'late mutation' }),
 }
 Object.assign(window, { spendOwnership: fixture })
 function Drop({ node, access }: { node: GenerationCanvasNode; access: NodeWriteAccess }) {
   const drop = useNodeAssetDrop(node, message => feedback.push(message), access)
   return <button id="upload" onClick={() => {
     stale = access
+    staleId = node.id
     void drop.dropHandlers.onDrop({ preventDefault() {}, stopPropagation() {}, dataTransfer: { getData: () => '', files: [new File(['fixture'], 'reference.png', { type: 'image/png' })] } } as unknown as React.DragEvent<HTMLElement>).finally(() => { completed++ })
   }}>upload</button>
 }

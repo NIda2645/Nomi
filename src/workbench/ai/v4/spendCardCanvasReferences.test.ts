@@ -2,8 +2,10 @@
 import { describe, expect, it } from 'vitest'
 import type { PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
-import { applyPatchToNode, candidatePatchFromNode, draftAfterNodeEdit, effectivePatchForShot, EMPTY_SPEND_DRAFT, projectSpendNode, type SpendDraft } from './spendCardDraft'
+import { applyPatchToNode, candidatePatchFromNode, draftAfterNodeEdit, effectivePatchForShot, EMPTY_SPEND_DRAFT, keptReferenceUrls, projectSpendNode, type SpendDraft } from './spendCardDraft'
 import { canvasReferenceInputs, referenceInputsFromNode } from './spendCardReferences'
+import { decideArrayReferenceRemoval, resolveReferenceSlots } from '../../generationCanvas/runner/referenceSlots'
+import { referenceSlotStorage } from '../../generationCanvas/nodes/controls/archetypeMeta'
 
 const REF_URL = 'nomi-local://asset/project-1/ref-cat.png'
 
@@ -21,7 +23,7 @@ const textOnlyShot: PendingSpendShot = {
 /** 画布上那一镜的占位节点（同一个模型档案），一张图片节点连到它。 */
 function canvas(target: PendingSpendShot = shot): { placed: GenerationCanvasNode; nodes: GenerationCanvasNode[]; edges: GenerationCanvasEdge[] } {
   const card = projectSpendNode(target)!
-  const placed = { ...card, position: { x: 400, y: 0 } } as GenerationCanvasNode
+  const placed = { ...card, id: target.nodeId!, position: { x: 400, y: 0 } } as GenerationCanvasNode
   const image = { id: 'img-1', kind: 'image', position: { x: 0, y: 0 }, prompt: '', status: 'success',
     result: { id: 'r1', type: 'image', url: REF_URL, createdAt: 1 }, meta: {} } as unknown as GenerationCanvasNode
   const edge = { id: 'e-1', source: 'img-1', target: target.nodeId } as unknown as GenerationCanvasEdge
@@ -33,7 +35,8 @@ const urlsOn = (node: GenerationCanvasNode, target: PendingSpendShot) => referen
 
 /** 卡上此刻摆着的那张框 = 默认那张 ⊕ 账本里这一镜的改动（`useAgentPanelSpendConfirm.shownNodeFor` 的同一个算法）。 */
 function shown(target: PendingSpendShot, graph: ReturnType<typeof canvas>, draft: SpendDraft): GenerationCanvasNode {
-  return applyPatchToNode(projectSpendNode(target, graph.placed, undefined, graph)!, effectivePatchForShot(draft, target.shotId))
+  const patch = effectivePatchForShot(draft, target.shotId)
+  return applyPatchToNode(projectSpendNode(target, graph.placed, undefined, graph, keptReferenceUrls(patch))!, patch)
 }
 
 describe('付费卡 · 画布连线带来的参考图', () => {
@@ -72,6 +75,22 @@ describe('付费卡 · 画布连线带来的参考图', () => {
     expect(JSON.stringify(graph.edges), '画布上的连线没动').toBe(before)
   })
 
+  it('宿主那一镜是「文生图」、卡上拿掉画布连来的唯一那张：卡回到文生图，发出去的是文生图、不带参考，画布连线不动（第 8 行）', () => {
+    const graph = canvas(textOnlyShot)
+    const before = JSON.stringify(graph.edges)
+    const card = projectSpendNode(textOnlyShot, graph.placed, undefined, graph)!
+    expect(modeOf(card)).toBe('i2i')
+    const removed = applyPatchToNode(card, { referenceInputs: [] })
+    const draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, textOnlyShot, removed, undefined, card)
+    const next = shown(textOnlyShot, graph, draft)
+    expect(modeOf(next), '不停在一个空着必填槽的图生图上').toBe('t2i')
+    expect(urlsOn(next, textOnlyShot)).toEqual([])
+    const sent = candidatePatchFromNode(next, textOnlyShot)
+    expect(sent?.referenceInputs ?? [], '供应商收到 0 张参考图').toEqual([])
+    expect(sent?.modeId === undefined || sent.modeId === 't2i').toBe(true)
+    expect(JSON.stringify(graph.edges), '画布上的连线没动').toBe(before)
+  })
+
   it('卡上把对齐过的生成方式改回文生图：账本记得住，发出去的是文生图、不带参考', () => {
     const graph = canvas(textOnlyShot)
     const card = projectSpendNode(textOnlyShot, graph.placed, undefined, graph)!
@@ -94,6 +113,20 @@ describe('付费卡 · 画布连线带来的参考图', () => {
     const next = shown(textOnlyShot, graph, draft)
     expect(modeOf(next)).toBe('i2i')
     expect(urlsOn(next, textOnlyShot)).toEqual([REF_URL])
+  })
+
+  it('卡那张框不是画布上的占位节点：卡体 composer 点 × 拿掉画布连来的那张，只删卡自己的参考槽，不断画布的边（第 8 行）', () => {
+    const graph = canvas(textOnlyShot)
+    const card = projectSpendNode(textOnlyShot, graph.placed, undefined, graph)!
+    expect(card.id, '卡那张框有自己的 id').not.toBe(textOnlyShot.nodeId)
+    // composer 读的是同一张画布（store 里的 nodes / edges），按这张框的 id 找边：一条都不是它的。
+    const slots = resolveReferenceSlots(card, graph.nodes, graph.edges)
+    const fills = slots.flatMap((slot) => slot.fills)
+    expect(fills.map((fill) => fill.url), '卡上摆着画布连来的那张').toEqual([REF_URL])
+    expect(fills.every((fill) => fill.origin.type === 'upload'), '它在卡自己的参考槽里，不是一条画布的边').toBe(true)
+    const metaKey = referenceSlotStorage({ kind: slots[0]!.slotKind })!.metaKey
+    // 点 × 的那一刻 composer 按这一项的来源决定怎么删（decideArrayReferenceRemoval，画布与卡共用）：只删卡上的值。
+    expect(decideArrayReferenceRemoval(card, graph.nodes, graph.edges, metaKey, 0)).toEqual({ kind: 'remove-upload', url: REF_URL })
   })
 
   it('连了线但源还没出图：此刻发不出去，卡上也不说会发', () => {

@@ -4,6 +4,7 @@ import type { GenerationCanvasEdge, GenerationCanvasNode } from '../../generatio
 import { resolveReferenceSlots } from '../../generationCanvas/runner/referenceSlots'
 import { applyArchetypeModeSwitch, referenceSlotAccept, referenceSlotStorage } from '../../generationCanvas/nodes/controls/archetypeMeta'
 import { archetypeForNode, resolveModeForConnectedReferences } from '../../generationCanvas/agent/referenceEdgeCapability'
+import { findNodeResultUrl } from '../../generationCanvas/runner/referenceUrl'
 import { readParameterReferenceSlots, parameterReferenceMetaPatch } from '../../generationCanvas/model/parameterReferenceSlots'
 
 type ReferenceRole = NonNullable<Extract<SpendReferenceInput, { kind: unknown }>['role']>
@@ -39,24 +40,38 @@ export function canvasReferenceInputs(
 }
 
 /**
- * 卡上这一镜默认摆出来的参考 = 宿主那一镜自己的 ∪ 画布上连到它占位节点的（同一张图不重复放）。
+ * 卡上这一镜默认摆出来的参考 = 宿主那一镜自己的 ∪ 画布上连到它占位节点（`placedId`）的（同一张图不重复放）。
  *
  * 生成方式按画布那一条规则对齐活边：宿主那一镜可能停在没有参考槽的模式上（文生图），画布上连着的参考图就摆不进卡、
  * 也发不出去（2026-10-02 pb02：卡上写「文生图」，供应商收到 0 张）。画布自己在连线、换模型、提交三处都用
  * `resolveModeForConnectedReferences` 把节点切到收得下这几条边的模式（`applyArchetypeModeSwitch` 顺带把越界的参数夹回）；
  * 卡读同一对函数，不另写一条规则。卡上之后的改动（含拿掉这张、改回文生图）都相对这一份记，见 `candidatePatchFromNode`。
+ *
+ * 读画布只在这一处：画布连来的参考进的是卡自己那张框的参考槽（和卡上传的同一种），卡那张框的 id 不是占位节点的 id
+ * （见 `projectSpendNode`），所以卡体那件 composer 看不见、也够不着画布上的边。
+ *
+ * `kept` = 卡上这一镜还留着的参考（账本里记过这一镜的参考清单才有）。画布连来、却不在清单里的那几条边 = 用户在卡上拿掉了：
+ * 这一次不发它，也不为它切生成方式——拿掉唯一那张，卡回到宿主那一镜原来的生成方式（文生图），不会停在一个空着必填槽的
+ * 「图生图」上（第 8 行）。画布连线一根不动。
  */
 export function placeSpendReferences(
   node: GenerationCanvasNode,
   own: readonly SpendReferenceInput[],
   canvas?: SpendCanvasGraph,
+  placedId?: string,
+  kept?: ReadonlySet<string>,
 ): GenerationCanvasNode {
-  if (!canvas) return applySpendReferences(node, own)
-  const modeId = resolveModeForConnectedReferences(node, canvas.nodes, canvas.edges)
+  if (!canvas || !placedId) return applySpendReferences(node, own)
+  const nodesById = new Map(canvas.nodes.map((entry) => [entry.id, entry] as const))
+  const edges = kept
+    ? canvas.edges.filter((edge) => edge.target !== placedId || kept.has(findNodeResultUrl(nodesById, edge.source)))
+    : canvas.edges
+  const onCanvas = (candidate: GenerationCanvasNode): GenerationCanvasNode => ({ ...candidate, id: placedId })
+  const modeId = resolveModeForConnectedReferences(onCanvas(node), canvas.nodes, edges)
   const archetype = modeId ? archetypeForNode(node) : null
   const moded = modeId && archetype ? { ...node, meta: applyArchetypeModeSwitch({ ...(node.meta ?? {}) }, archetype, modeId) } : node
   const urls = new Set(own.map((input) => input.url).filter((url): url is string => Boolean(url)))
-  const fromCanvas = canvasReferenceInputs(moded, canvas.nodes, canvas.edges).filter((input) => !input.url || !urls.has(input.url))
+  const fromCanvas = canvasReferenceInputs(onCanvas(moded), canvas.nodes, edges).filter((input) => !input.url || !urls.has(input.url))
   return applySpendReferences(moded, [...own, ...fromCanvas])
 }
 

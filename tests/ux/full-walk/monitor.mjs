@@ -245,7 +245,11 @@ export function createInvariantMonitor(options) {
    * 付费卡上点确认之前调用：读下卡上此刻摆着的一切（宿主投影 = 卡的唯一输入 + DOM 上的标题 / 翻页 / 按钮字）。
    * 返回的 consent 在点完之后由监视器拿去对供应商收到的请求。
    */
-  async function consentSpendCard(card, { label } = {}) {
+  /**
+   * @param {{ label?: string, removedCanvasRefs?: number }} [options] removedCanvasRefs = 用户点之前在卡上拿掉了这一页几张画布连来的参考
+   *   （卡上拿掉只改卡、画布连线不动——那几条线还在，但他看到、点头的是不带它们的那一份）。
+   */
+  async function consentSpendCard(card, { label, removedCanvasRefs = 0 } = {}) {
     const read = await win().evaluate((id) => window.nomiDesktop.productionRuns.pendingSpend(id), projectId).catch(() => null)
     const pending = read?.surface === 'ready' ? read.rows?.[0] ?? null : null
     const dom = await card.evaluate((element) => {
@@ -264,10 +268,10 @@ export function createInvariantMonitor(options) {
     // 同一镜在画布上那张占位卡此刻连着几张参考（用户在画布上看得见的那条线）。
     const canvas = (await readProject())?.payload?.generationCanvas ?? {}
     const canvasRefsOf = (nodeId) => (nodeId ? (canvas.edges ?? []).filter((edge) => edge.target === nodeId).length : 0)
-    const allShots = (pending?.shots ?? []).map((shot) => ({
+    const allShots = (pending?.shots ?? []).map((shot, index) => ({
       shotId: shot.shotId, nodeId: shot.nodeId ?? null, index: shot.index, prompt: shot.prompt,
       providerId: shot.providerId, model: shot.modelId, params: shot.parameters ?? {}, refs: (shot.references ?? []).length,
-      canvasRefs: canvasRefsOf(shot.nodeId), surfaceText: dom.text,
+      canvasRefs: Math.max(0, canvasRefsOf(shot.nodeId) - (index === pageIndex ? removedCanvasRefs : 0)), surfaceText: dom.text,
       // 「这一镜到底是图还是视频」的四份说法（铁律 3：同一件事，四处读法必须一致）：候选的模式、模型自己的种类（目录）、画布占位节点的种类，加上卡标题一份（在下面对整张卡判）。
       mode: shot.mode ?? null, modelKind: catalogKindOf(shot.providerId, shot.modelId),
       nodeKind: (canvas.nodes ?? []).find((node) => node.id === shot.nodeId)?.kind ?? null,

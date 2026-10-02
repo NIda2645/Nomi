@@ -37,6 +37,7 @@ import {
   applyPatchToNode,
   candidatePatchFromNode,
   projectSpendNode,
+  keptReferenceUrls,
   draftAfterNodeEdit,
   draftIsEmpty,
   effectivePatchForShot,
@@ -204,22 +205,25 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
    * 卡上某一镜默认摆出来的那张框：宿主投影 ⊕ 画布连线带来的参考图（生成方式按画布那条规则对齐活边），还没算卡上的改动。
    * 卡上改一下都相对它记（`draftAfterNodeEdit` 的 baseline）。
    */
-  const defaultNodeFor = React.useCallback((entry: PendingSpendShot): GenerationCanvasNode | undefined => {
+  const projectedNodeFor = React.useCallback((entry: PendingSpendShot, kept?: ReadonlySet<string>): GenerationCanvasNode | undefined => {
     const placed = entry.nodeId ? nodes.find((candidate) => candidate.id === entry.nodeId) : undefined
     const option = modelOptions.find(candidate => candidate.modelKey === entry.modelId && candidate.vendor === entry.providerId)
-    return projectSpendNode(entry, placed, option, { nodes, edges })
+    return projectSpendNode(entry, placed, option, { nodes, edges }, kept)
   }, [nodes, edges, modelOptions])
+  const defaultNodeFor = React.useCallback((entry: PendingSpendShot) => projectedNodeFor(entry), [projectedNodeFor])
   const defaultNodeRef = React.useRef(defaultNodeFor)
   defaultNodeRef.current = defaultNodeFor
 
   /**
-   * 卡上某一镜此刻摆着的那张框：默认那张 ⊕ 卡上的改动（见 spendCardDraft 顶部注释）。
+   * 卡上某一镜此刻摆着的那张框：默认那张 ⊕ 卡上的改动（见 spendCardDraft 顶部注释）。卡上拿掉的画布参考不算进
+   * 生成方式的对齐（`keptReferenceUrls`）。
    * 卡体（当前这一页）和「生成剩下 N 张」要发出去的每一页都读这一份——卡上看到的就是会发出去的（第 4 条），算法只有一份。
    */
   const shownNodeFor = React.useCallback((entry: PendingSpendShot): GenerationCanvasNode | undefined => {
-    const base = defaultNodeFor(entry)
-    return base ? applyPatchToNode(base, effectivePatchForShot(draft, entry.shotId)) : undefined
-  }, [defaultNodeFor, draft])
+    const patch = effectivePatchForShot(draft, entry.shotId)
+    const base = projectedNodeFor(entry, keptReferenceUrls(patch))
+    return base ? applyPatchToNode(base, patch) : undefined
+  }, [projectedNodeFor, draft])
 
   // 卡体绑的那份草稿节点 = 当前这一页那一镜摆着的那张框。
   const draftNode = React.useMemo(() => (shot ? shownNodeFor(shot) : undefined), [shot, shownNodeFor])

@@ -227,15 +227,20 @@ export function revisionsForConfirm(
  * 卡体那张生成框（还没算卡上的改动）：宿主那一镜的候选 + 画布上连到它占位节点的参考图（`canvas`，第 4 条：
  * 画布上连着的参考图算数，卡上看得见、照发；生成方式按画布那条规则对齐，见 `placeSpendReferences`）。
  * 画布上那个占位节点只提供标题和位置。卡上拿掉其中一张只改卡，不动画布连线。
+ *
+ * 这张框的 id 是卡自己的（`spend:<shotId>`），**不是**占位节点的 id。用了占位节点的 id，卡体那件 composer
+ * 就会把画布上连到占位节点的边当成这张框自己的边：卡上点 × 拿掉画布连来的参考图，走的是画布那条「断边」——
+ * 用户还没点生成，画布上的连线就被删了（第 8 行）；还会按画布的边替卡改比例。画布连来的参考只经
+ * `placeSpendReferences` 一处进卡，进的是卡自己的参考槽。
  */
-export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanvasNode, option?: ModelOption, canvas?: SpendCanvasGraph): GenerationCanvasNode | undefined {
+export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanvasNode, option?: ModelOption, canvas?: SpendCanvasGraph, kept?: ReadonlySet<string>): GenerationCanvasNode | undefined {
   const archetype = resolveArchetypeForModel({ modelKey: shot.modelId, vendorKey: shot.providerId, meta: option?.meta })
   // 卡体那张生成框的种类只读宿主给的那一格（第 9 条）：和卡标题、画布节点、派发同一个答案。
   // 以前这里读模型目录自己的种类，画布读另一套，卡就会标题说视频、卡体是图片模型，还改不动。
   const kind = shot.kind
   if (!isGenerationNodeKind(kind)) return undefined
   return placeSpendReferences({
-    id: shot.nodeId ?? `spend:${shot.shotId}`,
+    id: `spend:${shot.shotId}`,
     kind,
     title: placed?.title ?? '',
     position: placed?.position ?? { x: 0, y: 0 },
@@ -248,7 +253,14 @@ export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanv
       // 候选上写着变体就一并带上：卡上这张框显示的变体与宿主派发的，问的是同一个 owner、同一组输入。
       ...(archetype ? { archetype: { id: archetype.id, modeId: shot.modeId ?? archetype.defaultModeId, ...(shot.variantId ? { variantId: shot.variantId } : {}) } } : {}),
     },
-  }, pendingReferenceInputs(shot), canvas)
+  }, pendingReferenceInputs(shot), canvas, shot.nodeId, kept)
+}
+
+/** 账本里这一镜记过参考清单 = 卡上还留着的那几张（画布连来、不在清单里的就是用户在卡上拿掉的）；没记过 = 都留着。 */
+export function keptReferenceUrls(patch: SpendCandidatePatch): ReadonlySet<string> | undefined {
+  return patch.referenceInputs
+    ? new Set(patch.referenceInputs.map((input) => input.url).filter((url): url is string => Boolean(url)))
+    : undefined
 }
 
 /**
