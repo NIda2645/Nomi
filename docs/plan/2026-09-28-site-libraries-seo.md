@@ -172,10 +172,11 @@
 | sitemap | `scripts/build-marketing-sitemap.mjs`、`marketing/data/page-dates.json` | `lastmod` 是页面内容哈希变了的那天，内容没变日期不动；发版只改 JSON-LD 里的版本号，不算内容变化；每条带中英互指的 hreflang；`--check` 只核对不改写 |
 | `/handbook` | `marketing/_redirects` | `/handbook` 与 `/handbook.html` 301 到 `/quickstart`；手册页、它的生成器和 `check:handbook` 已删；App 里的手册面板不动 |
 | 数据按今天的 App 目录重导 | `scripts/site/export-site-data.mts` | 同一模型的渠道行并进模型本身、Sora 2 退役后，模型从 84 条变成 68 条；其中 39 个有介绍、上官网（中英各 106 个页面）；Muse Image 的介绍改挂合并后的身份 |
-| 门岗 | `scripts/check-site-*.mjs`，接进 `check:site` | 数据新鲜度、模型介绍（含孤儿）、不写价格、站内链接、中英对应、结构化数据、描述 50–160 字、许可证署名；每道都有单元测试里的「会红」用例，另在真实页面副本上逐条破坏验证过 |
+| 门岗 | `scripts/check-site-*.mjs`，接进 `check:site` | 数据新鲜度、模型介绍（含孤儿）、不写价格、站内链接、中英对应（含英文页正文里「句号后面没有空格」）、结构化数据、描述 50–160 字、许可证署名；每道都有单元测试里的「会红」用例，另在真实页面副本上逐条破坏验证过（39 次破坏全部变红） |
 | 页面清理 | `scripts/build-marketing-site.mjs` | 生成器不再产出的页面（模型退役、介绍删掉）生成时删掉，`--check` 报出 |
 | 每周数据同步 | `.github/workflows/site-data-sync.yml` | 每周一重导数据、重建页面，有变化就开只含 `marketing/` 的 PR；正文列出缺介绍的模型和孤儿介绍（`scripts/site/model-intro-status.mjs`） |
-| 静态合同 | `tests/ux/marketing-libraries.static.mjs` | 模型库卡片、模型页档案卡、效果页复制按钮、非 AGPL 署名与许可证全文、面包屑、顶栏六项，中英各查一遍 |
+| 静态合同 | `tests/ux/marketing-libraries.static.mjs` | 模型库卡片、模型页档案卡、效果页复制按钮、非 AGPL 署名与许可证全文、面包屑、顶栏六项、窄屏版式三条（菜单按钮的断点、档案卡的值能换行、卡片文字能在长名字中间断开），中英各查一遍 |
+| 截图验收里修掉的 | `scripts/marketing/styles.mjs`、`library/styles.mjs`、`library/common.mjs` | 英文页下载条的两句话贴在一起（`video.Models`，104 页）；平板竖屏（768px）英文顶栏折行、语言按钮被挤成竖条（菜单按钮的断点从 760px 提到 860px）；手机上档案卡「声音」一行撑出卡片；合集卡里不带空格的仓库名被截断。全站 212 页在 390 / 768 / 1440px 下扫过，没有内容撑出盒子 |
 
 还剩：
 
