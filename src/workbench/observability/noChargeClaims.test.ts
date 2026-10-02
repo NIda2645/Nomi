@@ -14,6 +14,9 @@ import { ERROR_KEY_BY_KIND, narrateGenerationError } from './narrate'
  */
 const NO_CHARGE_CLAIM = /不计费|未计费|不扣费|没有扣费|没扣费|未扣费|不扣额度|没花钱|没有花钱|不花钱|不收费|not billed|not charged|no charge|nothing was charged|wasn['’]t charged|was not charged|without charge|never billed|no cost/i
 
+/** 界面不谈钱的更宽一档：连「扣钱 / 钱已经付过 / 再扣一次 / charge again」这类说法也不许出现（只说事实和下一步）。 */
+const MONEY_TALK = /扣钱|扣费|再扣|已付|付过|花钱|charged|charge again|charges you|paid for|you already paid/i
+
 type Leaf = { path: string; text: string }
 function leaves(node: unknown, path: string[] = []): Leaf[] {
   if (typeof node === 'string') return [{ path: path.join('.'), text: node }]
@@ -33,6 +36,15 @@ describe('失败文案目录里不谈钱', () => {
   it.each(['zh-CN', 'en'] as const)('%s：目录里没有任何一条字符串说「不扣费」（连请求没出门的那几类也不说）', (language) => {
     const offenders = leaves(catalog(language)).filter((leaf) => NO_CHARGE_CLAIM.test(leaf.text)).map((leaf) => `${leaf.path}: ${leaf.text.slice(0, 80)}`)
     expect(offenders).toEqual([])
+  })
+
+  it.each(['zh-CN', 'en'] as const)('%s：目录里没有任何谈钱的说法（扣钱 / 扣费 / charged / charge again…）', (language) => {
+    const offenders = leaves(catalog(language)).filter((leaf) => MONEY_TALK.test(leaf.text)).map((leaf) => `${leaf.path}: ${leaf.text.slice(0, 80)}`)
+    expect(offenders).toEqual([])
+  })
+
+  it('探针活着：宽一档的判据看得见「再扣一次钱」「charges you again」', () => {
+    for (const text of ['那会再扣一次钱', '钱已经付过', 'that charges you again', 'you already paid for it']) expect(MONEY_TALK.test(text), text).toBe(true)
   })
 
   it.each(['zh-CN', 'en'] as const)('%s：没出门的那几类改说「请求还没发出去」这个事实', (language) => {
