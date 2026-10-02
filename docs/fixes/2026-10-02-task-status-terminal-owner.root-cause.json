@@ -1,0 +1,37 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-02-task-status-terminal-owner",
+  "change_kind": "structural",
+  "scope_paths": [
+    "electron/shared/taskStatus.ts",
+    "electron/capabilityCore/core.ts",
+    "electron/tasks/responseParsing.ts",
+    "src/workbench/api/taskApi.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+    "src/workbench/generationCanvas/runner/recoverTaskActions.ts"
+  ],
+  "regression_tests": [
+    "src/workbench/api/taskApi.terminalOnly.test.ts",
+    "scripts/check-vocabularies-baseline.node-test.mjs"
+  ],
+  "structural_evidence": {
+    "affected_paths": [
+      "electron/capabilityCore/core.ts",
+      "electron/tasks/responseParsing.ts",
+      "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "src/workbench/generationCanvas/runner/recoverTaskActions.ts"
+    ],
+    "preserved_exports": [
+      {
+        "path": "electron/tasks/responseParsing.ts",
+        "name": "TaskStatus"
+      },
+      {
+        "path": "src/workbench/api/taskApi.ts",
+        "name": "TaskStatus"
+      }
+    ],
+    "behavior_preservation": "纯去重：三处手抄的终态集合 Set(succeeded, failed)（core.ts、catalogTaskActions、recoverTaskActions）与两处手抄的 TaskStatus 联合（responseParsing、taskApi）收成 electron/shared/taskStatus.ts 一个 owner（isTerminalTaskStatus + TASK_STATUS_PHASE）。终态判据与原来逐字等价：只有 succeeded / failed 算终态，其余字符串（含 processing、空值）一律算还在路上、继续轮询。TaskStatus 两处仍从原路径导出（重导出），外部 import 不变。新增能力只有一条：TASK_STATUS_PHASE 用 satisfies Record<TaskStatus,…> 写，给 TaskStatus 加新成员不归类就编译红。",
+    "verification_limits": "已验证：typecheck 全绿；src/workbench/api、generationCanvas/runner、electron/tasks、electron/capabilityCore/core 相关 1146 条单测通过；check:vocabularies / check:boundaries / check:concept-owners 通过；终态判据的单测覆盖四个合法状态、processing / in_progress 等供应商原始词、原型属性名与空值。未验证：没有在真实供应商上重跑一次异步视频轮询（判据与原来等价，没有改轮询节奏）。"
+  }
+}
