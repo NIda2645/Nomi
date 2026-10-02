@@ -76,8 +76,6 @@ test('cross-process exact copies stay debt until a neutral runtime contract exis
       'electron/catalog/codexCli.ts::type:CodexImageJobStatus/type-union',
       'electron/runtime.ts::type:TaskResult/property:status/type-union',
       'electron/tasks/responseParsing.ts::function:resolveTaskStatus/as-const',
-      'electron/tasks/responseParsing.ts::type:TaskStatus/type-union',
-      'src/workbench/api/taskApi.ts::type:TaskStatus/type-union',
     ],
   ]
 
@@ -91,6 +89,8 @@ test('cross-process exact copies stay debt until a neutral runtime contract exis
       assert.match(reason, /main.*preload.*renderer/i, site)
     }
   }
+  // 任务状态：renderer 的 TaskStatus / TERMINAL_STATUSES 副本已收进中立模块 electron/shared/taskStatus.ts（唯一 owner）。
+  assert.equal(registeredSites.has('electron/shared/taskStatus.ts::variable:TASK_STATUS_PHASE/type-union'), true)
   assert.equal(
     registeredSites.has('electron/shared/providerAdapterContract.ts::variable:ADAPTER_RUN_STAGES/as-const'),
     true,

@@ -1,5 +1,6 @@
 import { getDesktopBridge, type DesktopBridge } from '../../desktop/bridge'
 import { TELEMETRY_ERROR_TYPE_PATTERN, type CapabilitySlot, type DurationBucket, type TelemetryResult } from '../../../electron/shared/contracts/telemetry'
+import { isTerminalTaskStatus, type TaskStatus } from '../../../electron/shared/taskStatus'
 import { classifyGenerationError } from '../observability/classifyError'
 import { describeOpaqueFailure } from '../observability/opaqueFailure'
 
@@ -16,7 +17,7 @@ export type TaskKind =
   | 'text_to_3d'
   | 'image_to_3d'
 
-export type TaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
+export type { TaskStatus }
 
 export type TaskAssetDto = {
   type: 'image' | 'video' | 'audio'
@@ -202,7 +203,7 @@ export async function runWorkbenchTaskByVendor(
       request: withTaskProjectIdentity(request, projectId),
     }) as TaskResultDto
     if (capability) {
-      if (response.status === 'succeeded' || response.status === 'failed') {
+      if (isTerminalTaskStatus(response.status)) {
         trackGenerationOutcome(desktop, capability, startedAt, response.status === 'succeeded' ? 'success' : 'failure', response.error)
       } else {
         // 还在跑（queued/running）：这不是一个结果。最终结果在轮询到终态时报（fetchWorkbenchTaskResultByVendor），
@@ -252,7 +253,7 @@ export async function fetchWorkbenchTaskResultByVendor(
     ...(projectId ? { projectId } : {}),
   }) as FetchWorkbenchTaskResultResponseDto
   const pending = inFlightGenerations.get(payload.taskId)
-  if (pending && (response.result.status === 'succeeded' || response.result.status === 'failed')) {
+  if (pending && isTerminalTaskStatus(response.result.status)) {
     inFlightGenerations.delete(payload.taskId)
     trackGenerationOutcome(desktop, pending.capability, pending.startedAt, response.result.status === 'succeeded' ? 'success' : 'failure', response.result.error)
   }

@@ -45,6 +45,7 @@ export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
 // 审片环 deps 工厂的两份形状住在 ./shotVerifyDepsContext（R9：core.ts 贴着 800 行上限，类型不占它的额度）。
 export type { MakeVerifyDeps, ShotVerifyDepsContext } from './shotVerifyDepsContext'
 import type { MakeVerifyDeps } from './shotVerifyDepsContext'
+import { isTerminalTaskStatus } from '../shared/taskStatus'
 
 type TaskResultLike = {
   id?: string
@@ -68,8 +69,6 @@ export type RunTaskFn = (payload: { vendor: string; request: unknown }) => Promi
 
 /** fetchTaskResult 的形状（注入式）。异步 vendor（modelscope 图 / 视频）返 queued，需轮询到终态。 */
 export type FetchTaskResultFn = (payload: { taskId: string; vendor: string; taskKind: string; prompt: string; modelKey: string }) => Promise<{ result: TaskResultLike }>
-
-const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
 
 // 任务已提交（付费已发生）后，查结果连续失败多久才放弃轮询、落失败终态。短于此 = 网络
 // 抖动，免费重试查询（绝不冒泡终止已付费任务）；与渲染层 catalogTaskActions 的
@@ -516,10 +515,10 @@ export async function generateOnProject(
     // 于是 runFirstHop 判「首帧未产出可用图」→ 每次都降级。主路径（下面那段）一直有轮询，
     // 这条支路漏了（单测的 runTaskFn 桩是同步返图的，桩不会 queued，所以测不出来）。
     let frame = out
-    if (fetchTaskResultFn && frame.status && !TERMINAL_STATUSES.has(frame.status)) {
+    if (fetchTaskResultFn && frame.status && !isTerminalTaskStatus(frame.status)) {
       const startedAt = Date.now()
       let pollFailureStreakStartedAt: number | null = null
-      while (frame.status && !TERMINAL_STATUSES.has(frame.status)) {
+      while (frame.status && !isTerminalTaskStatus(frame.status)) {
         if (Date.now() - startedAt > 240000) break // 首帧是增益，到点就放弃走一跳，不拖垮整镜
         await delay(1500)
         try {
@@ -615,7 +614,7 @@ export async function generateOnProject(
     result = await runTaskFn({ vendor: input.vendor, request })
 
     // 异步 vendor 首调返 queued/processing → 本进程内轮询到终态（视频给更长超时）。无 fetch 注入则不轮询。
-    if (fetchTaskResultFn && result.status && !TERMINAL_STATUSES.has(result.status)) {
+    if (fetchTaskResultFn && result.status && !isTerminalTaskStatus(result.status)) {
       // 慢 vendor（如 APIMart H3 官方资源有限）可经 NOMI_POLL_TIMEOUT_MS 覆盖本进程轮询上限；
       // 视频默认 15 分钟与供应商建议一致，避免 5 分钟时任务仍在上游排队却被本地判失败。
       const timeoutMs = resolveCapabilityPollTimeoutMs(kind)
@@ -626,7 +625,7 @@ export async function generateOnProject(
       const pollIntervalMs = kind === 'text_to_video' || kind === 'image_to_video' ? 3000 : 1500
       const startedAt = Date.now()
       let pollFailureStreakStartedAt: number | null = null
-      while (result.status && !TERMINAL_STATUSES.has(result.status)) {
+      while (result.status && !isTerminalTaskStatus(result.status)) {
         if (Date.now() - startedAt > timeoutMs) {
           // 到点必须落**终态**：旧版直接 break，result 保持 queued/running 且不带 error —— 调用方
           // （MCP/agent/CLI）拿到一个永远非终态的结果，等同「转圈但没人告诉你出了什么事」。

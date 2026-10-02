@@ -58,14 +58,13 @@ import {
 import { parseVendorErrorFromMessage } from './vendorErrorIpc'
 import { collectLocalAssetUrls } from '../../../../electron/catalog/assetLocalization'
 import { readParameterReferenceContract } from '../../../../electron/catalog/parameterReferenceContract'
+import { isTerminalTaskStatus } from '../../../../electron/shared/taskStatus'
 
 // 重导出：实现已拆到 catalogTaskResolve（节点→vendor/model/kind 选择）与
 // catalogTaskResultParse（raw/asset/failure/provenance 解析），但 catalogTaskActions
 // 对外公共导出面保持不变，外部 import 路径无需改动。
 export type { CatalogTaskActionOptions, CatalogTaskRunOptions } from './catalogTaskResolve'
 export { normalizeCatalogTaskResult } from './catalogTaskResultParse'
-
-const TERMINAL_STATUSES = new Set(['succeeded', 'failed'])
 
 // 任务已提交(付费已发生)后，查结果连续失败多久就放弃轮询、落「可找回」态（不重发，给「重新拉取」入口）。
 // 短于此 = 网络抖动，免费重试查询；长于此 = 上游/网络持续不可达，没必要干等到硬超时(视频 20min)空耗。
@@ -387,7 +386,7 @@ async function waitForCatalogTaskResult(
   guard: PhaseWaitGuard,
   receipt: RecoverableTimeoutDetail,
 ): Promise<TaskResultDto> {
-  if (TERMINAL_STATUSES.has(initialResult.status)) return initialResult
+  if (isTerminalTaskStatus(initialResult.status)) return initialResult
   // 基准间隔按后端分档（慢道 3s / 快道 1.5s，见 resolvePollIntervalMs）；每轮实际等待还要叠
   // 429 退避与 ±30% 抖动（nextPollDelayMs）。options.pollIntervalMs 覆盖时仍走抖动/退避，
   // 但测试给 1ms 时抖动后仍是 1ms 量级，不影响既有用例。
@@ -414,7 +413,7 @@ async function waitForCatalogTaskResult(
   // 连续被限流的次数 → 指数退避的指数。查成功或换成别的失败原因即复位。
   let rateLimitStreak = 0
   const cancelNodeId = asTrimmedString(request.extras?.nodeId)
-  while (!TERMINAL_STATUSES.has(current.status)) {
+  while (!isTerminalTaskStatus(current.status)) {
     // P 轨遮罩取消：/interrupt 已发（免费幂等），这里把免费轮询也即刻停掉，不等 20min 硬超时。
     if (cancelNodeId && isTaskCancelRequested(cancelNodeId)) throw new LocalTaskCancelledError()
     const elapsedMs = Date.now() - startedAt
