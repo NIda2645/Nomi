@@ -21,6 +21,7 @@ import {
 import { laneMessages, readLaneTranscripts } from '../agent-lane-observer.mjs'
 import { appFramesOf, classifyEgress, REQUIRED_GUARD_LAYERS, vendorHostsOf } from './egress.mjs'
 import { INVARIANTS, invariantById, loadDictionaries, loadLimits, UI_LOCALES, uiText, uiTextPattern } from './invariants.mjs'
+import { activeDebt, collectVisibleTextInPage, findLeaks } from './outcomeText.mjs'
 import { ensurePageProbe, readPageProbe } from './pageProbe.mjs'
 import { unseenPromptAdditions } from './promptTruth.mjs'
 import { finishedNodeSpinner, snapshotAgeMs } from './spinnerVerdict.mjs'
@@ -1078,6 +1079,34 @@ export function createInvariantMonitor(options) {
     }
   }
 
+  /**
+   * 7d：用户看得见的地方（Agent 面板 / 提示条 / 状态行 / 任务卡）不许露出服务商原始 JSON、内部 id、价格预算字样。
+   * main 上已有的违例登记在 outcomeDebts.json（带到期日、绑修它的 PR）：未过期的记进报告的 knownDebts，不算红；过期即红。
+   */
+  const knownDebts = []
+  async function checkOutcomeText() {
+    const regions = await win().evaluate(collectVisibleTextInPage).catch(() => [])
+    const debts = JSON.parse(fs.readFileSync(new URL('./outcomeDebts.json', import.meta.url), 'utf8')).debts
+    const today = new Date().toISOString().slice(0, 10)
+    for (const { source, text } of regions) {
+      for (const leak of findLeaks(text)) {
+        const debt = activeDebt(debts, { rule: 'ui-leaked-internals', kind: leak.kind, text, today })
+        if (debt) {
+          if (!knownDebts.some((entry) => entry.kind === leak.kind && entry.match === leak.match)) {
+            knownDebts.push({ kind: leak.kind, match: leak.match, source, boundTo: debt.boundTo, until: debt.until })
+          }
+          continue
+        }
+        await violate({
+          invariant: 7, rule: 'ui-leaked-internals', key: `${source}|${leak.kind}|${leak.match.slice(0, 40)}`,
+          module: '界面文字的出处：Agent 面板 / 提示条 / 任务卡的文案不许拼供应商原话、内部 id 或价格预算词',
+          message: `${source} 里露出${{ 'raw-json': '原始 JSON（工具入参或服务商回包）', 'internal-id': '内部 id', 'price-wording': '价格 / 预算字样' }[leak.kind]}：「${leak.match.slice(0, 80)}」`,
+          snapshot: { source, kind: leak.kind, match: leak.match, text: text.slice(0, 600) },
+        })
+      }
+    }
+  }
+
   // ── 铁律 8：不白烧 token ─────────────────────────────────────────────────────────────────
 
   function readTranscriptMessages() {
@@ -1199,6 +1228,7 @@ export function createInvariantMonitor(options) {
     await checkSurfaces(probe)
     await checkOverlays()
     await checkRawEnglish(probe)
+    await checkOutcomeText()
     await checkTokens()
     await checkNuisance(probe)
     lastCheckAt = Date.now()
@@ -1273,6 +1303,7 @@ export function createInvariantMonitor(options) {
       harnessError: error ? String(error?.stack ?? error).slice(0, 4000) : null,
       invariants: INVARIANTS.map((entry) => ({ id: entry.id, title: entry.title['zh-CN'], violations: violations.filter((violation) => violation.invariant === entry.id).length })),
       violations,
+      knownDebts,
       steps: steps.map(({ label, user, ok, error: stepError, t0, t1, failShot, mainLog }) => ({ label, user, ok, error: stepError, durationMs: (t1 ?? Date.now()) - t0, failShot: failShot ?? null, ...(mainLog ? { mainLog } : {}) })),
       consents: consents.map((consent) => ({ ...consent, scope: consent.scope?.map(({ submissions: attached, ...rest }) => ({ ...rest, submissions: attached?.length ?? 0 })) })),
       submissions,
