@@ -28,6 +28,7 @@
 import fs from "node:fs";
 import { BUILTIN_VENDOR_SEEDS } from "../electron/catalog/builtinVendorSeeds.ts";
 import { probeWeeklyModels, type LivenessReceipt } from "./model-liveness.ts";
+import { resolveCacheDir } from "./lib/intake-radar/store.mjs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { realNomiProfile } from "../tests/ux/_realProfile.mjs";
@@ -37,7 +38,14 @@ import { buildApimartHealthInventory, type ApimartHealthEntry } from "../electro
 import { billingKindForTaskKind, type CatalogState, type Mapping } from "../electron/catalog/types.ts";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+/** 基线快照（apimart.json / kie.json）：进仓库，只由 --update-baseline 写。 */
 const SNAPSHOT_DIR = path.join(ROOT, "docs/research/model-radar");
+/**
+ * 运行结果（latest.json / liveness.json）：**不进仓库**，和用户反馈雷达一样落在 intake 缓存目录（NOMI_INTAKE_CACHE 可改）。
+ * 这是它们唯一的输出位置——写在工作树里，每个任务工作树每天都会被弄脏一次，容易被顺手提交进无关 PR，也让 preflight 报不干净。
+ */
+export const modelRadarResultDir = (env: NodeJS.ProcessEnv = process.env): string => path.join(resolveCacheDir(env), "model-radar");
+const RESULT_DIR = modelRadarResultDir();
 
 /** 盯的类别（2026-08-27 用户拍板：生图 + 生视频 + 音频/TTS；不含 3D）。
  *  `text` 是 2026-09-06 补的 LLM 车道——**只走 authenticated /v1/models**，
@@ -678,6 +686,8 @@ async function fetchIndex(url: string): Promise<string> {
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const updateBaseline = args.includes("--update-baseline");
+  // --no-liveness：跳过每周一次的存活探测。探测会向供应商发真实（付费）请求，SessionStart hook 路径里不许有任何扣费请求。
+  const noLiveness = args.includes("--no-liveness");
   const offlineIdx = args.indexOf("--offline");
   const offlineDir = offlineIdx >= 0 ? args[offlineIdx + 1] : "";
 
@@ -687,13 +697,13 @@ async function main(): Promise<void> {
     .map((row) => row.modelKey);
 
   // Offline fixtures never spend. Credentials are read only from the process environment here.
-  if (!offlineDir) {
-    const receiptPath = path.join(SNAPSHOT_DIR, "liveness.json");
+  if (!offlineDir && !noLiveness) {
+    const receiptPath = path.join(RESULT_DIR, "liveness.json");
     const previous = fs.existsSync(receiptPath) ? JSON.parse(fs.readFileSync(receiptPath, "utf8")) as { receipts?: LivenessReceipt[] } : {};
     const generatedAt = new Date().toISOString();
     const receipts = await probeWeeklyModels({ vendors: BUILTIN_VENDOR_SEEDS, modelIds: (vendorKey) => seededModelKeys(vendorKey, "text"),
       apiKey: (vendorKey) => process.env[`${vendorKey.toUpperCase().replace(/-/g, "_")}_API_KEY`] || "", previous: previous.receipts || [], now: generatedAt });
-    fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
+    fs.mkdirSync(RESULT_DIR, { recursive: true });
     fs.writeFileSync(receiptPath, `${JSON.stringify({ generatedAt, receipts }, null, 2)}\n`);
     const missing = receipts.filter((row) => row.reason === "credential-missing").length;
     console.log(`Weekly liveness: ${receipts.filter((row) => row.ok).length}/${receipts.length}; credential missing: ${missing}.`);
@@ -767,8 +777,8 @@ async function main(): Promise<void> {
     console.log("  （这不是「没有新模型」——该家快照未动，修好后重跑）");
   }
 
-  fs.mkdirSync(SNAPSHOT_DIR, { recursive: true });
-  fs.writeFileSync(path.join(SNAPSHOT_DIR, "latest.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), diffs, failures, apimartDocumentationMissing }, null, 2)}\n`);
+  fs.mkdirSync(RESULT_DIR, { recursive: true });
+  fs.writeFileSync(path.join(RESULT_DIR, "latest.json"), `${JSON.stringify({ generatedAt: new Date().toISOString(), diffs, failures, apimartDocumentationMissing }, null, 2)}\n`);
   const totalNew = diffs.reduce((n, d) => n + d.added.length, 0);
   const totalUnlisted = diffs.reduce((n, d) => n + d.unlisted.length, 0);
   const totalUncovered = diffs.reduce((n, d) => n + d.uncovered.length, 0);
@@ -776,7 +786,7 @@ async function main(): Promise<void> {
   const failNote =
     failures.length > 0 ? `；⚠️ ${failures.map((f) => f.vendor).join(" / ")} 没查成（见上，不是「没新模型」）` : "";
   console.log(
-    `\n结果已写 docs/research/model-radar/latest.json。本轮新增 ${totalNew} 个；` +
+    `\n结果已写 ${path.join(RESULT_DIR, "latest.json")}（仓库外）。本轮新增 ${totalNew} 个；` +
       `未接入存量 ${totalUncovered} 个（其中协议已知 ${totalUncoveredKnownWire}）；` +
       `我们种了但供应商没列 ${totalUnlisted} 个${failNote}。` +
       (updateBaseline ? "（已更新快照）" : "（未更新快照，确认后跑 --update-baseline）"),
