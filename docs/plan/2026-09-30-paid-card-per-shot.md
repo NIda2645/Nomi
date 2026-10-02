@@ -1,6 +1,6 @@
 # 付费卡逐镜：点了的生成，去掉的不生成
 
-> 状态：🚧 进行中（2026-09-30：协调会话已拍板 Q1–Q9。2026-10-01：A1 已实现；A2（第 9–12 条）已实现；用户拍板加「生成剩下 N 张」，已按样张与随后的位置反馈实现；A3（第 13–14 条、删掉 Run 级预算停、合计行单位跟标题）已实现；A1–A3 合成一个 PR #947，验收只在 A3 头上做一次）。
+> 状态：🚧 进行中（2026-09-30：协调会话已拍板 Q1–Q9。2026-10-01：A1 已实现；A2（第 9–12 条）已实现；用户拍板加「生成剩下 N 张」，已按样张与随后的位置反馈实现；A3（第 13–14 条、删掉 Run 级预算停、合计行单位跟标题）已实现；2026-10-02：pb02 重跑抓到画布参考的三处（卡按画布规则切生成方式、卡那张框不再借占位节点的 id、卡的改稿走并入规则），已修；A1–A3 合成一个 PR #947，验收只在 A3 头上做一次）。
 > 质量体系按 `docs/plan/2026-09-29-quality-system.md`：测试表、真实路径测试、中英截图、验收页。
 
 ## 用户那条路
@@ -59,6 +59,14 @@
 5. **旧数据**：上一版盘上记成 `budget` 的 Run，读盘时由 `normalizeLegacyStopReason` 当作没记原因——画布说中性的「已停，这镜还没开拍。」并给「继续」。已经在盘上的续额度门照旧是有效的付费门。
 6. **批准绑信封（第 14 条）**：Run 服务核收据时，封了信封的付费门比信封封好时的版本（命令里说的版本也必须就是它）；`runOwnedGenerationGateAuthority` 里请求门、批门、确认前后共四处活版本核对删了，连 `projectRevisionResolver` 这个依赖都没有了。创意门、信任降档、没有信封的旧付费门照旧比项目此刻的版本。
 7. **合计行单位跟标题（用户 2026-10-01 拍板）**：翻页行右端的合计写「2 张 · 合计 ¥0.60」（视频「2 段」，英文与标题同词「2 images · ¥0.60 total」），和标题、「生成剩下」读同一个 `orderWording`（有视频就说视频），不另写第二条规则。
+
+## A3 续：画布连来的参考图（2026-10-02，pb02 重跑抓到的三处，第 7、8 行）
+
+1. **卡按画布那条规则切生成方式**：Agent 起草的图片镜头停在「文生图」（没有参考槽），画布连来的参考图摆不进卡、发出去 0 张。卡默认那张框（`projectSpendNode` → `spendCardReferences.placeSpendReferences`）读画布自己的 `resolveModeForConnectedReferences` 对齐生成方式，再把宿主那一镜的参考 ∪ 画布连来的参考放进卡自己的参考槽。卡上的改动相对这张默认框记进账本（`candidatePatchFromNode` 的 baseline）；用户在卡上拿掉的画布参考（`keptReferenceUrls`）不算进对齐，拿掉唯一那张卡就回到文生图。
+2. **卡那张框不借占位节点的 id**：借了，共用的 composer 就把画布上连到占位节点的边当成自己的边——卡上点 × 走的是画布的「断边」，还没点生成画布上的线就没了。现在卡那张框的 id 是 `spend:<shotId>`；composer 里给参数槽建边那一处只在握着画布连边权能时才建（`nodeWriteAccess` 的规矩）。
+3. **卡的改稿走并入规则**：卡上切到「图生图」以前只改模式 id、种类还是文生图，派发按文生图挑供应商 mapping、带参考图那一下在出站前被拒。卡的改稿现在经 `resolvePlanPatch`（Agent 改草稿那一条；必填注入 `normalizePatch`）并入；只换生成方式时种类跟过去（`modeTransportFor`），这一对在目录里真有才收。
+
+根因合同：`docs/fixes/2026-10-02-paid-card-canvas-reference-mode.root-cause.json`、`docs/fixes/2026-10-02-card-revise-merge-rule.root-cause.json`。新登记概念：`agent-panel.spend-card-shown-node`、`generation.candidate-patch-merge`。
 
 ## 「生成剩下 N 张」（用户 2026-10-01 拍板，样张 `docs/design/mockups/2026-10-01-paid-card-generate-remaining/`）
 
