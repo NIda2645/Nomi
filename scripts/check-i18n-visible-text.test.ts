@@ -108,10 +108,10 @@ afterEach(() => {
   tempDir = null
 })
 
-type Mutations = { script?: (source: string) => string; seam?: (source: string) => string }
+type Mutations = { script?: (source: string) => string; seam?: (source: string) => string; baseline?: string }
 
 /** 跑一份（可选被改动的）门岗副本，对着夹具语料，返回退出码与合并输出。 */
-function runGate({ script = (s) => s, seam = (s) => s }: Mutations = {}): { code: number; output: string } {
+function runGate({ script = (s) => s, seam = (s) => s, baseline }: Mutations = {}): { code: number; output: string; baselineAfter: string } {
   fs.mkdirSync(SCRATCH_ROOT, { recursive: true })
   tempDir = fs.mkdtempSync(path.join(SCRATCH_ROOT, 'nomi-i18n-gate-'))
   const corpus = path.join(tempDir, 'corpus')
@@ -121,16 +121,18 @@ function runGate({ script = (s) => s, seam = (s) => s }: Mutations = {}): { code
   const seamFile = path.join(corpus, 'src/i18n/locales/modelDisplayText.ts')
   fs.writeFileSync(seamFile, seam(fs.readFileSync(seamFile, 'utf8')))
 
+  const baselineFile = path.join(corpus, 'scripts/i18n-electron-baseline.json')
+  if (baseline !== undefined) fs.writeFileSync(baselineFile, baseline)
   const gateCopy = path.join(tempDir, 'gateCopy.mjs')
   fs.writeFileSync(gateCopy, script(fs.readFileSync(GATE, 'utf8')))
 
   try {
     // cwd = 语料目录：门岗的 ROOT/SRC_ROOT/ELECTRON_ROOT 全从 cwd 派生，于是只扫这几十字节。
     const stdout = execFileSync('node', [gateCopy], { cwd: corpus, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
-    return { code: 0, output: stdout }
+    return { code: 0, output: stdout, baselineAfter: fs.readFileSync(baselineFile, 'utf8') }
   } catch (error) {
     const failure = error as { status?: number; stdout?: string; stderr?: string }
-    return { code: failure.status ?? 1, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}` }
+    return { code: failure.status ?? 1, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}`, baselineAfter: fs.readFileSync(baselineFile, 'utf8') }
   }
 }
 
@@ -208,4 +210,14 @@ describe('模型展示名翻译契约（labelZh）', () => {
     expect(code).not.toBe(0)
     expect(output).toContain('本地 · 文生图')
   })
+})
+
+describe('electron 基线自动收缩（只减不增）', () => {
+  it('基线里挂着已经清零的文件 → 门岗自己把它收掉，不再要人手改 JSON', () => {
+    const { code, output, baselineAfter } = runGate({ baseline: JSON.stringify({ 'electron/gone.ts': 7 }) })
+    expect(code, output).toBe(0)
+    expect(output).toContain('基线自动收缩')
+    expect(JSON.parse(baselineAfter)).toEqual({})
+  })
+
 })

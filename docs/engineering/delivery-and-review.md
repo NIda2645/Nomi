@@ -5,7 +5,7 @@
 
 ## Push 前按风险面分层（R22）
 
-contracts 始终跑（一次跑完全部门岗再汇总，不再第一个红就停；`check:ledger` 只出 warning 不阻断；`check:docs-index` / `check:doc-status` / `check:research-sources` 已于 2026-10-01 按门岗账本移出 PR 的 Contracts——合入 main 后由 `docs-autosync` workflow 自动补齐回写；`check:symptom-cluster` 降为提示）；unit 独立选 focused/full（**本机 `pnpm run gates` 也按同一份 `scripts/validation-policy.mjs` 分档**，全量一万两千多个测试交给 CI 并行机器，不再占着全机那把 gates 锁；想本机兜底跑全量用 `pnpm run gates:full`）；Electron、真实旅程、React Flow 画布、性能和 macOS package 各按受影响路径独立触发，`main` push 也按真实 `before..after` 分类，不因事件名自动全量。删除/重命名、空 diff、测试/CI 分类器自身和手动发布边界 fail-closed 到全维度。连续小修先在本地收敛，再一次性验证和 push，不让每个微提交反复触发全套 CI。
+contracts 始终跑（一次跑完全部门岗再汇总，不再第一个红就停；`check:concept-owners` 只出 warning 不阻断；`check:docs-index` / `check:doc-status` / `check:ledger` 已移出 PR 的 Contracts——合入 main 后由 `docs-autosync` workflow 自动补齐回写；档案默认值生成物也由它自动重生成；`check:root-cause-contracts` 只对 schema 不合法阻断）；unit 独立选 focused/full（**本机 `pnpm run gates` 也按同一份 `scripts/validation-policy.mjs` 分档**，全量一万两千多个测试交给 CI 并行机器，不再占着全机那把 gates 锁；想本机兜底跑全量用 `pnpm run gates:full`）；Electron、真实旅程、React Flow 画布、性能和 macOS package 各按受影响路径独立触发，`main` push 也按真实 `before..after` 分类，不因事件名自动全量。删除/重命名、空 diff、测试/CI 分类器自身和手动发布边界 fail-closed 到全维度。连续小修先在本地收敛，再一次性验证和 push，不让每个微提交反复触发全套 CI。
 
 ## 交付身份只走统一命令（R11）
 
