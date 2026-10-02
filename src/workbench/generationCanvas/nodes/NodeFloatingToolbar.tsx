@@ -33,8 +33,22 @@ export function FloatingToolbarShell({ ariaLabel, lockNodeId, children }: { aria
   const shellRef = React.useRef<HTMLDivElement>(null)
   // 浮条整条留在可见画布里（左右夹住，让开右侧面板）：屏幕像素的位移，渲染后量一次、变了才改。
   const [shift, setShift] = React.useState(0)
+  // 竖直方向同理：节点贴着舞台上沿时，头顶的浮条不许钻进顶栏底下。
+  const [shiftY, setShiftY] = React.useState(0)
   // 浮条比可见画布还宽（窄窗口、英文）时折成两行，而不是被裁掉：最大宽度 = 舞台宽度 - 两侧留白（净缩放恒为 1，本地像素 = 屏幕像素）。
   const [maxWidth, setMaxWidth] = React.useState<number | undefined>(undefined)
+  // 窗口 / 面板拖宽拖窄时舞台尺寸变了，但 React 不一定重渲：舞台一变就推一次渲染，让下面那次测量重新跑。
+  const [, setStageTick] = React.useState(0)
+  React.useEffect(() => {
+    const stage = shellRef.current?.closest<HTMLElement>('.generation-canvas-v2__stage')
+    if (!stage || typeof ResizeObserver === 'undefined') return undefined
+    const observer = new ResizeObserver(() => setStageTick((tick) => tick + 1))
+    observer.observe(stage)
+    return () => observer.disconnect()
+  }, [])
+  // 刻意不写依赖：画布平移、节点落位、窗口缩放都会改浮条的屏幕位置，每次渲染后量一次最省心；
+  // 只在位移 / 宽度真的变了（>0.5px）才 setState，所以会收敛，不会无限更新。
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   React.useLayoutEffect(() => {
     const shell = shellRef.current
     const stage = shell?.closest<HTMLElement>('.generation-canvas-v2__stage')
@@ -47,6 +61,8 @@ export function FloatingToolbarShell({ ariaLabel, lockNodeId, children }: { aria
     if (limit !== maxWidth) { setMaxWidth(limit); return }
     const next = floatingToolbarShift({ rectLeft: rect.left, rectRight: rect.right, appliedShift: shift, min: bounds.left + edge, max: bounds.right - edge })
     if (Math.abs(next - shift) > 0.5) setShift(next)
+    const nextY = floatingToolbarShift({ rectLeft: rect.top, rectRight: rect.bottom, appliedShift: shiftY, min: bounds.top + edge, max: bounds.bottom - edge })
+    if (Math.abs(nextY - shiftY) > 0.5) setShiftY(nextY)
   })
   return (
     <div
@@ -62,7 +78,7 @@ export function FloatingToolbarShell({ ariaLabel, lockNodeId, children }: { aria
         'group-data-[dragging=true]/canvas:invisible',
       )}
       data-node-floating-toolbar="true"
-      style={{ maxWidth, transform: `translateX(${shift / (canvasZoom || 1)}px) translateX(-50%) scale(${1 / (canvasZoom || 1)})`, transformOrigin: 'bottom center' }}
+      style={{ maxWidth, transform: `translate(${shift / (canvasZoom || 1)}px, ${shiftY / (canvasZoom || 1)}px) translateX(-50%) scale(${1 / (canvasZoom || 1)})`, transformOrigin: 'bottom center' }}
       role="toolbar"
       aria-label={ariaLabel}
       onPointerDown={(event) => event.stopPropagation()}
