@@ -3602,6 +3602,86 @@
       "notes": "付费卡① 第 14 条：以前批准付费门时到处核「收据上的项目版本 == 项目此刻的版本」（Run 服务的收据核对，加上 runOwnedGenerationGateAuthority 里请求门、批门、确认前后共四处），于是确认卡开着的时候 Nomi 往画布上落了别的镜、用户改了下一镜，这一下「生成这张」就被拒成「确认时项目有变动」，而卡上的东西一个字没变。现在封了信封的付费门，收据比的是它自己那份信封封好时的版本（revisionRuleFor → sealed），命令里说的版本也必须就是它；发出去的东西本来就由合同哈希、线上报文哈希、幂等键逐字钉死，和项目版本无关。创意门、信任降档、没有信封的旧付费门照旧比项目此刻的版本（assertCurrentProjectRevision）。runOwnedGenerationGateAuthority 那四处活版本核对删了，它连 projectRevisionResolver 这个依赖都没有了。"
     },
     {
+      "name": "官网页面清单",
+      "subject": "site.page-list",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "scripts/marketing/pages.mjs",
+        "symbol": "sitePages"
+      },
+      "write_api": [
+        {
+          "path": "scripts/marketing/pages.mjs",
+          "symbol": "sitePages"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "tests/seo/sitemap.node.mjs",
+      "allowed_consumers": [
+        "scripts/build-marketing-site.mjs",
+        "scripts/build-marketing-sitemap.mjs"
+      ],
+      "since": "2026-10-01",
+      "notes": "「官网有哪些页面」只在这里说。页面生成器（build-marketing-site.mjs 经 renderSiteOutputs）、sitemap（computeSitemapEntries，lastmod 按内容哈希）都从它派生，每周 SEO 巡检读的是它的输出（已提交的 sitemap.xml）；地址 ↔ 文件的换算只在 routes.mjs。手写的 site-manifest.mjs（只列了 5 页）已删，合同 docs/fixes/2026-10-01-site-data-drift.root-cause.json。"
+    },
+    {
+      "name": "官网模型资格",
+      "subject": "site.model-eligibility",
+      "lifecycle": "catalog",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "scripts/marketing/library/data.mjs",
+        "symbol": "catalogEligibleModels"
+      },
+      "write_api": [
+        {
+          "path": "scripts/marketing/library/data.mjs",
+          "symbol": "catalogEligibleModels"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "scripts/marketing/library/models-pages.mjs",
+        "scripts/site/model-intro-status.mjs",
+        "scripts/check-site-editorial.mjs"
+      ],
+      "since": "2026-10-01",
+      "notes": "目录里哪些模型有资格上官网（认得的、没退役、至少有一家能用 API Key 接）只在这里定义；publicModels 在它之上再要求中英介绍都写好。页面生成、介绍门岗和每周同步的「缺介绍」清单都读它，不各抄一遍判据。"
+    },
+    {
+      "name": "模型介绍与目录对得上",
+      "subject": "site.model-intro-parity",
+      "lifecycle": "delivery",
+      "authority_kind": "gateway",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "scripts/check-site-editorial.mjs",
+        "symbol": "findEditorialProblems"
+      },
+      "write_api": [
+        {
+          "path": "scripts/check-site-editorial.mjs",
+          "symbol": "findEditorialProblems"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "scripts/check-site-editorial.node-test.mjs",
+      "allowed_consumers": [
+        "package.json"
+      ],
+      "since": "2026-10-01",
+      "notes": "拦住模型介绍与 App 目录对不上：孤儿介绍（模型退役或并入别的模型）、前言 model 与目录身份不符、缺一种语言、多余页面；介绍格式本身的定义只在 scripts/marketing/library/editorial.mjs。门岗接在 check:site 里，每个 PR 都跑。"
+    },
+    {
       "name": "新建文件时给 agent 看的「已有能力清单」（从两张登记表现算，不入库）",
       "subject": "agent-rules.existing-capability-index",
       "lifecycle": "delivery",

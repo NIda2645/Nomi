@@ -120,18 +120,19 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
 
 .site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft); }
 .nav { display: flex; align-items: center; gap: 28px; height: 60px; }
-.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; flex-shrink: 0; }
 .wordmark { font-family: var(--font-en); font-weight: 600; font-size: 24px; letter-spacing: -0.01em; line-height: 1; }
 .wordmark span { color: var(--accent); }
 .wordmark.small { font-size: 20px; }
 .nav-links { display: flex; gap: 22px; font-family: var(--font-ui); font-size: 14px; color: var(--ink-3); }
-.nav-links a { text-decoration: none; }
+.nav-links a { text-decoration: none; white-space: nowrap; }
 .nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--ink); }
-.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.locale { font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; text-decoration: none; }
+.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.locale { font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; text-decoration: none; white-space: nowrap; }
 .locale:hover { color: var(--ink); border-color: var(--ink-4); }
 .menu-toggle { display: none; font-family: var(--font-ui); font-size: 13px; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; color: var(--ink); cursor: pointer; }
-@media (max-width: 760px) {
+/* 英文导航最宽，要 820px 才放得下；860px 以下收成「菜单」按钮，中英文用同一个断点。 */
+@media (max-width: 860px) {
   .menu-toggle { display: inline-flex; }
   .nav-links { display: none; position: absolute; top: 60px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--ground); border-bottom: 1px solid var(--line); padding: 8px 16px 16px; }
   .nav-links.open { display: flex; }
@@ -146,6 +147,7 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
 .footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
 .footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
 .footer a { text-decoration: none; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 10px 20px; }
 .footer a:hover { color: var(--ink); }
 
 .download-options { display: grid; gap: 8px; margin-top: 14px; }
@@ -188,8 +190,12 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
 .faq summary::after { content: "+"; font-family: var(--font-ui); font-weight: 400; color: var(--ink-4); }
 .faq details[open] summary::after { content: "–"; }
 .faq p { margin: 10px 0 0; color: var(--ink-2); max-width: 44em; }
-.more { margin: 28px 0 0; color: var(--ink-3); font-size: 15px; }
-.more a { color: var(--accent); }
+.routes { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.route { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; scroll-margin-top: 80px; }
+.route h3 { margin: 0; font-size: 17px; line-height: 1.4; }
+.route p { margin: 6px 0 0; font-size: 15px; color: var(--ink-2); }
+.route a { display: inline-block; margin-top: 8px; font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.next-links { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
 </style>
 </head>
 <body class="page-quickstart">
@@ -198,9 +204,11 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
   <nav class="nav wrap" aria-label="主导航">
     <a class="brand" href="/" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
     <div class="nav-links" id="nav-links">
-      <a href="/#features">功能</a>
-      <a href="/quickstart" aria-current="page">快速上手</a>
-      <a href="/#open">开源</a>
+      <a href="/features">功能</a>
+      <a href="/models">模型</a>
+      <a href="/prompts">提示词</a>
+      <a href="/skills">技能</a>
+      <a href="/quickstart" aria-current="page">上手</a>
       <a href="/#community">社区</a>
     </div>
     <div class="nav-actions">
@@ -252,17 +260,58 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
       </div>
       <div class="shot"><img src="/assets/promo-0.22/still-storyboard.jpg" alt="分镜表里四个镜头都已出片" width="1920" height="1080" /></div>
     </li></ol>
+    <div class="block-head faq-head" id="routes"><h2>我想做 X，走哪条路</h2></div>
+    <div class="routes"><article class="route" id="route-same-face">
+      <h3>让同一个人在每个镜头里长一样</h3>
+      <p>给角色锁一张参考卡。分镜表里用到它的镜头都会带上这张参考，模型就知道是同一个人。</p>
+      <a href="/skills#character-and-scene">角色与场景配方 →</a>
+    </article>
+<article class="route" id="route-blocking">
+      <h3>控制谁站在哪、朝哪看</h3>
+      <p>打开 3D 导演台，摆好人物姿势和机位，用手机取景；拍到的画面回到画布，当这个镜头的首帧。</p>
+      <a href="/features#director">3D 导演台 →</a>
+    </article>
+<article class="route" id="route-camera">
+      <h3>让镜头动起来</h3>
+      <p>在提示词库的「运镜」里挑一种写法（推、拉、摇、跟、环绕……），套到镜头上，或者抄进提示词里。</p>
+      <a href="/prompts/camera">运镜提示词 →</a>
+    </article>
+<article class="route" id="route-pick-model">
+      <h3>不知道用哪个模型</h3>
+      <p>先看模型库：每个模型能做哪几种生成、能放几份参考、最长多久、哪几家能接，都列在一页上。</p>
+      <a href="/models">模型库 →</a>
+    </article>
+<article class="route" id="route-sound">
+      <h3>加字幕、配乐</h3>
+      <p>切到「预览」，在时间轴下方点「+ 字幕」「+ 配乐」，排好后导出 MP4。</p>
+      
+    </article>
+<article class="route" id="route-lip-sync">
+      <h3>精确对口型</h3>
+      <p>暂时不支持。需要对口型的镜头，先用别的工具做好再导进来。</p>
+      
+    </article></div>
+    <div class="block-head faq-head" id="stuck"><h2>卡住了看这里</h2></div>
+    <div class="faq"><details id="stuck-no-generate"><summary>接了模型，却生成不了</summary><p>看模型框里这个模型有没有标「不可用」和原因：多半是 Key 没贴对，或者这一家还没给你开通这个模型。换一家能接的，或按提示去供应商后台开通。</p></details><details id="stuck-faces-differ"><summary>每个镜头的脸都不一样</summary><p>检查镜头有没有连上角色参考卡。没连，模型就不知道是谁；连上后重新生成那几个镜头。</p></details><details id="stuck-agent-stops"><summary>Agent 做到一半停了</summary><p>长任务中途它会停下来让你确认，尤其是要花钱的时候。看一眼它问的是什么，回一句「继续」就行。</p></details></div>
     <div class="block-head faq-head"><h2>常见问题</h2></div>
     <div class="faq"><details><summary>要花多少钱？</summary><p>Nomi 本身免费。生成的费用按你接的那家供应商的价格，直接由你和它结算；接免费模型（比如魔搭社区的部分模型）或本地 ComfyUI 就不花钱。</p></details><details><summary>没有独立显卡能用吗？</summary><p>能。默认走云端 API，普通笔记本就够。本地 ComfyUI 是可选的，想省钱、有显卡再接。</p></details><details><summary>我的素材会被上传吗？</summary><p>项目都存在你自己的电脑上。只有在调用外部模型时，才把完成这一次生成必需的内容发给你配置的那家供应商。</p></details><details><summary>Agent 能直接给我出成片吗？</summary><p>它能从一句话做到人物、关键帧、视频，再排进时间轴；最后一步导出目前要你自己点一下。长任务中途它可能会停下来确认，回一句「继续」就行。</p></details></div>
-    <p class="more">想看更细的操作说明 <a href="/handbook">一页上手手册</a> · <a href="https://github.com/aqm857886159/Nomi/blob/main/docs/guide/capability-core-cli-mcp.md" target="_blank" rel="noreferrer">MCP 指南</a></p>
+    <div class="block-head faq-head"><h2>接着看</h2></div>
+    <div class="next-links"><a class="button quiet" href="/features">全部功能</a><a class="button quiet" href="/models">模型库</a><a class="button quiet" href="/prompts">提示词库</a><a class="button quiet" href="/skills">技能库</a><a class="button quiet" href="https://github.com/aqm857886159/Nomi/blob/main/docs/guide/capability-core-cli-mcp.md" target="_blank" rel="noreferrer">MCP 指南 ↗</a></div>
   </div>
 </section>
 </main>
 <footer class="footer">
   <div class="wrap">
     <span class="wordmark small">No<span>mi</span></span>
+    <nav class="footer-links" aria-label="站内导航">
+      <a href="/features">功能</a>
+      <a href="/models">模型</a>
+      <a href="/prompts">提示词</a>
+      <a href="/skills">技能</a>
+      <a href="/quickstart">上手</a>
+    </nav>
+    <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">GitHub 源码</a>
     <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">AGPL-3.0 开源</a>
-    <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">GitHub</a>
     <a href="https://github.com/aqm857886159/Nomi/releases" target="_blank" rel="noreferrer">更新说明</a>
     <a href="https://x.com/sdf297417627618" target="_blank" rel="noreferrer">X / Twitter</a>
     <a href="/en/quickstart" data-locale-choice="en">English</a>
@@ -344,6 +393,23 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
       menuToggle?.focus()
     }
   })
+
+  // 库页面的「复制」：复制按钮指向的那块提示词原文；剪贴板被拒时退回「选中它」，让人自己按复制。
+  document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => {
+    const source = document.getElementById(button.dataset.copy)
+    if (!source) return
+    try {
+      await navigator.clipboard.writeText(source.innerText.trim())
+      button.dataset.copied = 'true'
+      setTimeout(() => { delete button.dataset.copied }, 1600)
+    } catch {
+      const range = document.createRange()
+      range.selectNodeContents(source)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  }))
 
   document.querySelectorAll('dialog').forEach((dialog) => {
     dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())
