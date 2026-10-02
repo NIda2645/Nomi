@@ -3,7 +3,8 @@
 // 这里把任务的每一种状态都过一遍两条入口（提交、轮询），非终态一律不产出事件，终态各报一次。
 // TASK_STATUS_PHASE 用 satisfies Record<TaskStatus,…> 写，新增状态不归类 = 编译红；这份测试再保证归类的行为对。
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchWorkbenchTaskResultByVendor, runWorkbenchTaskByVendor, TASK_STATUS_PHASE, type TaskStatus } from './taskApi'
+import { TASK_STATUS_PHASE, type TaskStatus } from '../../../electron/shared/taskStatus'
+import { fetchWorkbenchTaskResultByVendor, runWorkbenchTaskByVendor } from './taskApi'
 
 const track = vi.fn(async () => ({ queued: true }))
 const run = vi.fn()
@@ -60,5 +61,13 @@ describe('非终态不产出 generation.completed', () => {
     result.mockResolvedValueOnce({ vendor: 'v', result: task('t-unknown', 'paused') })
     await fetchWorkbenchTaskResultByVendor({ taskId: 't-unknown', vendor: 'v', projectId: null })
     expect(completed()).toHaveLength(0)
+  })
+})
+
+describe('isTerminalTaskStatus（全仓唯一判据）', () => {
+  it('只有表里归为 terminal 的算终态；供应商原始词（processing 等）和空值都不算', async () => {
+    const { isTerminalTaskStatus } = await import('../../../electron/shared/taskStatus')
+    for (const status of terminal) expect(isTerminalTaskStatus(status)).toBe(true)
+    for (const status of [...inFlight, 'processing', 'in_progress', 'toString', '', undefined, null]) expect(isTerminalTaskStatus(status as string)).toBe(false)
   })
 })
