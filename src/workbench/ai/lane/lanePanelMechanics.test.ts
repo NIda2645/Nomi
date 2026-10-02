@@ -9,6 +9,7 @@ const labels: LaneViewModelLabels = {
   toolSummary: () => undefined,
   toolFailure: () => undefined,
   toolFailureDetail: (failure) => failure.code,
+  assistantFailure: (text) => text,
   thinkingLabel: '[thinking]',
   formatTokens: (value) => `${value}t`,
   formatCost: (usd) => `$${usd.toFixed(4)}`,

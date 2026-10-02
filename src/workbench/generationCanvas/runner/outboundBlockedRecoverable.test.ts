@@ -264,12 +264,14 @@ describe('提交侧被拦 = 没扣费（与取回侧刻意分家）', () => {
     expect(useGenerationCanvasStore.getState().nodes.find((n) => n.id === id)?.status).toBe('error')
   })
 
-  it('用户读到的是「没扣费、重新生成」，而不是取回侧那句「钱已经付过」', async () => {
+  it('用户读到的是「请求没发出去、重新生成」，而不是取回侧那句「钱已经付过」', async () => {
     const report = classifyGenerationError((await submitBlockedError()).message)
     expect(report.kind).toBe('outbound-blocked-submit')
     // 主动作把用户送去「模型接入 → 网络」那一行——那是这堵墙唯一的开关所在。
     expect(report.primary).toBe('open-model-access')
-    expect(report.hint).toMatch(/没有扣费|nothing was charged/i)
+    // 只说事实（请求没发出去、服务商没被请求到），不谈钱：现在都走中转站，扣没扣钱 Nomi 不知道。
+    expect(report.hint).toMatch(/没被请求到|never called/i)
+    expect(report.hint).not.toMatch(/没有扣费|nothing was charged/i)
     // 阳性对照：取回侧那条必须仍然是另一个 kind、另一套说法。
     const retrieval = classifyGenerationError((await outboundBlockedError()).message)
     expect(retrieval.kind).toBe('outbound-blocked')

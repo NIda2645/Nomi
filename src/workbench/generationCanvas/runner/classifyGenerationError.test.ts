@@ -242,7 +242,7 @@ describe('classifyGenerationError — 已知分类', () => {
       "Error invoking remote method 'nomi:tasks:run': Error: 所有免配置上传 host 都失败：litterbox.catbox.moe: 素材上传失败(HTTP 500): (无详情)；tmpfiles.org: fetch failed",
     )
     expect(r.kind).toBe('asset-upload-failed')
-    expect(r.reason).toBe('参考图没能送到服务商 · 未计费')
+    expect(r.reason).toBe('参考图没能送到服务商')
     expect(r.hint).not.toMatch(/额度问题/)
     // 2026-08-01 实测：tmpfiles.org 在国内直连是 000（连不上），走代理才 405。所以
     // 「fetch failed」压倒性地是网络/代理没覆盖到这两个境外 host，而不是它们真挂了。
@@ -304,13 +304,13 @@ describe('classifyGenerationError — 已知分类', () => {
   })
 
   // 2026-09-27 用户截图：参考图没过本机检查（我们自己的判断，请求没发出），错误卡却写「可能是服务商
-  // 临时故障或额度问题」。按码归到 asset-invalid：不甩锅服务商、标明未计费、提示换素材。
-  it('参考素材本身不合格:带 asset-invalid 码的错误不落 unknown，标明未计费，英文人话不影响分类', () => {
+  // 临时故障或额度问题」。按码归到 asset-invalid：不甩锅服务商、提示换素材（标题不再附「未计费」角标）。
+  it('参考素材本身不合格:带 asset-invalid 码的错误不落 unknown，英文人话不影响分类', () => {
     const coded = classifyGenerationError(
       `Error invoking remote method 'nomi:tasks:run': Error: ${tagNomiError('asset-invalid', '图片素材「ref.png」的内容实际是 HTML/XML/SVG 文本，不是可用的图片素材。')}`,
     )
     expect(coded.kind).toBe('asset-invalid')
-    expect(coded.reason).toMatch(/未计费/)
+    expect(coded.reason).not.toMatch(/未计费/)
     expect(coded.hint).toMatch(/换一张|重新导入/)
     expect(coded.hint).not.toMatch(/服务商临时故障/)
     expect(coded.raw).not.toMatch(/NOMI_ERR/)
@@ -528,7 +528,7 @@ describe('动作表：每类主 / 次动作都写在表里，改一类不许带�
     'model-kind-mismatch': true, 'model-not-open': true, 'model-unavailable-upstream': true, 'model-retired': true,
     'image-route-disabled': true, 'account-gate': true, 'content-policy': true, 'input-image-blocked': true,
     'asset-upload-failed': true, 'asset-too-large': true, 'asset-invalid': true, 'outbound-blocked': true,
-    'outbound-blocked-submit': true, 'outbound-blocked-credential-origin': true, server: true, input: true,
+    'outbound-blocked-submit': true, 'outbound-blocked-credential-origin': true, 'credential-redirect': true, server: true, input: true,
     'output-truncated': true, 'output-unreadable': true, unknown: true,
   }
 

@@ -9,7 +9,7 @@
       "authority_kind": "writer",
       "trust_domain": "main",
       "fact_kind": "state-machine",
-      "migration_status": "pending",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/agentLane/laneApprovalGate.ts",
         "symbol": "createLaneApprovalGate"
@@ -26,10 +26,6 @@
         {
           "path": "electron/shared/agentLane/laneApproval.ts",
           "symbol": "laneApprovalGrantable"
-        },
-        {
-          "path": "electron/agentLane/laneApprovalGate.ts",
-          "symbol": "settleHold"
         }
       ],
       "forbidden_derivations": [],
@@ -41,8 +37,7 @@
         "electron/agentLane/laneExtendedTools.ts"
       ],
       "since": "2026-09-22",
-      "notes": "「一次调用停在 before_tool 里等人」的运行时那一半住这里；判据（纯函数）在 electron/shared/agentLane/laneApproval.ts，两者是同一个概念的判据面与运行面，不是两个 owner。渲染层只做只读投影，不许自己判断等不等、也不许替它补偿。 2026-10-01：登记 settleHold 为写接口（等待的唯一兑现口；hold 是同一个对象上的入口，因为 hold 这个名字太通用、全仓有不相干的同名局部，按名字扫会误报，所以只登记 settleHold，hold 靠 createLaneApprovalGate 的 pending 写门冻结管住），并按实查把状态从 converged 改为 pending：全仓还有闸卡投影与付费卡轮询两种平行表示，见 migration_strategy。",
-      "migration_strategy": "全仓「等用户」只留一种表示：laneApprovalGate 的 hold（替一次调用停在 before_tool 里等人，race signal、被打断兑现 cancelled、cancelAll 收尾）。现在还剩两种平行表示，等 0.24 版收敛线 B 并进来：① LaneProjection.pending / LanePendingApproval（闸卡自己的投影，preflight 那条路，和 hold 是同一道等待的两种画法）；② 付费卡的 1.5 秒轮询（src/workbench/ai/v4/useAgentPanelSpendConfirm.ts POLL_INTERVAL_MS——渲染层自己去问「还在不在等」，没有直接读这一个主人）。收口判据：渲染层不再自己轮询判断等不等，pending 只剩 hold 的只读投影。收敛前冻结：不许新增第三条写入口，新代码要「停下来等用户」只许走 hold / settleHold。"
+      "notes": "「一次调用停在 before_tool 里等人」的运行时那一半住这里；判据（纯函数）在 electron/shared/agentLane/laneApproval.ts，两者是同一个概念的判据面与运行面，不是两个 owner。渲染层只做只读投影，不许自己判断等不等、也不许替它补偿。"
     },
     {
       "name": "出价/待决身份",
@@ -3758,6 +3753,74 @@
         "scripts/check-symptom-cluster.mjs"
       ],
       "notes": "同一模块 7 天内第三份根因合同时，簇里最新那份必须带有效的 rewrite_decision（decision + characterization_test）才算答复；评审文档那条路已删，不并存。字段校验（测试文件存在、选 rewrite 时测试在 diff 里）在 root-cause-contracts 的 validateRewriteDecision，那里只校验、不判簇。"
+    },
+    {
+      "name": "凭据请求重定向策略",
+      "subject": "network.credential-redirect-policy",
+      "lifecycle": "execution",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/credentialRedirectPolicy.ts",
+        "symbol": "withCredentialRedirectPolicy"
+      },
+      "write_api": [
+        {
+          "path": "electron/credentialRedirectPolicy.ts",
+          "symbol": "withCredentialRedirectPolicy"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/appFetch.ts",
+        "tests/setup/networkTransport.ts",
+        "electron/vendor/vendorHttp.ts",
+        "electron/vendor/vendorBaseFallback.ts",
+        "electron/ai/onboarding/onboardingIpc.ts",
+        "electron/ai/onboarding/modelListProbe.ts",
+        "electron/audioTaskRunner.ts",
+        "electron/networkErrorDetails.ts"
+      ],
+      "since": "2026-09-30",
+      "notes": "带凭据的出站请求（除标准头之外还带任何头：Authorization、Cookie、API key、供应商自取名的鉴权头）不跟随跳转：fetch 跨域跳转只去掉 Authorization，自定义鉴权头与 307/308 的 POST 正文会原样带去第二个网站。规则只在 withCredentialRedirectPolicy 里判一次，唯一出站入口 appFetch（与单测的传输替身）应用，走原生 redirect:error，不在各调用点各写一遍；调用方自己指定 redirect（hardenedFetch 手动逐跳去头、模型列表分页 manual + 校验）时尊重它。失败识别 networkErrorDetails.isRedirectRefusal；用户看到的话：生成路径是 nomiErrorCodes 的 credential-redirect 码 + generationCommon 词表 credentialRedirect，接入向导、转写、模型列表拉取（manual 模式拿得到 Location，给出跳转目标，失败类 redirect）是 desktopStrings 的 network.credentialRedirect / network.credentialRedirectTo。合同 docs/fixes/2026-09-30-credential-redirect-leak.root-cause.json。"
+    },
+    {
+      "name": "Agent 面板上用户看得见的失败文字与工具收据文字（不含原始 JSON / 内部 id）",
+      "subject": "agent-panel.user-visible-failure-text",
+      "lifecycle": "projection",
+      "authority_kind": "decision",
+      "trust_domain": "renderer",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+        "symbol": "classifiedFailureText"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+          "symbol": "classifiedFailureText"
+        },
+        {
+          "path": "src/workbench/ai/resident/residentToolText.ts",
+          "symbol": "leaksInternals"
+        },
+        {
+          "path": "src/workbench/ai/lane/laneViewModel.ts",
+          "symbol": "receiptFor"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "src/workbench/ai/lane/laneCommandFailure.test.ts",
+      "allowed_consumers": [
+        "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+        "src/workbench/ai/resident/residentShellDisplay.ts",
+        "src/workbench/NomiStudioApp.tsx"
+      ],
+      "since": "2026-10-01",
+      "notes": "任何失败原文（服务商整段 JSON、我们自己的分类标记、内部 id）进界面前都只走 classifiedFailureText：分得出类说人话，分不出类说「没见过的错误」并给下一步，原文只进日志；形状判据只有 leaksInternals 一份，走查监视器 ui-leaked-internals 在真实面板上用同一组形状验收；工具收据只有标签与摘要，不带原始入参，也不带成功回包。合同 docs/fixes/2026-10-01-agent-panel-raw-leaks.root-cause.json。"
     }
   ]
 }

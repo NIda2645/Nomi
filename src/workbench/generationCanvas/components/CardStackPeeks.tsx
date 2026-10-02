@@ -8,7 +8,6 @@ export type CardStackPeeksProps = {
   label: string
   expanded: boolean
   onToggle: () => void
-  forceTrigger?: boolean
   tone?: 'result' | 'group'
   disabled?: boolean
   /**
@@ -42,7 +41,6 @@ export function CardStackPeeks({
   label,
   expanded,
   onToggle,
-  forceTrigger = false,
   tone = 'result',
   disabled = false,
   mediaGlyph,
@@ -50,7 +48,7 @@ export function CardStackPeeks({
 }: CardStackPeeksProps): JSX.Element | null {
   const [hovered, setHovered] = React.useState(false)
   const rearLayerCount = getCardStackRearLayerCount(count)
-  if (rearLayerCount === 0 && !forceTrigger) return null
+  if (rearLayerCount === 0) return null
   const fanned = expanded || hovered
 
   return (
@@ -86,7 +84,8 @@ export function CardStackPeeks({
       <button
         type="button"
         className={cn(
-          'pointer-events-auto absolute right-[-42px] z-[9] inline-flex min-h-7 items-center gap-1 rounded-full px-2.5',
+          // 左缘钉在节点右缘外 4px、向右长：原来钉右缘（right-[-42px]），英文「2 versions」比「2 版」长一倍，多出来的长度全长到左边、被节点自己盖住，只露出「rsions」。
+          'pointer-events-auto absolute left-[calc(100%+4px)] z-[9] inline-flex min-h-7 items-center gap-1 whitespace-nowrap rounded-full px-2.5',
           tone === 'group' ? 'top-0' : 'top-4',
           'border text-micro font-semibold tabular-nums',
           GROUP_VISUAL_CLASS.stackTrigger,

@@ -158,7 +158,7 @@ describe('③ 一行收据 · 七态', () => {
 
   it('没有展开体的行不给 ›（不该给用户一个空按钮）', () => {
     expect(html(el(V4ToolReceipt, { receipt: base, statusLabel: 'x' }))).not.toContain('<details')
-    const withBody = html(el(V4ToolReceipt, { receipt: { ...base, input: '{}', output: 'ok' }, statusLabel: 'x' }))
+    const withBody = html(el(V4ToolReceipt, { receipt: { ...base, output: 'ok' }, statusLabel: 'x' }))
     expect(withBody).toContain('<details')
   })
 

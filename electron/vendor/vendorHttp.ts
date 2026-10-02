@@ -13,7 +13,8 @@ import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamCod
 import { fetchVendorWithBaseFallback } from "./vendorBaseFallback";
 import type { Vendor } from "../catalog/types";
 import { vendorAuthSpec } from "../catalog/vendorAuthSpec";
-import { networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
+import { isRedirectRefusal, networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
+import { tagNomiError } from "../shared/nomiErrorCodes";
 import { BoundedResponseError, readBoundedResponseBytes } from "./boundedResponse";
 import { providerDispatcher } from "../providerNetwork";
 import { authorizeSubmitDestination } from "./vendorOutboundGuard";
@@ -240,6 +241,18 @@ async function requestVendor(
     // abort = 我们的超时，给一条说人话的 timeout 错误（仍归 network 类、可重试），而不是裸 "aborted"。
     const aborted = (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"))
       || (error instanceof BoundedResponseError && error.code === "response_timeout");
+    // 带密钥的请求被跳转：appFetch 按「凭据请求不跟随跳转」拒了。不是网络问题，重试只会再撞同一个跳转。
+    if (isRedirectRefusal(error)) {
+      const upstreamMsg = tagNomiError("credential-redirect", "provider endpoint redirected; request stopped to protect the key");
+      throw new VendorRequestError(`Provider request refused redirect at ${vendor.key} ${upperMethod} ${diagnosticUrl}: ${upstreamMsg}`, {
+        vendorKey: vendor.key,
+        method: upperMethod,
+        url: diagnosticUrl,
+        upstreamMsg,
+        category: "network",
+        retryable: false,
+      });
+    }
     const upstreamMsg = aborted
       ? `请求超时（${Math.round(timeoutMs / 1000)}s 无响应）`
       : networkMessage(error);

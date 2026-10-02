@@ -705,6 +705,64 @@ export async function panCanvasUntilInside(page, locator, { margin = {}, maxStep
 }
 
 /**
+ * 节点浮条的不变量：**任何位置**选中节点，浮条整条都在可见舞台里（左右上下都不出界，不压到右侧面板 / 顶栏底下），
+ * 不用用户去拖画布。原来这里是 `panCanvasUntilInside`（拖画布把浮条拖进来）：那是浮条会被舞台裁掉一截时的补救；
+ * 浮条自己夹边之后，位置不会再跟着画布走，拖也拖不出变化（did-not-converge）——验收改成验不变量本身，
+ * 且是**整条**在里面，不是「部分可见就行」。
+ */
+export async function expectToolbarInsideStage(page, toolbarLocator, label = '节点浮条') {
+  await waitForCanvasViewportSettled(page)
+  const box = await toolbarLocator.first().boundingBox()
+  const stage = await page.locator(CANVAS_STAGE_SELECTOR).first().boundingBox()
+  expect(Boolean(box && stage), `${label}：浮条与舞台都量得到`).toBe(true)
+  const inside = box.x >= stage.x - 0.5 && box.x + box.width <= stage.x + stage.width + 0.5
+    && box.y >= stage.y - 0.5 && box.y + box.height <= stage.y + stage.height + 0.5
+  expect(inside, `${label}：浮条整条在可见舞台里（不用拖画布）${JSON.stringify({ box, stage })}`).toBe(true)
+  return { box, stage }
+}
+
+/**
+ * 同一个选中节点，在三种位置各验一次整条在舞台里：节点贴左边、节点贴右边、窄窗口（浮条折两行）。
+ * 画布用中键拖（同 panCanvasUntilInside 的手法）把节点推到边上；窄窗口用视口缩小；验完恢复。
+ */
+export async function expectToolbarInsideStageEverywhere(page, nodeLocator, toolbarLocator, label = '节点浮条') {
+  // 把节点自己（不是浮条）拖到舞台的某个位置：只拖到节点还在屏内的程度（出屏的节点会被画布卸载，浮条也跟着没了）。
+  const panNodeTo = async (targetX) => {
+    for (let step = 0; step < 10; step += 1) {
+      const box = await nodeLocator.first().boundingBox()
+      if (!box) throw new Error(`${label}：节点不见了（被拖出屏外被卸载）`)
+      const dx = targetX(box) - box.x
+      if (Math.abs(dx) < 6) return
+      const stage = await page.locator(CANVAS_STAGE_SELECTOR).first().boundingBox()
+      const start = await findCanvasBlankPoint(page, { inset: 80 })
+        ?? { x: Math.round(stage.x + stage.width / 2), y: Math.round(stage.y + stage.height / 2) }
+      const move = Math.max(-250, Math.min(250, Math.round(dx)))
+      await page.mouse.move(start.x, start.y)
+      await page.mouse.down({ button: 'middle' })
+      await page.mouse.move(start.x + 2, start.y + 1)
+      await page.mouse.move(start.x + move, start.y, { steps: 8 })
+      await page.mouse.up({ button: 'middle' })
+      await waitForCanvasViewportSettled(page)
+    }
+  }
+  const stageBoxCache = await page.locator(CANVAS_STAGE_SELECTOR).first().boundingBox()
+  const original = (await nodeLocator.first().boundingBox()).x
+  await expectToolbarInsideStage(page, toolbarLocator, `${label}（初始位置）`)
+  await panNodeTo(() => (stageBoxCache.x + 12))
+  await expectToolbarInsideStage(page, toolbarLocator, `${label}（节点贴左边）`)
+  await panNodeTo((box) => stageBoxCache.x + stageBoxCache.width - 12 - box.width)
+  await expectToolbarInsideStage(page, toolbarLocator, `${label}（节点贴右边）`)
+  await panNodeTo(() => original)
+  const size = page.viewportSize()
+  if (size) {
+    await page.setViewportSize({ width: 900, height: size.height })
+    await expectToolbarInsideStage(page, toolbarLocator, `${label}（窄窗口，折两行）`)
+    await page.setViewportSize(size)
+    await waitForCanvasViewportSettled(page)
+  }
+}
+
+/**
  * 新卡落在屏外时，像用户一样点画布边缘提示把它们带进视野（2026-09-25 起程序不替人挪画布，屏外新卡只给提示）。
  * 轻量版：只负责「让我要操作的卡出现」，不验提示的方向 / 张数语义——验那个用 `followArrivalHint`。
  * 没有提示 = 新卡本来就在视野里，什么都不做。返回是否点过提示。

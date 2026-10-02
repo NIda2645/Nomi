@@ -24,6 +24,9 @@ describe('会红：每一类违例', () => {
     expect(kinds('预算已用完，提额续拍')).toContain('price-wording')
     expect(kinds('Price unknown · billed by provider')).toContain('price-wording')
     expect(kinds('Budget ran out. Raise budget to continue')).toContain('price-wording')
+    // 失败标题后面的「未计费 / Not charged」角标已删（现在都走中转站，扣没扣钱我们不知道）；词表防它回来。
+    expect(kinds('请求被拦下 · 未计费')).toContain('price-wording')
+    expect(kinds('Request blocked · Not charged')).toContain('price-wording')
   })
 })
 
@@ -70,6 +73,15 @@ describe('不误报', () => {
     for (const locale of ['zh-CN', 'en']) {
       const hits = flat(dictionaries[locale]).filter(([key]) => !exempt(key)).flatMap(([key, value]) => findLeaks(value).filter((leak) => leak.kind !== 'price-wording').map((leak) => `${key}: ${leak.match}`))
       expect(hits, `${locale} 词典里出现了 JSON / id 形状`).toEqual([])
+    }
+  })
+
+  it('真实词典里（devlab 样例除外）没有「未计费 / not charged」角标文案', () => {
+    const dictionaries = loadDictionaries()
+    const flat = (node, prefix = '') => Object.entries(node).flatMap(([key, value]) => (typeof value === 'string' ? [[`${prefix}${key}`, value]] : value && typeof value === 'object' ? flat(value, `${prefix}${key}.`) : []))
+    for (const locale of ['zh-CN', 'en']) {
+      const hits = flat(dictionaries[locale]).filter(([key]) => !/(^|.)fixture[A-Z]/.test(key)).filter(([, value]) => /未计费|not charged/i.test(value)).map(([key]) => key)
+      expect(hits, `${locale} 词典里还有「未计费」类文案`).toEqual([])
     }
   })
 

@@ -1,5 +1,5 @@
 import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabilities/registry'
-import { redactToolArguments, redactResidentSensitiveText } from '../resident/residentToolText'
+import { redactResidentSensitiveText } from '../resident/residentToolText'
 import { parseQuestionSheet } from '../v4/agentPanelV4Question'
 // Agent lane · 视图投影（纯函数，唯一 owner）
 //
@@ -31,7 +31,6 @@ import {
   isLaneApprovalNote,
   laneApprovalWasRefused,
 } from '../../../../electron/shared/agentLane/laneContracts'
-import { laneToolTextForUser } from '../../../../electron/shared/agentLane/laneToolNextAction'
 import type { LaneToolPublicFailure } from '../../../../electron/shared/agentLane/laneToolFailureEnvelope'
 import type { V4InterventionSource } from '../v4/agentPanelV4Intervention'
 import { resolveModelToolCapabilityId } from '../../../../electron/shared/agentCapabilities/modelFacingToolRegistry'
@@ -63,6 +62,11 @@ export interface LaneViewModelLabels {
    * **两条路都不许把模型正文当文案印出去**：那段字是英文、第三人称、还带 `Next:` 指令。
    */
   toolFailure(text: string, failure?: LaneToolPublicFailure): string | undefined
+  /**
+   * 助手回合带回来的服务商报文 → 面板那一行红字。**原文不进界面**（可能是整段 JSON、带内部分类标记）：
+   * 调用方按失败分类给人话 + 下一步，认不出就说「没见过的错误」。
+   */
+  assistantFailure(text: string): string
   /** 失败的展开体：摘要 + 结构化字段（哪个字段、期望什么类型、合法值）。 */
   toolFailureDetail(failure: LaneToolPublicFailure): string
   /** 思考行左侧那个词。 */
@@ -217,8 +221,8 @@ function receiptFor(part: Extract<LanePart, { kind: 'tool-call' }>, labels: Lane
     // 「跑着呢」和「填参数呢」是两件事：`input-available` 说的是参数已经齐了。
     // 结果落定之前不许写 `output-available`——那是在替一件还没发生的事下结论。
     status: part.running ? 'input-available' : 'input-streaming',
-    input: part.args && typeof part.args === 'object' && Object.keys(part.args).length === 0
-      ? undefined : redactToolArguments(part.args) || undefined,
+    // 没有 `input`：入参整段摆出来就是一坨 JSON（带操作 id、供应商路由键）。「做了什么」由上面的
+    // `label` + `summary` 说；原始入参留在转录 / 轨迹里，排查去那儿看，不进面板。
   }
 }
 
@@ -380,7 +384,7 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     // ——同一句话说两遍是在骗用户，让他以为发生了两件事。收集在上面那一趟预扫里。
     if (part.kind === 'host-note') continue
     if (part.kind === 'error') {
-      push({ kind: 'error', reason: part.text })
+      push({ kind: 'error', reason: labels.assistantFailure(part.text) })
       continue
     }
     if (part.kind === 'task') {
@@ -462,7 +466,9 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
             ? (part.failure
               ? redactResidentSensitiveText(labels.toolFailureDetail(part.failure))
               : labels.toolFailure(part.text) && redactResidentSensitiveText(labels.toolFailure(part.text)!)) || undefined
-            : redactResidentSensitiveText(laneToolTextForUser(part.text, part.nextAction)) || undefined },
+            // 成功的回包是给模型读的（英文、带 `User sees:`、可能带 id / JSON），**不进展开体**：「做了什么」
+            // 由这一行的 label + summary 说，撤销钮在行尾；排查去转录 / 轨迹看原文。
+            : undefined },
     }
   }
 

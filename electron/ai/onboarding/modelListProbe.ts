@@ -23,10 +23,21 @@ import { parseModelListPage, type ModelListResult, type ModelListDescriptor, typ
 import { modelListErrorRedactor } from "./modelListSafety";
 import { createExplicitProxyDispatcher } from "../../systemProxy";
 import { desktopT } from "../../desktopStrings";
+import { isRedirectRefusal, safeNetworkUrl } from "../../networkErrorDetails";
 import type { Dispatcher } from "undici";
 export type { ModelListFailureKind } from "./modelListResponse";
 
+function redirectRefusalMessage(location: string | null, from: URL): string {
+  if (location) {
+    try {
+      return desktopT("network.credentialRedirectTo", { target: safeNetworkUrl(new URL(location, from).toString()) });
+    } catch { /* 不可解析的 Location：退回不带地址的那句 */ }
+  }
+  return desktopT("network.credentialRedirect");
+}
+
 export async function describeNetworkErrorLazy(error: unknown): Promise<string> {
+  if (isRedirectRefusal(error)) return desktopT("network.credentialRedirect");
   const { describeNetworkError } = await import("../../systemProxy");
   // 这句话直接出现在设置页地址栏下面（连接状态说明），不能是英文原话（2026-09-29）。
   return desktopT("network.unreachable", { reason: describeNetworkError(error) });
@@ -95,7 +106,7 @@ export type { ModelListResult } from "./modelListResponse";
 
 type Failure = Extract<ModelListResult, { ok: false }> & { failureKind: ModelListFailureKind };
 const FAILURE_PRIORITY: Record<ModelListFailureKind, number> = {
-  unsupported: 0, invalid_response: 1, upstream: 2, network: 3, rate_limit: 4, auth: 5,
+  unsupported: 0, invalid_response: 1, upstream: 2, network: 3, redirect: 3, rate_limit: 4, auth: 5,
 };
 const MAX_PAGES = 10;
 const MAX_MODELS = 2000;
@@ -225,6 +236,12 @@ export async function fetchModelList(
       }
       if (res.status === 304 && pageNumber === 0 && options.validator?.url === url.toString()) {
         return { ok: true, models: [], statuses, notModified: true, validator: options.validator };
+      }
+      if (res.status >= 300 && res.status < 400) {
+        // 手动模式把 3xx 原样交回来：不跟随，但这里拿得到 Location，就把目标地址告诉用户（只给主机和路径，不带查询串）。
+        const failed = remember(failure("redirect", redirectRefusalMessage(res.headers.get("location"), url), res.status));
+        if (pageNumber > 0) return failed;
+        break;
       }
       if (!res.ok) {
         const failed = remember(failure(failureKindForStatus(res.status), upstreamErrorText(body, res.status, redact), res.status));

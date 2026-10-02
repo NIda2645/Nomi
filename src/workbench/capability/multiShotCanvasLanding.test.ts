@@ -84,6 +84,13 @@ describe('materializeShots preserves the reading viewport on existing content', 
     expect(useWorkbenchStore.getState().activeCategoryId).toBe(activeBefore)
   })
 
+  it('untitled shots are numbered for the user, never titled with their internal candidate id', async () => {
+    const internal = ['cand-op-4f2a9c1e-7b3d-4e8a-9c21-0d5e6f7a8b9c', 'cand-op-1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d']
+    const result = await materializeShots({ materializationOperationId, runId, shots: internal.map(shotId => ({ shotId, kind: 'video' as const, prompt: '雨夜街口', title: '  ' })) })
+    const titles = result.bindings.map(binding => useGenerationCanvasStore.getState().nodes.find(node => node.id === binding.nodeId)?.title)
+    expect(titles).toEqual(['镜头 1', '镜头 2'])
+  })
+
   it('class: adding a group or growing a single shot into a multi-shot plan never requests a fit', async () => {
     const first = await land(shots.slice(0, 1))
     expect(first.shotTableNodeId).toBeNull()

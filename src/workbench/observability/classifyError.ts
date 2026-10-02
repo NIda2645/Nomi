@@ -570,6 +570,8 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   // 同族第三条（凭据绑定）：也必须单独一支——它的下一步是「回接入页重新保存密钥」，
   // 归进上面那条会把用户送去查代理，而这台机器的网络一点毛病都没有。
   if (outboundCode === 'outbound-blocked-credential-origin') return reportFor('outbound-blocked-credential-origin', cleanRaw, '')
+  // 服务商地址回了跳转、Nomi 为护住密钥没有跟随：是地址配置的事，不是服务商故障，upstream 显式给 ''。
+  if (outboundCode === 'credential-redirect') return reportFor('credential-redirect', cleanRaw, '')
   // 结果已经送达、Nomi 本机读不出来：失败在我们这一侧，upstream 显式给 ''——把那句英文校验串印进「服务商原话」
   // 就是栽赃（服务商已经把图发回来了）。也不给「换一家」：动作表里这一类只有重试。
   if (outboundCode === 'output-unreadable') return reportFor('output-unreadable', cleanRaw, '')

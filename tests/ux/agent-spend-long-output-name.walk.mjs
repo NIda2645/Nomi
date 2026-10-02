@@ -20,7 +20,7 @@ import path from 'node:path'
 
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
-import { panCanvasUntilInside } from './_canvasHit.mjs'
+import { expectToolbarInsideStage } from './_canvasHit.mjs'
 import { FIXTURE_APIMART_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM,
@@ -100,10 +100,9 @@ async function stubSaveDialog(app, directory) {
 async function downloadThroughNode(app, win, nodeId, label) {
   const before = (await app.evaluate(() => globalThis.__walkSaveDialog?.length ?? 0))
   await clickOrFail(win.locator(`[data-node-id="${nodeId}"]`), '选中视频节点', { position: { x: 40, y: 40 } })
-  // 打开项目时画布会摆一次全貌，节点可能贴着舞台上沿，它头顶的浮条（下载在这里）一截钻进顶栏底下。
-  // 画布不替人挪（2026-09-25 拍板），人会自己把它拖下来——走查照做（panCanvasUntilInside，中键拖），拖不进就红。
-  const toolbarPan = await panCanvasUntilInside(win, win.locator(`[data-node-id="${nodeId}"] [data-node-floating-toolbar="true"]`))
-  expect(toolbarPan.ok, `像用户一样把节点浮条拖进舞台：${JSON.stringify(toolbarPan)}`).toBe(true)
+  // 打开项目时画布会摆一次全貌，节点可能贴着舞台上沿，它头顶的浮条（下载在这里）以前一截钻进顶栏底下，得用户自己拖画布。
+  // 现在的不变量：任何位置选中节点，浮条都整条在可见舞台里，不用拖——这里直接验整条在里面，再点「下载」。
+  await expectToolbarInsideStage(win, win.locator(`[data-node-id="${nodeId}"] [data-node-floating-toolbar="true"]`), '视频节点浮条')
   await clickOrFail(win.getByRole('button', { name: label, exact: true }), `节点浮条上的「${label}」`)
   await expect.poll(() => app.evaluate(() => globalThis.__walkSaveDialog?.length ?? 0), {
     message: `点「${label}」之后弹了另存对话框`, timeout: DEFAULT_TIMEOUT_MS,

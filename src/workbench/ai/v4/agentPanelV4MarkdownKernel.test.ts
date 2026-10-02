@@ -29,11 +29,11 @@ describe('B2e 审计 D1–D13：单一 Markdown 内核', () => {
             expect(output).toContain('<ul');
         }
     });
-    it('D3 工具摘要及正文都是富文本，input JSON 仍可读', () => {
-        const output = html(React.createElement(V4ToolReceipt, { receipt: { label: 'read', action: 'document', status: 'output-available', summary: '**摘要**', output: text, input: '{"limit":2}' }, statusLabel: "done" }));
+    it('D3 工具摘要及正文都是富文本，且展开体没有原始入参', () => {
+        const output = html(React.createElement(V4ToolReceipt, { receipt: { label: 'read', action: 'document', status: 'output-available', summary: '**摘要**', output: text, }, statusLabel: "done" }));
         expect(output).toContain('<table');
         expect(output).toMatch(/<strong[^>]*>摘要<\/strong>/);
-        expect(output).toContain('limit');
+        expect(output).not.toContain('limit');
     });
     it('D4 审批投影保留完整 Markdown 和换行', () => {
         const content = '- **镜头一**：窗边\n- **镜头二**：茶杯\n' + '完整正文'.repeat(30);
