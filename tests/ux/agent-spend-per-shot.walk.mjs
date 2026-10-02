@@ -10,12 +10,12 @@
 // 只有远端供应商是 loopback 夹具（零额度）；SDK、IPC、ProductionRun、渲染层、落盘全是真的。
 import fs from 'node:fs'
 
-import { clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
+import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER_INPUT, COMPOSER_SEND, INTERVENTION_ALTERNATE, INTERVENTION_CONFIRM,
-  closeSpendCard, createRuntimeWalk, openCanvas, recorded, sendCanvas,
+  closeSpendCard, createRuntimeWalk, expandResidentPanel, openCanvas, recorded, sendCanvas,
 } from './agent-runtime-walk-support.mjs'
 
 process.env.NOMI_WALK_UNPRICED_MODEL = '1'
@@ -299,6 +299,25 @@ async function runLocale(walk, win, locale) {
   }
 }
 
+/**
+ * 换语言只重载渲染层；重载之后有时落回项目库首页（项目没跟着重开）。像人一样从项目库点开同一个项目、进生成工作区，
+ * 再把常驻的 Agent 面板展开——按钮按这一种语言的字找。
+ */
+async function backToCanvas(win, project, locale) {
+  const stage = win.locator('.generation-canvas-v2__stage')
+  if (!(await stage.isVisible().catch(() => false))) {
+    const projectCard = win.locator('[data-project-card="true"]').filter({ hasText: project.name }).first()
+    if (await projectCard.isVisible().catch(() => false)) {
+      await projectCard.hover()
+      await clickOrFail(projectCard.getByRole('button', { name: /继续创作|Continue/ }), `${locale}：从项目库打开刚才那个项目`)
+      await win.waitForFunction((id) => location.href.includes(`projectId=${encodeURIComponent(id)}`), project.projectId)
+    }
+    await clickOrFail(win.getByRole('button', { name: locale === 'zh' ? '生成' : 'Generate', exact: true }), `${locale}：生成工作区`)
+    await expect(stage).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
+  }
+  await expandResidentPanel(win)
+}
+
 const upgradeFrom = process.env.NOMI_PER_SHOT_PROFILE_FROM
 const previous = upgradeFrom ? JSON.parse(fs.readFileSync(upgradeFrom, 'utf8')) : null
 const walk = await createRuntimeWalk(previous ? 'spend-per-shot-old-profile' : 'spend-per-shot', {
@@ -315,16 +334,17 @@ try {
     await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'zh-CN'))
     await win.reload()
   }
-  await walk.newProject()
+  const project = await walk.newProject()
   await openCanvas(win)
   const noShare = win.getByRole('button', { name: '不分享', exact: true }).first()
   if (await noShare.isVisible().catch(() => false)) await noShare.click()
   // 只跑一种语言：NOMI_PER_SHOT_LOCALES=en（重拍某一种时用）；缺省中英都走。
   const locales = (process.env.NOMI_PER_SHOT_LOCALES || 'zh,en').split(',').map((value) => value.trim()).filter(Boolean)
   for (const locale of locales) {
-    // 换语言只重载渲染层：画布还停在生成工作区（工作区的入口按钮叫什么随语言变，不再去点它）。
+    // 换语言只重载渲染层；落回项目库就从项目库重开同一个项目（`backToCanvas`，按钮按这一种语言的字找）。
     await win.evaluate((value) => localStorage.setItem('nomi:locale:v1', value), locale === 'zh' ? 'zh-CN' : 'en')
     await win.reload()
+    await backToCanvas(win, project, locale)
     await runLocale(walk, win, locale)
   }
   console.log(`[per-shot] rows ${Object.entries(rows).map(([id, entry]) => `${id} ${entry.ok ? 'PASS' : 'FAIL'}`).join(' · ')}`)
