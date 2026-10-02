@@ -97,8 +97,8 @@ if hit_block delivery '合并|merge|收据|verify-merged|preflight|开 ?PR|交�
 fi
 
 cat <<'EOF'
-【动手前 · 到这三刻必停（详解 CLAUDE.md、docs/engineering-rules.md）】
-① 动手前：这段是我们独有的吗？不是 → 先找现成的接入(P0)｜重要改动先 grill：一轮批量问、每题带默认、连带面单独成题（纯 bug 修复不问）｜碰花钱/长跑/可打断/新界面先写设计卡 docs/engineering/design-card.md(P5)｜取舍给对比表
+【动手前 · 到这三刻必停（详解 CLAUDE.md）】
+① 动手前：这段是我们独有的吗？不是 → 先找现成的接入(P0)｜重要改动先 grill：一轮批量问、每题带默认、连带面单独成题（纯 bug 修复不问）｜碰花钱/长跑/可打断/新界面先写设计卡 design-card(P5)
 ② 报完成前：全绿≠完成(P3)。截图要自己亲眼 Read 过、来自用户将跑的那个构建；没闭环别说「做完」(R13)
 ③ push 前：pnpm run gates 全过(R11/R22)
 贯穿：修根因不修症状(P2)｜加新必删旧(P1)｜同一处第三次修 → 先选补/重写/删(RW)
