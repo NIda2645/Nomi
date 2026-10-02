@@ -134,6 +134,14 @@ for (const locale of ['zh-CN', 'en']) {
   const expressions = pageOf(locale, SAMPLE.expressions)
   expect(count(expressions, /<button class="copy-button"/g) === count(expressions, /<article class="effect-entry"/g), `${tag} every expression preset can be copied`)
 
+  // ---- 窄屏版式（真截图里看出来的三个坑）：英文导航最宽、约 820px 才放得下，菜单按钮得在 860px 以下才出现，
+  //      否则平板竖屏上「Get started」折两行、语言按钮被挤成竖条；档案卡里的长句（声音一行）和合集卡上不带空格的仓库名要能换行 ----
+  const css = [...model.matchAll(/<style>([\s\S]*?)<\/style>/g)].map((match) => match[1]).join('\n')
+  const menuBreakpoint = Number(/@media \(max-width: (\d+)px\) \{\s*\.menu-toggle \{ display: inline-flex; \}/.exec(css)?.[1])
+  expect(menuBreakpoint >= 860, `${tag} the menu button shows from 860px down so the longest (English) top bar never wraps (found ${Number.isFinite(menuBreakpoint) ? `${menuBreakpoint}px` : 'no menu breakpoint'})`)
+  expect(!/\.spec-rows dd span \{[^}]*white-space:\s*nowrap/.test(css), `${tag} capability card values may wrap, so a long sentence stays inside the card on a phone`)
+  expect(/\.card-text \{[^}]*overflow-wrap:\s*anywhere/.test(css), `${tag} card text breaks inside long unbroken names such as a repository path`)
+
   // ---- 页脚：三个库、功能、上手的入口都在 ----
   const footer = /<nav class="footer-links"[\s\S]*?<\/nav>/.exec(model)?.[0] ?? ''
   for (const route of ['/features', '/models', '/prompts', '/skills', '/quickstart']) expect(footer.includes(`href="${routeOf(locale, route)}"`), `${tag} footer links ${route}`)

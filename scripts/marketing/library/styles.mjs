@@ -37,7 +37,7 @@ a.card-frame:hover h3 { color: var(--accent); }
 .card-body h3 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.35; }
 html[lang="en"] .card-body h3 { font-family: var(--font-ui); font-weight: 600; }
 .card-subtitle { margin: 0; font-size: 13px; color: var(--ink-4); }
-.card-text { margin: 0; font-size: 14px; color: var(--ink-3); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.card-text { margin: 0; font-size: 14px; color: var(--ink-3); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
 .chips { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
 .chips li { font-family: var(--font-ui); font-size: 12px; line-height: 1.5; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
 .card-meta { margin: auto 0 0; padding-top: 8px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); }
@@ -56,7 +56,7 @@ html[lang="en"] .card-body h3 { font-family: var(--font-ui); font-weight: 600; }
 .spec-rows div:first-child { border-top: 0; }
 .spec-rows dt { font-size: 14px; color: var(--ink-3); }
 .spec-rows dd { margin: 0; display: flex; flex-wrap: wrap; row-gap: 2px; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
-.spec-rows dd span { white-space: nowrap; }
+.spec-rows dd span { max-width: 100%; }
 .spec-rows dd span:not(:last-child)::after { content: "·"; margin: 0 7px; color: var(--ink-4); }
 .spec-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-4); line-height: 1.6; }
 
