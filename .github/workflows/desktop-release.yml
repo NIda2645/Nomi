@@ -17,6 +17,7 @@ permissions:
 jobs:
   promote:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: production-release
     env:
       RC_RUN_ID: ${{ inputs.rc_run_id }}

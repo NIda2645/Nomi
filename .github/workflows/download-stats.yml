@@ -27,6 +27,7 @@ concurrency:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # 源码 checkout：只为拿到 scripts/stats-downloads.mjs，这棵树全程只读。
       - uses: actions/checkout@v4
