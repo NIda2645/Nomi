@@ -118,6 +118,8 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
   const [busy, setBusy] = React.useState(false)
   // 「生成剩下 N 张」这一次：ref 给动作读（× 在跑的中途要读到最新的），state 给卡画进度。
   const batchRef = React.useRef<BatchRun | null>(null)
+  // 「生成这张 / 去掉这张」在路上时点了 × 的那一次出价（operationId）：那一下随后的失败不再弹提示，结局由 × 那一句说。
+  const stoppedDuringAction = React.useRef<string | null>(null)
   const [batchView, setBatchView] = React.useState<Readonly<{ operationId: string; total: number; stopping: boolean }> | null>(null)
   const [disagreements, setDisagreements] = React.useState<readonly SpendPriceDisagreement[]>([])
   const [modelOptions, setModelOptions] = React.useState<readonly ModelOption[]>([])
@@ -348,6 +350,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     // （第 11 条：2026-09-30 用户那张卡改不了，却被告诉「改一下再按」，按了两次同一句话）。
     const failed = (reason: unknown, outcome: SpendActionOutcome | undefined): void => {
       logRendererWarn('spend-confirm-refused', { code: outcome?.message ?? outcome?.code, failure: outcome?.failure }, reason)
+      if (stoppedDuringAction.current === target.operationId) return
       toast(t(spendActionFailureCopy(outcome, writeAccess.canWrite?.() === true)), 'error')
     }
     void run(target)
@@ -357,6 +360,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       })
       .catch((error: unknown) => failed(error, undefined))
       .finally(() => {
+        if (stoppedDuringAction.current === target.operationId) stoppedDuringAction.current = null
         setBusy(false)
         void refresh()
       })
@@ -551,7 +555,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
     // 2026-10-02（付费卡①，真 App 实测）：× 以前和别的动作一样走 `act`，卡上有一下在路上（`busy`）就被吞掉——
     // 「生成剩下 6 张」要走半分钟，这半分钟里点 × 一下都进不去，6 张全发。× 是停下，不排队：
     //   · 「生成剩下」在跑：记下「要停」。还在落候选就由那一段自己停下、收回出价；已经交给宿主就立刻把 × 送过去，
-    //     宿主在两张之间看见卡关了就停（它认这一叠出过的每一版报价，见 `appIntegrationSpendConfirm.runningBatches`）；
+    //     宿主在两张之间看见卡关了就停（它认这一次出价里被卡上动作换掉过的每一版报价，见 `appIntegrationSpendConfirm.noteReplacing`）；
     //   · 别的一下在路上（「生成这张」「去掉这张」）：照样立刻送过去——还没批下来的那一镜就不批了，批下来的照常生成；
     //   · 卡上没有动作在路上：和以前一样。
     discard: () => {
@@ -569,9 +573,16 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
         return
       }
       if (busy && target) {
+        // 宿主等手上那一镜落定才回（它可能已经批下、照样花钱），回来的是最终批下几张、没发几张——照实说（10-02 搞破坏线 X2）。
+        stoppedDuringAction.current = target.operationId
         void productionRunApi.discardSpend(target.projectId, target.operationId, target.quoteId)
           .then((result) => {
-            if (!result.ok && result.message !== 'no pending generation to discard') toast(t(spendActionFailureCopy(result, writeAccess.canWrite?.() === true)), 'error')
+            if (result.ok && result.batchStopped) {
+              const { sent, notSent } = result.batchStopped
+              useToastStore.getState().push({ message: t(spendBatchStoppedKey(target.shots), { sent, count: notSent, total: sent + notSent }), type: 'info', ttl: 8000, reason: 'spend-batch-stopped' })
+            } else if (!result.ok && result.message !== 'no pending generation to discard') {
+              toast(t(spendActionFailureCopy(result, writeAccess.canWrite?.() === true)), 'error')
+            }
           })
           .catch((error: unknown) => logRendererWarn('spend-confirm-refused', { code: 'discard-ipc' }, error))
           .finally(() => { void refresh() })

@@ -16,6 +16,7 @@ import type { ApprovalReceiptAuthority, HumanApprovalReceiptV1 } from "./approva
 import { decideGenerationSpend, generationChallengeTokenOf } from "./generationSpendDecision";
 import { spendDecidedByPolicy, type ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 import { beginPolicySpendDecision } from "./policySpendDecision";
+import { cardActionsSettled } from "./spendCardActionQueue";
 import type { GenerationInvocationContext } from "../shared/agentCapabilities/generationInvocationContext";
 
 /**
@@ -566,6 +567,9 @@ export function createPiGenerationTransportAdapter(
     },
     async readPresentationOutcome(operationIdToRead) {
       if (disposed) return undefined;
+      // 卡可能在一镜批到一半时关掉（×、在卡开着时打字）：那一镜照样批下、花钱。等卡上的动作落定再读，
+      // 回执说的才是宿主最终批下的那一份（`spendCardActionQueue`；10-02 搞破坏线 X2 / X4）。
+      await cardActionsSettled(binding.projectId, operationIdToRead);
       const signal = new AbortController().signal;
       try {
         const read = await plan("read", { operationId: operationIdToRead }, await lease(signal), signal) as { operation?: { presentationOutcome?: GeneratePresentationOutcome } };

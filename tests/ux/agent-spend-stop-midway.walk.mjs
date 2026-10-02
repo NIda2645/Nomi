@@ -5,7 +5,10 @@
 //   ① 正在发出：点「生成剩下 12 张」，卡上标题写「正在发出 k/12 张」、动作行只写怎么停，不摆「去掉这张 / 生成这张 /
 //      生成剩下」——卡不能装成还在等人点。拍这一画面给验收页，让它跑完（十二张各发一次）。
 //   ② 中途 ×：点「生成剩下 6 张」，宿主批下第 1 张时把鼠标落在 × 上点下去（人的点击走的就是这条路：先进主进程、再送进窗口）。
-//      卡关掉时照实说「发出了 K 张，剩下 N−K 张没发」；宿主只批下了这 K 张，供应商只收到这 K 张；回执记「你关掉了卡」。
+//      卡关掉时照实说「发出了 K 张，剩下 N−K 张没发」；宿主只批下了这 K 张，供应商只收到这 K 张；回执记「你关掉了卡」，
+//      回执里「在生成」的正好是供应商收到的那 K 镜（10-02 搞破坏线 X4：回执曾少算一张）。
+//   ③ 单张：点「生成这张」紧接着点 ×（10-02 搞破坏线 X2）。回执里在生成的 = 宿主批下的 = 供应商收到的；
+//      × 落在那一下还在路上时，卡关掉时那一句说的张数也正是这个数。
 //
 // 中英各开一个新项目：宿主批一张的时间随项目里的 Run 变多而变长（主进程那两段原有的慢路径，另开一条线修），
 // 两种语言挤在一个项目里，英文那一半会被拖到超时。
@@ -39,6 +42,46 @@ async function authorizedShots(win, projectId, operationId) {
     const run = read?.run ?? read
     return new Set((run?.jobs ?? []).map((job) => job.metadata?.shotId).filter(Boolean)).size
   }, { pid: projectId, oid: operationId })
+}
+
+/**
+ * Agent 收到的回执里「在生成」的那几镜（`userDecision.shots.generating`），以及回执自己记着的每一镜的提示词。
+ * 回执原文是一段 JSON、后面跟着给 Agent 看的那几句话（`User sees: …`）。
+ */
+function receiptDecision(receipt) {
+  const json = JSON.parse(receipt.slice(0, receipt.indexOf('\nUser sees:')))
+  const prompts = new Map((json.operation?.shots ?? []).map((shot) => [shot.shotId, shot.candidate?.prompt]))
+  return { closedBy: json.userDecision?.shots?.closedBy, generating: [...(json.userDecision?.shots?.generating ?? [])], prompts }
+}
+
+/**
+ * 停下之后那一句是一条会自己消失的提示（原因 `spend-batch-stopped`）：点之前先挂一个观察者，只看这一条提示，
+ * 出现过就记下原话（读的时候它可能已经消失了）。上一轮挂的那个先摘掉。
+ */
+async function watchStopNotice(win) {
+  await win.evaluate((selector) => {
+    window.__spendBatchStoppedObserver?.disconnect()
+    window.__spendBatchStopped = null
+    window.__spendBatchStoppedObserver = new MutationObserver(() => {
+      const text = document.querySelector(selector)?.textContent?.trim()
+      if (text && !window.__spendBatchStopped) window.__spendBatchStopped = text
+    })
+    window.__spendBatchStoppedObserver.observe(document.body, { childList: true, subtree: true, characterData: true })
+  }, STOP_NOTICE)
+}
+
+/** 「发出了 K 张，剩下 M 张没发」→ { sent, notSent }。 */
+function parseStopped(locale, said) {
+  const [, sentText, notSentText, lastOne] = COPY[locale].stopped.exec(said ?? '') ?? []
+  return { sent: Number(sentText), notSent: lastOne ? 1 : Number(notSentText) }
+}
+
+/** 供应商这一叠收到的是哪几镜：按每一笔请求的提示词认回卡上的那一镜（认不出的原样留着，断言会把它摆出来）。 */
+function vendorShots(walk, imagesBefore, prompts) {
+  return walk.fixture.images.slice(imagesBefore).map((record) => {
+    const sentPrompt = String(record.body?.prompt ?? '')
+    return [...prompts].find(([, prompt]) => prompt && sentPrompt.includes(prompt))?.[0] ?? `?${sentPrompt}`
+  })
 }
 
 /**
@@ -84,15 +127,7 @@ async function stopRound(walk, win, projectId, locale) {
       .map((control) => [control, element.querySelectorAll(`[data-v4-control="${control}"]`).length])))
     expect(controls, `${locale}：正在发出时不摆「生成这张 / 去掉这张 / 生成剩下」，只留 ×（它就是停下）`)
       .toEqual({ confirm: 0, alternate: 0, batch: 0, 'slot-dismiss': 1 })
-    // 停下之后那一句是一条会自己消失的提示（原因 `spend-batch-stopped`）：点之前先挂一个观察者，只看这一条提示，
-    // 出现过就记下原话（读的时候它可能已经消失了）。
-    await win.evaluate((selector) => {
-      window.__spendBatchStopped = null
-      new MutationObserver(() => {
-        const text = document.querySelector(selector)?.textContent?.trim()
-        if (text && !window.__spendBatchStopped) window.__spendBatchStopped = text
-      }).observe(document.body, { childList: true, subtree: true, characterData: true })
-    }, STOP_NOTICE)
+    await watchStopNotice(win)
     // 宿主批下第 1 张的那一刻，鼠标落在 × 此刻的位置上点下去——不走「定位 → 等可点 → 滚动 → 点」那几个来回：
     // 每个来回都要等主进程空出来，等完这一叠早跑完了。
     let dismissAt
@@ -116,9 +151,7 @@ async function stopRound(walk, win, projectId, locale) {
     walk.fixture.holdSubmits(false)
   }
   const said = await win.evaluate(() => window.__spendBatchStopped)
-  const [, sentText, notSentText, lastOne] = COPY[locale].stopped.exec(said) ?? []
-  const sent = Number(sentText)
-  const notSent = lastOne ? 1 : Number(notSentText)
+  const { sent, notSent } = parseStopped(locale, said)
   expect(sent + notSent, `${locale}：发了的 + 没发的 = 6（${said}）`).toBe(6)
   expect(sent, `${locale}：× 真的停下了（不是 6 张全发）`).toBeLessThan(6)
   await recorded(turnDone.received, `${locale}: generate returns once the card is closed by ×`)
@@ -127,10 +160,63 @@ async function stopRound(walk, win, projectId, locale) {
   expect(await authorizedShots(win, projectId, operationId), `${locale}：宿主只批下了 ${sent} 张`).toBe(sent)
   await expect.poll(() => walk.fixture.images.length - imagesBefore,
     { message: `${locale}：供应商只收到批下的 ${sent} 张`, timeout: stationTimeout({ operations: 6 }) }).toBe(sent)
+  // 回执、提示、供应商三处说的是同一份（10-02 搞破坏线 X4：提示和供应商都是 3 张，回执只算了 2 张在生成）：
+  // 回执里「在生成」的那几镜，正好是供应商收到的那几镜，张数正好是提示说的「发出了 K 张」。
+  const decision = receiptDecision(receipt())
+  expect(decision.generating, `${locale}：回执里在生成的张数 = 提示说发出的张数`).toHaveLength(sent)
+  expect(vendorShots(walk, imagesBefore, decision.prompts).sort(), `${locale}：回执里在生成的那几镜，正好是供应商收到的那几镜`)
+    .toEqual([...decision.generating].sort())
   // 批下的几张都落定（出图或失败）再往下走：落图时主进程很忙，下一步的点击要等它空出来。
   await expect.poll(() => settledJobs(win, projectId, operationId), { message: `${locale}：批下的 ${sent} 张都落定`, timeout: stationTimeout({ operations: 12 }) }).toBe(sent)
   walk.report.stopped = { ...(walk.report.stopped ?? {}), [locale]: { sent, notSent, said } }
   return sent
+}
+
+/**
+ * ③ 单张「生成这张」刚点下去就点 ×（10-02 搞破坏线 X2：那一镜照样批下、发出、出图，回执却写「没生成、没花钱」，也没有一句提示）。
+ * 两下都用鼠标落在按钮此刻的位置上（人的点击走的就是这条路）。× 落在哪一刻由主进程忙不忙决定，所以只断言不随它变的：
+ * 回执里在生成的那几镜 = 宿主批下的 = 供应商收到的；× 落在那一下还在路上时，卡关掉时那一句说的张数也正是这个数。
+ */
+async function singleStopRound(walk, win, projectId, locale) {
+  const imagesBefore = walk.fixture.images.length
+  const { card, operationId, turnDone, receipt } = await present(walk, win, 3, locale)
+  await watchStopNotice(win)
+  const at = await card.evaluate((element) => Object.fromEntries(['confirm', 'slot-dismiss'].map((control) => {
+    const box = element.querySelector(`[data-v4-control="${control}"]`)?.getBoundingClientRect()
+    return [control, box ? { x: box.left + box.width / 2, y: box.top + box.height / 2 } : null]
+  })))
+  expect(at.confirm && at['slot-dismiss'], `${locale}：卡上「生成这张」和 × 都在`).toBeTruthy()
+  await win.mouse.click(at.confirm.x, at.confirm.y)
+  await win.mouse.click(at['slot-dismiss'].x, at['slot-dismiss'].y)
+  // × 落在那一下还在路上时，那一句提示和 Agent 的回执差不多同时到：一边等回合说完，一边看提示，它一出来就拍（只留 8 秒）。
+  let turnOver = false
+  void turnDone.received.then(() => { turnOver = true }, () => { turnOver = true })
+  await expect.poll(async () => Boolean(await win.evaluate(() => window.__spendBatchStopped)) || turnOver,
+    { message: `${locale}：提示出来了，或这一轮说完了`, timeout: stationTimeout({ operations: 6 }) }).toBe(true)
+  if (await win.evaluate(() => window.__spendBatchStopped)) await quickShot(walk, win, `${locale}-single-stopped`)
+  await recorded(turnDone.received, `${locale}: generate returns once × closes the card (single)`, stationTimeout({ operations: 6 }))
+  // 等宿主那头落定：批下的都发到了供应商、都出了图（或失败）。
+  const settled = async () => {
+    const authorized = await authorizedShots(win, projectId, operationId)
+    return authorized === walk.fixture.images.length - imagesBefore && authorized === await settledJobs(win, projectId, operationId)
+  }
+  await expect.poll(settled, { message: `${locale}：批下的都发到了、都落定`, timeout: stationTimeout({ operations: 6 }) }).toBe(true)
+  const said = await win.evaluate(() => window.__spendBatchStopped)
+  if (said && !walk.report.shots?.[`${locale}-single-stopped`]) await quickShot(walk, win, `${locale}-single-stopped`)
+  const decision = receiptDecision(receipt())
+  expect(decision.closedBy, `${locale}：回执记成用户关掉了卡`).toBe('user_closed')
+  expect(decision.generating, `${locale}：回执里在生成的张数 = 宿主批下的张数`).toHaveLength(await authorizedShots(win, projectId, operationId))
+  expect(vendorShots(walk, imagesBefore, decision.prompts).sort(), `${locale}：回执里在生成的那几镜，正好是供应商收到的那几镜`)
+    .toEqual([...decision.generating].sort())
+  if (said) {
+    const { sent, notSent } = parseStopped(locale, said)
+    expect({ sent, notSent }, `${locale}：卡关掉时那一句照宿主最终批下的说（${said}）`).toEqual({ sent: decision.generating.length, notSent: 3 - decision.generating.length })
+  }
+  walk.report.singleStopped = { ...(walk.report.singleStopped ?? {}), [locale]: {
+    generating: decision.generating, vendor: vendorShots(walk, imagesBefore, decision.prompts), said: said ?? null,
+    landed: said ? 'while-confirming' : 'after-confirm-returned',
+  } }
+  return decision.generating.length
 }
 
 const walk = await createRuntimeWalk('spend-stop-midway', { generationProvider: 'apimart' })
@@ -140,6 +226,7 @@ try {
   const zhProject = await walk.newProject()
   await openCanvas(win)
   const sentZh = await sendingRound(walk, win, zhProject.projectId, 'zh') + await stopRound(walk, win, zhProject.projectId, 'zh')
+    + await singleStopRound(walk, win, zhProject.projectId, 'zh')
 
   // 英文：回项目库、换成英文，在英文的项目库里新开一个项目（像英文用户一样点「New blank project」）。
   await clickOrFail(win.getByRole('button', { name: '返回项目库' }), '返回项目库', { timeout: stationTimeout({ operations: 4 }) })
@@ -158,13 +245,16 @@ try {
   await expandResidentPanel(win)
   await expect(win.locator(`${CANVAS_PANEL} [data-v4-control="input"]`), 'en：Agent 面板的输入框在').toBeVisible({ timeout: stationTimeout({ operations: 4 }) })
   const sentEn = await sendingRound(walk, win, enProjectId, 'en') + await stopRound(walk, win, enProjectId, 'en')
+    + await singleStopRound(walk, win, enProjectId, 'en')
 
-  expect(walk.fixture.images.length, '供应商一共收到的 = 两叠正在发出的各十二张 + 两次中途 × 之前批下的那几张').toBe(sentZh + sentEn)
+  expect(walk.fixture.images.length, '供应商一共收到的 = 两叠正在发出的各十二张 + 中途 × 之前批下的那几张（「生成剩下」和单张各中英一次）').toBe(sentZh + sentEn)
   walk.report.verified = [
     'card-shows-progress-not-per-shot-actions-while-sending',
     'x-stops-generate-remaining-midway-only-approved-shots-sent',
     'stop-notice-says-sent-and-not-sent',
     'receipt-records-user-closed',
+    'receipt-generating-equals-vendor-received',
+    'single-confirm-then-x-receipt-and-notice-follow-host-final-set',
   ]
 } catch (error) {
   failure = error

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import http from "node:http";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
+import { waitForProduction } from "../productionRun/productionRunTestHelpers";
 import { PROJECT_ID, OPERATION_ID, lease, now, candidate, startLoopbackVendor, harness, buildActions, draft, resetSpendFixture } from "./agentPanelSpendConfirmTestUtils";
 
 afterEach(resetSpendFixture);
@@ -134,11 +135,16 @@ describe("S08: pending spend decisions have one durable winner", () => {
           const quote = withWindow.listPendingSpend(PROJECT_ID)[0];
           const confirming = withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: quote.quoteId });
           await latch.entered;
-          const changed = action === "discard"
-            ? await withWindow.discardPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: quote.quoteId })
-            : await withWindow.revisePendingSpend({ quoteId: quote.quoteId, projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { parameters: { size: "1536x1024" } } });
+          const changing = action === "discard"
+            ? withWindow.discardPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: quote.quoteId })
+            : withWindow.revisePendingSpend({ quoteId: quote.quoteId, projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { parameters: { size: "1536x1024" } } });
+          // × 收回出价之后要等手上那一下落定才回（结局照宿主最终批下的那一份说，`spendCardActionQueue`）：
+          // 放开那一下之前只等这一改真的落下了——已经回了，或者卡已经收走了。
+          let answered = false;
+          void changing.finally(() => { answered = true; });
+          await waitForProduction(() => answered || withWindow.listPendingSpend(PROJECT_ID).length === 0);
           latch.release();
-          const confirmed = await confirming;
+          const [changed, confirmed] = await Promise.all([changing, confirming]);
           expect(changed.ok).toBe(phase === "beforeAuthorize");
           expect(confirmed.ok).toBe(phase === "afterAuthorize");
           expect(submits).toHaveLength(phase === "afterAuthorize" ? 1 : 0);

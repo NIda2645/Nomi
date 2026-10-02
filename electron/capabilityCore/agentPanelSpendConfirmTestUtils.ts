@@ -196,6 +196,11 @@ function harness() {
 }
 
 function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, submits: string[], hooks: {
+  /**
+   * 这一镜过完卡上的核对、还没封印开门的那一刻（`confirmOneShot` 里 `requestGenerationGate` 之前）。
+   * 真 App 里主进程忙，× 晚到几秒就落在这儿：收回出价时还没有门可撤，这一镜随后照样封印、批下、发出（10-02 搞破坏线 X2 / X4）。
+   */
+  beforeGate?: () => Promise<void>;
   beforeAuthorize?: () => Promise<void>;
   afterAuthorize?: () => Promise<void>;
   /**
@@ -298,7 +303,10 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     runs: { read: (projectId, runId) => repository.read(projectId, runId), list: (projectId) => repository.list(projectId) },
     operations,
     planning: handler,
-    requestGenerationGate: authority.requestGenerationGate,
+    requestGenerationGate: async input => {
+      await hooks.beforeGate?.();
+      return authority.requestGenerationGate(input);
+    },
     authorizeGeneration: async input => {
       await hooks.beforeAuthorize?.();
       const result = await authority.authorizeGeneration(input);
