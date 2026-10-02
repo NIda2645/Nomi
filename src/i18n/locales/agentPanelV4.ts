@@ -166,7 +166,6 @@ export const zhAgentPanelV4 = {
   // 实验室夹具：2026-09-06 打包版那次「重拆 10 镜」的六连失败
   fixtureShotCard: '创建或修改镜头卡',
   fixtureShotCardReason: 'nodes：必须是数组（收到 字符串）',
-  fixtureShotCardInput: '{ "operation": "create_canvas_nodes", "nodes": "[{…}]" }',
   fixtureProcessOne: '我看到参数需要是数组而不是字符串，让我修正。',
   fixtureProcessTwo: '我把 JSON 字符串化两次了，这次直接传数组。',
 
@@ -282,7 +281,6 @@ export const zhAgentPanelV4 = {
   fixtureThinkingMeta: '4s · esc 打断',
   fixtureReadTimeline: '读取时间轴',
   fixtureReadTimelineSummary: '3 段 · 9.0s',
-  fixtureReadTimelineInput: '{ "scope": "timeline", "range": "all" }',
   fixtureReadTimelineOutput: 'clips: 3 · duration: 9.0s · selected: clip-2 (0:03–0:06)',
   fixtureReadDoc: '读取文稿',
   fixtureReadDocSummary: '3 段 · 412 字',
@@ -646,7 +644,6 @@ export const enAgentPanelV4 = {
   processRetryingDetail: 'Those arguments did not fit — trying again',
   fixtureShotCard: 'Create or edit shot cards',
   fixtureShotCardReason: 'nodes: expected array, received string',
-  fixtureShotCardInput: '{ "operation": "create_canvas_nodes", "nodes": "[{…}]" }',
   fixtureProcessOne: 'I see the parameter needs to be an array, not a string — let me fix that.',
   fixtureProcessTwo: 'I serialized the JSON twice; sending the array directly this time.',
 
@@ -747,7 +744,6 @@ export const enAgentPanelV4 = {
   fixtureThinkingMeta: '4s · esc to interrupt',
   fixtureReadTimeline: 'Read timeline',
   fixtureReadTimelineSummary: '3 clips · 9.0s',
-  fixtureReadTimelineInput: '{ "scope": "timeline", "range": "all" }',
   fixtureReadTimelineOutput: 'clips: 3 · duration: 9.0s · selected: clip-2 (0:03–0:06)',
   fixtureReadDoc: 'Read document',
   fixtureReadDocSummary: '3 paragraphs · 412 characters',

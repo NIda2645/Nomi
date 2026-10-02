@@ -662,7 +662,7 @@ describe('laneViewModel · 工具卡与失败行不摆原始内容', () => {
 
   it('reported case: 入参不进展开体（带 op id 与供应商路由键）', () => {
     const { receipt } = run('Done.')
-    expect(receipt.input).toBeUndefined()
+    expect((receipt as Record<string, unknown>).input).toBeUndefined()
     expect(JSON.stringify(receipt)).not.toContain(OP)
     expect(JSON.stringify(receipt)).not.toContain('apimart/')
   })

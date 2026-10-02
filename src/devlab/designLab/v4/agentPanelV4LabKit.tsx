@@ -102,12 +102,10 @@ function buildFixtures(t: TFunction) {
     approvalRequested: readTimeline({ status: 'approval-requested', summary: undefined, trailing: undefined }),
     approvalResponded: readTimeline({ status: 'approval-responded', summary: undefined, trailing: undefined }),
     done: readTimeline({
-      input: t('agentPanelV4.fixtureReadTimelineInput'),
       output: t('agentPanelV4.fixtureReadTimelineOutput'),
     }),
     expanded: readTimeline({
       expanded: true,
-      input: t('agentPanelV4.fixtureReadTimelineInput'),
       output: t('agentPanelV4.fixtureReadTimelineOutput'),
     }),
     denied: readTimeline({ status: 'output-denied', summary: undefined, trailing: undefined }),
@@ -157,7 +155,6 @@ function buildFixtures(t: TFunction) {
       status: 'output-available',
       summary: t('agentPanelV4.fixtureReadDocSummary'),
       trailing: t('agentPanelV4.fixtureElapsedRead'),
-      input: t('agentPanelV4.fixtureReadTimelineInput'),
       output: t('agentPanelV4.fixtureReadTimelineOutput'),
     } satisfies ToolReceipt,
     draftShots: {
@@ -567,7 +564,6 @@ function buildFixtures(t: TFunction) {
         status: 'output-error' as const,
         summary: t('agentPanelV4.fixtureShotCardReason'),
         trailing: t('agentPanelV4.fixtureElapsedFast'),
-        input: t('agentPanelV4.fixtureShotCardInput'),
         output: t('agentPanelV4.fixtureShotCardReason'),
       })),
     },
