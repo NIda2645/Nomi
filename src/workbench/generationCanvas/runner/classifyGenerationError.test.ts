@@ -529,16 +529,35 @@ describe('动作表：每类主 / 次动作都写在表里，改一类不许带�
     'image-route-disabled': true, 'account-gate': true, 'content-policy': true, 'input-image-blocked': true,
     'asset-upload-failed': true, 'asset-too-large': true, 'asset-invalid': true, 'outbound-blocked': true,
     'outbound-blocked-submit': true, 'outbound-blocked-credential-origin': true, 'credential-redirect': true, server: true, input: true,
-    'output-truncated': true, 'output-unreadable': true, unknown: true,
+    'output-truncated': true, 'output-unreadable': true, 'submission-unknown': true, unknown: true,
   }
 
   it('已下线、读不出来以外的每一类，次动作都和改表前的规则一样（主动作是重试 / 一键改对 → 换个模型；其余 → 重试）', () => {
     for (const kind of Object.keys(EVERY_KIND) as GenerationErrorKind[]) {
       const { primary, secondary } = narrateGenerationErrorActions(kind)
       const before = primary === 'retry' || primary === 'fix-model-kind' ? 'switch-model' : 'retry'
-      // 已下线、读不出来：这两类不给第二个动作（重试必再撞同一张卡 / 换供应商不是解法）。
-      expect({ kind, secondary }).toEqual({ kind, secondary: kind === 'model-retired' || kind === 'output-unreadable' ? null : before })
+      // 已下线、读不出来：这两类不给第二个动作（重试必再撞同一张卡 / 换供应商不是解法）；
+      // 结果未知：不给重试（可能重复提交），只指路去核对。
+      expect({ kind, secondary }).toEqual({ kind, secondary: kind === 'model-retired' || kind === 'output-unreadable' || kind === 'submission-unknown' ? null : before })
     }
+  })
+})
+
+describe('付费提交结果未知（连接在请求发出后被重置）', () => {
+  const raw = tagNomiError('submission-unknown', 'apimart image submission failed: TypeError: fetch failed ← SocketError UND_ERR_SOCKET: other side closed')
+
+  it('不被归成「连不上服务商 / 请求没发到」，也不给重试', () => {
+    const report = classifyGenerationError(raw)
+    expect(report.kind).toBe('submission-unknown')
+    expect(report.reason).not.toContain('连不上')
+    expect(report.hint).not.toContain('没发到')
+    expect(report.primary).toBe('reconcile')
+    expect(report.secondary).toBeNull()
+    expect(report.hint).toContain('先到服务商后台')
+  })
+
+  it('同样的原始网络报错不带标记时仍按网络类处理（标记才是「未知」的唯一出处）', () => {
+    expect(classifyGenerationError('fetch failed UND_ERR_SOCKET').kind).toBe('network')
   })
 })
 

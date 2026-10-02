@@ -1,0 +1,180 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-02-paid-submit-no-blind-resend",
+  "problem_type": "付费提交把「连接被重置」当成「没写出去」盲目重发，不支持幂等的供应商会收到同一镜两笔",
+  "symptom": "真应用复现（breaker E9）：点了 3 张图，APIMart 夹具先后收到 1、1、2、3 笔；D9：连接被掐断后画布写「请求没发到服务商」，但供应商其实已经收下。已随 v0.22.0–0.22.5 发布。",
+  "direct_cause": "electron/outboundDispatchEvidence.ts 的 provesNotWritten 把 UND_ERR_SOCKET 一律判成「没写出去」，经 productionGenerationSubmission.ts:498 变成 SubmissionNotDispatchedError，再由 submissionOutbox.ts 的 submitOnce 自动重发一次；而 APIMart 档案 submitIdempotency=false，submitWithContext 还把 idempotencyKey 丢了，重发就是第二张单。节点文案又按最后一次失败（ECONNREFUSED）选「没发到」。",
+  "class_root": "「这次出站有没有写出去」的判据用一个不成立的假设补洞：把「复用的 keep-alive 连接被对面关了」（没写出去）和「请求已写出去、响应前连接被重置」（供应商可能已收下）这两种抛出同一个 UND_ERR_SOCKET 的情形当成一种。第一种本来就可以从构造上消灭（付费提交不复用连接），却靠猜去区分。再加上重发规则只看判据、不看供应商是否真支持幂等，以及最终状态只看最后一次尝试。",
+  "migration": "付费提交（apimartGenerationProvider.send 与 vendorHttp.requestVendor 的非 GET 请求）每次新建 dispatcher、用完关闭，「旧连接」不再可能出现；判据只认连上之前的失败（DNS / connect 系统调用 / 连接超时 / TLS 握手前），UND_ERR_SOCKET、ECONNRESET、头体超时、发出后 abort 一律是结果未知；outbox 的重发规则改为：确定没发出去最多重试 1 次，结果未知仅当供应商档案声明 submitIdempotency 且错误是连接层错误时才用同一个键重发 1 次；最终状态看所有尝试里最不确定的一次；结果未知的错误消息带 NOMI_ERR::submission-unknown:: 机器码，渲染层说「可能已被服务商收下、结果没法确认」，不再归成「连不上服务商」。旧的 UND_ERR_SOCKET 判据分支同 diff 删除。",
+  "affected_population": [
+    "所有经 ProductionRun 提交的付费生成（多镜批次与单镜），在连接被重置 / 被掐断时：不支持幂等的供应商（目前所有生产供应商，APIMart 明确 false）会重复收到同一镜",
+    "画布节点与任务面板对这类失败的文案：说成「没发到服务商」，诱导用户放心重试",
+    "v0.22.0–0.22.5 已发布版本"
+  ],
+  "scope_paths": [
+    "electron/outboundDispatchEvidence.ts",
+    "electron/productionRun/",
+    "electron/capabilityCore/apimartGenerationProvider.ts",
+    "electron/vendor/vendorHttp.ts",
+    "electron/systemProxy.ts"
+  ],
+  "entry_points": [
+    "electron/outboundDispatchEvidence.ts provesNotWritten（判据，原 UND_ERR_SOCKET 分支）",
+    "electron/productionRun/submissionOutbox.ts submitOnce（唯一的自动重发点）",
+    "electron/productionRun/productionGenerationSubmission.ts outboundRequestWasNeverWritten（供应商异常进入提交层的唯一收口）",
+    "electron/capabilityCore/apimartGenerationProvider.ts send（目录供应商的付费 POST，走共享连接池）",
+    "electron/vendor/vendorHttp.ts requestVendor（旧通道的付费 POST，走共享连接池）"
+  ],
+  "invariants": [
+    "只有连上之前的失败才算「确定没写出去」，且最多自动重试 1 次",
+    "连上之后的任何失败（连接被重置、对面关闭、超时、发出后 abort）都是「结果未知」，不自动重发，除非供应商档案声明 submitIdempotency 且错误是连接层错误，此时用同一个幂等键最多重发 1 次",
+    "最终状态看所有尝试里最不确定的一次：只要有一次可能已被收下，就不能落「没发出去」",
+    "付费 POST 每次用全新连接，不与别的请求共用连接池"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "canResendAfterUnknown"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "outboundRequestWasNeverWritten"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "isTransportLevelFailure"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "symbol": "createFreshConnectionDispatcher"
+    },
+    {
+      "kind": "write",
+      "path": "electron/vendor/vendorHttp.ts",
+      "symbol": "createFreshConnectionDispatcher"
+    },
+    {
+      "kind": "read",
+      "path": "electron/outboundDispatchEvidence.ts",
+      "symbol": "outboundRequestWasNeverWritten"
+    },
+    {
+      "kind": "write",
+      "path": "electron/systemProxy.ts",
+      "symbol": "createFreshConnectionDispatcher"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 7,
+    "why_not": "门数从 4 扇变成 7 扇，多出来的不是新入口而是把原来散在判据里的假设拆成各自可测的一件事：判据本身（outboundDispatchEvidence，唯一读 undici cause 链的地方）、连接层失败的识别（isTransportLevelFailure，只给「供应商真支持幂等」那条重发用）、新连接原语的定义（systemProxy.createFreshConnectionDispatcher，全仓只有这一份定义）。原有的四扇各自必须存在：submitOnce 是全仓唯一重发点（规则），productionGenerationSubmission 是供应商异常进入提交层的唯一收口，apimartGenerationProvider.send 与 vendorHttp.requestVendor 是两条独立的付费传输（目录供应商 / 旧通道），它们共用同一个新连接原语，所以「新连接」的定义只有一份。"
+  },
+  "regression_tests": [
+    "electron/outboundDispatchEvidence.test.ts",
+    "electron/productionRun/submissionNotDispatched.test.ts",
+    "electron/capabilityCore/apimartFreshConnection.test.ts",
+    "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts"
+  ],
+  "residual_risks": [
+    "「连上之后断开」永远只能是结果未知，这一档仍要用户去服务商后台核对——这是领域的真实约束，不是能修掉的东西。",
+    "目前没有任何生产供应商声明 submitIdempotency，所以「未知后用同一个键重发」这条路在生产里恒不触发；只有以后某个供应商真支持并把键带上请求时才会启用，届时需要它自己的夹具测试。",
+    "TLS 握手前被复位的识别靠错误消息文本（Node 的固定句式）；上游改措辞时会退化成「结果未知」，方向是安全的一边。"
+  ],
+  "external_sources": [
+    {
+      "kind": "source-code",
+      "url": "https://github.com/nodejs/undici/blob/main/lib/core/errors.js",
+      "checked_at": "2026-10-02",
+      "purpose": "核对 UND_ERR_SOCKET 的含义：它既出现在复用的空闲连接被对面关闭时，也出现在请求写出后连接被关闭时，错误形状无法区分，所以判据不能按它判「没写出去」"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "任何经 ProductionRun 提交的付费生成，只要遇到连接被重置就会走同一条路；E9 在真应用里稳定复现，且已发布。",
+    "same_class_scan": [
+      "全仓 door-map 扫 outboundRequestWasNeverWritten：只有 productionGenerationSubmission.ts 一处消费，判据没有第二个副本",
+      "createSubmissionOutbox 的调用方：productionGenerationSubmission.ts（生产路径）与 generationSubmission.ts（旧路径，不传 canResendAfterUnknown，缺省恒不重发）",
+      "electron/vendor/vendorBaseFallback.ts 的 SAFE_RETRY_CODES：只含 DNS / ECONNREFUSED / 连接超时等连上之前的码，不含 UND_ERR_SOCKET，本来就符合新判据",
+      "付费 POST 的两条传输：apimartGenerationProvider.send 与 vendorHttp.requestVendor，都已改为每次新连接",
+      "appFetch 的其余付费 POST 调用方（audioTaskRunner.ts、catalog/multipartOperation.ts 等）：它们不经过 submissionOutbox，全仓唯一的自动重发点就是 submissionOutbox.submitOnce，所以这些路径本来就不会盲目重发；是否也改用新连接不影响重复下单这一类，留给各自的路径"
+    ]
+  },
+  "generality_proof": "判据仍是 outboundDispatchEvidence.ts 里一个与供应商、与 Run 无关的纯函数；重发规则收在 submissionOutbox.submitOnce 这一个点上，规则只问两件事（证据说没写出去吗 / 供应商真支持幂等吗），不认识具体供应商；「新连接」收在一个原语里，两条付费传输共用。新增供应商只需在档案里如实声明 submitIdempotency，其余自动继承。",
+  "shared_boundaries": [
+    {
+      "path": "electron/outboundDispatchEvidence.ts",
+      "symbol": "outboundRequestWasNeverWritten",
+      "responsibility": "回答「这次出站请求有没有写出去」：只认连上之前的失败，其余一律结果未知（fail-closed）"
+    },
+    {
+      "path": "electron/productionRun/submissionOutbox.ts",
+      "symbol": "submitOnce",
+      "responsibility": "唯一的自动重发点：确定没发出去最多重试 1 次；结果未知仅在供应商真支持幂等时用同一个键重发 1 次；最终状态取所有尝试里最不确定的一次"
+    },
+    {
+      "path": "electron/systemProxy.ts",
+      "symbol": "createFreshConnectionDispatcher",
+      "responsibility": "付费提交专用的只属于这一次请求的 dispatcher（每次新连接、与应用级路由同源）"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/apimartGenerationProvider.ts",
+      "entry_point": "send",
+      "disposition": "enforced",
+      "evidence": "非 GET/HEAD 的提交用 freshConnectionDispatcher，读完响应体后关闭；electron/capabilityCore/apimartFreshConnection.test.ts 在真 loopback socket 上断言连续两次提交落在不同连接，关掉这一行该测试会红"
+    },
+    {
+      "path": "electron/vendor/vendorHttp.ts",
+      "entry_point": "requestVendor",
+      "disposition": "enforced",
+      "evidence": "非 GET/HEAD 且没有显式供应商代理时同样用 freshConnectionDispatcher（显式代理本来就是每请求新建）"
+    },
+    {
+      "path": "electron/productionRun/generationSubmission.ts",
+      "entry_point": "createSubmissionOutbox",
+      "disposition": "not-affected",
+      "evidence": "旧路径不传 canResendAfterUnknown，缺省恒不重发；它只会因确定没发出去而重试 1 次，规则与新规一致"
+    }
+  ],
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/productionRun/submissionOutbox.ts",
+    "invariant": "自动重发只发生在「确定没发出去」或「供应商真支持幂等」两种情形，合计最多一次",
+    "failure_mode": "改回旧判据或放开重发，submissionNotDispatched.test.ts 的宿主级用例（真实 socket：读完请求就销毁、拒连、先拒连再重置、幂等供应商）当场红",
+    "exception_policy": "none",
+    "strategy": "「新连接」从构造上消掉旧连接这一种歧义；判据只认连上之前；重发规则收在 outbox 一个点",
+    "artifacts": [
+      "electron/productionRun/submissionOutbox.ts",
+      "electron/outboundDispatchEvidence.ts",
+      "electron/systemProxy.ts",
+      "electron/productionRun/submissionNotDispatched.test.ts"
+    ]
+  },
+  "class_regression_tests": [
+    "electron/outboundDispatchEvidence.test.ts",
+    "electron/productionRun/submissionNotDispatched.test.ts"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/productionRun/submissionOutbox.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/productionRun/submissionNotDispatched.test.ts"
+    ],
+    "rationale": "「付费提交能不能再发一次」归出站箱这一层管：它是唯一的重发点，判据层只回答证据、供应商档案只回答幂等声明。该层的测试走真实 socket 逐条数供应商收到几笔。"
+  },
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有整个文件可删；被删的是 provesNotWritten 里的 UND_ERR_SOCKET 分支和 submitOnce 里无条件重发的写法，都在同一个 diff 里替换。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有引入或升级依赖；用的是 undici 已有的 Agent / ProxyAgent。",
+    "exit_criteria": []
+  }
+}

@@ -259,7 +259,7 @@ export const zhGenerationCommon = {
   observability: {
     // 错误卡的动作按钮。main = 当主按钮时的说法，alt = 降为次要小字时的说法。
     action: {
-      reconcile: { main: '去对账', alt: '先去对账' },
+      reconcile: { main: '在任务中心查看', alt: '先在任务中心查看' },
       viewTask: { main: '查看制作任务', alt: '去看制作任务' },
       retry: { main: '重试', alt: '仍要重试' },
       switchModel: { main: '换个模型', alt: '换个模型' },
@@ -379,6 +379,11 @@ export const zhGenerationCommon = {
       outputUnreadable: {
         reason: '生成的文件没能读出来',
         hint: '服务商已经把结果发回来了，但 Nomi 没能读取这个文件（可能没传完整、文件损坏、格式暂不支持，或返回的根本不是图片 / 视频）。结果已经生成，只是 Nomi 没读出来；重试会重新生成一次，可以试一次；反复出现请点「反馈问题」，把技术详情发给我们。',
+      },
+      // 付费提交发出后没拿到回复：只说事实（可能已被收下、Nomi 没法核对）和下一步（先去服务商后台看），不说花没花钱。
+      submissionUnknown: {
+        reason: '这一镜可能已被服务商收下，结果没法确认',
+        hint: '请求发出去之后，Nomi 没拿到服务商的回复，所以不知道它有没有收下这一镜。Nomi 没法自动核对，也不会自动重发。请先到服务商后台看一眼有没有这一笔；确认没有，再重新生成——否则可能重复提交。',
       },
       // 认不出的失败如实说「认不出」：不编原因（不是「服务商临时故障」，更不是「额度」——今天没有价格，猜额度只会把人引去查账）。
       // 服务商给了错误码就带上码（hintWithCode）；原文和完整报文留在「技术详情」里。重试 / 换模型是动作建议，不是对原因的判断。
@@ -1814,7 +1819,7 @@ export const enGenerationCommon = {
   },
   observability: {
     action: {
-      reconcile: { main: 'Reconcile task', alt: 'Check task center' },
+      reconcile: { main: 'View in task center', alt: 'View in task center first' },
       viewTask: { main: 'View production task', alt: 'Open task center' },
       retry: { main: 'Retry', alt: 'Retry anyway' },
       switchModel: { main: 'Switch model', alt: 'Switch model' },
@@ -1934,6 +1939,10 @@ export const enGenerationCommon = {
       outputUnreadable: {
         reason: 'The generated file could not be read',
         hint: 'The provider sent the result back, but Nomi could not read the file (it may be incomplete or damaged, in an unsupported format, or not an image / video at all). The result was generated, Nomi just could not read it; a retry generates a new one. You can try once; if it keeps happening, click “Report Issue” and send us the technical details.',
+      },
+      submissionUnknown: {
+        reason: 'Result unconfirmed: the provider may have received this shot',
+        hint: 'The request was sent, but Nomi never got a reply, so it cannot tell whether the provider accepted this shot. Nomi cannot check this itself and will not resend automatically. Look in the provider’s dashboard for this request first; only generate again once you have confirmed it is not there, otherwise it may be submitted twice.',
       },
       unknown: {
         reason: 'Generation failed',

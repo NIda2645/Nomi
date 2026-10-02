@@ -2277,6 +2277,38 @@
       "notes": "PR #921（同上合同）：每条制作提交路径都经 submitOnce，它在预留预算、落提交意向（这次尝试的第一笔耐久写）之前先调派发闸 beforeDispatch；闸排在提交意向之后时看到的永远是 in_flight，一次都没拒过（真额度验收：急停后同一轮的镜照样扣费）。beforeDispatch 是 SubmissionOutboxDependencies 里声明的钩子槽位，生产侧由 productionGenerationSubmission 接到 productionShotDispatchGuard；槽位在依赖里是可选成员，漏接不会有编译期信号（R17 那一类），装配点目前靠派发闸的 e2e 测试守。"
     },
     {
+      "name": "付费提交「有没有写出去」的判据与每次新连接",
+      "subject": "production.submission-dispatch-evidence",
+      "lifecycle": "execution",
+      "authority_kind": "gateway",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/outboundDispatchEvidence.ts",
+        "symbol": "outboundRequestWasNeverWritten"
+      },
+      "write_api": [
+        {
+          "path": "electron/outboundDispatchEvidence.ts",
+          "symbol": "outboundRequestWasNeverWritten"
+        },
+        {
+          "path": "electron/systemProxy.ts",
+          "symbol": "createFreshConnectionDispatcher"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/productionRun/submissionNotDispatched.test.ts",
+      "allowed_consumers": [
+        "electron/productionRun/productionGenerationSubmission.ts",
+        "electron/capabilityCore/apimartGenerationProvider.ts",
+        "electron/vendor/vendorHttp.ts"
+      ],
+      "since": "2026-10-02",
+      "notes": "根因合同 docs/fixes/2026-10-02-paid-submit-no-blind-resend.root-cause.json：只有连上之前的失败才算确定没写出去（DNS / 建连 / TLS 握手前），UND_ERR_SOCKET 与连接被重置一律是结果未知；付费 POST 每次用 createFreshConnectionDispatcher 新建的连接，从构造上消掉「复用的旧连接」这一种歧义。重发规则住在 submissionOutbox.submitOnce（属 production.submission-admission 的写口），不在这里。"
+    },
+    {
       "name": "跨供应商同一模型的身份（canonical 模型 id）",
       "subject": "catalog.canonical-model-id",
       "lifecycle": "catalog",

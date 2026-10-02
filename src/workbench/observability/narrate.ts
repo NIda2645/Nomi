@@ -133,6 +133,9 @@ export type GenerationErrorKind =
   // 对一份已经送达的产物，那是把我们这一侧读文件失败栽给服务商，还劝用户换一家（2026-09-29 Seedream 5.0）。
   // 机器码 NOMI_ERR::output-unreadable::（electron/assets/generatedMediaDecode.ts 抛），不靠英文句子认。
   | 'output-unreadable'
+  // 付费提交发出后没拿到回复（连接被重置 / 响应超时 / 提交途中进程退出）：供应商**可能已经收下**。
+  // 与 network 分开：network 说「请求没发到」，对这一类是假话；而且重试 = 可能重复提交，所以不给重试按钮。
+  | 'submission-unknown'
   | 'unknown'
 
 /** 目录（generationCommon.observability.error）里每一类失败的词条 key——单源；noChargeClaims.test 也读它。 */
@@ -162,6 +165,7 @@ export const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   input: 'input',
   'output-truncated': 'outputTruncated',
   'output-unreadable': 'outputUnreadable',
+  'submission-unknown': 'submissionUnknown',
   unknown: 'unknown',
 }
 
@@ -268,6 +272,8 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorActions> = {
   'output-truncated': RETRY_FIRST,
   // 只有重试：读不出来发生在我们这一侧，换供应商不是它的解法，更不能把它说成服务商的失败。
   'output-unreadable': { primary: 'retry', secondary: null },
+  // 不给重试：这一镜可能已经被服务商收下，重试可能重复提交。先去核对（任务中心），再由用户决定。
+  'submission-unknown': { primary: 'reconcile', secondary: null },
   unknown: RETRY_FIRST,
 }
 
@@ -304,6 +310,8 @@ const VENDOR_SIDE_BY_KIND: Record<GenerationErrorKind, boolean> = {
   input: true,
   'output-truncated': false,
   'output-unreadable': false,
+  // 服务商是否收下 Nomi 并不知道，不替它定性（也不触发「换一家」的切家提示）。
+  'submission-unknown': false,
   unknown: false,
 }
 

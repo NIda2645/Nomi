@@ -1,4 +1,5 @@
 import { dedupeSubmission } from "../submissionLedger";
+import { matchNomiErrorCode, tagNomiError } from "../shared/nomiErrorCodes";
 import { authorizeSubmission } from "./approvalPolicy";
 import type { ProductionRunRepository } from "./productionRunRepository";
 import type { ProductionRunIntentLog } from "./productionRunIntentLog";
@@ -14,7 +15,8 @@ export class SubmissionNotDispatchedError extends Error {
 
 export class SubmissionReceiptUnknownError extends Error {
   constructor(message = "Provider submission receipt is unknown; reconciliation is required") {
-    super(message);
+    // 机器码标记让渲染层按「结果未知」说话，而不是按原始网络报错字面归成「连不上服务商 / 请求没发到」。
+    super(matchNomiErrorCode(message) === "submission-unknown" ? message : tagNomiError("submission-unknown", message));
     this.name = "SubmissionReceiptUnknownError";
   }
 }
@@ -74,6 +76,12 @@ export type SubmissionOutboxDependencies = {
    */
   beforeDispatch?: (input: ProviderDispatchInput) => void | Promise<void>;
   afterDispatch?: (result: ProviderDispatchResult, input: ProviderDispatchInput) => void | Promise<void>;
+  /**
+   * 「结果未知」的失败（请求可能已被收下）能不能用**同一个幂等键**重发一次。缺省 = 不能。
+   * 只有供应商档案声明了 `submitIdempotency: true`、并且这类错误确实是连接层错误时才返回 true；
+   * 供应商不认幂等键就重发，等于下第二张单。
+   */
+  canResendAfterUnknown?: (error: unknown, input: ProviderDispatchInput) => boolean;
 };
 
 export type SubmissionOutboxResult = ProviderDispatchResult & {
@@ -265,24 +273,32 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
     if (submitIntent) deps.intentLog!.commit(submitIntent.intentId, { fencingEpoch });
 
     let response: ProviderDispatchResult;
+    // 所有尝试里**最不确定**的那一次说了算：只要有一次可能已被收下，最终就是「未知」，
+    // 哪怕最后一次是「连不上」——那只说明第二次没发出去，第一次的下落仍然不明。
+    let anyAttemptMayHaveReached = false;
     try {
       try {
         response = await deps.dispatch(dispatchInput);
       } catch (error) {
-        // ── 「确定没写出去」→ 自动重发一次（且只有一次）。2026-09-18 拍板 ──
+        // ── 自动重发只有两种情形，且合计最多一次（2026-10-02 修：此前连接被重置也算「没写出去」，重复下单）──
         //
-        // 只有**能证明一个字节都没写出去**的失败走到这里（判据在
-        // `outboundDispatchEvidence.ts`，拿不出证据一律算 unknown）。这种失败里供应商那边
-        // 什么都没发生：不重发的代价是把一次本可自愈的网络抖动变成一张需要人去供应商核对的
-        // 单子，而这一笔钱用户刚刚在报价卡上点过确认——重发同一笔不需要再问他一次。
-        //
-        // 三重保险让它不可能变成第二次下单：① 证据本身（读写字节都是 0）；
-        // ② 幂等键逐字不变（`dispatchInput.idempotencyKey`，供应商档案声明了 submitIdempotency）；
-        // ③ 只重发一次——第二次再失败就说明不是抖动，落回确定态 `needs_attention` 交给人。
+        // ① **确定没写出去**（`SubmissionNotDispatchedError`：只认连上之前的失败，判据在
+        //    `outboundDispatchEvidence.ts`）：供应商那边什么都没发生，重发一次不会变成第二张单。
+        // ② **结果未知但供应商真支持幂等**（`canResendAfterUnknown`）：同一个键重发，供应商负责去重。
+        // 其余一律不重发：连上之后的错误、超时、被掐断，供应商可能已经收下并扣费。
         // 不碰意图日志：这一次尝试的 `provider.submit` 意图已经 committed，它覆盖的正是
         // 「同一个 attempt、同一个幂等键」的这两次调用；崩溃恢复看到它仍然正确地说「未知」。
-        if (!(error instanceof SubmissionNotDispatchedError)) throw error;
-        response = await deps.dispatch(dispatchInput);
+        const neverWritten = error instanceof SubmissionNotDispatchedError;
+        if (!neverWritten && !deps.canResendAfterUnknown?.(error, dispatchInput)) throw error;
+        if (!neverWritten) anyAttemptMayHaveReached = true;
+        try {
+          response = await deps.dispatch(dispatchInput);
+        } catch (second) {
+          if (anyAttemptMayHaveReached && second instanceof SubmissionNotDispatchedError) {
+            throw new SubmissionReceiptUnknownError(error instanceof Error ? error.message : undefined);
+          }
+          throw second;
+        }
       }
       if (!response.providerTaskId.trim()) throw new Error("Provider returned an empty task id");
       await deps.afterDispatch?.(response, dispatchInput);
