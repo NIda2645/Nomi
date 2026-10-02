@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { tagNomiError } from '../shared/nomiErrorCodes'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -585,7 +586,30 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         let changedUnknown = false
         for (const job of current.jobs) {
           if (!isStillAtProvider(job)) continue
-          if (isSemanticSingleShot) continue
+          if (isSemanticSingleShot) {
+            // 提交在路上时进程没了（硬杀 / 断电）：请求发没发出去、供应商收没收下，Nomi 都不知道——结果未知，
+            // 和连接被重置是同一档。此前这里直接跳过，job 永远停在 submitting、画布一直写「生成中」。
+            // 已经拿到任务号的（polling 等）仍由 ProductionGenerationSubmission 的恢复路径接手。
+            if (job.status === 'submitting' && !job.providerTaskId) {
+              try {
+                current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
+                  jobId: job.jobId,
+                  status: 'submission_unknown',
+                  patch: { errorCode: 'submission_unknown_restart', errorMessage: tagNomiError('submission-unknown', 'Nomi was closed while the request was being sent') },
+                }, `recovery-${current.runId}-${job.jobId}-submit-unknown`).run
+                const reservationId = `${current.runId}:${job.jobId}:${job.attempt}`
+                if (repository.readBudgetLedger(safeProjectId, current.runId).reservations[reservationId]?.status === 'reserved') {
+                  current = executeInternal(safeProjectId, current.runId, current, 'budget.entry', {
+                    entry: { billingEntryId: `${reservationId}:mark-unsettled`, kind: 'mark_unsettled', reservationId, occurredAt: new Date().toISOString() },
+                  }, `recovery-${current.runId}-${job.jobId}-unsettled`).run
+                }
+                changedUnknown = true
+              } catch {
+                // A concurrent command may have already settled this job.
+              }
+            }
+            continue
+          }
           try {
             current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
               jobId: job.jobId,
