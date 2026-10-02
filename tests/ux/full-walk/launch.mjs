@@ -76,7 +76,8 @@ export async function startPlaybook({ id, seed = null, needs, locale = 'zh-CN', 
   const outputDir = path.join(runDir, `${id}--${variant}--${effectiveLocale}`)
   fs.rmSync(outputDir, { recursive: true, force: true })
   fs.mkdirSync(outputDir, { recursive: true })
-  await waitForOtherNomiToExit()
+  // 多个会话同时在这台机器上走查时，别人的 Nomi 可能一直在跑：显式声明「共用这台机器」就不等（仍然不碰别人的进程；走查用隔离资料目录，允许多实例）。
+  if (process.env.NOMI_FULL_WALK_SHARE_MACHINE !== '1') await waitForOtherNomiToExit()
   const egress = await startEgressWatch({ logFile: path.join(outputDir, 'egress.jsonl') })
   const relay = await startUploadRelay()
   let smoke

@@ -3,7 +3,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
-import { generationFeedback, SAVED_FEEDBACK_WINDOW_MS } from './generationFeedback'
+import { generationFeedback, SAVED_FADE_MS, SAVED_FEEDBACK_WINDOW_MS } from './generationFeedback'
 import { GenerationStatusBar } from '../generationCanvas/nodes/GenerationStatusBar'
 
 const node = (percent?: number): GenerationCanvasNode => ({ id: 'test', kind: 'image', title: '', position: { x: 0, y: 0 }, status: 'running', progress: { phase: 'generating', updatedAt: 1000, ...(percent === undefined ? {} : { percent }) } })
@@ -61,6 +61,15 @@ it('「已保存到项目」是限时回执，不是节点的常驻状态', () =
   expect(generationFeedback({ ...saved, id: 'd', runs: [] }, 19000)).toBeNull()
 })
 
+
+it('「已保存到项目」显示 3 秒就消失，并告诉状态条还剩多久（淡出只排在最后一小段）', () => {
+  expect(SAVED_FEEDBACK_WINDOW_MS).toBe(3000)
+  expect(SAVED_FADE_MS).toBeLessThan(SAVED_FEEDBACK_WINDOW_MS)
+  const saved = { ...node(), status: 'success' as const, runs: [{ id: 'r', status: 'success' as const, startedAt: 0, updatedAt: 50000, completedAt: 50000 }] }
+  expect(generationFeedback({ ...saved, id: 'fresh' }, 50000)?.savedRemainingMs).toBe(3000)
+  expect(generationFeedback({ ...saved, id: 'late' }, 52500)?.savedRemainingMs).toBe(500)
+  expect(generationFeedback({ ...saved, id: 'gone' }, 53000)).toBeNull()
+})
 
 it('motion-reduced generation and import keep a static grid without a blue band or fabricated image', async () => {
   const { GenerationWaitingSurface } = await import('../generationCanvas/nodes/GenerationWaitingSurface')

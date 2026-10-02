@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { resources } from '../../i18n/resources'
-import { ERROR_KEY_BY_KIND, NEVER_SENT_KINDS } from './narrate'
+import { ERROR_KEY_BY_KIND, NEVER_SENT_KINDS, narrateGenerationError } from './narrate'
 
 /**
  * 「不扣费」这一族的话只有一个出处资格：Nomi 自己确知请求没发出去（NEVER_SENT_KINDS）。
@@ -42,5 +42,14 @@ describe('失败文案目录里的「不扣费」断言', () => {
 
   it('NEVER_SENT_KINDS 里的每一类都有目录词条（改了类别名不会悄悄失效）', () => {
     for (const kind of NEVER_SENT_KINDS) expect(ERROR_KEY_BY_KIND[kind], kind).toBeTruthy()
+  })
+
+  // 现在都走中转站，扣没扣钱 Nomi 不知道：失败的标题只说原因，不再附「未计费 / Not charged」一类角标。
+  it('失败标题（reason）不附任何「未计费」角标，包括请求没出门的那几类', () => {
+    for (const kind of Object.keys(ERROR_KEY_BY_KIND) as Array<keyof typeof ERROR_KEY_BY_KIND>) {
+      const { reason } = narrateGenerationError(kind)
+      expect(reason, kind).not.toMatch(NO_CHARGE_CLAIM)
+      expect(reason, kind).not.toContain(' · ')
+    }
   })
 })

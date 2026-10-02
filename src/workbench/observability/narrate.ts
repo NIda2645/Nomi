@@ -185,12 +185,11 @@ export function narrateGenerationError(
 ): { reason: string; hint: string } {
   const key = ERROR_KEY_BY_KIND[kind]
   const reason = i18n.t(`generationCommon.observability.error.${key}.reason`, params)
-  // These failures occur before the provider is called; never infer billing from a generic failure.
-  const uncharged = NEVER_SENT_KINDS.includes(kind)
   // 认不出的失败：服务商给了错误码就把码带进说明（不编原因，码是用户和我们排查的入口）。
   const hintKey = kind === 'unknown' && params?.code ? 'hintWithCode' : 'hint'
   return {
-    reason: uncharged ? `${reason} · ${i18n.t('generationCommon.observability.progress.notCharged')}` : reason,
+    // 标题只说失败的原因，不附「未计费」：现在都走中转站，扣没扣钱 Nomi 不知道，只说失败原因和下一步。
+    reason,
     hint: i18n.t(`generationCommon.observability.error.${key}.${hintKey}`, params),
   }
 }

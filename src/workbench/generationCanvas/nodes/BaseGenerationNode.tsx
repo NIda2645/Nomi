@@ -484,7 +484,6 @@ function BaseGenerationNodeImpl({
           onFeedback={reportFeedback}
           node={node}
           readOnly={readOnly}
-          selected={selected && !isMultiSelectActive}
           open={resultStackOpen}
           onOpenChange={setResultStackOpen}
         />

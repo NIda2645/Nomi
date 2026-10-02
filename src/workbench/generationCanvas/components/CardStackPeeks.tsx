@@ -8,7 +8,6 @@ export type CardStackPeeksProps = {
   label: string
   expanded: boolean
   onToggle: () => void
-  forceTrigger?: boolean
   tone?: 'result' | 'group'
   disabled?: boolean
   /**
@@ -42,7 +41,6 @@ export function CardStackPeeks({
   label,
   expanded,
   onToggle,
-  forceTrigger = false,
   tone = 'result',
   disabled = false,
   mediaGlyph,
@@ -50,7 +48,7 @@ export function CardStackPeeks({
 }: CardStackPeeksProps): JSX.Element | null {
   const [hovered, setHovered] = React.useState(false)
   const rearLayerCount = getCardStackRearLayerCount(count)
-  if (rearLayerCount === 0 && !forceTrigger) return null
+  if (rearLayerCount === 0) return null
   const fanned = expanded || hovered
 
   return (
