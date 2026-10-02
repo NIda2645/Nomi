@@ -2,7 +2,8 @@ import type { PendingSpendShot } from '../../../desktop/productionRunBridgeTypes
 import type { SpendReferenceInput } from '../../../../electron/shared/contracts/pendingSpendConfirm'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
 import { resolveReferenceSlots } from '../../generationCanvas/runner/referenceSlots'
-import { referenceSlotAccept, referenceSlotStorage } from '../../generationCanvas/nodes/controls/archetypeMeta'
+import { applyArchetypeModeSwitch, referenceSlotAccept, referenceSlotStorage } from '../../generationCanvas/nodes/controls/archetypeMeta'
+import { archetypeForNode, resolveModeForConnectedReferences } from '../../generationCanvas/agent/referenceEdgeCapability'
 import { readParameterReferenceSlots, parameterReferenceMetaPatch } from '../../generationCanvas/model/parameterReferenceSlots'
 
 type ReferenceRole = NonNullable<Extract<SpendReferenceInput, { kind: unknown }>['role']>
@@ -14,25 +15,49 @@ export function pendingReferenceInputs(shot: PendingSpendShot): SpendReferenceIn
   return (shot.references ?? []).map(({ url, ...reference }) => ({ reference, ...(url ? { url } : {}) }))
 }
 
+/** 画布那一份图（只读）：卡上这一镜的占位节点此刻连着什么。 */
+export type SpendCanvasGraph = Readonly<{ nodes: readonly GenerationCanvasNode[]; edges: readonly GenerationCanvasEdge[] }>
+
 /**
- * 画布上连到这一镜占位节点的参考图（付费卡第 4 条：卡上所见即所发）。读的是画布自己那一份槽位解析
- * （`resolveReferenceSlots`，和节点生成时同一个），只读、不写画布。只收已经能用的（有 url）：连了线但源还没出图的，
- * 此刻发不出去，卡上也不说它会被发出去。
+ * 画布上连到这一镜的参考图（付费卡第 4 条：卡上所见即所发）。`target` 是卡上那张框（id 就是占位节点的 id），
+ * 按它此刻的生成方式读画布自己那一份槽位解析（`resolveReferenceSlots`，和节点生成时同一个），只读、不写画布。
+ * 只收已经能用的（有 url）：连了线但源还没出图的，此刻发不出去，卡上也不说它会被发出去。
  */
 export function canvasReferenceInputs(
-  placed: GenerationCanvasNode | undefined,
+  target: GenerationCanvasNode,
   nodes: readonly GenerationCanvasNode[],
   edges: readonly GenerationCanvasEdge[],
 ): SpendReferenceInput[] {
-  if (!placed) return []
   const inputs: SpendReferenceInput[] = []
-  for (const slot of resolveReferenceSlots(placed, nodes as GenerationCanvasNode[], edges as GenerationCanvasEdge[])) {
+  for (const slot of resolveReferenceSlots(target, nodes as GenerationCanvasNode[], edges as GenerationCanvasEdge[])) {
     for (const fill of slot.fills) {
       if (fill.origin.type !== 'edge' || !fill.url) continue
       inputs.push({ url: fill.url, kind: referenceSlotAccept(slot.slotKind), role: slotRole(slot.slotKind, slot.numbered) })
     }
   }
   return inputs
+}
+
+/**
+ * 卡上这一镜默认摆出来的参考 = 宿主那一镜自己的 ∪ 画布上连到它占位节点的（同一张图不重复放）。
+ *
+ * 生成方式按画布那一条规则对齐活边：宿主那一镜可能停在没有参考槽的模式上（文生图），画布上连着的参考图就摆不进卡、
+ * 也发不出去（2026-10-02 pb02：卡上写「文生图」，供应商收到 0 张）。画布自己在连线、换模型、提交三处都用
+ * `resolveModeForConnectedReferences` 把节点切到收得下这几条边的模式（`applyArchetypeModeSwitch` 顺带把越界的参数夹回）；
+ * 卡读同一对函数，不另写一条规则。卡上之后的改动（含拿掉这张、改回文生图）都相对这一份记，见 `candidatePatchFromNode`。
+ */
+export function placeSpendReferences(
+  node: GenerationCanvasNode,
+  own: readonly SpendReferenceInput[],
+  canvas?: SpendCanvasGraph,
+): GenerationCanvasNode {
+  if (!canvas) return applySpendReferences(node, own)
+  const modeId = resolveModeForConnectedReferences(node, canvas.nodes, canvas.edges)
+  const archetype = modeId ? archetypeForNode(node) : null
+  const moded = modeId && archetype ? { ...node, meta: applyArchetypeModeSwitch({ ...(node.meta ?? {}) }, archetype, modeId) } : node
+  const urls = new Set(own.map((input) => input.url).filter((url): url is string => Boolean(url)))
+  const fromCanvas = canvasReferenceInputs(moded, canvas.nodes, canvas.edges).filter((input) => !input.url || !urls.has(input.url))
+  return applySpendReferences(moded, [...own, ...fromCanvas])
 }
 
 /** Bidirectional presentation adapter over the existing slot resolver, never a second graph. */

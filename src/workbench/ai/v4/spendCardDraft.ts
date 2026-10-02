@@ -1,6 +1,6 @@
 import { z } from 'zod'
-import { spendReferenceInputSchema, type SpendReferenceInput } from '../../../../electron/shared/contracts/pendingSpendConfirm'
-import { applySpendReferences, pendingReferenceInputs, referenceInputsFromNode } from './spendCardReferences'
+import { spendReferenceInputSchema } from '../../../../electron/shared/contracts/pendingSpendConfirm'
+import { applySpendReferences, pendingReferenceInputs, placeSpendReferences, referenceInputsFromNode, type SpendCanvasGraph } from './spendCardReferences'
 // 付费确认卡上「用户改了什么」的**纯账本**（无 React、无 store、可裸测）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -126,12 +126,17 @@ export function applyPatchToNode(node: GenerationCanvasNode, patch: SpendCandida
 
 /**
  * 节点现在的样子 → 候选补丁。复用参数条的控件解析，保留原候选字段并收集新声明字段。
+ *
+ * `baseline` = 用户在卡上动手之前那张框（宿主那一镜 ⊕ 画布连线带来的参考，生成方式已按活边对齐，见
+ * `placeSpendReferences`）。卡上改一下记进账本时传它：生成方式和参考图都相对它比，于是「拿掉画布连来的那张」
+ * 「改回文生图」都记得住——相对宿主那一镜比的话，这两下和宿主那一份一样，记成「没改」，下一拍画布那一份又摆回来。
+ * 点下去那一刻要发给宿主的那一份不传它：相对宿主那一镜比，画布连来的参考图和对齐后的生成方式照发。
  */
 export function candidatePatchFromNode(
   node: GenerationCanvasNode,
   shot: PendingSpendShot,
   option?: ModelOption,
-  baselineReferenceInputs?: readonly SpendReferenceInput[],
+  baseline?: GenerationCanvasNode,
 ): SpendCandidatePatch | undefined {
   const meta = (node.meta ?? {}) as Record<string, unknown>
   const patch: Record<string, unknown> = {}
@@ -142,9 +147,11 @@ export function candidatePatchFromNode(
   const providerId = text(meta.modelVendor) || text(meta.vendor)
   if (providerId && providerId !== shot.providerId) patch.providerId = providerId
   const modeId = text(archetypeOf(meta).modeId)
-  if (modeId && modeId !== (shot.modeId ?? '')) patch.modeId = modeId
+  const baselineModeId = baseline ? text(archetypeOf((baseline.meta ?? {}) as Record<string, unknown>).modeId) : (shot.modeId ?? '')
+  if (modeId && modeId !== baselineModeId) patch.modeId = modeId
   const referenceInputs = referenceInputsFromNode(node, shot)
-  const baselineReferences = referenceInputsFromNode(applySpendReferences(node, baselineReferenceInputs ?? pendingReferenceInputs(shot)), shot)
+  const baselineInputs = baseline ? referenceInputsFromNode(baseline, shot) : pendingReferenceInputs(shot)
+  const baselineReferences = referenceInputsFromNode(applySpendReferences(node, baselineInputs), shot)
   if (JSON.stringify(referenceInputs) !== JSON.stringify(baselineReferences)) patch.referenceInputs = referenceInputs
   const parameters: Record<string, GenerationJsonValue> = {}
   let parametersChanged = false
@@ -164,14 +171,18 @@ export function candidatePatchFromNode(
   return Object.keys(patch).length > 0 ? (patch as SpendCandidatePatch) : undefined
 }
 
-/** 用户在卡上动了一下之后的新账本：这一下只落在这一页这一镜上（相对宿主那一份算），别的镜原样留着。 */
+/**
+ * 用户在卡上动了一下之后的新账本：这一下只落在这一页这一镜上，别的镜原样留着。
+ * 相对 `baseline`（他动手之前卡上默认摆的那张框）算；不传就相对宿主那一镜。
+ */
 export function draftAfterNodeEdit(
   draft: SpendDraft,
   shot: PendingSpendShot,
   node: GenerationCanvasNode,
   option?: ModelOption,
+  baseline?: GenerationCanvasNode,
 ): SpendDraft {
-  return { perShot: { ...draft.perShot, [shot.shotId]: candidatePatchFromNode(node, shot, option) ?? {} } }
+  return { perShot: { ...draft.perShot, [shot.shotId]: candidatePatchFromNode(node, shot, option, baseline) ?? {} } }
 }
 
 /** 这一批到底有没有被改过（没有 → 确认那一刻不必先发 `generation.revise`）。 */
@@ -212,18 +223,18 @@ export function revisionsForConfirm(
     .filter((entry) => Object.keys(entry.patch).length > 0)
 }
 
-/** Candidate data is the editor input; a placed canvas node supplies geometry only. */
 /**
- * 卡体那张生成框：宿主那一镜的候选 + 画布上连到它占位节点的参考图（`canvasInputs`，第 4 条：画布上连着的参考图算数，
- * 卡上看得见）。卡上拿掉其中一张只改卡，不动画布连线。
+ * 卡体那张生成框（还没算卡上的改动）：宿主那一镜的候选 + 画布上连到它占位节点的参考图（`canvas`，第 4 条：
+ * 画布上连着的参考图算数，卡上看得见、照发；生成方式按画布那条规则对齐，见 `placeSpendReferences`）。
+ * 画布上那个占位节点只提供标题和位置。卡上拿掉其中一张只改卡，不动画布连线。
  */
-export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanvasNode, option?: ModelOption, canvasInputs: readonly SpendReferenceInput[] = []): GenerationCanvasNode | undefined {
+export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanvasNode, option?: ModelOption, canvas?: SpendCanvasGraph): GenerationCanvasNode | undefined {
   const archetype = resolveArchetypeForModel({ modelKey: shot.modelId, vendorKey: shot.providerId, meta: option?.meta })
   // 卡体那张生成框的种类只读宿主给的那一格（第 9 条）：和卡标题、画布节点、派发同一个答案。
   // 以前这里读模型目录自己的种类，画布读另一套，卡就会标题说视频、卡体是图片模型，还改不动。
   const kind = shot.kind
   if (!isGenerationNodeKind(kind)) return undefined
-  return applySpendReferences({
+  return placeSpendReferences({
     id: shot.nodeId ?? `spend:${shot.shotId}`,
     kind,
     title: placed?.title ?? '',
@@ -237,13 +248,7 @@ export function projectSpendNode(shot: PendingSpendShot, placed?: GenerationCanv
       // 候选上写着变体就一并带上：卡上这张框显示的变体与宿主派发的，问的是同一个 owner、同一组输入。
       ...(archetype ? { archetype: { id: archetype.id, modeId: shot.modeId ?? archetype.defaultModeId, ...(shot.variantId ? { variantId: shot.variantId } : {}) } } : {}),
     },
-  }, withCanvasReferences(pendingReferenceInputs(shot), canvasInputs))
-}
-
-/** 候选自己的参考 ∪ 画布连线来的参考（同一张图不重复放）。 */
-function withCanvasReferences(own: readonly SpendReferenceInput[], canvas: readonly SpendReferenceInput[]): SpendReferenceInput[] {
-  const urls = new Set(own.map((input) => input.url).filter((url): url is string => Boolean(url)))
-  return [...own, ...canvas.filter((input) => !input.url || !urls.has(input.url))]
+  }, pendingReferenceInputs(shot), canvas)
 }
 
 /**

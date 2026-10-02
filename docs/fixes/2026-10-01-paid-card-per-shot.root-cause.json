@@ -201,7 +201,7 @@
     },
     {
       "kind": "read",
-      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
       "symbol": "canvasReferenceInputs"
     },
     {

@@ -603,20 +603,25 @@ export function createInvariantMonitor(options) {
     if (shownDuration !== null && shownDuration !== undefined && sent.duration !== null && sent.duration !== undefined && Number(shownDuration) !== Number(sent.duration)) {
       problems.push({ field: 'duration', shown: shownDuration, sent: sent.duration })
     }
-    if (Number(entry.refs ?? 0) !== Number(submission.refs ?? 0)) problems.push({ field: 'references', shown: entry.refs ?? 0, sent: submission.refs ?? 0 })
+    // 付费卡上摆着的参考 = 宿主那一镜自己的 + 画布上连到这一镜占位卡的（第 4 条：卡上摆出来、照发）。
+    // 只拿宿主那一份比，卡把画布连来的那张如实发出去时这里反而会红——和下面「画布上的没发出去」那条互相打架，哪种结果都过不了。
+    const canvasRefs = consent.kind === 'spend-card' ? Number(entry.canvasRefs ?? 0) : 0
+    const shownRefs = Number(entry.refs ?? 0) + canvasRefs
+    const sentRefs = Number(submission.refs ?? 0)
+    if (shownRefs !== sentRefs && !(canvasRefs > 0 && sentRefs < shownRefs)) problems.push({ field: 'references', shown: shownRefs, sent: sentRefs })
     // 提示词：发出去的 = 用户看到的那句 + 只许追加「他在同一个界面上看得见的字」。
     // 看不见的追加 = 用户写了「巨龙」、供应商收到「巨龙 + 一段人物特征」。
     const unseen = unseenPromptAdditions({ shown: entry.prompt, sentRaw: body.prompt ?? body.input?.prompt, surfaceText: entry.surfaceText })
     if (unseen.length) problems.push({ field: 'prompt-unseen-addition', shown: entry.prompt, sent: submission.prompt, unseen })
     // 付费卡那一镜在画布上的占位卡：用户在画布上连了参考线，他看到的就是「这一镜带参考」。
-    if (consent.kind === 'spend-card' && Number(entry.canvasRefs ?? 0) > Number(submission.refs ?? 0)) {
-      problems.push({ field: 'references-on-canvas', shown: entry.canvasRefs, sent: submission.refs ?? 0 })
+    if (canvasRefs > 0 && sentRefs < shownRefs) {
+      problems.push({ field: 'references-on-canvas', shown: entry.canvasRefs, sent: sentRefs })
     }
     for (const problem of problems) {
       await violate({
         invariant: 3, rule: `sent-${problem.field}`, key: `${consent.id}|${entry.shotId ?? entry.nodeId}|${problem.field}`,
         module: problem.field === 'references-on-canvas'
-          ? 'src/workbench/ai/v4/spendCardDraft.ts projectSpendNode（只认候选里的参考，resolveReferenceSlots(node, [], []) 不看画布连线）→ 制作 Run 候选'
+          ? 'src/workbench/ai/v4/spendCardReferences.ts placeSpendReferences（卡上默认那张框 = 宿主参考 ∪ 画布连线，生成方式按画布的 resolveModeForConnectedReferences 对齐）→ useAgentPanelSpendConfirm.ts persistShown（点下去那一刻落进候选）→ 制作 Run 候选'
           : problem.field === 'prompt-unseen-addition'
             ? 'electron/shared/storyboard/storyboardPromptCompiler.ts buildShotPrompt / buildKeyframePrompt（anchorPromptBits 把引用锚的身份特征、文本锚整段追加进提示词；分镜行上只显示用户写的那一句）'
             : problem.field === 'references'
