@@ -196,7 +196,7 @@ async function runTranscribe(input: AudioTaskInput): Promise<TaskResult> {
       try {
         response = await appFetch(appendQueryParams(built.url, built.query), { method: built.method, headers, body: form });
       } catch (error: unknown) {
-        if (isRedirectRefusal(error)) throw new Error(desktopT("network.credentialRedirect"), { cause: error });
+        if (isRedirectRefusal(error)) throw Object.assign(new Error(desktopT("network.credentialRedirect")), { cause: error });
         throw new Error(desktopT("transcribe.networkError", { vendor: vendor.key, detail: (error instanceof Error ? error.message : String(error)).slice(0, 256) }));
       }
       if (!response.ok) {

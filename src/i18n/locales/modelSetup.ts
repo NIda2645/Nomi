@@ -51,6 +51,8 @@ export const zhModelSetup = {
     rate_limit: '模型列表请求被限流，请稍后重试。{{error}}',
     network: '模型列表请求未完成，请检查网络或代理后重试。{{error}}',
     invalid_response: '地址返回的内容不是可识别的模型列表，请检查地址或手动输入模型 ID。{{error}}',
+    // 整句由主进程按界面语言给（desktopStrings network.credentialRedirect*），这里原样透出，不再拼前缀。
+    redirect: '{{error}}',
     upstream: '服务返回了模型列表错误，可稍后重试。{{error}}',
   },
   manualEnter: '手动输入',
@@ -197,6 +199,7 @@ export const enModelSetup = {
     invalid_response:
       'The response is not a recognized model list. Check the URL or enter a model ID manually. {{error}}',
     upstream: 'The service returned a model-list error. Try again later. {{error}}',
+    redirect: '{{error}}',
   },
   manualEnter: 'Enter Manually',
   fetchModels: 'Get Models',

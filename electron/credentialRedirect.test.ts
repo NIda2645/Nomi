@@ -27,6 +27,7 @@ import { fetchVendorWithBaseFallback } from "./vendor/vendorBaseFallback";
 import { requestJson, VendorRequestError } from "./vendor/vendorHttp";
 import { setSubmitOutboundDepsForTests } from "./vendor/vendorOutboundGuard";
 import { registerOnboardingIpc } from "./ai/onboarding/onboardingIpc";
+import { fetchModelList } from "./ai/onboarding/modelListProbe";
 import { applySystemProxy } from "./systemProxy";
 import { classifyGenerationError } from "../src/workbench/observability/classifyError";
 import { matchNomiErrorCode } from "./shared/nomiErrorCodes";
@@ -129,6 +130,16 @@ describe.each([302, 307, 308])("带密钥请求遇到 HTTP %s 跳转：第二个
     const report = classifyGenerationError(String(error.message));
     expect(report.kind).toBe("credential-redirect");
     expect(report.primary).toBe("open-model-access");
+  });
+
+  it("门 5 模型列表拉取（手动模式）：不跟随，且告诉用户跳去了哪里", async () => {
+    const { source, seen } = await redirectPair(status);
+    const result = await fetchModelList("openai-compatible", `${source}/v1`, { "x-tenant-key": "redirect-tenant" }, new AbortController().signal);
+    expect(result).toMatchObject({ ok: false, failureKind: "redirect" });
+    const message = JSON.stringify(result);
+    expect(message).toContain("/stolen");
+    expect(message).not.toContain("redirect-tenant");
+    expect(seen).toEqual([]);
   });
 
   it("门 4 接入向导协议探测：失败说人话，第二个网站收不到", async () => {

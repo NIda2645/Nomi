@@ -37,6 +37,7 @@ export function modelDiscoveryMessage(result: PickerDiscoveryResult, hasExisting
     rate_limit: 'modelSetup.discoveryError.rate_limit',
     network: 'modelSetup.discoveryError.network',
     invalid_response: 'modelSetup.discoveryError.invalid_response',
+    redirect: 'modelSetup.discoveryError.redirect',
     upstream: 'modelSetup.discoveryError.upstream',
   } as const
   const error = (result.error || '').trim() || (result.status ? `HTTP ${result.status}` : '')
