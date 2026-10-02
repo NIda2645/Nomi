@@ -56,13 +56,14 @@ type Submit = (request: unknown, key: string, input: ReturnType<typeof semanticI
 const servers: http.Server[] = [];
 const sockets = new Set<net.Socket>();
 
-async function loopback(behaviour: "accept" | "destroy-after-read") {
+async function loopback(behaviour: "accept" | "destroy-after-read" | "hang") {
   const connections: net.Socket[] = [];
   const requests: Array<{ method: string; socketId: number }> = [];
   const server = http.createServer((request, response) => {
     request.resume();
     request.on("end", () => {
       requests.push({ method: request.method ?? "", socketId: connections.indexOf(request.socket) });
+      if (behaviour === "hang" && request.method === "POST") return;
       if (behaviour === "destroy-after-read" && request.method === "POST") { request.socket.destroy(); return; }
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ code: 200, data: [{ task_id: "task-1", status: "submitted" }] }));
@@ -121,6 +122,22 @@ describe("APIMart 付费提交：每次新连接", () => {
     expect(error).toBeInstanceOf(Error);
     expect(outboundRequestWasNeverWritten(error)).toBe(false);
     expect(fx.requests.filter((request) => request.method === "POST")).toHaveLength(1);
+  });
+
+  it("⑤ 供应商接了请求却一直不回话：到点超时，结果未知（不自动重发），只收到 1 次 POST", async () => {
+    process.env.NOMI_VENDOR_HTTP_TIMEOUT_MS = "400";
+    try {
+      const fx = await loopback("hang");
+      const { send } = providerFor(fx.origin);
+      const started = Date.now();
+      const error = await send("key-1").catch((caught: unknown) => caught);
+      expect(error).toBeInstanceOf(Error);
+      expect(Date.now() - started).toBeLessThan(5000);
+      expect(outboundRequestWasNeverWritten(error)).toBe(false);
+      expect(fx.requests.filter((request) => request.method === "POST")).toHaveLength(1);
+    } finally {
+      delete process.env.NOMI_VENDOR_HTTP_TIMEOUT_MS;
+    }
   });
 
   it("④ 拒连：错误能证明「没写出去」，供应商一个请求都没收到", async () => {

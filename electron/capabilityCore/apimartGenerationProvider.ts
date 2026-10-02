@@ -10,6 +10,7 @@
 import type { GenerationProvider, GenerationProviderRequestInputV1 } from "./generationRuntimeAdapter";
 import { appFetch } from "../appFetch";
 import { createFreshConnectionDispatcher } from "../systemProxy";
+import { vendorHttpTimeoutMs } from "../vendor/vendorHttp";
 import type { Dispatcher } from "undici";
 import { describeOutboundFailure } from "../outboundDispatchEvidence";
 import { extractMaterializationOutputs } from "./apimartGenerationOutputs";
@@ -516,6 +517,9 @@ export function createCatalogGenerationProvider(options: CatalogGenerationProvid
           headers: built.headers,
           ...(isSubmission ? { body: JSON.stringify(body) } : {}),
           ...(fresh ? { dispatcher: fresh } : {}),
+          // 付费提交要有响应超时（此前没有：供应商接了连接却不回话，会一直挂在「生成中」，136 秒还不报）。
+          // 与旧通道 vendorHttp 同一个时长；到点 abort 发生在请求发出之后，判据把它记成「结果未知」，不自动重发。
+          ...(isSubmission ? { signal: AbortSignal.timeout(vendorHttpTimeoutMs()) } : {}),
         } as RequestInit);
       } catch (error) {
         // `fetch failed` 是 undici 的外壳，真正的原因在 cause 链里。两件事都要带出去：

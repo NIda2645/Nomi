@@ -42,7 +42,8 @@ export function vendorResponseLimitForKind(kind: string): number {
     : DEFAULT_VENDOR_RESPONSE_MAX_BYTES;
 }
 
-function vendorHttpTimeoutMs(): number {
+/** 付费提交 / 供应商请求的响应超时（含读响应体）。付费提交的另一条传输（目录供应商）读同一个值。 */
+export function vendorHttpTimeoutMs(): number {
   const raw = Number(process.env.NOMI_VENDOR_HTTP_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_VENDOR_HTTP_TIMEOUT_MS;
 }
