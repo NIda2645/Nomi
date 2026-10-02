@@ -17,10 +17,10 @@
 // 不出现 lane / port / capability / binding 这些我们内部的词——用户那里没有这些指称。
 export const zhAgentToolFailure = {
   task_reference_required: '任务信息不完整。请刷新任务或画布后重试，尚未取消任何任务。',
-  generation_operation_not_found: '当前项目中没有找到这个生成任务。请刷新任务信息，先核对原任务，勿重复付费。',
+  generation_operation_not_found: '当前项目中没有找到这个生成任务。请刷新任务信息，先核对原任务，勿重复提交。',
   production_run_not_found: '当前项目中没有找到这个任务。请刷新任务信息，勿重复提交。',
-  generation_execution_failed: '生成操作未能完成，原任务可能已经提交。请先查询并核对结果，勿再次付费。',
-  generation_not_started: '这一步没成，Nomi 没有开始生成，也没有花钱。',
+  generation_execution_failed: '生成操作未能完成，原任务可能已经提交。请先查询并核对结果，勿再次提交。',
+  generation_not_started: '这一步没成，Nomi 没有开始生成。',
   generation_provider_unavailable: '当前生成服务无法执行这一步。请检查服务设置，并先核对已有任务。',
   // ── 传输：端口身份那一族 ──
   surface_port_stale: '刚才那一步针对的位置已经变了，没有执行。回到那个页面再让它做一次。',
@@ -57,10 +57,10 @@ export const zhAgentToolFailure = {
 
 export const enAgentToolFailure = {
   task_reference_required: 'The task reference is incomplete. Refresh tasks or the canvas and try again. No task was cancelled.',
-  generation_operation_not_found: 'This generation task was not found in the current project. Refresh task information and reconcile the original task before paying again.',
+  generation_operation_not_found: 'This generation task was not found in the current project. Refresh task information and reconcile the original task before submitting it again.',
   production_run_not_found: 'This task was not found in the current project. Refresh task information before submitting again.',
-  generation_execution_failed: 'The generation action could not complete. The original task may already be submitted. Query and reconcile it before paying again.',
-  generation_not_started: 'That did not go through. Nomi has not started generating and has not spent anything.',
+  generation_execution_failed: 'The generation action could not complete. The original task may already be submitted. Query and reconcile it before submitting again.',
+  generation_not_started: 'That did not go through. Nomi has not started generating.',
   generation_provider_unavailable: 'The generation service cannot perform this action. Check its settings and reconcile existing tasks first.',
   surface_port_stale: 'What that step targeted has changed, so nothing ran. Go back to that page and ask again.',
   surface_port_suspended: 'That page is not accepting changes right now. Open it, then ask again.',

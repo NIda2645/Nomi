@@ -1,4 +1,4 @@
-# 本地转写 provider（批次 3 · T-MO-11）
+# 本地转写 provider（批次 3）
 
 > 📋 方案待拍板 · 状态由 docs-autosync 自动登记，作者请按实修改
 
@@ -22,7 +22,7 @@
 
 ## 先查别人
 
-调研正本：`~/Desktop/nomi-scratch-0917/batch3/T-MO-11-local-transcription-prior-art.md`（比较了 whisper.cpp / sherpa-onnx / faster-whisper / Moonshine / Parakeet / 平台自带 / WASM 七条路，以及 OpenWhispr / Vibe / Buzz / Whishper / Kdenlive 五个近邻实现）。以下每条都是 2026-09-17 亲自打开读过的，不是凭印象：
+调研正本：`~/Desktop/nomi-scratch-0917/batch3/` 下的本地转写 prior-art 调研（比较了 whisper.cpp / sherpa-onnx / faster-whisper / Moonshine / Parakeet / 平台自带 / WASM 七条路，以及 OpenWhispr / Vibe / Buzz / Whishper / Kdenlive 五个近邻实现）。以下每条都是 2026-09-17 亲自打开读过的，不是凭印象：
 
 - **同类桌面应用怎么接**：OpenWhispr（Electron + React，MIT）https://github.com/OpenWhispr/openwhispr/blob/main/src/helpers/whisperServer.js —— spawn 预编译 `whisper-server` 到本机随机端口、POST `/inference`、用 `response_format` 取时间戳。**我们照抄这条路线**（sidecar 而不是 native addon），因为查到的活跃桌面转写应用里没有一个走 node-gyp 编译。
 - **为什么钉死版本**：https://github.com/OpenWhispr/openwhispr/blob/main/scripts/download-whisper-cpp.js 顶注原话——跟 latest 会让上游一次 bump 在两次发版之间静默改变转写输出而没有 diff 可审；同一个文件的注释还记着 Windows 缺 MSVC 运行时 DLL 会 0xC0000135 闪退（CUS-113）。**两条我们都吃下来了**（`docs/engineering/supply-chain-pins.json` + 成员清单里那四个 DLL）。

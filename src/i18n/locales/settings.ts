@@ -2,7 +2,7 @@ export const zhSettings = {
   sound: {
     title: '提醒与声音', brand: 'Nomi 提醒音', description: '需要你决定的时候，轻轻响一声',
     preview: '试听', stop: '停止', enabled: '需要我时响一声', events: '响哪些',
-    decision: '需要你决定（审批、要花钱、失败要处理）', completed: '生成完成', slow: '比平时久',
+    decision: '需要你决定（审批、付费确认、失败要处理）', completed: '生成完成', slow: '比平时久',
     custom: '用自己的声音', replace: '换一个…', reset: '恢复默认', duration: '{{seconds}} 秒',
     formats: 'WAV / MP3 / AIFF / M4A · 最长 10 秒 · 最大 2 MB',
     enableFirst: '开启提醒音后可选择', unavailable: '正在连接桌面声音设置',

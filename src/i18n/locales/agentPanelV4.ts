@@ -142,7 +142,6 @@ export const zhAgentPanelV4 = {
   // 这一段是运行时真的会印给用户看的字。缺数据时**整件不渲染**，不用这里的字兜底。
   contextUnknown: '—',
   retrying: '正在重试 {{attempt}}/{{maxAttempts}}',
-  contextCostFree: '免费',
   queueAlreadyConsumed: '这条指令已经送出，无法取消。',
   queueNotFound: '队列已经变化，请查看当前队列。',
   contextUsedOnly: '已用 {{amount}}',
@@ -361,7 +360,7 @@ export const zhAgentPanelV4 = {
   slotDelete: '删除',
   slotTrim: '修剪镜头 2 尾部 0.4 秒',
   slotReversible: '可撤销',
-  slotTrimScope: '已在时间轴高亮，未落盘 · 不计费',
+  slotTrimScope: '已在时间轴高亮，未落盘',
   slotRejectReason: '拒绝原因（可选）',
   slotRejectSample: '这次先不删，保留镜头待复核',
   slotSpendTitle: '生成这 4 段视频？',
@@ -469,13 +468,13 @@ export const zhAgentPanelV4 = {
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
   spendActionFailed: '暂时无法确认这一步的结果，请查看任务状态后再操作。',
-  spendActionNotStarted: '这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。',
+  spendActionNotStarted: '这一步没成，Nomi 没有开始生成。可以改一下再按一次。',
   /** 第 11 条：卡此刻改不了时不许说「改一下再按」，说改不了、该怎么办。 */
-  spendActionNotStartedLocked: '这一步没成，Nomi 没有开始生成，也没有花钱。这张卡现在改不了：点 × 关掉，告诉 Nomi 要怎么改，它会重新起草。',
+  spendActionNotStartedLocked: '这一步没成，Nomi 没有开始生成。这张卡现在改不了：点 × 关掉，告诉 Nomi 要怎么改，它会重新起草。',
   /** 按下去的那一刻卡上的内容刚变了（报价换了一份）：没发起，看一眼现在的样子再按。 */
-  spendActionCardChanged: '卡上的内容刚变了，Nomi 没有开始生成，也没有花钱。看一眼现在的样子再按。',
+  spendActionCardChanged: '卡上的内容刚变了，Nomi 没有开始生成。看一眼现在的样子再按。',
   /** 这一张已经不在卡上（刚被决定，或卡已关掉）。 */
-  spendActionShotGone: '这一张已经不在卡上了，Nomi 没有为它开始生成，也没有花钱。',
+  spendActionShotGone: '这一张已经不在卡上了，Nomi 没有为它开始生成。',
 
   // 「全自动」档（2026-09-10 用户拍板 · 增量 2）
   autoModeConfirmTitle: '切到「全自动」？',
@@ -638,7 +637,6 @@ export const enAgentPanelV4 = {
 
   contextUnknown: '—',
   retrying: 'Retrying {{attempt}}/{{maxAttempts}}',
-  contextCostFree: 'Free',
   queueAlreadyConsumed: 'This instruction was already sent and cannot be cancelled.',
   queueNotFound: 'The queue has changed. Check the current queue.',
   contextUsedOnly: 'Used {{amount}}',
@@ -837,7 +835,7 @@ export const enAgentPanelV4 = {
   slotDelete: 'Delete',
   slotTrim: 'Trim 0.4s off the end of shot 2',
   slotReversible: 'Undoable',
-  slotTrimScope: 'Highlighted on the timeline, not written · no charge',
+  slotTrimScope: 'Highlighted on the timeline, not written',
   slotRejectReason: 'Reason for declining (optional)',
   slotRejectSample: 'Not this time — keep the shot for review',
   slotSpendTitle: 'Generate these 4 video shots?',
@@ -921,10 +919,10 @@ export const enAgentPanelV4 = {
   spendConfirmRemainingVideo_other: 'Generate remaining {{count}}',
   spendParamsDecline: 'No',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
-  spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
-  spendActionNotStartedLocked: 'That did not go through. Nomi has not started generating and has not spent anything. This card can\'t be changed right now: close it with × and tell Nomi what to change, and it will draft it again.',
-  spendActionCardChanged: 'The card just changed, so Nomi has not started generating and has not spent anything. Check what it shows now, then press again.',
-  spendActionShotGone: 'This one is no longer on the card, so Nomi has not started generating it and has not spent anything.',
+  spendActionNotStarted: 'That did not go through. Nomi has not started generating — adjust it and press again.',
+  spendActionNotStartedLocked: 'That did not go through. Nomi has not started generating. This card can\'t be changed right now: close it with × and tell Nomi what to change, and it will draft it again.',
+  spendActionCardChanged: 'The card just changed, so Nomi has not started generating. Check what it shows now, then press again.',
+  spendActionShotGone: 'This one is no longer on the card, so Nomi has not started generating it.',
 
   autoModeConfirmTitle: 'Switch to Full auto?',
   autoModeConfirmBody: 'Nomi will make undoable edits directly and **paid generation will run without showing you a quote each time** — this confirmation is your authorisation for them. Irreversible actions are still confirmed every time.',

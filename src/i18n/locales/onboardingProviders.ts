@@ -143,7 +143,7 @@ export const zhOnboardingProviders = {
       notReadyEnabledHint: '完成输入与请求方式后，才能显示在画布的模型列表中。',
       consentTitle: '开始接入检查？',
       consentMessage:
-        'Nomi 会读取公开 API 文档、调用你已配置的文本模型来生成调用方式，然后做一次免费自检（确认密钥可用、拉一次模型清单、检查调用方式是否完整）。**不会发起任何生成请求，也不消耗生成额度。** 开始后可以转到后台、查看当前步骤或随时停止。',
+        'Nomi 会读取公开 API 文档、调用你已配置的文本模型来生成调用方式，然后做一次自检（确认密钥可用、拉一次模型清单、检查调用方式是否完整）。**不会发起任何生成请求。** 开始后可以转到后台、查看当前步骤或随时停止。',
       consentConfirm: '开始检查',
       unavailable: '当前桌面版本没有提供后台自动适配，请重启应用后再试；模型和现有配置不会丢失。',
     },
@@ -426,7 +426,7 @@ export const zhOnboardingProviders = {
     storedNo: '这台机器上还没有存 {{name}} 的密钥。',
     // 「点这一下会发什么、花不花钱」——料源是主进程那份唯一的探测策略（T-MO-10，09-22 拍板）。
     // 不知道就说不知道：**不许**在问不到的时候默认说「免费验证」。
-    probeCostFree: '保存时会用这把密钥发一次免费的验证请求（只查额度/权限，不生成内容，不花钱）。',
+    probeCostFree: '保存时会用这把密钥发一次验证请求（只查权限，不生成内容）。',
     probeCostPaid: '这家没有免费的验证端点：保存时会发一次最小的真实请求来验密钥，预计消耗 {{amount}} 额度。发之前会再问你一次。',
     probeCostPaidUnpriced: '这家没有免费的验证端点：保存时会发一次最小的真实请求来验密钥，会消耗额度（这家还没填价，具体多少说不准）。发之前会再问你一次。',
     probeCostUnknown: '暂时读不到这家的验证方式；保存前 Nomi 会先告诉你这一下花不花钱。',
@@ -700,7 +700,7 @@ export const zhOnboardingProviders = {
     subtitle: 'Nomi 来用你电脑上已登录的 Codex 出图',
     status: { on: '已开启', off: '未开启' },
     readyTitle: '图片节点里可以选「Codex 生图」了',
-    readyBody: '用你 ChatGPT 账号的额度，不另外收费。',
+    readyBody: '使用你的 ChatGPT 账号生成。',
     requirement: '需要你电脑上装了 Codex 并已登录。',
     notTheSame: '这张卡和上面的「接入 AI 编程助手」是两回事：那张是让助手来用 Nomi，这张是 Nomi 去用 Codex 出图。',
     turnOn: '开启生图',
@@ -708,7 +708,7 @@ export const zhOnboardingProviders = {
   },
   localModel: {
     cardName: '本地模型',
-    subtitle: '连你电脑上的 Ollama / LM Studio / LocalAI，用本地模型省额度、保隐私',
+    subtitle: '连你电脑上的 Ollama / LM Studio / LocalAI，用本地模型，数据留在本机',
     status: {
       connected: '已连 {{count}} 个模型',
       detecting: '检测中…',
@@ -804,7 +804,7 @@ export const zhOnboardingProviders = {
     // 旧文案与另一个对话框（modelSetup.addedHint「只写入本地、不做真实测试」）直接矛盾，
     // 而用户看到哪一个取决于他从哪个入口进来。2026-09-11 两处统一成同一句实话：自检不花钱。
     saveModelsDisclosure:
-      '确认后做一次免费自检：确认密钥可用、拉一次模型清单、检查调用方式是否完整。不发起生成请求，也不消耗额度。通过后它们会出现在画布的模型列表里，标注「未试跑」。',
+      '确认后做一次自检：确认密钥可用、拉一次模型清单、检查调用方式是否完整。不会发起生成请求。通过后它们会出现在画布的模型列表里，标注「未试跑」。',
     addModels: '自检 {{count}} 个',
   },
   adapterVerification: {
@@ -858,7 +858,7 @@ export const zhOnboardingProviders = {
       queued: '等待开始…',
       discovering_docs: '正在查找官方 API 文档…',
       compiling: '正在理解不同接口并生成接法…',
-      testing: '正在自检 {{model}}（不发生成请求，不花额度）',
+      testing: '正在自检 {{model}}（不发生成请求）',
       repairing: '正在根据真实错误自动修复…',
       completed: '全部验证完成',
       partial: '可用能力已接入',
@@ -1394,7 +1394,7 @@ export const enOnboardingProviders = {
       notReadyEnabledHint: 'Finish the input and request setup before showing this model on the canvas.',
       consentTitle: 'Start the integration check?',
       consentMessage:
-        'Nomi reads the public API documentation and uses the text model you already configured to build the call contract, then runs one free self-check (key works, model list fetched once, call contract complete). **No generation request is sent and no generation quota is used.** You can send this to the background, watch the current step, or stop it at any time.',
+        'Nomi reads the public API documentation and uses the text model you already configured to build the call contract, then runs one self-check (key works, model list fetched once, call contract complete). **No generation request is sent.** You can send this to the background, watch the current step, or stop it at any time.',
       consentConfirm: 'Start check',
       unavailable: 'Background auto-adaptation is unavailable in this desktop build. Restart and try again; the model and current configuration are preserved.',
     },
@@ -1679,7 +1679,7 @@ export const enOnboardingProviders = {
     saveFailed: 'Could not save: {{message}}',
     storedYes: 'A {{name}} key is stored on this machine.',
     storedNo: 'No {{name}} key is stored on this machine yet.',
-    probeCostFree: 'Saving sends one free verification request with this key (it checks quota and access only — nothing is generated, nothing is charged).',
+    probeCostFree: 'Saving sends one verification request with this key (it checks access only — nothing is generated).',
     probeCostPaid: 'This provider has no free verification endpoint: saving sends one minimal real request to check the key, costing about {{amount}} in credits. You are asked once more before it goes out.',
     probeCostPaidUnpriced: 'This provider has no free verification endpoint: saving sends one minimal real request to check the key, which spends credits (no price is on file, so the amount is unknown). You are asked once more before it goes out.',
     probeCostUnknown: 'Nomi cannot read this provider’s verification method right now; it will tell you whether the check costs anything before sending it.',
@@ -1955,7 +1955,7 @@ export const enOnboardingProviders = {
     subtitle: 'Nomi uses the Codex you are already signed into on this computer',
     status: { on: 'On', off: 'Off' },
     readyTitle: 'You can now pick “Codex image generation” on image nodes',
-    readyBody: 'It uses your ChatGPT account allowance — no extra charge.',
+    readyBody: 'It generates through your ChatGPT account.',
     requirement: 'Requires Codex installed and signed in on this computer.',
     notTheSame:
       'This is separate from “Connect an AI coding assistant” above: that one lets an assistant drive Nomi, this one lets Nomi generate images through Codex.',
@@ -1964,7 +1964,7 @@ export const enOnboardingProviders = {
   },
   localModel: {
     cardName: 'Local models',
-    subtitle: 'Connect Ollama / LM Studio / LocalAI on your machine — save credits, keep it private',
+    subtitle: 'Connect Ollama / LM Studio / LocalAI on your machine — your data stays on this machine',
     status: {
       connected: '{{count}} model(s) connected',
       detecting: 'Detecting…',
@@ -2053,7 +2053,7 @@ export const enOnboardingProviders = {
     manualPlaceholder: 'Enter an unlisted model ID and press Enter',
     add: 'Add',
     saveModelsDisclosure:
-      'Confirming runs one free self-check: confirm the key works, fetch the model list once, and check that the call contract is complete. No generation request is sent and no quota is used. Models that pass appear in the canvas model list marked “not tried yet”.',
+      'Confirming runs one self-check: confirm the key works, fetch the model list once, and check that the call contract is complete. No generation request is sent. Models that pass appear in the canvas model list marked “not tried yet”.',
     addModels: 'Self-check {{count}} models',
   },
   adapterVerification: {
@@ -2113,7 +2113,7 @@ export const enOnboardingProviders = {
       queued: 'Waiting to start…',
       discovering_docs: 'Finding official API documentation…',
       compiling: 'Understanding the API and building an adapter…',
-      testing: 'Self-checking {{model}} (no generation request, no quota)',
+      testing: 'Self-checking {{model}} (no generation request)',
       repairing: 'Repairing from the real error…',
       completed: 'Verification complete',
       partial: 'Usable capabilities connected',

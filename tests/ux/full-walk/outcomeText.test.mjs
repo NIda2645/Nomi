@@ -1,7 +1,7 @@
 // 「查结果」第 1 道的判据：先证明会红（每一类违例各一条真实形状），再证明不误报（整本中英词典 + 常见正常句子）。
 import { describe, expect, it } from 'vitest'
 
-import { activeDebt, findLeaks, PRICE_WORDING } from './outcomeText.mjs'
+import { activeDebt, findLeaks, NO_COST_CLAIMS, PRICE_WORDING } from './outcomeText.mjs'
 import { loadDictionaries } from './invariants.mjs'
 
 const kinds = (text) => findLeaks(text).map((leak) => leak.kind)
@@ -105,5 +105,54 @@ describe('真实走查里抓到的形状（main 上 Agent 工具卡原样摆出�
   it('工具入参 JSON 与操作 id 都判违例', () => {
     const text = 'Prepare generation Running Input{ "shots": [ { "prompt": "a cat", "candidate": { "providerId": "apimart" } } ] } op-510dcbd0-0236-4af8-b61c-711ce74a5925'
     expect(kinds(text)).toEqual(expect.arrayContaining(['raw-json', 'internal-id']))
+  })
+})
+
+// 「没花钱 / 不计费 / 免费」这类断言（2026-10-02：界面不谈钱，只说事实和下一步）。
+describe('不谈钱：没花钱 / 免费 / 不计费 这类断言', () => {
+  it('会红：中英各种说法', () => {
+    for (const text of ['确认后做一次免费自检', '不会发起生成请求，也不会消耗额度', '这次没有扣费，可以重试', '这一步没成，也没有花钱', '取消不产生费用',
+      '已取消（未提交，无费用）', '只查结果，不重新生成，不花钱', '用本地模型省额度', '再次提交可能重复扣费', '勿重复付费', '会跑完并计费',
+      'Confirming runs one free self-check', 'Nothing was charged — try again', 'It costs nothing', 'No generation quota is used. No credits are spent',
+      'free to cancel', 'Retrying could charge twice', 're-fetching costs nothing extra', 'The step adds no cost']) {
+      expect(kinds(text), text).toContain('price-wording')
+    }
+  })
+
+  it('不误报：第三方自己的说法、不是钱的 free、正常句子（零误报）', () => {
+    for (const text of [
+      '境外服务商和免费图床可能连不上', 'Overseas providers and free image hosts may be unreachable', // 第三方服务
+      '绑定阿里云账号后每天有免费推理额度', 'Daily free quota with an Alibaba Cloud account', '免费试用已于 2026-05-01 结束', 'The free trial ended on May 1',
+      '上传不等于模型额度免费', // 第三方（Runway）的额度说明
+      'Free up space and export again', 'The project disk has only 2 GB free left', 'Free roam · panorama', 'Free orientation', 'The watermark-free video lands in your library', 'AI draft · Edit freely',
+      '这一步没成，Nomi 没有开始生成。', 'The task was never submitted; you can retry.', '已取消（未提交）', '只查结果，不重新生成', '重新生成这一镜',
+    ]) expect(findLeaks(text).filter((leak) => leak.kind === 'price-wording'), text).toEqual([])
+  })
+
+  // 付费确认卡 / 上传通道提示 / 付费验证说明归付费卡那条线：它们的文案「这一步会花钱 / 这家没有免费端点」是披露，不是断言，
+  // 等那条线改完再从这张表里拿掉（拿掉之后词典里再出现就红）。表里每一条都必须真的还命中——不命中说明它已经改好了，该删这一行。
+  const OWNED_BY_SPEND_CARD_LANE = Object.freeze([
+    'onboardingProviders.drawer.home.kieHint',
+    'onboardingProviders.keyOnly.probeCostPaid', 'onboardingProviders.keyOnly.probeCostPaidUnpriced', 'onboardingProviders.keyOnly.probeCostUnknown',
+    'generationCommon.production.checkpoint.subtitleWithReuse', 'generationCommon.production.checkpoint.note', 'generationCommon.production.checkpoint.noteWithBudget',
+    'runtime.capability.credentialProbeMessage',
+  ])
+  const flatOf = (node, prefix = '') => Object.entries(node).flatMap(([key, value]) => (typeof value === 'string' ? [[`${prefix}${key}`, value]] : value && typeof value === 'object' ? flatOf(value, `${prefix}${key}.`) : []))
+  // 设计实验室的样例串（fixture*）只在 devlab 里渲染，用户界面不出现（同上面「整本词典」那条的豁免）。
+  // 另一类豁免：词本身不是钱——导演模式画幅选项叫「Free / 自由」。
+  const NOT_MONEY = Object.freeze(['director.aspect.free'])
+  const isFixture = (key) => /(^|\.)fixture[A-Z]/.test(key) || NOT_MONEY.includes(key)
+
+  it.each(['zh-CN', 'en'])('%s：整本词典里除了登记在案的付费卡线文案，没有任何谈钱的断言', (locale) => {
+    const dictionaries = loadDictionaries()
+    const hits = flatOf(dictionaries[locale]).filter(([key]) => !isFixture(key) && !OWNED_BY_SPEND_CARD_LANE.includes(key))
+      .filter(([, value]) => NO_COST_CLAIMS[locale].test(value)).map(([key, value]) => `${key}: ${value.slice(0, 60)}`)
+    expect(hits, `${locale} 词典里还有谈钱的断言`).toEqual([])
+  })
+
+  it('登记表没有烂掉：表里每一条在词典里都还命中（改好了就该从表里删掉）', () => {
+    const dictionaries = loadDictionaries()
+    const stillHit = new Set(['zh-CN', 'en'].flatMap((locale) => flatOf(dictionaries[locale]).filter(([, value]) => NO_COST_CLAIMS[locale].test(value)).map(([key]) => key)))
+    for (const key of OWNED_BY_SPEND_CARD_LANE) expect(stillHit.has(key), `${key} 已经不命中了，从登记表里删掉`).toBe(true)
   })
 })

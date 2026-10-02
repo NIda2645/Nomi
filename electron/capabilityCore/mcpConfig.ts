@@ -256,8 +256,8 @@ export class HostConfigWriteRefused extends Error {
   }
 }
 
-/** 隔离实例的判据：走查/评测启动器钉死的 NOMI_E2E，或设置根不是本机 Electron 的 userData。 */
-function isolatedInstanceMarker(): string | null {
+/** 隔离实例的判据（唯一一份；协议登记等也问它）：走查/评测启动器钉死的 NOMI_E2E，或设置根不是本机 Electron 的 userData。 */
+export function isolatedInstanceMarker(): string | null {
   if (process.env.NOMI_E2E === '1') return 'NOMI_E2E=1'
   const settingsRoot = String(process.env[SETTINGS_ROOT_ENV] || '').trim()
   if (settingsRoot && path.resolve(settingsRoot) !== path.resolve(app.getPath('userData'))) return `${SETTINGS_ROOT_ENV}=${settingsRoot}`
