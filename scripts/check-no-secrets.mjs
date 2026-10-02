@@ -352,6 +352,26 @@ function scanPrivateTodoIds(addedByFile) {
   return hits;
 }
 
+/** 合并进行中：另一个父提交（MERGE_HEAD）；不是合并 = null。 */
+function mergeHeadSha() {
+  try { return execFileSync("git", ["rev-parse", "-q", "--verify", "MERGE_HEAD"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim() || null; } catch { return null; }
+}
+
+/** 去掉「另一个父提交的同一文件里本来就有」的行：剩下的才是这次合并里手写的。 */
+export function dropLinesInOtherParent(addedByFile, readOtherParent) {
+  const kept = new Map();
+  for (const [file, lines] of addedByFile) {
+    const inherited = new Set(String(readOtherParent(file) ?? "").split("\n"));
+    const own = lines.filter(({ text }) => !inherited.has(text));
+    if (own.length) kept.set(file, own);
+  }
+  return kept;
+}
+
+function readFromCommit(sha, file) {
+  try { return execFileSync("git", ["-c", "core.quotePath=false", "show", `${sha}:${file}`], { encoding: "utf8", maxBuffer: 64 * 1024 * 1024, stdio: ["ignore", "pipe", "ignore"] }); } catch { return ""; }
+}
+
 function gitDiffAdded(args) {
   try {
     return parseAddedLines(execFileSync("git", ["-c", "core.quotePath=false", "diff", "-U0", "--no-color", "--no-ext-diff", ...args], { encoding: "utf8", maxBuffer: 256 * 1024 * 1024 }));
@@ -370,7 +390,11 @@ function prDiffBase() {
 }
 
 function privateTodoHits(mode, files) {
-  if (mode === "staged") return scanPrivateTodoIds(gitDiffAdded(["--cached", "--diff-filter=AM"]) ?? new Map());
+  if (mode === "staged") {
+    const added = gitDiffAdded(["--cached", "--diff-filter=AM"]) ?? new Map();
+    const other = mergeHeadSha();
+    return scanPrivateTodoIds(other ? dropLinesInOtherParent(added, (file) => readFromCommit(other, file)) : added);
+  }
   if (mode === "all") {
     const base = prDiffBase();
     if (!base) { console.error("  ⚠️ 私有待办编号：拿不到可信 base，本次不判 PR 差异（不拿算不出来当通过）"); return []; }

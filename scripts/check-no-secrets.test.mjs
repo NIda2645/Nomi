@@ -295,6 +295,45 @@ describe("私有待办编号（只查新增行）", () => {
     expect(r.out).toContain("私有待办编号不进公开仓库，改成写问题本身");
   });
 
+  // 合并提交：main 自带的旧行相对第一个父提交也是「新增」，但不是这条线写的——只查相对两个父提交都新的行。
+  function makeMergeRepo({ mainSideLine } = {}) {
+    const { root, git } = makeRepo();
+    const main = git("rev-parse", "--abbrev-ref", "HEAD");
+    git("checkout", "-q", "-b", "task");
+    fs.writeFileSync(path.join(root, "docs", "task.md"), "任务线自己的文件\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "task work");
+    git("checkout", "-q", main);
+    fs.appendFileSync(path.join(root, "docs", "old.md"), mainSideLine ?? "main 一侧加的一行\n");
+    git("add", "-A");
+    git("commit", "-q", "-m", "main moves");
+    git("checkout", "-q", "task");
+    try { git("merge", "--no-commit", "--no-ff", main); } catch { /* 有冲突时非 0，MERGE_HEAD 照样在 */ }
+    expect(fs.existsSync(path.join(root, ".git", "MERGE_HEAD"))).toBe(true);
+    return { root, git, main };
+  }
+
+  it("合并：main 一侧带来的编号不算这条线新增的 → 放行（修之前这里被拦）", () => {
+    const { root } = makeMergeRepo({ mainSideLine: `main 上已有的一行，带 ${FRESH}。\n` });
+    expect(run(root).code).toBe(0);
+  });
+
+  it("合并：解冲突时手写的编号照样拦（相对两个父提交都是新行）", () => {
+    const { root, git } = makeMergeRepo({ mainSideLine: `main 上已有的一行，带 ${OLD}。\n` });
+    fs.appendFileSync(path.join(root, "docs", "old.md"), `解冲突时手写的一行，引用 ${FRESH}。\n`);
+    git("add", "-A");
+    const r = run(root);
+    expect(r.code).toBe(1);
+    expect(r.out).toContain(FRESH);
+    expect(r.out).not.toContain(OLD); // main 一侧的不被点名
+  });
+
+  it("CI / --all 三点 diff：并过 main 之后，main 自带的旧编号不进 PR 差异", () => {
+    const { root, git, main } = makeMergeRepo({ mainSideLine: `main 上已有的一行，带 ${FRESH}。\n` });
+    git("commit", "-q", "-m", "merge main", "--no-verify");
+    expect(run(root, ["--all"], { SECRET_SCAN_BASE_REF: git("merge-base", "HEAD", main) }).code).toBe(0);
+  });
+
   it("显式给文件：整份算新增", () => {
     const f = scanContent("docs/explicit.md", `一行 ${FRESH}\n`);
     expect(f.code).toBe(1);
