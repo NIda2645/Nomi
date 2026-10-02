@@ -261,10 +261,17 @@ export const zhGenerationCommon = {
     action: {
       reconcile: { main: '在任务中心查看', alt: '先在任务中心查看' },
       viewTask: { main: '查看制作任务', alt: '去看制作任务' },
+      releaseRegenerate: { main: '我核对过了，重新生成', alt: '我核对过了，重新生成' },
       retry: { main: '重试', alt: '仍要重试' },
       switchModel: { main: '换个模型', alt: '换个模型' },
       modelAccess: { main: '检查模型', alt: '检查模型' },
       fixModelKind: { main: '改成{{kind}}并重试', alt: '改成{{kind}}' },
+    },
+    releaseConfirm: {
+      message: '只有在服务商后台确认没有这一笔时再继续。如果其实已经收下，再生成会重复提交。',
+      continue: '继续',
+      cancel: '取消',
+      failed: '没能记录你的核对结果，这一镜还没有放行。再点一次。',
     },
     progress: {
       queued: '排队中',
@@ -1285,6 +1292,7 @@ export const zhGenerationCommon = {
       'review-storyboard': '审阅分镜方案',
       'open-gate': '核对并确认',
       reconcile: '查看安全暂停详情',
+      'release-unknown': '我核对过了，重新生成',
       'review-rough-cut': '审看粗剪',
       'open-export': '进入导出',
       'resume-run': '从断点继续',
@@ -1362,6 +1370,10 @@ export const zhGenerationCommon = {
       reworkSelected: '先重拍选中的，再回来过目',
     },
     reconcile: {
+      releaseTitle: '我核对过了，重新生成',
+      releaseMessage: '只有在服务商后台确认没有这一笔时再继续。如果其实已经收下，再生成会重复提交。',
+      releaseContinue: '继续',
+      submittedAt: '提交时间 {{time}}',
       questionTitle: '核对供应商任务',
       message: '供应商：{{provider}}\n任务标识：{{taskId}}\nNomi 不会自动重下单。请先在供应商侧核对任务是否存在，再决定恢复或重新生成。',
       unknownProvider: '未知',
@@ -1821,10 +1833,17 @@ export const enGenerationCommon = {
     action: {
       reconcile: { main: 'View in task center', alt: 'View in task center first' },
       viewTask: { main: 'View production task', alt: 'Open task center' },
+      releaseRegenerate: { main: "I've checked, generate again", alt: "I've checked, generate again" },
       retry: { main: 'Retry', alt: 'Retry anyway' },
       switchModel: { main: 'Switch model', alt: 'Switch model' },
       modelAccess: { main: 'Check models', alt: 'Check models' },
       fixModelKind: { main: 'Set to {{kind}} and retry', alt: 'Set to {{kind}}' },
+    },
+    releaseConfirm: {
+      message: 'Only continue if you have confirmed in the provider dashboard that this request is not there. If it was in fact received, generating again will submit it twice.',
+      continue: 'Continue',
+      cancel: 'Cancel',
+      failed: 'Your check could not be recorded, so this shot was not released. Try again.',
     },
     progress: {
       submitting: 'Submitting',
@@ -2824,6 +2843,7 @@ export const enGenerationCommon = {
       'review-storyboard': 'Review storyboard',
       'open-gate': 'Review and approve',
       reconcile: 'View safe-pause details',
+      'release-unknown': "I've checked, generate again",
       'review-rough-cut': 'Review rough cut',
       'open-export': 'Open export',
       'resume-run': 'Resume from checkpoint',
@@ -2902,6 +2922,10 @@ export const enGenerationCommon = {
       reworkSelected: 'Reshoot the selected ones first',
     },
     reconcile: {
+      releaseTitle: "I've checked, generate again",
+      releaseMessage: 'Only continue if you have confirmed in the provider dashboard that this request is not there. If it was in fact received, generating again will submit it twice.',
+      releaseContinue: 'Continue',
+      submittedAt: 'Submitted {{time}}',
       questionTitle: 'Reconcile provider task',
       message: 'Provider: {{provider}}\nTask ID: {{taskId}}\nNomi will not resubmit automatically. Verify whether the task exists with the provider before deciding to resume or regenerate.',
       unknownProvider: 'Unknown',

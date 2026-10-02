@@ -302,6 +302,32 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       const outcome = runCommand.payload.outcome
       const job = current.jobs.find((candidate) => candidate.jobId === jobId)
       if (!job || job.status !== 'submission_unknown') throw new Error('Production job is not awaiting reconciliation')
+      if (outcome === 'user_checked_abandon') {
+        // 「我去服务商后台核对过了，没有这一笔」：把那次结果未知的尝试记成「用户核对后放弃」，释放这一镜的占用
+        // （job → needs_attention，画布重新可以生成），预留按用户核对过的事实 provider-safe 释放。
+        // 只认来自 Nomi 自己窗口的真人手势（productionRunIpc 盖章）；不开拍——重新生成仍要在正常的付费确认卡上点。
+        if (runCommand.humanGesture !== true) throw new Error('A user gesture is required to release an unconfirmed submission')
+        const released = repository.execute(safeProjectId, safeRunId, {
+          ...runCommand,
+          type: 'job.status',
+          payload: {
+            jobId,
+            status: 'needs_attention',
+            patch: { errorCode: 'user_checked_abandoned', errorMessage: `User checked the provider and abandoned this unconfirmed attempt at ${runCommand.issuedAt}` },
+          },
+        })
+        const reservationId: string = `${safeRunId}:${jobId}:${job.attempt}`
+        if (repository.readBudgetLedger(safeProjectId, safeRunId).reservations[reservationId]?.status === 'unsettled') {
+          return repository.execute(safeProjectId, safeRunId, {
+            commandId: `${runCommand.commandId}:release`,
+            expectedRevision: released.run.revision,
+            type: 'budget.entry',
+            payload: { entry: { billingEntryId: `${reservationId}:release-user-checked`, kind: 'release', reservationId, providerSafe: true, occurredAt: runCommand.issuedAt } },
+            issuedAt: runCommand.issuedAt,
+          })
+        }
+        return released
+      }
       if (outcome === 'not_found') {
         return repository.execute(safeProjectId, safeRunId, {
           ...runCommand,

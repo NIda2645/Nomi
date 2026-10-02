@@ -242,10 +242,15 @@ describe('production run view', () => {
     expect(buildProductionRunView(value, now)).toMatchObject({
       tone: 'danger',
       titleKey: 'generationCommon.production.status.submissionUnknown',
-      primaryAction: 'reconcile',
+      // 没有任务号：Nomi 没法核对，用户去服务商后台看完才有「我核对过了，重新生成」；并给出时间 / 模型 / 服务商供比对。
+      primaryAction: 'release-unknown',
       targetId: 'job-1',
+      unknownJob: { provider: value.jobs[0].provider, model: value.jobs[0].model, at: value.jobs[0].updatedAt },
     })
     expect(JSON.stringify(buildProductionRunView(value, now))).not.toContain('retry')
+    // 有任务号：仍走原来的对账（找到 / 没找到）。
+    const withTask = run({ jobs: [{ ...run().jobs[0], status: 'submission_unknown', providerTaskId: 'task-9', progressPercent: undefined }] })
+    expect(buildProductionRunView(withTask, now).primaryAction).toBe('reconcile')
   })
 
   it('explains stale provider state without inventing failure or ETA', () => {

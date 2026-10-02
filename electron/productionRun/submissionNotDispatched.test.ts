@@ -25,6 +25,8 @@ import type { GenerationProvider } from "../capabilityCore/generationRuntimeAdap
 import { createProductionGenerationSubmission } from "./productionGenerationSubmission";
 import { sealAndApproveProductionGeneration } from "./productionGenerationAuthorizationTestUtils";
 import { createProductionRunRepository } from "./productionRunRepository";
+import { createProductionRunService } from "./productionRunService";
+import { decideShotClaim } from "../shared/decideShotClaim";
 import { createMultiShotBatchScheduler } from "./multiShotBatchScheduler";
 import type { ProductionGenerationShot } from "./productionRunTypes";
 import { applySystemProxy, createFreshConnectionDispatcher } from "../systemProxy";
@@ -391,6 +393,34 @@ describe("宿主级：真实 socket 上付费提交的重发规则", () => {
     expect(calls).toHaveLength(1);
     expect(job.status).toBe("submission_unknown");
     expect(job.errorCode).not.toBe("provider_not_reached");
+  });
+
+  it("⑤ 结果未知的镜：放行前画布不能生成；用户核对后放行 → 画布可以生成（走正常付费确认），放行本身不向供应商发任何请求", async () => {
+    const fx = await fixture("destroy-after-read");
+    const calls: string[] = [];
+    const { root, repository } = setup([shotEntry("shot-1", "a")]);
+    await scheduler(root, repository, loopbackProvider(fx, calls, { idempotent: false })).runToQuiescence();
+    const run = () => repository.read("project-1", "op-batch")!;
+    const job = () => run().jobs.find((candidate) => candidate.metadata?.shotId === "shot-1")!;
+    expect(job().status).toBe("submission_unknown");
+    expect(decideShotClaim(run(), "shot-1", "canvas")).toMatchObject({ granted: false, reason: "needs_reconcile" });
+
+    const service = createProductionRunService({ repository, projectRootResolver: () => root });
+    const base = { commandId: "release-1", expectedRevision: run().revision, type: "job.reconcile", payload: { jobId: job().jobId, outcome: "user_checked_abandon" }, issuedAt: "2026-10-02T12:00:00.000Z" };
+    // 没有受信窗口的手势章（Agent / MCP 路径永远没有）：拒。
+    await expect(service.command("project-1", "op-batch", base)).rejects.toThrow(/user gesture/);
+    expect(job().status).toBe("submission_unknown");
+
+    const before = fx.posts.length;
+    await service.command("project-1", "op-batch", { ...base, humanGesture: true });
+    expect(job()).toMatchObject({ status: "needs_attention", errorCode: "user_checked_abandoned" });
+    expect(job().errorMessage).toContain("2026-10-02T12:00:00.000Z");
+    expect(decideShotClaim(run(), "shot-1", "canvas")).toMatchObject({ granted: true });
+    // 放行只是释放占用：不重发、不开拍（真正的生成要用户在付费确认卡上点）。
+    expect(fx.posts.length).toBe(before);
+    expect(calls).toHaveLength(1);
+    const ledger = repository.readBudgetLedger("project-1", "op-batch");
+    expect(Object.values(ledger.reservations).every((reservation) => reservation.status !== "unsettled")).toBe(true);
   });
 
   it("② 端口拒连：没有请求到达，状态「没发出去」，最多重试 1 次", async () => {

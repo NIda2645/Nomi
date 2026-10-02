@@ -538,7 +538,7 @@ describe('动作表：每类主 / 次动作都写在表里，改一类不许带�
       const before = primary === 'retry' || primary === 'fix-model-kind' ? 'switch-model' : 'retry'
       // 已下线、读不出来：这两类不给第二个动作（重试必再撞同一张卡 / 换供应商不是解法）；
       // 结果未知：不给重试（可能重复提交），只指路去核对。
-      expect({ kind, secondary }).toEqual({ kind, secondary: kind === 'model-retired' || kind === 'output-unreadable' || kind === 'submission-unknown' ? null : before })
+      expect({ kind, secondary }).toEqual({ kind, secondary: kind === 'model-retired' || kind === 'output-unreadable' ? null : kind === 'submission-unknown' ? 'release-regenerate' : before })
     }
   })
 })
@@ -552,7 +552,8 @@ describe('付费提交结果未知（连接在请求发出后被重置）', () =
     expect(report.reason).not.toContain('连不上')
     expect(report.hint).not.toContain('没发到')
     expect(report.primary).toBe('reconcile')
-    expect(report.secondary).toBeNull()
+    // 没有一键重试；次动作是「我核对过了，重新生成」（点下去先展开确认，不直接生成）。
+    expect(report.secondary).toBe('release-regenerate')
     expect(report.hint).toContain('先到服务商后台')
   })
 

@@ -5,7 +5,7 @@
   "symptom": "真应用复现（breaker E9）：点了 3 张图，APIMart 夹具先后收到 1、1、2、3 笔；D9：连接被掐断后画布写「请求没发到服务商」，但供应商其实已经收下。已随 v0.22.0–0.22.5 发布。",
   "direct_cause": "electron/outboundDispatchEvidence.ts 的 provesNotWritten 把 UND_ERR_SOCKET 一律判成「没写出去」，经 productionGenerationSubmission.ts:498 变成 SubmissionNotDispatchedError，再由 submissionOutbox.ts 的 submitOnce 自动重发一次；而 APIMart 档案 submitIdempotency=false，submitWithContext 还把 idempotencyKey 丢了，重发就是第二张单。节点文案又按最后一次失败（ECONNREFUSED）选「没发到」。",
   "class_root": "「这次出站有没有写出去」的判据用一个不成立的假设补洞：把「复用的 keep-alive 连接被对面关了」（没写出去）和「请求已写出去、响应前连接被重置」（供应商可能已收下）这两种抛出同一个 UND_ERR_SOCKET 的情形当成一种。第一种本来就可以从构造上消灭（付费提交不复用连接），却靠猜去区分。再加上重发规则只看判据、不看供应商是否真支持幂等，以及最终状态只看最后一次尝试。",
-  "migration": "付费提交（apimartGenerationProvider.send 与 vendorHttp.requestVendor 的非 GET 请求）每次新建 dispatcher、用完关闭，「旧连接」不再可能出现；判据只认连上之前的失败（DNS / connect 系统调用 / 连接超时 / TLS 握手前），UND_ERR_SOCKET、ECONNRESET、头体超时、发出后 abort 一律是结果未知；outbox 的重发规则改为：确定没发出去最多重试 1 次，结果未知仅当供应商档案声明 submitIdempotency 且错误是连接层错误时才用同一个键重发 1 次；最终状态看所有尝试里最不确定的一次；结果未知的错误消息带 NOMI_ERR::submission-unknown:: 机器码，渲染层说「可能已被服务商收下、结果没法确认」，不再归成「连不上服务商」。旧的 UND_ERR_SOCKET 判据分支同 diff 删除。 重启恢复：提交途中进程退出的 job（submitting 且无任务号）记为 submission_unknown 并把预留标 unsettled；付费提交加响应超时（同 vendorHttp 时长）。",
+  "migration": "付费提交（apimartGenerationProvider.send 与 vendorHttp.requestVendor 的非 GET 请求）每次新建 dispatcher、用完关闭，「旧连接」不再可能出现；判据只认连上之前的失败（DNS / connect 系统调用 / 连接超时 / TLS 握手前），UND_ERR_SOCKET、ECONNRESET、头体超时、发出后 abort 一律是结果未知；outbox 的重发规则改为：确定没发出去最多重试 1 次，结果未知仅当供应商档案声明 submitIdempotency 且错误是连接层错误时才用同一个键重发 1 次；最终状态看所有尝试里最不确定的一次；结果未知的错误消息带 NOMI_ERR::submission-unknown:: 机器码，渲染层说「可能已被服务商收下、结果没法确认」，不再归成「连不上服务商」。旧的 UND_ERR_SOCKET 判据分支同 diff 删除。 重启恢复：提交途中进程退出的 job（submitting 且无任务号）记为 submission_unknown 并把预留标 unsettled；付费提交加响应超时（同 vendorHttp 时长）。 放行入口：节点错误卡与任务中心都有「我核对过了，重新生成」，先确认、再放行、再弹付费确认卡；任务中心「提交结果不明」那一项显示服务商 / 模型 / 提交时间；Agent 读制作状态时逐镜收到「不要再 generate」。",
   "affected_population": [
     "所有经 ProductionRun 提交的付费生成（多镜批次与单镜），在连接被重置 / 被掐断时：不支持幂等的供应商（目前所有生产供应商，APIMart 明确 false）会重复收到同一镜",
     "画布节点与任务面板对这类失败的文案：说成「没发到服务商」，诱导用户放心重试",
@@ -31,7 +31,9 @@
     "最终状态看所有尝试里最不确定的一次：只要有一次可能已被收下，就不能落「没发出去」",
     "付费 POST 每次用全新连接，不与别的请求共用连接池",
     "提交途中进程退出（重启后 job 停在 submitting 且没有任务号）= 结果未知，不自动重发",
-    "付费提交有响应超时，超时是结果未知"
+    "付费提交有响应超时，超时是结果未知",
+    "结果未知的镜只有用户在 Nomi 窗口里确认「服务商后台没有这一笔」才能放行；放行只释放占用并 provider-safe 释放预留，不重发、不开拍，重新生成仍走正常付费确认卡",
+    "Agent 读到结果未知的镜时被明确告知不要再 generate 它，由用户在任务中心决定"
   ],
   "doors": [
     {
@@ -78,12 +80,17 @@
       "kind": "read",
       "path": "electron/shared/productionShotPhase.ts",
       "symbol": "deriveProductionShotState"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunIpc.ts",
+      "symbol": "rendererCommand"
     }
   ],
   "door_reduction": {
     "before": 4,
-    "after": 9,
-    "why_not": "门数从 4 扇变成 9 扇，多出来的不是新入口而是把原来散在判据里的假设拆成各自可测的一件事：判据本身（outboundDispatchEvidence，唯一读 undici cause 链的地方）、连接层失败的识别（isTransportLevelFailure，只给「供应商真支持幂等」那条重发用）、新连接原语的定义（systemProxy.createFreshConnectionDispatcher，全仓只有这一份定义）。原有的四扇各自必须存在：submitOnce 是全仓唯一重发点（规则），productionGenerationSubmission 是供应商异常进入提交层的唯一收口，apimartGenerationProvider.send 与 vendorHttp.requestVendor 是两条独立的付费传输（目录供应商 / 旧通道），它们共用同一个新连接原语，所以「新连接」的定义只有一份。 重启恢复入口 resumeUnfinishedRuns 是第 8 扇：提交在路上时进程没了，job 停在 submitting 没有任务号，它是全仓唯一在重启时扫这类 job 的地方，改成记「结果未知」（与连接被重置同一档），不再让画布一直写「生成中」。 deriveProductionShotState 是批次里一镜在画布上说什么话的唯一判定：结果未知的镜此前落进「已停 / 还没开拍」，现在画成带机器码的失败。"
+    "after": 10,
+    "why_not": "门数从 4 扇变成 10 扇，多出来的不是新入口而是把原来散在判据里的假设拆成各自可测的一件事：判据本身（outboundDispatchEvidence，唯一读 undici cause 链的地方）、连接层失败的识别（isTransportLevelFailure，只给「供应商真支持幂等」那条重发用）、新连接原语的定义（systemProxy.createFreshConnectionDispatcher，全仓只有这一份定义）。原有的四扇各自必须存在：submitOnce 是全仓唯一重发点（规则），productionGenerationSubmission 是供应商异常进入提交层的唯一收口，apimartGenerationProvider.send 与 vendorHttp.requestVendor 是两条独立的付费传输（目录供应商 / 旧通道），它们共用同一个新连接原语，所以「新连接」的定义只有一份。 重启恢复入口 resumeUnfinishedRuns 是第 8 扇：提交在路上时进程没了，job 停在 submitting 没有任务号，它是全仓唯一在重启时扫这类 job 的地方，改成记「结果未知」（与连接被重置同一档），不再让画布一直写「生成中」。 deriveProductionShotState 是批次里一镜在画布上说什么话的唯一判定：结果未知的镜此前落进「已停 / 还没开拍」，现在画成带机器码的失败。 rendererCommand 是渲染层命令进主进程的唯一收口：「我核对过了」放行（job.reconcile 的 user_checked_abandon）只认它盖的真人手势章，Agent / MCP 路径发不了。"
   },
   "regression_tests": [
     "electron/outboundDispatchEvidence.test.ts",
@@ -91,12 +98,15 @@
     "electron/capabilityCore/apimartFreshConnection.test.ts",
     "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts",
     "electron/productionRun/productionRunService.test.ts",
-    "electron/shared/productionShotPhase.test.ts"
+    "electron/shared/productionShotPhase.test.ts",
+    "src/workbench/production/productionRunView.test.ts",
+    "electron/capabilityCore/mcpToolResults.test.ts"
   ],
   "residual_risks": [
     "「连上之后断开」永远只能是结果未知，这一档仍要用户去服务商后台核对——这是领域的真实约束，不是能修掉的东西。",
     "目前没有任何生产供应商声明 submitIdempotency，所以「未知后用同一个键重发」这条路在生产里恒不触发；只有以后某个供应商真支持并把键带上请求时才会启用，届时需要它自己的夹具测试。",
-    "TLS 握手前被复位的识别靠错误消息文本（Node 的固定句式）；上游改措辞时会退化成「结果未知」，方向是安全的一边。"
+    "TLS 握手前被复位的识别靠错误消息文本（Node 的固定句式）；上游改措辞时会退化成「结果未知」，方向是安全的一边。",
+    "后续项 S1-4：确定没发出去的尝试仍占重试次数（attempt 号进 jobId / 幂等键 / 意图日志，不能只改计数），断网后「重试」可能写「已重做到上限」；本 PR 不做，留给协调会话定方案。"
   ],
   "external_sources": [
     {
