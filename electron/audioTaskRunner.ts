@@ -13,6 +13,7 @@ import { readNomiLocalAsset } from "./assets/localAssetFile";
 import { parseDataUrl } from "./assets/assetBytes";
 import { hardenedFetch } from "./hardenedFetch";
 import { appFetch } from "./appFetch";
+import { isRedirectRefusal } from "./networkErrorDetails";
 import { appendQueryParams } from "./ai/requestPipeline";
 import { firstString, isJsonRecord, trim, type JsonRecord } from "./jsonUtils";
 import { taskTemplateParams } from "./catalog/taskParams";
@@ -195,6 +196,7 @@ async function runTranscribe(input: AudioTaskInput): Promise<TaskResult> {
       try {
         response = await appFetch(appendQueryParams(built.url, built.query), { method: built.method, headers, body: form });
       } catch (error: unknown) {
+        if (isRedirectRefusal(error)) throw Object.assign(new Error(desktopT("network.credentialRedirect")), { cause: error });
         throw new Error(desktopT("transcribe.networkError", { vendor: vendor.key, detail: (error instanceof Error ? error.message : String(error)).slice(0, 256) }));
       }
       if (!response.ok) {

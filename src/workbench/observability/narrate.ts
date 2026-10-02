@@ -122,6 +122,9 @@ export type GenerationErrorKind =
   // 同族第三条：请求带着密钥，但目的地不是用户保存这把 key 时确认过的 origin。没有计费，
   // 也没有网络要修——下一步是回接入页重新保存一次密钥（那一页是这条连接地址的唯一家）。
   | 'outbound-blocked-credential-origin'
+  // 带密钥的请求被服务商地址跳转了，Nomi 不跟随（防止自定义鉴权头 / POST 正文被带去另一个网站）。
+  // 请求已经到过用户配置的地址，所以不在 NEVER_SENT_KINDS——花没花钱 Nomi 不替它说。
+  | 'credential-redirect'
   | 'server'
   | 'input'
   | 'output-truncated'
@@ -154,6 +157,7 @@ export const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   'outbound-blocked': 'outboundBlocked',
   'outbound-blocked-submit': 'outboundBlockedSubmit',
   'outbound-blocked-credential-origin': 'outboundBlockedCredentialOrigin',
+  'credential-redirect': 'credentialRedirect',
   server: 'server',
   input: 'input',
   'output-truncated': 'outputTruncated',
@@ -266,6 +270,8 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorActions> = {
   // 同样送去模型接入——但要做的是**重新保存密钥**，不是看代理（hint 里写清）。绝不给 retry 当主动作：
   // 地址没改回来之前，重试一万次都是同一堵墙。
   'outbound-blocked-credential-origin': ACCESS_FIRST,
+  // 地址得改（去模型接入改成跳转后的地址）；不改，重试一万次都是同一个跳转。
+  'credential-redirect': ACCESS_FIRST,
   quota: RETRY_FIRST,
   'poll-timeout': RETRY_FIRST,
   network: RETRY_FIRST,
@@ -307,6 +313,7 @@ const VENDOR_SIDE_BY_KIND: Record<GenerationErrorKind, boolean> = {
   'outbound-blocked': false,
   'outbound-blocked-submit': false,
   'outbound-blocked-credential-origin': false,
+  'credential-redirect': false,
   server: true,
   input: true,
   'output-truncated': false,

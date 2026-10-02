@@ -363,6 +363,10 @@ export const zhGenerationCommon = {
         reason: '这次生成没发出去：密钥要去的地址不是你保存它时确认过的那个',
         hint: '请求一个字节都没有离开你的电脑，服务商没被请求到，**这次没有扣费**。Nomi 在你保存密钥的那一刻把这把密钥和当时那个接入地址绑在了一起，而这次请求要去的是另一个地址——密钥只会去你亲眼确认过的地方。如果你确实换了这家供应商的接入地址，请到「模型接入」找到这条连接，重新保存一次密钥（保存那一下就是新的确认）；如果你并没有改过地址，就更要先看一眼：下方技术详情里写着绑定的是哪个地址、这次要去哪个。',
       },
+      credentialRedirect: {
+        reason: '服务商地址发生了跳转，为保护你的密钥已停止请求',
+        hint: '你配置的接入地址让请求转去了别的地址，Nomi 不会带着密钥跟过去。请到「模型接入」找到这条连接，把地址改成跳转后的最终地址再试（常见原因：http 改成了 https、多了或少了末尾斜杠、服务商换了区域域名）。',
+      },
       server: { reason: '服务商故障', hint: '服务商服务异常，请稍后重试，或换一个模型。' },
       input: {
         reason: '参数不被接受',
@@ -1912,6 +1916,10 @@ export const enGenerationCommon = {
       outboundBlockedCredentialOrigin: {
         reason: 'This generation was never sent: the key was about to go somewhere you did not confirm',
         hint: 'Not a single byte left your machine, the provider was never called and **nothing was charged**. When you saved this key, Nomi bound it to the endpoint you confirmed at that moment, and this request was headed somewhere else - a key only ever goes where you have seen it go. If you really did change this provider\'s endpoint, open Model Access, find this connection and save the key again (that save is the new confirmation). If you did not change anything, look closer first: the technical details below name the bound address and the one this request tried.',
+      },
+      credentialRedirect: {
+        reason: 'The provider address redirected, so the request was stopped to protect your key',
+        hint: 'The endpoint you configured sent the request on to another address, and Nomi will not follow it with your key. Open Model Access, find this connection and change its address to the final address it redirects to, then try again (common causes: http became https, a trailing slash was added or dropped, or the provider moved to a regional domain).',
       },
       server: {
         reason: 'Provider error',

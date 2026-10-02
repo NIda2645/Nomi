@@ -18,6 +18,7 @@
     "electron/comfyuiProbe.ts",
     "electron/comfyuiProgressSocket.ts",
     "electron/comfyuiTemplates.ts",
+    "electron/credentialRedirect.test.ts",
     "electron/localRuntime/localTextCapabilityProbe.ts",
     "electron/localRuntime/localTextEndpoints.ts",
     "electron/proxyProbe.ts",
