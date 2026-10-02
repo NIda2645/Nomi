@@ -55,47 +55,51 @@ if [ -z "$PROMPT" ] && [ ! -t 0 ]; then
   PROMPT="$(node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>{try{process.stdout.write(String(JSON.parse(d).prompt||""))}catch{}})' 2>/dev/null)"
 fi
 hit() { echo "$PROMPT" | grep -qiE "$1"; }
+# 命中次数记到本机统计文件（.claude/ 整体 gitignore）：下个复查周期（2026-12-01）用它判断哪个块的词表该再收窄。
+# 写失败一律静默——统计不能影响提示本身。
+HITS_LOG="$ROOT/.claude/self-check-hits.log"
+hit_block() {
+  hit "$2" || return 1
+  { mkdir -p "$(dirname "$HITS_LOG")" && printf '%s|%s
+' "$(date -u +%Y-%m-%dT%H:%M:%SZ 2>/dev/null)" "$1" >> "$HITS_LOG"; } 2>/dev/null
+  return 0
+}
 
-# 设计 / 用户可见改动（R8、§1.5 控件层级、nomi-design-flow）
-if hit '设计|样张|界面|mockup|改这个面|重做|改下这个|加个面板|布局怎么|改界面|UI 怎么|UI怎么|出个样|新增.*(面板|页面|界面|区域)|这个 UI|这个UI|新页面|新面板|画新'; then
-  echo "【设计流程】（原则全文 docs/engineering/principles-detail.md）走 nomi-design-flow 技能：先看真实 UI → 组件复用 → 样张带 data-* 挂点与异常态 → 逐件走读（禁纯统计表）→ 拍板后产契约（pnpm run check:mockup-contracts）。用户可见改动先读 docs/design/nomi-design-system.md 并出可体验样张、用户拍板(R8)；改/扩现有 UI 先看它真实样子；加/挪控件先过 §1.5 控件层级（L1 常驻 / L2–L4 · 一功能一个家 · 先分组→去重→归位→最后才收纳）"
+# 设计卡：碰花钱 / 长跑 / 可打断 / 新界面（原【设计流程】+【画新面】两块合成一块；词表收窄，只留这四类的信号词）
+if hit_block design-card '付费|扣费|花钱|确认.*生成|批量生成|长跑|队列|取消|中断|断网|新页面|新面板|新界面|画新|新增.*(面板|页面|界面|区域)|从零.*(设计|做)|出个样|样张|mockup'; then
+  echo "【设计卡】碰花钱 / 长跑 / 可打断 / 新界面 → 动手前先写设计卡 docs/engineering/design-card.md（四类 9 格全填，其他改动只填 ★1/2/3/4/9），写进任务书或 docs/plan，PR 正文 ## 设计卡 放链接；四类合并前还要另一条线独立验收（## 独立验收，验收线编号不能与实现线相同）｜UI 改动走 nomi-design-flow：先看真实 UI → 组件复用 → 样张带 data-* 挂点与异常态 → 拍板后产契约（pnpm run check:mockup-contracts）(R8)；先读 docs/design/nomi-design-system.md；加/挪控件先过 §1.5 控件层级"
   echo ""
 fi
-# 画新面（没有 before，§1.5 自动失效）
-if hit '新页面|新面板|新界面|画新|新增.*(面板|页面|界面|区域)|从零.*(设计|做)'; then
-  echo "【画新面 · 三件产物】任务卡「谁 在什么时刻 做完哪一件事就走」｜v1（只有一件事，刻意少得让人不安）/ v2 / v3 减法梯度，默认推 v1｜删除清单「没放什么 · 为什么 · 要它时怎么找」｜卡点表「①怎么知道有这功能 ②动手前知不知道要付出什么 ③空了/错了看到什么 ④凭什么信结果对、错了怎么回头」＋必答「这条路几步·能不能砍掉一步」"
-  echo ""
-fi
-# 碰框架 / 三方库 / 外部格式（R5.1 / R5.4 / R5.5）
-if hit '框架|三方库|第三方|SDK|依赖|package\.json|升级|引入|接入|协议|规范|格式|导入|导出|MCP|技能包|schema|供应商 API'; then
-  echo "【先查别人 · R5】结论默认是接入（P0），凭记忆判断 = 没查｜碰三方库的 API → Context7 查官方文档(R5.1)｜碰框架/SDK/运行时或它没用过的层 → 四列表「它提供/我们用了/我们另写了/我们拆散了」＋参考实现逐层对照（一致·有意不同[理由须是领域约束]·没想到）(R5.4)｜碰外部也读写的格式/协议/契约 → 先找规范，写「规范链接/我们的偏差/偏差理由」，扩展只放标准的扩展点(R5.5)"
+# 碰框架 / 三方库 / SDK（R5.1 / R5.4）：词表收窄，只留依赖与供应商接口的信号词
+if hit_block prior-art 'package\.json|SDK|框架|三方库|第三方|依赖升级|MCP|供应商 ?API'; then
+  echo "【先查别人 · R5】结论默认是接入（P0），凭记忆判断 = 没查｜碰三方库的 API → Context7 查官方文档(R5.1)｜碰框架/SDK/运行时或它没用过的层 → 四列表「它提供/我们用了/我们另写了/我们拆散了」＋参考实现逐层对照（一致·有意不同[理由须是领域约束]·没想到）(R5.4)｜外部也读写的格式/协议先找规范、写偏差与理由（建议档）"
   echo ""
 fi
 # 报完成 / 交付（R13 第二、三档）
-if hit '做完|修好|验收|走查|交付|给你看|可以合了|完成了'; then
-  echo "【报完成前 · R13】（P3 全文 docs/engineering/principles-detail.md）Agent/工具/契约改动 → 要有真实模型数字：工具写对率 + 回合成功率，实验室基线只证外观｜功能交付 → 建 ≥2-3 条真实用户任务跑通闭环、冒出的问题全修掉｜画布/性能/导入/导出测试 → 素材必须是 NOMI_REAL_MEDIA_DIR 登记过的真素材，合成夹具证明不了任何事"
+if hit_block completion '做完|修好|验收|走查|交付|给你看|可以合了|完成了'; then
+  echo "【报完成前 · R13】（P3 全文 docs/engineering/principles-detail.md）Agent/工具/契约改动 → 要有真实模型数字：工具写对率 + 回合成功率，实验室基线只证外观｜功能交付 → 设计卡 ★1 的 ≥2-3 条真实用户任务跑通闭环、冒出的问题全修掉｜画布/性能/导入/导出测试 → 素材必须是 NOMI_REAL_MEDIA_DIR 登记过的真素材，合成夹具证明不了任何事"
   echo ""
 fi
 # 修 bug（P2 全文在 docs/engineering/principles-detail.md）
-if hit 'bug|回归|根因|修复|崩|卡死|报错'; then
+if hit_block root-cause 'bug|回归|根因|修复|崩|卡死|报错'; then
   echo "【修根因 · P2】动生产代码前走 .agents/skills/root-cause-remediation：分清症状/直接原因/类根因，先 node scripts/door-map.mjs 数门，修在最早共享边界；同一处近 14 天第三次修 → 先选补/重写/删并写特征测试(R21.2)。全文 docs/engineering/principles-detail.md"
   echo ""
 fi
 # 命令 / 门岗（全表在 docs/engineering/commands.md）
-if hit 'gates|check:|门岗|命令|pnpm run'; then
-  echo "【命令全表】CLAUDE.md 只留最常用 5 条；各门岗、冒烟、数门、评审命令的全表在 docs/engineering/commands.md；push 前按风险面分层见 docs/engineering/delivery-and-review.md"
+if hit_block commands 'gates|check:|门岗|命令|pnpm run'; then
+  echo "【命令全表】CLAUDE.md 只留 gates 一行；各门岗、冒烟、数门、合并前检查命令的全表在 docs/engineering/commands.md；push 前按风险面分层见 docs/engineering/delivery-and-review.md"
   echo ""
 fi
 # 交付 / 合并 / 交工评审
-if hit '合并|merge|收据|verify-merged|preflight|开 ?PR|交工|推送'; then
+if hit_block delivery '合并|merge|收据|verify-merged|preflight|开 ?PR|交工|推送'; then
   echo "【交付 · R11/R22】开任务先 pnpm run delivery:preflight｜合并规矩（只由协调会话做；其他会话开 PR 后把号发给它，不自己合）：CI 绿 + 扫描干净就合，最多 3 个在等收据，任何一个收据红了立刻停、交人定修还是回滚｜细则 docs/engineering/delivery-and-review.md"
   echo ""
 fi
 
 cat <<'EOF'
 【动手前 · 到这三刻必停（详解 CLAUDE.md、docs/engineering-rules.md）】
-① 动手前：这段是我们独有的吗？不是 → 先找现成的接入(P0)｜重要改动先 grill：一轮批量问、每题带默认、连带面单独成题（纯 bug 修复不问）｜多文件先写 docs/plan(R4)｜取舍给对比表(R3)
+① 动手前：这段是我们独有的吗？不是 → 先找现成的接入(P0)｜重要改动先 grill：一轮批量问、每题带默认、连带面单独成题（纯 bug 修复不问）｜碰花钱/长跑/可打断/新界面先写设计卡 docs/engineering/design-card.md(P5)｜取舍给对比表
 ② 报完成前：全绿≠完成(P3)。截图要自己亲眼 Read 过、来自用户将跑的那个构建；没闭环别说「做完」(R13)
 ③ push 前：pnpm run gates 全过(R11/R22)
-贯穿：修根因不修症状(P2)｜加新必删旧(P1)｜同一处第三次修 → 先选补/重写/删(R21.2)
+贯穿：修根因不修症状(P2)｜加新必删旧(P1)｜同一处第三次修 → 先选补/重写/删(RW)
 EOF

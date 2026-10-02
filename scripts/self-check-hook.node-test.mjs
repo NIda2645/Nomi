@@ -29,19 +29,19 @@ describe('常驻部分', () => {
     const out = inject(NEUTRAL)
     assert.match(out, /【动手前 · 到这三刻必停/)
     assert.ok(Buffer.byteLength(out, 'utf8') <= 1000, `常驻 ${Buffer.byteLength(out, 'utf8')} 字节`)
-    for (const block of ['【设计流程】', '【画新面', '【先查别人', '【报完成前', '【修根因', '【交付', '【命令全表】']) assert.doesNotMatch(out, new RegExp(block))
+    for (const block of ['【设计卡】', '【设计流程】', '【画新面', '【先查别人', '【报完成前', '【修根因', '【交付', '【命令全表】']) assert.doesNotMatch(out, new RegExp(block))
   })
 
   test('常驻段保留三刻和贯穿原则的锚点', () => {
     const out = inject(NEUTRAL)
-    for (const anchor of ['P0', 'grill', 'R4', 'R3', 'P3', 'R13', 'R11/R22', 'P2', 'P1', 'R21.2']) assert.ok(out.includes(anchor), anchor)
+    for (const anchor of ['P0', 'grill', 'P5', 'design-card', 'P3', 'R13', 'R11/R22', 'P2', 'P1', 'RW']) assert.ok(out.includes(anchor), anchor)
   })
 })
 
 describe('关键词块：命中才注入', () => {
   const cases = [
-    ['帮我改下这个界面', '【设计流程】'],
-    ['我要画一个新页面', '【画新面 · 三件产物】'],
+    ['这个生成要先付费确认再批量生成', '【设计卡】'],
+    ['我要画一个新页面', '【设计卡】'],
     ['想引入一个新框架 SDK', '【先查别人 · R5】'],
     ['这个功能做完了，给你看', '【报完成前 · R13】'],
     ['有个 bug 要修', '【修根因 · P2】'],
@@ -83,5 +83,34 @@ describe('读不到用户消息 → 退化为只有常驻段，不崩', () => {
       assert.equal(result.status, 0)
       assert.match(result.stdout, /【动手前 · 到这三刻必停/)
     }
+  })
+})
+
+describe('设计卡块：两块合成一块、词表收窄、命中次数记到本机统计文件', () => {
+  test('原来的【设计流程】【画新面】不再单独出现；泛词（界面 / 设计 / 重做）不再触发', () => {
+    const out = inject('我要画一个新页面，带付费确认')
+    assert.equal((out.match(/【设计卡】/g) ?? []).length, 1)
+    assert.doesNotMatch(out, /【设计流程】|【画新面/)
+    for (const prompt of ['帮我改下这个界面的颜色', '这个设计重做一下', '导入导出格式规范怎么写']) {
+      const quiet = inject(prompt)
+      assert.doesNotMatch(quiet, /【设计卡】|【先查别人/, prompt)
+    }
+  })
+
+  test('命中一次就在 .claude/self-check-hits.log 记一行（块名），没命中不记', () => {
+    const project = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-selfcheck-hits-'))
+    const run = (prompt) => spawnSync('bash', [HOOK], {
+      input: Buffer.from(JSON.stringify({ prompt }), 'utf8'),
+      env: { ...process.env, CLAUDE_PROJECT_DIR: project, CLAUDE_USER_PROMPT: '' },
+      encoding: 'utf8',
+    })
+    run(NEUTRAL)
+    const log = path.join(project, '.claude', 'self-check-hits.log')
+    assert.equal(fs.existsSync(log), false, '没命中不该记')
+    run('新界面要走付费确认')
+    run('想引入一个新框架 SDK')
+    const lines = fs.readFileSync(log, 'utf8').trim().split(String.fromCharCode(10))
+    assert.deepEqual(lines.map((line) => line.split('|')[1]), ['design-card', 'prior-art'])
+    fs.rmSync(project, { recursive: true, force: true })
   })
 })
