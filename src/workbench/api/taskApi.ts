@@ -1,5 +1,6 @@
 import { getDesktopBridge, type DesktopBridge } from '../../desktop/bridge'
 import { TELEMETRY_ERROR_TYPE_PATTERN, type CapabilitySlot, type DurationBucket, type TelemetryResult } from '../../../electron/shared/contracts/telemetry'
+import { isTerminalTaskStatus, type TaskStatus } from '../../../electron/shared/taskStatus'
 import { classifyGenerationError } from '../observability/classifyError'
 import { describeOpaqueFailure } from '../observability/opaqueFailure'
 
@@ -16,16 +17,7 @@ export type TaskKind =
   | 'text_to_3d'
   | 'image_to_3d'
 
-export type TaskStatus = 'queued' | 'running' | 'succeeded' | 'failed'
-
-/**
- * 每个任务状态是「还在路上」还是「有结果了」——`generation.completed` 只在「有结果」时报，这是唯一一份判据。
- * 用 satisfies Record<TaskStatus,…> 写：给 TaskStatus 加新成员而不在这里归类，编译就红（测试也会红）。
- */
-export const TASK_STATUS_PHASE = { queued: 'in-flight', running: 'in-flight', succeeded: 'terminal', failed: 'terminal' } as const satisfies Record<TaskStatus, 'in-flight' | 'terminal'>
-function isTerminalTaskStatus(status: TaskStatus): status is 'succeeded' | 'failed' {
-  return TASK_STATUS_PHASE[status] === 'terminal'
-}
+export type { TaskStatus }
 
 export type TaskAssetDto = {
   type: 'image' | 'video' | 'audio'
