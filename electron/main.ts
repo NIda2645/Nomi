@@ -45,6 +45,7 @@ import { registerExistingConnectionIpc } from "./providerAdapter/existingConnect
 import { registerUpdaterIpc } from "./update/autoUpdater";
 import { setRendererTarget } from "./capabilityCore/rendererBridge";
 import { readMcpInfo, installMcp, uninstallMcp } from "./capabilityCore/mcpConfig";
+import { registerNomiProtocolClient } from "./protocolRegistration";
 import { verifyMcp } from "./capabilityCore/mcpVerify";
 import { registerCustomMcpProfileIpc, watchMcpProfiles } from "./capabilityCore/mcpProfiles";
 import { registerLocalProtocol } from "./protocol/localProtocol";
@@ -615,11 +616,7 @@ if (hasSingleInstanceLock)
       setDesktopLocale(app.getLocale());
       ensureArtifactPreviewSecret();
       watchMcpProfiles();
-      try {
-        app.setAsDefaultProtocolClient("nomi");
-      } catch {
-        // Registration is best-effort in dev and on platforms that disallow it.
-      }
+      registerNomiProtocolClient(app);
       registerLocalProtocol();
       installContentSecurityPolicy(session.defaultSession, {
         isDev,
