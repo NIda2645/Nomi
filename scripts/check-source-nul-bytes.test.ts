@@ -14,6 +14,11 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..'
 const GATE = path.join(repoRoot, 'scripts', 'check-source-nul-bytes.mjs')
 const NUL = String.fromCharCode(0)
 
+// 门岗平时 <1s。2026-09-24 与 10-02 两次 CI 的 Unit job 都死在这个文件上（它是当时唯一没出结果的测试文件，
+// 日志静默 1~2 小时直到人工取消）：execFileSync 同步阻塞事件循环，vitest 的 testTimeout 根本触发不了，
+// 子进程一旦不返回，整个 worker 和整个 job 就跟着不返回。给同步子进程自带 timeout，卡住就杀掉并红在这里。
+const CHILD_TIMEOUT_MS = 25_000
+
 let probeFile: string | null = null
 
 afterEach(() => {
@@ -24,10 +29,12 @@ afterEach(() => {
 
 function runGate(): { code: number; output: string } {
   try {
-    const stdout = execFileSync('node', [GATE], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    const stdout = execFileSync('node', [GATE], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], timeout: CHILD_TIMEOUT_MS, killSignal: 'SIGKILL' })
     return { code: 0, output: stdout }
   } catch (error) {
-    const failure = error as { status?: number; stdout?: string; stderr?: string }
+    const failure = error as { status?: number; stdout?: string; stderr?: string; code?: string }
+    // 超时不是「门岗判红」：不能让它混进 code !== 0，否则下面的红例会在门岗根本没跑完时假绿。
+    if (failure.code === 'ETIMEDOUT') throw new Error(`门岗子进程 ${CHILD_TIMEOUT_MS}ms 内没有返回，已被杀掉`)
     return { code: failure.status ?? 1, output: `${failure.stdout ?? ''}${failure.stderr ?? ''}` }
   }
 }
@@ -60,7 +67,7 @@ describe('裸 NUL 字节门岗', () => {
   // 门岗第一版就是栽在这一条上：只扫已跟踪文件，新文件完全免检。
   it('**未 git add 的新文件**同样受管（门岗曾因此扫不到自己）', () => {
     const file = writeProbe('nul-probe-untracked', `const k = "x${NUL}y"\n`)
-    const tracked = execFileSync('git', ['ls-files', '-z', path.relative(repoRoot, file)], { cwd: repoRoot, encoding: 'utf8' })
+    const tracked = execFileSync('git', ['ls-files', '-z', path.relative(repoRoot, file)], { cwd: repoRoot, encoding: 'utf8', timeout: CHILD_TIMEOUT_MS, killSignal: 'SIGKILL' })
     expect(tracked.trim(), '这条测试的前提是该文件未被跟踪').toBe('')
     const { code, output } = runGate()
     expect(code).not.toBe(0)
