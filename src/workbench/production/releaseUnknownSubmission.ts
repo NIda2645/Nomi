@@ -1,6 +1,8 @@
 import type { DesktopProductionRunBridge } from '../../desktop/productionRunBridgeTypes'
 import { deriveProductionShotState, productionShotIdForNode } from '../../../electron/shared/productionShotPhase'
 import { executeProductionRunCommand } from './productionRunCommands'
+import { useProductionCanvasLandingStore } from './productionCanvasLandingStore'
+import { useProductionRunStore } from './productionRunStore'
 
 export type ReleaseUnknownApi = Pick<DesktopProductionRunBridge, 'read' | 'command'>
 
@@ -18,13 +20,18 @@ export async function releaseUnknownSubmission(
 ): Promise<void> {
   const run = await api.read(projectId, runId)
   if (!run) throw new Error('Production run not found')
-  await executeProductionRunCommand(projectId, runId, {
+  const result = await executeProductionRunCommand(projectId, runId, {
     commandId: globalThis.crypto.randomUUID(),
     expectedRevision: run.revision,
     type: 'job.reconcile',
     payload: { jobId, outcome: 'user_checked_abandon' },
     issuedAt: new Date().toISOString(),
   }, { read: api.read, execute: api.command })
+  // 渲染层有两份这个 Run 的缓存（画布生成入口 / 组合框的「被制作流程占着」判据读它们）：不立刻换成放行后的新版，
+  // 组合框会一直灰着、紧接着的重新生成也会被旧缓存拦下。主进程那份才是真相，这里只是同步缓存。
+  const landing = useProductionCanvasLandingStore.getState()
+  if (landing.projectId === projectId) landing.setRuns(projectId, { ...landing.runs, [runId]: result.run })
+  await useProductionRunStore.getState().loadRun(projectId, runId).catch(() => undefined)
 }
 
 /** 按画布节点找到它那一镜结果未知的任务并放行；这个节点那一镜当前不是「结果未知」就什么都不做、回 false。 */
