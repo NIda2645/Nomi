@@ -45,6 +45,7 @@ export const RULE_ROOTS = Object.freeze({
   'failure-reason-misstated': rooted('B', 'P0-4'),
   'stale-failure-toast': rooted('B', 'P0-4'),
   'raw-english-in-chinese-ui': rooted('B', 'P0-4'),
+  'ui-leaked-internals': rooted('B', 'P0-4'),
   'cjk-in-english-ui': rooted('B', 'P0-2'),
   'attachment-gone-after-send': rooted('B', 'P1-6'),
   'attachment-not-sent-to-model': rooted('B', 'P1-6'),

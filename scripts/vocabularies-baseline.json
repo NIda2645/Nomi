@@ -1,5 +1,5 @@
 {
-  "debtCap": 59,
+  "debtCap": 54,
   "converged": [
     {
       "reason": "阶段 4 前置 ③：observeStream.mts 搬成 electron/agentLane/laneStreamObserver.mts 时，把两处手抄的 [first-response | idle] 改成 NonNullable<RuntimeErrorFacts['timeoutPhase']> 派生——正是这两条 debt 自己写的收敛办法。canonical owner 同批从 harness/runtime/runtimePort.ts 搬到 electron/shared/agentCapabilities/transportContracts.ts（它的消费者全都活过阶段 4 的切换），所以 survivingOwner 记的是新住址。",
@@ -24,6 +24,23 @@
         "src/desktop/mcpBridgeTypes.ts::type:McpVerifyReason/type-union"
       ],
       "survivingOwner": "electron/shared/mcpConnectionContract.ts::variable:MCP_VERIFY_REASONS/as-const"
+    },
+    {
+      "reason": "任务终态判据收成一个 owner：core.ts / catalogTaskActions / recoverTaskActions 各自手抄的 Set(failed, succeeded) 全部删除，改引用 electron/shared/taskStatus.ts 的 isTerminalTaskStatus——正是这三条 debt 自己写的收敛办法（neutral 合同落地后由同一个 helper 判）。",
+      "retiredOwners": [
+        "electron/capabilityCore/core.ts::variable:TERMINAL_STATUSES/set",
+        "src/workbench/generationCanvas/runner/catalogTaskActions.ts::variable:TERMINAL_STATUSES/set",
+        "src/workbench/generationCanvas/runner/recoverTaskActions.ts::variable:TERMINAL_STATUSES/set"
+      ],
+      "survivingOwner": "electron/shared/taskStatus.ts::function:isTerminalTaskStatus/type-union"
+    },
+    {
+      "reason": "TaskStatus 四态收进中立模块 electron/shared/taskStatus.ts：主进程 responseParsing 与渲染层 taskApi 的两份手抄联合改成从它重导出——debt 写的收敛办法就是 neutral shared contract。",
+      "retiredOwners": [
+        "electron/tasks/responseParsing.ts::type:TaskStatus/type-union",
+        "src/workbench/api/taskApi.ts::type:TaskStatus/type-union"
+      ],
+      "survivingOwner": "electron/shared/taskStatus.ts::type:TaskStatus/type-union"
     }
   ],
   "registered": [
@@ -1782,6 +1799,32 @@
       ],
       "reason": "APIMart 体检夹具的录制状态：某个模型 × 模式有没有真实录像（pending-L3 = 等 L3 真调用补录）、录像的契约指纹与当前目录是否一致（recorded / recorded-stale）。它只描述「体检录像 ↔ 当前目录契约」的对应关系，和任务状态、模型执行结果、目录生命周期都不同义，不能复用那些 owner。",
       "site": "electron/catalog/apimartModelHealth.ts::type:ApimartRecordingStatus/property:status/type-union"
+    },
+    {
+      "members": [
+        "in-flight",
+        "terminal"
+      ],
+      "reason": "任务状态的阶段归类（在路上 / 有结果了）：TASK_STATUS_PHASE 用 satisfies Record<TaskStatus,…> 写，给 TaskStatus 加新成员不归类就编译红；isTerminalTaskStatus 是全仓「任务是不是终态」的唯一判据，主进程轮询、渲染层轮询、遥测上报都引用它，不再各写一份 failed/succeeded 集合。",
+      "site": "electron/shared/taskStatus.ts::variable:TASK_STATUS_PHASE/type-union"
+    },
+    {
+      "members": [
+        "failed",
+        "succeeded"
+      ],
+      "reason": "任务终态子集：isTerminalTaskStatus 的类型守卫，全仓「任务是不是终态」的唯一判据（原 core.ts / catalogTaskActions / recoverTaskActions 各写一份 Set，已同提交删除，改引用它）。",
+      "site": "electron/shared/taskStatus.ts::function:isTerminalTaskStatus/type-union"
+    },
+    {
+      "members": [
+        "failed",
+        "queued",
+        "running",
+        "succeeded"
+      ],
+      "reason": "任务状态四态的中立合同：主进程（responseParsing 重导出）与渲染层（taskApi 重导出）共用这一份，不再各自重复写在两个实现层。",
+      "site": "electron/shared/taskStatus.ts::type:TaskStatus/type-union"
     }
   ],
   "debt": [
@@ -1809,14 +1852,6 @@
       ],
       "reason": "浏览器截图选择结束原因合同 跨 IPC 重复写在多个实现层，目前没有 neutral shared contract，因此所有现有 copy 都列 debt。收敛动作：在构建中立模块导出 BROWSER_SCREENSHOT_SELECTION_REASONS as const tuple 和 runtime schema，再让 main、preload、renderer 的 DTO、校验、解析与分支全部 derive；任何一侧都不得导入另一侧实现目录。",
       "site": "electron/browser/core/browserViewTypes.ts::type:BrowserPromptScreenshotSelectionResult/property:reason/type-union"
-    },
-    {
-      "members": [
-        "failed",
-        "succeeded"
-      ],
-      "reason": "TERMINAL_STATUSES 是 TaskStatus 的 failed、succeeded 终态子集；neutral TaskStatus 合同落地后由同一个 isTerminalTaskStatus helper 提供，core 不再维护独立 Set。",
-      "site": "electron/capabilityCore/core.ts::variable:TERMINAL_STATUSES/set"
     },
     {
       "members": [
@@ -2085,16 +2120,6 @@
     },
     {
       "members": [
-        "failed",
-        "queued",
-        "running",
-        "succeeded"
-      ],
-      "reason": "TaskStatus 外部任务执行合同 跨 IPC 重复写在多个实现层，目前没有 neutral shared contract，因此所有现有 copy 都列 debt。收敛动作：在构建中立模块导出 TASK_STATUSES as const tuple 和 runtime schema，再让 main、preload、renderer 的 DTO、校验、解析与分支全部 derive；任何一侧都不得导入另一侧实现目录。",
-      "site": "electron/tasks/responseParsing.ts::type:TaskStatus/type-union"
-    },
-    {
-      "members": [
         "corrupt-manifest",
         "id-mismatch",
         "missing-folder",
@@ -2280,16 +2305,6 @@
     },
     {
       "members": [
-        "failed",
-        "queued",
-        "running",
-        "succeeded"
-      ],
-      "reason": "TaskStatus 外部任务执行合同 跨 IPC 重复写在多个实现层，目前没有 neutral shared contract，因此所有现有 copy 都列 debt。收敛动作：在构建中立模块导出 TASK_STATUSES as const tuple 和 runtime schema，再让 main、preload、renderer 的 DTO、校验、解析与分支全部 derive；任何一侧都不得导入另一侧实现目录。",
-      "site": "src/workbench/api/taskApi.ts::type:TaskStatus/type-union"
-    },
-    {
-      "members": [
         "done",
         "preparing",
         "recording"
@@ -2315,22 +2330,6 @@
       ],
       "reason": "该 site 只扫描到 AddAssetOutcome 第一分支的四个 status，不能把不完整成员集注册为 owner。应先抽出命名 AddAssetStatus 并把另一分支的 full 与 added、duplicate、empty、no-slot 一并纳入，再由整个 outcome 复用。",
       "site": "src/workbench/generationCanvas/nodes/nodeAssetWrite.ts::type:AddAssetOutcome/property:status/type-union"
-    },
-    {
-      "members": [
-        "failed",
-        "succeeded"
-      ],
-      "reason": "catalogTaskActions.TERMINAL_STATUSES 是 neutral TaskStatus 的 failed、succeeded 子集；应调用共享 isTerminalTaskStatus helper，catalog action 不再保存独立 Set。",
-      "site": "src/workbench/generationCanvas/runner/catalogTaskActions.ts::variable:TERMINAL_STATUSES/set"
-    },
-    {
-      "members": [
-        "failed",
-        "succeeded"
-      ],
-      "reason": "recoverTaskActions.TERMINAL_STATUSES 是 neutral TaskStatus 的 failed、succeeded 子集；应与 catalog action 共用 isTerminalTaskStatus helper，删除本地 Set。",
-      "site": "src/workbench/generationCanvas/runner/recoverTaskActions.ts::variable:TERMINAL_STATUSES/set"
     },
     {
       "members": [

@@ -1,0 +1,19 @@
+{
+  "_doc": "main 上已有的「界面露出」违例：带到期日的欠账，绑到会修它的 PR。到期后同一条违例重新算红；修掉的 PR 同时删掉对应一行。",
+  "debts": [
+    {
+      "rule": "ui-leaked-internals",
+      "kind": "raw-json",
+      "until": "2026-10-15",
+      "boundTo": "Agent 面板原始 JSON 修复（Agent bug 批量修复 PR）",
+      "reason": "Agent 面板把服务商原始 JSON 报错原样露给用户"
+    },
+    {
+      "rule": "ui-leaked-internals",
+      "kind": "internal-id",
+      "until": "2026-10-15",
+      "boundTo": "Agent 面板原始 JSON 修复（Agent bug 批量修复 PR）",
+      "reason": "Agent 面板的工具卡把工具入参 / 回包整段摆出来，里面带操作 id（op-<uuid>）和供应商路由键"
+    }
+  ]
+}
