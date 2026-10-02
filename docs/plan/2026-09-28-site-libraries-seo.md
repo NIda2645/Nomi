@@ -48,7 +48,7 @@
 | 提示词库 | `/prompts` | 1 | 同下 |
 | 效果分类 | `/prompts/<group>` | 7（运镜 23、构图 8、角色设定 4、修图 2、场景 1、分镜 1、去 AI 感 1；条数太少的并进相近分类，由 App 的分组决定，不另起） | `skills/*/SKILL.md` 里 `library.kind: effect` 的 40 条 |
 | 表情预设 | `/prompts/expressions` | 1 | `electron/promptLibrary/builtinExpressionPack.json`（25 条，Nomi 自有，带图） |
-| 公开合集 | `/prompts/collections/<source>` | 6 | `electron/promptLibrary/promptSources.ts` + 内置的离线种子 |
+| 公开合集 | `/prompts/collections/<source>` | 5（6 个合集里 Seedance 2.0 没有随安装包带的离线条目，提示词库首页只列卡片、不出页） | `electron/promptLibrary/promptSources.ts` + 内置的离线种子 |
 | 技能库 | `/skills` | 1 | 同下 |
 | 单个技能 | `/skills/<name>` | 48（广告配方 8、角色与场景配方 7、导演 12、编剧 11、创作流程 10） | `skills/*/SKILL.md` 里 `library.kind: skill` |
 | 功能介绍 | `/features` | 1 | `scripts/marketing/content.mjs` + 真实产品截图 |
