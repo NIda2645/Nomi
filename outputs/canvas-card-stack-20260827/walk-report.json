@@ -56,12 +56,17 @@
       "detail": ""
     },
     {
-      "name": "复制变体新增一个节点且用户立即看得到",
+      "name": "复制变体新增一个节点、画布没自己动、用户看得到它",
+      "ok": true,
+      "detail": "in-view"
+    },
+    {
+      "name": "复制变体可一次撤销",
       "ok": true,
       "detail": ""
     },
     {
-      "name": "复制变体可一次撤销",
+      "name": "撤销复制不挪画布",
       "ok": true,
       "detail": ""
     },
@@ -88,12 +93,12 @@
     {
       "name": "拖动进度条连续跳转",
       "ok": true,
-      "detail": "45.075272"
+      "detail": "45.07199016194419"
     },
     {
       "name": "键盘左键精确回退一秒",
       "ok": true,
-      "detail": "45.075272 -> 44.079799"
+      "detail": "45.07199016194419 -> 44.07199"
     },
     {
       "name": "离开历史视频后播放暂停并回到起点",
@@ -126,9 +131,14 @@
       "detail": ""
     },
     {
-      "name": "收起编组保留可交互的左右悬浮加号",
+      "name": "未选中的折叠编组不出「+」圈",
       "ok": true,
-      "detail": "[{\"side\":\"left\",\"rendered\":true,\"hasPlusIcon\":true},{\"side\":\"right\",\"rendered\":true,\"hasPlusIcon\":true}]"
+      "detail": ""
+    },
+    {
+      "name": "选中的折叠编组左右「+」圈可见、带加号、没被画布上的卡盖住",
+      "ok": true,
+      "detail": "[{\"side\":\"left\",\"hasPlusIcon\":true,\"onTop\":true,\"coveredBy\":null},{\"side\":\"right\",\"hasPlusIcon\":true,\"onTop\":true,\"coveredBy\":null}]"
     },
     {
       "name": "三条成员输入聚合为一条编组线",
@@ -138,7 +148,7 @@
     {
       "name": "聚合编组输入线上存在真的点得到的点",
       "ok": true,
-      "detail": "{\"x\":478.56988525390625,\"y\":306.3134002685547}"
+      "detail": "{\"x\":348.41795173919127,\"y\":361.8270041254955}"
     },
     {
       "name": "返回项目库仍能看到两个项目",
@@ -166,6 +176,11 @@
       "detail": ""
     },
     {
+      "name": "重开后聚合编组输入线仍有真实可点击点",
+      "ok": true,
+      "detail": "{\"x\":386.3606262207031,\"y\":469.1921081542969}"
+    },
+    {
       "name": "聚合线一次断开整组关系",
       "ok": true,
       "detail": ""
@@ -191,5 +206,5 @@
       "detail": ""
     }
   ],
-  "projectRoot": "/var/folders/f4/vz86j5nd0_sf56qdhzrmbbvw0000gn/T/nomi-card-stack-walk-IReYsg/projects/canvas-card-stack-walk"
+  "projectRoot": "C:\\Users\\23732\\AppData\\Local\\Temp\\nomi-card-stack-walk-YSSUdb\\projects\\canvas-card-stack-walk"
 }

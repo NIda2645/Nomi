@@ -1,5 +1,3 @@
-import { nodeHasResultStack } from './useNodeResultHistory'
-import { productionMetaOf } from '../model/productionMeta'
 import { notify } from '../../../ui/notificationPolicy'
 import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -8,7 +6,6 @@ import {
   IconDownload,
   IconEye,
   IconMovie,
-  IconRefresh,
   IconTrash,
 } from '@tabler/icons-react'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -28,7 +25,6 @@ import { isProjectExecutionContextCurrent, withProjectAction } from '../../proje
 import { getDesktopBridge } from '../../../desktop/bridge'
 import { computeMediaMetaPatch } from './nodeSizing'
 import { findCanvasResultMediaDimensions } from '../../project/projectMediaMigration'
-import { reworkProductionShot } from '../../production/productionShotActions'
 import { historyVideoTimeFromPointer, nudgeHistoryVideoTime } from './historyVideoScrub'
 import { resolveResultStackPlacement, type ResultStackPlacement } from './nodeResultStackPlacement'
 import { getGenerationNodeIcon } from './renderRegistry'
@@ -260,14 +256,12 @@ export function NodeResultStack({
   onFeedback,
   node,
   readOnly,
-  selected,
   open,
   onOpenChange,
 }: {
   onFeedback: (message: string) => void
   node: GenerationCanvasNode
   readOnly: boolean
-  selected: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }): JSX.Element | null {
@@ -286,14 +280,10 @@ export function NodeResultStack({
   const [visibleCount, setVisibleCount] = React.useState(INITIAL_VISIBLE_RESULTS)
   const [hoveredId, setHoveredId] = React.useState('')
   const [preview, setPreview] = React.useState<GenerationNodeResult | null>(null)
-  const [rerunBusy, setRerunBusy] = React.useState(false)
   const [placement, setPlacement] = React.useState<ResultStackPlacement>('right')
   const trayRef = React.useRef<HTMLElement | null>(null)
   const entries = React.useMemo(() => listStableNodeMediaResults(node), [node])
   const currentId = node.result ? resultIdentity(node.result) : ''
-  const production = productionMetaOf(node)
-  const showSingleProductionAction = Boolean(production && selected && entries.length === 1)
-  const showStack = nodeHasResultStack(node) && (selected || entries.length >= 2)
 
   React.useEffect(() => {
     if (!open) {
@@ -322,8 +312,6 @@ export function NodeResultStack({
       requiredSpace: trayRect.width + Math.max(0, currentGap),
     }))
   }, [node.id, open, placement])
-
-  if (!showStack) return null
 
   const switchTo = async (entry: GenerationNodeResult): Promise<void> => {
     if (readOnly || resultIdentity(entry) === currentId) return
@@ -385,15 +373,6 @@ export function NodeResultStack({
     }
   }
 
-  const rerun = (): void => {
-    if (!production || rerunBusy) return
-    // 返工属于这次 Run 的原项目：点下去那一刻签发，之后交给 Run 自己的持久身份，不因切页取消。
-    withProjectAction((project) => {
-      setRerunBusy(true)
-      void reworkProductionShot(project.binding.projectId, production.runId, production.shotId, reportFeedback).finally(() => setRerunBusy(false))
-    })
-  }
-
   return (
     <>
       {feedback ? <p role="status" className="m-0 px-2 py-1 text-caption text-nomi-ink-60">{feedback}</p> : null}
@@ -405,7 +384,6 @@ export function NodeResultStack({
           if (!open) selectNode(node.id, false)
           onOpenChange(!open)
         }}
-        forceTrigger={showSingleProductionAction}
         mediaGlyph={<StackMediaGlyph kind={node.kind} />}
         mediaKind={node.kind}
       />
@@ -433,17 +411,6 @@ export function NodeResultStack({
                 <div className="text-body-sm font-semibold text-nomi-ink">{t('generationCommon.resultStack.title')}</div>
                 <div className="text-micro text-nomi-ink-60">{t('generationCommon.resultStack.versionCount', { count: entries.length })}</div>
               </div>
-              {production && !readOnly ? (
-                <button
-                  type="button"
-                  className="inline-flex min-h-7 items-center gap-1 rounded-nomi-sm border border-nomi-line px-2 text-micro font-medium text-nomi-ink hover:bg-nomi-ink-05 disabled:opacity-40"
-                  disabled={rerunBusy}
-                  onClick={rerun}
-                >
-                  <IconRefresh size={13} stroke={1.8} />
-                  {t('generationCommon.resultStack.rerun')}
-                </button>
-              ) : null}
             </header>
             <div className={cn(NODE_SCROLL_REGION_CLASS_NAME, 'min-h-0 overflow-y-auto p-2')} role="list">
               {entries.slice(0, visibleCount).map((entry, index) => {

@@ -2,8 +2,6 @@ import React from 'react'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { listStableNodeMediaResults } from '../model/nodeResultLifecycle'
 import { resolveNodeRenderKind, isCardRenderKind } from './resolveRenderKind'
-import { productionMetaOf } from '../model/productionMeta'
-export { productionMetaOf } from '../model/productionMeta'
 
 /** The parent owns history. Availability changes invalidate intent, never prompt data. */
 export function useNodeResultHistory({ id, kind, selected, available }: {
@@ -25,5 +23,6 @@ export function nodeHasResultStack(node: GenerationCanvasNode): boolean {
   if (isCardRenderKind(resolveNodeRenderKind(node)) || node.kind === 'text' || node.kind === 'panorama') return false
   if (!node.result?.url || (node.result.type !== 'image' && node.result.type !== 'video')) return false
   const count = listStableNodeMediaResults(node).length
-  return count >= 2 || (count === 1 && Boolean(productionMetaOf(node)))
+  // 「N 版」角标只在 ≥2 版时出现。制作流程的单版镜头也不再借它当入口：重拍住在节点浮条里（一功能一个家）。
+  return count >= 2
 }

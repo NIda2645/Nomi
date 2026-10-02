@@ -26,8 +26,8 @@ const INTERNAL_ID = [
 
 /** 价格 / 预算字样词表（zh / en 各一份）。词表本身是「检测用的」，不是界面文案；单测会对着真实词典核对它没漏。 */
 export const PRICE_WORDING = Object.freeze({
-  'zh-CN': ['价格未知', '价未知', '预算已用完', '预算用完', '提额', '提高预算', '额度已用完'],
-  en: ['price unknown', 'budget ran out', 'budget exhausted', 'raise budget', 'raise the budget', 'out of budget'],
+  'zh-CN': ['价格未知', '价未知', '预算已用完', '预算用完', '提额', '提高预算', '额度已用完', '未计费'],
+  en: ['price unknown', 'budget ran out', 'budget exhausted', 'raise budget', 'raise the budget', 'out of budget', 'not charged'],
 })
 
 /** 在一段用户可见文字里找违例。返回 [{kind, match}]；kind ∈ raw-json | internal-id | price-wording。 */

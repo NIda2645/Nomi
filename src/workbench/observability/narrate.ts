@@ -166,19 +166,6 @@ export const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
 }
 
 /**
- * 请求**还没离开本机**的失败类别：Nomi 自己确知没发出去，所以只有它们说得出「没有扣费 / 未计费」。
- * 请求发出去之后——被服务商拒绝、结果已送达却读不出来、下载被拦——花没花钱 Nomi 不知道，任何文案都不许替它说
- * （2026-09-30：「这次失败不计费」只有 apimart 一家的 credits_cost: 0 作证据，中转站计不计费我们不知道）。
- * noChargeClaims.test 逐条守着这条：目录里只有这些类别的文案允许出现「不扣费」一族的话。
- */
-export const NEVER_SENT_KINDS: readonly GenerationErrorKind[] = [
-  'outbound-blocked-submit',
-  'outbound-blocked-credential-origin',
-  'asset-upload-failed',
-  'asset-invalid',
-]
-
-/**
  * `params` 给需要说出**具体事实**的类别插值（目前只有 model-kind-mismatch：要说清「哪个模型、
  * 登记成什么、这里要什么」）。泛泛一句「类型不对」等于没说——用户得知道改成哪个才算数。
  * 不需要插值的类别原样返回，词表仍是唯一文案来源（P1）。
@@ -189,12 +176,11 @@ export function narrateGenerationError(
 ): { reason: string; hint: string } {
   const key = ERROR_KEY_BY_KIND[kind]
   const reason = i18n.t(`generationCommon.observability.error.${key}.reason`, params)
-  // These failures occur before the provider is called; never infer billing from a generic failure.
-  const uncharged = NEVER_SENT_KINDS.includes(kind)
   // 认不出的失败：服务商给了错误码就把码带进说明（不编原因，码是用户和我们排查的入口）。
   const hintKey = kind === 'unknown' && params?.code ? 'hintWithCode' : 'hint'
   return {
-    reason: uncharged ? `${reason} · ${i18n.t('generationCommon.observability.progress.notCharged')}` : reason,
+    // 标题只说失败的原因，不附「未计费」：现在都走中转站，扣没扣钱 Nomi 不知道，只说失败原因和下一步。
+    reason,
     hint: i18n.t(`generationCommon.observability.error.${key}.${hintKey}`, params),
   }
 }
