@@ -73,19 +73,25 @@
       "kind": "read",
       "path": "electron/productionRun/productionRunService.ts",
       "symbol": "resumeUnfinishedRuns"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "deriveProductionShotState"
     }
   ],
   "door_reduction": {
     "before": 4,
-    "after": 8,
-    "why_not": "门数从 4 扇变成 7 扇，多出来的不是新入口而是把原来散在判据里的假设拆成各自可测的一件事：判据本身（outboundDispatchEvidence，唯一读 undici cause 链的地方）、连接层失败的识别（isTransportLevelFailure，只给「供应商真支持幂等」那条重发用）、新连接原语的定义（systemProxy.createFreshConnectionDispatcher，全仓只有这一份定义）。原有的四扇各自必须存在：submitOnce 是全仓唯一重发点（规则），productionGenerationSubmission 是供应商异常进入提交层的唯一收口，apimartGenerationProvider.send 与 vendorHttp.requestVendor 是两条独立的付费传输（目录供应商 / 旧通道），它们共用同一个新连接原语，所以「新连接」的定义只有一份。 重启恢复入口 resumeUnfinishedRuns 是第 8 扇：提交在路上时进程没了，job 停在 submitting 没有任务号，它是全仓唯一在重启时扫这类 job 的地方，改成记「结果未知」（与连接被重置同一档），不再让画布一直写「生成中」。"
+    "after": 9,
+    "why_not": "门数从 4 扇变成 9 扇，多出来的不是新入口而是把原来散在判据里的假设拆成各自可测的一件事：判据本身（outboundDispatchEvidence，唯一读 undici cause 链的地方）、连接层失败的识别（isTransportLevelFailure，只给「供应商真支持幂等」那条重发用）、新连接原语的定义（systemProxy.createFreshConnectionDispatcher，全仓只有这一份定义）。原有的四扇各自必须存在：submitOnce 是全仓唯一重发点（规则），productionGenerationSubmission 是供应商异常进入提交层的唯一收口，apimartGenerationProvider.send 与 vendorHttp.requestVendor 是两条独立的付费传输（目录供应商 / 旧通道），它们共用同一个新连接原语，所以「新连接」的定义只有一份。 重启恢复入口 resumeUnfinishedRuns 是第 8 扇：提交在路上时进程没了，job 停在 submitting 没有任务号，它是全仓唯一在重启时扫这类 job 的地方，改成记「结果未知」（与连接被重置同一档），不再让画布一直写「生成中」。 deriveProductionShotState 是批次里一镜在画布上说什么话的唯一判定：结果未知的镜此前落进「已停 / 还没开拍」，现在画成带机器码的失败。"
   },
   "regression_tests": [
     "electron/outboundDispatchEvidence.test.ts",
     "electron/productionRun/submissionNotDispatched.test.ts",
     "electron/capabilityCore/apimartFreshConnection.test.ts",
     "src/workbench/generationCanvas/runner/classifyGenerationError.test.ts",
-    "electron/productionRun/productionRunService.test.ts"
+    "electron/productionRun/productionRunService.test.ts",
+    "electron/shared/productionShotPhase.test.ts"
   ],
   "residual_risks": [
     "「连上之后断开」永远只能是结果未知，这一档仍要用户去服务商后台核对——这是领域的真实约束，不是能修掉的东西。",

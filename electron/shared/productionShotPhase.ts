@@ -14,6 +14,7 @@
 // 真相源 = Run 的 jobs[] + status（纯派生，无第二份状态）。
 import type { ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStopReason } from "../productionRun/productionRunTypes";
 import { runStopReason } from "./productionRunStop";
+import { tagNomiError } from "./nomiErrorCodes";
 export { decideShotClaim } from "./decideShotClaim";
 import { shotCountsTowardBatch, shotIncluded } from "./productionShotJobs";
 
@@ -196,6 +197,11 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   // 最新那次任务已脱离制作（画布认领了这一镜、计划被拒 / 脱离画布）：制作不会再派它，
   // 节点上既不是「排队中」也不是「已停 · 提额续拍」——点那个按钮续的会是别的镜头。
   if (job?.status === "detached") return null;
+  // 提交结果未知（连接被重置 / 超时 / 提交途中重启）：供应商可能已经收下。这一镜**不是**「还没开拍」也不是「已停」，
+  // 画成失败并带上机器码，节点按「结果没法确认」说话（与单镜生成同一句话），不给一键重试。
+  if (job && (job.status === "submission_unknown" || job.status === "reconciling")) {
+    return { phase: "failed", job, failureMessage: tagNomiError("submission-unknown", "The provider did not confirm this submission") };
+  }
   const jobPhase = job ? productionJobPhase(job.status) : null;
 
   if (job && jobPhase === "done") return { phase: "done", job };
