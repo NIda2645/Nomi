@@ -1,6 +1,6 @@
 name: Docs Gate Autosync
 
-# 三个文档/生成物门（check:docs-index / check:doc-status / check:ledger）在 PR 上只出 warning
+# 三个文档/生成物门（check:docs-index / check:doc-status / check:ledger）在 PR 上已移出 Contracts，档案默认值生成物（原 check:archetype-defaults）也改成这里自动重生成，不再红灯拦 PR
 # 注解、不阻断（判据没放松，见 scripts/run-gates-contracts.mjs 的文件头）；**补齐的活在这里**：
 # main 每前进一次就跑一遍确定性补齐，有 diff 就更新同一条 bot PR；默认 token 的事件语义阻止递归启动。
 #
@@ -59,11 +59,12 @@ jobs:
           pnpm run check:doc-status
           pnpm run check:ledger
 
-      # 自媒体来源提醒（判断题，机器补不了）：2026-10-01 起不再出现在 PR 的 Contracts 里，
-      # 在这里作为只读提示继续跑，红了不拦、只留在日志里。
-      - name: Research-sources reminder (read-only)
-        continue-on-error: true
-        run: pnpm run check:research-sources
+      # 档案默认值生成物（原 check:archetype-defaults，2026-10-02 改成自动重生成）：从档案重新生成桥接表，
+      # 有 diff 就并进同一条 bot PR；PR 上不再用 --check 红灯拦。需要 tsx，所以这一步单独装依赖。
+      - name: Regenerate archetype wire defaults
+        run: |
+          pnpm install --frozen-lockfile --ignore-scripts
+          pnpm run gen:archetype-defaults
 
       # GITHUB_TOKEN 的 push 不递归启动 workflow；不靠提交标记跳过 CI。
       # 固定分支的创建、更新和无差异收敛全部交给 action。
@@ -87,3 +88,6 @@ jobs:
             Official behavior and exceptions: https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/trigger-a-workflow#triggering-a-workflow-from-a-workflow
           add-paths: |
             docs
+            electron/catalog/archetypeWireDefaults*.generated.ts
+            electron/catalog/archetypeIdentifiers.generated.ts
+            electron/catalog/archetypeModes.generated.ts

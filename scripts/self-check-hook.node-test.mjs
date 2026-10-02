@@ -45,7 +45,7 @@ describe('关键词块：命中才注入', () => {
     ['想引入一个新框架 SDK', '【先查别人 · R5】'],
     ['这个功能做完了，给你看', '【报完成前 · R13】'],
     ['有个 bug 要修', '【修根因 · P2】'],
-    ['准备合并这个 PR，先跑 delivery:preflight', '【交付 · R11/R22/R25】'],
+    ['准备合并这个 PR，先跑 delivery:preflight', '【交付 · R11/R22】'],
     ['pnpm run gates 红了', '【命令全表】'],
   ]
   for (const [prompt, expected] of cases) {

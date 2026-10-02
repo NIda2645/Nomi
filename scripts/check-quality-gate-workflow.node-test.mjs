@@ -449,3 +449,34 @@ test('every job in every workflow declares a job-level timeout-minutes', () => {
     }
   }
 })
+
+// 2026-10-02（复盘 fixes 行 2、60：同一类「CI 缺 Chromium」两次）：不再一条 workflow 一条断言，
+// 而是一次管住所有 workflow——任何 job 只要跑了会拉起真实浏览器的测试入口，就必须先装 Chromium，且装在它之前。
+test('every workflow job that runs browser-backed tests installs Chromium before them', () => {
+  const BROWSER_BACKED = [
+    'pnpm run test:system:unit',
+    'pnpm run test:system:focused',
+    'pnpm run test:system:full',
+    'pnpm run test:system:release',
+    'pnpm run test:system:ci',
+    'pnpm run test',
+  ]
+  const dir = path.join(repoRoot, '.github/workflows')
+  const offenders = []
+  let jobsWithBrowserTests = 0
+  for (const file of fs.readdirSync(dir).filter((name) => /\.ya?ml$/.test(name))) {
+    const doc = load(fs.readFileSync(path.join(dir, file), 'utf8'))
+    for (const [jobName, job] of Object.entries(doc.jobs ?? {})) {
+      const steps = job.steps ?? []
+      const runIndex = steps.findIndex(
+        (step) => typeof step.run === 'string' && BROWSER_BACKED.some((command) => step.run.split('\n').some((line) => line.trim() === command)),
+      )
+      if (runIndex < 0) continue
+      jobsWithBrowserTests += 1
+      const installIndex = steps.findIndex((step) => typeof step.run === 'string' && /playwright install\b.*\bchromium\b/.test(step.run))
+      if (installIndex < 0 || installIndex > runIndex) offenders.push(`${file}:${jobName}`)
+    }
+  }
+  assert.ok(jobsWithBrowserTests > 0, '断言空转：没有找到任何跑浏览器测试的 job')
+  assert.deepEqual(offenders, [], `这些 job 跑了浏览器测试却没在它之前装 Chromium：${offenders.join('、')}`)
+})

@@ -3389,32 +3389,6 @@
       "notes": "什么时候提醒（新建 = 路径不存在；反复修 = 近 14 天 fix/hotfix 提交 ≥3）只住 decideEditTimeReminder；阈值是试用值（到 2026-10-15 用提交历史校准）。只提醒、不拦、fail-open；回馈走 PreToolUse 的 hookSpecificOutput.additionalContext（普通 stdout 不进上下文）。"
     },
     {
-      "name": "「同一层被反复补」的簇何时算已答复（补 / 重写 / 删的选择 + 特征测试）",
-      "subject": "agent-rules.rewrite-decision-cluster",
-      "lifecycle": "delivery",
-      "authority_kind": "decision",
-      "trust_domain": "tooling",
-      "fact_kind": "rule",
-      "migration_status": "converged",
-      "forbidden_derivations": [],
-      "since": "2026-10-01",
-      "owner": {
-        "path": "scripts/symptom-cluster-lib.mjs",
-        "symbol": "evaluateClusters"
-      },
-      "write_api": [
-        {
-          "path": "scripts/symptom-cluster-lib.mjs",
-          "symbol": "evaluateClusters"
-        }
-      ],
-      "parity_test": "scripts/check-symptom-cluster.node-test.mjs",
-      "allowed_consumers": [
-        "scripts/check-symptom-cluster.mjs"
-      ],
-      "notes": "同一模块 7 天内第三份根因合同时，簇里最新那份必须带有效的 rewrite_decision（decision + characterization_test）才算答复；评审文档那条路已删，不并存。字段校验（测试文件存在、选 rewrite 时测试在 diff 里）在 root-cause-contracts 的 validateRewriteDecision，那里只校验、不判簇。"
-    },
-    {
       "name": "凭据请求重定向策略",
       "subject": "network.credential-redirect-policy",
       "lifecycle": "execution",
@@ -3535,6 +3509,52 @@
       ],
       "since": "2026-10-02",
       "notes": "每个 job 最长运行时间只写在该 job 自己的 timeout-minutes 里（各 workflow 一处，不在脚本里再包一层 timeout 命令）；缺一个就由 check-quality-gate-workflow 红。数字取近 30 次成功运行最长耗时的 2 到 3 倍。同 docs/fixes/2026-10-02-ci-job-timeouts.root-cause.json。"
+    },
+    {
+      "name": "哪些推送带新内容、需要五门戳",
+      "subject": "delivery.review-receipt-scope",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "scripts/claude-hooks/pre-push-check.sh",
+        "symbol": "--not --remotes"
+      },
+      "write_api": [
+        {
+          "path": "scripts/claude-hooks/pre-push-check.sh",
+          "symbol": "--not --remotes"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [],
+      "since": "2026-09-27",
+      "notes": "PR #906（合同 docs/fixes/2026-09-27-release-tag-blocked-by-dev-hook.root-cause.json）：发版 tag 指向已合并的提交被开发机钩子当成「新内容」拦下。2026-10-02 评审收据整套删除后，owner 改为 push 闸门本身：HEAD 的提交都已在远端跟踪分支上就不带新内容、不要五门戳，只在 pre-push-check.sh 一处判，回归测试在 scripts/pre-push-check.node-test.mjs。"
+    },
+    {
+      "name": "重写决定（补 / 重写 / 删的选择 + 特征测试）何时算有效",
+      "subject": "agent-rules.rewrite-decision-cluster",
+      "lifecycle": "delivery",
+      "authority_kind": "decision",
+      "trust_domain": "tooling",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "forbidden_derivations": [],
+      "since": "2026-10-01",
+      "owner": {
+        "path": "scripts/root-cause-contracts.mjs",
+        "symbol": "validateRewriteDecision"
+      },
+      "write_api": [
+        {
+          "path": "scripts/root-cause-contracts.mjs",
+          "symbol": "validateRewriteDecision"
+        }
+      ],
+      "allowed_consumers": [],
+      "notes": "2026-10-02：check:symptom-cluster（按「7 天内第三份合同」聚簇）红 11 次真拦 0 次，已整体删除；rewrite_decision 字段仍由 check:root-cause-contracts 校验（写了就必须成立：选项合法、特征测试文件存在、选 rewrite 时测试在本次 diff 里），不再有第二个判簇的 owner。"
     }
   ]
 }
