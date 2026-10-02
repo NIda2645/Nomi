@@ -203,13 +203,13 @@ describe('production run service projection boundary', () => {
       readEvents: vi.fn(() => []),
       list: vi.fn(() => [{ runId: semanticRun.runId }]),
       readBudgetLedger: vi.fn(() => ({ reservations: {} })),
-      execute: vi.fn(() => ({ run: semanticRun })),
+      execute: vi.fn((..._args: unknown[]) => ({ run: semanticRun })),
     }
     const service = createProductionRunService({ repository: repository as never, projectRootResolver: () => null })
 
     await service.resumeUnfinishedRuns('project-1')
 
-    const types = repository.execute.mock.calls.map((call) => (call[2] as { type: string; payload: Record<string, unknown> }))
+    const types = repository.execute.mock.calls.map((call) => (call[2] as unknown as { type: string; payload: Record<string, unknown> }))
     const unknown = types.find((command) => command.type === 'job.status')
     expect(unknown?.payload).toMatchObject({ status: 'submission_unknown' })
     expect(String((unknown?.payload.patch as { errorMessage: string }).errorMessage)).toContain('NOMI_ERR::submission-unknown::')

@@ -597,7 +597,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
                   status: 'submission_unknown',
                   patch: { errorCode: 'submission_unknown_restart', errorMessage: tagNomiError('submission-unknown', 'Nomi was closed while the request was being sent') },
                 }, `recovery-${current.runId}-${job.jobId}-submit-unknown`).run
-                const reservationId = `${current.runId}:${job.jobId}:${job.attempt}`
+                const reservationId: string = `${current.runId}:${job.jobId}:${job.attempt}`
                 if (repository.readBudgetLedger(safeProjectId, current.runId).reservations[reservationId]?.status === 'reserved') {
                   current = executeInternal(safeProjectId, current.runId, current, 'budget.entry', {
                     entry: { billingEntryId: `${reservationId}:mark-unsettled`, kind: 'mark_unsettled', reservationId, occurredAt: new Date().toISOString() },
