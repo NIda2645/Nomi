@@ -8,6 +8,8 @@ export type PromptSource = {
   label: string;
   sourceUrl: string;
   promptType: "image" | "video";
+  /** 上游仓库的许可证（2026-09-28 逐个读过 LICENSE 原文）。官网合集页与署名只读这一处。 */
+  license: "CC0-1.0" | "MIT" | "CC-BY-4.0";
   rawBase: string;
   files: string[];
   /** 每源最多保留多少条(防单源 900+ 撑爆 payload)。 */
@@ -33,6 +35,7 @@ export const PROMPT_SOURCES: PromptSource[] = [
     label: "GPT Image 2",
     sourceUrl: evo.url,
     promptType: "image",
+    license: "CC0-1.0",
     rawBase: evo.raw,
     files: ["README.md"],
     cap: 280,
@@ -43,6 +46,7 @@ export const PROMPT_SOURCES: PromptSource[] = [
     label: "Nano Banana Pro",
     sourceUrl: youMind.url,
     promptType: "image",
+    license: "CC-BY-4.0",
     rawBase: youMind.raw,
     files: ["README.md"],
     cap: 280,
@@ -53,6 +57,7 @@ export const PROMPT_SOURCES: PromptSource[] = [
     label: "GPT-4o 图像",
     sourceUrl: imgEdify.url,
     promptType: "image",
+    license: "MIT",
     rawBase: imgEdify.raw,
     files: ["README.md"],
     cap: 200,
@@ -63,6 +68,7 @@ export const PROMPT_SOURCES: PromptSource[] = [
     label: "Seedance 2.0",
     sourceUrl: seedance2.url,
     promptType: "video",
+    license: "CC-BY-4.0",
     rawBase: seedance2.raw,
     files: ["README.md"],
     cap: 200,
@@ -73,6 +79,7 @@ export const PROMPT_SOURCES: PromptSource[] = [
     label: "Sora 2",
     sourceUrl: sora2.url,
     promptType: "video",
+    license: "MIT",
     rawBase: sora2.raw,
     files: ["prompts/official-prompts.md", "prompts/sora2-viral-prompts.md", "prompts/hyperrealism-landscapes.md"],
     cap: 200,
@@ -83,6 +90,7 @@ export const PROMPT_SOURCES: PromptSource[] = [
     label: "Sora 官方",
     sourceUrl: soraOfficial.url,
     promptType: "video",
+    license: "CC0-1.0",
     rawBase: soraOfficial.raw,
     files: ["README.md", "animating-prompts.md", "image-generation-prompts.md", "video-editing-prompts.md"],
     cap: 120,

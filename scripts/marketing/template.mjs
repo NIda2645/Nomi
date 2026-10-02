@@ -1,74 +1,10 @@
 import { contentByLocale } from './content.mjs'
-import { homepageClientJs, localeBootstrapJs } from './client.mjs'
-import { downloadUrls } from './downloads.mjs'
 import { buildMetadata } from './metadata.mjs'
+import { escapeAttr, escapeText, externalAttrs, localizedPath, otherLocale, renderDocument, renderDownloadOptions } from './shell.mjs'
 import { pageCss } from './styles.mjs'
-
-const escapeText = (value) => String(value)
-  .replaceAll('&', '&amp;')
-  .replaceAll('<', '&lt;')
-  .replaceAll('>', '&gt;')
-
-const escapeAttr = (value) => escapeText(value)
-  .replaceAll('"', '&quot;')
-  .replaceAll("'", '&#39;')
-
-const externalAttrs = 'target="_blank" rel="noreferrer"'
 
 /** 某个页面在某种语言下的地址：唯一来源是 content.mjs 里的 path（hreflang 互指、语言切换都从这里读）。 */
 const pagePath = (pageKey, locale) => (pageKey === 'home' ? contentByLocale[locale].path : contentByLocale[locale].quickstart.path)
-
-const otherLocale = (locale) => (locale === 'zh-CN' ? 'en' : 'zh-CN')
-
-function renderMetadata(metadata) {
-  const alternates = metadata.alternates
-    .map(({ lang, href }) => `<link rel="alternate" hreflang="${escapeAttr(lang)}" href="${escapeAttr(href)}" />`)
-    .join('\n')
-  const jsonLd = JSON.stringify(metadata.jsonLd).replaceAll('<', '\\u003c')
-  return `<title>${escapeText(metadata.title)}</title>
-<meta name="description" content="${escapeAttr(metadata.description)}" />
-<meta name="robots" content="index,follow,max-image-preview:large" />
-<meta name="theme-color" content="#faf9f6" />
-<link rel="canonical" href="${escapeAttr(metadata.canonical)}" />
-${alternates}
-<meta property="og:type" content="website" />
-<meta property="og:site_name" content="Nomi" />
-<meta property="og:locale" content="${escapeAttr(metadata.openGraph.locale)}" />
-<meta property="og:title" content="${escapeAttr(metadata.openGraph.title)}" />
-<meta property="og:description" content="${escapeAttr(metadata.openGraph.description)}" />
-<meta property="og:url" content="${escapeAttr(metadata.canonical)}" />
-<meta property="og:image" content="${escapeAttr(metadata.openGraph.image)}" />
-<meta property="og:image:alt" content="${escapeAttr(metadata.openGraph.imageAlt)}" />
-<meta name="twitter:card" content="summary_large_image" />
-<meta name="twitter:title" content="${escapeAttr(metadata.openGraph.title)}" />
-<meta name="twitter:description" content="${escapeAttr(metadata.openGraph.description)}" />
-<meta name="twitter:image" content="${escapeAttr(metadata.openGraph.image)}" />
-<meta name="twitter:image:alt" content="${escapeAttr(metadata.openGraph.imageAlt)}" />
-<script type="application/ld+json">${jsonLd}</script>`
-}
-
-function renderNav(content, locale, pageKey) {
-  const home = pagePath('home', locale)
-  const onHome = pageKey === 'home'
-  const anchor = (id) => (onHome ? `#${id}` : `${home}#${id}`)
-  const localeHref = pagePath(pageKey, otherLocale(locale))
-  return `<header class="site-header">
-  <nav class="nav wrap" aria-label="${escapeAttr(content.nav.ariaLabel)}">
-    <a class="brand" href="${escapeAttr(home)}" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
-    <div class="nav-links" id="nav-links">
-      <a href="${escapeAttr(anchor('features'))}">${escapeText(content.nav.features)}</a>
-      <a href="${escapeAttr(pagePath('quickstart', locale))}"${pageKey === 'quickstart' ? ' aria-current="page"' : ''}>${escapeText(content.nav.quickstart)}</a>
-      <a href="${escapeAttr(anchor('open'))}">${escapeText(content.nav.open)}</a>
-      <a href="${escapeAttr(anchor('community'))}">${escapeText(content.nav.community)}</a>
-    </div>
-    <div class="nav-actions">
-      <a class="locale" href="${escapeAttr(localeHref)}" data-locale-choice="${otherLocale(locale)}" aria-label="${escapeAttr(content.nav.localeLabel)}">${escapeText(content.nav.locale)}</a>
-      <a class="button primary small" data-download-nomi href="#download-options">${escapeText(content.nav.download)}</a>
-      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">${escapeText(content.nav.menu)}</button>
-    </div>
-  </nav>
-</header>`
-}
 
 function renderHero(content, shared) {
   const poster = content.htmlLang === 'en' ? shared.filmPosterEn : shared.filmPoster
@@ -195,58 +131,6 @@ function renderCommunity(content, shared) {
 </section>`
 }
 
-function renderFooter(content, shared, locale, pageKey) {
-  return `<footer class="footer">
-  <div class="wrap">
-    <span class="wordmark small">No<span>mi</span></span>
-    <a href="${escapeAttr(shared.licenseUrl)}" ${externalAttrs}>${escapeText(content.footer.license)}</a>
-    <a href="${escapeAttr(shared.repositoryUrl)}" ${externalAttrs}>GitHub</a>
-    <a href="${escapeAttr(shared.releaseNotesUrl)}" ${externalAttrs}>${escapeText(content.footer.releases)}</a>
-    <a href="${escapeAttr(shared.twitterUrl)}" ${externalAttrs}>X / Twitter</a>
-    <a href="${escapeAttr(pagePath(pageKey, otherLocale(locale)))}" data-locale-choice="${otherLocale(locale)}">${escapeText(content.footer.locale)}</a>
-    <span class="made">${escapeText(content.footer.made)}</span>
-  </div>
-</footer>`
-}
-
-function renderDownloadOptions(content) {
-  const options = [
-    { label: content.download.windows, hint: content.download.windowsHint, href: downloadUrls.windowsX64, code: 'EXE' },
-    { label: content.download.macArm, hint: content.download.macArmHint, href: downloadUrls.macArm64, code: 'ARM64' },
-    { label: content.download.macIntel, hint: content.download.macIntelHint, href: downloadUrls.macX64, code: 'X64' },
-  ]
-  return options.map((option) => `<a class="download-option" data-direct-download href="${escapeAttr(option.href)}"><span><strong>${escapeText(option.label)}</strong><small>${escapeText(option.hint)}</small></span><span aria-hidden="true">${option.code} ↓</span></a>`).join('')
-}
-
-function renderMacInstallGuide(content) {
-  const steps = content.download.macSteps.map((step) => `<li>${escapeText(step)}</li>`).join('')
-  return `<section class="mac-install-guide" data-mac-install-guide>
-  <strong class="mac-install-guide-title">${escapeText(content.download.macGuideTitle)}</strong>
-  <p>${escapeText(content.download.macGuideSummary)}</p>
-  <ol>${steps}</ol>
-  <p>${escapeText(content.download.macDamaged)}</p>
-  <code class="mac-install-command">${escapeText(content.download.macCommand)}</code>
-  <p class="mac-install-safety">${escapeText(content.download.macSafety)}</p>
-</section>`
-}
-
-function renderDialogs(content, shared, pageKey) {
-  // 维护者微信弹窗只有首页有入口（社区一节的按钮）；快速上手只要下载选择弹窗。
-  const author = pageKey === 'home' ? `<dialog id="author-dialog" aria-labelledby="author-title">
-  <div class="dialog-head"><strong id="author-title">${escapeText(content.a11y.authorTitle)}</strong><button class="dialog-close" type="button" aria-label="${escapeAttr(content.a11y.close)}">×</button></div>
-  <div class="dialog-body qr-content"><img src="${escapeAttr(shared.authorQr)}" alt="${escapeAttr(content.a11y.authorTitle)}" width="960" height="960" /><p>${escapeText(content.a11y.authorCopy)}</p></div>
-</dialog>
-` : ''
-  return `${author}<dialog id="download-dialog" aria-labelledby="download-title">
-  <div class="dialog-head"><strong id="download-title">${escapeText(content.download.title)}</strong><button class="dialog-close" type="button" aria-label="${escapeAttr(content.a11y.close)}">×</button></div>
-  <div class="dialog-body download-dialog-body"><p>${escapeText(content.download.description)}</p><div class="download-options">${renderDownloadOptions(content)}</div>${renderMacInstallGuide(content)}</div>
-</dialog>`
-}
-
-function renderNoScriptDownload(content) {
-  return `<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>${escapeText(content.download.title)}</h2><p>${escapeText(content.download.description)}</p><div class="download-options">${renderDownloadOptions(content)}</div>${renderMacInstallGuide(content)}</div></section></noscript>`
-}
-
 function renderQuickstartMain(content, shared, version) {
   const q = content.quickstart
   const steps = q.steps.map((step) => {
@@ -263,6 +147,15 @@ function renderQuickstartMain(content, shared, version) {
     </li>`
   }).join('\n')
   const faq = q.faq.map((item) => `<details><summary>${escapeText(item.question)}</summary><p>${escapeText(item.answer)}</p></details>`).join('')
+  const locale = content.htmlLang
+  // 「我想做 X」与「卡住了」是原一页手册里最有用的两块（2026-09-28 并进来，手册页跳转到这里）。
+  const routes = q.routes.map((route) => `<article class="route" id="route-${escapeAttr(route.id)}">
+      <h3>${escapeText(route.title)}</h3>
+      <p>${escapeText(route.body)}</p>
+      ${route.link ? `<a href="${escapeAttr(localizedPath(locale, route.link))}">${escapeText(route.linkLabel)} →</a>` : ''}
+    </article>`).join('\n')
+  const gotchas = q.gotchas.map((item) => `<details id="stuck-${escapeAttr(item.id)}"><summary>${escapeText(item.title)}</summary><p>${escapeText(item.body)}</p></details>`).join('')
+  const next = q.next.map((item) => `<a class="button quiet" href="${escapeAttr(localizedPath(locale, item.path))}">${escapeText(item.label)}</a>`).join('')
   return `<section class="qs-hero">
   <div class="wrap">
     <p class="eyebrow">${escapeText(q.eyebrow)}</p>
@@ -273,9 +166,14 @@ function renderQuickstartMain(content, shared, version) {
 <section class="block qs-steps">
   <div class="wrap">
     <ol class="steps">${steps}</ol>
+    <div class="block-head faq-head" id="routes"><h2>${escapeText(q.routesTitle)}</h2></div>
+    <div class="routes">${routes}</div>
+    <div class="block-head faq-head" id="stuck"><h2>${escapeText(q.gotchasTitle)}</h2></div>
+    <div class="faq">${gotchas}</div>
     <div class="block-head faq-head"><h2>${escapeText(q.faqTitle)}</h2></div>
     <div class="faq">${faq}</div>
-    <p class="more">${escapeText(q.more)} <a href="${escapeAttr(shared.handbookUrl)}">${escapeText(q.handbook)}</a> · <a href="${escapeAttr(shared.mcpGuideUrl)}" ${externalAttrs}>${escapeText(q.mcpGuide)}</a></p>
+    <div class="block-head faq-head"><h2>${escapeText(q.nextTitle)}</h2></div>
+    <div class="next-links">${next}<a class="button quiet" href="${escapeAttr(shared.mcpGuideUrl)}" ${externalAttrs}>${escapeText(q.mcpGuide)} ↗</a></div>
   </div>
 </section>`
 }
@@ -290,35 +188,19 @@ function renderPage(locale, runtimeFacts, pageKey) {
     meta: pageKey === 'home' ? content.meta : content.quickstart.meta,
     alternates: { 'zh-CN': pagePath(pageKey, 'zh-CN'), en: pagePath(pageKey, 'en') },
   }
-  const metadata = buildMetadata(locale, page, runtimeFacts)
   const main = pageKey === 'home'
     ? [renderHero(content, runtimeFacts), renderPrice(content), renderFeatures(content, runtimeFacts), renderOpen(content, runtimeFacts), renderCommunity(content, runtimeFacts)].join('\n')
     : renderQuickstartMain(content, runtimeFacts, runtimeFacts.version)
-  return `<!doctype html>
-<html lang="${escapeAttr(content.htmlLang)}">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-${renderMetadata(metadata)}
-${pageKey === 'home' ? `<script>${localeBootstrapJs()}</script>\n` : ''}<link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" />
-<style>${pageCss(pageKey)}</style>
-</head>
-<body class="page-${pageKey}">
-<a class="skip-link" href="#main">${escapeText(content.a11y.skip)}</a>
-${renderNav(content, locale, pageKey)}
-<main id="main">
-${main}
-</main>
-${renderFooter(content, runtimeFacts, locale, pageKey)}
-${renderDialogs(content, runtimeFacts, pageKey)}
-${renderNoScriptDownload(content)}
-<script>${homepageClientJs(downloadUrls, { segments: pageKey === 'home' })}</script>
-</body>
-</html>
-`
+  return renderDocument({
+    locale,
+    pageKey,
+    runtimeFacts,
+    metadata: buildMetadata(locale, page, runtimeFacts),
+    css: pageCss(pageKey),
+    main,
+    alternateHref: pagePath(pageKey, otherLocale(locale)),
+    home: pageKey === 'home',
+  })
 }
 
 export function renderHomepage(locale, runtimeFacts) {

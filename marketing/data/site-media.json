@@ -1,0 +1,881 @@
+[
+  {
+    "source": "skills/brand-promo/assets/cover.png",
+    "sourceHash": "217d478f77bf56ba",
+    "files": {
+      "640": "/assets/library/brand-promo-640.webp",
+      "1280": "/assets/library/brand-promo-1280.webp"
+    }
+  },
+  {
+    "source": "skills/creation-edit/assets/cover.png",
+    "sourceHash": "69bb460a5c198cf7",
+    "files": {
+      "640": "/assets/library/creation-edit-640.webp",
+      "1280": "/assets/library/creation-edit-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-candle-mood/assets/preview.png",
+    "sourceHash": "297cfdf0d22b723d",
+    "files": {
+      "640": "/assets/library/curated-candle-mood-640.webp",
+      "1280": "/assets/library/curated-candle-mood-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-coffee-pour/assets/preview.png",
+    "sourceHash": "1b3ac2bde7a582cf",
+    "files": {
+      "640": "/assets/library/curated-coffee-pour-640.webp",
+      "1280": "/assets/library/curated-coffee-pour-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-cross-view/assets/preview.jpg",
+    "sourceHash": "c14051a14fdf17e6",
+    "files": {
+      "640": "/assets/library/curated-cross-view-640.webp",
+      "1280": "/assets/library/curated-cross-view-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-expression-reference/assets/preview.jpg",
+    "sourceHash": "78524b4ec1011b39",
+    "files": {
+      "640": "/assets/library/curated-expression-reference-640.webp",
+      "1280": "/assets/library/curated-expression-reference-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-expression-sheet/assets/preview.png",
+    "sourceHash": "3495f625fbed59df",
+    "files": {
+      "640": "/assets/library/curated-expression-sheet-640.webp",
+      "1280": "/assets/library/curated-expression-sheet-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-eyewear-light/assets/preview.png",
+    "sourceHash": "e75f3685a0cf73f7",
+    "files": {
+      "640": "/assets/library/curated-eyewear-light-640.webp",
+      "1280": "/assets/library/curated-eyewear-light-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-film-storyboard/assets/preview.jpg",
+    "sourceHash": "04a8a84388d29e53",
+    "files": {
+      "640": "/assets/library/curated-film-storyboard-640.webp",
+      "1280": "/assets/library/curated-film-storyboard-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-multi-view/assets/preview.jpg",
+    "sourceHash": "00b3b9f786f4a3ca",
+    "files": {
+      "640": "/assets/library/curated-multi-view-640.webp",
+      "1280": "/assets/library/curated-multi-view-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-outpaint/assets/preview.jpg",
+    "sourceHash": "6a1fdb160371fd3d",
+    "files": {
+      "640": "/assets/library/curated-outpaint-640.webp",
+      "1280": "/assets/library/curated-outpaint-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-product-before-after/assets/preview.png",
+    "sourceHash": "420cbc1871a324f9",
+    "files": {
+      "640": "/assets/library/curated-product-before-after-640.webp",
+      "1280": "/assets/library/curated-product-before-after-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-product-condensation/assets/preview.png",
+    "sourceHash": "ffcdc02831028932",
+    "files": {
+      "640": "/assets/library/curated-product-condensation-640.webp",
+      "1280": "/assets/library/curated-product-condensation-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-product-exploded-view/assets/preview.png",
+    "sourceHash": "e4b192fb90897c77",
+    "files": {
+      "640": "/assets/library/curated-product-exploded-view-640.webp",
+      "1280": "/assets/library/curated-product-exploded-view-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-product-turntable/assets/preview.png",
+    "sourceHash": "59a4ce5e4f9fb996",
+    "files": {
+      "640": "/assets/library/curated-product-turntable-640.webp",
+      "1280": "/assets/library/curated-product-turntable-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-product-unboxing/assets/preview.png",
+    "sourceHash": "177c8e5fb69b04dd",
+    "files": {
+      "640": "/assets/library/curated-product-unboxing-640.webp",
+      "1280": "/assets/library/curated-product-unboxing-1280.webp"
+    }
+  },
+  {
+    "source": "skills/curated-restore-image/assets/preview.png",
+    "sourceHash": "b23dae61d746c086",
+    "files": {
+      "640": "/assets/library/curated-restore-image-640.webp",
+      "1280": "/assets/library/curated-restore-image-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-action/assets/cover.png",
+    "sourceHash": "1e21c744863b884b",
+    "files": {
+      "640": "/assets/library/director-action-640.webp",
+      "1280": "/assets/library/director-action-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-art-design/assets/cover.png",
+    "sourceHash": "4d08da03288502c4",
+    "files": {
+      "640": "/assets/library/director-art-design-640.webp",
+      "1280": "/assets/library/director-art-design-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-cinematography/assets/cover.png",
+    "sourceHash": "81b8329dde402bc9",
+    "files": {
+      "640": "/assets/library/director-cinematography-640.webp",
+      "1280": "/assets/library/director-cinematography-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-consistency/assets/cover.png",
+    "sourceHash": "9ca619c1b7acc622",
+    "files": {
+      "640": "/assets/library/director-consistency-640.webp",
+      "1280": "/assets/library/director-consistency-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-guzhuang/assets/cover.png",
+    "sourceHash": "3eaf693bc37af18c",
+    "files": {
+      "640": "/assets/library/director-guzhuang-640.webp",
+      "1280": "/assets/library/director-guzhuang-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-keyframe-review/assets/cover.png",
+    "sourceHash": "4f2d78c18a1c7c9f",
+    "files": {
+      "640": "/assets/library/director-keyframe-review-640.webp",
+      "1280": "/assets/library/director-keyframe-review-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-performance/assets/cover.png",
+    "sourceHash": "89073b02c13c5bc3",
+    "files": {
+      "640": "/assets/library/director-performance-640.webp",
+      "1280": "/assets/library/director-performance-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-shot-translation/assets/cover.png",
+    "sourceHash": "41d163b44b34732b",
+    "files": {
+      "640": "/assets/library/director-shot-translation-640.webp",
+      "1280": "/assets/library/director-shot-translation-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-sound/assets/cover.png",
+    "sourceHash": "cb0f89ad0c9e2815",
+    "files": {
+      "640": "/assets/library/director-sound-640.webp",
+      "1280": "/assets/library/director-sound-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-staging/assets/cover.png",
+    "sourceHash": "a66097f37d50b96b",
+    "files": {
+      "640": "/assets/library/director-staging-640.webp",
+      "1280": "/assets/library/director-staging-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-style-otomo-wright/assets/cover.png",
+    "sourceHash": "6026e107ae6ffbed",
+    "files": {
+      "640": "/assets/library/director-style-otomo-wright-640.webp",
+      "1280": "/assets/library/director-style-otomo-wright-1280.webp"
+    }
+  },
+  {
+    "source": "skills/director-transitions/assets/cover.png",
+    "sourceHash": "416fd6810f584fe5",
+    "files": {
+      "640": "/assets/library/director-transitions-640.webp",
+      "1280": "/assets/library/director-transitions-1280.webp"
+    }
+  },
+  {
+    "source": "skills/drama-short/assets/cover.png",
+    "sourceHash": "5d0cbb8025f83e5c",
+    "files": {
+      "640": "/assets/library/drama-short-640.webp",
+      "1280": "/assets/library/drama-short-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-01/assets/cover.png",
+    "sourceHash": "fa60911c85c0a5b7",
+    "files": {
+      "640": "/assets/library/effect-camera-01-640.webp",
+      "1280": "/assets/library/effect-camera-01-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-02/assets/cover.png",
+    "sourceHash": "3577a761a2737df3",
+    "files": {
+      "640": "/assets/library/effect-camera-02-640.webp",
+      "1280": "/assets/library/effect-camera-02-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-03/assets/cover.png",
+    "sourceHash": "d82e32cf6953d8c2",
+    "files": {
+      "640": "/assets/library/effect-camera-03-640.webp",
+      "1280": "/assets/library/effect-camera-03-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-04/assets/cover.png",
+    "sourceHash": "92b46041840db097",
+    "files": {
+      "640": "/assets/library/effect-camera-04-640.webp",
+      "1280": "/assets/library/effect-camera-04-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-05/assets/cover.png",
+    "sourceHash": "2bb7be816620c193",
+    "files": {
+      "640": "/assets/library/effect-camera-05-640.webp",
+      "1280": "/assets/library/effect-camera-05-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-06/assets/cover.png",
+    "sourceHash": "8f7ff4cbd2e06be8",
+    "files": {
+      "640": "/assets/library/effect-camera-06-640.webp",
+      "1280": "/assets/library/effect-camera-06-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-07/assets/cover.png",
+    "sourceHash": "365cdf565de7ba6f",
+    "files": {
+      "640": "/assets/library/effect-camera-07-640.webp",
+      "1280": "/assets/library/effect-camera-07-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-08/assets/cover.png",
+    "sourceHash": "2d557cdbe3c79041",
+    "files": {
+      "640": "/assets/library/effect-camera-08-640.webp",
+      "1280": "/assets/library/effect-camera-08-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-09/assets/cover.png",
+    "sourceHash": "b028fc9002fc5442",
+    "files": {
+      "640": "/assets/library/effect-camera-09-640.webp",
+      "1280": "/assets/library/effect-camera-09-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-10/assets/cover.png",
+    "sourceHash": "e5bc022ba2c1063e",
+    "files": {
+      "640": "/assets/library/effect-camera-10-640.webp",
+      "1280": "/assets/library/effect-camera-10-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-11/assets/cover.png",
+    "sourceHash": "464af749835a6f3f",
+    "files": {
+      "640": "/assets/library/effect-camera-11-640.webp",
+      "1280": "/assets/library/effect-camera-11-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-12/assets/cover.png",
+    "sourceHash": "7235f447beeddbf7",
+    "files": {
+      "640": "/assets/library/effect-camera-12-640.webp",
+      "1280": "/assets/library/effect-camera-12-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-13/assets/cover.png",
+    "sourceHash": "c65c7a4bf65cb5a4",
+    "files": {
+      "640": "/assets/library/effect-camera-13-640.webp",
+      "1280": "/assets/library/effect-camera-13-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-14/assets/cover.png",
+    "sourceHash": "4060c8288ffd0884",
+    "files": {
+      "640": "/assets/library/effect-camera-14-640.webp",
+      "1280": "/assets/library/effect-camera-14-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-15/assets/cover.png",
+    "sourceHash": "fdde8db8e3de9022",
+    "files": {
+      "640": "/assets/library/effect-camera-15-640.webp",
+      "1280": "/assets/library/effect-camera-15-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-16/assets/cover.png",
+    "sourceHash": "ef07f448e878c0ef",
+    "files": {
+      "640": "/assets/library/effect-camera-16-640.webp",
+      "1280": "/assets/library/effect-camera-16-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-17/assets/cover.png",
+    "sourceHash": "d20c8cb5acf12f16",
+    "files": {
+      "640": "/assets/library/effect-camera-17-640.webp",
+      "1280": "/assets/library/effect-camera-17-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-18/assets/cover.png",
+    "sourceHash": "98b3e7e3ace9dd92",
+    "files": {
+      "640": "/assets/library/effect-camera-18-640.webp",
+      "1280": "/assets/library/effect-camera-18-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-19/assets/cover.png",
+    "sourceHash": "6a2cb0d6b722183c",
+    "files": {
+      "640": "/assets/library/effect-camera-19-640.webp",
+      "1280": "/assets/library/effect-camera-19-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-20/assets/cover.png",
+    "sourceHash": "ad7fb558fd471e2b",
+    "files": {
+      "640": "/assets/library/effect-camera-20-640.webp",
+      "1280": "/assets/library/effect-camera-20-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-21/assets/cover.png",
+    "sourceHash": "b08e0a9c0a13bed5",
+    "files": {
+      "640": "/assets/library/effect-camera-21-640.webp",
+      "1280": "/assets/library/effect-camera-21-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-22/assets/cover.png",
+    "sourceHash": "4502bd8e21261c6f",
+    "files": {
+      "640": "/assets/library/effect-camera-22-640.webp",
+      "1280": "/assets/library/effect-camera-22-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-23/assets/cover.png",
+    "sourceHash": "963c423563cf661a",
+    "files": {
+      "640": "/assets/library/effect-camera-23-640.webp",
+      "1280": "/assets/library/effect-camera-23-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-24/assets/cover.png",
+    "sourceHash": "03d1e77057c66588",
+    "files": {
+      "640": "/assets/library/effect-camera-24-640.webp",
+      "1280": "/assets/library/effect-camera-24-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-25/assets/cover.png",
+    "sourceHash": "28072d7cdd1f8c14",
+    "files": {
+      "640": "/assets/library/effect-camera-25-640.webp",
+      "1280": "/assets/library/effect-camera-25-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-26/assets/cover.png",
+    "sourceHash": "d48757f7089e1cf3",
+    "files": {
+      "640": "/assets/library/effect-camera-26-640.webp",
+      "1280": "/assets/library/effect-camera-26-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-27/assets/cover.png",
+    "sourceHash": "0a8ec226a60bbe2d",
+    "files": {
+      "640": "/assets/library/effect-camera-27-640.webp",
+      "1280": "/assets/library/effect-camera-27-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-28/assets/cover.png",
+    "sourceHash": "57fe56c469aa6d78",
+    "files": {
+      "640": "/assets/library/effect-camera-28-640.webp",
+      "1280": "/assets/library/effect-camera-28-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-29/assets/cover.png",
+    "sourceHash": "3acc144eb05495e6",
+    "files": {
+      "640": "/assets/library/effect-camera-29-640.webp",
+      "1280": "/assets/library/effect-camera-29-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-camera-30/assets/cover.png",
+    "sourceHash": "29a3928e60074f2c",
+    "files": {
+      "640": "/assets/library/effect-camera-30-640.webp",
+      "1280": "/assets/library/effect-camera-30-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-character-three-view/assets/cover.png",
+    "sourceHash": "a53bc4683f832362",
+    "files": {
+      "640": "/assets/library/effect-character-three-view-640.webp",
+      "1280": "/assets/library/effect-character-three-view-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-expression-grid/assets/cover.png",
+    "sourceHash": "7b2d424c8bd49e83",
+    "files": {
+      "640": "/assets/library/effect-expression-grid-640.webp",
+      "1280": "/assets/library/effect-expression-grid-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-fill-outpaint/assets/cover.png",
+    "sourceHash": "aedbd0fa6b5c6db5",
+    "files": {
+      "640": "/assets/library/effect-fill-outpaint-640.webp",
+      "1280": "/assets/library/effect-fill-outpaint-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-natural-texture/assets/cover.png",
+    "sourceHash": "5d0b0836167bd6ee",
+    "files": {
+      "640": "/assets/library/effect-natural-texture-640.webp",
+      "1280": "/assets/library/effect-natural-texture-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-object-six-view/assets/cover.png",
+    "sourceHash": "ddb32668e3f2099e",
+    "files": {
+      "640": "/assets/library/effect-object-six-view-640.webp",
+      "1280": "/assets/library/effect-object-six-view-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-overhead-view/assets/cover.png",
+    "sourceHash": "036388ee58009d25",
+    "files": {
+      "640": "/assets/library/effect-overhead-view-640.webp",
+      "1280": "/assets/library/effect-overhead-view-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-restore-drawing/assets/cover.png",
+    "sourceHash": "fb4461dfb875616e",
+    "files": {
+      "640": "/assets/library/effect-restore-drawing-640.webp",
+      "1280": "/assets/library/effect-restore-drawing-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-scene-three-view/assets/cover.png",
+    "sourceHash": "75070aabc1ed8bde",
+    "files": {
+      "640": "/assets/library/effect-scene-three-view-640.webp",
+      "1280": "/assets/library/effect-scene-three-view-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-storyboard-panels/assets/cover.png",
+    "sourceHash": "4259826af325dc25",
+    "files": {
+      "640": "/assets/library/effect-storyboard-panels-640.webp",
+      "1280": "/assets/library/effect-storyboard-panels-1280.webp"
+    }
+  },
+  {
+    "source": "skills/effect-transfer-expression/assets/cover.png",
+    "sourceHash": "5c43804c7140d991",
+    "files": {
+      "640": "/assets/library/effect-transfer-expression-640.webp",
+      "1280": "/assets/library/effect-transfer-expression-1280.webp"
+    }
+  },
+  {
+    "source": "skills/model-integration/assets/cover.png",
+    "sourceHash": "ac21efd002241a7c",
+    "files": {
+      "640": "/assets/library/model-integration-640.webp",
+      "1280": "/assets/library/model-integration-1280.webp"
+    }
+  },
+  {
+    "source": "skills/release-media-pack/assets/cover.png",
+    "sourceHash": "4422f826e737a0ed",
+    "files": {
+      "640": "/assets/library/release-media-pack-640.webp",
+      "1280": "/assets/library/release-media-pack-1280.webp"
+    }
+  },
+  {
+    "source": "skills/skill-author/assets/cover.png",
+    "sourceHash": "f6cafe3eca696eea",
+    "files": {
+      "640": "/assets/library/skill-author-640.webp",
+      "1280": "/assets/library/skill-author-1280.webp"
+    }
+  },
+  {
+    "source": "skills/workbench-creation/assets/cover.png",
+    "sourceHash": "0f67cdcec6cf4554",
+    "files": {
+      "640": "/assets/library/workbench-creation-640.webp",
+      "1280": "/assets/library/workbench-creation-1280.webp"
+    }
+  },
+  {
+    "source": "skills/workbench-fixation-planner/assets/cover.png",
+    "sourceHash": "23fc2ba1ff548773",
+    "files": {
+      "640": "/assets/library/workbench-fixation-planner-640.webp",
+      "1280": "/assets/library/workbench-fixation-planner-1280.webp"
+    }
+  },
+  {
+    "source": "skills/workbench-generation/assets/cover.png",
+    "sourceHash": "40ed008ba5980301",
+    "files": {
+      "640": "/assets/library/workbench-generation-640.webp",
+      "1280": "/assets/library/workbench-generation-1280.webp"
+    }
+  },
+  {
+    "source": "skills/workbench-storyboard-planner/assets/cover.png",
+    "sourceHash": "89362b84fcfab400",
+    "files": {
+      "640": "/assets/library/workbench-storyboard-planner-640.webp",
+      "1280": "/assets/library/workbench-storyboard-planner-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-adaptation/assets/cover.png",
+    "sourceHash": "89ae86305a139e02",
+    "files": {
+      "640": "/assets/library/writer-adaptation-640.webp",
+      "1280": "/assets/library/writer-adaptation-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-behavior-psychology/assets/cover.png",
+    "sourceHash": "9c9604a3f135e13d",
+    "files": {
+      "640": "/assets/library/writer-behavior-psychology-640.webp",
+      "1280": "/assets/library/writer-behavior-psychology-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-dialogue/assets/cover.png",
+    "sourceHash": "fe0519726085a0ad",
+    "files": {
+      "640": "/assets/library/writer-dialogue-640.webp",
+      "1280": "/assets/library/writer-dialogue-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-improv/assets/cover.png",
+    "sourceHash": "5b820e32c5e9f9d5",
+    "files": {
+      "640": "/assets/library/writer-improv-640.webp",
+      "1280": "/assets/library/writer-improv-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-incubation/assets/cover.png",
+    "sourceHash": "383632ed52543bd3",
+    "files": {
+      "640": "/assets/library/writer-incubation-640.webp",
+      "1280": "/assets/library/writer-incubation-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-novel-digester/assets/cover.png",
+    "sourceHash": "2911f9ed544619e9",
+    "files": {
+      "640": "/assets/library/writer-novel-digester-640.webp",
+      "1280": "/assets/library/writer-novel-digester-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-review/assets/cover.png",
+    "sourceHash": "f906e9495559afbf",
+    "files": {
+      "640": "/assets/library/writer-review-640.webp",
+      "1280": "/assets/library/writer-review-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-screenwriter/assets/cover.png",
+    "sourceHash": "ef3de4f5ee2ba394",
+    "files": {
+      "640": "/assets/library/writer-screenwriter-640.webp",
+      "1280": "/assets/library/writer-screenwriter-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-songfangjin/assets/cover.png",
+    "sourceHash": "f20c04c0e50a3312",
+    "files": {
+      "640": "/assets/library/writer-songfangjin-640.webp",
+      "1280": "/assets/library/writer-songfangjin-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-structure/assets/cover.png",
+    "sourceHash": "4c21752656f49e1a",
+    "files": {
+      "640": "/assets/library/writer-structure-640.webp",
+      "1280": "/assets/library/writer-structure-1280.webp"
+    }
+  },
+  {
+    "source": "skills/writer-style-schrader/assets/cover.png",
+    "sourceHash": "b9cac1cffe51cf3d",
+    "files": {
+      "640": "/assets/library/writer-style-schrader-640.webp",
+      "1280": "/assets/library/writer-style-schrader-1280.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-joy-1.webp",
+    "sourceHash": "35a9ad5b8ec19030",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-joy-1-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-joy-2.webp",
+    "sourceHash": "7bb5bdef7bd853c9",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-joy-2-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-joy-3.webp",
+    "sourceHash": "ced9b43d3692604f",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-joy-3-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-joy-4.webp",
+    "sourceHash": "bbc2404fc2fd9b5e",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-joy-4-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-joy-5.webp",
+    "sourceHash": "3aba11a3c2bffd76",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-joy-5-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-anger-1.webp",
+    "sourceHash": "91f9c60e8ec0004f",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-anger-1-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-anger-2.webp",
+    "sourceHash": "96a2b7def3daeb75",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-anger-2-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-anger-3.webp",
+    "sourceHash": "cc4dc29e7e0d4f49",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-anger-3-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-anger-4.webp",
+    "sourceHash": "538e0c5533c960e1",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-anger-4-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-anger-5.webp",
+    "sourceHash": "210b0f82774957fe",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-anger-5-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-sad-1.webp",
+    "sourceHash": "b13a026ef08576ed",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-sad-1-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-sad-2.webp",
+    "sourceHash": "ba8d5507dad99689",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-sad-2-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-sad-3.webp",
+    "sourceHash": "8cbd96618c7feaa1",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-sad-3-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-sad-4.webp",
+    "sourceHash": "b59c5eb69a7612a4",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-sad-4-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-sad-5.webp",
+    "sourceHash": "b59a2bc16c52e34b",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-sad-5-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-surprise-1.webp",
+    "sourceHash": "c9624b8c8dfb2b19",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-surprise-1-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-surprise-2.webp",
+    "sourceHash": "a9ee091458609d72",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-surprise-2-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-surprise-3.webp",
+    "sourceHash": "cb51d8e91124dc77",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-surprise-3-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-surprise-4.webp",
+    "sourceHash": "aed2b00112377946",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-surprise-4-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-surprise-5.webp",
+    "sourceHash": "ffcfcb099c74cb8a",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-surprise-5-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-fear-1.webp",
+    "sourceHash": "6fb183a9184091b8",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-fear-1-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-fear-2.webp",
+    "sourceHash": "c2653e36825ea77e",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-fear-2-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-fear-3.webp",
+    "sourceHash": "f3ae9de3376879c5",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-fear-3-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-fear-4.webp",
+    "sourceHash": "f0a4a377c421a626",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-fear-4-640.webp"
+    }
+  },
+  {
+    "source": "public/prompt-media/expressions/builtin-expr-fear-5.webp",
+    "sourceHash": "6b4667e09e87b1d5",
+    "files": {
+      "640": "/assets/library/expression-builtin-expr-fear-5-640.webp"
+    }
+  }
+]
