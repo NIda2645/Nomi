@@ -1,0 +1,201 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-agent-panel-raw-leaks",
+  "problem_type": "Text produced for machines (provider payloads, tool arguments and results, classification markers, internal ids) reaches a user-visible surface without passing a human-text boundary",
+  "symptom": "The Agent panel showed a provider's raw JSON error with our own classification marker appended, and tool receipts expanded into whole argument and result JSON carrying operation ids and provider route keys.",
+  "direct_cause": "laneViewModel copied the assistant error text verbatim into the error row and printed redactToolArguments(args) plus the raw tool result as the receipt body. laneFailureText's last tier accepted any unclassified text that contained a Han character, so a Chinese raw JSON payload counted as a sentence.",
+  "class_root": "No single boundary decided what machine-shaped text may be shown. The lane command path had one (laneFailureText), the assistant-error path and the receipt body each bypassed it.",
+  "affected_population": [
+    "Every user whose provider returns an error body the classifier does not recognise",
+    "Every user who expands a tool receipt in the Agent panel",
+    "zh-CN and en alike"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/lane/laneCommandFailure.ts",
+    "src/workbench/ai/lane/laneViewModel.ts",
+    "src/workbench/ai/resident/residentToolText.ts",
+    "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+    "src/workbench/ai/v4/AgentPanelV4Receipt.tsx",
+    "src/workbench/ai/v4/agentPanelV4Types.ts",
+    "electron/shared/agentLane/laneToolNextAction.ts",
+    "electron/shared/agentLane/laneToolContract.ts"
+  ],
+  "entry_points": [
+    "Assistant turn ends with stopReason error: laneProjection error part to laneViewModel error row",
+    "Tool call and tool result: laneViewModel receiptFor and tool-result join to the receipt body",
+    "Lane command failure: laneFailureText"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The invariant is about Nomi's own display boundary; no third-party contract decides it.",
+  "invariants": [
+    "Text that matches a raw-JSON or internal-id shape never becomes a user-visible failure sentence or receipt body.",
+    "A failure the classifier cannot name is told in plain words with a next step; the original text only goes to the log.",
+    "A tool receipt shows what was done (label plus summary); raw arguments and the success result body (written for the model) never appear."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/resident/residentShellDisplay.ts",
+      "symbol": "laneFailureText"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/NomiStudioApp.tsx",
+      "symbol": "laneFailureText"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "laneViewModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/designLab/v4/laneDrivenFixtures.ts",
+      "symbol": "laneViewModel"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelV4Data.ts",
+      "symbol": "providerFailureText"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Panel.tsx",
+      "symbol": "V4ToolReceipt"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+      "symbol": "leaksInternals"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/lane/laneViewModel.ts",
+      "symbol": "receiptFor"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/resident/residentToolText.ts",
+      "symbol": "leaksInternals"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Receipt.tsx",
+      "symbol": "V4ToolReceipt"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/agentPanelV4Types.ts",
+      "symbol": "ToolReceipt"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/agentLane/laneToolNextAction.ts",
+      "symbol": "laneToolNextActionOf"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/laneToolContract.ts",
+      "symbol": "laneToolNextActionOf"
+    }
+  ],
+  "door_reduction": {
+    "before": 15,
+    "after": 13,
+    "why_not": "The two laneFailureText callers are the app toast and the resident shell and both already go through the one boundary. laneViewModel has exactly one production caller plus the design-lab fixture that must run the same projection. providerFailureText is the new route for the assistant-error row and shares classifiedFailureText with laneFailureText. V4ToolReceipt is a pure reader. The removed door is the verbatim copy of part.text into the error row. Two doors are removed: the verbatim copy of part.text into the error row, and laneToolTextForUser (the receipt body printer)."
+  },
+  "generality_proof": "Both failure routes end in classifiedFailureText, which classifies with the generation-error classifier, strips our marker, and refuses any text that fails leaksInternals; the receipt carries no argument or success-result text at all (failures show the locale text derived from the structured failure code). The full-walk monitor rule checks the same shapes on the real rendered panel, so a new producer that bypasses the boundary turns the walk red.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/ai/lane/laneCommandFailure.ts",
+      "symbol": "classifiedFailureText",
+      "responsibility": "Turns any failure text into one user-facing sentence; unclassified or machine-shaped text becomes a fixed plain sentence."
+    },
+    {
+      "path": "src/workbench/ai/resident/residentToolText.ts",
+      "symbol": "leaksInternals",
+      "responsibility": "The single shape check for raw JSON and internal ids on user-visible text."
+    },
+    {
+      "path": "src/workbench/ai/lane/laneViewModel.ts",
+      "symbol": "receiptFor",
+      "responsibility": "A receipt carries label and summary only; no raw arguments, and no success result body (that text is written for the model)."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/lane/laneViewModel.ts",
+      "entry_point": "assistantFailure",
+      "disposition": "enforced",
+      "evidence": "The error row now takes labels.assistantFailure(part.text); the Agent panel wires providerFailureText."
+    },
+    {
+      "path": "src/workbench/ai/v4/agentPanelV4Collapse.ts",
+      "entry_point": "error row from receipt.summary",
+      "disposition": "not-affected",
+      "evidence": "The summary comes from labels.toolFailure which maps the structured failure code to a local sentence and never prints the model-facing text."
+    },
+    {
+      "path": "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
+      "entry_point": "intervention technical rows",
+      "disposition": "not-affected",
+      "evidence": "Technical lines there are approval-card plan details owned by the spend-card lane, not tool receipts."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new tool, provider error shape or projection field can carry machine text into a row; the same leak had already been fixed twice for single sentences.",
+    "same_class_scan": [
+      "grep nomi-classified: marker is appended only in laneProviderGuard and had no stripper on the display side",
+      "grep kind: 'error' producers: laneViewModel, agentPanelV4Collapse, design lab host",
+      "door-map laneFailureText, laneViewModel, V4ToolReceipt"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/ai/lane/laneCommandFailure.ts",
+    "invariant": "No machine-shaped text reaches the failure row or the receipt body.",
+    "failure_mode": "Fixed plain sentence with a next step; original text logged.",
+    "exception_policy": "none",
+    "strategy": "One classification function behind both failure routes plus one shape check; the walk monitor rule ui-leaked-internals verifies on the real panel with no debt entries left.",
+    "artifacts": [
+      "src/workbench/ai/lane/laneCommandFailure.ts",
+      "src/workbench/ai/resident/residentToolText.ts",
+      "src/workbench/ai/lane/laneViewModel.ts"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/ai/lane/laneCommandFailure.test.ts",
+    "src/workbench/ai/lane/laneViewModel.test.ts"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/lane/laneCommandFailure.test.ts",
+    "src/workbench/ai/lane/laneViewModel.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/ai/resident/residentToolText.ts",
+      "src/workbench/ai/v4/AgentPanelV4Receipt.tsx",
+      "electron/shared/agentLane/laneToolNextAction.ts"
+    ],
+    "rationale": "redactToolArguments, the receipt input block and laneToolTextForUser are deleted; nothing shows raw arguments or a success result body any more."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party runtime controls the display invariant.",
+    "exit_criteria": []
+  },
+  "migration": "None. The panel re-projects from the stored transcript on every render, so old conversations show the new text.",
+  "residual_risks": [
+    "Provider words that are plain sentences are still shown after the classified reason; they are filtered only by shape."
+  ],
+  "invariant_owner_layer": {
+    "layer": "src/workbench/ai/lane/laneCommandFailure.ts",
+    "tests": [
+      "src/workbench/ai/lane/laneCommandFailure.test.ts",
+      "src/workbench/ai/lane/laneViewModel.test.ts"
+    ],
+    "why": "classifiedFailureText 是失败文字进界面前的唯一分类口，leaksInternals 是唯一的形状判据；两者由各自的单测加走查监视器的真实面板验收守住。"
+  }
+}

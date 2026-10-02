@@ -39,6 +39,7 @@ const laneLabels: LaneViewModelLabels = {
   toolSummary: () => undefined,
   toolFailure: () => undefined,
   toolFailureDetail: (failure) => failure.code,
+  assistantFailure: (text) => text,
   thinkingLabel: 'thinking',
   formatTokens: (value) => `${value}t`,
   formatCost: (value) => `$${value.toFixed(4)}`,

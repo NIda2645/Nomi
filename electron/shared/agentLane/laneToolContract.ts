@@ -99,7 +99,7 @@ export function wrongVerbFailure(input: { readonly attempted: string; readonly u
  * 这里只把它**再导出**一次，`laneToolContract` 的既有调用方一个字都不用改（P1：不是第二份定义）。
  */
 export type { LaneToolNextAction } from "./laneToolNextAction";
-export { renderLaneToolNextAction, laneToolNextActionOf, laneToolTextForUser } from "./laneToolNextAction";
+export { renderLaneToolNextAction, laneToolNextActionOf } from "./laneToolNextAction";
 
 /**
  * 失败 → 模型看到的那段正文。**内外同源**：内部 lane 与对外 MCP 从同一个描述符派生

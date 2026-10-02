@@ -62,14 +62,3 @@ export function laneToolNextActionOf(details: unknown): LaneToolNextAction | und
   if (typeof record.kind !== "string" || typeof record.userSees !== "string") return undefined;
   return record as unknown as LaneToolNextAction;
 }
-
-/**
- * 模型看到的工具结果正文 → **面板该印的那一段**。去掉的只有宿主自己拼上去的那一行尾巴
- * （按信封重新渲染一次，逐字对齐才去），其余一个字不动。
- * 没有信封、或尾巴对不上（旧转录、被截断）就原样返回：宁可多印一行，不许猜着删正文。
- */
-export function laneToolTextForUser(text: string, nextAction: LaneToolNextAction | undefined): string {
-  if (!nextAction) return text;
-  const tail = `\n${renderLaneToolNextAction(nextAction)}`;
-  return text.endsWith(tail) ? text.slice(0, -tail.length) : text;
-}

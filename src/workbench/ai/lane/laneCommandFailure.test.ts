@@ -7,7 +7,8 @@
 // 类边界：这一族不是「这一句忘了翻译」，是「主进程的任意字符串能不能成为界面文字」。
 // 所以断言写成**任意**未分类英文散句都进不了界面，而不是只断言那一句。
 import { describe, expect, it, vi } from 'vitest'
-import { LaneCommandFailure, laneFailureText, LANE_ERROR_TEXT_KEY } from './laneCommandFailure'
+import { LaneCommandFailure, laneFailureText, providerFailureText, LANE_ERROR_TEXT_KEY } from './laneCommandFailure'
+import { leaksInternals } from '../resident/residentToolText'
 import { LANE_ERROR_CODES } from '../../../../electron/shared/agentLane/laneErrorCodes'
 import { zhAgentLaneError, enAgentLaneError } from '../../../i18n/locales/agentLaneError'
 
@@ -73,5 +74,38 @@ describe('lane failure → 界面文案', () => {
     expect(() => { shown = laneFailureText(thrown, key) }).not.toThrow()
     expect(shown).toBeTruthy()
     expect(shown).not.toContain('undefined')
+  })
+})
+
+describe('服务商报文 → 面板红字（原始 JSON / 分类标记不进界面）', () => {
+  it('reported case: 整段 JSON 报错 + 分类标记，出的是人话，不含 JSON 与标记', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const raw = '{"error":{"code":"model_not_found","message":"The model apimart/gpt-image-1 does not exist","type":"invalid_request_error"}} [nomi-classified: server error]'
+    const shown = providerFailureText(raw, key)
+    expect(shown).toBe('agentResident.providerUnknownError')
+    expect(leaksInternals(shown)).toBe(false)
+    expect(spy).toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('class: 带汉字的原始 JSON 也不算人话', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {})
+    for (const raw of ['{"code":1,"msg":"系统异常，请稍后"}', '[{"错误":"x","code":7}]', `op-4f2a9c1e-7b3d-4e8a-9c21-0d5e6f7a8b9c 失败了`]) {
+      expect(providerFailureText(raw, key), raw).toBe('agentResident.providerUnknownError')
+      expect(laneFailureText(new LaneCommandFailure('agent_lane_execute_failed', raw), key), raw).toBe('agentResident.sendFailed')
+    }
+    spy.mockRestore()
+  })
+
+  it('认得出的分类仍给人话，且分类标记被剥掉', () => {
+    const shown = providerFailureText('账户余额不足，请充值 [nomi-classified: insufficient_quota]', (k) => k)
+    expect(shown).not.toContain('nomi-classified')
+    expect(shown).not.toContain('agentResident.providerUnknownError')
+  })
+
+  it('两种语言都有「没见过的错误」那句', async () => {
+    const { zhAgentResident, enAgentResident } = await import('../../../i18n/locales/agentResident') as Record<string, Record<string, string>>
+    expect(zhAgentResident?.providerUnknownError ?? '').toBeTruthy()
+    expect(enAgentResident?.providerUnknownError ?? '').toBeTruthy()
   })
 })
