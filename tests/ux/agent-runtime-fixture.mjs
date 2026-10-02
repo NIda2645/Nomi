@@ -283,6 +283,8 @@ async function modelCatalog(baseURL, { generationProvider, apimartKey, extraImag
 function validateReply(reply, allowHold = true) {
   if (reply?.reasoning !== undefined && typeof reply.reasoning !== 'string') throw new TypeError('reasoning must be text')
   if (reply?.type === 'text' && typeof reply.text === 'string') return
+  // 供应商整条回 HTTP 错误（带原始 JSON 体）：用来走「服务商报错 → Agent 面板那一行」。
+  if (reply?.type === 'http-error' && Number.isInteger(reply.status) && reply.status >= 400 && JSON.stringify(reply.json) !== undefined) return
   if (allowHold && reply?.type === 'hold' && (reply.text === undefined || typeof reply.text === 'string')) return
   if (reply?.type === 'tool' && typeof reply.id === 'string' && reply.id
     && typeof reply.name === 'string' && reply.name && reply.args !== undefined
@@ -321,6 +323,7 @@ function beginStream(state) {
 
 function sendReply(state, reply) {
   if (!canWrite(state.response)) return
+  if (reply.type === 'http-error') { jsonResponse(state.response, reply.status, reply.json); return }
   let wire = beginStream(state)
   if (reply.reasoning) wire += frame(state, { reasoning_content: reply.reasoning })
   if (reply.type === 'hold') {
@@ -346,7 +349,7 @@ function sendReply(state, reply) {
 /**
  * @typedef {{path:string, body:unknown, authorization:string, headers:object}} RequestRecord
  * @typedef {({type:'text', text:string}|{type:'tool', id:string, name:string, args:unknown, text?:string}
- *   |{type:'hold', text?:string}) & {reasoning?:string}} Reply
+ *   |{type:'hold', text?:string}|{type:'http-error', status:number, json:unknown}) & {reasoning?:string}} Reply
  *
  * Seed only a new, caller-isolated settings directory. Existing catalogs are never overwritten.
  * expectText consumes the first unconsumed matching expectation, exactly once. Matchers are sync.

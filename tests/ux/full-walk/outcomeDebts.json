@@ -7,20 +7,6 @@
       "until": "2026-10-15",
       "boundTo": "#947",
       "reason": "付费卡合计行写「价格未知」；付费卡 PR 把它改成不报价格的说法"
-    },
-    {
-      "rule": "ui-leaked-internals",
-      "kind": "raw-json",
-      "until": "2026-10-15",
-      "boundTo": "Agent 面板原始 JSON 修复（Agent bug 批量修复 PR）",
-      "reason": "Agent 面板把服务商原始 JSON 报错原样露给用户"
-    },
-    {
-      "rule": "ui-leaked-internals",
-      "kind": "internal-id",
-      "until": "2026-10-15",
-      "boundTo": "Agent 面板原始 JSON 修复（Agent bug 批量修复 PR）",
-      "reason": "Agent 面板的工具卡把工具入参 / 回包整段摆出来，里面带操作 id（op-<uuid>）和供应商路由键"
     }
   ]
 }

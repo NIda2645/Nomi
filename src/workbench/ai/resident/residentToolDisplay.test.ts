@@ -8,7 +8,6 @@ import {
   readableToolPreview,
   readableToolSummary,
 } from './residentToolDisplay'
-import { redactToolArguments } from './residentToolText'
 import { partitionResidentProposalFields } from './residentProposalDisplay'
 import { CAPABILITY_ALIAS_ENTRIES, CAPABILITY_CONTRACTS } from '../../../../electron/shared/agentCapabilities/registry'
 import { modelFacingToolSpecs } from '../../../../electron/shared/agentCapabilities/modelFacingToolRegistry'
@@ -167,7 +166,6 @@ describe('resident tool display projection', () => {
     const args = { prompt: 'cat avatar', modelId: 'provider/image-fast', apiKey: 'sk-secret-value' }
     expect(readableToolSummary(translate, 'nomi_start_generation', args)).toContain('cat avatar')
     expect(readableToolSummary(translate, 'nomi_start_generation', args)).not.toContain('sk-secret-value')
-    expect(redactToolArguments(args)).not.toContain('sk-secret-value')
   })
 
 })

@@ -107,8 +107,7 @@ export type ToolReceipt = Readonly<{
   summary?: string
   /** 行尾用时或原因。 */
   trailing?: string
-  /** 展开体：输入 / 输出。只有「还有内容可看」才带 ›。 */
-  input?: string
+  /** 展开体：给人看的回包正文（没有原始入参 / JSON，见 laneViewModel）。只有「还有内容可看」才带 ›。 */
   output?: string
   expanded?: boolean
   /** 可撤销的改动在行尾多一个「撤销」。 */
