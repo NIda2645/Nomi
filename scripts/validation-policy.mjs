@@ -5,7 +5,7 @@
 export const CORE_SMOKE_FIXTURES = Object.freeze(['empty', 'used'])
 // 阻断门只有 empty（2026-09-22 用户拍板）。used 照跑、照传证据，但**不判**：
 // 实测同一份代码连跑 5 次只有 1 次全绿，三种失败都出自还没修的小窗布局问题
-// （T-CV-19 批量栏压住缩放条 / T-CV-20 托盘贴边被 clamp / T-QA-21 toast 盖住弹窗钮），
+// （批量栏压住缩放条 / 托盘贴边被 clamp / toast 盖住弹窗钮），
 // 证据见 docs/evidence/2026-09-22-core-smoke-negative-control/。把一条 5 次绿 1 次的检查
 // 装成必过门 + 合后收据的 success-only，等于把假红制度化，这正是本防线要根除的东西。
 // **升阻断的条件**：那三条布局 bug 修完，且 used 连跑 5 次全绿——届时把 'used' 加进下面这行即可，
@@ -112,7 +112,7 @@ const DESKTOP_PATTERNS = [/^src\/desktop\/bridge\.(?:ts|tsx|js|jsx)$/]
 // 「谁决定画布上显示什么」——改它们等于改画布上用户看得见的状态，必须跑 full 画布验收
 // （canvas-landing / canvas-reconcile / batch-production 只在 full 档里）。
 // 来历：#934 改了制作镜头占位的状态判定、#940 / #937 也碰了这一类，只拿到 critical，
-// S5 回归就这样进了 main（T-QA-62）。清单对着 docs/engineering/concept-owners.json 里
+// S5 回归就这样进了 main（谁决定画布上显示什么，改了它却没跑 full 画布验收）。清单对着 docs/engineering/concept-owners.json 里
 // 画布显示相关概念的 owner 与写口列的（production.shot-phase / shot-jobs / shot-generation-ownership /
 // run-stop-reason / run-lifecycle-settle / node-run-record），再加画布子树里产出显示的目录。
 // generationCanvas 的每个子目录必须在 scripts/validation-policy.node-test.mjs 里表态
