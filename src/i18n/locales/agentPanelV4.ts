@@ -474,8 +474,10 @@ export const zhAgentPanelV4 = {
   spendBatchStopping: '正在停下…',
   spendBatchStoppingHint: '已经发出的照常生成',
   /** 停下之后那一句（卡这时已经关了）：批下去几张、没发几张，只说事实。 */
-  spendBatchStoppedImage: '发出了 {{sent}} 张，剩下 {{notSent}} 张没发。',
-  spendBatchStoppedVideo: '发出了 {{sent}} 段，剩下 {{notSent}} 段没发。',
+  spendBatchStoppedImage_one: '发出了 {{sent}} 张，剩下 {{count}} 张没发。',
+  spendBatchStoppedImage_other: '发出了 {{sent}} 张，剩下 {{count}} 张没发。',
+  spendBatchStoppedVideo_one: '发出了 {{sent}} 段，剩下 {{count}} 段没发。',
+  spendBatchStoppedVideo_other: '发出了 {{sent}} 段，剩下 {{count}} 段没发。',
   spendParamsDecline: '不要',
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
@@ -934,8 +936,10 @@ export const enAgentPanelV4 = {
   spendBatchStopHint: 'Press × to stop the rest',
   spendBatchStopping: 'Stopping…',
   spendBatchStoppingHint: 'The ones already sent keep generating',
-  spendBatchStoppedImage: 'Sent {{sent}} of {{total}} images; the other {{notSent}} were not sent.',
-  spendBatchStoppedVideo: 'Sent {{sent}} of {{total}} videos; the other {{notSent}} were not sent.',
+  spendBatchStoppedImage_one: 'Sent {{sent}} of {{total}} images; the last one was not sent.',
+  spendBatchStoppedImage_other: 'Sent {{sent}} of {{total}} images; the other {{count}} were not sent.',
+  spendBatchStoppedVideo_one: 'Sent {{sent}} of {{total}} videos; the last one was not sent.',
+  spendBatchStoppedVideo_other: 'Sent {{sent}} of {{total}} videos; the other {{count}} were not sent.',
   spendParamsDecline: 'No',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
   spendActionNotStarted: 'That did not go through. Nomi has not started generating — adjust it and press again.',

@@ -477,7 +477,7 @@ export function useAgentPanelSpendConfirm(): AgentPanelSpendConfirm {
       // 停下之后那一句只说事实：批下去几张、没发几张（2026-10-02 协调会话：「发出了 K 张，剩下 N−K 张没发」）。
       // 这是钱的结果，卡这时已经关了，它是唯一说这件事的地方：留 8 秒（普通提示 3 秒读不完就没了）。
       const sayStopped = (sent: number, notSent: number): void => {
-        useToastStore.getState().push({ message: t(spendBatchStoppedKey(run.shots), { sent, notSent, total: run.total }), type: 'info', ttl: 8000, reason: 'spend-batch-stopped' })
+        useToastStore.getState().push({ message: t(spendBatchStoppedKey(run.shots), { sent, count: notSent, total: run.total }), type: 'info', ttl: 8000, reason: 'spend-batch-stopped' })
       }
       // 还没交给宿主就停了：一张都没批，收回出价（带渲染层知道的最新一版报价）。
       const stopBeforeDispatch = async (projectId: string): Promise<SpendActionOutcome> => {

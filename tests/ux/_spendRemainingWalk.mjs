@@ -25,7 +25,8 @@ export const COPY = {
     batch: (count) => `Generate remaining ${count}`,
     ask: (tag, count) => `${tag}: draw ${count} harbour mornings and let me confirm.`,
     sending: (total) => new RegExp(`Sending \\d+ of ${total} images`),
-    stopped: /Sent (\d+) of \d+ images; the other (\d+) were not sent/,
+    // 剩一张时说「the last one was not sent」（复数跟着没发的张数走）。
+    stopped: /Sent (\d+) of \d+ images; the (?:other (\d+) were|last (one) was) not sent/,
   },
 }
 

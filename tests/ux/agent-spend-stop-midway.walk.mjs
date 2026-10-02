@@ -20,6 +20,17 @@ import { CANVAS_PANEL, createRuntimeWalk, expandResidentPanel, openCanvas, recor
 process.env.NOMI_WALK_UNPRICED_MODEL = '1'
 
 const present = createPresenter('S_STOP')
+/** 停下之后那一条提示（`useAgentPanelSpendConfirm` 推它时的原因是 `spend-batch-stopped`）。 */
+const STOP_NOTICE = '[data-notification-reason="spend-batch-stopped"]'
+
+/** 这一次生成里落定了（出图或失败）的作业有几个。落图时主进程很忙：下一步之前等它落定，下一步的点击才不用排队。 */
+async function settledJobs(win, projectId, operationId) {
+  return win.evaluate(async ({ pid, oid }) => {
+    const read = await window.nomiDesktop.productionRuns.read(pid, oid)
+    const run = read?.run ?? read
+    return (run?.jobs ?? []).filter((job) => ['adopted', 'ready', 'failed', 'cancelled'].includes(job.status)).length
+  }, { pid: projectId, oid: operationId })
+}
 
 /** 这一次生成在宿主那里批下了几镜（批下的才会派；派完之后供应商收到的就该正好是这么多）。 */
 async function authorizedShots(win, projectId, operationId) {
@@ -42,10 +53,10 @@ async function quickShot(walk, win, label) {
 }
 
 /** ① 正在发出 k/12：拍那一画面，然后让它跑完。 */
-async function sendingRound(walk, win, locale) {
+async function sendingRound(walk, win, projectId, locale) {
   const imagesBefore = walk.fixture.images.length
   // 12 张：这一叠要走半分钟以上，截图等空档的那几秒落在它跑完之前。
-  const { card, turnDone } = await present(walk, win, 12, locale)
+  const { card, operationId, turnDone } = await present(walk, win, 12, locale)
   const cardProbe = await proveProbe(card, `${locale}：12 张的卡`)
   await clickOrFail(card.locator(BATCH), `${locale}：「生成剩下 12 张」`, { noWaitAfter: true })
   await expect(card.locator(TITLE), `${locale}：标题说正在发第几张`).toContainText(COPY[locale].sending(12), { timeout: stationTimeout({ operations: 4 }) })
@@ -54,6 +65,7 @@ async function sendingRound(walk, win, locale) {
   await expectAbsent(card, { provenBy: cardProbe, message: `${locale}：十二张都定了，卡关掉` })
   await expect.poll(() => walk.fixture.images.length - imagesBefore,
     { message: `${locale}：十二张都真的发到供应商，各一次`, timeout: stationTimeout({ operations: 12 }) }).toBe(12)
+  await expect.poll(() => settledJobs(win, projectId, operationId), { message: `${locale}：十二张都落定`, timeout: stationTimeout({ operations: 24 }) }).toBe(12)
   return 12
 }
 
@@ -72,15 +84,15 @@ async function stopRound(walk, win, projectId, locale) {
       .map((control) => [control, element.querySelectorAll(`[data-v4-control="${control}"]`).length])))
     expect(controls, `${locale}：正在发出时不摆「生成这张 / 去掉这张 / 生成剩下」，只留 ×（它就是停下）`)
       .toEqual({ confirm: 0, alternate: 0, batch: 0, 'slot-dismiss': 1 })
-    // 停下之后那一句是一条会自己消失的提示：点之前先挂一个观察者，出现过就记下原话（读的时候它可能已经消失了）。
-    await win.evaluate((source) => {
-      const pattern = new RegExp(source)
+    // 停下之后那一句是一条会自己消失的提示（原因 `spend-batch-stopped`）：点之前先挂一个观察者，只看这一条提示，
+    // 出现过就记下原话（读的时候它可能已经消失了）。
+    await win.evaluate((selector) => {
       window.__spendBatchStopped = null
       new MutationObserver(() => {
-        const text = document.body.innerText.match(pattern)?.[0]
+        const text = document.querySelector(selector)?.textContent?.trim()
         if (text && !window.__spendBatchStopped) window.__spendBatchStopped = text
       }).observe(document.body, { childList: true, subtree: true, characterData: true })
-    }, COPY[locale].stopped.source)
+    }, STOP_NOTICE)
     // 宿主批下第 1 张的那一刻，鼠标落在 × 此刻的位置上点下去——不走「定位 → 等可点 → 滚动 → 点」那几个来回：
     // 每个来回都要等主进程空出来，等完这一叠早跑完了。
     let dismissAt
@@ -99,14 +111,15 @@ async function stopRound(walk, win, projectId, locale) {
     await expect.poll(() => win.evaluate(() => window.__spendBatchStopped),
       { message: `${locale}：卡关掉时说发了几张、剩几张没发`, timeout: stationTimeout({ operations: 6 }) }).toBeTruthy()
     await quickShot(walk, win, `${locale}-stopped`)
-    walk.report.stoppedShotHasNotice = { ...(walk.report.stoppedShotHasNotice ?? {}), [locale]: await win.evaluate((source) => new RegExp(source).test(document.body.innerText), COPY[locale].stopped.source) }
+    walk.report.stoppedShotHasNotice = { ...(walk.report.stoppedShotHasNotice ?? {}), [locale]: await win.locator(STOP_NOTICE).count() > 0 }
   } finally {
     walk.fixture.holdSubmits(false)
   }
   const said = await win.evaluate(() => window.__spendBatchStopped)
-  const [, sentText, notSentText] = COPY[locale].stopped.exec(said) ?? []
+  const [, sentText, notSentText, lastOne] = COPY[locale].stopped.exec(said) ?? []
   const sent = Number(sentText)
-  expect(sent + Number(notSentText), `${locale}：发了的 + 没发的 = 6（${said}）`).toBe(6)
+  const notSent = lastOne ? 1 : Number(notSentText)
+  expect(sent + notSent, `${locale}：发了的 + 没发的 = 6（${said}）`).toBe(6)
   expect(sent, `${locale}：× 真的停下了（不是 6 张全发）`).toBeLessThan(6)
   await recorded(turnDone.received, `${locale}: generate returns once the card is closed by ×`)
   expect(receipt(), `${locale}：回执记成用户关掉了卡`).toMatch(/closed the card/)
@@ -114,7 +127,9 @@ async function stopRound(walk, win, projectId, locale) {
   expect(await authorizedShots(win, projectId, operationId), `${locale}：宿主只批下了 ${sent} 张`).toBe(sent)
   await expect.poll(() => walk.fixture.images.length - imagesBefore,
     { message: `${locale}：供应商只收到批下的 ${sent} 张`, timeout: stationTimeout({ operations: 6 }) }).toBe(sent)
-  walk.report.stopped = { ...(walk.report.stopped ?? {}), [locale]: { sent, notSent: Number(notSentText), said } }
+  // 批下的几张都落定（出图或失败）再往下走：落图时主进程很忙，下一步的点击要等它空出来。
+  await expect.poll(() => settledJobs(win, projectId, operationId), { message: `${locale}：批下的 ${sent} 张都落定`, timeout: stationTimeout({ operations: 12 }) }).toBe(sent)
+  walk.report.stopped = { ...(walk.report.stopped ?? {}), [locale]: { sent, notSent, said } }
   return sent
 }
 
@@ -124,30 +139,25 @@ try {
   const { win } = await walk.start({ first: true })
   const zhProject = await walk.newProject()
   await openCanvas(win)
-  const sentZh = await sendingRound(walk, win, 'zh') + await stopRound(walk, win, zhProject.projectId, 'zh')
+  const sentZh = await sendingRound(walk, win, zhProject.projectId, 'zh') + await stopRound(walk, win, zhProject.projectId, 'zh')
 
-  // 英文：回项目库新开一个项目（新建按钮按中文认），再换成英文。
-  await clickOrFail(win.getByRole('button', { name: '返回项目库' }), '返回项目库')
-  const enProject = await walk.newProject()
+  // 英文：回项目库、换成英文，在英文的项目库里新开一个项目（像英文用户一样点「New blank project」）。
+  await clickOrFail(win.getByRole('button', { name: '返回项目库' }), '返回项目库', { timeout: stationTimeout({ operations: 4 }) })
   await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'en'))
   await win.reload()
-  // 换语言只重载渲染层：落在这个项目的某个工作区，或落回项目库首页（项目没跟着重开）——等它落定再看是哪一种。
+  await clickOrFail(win.getByRole('button', { name: /^New blank project/ }), 'en：新建空白项目', { timeout: stationTimeout({ operations: 4 }) })
+  await clickOrFail(win.getByRole('button', { name: 'Generate', exact: true }), 'en：生成工作区', { timeout: stationTimeout({ operations: 4 }) })
   const stage = win.locator('.generation-canvas-v2__stage')
-  const projectCard = win.locator('[data-project-card="true"]').filter({ hasText: enProject.name }).first()
-  const generateTab = win.getByRole('button', { name: 'Generate', exact: true })
-  await expect.poll(async () => (await stage.isVisible()) || (await projectCard.isVisible()) || (await generateTab.isVisible()),
-    { message: 'en：重载之后落定', timeout: stationTimeout({ operations: 4 }) }).toBe(true)
-  if (!(await stage.isVisible())) {
-    if (await projectCard.isVisible()) {
-      await projectCard.hover()
-      await clickOrFail(projectCard.getByRole('button', { name: /Continue/ }), 'en：从项目库打开新项目')
-    }
-    await clickOrFail(win.getByRole('button', { name: 'Generate', exact: true }), 'en：生成工作区')
-    await expect(stage).toBeVisible({ timeout: stationTimeout({ operations: 4 }) })
-  }
+  await expect(stage, 'en：生成画布').toBeVisible({ timeout: stationTimeout({ operations: 4 }) })
+  const enProjectId = await win.evaluate(() => {
+    const url = new URL(location.href)
+    return url.searchParams.get('projectId') ?? new URLSearchParams(url.hash.split('?')[1] ?? '').get('projectId')
+  })
+  expect(enProjectId, 'en：新项目的 id').toMatch(/^project-/)
+  expect(enProjectId, 'en：是另开的新项目').not.toBe(zhProject.projectId)
   await expandResidentPanel(win)
   await expect(win.locator(`${CANVAS_PANEL} [data-v4-control="input"]`), 'en：Agent 面板的输入框在').toBeVisible({ timeout: stationTimeout({ operations: 4 }) })
-  const sentEn = await sendingRound(walk, win, 'en') + await stopRound(walk, win, enProject.projectId, 'en')
+  const sentEn = await sendingRound(walk, win, enProjectId, 'en') + await stopRound(walk, win, enProjectId, 'en')
 
   expect(walk.fixture.images.length, '供应商一共收到的 = 两叠正在发出的各十二张 + 两次中途 × 之前批下的那几张').toBe(sentZh + sentEn)
   walk.report.verified = [
