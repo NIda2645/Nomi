@@ -9,7 +9,6 @@
 // 单版角标 / 回执窗口由监视器的铁律 9（9a / 9b）现场判；这里负责把画面留下来，并对每条规则各写一句断言。
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect, waitForVisualQuiescence } from '../../_assert.mjs'
 import { stationTimeout } from '../../_station-budget.mjs'
-import { panCanvasUntilInside } from '../../_canvasHit.mjs'
 import { FIXTURE_APIMART_VENDOR, FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR } from '../../agent-runtime-fixture.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_PERMISSION, INTERVENTION_CONFIRM, PERMISSION_POPOVER,
@@ -35,8 +34,12 @@ const pb = await startPlaybook({
       { ...base, id: 'shot-two', kind: 'image', title: 'Shot 2', prompt: '', position: { x: 520, y: 90 }, status: 'success',
         result: imageResult('two-r2', 3, 2), history: [imageResult('two-r1', 2, 1), imageResult('two-r2', 3, 2)],
         meta: { ...imageMeta(), productionRunId: 'run-display', productionShotId: 'shot-two' } },
+      // 画布最右边的 1 版镜头：选中后浮条不能压到右侧 Agent 面板底下。
+      { ...base, id: 'shot-three', kind: 'image', title: 'Shot 3', prompt: '', position: { x: 980, y: 90 }, status: 'success',
+        result: imageResult('three-r1', 4, 1), history: [imageResult('three-r1', 4, 1)],
+        meta: { ...imageMeta(), productionRunId: 'run-display', productionShotId: 'shot-three' } },
       // 请求没出门的失败（出站策略拦下）：标题只说原因，没有「未计费」。
-      { ...base, id: 'blocked', kind: 'image', title: 'Blocked', prompt: 'x', position: { x: 980, y: 90 }, status: 'error',
+      { ...base, id: 'blocked', kind: 'image', title: 'Blocked', prompt: 'x', position: { x: 520, y: 520 }, status: 'error',
         error: 'NOMI_ERR::outbound-blocked-submit:: request was blocked before it left this machine', history: [],
         meta: { modelKey: FIXTURE_IMAGE_MODEL, modelVendor: FIXTURE_VENDOR, imageModel: FIXTURE_IMAGE_MODEL, imageModelVendor: FIXTURE_VENDOR } },
       // 点 ↑ 生成：存好那一刻出「已保存到项目」，3 秒后消失。
@@ -55,10 +58,33 @@ const pill = (id) => win().locator(`[data-node-id="${id}"] [data-card-stack-side
 const savedLabel = () => win().locator('[data-generation-status][data-phase="finalizing"]')
 const reshootButton = () => win().locator('[data-node-floating-toolbar="true"]').getByRole('button', { name: EN ? 'Re-film shot' : '重拍这镜' })
 
+/** 浮条整条在可见画布（舞台）里：左右都不出界，也没压到右侧面板。 */
+async function toolbarInsideStage() {
+  return win().evaluate(() => {
+    const stage = document.querySelector('.generation-canvas-v2__stage')?.getBoundingClientRect()
+    const bar = document.querySelector('[data-node-floating-toolbar="true"]')?.getBoundingClientRect()
+    if (!stage || !bar) return { ok: false, reason: 'no stage or toolbar' }
+    return { ok: bar.left >= stage.left - 0.5 && bar.right <= stage.right + 0.5, bar: [bar.left, bar.right], stage: [stage.left, stage.right] }
+  })
+}
+/** 角标完整露出来：整颗在舞台里，且中心点上最上面的元素就是它自己（没被邻居或节点盖住）。 */
+async function badgeFullyVisible(nodeId) {
+  return win().evaluate((id) => {
+    const badge = document.querySelector(`[data-node-id="${id}"] [data-card-stack-side] button`)
+    const stage = document.querySelector('.generation-canvas-v2__stage')?.getBoundingClientRect()
+    if (!badge || !stage) return { ok: false, reason: 'no badge or stage' }
+    const rect = badge.getBoundingClientRect()
+    const top = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2)
+    const left = document.elementFromPoint(rect.left + 3, rect.top + rect.height / 2)
+    const inside = rect.left >= stage.left && rect.right <= stage.right
+    return { ok: inside && badge.contains(top) && badge.contains(left) && badge.scrollWidth <= badge.clientWidth + 1, text: badge.textContent, rect: [rect.left, rect.right], stage: [stage.left, stage.right] }
+  }, nodeId)
+}
+
 let harnessError = null
 try {
   await monitor.step('打开项目（从项目库）', () => smoke.openProject(), { surfaces: ['*'], critical: true })
-  await monitor.step('适应视图，看四个节点（没选中任何一个）', async () => {
+  await monitor.step('适应视图，看五个节点（没选中任何一个）', async () => {
     await fitCanvasView(win())
     await clickBlank(win())
     await monitor.screenshot('01-nodes-nothing-selected')
@@ -70,26 +96,42 @@ try {
     await expect(pill('shot-two')).toContainText(EN ? '2 versions' : '2 版')
   }, { user: false, surfaces: [] })
 
-  await monitor.step('选中 1 版的镜头：浮条里有「重拍这镜」，仍没有角标', async () => {
+  await monitor.step('选中最左边的 1 版镜头：浮条整条在画布里，有「重拍这镜」，仍没有角标', async () => {
     await selectNode(win(), 'shot-one')
     await expect(reshootButton(), '浮条里的重拍').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
-    // 浮条比节点宽，节点靠边时会被舞台裁掉一截：像人一样把画布拖到浮条完整可见再拍。
-    expect((await panCanvasUntilInside(win(), reshootButton().first())).ok, '重拍按钮被拖进舞台').toBe(true)
     await expect(pill('shot-one'), '选中也不出角标').toHaveCount(0)
-    await monitor.screenshot('02-one-version-selected-toolbar')
+    await win().waitForTimeout(300)
+    const inside = await toolbarInsideStage()
+    expect(inside.ok, `节点贴左边：浮条没被画布裁掉 ${JSON.stringify(inside)}`).toBe(true)
+    await monitor.screenshot('02a-one-version-left-edge-toolbar')
   }, { surfaces: ['canvasGesture'] })
 
-  await monitor.step('选中 2 版的镜头：角标「2 版」，浮条里同样有「重拍这镜」', async () => {
+  await monitor.step('选中最右边的 1 版镜头：浮条让开右侧 Agent 面板', async () => {
+    await selectNode(win(), 'shot-three')
+    await expect(reshootButton(), '浮条里的重拍').toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
+    await win().waitForTimeout(300)
+    const inside = await toolbarInsideStage()
+    expect(inside.ok, `节点贴右边：浮条没压到右面板底下 ${JSON.stringify(inside)}`).toBe(true)
+    await monitor.screenshot('02b-one-version-right-edge-toolbar')
+  }, { surfaces: ['canvasGesture'] })
+
+  await monitor.step('选中 2 版的镜头：角标完整露出「2 版 / 2 versions」，浮条里同样有「重拍这镜」', async () => {
     await selectNode(win(), 'shot-two')
     await expect(reshootButton()).toBeVisible({ timeout: DEFAULT_TIMEOUT_MS })
-    expect((await panCanvasUntilInside(win(), reshootButton().first())).ok, '重拍按钮被拖进舞台').toBe(true)
+    await win().waitForTimeout(300)
+    const inside = await toolbarInsideStage()
+    expect(inside.ok, `浮条整条在画布里 ${JSON.stringify(inside)}`).toBe(true)
+    const badge = await badgeFullyVisible('shot-two')
+    expect(badge.ok, `角标完整露出来（没被节点或邻居盖住）${JSON.stringify(badge)}`).toBe(true)
     await monitor.screenshot('03-two-versions-selected-toolbar')
   }, { surfaces: ['canvasGesture'] })
 
   await monitor.step('失败节点：标题只说原因，没有「未计费」', async () => {
     await clickBlank(win())
+    await fitCanvasView(win())
+    await expect(win().locator('[data-node-id="blocked"]'), '失败节点在画面里').toBeVisible()
     const text = (await win().locator('[data-node-id="blocked"]').innerText()).replace(/\s+/g, ' ')
-    expect(text, '失败节点上不出现「未计费 / Not charged」').not.toMatch(/未计费|not charged/i)
+    expect(text, '失败节点上不出现「未计费 / Not charged」').not.toMatch(/未计费|没有扣费|not charged|nothing was charged/i)
     await monitor.screenshot('04-failed-node-no-not-charged')
   }, { user: false, surfaces: [] })
 

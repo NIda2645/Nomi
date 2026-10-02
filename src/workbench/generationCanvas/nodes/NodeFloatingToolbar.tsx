@@ -5,6 +5,7 @@ import { cn } from '../../../utils/cn'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { NodeLockBadge } from './NodeLockBadge'
+import { floatingToolbarShift } from './floatingToolbarClamp'
 import { productionMetaOf } from '../model/productionMeta'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import { reworkProductionShot } from '../../production/productionShotActions'
@@ -27,12 +28,32 @@ const ICON = { size: 16, stroke: 1.6 } as const
  * `null` 是合法的一档：手艺产物浮条挂的不是生成节点，它没有锁。
  */
 export function FloatingToolbarShell({ ariaLabel, lockNodeId, children }: { ariaLabel: string; lockNodeId: string | null; children: React.ReactNode }): JSX.Element {
-  const canvasZoom = useWorkbenchStore((state) => state.categoryViewports[state.activeCategoryId]?.zoom ?? 1)
+  const viewport = useWorkbenchStore((state) => state.categoryViewports[state.activeCategoryId])
+  const canvasZoom = viewport?.zoom ?? 1
+  const shellRef = React.useRef<HTMLDivElement>(null)
+  // 浮条整条留在可见画布里（左右夹住，让开右侧面板）：屏幕像素的位移，渲染后量一次、变了才改。
+  const [shift, setShift] = React.useState(0)
+  // 浮条比可见画布还宽（窄窗口、英文）时折成两行，而不是被裁掉：最大宽度 = 舞台宽度 - 两侧留白（净缩放恒为 1，本地像素 = 屏幕像素）。
+  const [maxWidth, setMaxWidth] = React.useState<number | undefined>(undefined)
+  React.useLayoutEffect(() => {
+    const shell = shellRef.current
+    const stage = shell?.closest<HTMLElement>('.generation-canvas-v2__stage')
+    if (!shell || !stage) return
+    const rect = shell.getBoundingClientRect()
+    const bounds = stage.getBoundingClientRect()
+    if (rect.width === 0) return
+    const edge = 8
+    const limit = Math.max(240, Math.floor(bounds.width - 2 * edge))
+    if (limit !== maxWidth) { setMaxWidth(limit); return }
+    const next = floatingToolbarShift({ rectLeft: rect.left, rectRight: rect.right, appliedShift: shift, min: bounds.left + edge, max: bounds.right - edge })
+    if (Math.abs(next - shift) > 0.5) setShift(next)
+  })
   return (
     <div
+      ref={shellRef}
       className={cn(
         'absolute left-1/2 bottom-[calc(100%+40px)] group-has-[[data-node-inline-status]_[data-generation-status]]/node:bottom-[calc(100%+72px)] z-[12]',
-        'inline-flex items-center gap-1 min-h-9 px-1.5 py-1',
+        'inline-flex w-max flex-wrap items-center justify-center gap-1 min-h-9 px-1.5 py-1',
         'border border-nomi-line rounded-nomi',
         'bg-nomi-paper shadow-nomi-md',
         // 画布上**任何**节点被拖动时隐身（用户 2026-08-08 提、08-09 扩到全画布）：工具条跟着飞、
@@ -41,7 +62,7 @@ export function FloatingToolbarShell({ ariaLabel, lockNodeId, children }: { aria
         'group-data-[dragging=true]/canvas:invisible',
       )}
       data-node-floating-toolbar="true"
-      style={{ transform: `translateX(-50%) scale(${1 / (canvasZoom || 1)})`, transformOrigin: 'bottom center' }}
+      style={{ maxWidth, transform: `translateX(${shift / (canvasZoom || 1)}px) translateX(-50%) scale(${1 / (canvasZoom || 1)})`, transformOrigin: 'bottom center' }}
       role="toolbar"
       aria-label={ariaLabel}
       onPointerDown={(event) => event.stopPropagation()}
