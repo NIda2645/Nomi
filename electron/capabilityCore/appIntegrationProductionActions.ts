@@ -5,9 +5,7 @@ import type { ExecutionContractV1 } from './executionContract'
 import { GenerationProviderCapabilityError } from './generationRuntimeAdapter'
 import type { ProductionRunService } from '../productionRun/productionRunService'
 import {
-  GenerationContinuationNotNeededError,
   GenerationReworkRefusedError,
-  prepareProductionGenerationContinuationAuthorization,
   prepareProductionGenerationReauthorization,
   type GenerationAuthorizationProjectIdentity,
 } from '../productionRun/prepareProductionGenerationAuthorization'
@@ -36,7 +34,6 @@ type ActionDeps = {
   kickScheduler: (projectId: string, runId: string) => void
   receiptAuthority?: ApprovalReceiptAuthority
   confirmGenerationInNomi?: (input: { challengeToken: string }) => Promise<unknown>
-  projectRevisionResolver: (projectId: string) => number | undefined
 }
 
 /** 写项目记录时撞上的系统错误（磁盘满 / 只读 / 没有权限 / 被占用）：Node 给的是结构化的 errno 码，不是一句话。 */
@@ -108,8 +105,13 @@ export function createProductionActionHooks(deps: ActionDeps): {
   reworkProductionShot: (input: { projectId: string; runId: string; shotId?: string }) => Promise<ProductionShotActionResult>
   resumeProductionBatch: (input: { projectId: string; runId: string }) => Promise<ProductionShotActionResult>
 } {
-  /** 「继续」只有一条路：run.control resume（与任务卡、MCP 同一个口；服务的恢复钩子叫醒驱动这个 Run 的那一方）。 */
-  async function resumeRun(run: ProductionRun, commandId: string): Promise<ProductionShotActionResult | null> {
+  /**
+   * 「继续」只有一条路：run.control resume（与任务卡、MCP 同一个口；服务的恢复钩子叫醒驱动这个 Run 的那一方）。
+   * `humanGesture`：这一下是用户在 Nomi 窗口里点的「继续」（受信的 resume-batch IPC 进来的那一条）——它同时续上
+   * 批过、还没发出去的那几镜的同意（付费卡① 第 13 条，`productionRunControl` 在 resume 时调续的写口）。
+   * 重做之后顺手的那次 resume 不是这一下：它只为重做的那一镜（那一镜有自己新的一份批准），不替别的镜续。
+   */
+  async function resumeRun(run: ProductionRun, commandId: string, humanGesture: boolean): Promise<ProductionShotActionResult | null> {
     try {
       await deps.generationService.command(run.projectId, run.runId, {
         commandId,
@@ -117,6 +119,7 @@ export function createProductionActionHooks(deps: ActionDeps): {
         type: 'run.control',
         payload: { action: 'resume' },
         issuedAt: new Date().toISOString(),
+        ...(humanGesture ? { humanGesture: true as const } : {}),
       })
       return null
     } catch (error) {
@@ -174,7 +177,6 @@ export function createProductionActionHooks(deps: ActionDeps): {
         operationId: runId,
         authorization,
         commandPrefix: 'production-rework',
-        projectRevisionResolver: deps.projectRevisionResolver,
         display: {
           model: modelLabel,
           ...(shotSummary ? { shotSummary } : {}),
@@ -182,17 +184,8 @@ export function createProductionActionHooks(deps: ActionDeps): {
         },
       })
       if (!decision.approved) return { ok: false, code: 'rework_declined' }
+      // 重做是这一镜的又一份授权（住在它自己那道门上），计划照旧在跑，不需要再「交一次方案」。
       run = decision.run
-      // 封好还没开拍的方案（sealed）：批了这一镜就把方案交出去，调度器才会派。
-      if (run.generationPlan?.state !== 'submitted') {
-        run = (await deps.generationService.command(projectId, runId, {
-          commandId: `production-rework-submit:${authorization.envelope.gateId}`,
-          expectedRevision: run.revision,
-          type: 'generation.submit',
-          payload: {},
-          issuedAt: new Date().toISOString(),
-        })).run
-      }
     } catch (error) {
       return failedWith(error)
     }
@@ -200,7 +193,7 @@ export function createProductionActionHooks(deps: ActionDeps): {
     // 否则这一镜永远不开拍（例如因为有镜头失败而停下的批次——重做的正是那一镜）。
     const stopReason = runStopReason(run)
     if (stopReason && retryLiftsStop(stopReason)) {
-      const refused = await resumeRun(run, `production-rework-resume:${authorization.envelope.gateId}`)
+      const refused = await resumeRun(run, `production-rework-resume:${authorization.envelope.gateId}`, false)
       if (refused) return refused
     }
     deps.kickScheduler(projectId, runId)
@@ -208,85 +201,31 @@ export function createProductionActionHooks(deps: ActionDeps): {
   }
 
   /**
-   * 「继续剩余」：接着拍这一批还没开拍的镜。走哪条路由 Run 在停下那一刻记下的原因决定（渲染层不替它选）：
-   * 只有真因为预算停下（知道价格时才可能）才走续额度确认；其余一律直接接着拍。
+   * 「继续」/「继续剩余」：接着拍这一批还没开拍的镜。只从受信的 resume-batch IPC 进来——这一下就是用户在 Nomi 窗口里的
+   * 那一次点头，它续上批过、还没发出去的那几镜的同意（付费卡① 第 13 条），不再弹第二个确认。
+   * 2026-10-01 删掉了「因预算停下 → 先续额度」那一支：授权按镜存之后没有 Run 级额度可续。
    */
   const resumeProductionBatch = async (input: { projectId: string; runId: string }): Promise<ProductionShotActionResult> => {
     const { projectId, runId } = input
     if (!deps.isProjectOpen(projectId)) return failed('run_not_open')
     const read = readRun(deps, projectId, runId)
     if ('code' in read) return read
-    let run = read
+    const run = read
     if (run.generationPlan?.state !== 'submitted') return failed('plan_not_submitted')
     if (run.status === 'completed' || run.status === 'cancelled') return failed('run_finished')
     const stopReason = runStopReason(run)
-    if (stopReason === null) {
-      if (run.status !== 'running') return failed('not_stopped')
-      // 已经在跑：可能是上一趟驱动歇下了，踢一下让它接着派。
-      deps.kickScheduler(projectId, runId)
-      return { ok: true, code: 'resumed' }
+    if (stopReason === null && run.status !== 'running') return failed('not_stopped')
+    if (stopReason !== null) {
+      // 驱动不起来就别把 Run 改成 running——那只会是一次假继续。
+      const readiness = deps.driverReadiness(run)
+      if (readiness === 'provider_missing') return failed('provider_unavailable')
+      if (readiness === 'project_missing') return failed('project_unavailable')
     }
-    // 驱动不起来就别把 Run 改成 running——那只会是一次假继续。
-    const readiness = deps.driverReadiness(run)
-    if (readiness === 'provider_missing') return failed('provider_unavailable')
-    if (readiness === 'project_missing') return failed('project_unavailable')
-    if (stopReason === 'budget') {
-      const continued = await continueBudget(run)
-      if ('code' in continued) return continued
-      run = continued
-    }
-    const refused = await resumeRun(run, `production-resume:${runId}:${run.revision}`)
+    // 已经在跑（上一趟驱动歇下了）也走同一条 resume：这一下点击照样续同意，然后踢一下让它接着派。
+    const refused = await resumeRun(run, `production-resume:${runId}:${run.revision}`, true)
     if (refused) return refused
+    if (stopReason === null) deps.kickScheduler(projectId, runId)
     return { ok: true, code: 'resumed' }
-  }
-
-  /** 因预算停下的批次：先让人批续的那笔钱（盖得住或没剩下要批的，就不用再批）。返回批完之后的 Run。 */
-  async function continueBudget(run: ProductionRun): Promise<ProductionRun | ProductionShotActionResult> {
-    const receiptAuthority = deps.receiptAuthority
-    const confirm = deps.confirmGenerationInNomi
-    if (!receiptAuthority || !confirm) return failed('confirmation_unavailable')
-    const record = deps.readProject(run.projectId)
-    const identity = projectIdentity(run.projectId, record)
-    if (!record || !identity) return failed('project_unavailable')
-    let authorization
-    try {
-      authorization = prepareProductionGenerationContinuationAuthorization({
-        lease: identity,
-        projectRevision: record.revision,
-        run,
-        providers: deps.readProviderBootstrap().providers,
-        resolveShotPrice: deps.resolveShotPrice,
-        now: new Date().toISOString(),
-      })
-    } catch (error) {
-      if (error instanceof GenerationContinuationNotNeededError) return run
-      return failedWith(error)
-    }
-    try {
-      const authorized = (await deps.generationService.command(run.projectId, run.runId, {
-        commandId: `production-continuation-authorize:${authorization.envelope.gateId}`,
-        expectedRevision: run.revision,
-        type: 'generation.continue_authorization',
-        payload: { authorization },
-        issuedAt: new Date().toISOString(),
-      })).run
-      const modelLabel = [...new Set(authorization.envelope.jobs.map((job) => job.modelId))].join(', ')
-      const decision = await decideRunOwnedGenerationGate({
-        owner: deps.generationService,
-        receipts: receiptAuthority,
-        confirm,
-        lease: identity,
-        operationId: authorized.runId,
-        authorization,
-        commandPrefix: 'production-continuation',
-        projectRevisionResolver: deps.projectRevisionResolver,
-        display: { model: modelLabel },
-      })
-      if (!decision.approved) return { ok: false, code: 'resume_declined' }
-      return decision.run
-    } catch (error) {
-      return failedWith(error)
-    }
   }
 
   return { reworkProductionShot, resumeProductionBatch }

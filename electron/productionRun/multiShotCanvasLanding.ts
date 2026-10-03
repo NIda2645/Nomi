@@ -6,6 +6,7 @@
 // 绝不阻断生成。故所有落点调用点都 try/catch 后继续。
 //
 // 幂等（§3.4）：materializationOperationId = `canvas-landing:{runId}`（每 Run 一个稳定 op），跑两次不重复建节点/组。
+import { generationShotKind, type GenerationShotKind } from "../shared/generationShotKind";
 import { resolveOwnedArtifactFile, safeProjectRelativePath } from "./artifactProjection";
 import { localAssetUrl } from "../assets/assetPaths";
 import type { ProductionRun, ProductionGenerationShot } from "./productionRunTypes";
@@ -194,11 +195,9 @@ function candidateWire(candidate: ProductionGenerationShot["candidate"]): Materi
   };
 }
 
-/** 镜的执行模态 → 画布节点 kind（anchor 恒 image；镜按 transportTaskKind 猜，缺省 video）。 */
-function shotKind(shot: ProductionGenerationShot): "image" | "video" {
-  if (shot.role === "anchor") return "image";
-  if (/image/i.test(shot.candidate?.mode ?? "")) return "image";
-  return "video";
+/** 镜 → 画布节点 kind：和付费卡标题、卡体、派发读同一个答案（`generationShotKind`，第 9 条）。 */
+function shotKind(shot: ProductionGenerationShot): GenerationShotKind {
+  return generationShotKind(shot);
 }
 
 /**

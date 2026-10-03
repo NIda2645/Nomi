@@ -1,4 +1,3 @@
-import { deriveGenerationContinuationAuthorizationState } from "./productionGenerationAuthorizationState";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,7 +6,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { compileExecutionContract, type PlanCandidate } from "../capabilityCore/executionContract";
 import { createModuleRegistry } from "../capabilityCore/moduleRegistry";
 import type { GenerationProvider } from "../capabilityCore/generationRuntimeAdapter";
-import { prepareProductionGenerationContinuationAuthorization } from "./prepareProductionGenerationAuthorization";
 import { createProductionGenerationSubmission } from "./productionGenerationSubmission";
 import { sealAndApproveProductionGeneration } from "./productionGenerationAuthorizationTestUtils";
 import { createProductionRunRepository } from "./productionRunRepository";
@@ -15,7 +13,7 @@ import { createMultiShotBatchScheduler } from "./multiShotBatchScheduler";
 import type { ProductionGenerationShot } from "./productionRunTypes";
 
 // P4 S4 — batch scheduler orchestrator over a REAL repository + mock provider (zero quota). TDD:
-// these lock the SAFETY invariants — halt stops at the right shot, stop dispatches nothing new,
+// these lock the SAFETY invariants — stop dispatches nothing new,
 // crash-recovery re-runs the derivation and never double-submits (total submits = anchors + shots),
 // the anchor checkpoint gates the video batch, and the trial loop shrinks to shot 1.
 
@@ -57,8 +55,8 @@ function shotEntry(shotId: string, prompt: string, opts: { role?: "anchor" | "sh
   };
 }
 
-/** Build a sealed+approved multi-shot Run in a fresh temp project. maxSpend caps the plan. */
-function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null, hardCap = maxSpend): {
+/** Build a sealed+approved multi-shot Run in a fresh temp project. */
+function setupBatch(shots: ProductionGenerationShot[]): {
   root: string;
   repository: ReturnType<typeof createProductionRunRepository>;
 } {
@@ -75,7 +73,7 @@ function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null, 
     origin: { host: "semantic-mcp" },
     candidate: shots[0].candidate,
     shots,
-    policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: hardCap, maxAttemptsPerJob: 2 },
+    policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 2 },
   });
   const topContract = shots[0].contract!;
   sealAndApproveProductionGeneration({
@@ -93,9 +91,8 @@ function setupBatch(shots: ProductionGenerationShot[], maxSpend: number | null, 
       buildRequest: (input) => input,
       submit: async () => ({ providerTaskId: "unused" }),
     }],
-    multiShot: { shots, planHash: "plan-hash-batch" },
+    multiShot: { shots, scope: shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId), planHash: "plan-hash-batch" },
     resolveShotPrice: () => ({ known: true, amount: 6 }),
-    maximumSpend: maxSpend,
     receiptId: "receipt-plan",
     now: NOW,
   });
@@ -139,7 +136,6 @@ function scheduler(root: string, repository: ReturnType<typeof createProductionR
     submission,
     projectId: "project-1",
     runId: "op-batch",
-    perShotPrice: () => ({ known: true, amount: 6 }),
     now: () => NOW,
     options,
   });
@@ -182,7 +178,6 @@ function schedulerWithCompletion(
     submission,
     projectId: "project-1",
     runId: "op-batch",
-    perShotPrice: () => ({ known: true, amount: 6 }),
     now: () => NOW,
     options,
     onBatchComplete,
@@ -193,95 +188,10 @@ afterEach(() => {
   for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true });
 });
 
-describe("P4 S4 batch scheduler — budget halt", () => {
-  it("does not mint a continuation when decimal authority already covers liability plus the remaining job", () => {
-    const { repository } = setupBatch([shotEntry("shot-a", "a")], null);
-    const run = repository.read("project-1", "op-batch")!;
-    const exactCap = {
-      ...run,
-      budget: { ...run.budget, authorized: 10.1, actual: 10, reserved: 0, unsettled: 0 },
-    };
-
-    expect(() => prepareProductionGenerationContinuationAuthorization({
-      lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 },
-      projectRevision: 0,
-      run: exactCap,
-      providers: [mockProvider(vi.fn())],
-      resolveShotPrice: () => ({ known: true, amount: 0.1 }),
-      now: NOW,
-    })).toThrow(/already covers the remaining jobs/);
-  });
-
-  it("stops at the correct Kth shot (checkbox order) and records structured halt counts", async () => {
-    // 3 shots @ ¥6 = ¥18 total, cap ¥13 → only shots a,b (¥12) fit; halt at c.
-    const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b"), shotEntry("shot-c", "c")];
-    const { root, repository } = setupBatch(shots, 13);
-    const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
-    const sched = scheduler(root, repository, submit);
-
-    const outcome = await sched.runToQuiescence();
-
-    // Exactly 2 provider submissions (shots a + b); shot c never submitted.
-    expect(submit).toHaveBeenCalledTimes(2);
-    expect(outcome.halt).toBeDefined();
-    expect(outcome.halt?.haltedAtShotId).toBe("shot-c");
-    expect(outcome.halt?.remainingCount).toBe(1);
-    const run = repository.read("project-1", "op-batch")!;
-    // Run is halted (needs_attention) — a queryable stop, never silent over-spend.
-    expect(run.status).toBe("needs_attention");
-    // The gate froze shot-c too, but the capped ledger prevents provider submission.
-    const pendingShot = run.jobs.find((j) => j.metadata?.shotId === "shot-c");
-    expect(pendingShot).toMatchObject({ status: "authorized" });
-    expect(pendingShot?.providerTaskId).toBeUndefined();
-  });
-
-  it("resumes the halted batch after the cap is raised (same plan, second wave)", async () => {
-    const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b"), shotEntry("shot-c", "c")];
-    const { root, repository } = setupBatch(shots, 13, 18);
-    const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
-
-    await scheduler(root, repository, submit).runToQuiescence();
-    expect(submit).toHaveBeenCalledTimes(2);
-
-    // Fresh continuation gate: freeze the remaining request again, then let only gate.decide raise the
-    // absolute ledger ceiling. The scheduler remains a pure consumer of approved authority.
-    let run = repository.read("project-1", "op-batch")!;
-    const continuation = prepareProductionGenerationContinuationAuthorization({
-      lease: { projectId: "project-1", immutableProjectUuid: "project-uuid-1", projectGeneration: 1, revocationEpoch: 0 },
-      projectRevision: 0,
-      run,
-      providers: [mockProvider(submit)],
-      resolveShotPrice: () => ({ known: true, amount: 6 }),
-      now: NOW,
-    });
-    expect(() => deriveGenerationContinuationAuthorizationState({
-      run: { ...run, policy: { ...run.policy, maxSpend: 13 } }, preparation: continuation, now: NOW,
-    })).toThrow(/safely extend/);
-    run = repository.execute("project-1", "op-batch", {
-      commandId: "continue-authorize", expectedRevision: run.revision, type: "generation.continue_authorization",
-      payload: { authorization: continuation }, issuedAt: NOW,
-    }).run;
-    expect(run.jobs.find((job) => job.metadata?.shotId === "shot-c")?.status).toBe("authorization_required");
-    run = repository.execute("project-1", "op-batch", {
-      commandId: "continue-approve", expectedRevision: run.revision, type: "gate.decide",
-      payload: { gateId: continuation.envelope.gateId, status: "approved", receiptId: "receipt-continuation", authorizationDigest: continuation.authorizationDigest }, issuedAt: NOW,
-    }).run;
-    expect(run.budget.authorized).toBe(18);
-    repository.execute("project-1", "op-batch", { commandId: `resume:${run.revision}`, expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: NOW });
-    const sched2 = scheduler(root, repository, submit);
-    const outcome2 = await sched2.runToQuiescence();
-
-    expect(submit).toHaveBeenCalledTimes(3); // shot-c now submitted
-    expect(outcome2.halt).toBeUndefined();
-    run = repository.read("project-1", "op-batch")!;
-    expect(run.jobs.filter((j) => j.metadata?.shotId).length).toBe(3);
-  });
-});
-
 describe("P4 S4 batch scheduler — stop semantics", () => {
   it("dispatches nothing new once the run is paused; request count does not grow", async () => {
     const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b")];
-    const { root, repository } = setupBatch(shots, null);
+    const { root, repository } = setupBatch(shots);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
 
     // Start the run (draft → running, the legal batch-start edge) WITHOUT dispatching, then pause it.
@@ -300,7 +210,7 @@ describe("P4 S4 batch scheduler — stop semantics", () => {
 
   it("preserves completed shots and reports structured counts after a mid-batch stop", async () => {
     const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b"), shotEntry("shot-c", "c")];
-    const { root, repository } = setupBatch(shots, null);
+    const { root, repository } = setupBatch(shots);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
 
     // Dispatch only the first shot (cap it to 1 tick), then pause.
@@ -325,7 +235,7 @@ describe("P4 S4 batch scheduler — crash recovery", () => {
       shotEntry("shot-a", "a"),
       shotEntry("shot-b", "b"),
     ];
-    const { root, repository } = setupBatch(shots, null);
+    const { root, repository } = setupBatch(shots);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
 
     // First run: the anchor generates and the batch parks at the checkpoint — nothing releases it but a
@@ -349,7 +259,7 @@ describe("P4 S4 batch scheduler — crash recovery", () => {
 
   it("notifies the ProductionRun owner exactly once when every shot is materialized", async () => {
     const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b")];
-    const { root, repository } = setupBatch(shots, null);
+    const { root, repository } = setupBatch(shots);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
     const completed = vi.fn();
 
@@ -368,7 +278,7 @@ describe("P4 S4 batch scheduler — crash recovery", () => {
 
   it("does not notify while a stop or bounded partial drive leaves work pending", async () => {
     const shots = [shotEntry("shot-a", "a"), shotEntry("shot-b", "b")];
-    const { root, repository } = setupBatch(shots, null);
+    const { root, repository } = setupBatch(shots);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
     const completed = vi.fn();
 
@@ -388,7 +298,7 @@ describe("P4 S4 batch scheduler — anchor checkpoint", () => {
       shotEntry("anchor-1", "hero look", { role: "anchor", modelId: "image-model", mode: "text-to-image" }),
       shotEntry("shot-a", "a"),
     ];
-    const { root, repository } = setupBatch(shots, null);
+    const { root, repository } = setupBatch(shots);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
 
     // No auto-release → after the anchor, the scheduler opens the gate and STOPS (waiting for the user).
@@ -417,7 +327,7 @@ describe("P4 S4 batch scheduler — anchor checkpoint", () => {
       shotEntry("anchor-1", "hero look", { role: "anchor", modelId: "image-model", mode: "text-to-image" }),
       shotEntry("shot-a", "a"),
     ];
-    const { root, repository } = setupBatch(shots, null);
+    const { root, repository } = setupBatch(shots);
     const submit = vi.fn(async () => ({ providerTaskId: `task-${submit.mock.calls.length + 1}` }));
 
     // Anchor generates + gate opens.

@@ -38,15 +38,13 @@ const FIXTURE_MODEL_LABELS = new Set([FIXTURE_TEXT_MODEL_LABEL, FIXTURE_IMAGE_MO
  */
 /** 界面上说「因为什么停了」的那几句 → Run 记下的停下原因必须是它（run.stop.reason）。 */
 const STOP_CLAIM_REASON = Object.freeze({
-  'budget-exhausted': 'budget',
-  'raise-budget': 'budget',
+  'consent-expired': 'consent_expired',
   'stopped-after-failure': 'failed',
   'stopped-for-recovery': 'restart_recovery',
 })
 const UI_CLAIM_TEXTS = Object.freeze([
   Object.freeze({ claim: 'maybe-submitted', key: 'agentToolFailure.generation_execution_failed' }),
-  Object.freeze({ claim: 'budget-exhausted', key: 'generationCommon.production.canvasLanding.stoppedBudget' }),
-  Object.freeze({ claim: 'raise-budget', key: 'generationCommon.production.canvasLanding.raiseBudget' }),
+  Object.freeze({ claim: 'consent-expired', key: 'generationCommon.production.canvasLanding.stoppedConsentExpired' }),
   Object.freeze({ claim: 'stopped-after-failure', key: 'generationCommon.production.canvasLanding.stoppedAfterFailure' }),
   Object.freeze({ claim: 'stopped-for-recovery', key: 'generationCommon.production.canvasLanding.stoppedForRecovery' }),
   // 返工 / 续拍没做成时「这是 Nomi 自己的问题」那一句：说它的那一刻，就有一种失败在源头没被分类（2026-09-29 起没有笼统的「稍后再试」）。
@@ -247,7 +245,11 @@ export function createInvariantMonitor(options) {
    * 付费卡上点确认之前调用：读下卡上此刻摆着的一切（宿主投影 = 卡的唯一输入 + DOM 上的标题 / 翻页 / 按钮字）。
    * 返回的 consent 在点完之后由监视器拿去对供应商收到的请求。
    */
-  async function consentSpendCard(card, { label } = {}) {
+  /**
+   * @param {{ label?: string, removedCanvasRefs?: number }} [options] removedCanvasRefs = 用户点之前在卡上拿掉了这一页几张画布连来的参考
+   *   （卡上拿掉只改卡、画布连线不动——那几条线还在，但他看到、点头的是不带它们的那一份）。
+   */
+  async function consentSpendCard(card, { label, removedCanvasRefs = 0 } = {}) {
     const read = await win().evaluate((id) => window.nomiDesktop.productionRuns.pendingSpend(id), projectId).catch(() => null)
     const pending = read?.surface === 'ready' ? read.rows?.[0] ?? null : null
     const dom = await card.evaluate((element) => {
@@ -266,10 +268,10 @@ export function createInvariantMonitor(options) {
     // 同一镜在画布上那张占位卡此刻连着几张参考（用户在画布上看得见的那条线）。
     const canvas = (await readProject())?.payload?.generationCanvas ?? {}
     const canvasRefsOf = (nodeId) => (nodeId ? (canvas.edges ?? []).filter((edge) => edge.target === nodeId).length : 0)
-    const allShots = (pending?.shots ?? []).map((shot) => ({
+    const allShots = (pending?.shots ?? []).map((shot, index) => ({
       shotId: shot.shotId, nodeId: shot.nodeId ?? null, index: shot.index, prompt: shot.prompt,
       providerId: shot.providerId, model: shot.modelId, params: shot.parameters ?? {}, refs: (shot.references ?? []).length,
-      canvasRefs: canvasRefsOf(shot.nodeId), surfaceText: dom.text,
+      canvasRefs: Math.max(0, canvasRefsOf(shot.nodeId) - (index === pageIndex ? removedCanvasRefs : 0)), surfaceText: dom.text,
       // 「这一镜到底是图还是视频」的四份说法（铁律 3：同一件事，四处读法必须一致）：候选的模式、模型自己的种类（目录）、画布占位节点的种类，加上卡标题一份（在下面对整张卡判）。
       mode: shot.mode ?? null, modelKind: catalogKindOf(shot.providerId, shot.modelId),
       nodeKind: (canvas.nodes ?? []).find((node) => node.id === shot.nodeId)?.kind ?? null,
@@ -311,7 +313,10 @@ export function createInvariantMonitor(options) {
       if (distinct.size <= 1) continue
       await violate({
         invariant: 3, rule: 'card-kind-mismatch', key: `${consent.id}|${shot.shotId}`,
-        module: 'electron/capabilityCore/semanticGenerationCandidate.ts inferGenerationTaskKind（提示词里有「镜头 / 动画」等词就判视频，与点名的模型无关）+ 候选 mode 缺省取 taskKind + 卡标题读 mode / 卡体读模型种类 / 画布节点读 shot.kind——四处各读各的，没有唯一主人',
+        // 2026-10-01（付费卡① 第 9 条）：种类只有一个主人——建镜头时 generationShotKind.resolveShotTaskKind 定、
+        // semanticGenerationCandidate.admitShotIdentity 核，之后四处都读 generationShotKind。这条规则还红，
+        // 说明有一个读者绕开了它（或者一条建镜头的路没过核对）。删掉的按提示词猜种类的旧路不该再出现。
+        module: 'electron/shared/generationShotKind.ts（resolveShotTaskKind 定种类 / generationShotKind 唯一读口）+ electron/capabilityCore/semanticGenerationCandidate.ts admitShotIdentity（建镜头时核模型 + 模式）——这条还红就是有读者绕开了唯一主人',
         message: `付费卡对「${shot.shotId}」说的自相矛盾：${Object.entries(facts).map(([name, value]) => `${name}=${value ?? '无'}`).join('，')}（标题「${consent.dom.title}」，模型 ${shot.providerId}/${shot.model}，模式 ${shot.mode ?? '无'}）`,
         snapshot: { facts, shot: { ...shot, surfaceText: undefined }, title: consent.dom.title },
       })
@@ -603,20 +608,25 @@ export function createInvariantMonitor(options) {
     if (shownDuration !== null && shownDuration !== undefined && sent.duration !== null && sent.duration !== undefined && Number(shownDuration) !== Number(sent.duration)) {
       problems.push({ field: 'duration', shown: shownDuration, sent: sent.duration })
     }
-    if (Number(entry.refs ?? 0) !== Number(submission.refs ?? 0)) problems.push({ field: 'references', shown: entry.refs ?? 0, sent: submission.refs ?? 0 })
+    // 付费卡上摆着的参考 = 宿主那一镜自己的 + 画布上连到这一镜占位卡的（第 4 条：卡上摆出来、照发）。
+    // 只拿宿主那一份比，卡把画布连来的那张如实发出去时这里反而会红——和下面「画布上的没发出去」那条互相打架，哪种结果都过不了。
+    const canvasRefs = consent.kind === 'spend-card' ? Number(entry.canvasRefs ?? 0) : 0
+    const shownRefs = Number(entry.refs ?? 0) + canvasRefs
+    const sentRefs = Number(submission.refs ?? 0)
+    if (shownRefs !== sentRefs && !(canvasRefs > 0 && sentRefs < shownRefs)) problems.push({ field: 'references', shown: shownRefs, sent: sentRefs })
     // 提示词：发出去的 = 用户看到的那句 + 只许追加「他在同一个界面上看得见的字」。
     // 看不见的追加 = 用户写了「巨龙」、供应商收到「巨龙 + 一段人物特征」。
     const unseen = unseenPromptAdditions({ shown: entry.prompt, sentRaw: body.prompt ?? body.input?.prompt, surfaceText: entry.surfaceText })
     if (unseen.length) problems.push({ field: 'prompt-unseen-addition', shown: entry.prompt, sent: submission.prompt, unseen })
     // 付费卡那一镜在画布上的占位卡：用户在画布上连了参考线，他看到的就是「这一镜带参考」。
-    if (consent.kind === 'spend-card' && Number(entry.canvasRefs ?? 0) > Number(submission.refs ?? 0)) {
-      problems.push({ field: 'references-on-canvas', shown: entry.canvasRefs, sent: submission.refs ?? 0 })
+    if (canvasRefs > 0 && sentRefs < shownRefs) {
+      problems.push({ field: 'references-on-canvas', shown: entry.canvasRefs, sent: sentRefs })
     }
     for (const problem of problems) {
       await violate({
         invariant: 3, rule: `sent-${problem.field}`, key: `${consent.id}|${entry.shotId ?? entry.nodeId}|${problem.field}`,
         module: problem.field === 'references-on-canvas'
-          ? 'src/workbench/ai/v4/spendCardDraft.ts projectSpendNode（只认候选里的参考，resolveReferenceSlots(node, [], []) 不看画布连线）→ 制作 Run 候选'
+          ? 'src/workbench/ai/v4/spendCardReferences.ts placeSpendReferences（卡上默认那张框 = 宿主参考 ∪ 画布连线，生成方式按画布的 resolveModeForConnectedReferences 对齐）→ useAgentPanelSpendConfirm.ts persistShown（点下去那一刻落进候选）→ 制作 Run 候选'
           : problem.field === 'prompt-unseen-addition'
             ? 'electron/shared/storyboard/storyboardPromptCompiler.ts buildShotPrompt / buildKeyframePrompt（anchorPromptBits 把引用锚的身份特征、文本锚整段追加进提示词；分镜行上只显示用户写的那一句）'
             : problem.field === 'references'
@@ -634,22 +644,55 @@ export function createInvariantMonitor(options) {
     }
   }
 
-  /** 卡的范围自相矛盾（标题说 N 镜、按钮只发 1 镜）或发出去的镜数对不上卡上写的：在收尾 / settle 时判。 */
+  /**
+   * 付费卡的范围（2026-09-30 逐镜：「点了的生成，去掉的不生成」）。在收场 / 收尾时判，三件事：
+   * ① 标题数的就是点下去那一刻卡上还没决定的镜（宿主那一刻摆着几镜，标题就说几镜）；
+   * ② 按钮许诺几镜就只发几镜——「生成这张」= 只发这一页这一镜；同一张卡上别的镜没有自己的那一下，不许跟着发出去；
+   * ③ 没点的镜不许悄悄没了（U01）：没发出去的，要么还摆在卡上，要么是用户自己去掉 / 关掉 / 打字岔开的——
+   *    宿主的出价记录（`generationPlan.presentations`）里查得到；查不到 = 被悄悄拿掉了。
+   */
   async function checkConsentScopes() {
+    const runs = readRuns()
     for (const consent of consents.filter((entry) => entry.kind === 'spend-card' && !entry.scopeChecked)) {
-      const sentCount = consent.scope.reduce((sum, entry) => sum + entry.submissions.length, 0)
-      const others = submissions.filter((submission) => submission.consent !== consent.id && submission.at >= consent.at
-        && consent.allShots.some((shot) => normalizePrompt(shot.prompt) && (submission.prompt.includes(normalizePrompt(shot.prompt)) || normalizePrompt(shot.prompt).includes(submission.prompt))))
-      if (consent.declaredCount > 1 && consent.declaredCount !== sentCount + others.length) {
+      const promised = new Set(consent.scope.map((entry) => entry.shotId))
+      const siblings = consent.allShots.filter((shot) => !promised.has(shot.shotId))
+      const later = submissions.filter((submission) => submission.at >= consent.at)
+      const sentFor = (shot) => later.filter((submission) => promptMatches(submission.prompt, shot.prompt))
+      // 跟着这一下发出去、却没有任何一次点头盖住的同卡别的镜（有自己那一下的，算在那一下头上）。
+      const tagAlong = later.filter((submission) => !submission.consent && siblings.some((shot) => promptMatches(submission.prompt, shot.prompt)))
+      const run = runs.find((entry) => entry.runId === consent.runId)
+      const dropped = siblings.filter((shot) => sentFor(shot).length === 0 && !hostAccountsForUnsent(run, shot.shotId))
+      const problems = [
+        ...(consent.allShots.length > 0 && consent.declaredCount !== consent.allShots.length
+          ? [`标题写「${consent.dom.title}」（${consent.declaredCount} 镜），点下去那一刻卡上还没决定的是 ${consent.allShots.length} 镜`] : []),
+        ...(tagAlong.length > 0
+          ? [`按钮是「${consent.dom.confirmLabel}」（${consent.scope.length} 镜），点完供应商还收到同一张卡上别的 ${tagAlong.length} 镜`] : []),
+        ...(dropped.length > 0
+          ? [`没点的 ${dropped.length} 镜（${dropped.map((shot) => shot.shotId).join('、')}）既没发出去、也不在卡上，用户也没去掉或关掉它们——被悄悄拿掉了`] : []),
+      ]
+      if (problems.length > 0) {
         await violate({
           invariant: 3, rule: 'card-scope-mismatch', key: consent.id,
-          module: 'src/workbench/ai/v4/agentPanelSpendCard.ts（标题按整单计数） + useAgentPanelSpendConfirm.ts（逐镜只发当前页）',
-          message: `付费卡标题写「${consent.dom.title}」（${consent.declaredCount} 镜），按钮是「${consent.dom.confirmLabel}」，点完供应商实际收到 ${sentCount + others.length} 镜`,
-          snapshot: { consent, submissions: submissions.filter((submission) => submission.at >= consent.at) },
+          module: 'electron/productionRun/productionGenerationPresentationEdits.ts + electron/shared/productionGenerationPresentation.ts（出价记录：卡上摆哪几镜、哪几镜是用户去掉 / 关掉的）+ src/workbench/ai/v4/agentPanelSpendCard.ts（标题数还没决定的镜）',
+          message: `付费卡「${consent.dom.title}」上点了「${consent.dom.confirmLabel}」：${problems.join('；')}`,
+          snapshot: { consent, submissions: later, presentations: run?.generationPlan?.presentations ?? null },
         })
       }
       consent.scopeChecked = true
     }
+  }
+
+  /** 宿主有没有给这一镜「没生成」一个用户看得见的交代：还摆在卡上、用户去掉的、或用户关掉 / 打字岔开 / 停下那一刻还没决定。 */
+  function hostAccountsForUnsent(run, shotId) {
+    return (run?.generationPlan?.presentations ?? []).some((presentation) => (presentation.shotIds ?? []).includes(shotId) && (
+      !presentation.closed
+      || (presentation.removed ?? []).some((entry) => entry.shotId === shotId)
+      || presentation.closed.by !== 'resolved'))
+  }
+
+  function promptMatches(sent, shown) {
+    const normalized = normalizePrompt(shown)
+    return Boolean(normalized) && (sent === normalized || sent.includes(normalized) || normalized.includes(sent))
   }
 
   // ── 铁律 1（网络闸）────────────────────────────────────────────────────────────────────────
@@ -697,17 +740,20 @@ export function createInvariantMonitor(options) {
           })
           continue
         }
-        if (name !== 'generate' || !/generation has started/i.test(text)) continue
+        // 「都开始了」的两种说法：旧回执写死的那句，和逐镜回执（2026-09-30）只在每一镜都在生成时才说的那句。
+        if (name !== 'generate' || !/generation has started|all \d+ shot\(s\) on the card are generating/i.test(text)) continue
         const operationId = /"operationId":"([^"]+)"/.exec(text)?.[1] ?? /operationId[=:]\s*"?([\w-]+)/.exec(text)?.[1]
         const run = readRuns().find((candidate) => candidate.runId === operationId || candidate.generationPlan?.operationId === operationId) ?? readRuns().at(-1)
-        const shots = run?.generationPlan?.shots ?? []
+        // 逐镜之后「都」指的是这一次出价卡上摆的那几镜（宿主的出价记录）；没有出价记录的旧数据按整份草稿判。
+        const presented = run?.generationPlan?.presentations?.at(-1)?.shotIds
+        const shots = (run?.generationPlan?.shots ?? []).filter((shot) => !presented || presented.includes(shot.shotId))
         const excluded = shots.filter((shot) => shot.included === false)
         const withJobs = new Set((run?.jobs ?? []).map((job) => job.metadata?.shotId).filter(Boolean))
         const notStarted = shots.filter((shot) => shot.included === false || !withJobs.has(shot.shotId))
         if (shots.length > 1 && (excluded.length > 0 || notStarted.length > 0) && /no card is waiting|do not call generate again/i.test(text)) {
           await violate({
             invariant: 4, rule: 'receipt-claims-whole-draft-started', key: message.tool_call_id,
-            module: 'electron/agentLane/laneExtendedTools.ts generateReceipt（approved 一支写死「generation has started / no card is waiting / do not call generate again」）',
+            module: 'electron/shared/productionGenerationPresentation.ts generationPresentationOutcome（宿主的逐镜结局）→ electron/shared/agentLane/generateOutcomeReceipt.ts describeGenerateOutcome（回执只渲染它）；旧版：laneExtendedTools.ts generateReceipt 写死「generation has started」',
             message: `宿主告诉模型「generation has started…No card is waiting…Do not call generate again for this draft」，而这份草稿 ${shots.length} 镜里有 ${notStarted.length} 镜没开拍（${excluded.length} 镜已被移出这一批）`,
             snapshot: { receipt: text.slice(0, 4000), runStatus: run?.status, shots: shots.map((shot) => ({ shotId: shot.shotId, included: shot.included ?? true, hasJob: withJobs.has(shot.shotId) })) },
           })

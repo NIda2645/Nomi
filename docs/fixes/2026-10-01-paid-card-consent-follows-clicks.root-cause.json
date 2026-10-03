@@ -1,0 +1,261 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-paid-card-consent-follows-clicks",
+  "problem_type": "Whether an approved paid shot may still be dispatched had two judges that only counted minutes since the envelope was sealed, nothing recorded the person's later clicks as consent, the batch had a Run-level spend halt that could only stop shots the person had approved one by one, and approving a paid gate compared the receipt with the live project revision instead of the sealed envelope",
+  "symptom": "Shots approved on the paid card stayed 'queued' forever when they were dispatched more than ten minutes after the click: after releasing the look at the anchor checkpoint, after pressing Continue on a paused batch, or after reopening the project the next day, although the person had just clicked. Batches with known prices could stop with 'Budget ran out · raise budget' although every shot had been approved on its own and there was no budget to raise. Pressing 'Generate this one' while another shot landed on the canvas was refused as 'the project changed while confirming', although nothing on the card had changed.",
+  "direct_cause": "electron/productionRun/productionGenerationSubmission.ts prepareAuthorizedSubmission refused when now >= authorizationEnvelope.expiresAt (sealed time + 10 minutes) and electron/productionRun/approvalPolicy.ts authorizeSubmission refused again with approval-expired; nothing renewed either. electron/productionRun/batchScheduleDerivation.ts compared the Run's ledger ceiling with every dispatchable shot and halted the batch with reason budget, and electron/capabilityCore/appIntegrationProductionActions.ts sent that stop through a continuation approval. electron/capabilityCore/runOwnedGenerationGateAuthority.ts (four places) and electron/productionRun/productionRunApprovalReceipt.ts verifySuppliedReceipt required the receipt's project revision to equal the live project revision.",
+  "class_root": "Consent was modelled as a timestamp on the sealed envelope instead of as the person's clicks, so every path where dispatch happens after a later click (checkpoint release, continue, reopen) looked expired and there was no single owner to renew it or to stop honestly; spend authority had become per shot but a Run-level ceiling still decided dispatch; and the approval was bound to a live document revision that Nomi itself advances, not to the facts the person approved.",
+  "affected_population": [
+    "Video batches with reference cards: shots approved before the look is released",
+    "Batches paused and continued later, or left overnight and reopened",
+    "Batches with known prices that were approved shot by shot on the paid card",
+    "Every click on the paid card or a rework confirmation while other shots land on the canvas",
+    "External MCP hosts and the Agent releasing a checkpoint or resuming a run without a person clicking"
+  ],
+  "scope_paths": [
+    "electron/shared/productionDispatchConsent.ts",
+    "electron/productionRun/productionDispatchConsentEdits.ts",
+    "electron/productionRun/productionRunControl.ts",
+    "electron/productionRun/productionRunService.ts",
+    "electron/productionRun/productionRunLifecycle.ts",
+    "electron/productionRun/approvalPolicy.ts",
+    "electron/productionRun/productionRunApprovalReceipt.ts",
+    "electron/productionRun/productionGenerationAuthorizationTestUtils.ts",
+    "electron/shared/productionRunStop.ts",
+    "electron/capabilityCore/appIntegrationProductionActions.ts"
+  ],
+  "entry_points": [
+    "Dispatch of every approved paid shot: multiShotBatchScheduler.runToQuiescence → productionGenerationSubmission.start → prepareAuthorizedSubmission → dispatchConsentOpen",
+    "The person's Continue on a stopped batch: productionActionIpc resume-batch → appIntegrationProductionActions.resumeProductionBatch → run.control resume (humanGesture) → productionRunControl.applyRunControl → renewDispatchConsent",
+    "The person's release of the look: productionRunIpc gate.decide (humanGesture) → productionRunService.command anchor checkpoint hook → renewDispatchConsent",
+    "MCP / Agent resume and checkpoint decisions: the same two commands without the human-gesture stamp (no renewal)",
+    "Paid gate approval with a receipt: runOwnedGenerationGateAuthority request / authorize / decide → productionRunService.command → createGateApprovalOwner.verifyGateDecision"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Whether a person's approval still covers a dispatch, and which revision an approval is bound to, are Nomi's own spend-authority rules over its own Run records; no third-party protocol or library decides them.",
+  "invariant_owner_layer": {
+    "layer": "electron/shared/productionDispatchConsent.ts",
+    "tests": [
+      "electron/productionRun/productionRunStopReason.e2e.test.ts",
+      "electron/capabilityCore/anchorCheckpointApproval.e2e.test.ts",
+      "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
+      "electron/productionRun/productionRunApprovalReceipt.test.ts",
+      "electron/capabilityCore/appIntegrationProductionActions.test.ts"
+    ],
+    "why": "dispatchConsentOpen is the only judge of whether an approved shot may still be dispatched, read only by the dispatch gate; renewDispatchConsent is the only writer and is called only for commands that carry the trusted human-gesture stamp; createGateApprovalOwner decides which revision a receipt is compared with (the sealed envelope's for paid gates)."
+  },
+  "invariants": [
+    "An approved paid shot is dispatched only within the consent window counted from the person's latest click on it: approving it, releasing the look, or pressing Continue.",
+    "Only a click in Nomi's own window renews consent; MCP, the Agent and the scheduler never do.",
+    "When consent has lapsed and nobody renewed it, the batch stops with consent_expired and the canvas asks for one more click; nothing stays queued with nothing that will dispatch it.",
+    "No Run-level ceiling stops a shot the person approved; budget is not a stop reason, and old runs recorded with it read as a neutral stop.",
+    "A paid gate's receipt is compared with the revision sealed in its own envelope, not with the live project revision."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "symbol": "resumeProductionBatch"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/approvalPolicy.ts",
+      "symbol": "authorizeSubmission"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "DispatchConsentLapsedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionDispatchConsentEdits.ts",
+      "symbol": "dispatchConsentRenewalGateIds"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationAuthorizationTestUtils.ts",
+      "symbol": "prepareProductionGenerationAuthorization"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "DispatchConsentLapsedError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "dispatchConsentOpen"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "revisionRuleFor"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunControl.ts",
+      "symbol": "renewDispatchConsent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunLifecycle.ts",
+      "symbol": "retryLiftsStop"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "applyDispatchConsentRenewal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunService.ts",
+      "symbol": "renewDispatchConsent"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionDispatchConsent.ts",
+      "symbol": "latestDispatchConsentAt"
+    },
+    {
+      "kind": "write",
+      "path": "electron/shared/productionRunStop.ts",
+      "symbol": "normalizeLegacyStopReason"
+    }
+  ],
+  "door_reduction": {
+    "before": 14,
+    "after": 14,
+    "why_not": "Before: the freshness of an approval was judged in two places (the envelope expiry at dispatch and approval-expired in the outbox), the live project revision was checked in five places (four in runOwnedGenerationGateAuthority and the receipt check), and the Run-level spend stop had five doors (derivation halt, the scheduler's two budget stops, the continuation preparation and its reducer command). After: one judge (dispatchConsentOpen, read at dispatch), one renewal writer with exactly its two human-gesture callers and the reducer command, the scheduler's single consent stop, the legacy stop normalizer, the lifecycle's retry rule, the receipt check's sealed-revision rule, the one resume entry and the test seal helper. The count stays at fourteen because the remaining doors are the distinct places that must read or write this state (each caller of the renewal is a separate click, each reader a separate layer); the old duplicate judges are gone rather than merged."
+  },
+  "generality_proof": "The same judge and the same renewal serve every dispatch path (fresh approval, checkpoint release, continue, restart recovery, reopen) and every host (Nomi window, MCP, Agent): the only difference is whether the command carries the human-gesture stamp, which only the trusted IPC boundary sets. The same sealed-revision rule serves the paid card, rework confirmations and external hosts, because they all decide through createGateApprovalOwner.",
+  "shared_boundaries": [
+    {
+      "path": "electron/shared/productionDispatchConsent.ts",
+      "symbol": "dispatchConsentOpen",
+      "responsibility": "Answers whether an approved paid shot may be dispatched now: within the consent window since the person's latest click on its gate."
+    },
+    {
+      "path": "electron/productionRun/productionDispatchConsentEdits.ts",
+      "symbol": "renewDispatchConsent",
+      "responsibility": "Records a human click (release the look, continue) as renewed consent on the approved gates that still have undispatched jobs; writes nothing when there is nothing to renew."
+    },
+    {
+      "path": "electron/productionRun/productionRunApprovalReceipt.ts",
+      "symbol": "createGateApprovalOwner",
+      "responsibility": "Verifies the human evidence for every gate decision; for a sealed paid gate the receipt is compared with the envelope's revision, for every other gate with the live project revision."
+    },
+    {
+      "path": "electron/shared/productionRunStop.ts",
+      "symbol": "normalizeLegacyStopReason",
+      "responsibility": "Reads a stop reason this version no longer has (the old budget) as no recorded reason, so it is shown as a neutral stop."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "entry_point": "prepareAuthorizedSubmission",
+      "disposition": "enforced",
+      "evidence": "The envelope-expiry check is replaced by dispatchConsentOpen; a lapsed shot throws DispatchConsentLapsedError before any durable write (productionRunStopReason.e2e.test.ts)."
+    },
+    {
+      "path": "electron/productionRun/approvalPolicy.ts",
+      "entry_point": "authorizeSubmission",
+      "disposition": "enforced",
+      "evidence": "The approval-expired second judge is deleted; an approval past its recorded expiry is still let through here because freshness has one owner (approvalPolicy.test.ts)."
+    },
+    {
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "entry_point": "runToQuiescence",
+      "disposition": "enforced",
+      "evidence": "Anchors and shots refused for lapsed consent are not retried in the same drive and the batch stops with consent_expired at rest; the budget halt and its stop are deleted (productionRunStopReason.e2e.test.ts, multiShotBatchScheduler.e2e.test.ts)."
+    },
+    {
+      "path": "electron/productionRun/productionRunControl.ts",
+      "entry_point": "applyRunControl resume",
+      "disposition": "enforced",
+      "evidence": "A resume with the human-gesture stamp renews consent in the same command sequence; one without it does not (productionRunStopReason.e2e.test.ts)."
+    },
+    {
+      "path": "electron/productionRun/productionRunService.ts",
+      "entry_point": "command gate.decide anchor checkpoint hook",
+      "disposition": "enforced",
+      "evidence": "A human release renews the waiting shots and the batch completes after eleven minutes; a dispatcher release does not and the batch stops with consent_expired (anchorCheckpointApproval.e2e.test.ts)."
+    },
+    {
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "entry_point": "requestGenerationGate / authorizeGeneration / decideRunOwnedGenerationGate",
+      "disposition": "enforced",
+      "evidence": "The four live-revision checks are deleted; receipts still must match the envelope field by field, including its sealed revision (productionGenerationAuthorizationFlow.test.ts)."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "confirmOneShot / confirmRemainingShots",
+      "disposition": "not-affected",
+      "evidence": "Each click approves a new gate whose decidedAt is the click itself, so consent for exactly that shot starts at the click; the sealed-revision rule applies through the same authorizeGeneration path."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Shots stuck queued after a later click had already been reported on 2026-09-29 (checkpoint release) and the budget wording without prices the same day; the revision refusal is the same shape (a live fact checked where the approved facts should be).",
+    "same_class_scan": [
+      "node scripts/door-map.mjs --write=renewDispatchConsent,applyDispatchConsentRenewal --read=dispatchConsentOpen,dispatchConsentRenewalGateIds,DispatchConsentLapsedError",
+      "rg \"expiresAt\" electron/productionRun electron/capabilityCore -> remaining reads are gate decide windows and receipt challenges (approval time), none at dispatch",
+      "rg \"assertCurrentProjectRevision\" electron -> only the receipt owner (live rule for non-spend gates)",
+      "rg \"'budget'|\\\"budget\\\"\" electron/shared/productionRunStop.ts electron/productionRun src/workbench/generationCanvas -> no stop reason named budget left"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/productionDispatchConsent.ts",
+    "invariant": "Consent for a paid shot is the person's latest click on it within the window; one judge at dispatch, one renewal writer gated by the human-gesture stamp, and an honest stop when it lapses.",
+    "failure_mode": "A lapsed shot is not dispatched; the batch stops with consent_expired and the canvas shows 'needs your go-ahead again' with Continue.",
+    "exception_policy": "none",
+    "strategy": "Replace the envelope-expiry and approval-expiry checks with one consent judge; record clicks as renewal on the gate; stop the batch honestly when consent lapses; delete the Run-level spend halt, its continuation path and the budget stop reason; bind paid approvals to the sealed envelope revision.",
+    "artifacts": [
+      "electron/shared/productionDispatchConsent.ts",
+      "electron/productionRun/productionDispatchConsentEdits.ts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "regression_tests": [
+    "electron/productionRun/productionRunStopReason.e2e.test.ts",
+    "electron/capabilityCore/anchorCheckpointApproval.e2e.test.ts",
+    "electron/productionRun/multiShotBatchScheduler.e2e.test.ts",
+    "electron/productionRun/batchScheduleDerivation.test.ts",
+    "electron/productionRun/approvalPolicy.test.ts",
+    "electron/productionRun/productionRunApprovalReceipt.test.ts",
+    "electron/productionRun/productionGenerationAuthorizationFlow.test.ts",
+    "electron/capabilityCore/appIntegrationProductionActions.test.ts",
+    "electron/productionRun/unknownPriceOpenGate.test.ts",
+    "electron/productionRun/generationBatches.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/productionRun/productionRunStopReason.e2e.test.ts",
+    "electron/productionRun/productionRunApprovalReceipt.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/productionRun/approvalPolicy.ts",
+      "electron/productionRun/batchScheduleDerivation.ts",
+      "electron/productionRun/multiShotBatchScheduler.ts",
+      "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "electron/capabilityCore/appIntegrationProductionActions.ts",
+      "electron/capabilityCore/runOwnedGenerationGateAuthority.ts"
+    ],
+    "rationale": "Deleted in place: the envelope-expiry check at dispatch, approval-expired in the outbox, the derivation's BudgetHalt / BudgetExhaustedError and the scheduler's budget stops, the per-shot price input of the scheduler and the derivation, the partial first-wave ceiling, prepareProductionGenerationContinuationAuthorization / GenerationContinuationNotNeededError / deriveGenerationContinuationAuthorizationState and the reducer's generation.continue_authorization, the budget stop reason and its canvas copy, and the four live-revision checks plus their resolver parameter."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency decides consent or approval binding.",
+    "exit_criteria": []
+  },
+  "migration": "Runs on disk keep their gates; an approved gate without consentRenewedAt is judged from its decidedAt as before. A run stopped with the old budget reason reads as a neutral stop (unknown) and Continue resumes it. Continuation gates already on disk stay valid budget gates. Approvals already recorded keep their expiresAt field as a record; nothing reads it at dispatch.",
+  "residual_risks": [
+    "A batch whose consent lapsed waits for the person: nothing dispatches until they click Continue (by design; the canvas says so).",
+    "The consent window length (10 minutes) is a constant, not a setting.",
+    "If the ledger's reserve wall ever refuses a dispatch (only possible after an inconsistency), that shot is treated as a failed dispatch of that one shot, not as a budget stop."
+  ]
+}

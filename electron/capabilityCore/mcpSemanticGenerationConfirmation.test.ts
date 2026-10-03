@@ -120,7 +120,7 @@ describe("semantic MCP one-confirmation journey", () => {
       createdOperationId = input.operationId;
       return createOperation(input);
     };
-    const start = vi.fn(async (operation: { operationId: string; approvedReceiptId?: string }) => ({ operationId: operation.operationId, approvedReceiptId: operation.approvedReceiptId, nextAction: "provider_not_configured" }));
+    const start = vi.fn(async (operation: { operationId: string; authorization?: { status: string } }) => ({ operationId: operation.operationId, authorizationStatus: operation.authorization?.status, nextAction: "provider_not_configured" }));
     const provider: GenerationProvider = {
       providerId: "fixture-provider",
       capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true, materialize: true },
@@ -151,7 +151,6 @@ describe("semantic MCP one-confirmation journey", () => {
       operations,
       planning,
       receipts,
-      projectRevisionResolver: () => 1,
       now: () => "2026-08-23T00:00:00.000Z",
     });
     const runTask = vi.fn(async () => ({ status: "succeeded" }));
@@ -219,9 +218,11 @@ describe("semantic MCP one-confirmation journey", () => {
     await call(3, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     const gate = await call(4, "tools/call", { name: "nomi_operation_gate", arguments: { phase: "request", leaseHandle: lease, operationId } });
     expect(gate.result).toBeTruthy();
-    expect(start).toHaveBeenCalledWith(expect.objectContaining({ operationId, approvedReceiptId: expect.stringMatching(/^receipt-/) }), expect.anything());
+    // 批准住在「批这一份的那道门」上：start 读到的是那道门已批（operationFromRun 的 authorization 投影）。
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ operationId, authorization: expect.objectContaining({ status: "approved" }) }), expect.anything());
     const persisted = repository.read(projectIdentity.projectId, operationId);
-    expect(persisted?.generationPlan).toMatchObject({ state: "sealed", approvedReceiptId: expect.stringMatching(/^receipt-/) });
+    expect(persisted?.generationPlan).toMatchObject({ state: "sealed" });
+    expect(persisted?.gates.at(-1)).toMatchObject({ status: "approved", receiptId: expect.stringMatching(/^receipt-/) });
     expect(persisted?.gates.find((item) => Boolean(item.authorizationDigest))?.status).toBe("approved");
     expect(persisted?.budget).toMatchObject({ authorized: 0, reserved: 0, actual: 0, unsettled: 0 });
     expect(provider.submit).not.toHaveBeenCalled();

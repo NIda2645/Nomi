@@ -50,6 +50,7 @@ import { readGenerationDefaultModelResolver } from './generationDefaultModelReso
 import { readCatalog } from '../catalog/catalogStore'
 import { recommendVideoGeneration } from '../shared/videoCapabilities'
 import { deriveUsableVideoModelCandidates } from './usableVideoModelCandidates'
+import { resolvePlanPatch } from './generationPlanPatch'
 import { installCatalogRowLookup } from './modelSpecRead'
 import { canvasReadSurfaceRuntime } from './canvasReadSurfaceRuntime'
 import type { CanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
@@ -67,7 +68,7 @@ import { createDefaultAuthorities } from './appIntegrationAuthorities'
 import { createProductionActionHooks } from './appIntegrationProductionActions'
 import { installPendingSpendActions, pendingSpendDependencies } from './appIntegrationSpendConfirm'
 // 付费确认卡的四个动作住在它自己的模块里（这里只装配）。main.ts 的 IPC 经能力核门面转调，所以门面要露出这四个名字。
-export { listPendingSpendConfirmations, revisePendingSpendConfirmation, discardPendingSpendConfirmation, confirmPendingSpendConfirmation } from './appIntegrationSpendConfirm'
+export { listPendingSpendConfirmations, revisePendingSpendConfirmation, discardPendingSpendConfirmation, confirmPendingSpendConfirmation, removePendingSpendShot, confirmRemainingSpendShots } from './appIntegrationSpendConfirm'
 import { repairStaleMcpConfigs } from './mcpConfig'
 import { logDevDetail, logError, logInfo, logWarn } from '../logging/logger'
 import { markResidentSurfaceInstallFailed, markResidentSurfaceReady, markResidentSurfaceStarting, markResidentSurfaceStopped, readResidentSurfaceLifecycle } from './residentSurfaceLifecycle'
@@ -293,7 +294,6 @@ export async function startCapabilityCore(
         submission,
         projectId,
         runId,
-        perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
         onBatchComplete: () => generationService.advanceSemanticProduction(projectId, runId),
       })
     }
@@ -359,7 +359,6 @@ export async function startCapabilityCore(
             ...(multiShot ? { multiShot } : {}),
             providers: providerBootstrap.providers,
             resolveShotPrice,
-            maximumSpend: authorizationRun?.policy.maxSpend,
             run: authorizationRun,
             now: new Date().toISOString(),
           }, fixtureReferenceUrl ? async ({ references }) => Object.fromEntries(references.map(reference => [spendReferenceKey(reference), fixtureReferenceUrl])) : undefined)
@@ -403,7 +402,7 @@ export async function startCapabilityCore(
             const beforeKick = generationService.repository.read(lease.projectId, operation.operationId)
             if (beforeKick?.generationPlan?.state === 'sealed') {
               await generationService.command(lease.projectId, operation.operationId, {
-                commandId: `generation.submit:${operation.operationId}:${beforeKick.generationPlan.planHash ?? beforeKick.generationPlan.contract?.contractHash ?? 'plan'}`,
+                commandId: `generation.submit:${operation.operationId}:v${beforeKick.planVersion}`,
                 expectedRevision: beforeKick.revision,
                 type: 'generation.submit',
                 payload: {},
@@ -415,7 +414,6 @@ export async function startCapabilityCore(
               submission,
               projectId: lease.projectId,
               runId: operation.operationId,
-              perShotPrice: (shot) => (shot.contract ? resolveShotPrice(shot.contract) : { known: false }),
               onBatchComplete: () => generationService.advanceSemanticProduction(lease.projectId, operation.operationId),
             })
             // Durable, restart-safe kick; slow providers are re-kicked until quiescent.
@@ -471,7 +469,6 @@ export async function startCapabilityCore(
       operations: operationStore,
       planning: generationPlanning,
       receipts: defaults.approvalReceiptAuthority!,
-      projectRevisionResolver,
     })
     try {
       const requestGenerationGate = authorities.requestGenerationGate ?? runOwnedGenerationAuthority.requestGenerationGate
@@ -486,6 +483,8 @@ export async function startCapabilityCore(
         requestGenerationGate, authorizeGeneration, receipts: defaults.approvalReceiptAuthority!,
         rendererTarget: rendererTargetIdentity, committedSelection: canvasReadSurfaceRuntime.getCommittedProjectSelection,
         leaseFor: residentGeneration.leaseFor, resolvePricing: resolveModelPricing,
+        // 卡上改一下与 Agent 改草稿走同一条并入规则（同一个目录、同一份视频候选）。
+        normalizePatch: (base, patch) => resolvePlanPatch({ baseCandidate: base, userPatch: patch, registry: generationRegistry, videoModelCandidates: deriveUsableVideoModelCandidates() }).normalizedPatch,
       }))
       // 两条面（lane 的生成适配器、面板的付费卡）装齐了才算 ready：它们由同一份相回答。
       markResidentSurfaceReady(residentGeneration.factory)
@@ -511,7 +510,8 @@ export async function startCapabilityCore(
             .flatMap((summary) => { try { const run = generationService.repository.read(projectId, summary.runId); return run ? [run] : [] } catch { return [] } })
           const withdrawn = await withdrawStalePresentations({
             listRuns: () => runs,
-            withdraw: (owner, operationId, now) => operationStore.withdraw(owner, operationId, now),
+            // 关的原因要一路带到账上（「被停」），回执据此说「没决定是因为上一次被停了」——少传一个参数就会变成「用户关了卡」。
+            withdraw: (owner, operationId, now, reason) => operationStore.withdraw(owner, operationId, now, reason),
             onError: (operationId, error) => logWarn('production-run', 'withdraw-stale-presentation-failed', { operationId }, error),
           }, projectId)
           if (withdrawn.length > 0) logInfo('production-run', 'withdrew-stale-presentations', { projectId, operationIds: withdrawn.join(',') })
@@ -607,7 +607,6 @@ export async function startCapabilityCore(
       kickScheduler: kickSchedulerForRun,
       receiptAuthority: defaults.approvalReceiptAuthority,
       confirmGenerationInNomi: defaults.confirmGenerationInNomi,
-      projectRevisionResolver,
     })
     reworkProductionShotHook = reworkProductionShot
     resumeProductionBatchHook = resumeProductionBatch

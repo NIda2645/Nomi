@@ -1,6 +1,8 @@
 import type { ProductionJob, ProductionJobStatus, ProductionRun } from "../productionRun/productionRunTypes";
 import { latestJobForShot, shotIncluded } from "./productionShotJobs";
 import { isStoppedRunStatus } from "./productionRunStop";
+import { spendAuthorizationGates } from "./productionSpendAuthority";
+import { draftCardHidden } from "./productionGenerationPresentation";
 
 export type ShotClaimRequester = "canvas" | "production";
 export type ShotClaimHolder = "canvas" | "production" | "none";
@@ -69,7 +71,8 @@ export function decideShotClaim(
   if (shot && !shotIncluded(shot)) return decision("canvas", "shot_excluded", requester);
 
   const detached = plan.canvasDetached === true || shot?.canvasDetached === true;
-  const gate = plan.authorizationGateId ? run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId) : undefined;
+  // 最近一份盖着这一镜的授权（每点一次一份，住在各自那道门上）；它被拒 / 过期 / 撤回，这一镜就回到画布手里。
+  const gate = spendAuthorizationGates(run).filter((candidate) => candidate.authorizationEnvelope.jobs.some((job) => job.shotId === shotId)).at(-1);
   const gateRejected = gate?.status === "rejected" || gate?.status === "expired" || gate?.status === "revoked";
   const job = latestJobForShot(run, shotId);
   const claim = single ? plan.claim : shot?.claim;
@@ -84,7 +87,7 @@ export function decideShotClaim(
   if (detached) return decision("canvas", "canvas_detached", requester);
 
   if (plan.state !== "submitted") {
-    if (plan.cardHidden === true) return decision("canvas", "shot_excluded", requester);
+    if (draftCardHidden(plan)) return decision("canvas", "shot_excluded", requester);
     if (gateRejected) return decision("canvas", "gate_rejected", requester);
     return isStoppedRunStatus(run.status)
       ? decision("canvas", "run_stopped", requester)

@@ -174,7 +174,7 @@ describe("Run-owned semantic generation submission", () => {
     expect(repository.read("project-1", "op-1")).toMatchObject({ jobs: [{ status: "submission_unknown" }] });
     const unknownRun = repository.read("project-1", "op-1")!;
     expect(() => repository.execute("project-1", "op-1", { commandId: "unknown-next-batch", expectedRevision: unknownRun.revision,
-      type: "generation.present", payload: {}, issuedAt: "2026-08-23T00:00:00.000Z" })).toThrow(/reconciliation_required|spend gate is decided/);
+      type: "generation.present", payload: {}, issuedAt: "2026-08-23T00:00:00.000Z" })).toThrow(/reconciliation_required/);
     expect(repository.read("project-1", "op-1")).toEqual(unknownRun);
 
 

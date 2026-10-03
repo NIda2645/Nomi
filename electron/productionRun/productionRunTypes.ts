@@ -75,13 +75,17 @@ export type ProductionRunStatus =
 /**
  * 一次制作**为什么停下**：停的那一刻由停它的那一方写进 `run.status` 命令（`payload.reason`），界面只读这个事实。
  * 以前界面从 Run 状态反推——`needs_attention` 一律被说成「预算已用完 · 提额续拍」，而今天根本没有价格。
- * - `budget`：已知价的镜头把批过的额度用完了（只有知道价格时才可能）；
  * - `failed`：有镜头、审片、组装或导出没成功，这一批靠自己走不下去了；
  * - `user_paused`：用户按了急停；
  * - `user_cancelled`：用户取消了这次制作；
- * - `restart_recovery`：Nomi 重启后要先核对之前在跑的任务。
+ * - `restart_recovery`：Nomi 重启后要先核对之前在跑的任务；
+ * - `consent_expired`：批过的镜离用户最后一次点头已经过了同意窗口还没发出去，没有人替他续——停下来等他再点一次
+ *   （2026-10-01 付费卡① 第 13 条，判据在 `productionDispatchConsent`）。
+ *
+ * 2026-10-01 删掉了 `budget`（「批过的额度用完了」）：授权按镜存之后，一镜派不派只看批它的那一份，Run 级的额度停
+ * 没有剩下的用处，今天又根本没有价格。上一版记成 `budget` 的旧 Run 读盘时当作没记原因（中性的「已停」）。
  */
-export type ProductionRunStopReason = "budget" | "failed" | "user_paused" | "user_cancelled" | "restart_recovery";
+export type ProductionRunStopReason = "failed" | "user_paused" | "user_cancelled" | "restart_recovery" | "consent_expired";
 
 export type ProductionRunStop = {
   reason: ProductionRunStopReason;
@@ -260,28 +264,42 @@ export type ProductionGenerationShot = {
   updatedAt: string;
 };
 
+/** 这一次出价是怎么关掉的。`resolved` = 卡上每一镜都决定了（生成或去掉）；其余三种是还有镜没决定就关了。 */
+export type GenerationPresentationCloser = "resolved" | "user_closed" | "user_wrote" | "stopped";
+
+export type GenerationPresentation = {
+  /** 这一次摆到卡上的那几镜（按计划顺序；单镜旧形态 = 顶层候选的 candidateId）。 */
+  shotIds: string[];
+  openedAt: string;
+  /**
+   * 这一次出价开出来时，Run 上已经有几道付费门（`spendAuthorizationGates` 的个数）。在它之后建的门才算「在这一次出价里点的」
+   * ——按门的先后算，不按时间戳比：两次操作落在同一毫秒时，时间戳分不出先后。
+   */
+  fromGate: number;
+  /** 用户在卡上点了「去掉这张」的那几镜（按点的先后）。去掉的镜不生成、以后也不再自动摆上卡。 */
+  removed?: Array<{ shotId: string; at: string }>;
+  /** 缺席 = 卡还开着。 */
+  closed?: { at: string; by: GenerationPresentationCloser };
+};
+
 export type ProductionGenerationPlan = {
   operationId: string;
   state: "draft" | "sealed" | "cancelled" | "submitted";
   /**
-   * 草稿建好了，但报价卡还没摆到用户面前（Agent lane 的 `draft_shots`：落画布、带单价、不出卡、不花钱）。
-   * `generation.present`（`generate` 动词）把它清掉；`projectPendingSpendConfirm` 是唯一读它的投影点。
-   * 缺省/旧 Run 没有这个字段 = 卡可见，行为逐字不变。
+   * 每一次把卡摆到用户面前（`generate` 动词 → `generation.present`）一条，只追加（2026-09-30 付费卡逐镜）。
+   * 最后一条就是这一次出价：摆了哪几镜、什么时候、关了没有、为什么关。卡上每一镜点「生成这张」「去掉这张」
+   * 之后，这一次出价里还没决定的镜才留在卡上；一镜都不剩时这一条自己关掉（`resolved`）。
+   * 唯一读口 `electron/shared/productionGenerationPresentation.ts`，唯一写口 `electron/productionRun/productionGenerationPresentationEdits.ts`
+   * （都经 reducer 的命令）。旧 Run 的 `cardHidden` 读盘时归一成它。
    */
-  cardHidden?: boolean;
+  presentations?: GenerationPresentation[];
   candidate: PlanCandidate;
   contract?: ExecutionContractV1;
-  approvedReceiptId?: string;
-  approvedAt?: string;
-  /** Which explicit submission attempt the latest human receipt authorizes. */
-  approvedAttempt?: number;
   /**
    * P4 S1 多镜形态：每镜的草稿 + shot 粒度记账。空/缺省 = 单镜旧形态（走顶层 candidate/contract）。
    * 顶层字段永不删除（老 Run 快照读路径依赖它）；多镜时顶层继续描述「默认镜」以维持向后兼容。
    */
   shots?: ProductionGenerationShot[];
-  /** Plan-level hash freezing the whole multi-shot operation (anchor + included shots) at seal time. */
-  planHash?: string;
   /**
    * Single-shot canvas landing binding. Multi-shot plans keep this identity on
    * each `shots[]` entry; the top-level field preserves the legacy single-shot
@@ -293,10 +311,6 @@ export type ProductionGenerationPlan = {
   canvasDetached?: boolean;
   /** Durable owner for the legacy single-shot plan. */
   claim?: ProductionShotClaim;
-  /** Immutable paid submission authority prepared before the human gate. */
-  authorizationEnvelope?: ProductionGenerationAuthorizationEnvelopeV1;
-  authorizationDigest?: string;
-  authorizationGateId?: string;
   /**
    * P4 S2 seal-time cost certainty. "known" = every included shot had a derived price at seal.
    * "partial" = the plan sealed with at least one unpriced shot (honest "we could not price all of
@@ -331,6 +345,13 @@ export type ProductionGate = {
   planHash: string;
   /** Present only for the paid generation gate whose planHash is the canonical digest. */
   authorizationDigest?: string;
+  /**
+   * 付费生成门**自己**带着它冻住的那份信封（2026-09-30）：每点一次一份，只盖那一次点到的镜头。
+   * 派发核的是「批这个 job 的那道门」上的这一份（job.authorizationDigest → 这道门），不是计划上某一份——
+   * 计划级那一份已删：它让「只批这一镜」只能靠把别的镜移出这一批来实现，也让排在前面的镜在下一次批准时
+   * 失去授权。只在 `authorizationDigest` 存在时出现。
+   */
+  authorizationEnvelope?: ProductionGenerationAuthorizationEnvelopeV1;
   costScope?: string;
   receiptId?: string;
   requestedSpend?: number;
@@ -345,6 +366,12 @@ export type ProductionGate = {
   createdAt: string;
   expiresAt: string;
   decidedAt?: string;
+  /**
+   * 用户为这道付费门批的镜**续过同意**的最近一刻（2026-10-01 付费卡① 第 13 条）：放行形象检查点、停下之后点「继续」。
+   * 派发判「还算不算同意过」读它与 `decidedAt` 里更晚的那个（`productionDispatchConsent`）。信封与收据都不动。
+   */
+  consentRenewedAt?: string;
+  consentRenewedBy?: "anchor_release" | "resume";
   /** B1：方向门被批准时用户选中的候选 key（decide payload choiceKey → 事件留痕）。 */
   decidedChoiceKey?: string;
   /** The approved storyboard revision this contract was materialized from. */
@@ -461,7 +488,8 @@ export type ProductionRunSummary = Pick<
    * Run 状态都还停在 `draft`——只看 Run 状态，它们就是任务面板里永远「等待开始」的那几行。
    * 判「算不算一个任务」的规则住在渲染层（`isProductionRunTask`），它要的只是这两格。
    */
-  generationPlan?: Pick<ProductionGenerationPlan, "state" | "cardHidden">;
+  /** `cardHidden` 是投影出来的：草稿还没有一次开着的出价（`draftCardHidden`）。 */
+  generationPlan?: Pick<ProductionGenerationPlan, "state"> & { cardHidden?: boolean };
 };
 
 /**
@@ -485,7 +513,6 @@ export type ProductionShotActionFailure =
   | "provider_unavailable" // 这一镜的模型现在接不上供应商
   | "no_prior_attempt" // 这一镜还没生成过
   | "previous_attempt_unsettled" // 上一次还没出结果
-  | "queued_shots_pending" // 还有镜头在排队，不能单独重做
   | "attempt_limit" // 重做到上限了
   | "run_changed" // 刚好有别的写入（版本冲突 / 写锁被占 / 状态已变）
   | "approval_stale" // 确认的时候项目刚好有变动（收据对不上当前项目）
@@ -499,7 +526,7 @@ export type ProductionShotActionFailure =
 /** 返工 / 续拍的结构化结果（appIntegration 编排 → IPC → 渲染层）。declined = 用户在确认框里说了不，不扣费、不报错。 */
 export type ProductionShotActionResult =
   | { ok: true; code: "reworked" | "resumed" }
-  | { ok: false; code: "rework_declined" | "resume_declined" }
+  | { ok: false; code: "rework_declined" }
   | { ok: false; code: "failed"; failure: ProductionShotActionFailure };
 
 /**
@@ -514,7 +541,8 @@ export type ProductionActionResult = {
     | "run_not_open" // 该项目不是当前打开的项目（守卫）
     | "revised" // 付费卡上改了参数：旧授权已撤、计划回到草稿等重新封印
     | "discarded" // 付费卡上按了 ×：这份草稿被丢弃
-    | "spend_confirmed" // 付费卡上确认了：收据已签、门已批、已开跑
+    | "spend_confirmed" // 付费卡上「生成这张」：这一镜的收据已签、门已批、已开跑
+    | "shot_removed" // 付费卡上「去掉这张」：这一镜不生成
     | "unavailable" // 能力核未就绪 / provider 未配置
     | "failed"; // 其它失败（账本事实在 message，语义码在 reason）
   /**
@@ -532,6 +560,18 @@ export type ProductionActionResult = {
    * 只放 Nomi 自己的码，供应商与凭据文本照旧只进主进程日志。
    */
   reason?: string;
+  /**
+   * **没发起的那一档是哪一种**（2026-09-30 付费卡① 第 11 条）：窗口弹不出确认、供应商没接好、项目刚变了……
+   * 与重做 / 续拍同一个闭集（`productionShotActionFailureOf` 按错误类型认，不读原话），渲染层照它说人话。
+   * 只在 `message === "generation_not_started"` 时带；认不出（`internal_error`）时卡上才说「改一下再按」，
+   * 而且只在卡确实能改的时候。
+   */
+  failure?: ProductionShotActionFailure;
+  /**
+   * 「生成剩下 N 张」跑到一半卡被关掉时才有（付费卡①，2026-10-02）：卡关掉之前批下、照常生成的有几张（`sent`），
+   * 没发的有几张（`notSent`）。只由 `confirmRemainingShots` 写；卡上那句「发出了 K 张，剩下 N−K 张没发」只读它。
+   */
+  batchStopped?: Readonly<{ sent: number; notSent: number }>;
 };
 
 export type CreateProductionRunInput = {
@@ -558,6 +598,10 @@ export type Approval = {
   maxSpend: number;
   maxAttemptsPerJob: number;
   decidedAt: string;
+  /**
+   * 批准那一刻这道门的决议截止时间（门自己的 `expiresAt` 抄过来，记录用）。**派发不读它**：一镜现在派出去还算不算
+   * 同意过，唯一判据是 `productionDispatchConsent`（2026-10-01 付费卡① 第 13 条删掉了出站箱按它再判一次的那道核对）。
+   */
   expiresAt: string;
   revokedAt?: string;
 };

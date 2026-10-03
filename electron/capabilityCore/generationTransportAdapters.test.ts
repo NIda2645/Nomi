@@ -333,3 +333,32 @@ it('selected stable shot scope refuses unrelated patches and narrows generate be
   expect(await adapter.tryExecute(call('nomi_generation_plan',{operation:'present',operationId:'run'}),signal,context)).toMatchObject({ok:true})
   expect(planning.mock.calls[1][0].params.shotIds).toEqual(['stable-b'])
 })
+
+// generate 失败时说真话（付费卡① 23:30 第 3 点）：「结果可能未知、去供应商后台核对」只在账本说「可能到过供应商」时才是真的。
+// 账本那一句由宿主现算（operation 视图的 submissionStarted ← productionShotJobs.anySubmissionMayHaveReachedProvider）。
+describe("generate failure tells the truth about whether anything reached the provider", () => {
+  const failingPlanning = (submissionStarted: boolean) => vi.fn(async (request: { capability: string }) => {
+    if (request.capability === "read") return { operation: { operationId: "op-1", submissionStarted } };
+    throw new Error("socket hang up");
+  });
+  const adapterWith = (planning: ReturnType<typeof failingPlanning>) => createPiGenerationTransportAdapter(binding, {
+    planning,
+    requestGenerationGate: vi.fn(),
+    confirmGenerationInNomi: vi.fn(),
+    authorizeGeneration: vi.fn(),
+    approvalReceiptAuthority: authority(),
+    leaseFor: () => lease,
+  });
+
+  it("nothing may have reached the provider: generation_not_started (not sent, nothing spent)", async () => {
+    const result = await adapterWith(failingPlanning(false))
+      .tryExecute(call("nomi_generation_plan", { operation: "present", operationId: "op-1" }), new AbortController().signal);
+    expect(result).toMatchObject({ ok: false, code: "generation_not_started" });
+  });
+
+  it("something may have reached the provider: the outcome stays unknown, so the model asks the user to check (row 18)", async () => {
+    const result = await adapterWith(failingPlanning(true))
+      .tryExecute(call("nomi_generation_plan", { operation: "present", operationId: "op-1" }), new AbortController().signal);
+    expect(result).toMatchObject({ ok: false, code: "generation_execution_failed" });
+  });
+});

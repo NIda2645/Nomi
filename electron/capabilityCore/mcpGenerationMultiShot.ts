@@ -64,6 +64,8 @@ export type SealedMultiShotEntry = Readonly<{
  */
 export type GenerationSealMultiShot = Readonly<{
   shots: ReadonlyArray<SealedMultiShotEntry>;
+  /** 这一次封印盖的镜（卡上点到的那几镜）。其余的镜原样随行：没决定的不带合同，批过的带着它那一份。 */
+  scope: readonly string[];
   planHash: string;
   // Shape matches the reducer's shotPricesFrom: [{ shotId, price: ShotPrice }].
   // ShotPrice is the canonical honest-unknown union (never a fabricated 0), shared with the
@@ -265,7 +267,8 @@ export type MultiShotHelperDeps = {
 };
 
 /** Minimal operation shape the seal helper reads (avoids importing the full GenerationOperation type). */
-type OperationWithShots = { candidate?: PlanCandidate; shots?: ReadonlyArray<GenerationOperationDraftShot> };
+/** 封印读的那一份计划：批过的镜带着它那份合同（范围外的镜原样随行时要带上）。 */
+type OperationWithShots = { candidate?: PlanCandidate; shots?: ReadonlyArray<GenerationOperationDraftShot & { contract?: ExecutionContractV1 }> };
 
 /**
  * P4 S6.5: build the multi-shot create/seal helpers bound to `deps`. `resolveCreateShots` turns a create's
@@ -407,11 +410,14 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
    * anchor sub-contract hashes in order (covers the whole batch, §1). shotPrices = the S2 derived per-shot
    * prices so the reducer enforces the seal-time hard cap. Returns undefined for a single-shot op.
    */
-  const sealMultiShotFor = (operation: OperationWithShots, projectId: string): GenerationSealMultiShot | undefined => {
+  const sealMultiShotFor = (operation: OperationWithShots, projectId: string, scope: readonly string[]): GenerationSealMultiShot | undefined => {
     if (!operation.shots || operation.shots.length === 0) return undefined;
+    const inScope = new Set(scope);
     const sealedShots: SealedMultiShotEntry[] = operation.shots.map((shot) => {
       const included = shot.included !== false;
       if (!included) return { ...generationShotEnvelopeOf(shot), included: false, candidate: shot.candidate };
+      // 范围外：原样随行（批过的镜带着它那份合同，没决定的不带）——这一次不编译、不改它。
+      if (!inScope.has(shot.shotId)) return { ...generationShotEnvelopeOf(shot), candidate: shot.candidate, ...(shot.contract ? { contract: shot.contract } : {}) };
       const normalized = deps.normalizeVideoCandidate(shot.candidate);
       const contract = deps.compileContract(normalized, projectId);
       return {
@@ -423,12 +429,12 @@ export function createMultiShotCreateHelpers(deps: MultiShotHelperDeps) {
     // planHash covers every sealed unit (anchors + included video shots) in their declared order so the
     // plan-level receipt is bound to the exact batch (a shot add/remove/edit changes the hash → re-gate).
     const planHash = crypto.createHash("sha256")
-      .update(sealedShots.filter((shot) => shot.contract).map((shot) => `${shot.shotId}:${shot.contract!.contractHash}`).join("|"))
+      .update(sealedShots.filter((shot) => shot.contract && inScope.has(shot.shotId)).map((shot) => `${shot.shotId}:${shot.contract!.contractHash}`).join("|"))
       .digest("hex");
     const shotPrices = sealedShots
-      .filter((shot) => shot.contract)
+      .filter((shot) => shot.contract && inScope.has(shot.shotId))
       .map((shot) => { const price = deps.priceForCandidate(shot.candidate); return { shotId: shot.shotId, price: price.known ? { known: true as const, amount: price.amount } : { known: false as const } }; });
-    return { shots: sealedShots, planHash, shotPrices };
+    return { shots: sealedShots, scope: [...scope], planHash, shotPrices };
   };
 
   return { resolveCreateShots, sealMultiShotFor };
@@ -548,4 +554,61 @@ export async function patchStoryboardAuthoring(current: {sourceDocumentId?:strin
     {projectId,documentId:current.sourceDocumentId,designId,shotId:params.shotId,patch,...(references ? {references} : {})},
     STORYBOARD_RENDERER_TIMEOUT_MS) as {status?:unknown;shotId?:unknown} | null;
   if (!reply || reply.status!=='saved' || reply.shotId!==params.shotId) throw new Error('storyboard_design_save_rejected');
+}
+
+/** 付费门的那几格：这一刻有没有一道在等人决定、盖着哪几镜（operation 视图上最近那一道）。 */
+type GateScopeView = Readonly<{
+  state: string;
+  shots?: ReadonlyArray<Readonly<{ shotId: string; included?: boolean; contract?: unknown }>>;
+  authorization?: Readonly<{ status: string; envelope: Readonly<{ jobs: ReadonlyArray<Readonly<{ shotId: string }>> }> }>;
+  /** 宿主算的这一次出价结局：卡还开着时，不点名的范围就是卡上还没决定的镜。 */
+  presentationOutcome?: Readonly<{ closedBy: string; undecided: ReadonlyArray<Readonly<{ shotId: string }>> }>;
+}>;
+
+/** 这一次开门怎么做：复用手上那道（同一次点击的重试）/ 先撤一次没点完的那道再封 / 封这几镜。 */
+export type GateScopeDecision =
+  | Readonly<{ kind: "reuse"; scope?: readonly string[] }>
+  | Readonly<{ kind: "abandon-then-seal" }>
+  | Readonly<{ kind: "seal"; scope?: readonly string[] }>;
+
+function scopeInvalid(): never {
+  throw Object.assign(new Error("generation_scope_invalid"), { code: "generation_scope_invalid" });
+}
+
+function requestedShotIds(value: unknown): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0 || value.some((shotId) => typeof shotId !== "string" || !shotId.trim())) scopeInvalid();
+  return [...new Set((value as string[]).map((shotId) => shotId.trim()))];
+}
+
+/**
+ * 这一次付费门盖哪几镜（2026-09-30 付费卡逐镜：每点一次封一份，只盖那一次点到的镜）。
+ *
+ * - 单镜旧形态：只封一次；草稿以外（门在等 / 已在跑）复用手上那一道。
+ * - 多镜：点名的镜（`shotIds`）；不点名 = 卡上这一次出价里还没决定的镜，没有开着的出价 = 勾进这一批、还没封过的全部
+ *   （外部宿主、全自动档、第一次封整份草稿的形状不变）。
+ *   已经有一道门在等：盖的正好是这几镜（或没点名）→ 复用；盖的是别的镜 → 那是一次没点完的点击，先撤掉再封。
+ * 点名了一镜却不在「还没封过」里（已经批过 / 去掉了 / 不存在）→ `generation_scope_invalid`，不替用户改范围。
+ */
+export function resolveGateScope(operation: GateScopeView, requested: unknown): GateScopeDecision {
+  const shots = operation.shots ?? [];
+  const asked = requestedShotIds(requested);
+  if (shots.length === 0) {
+    if (asked) scopeInvalid();
+    return operation.state === "draft" ? { kind: "seal" } : { kind: "reuse" };
+  }
+  const waiting = operation.authorization?.status === "waiting"
+    ? [...new Set(operation.authorization.envelope.jobs.map((job) => job.shotId))]
+    : undefined;
+  if (waiting) {
+    if (!asked || (asked.length === waiting.length && asked.every((shotId) => waiting.includes(shotId)))) return { kind: "reuse", scope: waiting };
+    return { kind: "abandon-then-seal" };
+  }
+  const open = shots.filter((shot) => shot.included !== false && !shot.contract).map((shot) => shot.shotId);
+  const onCard = operation.presentationOutcome?.closedBy === "open"
+    ? operation.presentationOutcome.undecided.map((entry) => entry.shotId).filter((shotId) => open.includes(shotId))
+    : [];
+  const scope = asked ?? (onCard.length > 0 ? onCard : open);
+  if (scope.length === 0 || scope.some((shotId) => !open.includes(shotId))) scopeInvalid();
+  return { kind: "seal", scope };
 }

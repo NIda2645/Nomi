@@ -5,7 +5,7 @@ import type { GenerationCanvasNode } from '../../generationCanvas/model/generati
 import type { PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
 function fixture(modeId: string): { node: GenerationCanvasNode; shot: PendingSpendShot } {
   return { node: { id: 'n', kind: 'video', title: 'fixture', position: { x: 0, y: 0 }, prompt: 'fixture', meta: { modelKey: 'seedance-2', modelVendor: 'fixture', archetype: { id: 'seedance-2', modeId } } },
-    shot: { shotId: 's', index: 1, prompt: 'fixture', modelId: 'seedance-2', providerId: 'fixture', modeId, parameters: {}, price: { known: true, amount: 0 } } }
+    shot: { shotId: 's', index: 1, prompt: 'fixture', modelId: 'seedance-2', providerId: 'fixture', kind: 'video', modeId, parameters: {}, price: { known: true, amount: 0 } } }
 }
 describe('existing canonical references drive candidate preview slots', () => {
   it('preserves canonical identity for first and last frame edits', () => {

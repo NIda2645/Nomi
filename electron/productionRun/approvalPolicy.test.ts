@@ -74,9 +74,14 @@ describe("authorizeSubmission", () => {
     expect(authorizeSubmission(request({ job: job({ jobId: "job-2" }) }))).toEqual({ ok: false, reason: "job-not-approved" });
   });
 
-  it("rejects expired or revoked approval", () => {
-    expect(authorizeSubmission(request({ approval: approval({ expiresAt: now }) }))).toEqual({ ok: false, reason: "approval-expired" });
+  it("rejects a revoked approval", () => {
     expect(authorizeSubmission(request({ approval: approval({ revokedAt: "2026-08-08T07:30:00.000Z" }) }))).toEqual({ ok: false, reason: "approval-revoked" });
+  });
+
+  it("does not judge whether consent is still fresh: that has one owner at dispatch (paid card rule 13)", () => {
+    // 批准记录上的截止时间早就过了，出站箱也照样放行——同意还算不算数只由 productionDispatchConsent 在派发闸判，
+    // 它会被放行形象 / 继续续上；这里再判一次就是第二个、不会被续的判据。
+    expect(authorizeSubmission(request({ approval: approval({ expiresAt: "2026-08-08T06:00:00.000Z" }) }))).toEqual({ ok: true });
   });
 
   it("enforces host, provider, model, currency, and attempt boundaries", () => {

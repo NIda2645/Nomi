@@ -71,7 +71,7 @@ try {
       monitor.note({ kind: `case-${one.id}-card`, facts, canvasNode: placeholder ? { id: placeholder.id, kind: placeholder.kind, title: placeholder.title, model: placeholder.meta?.modelKey ?? null, status: placeholder.status } : null })
     }, { user: false, surfaces: [] })
 
-    await monitor.step(`${one.id} · 在付费卡上点「仍要生成」`, async () => {
+    await monitor.step(`${one.id} · 在付费卡上点「生成这张」`, async () => {
       await monitor.consentSpendCard(card(), { label: `${one.id} 卡的主按钮` })
       await monitor.screenshot(`${one.id}-card-consent`)
       await clickOrFail(card().locator(INTERVENTION_CONFIRM), '付费卡主按钮', { noWaitAfter: true })

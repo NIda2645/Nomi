@@ -199,7 +199,7 @@ describe("generation provider bootstrap", () => {
       lease: { projectId: "p", immutableProjectUuid: "uuid", projectGeneration: 1, revocationEpoch: 0 },
       projectRevision: 1, operation: { operationId: "run", projectId: "p", candidate, planVersion: 1 }, contract,
       run: draftRunFor("run", "p"),
-      multiShot: { planHash: "plan", shots: [{ shotId: "included", candidate, contract }, { shotId: "excluded", candidate: { ...candidate, references: [{ ...reference, assetId: "outside-scope" }] }, included: false }] },
+      multiShot: { planHash: "plan", scope: ["included"], shots: [{ shotId: "included", candidate, contract }, { shotId: "excluded", candidate: { ...candidate, references: [{ ...reference, assetId: "outside-scope" }] }, included: false }] },
       providers: boot().providers, resolveShotPrice: () => ({ known: true, amount: 1 }), now: "2026-09-20T00:00:00Z", assertCurrent() {},
     }, resolve);
     expect(resolve).toHaveBeenCalledTimes(1);

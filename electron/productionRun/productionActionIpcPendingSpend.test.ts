@@ -96,3 +96,40 @@ describe("pending-spend 读通道：读不到 ≠ 没有", () => {
     await expect(read(trustedEvent(), { projectId: "project-1" })).rejects.toThrow(/spend_confirm_surface_unavailable/);
   });
 });
+
+// 「生成剩下 N 张」（2026-10-01）：渲染层只递「用户点的是这几张」，批不批、一张张怎么封由主进程决定。
+describe("confirm-spend-remaining 通道：只转达点名的那一叠", () => {
+  beforeEach(() => handlers.clear());
+
+  function registerRemaining(confirmRemainingSpendShots: (input: unknown) => unknown) {
+    registerProductionActionIpc({
+      getActiveProjectId: () => "project-1",
+      loadCore: async () => ({ confirmRemainingSpendShots } as never),
+    });
+    return handlers.get("nomi:production-runs:confirm-spend-remaining")!;
+  }
+
+  it("点名的镜原样递到能力核（去掉空白、只留字符串）", async () => {
+    const forward = vi.fn(async () => ({ ok: true, code: "spend_confirmed" }));
+    const confirm = registerRemaining(forward);
+    await expect(confirm(trustedEvent(), { projectId: "project-1", operationId: "op-1", quoteId: " q-1 ", shotIds: [" s1 ", "s2", 3, ""] }))
+      .resolves.toEqual({ ok: true, code: "spend_confirmed" });
+    expect(forward).toHaveBeenCalledWith({ projectId: "project-1", operationId: "op-1", quoteId: "q-1", shotIds: ["s1", "s2"] });
+  });
+
+  it("一张都没点名 → 当场拒绝，不惊动能力核", async () => {
+    const forward = vi.fn();
+    const confirm = registerRemaining(forward);
+    await expect(confirm(trustedEvent(), { projectId: "project-1", operationId: "op-1", quoteId: "q-1", shotIds: [] }))
+      .resolves.toEqual({ ok: false, code: "failed", message: "generation_scope_invalid" });
+    expect(forward).not.toHaveBeenCalled();
+  });
+
+  it("不是当前打开的项目 → run_not_open，不惊动能力核", async () => {
+    const forward = vi.fn();
+    const confirm = registerRemaining(forward);
+    await expect(confirm(trustedEvent(), { projectId: "project-2", operationId: "op-1", quoteId: "q-1", shotIds: ["s1", "s2"] }))
+      .resolves.toEqual({ ok: false, code: "run_not_open" });
+    expect(forward).not.toHaveBeenCalled();
+  });
+});

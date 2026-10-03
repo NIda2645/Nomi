@@ -68,7 +68,9 @@ describe('MCP generation draft schema parity', () => {
       let refusedExternally: unknown
       try { draftShotFromPlan((external.shots as unknown[])[0], 0, parsers) } catch (error) { refusedExternally = error }
       expect(refusedExternally).toBeInstanceOf(Error)
-      expect((refusedExternally as Error).message).toMatch(/没有配置可用的图片模型/)
+      // 2026-09-30（付费卡① 第 9 条）：只给提示词、没写种类也没点名模型的镜头，先被问「要图还是视频」——
+      // 不再按提示词猜一个再去找那一类的默认模型。两边拿到的仍是逐字同一句。
+      expect((refusedExternally as Error).message).toMatch(/set taskKind/)
       expect((refusedOnTheLane as Error).message).toBe((refusedExternally as Error).message)
       // 2026-09-22 改判：这一句**不是**宿主内部异常文本，是我们自己写给模型的一句可行动的话
       // （抛出点的注释写着它为什么这么写：DeepSeek 连调 6 次都不知道自己可以点名一个模型）。

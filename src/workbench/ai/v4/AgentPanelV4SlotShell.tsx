@@ -23,7 +23,7 @@
  */
 import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
-import { NomiSegmented, WorkbenchIconButton } from '../../../design'
+import { WorkbenchIconButton } from '../../../design'
 import { cn } from '../../../utils/cn'
 import { IconChevronRight, IconX } from './AgentPanelV4Icons'
 import { V4Row } from './AgentPanelV4Row'
@@ -164,34 +164,26 @@ export function V4SlotShell({
 }
 
 /**
- * 翻页器（`‹ 2/4 ›`）+ 范围切换（`逐镜 | 全部`）+ 键盘提示（`←→`）。
+ * 翻页器（`‹ 2/4 ›`）+ 键盘提示（`←→`）。
  *
- * **2026-09-10 v3：它从槽头搬到了动作行上方那一行。** 两条理由：
+ * 2026-09-30 付费卡逐镜：旁边那个「逐镜 / 全部」范围切换随「全部」那条路一起删了——每一页的主按钮只生成这一页
+ * 那一镜，没有「全部」可切。
  *
- * ① 它现在决定主按钮上印的那个数——「逐镜」印这一页的价、「全部」印合计。
- *    改一个数的控件必须和那个数在一处，否则用户按下去之前得在两处之间来回对。
- * ② 槽头在 390px 面板里已经排满了（icon + 标题 + 「付费 · Nomi 选的」），
- *    再塞一个范围切换就会挤出视口——而范围切换和翻页器必须挨着（用户 2026-09-10：
- *    「翻页器旁加一个『全部』切换」）。
- *
- * 排布仍守 2026-09-09 的通用规则：三件都在内容流里紧跟彼此，**不靠自动外边距顶到右缘**
+ * 排布仍守 2026-09-09 的通用规则：两件都在内容流里紧跟彼此，**不靠自动外边距顶到右缘**
  * （`check:tokens` 对 `src/workbench/ai/` 是硬零——连注释里写出那个类名都会被它数进去）。
  *
- * 只有一项时调用方不传 `pager`，整行不渲染——「1/1」是一句废话，而单镜卡也没有「全部」可言。
+ * 只有一项时调用方不传 `pager`，整行不渲染——「1/1」是一句废话。
  */
 export function V4Pager({
   pager,
   onPage,
-  onScope,
 }: {
   pager: NonNullable<InterventionData['pager']>
   onPage?: (index: number) => void
-  onScope?: (value: 'each' | 'all') => void
 }): JSX.Element {
   const { t } = useTranslation()
   const step = (delta: number): void => onPage?.((pager.index + delta + pager.total) % pager.total)
   const arrow = 'flex size-5 shrink-0 items-center justify-center rounded-nomi-sm text-nomi-accent hover:bg-nomi-info-edge disabled:opacity-40'
-  const scope = pager.scope
   return (
     <V4Row as="div" className="shrink-0 gap-0.5 font-normal" data-v4-block="pager">
       <button type="button" className={arrow} aria-label={t('agentPanelV4.pagerPrev')} disabled={pager.total < 2} onClick={() => step(-1)} data-v4-control="pager-prev">
@@ -207,23 +199,6 @@ export function V4Pager({
         <span className="ml-1 shrink-0 select-none text-micro text-nomi-ink-40" data-v4-block="pager-keyhint">
           {pager.keyHint}
         </span>
-      ) : null}
-      {scope ? (
-        <NomiSegmented
-          value={scope.value}
-          onChange={(value) => onScope?.(value === 'all' ? 'all' : 'each')}
-          ariaLabel={scope.ariaLabel}
-          density="compact"
-          // 宽度下限不是凑数：NomiSegmented 的列是 `auto-fit, minmax(56px, 1fr)`，容器窄于
-          // 「2×56 + 列间距 4 + 内边距 8 = 124」时 auto-fit 会塌成一列，两档就竖着摞起来。
-          // 取 `w-36`（144px）而不是刚好够的 128：EN 的「Per shot」在 128 下折成两行
-          //（2026-09-22 EN 真截图看出来的——截断只有眼睛看得出）。390px 的卡里这一行仍放得下。
-          className="ml-1.5 w-36 shrink-0"
-          options={[
-            { value: 'each', label: scope.eachLabel },
-            { value: 'all', label: scope.allLabel },
-          ]}
-        />
       ) : null}
     </V4Row>
   )

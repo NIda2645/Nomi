@@ -165,7 +165,7 @@ describe("semantic MCP generation tools", () => {
     expect(preview).toMatchObject({ operationId, candidateRevision: 2, nextAction: "request_gate", contract: { mode: "image-to-image", contractHash: expect.any(String) } });
   });
 
-  it("creates a real draft from a natural prompt using the configured default model", async () => {
+  it("creates a real draft from a prompt and a stated kind using the configured default model", async () => {
     const operations = createInMemoryGenerationOperationStore();
     const defaultModelForTaskKind = vi.fn((taskKind: "text_to_image" | "image_edit" | "text_to_video" | "image_to_video") => ({
       moduleId: "generation.single-shot",
@@ -175,7 +175,7 @@ describe("semantic MCP generation tools", () => {
     }));
     const handler = createGenerationPlanningHandler({ registry, operations, defaultModelForTaskKind, now: () => "2026-08-23T00:00:00.000Z" });
 
-    const created = await handler({ capability: "create", params: { operationId: "op-natural-cat", prompt: "帮我生成一个小猫头像" }, lease }) as {
+    const created = await handler({ capability: "create", params: { operationId: "op-natural-cat", prompt: "帮我生成一个小猫头像", taskKind: "text_to_image" }, lease }) as {
       operation: GenerationOperation;
       nextAction: string;
     };
@@ -205,7 +205,7 @@ describe("semantic MCP generation tools", () => {
         ({ capability: "create", params, lease }) as Promise<Record<string, unknown>>;
 
     it("a draft that follows the user's default carries no deviation", async () => {
-      expect(await create({ prompt: "红色纸船" })).not.toHaveProperty("modelDeviatesFromUserDefault");
+      expect(await create({ prompt: "红色纸船", taskKind: "text_to_image" })).not.toHaveProperty("modelDeviatesFromUserDefault");
     });
 
     it("single draft: a model the Agent chose itself is reported against the user's default, in both directions of the class", async () => {
@@ -237,7 +237,7 @@ describe("semantic MCP generation tools", () => {
     });
   });
 
-  it("infers video intent and preserves explicit model parameters on the short create path", async () => {
+  it("a stated video kind picks the default video model and preserves explicit model parameters on the short create path", async () => {
     const operations = createInMemoryGenerationOperationStore();
     const defaultModelForTaskKind = vi.fn((taskKind: "text_to_image" | "image_edit" | "text_to_video" | "image_to_video") => ({
       moduleId: "generation.single-shot",
@@ -250,6 +250,7 @@ describe("semantic MCP generation tools", () => {
     const created = await handler({ capability: "create", params: {
       operationId: "op-natural-video",
       prompt: "生成一段夜晚城市街道视频",
+      taskKind: "text_to_video",
       parameters: { duration: 5 },
     }, lease }) as { operation: GenerationOperation };
 
@@ -545,7 +546,10 @@ describe("semantic MCP generation tools", () => {
       ...baseOperations,
       read(projectId: string, operationId: string) {
         const operation = baseOperations.read(projectId, operationId);
-        return operation && approval.receiptId ? { ...operation, approvedReceiptId: approval.receiptId } : operation;
+        // 批准住在「批这一份的那道门」上：这里把那道门已批的结论投影回 read（与生产 operationFromRun 同形）。
+        return operation && approval.receiptId
+          ? { ...operation, authorization: { gateId: "gate-1", digest: "digest-1", envelope: {} as never, status: "approved" as const } }
+          : operation;
       },
     };
     const start = async (operation: GenerationOperation) => ({
@@ -721,13 +725,17 @@ describe("semantic MCP generation tools", () => {
         { shotId: "shot-a", candidate: { ...candidate({ candidateId: "cand-a", prompt: "雨夜推门", parameters: { aspectRatio: "1:1", duration: 15 } }) }, contract: shotContract("cand-a", "hash-a", "雨夜推门") },
         { shotId: "shot-b", candidate: { ...candidate({ candidateId: "cand-b", prompt: "货架对视", parameters: { aspectRatio: "1:1", duration: 15 } }) }, contract: shotContract("cand-b", "hash-b", "货架对视") },
       ];
-      const operation = { operationId: "op-multi", projectId: "project-1", candidate: candidate(), state: "sealed" as const, contract: sealedContract, shots, planHash: "plan-hash-x", planVersion: 3, updatedAt: "2026-08-23T00:00:00.000Z" };
+      // 最近一份授权（那道门上的信封）：gate_request 回执的摘要与成本范围都读它。
+      const authorization = { gateId: "generation-authorization:op-multi:v3", digest: "plan-hash-x", status: "waiting" as const,
+        envelope: { costScope: "generation.multi-shot:op-multi", budget: { currency: "CNY", maximum: 18, ledgerCeiling: 18, unknownJobCount: 0 },
+          // 这道门盖着哪几镜（逐镜之后，门自己的信封说了算）。
+          jobs: [{ shotId: "anchor-1" }, { shotId: "shot-a" }, { shotId: "shot-b" }] } as never };
+      const operation = { operationId: "op-multi", projectId: "project-1", candidate: candidate(), state: "sealed" as const, contract: sealedContract, shots, authorization, planVersion: 3, updatedAt: "2026-08-23T00:00:00.000Z" };
       return {
         create: () => operation,
         read: () => operation,
         patch: () => operation,
         seal: () => operation,
-        approve: () => ({ ...operation, approvedReceiptId: "r" }),
         cancel: () => ({ ...operation, state: "cancelled" as const }),
         present: () => operation,
         withdraw: () => ({ ...operation, state: "draft" as const, cardHidden: true }),
@@ -794,7 +802,9 @@ describe("semantic MCP generation tools", () => {
       const videoShot = sealed.shots!.find((s) => s.shotId === "shot-a");
       expect(videoShot?.contract?.contractHash).toBeTruthy();
       expect(videoShot?.candidate.sealedContractHash).toBe(videoShot?.contract?.contractHash);
-      expect(gate.contractHash).toBe(sealed.planHash); // multi-shot receipt keyed on the plan hash
+      // 多镜收据键在盖住整批的那个摘要上（没有授权信封时是封印包的 planHash），不是某一镜的合同哈希。
+      expect(gate.contractHash).toMatch(/^[0-9a-f]{64}$/);
+      expect(sealed.shots!.map((shot) => shot.contract?.contractHash)).not.toContain(gate.contractHash);
     });
 
     it("an excluded shot carries no sub-contract and drops off the card (试拍/分批)", async () => {
@@ -840,6 +850,83 @@ describe("semantic MCP generation tools", () => {
 
   // J05 — plan patch model-change 应返回 changeset（modelChanged+previousModel+nextModel），
   // 让调用方知道哪些字段被静默重置。今天返回 {operation, nextAction:"preview"} 无 changeset → 红灯。
+  // ── 2026-09-30 付费卡① 第 9 条：一镜是图还是视频、用哪个模型，是同一个值；矛盾的镜头在建的那一刻就造不出来 ──
+  // 用户那条路：「做一个封面，3:4」→ 画布上是视频节点、卡标题说视频，卡体却是图片模型，点下去才说「这一步没成」。
+  // 测试表第 21 行：构造一个视频镜头配图片模型的草稿 → 宿主当场拒绝，并说清原因；不会出一张自相矛盾的卡。
+  describe("第 9 条：矛盾的镜头造不出来（建镜头的每一条路都核同一道）", () => {
+    const capabilities = { submitIdempotency: true, query: true, reconcile: true, cancel: true };
+    const mixed = createModuleRegistry([{
+      moduleId: "generation.single-shot", version: "1.0.0", inputKinds: ["text", "image"], outputKinds: ["image", "video"],
+      modes: ["text_to_image", "text-to-image", "image_edit", "text_to_video", "image_to_video"],
+      parameterSchema: {}, assetInputSchema: { references: { kind: "asset", max: 4 } },
+      providers: [{ providerId: "fixture-provider", models: [
+        { modelId: "image-model", modes: ["text_to_image", "image_edit"], parameterSchema: {}, capabilities },
+        { modelId: "image-model-hyphen", modes: ["text-to-image"], parameterSchema: {}, capabilities },
+        { modelId: "video-model", modes: ["text_to_video", "image_to_video"], parameterSchema: {}, capabilities },
+      ] }],
+    }]);
+    const planning = () => {
+      const operations = createInMemoryGenerationOperationStore();
+      return { operations, handler: createGenerationPlanningHandler({ registry: mixed, operations, now: () => "2026-10-01T00:00:00.000Z" }) };
+    };
+    const explicit = (shotId: string, modelId: string, mode: string) => ({
+      candidateId: `cand-${shotId}`, revision: 1, moduleId: "generation.single-shot", providerId: "fixture-provider",
+      modelId, mode, prompt: "封面，3:4", parameters: {}, references: [],
+    });
+
+    it("点名图片模型、不写种类：建的就是图片镜头（提示词里写「镜头」也不改它）", async () => {
+      const { handler } = planning();
+      const created = await handler({ capability: "create", params: { operationId: "op-cover", prompt: "做一个封面，3:4，要有镜头感", modelId: "image-model" }, lease }) as { operation: GenerationOperation };
+      expect(created.operation.candidate).toMatchObject({ modelId: "image-model", mode: "text_to_image" });
+    });
+
+    it("单镜：写明要视频、点名的却是图片模型 → 当场拒绝，说清它能做什么；草稿没落盘", async () => {
+      const { handler, operations } = planning();
+      await expect(handler({ capability: "create", params: { operationId: "op-bad", prompt: "封面", taskKind: "text_to_video", modelId: "image-model" }, lease }))
+        .rejects.toThrow(/image-model cannot do text_to_video\. It does: text_to_image, image_edit/);
+      expect(await operations.read("project-1", "op-bad")).toBeNull();
+    });
+
+    it("单镜整只给候选（外部 MCP 宿主那条路）：视频模式配图片模型 → 同一道拒绝", async () => {
+      const { handler, operations } = planning();
+      await expect(handler({ capability: "create", params: { operationId: "op-bad-explicit", candidate: explicit("x", "image-model", "text_to_video") }, lease }))
+        .rejects.toThrow(/image-model cannot do text_to_video/);
+      expect(await operations.read("project-1", "op-bad-explicit")).toBeNull();
+    });
+
+    it("多镜：只要有一镜自相矛盾，整份草稿都不落盘（不会出一张有一页说不通的卡）", async () => {
+      const { handler, operations } = planning();
+      await expect(handler({ capability: "create", params: { operationId: "op-multi-bad", shots: [
+        { shotId: "s1", prompt: "第一张", modelId: "image-model" },
+        { shotId: "s2", prompt: "第二张", candidate: explicit("s2", "image-model", "text_to_video") },
+      ] }, lease })).rejects.toThrow(/image-model cannot do text_to_video/);
+      expect(await operations.read("project-1", "op-multi-bad")).toBeNull();
+    });
+
+    it("参考卡（anchor）只能是图片", async () => {
+      const { handler } = planning();
+      await expect(handler({ capability: "create", params: { operationId: "op-anchor", shots: [
+        { shotId: "a1", role: "anchor", storyboard: { kind: "character", carrier: "visual" }, title: "阿雨", prompt: "阿雨的正脸", candidate: explicit("a1", "video-model", "text_to_video") },
+        { shotId: "s1", prompt: "第一镜", modelId: "video-model" },
+      ] }, lease })).rejects.toThrow(/must be an image/);
+    });
+
+    it("改草稿换成视频模型（没另写种类）：这一镜还是图片镜头，视频模型做不了 → 拒绝，草稿不动", async () => {
+      const { handler, operations } = planning();
+      await handler({ capability: "create", params: { operationId: "op-swap", prompt: "封面", modelId: "image-model" }, lease });
+      await expect(handler({ capability: "plan", params: { operationId: "op-swap", patch: { modelId: "video-model" } }, lease }))
+        .rejects.toThrow(/video-model cannot do text_to_image/);
+      expect((await operations.read("project-1", "op-swap"))?.candidate).toMatchObject({ modelId: "image-model", mode: "text_to_image" });
+    });
+
+    it("改草稿换成另一个图片模型：模式按新模型目录里的拼法跟过去（同一种任务）", async () => {
+      const { handler } = planning();
+      await handler({ capability: "create", params: { operationId: "op-swap-ok", prompt: "封面", modelId: "image-model" }, lease });
+      const patched = await handler({ capability: "plan", params: { operationId: "op-swap-ok", patch: { modelId: "image-model-hyphen" } }, lease }) as { operation: GenerationOperation };
+      expect(patched.operation.candidate).toMatchObject({ modelId: "image-model-hyphen", mode: "text-to-image" });
+    });
+  });
+
   describe("J05 plan patch changeset on model switch", () => {
     it("returns changeset.modelChanged when the model changes", async () => {
       const operations = createInMemoryGenerationOperationStore();
@@ -851,14 +938,16 @@ describe("semantic MCP generation tools", () => {
         modes: ["text-to-image"],
         parameterSchema: { aspectRatio: { type: "enum", enum: ["1:1", "16:9"] } },
         assetInputSchema: { references: { kind: "image", max: 4 } },
+        // 同一家供应商只有一条（目录按 vendorKey 归并，`moduleCatalogBootstrap.manifestFromCatalog`）。
+        // 这里原来写成两条同 id 的供应商，model-b 落在第二条里——目录里根本查不到它；换模型时宿主现在会核一遍
+        // 「这个模型在目录里真有这个模式」（付费卡① 第 9 条），这份自相矛盾的夹具就当场露馅了。
         providers: [
           {
             providerId: "fixture-provider",
-            models: [{ modelId: "model-a", modes: ["text-to-image"], parameterSchema: { seed: { type: "integer" } }, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } }],
-          },
-          {
-            providerId: "fixture-provider",
-            models: [{ modelId: "model-b", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } }],
+            models: [
+              { modelId: "model-a", modes: ["text-to-image"], parameterSchema: { seed: { type: "integer" } }, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
+              { modelId: "model-b", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
+            ],
           },
         ],
       }]);

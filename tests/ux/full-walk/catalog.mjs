@@ -19,13 +19,13 @@ const USER = Object.freeze({ waitsFor: 'user' })
 export const FULL_WALK_PLAYBOOKS = Object.freeze([
   Object.freeze({
     id: 'pb01-two-page-card', script: 'tests/ux/full-walk/playbooks/pb01-two-page-card.walk.mjs', paid: false,
-    title: Object.freeze({ 'zh-CN': 'Agent 画两张图，付费卡两页只在第 1 页点「仍要生成」', en: 'Two-image draft, confirm only page 1 of the card' }),
+    title: Object.freeze({ 'zh-CN': 'Agent 画两张图，付费卡两页只在第 1 页点「生成这张」', en: 'Two-image draft, confirm only page 1 of the card' }),
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' }), Object.freeze({ id: 'en', locale: 'en' })]),
   }),
   Object.freeze({
     id: 'pb02-reference-image', script: 'tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs', paid: false,
     title: Object.freeze({ 'zh-CN': '连着参考图生成（画布直生成 / Agent 付费卡两条路）', en: 'Generate with a connected reference (canvas and Agent paths)' }),
-    variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
+    variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' }), Object.freeze({ id: 'en', locale: 'en' })]),
   }),
   Object.freeze({
     id: 'pb03-default-models', script: 'tests/ux/full-walk/playbooks/pb03-default-models.walk.mjs', paid: false,
@@ -128,7 +128,7 @@ export const FULL_WALK_JOURNEYS = Object.freeze([
     states: Object.freeze([
       { id: 'reference-connected', kind: 'user', visibleText: ['generationCommon.parameters.referencesAria'], actions: ['拖线连参考', '@ 引用素材', '断开'], owner: 'src/workbench/generationCanvas/runner/referenceSlots.ts#assignEdgeToSlot', deadline: USER },
       { id: 'uploading-reference', kind: 'system', visibleText: ['generationCommon.observability.progress.submitting'], actions: ['停止'], owner: 'electron/catalog/assetLocalization.ts#resolveAssetIngestionWithFallback', deadline: { ref: PHASE, key: 'requesting' } },
-      { id: 'agent-card-waiting', kind: 'user', visibleText: ['agentPanelV4.spendParamsTitleImage_one', 'agentPanelV4.spendParamsConfirmUnknown'], actions: ['仍要生成', '×'], owner: 'src/workbench/ai/v4/spendCardDraft.ts#projectSpendNode', deadline: USER },
+      { id: 'agent-card-waiting', kind: 'user', visibleText: ['agentPanelV4.spendParamsTitleImage_one', 'agentPanelV4.spendConfirmThisImage', 'agentPanelV4.spendRemoveThisImage'], actions: ['生成这张', '去掉这张', '×'], owner: 'src/workbench/ai/v4/spendCardDraft.ts#projectSpendNode', deadline: USER },
       { id: 'generating', kind: 'system', visibleText: ['generationCommon.observability.progress.generating'], actions: ['停止'], owner: 'src/workbench/observability/narrate.ts#narrateProgress', deadline: { ref: PHASE, key: 'generating' } },
       { id: 'success', kind: 'terminal', visibleText: ['generationCommon.resultStack.versionCount'], actions: ['下载', '设为首帧'], owner: 'src/workbench/generationCanvas/nodes/NodeResultStack.tsx#NodeResultStack' },
       { id: 'error', kind: 'terminal', visibleText: ['generationCommon.observability.action.retry.main'], actions: ['重试'], owner: 'src/workbench/observability/classifyError.ts#classifyGenerationError' },
@@ -143,7 +143,7 @@ export const FULL_WALK_JOURNEYS = Object.freeze([
     states: Object.freeze([
       { id: 'agent-turn-running', kind: 'system', visibleText: ['agentPanelV4.stop'], actions: ['停止'], owner: 'electron/agentLane/laneHost.mts#LANE_IDLE_MS', deadline: { ref: 'electron/agentLane/laneHost.mts#LANE_IDLE_MS' } },
       { id: 'drafted-on-canvas', kind: 'system', visibleText: ['generationCommon.production.canvasLanding.queued'], actions: ['看占位卡'], owner: 'electron/shared/productionShotPhase.ts#deriveProductionShotState', deadline: { gap: '草稿落画布之后到出卡之间没有登记时限（出卡由同一回合的 generate 负责）' } },
-      { id: 'card-waiting', kind: 'user', visibleText: ['agentPanelV4.spendParamsTitleImage_other', 'agentPanelV4.spendParamsConfirmUnknown', 'agentPanelV4.spendTotalUnknown'], actions: ['翻页', '逐镜 / 全部', '仍要生成', '×'], owner: 'src/workbench/ai/v4/useAgentPanelSpendConfirm.ts#useAgentPanelSpendConfirm', deadline: USER },
+      { id: 'card-waiting', kind: 'user', visibleText: ['agentPanelV4.spendParamsTitleImage_other', 'agentPanelV4.spendConfirmThisImage', 'agentPanelV4.spendRemoveThisImage'], actions: ['翻页', '生成这张', '去掉这张', '×'], owner: 'src/workbench/ai/v4/useAgentPanelSpendConfirm.ts#useAgentPanelSpendConfirm', deadline: USER },
       { id: 'shots-queued', kind: 'system', visibleText: ['generationCommon.production.canvasLanding.queuedNth'], actions: ['暂停'], owner: 'electron/shared/productionShotPhase.ts#deriveProductionShotState', deadline: { ref: 'electron/productionRun/multiShotBatchScheduler.ts#POLL_DELAY_CAP_MS' } },
       { id: 'shot-generating', kind: 'system', visibleText: ['generationCommon.observability.progress.generating'], actions: ['暂停'], owner: 'electron/shared/productionShotPhase.ts#deriveProductionShotState', deadline: { ref: PHASE, key: 'generating' } },
       { id: 'done', kind: 'terminal', visibleText: ['generationCommon.node.reshoot'], actions: ['重拍这镜（选中节点后在浮条里）', '下载'], owner: 'electron/shared/productionShotPhase.ts#deriveProductionShotState' },

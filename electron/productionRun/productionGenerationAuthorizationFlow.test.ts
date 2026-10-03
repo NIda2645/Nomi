@@ -163,7 +163,6 @@ describe("Run-owned paid generation authorization", () => {
       operationId: "op-1",
       authorization,
       commandPrefix: "test-authority",
-      projectRevisionResolver: () => 12,
       display: { model: "fixture-model" },
       now: () => NOW,
       confirm: async ({ challengeToken }) => {
@@ -186,7 +185,10 @@ describe("Run-owned paid generation authorization", () => {
     expect(repository.readBudgetLedger("project-1", "op-1").authorized).toBe(6);
   });
 
-  it("rejects a receipt when the workspace revision drifts after confirmation and before the Run command", async () => {
+  // 付费卡① 第 14 条（2026-10-01）：批的是信封里冻住的事实，不是项目此刻的版本。确认框开着的时候 Nomi 往画布上
+  // 落别的镜、用户改下一镜，项目版本都会前进——以前这里把这一下点击拒成「项目有变动」，而卡上的东西一个字没变。
+  // 发出去的东西由合同哈希、线上报文哈希、幂等键逐字钉死，和项目版本无关。
+  it("approves when the project moved on after the confirmation was shown: the approval binds to the sealed envelope", async () => {
     const { root, repository, authorization } = setup(false);
     const receipts = createApprovalReceiptAuthority({
       filePath: path.join(root, "approval-receipts.json"),
@@ -195,13 +197,12 @@ describe("Run-owned paid generation authorization", () => {
       keyId: "approval-receipt-v1",
       now: () => NOW,
     });
-    let projectRevision = 12;
     const owner = {
       readFull: (projectId: string, runId: string) => repository.read(projectId, runId)!,
       command: async (projectId: string, runId: string, command: Parameters<typeof repository.execute>[2]) => repository.execute(projectId, runId, command),
     };
 
-    await expect(decideRunOwnedGenerationGate({
+    const decision = await decideRunOwnedGenerationGate({
       owner: owner as never,
       receipts,
       lease,
@@ -210,12 +211,8 @@ describe("Run-owned paid generation authorization", () => {
       commandPrefix: "test-revision-drift",
       display: { model: "fixture-model" },
       now: () => NOW,
-      // Drift is introduced after the challenge is presented but before the
-      // receipt is verified/used. The old implementation only compares the
-      // receipt to the sealed envelope and therefore approves this stale proof.
-      projectRevisionResolver: () => projectRevision,
+      // 卡开着的这段时间里项目往前走了（别的镜落了画布）——这一下确认照样算数。
       confirm: async ({ challengeToken }) => {
-        projectRevision = 13;
         const attestation = receipts.createMainProcessGestureAttestation(challengeToken, {
           webContentsId: 1,
           frameId: 2,
@@ -225,13 +222,16 @@ describe("Run-owned paid generation authorization", () => {
         const receipt = receipts.mintReceipt(challengeToken, attestation);
         return { confirmed: true, receiptToken: receipt.token };
       },
-    })).rejects.toMatchObject({ code: "receipt_invalid", message: expect.stringMatching(/revision/i) });
+    });
 
-    expect(repository.read("project-1", "op-1")?.gates).toEqual([expect.objectContaining({ status: "waiting" })]);
-    expect(repository.readApprovals("project-1", "op-1")).toEqual([]);
+    expect(decision.approved).toBe(true);
+    expect(repository.read("project-1", "op-1")?.gates).toEqual([expect.objectContaining({ status: "approved" })]);
+    // 批下来的就是那份信封：同一个摘要、同一个封好时的版本。
+    expect(repository.readApprovals("project-1", "op-1")).toEqual([expect.objectContaining({ authorizationDigest: authorization.authorizationDigest })]);
+    expect(authorization.envelope.projectRevision).toBe(12);
   });
 
-  it("does not issue a challenge when the project revision drifted before the gate request", async () => {
+  it("issues the challenge even when the project moved on after sealing (the gate binds to its envelope, rule 14)", async () => {
     const { root, repository, authorization } = setup(false);
     const receipts = createApprovalReceiptAuthority({
       filePath: path.join(root, "approval-receipts.json"),
@@ -244,28 +244,23 @@ describe("Run-owned paid generation authorization", () => {
       readFull: (projectId: string, runId: string) => repository.read(projectId, runId)!,
       command: async (projectId: string, runId: string, command: Parameters<typeof repository.execute>[2]) => repository.execute(projectId, runId, command),
     };
-    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model" }));
+    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model", contractHash: authorization.authorizationDigest }));
     const generationAuthority = createRunOwnedGenerationGateAuthority({
       owner: owner as never,
       operations: { read: vi.fn(async () => undefined) } as never,
       planning: planning as never,
       receipts,
-      projectRevisionResolver: () => 13,
       now: () => NOW,
     });
 
-    await expect(generationAuthority.requestGenerationGate({
-      params: { operationId: "op-1" },
-      lease,
-    })).rejects.toMatchObject({ code: "receipt_invalid", message: expect.stringMatching(/revision/i) });
-    expect(planning).toHaveBeenCalledTimes(1);
-    expect(repository.read("project-1", "op-1")?.gates).toEqual([expect.objectContaining({ status: "waiting" })]);
-    expect(repository.readApprovals("project-1", "op-1")).toEqual([]);
+    const gate = await generationAuthority.requestGenerationGate({ params: { operationId: "op-1" }, lease }) as { handoff?: { challengeToken?: string }; gateId?: string };
+    expect(gate.gateId).toBe(authorization.envelope.gateId);
+    expect(gate.handoff?.challengeToken).toEqual(expect.any(String));
     expect(authorization.envelope.projectRevision).toBe(12);
   });
 
   it("rejects a malformed sealed gate before issuing a request-time challenge", async () => {
-    const { root, repository } = setup(false);
+    const { root, repository, authorization } = setup(false);
     const receipts = createApprovalReceiptAuthority({
       filePath: path.join(root, "approval-receipts.json"),
       macKey: "approval-receipt-key",
@@ -279,14 +274,13 @@ describe("Run-owned paid generation authorization", () => {
       readFull: () => malformed,
       command: vi.fn(),
     };
-    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model" }));
+    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model", contractHash: authorization.authorizationDigest }));
     const requestChallenge = vi.spyOn(receipts, "requestChallenge");
     const generationAuthority = createRunOwnedGenerationGateAuthority({
       owner: owner as never,
       operations: { read: vi.fn(async () => undefined) } as never,
       planning: planning as never,
       receipts,
-      projectRevisionResolver: () => 12,
       now: () => NOW,
     });
 
@@ -297,7 +291,7 @@ describe("Run-owned paid generation authorization", () => {
   });
 
   it("rejects an expired sealed authorization at request time without issuing a challenge", async () => {
-    const { root, repository } = setup(false);
+    const { root, repository, authorization } = setup(false);
     const receipts = createApprovalReceiptAuthority({
       filePath: path.join(root, "approval-receipts.json"),
       macKey: "approval-receipt-key",
@@ -309,14 +303,13 @@ describe("Run-owned paid generation authorization", () => {
       readFull: (projectId: string, runId: string) => repository.read(projectId, runId)!,
       command: vi.fn(),
     };
-    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model" }));
+    const planning = vi.fn(async () => ({ operationId: "op-1", model: "fixture-model", contractHash: authorization.authorizationDigest }));
     const requestChallenge = vi.spyOn(receipts, "requestChallenge");
     const generationAuthority = createRunOwnedGenerationGateAuthority({
       owner: owner as never,
       operations: { read: vi.fn(async () => undefined) } as never,
       planning: planning as never,
       receipts,
-      projectRevisionResolver: () => 12,
       now: () => "2026-08-24T00:00:00.000Z",
     });
 
@@ -371,7 +364,6 @@ describe("Run-owned paid generation authorization", () => {
       operations: { read: vi.fn(async () => undefined) } as never,
       planning: vi.fn() as never,
       receipts,
-      projectRevisionResolver: () => 12,
       now: () => NOW,
     });
 
@@ -430,7 +422,6 @@ describe("Run-owned paid generation authorization", () => {
       operations: { read: operationsRead } as never,
       planning: vi.fn() as never,
       receipts,
-      projectRevisionResolver: () => 12,
       now: () => NOW,
     });
 
@@ -463,7 +454,6 @@ describe("Run-owned paid generation authorization", () => {
       operationId: "op-1",
       authorization,
       commandPrefix: "test-authority",
-      projectRevisionResolver: () => 12,
       display: { model: "fixture-model" },
       now: () => NOW,
       confirm: async () => ({ confirmed: false }),
@@ -478,12 +468,11 @@ describe("Run-owned paid generation authorization", () => {
   it("persists one digest-bound gate, Approval and budget authorization", () => {
     const { repository, authorization } = setup();
     const run = repository.read("project-1", "op-1")!;
-    expect(run.generationPlan).toMatchObject({
-      authorizationDigest: authorization.authorizationDigest,
-      authorizationGateId: authorization.envelope.gateId,
-      approvedReceiptId: "receipt-1",
-      planHash: authorization.authorizationDigest,
-    });
+    // 授权住在它自己那道门上；计划上不再挂一份（2026-09-30，每点一次一份）。
+    for (const field of ["authorizationEnvelope", "authorizationDigest", "authorizationGateId", "approvedReceiptId", "planHash"]) {
+      expect(run.generationPlan, `计划上不许再有 ${field}`).not.toHaveProperty(field);
+    }
+    expect(run.gates[0]?.authorizationEnvelope, "信封住在门上").toEqual(authorization.envelope);
     expect(run.jobs).toEqual([expect.objectContaining({
       jobId: authorization.envelope.jobs[0].jobId,
       status: "authorized",

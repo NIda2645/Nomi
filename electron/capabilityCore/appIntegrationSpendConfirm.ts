@@ -1,7 +1,8 @@
+import { currentPresentation, generationPresentationOutcome, presentationIsOpen } from "../shared/productionGenerationPresentation";
+import { anySubmissionMayHaveReachedProvider, jobsForShot } from "../shared/productionShotJobs";
 import { withSpendReferencePreviews, resolveSpendReferenceInputs, projectSpendReferenceAssets, type SpendReferenceAssets } from './pendingSpendReferences';
 import { generationPlanInputSchema } from '../shared/agentCapabilities/generationPlanSchemas';
 import { sameProjectAgentBinding } from '../shared/projectBinding';
-import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 // Agent 面板付费确认卡的**编排**（P1 · 2026-09-11）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -31,16 +32,19 @@ import { logWarn } from "../logging/logger";
 import type { ApprovalReceiptAuthority } from "./approvalReceipt";
 import type { DispatchContext } from "./dispatcher";
 import type { GenerationOperationStore, GenerationReviseInput } from "./mcpGenerationTools";
+import type { PlanCandidate } from "./executionContract";
 import type { ProjectBinding } from "../shared/projectBinding";
 import type { ProjectLeaseV2 } from "./projectLease";
 import type { ModelPricing } from "../productionRun/shotPricing";
 import type { ProductionActionResult, ProductionRun } from "../productionRun/productionRunTypes";
 import { listPendingSpendConfirms, projectPendingSpendConfirm } from "../productionRun/productionPendingSpend";
 import { decideGenerationSpend } from "./generationSpendDecision";
+import { productionShotActionFailureOf } from "./appIntegrationProductionActions";
 import { spendAnsweredByPolicy } from "./policySpendDecision";
 import type { PendingSpendConfirm, PendingSpendRead } from "../shared/contracts/pendingSpendConfirm";
 import { readResidentSurfaceLifecycle } from "./residentSurfaceLifecycle";
 import { settleSpendWaiter } from "./spendDecisionWaiters";
+import { cardActionsSettled, serializeCardAction } from "./spendCardActionQueue";
 
 type RunReader = Readonly<{
   read(projectId: string, runId: string): ProductionRun | null;
@@ -64,6 +68,13 @@ export type PendingSpendActionDeps = Readonly<{
   committedBinding: () => ProjectBinding | null;
   leaseFor: (binding: ProjectBinding) => Promise<ProjectLeaseV2>;
   resolvePricing: (providerId: string, modelId: string) => ModelPricing | undefined;
+  /**
+   * 候选补丁并进这一镜的那条规则（`generationPlanPatch.resolvePlanPatch`：换模型 / 换生成方式时种类跟过去、
+   * 这一对在目录里真有、点名的参数当场判）。Agent 改草稿走的就是它；卡上改一下也只能走它——以前卡这一条直接把
+   * 补丁并进候选，于是卡上切到「图生图」只改了模式 id、种类还是文生图，派发时按文生图挑供应商 mapping，
+   * 带参考图的那一下在出站前被拒（2026-10-02 pb02）。必填：少接一根线编译期就红。
+   */
+  normalizePatch: (base: PlanCandidate, patch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>) => Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
   now?: () => string;
 }>;
 
@@ -106,11 +117,11 @@ function failed(error: unknown, started = true): ProductionActionResult {
   if (safe === 'generation_execution_failed' || safe === 'generation_not_started') {
     logWarn("capability", "spend-confirm-failed", { code: safe }, error);
   }
-  return { ok: false, code: "failed", message: safe, ...(reason && reason !== safe ? { reason } : {}) };
+  // 没发起的那一档还要说清是哪一种（第 11 条：卡上只给存在的出路）。按错误类型认，与重做 / 续拍同一个闭集；
+  // 发起过的那一档只说「结果未知、先去核对」，种类不改变那句话，所以不带。
+  const failure = safe === 'generation_not_started' ? productionShotActionFailureOf(error) : undefined;
+  return { ok: false, code: "failed", message: safe, ...(reason && reason !== safe ? { reason } : {}), ...(failure ? { failure } : {}) };
 }
-
-/** 这条线之前，一个字节都没有离开过这台机器（`submissionOutbox` 先落 intent 再出站）。 */
-const STATUSES_BEFORE_ANY_SUBMISSION = new Set(["planned", "authorization_required", "authorized"]);
 
 /**
  * 装配这一层要的那几件，从能力核已经建好的实例里取。
@@ -177,9 +188,25 @@ export async function discardPendingSpendConfirmation(input: { projectId: string
   return actions.discardPendingSpend(input);
 }
 
-export async function confirmPendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }): Promise<ProductionActionResult> {
+/** 付费卡上「生成这张 / 这段」：只批这一镜（`shotId`）。卡上只剩一镜时可以不点名。 */
+export async function confirmPendingSpendConfirmation(input: { projectId: string; operationId: string; quoteId: string; shotId?: string }): Promise<ProductionActionResult> {
   if (!actions) return { ok: false, code: "unavailable" };
   return actions.confirmPendingSpend(input);
+}
+
+/**
+ * 付费卡上「生成剩下 N 张 / 段」（2026-10-01 用户拍板）：卡上还没决定的每一张各点一次「生成这张」。
+ * `shotIds` 必须就是此刻卡上那一叠（去掉过的不在里面）；每张各封一份只盖它自己的授权，没有总价授权。
+ */
+export async function confirmRemainingSpendShots(input: { projectId: string; operationId: string; quoteId: string; shotIds: readonly string[] }): Promise<ProductionActionResult> {
+  if (!actions) return { ok: false, code: "unavailable" };
+  return actions.confirmRemainingShots(input);
+}
+
+/** 付费卡上「去掉这张 / 这段」：这一镜不生成，卡上剩下的镜照旧等人决定。 */
+export async function removePendingSpendShot(input: { projectId: string; operationId: string; quoteId: string; shotId: string }): Promise<ProductionActionResult> {
+  if (!actions) return { ok: false, code: "unavailable" };
+  return actions.removePendingSpendShot(input);
 }
 
 export function pendingSpendDependencies(input: Readonly<{
@@ -197,6 +224,7 @@ export function pendingSpendDependencies(input: Readonly<{
   committedSelection: () => (ProjectBinding & { canonicalRootDigest?: string }) | null;
   leaseFor: (binding: ProjectBinding) => Promise<ProjectLeaseV2>;
   resolvePricing: (providerId: string, modelId: string) => ModelPricing | undefined;
+  normalizePatch: PendingSpendActionDeps["normalizePatch"];
 }>): PendingSpendActionDeps {
   return {
     isProjectOpen: input.isProjectOpen,
@@ -220,6 +248,7 @@ export function pendingSpendDependencies(input: Readonly<{
     },
     leaseFor: input.leaseFor,
     resolvePricing: input.resolvePricing,
+    normalizePatch: input.normalizePatch,
   };
 }
 
@@ -270,13 +299,67 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    * 价格由下一次投影现算——数只有一个产地。
    */
   /**
-   * 这一笔到底有没有离开过这台机器。判据是账本里的作业状态，不是异常的长相：
-   * `submissionOutbox` 先把提交意图落盘、再出站，所以只要还有作业停在 intent 之前，
-   * 就是「没发起」。一个作业都读不到 = 连 Run 都没有 = 更没发起。
+   * 这一下点到的那一镜到底有没有可能离开过这台机器。判据是账本里的作业状态，不是异常的长相，
+   * 而且只有一个 owner（`productionShotJobs.anySubmissionMayHaveReachedProvider`）。
+   * 一个作业都读不到 = 连 Run 都没有 = 更没发起。
+   *
+   * **只看这一镜自己的作业**（`jobsForShot`）：多镜卡上前面几张早就发出去了，第 3 张在发出前失败时，
+   * 不许借它们的状态说「可能已提交」（2026-10-01「生成剩下 N 张」写测试时抓到的：整个 Run 一起看，
+   * 第 2 张只要第 1 张发过就永远是「结果未知」）。
    */
-  const anySubmissionStarted = (projectId: string, operationId: string): boolean =>
-    (deps.runs.read(projectId, operationId)?.jobs ?? [])
-      .some((job) => !STATUSES_BEFORE_ANY_SUBMISSION.has(job.status));
+  const anySubmissionStarted = (projectId: string, operationId: string, shotId: string): boolean => {
+    const run = deps.runs.read(projectId, operationId);
+    return run ? anySubmissionMayHaveReachedProvider(jobsForShot(run, shotId)) : false;
+  };
+
+  /**
+   * 这一次出价里，卡上的「决定」（生成这张 / 去掉这张 / 生成剩下的每一张）换掉过的每一版报价（付费卡①，2026-10-02）。
+   *
+   * 卡上每决定一张，报价就换一版；用户点 ×，那一下带着的是他卡上那一版——卡上那一下还在路上（或主进程忙、
+   * × 晚到几秒）时，往往已经被那一下换掉了。× 不排队，要的就是能打断；拿「报价对不上」把它挡回去，等于让用户追着
+   * 一张一直在变的卡点 ×（真 App 实测：「生成剩下 6 张」6 张一直发完、× 一下都没进去；「生成这张」紧接着点 ×，× 被挡回去、
+   * 卡还开着）。所以 × 认这一次出价里被卡上的决定换掉过的任何一版：决定只会让卡上少几镜，剩下的正是他点 × 时看着的那些。
+   * 改了内容的不认（卡上改参数、Agent 改草稿）：改过之后卡上摆的是他点 × 那一刻没看到的东西，晚到的 × 不替他关
+   * （C09「a delayed close cannot dismiss a newer displayed quote」）。Agent 重新出价是新的一次出价（`openedAt` / `fromGate`
+   * 不同），旧卡上的 × 也照旧挡回去。
+   */
+  const replacedQuotes = new Map<string, Readonly<{ presentation: string; quotes: Set<string> }>>();
+  const openPresentationOf = (projectId: string, operationId: string): string | undefined => {
+    const presentation = currentPresentation(deps.runs.read(projectId, operationId)?.generationPlan);
+    return presentation && !presentation.closed ? `${presentation.openedAt}#${presentation.fromGate}` : undefined;
+  };
+  /** 卡上这一下要从这一版报价出发（它成了就会换掉这一版）：记下来，× 带着它来也认。 */
+  const noteReplacing = (projectId: string, operationId: string, quoteId: string): void => {
+    const presentation = openPresentationOf(projectId, operationId);
+    if (!presentation) return;
+    const key = `${projectId}:${operationId}`;
+    const entry = replacedQuotes.get(key);
+    if (entry?.presentation === presentation) entry.quotes.add(quoteId);
+    else replacedQuotes.set(key, { presentation, quotes: new Set([quoteId]) });
+  };
+  const replacedInOpenPresentation = (projectId: string, operationId: string, quoteId: string): boolean => {
+    const entry = replacedQuotes.get(`${projectId}:${operationId}`);
+    return Boolean(entry && entry.presentation === openPresentationOf(projectId, operationId) && entry.quotes.has(quoteId));
+  };
+
+  /** 这一镜在这一次出价里已经决定了（点过「生成这张」或「去掉这张」），宿主现算。 */
+  const shotAlreadyDecided = (projectId: string, operationId: string, shotId: string): boolean => {
+    const run = deps.runs.read(projectId, operationId);
+    const outcome = run ? generationPresentationOutcome(run) : undefined;
+    return Boolean(outcome && (outcome.generating.includes(shotId) || outcome.failedBeforeSending.includes(shotId) || outcome.removed.includes(shotId)));
+  };
+
+  /**
+   * 这一次出价关了没有，只问宿主（`presentationIsOpen`）。关了 → 把结论递给正在等这一笔的那个回合（没人等 = no-op）：
+   * × 关的是 `declined`，其余（每一镜都决定了）是 `confirmed`。回合拿到之后自己去读逐镜结局（`readPresentationOutcome`）。
+   */
+  const settleWaiterIfClosed = (projectId: string, operationId: string): void => {
+    const plan = deps.runs.read(projectId, operationId)?.generationPlan;
+    if (!plan || presentationIsOpen(plan)) return;
+    const closedBy = currentPresentation(plan)?.closed?.by;
+    if (!closedBy) return;
+    settleSpendWaiter(projectId, operationId, { kind: closedBy === "user_closed" ? "declined" : "confirmed" });
+  };
 
   const revisePendingSpend = async (input: Readonly<{
     projectId: string;
@@ -321,9 +404,14 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
           values: referenceInputs ?? (Array.isArray(patch.references) ? patch.references.map(reference => ({ reference })) : patch.references), existing: shot.references ?? [], assets: referenceAssets, assertCurrent });
       }
       assertCurrent();
-      generationPlanInputSchema.parse({ operation: 'patch', operationId: input.operationId, patch,
+      // 并进这一镜的规则只有一条（Agent 改草稿同一条）：种类跟着模型 / 生成方式走，这一对在目录里真有。
+      // 按解封后的样子判：`generation.revise` 本来就先撤掉还在等人的那份授权、解封这一镜，再并补丁。
+      const sealed = (plan?.shots?.length ? plan.shots.find(shot => shot.shotId === shotId)?.candidate : plan?.candidate) as PlanCandidate | undefined;
+      if (!sealed) throw new Error('generation_shot_not_found');
+      const merged = deps.normalizePatch({ ...sealed, sealedContractHash: undefined }, patch as Partial<Omit<PlanCandidate, "candidateId" | "revision">>);
+      generationPlanInputSchema.parse({ operation: 'patch', operationId: input.operationId, patch: merged,
         ...(input.shotId ? { shotId: input.shotId } : {}) });
-      const revised = await deps.operations.revise(input.projectId, input.operationId, { ...revision, patch }, now());
+      const revised = await deps.operations.revise(input.projectId, input.operationId, { ...revision, patch: merged as Record<string, unknown> }, now());
       const successor = pendingFor(input.projectId, input.operationId);
       if (!successor || successor.planVersion !== revised.planVersion || successor.candidateRevision !== revised.candidate.revision) throw new Error('generation_quote_changed');
       return { ok: true, code: "revised", quoteId: successor.quoteId };
@@ -351,14 +439,26 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
     const pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to discard" };
-    if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
+    const replacedByCard = Boolean(input.quoteId && replacedInOpenPresentation(input.projectId, input.operationId, input.quoteId));
+    if (!input.quoteId || (input.quoteId !== pending.quoteId && !replacedByCard)) return failed(new Error("generation_quote_changed"));
+    // × 不排队：它可以打断一下还没批下来的「生成这张」（那一下就算没点成），已经批下来的那一镜照样在生成；
+    // 「生成剩下 N 张」跑到一半时，批到哪一张就停在哪一张（`confirmRemainingShots` 在两张之间看卡还在不在）。
     try {
-      await deps.operations.withdraw(input.projectId, input.operationId, now());
-      // 有回合在等这一笔（lane 的 `generate` 挂在审批闸上）→ 把「他没同意这次」递过去；没人等 = no-op。
-      settleSpendWaiter(input.projectId, input.operationId, { kind: "declined" });
-      return { ok: true, code: "discarded" };
+      // 没决定的镜不生成（关的原因记成 user_closed）。
+      await deps.operations.withdraw(input.projectId, input.operationId, now(), "user_closed");
+      // 收回是立刻的，可这一刻可能有一镜正批到一半（卡上的「生成这张」或「生成剩下」还在队里）——它照样会批下、照样花钱。
+      // 卡关掉时那一句要等它落定、按宿主最终批下的那一份说（`spendCardActionQueue`；10-02 搞破坏线 X2 / X4）。
+      await cardActionsSettled(input.projectId, input.operationId);
+      const run = deps.runs.read(input.projectId, input.operationId);
+      const outcome = run ? generationPresentationOutcome(run) : undefined;
+      return {
+        ok: true, code: "discarded",
+        ...(outcome ? { batchStopped: { sent: outcome.generating.length, notSent: outcome.undecided.length } } : {}),
+      };
     } catch (error) {
       return failed(error, false);
+    } finally {
+      settleWaiterIfClosed(input.projectId, input.operationId);
     }
   };
 
@@ -369,7 +469,10 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
    * 收据把手势绑到那个 gateId + digest 上，`authorizeGeneration` 只认对得上的收据，
    * 消费一次之后同一张收据再也批不动第二次。
    */
-  const confirmPendingSpend = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotIds?: readonly string[] }>): Promise<ProductionActionResult> => {
+  const confirmPendingSpend = (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotId?: string }>): Promise<ProductionActionResult> =>
+    serializeCardAction(input.projectId, input.operationId, () => confirmOneShot(input));
+
+  const confirmOneShot = async (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotId?: string }>): Promise<ProductionActionResult> => {
     if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
     const binding = deps.committedBinding();
     if (!binding || binding.projectId !== input.projectId) return { ok: false, code: 'run_not_open' };
@@ -377,64 +480,116 @@ export function createPendingSpendActions(deps: PendingSpendActionDeps) {
       const current = deps.committedBinding();
       if (!deps.isProjectOpen(input.projectId) || !current || !sameProjectAgentBinding(binding, current)) throw new Error('run_not_open');
     };
-    let pending = pendingFor(input.projectId, input.operationId);
+    // 连点两下 / 连按回车（第 8 条）：前一下已经把这一镜批了（排在同一条队里，这里读到的是它之后的 Run）→ 原样回成功，不再批第二次。
+    if (input.shotId && shotAlreadyDecided(input.projectId, input.operationId, input.shotId)) return { ok: true, code: "spend_confirmed" };
+    const pending = pendingFor(input.projectId, input.operationId);
     if (!pending) return { ok: false, code: "failed", message: "no pending generation to confirm" };
     if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"));
-    try {
-      const selected = resolveGenerationShotScope(pending.shots.map((shot) => shot.shotId), input.shotIds);
-      if (selected.length !== pending.shots.length) {
-        const displayed = pending;
-        const selectedShots = displayed.shots.filter(shot => selected.includes(shot.shotId));
-        await deps.operations.present(input.projectId, input.operationId, now(), selected);
-        pending = pendingFor(input.projectId, input.operationId);
-        const content = (shots: PendingSpendConfirm['shots']) => JSON.stringify(shots.map(({ nodeId: _nodeId, index: _index, ...shot }) => shot));
-        if (!pending || pending.planVersion !== displayed.planVersion + 1
-          || pending.currency !== displayed.currency || content(pending.shots) !== content(selectedShots)) {
-          throw new Error("generation_quote_changed");
-        }
-      }
-      // 这一段只收窄勾选范围，还没封印，更没提交。
-    } catch (error) { return failed(error, false); }
-    const acceptedQuote = pending;
+    // 这一下点的是哪一镜：卡上只剩一镜时可以不点名；点名的必须就在卡上（还没决定）。
+    const shotId = input.shotId ?? (pending.shots.length === 1 ? pending.shots[0].shotId : undefined);
+    if (!shotId || !pending.shots.some((shot) => shot.shotId === shotId)) return failed(new Error("generation_scope_invalid"), false);
+    noteReplacing(input.projectId, input.operationId, pending.quoteId);
+    const multiShot = Boolean(deps.runs.read(input.projectId, input.operationId)?.generationPlan?.shots?.length);
     const target = deps.rendererTarget();
     if (!target) return { ok: false, code: "unavailable" };
     try {
       const lease = await leased(input.projectId);
       assertBindingCurrent();
-      if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId) throw new Error("generation_quote_changed");
-      // 封印 → 铸收据 → 决门 → 消费 → 开跑：这条链只有一份（`generationSpendDecision.ts`）。
-      // 「全自动」档那条免卡放行走的是同一个函数，差别只在那张 attestation 是人点的还是策略代答的。
+      if (pendingFor(input.projectId, input.operationId)?.quoteId !== pending.quoteId) throw new Error("generation_quote_changed");
+      // 封印 → 铸收据 → 决门 → 消费 → 开跑：这条链只有一份（`generationSpendDecision.ts`）。这一份授权只盖这一镜：
+      // 信封、收据、派发都只认它（`mcpGenerationMultiShot.resolveGateScope`），卡上别的镜照旧等人。
       await decideGenerationSpend(
         { requestGenerationGate: async (request) => {
           const gate = await deps.requestGenerationGate(request);
           assertBindingCurrent();
-          const prepared = gate as { maximumCost?: unknown; currency?: unknown };
-          // 现时性校验：门算出来的金额不许**高于**用户刚在卡上看到的那个数。
-          //
-          // 这里曾经还有一条 `|| acceptedQuote.unknownShotCount > 0`——它把「价格未知」当成拒绝
-          // 的理由，而且报成 `generation_quote_changed`（一句假话：报价没变，是从来就没有）。
-          // 2026-09-21 用户拍板未知价不许挡生成，这条外层重复拒绝随之删除；未知价的门
-          // `maximumCost` 回 null（不是 0），对它做金额比较没有意义，所以只比已知的那一档。
-          if (pendingFor(input.projectId, input.operationId)?.quoteId !== acceptedQuote.quoteId
-            || prepared.currency !== acceptedQuote.currency
-            || (prepared.maximumCost !== null
-              && (typeof prepared.maximumCost !== "number" || prepared.maximumCost > acceptedQuote.knownSubtotal))) {
-            throw new Error("generation_quote_changed");
-          }
           return gate;
         }, authorizeGeneration: async request => {
           assertBindingCurrent();
           return deps.authorizeGeneration(request);
         }, planning: deps.planning, receipts: deps.receipts },
-        { operationId: input.operationId, lease, decision: { kind: "human-gesture", target }, actorId: "agent-panel" },
+        { operationId: input.operationId, lease, decision: { kind: "human-gesture", target }, actorId: "agent-panel", ...(multiShot ? { shotIds: [shotId] } : {}) },
       );
-      // **成功之后**才递：链上任何一步失败，卡都还在原处等用户，等的那个回合也就该继续等。
-      settleSpendWaiter(input.projectId, input.operationId, { kind: "confirmed" });
       return { ok: true, code: "spend_confirmed" };
     } catch (error) {
-      return failed(error, anySubmissionStarted(input.projectId, input.operationId));
+      return failed(error, anySubmissionStarted(input.projectId, input.operationId, shotId));
+    } finally {
+      // 这一镜决定了之后卡上还剩没决定的镜 → 卡照旧开着、等的那个回合继续等；一镜不剩 → 宿主已经把这一次出价关了，递过去。
+      settleWaiterIfClosed(input.projectId, input.operationId);
     }
   };
 
-  return { listPendingSpend, revisePendingSpend, discardPendingSpend, confirmPendingSpend };
+  /** 这一镜此刻在卡上的样子（不含页码与节点：那两样随别的镜决定而变，和「这一镜要发什么」无关）。 */
+  const shownShot = (pending: PendingSpendConfirm | undefined, shotId: string): string | undefined => {
+    const shot = pending?.shots.find((entry) => entry.shotId === shotId);
+    if (!shot) return undefined;
+    const { index: _index, nodeId: _nodeId, ...content } = shot;
+    return JSON.stringify(content);
+  };
+
+  /**
+   * 「生成剩下 N 张 / 段」（2026-10-01 用户拍板）= 把卡上还没决定的每一张各点一次「生成这张」。
+   *
+   * 不是另一条花钱的路：每一张走的就是 `confirmOneShot`——各封一份只盖它自己的授权、各铸一张收据、各派一次，
+   * 没有总价授权；去掉过的不在里面。所以点完之后卡、画布小标、回执和逐张点完一模一样（同一份逐镜结局驱动）。
+   *
+   * 用户按下去的那一刻看到的就是要发的：`quoteId` 必须是此刻这张卡、点名的必须恰好是卡上那一叠；
+   * 每张开拍前再核一次它在卡上的样子没被别人改过（前面几张批下去会换报价，但不该换这一张要发的内容）。
+   * 哪一张没成就停在那一张——它和它后面的镜照旧留在卡上，和逐张点到那里停下一模一样。用户中途点 × 收回出价，
+   * 剩下的不再生成（× 不排队，正是为了能打断它）。
+   */
+  const confirmRemainingShots = (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotIds: readonly string[] }>): Promise<ProductionActionResult> =>
+    serializeCardAction(input.projectId, input.operationId, async () => {
+      if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
+      const pending = pendingFor(input.projectId, input.operationId);
+      if (!pending) return { ok: false, code: "failed", message: "no pending generation to confirm" };
+      if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"), false);
+      const onCard = pending.shots.map((shot) => shot.shotId);
+      if (onCard.length < 2 || input.shotIds.length !== onCard.length || input.shotIds.some((shotId, index) => shotId !== onCard[index])) {
+        return failed(new Error("generation_scope_invalid"), false);
+      }
+      const seen = new Map(onCard.map((shotId) => [shotId, shownShot(pending, shotId)]));
+      let sent = 0;
+      for (const shotId of input.shotIds) {
+        const current = pendingFor(input.projectId, input.operationId);
+        // 卡已经关了（用户点了 ×，或宿主把这一次出价收回了）：剩下的没决定，不再生成。照实说批下去几张、没发几张。
+        if (!current || !current.shots.some((shot) => shot.shotId === shotId)) {
+          return { ok: true, code: "spend_confirmed", batchStopped: { sent, notSent: input.shotIds.length - sent } };
+        }
+        if (shownShot(current, shotId) !== seen.get(shotId)) return failed(new Error("generation_quote_changed"), false);
+        // 每一张从此刻那一版报价出发；它批下去换掉的那一版，× 带着来照样认（`noteReplacing`，在 confirmOneShot 里记）。
+        const result = await confirmOneShot({ projectId: input.projectId, operationId: input.operationId, quoteId: current.quoteId, shotId });
+        if (!result.ok) {
+          // × 恰好落在这一张批下来之前（它的核对读到卡已经关了）：这一张也没发，和停在两张之间是同一件事。
+          // 账本说这一张可能已经出去了（`generation_execution_failed`）就不能算进「没发」，原样交给卡去说「先去核对」。
+          const closedUnderIt = !pendingFor(input.projectId, input.operationId) && result.message !== "generation_execution_failed";
+          return closedUnderIt ? { ok: true, code: "spend_confirmed", batchStopped: { sent, notSent: input.shotIds.length - sent } } : result;
+        }
+        sent += 1;
+      }
+      return { ok: true, code: "spend_confirmed" };
+    });
+
+  /** 「去掉这张 / 这段」（第 2 条）：这一镜不生成，占位留在画布上。连点两下 → 第二下原样回成功。 */
+  const removePendingSpendShot = (input: Readonly<{ projectId: string; operationId: string; quoteId: string; shotId: string }>): Promise<ProductionActionResult> =>
+    serializeCardAction(input.projectId, input.operationId, async () => {
+      if (!deps.isProjectOpen(input.projectId)) return { ok: false, code: "run_not_open" };
+      if (!deps.operations.removeShot) return { ok: false, code: "unavailable" };
+      if (shotAlreadyDecided(input.projectId, input.operationId, input.shotId)) return { ok: true, code: "shot_removed" };
+      const pending = pendingFor(input.projectId, input.operationId);
+      if (!pending) return { ok: false, code: "failed", message: "no pending generation to change" };
+      if (!input.quoteId || input.quoteId !== pending.quoteId) return failed(new Error("generation_quote_changed"), false);
+      if (!pending.shots.some((shot) => shot.shotId === input.shotId)) return failed(new Error("generation_scope_invalid"), false);
+      noteReplacing(input.projectId, input.operationId, pending.quoteId);
+      try {
+        await deps.operations.removeShot(input.projectId, input.operationId, input.shotId, now());
+        return { ok: true, code: "shot_removed" };
+      } catch (error) {
+        // 去掉一镜只动这一次出价的记录，永远不提交：这里失败一定是「没发起」。
+        return failed(error, false);
+      } finally {
+        settleWaiterIfClosed(input.projectId, input.operationId);
+      }
+    });
+
+  return { listPendingSpend, revisePendingSpend, discardPendingSpend, confirmPendingSpend, removePendingSpendShot, confirmRemainingShots };
 }

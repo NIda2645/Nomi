@@ -11,7 +11,7 @@ function fixture() {
 describe('spend reference inputs are pinned at project asset owner', () => {
   it('projects preview URLs while preserving canonical reference fields', () => {
     const { assets } = fixture();
-    const pending: PendingSpendConfirm = { projectId: 'p', runId: 'r', operationId: 'r', planVersion: 1, quoteId: 'q', candidateRevision: 1, currency: 'CNY', knownSubtotal: 0, unknownShotCount: 0, shots: [{ shotId: 's', index: 1, prompt: 'fixture', providerId: 'fixture', modelId: 'fixture', parameters: {}, price: { known: true, amount: 0 }, references: [old] }] };
+    const pending: PendingSpendConfirm = { projectId: 'p', runId: 'r', operationId: 'r', planVersion: 1, quoteId: 'q', candidateRevision: 1, currency: 'CNY', knownSubtotal: 0, unknownShotCount: 0, shots: [{ shotId: 's', index: 1, prompt: 'fixture', providerId: 'fixture', modelId: 'fixture', kind: 'image', parameters: {}, price: { known: true, amount: 0 }, references: [old] }] };
     expect(withSpendReferencePreviews(pending, assets).shots[0].references).toEqual([{ ...old, url: 'nomi-local://asset/p/old.png' }]);
     expect(pending.shots[0].references).toEqual([old]);
   });

@@ -146,7 +146,7 @@ function harness(
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.png` }),
     now,
   });
-  const buildScheduler = () => createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-entrance", perShotPrice: () => ({ known: true, amount: 6 }), now });
+  const buildScheduler = () => createMultiShotBatchScheduler({ repository, submission, projectId: "project-1", runId: "op-entrance", now });
   // The `start` dep mirrors appIntegration's multi-shot start branch: transition sealed→submitted, then
   // kick the durable scheduler. (This is exactly the branch S6.5 fixed — without the submit, batchActive
   // stays false and the scheduler no-ops.)
@@ -188,7 +188,7 @@ function harness(
     now,
     randomId: () => `receipt-sequence-${++receiptSequence}`,
   });
-  const generationAuthority = createRunOwnedGenerationGateAuthority({ owner: owner as never, operations, planning: handler, receipts, projectRevisionResolver: () => 0, now });
+  const generationAuthority = createRunOwnedGenerationGateAuthority({ owner: owner as never, operations, planning: handler, receipts, now });
   return { root, repository, handler, buildScheduler, generationAuthority, receipts };
 }
 

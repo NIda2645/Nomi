@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import http from "node:http";
 import { createMultiShotBatchScheduler } from "../productionRun/multiShotBatchScheduler";
+import { waitForProduction } from "../productionRun/productionRunTestHelpers";
 import { PROJECT_ID, OPERATION_ID, lease, now, candidate, startLoopbackVendor, harness, buildActions, draft, resetSpendFixture } from "./agentPanelSpendConfirmTestUtils";
 
 afterEach(resetSpendFixture);
@@ -45,7 +46,17 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
   const vendor = await startLoopbackVendor();
   const base = harness();
   const submits: string[] = [];
-  const { withWindow, handler, submission } = buildActions(base, vendor.origin, submits);
+  // 付费卡逐镜：每一镜各点一次「生成这张」。用户点得快——调度器在他点完之后才跑一轮（`holdDispatch` 放开后 `dispatchNow`）。
+  let hold = true;
+  const { withWindow, handler, submission, dispatchNow } = buildActions(base, vendor.origin, submits, { holdDispatch: () => hold });
+  const clickEach = async (shotIds: readonly string[]) => {
+    for (const shotId of shotIds) {
+      const card = withWindow.listPendingSpend(PROJECT_ID)[0];
+      expect(card?.shots[0]?.shotId, `卡上排在第一页的是 ${shotId}`).toBe(shotId);
+      expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: card.quoteId, shotId }))
+        .toEqual({ ok: true, code: "spend_confirmed" });
+    }
+  };
   try {
     const shots = Array.from({ length: 33 }, (_, i) => ({ shotId: `shot-${i + 1}`,
       role: i < 6 ? "anchor" as const : "shot" as const,
@@ -58,7 +69,11 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
     const firstIds = shots.slice(0, 3).map(shot => shot.shotId);
     await handler({ capability: "present", params: { operationId: OPERATION_ID, shotIds: firstIds }, lease });
     const firstQuote = withWindow.listPendingSpend(PROJECT_ID)[0];
-    expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: firstQuote.quoteId })).toEqual({ ok: true, code: "spend_confirmed" });
+    await clickEach(firstIds);
+    expect(withWindow.listPendingSpend(PROJECT_ID), "三张参考卡都点过了，卡关掉").toEqual([]);
+    hold = false;
+    await dispatchNow();
+    hold = true;
     const first = base.repository.read(PROJECT_ID, OPERATION_ID)!;
     expect(first.jobs.map(job => job.metadata?.shotId)).toEqual(firstIds);
     expect(first.jobs.every(job => job.status === "ready")).toBe(true);
@@ -70,10 +85,12 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
 
     const remainingIds = shots.slice(3).map(shot => shot.shotId);
     await handler({ capability: "present", params: { operationId: OPERATION_ID, shotIds: remainingIds }, lease });
-    expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: firstQuote.quoteId })).toMatchObject({ ok: false });
+    expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: firstQuote.quoteId, shotId: remainingIds[0] })).toMatchObject({ ok: false });
     const secondQuote = withWindow.listPendingSpend(PROJECT_ID)[0];
     expect(secondQuote.shots.map(shot => shot.shotId)).toEqual(remainingIds);
-    expect(await withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: secondQuote.quoteId })).toMatchObject({ ok: true });
+    await clickEach(remainingIds);
+    hold = false;
+    await dispatchNow();
     let second = base.repository.read(PROJECT_ID, OPERATION_ID)!;
     expect(submits).toHaveLength(6); // The old checkpoint cannot approve the second anchor batch.
     const nextGate = second.gates.find(gate => gate.scope === "anchor_checkpoint" && gate.status === "waiting")!;
@@ -81,7 +98,7 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
     second = base.repository.execute(PROJECT_ID, OPERATION_ID, { commandId: "second-look-approved", expectedRevision: second.revision,
       type: "gate.decide", payload: { gateId: nextGate.gateId, status: "approved" }, issuedAt: now() }).run;
     const scheduler = createMultiShotBatchScheduler({ repository: base.repository, submission, projectId: PROJECT_ID,
-      runId: OPERATION_ID, perShotPrice: () => ({ known: true, amount: 0.3 }), now });
+      runId: OPERATION_ID, now });
     await scheduler.runToQuiescence();
     await scheduler.runToQuiescence();
     await base.canvasLanding.landCanvasBestEffort(PROJECT_ID, OPERATION_ID);
@@ -103,7 +120,7 @@ it("S06: executes 3 anchors then the remaining 30 units in the same 33-shot Run,
       .resolves.toMatchObject({ jobId: first.jobs[0].jobId, nextAction: "completed" });
   } finally { await vendor.close(); }
 // This journey performs 33 real loopback submissions and durable filesystem event writes.
-}, 60_000);
+}, 300_000);
 
 describe("S08: pending spend decisions have one durable winner", () => {
   for (const action of ["discard", "revise"] as const) {
@@ -118,11 +135,16 @@ describe("S08: pending spend decisions have one durable winner", () => {
           const quote = withWindow.listPendingSpend(PROJECT_ID)[0];
           const confirming = withWindow.confirmPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: quote.quoteId });
           await latch.entered;
-          const changed = action === "discard"
-            ? await withWindow.discardPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: quote.quoteId })
-            : await withWindow.revisePendingSpend({ quoteId: quote.quoteId, projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { parameters: { size: "1536x1024" } } });
+          const changing = action === "discard"
+            ? withWindow.discardPendingSpend({ projectId: PROJECT_ID, operationId: OPERATION_ID, quoteId: quote.quoteId })
+            : withWindow.revisePendingSpend({ quoteId: quote.quoteId, projectId: PROJECT_ID, operationId: OPERATION_ID, patch: { parameters: { size: "1536x1024" } } });
+          // × 收回出价之后要等手上那一下落定才回（结局照宿主最终批下的那一份说，`spendCardActionQueue`）：
+          // 放开那一下之前只等这一改真的落下了——已经回了，或者卡已经收走了。
+          let answered = false;
+          void changing.finally(() => { answered = true; });
+          await waitForProduction(() => answered || withWindow.listPendingSpend(PROJECT_ID).length === 0);
           latch.release();
-          const confirmed = await confirming;
+          const [changed, confirmed] = await Promise.all([changing, confirming]);
           expect(changed.ok).toBe(phase === "beforeAuthorize");
           expect(confirmed.ok).toBe(phase === "afterAuthorize");
           expect(submits).toHaveLength(phase === "afterAuthorize" ? 1 : 0);
@@ -159,7 +181,8 @@ it("new confirmation of the same candidate uses a distinct attempt and command i
     expect(done.budget.reserved).toBeCloseTo(0.6);
     expect(done.policy.maxSpend).toBe(1);
     expect([...base.renderer.nodes.entries()]).toEqual(nodes);
-    await expect(submission.start({ projectId: PROJECT_ID, operationId: OPERATION_ID, attempt: 1 })).rejects.toThrow(/observation-only/);
+    // 第一轮那一次仍由它自己那道门盖着（每点一次一份），但它已经出片了：再发一次一律拒绝，供应商那边不多一笔。
+    await expect(submission.start({ projectId: PROJECT_ID, operationId: OPERATION_ID, attempt: 1 })).rejects.toThrow(/observation-only|cannot be submitted/);
     expect(submits).toHaveLength(2);
   } finally { await vendor.close(); }
 });

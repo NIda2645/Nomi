@@ -12,6 +12,7 @@ import { createGenerationPlanningHandler, type GenerationOperation, type Generat
 import { PROJECT_LEASE_ALGORITHM, PROJECT_LEASE_AUDIENCE, PROJECT_LEASE_VERSION, type ProjectLeaseV2 } from "./projectLease";
 import { createRunOwnedGenerationGateAuthority } from "./runOwnedGenerationGateAuthority";
 import { createPendingSpendActions } from "./appIntegrationSpendConfirm";
+import { resolvePlanPatch } from "./generationPlanPatch";
 import { createPiGenerationTransportAdapter } from "./generationTransportAdapters";
 import type { ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 import { createCanvasLandingHost } from "../productionRun/canvasLandingHost";
@@ -195,6 +196,11 @@ function harness() {
 }
 
 function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, submits: string[], hooks: {
+  /**
+   * 这一镜过完卡上的核对、还没封印开门的那一刻（`confirmOneShot` 里 `requestGenerationGate` 之前）。
+   * 真 App 里主进程忙，× 晚到几秒就落在这儿：收回出价时还没有门可撤，这一镜随后照样封印、批下、发出（10-02 搞破坏线 X2 / X4）。
+   */
+  beforeGate?: () => Promise<void>;
   beforeAuthorize?: () => Promise<void>;
   afterAuthorize?: () => Promise<void>;
   /**
@@ -203,6 +209,11 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
    * 且任何一处都不许出现代表未知的 0（2026-09-21 未知价开闸）。
    */
   unpriced?: boolean;
+  /**
+   * 批准之后先别派：多镜批次的调度器这一轮不跑，job 停在「已授权、还没发出」。模拟第 1 镜还在排队
+   * （等形象确认、被并发挡着）时用户又点了第 2 镜；之后由 `dispatchNow()` 真的跑一轮调度。
+   */
+  holdDispatch?: () => boolean;
 } = {}) {
   const { root, repository, owner, operations, canvasLanding } = base;
   const provider = loopbackProvider(vendorOrigin, submits);
@@ -227,6 +238,14 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     if (!run) throw new Error(`Harness has no durable Run for ${operationId}`);
     return run;
   };
+  const runBatch = async (operationId: string) => {
+    const scheduler = createMultiShotBatchScheduler({
+      repository, submission, projectId: PROJECT_ID, runId: operationId,
+      now,
+    });
+    await scheduler.runToQuiescence();
+    await canvasLanding.landCanvasBestEffort(PROJECT_ID, operationId);
+  };
   const handler = createGenerationPlanningHandler({
     registry,
     operations,
@@ -235,7 +254,6 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     prepareAuthorization: ({ lease: projectLease, operation, contract, multiShot }) => prepareProductionGenerationAuthorization({
       lease: projectLease, projectRevision: 0, operation, contract,
       run: requiredHarnessRun(operation.projectId, operation.operationId),
-      maximumSpend: requiredHarnessRun(operation.projectId, operation.operationId).policy.maxSpend,
       ...(multiShot ? { multiShot } : {}),
       providers: [provider],
       resolveShotPrice: (shotContract) => {
@@ -257,12 +275,7 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
           commandId: `fixture:submit:v${run.planVersion}`, expectedRevision: run.revision,
           type: "generation.submit", payload: {}, issuedAt: now(),
         });
-        const scheduler = createMultiShotBatchScheduler({
-          repository, submission, projectId: PROJECT_ID, runId: operation.operationId,
-          perShotPrice: () => (hooks.unpriced ? { known: false } : { known: true, amount: PRICING.cost }), now,
-        });
-        await scheduler.runToQuiescence();
-        await canvasLanding.landCanvasBestEffort(PROJECT_ID, operation.operationId);
+        if (!hooks.holdDispatch?.()) await runBatch(operation.operationId);
         return { operationId: operation.operationId, state: "submitted", nextAction: "observe" };
       }
       const started = await submission.start({ projectId: PROJECT_ID, operationId: operation.operationId }) as { nextAction: string };
@@ -284,13 +297,16 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     now,
     randomId: () => `receipt-sequence-${++receiptSequence}`,
   });
-  const authority = createRunOwnedGenerationGateAuthority({ owner: owner as never, operations, planning: handler, receipts, projectRevisionResolver: () => 0, now });
+  const authority = createRunOwnedGenerationGateAuthority({ owner: owner as never, operations, planning: handler, receipts, now });
   const actions = (rendererTarget: () => { webContentsId: number; frameId: number; origin: string } | null) => createPendingSpendActions({
     isProjectOpen: () => true,
     runs: { read: (projectId, runId) => repository.read(projectId, runId), list: (projectId) => repository.list(projectId) },
     operations,
     planning: handler,
-    requestGenerationGate: authority.requestGenerationGate,
+    requestGenerationGate: async input => {
+      await hooks.beforeGate?.();
+      return authority.requestGenerationGate(input);
+    },
     authorizeGeneration: async input => {
       await hooks.beforeAuthorize?.();
       const result = await authority.authorizeGeneration(input);
@@ -302,6 +318,8 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
     committedBinding: () => ({ projectId: PROJECT_ID, immutableProjectUuid: "project-uuid-1", projectGeneration: 1 }),
     leaseFor: async () => lease,
     resolvePricing: () => (hooks.unpriced ? undefined : PRICING),
+    // 与生产同一条并入规则（同一个目录）：卡上改一下也过 resolvePlanPatch。
+    normalizePatch: (base, patch) => resolvePlanPatch({ baseCandidate: base, userPatch: patch, registry }).normalizedPatch,
     now,
   });
   const window = () => ({ webContentsId: 1, frameId: 0, origin: "app://nomi" });
@@ -320,7 +338,9 @@ function buildActions(base: ReturnType<typeof harness>, vendorOrigin: string, su
       approvalPolicy: () => ({ mode, spend: "confirm" }),
     },
   );
-  return { actions, withWindow: actions(window), withoutWindow: actions(() => null), submission, handler, receipts, authority, transport };
+  return { actions, withWindow: actions(window), withoutWindow: actions(() => null), submission, handler, receipts, authority, transport,
+    /** 真跑一轮多镜调度（`holdDispatch` 放开之后用）。 */
+    dispatchNow: (operationId: string = OPERATION_ID) => runBatch(operationId) };
 }
 
 /** 模型那一侧的一次调用（`tryExecute` 的入参形状）。 */
@@ -339,6 +359,27 @@ async function draft(base: ReturnType<typeof harness>): Promise<void> {
     now: now(), origin: { host: "nomi", actorId: "agent-panel" },
   });
   await base.canvasLanding.settleCanvasLanding(PROJECT_ID);
+}
+
+/**
+ * Agent 起草的几张图（`draft_shots`：落画布、不出卡），然后 `generate` 把它们摆到卡上。
+ * 逐镜点（`agentPanelSpendPerShot`）和「生成剩下 N 张」（`agentPanelSpendRemaining`）共用这一份起草，不各抄一遍。
+ */
+export async function imageDraft(base: ReturnType<typeof harness>, handler: ReturnType<typeof buildActions>["handler"], count = 2) {
+  const shots = Array.from({ length: count }, (_, offset) => offset + 1).map((index) => ({
+    shotId: `shot-${index}`,
+    role: "shot" as const,
+    candidate: { ...candidate("image-model", { size: "1024x1024" }), candidateId: `candidate-${index}`, prompt: `第 ${index} 张：渔港清晨` },
+  }));
+  await base.operations.create({ operationId: OPERATION_ID, projectId: PROJECT_ID, candidate: shots[0].candidate, shots,
+    cardHidden: true, origin: { host: "nomi", actorId: "agent-panel" }, now: now() });
+  await base.canvasLanding.settleCanvasLanding(PROJECT_ID);
+  await handler({ capability: "present", params: { operationId: OPERATION_ID }, lease });
+}
+
+/** 供应商收到了哪几镜：loopback 记下的是幂等键，哪一镜由键里的 shotId 认。 */
+export function shotsSent(submits: readonly string[]): readonly string[] {
+  return submits.map((key) => /shot-\d+/.exec(key)?.[0] ?? key);
 }
 
 export function resetSpendFixture() {

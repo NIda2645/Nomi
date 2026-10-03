@@ -33,11 +33,11 @@ export function isStoppedRunStatus(status: ProductionRunStatus): boolean {
 }
 
 const STOP_REASONS: Readonly<Record<ProductionRunStopReason, true>> = {
-  budget: true,
   failed: true,
   user_paused: true,
   user_cancelled: true,
   restart_recovery: true,
+  consent_expired: true,
 };
 
 /** 命令里带来的原因：只认这张表里的词，别的一律当作没给。 */
@@ -45,6 +45,18 @@ export function parseRunStopReason(value: unknown): ProductionRunStopReason | un
   return typeof value === "string" && Object.prototype.hasOwnProperty.call(STOP_REASONS, value)
     ? (value as ProductionRunStopReason)
     : undefined;
+}
+
+/**
+ * 读盘归一（`productionRunRepository.withReadDefaults` 调它）：盘上记的停下原因这一版已经不认识了——上一版的
+ * `budget`（2026-10-01 删）——就当作没记原因，读出来是中性的「已停」（`unknown`），绝不再说成「预算已用完」。
+ * 只改内存里的投影，不回写盘。
+ */
+export function normalizeLegacyStopReason<T extends Pick<ProductionRun, "stop">>(run: T): T {
+  const reason = (run.stop as { reason?: unknown } | undefined)?.reason;
+  if (!run.stop || parseRunStopReason(reason)) return run;
+  const { stop: _dropped, ...rest } = run;
+  return rest as T;
 }
 
 /**

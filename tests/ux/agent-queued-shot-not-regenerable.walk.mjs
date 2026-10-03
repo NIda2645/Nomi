@@ -21,7 +21,7 @@ import {
   chooseAssistantModel, createRuntimeWalk, openCanvas, readProject, recorded, sendCanvas,
 } from './agent-runtime-walk-support.mjs'
 
-// 有价目的那一档：报得出合计，卡上才有「逐镜 / 全部」；价格未知时只能逐镜确认，一次只派一镜，造不出排队。
+// 付费卡逐镜（2026-09-30）：第 1 页点「生成这张」（供应商受理被夹具压着），卡翻到第 2 页再点一次——第 2 镜批过、还没轮到，就是排队。
 
 const ASK = 'S_QUEUE_ASK：画两张橘猫：一张在窗台晒太阳，一张在沙发上打盹。先别生成。'
 const GO = 'S_QUEUE_GO：好，生成吧。'
@@ -153,12 +153,14 @@ try {
   await recorded(goTurn.received, 'generate request')
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   await proveProbe(card, '报价卡摆在面板里等人')
-  await clickOrFail(card.getByText('全部', { exact: true }), '卡上的范围切到「全部」（两镜一起派）')
   await walk.snap('card-two-shots-zh')
   walk.fixture.holdSubmits(true)
-  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮', { noWaitAfter: true })
+  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '第 1 页「生成这张」', { noWaitAfter: true })
   await expect.poll(() => walk.fixture.images.length, { message: '第一镜的生成请求到了供应商', timeout: stationTimeout({ operations: 4 }) }).toBe(1)
-  await recorded(goDone.received, 'generate returns after the approval')
+  // 卡还开着、只剩第 2 镜（标题只数还没决定的那一镜）：再点一次「生成这张」。
+  await expect(card.locator('[data-v4-block="slot-title"]'), '卡还在、只剩第 2 镜').toContainText('生成这 1 张', { timeout: stationTimeout({ operations: 2 }) })
+  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '第 2 页「生成这张」', { noWaitAfter: true })
+  await recorded(goDone.received, 'generate returns once both shots are answered')
   expect(readRun(projectRoot, operationId)?.generationPlan?.state, '计划已提交').toBe('submitted')
 
   // 盘上硬证据：两镜都勾进了这一批；一镜在提交（受理被夹具压着），另一镜已授权、还没轮到。

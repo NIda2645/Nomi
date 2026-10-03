@@ -12,6 +12,7 @@ import type { ProjectBinding } from "../shared/projectBinding";
 import type { ProjectAgentApprovalPolicy } from "../shared/agentCapabilities/capabilityApprovalPolicy";
 import { readAgentApprovalPolicy } from "../settings/agentApprovalPolicySettings";
 import type { ProductionRunService } from "../productionRun/productionRunService";
+import { waitingAuthorizationGates } from "../shared/productionSpendAuthority";
 
 type RunOwner = Pick<ProductionRunService, "readFull" | "command">;
 
@@ -92,17 +93,17 @@ export function createResidentGenerationAdapterFactory(
   const reject = async ({ params, lease }: { params: Record<string, unknown>; lease: ProjectLeaseV2 }): Promise<void> => {
     const operationId = typeof params.operationId === "string" ? params.operationId.trim() : "";
     if (!operationId) return;
-    const current = input.owner.readFull(lease.projectId, operationId);
-    const gateId = current.generationPlan?.authorizationGateId;
-    const gate = gateId ? current.gates.find((candidate) => candidate.gateId === gateId) : undefined;
-    if (!gate || gate.status !== "waiting") return;
-    await input.owner.command(lease.projectId, operationId, {
-      commandId: `generation.gate.reject:${gate.gateId}`,
-      expectedRevision: current.revision,
-      type: "gate.decide",
-      payload: { gateId: gate.gateId, status: "rejected", authorizationDigest: current.generationPlan?.authorizationDigest },
-      issuedAt: new Date().toISOString(),
-    });
+    // 这一次在等决定的授权（外部宿主那一整份，住在它自己那道门上）。没有在等的 = 已经决过了，no-op。
+    let current = input.owner.readFull(lease.projectId, operationId);
+    for (const gate of waitingAuthorizationGates(current)) {
+      current = (await input.owner.command(lease.projectId, operationId, {
+        commandId: `generation.gate.reject:${gate.gateId}`,
+        expectedRevision: current.revision,
+        type: "gate.decide",
+        payload: { gateId: gate.gateId, status: "rejected", authorizationDigest: gate.authorizationDigest },
+        issuedAt: new Date().toISOString(),
+      })).run;
+    }
   };
 
   const factory = (

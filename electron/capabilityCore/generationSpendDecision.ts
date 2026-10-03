@@ -55,6 +55,11 @@ export type GenerationSpendDecisionInput = Readonly<{
   decision: GenerationSpendDecision;
   /** 写进 Run 的 origin（面板是 `agent-panel`，lane 自动档是 `agent-lane`）。 */
   actorId: string;
+  /**
+   * 这一次批哪几镜（付费卡上点的那一镜）。缺省 = 还没封过的全部（全自动档替用户批整份草稿；外部宿主的整份批准）。
+   * 这一份授权只盖它们：信封、收据、派发都只认这几镜（`mcpGenerationMultiShot.resolveGateScope`）。
+   */
+  shotIds?: readonly string[];
 }>;
 
 export type GenerationSpendDecisionOutcome = Readonly<{
@@ -81,7 +86,7 @@ export async function decideGenerationSpend(
   deps: GenerationSpendDecisionDeps,
   input: GenerationSpendDecisionInput,
 ): Promise<GenerationSpendDecisionOutcome> {
-  const params = { operationId: input.operationId };
+  const params = { operationId: input.operationId, ...(input.shotIds ? { shotIds: [...input.shotIds] } : {}) };
   const gate = await deps.requestGenerationGate({ params, lease: input.lease });
   const token = generationChallengeTokenOf(gate);
   const attestation = input.decision.kind === "human-gesture"

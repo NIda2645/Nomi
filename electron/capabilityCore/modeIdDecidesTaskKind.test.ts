@@ -5,7 +5,9 @@
 // 「this shot asks for text_to_video」，而模型一个字都没这么说。
 import { describe, expect, it } from "vitest";
 
-import { inferGenerationTaskKind } from "./semanticGenerationCandidate";
+import { shotTaskKind } from "./semanticGenerationCandidate";
+
+const kindOf = (params: Record<string, unknown>) => shotTaskKind({ params });
 import { transportTaskKindForModeId } from "../shared/videoCapabilities";
 
 describe("modeId 定了，taskKind 就定了", () => {
@@ -27,21 +29,23 @@ describe("modeId 定了，taskKind 就定了", () => {
   });
 
   it("A3：写了 i2v 没写 taskKind → 推出 image_to_video，而不是按提示词猜 text_to_video", () => {
-    expect(inferGenerationTaskKind({ modeId: "i2v", prompt: "深夜街道，一位夜归人走近摊位，镜头缓慢拉远" }))
+    expect(kindOf({ modeId: "i2v", prompt: "深夜街道，一位夜归人走近摊位，镜头缓慢拉远" }))
       .toBe("image_to_video");
   });
 
   it("A6：写了 t2v 没写 taskKind → 推出 text_to_video，而不是 text_to_image", () => {
-    expect(inferGenerationTaskKind({ modeId: "t2v", prompt: "招牌灯还亮着" })).toBe("text_to_video");
+    expect(kindOf({ modeId: "t2v", prompt: "招牌灯还亮着" })).toBe("text_to_video");
   });
 
   it("模型自己写了 taskKind 就听它的——派生只补它没说的那一格", () => {
-    expect(inferGenerationTaskKind({ modeId: "i2v", taskKind: "text_to_video", prompt: "x" })).toBe("text_to_video");
+    expect(kindOf({ modeId: "i2v", taskKind: "text_to_video", prompt: "x" })).toBe("text_to_video");
   });
 
-  it("阳性对照：没有 modeId 时提示词启发式原样保留（这次只补了一格，没改别的）", () => {
-    expect(inferGenerationTaskKind({ prompt: "一只猫" })).toBe("text_to_image");
-    expect(inferGenerationTaskKind({ prompt: "一段视频，镜头推近" })).toBe("text_to_video");
+  // 2026-09-30（付费卡① 第 9 条）：提示词启发式整个删了——没写模式、没写种类、也没点名模型，就请它写明，
+  // 不再按「视频 / 镜头」这类词替它定（那正是「做一个封面」被建成视频镜头的那条路）。
+  it("没有 modeId、没有 taskKind、也没点名模型 → 拒绝并请它写明，不按提示词猜", () => {
+    expect(() => kindOf({ prompt: "一只猫" })).toThrow(/set taskKind/);
+    expect(() => kindOf({ prompt: "一段视频，镜头推近" })).toThrow(/set taskKind/);
   });
 });
 

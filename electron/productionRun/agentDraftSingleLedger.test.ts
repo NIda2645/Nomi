@@ -295,7 +295,7 @@ describe('封存不许抹掉画布绑定', () => {
       projectRevision: 7,
       operation: { operationId: 'run-1', projectId: 'proj-1', candidate: shots[0].candidate, planVersion: current.planVersion },
       contract: contractFor('c9-shot-1'),
-      multiShot: { shots, planHash: 'plan-hash-1' },
+      multiShot: { shots, scope: shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId), planHash: 'plan-hash-1' },
       run: current,
       providers: [{
         providerId: 'apimart',

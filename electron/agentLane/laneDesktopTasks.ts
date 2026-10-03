@@ -6,12 +6,12 @@ import { runStopReason } from '../shared/productionRunStop'
 
 /**
  * needs_attention 在 Agent 任务列表里算「失败」还是「停了」：只读 Run 在停下那一刻记下的原因（runStopReason）。
- * 以前一律当失败——额度用完的停也被说成失败。
+ * 以前一律当失败。等用户再确认一次（consent_expired）是停着等他，不是失败。
  */
 function attentionTaskStatus(run: ProductionRun): LaneTaskStatus {
   const reason = runStopReason(run)
   switch (reason) {
-    case 'budget':
+    case 'consent_expired':
     case 'user_paused':
     case 'user_cancelled':
       return 'stopped'

@@ -1,7 +1,6 @@
-// 覆写账本的语义（2026-09-11 用户拍板的那三条）：
-//   ① 卡上改的东西**不落画布**，只落这份账本；
-//   ② 「全部」改公共层、「逐镜」改这一镜层，**逐镜压全部**；
-//   ③ 来回切模式两层都还在（不丢覆写）。
+// 覆写账本的语义（2026-09-11 用户拍板）：卡上改的东西**不落画布**，只落这份账本。
+// 2026-09-30 付费卡逐镜：每一页的主按钮只生成那一镜，「逐镜 / 全部」切换和它的「全部」那一层一起删了——
+// 账本里只有每一镜自己的改动；上一版存下的「全部」那一层在读盘时压进每一镜，他打过的字一个不丢。
 import { describe, expect, it, vi } from 'vitest'
 import type { PendingSpendShot } from '../../../desktop/productionRunBridgeTypes'
 import type { GenerationCanvasNode } from '../../generationCanvas/model/generationCanvasTypes'
@@ -25,6 +24,7 @@ function shot(id: string, overrides: Partial<PendingSpendShot> = {}): PendingSpe
     prompt: '六棱柱',
     providerId: 'apimart',
     modelId: 'gpt-image-2',
+    kind: 'image',
     parameters: { size: '1024x1024', quality: 'standard' },
     price: { known: true, amount: 0.3 },
     ...overrides,
@@ -62,30 +62,21 @@ describe('spendCardDraft', () => {
   it('「逐镜」只改这一镜，别的镜一个字不动', () => {
     const shots = [shot('a', { nodeId: 'n-a' }), shot('b', { nodeId: 'n-b', index: 2 })]
     const draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, shots[0],
-      node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024', quality: 'standard' }), 'each')
+      node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024', quality: 'standard' }))
     expect(effectivePatchForShot(draft, 'a').parameters).toEqual({ size: '1536x1024', quality: 'standard' })
     expect(effectivePatchForShot(draft, 'b')).toEqual({})
   })
 
-  it('「全部」改公共层，每一镜都吃到', () => {
-    const shots = [shot('a'), shot('b', { index: 2 })]
-    const draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, shots[0],
-      node({ modelKey: 'seedream', modelVendor: 'apimart', size: '1024x1024', quality: 'standard' }), 'all')
-    expect(effectivePatchForShot(draft, 'a').modelId).toBe('seedream')
-    expect(effectivePatchForShot(draft, 'b').modelId).toBe('seedream')
-  })
-
-  it('逐镜覆写压全部，来回切模式两层都还在', () => {
-    const first = shot('a')
-    // 先在「逐镜」里把 a 改成 seedream
-    let draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, first,
-      node({ modelKey: 'seedream', modelVendor: 'apimart', size: '1024x1024', quality: 'standard' }), 'each')
-    // 再切「全部」把整批改成 nano-banana（视图此刻只叠公共层，所以基线是宿主那一份）
-    draft = draftAfterNodeEdit(draft, first,
-      node({ modelKey: 'nano-banana', modelVendor: 'apimart', size: '1024x1024', quality: 'standard' }), 'all')
-    expect(effectivePatchForShot(draft, 'a').modelId, '逐镜层压在公共层上面').toBe('seedream')
-    expect(effectivePatchForShot(draft, 'b').modelId, '没有逐镜覆写的镜吃公共层').toBe('nano-banana')
-    expect(effectivePatchForShot(draft, 'a', 'all').modelId, '「全部」视图看到的是正在编辑的那一层').toBe('nano-banana')
+  it('上一版存下的「全部」那一层：读盘时压进每一镜（这一镜自己的改动压在上面），不丢字', () => {
+    const legacy = { all: { modelId: 'nano-banana', parameters: { quality: 'high' } }, perShot: { a: { modelId: 'seedream' } } }
+    const storage = { getItem: vi.fn(() => JSON.stringify(legacy)), setItem: vi.fn(), removeItem: vi.fn() }
+    vi.stubGlobal('localStorage', storage)
+    try {
+      const restored = readSpendDraft('legacy-draft', ['a', 'b'])
+      expect(effectivePatchForShot(restored, 'a'), '这一镜自己的改动压在「全部」上面').toEqual({ modelId: 'seedream', parameters: { quality: 'high' } })
+      expect(effectivePatchForShot(restored, 'b'), '没有自己改动的镜吃到「全部」那一层').toEqual({ modelId: 'nano-banana', parameters: { quality: 'high' } })
+      expect(restored).not.toHaveProperty('all')
+    } finally { vi.unstubAllGlobals() }
   })
 
   it('有效候选 = 宿主那一镜 ⊕ 覆写；没被覆写的参数原样留着', () => {
@@ -100,7 +91,7 @@ describe('spendCardDraft', () => {
   it('确认那一刻只发有改动的镜；限定 shotIds 时别的镜不发', () => {
     const shots = [shot('a'), shot('b', { index: 2 })]
     const draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, shots[1],
-      node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024', quality: 'standard' }), 'each')
+      node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024', quality: 'standard' }))
     expect(draftIsEmpty(draft)).toBe(false)
     expect(draftIsEmpty(EMPTY_SPEND_DRAFT)).toBe(true)
     expect(revisionsForConfirm(shots, draft).map((entry) => entry.shotId)).toEqual(['b'])
@@ -110,10 +101,10 @@ describe('spendCardDraft', () => {
   it('改回原值等于没改：不留一个和原值相等的空覆写', () => {
     const base = shot('a')
     let draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, base,
-      node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024', quality: 'standard' }), 'each')
+      node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024', quality: 'standard' }))
     expect(draftIsEmpty(draft)).toBe(false)
     draft = draftAfterNodeEdit(draft, base,
-      node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1024x1024', quality: 'standard' }), 'each')
+      node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1024x1024', quality: 'standard' }))
     expect(draftIsEmpty(draft)).toBe(true)
   })
 })
@@ -140,7 +131,7 @@ it('a fresh quote on the same operation still reads the user edits it never appr
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a')] }
-    const draft = { all: {}, perShot: { a: { prompt: 'unapproved edit' } } }
+    const draft = { perShot: { a: { prompt: 'unapproved edit' } } }
     retainSpendDraft(spendDraftKey(pending), draft)
     expect(restoreSpendDraft(pending)).toEqual(draft)
     // 报价指纹的每一维单独换一次，账本都还是同一本：它们是「你确认的是不是你看到的那个数」，不是地址。
@@ -158,14 +149,14 @@ it('a fresh quote on the same operation still reads the user edits it never appr
 
 
 // 镜头维度不在键里，在这本账本**自己的结构**里（`perShot`）：一次生成一本，一本里镜头各归各的。
-// 把 shotId 提进键就是一次生成 N 本，「全部」那一层没有家——这条钉住「同一次生成里镜头仍然隔离」。
+// 把 shotId 提进键就是一次生成 N 本，翻页、去掉一镜都要在几本之间搬字——这条钉住「同一次生成里镜头仍然隔离」。
 it('one operation keeps one ledger in which shots stay isolated from each other', () => {
   const entries = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b')] }
     const edited = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, pending.shots[0]!,
-      applyPatchToNode(node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1024x1024', quality: 'standard' }), { prompt: 'A only' }), 'each')
+      applyPatchToNode(node({ modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1024x1024', quality: 'standard' }), { prompt: 'A only' }))
     retainSpendDraft(spendDraftKey(pending), edited)
     expect([...entries.keys()], '一次生成只有一本账本').toEqual([spendDraftKey(pending)])
     const restored = restoreSpendDraft({ ...pending, quoteId: 'q2', planVersion: 2 })
@@ -174,18 +165,18 @@ it('one operation keeps one ledger in which shots stay isolated from each other'
   } finally { vi.unstubAllGlobals() }
 })
 
-it('partial consumption keeps all-layer and per-shot edits for remaining shots across new quotes and scopes', () => {
+it("partial consumption keeps the remaining shots' edits across new quotes", () => {
   const entries = new Map<string, string>()
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b'), shot('c')] }
-    const draft = { all: { prompt: 'all edited', parameters: { quality: 'high' } }, perShot: { b: { prompt: 'B edited' } } }
-    // 封印成功的那几镜会把报价推进一版；剩下没提交的那几镜仍然读得回来（T-QA-27 的那一半）。
+    const draft = { perShot: { a: { prompt: 'A edited' }, b: { prompt: 'B edited', parameters: { quality: 'high' } }, c: { prompt: 'C edited' } } }
+    // 点了「生成这张」的那一镜会把报价推进一版；剩下没决定的那几镜仍然读得回来（确认中途失败时，没提交的手改不许丢的那一半）。
     const successor = { ...pending, quoteId: 'q2', planVersion: 2 }
     const remaining = consumeSpendDraft(pending, draft, ['a'])
     expect(effectivePatchForShot(remaining, 'a')).toEqual({})
     expect(effectivePatchForShot(remaining, 'b')).toEqual({ prompt: 'B edited', parameters: { quality: 'high' } })
-    expect(effectivePatchForShot(remaining, 'c')).toEqual(draft.all)
+    expect(effectivePatchForShot(remaining, 'c')).toEqual({ prompt: 'C edited' })
     expect(restoreSpendDraft(successor)).toEqual(remaining)
     const editedAgain = { ...remaining, perShot: { ...remaining.perShot, b: { ...remaining.perShot.b, prompt: 'B edited again' } } }
     retainSpendDraft(spendDraftKey(successor), editedAgain)
@@ -205,7 +196,7 @@ it('confirming every shot consumes this operation ledger without resurrecting fr
   vi.stubGlobal('localStorage', { getItem: (key: string) => entries.get(key) ?? null, setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q1', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b')] }
-    const draft = { all: { prompt: 'all edited' }, perShot: { b: { prompt: 'B edited' } } }
+    const draft = { perShot: { a: { prompt: 'A edited' }, b: { prompt: 'B edited' } } }
     retainSpendDraft(spendDraftKey(pending), draft)
     expect(restoreSpendDraft(pending)).toEqual(draft)
     expect(draftIsEmpty(consumeSpendDraft(pending, draft))).toBe(true)
@@ -216,16 +207,6 @@ it('confirming every shot consumes this operation ledger without resurrecting fr
   } finally { vi.unstubAllGlobals() }
 })
 
-
-it('each can explicitly restore original prompt model and size underneath an all-layer override', () => {
-  const base = shot('a')
-  const original = node({ modelKey: base.modelId, modelVendor: base.providerId, ...base.parameters })
-  const common = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, base,
-    applyPatchToNode(original, { prompt: 'common changed', modelId: 'seedream', parameters: {size:'1536x1024'} }), 'all')
-  const reverted = draftAfterNodeEdit(common, base, original, 'each')
-  expect(effectivePatchForShot(reverted, 'a')).toMatchObject({ prompt: base.prompt, modelId: base.modelId, parameters: {size:'1024x1024'} })
-  expect(effectivePatchForShot(reverted, 'b')).toMatchObject({ prompt: 'common changed', modelId: 'seedream', parameters: {size:'1536x1024'} })
-})
 
 // Exercise the existing persistence owner with untrusted stored JSON.
 describe('persisted spend draft validation', () => {
@@ -241,6 +222,9 @@ describe('persisted spend draft validation', () => {
     { all: { referenceInputs: [null] }, perShot: {} },
     { all: {}, perShot: { a: { referenceInputs: [{ reference: null }] } } },
     { all: {}, perShot: { a: { referenceInputs: [{ url: 'x', kind: 'unknown' }] } } },
+    { perShot: null }, { perShot: [] }, { perShot: { a: [] } },
+    { perShot: { a: { prompt: 42 } } },
+    { perShot: {}, extra: true },
   ])('rejects malformed stored value %j before downstream use', value => {
     const raw = JSON.stringify(value)
     const storage = { getItem: vi.fn(() => raw), setItem: vi.fn(), removeItem: vi.fn() }
@@ -257,8 +241,7 @@ describe('persisted spend draft validation', () => {
 
   it('preserves valid user edits including empty prompt, nested parameters and both reference forms', () => {
     const valid = {
-      all: { prompt: '', parameters: { nested: { items: [null, true, 2, 'x'] } }, referenceInputs: [] },
-      perShot: { a: { prompt: '  preserve spacing  ', referenceInputs: [
+      perShot: { b: { prompt: '', parameters: { nested: { items: [null, true, 2, 'x'] } }, referenceInputs: [] }, a: { prompt: '  preserve spacing  ', referenceInputs: [
         { url: 'https://example.com/a.png', kind: 'image' },
         { reference: { assetId: 'asset', contentHash: 'hash', version: 1, kind: 'image' } },
       ] } },
@@ -284,7 +267,7 @@ it('a storage failure never interrupts the card', () => {
     removeItem: (key: string) => entries.delete(key) })
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b')] }
-    const draft = { all: { prompt: 'retained user input' }, perShot: {} }
+    const draft = { perShot: { a: { prompt: 'retained user input' } } }
     failWrite = true
     expect(() => retainSpendDraft(spendDraftKey(pending), draft)).not.toThrow()
     expect(restoreSpendDraft(pending)).toEqual(EMPTY_SPEND_DRAFT)
@@ -300,7 +283,7 @@ it.each(['exact', 'partial'] as const)('rejects malformed %s recovery without ch
     setItem: (key: string, value: string) => entries.set(key, value), removeItem: (key: string) => entries.delete(key) })
   try {
     const pending = { projectId: 'p', runId: 'r', operationId: 'o', quoteId: 'q', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 1, unknownShotCount: 0, shots: [shot('a'), shot('b')] }
-    const draft = { all: { prompt: 'saved' }, perShot: {} }
+    const draft = { perShot: { a: { prompt: 'saved' } } }
     const other = { ...pending, operationId: 'other' }
     retainSpendDraft(spendDraftKey(other), draft)
     if (kind === 'exact') retainSpendDraft(spendDraftKey(pending), draft)
@@ -310,7 +293,7 @@ it.each(['exact', 'partial'] as const)('rejects malformed %s recovery without ch
     for (const key of entries.keys()) {
       if (key === otherKey) continue
       if (kind === 'partial' && key === spendDraftKey(pending)) { entries.delete(key); continue }
-      entries.set(key, JSON.stringify({ all: {}, perShot: { b: null } }))
+      entries.set(key, JSON.stringify({ perShot: { b: null } }))
     }
     expect(restoreSpendDraft(pending)).toEqual(EMPTY_SPEND_DRAFT)
     expect(entries.get(otherKey)).toBe(otherRaw)

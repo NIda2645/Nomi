@@ -83,10 +83,12 @@ try {
   await sendCanvas(win, REDIRECT)
   const heard = flattenRequestText((await recorded(redirected.received, 'the turn continues with the typed text')).body)
   expect(heard, '那句话一字不改到了模型手里——不许石沉大海').toContain('背景换成清晨的薄雾')
-  expect(heard, '模型读到的是「出价收回、什么都没花、草稿留着」，不是一个错误').toContain('this quote was withdrawn')
+  // 付费卡逐镜（2026-09-30）：模型读到的是宿主的逐镜结局——没决定的镜没生成、没花钱，原因是他打了字。
+  expect(heard, '模型读到的是「没决定、什么都没花、草稿留着」，不是一个错误').toContain('the user wrote a message instead of deciding them')
   await expectAbsent(card, { provenBy: firstCardProof, message: '打字 = 对这张卡的回答：这一次出价收回，卡不留着' })
   await expect(win.locator(`${CANVAS_PANEL}`).getByText('S_WO_HEARD', { exact: false }), '回合在同一轮里接着说话').toBeVisible()
-  expect(readPlan(projectRoot, operationId), '收回的是这一次出价，不是这份计划').toMatchObject({ state: 'draft', cardHidden: true })
+  expect(readPlan(projectRoot, operationId), '收回的是这一次出价，不是这份计划').toMatchObject({ state: 'draft' })
+  expect(readPlan(projectRoot, operationId).presentations?.at(-1)?.closed?.by, '这一次出价记的是「用户打了字」').toBe('user_wrote')
   expect(readPlan(projectRoot, operationId).cancelReason, '打字不是 ×').toBeUndefined()
   expect(await nodeIds(), '画布上的占位一个没动').toEqual(draftedNodes)
   expect(walk.fixture.images, '到此一次供应商请求都没有').toHaveLength(0)
@@ -116,8 +118,8 @@ try {
   await openCanvas(win)
   card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   // 清扫挂在「打开项目」的补齐钩子上，是异步的：等盘上那份计划真的回到未 present，再断言卡不在。
-  await expect.poll(() => readPlan(projectRoot, operationId)?.cardHidden === true, { timeout: DEFAULT_TIMEOUT_MS,
-    message: '重启后那一次出价必须被收回（回 draft / 未 present）' }).toBe(true)
+  await expect.poll(() => readPlan(projectRoot, operationId)?.presentations?.at(-1)?.closed?.by, { timeout: DEFAULT_TIMEOUT_MS,
+    message: '重启后那一次出价必须被收回（关成「被停」，计划回 draft）' }).toBe('stopped')
   await expectAbsent(card, { provenBy: pendingCardProof, message: '重启后没有任何人在等那张卡，它不许再出现' })
   expect(readPlan(projectRoot, operationId), '重启不是用户说「不」：计划还是 draft，不是 cancelled').toMatchObject({ state: 'draft' })
   expect(readPlan(projectRoot, operationId).cancelReason).toBeUndefined()
@@ -152,7 +154,8 @@ try {
     { message: '按下确认之后必须有结论', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
   expect(hostRefusals, `宿主不许拒（实际：${hostRefusals.join(' ')}）`).toHaveLength(0)
   expect(flattenRequestText((await recorded(approved.received, 'generate returns approved')).body),
-    '模型读到「用户批了、已经开始生成」').toContain('The user approved the priced card')
+    // 付费卡逐镜（2026-09-30）：回执渲染宿主的逐镜结局——这张卡上的每一镜都在生成，才说「都在生成」。
+    '模型读到「用户批了、已经开始生成」').toContain('All 1 shot(s) on the card are generating')
 
   // 同回合第二次 generate：上一批已经结清，所以宿主把它当成「同一镜再来一次」——**重新摆一张卡**，要花钱必须再点一次
   // （这是既有的产品路径：`agentPanelSpendBatches` 的「new confirmation … distinct attempt」）。模型自己花不了第二笔。
