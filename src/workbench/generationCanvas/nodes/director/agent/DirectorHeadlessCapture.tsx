@@ -26,13 +26,14 @@ import { useTimelinePlayback } from '../scene/useTimelinePlayback'
 import { ViewportApiContext, type ViewportApiRef } from '../scene/ViewportApiContext'
 import { attachWebGLContextRecovery } from '../scene/webglContextRecovery'
 import { seekTo } from '../timeline/timelineCommands'
-import type { CaptureCameraReadback } from '../scene/ViewportApiContext'
+import type { CaptureCameraReadback, CaptureCharacterPoseReadback } from '../scene/ViewportApiContext'
 import { poseClipStatus } from '../scene/character/poseClipLibrary'
 
 export type HeadlessCaptureFrameReadback = {
   cameraId: string | null
   camera: CaptureCameraReadback | null
   subjectPositions: Record<string, Vec3>
+  characterPoses: Record<string, CaptureCharacterPoseReadback>
 }
 
 export type HeadlessCaptureResult = {
@@ -41,6 +42,7 @@ export type HeadlessCaptureResult = {
   height: number
   cameraIds: Array<string | null>
   frameReadbacks: HeadlessCaptureFrameReadback[]
+  invalidReasons?: string[]
 }
 
 export type DirectorHeadlessCaptureProps = {
@@ -57,6 +59,8 @@ export type DirectorHeadlessCaptureProps = {
   cameraIdAt?: (time: number) => string | null
   /** Burn character labels into frames; omitted keeps the existing product default. */
   burnLabels?: boolean
+  /** Judge-only guard: reject frames where an active ready action renders as a T pose. */
+  rejectTPose?: boolean
   onResult: (result: HeadlessCaptureResult | null) => void
 }
 
@@ -88,6 +92,18 @@ export function actionClipsLoading(scene: DirectorScene): boolean {
   return scene.objects.some((object) => object.type === 'character' && object.visible && object.actionTrackEnabled !== false && (object.actionClips ?? []).some((clip) => clip.clipType === 'action' && Boolean(clip.actionPose) && poseClipStatus(clip.actionPose!) === 'loading'))
 }
 
+function activeReadyAction(object: DirectorScene['objects'][number], time: number): boolean {
+  return object.type === 'character' && object.actionTrackEnabled !== false && (object.actionClips ?? []).some((clip) => clip.clipType === 'action' && Boolean(clip.actionPose) && time >= clip.startTime && time <= clip.endTime && poseClipStatus(clip.actionPose!) === 'ready')
+}
+
+export function isTPose(pose: CaptureCharacterPoseReadback): boolean {
+  const shoulderY = (pose.leftShoulder.y + pose.rightShoulder.y) / 2
+  const shoulderSpan = Math.max(0.1, Math.hypot(pose.leftShoulder.x - pose.rightShoulder.x, pose.leftShoulder.z - pose.rightShoulder.z))
+  const leftReach = Math.hypot(pose.leftHand.x - pose.leftShoulder.x, pose.leftHand.z - pose.leftShoulder.z)
+  const rightReach = Math.hypot(pose.rightHand.x - pose.rightShoulder.x, pose.rightHand.z - pose.rightShoulder.z)
+  return Math.abs(pose.leftHand.y - shoulderY) <= 0.08 && Math.abs(pose.rightHand.y - shoulderY) <= 0.08 && leftReach >= shoulderSpan * 0.45 && rightReach >= shoulderSpan * 0.45
+}
+
 function captureDimensions(project: DirectorProject, maxShortSide: number | undefined, captureSize: { width: number; height: number } | undefined): { width: number; height: number } {
   if (captureSize) return captureSize
   const full = exportDimensions(project.exportRatio, project.exportResolution)
@@ -113,7 +129,7 @@ export function resolveHeadlessCameraId(scene: DirectorScene, time: number, came
   return cameraIdAt ? cameraIdAt(time) : (scene.cameras[0]?.id ?? null)
 }
 
-function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabels = true, waitForActionClips = false, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
+function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabels = true, waitForActionClips = false, rejectTPose = false, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
   const store = useDirectorStoreApi()
   const registry = useSceneRegistry()
 
@@ -147,7 +163,13 @@ function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabel
         }
         frames.push(frame.dataUrl)
         cameraIds.push(cameraId)
-        frameReadbacks.push({ cameraId, camera: frame.camera ?? null, subjectPositions: frame.subjectPositions ?? {} })
+        const characterPoses = frame.characterPoses ?? {}
+        const tPoseIds = rejectTPose ? scene.objects.filter((object) => activeReadyAction(object, time) && characterPoses[object.id] && isTPose(characterPoses[object.id])).map((object) => object.id) : []
+        if (tPoseIds.length) {
+          onResult({ frames: [], width, height, cameraIds: [], frameReadbacks: [], invalidReasons: tPoseIds.map((id) => `t-pose:${id}@${time}`) })
+          return
+        }
+        frameReadbacks.push({ cameraId, camera: frame.camera ?? null, subjectPositions: frame.subjectPositions ?? {}, characterPoses })
       }
       if (!cancelled) onResult({ frames, width, height, cameraIds, frameReadbacks })
     }
@@ -160,7 +182,7 @@ function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabel
   return null
 }
 
-export function DirectorHeadlessCapture({ project, times, maxShortSide, captureSize, cameraIdAt, burnLabels, waitForActionClips, onResult }: DirectorHeadlessCaptureProps): JSX.Element {
+export function DirectorHeadlessCapture({ project, times, maxShortSide, captureSize, cameraIdAt, burnLabels, waitForActionClips, rejectTPose, onResult }: DirectorHeadlessCaptureProps): JSX.Element {
   const store = React.useMemo(() => createDirectorStore({ rawProject: project, defaultSceneName: project.scenes[0]?.name ?? 'Scene 1' }), [project])
   const registry = React.useMemo(() => createSceneRefRegistry(), [])
   const apiRef = React.useRef(null) as ViewportApiRef
@@ -187,7 +209,7 @@ export function DirectorHeadlessCapture({ project, times, maxShortSide, captureS
               <DirectorEntities />
               <PlaybackBinder />
               <CaptureBinder />
-              <CaptureDriver times={times} maxShortSide={maxShortSide} captureSize={captureSize} cameraIdAt={cameraIdAt} burnLabels={burnLabels} waitForActionClips={waitForActionClips} onResult={onResult} />
+              <CaptureDriver times={times} maxShortSide={maxShortSide} captureSize={captureSize} cameraIdAt={cameraIdAt} burnLabels={burnLabels} waitForActionClips={waitForActionClips} rejectTPose={rejectTPose} onResult={onResult} />
             </SceneRegistryContext.Provider>
           </FencedCanvas>
         </ViewportApiContext.Provider>

@@ -12,11 +12,12 @@ import { useThree } from '@react-three/fiber'
 import { useDirectorStoreApi } from '../../DirectorEditorContext'
 import { CHARACTER_HEIGHT } from '../entities/CharacterEntity'
 import { useSceneRegistry } from '../SceneRegistryContext'
-import type { CaptureCameraReadback, CaptureFrameRequest, CaptureFrameResult } from '../ViewportApiContext'
+import type { CaptureCameraReadback, CaptureCharacterPoseReadback, CaptureFrameRequest, CaptureFrameResult } from '../ViewportApiContext'
 import { buildCaptureCamera, drawLabels, encodeCanvas, FrameRenderer, type CaptureLabel } from './directorCapture'
 import { transformCameraPose } from '../../model/cameraCoordinateSpace'
 import { sceneFrame } from '../../model/sceneObjectGraph'
 import { characterLabelAnchor } from '../character/characterLabel'
+import { indexBonesByBaseName } from '../character/poseSnapshot'
 
 const BLACK = new THREE.Color(0x000000)
 
@@ -121,14 +122,24 @@ export function CaptureBinder(): null {
       if (context) drawLabels(context, labels, request.width, request.height)
       const encoded = await encodeCanvas(canvas)
       const subjectPositions: Record<string, { x: number; y: number; z: number }> = {}
+      const characterPoses: Record<string, CaptureCharacterPoseReadback> = {}
       for (const object of store.getState().activeScene().objects) {
         if (!object.visible || object.isAuxiliary) continue
         const root = registry.get(object.id)
         if (!root) continue
         const position = root.getWorldPosition(new THREE.Vector3())
         subjectPositions[object.id] = { x: position.x, y: position.y, z: position.z }
+        if (object.type === 'character') {
+          const bones = indexBonesByBaseName(root)
+          // Mixamo's LeftArm/RightArm nodes are the shoulder joints; UE4 assets use clavicle_l/r.
+          const leftShoulder = bones.get('leftarm') ?? bones.get('clavicle_l'), rightShoulder = bones.get('rightarm') ?? bones.get('clavicle_r'), leftHand = bones.get('lefthand') ?? bones.get('hand_l'), rightHand = bones.get('righthand') ?? bones.get('hand_r')
+          if (leftShoulder && rightShoulder && leftHand && rightHand) {
+            const point = (bone: THREE.Object3D) => { const value = bone.getWorldPosition(new THREE.Vector3()); return { x: value.x, y: value.y, z: value.z } }
+            characterPoses[object.id] = { leftShoulder: point(leftShoulder), rightShoulder: point(rightShoulder), leftHand: point(leftHand), rightHand: point(rightHand) }
+          }
+        }
       }
-      return { dataUrl: encoded.dataUrl, blob: encoded.blob, width: request.width, height: request.height, camera: resolved.readback, subjectPositions }
+      return { dataUrl: encoded.dataUrl, blob: encoded.blob, width: request.width, height: request.height, camera: resolved.readback, subjectPositions, characterPoses }
     }
 
     registry.registerFrameCapturer(capture)

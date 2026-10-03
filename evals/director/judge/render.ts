@@ -9,9 +9,14 @@ import type { HeadlessCaptureFrameReadback } from '../../../src/workbench/genera
 import { DIRECTOR_EXPORT_FPS } from '../../../src/workbench/generationCanvas/nodes/director/model/exportSize'
 import { compareCaptureReadback, type MeasurementSideGap, type ReadbackMismatch } from './readback'
 
-export type RenderedVideo = { video: string; contactSheet: string; frames: string[]; times: number[]; width: number; height: number; cameraIds: Array<string | null>; frameReadbacks: HeadlessCaptureFrameReadback[]; readbackMismatches: ReadbackMismatch[]; measurementSideGaps: MeasurementSideGap[] }
+export type RenderedVideo = { video: string; contactSheet: string; frames: string[]; times: number[]; width: number; height: number; cameraIds: Array<string | null>; frameReadbacks: HeadlessCaptureFrameReadback[]; readbackMismatches: ReadbackMismatch[]; measurementSideGaps: MeasurementSideGap[]; unanimatedCharacterIds: string[] }
 export const JUDGE_RENDER_WIDTH = 480
 export const JUDGE_RENDER_HEIGHT = 270
+
+export function charactersWithoutActionClips(project: DirectorProject): string[] {
+  const scene = project.scenes.find((item) => item.id === project.activeSceneId) ?? project.scenes[0]
+  return (scene?.objects ?? []).filter((object) => object.type === 'character' && object.visible && object.actionTrackEnabled !== false && !(object.actionClips ?? []).some((clip) => clip.clipType === 'action')).map((object) => object.id)
+}
 
 function startVite(repoRoot: string): ChildProcess {
   return spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', '5187'], { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -81,7 +86,7 @@ export async function renderProject(project: DirectorProject, outDir: string, la
     const drawtext = `drawtext=${font ? `fontfile=${font}:` : ''}text='t=%{pts\\:1.1f}s':x=12:y=12:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.65`
     ffmpegRun(['-y', '-hide_banner', '-loglevel', 'error', '-i', path.join(frameDir, '%06d.png'), '-vf', `fps=2,${drawtext},tile=4x4:padding=6:margin=6`, '-frames:v', '1', contactSheet])
     const readback = compareCaptureReadback(project, times, result.frameReadbacks, result.width, result.height)
-    return { video, contactSheet, frames: framePaths, times, width: result.width, height: result.height, cameraIds: result.cameraIds, frameReadbacks: result.frameReadbacks, readbackMismatches: readback.mismatches, measurementSideGaps: readback.measurementSideGaps }
+    return { video, contactSheet, frames: framePaths, times, width: result.width, height: result.height, cameraIds: result.cameraIds, frameReadbacks: result.frameReadbacks, readbackMismatches: readback.mismatches, measurementSideGaps: readback.measurementSideGaps, unanimatedCharacterIds: charactersWithoutActionClips(project) }
   } finally {
     await browser?.close()
     server.kill('SIGTERM')

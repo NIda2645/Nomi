@@ -21,9 +21,10 @@ export function CaptureBridge({ request, onDone }: { request: Request; onDone: (
       times={request.times}
       captureSize={{ width, height }}
       waitForActionClips
+      rejectTPose
       cameraIdAt={(time) => scene ? programCameraIdAt(time, scene.cameras, scene.timelineTrackOrder) : null}
       burnLabels={false}
-      onResult={(result) => onDone(result ?? { error: 'headless capture returned null' })}
+      onResult={(result) => result?.invalidReasons?.length ? onDone({ error: `render invalid: ${result.invalidReasons.join(', ')}` }) : onDone(result ?? { error: 'headless capture returned null' })}
     />
   )
 }

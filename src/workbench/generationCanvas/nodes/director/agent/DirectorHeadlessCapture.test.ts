@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { DirectorScene } from '../model/directorTypes'
-import { actionClipsLoading, resolveHeadlessCameraId } from './DirectorHeadlessCapture'
+import { actionClipsLoading, isTPose, resolveHeadlessCameraId } from './DirectorHeadlessCapture'
 
 const scene = { cameras: [{ id: 'camera-a' }, { id: 'camera-b' }] } as DirectorScene
 
@@ -16,5 +16,10 @@ describe('resolveHeadlessCameraId', () => {
 
   it('does not wait for characters without action clips', () => {
     expect(actionClipsLoading({ objects: [{ type: 'character', visible: true, actionClips: [] }] } as DirectorScene)).toBe(false)
+  })
+
+  it('flags horizontal hands only when the frame has an active ready action', () => {
+    expect(isTPose({ leftShoulder: { x: -0.2, y: 1.5, z: 0 }, rightShoulder: { x: 0.2, y: 1.5, z: 0 }, leftHand: { x: -0.9, y: 1.5, z: 0 }, rightHand: { x: 0.9, y: 1.5, z: 0 } })).toBe(true)
+    expect(isTPose({ leftShoulder: { x: -0.2, y: 1.5, z: 0 }, rightShoulder: { x: 0.2, y: 1.5, z: 0 }, leftHand: { x: -0.9, y: 1.1, z: 0 }, rightHand: { x: 0.9, y: 1.1, z: 0 } })).toBe(false)
   })
 })

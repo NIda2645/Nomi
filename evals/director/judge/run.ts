@@ -39,6 +39,7 @@ async function main(): Promise<void> {
   const calibrationVideos: RenderedVideo[] = []
   const calls = { preregistration: 0, review: 0, pairwise: 0, fast: 0, retries: 0, blocked: 0 }
   const positionProbes: PositionProbe[] = []
+  const renderChecks: Array<Record<string, unknown>> = []
   const prereg = new Map<string, Awaited<ReturnType<typeof preregister>>['value']>()
   for (const card of selectedCards) {
     const registrationPath = path.join(outDir, `${card.id}-expectation.json`)
@@ -56,6 +57,11 @@ async function main(): Promise<void> {
         const rendered = await renderProject(adapted.project, path.join(outDir, 'media'), key)
         videos.set(key, rendered)
         calibrationVideos.push(rendered)
+        renderChecks.push({ cardId: card.id, scheme, readbackMismatches: rendered.readbackMismatches, measurementSideGaps: rendered.measurementSideGaps, unanimatedCharacterIds: rendered.unanimatedCharacterIds })
+        if (rendered.readbackMismatches.length) {
+          records.push({ cardId: card.id, scheme, error: `render readback mismatch: ${JSON.stringify(rendered.readbackMismatches)}` })
+          continue
+        }
         for (let repeat = 0; repeat < repeats; repeat += 1) {
           const review = await reviewOnce(card, registration.value, [rendered.contactSheet])
           calls.review += 1
@@ -73,7 +79,8 @@ async function main(): Promise<void> {
     }
     const leftVideo = videos.get(`${card.id}:${schemes[0]}`)
     const rightVideo = videos.get(`${card.id}:${schemes[1]}`)
-    if (schemes.length >= 2 && leftVideo && rightVideo) {
+    const validVideo = (video: RenderedVideo | undefined): video is RenderedVideo => Boolean(video && video.readbackMismatches.length === 0)
+    if (schemes.length >= 2 && validVideo(leftVideo) && validVideo(rightVideo)) {
       const forward = await pairwiseOnce(card, registration.value, leftVideo.contactSheet, rightVideo.contactSheet, schemes[0], schemes[1], os.tmpdir(), { displayOrder: 'forward' })
       const reverse = await pairwiseOnce(card, registration.value, leftVideo.contactSheet, rightVideo.contactSheet, schemes[0], schemes[1], os.tmpdir(), { displayOrder: 'reverse' })
       for (const pair of [forward, reverse]) {
@@ -93,6 +100,11 @@ async function main(): Promise<void> {
       try {
         const rendered = await renderProject(bait.adapted.project, path.join(outDir, 'media'), `bait-${bait.id}`)
         calibrationVideos.push(rendered)
+        renderChecks.push({ cardId: bait.id, scheme: 'bait', readbackMismatches: rendered.readbackMismatches, measurementSideGaps: rendered.measurementSideGaps, unanimatedCharacterIds: rendered.unanimatedCharacterIds })
+        if (rendered.readbackMismatches.length) {
+          records.push({ cardId: bait.id, scheme: 'bait', bait: true, mutation: bait.mutation, error: `render readback mismatch: ${JSON.stringify(rendered.readbackMismatches)}` })
+          continue
+        }
         const registration = prereg.get(bait.promptCard.id)
         if (!registration) continue
         const review = await reviewOnce(bait.promptCard, registration, [rendered.contactSheet])
@@ -111,7 +123,7 @@ async function main(): Promise<void> {
   const byCard = selectedCards.map((card) => ({ cardId: card.id, segments: records.filter((record) => record.cardId === card.id && record.score != null).map((record) => record.score), unstable: false }))
   const average = (values: Array<number | undefined>) => values.reduce<number>((sum, value) => sum + (value ?? 0), 0) / Math.max(1, values.length)
   await fs.writeFile(path.join(outDir, 'worst-5.json'), JSON.stringify(byCard.sort((a, b) => average(a.segments) - average(b.segments)).slice(0, 5), null, 2) + '\n')
-  await writeReport(outDir, records, { schemes, cards: selectedCards.map((card) => card.id), repeats, generatedAt: new Date().toISOString(), calibration: 'unverified', calls, positionProbe: positionProbes, positionPreference: summarizePositionProbe(positionProbes) })
+  await writeReport(outDir, records, { schemes, cards: selectedCards.map((card) => card.id), repeats, generatedAt: new Date().toISOString(), calibration: 'unverified', calls, positionProbe: positionProbes, positionPreference: summarizePositionProbe(positionProbes), renderChecks })
   console.log(JSON.stringify({ outDir, cards: selectedCards.length, schemes, repeats, records: records.length, baitRecords: records.filter((record) => record.bait).length }, null, 2))
 }
 
