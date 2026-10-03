@@ -260,18 +260,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -305,18 +294,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -350,18 +328,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -395,18 +362,7 @@
       {
         "id": "subject",
         "category": "product",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -441,18 +397,7 @@
       {
         "id": "subject",
         "category": "product",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -489,18 +434,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -534,18 +468,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -580,18 +503,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -626,18 +538,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -670,18 +571,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -714,18 +604,7 @@
       {
         "id": "subject",
         "category": "product",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -760,18 +639,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -808,18 +676,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -852,18 +709,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -897,18 +743,7 @@
       {
         "id": "subject",
         "category": "person",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -942,18 +777,7 @@
       {
         "id": "subject",
         "category": "product",
-        "aliases": [
-          "subject",
-          "woman",
-          "cyclist",
-          "actor",
-          "object",
-          "bottle",
-          "cup",
-          "watch",
-          "dancer",
-          "runner"
-        ]
+        "aliases": []
       }
     ],
     "shots": [
@@ -1240,8 +1064,16 @@
         "category": "person"
       }
     ],
-    "coverageRequired": ["全景", "中景", "特写"],
-    "moveAnyOf": ["crane", "follow", "push"],
+    "coverageRequired": [
+      "全景",
+      "中景",
+      "特写"
+    ],
+    "moveAnyOf": [
+      "crane",
+      "follow",
+      "push"
+    ],
     "reviewNote": "已核对：只约束演员、景别集合、运动族集合和暴雨地面，不固定镜头顺序或时间窗。"
   },
   {
@@ -1273,8 +1105,16 @@
         "category": "person"
       }
     ],
-    "coverageRequired": ["全景", "中景", "特写"],
-    "moveAnyOf": ["truck", "static", "push"],
+    "coverageRequired": [
+      "全景",
+      "中景",
+      "特写"
+    ],
+    "moveAnyOf": [
+      "truck",
+      "static",
+      "push"
+    ],
     "reviewNote": "已核对：两位演员、景别集合、运动族集合和咖啡桌必需；不固定镜头顺序或时间窗。"
   },
   {
@@ -1292,8 +1132,16 @@
         "category": "person"
       }
     ],
-    "coverageRequired": ["全景", "中景", "特写"],
-    "moveAnyOf": ["orbit", "crane", "pull"],
+    "coverageRequired": [
+      "全景",
+      "中景",
+      "特写"
+    ],
+    "moveAnyOf": [
+      "orbit",
+      "crane",
+      "pull"
+    ],
     "reviewNote": "已核对：只约束宇航员、景别集合、失重感可用运动族集合和安静房间，不固定镜头顺序或时间窗。"
   },
   {
@@ -1311,8 +1159,16 @@
         "category": "person"
       }
     ],
-    "coverageRequired": ["全景", "中景", "特写"],
-    "moveAnyOf": ["follow", "truck", "push"],
+    "coverageRequired": [
+      "全景",
+      "中景",
+      "特写"
+    ],
+    "moveAnyOf": [
+      "follow",
+      "truck",
+      "push"
+    ],
     "reviewNote": "已核对：只约束追逐演员、景别集合、跟拍/横移/推进运动族集合和集市街道，不固定镜头顺序或时间窗。"
   }
 ]
