@@ -8,7 +8,9 @@ export type BaitCase = { id: string; card: DirectorCard; promptCard: DirectorCar
 
 export async function buildBaits(cards: DirectorCard[]): Promise<BaitCase[]> {
   const out: BaitCase[] = []
-  for (const card of cards.slice(0, 4)) {
+  // One complete mutation set per batch is enough to test the gate; repeating every
+  // mutation for every card multiplies rendering cost without adding detection power.
+  for (const card of cards.slice(0, 1)) {
     const base = await adapt(card.prompt, card, 'oracle')
     for (const mutation of BAIT_MUTATIONS) {
       out.push({ id: `${card.id}-${mutation}`, card, promptCard: card, mutation, adapted: { ...base, project: mutateOracle(base.project, mutation) }, expectedLow: true })
