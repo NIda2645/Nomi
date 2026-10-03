@@ -128,6 +128,12 @@ export type AssetIngestion =
       /** 上传端点(完整 URL)。multipart/form-data，file 字段为二进制。 */
       endpoint: string;
       /**
+       * 端点相对「用户保存的这条连接的 base」的路径(如 apimart 的 "/v1/uploads/images")。
+       * 声明了它，endpoint 只是没有用户连接时的默认值；解析时由 userVendorBase 的 base 重算——
+       * 用户在设置里把接口地址改成国内线路，参考图上传也必须跟着走（2026-10-03 走查铁律 1）。
+       */
+      endpointPath?: string;
+      /**
        * 响应里公网 URL 的点路径(如 apimart 的 "url")。
        * 当 responseIsPlainTextUrl 为 true 时整个响应体即 URL,此字段可省。
        */
