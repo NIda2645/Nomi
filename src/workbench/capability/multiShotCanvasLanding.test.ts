@@ -260,6 +260,34 @@ it('document reconciliation only updates existing nodes and cannot recreate dele
 })
 
 
+// S1-5：Run 里记了 detached 的镜，主进程把它投成「只动已有节点」。节点真不在 → 一个都不建（撤销事实优先）；
+// 节点还在（误报 / 删了又撤回）→ 落图、回报绑定，让主进程把 detached 记录纠正回来。
+it('reported case (S1-5): a shot the Run believes detached lands its result on the node that is still on the canvas', async () => {
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+  const op = 'canvas-landing:s15'
+  const first = await materializeShots({ runId: 's15', materializationOperationId: op,
+    shots: [{ shotId: 'shot-1', kind: 'image', prompt: '渔港清晨', generation: { state: 'running', runRecordId: 'production-job-1', startedAt: 1 } }] })
+  const nodeId = first.bindings[0].nodeId
+  const result = { id: 'production-job-1', type: 'image' as const, url: 'nomi-local://asset/p/shot-1.jpg', createdAt: 2 }
+
+  const healed = await materializeShots({ runId: 's15', materializationOperationId: op,
+    shots: [{ shotId: 'shot-1', kind: 'image', prompt: '渔港清晨', existingOnly: true, result }] })
+
+  expect(healed.bindings).toEqual([expect.objectContaining({ shotId: 'shot-1', nodeId })])
+  const node = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === nodeId)!
+  expect(node.result?.url).toBe('nomi-local://asset/p/shot-1.jpg')
+  expect(node.status).toBe('success')
+})
+
+it('class: an existing-only shot whose node really is gone is never recreated, while its live siblings still land', async () => {
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+  const landed = await materializeShots({ runId: 'mixed', materializationOperationId: 'canvas-landing:mixed',
+    shots: [{ shotId: 'gone', kind: 'image', prompt: 'G', existingOnly: true }, { shotId: 'live', kind: 'image', prompt: 'L' }] })
+  expect(landed.bindings.map((binding) => binding.shotId)).toEqual(['live'])
+  expect(useGenerationCanvasStore.getState().nodes.map((node) => node.prompt)).toEqual(['L'])
+})
+
+
 let landingProject: ProjectSessionTestHarness
 beforeEach(async () => { landingProject = createProjectSessionTestHarness(); await landingProject.open('project-a') })
 afterEach(() => { vi.restoreAllMocks(); landingProject.dispose() })

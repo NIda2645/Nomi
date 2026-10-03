@@ -11,6 +11,7 @@ import { isProductionRunIdentifier } from '../../../electron/shared/productionRu
 import type { GenerationCanvasNode } from '../generationCanvas/model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { watchDeletedProductionNodes } from './watchDeletedProductionNodes'
+import { releaseWorkbenchProjectRuntimeState } from '../project/releaseWorkbenchProjectSession'
 
 type RunCommand = Parameters<DesktopProductionRunBridge['command']>[2]
 
@@ -31,7 +32,9 @@ function start(command: DesktopProductionRunBridge['command']) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  // 一个已经打开的项目画布（isReady = 项目文档已装载；用户只可能在这种画布上删节点）。
   useGenerationCanvasStore.setState({
+    isReady: true,
     nodes: [node('gen-shot-1', 'op-1'), node('gen-shot-2', 'op-1'), node('gen-other', 'op-2'), node('plain')],
     edges: [],
   })
@@ -64,5 +67,35 @@ describe('deleting production placeholders from the canvas', () => {
     await vi.waitFor(() => expect(mocks.feedback).toHaveBeenCalledTimes(1))
     expect(mocks.feedback.mock.calls[0][2]).toMatchObject({ identity: 'production-detach:op-1', taskCenter: true, projectId: 'project-1' })
     expect(mocks.warn).toHaveBeenCalledWith('production-detach-report-failed', { runId: 'op-1', nodeCount: 1 }, rejection)
+  })
+})
+
+// S1-5（2026-10-03 搞破坏线）：生成途中「返回项目库」再切回来，那一镜永远落不了图。
+// 直接原因：离开项目时 releaseWorkbenchProjectRuntimeState 同步清空画布 store，而这个观察者要等 React 下一次提交
+// 才卸载——清空的那一拍它还挂着，把「项目卸下」当成「用户把所有制作节点删了」上报 detach。
+// Run 于是记下 canvasDetached、清掉 nodeId，之后的落地投影把这一镜当成用户删掉的，图永远落不到节点上。
+describe('leaving a project is not deleting its placeholders (S1-5)', () => {
+  it('reported case: back to the library while the watcher is still mounted, then reopen — nothing is reported', async () => {
+    const before = useGenerationCanvasStore.getState().nodes
+    const api = start(async () => ({ run, events: [] }))
+
+    releaseWorkbenchProjectRuntimeState() // leaveProject 里的那一下（宿主组件此刻还没卸载）
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: before, edges: [], groups: [] }) // 切回来：同一个项目重新装载
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(api.read).not.toHaveBeenCalled()
+    expect(api.command).not.toHaveBeenCalled()
+  })
+
+  it('class: after the project is reloaded, a real deletion on that canvas is still reported', async () => {
+    const before = useGenerationCanvasStore.getState().nodes
+    const api = start(async () => ({ run, events: [] }))
+    releaseWorkbenchProjectRuntimeState()
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: before, edges: [], groups: [] })
+
+    useGenerationCanvasStore.getState().deleteNode('gen-shot-1')
+
+    await vi.waitFor(() => expect(api.command).toHaveBeenCalledTimes(1))
+    expect(api.command.mock.calls[0][2]).toMatchObject({ type: 'plan.detach-shot-nodes', payload: { nodeIds: ['gen-shot-1'] } })
   })
 })

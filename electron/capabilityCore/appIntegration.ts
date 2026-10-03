@@ -500,7 +500,8 @@ export async function startCapabilityCore(
     }
     // P4 S5：打开/切换项目时的补齐钩子（§3.4）。对该项目所有活跃 run：① landCanvasBestEffort 幂等补落缺失
     // 节点/组 + 回填已完成 result（materializationOperationId + 组章去重，跑两次不重复）；② single-shot 只 poll→materialize
-    // 恢复，不重新 start；③ resumeUnfinishedRuns 恢复 legacy/多镜调度。best-effort：异步、逐 run try/catch，不阻塞项目打开。
+    // 恢复，不重新 start；③ resumeUnfinishedRuns 恢复 legacy/多镜调度；④ 已结束的 run 只让已有节点对上它。
+    // best-effort：异步、逐 run try/catch，不阻塞项目打开。
     reconcileOpenProjectHook = (projectId: string) => {
       void (async () => {
         // 裁决 C：上一个进程摆出去、还没人答的那几次出价先撤回（回 draft / 未 present，计划留着）。
@@ -526,7 +527,13 @@ export async function startCapabilityCore(
             } catch {
               continue
             }
-            if (!run || ['completed', 'cancelled'].includes(run.status)) continue
+            if (!run || run.status === 'cancelled') continue
+            // 项目关着的时候出完片、随即结束的 Run：画布上那个节点还停在关项目前的「生成中」。
+            // 结束的 Run 不再建节点、不再调度，只让已有节点对上它（S1-5 同类入口）。
+            if (run.status === 'completed') {
+              await canvasLanding.reconcileExistingCanvas(projectId, run.runId)
+              continue
+            }
             const isSemanticSingleShot = run.playbook.name === 'generation.single-shot'
               && run.generationPlan?.operationId === run.runId
               && !run.generationPlan.shots?.length

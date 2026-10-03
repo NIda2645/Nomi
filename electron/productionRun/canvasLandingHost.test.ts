@@ -100,6 +100,35 @@ describe('canvasLandingHost.followRunChange', () => {
     expect(closed.requestRenderer).not.toHaveBeenCalled()
   })
 
+  // S1-5：镜被误记 detached（nodeId 也被清掉）之后，跟随者以前认为它「不在画布上」，从此不再投影——
+  // 节点上的「生成中」永远没人改。记过 detached 的 Run 也是落过画布的 Run，照样跟（只动已有节点）。
+  it('reported case (S1-5): 被记 detached 的 Run 照样跟随，投影只动已有节点', async () => {
+    const detached = (): ProductionRun => {
+      const base = run([job('polling')], null)
+      return { ...base, generationPlan: { ...base.generationPlan!, shots: base.generationPlan!.shots!.map((s) => ({ ...s, canvasDetached: true })) } }
+    }
+    const h = harness(detached())
+    h.change(detached())
+    await vi.runAllTimersAsync()
+    expect(h.requestRenderer).toHaveBeenCalledTimes(1)
+    expect(h.payloads[0].existingOnly).toBe(true)
+    expect(h.payloads[0].shots[0]).toMatchObject({ shotId: 's1', existingOnly: true, generation: { state: 'running' } })
+  })
+
+  it('打开项目时对已经结束的 Run 对账：只动已有节点，不看上一次投影的指纹（渲染层刚从磁盘装载）', async () => {
+    const done = { ...run([job('adopted')]), status: 'completed' as const }
+    const h = harness(done)
+    h.change(done)
+    await vi.runAllTimersAsync()
+    expect(h.requestRenderer).toHaveBeenCalledTimes(1)
+    await h.host.reconcileExistingCanvas('proj-1', 'run-1')
+    expect(h.requestRenderer).toHaveBeenCalledTimes(2)
+    expect(h.payloads[1].existingOnly).toBe(true)
+    const never = harness({ ...run([job('adopted')], null), status: 'completed' as const })
+    expect(await never.host.reconcileExistingCanvas('proj-1', 'run-1')).toBe(false)
+    expect(never.requestRenderer).not.toHaveBeenCalled()
+  })
+
   it('同一个 Run 的落地逐个排队：前一次没回来，后一次不开始（并发的两次都会看见「节点还没建」然后各建一份）', async () => {
     vi.useRealTimers()
     let release: (() => void) | undefined

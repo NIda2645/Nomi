@@ -73,6 +73,11 @@ export type MaterializeShotInput = {
   mediaDimensions?: MediaDimensions
   /** 没有 result 时：这一镜在节点上的运行状态。 */
   generation?: MaterializeShotGeneration
+  /**
+   * Run 里这一镜记着 detached：只许动画布上已有的节点，绝不新建（主进程 MaterializeShotWire.existingOnly）。
+   * 节点还在就照常回填并回报绑定——画布文档才是「节点在不在」的 owner，主进程据绑定纠正那条记录。
+   */
+  existingOnly?: boolean
 }
 
 export type MaterializeShotsPayload = {
@@ -205,7 +210,8 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   )
 
   // 分锚/镜：参考行（锚）在上、镜头折行网格（复用 storyboard 布局的 anchorCount 约定）。构造序=先锚后镜。
-  const ordered = incoming.filter(shot => !payload.existingOnly || existingByShot.has(shot.shotId)).sort((a, b) => Number(a.role !== 'anchor') - Number(b.role !== 'anchor'))
+  const existingOnly = (shot: MaterializeShotInput): boolean => payload.existingOnly === true || shot.existingOnly === true
+  const ordered = incoming.filter(shot => !existingOnly(shot) || existingByShot.has(shot.shotId)).sort((a, b) => Number(a.role !== 'anchor') - Number(b.role !== 'anchor'))
   // 全部落进同一分类（分镜组），锚按 kind、镜落 shots。跨分类混编时以「镜头组」为主分类。
   const groupCategoryId: BuiltinCanvasCategoryId = 'shots'
 
@@ -216,7 +222,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   // 这条闸是「打开项目补齐」这类幂等重放不会覆盖用户手改的原因。
   const rebindable = ordered.filter((shot) => {
     const nodeId = existingByShot.get(shot.shotId)
-    if (payload.existingOnly || !nodeId || !shot.candidate) return false
+    if (existingOnly(shot) || !nodeId || !shot.candidate) return false
     const node = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === nodeId)
     const stored = nodeCandidateRevision(node?.meta as Record<string, unknown> | undefined)
     return stored === null || shot.candidate.revision > stored
