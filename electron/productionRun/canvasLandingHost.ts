@@ -41,9 +41,10 @@ export type CanvasLandingHost = {
    */
   followRunChange: (run: ProductionRun) => void;
   /**
-   * 打开项目时对**已经结束**的 Run 对账：只让画布上已有的节点对上它（不建节点、不看上一次投影的指纹——
-   * 渲染层刚从磁盘装载，指纹代表的是关项目之前那份画布）。没落过画布的 Run 不碰。永不抛。
-   * 项目关着的时候出完片、Run 随即结束的那一镜，以前打开项目的补齐跳过结束的 Run，节点永远停在「生成中」。
+   * 打开项目时的画布对账（每一个未取消的 Run 都走它）：只让画布上已有、认得出是同一镜的节点对上它——补结果、
+   * 纠正 detached 记录——**绝不新建节点**；认不出来的什么都不做，记一条日志。不看上一次投影的指纹
+   * （渲染层刚从磁盘装载）。没落过画布的 Run 不碰。永不抛。
+   * 以前这里对未结束的 Run 走整份落地：带老 Run 的项目一打开就凭空多出一份节点（#966 CI，canvas-shortcuts C19）。
    */
   reconcileExistingCanvas: (projectId: string, runId: string) => Promise<boolean>;
   /**
@@ -97,7 +98,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
   };
   const runLanding = (projectId: string, runId: string, isCurrent?: () => boolean): Promise<boolean> =>
     enqueue(runKey(projectId, runId), () => landOnce(projectId, runId, isCurrent, false));
-  const landOnce = async (projectId: string, runId: string, isCurrent: (() => boolean) | undefined, existingOnly: boolean): Promise<boolean> => {
+  const landOnce = async (projectId: string, runId: string, isCurrent: (() => boolean) | undefined, existingOnly: boolean, reportUnmatched = false): Promise<boolean> => {
     if (isCurrent && !isCurrent()) return false;
     let run: ProductionRun | null | undefined;
     try {
@@ -119,6 +120,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
       projectRoot: deps.resolveProjectRoot(projectId),
       planName: run.authoring?.title ?? run.brief?.goal,
       ...(existingOnly ? { existingOnly: true } : {}),
+      ...(reportUnmatched ? { reportUnmatched: true } : {}),
       ...(isCurrent ? { isCurrent } : {}),
       bindShotNodes: async (boundProjectId, boundRunId, expectedRevision, bindings) => {
         // 命令号按「绑到哪」去重：同一份绑定反复落地只记一次。可一镜被记过 detached 之后又回报「节点还在」，
@@ -182,7 +184,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
       }
       if (!run || !runHasBeenOnCanvas(run)) return false;
       projectedSignature.delete(key);
-      return landOnce(projectId, runId, undefined, true);
+      return landOnce(projectId, runId, undefined, true, true);
     });
     track(projectId, work);
     return work;

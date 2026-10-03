@@ -478,6 +478,13 @@ export function createProjectCanvasReadSurfaceCoordinator(
         assertCurrent(state)
         state.suspension = reply?.suspension ?? null
       })
+      // A newer hydration may supersede this one before anyone awaits its suspension (a quick
+      // second switch). That is expected cancellation, not a failure: awaiters still receive the
+      // rejection through awaitWhileCurrent, but the bare promise must not surface as an
+      // unhandled rejection. Anything else stays unhandled-visible.
+      state.suspensionPromise.catch((error: unknown) => {
+        if (!(error instanceof ProjectHydrationSupersededError)) throw error
+      })
       const epoch: ProjectHydrationEpoch = Object.freeze({
         signal: state.controller.signal,
         assertCurrent: () => assertCurrent(state),

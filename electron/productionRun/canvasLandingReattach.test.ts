@@ -75,3 +75,26 @@ it('class: a node the user really deleted stays detached — the reconciliation 
   await host.landCanvasBestEffort('project-1', 'op-gone')
   expect(repository().read('project-1', 'op-gone')!.generationPlan!.shots![0].canvasDetached).toBe(true)
 })
+
+// CI 抓到（#966，canvas-shortcuts C19）：打开一个带老 Run 的项目，画布上 3 个节点变成 6 个——
+// 打开项目的对账把从没落过画布（或身份认不出来）的镜头当成「缺的」新建了一份。
+// 打开项目时的对账绝不新建节点：只给已经在、认得出是同一镜的节点补结果 / 纠正记录，认不出来就什么都不做。
+it('reported case (C19): opening a project with a finished or withdrawn Run never adds nodes to the canvas', async () => {
+  repository().createGenerationDraft({ projectId: 'project-1', operationId: 'op-c19', candidate, origin: { host: 'nomi' },
+    shots: [{ shotId: 'shot-one', candidate }, { shotId: 'shot-two', candidate }] })
+  const canvas = ['c19-source', 'c19-one', 'c19-two'] // 老资料：节点在，但没有落地章，Run 里也没有绑定
+  const host = createCanvasLandingHost({
+    readRun: (projectId, runId) => repository().read(projectId, runId),
+    command: async (projectId, runId, command) => repository().execute(projectId, runId, command as never),
+    // 渲染层落点的规则：existingOnly 的只认已有节点；否则缺的就建。
+    requestRenderer: async (_op, payload) => {
+      const wire = payload as MaterializeShotsWirePayload
+      for (const shot of wire.shots) if (!(wire.existingOnly || shot.existingOnly)) canvas.push(`created-${shot.shotId}`)
+      return { bindings: [] }
+    },
+    resolveProjectRoot: () => root,
+    isProjectOpen: () => true,
+  })
+  await host.reconcileExistingCanvas('project-1', 'op-c19')
+  expect(canvas).toEqual(['c19-source', 'c19-one', 'c19-two'])
+})

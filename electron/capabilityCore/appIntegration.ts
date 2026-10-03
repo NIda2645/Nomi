@@ -497,9 +497,9 @@ export async function startCapabilityCore(
       installPendingSpendActions(null)
       markResidentSurfaceInstallFailed(error)
     }
-    // P4 S5：打开/切换项目时的补齐钩子（§3.4）。对该项目所有活跃 run：① landCanvasBestEffort 幂等补落缺失
-    // 节点/组 + 回填已完成 result（materializationOperationId + 组章去重，跑两次不重复）；② single-shot 只 poll→materialize
-    // 恢复，不重新 start；③ resumeUnfinishedRuns 恢复 legacy/多镜调度；④ 已结束的 run 只让已有节点对上它。
+    // P4 S5：打开/切换项目时的补齐钩子（§3.4）。对该项目所有未取消的 run：① reconcileExistingCanvas 只让已有节点
+    // 对上 Run（补结果、纠正记录，绝不新建节点）；② single-shot 只 poll→materialize
+    // 恢复，不重新 start；③ resumeUnfinishedRuns 恢复 legacy/多镜调度。
     // best-effort：异步、逐 run try/catch，不阻塞项目打开。
     reconcileOpenProjectHook = (projectId: string) => {
       void (async () => {
@@ -528,22 +528,19 @@ export async function startCapabilityCore(
               continue
             }
             if (!run || run.status === 'cancelled') continue
-            // 项目关着的时候出完片、随即结束的 Run：画布上那个节点还停在关项目前的「生成中」。
-            // 结束的 Run 不再建节点、不再调度，只让已有节点对上它（S1-5 同类入口）。
-            if (run.status === 'completed') {
-              await canvasLanding.reconcileExistingCanvas(projectId, run.runId)
-              continue
-            }
+            // 打开项目的画布对账**绝不新建节点**：只让已经在、认得出是同一镜的节点对上 Run（补结果、纠正 detached 记录），
+            // 认不出来的什么都不做（落地宿主记日志）。建节点只归确认即落 / 草稿投影。
+            // CI 抓到（#966 canvas-shortcuts C19）：这里以前是整份落地，带老 Run 的项目一打开就凭空多出一份节点。
+            await canvasLanding.reconcileExistingCanvas(projectId, run.runId)
+            // 结束的 Run 不再调度。
+            if (run.status === 'completed') continue
             const isSemanticSingleShot = run.playbook.name === 'generation.single-shot'
               && run.generationPlan?.operationId === run.runId
               && !run.generationPlan.shots?.length
             if (isSemanticSingleShot) {
-              // A single-shot may have been accepted while no project surface
-              // was committed (or while the app was restarting). Re-land its
-              // durable placeholder/result now that the project is open. If a
+              // The canvas side was reconciled above (existing nodes only). If a
               // provider task is still in flight, resume by query only: this
               // path must never call start or create a second paid job.
-              await landCanvasBestEffort(projectId, run.runId)
               const refreshed = generationService.repository.read(projectId, run.runId) ?? run
               const readyJob = refreshed.jobs.find((job) => ['ready', 'adopted'].includes(job.status))
               const readyArtifact = readyJob
@@ -571,8 +568,6 @@ export async function startCapabilityCore(
             }
             // 只补语义多镜 run（有 generationPlan.shots）且未终结的；legacy 不在此列。
             if (!run.generationPlan?.shots || run.generationPlan.shots.length === 0) continue
-            // ① 幂等补落节点/组 + 回填已完成 result（materializationOperationId + 组章去重）。
-            await landCanvasBestEffort(projectId, run.runId)
             // ② 恢复未完批次调度（从 jobs[]+ledger 纯派生「下一批」，已提交不重提、已完成不重扣）。
             kickSchedulerForRun(projectId, run.runId)
           }

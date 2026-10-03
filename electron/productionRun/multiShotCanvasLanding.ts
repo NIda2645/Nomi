@@ -10,7 +10,7 @@ import { generationShotKind, type GenerationShotKind } from "../shared/generatio
 import { resolveOwnedArtifactFile, safeProjectRelativePath } from "./artifactProjection";
 import { localAssetUrl } from "../assets/assetPaths";
 import type { ProductionRun, ProductionGenerationShot } from "./productionRunTypes";
-import { logWarn } from "../logging/logger";
+import { logInfo, logWarn } from "../logging/logger";
 import { deriveProductionShotState, productionRunRecordId } from "../shared/productionShotPhase";
 
 /**
@@ -301,6 +301,8 @@ export type CanvasLandingDeps = {
   planName?: string;
   /** 只让已有节点跟上状态（见 MaterializeShotsWirePayload.existingOnly）。 */
   existingOnly?: boolean;
+  /** 打开项目的对账：画布上认不出是同一镜的（老资料、身份对不上）什么都不做，但记一条日志。 */
+  reportUnmatched?: boolean;
   /** Optional lifecycle guard for detached observers.  It is checked before
    * touching the renderer and again before the durable Run bind. */
   isCurrent?: () => boolean;
@@ -322,6 +324,10 @@ export async function landCanvasForRun(run: ProductionRun, deps: CanvasLandingDe
       .map((raw) => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}))
       .map((entry) => ({ shotId: typeof entry.shotId === "string" ? entry.shotId.trim() : "", nodeId: typeof entry.nodeId === "string" ? entry.nodeId.trim() : "" }))
       .filter((binding) => binding.shotId && binding.nodeId);
+    if (deps.reportUnmatched) {
+      const unmatched = payload.shots.filter((shot) => !bindings.some((binding) => binding.shotId === shot.shotId)).length;
+      if (unmatched > 0) logInfo("production-run", "canvas-reconcile-unmatched-shots", { runId: run.runId, unmatched, shots: payload.shots.length });
+    }
     if (bindings.length > 0) {
       if (deps.isCurrent && !deps.isCurrent()) return false;
       await deps.bindShotNodes(run.projectId, run.runId, run.revision, bindings);
