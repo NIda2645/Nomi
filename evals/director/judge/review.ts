@@ -9,11 +9,13 @@ import { pairwisePrompt, reviewPrompt } from './prompts'
 
 function runCodex(args: string[], prompt: string, cwd: string): Promise<string> {
   return new Promise((resolve, reject) => {
-    const child = spawn('codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort=high', '-c', 'service_tier="priority"', ...args, prompt], { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn('codex', ['exec', '--ephemeral', '--skip-git-repo-check', '-s', 'read-only', '-m', 'gpt-6-astra', '-c', 'model_reasoning_effort=high', '-c', 'service_tier="priority"', ...args, '-'], { cwd, stdio: ['pipe', 'pipe', 'pipe'] })
     let stdout = ''
     let stderr = ''
     child.stdout.on('data', (chunk) => { stdout += String(chunk) })
     child.stderr.on('data', (chunk) => { stderr += String(chunk) })
+    child.stdin.write(prompt)
+    child.stdin.end()
     child.once('error', reject)
     child.once('close', (code) => code === 0 ? resolve(stdout) : reject(new Error(`codex exited ${code}: ${stderr.trim()}`)))
   })
