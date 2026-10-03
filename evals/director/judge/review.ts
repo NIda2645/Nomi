@@ -21,41 +21,77 @@ function runCodex(args: string[], prompt: string, cwd: string): Promise<string> 
   })
 }
 
-export async function reviewOnce(card: DirectorCard, preregistration: Preregistration, images: string[], cwd = os.tmpdir()): Promise<{ value?: JudgeOutput; error?: string; fast: boolean; raw?: string }> {
+type RunCodex = typeof runCodex
+export type ReviewOptions = { runCodex?: RunCodex }
+export type PairwiseOptions = { displayOrder?: 'random' | 'forward' | 'reverse'; randomBit?: () => boolean; runCodex?: RunCodex }
+export type PairwiseWinner = 'left' | 'right' | 'tie' | 'unclear'
+
+/** Translate a model's display-position answer into the source scheme at that position. */
+export function mapPairwiseWinner(winner: PairwiseWinner, displaySources: ['left' | 'right', 'left' | 'right'], leftScheme: string, rightScheme: string): string {
+  if (winner !== 'left' && winner !== 'right') return winner
+  const source = displaySources[winner === 'left' ? 0 : 1]
+  return source === 'left' ? leftScheme : rightScheme
+}
+
+export async function reviewOnce(card: DirectorCard, preregistration: Preregistration, images: string[], cwd = os.tmpdir(), options: ReviewOptions = {}): Promise<{ value?: JudgeOutput; error?: string; fast: boolean; raw?: string; retries: number; blocked: boolean }> {
   const temp = await fs.mkdtemp(path.join(cwd, 'nomi-director-review-'))
   const randomized = [...images].sort(() => crypto.randomInt(-1, 2))
   const copied: string[] = []
+  const runner = options.runCodex ?? runCodex
+  let retries = 0
   try {
     for (const image of randomized) {
       const target = path.join(temp, `${crypto.randomBytes(8).toString('hex')}.png`)
       await fs.copyFile(image, target)
       copied.push(target)
     }
-    const raw = await runCodex(copied.flatMap((file) => ['-i', file]), reviewPrompt(card, preregistration, copied.map((file) => path.basename(file))), temp)
-    const value = judgeOutputSchema.parse({ review: (parseJsonObject(raw) as { review: unknown }).review })
-    return { value, fast: !raw.includes('service tier `priority` is not advertised'), raw }
+    const args = copied.flatMap((file) => ['-i', file])
+    const prompt = reviewPrompt(card, preregistration, copied.map((file) => path.basename(file)))
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const raw = await runner(args, attempt === 0 ? prompt : `${prompt}\nSchema error from the previous response: ${retries === 1 ? 'the response did not match the required JSON schema' : 'invalid JSON'}. Return only a corrected JSON object matching the schema.`, temp)
+      try {
+        const value = judgeOutputSchema.parse({ review: (parseJsonObject(raw) as { review: unknown }).review })
+        return { value, fast: !raw.includes('service tier `priority` is not advertised'), raw, retries, blocked: false }
+      } catch (error) {
+        if (attempt === 0) { retries = 1; continue }
+        return { error: error instanceof Error ? error.message : String(error), fast: false, raw, retries, blocked: true }
+      }
+    }
+    return { error: 'judge response schema validation exhausted', fast: false, retries, blocked: true }
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error), fast: false }
+    return { error: error instanceof Error ? error.message : String(error), fast: false, retries, blocked: false }
   } finally {
     await fs.rm(temp, { recursive: true, force: true })
   }
 }
 
-export async function pairwiseOnce(card: DirectorCard, preregistration: Preregistration, left: string, right: string, leftScheme = 'left', rightScheme = 'right', cwd = os.tmpdir()): Promise<{ value?: ReturnType<typeof pairwiseSchema.parse>; error?: string; fast: boolean }> {
+export async function pairwiseOnce(card: DirectorCard, preregistration: Preregistration, left: string, right: string, leftScheme = 'left', rightScheme = 'right', cwd = os.tmpdir(), options: PairwiseOptions = {}): Promise<{ value?: ReturnType<typeof pairwiseSchema.parse>; displayWinner?: PairwiseWinner; error?: string; fast: boolean; retries: number; blocked: boolean }> {
   const temp = await fs.mkdtemp(path.join(cwd, 'nomi-director-pair-'))
+  const runner = options.runCodex ?? runCodex
+  let retries = 0
   try {
-    const sides = crypto.randomInt(0, 2) === 0 ? [{ scheme: 'left', source: left }, { scheme: 'right', source: right }] : [{ scheme: 'right', source: right }, { scheme: 'left', source: left }]
+    const reversed = options.displayOrder === 'reverse' || (options.displayOrder !== 'forward' && (options.randomBit ?? (() => crypto.randomInt(0, 2) === 1))())
+    const sides = reversed ? [{ source: right, origin: 'right' as const }, { source: left, origin: 'left' as const }] : [{ source: left, origin: 'left' as const }, { source: right, origin: 'right' as const }]
     const targets = await Promise.all(sides.map(async ({ source }) => {
       const target = path.join(temp, `${crypto.randomBytes(8).toString('hex')}.png`)
       await fs.copyFile(source, target)
       return target
     }))
-    const raw = await runCodex(['-i', targets[0], '-i', targets[1]], pairwisePrompt(card, preregistration), temp)
-    const value = pairwiseSchema.parse(parseJsonObject(raw))
-    const sideToScheme = new Map(sides.map(({ scheme, source }) => [scheme, source === left ? leftScheme : rightScheme]))
-    return { value: { ...value, winner: value.winner === 'left' || value.winner === 'right' ? sideToScheme.get(value.winner) as typeof value.winner : value.winner }, fast: !raw.includes('service tier `priority` is not advertised') }
+    const args = ['-i', targets[0], '-i', targets[1]]
+    const prompt = pairwisePrompt(card, preregistration)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const raw = await runner(args, attempt === 0 ? prompt : `${prompt}\nSchema error from the previous response: the JSON did not match the required pairwise schema. Return only a corrected JSON object.`, temp)
+      try {
+        const value = pairwiseSchema.parse(parseJsonObject(raw))
+        return { value: { ...value, winner: mapPairwiseWinner(value.winner, [sides[0].origin, sides[1].origin], leftScheme, rightScheme) as typeof value.winner }, displayWinner: value.winner, fast: !raw.includes('service tier `priority` is not advertised'), retries, blocked: false }
+      } catch (error) {
+        if (attempt === 0) { retries = 1; continue }
+        return { error: error instanceof Error ? error.message : String(error), fast: false, retries, blocked: true }
+      }
+    }
+    return { error: 'pairwise response schema validation exhausted', fast: false, retries, blocked: true }
   } catch (error) {
-    return { error: error instanceof Error ? error.message : String(error), fast: false }
+    return { error: error instanceof Error ? error.message : String(error), fast: false, retries, blocked: false }
   } finally {
     await fs.rm(temp, { recursive: true, force: true })
   }
