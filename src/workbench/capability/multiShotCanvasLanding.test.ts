@@ -367,6 +367,33 @@ it('does not publish stale node bindings when project changes during captured pe
   expect(useGenerationCanvasStore.getState().nodes.map(node => node.id)).toEqual(['new-project-sentinel'])
 })
 
+// S1-5 加载时对账：主进程一提交「打开了这个项目」就发补齐落地，可这个窗口要等提交的回执到了才认下这个项目——
+// 落地请求先到，以前当场报 storyboard_project_unavailable（主进程只记一条 warn），打开项目的对账从来没落成过。
+it('reported case (S1-5): the open-project reconcile that arrives before this window adopted the project waits and lands', async () => {
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+  const op = 'canvas-landing:s15-open'
+  const first = await materializeShots({ projectId: 'project-a', runId: 's15-open', materializationOperationId: op,
+    shots: [{ shotId: 'shot-1', kind: 'image', prompt: '渔港清晨', generation: { state: 'running', runRecordId: 'production-job-1', startedAt: 1 } }] })
+  const nodeId = first.bindings[0].nodeId
+  landingProject.close() // 回到项目库 → 再打开：画布已从磁盘装好，主进程已提交，这个窗口还没认下回执
+
+  const landing = materializeShots({ projectId: 'project-a', runId: 's15-open', materializationOperationId: op,
+    shots: [{ shotId: 'shot-1', kind: 'image', existingOnly: true, result: { id: 'production-job-1', type: 'image', url: 'nomi-local://asset/p/s15.jpg', createdAt: 2 } }] })
+  await landingProject.open('project-a')
+
+  await expect(landing).resolves.toMatchObject({ bindings: [expect.objectContaining({ shotId: 'shot-1', nodeId })] })
+  expect(useGenerationCanvasStore.getState().nodes.find((node) => node.id === nodeId)?.result?.url).toBe('nomi-local://asset/p/s15.jpg')
+})
+
+it('class: a landing addressed to one project never lands on another project the window adopts instead', async () => {
+  useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [shotNode('b-sentinel')], edges: [], groups: [] })
+  landingProject.close()
+  const landing = materializeShots({ projectId: 'project-a', materializationOperationId: 'canvas-landing:wrong', shots: [{ shotId: 'shot-1', kind: 'image' }] })
+  await landingProject.open('project-b')
+  await expect(landing).rejects.toThrow('storyboard_project_changed')
+  expect(useGenerationCanvasStore.getState().nodes.map((node) => node.id)).toEqual(['b-sentinel'])
+})
+
 it('rejects an explicitly different project and an unavailable project before any canvas write', async () => {
   useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [shotNode('entry-sentinel')], edges: [], groups: [] })
   const payload = { projectId: 'project-b', materializationOperationId: 'landing-entry-lease', shots: [{ shotId: 'shot-1', kind: 'image' as const }] }

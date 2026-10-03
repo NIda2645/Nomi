@@ -293,6 +293,35 @@ export function subscribeProjectOpened(listener: (project: ProjectExecutionConte
 }
 
 /**
+ * Issuance point for work main addressed to a project at the moment main committed it (the
+ * open-project canvas reconciliation). Main's commit fires its listeners before this window has
+ * processed the commit reply, so such a request can arrive while the window is still adopting that
+ * very project; issuing "unavailable" there turned every open-time reconciliation into a logged
+ * warning (S1-5, 2026-10-03). Resolves with the lifetime this window has open right now, or — when
+ * none is open yet — with the next lifetime it adopts; `undefined` if none is adopted in time.
+ * The caller still checks that the adopted project is the one it was addressed to.
+ */
+export function whenProjectAdopted(timeoutMs: number): Promise<ProjectExecutionContext | undefined> {
+  const open = withProjectAction((project) => project)
+  if (open) return Promise.resolve(open)
+  return new Promise((resolve) => {
+    const listener = (project: ProjectExecutionContext): void => {
+      settle()
+      resolve(project)
+    }
+    const timer = setTimeout(() => {
+      settle()
+      resolve(undefined)
+    }, timeoutMs)
+    const settle = (): void => {
+      clearTimeout(timer)
+      projectOpenedListeners.delete(listener)
+    }
+    projectOpenedListeners.add(listener)
+  })
+}
+
+/**
  * Issuance point for actions that main started on its own trusted input (the global screenshot
  * hotkey). Main fixes its committed binding before its awaits and names it in the event; the
  * renderer adopts that project lifetime only while that very binding is still this window's

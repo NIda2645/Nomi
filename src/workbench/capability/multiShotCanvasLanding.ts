@@ -12,7 +12,7 @@
 // 由 ProductionCanvasLandingHost 挂载，经渲染层唯一的制作命令口发 plan.detach-shot-nodes。
 //
 // ctx 纪律：canvasGestureContext 只包同步段（禁跨 await，见其头注释）——本模块每个 store 写入各自 inLandingTxn 包一次。
-import { withProjectAction, isProjectExecutionContextCurrent } from '../project/projectCanvasReadSurface'
+import { withProjectAction, whenProjectAdopted, isProjectExecutionContextCurrent } from '../project/projectCanvasReadSurface'
 import i18n from '../../i18n'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'
@@ -186,6 +186,9 @@ async function rebindLandedShots(
   }
 }
 
+/** 主进程按项目寻址的落地，最多等这个窗口认下那个项目多久（主进程那头的 RPC 期限是 60s）。 */
+const PROJECT_ADOPTION_WAIT_MS = 30_000
+
 /**
  * 确认即落 / 打开项目补齐的**唯一落点**（P1 一个家）。整批一个撤销步：N 节点 + 组 = 一个 Cmd+Z。
  * 幂等：materializationOperationId + clientId(=shotId) 双章去重，已建的跳过、只补缺失的；组按 op 章复用不重建。
@@ -198,7 +201,14 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
 
   // Renderer projection belongs to this project lifetime, not whichever canvas is focused
   // after a model/tool/persistence await. Main-process paid execution continues independently.
-  const project = withProjectAction(current => current, () => { throw new Error('storyboard_project_unavailable') })
+  // A landing main addressed to a project may arrive while this window is still adopting it
+  // (open-project reconciliation fires on main's commit, before our commit reply): wait for the
+  // adoption instead of failing, then require it to be the addressed project.
+  const adoption = payload.projectId
+    ? whenProjectAdopted(PROJECT_ADOPTION_WAIT_MS)
+    : Promise.resolve(withProjectAction(current => current))
+  const project = await adoption
+  if (!project) throw new Error('storyboard_project_unavailable')
   if (payload.projectId && payload.projectId !== project.binding.projectId) throw new Error('storyboard_project_changed')
   project.assertCurrent()
   interruptPendingCanvasWrite()

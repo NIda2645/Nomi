@@ -3,8 +3,8 @@
   "id": "2026-10-03-switch-project-landing",
   "problem_type": "A durable 'the user removed this canvas node' record is written from a renderer store diff that cannot tell a user deletion from the project being unloaded, and nothing ever re-derives that record from the canvas document, so a paid result can never reach a node that is still on the canvas.",
   "symptom": "Agent paid card (one shot): click confirm, while the image is generating go back to the project library and reopen the project, then let the provider finish. About 150 s later the job is adopted and the Run is needs_attention, but the node keeps saying 'Generating, waited N s' and the image never lands; a hard kill plus relaunch does not bring it back (breaker runs s5-switch-zh-b, s5-switch-zh-k and s9-switch-zh on origin/main 6340d1c1d and on #947).",
-  "direct_cause": "leaveProject() calls releaseWorkbenchProjectRuntimeState() synchronously, which empties useGenerationCanvasStore.nodes, while ProductionCanvasLandingHost (and its watchDeletedProductionNodes subscription) is only unmounted on React's next commit. The subscription sees every production node disappear and sends plan.detach-shot-nodes (events.ndjson: plan.shot-nodes.detached at the moment of the switch). The Run marks the shot canvasDetached and drops the job and shot nodeId; buildMaterializeShotsPayload then filtered detached shots out and followRunChange ignored Runs without a nodeId, so the adopted result was never projected, and the driver set the Run needs_attention because the adopted job had no canvas node. Reopen and relaunch re-ran the same filtered projection, so nothing ever corrected the node. Even when a later landing did report the node, its bind command id equalled the original bind id and the repository's idempotent replay returned the old Run unchanged.",
-  "class_root": "Whether a production shot's node is on the canvas has exactly one owner, the loaded canvas document; the Run's canvasDetached and nodeId are only a record of reports about it. Two invariants were missing: (1) a detach report may only come from a change between two states of the same loaded project document (an edit), never from loading or unloading the document; (2) every landing projection (confirm, follow, open-project reconcile, including finished Runs) must ask the canvas document about detached shots too, existing-node-only, and write the correction back with a command the replay table cannot swallow, so a stale or false record is corrected by the document instead of permanently hiding a node from its Run's real state.",
+  "direct_cause": "leaveProject() calls releaseWorkbenchProjectRuntimeState() synchronously, which empties useGenerationCanvasStore.nodes, while ProductionCanvasLandingHost (and its watchDeletedProductionNodes subscription) is only unmounted on React's next commit. The subscription sees every production node disappear and sends plan.detach-shot-nodes (events.ndjson: plan.shot-nodes.detached at the moment of the switch). The Run marks the shot canvasDetached and drops the job and shot nodeId; buildMaterializeShotsPayload then filtered detached shots out and followRunChange ignored Runs without a nodeId, so the adopted result was never projected, and the driver set the Run needs_attention because the adopted job had no canvas node. Reopen and relaunch re-ran the same filtered projection, so nothing ever corrected the node. Even when a later landing did report the node, its bind command id equalled the original bind id and the repository's idempotent replay returned the old Run unchanged. Separately, the open-project reconcile never landed anything: main fires it from the committed-project listener, synchronously inside main's commit, so its production.materialize-shots request reaches the renderer before the renderer has processed its own commit reply; materializeShots issued 'no project open' and threw storyboard_project_unavailable (app log: canvas-landing-skipped on every reopen and relaunch), so a result that finished while the project was closed or switched away was never reconciled on load.",
+  "class_root": "Whether a production shot's node is on the canvas has exactly one owner, the loaded canvas document; the Run's canvasDetached and nodeId are only a record of reports about it. Two invariants were missing: (1) a detach report may only come from a change between two states of the same loaded project document (an edit), never from loading or unloading the document; (2) every landing projection (confirm, follow, open-project reconcile, including finished Runs) must ask the canvas document about detached shots too, existing-node-only, and write the correction back with a command the replay table cannot swallow, so a stale or false record is corrected by the document instead of permanently hiding a node from its Run's real state. (3) Work main addresses to a project at the moment it commits that project must be issued against the project lifetime the window is adopting, not rejected because the window has not finished adopting it.",
   "affected_population": [
     "Every Agent production Run on main after #921 (0d7ff3095): the old one-shot paid card, multi-shot batches and the #947 per-shot batch (same landing owner), whenever the user leaves for the library or another project while a shot is queued or in flight",
     "Queued shots of a batch the user switched away from were detached and never dispatched (s9-switch-zh)",
@@ -17,7 +17,8 @@
     "src/workbench/capability/multiShotCanvasLanding.ts",
     "electron/productionRun/multiShotCanvasLanding.ts",
     "electron/productionRun/canvasLandingHost.ts",
-    "electron/capabilityCore/appIntegration.ts"
+    "electron/capabilityCore/appIntegration.ts",
+    "src/workbench/project/projectCanvasReadSurface.ts"
   ],
   "entry_points": [
     "Renderer detach report: ProductionCanvasLandingHost -> watchDeletedProductionNodes -> reportDetachedShotNodes -> plan.detach-shot-nodes (the only writer of canvasDetached)",
@@ -33,7 +34,8 @@
     "buildMaterializeShotsPayload projects every shot of a plan; a canvasDetached shot is projected with existingOnly so it is never (re)created, but an existing node still receives its real generation state or result.",
     "materializeShots never creates a node for an existing-only shot and returns a binding for every shot whose node exists, including existing-only ones.",
     "A binding that corrects a detached record uses a command id unique to the revision it corrects, so the repository's idempotent replay cannot swallow it.",
-    "The open-project reconcile reaches every non-cancelled Run that has been on the canvas; finished Runs are reconciled existing-node-only."
+    "The open-project reconcile reaches every non-cancelled Run that has been on the canvas; finished Runs are reconciled existing-node-only.",
+    "A project-addressed landing (payload.projectId) that arrives while this window has no project open waits for the next adopted project lifetime (bounded), and still refuses to land on a different project."
   ],
   "doors": [
     {
@@ -133,6 +135,11 @@
       "path": "src/workbench/capability/multiShotCanvasLanding.ts",
       "symbol": "materializeShots",
       "responsibility": "Never creates a node for an existing-only shot; reports bindings for nodes that exist."
+    },
+    {
+      "path": "src/workbench/project/projectCanvasReadSurface.ts",
+      "symbol": "whenProjectAdopted",
+      "responsibility": "Issues the project lifetime for main-addressed work that can arrive before this window has adopted main's commit; never issues a different project silently (callers compare the addressed id)."
     }
   ],
   "same_class_entry_points": [
@@ -171,6 +178,12 @@
       "entry_point": "confirmAndRunNode",
       "disposition": "not-affected",
       "evidence": "Canvas single-node generation never writes a production Run or canvasDetached; across a switch it continues through its own project-scoped continuation (confirmedProjectContinuation.test.ts canvas-switch and storyboard-switch cases), re-checked in the real-app walk."
+    },
+    {
+      "path": "src/workbench/capability/storyboardPresent.ts",
+      "entry_point": "presentStoryboard",
+      "disposition": "not-affected",
+      "evidence": "Only driven by an agent turn inside an already-open project, never fired from main's commit listener, so it cannot race the commit reply; it keeps the synchronous withProjectAction issuance."
     }
   ],
   "recurrence": {
@@ -182,7 +195,9 @@
       "git grep isReady src: only restoreSnapshot sets it true and only the project-lifetime release sets it false.",
       "Breaker evidence: profile nomi-pi-breaker-s5-switch-zh-b-LT18Z1 events.ndjson shows plan.shot-nodes.detached at the switch, then job.adopted and a generation-incomplete needs_attention.",
       "productionRunRepository executeUnlocked replays any already-seen commandId, so the original 'canvas-landing:<run>:bind:<shot=node>' id could never re-apply after a detach (canvasLandingReattach.test.ts).",
-      "git show v0.22.5:src/workbench/production/ProductionCanvasLandingHost.tsx: the same watcher existed, but its 'detach-canvas:<runId>:<ids>' command id failed productionRunIpc identifier() and was swallowed, so 0.22.5 never recorded the false detach; #921 (0d7ff3095) made the report succeed."
+      "git show v0.22.5:src/workbench/production/ProductionCanvasLandingHost.tsx: the same watcher existed, but its 'detach-canvas:<runId>:<ids>' command id failed productionRunIpc identifier() and was swallowed, so 0.22.5 never recorded the false detach; #921 (0d7ff3095) made the report succeed.",
+      "Real-app walk on the stuck profile before this part of the fix: user-data/logs shows 'canvas-landing-skipped RendererApplyError: storyboard_project_unavailable' at both the first open and the relaunch; after it, the node shows the image and run.json has the shot re-attached (D:/tmp/s15/runs/stuck-zh).",
+      "git grep \"storyboard_project_unavailable\" src: materializeShots, storyboardPresent and agentStoryboardDesign issue it; only materializeShots is reachable from the committed-project listener."
     ]
   },
   "prevention": {
@@ -197,7 +212,8 @@
       "electron/productionRun/multiShotCanvasLanding.ts",
       "electron/productionRun/canvasLandingHost.ts",
       "src/workbench/capability/multiShotCanvasLanding.ts",
-      "electron/capabilityCore/appIntegration.ts"
+      "electron/capabilityCore/appIntegration.ts",
+      "src/workbench/project/projectCanvasReadSurface.ts"
     ]
   },
   "regression_tests": [
@@ -205,7 +221,8 @@
     "electron/productionRun/canvasLandingReattach.test.ts",
     "electron/productionRun/multiShotCanvasLanding.test.ts",
     "electron/productionRun/canvasLandingHost.test.ts",
-    "src/workbench/capability/multiShotCanvasLanding.test.ts"
+    "src/workbench/capability/multiShotCanvasLanding.test.ts",
+    "src/workbench/project/projectActionIssuance.contract.test.ts"
   ],
   "class_regression_tests": [
     "src/workbench/production/watchDeletedProductionNodes.test.ts",
