@@ -30,7 +30,9 @@ const preregistrationFields = {
     camera: z.string().min(1),
     cut: z.string().min(1),
   })).min(1),
-  frozenAt: z.string().datetime(),
+  // The timestamp is owned by the runner so a model cannot invalidate a card
+  // by emitting a non-ISO value. The final schema is canonicalized below.
+  frozenAt: z.string().min(1),
 }
 export const preregistrationDraftSchema = z.object({ ...preregistrationFields, sha256: z.string().regex(/^[a-f0-9]{64}$/).optional() })
 export const preregistrationSchema = z.object({ ...preregistrationFields, sha256: z.string().regex(/^[a-f0-9]{64}$/) })

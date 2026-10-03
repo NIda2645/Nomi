@@ -27,9 +27,10 @@ export async function preregister(card: DirectorCard, outFile: string): Promise<
     const prompt = preregistrationPrompt(card)
     const raw = await runCodex(prompt, temp)
     const parsed = preregistrationDraftSchema.parse(parseJsonObject(raw))
-    const canonical = JSON.stringify({ ...parsed, sha256: '' })
+    const frozen = { ...parsed, frozenAt: new Date().toISOString() }
+    const canonical = JSON.stringify({ ...frozen, sha256: '' })
     const sha256 = crypto.createHash('sha256').update(canonical).digest('hex')
-    const value = preregistrationSchema.parse({ ...parsed, sha256 })
+    const value = preregistrationSchema.parse({ ...frozen, sha256 })
     await fs.writeFile(outFile, JSON.stringify(value, null, 2) + '\n')
     return { value }
   } catch (error) {

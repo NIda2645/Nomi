@@ -31,7 +31,7 @@ export async function writeReport(outDir: string, records: JudgeRecord[], meta: 
     '- Calibration: **uncalibrated**; scores are discovery evidence only and cannot establish scheme superiority.',
     `- Bait detection: ${baitDetected}/${baits.length || 0} (${baitRate === null ? 'unverified' : `${(baitRate * 100).toFixed(1)}%`}).`,
     `- Measurement cross-check: ${checked ? `${consistent}/${checked} (${((consistent / checked) * 100).toFixed(1)}%)` : 'unverified (no measurable claims returned)'}.`,
-    `- Calls: ${records.length}; priority-fast receipts: ${records.filter((record) => record.fast).length}/${records.length}.`,
+    `- Review records: ${records.length}; priority-fast review receipts: ${records.filter((record) => record.fast).length}/${records.filter((record) => record.fast !== undefined).length || 0}.`,
     '',
     '| Card | Scheme | Bait | Score | Pairwise | Cross-check | Status |',
     '|---|---|---:|---:|---|---|---|',
@@ -46,8 +46,10 @@ export async function writeReport(outDir: string, records: JudgeRecord[], meta: 
     const sd = Math.sqrt(scores.reduce((sum, score) => sum + (score - mean) ** 2, 0) / scores.length)
     lines.push(`| ${cardId} | ${scheme} | ${scores.length} | ${mean.toFixed(2)} | ${sd.toFixed(2)} | ${sd >= 1 ? 'unstable' : 'stable'} |`)
   }
-  const pairwise = normal.map((record) => record.pairwiseWinner).filter((winner): winner is string => Boolean(winner))
-  lines.push('', `Pairwise receipts: ${pairwise.length ? pairwise.join(', ') : 'unverified'}.`, '', '## Raw metadata', '', '```json', JSON.stringify(meta, null, 2), '```', '', '## Reliability notes', '', '- Each normal review is repeated the requested number of times with randomized frame order. Standard deviation >= 1 is marked unstable and excluded from superiority conclusions.', '- Contact sheets and the five worst segments are retained beside this report for human eye review.', '- A calibration page is supplied, but no calibration receipt is assumed until a user exports scores and the rank correlation is computed.')
+  const pairwise = [...new Map(normal.filter((record) => record.pairwiseWinner).map((record) => [record.cardId, record.pairwiseWinner])).entries()]
+  const pairwiseCounts = pairwise.reduce<Record<string, number>>((counts, [, winner]) => { counts[winner!] = (counts[winner!] ?? 0) + 1; return counts }, {})
+  const pairwiseTotal = pairwise.length
+  lines.push('', `Pairwise receipts by card: ${pairwiseTotal ? pairwise.map(([card, winner]) => `${card}=${winner}`).join(', ') : 'unverified'}.`, `Pairwise win rate: ${pairwiseTotal ? Object.entries(pairwiseCounts).map(([winner, count]) => `${winner} ${count}/${pairwiseTotal} (${((count / pairwiseTotal) * 100).toFixed(1)}%)`).join('; ') : 'unverified'}.`, '', '## Raw metadata', '', '```json', JSON.stringify(meta, null, 2), '```', '', '## Reliability notes', '', '- Each normal review is repeated the requested number of times with randomized frame order. Standard deviation >= 1 is marked unstable and excluded from superiority conclusions.', '- Contact sheets and the five worst segments are retained beside this report for human eye review.', '- A calibration page is supplied, but no calibration receipt is assumed until a user exports scores and the rank correlation is computed.')
   await fs.writeFile(path.join(outDir, 'report.md'), lines.join('\n') + '\n')
   await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ meta, records, baitRate, crossCheck: { checked, consistent, consistency: checked ? consistent / checked : null } }, null, 2) + '\n')
 }

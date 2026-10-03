@@ -107,3 +107,17 @@ L5 评审把导演卡的 prompt 与节目机位逐帧渲染结果分开处理：
 评审模型固定为 `gpt-6-astra`、`model_reasoning_effort=high`、`service_tier="priority"`。首轮结果必须在报告首行声明诱饵检出率；低于 90% 时批次作废。测量交叉核只统计评审明确给出的可测结论；大方差题标为不稳定。`calibrate.html` 提供 12 段随机预演的 1–5 分校准页；用户未导出校准 JSON 前，报告始终标记「未校准」，不作方案优劣结论。真实媒体、视频模型 B 档与额度证据留给第三棒。
 
 本分支的首轮实跑收据、联系图和未完成项以 `evals/runs/director-judge-*/report.md` 为准；任何 Codex 不可用、渲染失败或 priority 未广告的调用都保留为 `unverified`/`blocked`，不填补为通过。
+
+### 首轮实跑收据（2026-10-03）
+
+运行目录：`evals/runs/director-judge-20261003184155/`；命令覆盖三道标尺题、六张 T1/T2、`oracle` 与 `s0-pr960-raw`，重复 3 次。预注册的 `police-chase` 因模型返回非法时间戳而阻断，故没有伪造该题视频或分数；本次报告仍完整保留阻断记录。正常评审记录为 54 条，诱饵 5 条，优先级 fast 收据 49/54。
+
+这批次按规则作废：诱饵检出率 4/5（80%），低于 90%；测量交叉核仅 2/57（3.5%），不能支持方案优劣结论。可见的重复均值也只作为发现问题用（例如 `courtyard-standoff` 两方案均值 1.00，`perfume-orbit` oracle 1.33 / raw 2.00）；校准页没有用户导出分数，状态仍为「未校准」。首次实现还发现成对比较左右标签映射和预注册时间戳的根因，已在后续提交修正，原始作废报告不回写。
+
+编排者可直接目视读取三张已生成的 oracle 联系图：
+
+- `evals/runs/director-judge-20261003184155/media/courtyard-standoff_oracle-contact.png`
+- `evals/runs/director-judge-20261003184155/media/perfume-orbit_oracle-contact.png`
+- `evals/runs/director-judge-20261003184155/media/t1-01-push_oracle-contact.png`
+
+灰模画面已确认有可读几何体与机位变化；`police-chase` 联系图缺失是预注册阻断的真实结果。校准页现在会复制到每个 run 目录的 `calibrate.html`，与 `calibration-manifest.json` 和媒体相邻，便于离线打分。

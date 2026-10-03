@@ -36,9 +36,11 @@ async function main(): Promise<void> {
   const records: JudgeRecord[] = []
   const videos = new Map<string, RenderedVideo>()
   const calibrationVideos: RenderedVideo[] = []
+  const calls = { preregistration: 0, review: 0, pairwise: 0, fast: 0 }
   const prereg = new Map<string, Awaited<ReturnType<typeof preregister>>['value']>()
   for (const card of selectedCards) {
     const registrationPath = path.join(outDir, `${card.id}-expectation.json`)
+    calls.preregistration += 1
     const registration = await preregister(card, registrationPath)
     if (registration.value) prereg.set(card.id, registration.value)
     if (!registration.value) {
@@ -54,6 +56,8 @@ async function main(): Promise<void> {
         calibrationVideos.push(rendered)
         for (let repeat = 0; repeat < repeats; repeat += 1) {
           const review = await reviewOnce(card, registration.value, [rendered.contactSheet])
+          calls.review += 1
+          if (review.fast) calls.fast += 1
           if (review.value) {
             const check = crossCheck(card, adapted, review.value.review)
             records.push({ cardId: card.id, scheme, repeat, score: review.value.review.userScore, judgements: Object.fromEntries(review.value.review.segments.map((segment) => [segment.timecode, segment.judgement === 'seen' ? 1 : segment.judgement === 'partial' ? 0.5 : 0])), crossCheck: check, fast: review.fast })
@@ -66,6 +70,7 @@ async function main(): Promise<void> {
     const pair = schemes.length >= 2 && videos.get(`${card.id}:${schemes[0]}`) && videos.get(`${card.id}:${schemes[1]}`)
       ? await pairwiseOnce(card, registration.value, videos.get(`${card.id}:${schemes[0]}`)!.contactSheet, videos.get(`${card.id}:${schemes[1]}`)!.contactSheet)
       : undefined
+    if (pair) { calls.pairwise += 1; if (pair.fast) calls.fast += 1 }
     if (pair?.value) for (const record of records.filter((item) => item.cardId === card.id && !item.bait)) record.pairwiseWinner = pair.value.winner
   }
 
@@ -77,6 +82,8 @@ async function main(): Promise<void> {
         const registration = prereg.get(bait.promptCard.id)
         if (!registration) continue
         const review = await reviewOnce(bait.promptCard, registration, [rendered.contactSheet])
+        calls.review += 1
+        if (review.fast) calls.fast += 1
         records.push({ cardId: bait.id, scheme: 'bait', bait: true, mutation: bait.mutation, score: review.value?.review.userScore, crossCheck: review.value ? crossCheck(bait.promptCard, bait.adapted, review.value.review) : undefined, error: review.error, fast: review.fast })
       } catch (error) {
         records.push({ cardId: bait.id, scheme: 'bait', bait: true, mutation: bait.mutation, error: error instanceof Error ? error.message : String(error) })
@@ -84,10 +91,11 @@ async function main(): Promise<void> {
     }
   }
   await fs.writeFile(path.join(outDir, 'calibration-manifest.json'), JSON.stringify({ items: calibrationVideos.slice(0, 12).map((video) => ({ video: path.relative(outDir, video.video) })) }, null, 2) + '\n')
+  await fs.copyFile(path.join(root, 'judge/calibrate.html'), path.join(outDir, 'calibrate.html'))
   const byCard = selectedCards.map((card) => ({ cardId: card.id, segments: records.filter((record) => record.cardId === card.id && record.score != null).map((record) => record.score), unstable: false }))
   const average = (values: Array<number | undefined>) => values.reduce<number>((sum, value) => sum + (value ?? 0), 0) / Math.max(1, values.length)
   await fs.writeFile(path.join(outDir, 'worst-5.json'), JSON.stringify(byCard.sort((a, b) => average(a.segments) - average(b.segments)).slice(0, 5), null, 2) + '\n')
-  await writeReport(outDir, records, { schemes, cards: selectedCards.map((card) => card.id), repeats, generatedAt: new Date().toISOString(), calibration: 'unverified' })
+  await writeReport(outDir, records, { schemes, cards: selectedCards.map((card) => card.id), repeats, generatedAt: new Date().toISOString(), calibration: 'unverified', calls })
   console.log(JSON.stringify({ outDir, cards: selectedCards.length, schemes, repeats, records: records.length, baitRecords: records.filter((record) => record.bait).length }, null, 2))
 }
 
