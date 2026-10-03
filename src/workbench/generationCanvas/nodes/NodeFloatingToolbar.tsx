@@ -156,11 +156,13 @@ export function ToolbarDivider(): JSX.Element {
 export type ToolbarMenuItem = {
   icon: React.ReactNode
   label: string
+  /** 悬停说明（原按钮的 hint 并进下拉项时保留）。 */
+  title?: string
   disabled?: boolean
   onClick: () => void
 }
 
-/** 分组下拉（切图▾ / 变换▾）：把低频同类动作收一处。向上展开（工具栏在节点上方，不挡节点），自带点外关闭。 */
+/** 分组下拉（裁切▾ / 变换▾ / 抽帧▾ / 拆解▾）：把低频同类动作收一处。向上展开（工具栏在节点上方，不挡节点），自带点外关闭。 */
 export function ToolbarMenu({ icon, label, items, disabled }: { icon: React.ReactNode; label: string; items: ToolbarMenuItem[]; disabled?: boolean }): JSX.Element {
   const [open, setOpen] = React.useState(false)
   const ref = React.useRef<HTMLDivElement>(null)
@@ -206,6 +208,7 @@ export function ToolbarMenu({ icon, label, items, disabled }: { icon: React.Reac
               type="button"
               role="menuitem"
               className={cn(buttonBase, 'gap-2 px-2.5 justify-start w-full', variantClass(false))}
+              title={item.title}
               disabled={item.disabled}
               onClick={() => { item.onClick(); setOpen(false) }}
             >

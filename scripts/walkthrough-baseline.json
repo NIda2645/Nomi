@@ -16,7 +16,6 @@
     "tests/ux/custom-call-config.walk.mjs": 0,
     "tests/ux/dark-audit.walk.mjs": 0,
     "tests/ux/dark-mode.walk.mjs": 0,
-    "tests/ux/decompose.walk.mjs": 0,
     "tests/ux/header-refresh-capture.walk.mjs": 1,
     "tests/ux/ia-audit-shots.walk.mjs": 1,
     "tests/ux/journey.mjs": 0,

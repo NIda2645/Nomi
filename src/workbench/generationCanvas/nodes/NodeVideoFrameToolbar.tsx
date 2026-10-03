@@ -1,6 +1,6 @@
 import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconCut, IconDownload, IconMaximize, IconPlayerTrackNext, IconPlayerTrackPrev, IconScissors } from '@tabler/icons-react'
+import { IconCut, IconDownload, IconMaximize, IconPhoto, IconPlayerTrackNext, IconPlayerTrackPrev, IconScissors } from '@tabler/icons-react'
 import {
   FloatingToolbarShell,
   TOOLBAR_ICON as I,
@@ -8,6 +8,7 @@ import {
   ToolbarDivider,
   ToolbarDuplicateVariantButton,
   ToolbarIconButton,
+  ToolbarMenu,
   ToolbarProvenanceButton,
   ToolbarReshootButton,
 } from './NodeFloatingToolbar'
@@ -18,7 +19,7 @@ import { deconstructToShotTable } from './shotTable/factBridge'
 import { withProjectAction } from '../../project/projectCanvasReadSurface'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
-// 视频节点浮条（按「创作优先级」排左→右，与图片工具栏一致）：左·创作：抽首帧 / 抽尾帧 ｜ 右·工具：全屏 · 下载。
+// 视频节点浮条（按「创作优先级」排左→右，与图片工具栏一致）：左·创作：抽帧▾（首/尾）· 拆解▾（按镜头拆/镜头表）｜ 右·工具：全屏 · 下载。
 // 全屏是「看」的工具，与下载同归右侧工具区，不占最左（此前全屏在最左，抢了创作动作的位）。
 // 抽帧 = 从这段视频取首/尾一帧 → 落独立图片节点（extractVideoFrameToNode），能拿去当 Seedance 首尾帧 /
 // 任何参考 / 接力源。抽首/尾用两个不同图标（⏮/⏭）一眼可分。容器/按钮走共享 NodeFloatingToolbar（token 合规）。
@@ -53,39 +54,28 @@ export default function NodeVideoFrameToolbar({ reportFeedback, node, downloadin
 
     {shotCutOpen ? <NodeShotCutPanel onFeedback={reportFeedback} node={node} onClose={() => setShotCutOpen(false)} /> : null}
     <FloatingToolbarShell ariaLabel={t('generationCommon.videoToolbar.aria')} lockNodeId={node.id}>
-      <ToolbarButton
-        icon={<IconPlayerTrackPrev size={I.size} stroke={I.stroke} />}
-        label={
-          busy === 'first'
-            ? t('generationCommon.videoToolbar.extracting')
-            : t('generationCommon.videoToolbar.firstFrame')
-        }
-        title={t('generationCommon.videoToolbar.firstFrameHint')}
+      <ToolbarMenu
+        icon={<IconPhoto size={I.size} stroke={I.stroke} />}
+        label={busy ? t('generationCommon.videoToolbar.extracting') : t('generationCommon.videoToolbar.extractFrame')}
         disabled={busy !== null}
-        onClick={() => extract('first')}
+        items={[
+          { icon: <IconPlayerTrackPrev size={I.size} stroke={I.stroke} />, label: t('generationCommon.videoToolbar.firstFrame'), title: t('generationCommon.videoToolbar.firstFrameHint'), onClick: () => extract('first') },
+          { icon: <IconPlayerTrackNext size={I.size} stroke={I.stroke} />, label: t('generationCommon.videoToolbar.lastFrame'), title: t('generationCommon.videoToolbar.lastFrameHint'), onClick: () => extract('last') },
+        ]}
       />
-      <ToolbarButton
-        icon={<IconPlayerTrackNext size={I.size} stroke={I.stroke} />}
-        label={
-          busy === 'last' ? t('generationCommon.videoToolbar.extracting') : t('generationCommon.videoToolbar.lastFrame')
-        }
-        title={t('generationCommon.videoToolbar.lastFrameHint')}
-        disabled={busy !== null}
-        onClick={() => extract('last')}
-      />
-      <ToolbarButton
-        icon={<IconCut size={I.size} stroke={I.stroke} />}
-        label={t('generationCommon.videoToolbar.shotCuts')}
-        title={t('generationCommon.videoToolbar.shotCutsHint')}
-        disabled={busy !== null}
-        onClick={() => setShotCutOpen(true)}
-      />
-      <ToolbarButton
+      <ToolbarMenu
         icon={<IconScissors size={I.size} stroke={I.stroke} />}
-        label={t('generationCommon.videoToolbar.deconstruct')}
-        title={t('generationCommon.videoToolbar.deconstructHint')}
+        label={t('generationCommon.videoToolbar.breakDown')}
         disabled={busy !== null}
-        onClick={() => { withProjectAction((project) => { void deconstructToShotTable(node.id, project).catch((error: unknown) => reportFeedback(error instanceof Error ? error.message : String(error))) }) }}
+        items={[
+          { icon: <IconCut size={I.size} stroke={I.stroke} />, label: t('generationCommon.videoToolbar.shotCuts'), title: t('generationCommon.videoToolbar.shotCutsHint'), onClick: () => setShotCutOpen(true) },
+          {
+            icon: <IconScissors size={I.size} stroke={I.stroke} />,
+            label: t('generationCommon.videoToolbar.shotTable'),
+            title: t('generationCommon.videoToolbar.deconstructHint'),
+            onClick: () => { withProjectAction((project) => { void deconstructToShotTable(node.id, project).catch((error: unknown) => reportFeedback(error instanceof Error ? error.message : String(error))) }) },
+          },
+        ]}
       />
       <NodeDepthActionButton reportFeedback={reportFeedback} node={node} disabled={busy !== null} />
       <ToolbarDuplicateVariantButton nodeId={node.id} />

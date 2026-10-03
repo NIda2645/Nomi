@@ -16,7 +16,7 @@
 | **agent/** | 12 | 画布 agent：工具定义、应用工具调用、建节点、推时间轴 | `generationCanvasTools.ts` · `applyCanvasToolCall.ts` · `generationCanvasAgentClient.ts` · `availableModels.ts` · `plannedNodeMeta.ts` |
 | **store/** | 8 | Zustand 状态 + 历史/快照/守卫 | `generationCanvasStore.ts`（871 行）· `canvasHistory.ts` · `canvasSnapshotNormalizer.ts` · `canvasGuards.ts` |
 | **adapters/** | 5 | 外部数据接入（素材导入、模型选项、节点图片持久化）| `assetImportAdapter.ts` · `modelOptionsAdapter.ts` · `persistNodeImage.ts` |
-| **fixation/** | 4 | 定妆（角色/场景卡）节点构造 + 提示词模板 | `buildFixationNode.ts` · `fixationPromptTemplates.ts` |
+| **fixation/** | 2 | 定妆（锚卡确认形象、放行下游镜头） | `freezeAnchor.ts` |
 | **hooks/** | 1 | 节点关系 hook | `useNodeRelationships.ts` |
 | **services/** | 1 | 供应商设置 | `providerSettings.ts` |
 | **styles/** | 1 | 画布 CSS | `generationCanvas.css` |
@@ -34,7 +34,7 @@
 | agent 建节点 / 计划清单卡 | `agent/applyCanvasToolCall.ts` · `agent/plannedNodeMeta.ts` · `components/AgentPlanCard.tsx` |
 | 状态/撤销重做/存盘快照 | `store/generationCanvasStore.ts` · `store/canvasHistory.ts` · `store/canvasSnapshotNormalizer.ts` |
 | 节点数据结构 / schema | `model/generationCanvasTypes.ts` · `model/generationCanvasSchema.ts` |
-| 定妆卡 | `fixation/buildFixationNode.ts` |
+| 定妆卡 | `fixation/freezeAnchor.ts` |
 | 导演台（`director` 节点，完整的 3D 导演台；Nomi 唯一的 3D 节点，老 `scene3d` 节点加载时经 `nodes/director/migration/` 迁成它） | `nodes/director/`（L2 见 `nodes/director/CLAUDE.md`；方案 `docs/plan/2026-09-02-director-console-v2.md`；dev 入口 `director-lab.html`） |
 | 推到时间轴 | `agent/sendGenerationNodeToTimeline.ts` · `agent/sendStoryboardToTimeline.ts` |
 
