@@ -8,10 +8,10 @@ import type { DirectorCamera, DirectorObject, DirectorProject, DirectorScene, Ve
 import { evaluateEntityTransform } from './trajectoryEval'
 import { evaluateSceneObjectPose } from './evaluatedSceneObject'
 import { programCameraIdAt } from './programCamera'
-import { sceneFrame, transformPoint } from './sceneObjectGraph'
+import { sceneFrame, transformPoint, type SceneFrame } from './sceneObjectGraph'
 import { forwardFromAngles, normalize, signedDeg, sub } from './vec3'
 import { CAMERA_MOVES, type CameraMove } from '../agent/cameraMoveVocab'
-import { SHOT_FRAMING, type StagingShot } from '../agent/stagingVocab'
+import type { StagingShot } from '../agent/stagingVocab'
 
 export type EvalShotSize = '远景' | '全景' | '中景' | '中近景' | '近景' | '特写' | '大特写'
 export const EVAL_SHOT_SIZES: readonly EvalShotSize[] = ['远景', '全景', '中景', '中近景', '近景', '特写', '大特写']
@@ -65,7 +65,7 @@ function objectSize(object: DirectorObject): Vec3 {
   const base = OBJECT_GEOMETRY_SIZES[object.type] ?? OBJECT_GEOMETRY_SIZES.cube
   return { x: Math.max(EPS, base.x * Math.abs(object.scale.x)), y: Math.max(EPS, base.y * Math.abs(object.scale.y)), z: Math.max(EPS, base.z * Math.abs(object.scale.z)) }
 }
-function objectCenter(scene: DirectorScene, object: DirectorObject, frame: ReturnType<NonNullable<typeof evaluateSceneObjectPose>>['frame']): Vec3 {
+function objectCenter(scene: DirectorScene, object: DirectorObject, frame: SceneFrame): Vec3 {
   const offset = OBJECT_ORIGIN_OFFSETS[object.type] ?? OBJECT_ORIGIN_OFFSETS.cube
   return transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, offset))
 }
@@ -148,7 +148,19 @@ export function sampleDirectorProject(project: DirectorProject, options: Measure
 }
 
 export type MotionWindow = { start: number; end: number }
-export type MotionRecognition = { move: CameraMove | 'follow' | 'pan' | 'tilt' | 'static'; signedOrbitDeg: number; distanceDelta: number; linearSpeed: number; angularSpeed: number; jerkRms: number; jump: boolean }
+export type MotionRecognition = {
+  move: CameraMove | 'follow' | 'pan' | 'tilt' | 'static'
+  signedOrbitDeg: number
+  distanceDelta: number
+  linearSpeed: number
+  angularSpeed: number
+  jerkRms: number
+  jump: boolean
+  cameraDelta: Vec3
+  yawDelta: number
+  pitchDelta: number
+  fovDelta: number
+}
 
 function unwrapDelta(values: number[]): number[] { const out: number[] = []; let total = 0; for (let i = 1; i < values.length; i++) { const d = signedDeg(values[i] - values[i - 1]); total += d; out.push(total) } return out }
 export function recognizeCameraMotion(measurements: DirectorMeasurements, subjectId: string, window: MotionWindow): MotionRecognition {
@@ -157,7 +169,7 @@ export function recognizeCameraMotion(measurements: DirectorMeasurements, subjec
   const dominantCamera = [...cameraCounts.entries()].sort((a,b) => b[1]-a[1])[0]?.[0]
   if (dominantCamera) frames = frames.filter(f => f.cameraId === dominantCamera)
   const first = frames[0], last = frames[frames.length - 1]
-  if (!first?.camera || !last?.camera || frames.length < 2) return { move: 'static', signedOrbitDeg: 0, distanceDelta: 0, linearSpeed: 0, angularSpeed: 0, jerkRms: 0, jump: false }
+  if (!first?.camera || !last?.camera || frames.length < 2) return { move: 'static', signedOrbitDeg: 0, distanceDelta: 0, linearSpeed: 0, angularSpeed: 0, jerkRms: 0, jump: false, cameraDelta: vec(0, 0, 0), yawDelta: 0, pitchDelta: 0, fovDelta: 0 }
   const points = frames.map(f => f.camera!.position), subjects = frames.map(f => f.objects[subjectId]?.position ?? vec(0, 0, 0))
   const distances = frames.map((_, i) => distance(points[i], subjects[i]))
   const azimuth = frames.map((_, i) => Math.atan2(points[i].x - subjects[i].x, points[i].z - subjects[i].z) * 180 / Math.PI)
@@ -170,7 +182,6 @@ export function recognizeCameraMotion(measurements: DirectorMeasurements, subjec
   const coMotion = length(cameraDelta) > EPS && length(subjectDelta) > EPS && (cameraDelta.x * subjectDelta.x + cameraDelta.y * subjectDelta.y + cameraDelta.z * subjectDelta.z) / (length(cameraDelta) * length(subjectDelta)) > 0.8
   const angularTravel = Math.hypot(signedDeg(last.camera.yaw - first.camera.yaw), last.camera.pitch - first.camera.pitch)
   const subjectScreen = frames.map(f => f.objects[subjectId]?.projection ? [f.objects[subjectId].projection!.x + f.objects[subjectId].projection!.width / 2, f.objects[subjectId].projection!.y + f.objects[subjectId].projection!.height / 2] : [0.5, 0.5])
-  const screenDrift = Math.hypot(subjectScreen.at(-1)![0] - subjectScreen[0][0], subjectScreen.at(-1)![1] - subjectScreen[0][1])
   const accel: number[] = []
   const speeds: number[] = []
   for (let i = 1; i < points.length; i++) speeds.push(distance(points[i], points[i - 1]) / Math.max(EPS, frames[i].time - frames[i - 1].time))
@@ -188,7 +199,19 @@ export function recognizeCameraMotion(measurements: DirectorMeasurements, subjec
     const dx = last.camera.position.x - first.camera.position.x
     move = dx < 0 ? 'track_left' : 'track_right'
   }
-  return { move, signedOrbitDeg: orbit, distanceDelta, linearSpeed: cameraTravel / dt, angularSpeed: angularTravel / dt, jerkRms, jump }
+  return {
+    move,
+    signedOrbitDeg: orbit,
+    distanceDelta,
+    linearSpeed: cameraTravel / dt,
+    angularSpeed: angularTravel / dt,
+    jerkRms,
+    jump,
+    cameraDelta,
+    yawDelta: signedDeg(last.camera.yaw - first.camera.yaw),
+    pitchDelta: last.camera.pitch - first.camera.pitch,
+    fovDelta: last.camera.fov - first.camera.fov,
+  }
 }
 
 export type ContinuityIssue = { kind: 'teleport' | 'axis-cross' | 'camera-inside' | 'below-ground'; time: number; objectId?: string; message: string }

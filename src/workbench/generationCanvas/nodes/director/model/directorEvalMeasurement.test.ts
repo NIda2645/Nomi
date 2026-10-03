@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import { createDefaultProject } from './directorProject'
 import type { DirectorCamera, DirectorObject, DirectorProject } from './directorTypes'
 import { measureContinuity, projectPoint, recognizeCameraMotion, sampleDirectorProject } from './directorEvalMeasurement'
-import { lookAtAngles } from './vec3'
 
 const wp = (id: string, time: number, p: {x:number;y:number;z:number}, yaw = 0) => ({ id, time, frameIndex: Math.round(time * 30), x: p.x, y: p.y, z: p.z, yaw, pitch: 0, roll: 0 })
 function project(objects: DirectorObject[], cameras: DirectorCamera[], duration = 4): DirectorProject {
@@ -12,7 +11,7 @@ function project(objects: DirectorObject[], cameras: DirectorCamera[], duration 
   return p
 }
 const obj = (id: string, position = {x:0,y:0.875,z:0}): DirectorObject => ({ id, name: id, type: 'character', position, rotation: {x:0,y:0,z:0}, scale:{x:1,y:1,z:1}, visible:true, locked:false })
-const cam = (id: string, points: ReturnType<typeof wp>[]): DirectorCamera => ({ id, name:id, position:points[0] ? {x:points[0].x,y:points[0].y,z:points[0].z}:{x:0,y:1,z:5}, yaw:0,pitch:0,roll:0,fov:45,focalLengthMm:0,visible:true as never, locked:true as never, motionTrajectory:points, trajectoryClips:[] })
+const cam = (id: string, points: ReturnType<typeof wp>[]): DirectorCamera => ({ id, name:id, position:points[0] ? {x:points[0].x,y:points[0].y,z:points[0].z}:{x:0,y:1,z:5}, yaw:0,pitch:0,roll:0,fov:45,focalLengthMm:0, motionTrajectory:points, trajectoryClips:[] })
 
 describe('director preview measurement', () => {
   it('measures a full orbit near 360 degrees', () => {

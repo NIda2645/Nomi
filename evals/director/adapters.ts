@@ -1,7 +1,7 @@
 import { createDefaultProject } from '../../src/workbench/generationCanvas/nodes/director/model/directorProject'
 import type { DirectorCamera, DirectorObject, DirectorProject, Vec3 } from '../../src/workbench/generationCanvas/nodes/director/model/directorTypes'
 import { lookAtAngles } from '../../src/workbench/generationCanvas/nodes/director/model/vec3'
-import type { DirectorCard } from '../cardSchema'
+import type { DirectorCard } from './cardSchema'
 
 export type AdaptedProject = { project: DirectorProject; actorMap?: Record<string,string> }
 export type Scheme = 'oracle' | 's0-pr960-raw' | 's0-pr960-ideal'
@@ -27,7 +27,24 @@ function buildCardOracle(card: DirectorCard): AdaptedProject {
 }
 function motionCamera(id:string, window:[number,number], move:string, subject:Vec3, size?:string): DirectorCamera { const [start,end]=window, mid={x:subject.x,y:subject.y+(size==='特写'?0.9:0.7),z:subject.z}, dist=size==='全景'||size==='远景'?10:size==='特写'||size==='近景'?3.5:6, fov=move==='tilt'?70:(size==='全景'||size==='远景'?55:size==='特写'||size==='近景'?40:48); let positions:Vec3[]=[{x:subject.x,y:mid.y,z:subject.z+dist},{x:subject.x,y:mid.y,z:subject.z+dist}], targets:Vec3[]=[mid,mid], fovs:number[]=[fov,fov]; if(move==='push'||move==='dolly'){positions=[{x:subject.x,y:mid.y,z:subject.z+dist+2},{x:subject.x,y:mid.y,z:subject.z+dist}]} else if(move==='pull'){positions=[{x:subject.x,y:mid.y,z:subject.z+dist},{x:subject.x,y:mid.y,z:subject.z+dist+3}]} else if(move==='orbit'||move==='arc'){const sweep=move==='arc'?90:360;positions=[0,1,2,3,4].map(i=>{const a=(i/4*sweep- sweep/2)*Math.PI/180;return{x:subject.x+Math.sin(a)*dist,y:mid.y,z:subject.z+Math.cos(a)*dist}})} else if(move==='follow'){positions=[{x:subject.x-3,y:mid.y,z:subject.z+dist},{x:subject.x,y:mid.y,z:subject.z+dist}]} else if(move==='truck'){positions=[{x:subject.x-1,y:mid.y,z:subject.z+dist},{x:subject.x+1,y:mid.y,z:subject.z+dist}]} else if(move==='crane'){positions=[{x:subject.x,y:mid.y-2,z:subject.z+dist},{x:subject.x,y:mid.y+2,z:subject.z+dist}]} else if(move==='pan'||move==='whip'){targets=[{x:subject.x-2,y:mid.y,z:subject.z},{x:subject.x+2,y:mid.y,z:subject.z}]} else if(move==='tilt'){targets=[{x:subject.x,y:mid.y-3,z:subject.z},{x:subject.x,y:mid.y+3,z:subject.z}]} else if(move==='zoom'){fovs=[fov+10,fov-10]} const waypoints=positions.map((p,i)=>point(p.x,p.y,p.z,start+(end-start)*i/Math.max(1,positions.length-1),targets[Math.min(i,targets.length-1)],fovs[Math.min(i,fovs.length-1)])); const first=waypoints[0]; return{id,name:id,position:{x:first.x,y:first.y,z:first.z},yaw:first.yaw,pitch:first.pitch,roll:0,fov:first.fov??fov,focalLengthMm:0,motionTrajectory:waypoints,trajectoryClips:[clip(`${id}-clip`,start,end)]} }
 export function idealPromptFor(card: DirectorCard): string | null { if(card.id==='police-chase') return 'Shot 1: wide establishing of the police car chasing the getaway car down the street, follow the getaway car 4s. Shot 2: medium shot beside the police car, pan right with it 3s. Shot 3: close-up on the driver, push in 2s.'; if(card.id==='perfume-orbit') return 'Shot 1: orbit 360 deg around the perfume bottle on the round pedestal, linear, 8s. Shot 2: push in 1.2m to the bottle cap, ease out, 3s.'; if(card.id==='courtyard-standoff') return 'Shot 1: wide shot, the woman walks across the courtyard toward the gate, follow the woman from behind-left 4s. Shot 2: two-shot of the guard and the woman at the gate, static 4s. Shot 3: close-up of the woman hand behind her back, then switch to the guard over-the-shoulder, slow push in 0.5m 4s.'; return null }
-export async function adapt(prompt: string, card: DirectorCard, scheme: Scheme): Promise<AdaptedProject> { if(scheme==='oracle') return oracleForCard(card); if(scheme==='s0-pr960-ideal') { if(!idealPromptFor(card)) return oracleForCard(card); prompt=idealPromptFor(card)! } try { const mod = await import('/Users/aoqimin/Desktop/Nomi-eval-pr960/src/workbench/generationCanvas/nodes/director/model/directorPlan.ts'); const plan=mod.normalizeDirectorPrompt(prompt); const built=mod.buildDirectorProjectFromPlan(plan); return {project:built.project}; } catch { return {project:genericOracle(card).project} } }
+const IDEAL_CARD_IDS = new Set(['police-chase', 'perfume-orbit', 'courtyard-standoff'])
+
+export async function adapt(prompt: string, card: DirectorCard, scheme: Scheme): Promise<AdaptedProject> {
+  if (scheme === 'oracle') return oracleForCard(card)
+  if (scheme === 's0-pr960-ideal') {
+    if (!IDEAL_CARD_IDS.has(card.id)) throw new Error(`s0-pr960-ideal only supports benchmark card ${[...IDEAL_CARD_IDS].join(', ')}; received ${card.id}`)
+    prompt = idealPromptFor(card) ?? (() => { throw new Error(`missing ideal prompt for ${card.id}`) })()
+  }
+  try {
+    const mod = await import('/Users/aoqimin/Desktop/Nomi-eval-pr960/src/workbench/generationCanvas/nodes/director/model/directorPlan.ts')
+    const plan = mod.normalizeDirectorPrompt(prompt)
+    const built = mod.buildDirectorProjectFromPlan(plan)
+    return { project: built.project }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    throw new Error(`${scheme} adapter failed for ${card.id}: ${message}`, { cause: error })
+  }
+}
 export function mutateOracle(baseProject: DirectorProject, mutation: 'half-orbit'|'out-of-frame'|'missing-shot'|'axis-cross'|'no-sidestep'|'no-action'|'unmatched-actor'): DirectorProject { const p=JSON.parse(JSON.stringify(baseProject)) as DirectorProject; const s=p.scenes[0]
   if(mutation==='half-orbit'){const c=s.cameras.find(c=>c.motionTrajectory&&c.motionTrajectory.length>=3); if(c?.motionTrajectory) c.motionTrajectory=c.motionTrajectory.slice(0,Math.ceil(c.motionTrajectory.length/2));}
   if(mutation==='out-of-frame'){const o=s.objects.find(o=>o.type==='character'||o.type==='cylinder'||o.type==='cube'); if(o){o.position.x=30; if(o.motionTrajectory) o.motionTrajectory=o.motionTrajectory.map(w=>({...w,x:30}))}}
