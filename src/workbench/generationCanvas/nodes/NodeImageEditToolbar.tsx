@@ -114,9 +114,9 @@ export default function NodeImageEditToolbar({ reportFeedback, node, editGrid, i
           disabled={!imageUrl}
           onClick={onPreview}
         />
-        <ToolbarButton
+        <ToolbarIconButton
           icon={<IconDownload size={I.size} stroke={I.stroke} />}
-          label={t('generationCommon.imageToolbar.download')}
+          ariaLabel={t('generationCommon.imageToolbar.download')}
           title={t('generationCommon.imageToolbar.downloadHint')}
           disabled={downloading}
           onClick={download}
