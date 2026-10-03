@@ -32,6 +32,7 @@ export async function writeReport(outDir: string, records: JudgeRecord[], meta: 
   const cross = records.flatMap((record) => record.crossCheck ? [record.crossCheck] : [])
   const checked = cross.reduce((sum, item) => sum + item.checked, 0)
   const consistent = cross.reduce((sum, item) => sum + item.consistent, 0)
+  const calls = (meta.calls && typeof meta.calls === 'object' ? meta.calls : {}) as { retries?: number; blocked?: number }
   const lines = [
     baitRate !== null && baitRate < 0.9 ? 'INVALID BATCH: bait detection below 90%; visual conclusions are void.' : 'Batch status: provisional (calibration required).',
     '',
@@ -41,6 +42,7 @@ export async function writeReport(outDir: string, records: JudgeRecord[], meta: 
     `- Bait detection: ${baitDetected}/${baits.length || 0} (${baitRate === null ? 'unverified' : `${(baitRate * 100).toFixed(1)}%`}).`,
     `- Measurement cross-check: ${checked ? `${consistent}/${checked} (${((consistent / checked) * 100).toFixed(1)}%)` : 'unverified (no measurable claims returned)'}.`,
     `- Review records: ${records.length}; priority-fast review receipts: ${records.filter((record) => record.fast).length}/${records.filter((record) => record.fast !== undefined).length || 0}.`,
+    `- JSON schema retries: ${calls.retries ?? 0}; blocked responses: ${calls.blocked ?? 0}.`,
     '',
     '| Card | Scheme | Bait | Score | Pairwise | Cross-check | Status |',
     '|---|---|---:|---:|---|---|---|',
