@@ -2,15 +2,11 @@ import React, { useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
-import { clone as cloneSkeleton } from 'three/examples/jsm/utils/SkeletonUtils.js'
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js'
 import { DIRECTOR_ASSET_CATALOG } from '../workbench/generationCanvas/nodes/director/model/assetCatalog'
 
 const actionAssets = DIRECTOR_ASSET_CATALOG.filter((asset) => asset.kind === 'action')
 const propAssets = DIRECTOR_ASSET_CATALOG.filter((asset) => asset.kind !== 'action' && asset.kind !== 'pose')
 const gltfLoader = new GLTFLoader()
-const fbxLoader = new FBXLoader()
-const gltfCache = new Map<string, THREE.Group>()
 const clipCache = new Map<string, THREE.AnimationClip>()
 
 function useAssetCanvas(asset: (typeof DIRECTOR_ASSET_CATALOG)[number]) {
@@ -30,6 +26,7 @@ function useAssetCanvas(asset: (typeof DIRECTOR_ASSET_CATALOG)[number]) {
     ground.rotation.x = -Math.PI / 2
     ground.position.y = 0
     scene.add(ground)
+    const grid = new THREE.GridHelper(20, 40, '#667085', '#303744'); grid.position.y = 0.002; scene.add(grid)
     const camera = new THREE.PerspectiveCamera(32, 320 / 220, 0.01, 100); camera.position.set(2.5, 1.5, 3.8)
     camera.lookAt(0, 1, 0)
     let mixer: THREE.AnimationMixer | undefined
@@ -40,22 +37,11 @@ function useAssetCanvas(asset: (typeof DIRECTOR_ASSET_CATALOG)[number]) {
           if (asset.file.endsWith('.glb')) {
             const loaded = await gltfLoader.loadAsync('/' + asset.file)
             root = loaded.scene
-            root.traverse((node) => { if ((node as THREE.Mesh).isMesh) { const mesh = node as THREE.Mesh; mesh.castShadow = true; mesh.frustumCulled = false; mesh.material = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }) } })
+            root.traverse((node) => { if ((node as THREE.Mesh).isMesh) { const mesh = node as THREE.Mesh; mesh.castShadow = true; mesh.frustumCulled = false; mesh.material = new THREE.MeshStandardMaterial({ color: '#aeb8c4', roughness: 0.86, metalness: 0, side: THREE.DoubleSide }) } })
             scene.add(root); root.updateMatrixWorld(true)
             const box = new THREE.Box3().setFromObject(root); const size = box.getSize(new THREE.Vector3()); const center = box.getCenter(new THREE.Vector3()); const max = Math.max(size.x, size.y, size.z); camera.position.set(center.x + max * 2.2, center.y + max * 0.9, center.z + max * 2.2); camera.lookAt(center)
-            const clip = loaded.animations.find((candidate) => candidate.name === asset.clipName) ?? loaded.animations[0]
-            if (!clip) throw new Error('GLB animation missing')
-            mixer = new THREE.AnimationMixer(root); mixer.clipAction(clip).play(); setStatus('rendered')
-          } else {
-            let source = gltfCache.get('xbot')
-            if (!source) { source = (await gltfLoader.loadAsync('/src/assets/x-bot.glb')).scene; gltfCache.set('xbot', source) }
-            root = cloneSkeleton(source)
-            root.traverse((node) => { if ((node as THREE.Mesh).isMesh) { const mesh = node as THREE.Mesh; mesh.castShadow = true; mesh.frustumCulled = false; mesh.material = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }) } })
-            scene.add(root); root.updateMatrixWorld(true)
-            const modelBox = new THREE.Box3().setFromObject(root); const modelSize = modelBox.getSize(new THREE.Vector3()); const modelCenter = modelBox.getCenter(new THREE.Vector3()); const modelMax = Math.max(modelSize.x, modelSize.y, modelSize.z); camera.position.set(modelCenter.x + modelMax * 2.2, modelCenter.y + modelMax * 0.9, modelCenter.z + modelMax * 2.2); camera.lookAt(modelCenter)
-            const fbx = await fbxLoader.loadAsync('/' + asset.file)
-            const clip = fbx.animations[0]
-            clip.tracks = clip.tracks.filter((track) => track.name.endsWith('.quaternion') || track.name === 'mixamorigHips.position').map((track) => { track.name = track.name.replace('mixamorig:', 'mixamorig'); return track })
+            const clip = loaded.animations.find((candidate) => candidate.name === asset.clipName)
+            if (!clip) throw new Error(`UAL GLB animation missing: ${asset.clipName}`)
             mixer = new THREE.AnimationMixer(root); mixer.clipAction(clip).play(); setStatus('rendered')
           }
         } else {

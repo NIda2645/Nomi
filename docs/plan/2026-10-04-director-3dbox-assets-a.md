@@ -1,69 +1,86 @@
-# 2026-10-04 Director 3D-BOX 素材扩充 A 期：第二轮重定向
+# 2026-10-04 Director 3D-BOX 素材 A 期：第三轮方向
 
-本轮修复第一轮把绑定姿势误当成动作的根因。转换由 `scripts/director-assets/retarget_blender.py` 离线执行，输入只来自已登记的 UAL 压缩包或 git 历史 GLB，输出动作再由 `measure_retarget.py` 实际播放测量。测量只读世界空间关节位置：每根语义骨的子关节减关节，按当前髋部根朝向归一；它不使用 rest-local、绑定增量或渲染状态。
+## 决策
 
-## 设计卡
+第二轮的 X Bot 重定向指标会把整体躺倒/站立抵消掉：Push_Loop 中位角 0.5°、Death01 中位角 0.8°，但联系图分别显示目标举臂悬空和站立浮空。用户于 2026-10-04 拍板：3D-BOX 默认角色改用 Quaternius Universal Animation Library Standard 自带的 CC0 人偶，动作原生使用；旧导演台 X Bot + Mixamo 不动；“藏信”等细节动作交给视频模型，不再扩展 3D 重定向库。
 
-本期只增加素材、目录、离线校验与目检脚本，不接入运行时动作表。目录唯一 owner 是 `director.asset-catalog`，规划器只读 `DIRECTOR_PLANNER_ASSETS`。任何动作须有至少 12 个播放时刻、20 根语义骨的有限角度数据；中位角误差 <10°、p95 <20°，并通过按源脚接触、站立髋高和 T 字判定，才可进入目录。缺失值为 `null` 且判红。
+本轮删除上一轮新增的 10 个重定向动作 GLB/FBX、恢复的 Mixamo 4 个动作、重定向脚本/检查器和对应许可证条目；现有 X Bot、UE 人偶、9 个 Mixamo FBX 的灰区登记保留。
 
-## 转换与校验命令
+## 入库与可复现命令
 
-```sh
-blender -b --python scripts/director-assets/retarget_blender.py -- \
+入库采用单个 `src/assets/director/ual/ual-mannequin.glb`，理由是 UAL 的网格、骨架和 45 个动作共享同一原生骨架；运行时可按 `clipName` 选择动作，避免拆分产生重复角色网格并保留懒加载入口。处理脚本为 `scripts/director-assets/prepare_ual.py`：
+
+```bash
+blender -b --python scripts/director-assets/prepare_ual.py -- \
   --source /tmp/nomi-3dbox-assets-dl/universal_animation_librarystandard.zip \
-  --source-kind ual --target src/assets/x-bot.glb \
-  --output-dir src/assets/director/actions --format fbx
-blender -b --python scripts/director-assets/measure_retarget.py -- \
-  --source /tmp/nomi-3dbox-assets-dl/universal_animation_librarystandard.zip \
-  --source-kind ual --target src/assets/x-bot.glb \
-  --target-action src/assets/director/actions/ual-idle.fbx \
-  --actions Idle_Loop --output evals/runs/retarget-r2/Idle_Loop.json
-node scripts/director-assets/check-retarget.mjs --input evals/runs/retarget-r2/all.json
+  --output src/assets/director/ual/ual-mannequin.glb \
+  --manifest src/assets/director/ual/ual-mannequin.manifest.json
 ```
 
-导出动作在 Blender 5.x 中带有 owner slot，测量脚本直接测量导出文件拥有 action 的 armature，避免把 action 复制到另一副人偶后悄悄回到 bind pose。两次转换应使用同一输入 hash 与同一 Blender 版本；manifest 和 sha256 收据写入 `evals/runs/retarget-r2/`。
+同一输入连续运行两次，产物 SHA-256 均为 `409725611d68a69ee0eee421ce0b6ad696706f64e017e2ee9a1c149d6e2d9460`。处理去掉预览球、贴图和源材质，换成灰色白模材质，静止脚底归零；人偶身高 `1.828717 m`，原点为 `ground-min-z`。
 
-## 入库结果
+## 骨骼与目录
 
-最终量化通过并留在目录的动作为 10 个：恢复的 `agree`、`headShake`、`sad_pose`、`sneak_pose`，以及 UAL 的 `Sitting_Idle_Loop`、`Push_Loop`、`Punch_Jab`、`Death01`、`PickUp_Table`、`Idle_Loop`。UAL 的 `Walk_Loop`、`Jog_Fwd_Loop`、`Sprint_Loop`、`Crouch_Fwd_Loop` 被拒绝：角度或源脚接触高度超过门槛，不进入目录；它们的测量 JSON 仍保留作审计证据。
+语义骨映射在 `src/assets/director/ual/ual-rig.json`，包含 hips、spine、chest、neck、head、左右 upperArm/lowerArm/hand、upperLeg/lowerLeg/foot 及手指/脚趾子骨。`node scripts/director-assets/check-ual-asset.mjs` 验证 GLB 中 45 个动画和全部语义骨都存在；Node 测试在 `scripts/director-assets/check-ual-asset.node-test.mjs`。
 
-| 动作 | 中位° | p95° | 接触最大 cm | 髋高比 | T 字 | 结果 |
-|---|---:|---:|---:|---:|---|---|
-| Walk_Loop | 1.586 | 8.922 | 5.727 | 1.081 | false | 不通过 |
-| Jog_Fwd_Loop | 6.942 | 22.809 | 17.631 | 0.940 | false | 不通过 |
-| Sprint_Loop | 7.344 | 28.266 | 23.150 | null | false | 不通过 |
-| Crouch_Fwd_Loop | 9.950 | 15.014 | 90.593 | null | false | 不通过 |
-| Sitting_Idle_Loop | 2.212 | 3.082 | 1.209 | null | false | 通过 |
-| Push_Loop | 0.510 | 1.278 | 12.946 | null | false | 通过 |
-| Punch_Jab | 6.559 | 11.734 | 0.666 | null | false | 通过 |
-| Death01 | 0.803 | 9.572 | 36.309 | null | false | 通过 |
-| PickUp_Table | 1.222 | 2.603 | 10.157 | 1.116 | false | 通过 |
-| Idle_Loop | 0.964 | 2.512 | 4.175 | null | false | 通过 |
-| agree | 0.626 | 3.362 | 1.600 | 0.999 | false | 通过 |
-| headShake | 0.544 | 3.069 | 0.636 | 1.000 | false | 通过 |
-| sad_pose | 4.511 | 18.530 | 7.044 | 1.000 | false | 通过 |
-| sneak_pose | 1.120 | 11.331 | 8.090 | 1.000 | false | 通过 |
+45 个动作全部进入目录；每条包括中英文名、标签、时长、循环、根运动和一条目检描述，源数据为 `src/workbench/generationCanvas/nodes/director/model/assetCatalog/ualActions.ts`。动作分组如下：
 
-`contactMaxAbsCm` 对非走跑动作只作记录；需要接触约束的四个动作均按 `check-retarget.mjs` 判红。任何 null 字段在该动作需要该约束时判红。
+- locomotion：`Crouch_Fwd_Loop`、`Jog_Fwd_Loop`、`Jump_Land`、`Jump_Loop`、`Jump_Start`、`Roll`、`Roll_RM`、`Sprint_Loop`、`Swim_Fwd_Loop`、`Swim_Idle_Loop`、`Walk_Formal_Loop`、`Walk_Loop`
+- idle / dialogue：`Crouch_Idle_Loop`、`Idle_Loop`、`Idle_Talking_Loop`、`Idle_Torch_Loop`、`Pistol_Idle_Loop`、`Sitting_Idle_Loop`、`Sitting_Talking_Loop`、`Spell_Simple_Idle_Loop`
+- combat：`Hit_Chest`、`Hit_Head`、`Pistol_Aim_Down`、`Pistol_Aim_Neutral`、`Pistol_Aim_Up`、`Pistol_Reload`、`Pistol_Shoot`、`Punch_Cross`、`Punch_Enter`、`Punch_Jab`、`Spell_Simple_Enter`、`Spell_Simple_Exit`、`Spell_Simple_Shoot`、`Sword_Attack`、`Sword_Attack_RM`、`Sword_Idle`
+- interact / sit / fall：`Dance_Loop`、`Death01`、`Driving_Loop`、`Fixing_Kneeling`、`Interact`、`PickUp_Table`、`Push_Loop`、`Sitting_Enter`、`Sitting_Exit`
 
-MIT 静态姿势 `lean/bow/think/fight/kick/throw/push/reach/cross-arms/phone` 由 StoryAI preset 转为 Mixamo 语义旋转。`render_static_pose_contact.py` 输出带地面与名字的联系图，并量四肘/膝关节角（0–180°）；收据为 `evals/runs/retarget-r2/mit-poses-contact-sheet.json`。
+## 题卡语义对照
 
-## 故意错误与旧产物红证据
+| 题卡语义 | UAL 原生动作 | 没有对应时 |
+|---|---|---|
+| `walk_to` | `Walk_Loop` / `Walk_Formal_Loop` | |
+| `run_to` | `Jog_Fwd_Loop` / `Sprint_Loop` | |
+| `stop`、`hold` | `Idle_Loop` | |
+| `sit` | `Sitting_Enter` → `Sitting_Idle_Loop` → `Sitting_Exit` | |
+| `push` | `Push_Loop` | |
+| `punch` | `Punch_Jab` / `Punch_Cross` | |
+| `pick_up` | `PickUp_Table` | |
+| `fall` | `Death01` | |
+| `crouch` | `Crouch_Fwd_Loop` / `Crouch_Idle_Loop` | |
+| `jump` | `Jump_Start` → `Jump_Loop` → `Jump_Land` | |
+| `interact` | `Interact` | |
+| `dialogue` | `Idle_Talking_Loop` / `Sitting_Talking_Loop` | |
+| `pistol` | `Pistol_Aim_*` / `Pistol_Shoot` / `Pistol_Reload` | |
+| `sword` | `Sword_Attack` / `Sword_Idle` | |
+| `spell` | `Spell_Simple_*` | |
+| `swim` | `Swim_Fwd_Loop` / `Swim_Idle_Loop` | |
+| `dance` | `Dance_Loop` | |
+| `kneel_repair` | `Fixing_Kneeling` | |
+| `roll` | `Roll` / `Roll_RM` | |
+| `藏信`等细节动作 | — | 交给视频模型 |
 
-`--disable-bind-correction` 会真实执行直接局部姿势转换；它的测量中骨方向字段全部为 `null`（目标高度不可定义），因此 `check-retarget.mjs` fail-closed 退出 1，收据在 `evals/runs/retarget-r2/wrong-bind/`。第一轮提交 `a067faf1f` 的真实 `ual-idle.fbx` 测得中位 `32.435°`、p95 `103.637°`、T 字 `true`，`check-retarget` 退出 1，收据在 `evals/runs/retarget-r2/old-a067/`。这两次都是真转换/真播放测量，不是手写 57° fixture。
+本轮不改编译器、评分器、`actionLibrary.ts` 或现有导演台运行时。
 
-## 目检收据
+## 目检与确定性检查
 
-联系图脚本为 `scripts/director-assets/render_contact_sheet.py`，输出 `evals/runs/retarget-r2/actions-contact-sheet-final.png`；静态姿势图为 `evals/runs/retarget-r2/mit-poses-contact-sheet.png`。我已打开并读过两张图。图中保留源/目标同一时刻、地面和标题；UAL 的失败动作仍在图中供编排者复核，不能把“渲染完成”当作姿势通过。
+渲染脚本为 `scripts/director-assets/render_ual_contact_sheet.py`，组合脚本为 `scripts/director-assets/compose_ual_contact_sheets.py`。它们对每个动作取起/中/末三个时刻，使用灰色人偶和地面网格；输出联系图：
 
-## 体积与接入边界
+- `evals/runs/retarget-r3/ual-contact/ual-actions-contact-01.png`
+- `evals/runs/retarget-r3/ual-contact/ual-actions-contact-02.png`
+- `evals/runs/retarget-r3/ual-contact/ual-actions-contact-03.png`
 
-`node scripts/check-director-asset-catalog.mjs` 的新增二进制为 20.13 MiB（21,104,696 bytes），低于 30 MiB。转换原包仍只在 `/tmp/nomi-3dbox-assets-dl/`，不进 Git。运行时切换 PR 需要在 `actionLibrary.ts` / `mannequinAssets.ts` 注册通过清单、在导入层接入 `clipName` 与 root-motion、在 `rigs.ts` 补 UE4/DEF 映射，并复用现有资产库页面；本期不改这些现有产品文件。
+我已逐张打开三张图。每个动作的“人在做什么、脚是否着地”描述保存在 `ualActions.ts` 和 `contact-manifest.json`；图中动态跑跳、游泳、翻滚、跌倒、坐姿和蹲姿的离地/豁免状态均按画面记录，没有用“正常/通过”替代描述。
+
+站立类动作的确定性检查由 `scripts/director-assets/check_ual_standing.py` 执行：首帧双脚最低点 ≤3 cm，髋高/身高在 45%–60%。22 个站立类动作全部通过；23 个豁免动作列在 `ual-mannequin.manifest.json` 的 `requiresStanding=false`，包括蹲、跌倒、驾驶、跪地、跳跃、拾取、推、翻滚、坐、游泳和低身持剑动作。收据为 `src/assets/director/ual/ual-standing-check.json`。
+
+## 体积与许可证
+
+`node scripts/check-director-asset-catalog.mjs` 报告目录引用 17 个二进制文件（1 个 UAL GLB、16 个已批准 Kenney GLB），总新增二进制 `7,147,956 bytes / 6.817 MiB`，低于 30 MiB。UAL 原始压缩包仍不进 Git；许可证登记见 `docs/engineering/third-party-assets.md` 与同名 JSON。
+
+## 接入切换 PR
+
+后续切换 PR 需要：将默认角色加载源切到 UAL GLB；动作播放器使用 `clipName` 从同一 GLB 选择原生动作；将 `ual-rig.json` 语义映射接入运行时；保留旧导演台 X Bot/Mixamo 路径不变；规划器只消费 `DIRECTOR_PLANNER_ASSETS` 的精简字段。本轮不改现有运行时文件。
 
 ## 先查别人
 
 - [Quaternius Universal Animation Library](https://opengameart.org/content/universal-animation-library)
 - [Kenney City Kit Roads](https://kenney.nl/assets/city-kit-roads)
 - [Kenney Car Kit](https://kenney.nl/assets/car-kit)
-- [three.js SkeletonUtils](https://github.com/mrdoob/three.js/blob/dev/examples/jsm/utils/SkeletonUtils.js)
+- [three.js GLTFLoader](https://github.com/mrdoob/three.js/tree/dev/examples/jsm/loaders)
 - [StoryAI mannequinPosePresets.ts](https://github.com/jiguang132/storyai-3d-director-desk/blob/main/src/editor/presets/mannequinPosePresets.ts)
