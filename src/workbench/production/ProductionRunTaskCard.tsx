@@ -190,6 +190,15 @@ export function ProductionRunTaskCard({
             })}
           </span>
         ) : null}
+        {view.unknownJob ? (
+          <>
+            <span data-production-unknown-provider className={cn('rounded-full bg-nomi-ink-05 px-2 py-0.5 text-micro text-nomi-ink-60')}>{view.unknownJob.provider}</span>
+            <span data-production-unknown-model className={cn('rounded-full bg-nomi-ink-05 px-2 py-0.5 text-micro text-nomi-ink-60')}>{view.unknownJob.model}</span>
+            <span data-production-unknown-time className={cn('rounded-full bg-nomi-ink-05 px-2 py-0.5 text-micro tabular-nums text-nomi-ink-60')}>
+              {t('generationCommon.production.reconcile.submittedAt', { time: new Date(view.unknownJob.at).toLocaleString() })}
+            </span>
+          </>
+        ) : null}
         {typeof view.percent === 'number' ? (
           <span className={cn('rounded-full bg-nomi-ink-05 px-2 py-0.5 text-micro tabular-nums text-nomi-ink-60')}>
             {view.percent}%

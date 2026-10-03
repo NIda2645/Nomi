@@ -133,6 +133,9 @@ export type GenerationErrorKind =
   // 对一份已经送达的产物，那是把我们这一侧读文件失败栽给服务商，还劝用户换一家（2026-09-29 Seedream 5.0）。
   // 机器码 NOMI_ERR::output-unreadable::（electron/assets/generatedMediaDecode.ts 抛），不靠英文句子认。
   | 'output-unreadable'
+  // 付费提交发出后没拿到回复（连接被重置 / 响应超时 / 提交途中进程退出）：供应商**可能已经收下**。
+  // 与 network 分开：network 说「请求没发到」，对这一类是假话；而且重试 = 可能重复提交，所以不给重试按钮。
+  | 'submission-unknown'
   | 'unknown'
 
 /** 目录（generationCommon.observability.error）里每一类失败的词条 key——单源；noChargeClaims.test 也读它。 */
@@ -162,6 +165,7 @@ export const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   input: 'input',
   'output-truncated': 'outputTruncated',
   'output-unreadable': 'outputUnreadable',
+  'submission-unknown': 'submissionUnknown',
   unknown: 'unknown',
 }
 
@@ -206,7 +210,7 @@ export function narrateModelKind(kind: string): string {
 // fix-model-kind：**直接把缺口补上**（改类型 + 按新类型重建调用通道），不是又把用户送去某一页
 // 自己找。这是这次唯一新增的动作——因为它是唯一一类「我们确切知道哪里错、也确切知道怎么改对」的
 // 失败。其余类别我们只知道现象、改不动，所以只能给「去哪儿」或「换一个」。
-export type GenerationErrorAction = 'retry' | 'switch-model' | 'open-model-access' | 'fix-model-kind' | 'reconcile' | 'view-task'
+export type GenerationErrorAction = 'retry' | 'switch-model' | 'open-model-access' | 'fix-model-kind' | 'reconcile' | 'view-task' | 'release-regenerate'
 
 // 每类的主动作 + 次动作都写在表里（2026-09-29 起）。次动作默认是「另一个最可能有用的」：主动作不是重试 →
 // 次给重试（想试还能试，不堵死用户）；主动作就是重试 → 次给换模型（等不及就换一家）。下面三个常量就是这条
@@ -268,6 +272,9 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorActions> = {
   'output-truncated': RETRY_FIRST,
   // 只有重试：读不出来发生在我们这一侧，换供应商不是它的解法，更不能把它说成服务商的失败。
   'output-unreadable': { primary: 'retry', secondary: null },
+  // 不给一键重试：这一镜可能已经被服务商收下，重试可能重复提交。次动作「我核对过了，重新生成」点下去先展开一段确认，
+  // 确认后只释放占用、再走正常的付费确认卡；主动作指路去任务中心看这一笔的时间 / 模型 / 服务商。
+  'submission-unknown': { primary: 'reconcile', secondary: 'release-regenerate' },
   unknown: RETRY_FIRST,
 }
 
@@ -304,6 +311,8 @@ const VENDOR_SIDE_BY_KIND: Record<GenerationErrorKind, boolean> = {
   input: true,
   'output-truncated': false,
   'output-unreadable': false,
+  // 服务商是否收下 Nomi 并不知道，不替它定性（也不触发「换一家」的切家提示）。
+  'submission-unknown': false,
   unknown: false,
 }
 
@@ -330,6 +339,7 @@ const ACTION_KEY: Record<GenerationErrorAction, string> = {
   retry: 'retry',
   reconcile: 'reconcile',
   'view-task': 'viewTask',
+  'release-regenerate': 'releaseRegenerate',
 }
 
 /** 动作按钮文案（次动作用 `.alt` 变体，如「仍要重试」——避免和主按钮读起来一样重）。

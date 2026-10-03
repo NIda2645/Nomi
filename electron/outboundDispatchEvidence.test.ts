@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { describeOutboundFailure, outboundRequestWasNeverWritten } from "./outboundDispatchEvidence";
+import { describeOutboundFailure, isTransportLevelFailure, outboundRequestWasNeverWritten } from "./outboundDispatchEvidence";
 
 /**
  * undici 的 SocketError 形状。字节计数**刻意带上**：它们是整条连接累计的，
@@ -20,16 +20,24 @@ function fetchFailed(cause: unknown) {
 }
 
 describe("outboundRequestWasNeverWritten", () => {
-  it("从连接池取到一条对面已关的 keep-alive 连接 = 没写出去（2026-09-18 CI 上的真实错误）", () => {
-    // 现场：服务端按 5s keep-alive 干净关掉空闲连接，客户端下一次请求写在这条连接上，
-    // `fetch()` 抛 TypeError: fetch failed ← SocketError UND_ERR_SOCKET: other side closed。
-    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed")))).toBe(true);
+  it("UND_ERR_SOCKET（对面关了连接）= 分不清是旧连接还是写出去后被重置 ⇒ unknown（2026-10-02 修：此前判成没写出去，重复下单）", () => {
+    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed")))).toBe(false);
   });
 
-  it("判据不看字节计数：那是整条连接累计的，复用时永远不是 0（第一版看了，被 CI 证伪）", () => {
-    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 4096, 2048)))).toBe(true);
-    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 0, 0)))).toBe(true);
-    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", undefined, undefined)))).toBe(true);
+  it("不管字节计数是多少都是 unknown：计数是整条连接累计的，说明不了这一次请求", () => {
+    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 4096, 2048)))).toBe(false);
+    expect(outboundRequestWasNeverWritten(fetchFailed(socketError("other side closed", 0, 0)))).toBe(false);
+  });
+
+  it("连接被重置 / socket hang up / 发出后被取消 ⇒ unknown", () => {
+    expect(outboundRequestWasNeverWritten(fetchFailed(Object.assign(new Error("read ECONNRESET"), { code: "ECONNRESET", syscall: "read" })))).toBe(false);
+    expect(outboundRequestWasNeverWritten(fetchFailed(Object.assign(new Error("socket hang up"), { code: "ECONNRESET" })))).toBe(false);
+    expect(outboundRequestWasNeverWritten(Object.assign(new Error("This operation was aborted"), { name: "AbortError" }))).toBe(false);
+  });
+
+  it("TLS 握手前就失败（证书 / 握手前被复位）= 可证明没写出去", () => {
+    expect(outboundRequestWasNeverWritten(fetchFailed(Object.assign(new Error("self signed certificate"), { code: "DEPTH_ZERO_SELF_SIGNED_CERT" })))).toBe(true);
+    expect(outboundRequestWasNeverWritten(fetchFailed(Object.assign(new Error("Client network socket disconnected before secure TLS connection was established"), { code: "ECONNRESET" })))).toBe(true);
   });
 
   it("建连阶段失败（connect / DNS / 建连超时）= 可证明没写出去", () => {
@@ -53,6 +61,13 @@ describe("outboundRequestWasNeverWritten", () => {
     const looped: { cause?: unknown; code?: string } = {};
     looped.cause = looped;
     expect(outboundRequestWasNeverWritten(looped)).toBe(false);
+  });
+
+  it("isTransportLevelFailure：连接层失败才值得（在供应商支持幂等时）重发；HTTP 答复与用户取消不算", () => {
+    expect(isTransportLevelFailure(fetchFailed(socketError("other side closed")))).toBe(true);
+    expect(isTransportLevelFailure(fetchFailed(Object.assign(new Error("Headers Timeout Error"), { code: "UND_ERR_HEADERS_TIMEOUT" })))).toBe(true);
+    expect(isTransportLevelFailure(new Error("Provider request failed (HTTP 500) at x"))).toBe(false);
+    expect(isTransportLevelFailure(Object.assign(new Error("aborted"), { name: "AbortError" }))).toBe(false);
   });
 
   it("describeOutboundFailure 把 cause 链摊平，不再只剩一句 fetch failed", () => {

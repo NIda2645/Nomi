@@ -575,6 +575,9 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
   // 结果已经送达、Nomi 本机读不出来：失败在我们这一侧，upstream 显式给 ''——把那句英文校验串印进「服务商原话」
   // 就是栽赃（服务商已经把图发回来了）。也不给「换一家」：动作表里这一类只有重试。
   if (outboundCode === 'output-unreadable') return reportFor('output-unreadable', cleanRaw, '')
+  // 付费提交发出后没拿到回复：供应商可能已经收下。必须在一切「猜文案」的网络分类之前判——原始报错里
+  // 带着 fetch failed / ECONNRESET，落进 network 会被说成「请求没发到服务商」，那是假话，还会引人重试。
+  if (outboundCode === 'submission-unknown') return reportFor('submission-unknown', cleanRaw, '')
   // 已退役下线**最先**判：判据是 electron 抛的专用签名（确定性事实），不该被任何猜文案的检测抢走。
   // upstream 显式给 ''，与下面类型不符 / 缺文本大脑同理：这是我们自己的签名，服务商根本没被请求到。
   // 给 undefined 会从 raw 抠出「Model is retired: sora-2」，以「服务商原话：」印在退役卡正文里——

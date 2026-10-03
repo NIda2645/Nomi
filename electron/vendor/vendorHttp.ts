@@ -17,6 +17,8 @@ import { isRedirectRefusal, networkFailureDetails, redactNetworkMessage, safeNet
 import { tagNomiError } from "../shared/nomiErrorCodes";
 import { BoundedResponseError, readBoundedResponseBytes } from "./boundedResponse";
 import { providerDispatcher } from "../providerNetwork";
+import { createFreshConnectionDispatcher } from "../systemProxy";
+import type { Dispatcher } from "undici";
 import { authorizeSubmitDestination } from "./vendorOutboundGuard";
 
 export type VendorErrorCategory = "auth" | "balance" | "quota" | "input" | "server" | "network" | "timeout" | "unknown";
@@ -40,7 +42,8 @@ export function vendorResponseLimitForKind(kind: string): number {
     : DEFAULT_VENDOR_RESPONSE_MAX_BYTES;
 }
 
-function vendorHttpTimeoutMs(): number {
+/** 付费提交 / 供应商请求的响应超时（含读响应体）。付费提交的另一条传输（目录供应商）读同一个值。 */
+export function vendorHttpTimeoutMs(): number {
   const raw = Number(process.env.NOMI_VENDOR_HTTP_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_VENDOR_HTTP_TIMEOUT_MS;
 }
@@ -221,21 +224,32 @@ async function requestVendor(
       retryable: false,
     });
   }
+  // 付费提交（非 GET/HEAD）每次用**全新连接**，不与任何别的请求共用连接池：共享池里的空闲 keep-alive 连接
+  // 可能已被对面关掉，那时抛出的 UND_ERR_SOCKET 和「请求写出去后连接被重置」一模一样，分不清哪个才是「没发出去」。
+  // 显式供应商代理（`dispatcher`）本来就是每请求新建的，不重复造。判据与由来见 outboundDispatchEvidence.ts。
+  let freshDispatcher: Dispatcher | undefined;
+  const closeFreshDispatcher = () => {
+    if (freshDispatcher) void freshDispatcher.close().catch(() => undefined);
+  };
   let response: Response;
   try {
+    if (!dispatcher && upperMethod !== "GET" && upperMethod !== "HEAD") {
+      freshDispatcher = await createFreshConnectionDispatcher(controller.signal, finalUrl);
+    }
     // 经 vendorBaseFallback：主域被墙（连接从未建立）→ 零额度探测官方备用域 → 换线重发一次。
     // 仅连接层安全码触发重发，「重试绝不包住付费提交」铁律不破（见 vendorBaseFallback 文件头）。
     response = await fetchVendorWithBaseFallback(finalUrl, {
       method: upperMethod,
       headers,
       signal: controller.signal,
-      ...(dispatcher ? { dispatcher } : {}),
+      ...(dispatcher ?? freshDispatcher ? { dispatcher: dispatcher ?? freshDispatcher } : {}),
       ...(hasBody ? { body: bodyInit } : {}),
     });
   } catch (error: unknown) {
     clearTimeout(timer);
     signal?.removeEventListener("abort", relayAbort);
     if (dispatcher) void dispatcher.close().catch(() => undefined);
+    closeFreshDispatcher();
     const cancellation = callerCancellation(signal);
     if (cancellation) throw cancellation;
     // abort = 我们的超时，给一条说人话的 timeout 错误（仍归 network 类、可重试），而不是裸 "aborted"。
@@ -312,6 +326,7 @@ async function requestVendor(
     signal?.removeEventListener("abort", relayAbort);
     // per-connection dispatcher 的连接池只属于本次请求；body 已缓冲读完，可安全退休。
     if (dispatcher) void dispatcher.close().catch(() => undefined);
+    closeFreshDispatcher();
   }
   const contentType = String(response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
   const looksJson = contentType === "application/json"

@@ -11,7 +11,9 @@ import { getDesktopBridge } from '../../../desktop/bridge'
 import { setPendingCustomCallIntent } from '../../../ui/onboarding/customCallIntent'
 import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import { nodeSelectedModelAddress } from './controls/parameterControlModel'
-import { classifyGenerationError } from '../runner/generationRunController'
+import { classifyGenerationError, confirmAndRunNode } from '../runner/generationRunController'
+import { releaseUnknownSubmissionForNode } from '../../production/releaseUnknownSubmission'
+import { productionRunApi } from '../../production/productionRunApi'
 import { narrateErrorActionLabel, narrateModelKind, type GenerationErrorAction } from '../../observability/narrate'
 import { NODE_SCROLL_REGION_CLASS_NAME } from './nodeScrollRegionClassName'
 import { stageForGenerationError } from '../../../ui/community/feedbackTypes'
@@ -28,6 +30,7 @@ const ACTION_ICON: Record<GenerationErrorAction, typeof IconRefresh> = {
   // 「查看任务」去的是任务中心：和任务中心按钮同一个动作，用同一个图标。
   reconcile: IconListCheck,
   'view-task': IconListDetails,
+  'release-regenerate': IconRefresh,
 }
 
 /**
@@ -84,6 +87,10 @@ export function NodeErrorReport({
     [customCallTarget],
   )
   const [showRaw, setShowRaw] = React.useState(false)
+  // 「我核对过了」：点下去先在卡里展开一段确认（不弹系统对话框），确认后只释放占用、再走正常的付费确认卡。
+  const [confirmingRelease, setConfirmingRelease] = React.useState(false)
+  const [releaseBusy, setReleaseBusy] = React.useState(false)
+  const [releaseFailed, setReleaseFailed] = React.useState(false)
   const [copied, setCopied] = React.useState(false)
   const rootRef = React.useRef<HTMLDivElement>(null)
 
@@ -124,6 +131,25 @@ export function NodeErrorReport({
     event.stopPropagation()
     window.dispatchEvent(new CustomEvent('nomi-open-model-catalog'))
   }, [])
+
+  const releaseRunId = productionMetaOf({ meta })?.runId
+  const handleReleaseContinue = React.useCallback((event: React.MouseEvent) => {
+    event.stopPropagation()
+    const nodeId = rootRef.current?.closest('[data-node-id]')?.getAttribute('data-node-id')
+    if (!nodeId || !releaseRunId || releaseBusy) return
+    setReleaseBusy(true)
+    setReleaseFailed(false)
+    withProjectAction((project) => {
+      void releaseUnknownSubmissionForNode(project.binding.projectId, releaseRunId, nodeId, productionRunApi)
+        .then((released) => {
+          setConfirmingRelease(false)
+          // 放行只是释放占用；真正的生成要用户在这一镜正常的付费确认卡上点（confirmAndRunNode 弹卡，不点就不发）。
+          if (released) void confirmAndRunNode(nodeId, { initiator: 'user' })
+        })
+        .catch(() => setReleaseFailed(true))
+        .finally(() => setReleaseBusy(false))
+    })
+  }, [releaseBusy, releaseRunId])
 
   const handleReconcile = React.useCallback((event: React.MouseEvent) => {
     event.stopPropagation()
@@ -182,6 +208,8 @@ export function NodeErrorReport({
     'fix-model-kind': kindFixTarget ? handleFixModelKind : undefined,
     reconcile: handleReconcile,
     'view-task': handleReconcile,
+    // 只有制作里的镜（有 runId）才放得了行；放行是把 Run 里那次未知尝试记掉，没有 Run 就没东西可记。
+    'release-regenerate': releaseRunId ? (event: React.MouseEvent) => { event.stopPropagation(); setConfirmingRelease(true) } : undefined,
   }
   const primaryAction = actionHandlers[report.primary] ? report.primary : 'open-model-access'
   const secondaryAction = report.secondary && report.secondary !== primaryAction && actionHandlers[report.secondary] ? report.secondary : null
@@ -307,7 +335,21 @@ export function NodeErrorReport({
           flex-wrap + 每颗 shrink-0 whitespace-nowrap：不加的话 flex 会压缩次要按钮，把文案**从词中间
           断开**成「换个模/型」「复制详/情」（2026-08-11 走查截图实拍）。几何断言抓不到它——没有溢出、
           没有越界，只是难看得像坏了。窄处该做的是整颗换行，不是把字劈两半（AssistantErrorCard 同款处理）。 */}
-      <div className="flex flex-wrap items-center gap-2">
+      {confirmingRelease ? (
+        <div data-release-confirm className="mb-1 grid gap-2" onPointerDown={(event) => event.stopPropagation()}>
+          <p className="text-caption leading-snug text-nomi-ink-80">{t('generationCommon.observability.releaseConfirm.message')}</p>
+          {releaseFailed ? <p className="text-micro text-workbench-danger">{t('generationCommon.observability.releaseConfirm.failed')}</p> : null}
+          <div className="flex items-center gap-2">
+            <WorkbenchButton size="sm" onClick={handleReleaseContinue} disabled={releaseBusy} className="shrink-0 whitespace-nowrap bg-workbench-danger text-nomi-paper border-0 hover:bg-workbench-danger-soft">
+              {t('generationCommon.observability.releaseConfirm.continue')}
+            </WorkbenchButton>
+            <button type="button" onClick={(event) => { event.stopPropagation(); setConfirmingRelease(false); setReleaseFailed(false) }} className="shrink-0 whitespace-nowrap text-caption text-nomi-ink-40 hover:text-nomi-ink">
+              {t('generationCommon.observability.releaseConfirm.cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
+      <div className={cn('flex flex-wrap items-center gap-2', confirmingRelease && 'hidden')}>
         {(() => {
           const PrimaryIcon = ACTION_ICON[primaryAction]
           const label = narrateErrorActionLabel(primaryAction, 'primary', actionLabelParams)
