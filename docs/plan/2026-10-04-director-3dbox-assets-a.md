@@ -1,50 +1,69 @@
-# 2026-10-04 Director 3D-BOX 素材扩充 A 期（CC0 优先）
+# 2026-10-04 Director 3D-BOX 素材扩充 A 期：第二轮重定向
+
+本轮修复第一轮把绑定姿势误当成动作的根因。转换由 `scripts/director-assets/retarget_blender.py` 离线执行，输入只来自已登记的 UAL 压缩包或 git 历史 GLB，输出动作再由 `measure_retarget.py` 实际播放测量。测量只读世界空间关节位置：每根语义骨的子关节减关节，按当前髋部根朝向归一；它不使用 rest-local、绑定增量或渲染状态。
 
 ## 设计卡
 
-改动名：Director 3D-BOX 素材扩充 A 期　线/负责人：feat/director-3dbox-assets　类别：新界面、长跑（下载/离线转换/目检）
+本期只增加素材、目录、离线校验与目检脚本，不接入运行时动作表。目录唯一 owner 是 `director.asset-catalog`，规划器只读 `DIRECTOR_PLANNER_ASSETS`。任何动作须有至少 12 个播放时刻、20 根语义骨的有限角度数据；中位角误差 <10°、p95 <20°，并通过按源脚接触、站立髋高和 T 字判定，才可进入目录。缺失值为 `null` 且判红。
 
-| 格 | 结论 | 证据 |
-|---|---|---|
-| ★1 用户怎么用 | 当导演在搭街景、安排角色动作或给角色摆一个可读静态姿势时，我想从一份中英标签清单里选现成资产，以便先完成镜头意图；本期不改运行时接线、不自动替用户付费下载。真实任务：街道路口追车、室内厨房对话、角色“同意/摇头”反应。已知坑：4 个历史 Mixamo 动作许可待裁决，不能当 CC0。 | 目录模块 `src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts`；devlab `director-asset-lab.html` |
-| ★2 谁说了算 | `director.asset-catalog` → 本目录模块唯一 owner；规划器只读 `DIRECTOR_PLANNER_ASSETS`，运行时接入 PR 才允许写入工程资产句柄。 | `scripts/check-director-asset-catalog.mjs`；后续需补 `concept-owners.json` 的登记 |
-| ★3 一致与复用 | 复用现有 `rigs.ts` 的 Mixamo/UE4 语义骨名，不改 `actionLibrary.ts`、`mannequinAssets.ts`、`rigs.ts`；新增目录不复制运行时动作表。 | `git grep -n "RIG_BONE_MAPS\|actionLibrary" src/workbench/generationCanvas/nodes/director` |
-| ★4 全状态 | devlab 加载中显示 `loading`，成功显示 `rendered`，资源失败显示 `error`；本期没有用户可取消的下载任务，失败不会扣费；许可证不确定显示在登记文件为 `pending-review`。 | `director-asset-lab.html`；截图写入 `evals/runs/` |
-| 5 中途表 | 下载/转换只在开发机临时目录运行；停机或断网 = 本地文件不存在、目录校验红；重新运行可覆盖同名新文件；devlab 关闭不写工程；Git 回滚 = revert 本期提交。 | 人工 + `scripts/check-director-asset-catalog.mjs` |
-| 6 外部数据与失败 | Quaternius Standard、Kenney 四包、StoryAI MIT 源文件均登记原始 URL 与原文；下载失败不伪造条目；Mixamo/three.js 历史来源无许可证时保留 `pending-review`。 | `docs/engineering/third-party-assets.md/.json` |
-| 7 性能预算 | 新增二进制 15.20 MiB（15,941,532 bytes，30 MiB 上限）；devlab 30 个卡片，单卡 320×220 canvas，动作用 65 骨 X Bot，目标是开发期逐项加载而非生产首屏。 | `node scripts/check-director-asset-catalog.mjs` |
-| 8 真实条件 | macOS Chrome devlab：动作、道具、积木联系图已逐项渲染并人工 Read；Windows、打包安装、英文 UI、干净安装、真实付费均 `unverified`；没有用 mock 代替目检。 | `evals/runs/action-contact-final.png`, `evals/runs/prop-contact.png`, `evals/runs/set-contact.png` |
-| ★9 验收与回滚 | 验收线由另一条线运行 `node scripts/check-director-asset-catalog.mjs`、`pnpm exec vitest run src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.test.ts`，并逐项打开 devlab；回滚为 revert 本期新增文件提交。 | 独立验收报告待 PR 中链接；校验脚本输出保留在 PR 收据 |
+## 转换与校验命令
 
-## 范围与入库选择
+```sh
+blender -b --python scripts/director-assets/retarget_blender.py -- \
+  --source /tmp/nomi-3dbox-assets-dl/universal_animation_librarystandard.zip \
+  --source-kind ual --target src/assets/x-bot.glb \
+  --output-dir src/assets/director/actions --format fbx
+blender -b --python scripts/director-assets/measure_retarget.py -- \
+  --source /tmp/nomi-3dbox-assets-dl/universal_animation_librarystandard.zip \
+  --source-kind ual --target src/assets/x-bot.glb \
+  --target-action src/assets/director/actions/ual-idle.fbx \
+  --actions Idle_Loop --output evals/runs/retarget-r2/Idle_Loop.json
+node scripts/director-assets/check-retarget.mjs --input evals/runs/retarget-r2/all.json
+```
 
-- 历史恢复：`agree`、`headShake`、`sad_pose`、`sneak_pose` 四个动作；从 `d3f68057c^` 取原始 GLB，使用 three.js `SkeletonUtils.retargetClip` 重定向并烘焙为 X Bot 目标骨骼的 canonical GLB，同时保留 Blender 导出的 FBX derivative。原始来源许可不明，登记灰区。
-- Quaternius CC0 Standard：`Walk_Loop`、`Jog_Fwd_Loop`、`Sprint_Loop`、`Crouch_Fwd_Loop`、`Sitting_Idle_Loop`、`Push_Loop`、`Punch_Jab`、`Death01`、`PickUp_Table`、`Idle_Loop`，共 10 个；离线重定向/烘焙到 X Bot Mixamo 语义骨架。
-- StoryAI MIT：新增 `lean`、`bow`、`think`、`fight`、`kick`、`throw`、`push`、`reach`、`cross-arms`、`phone` 十个静态姿势，存为语义骨旋转，不接运行时。
-- Kenney CC0：道路直路/十字路口/交汇、方路灯/交通灯、救护车/警车/出租车、椅子/桌子/灶台/冰箱、墙/带门墙/方门/平屋顶，共 16 个 GLB；汽车从厘米级 FBX 统一缩放到米，所有模型 ground min = 0。
+导出动作在 Blender 5.x 中带有 owner slot，测量脚本直接测量导出文件拥有 action 的 armature，避免把 action 复制到另一副人偶后悄悄回到 bind pose。两次转换应使用同一输入 hash 与同一 Blender 版本；manifest 和 sha256 收据写入 `evals/runs/retarget-r2/`。
 
-## 体积账
+## 入库结果
 
-`node scripts/check-director-asset-catalog.mjs` 当前输出新增资产 15.20 MiB（15,941,532 bytes），预算 30 MiB，余量约 14.80 MiB。原始 zip 均在 `/tmp/nomi-3dbox-assets-dl/`，不入 Git。
+最终量化通过并留在目录的动作为 10 个：恢复的 `agree`、`headShake`、`sad_pose`、`sneak_pose`，以及 UAL 的 `Sitting_Idle_Loop`、`Push_Loop`、`Punch_Jab`、`Death01`、`PickUp_Table`、`Idle_Loop`。UAL 的 `Walk_Loop`、`Jog_Fwd_Loop`、`Sprint_Loop`、`Crouch_Fwd_Loop` 被拒绝：角度或源脚接触高度超过门槛，不进入目录；它们的测量 JSON 仍保留作审计证据。
 
-## 留给运行时切换 PR
+| 动作 | 中位° | p95° | 接触最大 cm | 髋高比 | T 字 | 结果 |
+|---|---:|---:|---:|---:|---|---|
+| Walk_Loop | 1.586 | 8.922 | 5.727 | 1.081 | false | 不通过 |
+| Jog_Fwd_Loop | 6.942 | 22.809 | 17.631 | 0.940 | false | 不通过 |
+| Sprint_Loop | 7.344 | 28.266 | 23.150 | null | false | 不通过 |
+| Crouch_Fwd_Loop | 9.950 | 15.014 | 90.593 | null | false | 不通过 |
+| Sitting_Idle_Loop | 2.212 | 3.082 | 1.209 | null | false | 通过 |
+| Push_Loop | 0.510 | 1.278 | 12.946 | null | false | 通过 |
+| Punch_Jab | 6.559 | 11.734 | 0.666 | null | false | 通过 |
+| Death01 | 0.803 | 9.572 | 36.309 | null | false | 通过 |
+| PickUp_Table | 1.222 | 2.603 | 10.157 | 1.116 | false | 通过 |
+| Idle_Loop | 0.964 | 2.512 | 4.175 | null | false | 通过 |
+| agree | 0.626 | 3.362 | 1.600 | 0.999 | false | 通过 |
+| headShake | 0.544 | 3.069 | 0.636 | 1.000 | false | 通过 |
+| sad_pose | 4.511 | 18.530 | 7.044 | 1.000 | false | 通过 |
+| sneak_pose | 1.120 | 11.331 | 8.090 | 1.000 | false | 通过 |
 
-1. 规划器只消费已登记的 `DIRECTOR_PLANNER_ASSETS`；本期已在 `concept-owners.json` 登记 `director.asset-catalog` 唯一 owner。
-2. 在 `actionLibrary.ts` / `mannequinAssets.ts` 接入动作与文件 URL：历史恢复动作优先绑定 `retargeted-*.glb` 及其 `clipName`，Quaternius 动作绑定对应 FBX `clipName`；本期不改这些现有文件。
-3. 在 `rigs.ts` 增加经过独立验收的第三方骨名映射（尤其 Quaternius UE4/DEF 骨架和 Sketchfab Bip001），本期只输出 Mixamo/X Bot。
-4. 在资源导入层处理 `prop`/`setPiece` 的米制尺寸、地面原点与可选锚点，保留资产来源与许可状态；`pending-review` 不得进入可再分发默认包。
-5. 在导演台 UI 增加目录筛选/标签投影，复用现有资产库页面，不新造第二份运行时资产表。
+`contactMaxAbsCm` 对非走跑动作只作记录；需要接触约束的四个动作均按 `check-retarget.mjs` 判红。任何 null 字段在该动作需要该约束时判红。
+
+MIT 静态姿势 `lean/bow/think/fight/kick/throw/push/reach/cross-arms/phone` 由 StoryAI preset 转为 Mixamo 语义旋转。`render_static_pose_contact.py` 输出带地面与名字的联系图，并量四肘/膝关节角（0–180°）；收据为 `evals/runs/retarget-r2/mit-poses-contact-sheet.json`。
+
+## 故意错误与旧产物红证据
+
+`--disable-bind-correction` 会真实执行直接局部姿势转换；它的测量中骨方向字段全部为 `null`（目标高度不可定义），因此 `check-retarget.mjs` fail-closed 退出 1，收据在 `evals/runs/retarget-r2/wrong-bind/`。第一轮提交 `a067faf1f` 的真实 `ual-idle.fbx` 测得中位 `32.435°`、p95 `102.983°`、T 字 `true`，`check-retarget` 退出 1，收据在 `evals/runs/retarget-r2/old-a067/`。这两次都是真转换/真播放测量，不是手写 57° fixture。
+
+## 目检收据
+
+联系图脚本为 `scripts/director-assets/render_contact_sheet.py`，输出 `evals/runs/retarget-r2/actions-contact-sheet-final.png`；静态姿势图为 `evals/runs/retarget-r2/mit-poses-contact-sheet.png`。我已打开并读过两张图。图中保留源/目标同一时刻、地面和标题；UAL 的失败动作仍在图中供编排者复核，不能把“渲染完成”当作姿势通过。
+
+## 体积与接入边界
+
+`node scripts/check-director-asset-catalog.mjs` 的新增二进制为 20.13 MiB（21,104,696 bytes），低于 30 MiB。转换原包仍只在 `/tmp/nomi-3dbox-assets-dl/`，不进 Git。运行时切换 PR 需要在 `actionLibrary.ts` / `mannequinAssets.ts` 注册通过清单、在导入层接入 `clipName` 与 root-motion、在 `rigs.ts` 补 UE4/DEF 映射，并复用现有资产库页面；本期不改这些现有产品文件。
 
 ## 先查别人
 
-- [Quaternius Universal Animation Library（OpenGameArt，CC0 与 Standard 清单）](https://opengameart.org/content/universal-animation-library)
-- [Kenney City Kit (Roads)](https://kenney.nl/assets/city-kit-roads)
+- [Quaternius Universal Animation Library](https://opengameart.org/content/universal-animation-library)
+- [Kenney City Kit Roads](https://kenney.nl/assets/city-kit-roads)
 - [Kenney Car Kit](https://kenney.nl/assets/car-kit)
-- [three.js SkeletonUtils retargetClip 文档/实现](https://github.com/mrdoob/three.js/blob/dev/examples/jsm/utils/SkeletonUtils.js)
-- [StoryAI mannequinPosePresets.ts（MIT）](https://github.com/jiguang132/storyai-3d-director-desk/blob/main/src/editor/presets/mannequinPosePresets.ts)
-
-## 验证收据
-
-- `node scripts/check-director-asset-catalog.mjs`：34 个新增素材文件一一对应，缺失/孤儿/许可证/sha256/GLB 解析均为 0；新增 15,941,532 bytes（15.20 MiB）。
-- `pnpm exec tsc --noEmit -p tsconfig.app.json`、目录单测、`check:concept-owners`、`check:agents-sync` 通过。
-- `pnpm run gates`：95/96 通过；唯一失败为既有 `check:design-lab` 视觉基线 32 项。干净的 `/Users/aoqimin/Desktop/Nomi-3dbox-eval`（`feat/director-3dbox-eval`，同一基线）复跑得到同一 32 项、156 passed，因此按任务书例外保留红灯原证据，不更新无关基线。
+- [three.js SkeletonUtils](https://github.com/mrdoob/three.js/blob/dev/examples/jsm/utils/SkeletonUtils.js)
+- [StoryAI mannequinPosePresets.ts](https://github.com/jiguang132/storyai-3d-director-desk/blob/main/src/editor/presets/mannequinPosePresets.ts)

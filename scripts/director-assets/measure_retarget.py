@@ -1,6 +1,12 @@
-"""Measure a retarget run in Blender and emit check-retarget.mjs JSON."""
+"""Measure source playback against a real target clip in world joint space.
+
+The direction check deliberately does not use rest-local deltas or the
+conversion matrix. It only compares pose-evaluated child-joint vectors after
+normalising each character by its current hip/root frame.
+"""
 import argparse
 import json
+import math
 import os
 import sys
 
@@ -9,9 +15,7 @@ from mathutils import Matrix, Vector
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, SCRIPT_DIR)
-from retarget_blender import (MIXAMO_SOURCE, SEMANTIC, TARGET_PREFIX, UAL_SOURCE,
-                              apply_retarget_frame, clear_action, import_source,
-                              map_bones, pose_local, rest_local, source_file)
+from retarget_blender import MIXAMO_SOURCE, SEMANTIC, TARGET_PREFIX, UAL_SOURCE, clear_action, import_source, source_file
 
 CHILD = {
     "hips": "spine", "spine": "chest", "chest": "neck", "neck": "head", "head": "headTop",
@@ -20,116 +24,131 @@ CHILD = {
     "leftUpperLeg": "leftLowerLeg", "leftLowerLeg": "leftFoot", "leftFoot": "leftToe",
     "rightUpperLeg": "rightLowerLeg", "rightLowerLeg": "rightFoot", "rightFoot": "rightToe",
 }
-TARGET_CHILD = {"headTop": "HeadTop_End", "leftIndex": "LeftHandIndex1", "rightIndex": "RightHandIndex1", "leftToe": "LeftToeBase", "rightToe": "RightToeBase"}
 SOURCE_CHILD_UAL = {"headTop": "DEF-head", "leftIndex": "DEF-f_index.01.L", "rightIndex": "DEF-f_index.01.R", "leftToe": "DEF-toe.L", "rightToe": "DEF-toe.R"}
 SOURCE_CHILD_MIXAMO = {"headTop": "mixamorig:HeadTop_End", "leftIndex": "mixamorig:LeftHandIndex1", "rightIndex": "mixamorig:RightHandIndex1", "leftToe": "mixamorig:LeftToeBase", "rightToe": "mixamorig:RightToeBase"}
+TARGET_CHILD = {"headTop": "mixamorig:HeadTop_End", "leftIndex": "mixamorig:LeftHandIndex1", "rightIndex": "mixamorig:RightHandIndex1", "leftToe": "mixamorig:LeftToeBase", "rightToe": "mixamorig:RightToeBase"}
 
-def args():
+def parse_args():
     raw = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    p = argparse.ArgumentParser()
-    p.add_argument("--source", required=True); p.add_argument("--source-kind", choices=("ual", "historical"), required=True)
-    p.add_argument("--target", required=True); p.add_argument("--actions", required=True); p.add_argument("--output", required=True)
-    return p.parse_args(raw)
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", required=True); parser.add_argument("--source-kind", choices=("ual", "historical"), required=True)
+    parser.add_argument("--target", required=True); parser.add_argument("--target-action", required=True); parser.add_argument("--actions", required=True); parser.add_argument("--output", required=True)
+    return parser.parse_args(raw)
 
-def names(kind):
-    return UAL_SOURCE if kind == "ual" else MIXAMO_SOURCE
+def world_point(armature, bone_name):
+    return armature.matrix_world @ armature.pose.bones[bone_name].head
 
-def world_point(arm, bone_name, pose=True):
-    point = arm.pose.bones[bone_name].head if pose else arm.data.bones[bone_name].head
-    return arm.matrix_world @ point
+def direction(armature, parent_name, child_name):
+    parent = armature.pose.bones[parent_name]
+    if child_name == parent_name:
+        return (armature.matrix_world @ parent.tail - armature.matrix_world @ parent.head).normalized()
+    return (world_point(armature, child_name) - world_point(armature, parent_name)).normalized()
 
-def bone_vector(arm, parent_name, child_name, pose=True):
-    if parent_name == child_name:
-        bone = arm.pose.bones[parent_name] if pose else arm.data.bones[parent_name]
-        head = arm.matrix_world @ (bone.head if pose else bone.head)
-        tail = arm.matrix_world @ bone.tail
-        return (tail - head).normalized()
-    return (world_point(arm, child_name, pose) - world_point(arm, parent_name, pose)).normalized()
-
-def root_frame(arm, mapping, pose=False):
-    h = mapping["hips"]; s = mapping["spine"]; l = mapping["leftUpperLeg"]
-    up = (world_point(arm, s, pose) - world_point(arm, h, pose)).normalized()
-    side = (world_point(arm, l, pose) - world_point(arm, h, pose)).normalized()
+def root_frame(armature, mapping):
+    hips = world_point(armature, mapping["hips"])
+    up = (world_point(armature, mapping["head"]) - hips).normalized()
+    side = (world_point(armature, mapping["leftUpperLeg"]) - hips).normalized()
     forward = side.cross(up).normalized()
     side = up.cross(forward).normalized()
     return Matrix(((side.x, forward.x, up.x), (side.y, forward.y, up.y), (side.z, forward.z, up.z)))
 
-def local_vector(frame, vector):
-    return frame.transposed() @ vector
+def source_mapping(kind):
+    return UAL_SOURCE if kind == "ual" else MIXAMO_SOURCE
 
-def action_report(source, target, pairs, source_action, source_kind):
-    source.animation_data_create(); source.animation_data.action = source_action
-    clear_action(target)
-    source_map = names(source_kind)
-    target_map = {key: TARGET_PREFIX + value for key, value in SEMANTIC.items()}
-    source_child = {**source_map, **(SOURCE_CHILD_UAL if source_kind == "ual" else SOURCE_CHILD_MIXAMO)}
-    target_child = {**target_map, **{key: TARGET_PREFIX + value for key, value in TARGET_CHILD.items()}}
-    source_rest_frame = root_frame(source, source_map, pose=False)
-    target_rest_frame = root_frame(target, target_map, pose=False)
-    rest_source = {}; rest_target = {}
-    for key, child in CHILD.items():
-        sp = source_map[key]; tp = target_map[key]
-        sc = source_child[child]; tc = target_child[child]
-        source_parent_bone = source.data.bones[sp]; source_child_bone = source.data.bones[sc]
-        target_parent_bone = target.data.bones[tp]; target_child_bone = target.data.bones[tc]
-        source_offset = source_child_bone.tail - source_parent_bone.head if sc == sp else source_child_bone.head - source_parent_bone.head
-        target_offset = target_child_bone.tail - target_parent_bone.head if tc == tp else target_child_bone.head - target_parent_bone.head
-        rest_source[key] = source_offset.normalized()
-        rest_target[key] = target_offset.normalized()
-    start, end = source_action.frame_range
-    frames = [start + (end - start) * index / 11.0 for index in range(12)]
-    samples = []
-    contact_errors = []
-    standing_ratios = []
-    target_rest_ground = min(world_point(target, target_map["leftFoot"], False).z, world_point(target, target_map["rightFoot"], False).z)
-    source_rest_ground = min(world_point(source, source_map["leftFoot"], False).z, world_point(source, source_map["rightFoot"], False).z)
-    source_height = abs(world_point(source, source_map["head"], False).z - source_rest_ground) or 1
-    target_height = abs(world_point(target, target_map["head"], False).z - target_rest_ground) or 1
-    for frame in frames:
-        apply_retarget_frame(source, target, pairs, frame)
-        errors = {}
-        for key, child in CHILD.items():
-            source_bone = source.data.bones[source_map[key]]; target_bone = target.data.bones[target_map[key]]
-            source_delta = rest_local(source, source_bone).inverted() @ pose_local(source.pose.bones[source_map[key]])
-            target_delta = rest_local(target, target_bone).inverted() @ pose_local(target.pose.bones[target_map[key]])
-            source_child_bone = source.data.bones[source_child[child]]
-            source_offset = source_child_bone.tail - source_bone.head if source_child_bone.name == source_bone.name else source_child_bone.head - source_bone.head
-            sv = source_delta.to_3x3() @ source_offset.normalized()
-            target_child_bone = target.data.bones[target_child[child]]
-            target_offset = target_child_bone.tail - target_bone.head if target_child_bone.name == target_bone.name else target_child_bone.head - target_bone.head
-            tv = target_delta.to_3x3() @ target_offset.normalized()
-            # The source direction is expressed in its source-rest local basis;
-            # retargeting applies the same source pose delta to the target-rest
-            # offset, then compares the resulting world direction after the
-            # common target parent/root orientation. This is the bind-corrected
-            # child-joint direction, rather than a raw A-pose/T-pose comparison.
-            expected = source_delta.to_3x3() @ target_offset.normalized()
-            errors[key] = round(expected.angle(tv) * 180.0 / 3.141592653589793, 4)
-        source_frame = root_frame(source, source_map, pose=True)
-        target_frame = root_frame(target, target_map, pose=True)
-        source_foot = min(world_point(source, source_map["leftFoot"]).z, world_point(source, source_map["rightFoot"]).z) - source_rest_ground
-        target_foot = min(world_point(target, target_map["leftFoot"]).z, world_point(target, target_map["rightFoot"]).z) - target_rest_ground
-        if source_foot <= source_height * 0.06:
-            contact_errors.append(0.0)
-        source_hip = (world_point(source, source_map["hips"]).z - source_rest_ground) / source_height
-        target_hip = (world_point(target, target_map["hips"]).z - target_rest_ground) / target_height
-        if source_hip > 0.55:
-            standing_ratios.append(target_hip / source_hip if source_hip else 1)
-        # The target directions above are already evaluated after bind-basis
-        # correction. A T-pose regression is therefore represented by a
-        # non-zero bind-corrected angle; keep the explicit boolean for the
-        # checker and the intentional wrong-map fixture.
-        samples.append({"t": round(float(frame), 4), "boneAngleErrorDeg": errors, "sourceArmsDownTargetHorizontal": False})
-    standing_ratio = None if source_action.name in ("Sitting_Idle_Loop", "Death01") else 1.0
-    locomotion = source_action.name in ("Walk_Loop", "Jog_Fwd_Loop", "Sprint_Loop", "Crouch_Fwd_Loop")
-    return {"id": source_action.name, "samples": samples, "contactMaxAbsCm": max(contact_errors) if contact_errors else (0.0 if locomotion else None), "standingHipRatio": standing_ratio, "sourceArmsDownTargetHorizontal": any(sample["sourceArmsDownTargetHorizontal"] for sample in samples)}
+def import_target_action(path):
+    before = set(bpy.context.scene.objects)
+    if path.lower().endswith(".fbx"):
+        bpy.ops.import_scene.fbx(filepath=path, use_anim=True)
+    else:
+        bpy.ops.import_scene.gltf(filepath=path)
+    imported = [obj for obj in bpy.context.scene.objects if obj not in before and obj.type == "ARMATURE"]
+    if not imported or not imported[-1].animation_data or not imported[-1].animation_data.action:
+        raise RuntimeError(f"target action has no playable armature action: {path}")
+    target = imported[-1]
+    action = target.animation_data.action
+    # Blender 5.x actions carry an ID slot.  Copying that action onto a second
+    # armature can silently leave the second armature in its bind pose.  The
+    # imported armature is therefore the measured target; it is the object that
+    # actually owns and evaluates the exported action.
+    for obj in imported:
+        obj.hide_viewport = True; obj.hide_render = True
+    target.hide_viewport = False; target.hide_render = False
+    return target, action
+
+def map_child(source_map, source_kind):
+    child = dict(source_map); child.update(SOURCE_CHILD_UAL if source_kind == "ual" else SOURCE_CHILD_MIXAMO); return child
+
+def scalar_height(armature, mapping, up, child_map):
+    ground = min((world_point(armature, child_map.get(f"{side}Foot", mapping[side])).dot(up) for side in ("leftFoot", "rightFoot")), default=None)
+    if ground is None: return None, None
+    height = world_point(armature, mapping["head"]).dot(up) - ground
+    return ground, height if height > 1e-6 else None
+
+def clip_frame(action, source_frame, source_range):
+    start, end = action.frame_range; src_start, src_end = source_range
+    return start if abs(src_end - src_start) < 1e-6 else start + (source_frame - src_start) * (end - start) / (src_end - src_start)
+
+def angle_degrees(a, b):
+    if a.length < 1e-8 or b.length < 1e-8: return None
+    return math.degrees(math.acos(max(-1.0, min(1.0, a.normalized().dot(b.normalized())))))
+
+def plane_angle_degrees(vector, normal):
+    """Angle between a vector and a plane, in degrees."""
+    if vector.length < 1e-8 or normal.length < 1e-8:
+        return None
+    return math.degrees(math.asin(max(-1.0, min(1.0, abs(vector.normalized().dot(normal.normalized()))))))
+
+def action_report(source, target, source_action, target_action, source_kind):
+    source.animation_data_create(); source.animation_data.action = source_action; target.animation_data.action = target_action
+    source_map = source_mapping(source_kind); target_map = {key: TARGET_PREFIX + value for key, value in SEMANTIC.items()}
+    source_child = map_child(source_map, source_kind); target_child = {**target_map, **TARGET_CHILD}
+    start, end = source_action.frame_range; frames = [start + (end - start) * index / 11.0 for index in range(12)]
+    samples = []; contact_values = []; hip_values = []; source_contact_seen = False; source_standing_seen = False
+    bpy.context.scene.frame_set(int(round(start))); bpy.context.view_layer.update()
+    source_root0 = root_frame(source, source_map); target_frame0 = clip_frame(target_action, start, source_action.frame_range); bpy.context.scene.frame_set(int(round(target_frame0))); bpy.context.view_layer.update(); target_root0 = root_frame(target, target_map)
+    source_up0 = Vector((source_root0[0][2], source_root0[1][2], source_root0[2][2])); target_up0 = Vector((target_root0[0][2], target_root0[1][2], target_root0[2][2]))
+    source_ground0, source_height0 = scalar_height(source, source_map, source_up0, source_child); target_ground0, target_height0 = scalar_height(target, target_map, target_up0, target_child)
+    for source_frame in frames:
+        bpy.context.scene.frame_set(int(round(source_frame))); bpy.context.view_layer.update()
+        target_frame = clip_frame(target_action, source_frame, source_action.frame_range); bpy.context.scene.frame_set(int(round(target_frame))); bpy.context.view_layer.update()
+        try:
+            source_root = root_frame(source, source_map); target_root = root_frame(target, target_map)
+            source_up = source_up0; target_up = target_up0; source_ground = source_ground0; target_ground = target_ground0; source_height = source_height0; target_height = target_height0
+            if source_ground is None or target_ground is None or source_height is None or target_height is None: raise ValueError("missing ground or height")
+            errors = {}
+            for semantic, child in CHILD.items():
+                source_direction = source_root.transposed() @ direction(source, source_map[semantic], source_child[child])
+                target_direction = target_root.transposed() @ direction(target, target_map[semantic], target_child[child])
+                error = angle_degrees(source_direction, target_direction); errors[semantic] = round(error, 4) if error is not None else None
+            for side in ("left", "right"):
+                source_foot = (world_point(source, source_child[f"{side}Foot"]).dot(source_up) - source_ground) / source_height
+                target_foot = (world_point(target, target_child[f"{side}Foot"]).dot(target_up) - target_ground) / target_height
+                if source_foot < 0.06: source_contact_seen = True; contact_values.append(abs(target_foot) * 100.0)
+            source_hip = (world_point(source, source_map["hips"]).dot(source_up) - source_ground) / source_height
+            target_hip = (world_point(target, target_map["hips"]).dot(target_up) - target_ground) / target_height
+            if source_hip > 0.55: source_standing_seen = True; hip_values.append(target_hip / source_hip if source_hip > 1e-8 else None)
+            t_pose = False; down = Vector((0.0, 0.0, -1.0)); up_local = Vector((0.0, 0.0, 1.0))
+            for side in ("left", "right"):
+                source_arm = source_root.transposed() @ direction(source, source_map[f"{side}UpperArm"], source_child[f"{side}LowerArm"])
+                target_arm = target_root.transposed() @ direction(target, target_map[f"{side}UpperArm"], target_child[f"{side}LowerArm"])
+                source_down_angle = angle_degrees(source_arm, down); target_horizontal_angle = plane_angle_degrees(target_arm, up_local)
+                if source_down_angle is None or target_horizontal_angle is None: raise ValueError("missing arm direction")
+                if source_down_angle < 45.0 and target_horizontal_angle < 20.0: t_pose = True
+            samples.append({"t": round(float(source_frame), 4), "boneAngleErrorDeg": errors, "sourceArmsDownTargetHorizontal": t_pose})
+        except (KeyError, ValueError, ZeroDivisionError) as error:
+            samples.append({"t": round(float(source_frame), 4), "boneAngleErrorDeg": {semantic: None for semantic in CHILD}, "sourceArmsDownTargetHorizontal": None})
+    locomotion = source_action.name in ("Walk_Loop", "Jog_Fwd_Loop", "Sprint_Loop", "Crouch_Fwd_Loop", "run", "walk")
+    contact_max = max(contact_values) if source_contact_seen and contact_values else None
+    hip_ratio = min(value for value in hip_values if value is not None) if source_standing_seen and any(value is not None for value in hip_values) else None
+    return {"id": source_action.name, "samples": samples, "requiresContact": locomotion, "contactMaxAbsCm": contact_max, "requiresStandingHip": source_standing_seen, "standingHipRatio": hip_ratio, "sourceArmsDownTargetHorizontal": any(sample["sourceArmsDownTargetHorizontal"] is True for sample in samples)}
 
 def main():
-    options = args(); bpy.ops.wm.read_factory_settings(use_empty=True)
-    path, temp = source_file(options.source); source = import_source(path); target = import_source(options.target); clear_action(target)
-    pairs = map_bones(source, target, options.source_kind); actions = {action.name: action for action in bpy.data.actions}
-    report = {"source": os.path.abspath(options.source), "sourceKind": options.source_kind, "actions": [action_report(source, target, pairs, actions[name], options.source_kind) for name in options.actions.split(",")]}
-    with open(options.output, "w", encoding="utf-8") as handle: json.dump(report, handle, indent=2); handle.write("\n")
-    print(json.dumps(report, indent=2))
+    options = parse_args(); bpy.ops.wm.read_factory_settings(use_empty=True)
+    source_path, _temp = source_file(options.source); source = import_source(source_path); source_actions = {action.name: action for action in bpy.data.actions}
+    target, target_action = import_target_action(options.target_action)
+    reports = [action_report(source, target, source_actions[name], target_action, options.source_kind) for name in options.actions.split(",")]
+    result = {"source": os.path.abspath(options.source), "sourceKind": options.source_kind, "targetAction": os.path.abspath(options.target_action), "actions": reports}
+    with open(options.output, "w", encoding="utf-8") as handle: json.dump(result, handle, indent=2); handle.write("\n")
+    print(json.dumps(result, indent=2))
 
 if __name__ == "__main__": main()

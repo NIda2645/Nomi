@@ -6,7 +6,7 @@
   "recurrence_check_on": "2026-11-04",
   "symptom": "Restored actions render as a T pose or horizontal body, and UAL idle/sit clips render with horizontal zombie arms; the prior conversion cannot be reproduced.",
   "direct_cause": "The conversion copied source local rotations onto x-bot bones while their bind-pose local bases and existing target action differed; the target armature action was also left active during manual pose assignment.",
-  "class_root": "Every imported action must be converted from source-rest-relative pose deltas into target-rest-relative pose matrices before it is written to an output clip, then measured against the source motion at the shared semantic-bone boundary.",
+  "class_root": "Every mapped semantic bone is converted by aiming target pose joints at the source playback world-space directions in each character's current hip/root frame; the metric checker independently compares those playback joints and never reuses rest-local conversion deltas.",
   "affected_population": [
     "The four historical Mixamo actions restored from d3f68057c^",
     "All Quaternius UAL actions retargeted to x-bot",
@@ -17,7 +17,10 @@
     "scripts/director-assets/check-retarget.mjs",
     "scripts/director-assets/check-retarget.node-test.mjs",
     "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts",
-    "src/devlab/directorAssetCatalog.tsx"
+    "src/devlab/directorAssetCatalog.tsx",
+    "scripts/director-assets/measure_retarget.py",
+    "scripts/director-assets/render_contact_sheet.py",
+    "scripts/director-assets/render_static_pose_contact.py"
   ],
   "entry_points": [
     "Offline conversion from the registered UAL archive",
@@ -27,8 +30,8 @@
   "external_sources": [],
   "internal_only_reason": "The invariant is an application-owned source/target skeleton contract; no third-party runtime decides whether a converted clip is safe to catalog.",
   "invariants": [
-    "Target pose deltas are computed relative to source and target rest matrices for every mapped semantic bone.",
-    "The target armature has no pre-existing action while conversion writes pose matrices.",
+    "The metric uses only pose-evaluated world child-joint directions normalized by each frame's hip/root frame; rest-local matrices and conversion deltas are not measurement inputs.",
+    "The target armature has no pre-existing action while conversion writes pose matrices, and exported files are measured on the armature that owns the exported action.",
     "A clip is catalog-eligible only when its sampled median angle error is below 10 degrees and p95 is below 20 degrees, with the T-pose, contact, and standing-hip checks passing.",
     "The conversion command is deterministic for the same registered input hashes and emits a manifest with output hashes."
   ],
@@ -53,8 +56,8 @@
   "shared_boundaries": [
     {
       "path": "scripts/director-assets/retarget_blender.py",
-      "symbol": "retarget_action",
-      "responsibility": "Clear target animation and apply source-rest-relative deltas to target-rest-relative pose matrices for every mapped semantic bone."
+      "symbol": "apply_retarget_frame",
+      "responsibility": "Clear target animation, aim target pose joints in world space at source playback directions, and key the owning target armature."
     },
     {
       "path": "scripts/director-assets/check-retarget.mjs",
@@ -65,7 +68,7 @@
   "same_class_entry_points": [
     {
       "path": "scripts/director-assets/retarget_blender.py",
-      "entry_point": "retarget_action",
+      "entry_point": "apply_retarget_frame",
       "disposition": "enforced",
       "evidence": "Both the UAL archive and historical GLB conversion paths call the same routine with a source-name map."
     },

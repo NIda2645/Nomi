@@ -4159,6 +4159,14 @@
         {
           "path": "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts",
           "symbol": "DIRECTOR_ASSET_CATALOG"
+        },
+        {
+          "path": "scripts/director-assets/retarget_blender.py",
+          "symbol": "apply_retarget_frame"
+        },
+        {
+          "path": "scripts/director-assets/check-retarget.mjs",
+          "symbol": "evaluateAction"
         }
       ],
       "forbidden_derivations": [

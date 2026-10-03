@@ -18,15 +18,17 @@ const percentile = (values, p) => {
 }
 
 export function evaluateAction(action) {
-  const errors = (action.samples ?? []).flatMap(sample => Object.values(sample.boneAngleErrorDeg ?? {}))
+  const rawErrors = (action.samples ?? []).flatMap(sample => Object.values(sample.boneAngleErrorDeg ?? {}))
+  const errors = rawErrors.filter(value => typeof value === 'number' && Number.isFinite(value))
+  const missingMeasurement = errors.length !== rawErrors.length || (action.samples ?? []).some(sample => sample.sourceArmsDownTargetHorizontal == null)
   const medianDeg = median(errors)
   const p95Deg = percentile(errors, 0.95)
   const sampleCount = action.samples?.length ?? 0
-  const contactOk = action.contactMaxAbsCm == null || Math.abs(action.contactMaxAbsCm) <= 3
-  const hipOk = action.standingHipRatio == null || action.standingHipRatio >= 0.7
-  const tPoseOk = action.sourceArmsDownTargetHorizontal !== true
-  const pass = sampleCount >= 12 && medianDeg < 10 && p95Deg < 20 && contactOk && hipOk && tPoseOk
-  return { id: action.id, sampleCount, medianDeg, p95Deg, contactMaxAbsCm: action.contactMaxAbsCm ?? null, standingHipRatio: action.standingHipRatio ?? null, tPose: !tPoseOk, pass }
+  const contactOk = action.requiresContact !== true || (typeof action.contactMaxAbsCm === 'number' && Math.abs(action.contactMaxAbsCm) <= 3)
+  const hipOk = action.requiresStandingHip !== true || (typeof action.standingHipRatio === 'number' && action.standingHipRatio >= 0.7)
+  const tPoseOk = action.sourceArmsDownTargetHorizontal === false
+  const pass = !missingMeasurement && sampleCount >= 12 && medianDeg < 10 && p95Deg < 20 && contactOk && hipOk && tPoseOk
+  return { id: action.id, sampleCount, medianDeg, p95Deg, missingMeasurement, contactMaxAbsCm: action.contactMaxAbsCm ?? null, standingHipRatio: action.standingHipRatio ?? null, tPose: action.sourceArmsDownTargetHorizontal ?? null, pass }
 }
 
 export function evaluateReport(report) {
@@ -36,15 +38,12 @@ export function evaluateReport(report) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const args = process.argv.slice(2)
-  const fixtureIndex = args.indexOf('--fixture')
   const inputIndex = args.indexOf('--input')
   let report
-  if (fixtureIndex >= 0 && args[fixtureIndex + 1] === 'wrong-bind') {
-    report = { actions: [{ id: 'intentional-wrong-bind', samples: Array.from({ length: 12 }, () => ({ boneAngleErrorDeg: { leftUpperArm: 57 } })), sourceArmsDownTargetHorizontal: true }] }
-  } else if (inputIndex >= 0 && args[inputIndex + 1]) {
+  if (inputIndex >= 0 && args[inputIndex + 1]) {
     report = JSON.parse(fs.readFileSync(args[inputIndex + 1], 'utf8'))
   } else {
-    console.error('Usage: check-retarget.mjs --input <metrics.json> | --fixture wrong-bind')
+    console.error('Usage: check-retarget.mjs --input <metrics.json>')
     process.exit(2)
   }
   const result = evaluateReport(report)

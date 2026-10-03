@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { evaluateAction, evaluateReport } from './check-retarget.mjs'
 
-const passing = { id: 'ok', samples: Array.from({ length: 12 }, () => ({ boneAngleErrorDeg: { hips: 2, spine: 4, leftUpperArm: 8 } })), contactMaxAbsCm: 2.9, standingHipRatio: 0.71 }
+const passing = { id: 'ok', samples: Array.from({ length: 12 }, () => ({ boneAngleErrorDeg: { hips: 2, spine: 4, leftUpperArm: 8 }, sourceArmsDownTargetHorizontal: false })), requiresContact: true, contactMaxAbsCm: 2.9, requiresStandingHip: true, standingHipRatio: 0.71, sourceArmsDownTargetHorizontal: false }
 
 test('retarget checker accepts a fully sampled action under every threshold', () => {
   assert.equal(evaluateAction(passing).pass, true)

@@ -7,8 +7,9 @@ Run through Blender, for example:
     --output-dir src/assets/director/actions --format fbx
 
 The source archive is read but never copied into the repository. Pose matrices
-are converted from source-rest-relative deltas to target-rest-relative deltas;
-copying source local quaternions directly is intentionally not used.
+are solved from source playback world-space joint directions in the target's
+current root frame; copying source local quaternions directly is reserved for
+the intentional ``--disable-bind-correction`` red test.
 """
 import argparse
 import json
@@ -42,6 +43,16 @@ MIXAMO_SOURCE = {key: f"mixamorig:{value}" for key, value in {
     "leftUpperLeg": "LeftUpLeg", "leftLowerLeg": "LeftLeg", "leftFoot": "LeftFoot",
     "rightUpperLeg": "RightUpLeg", "rightLowerLeg": "RightLeg", "rightFoot": "RightFoot",
 }.items()}
+CHILD = {
+    "hips": "spine", "spine": "chest", "chest": "neck", "neck": "head", "head": "headTop",
+    "leftShoulder": "leftUpperArm", "leftUpperArm": "leftLowerArm", "leftLowerArm": "leftHand", "leftHand": "leftIndex",
+    "rightShoulder": "rightUpperArm", "rightUpperArm": "rightLowerArm", "rightLowerArm": "rightHand", "rightHand": "rightIndex",
+    "leftUpperLeg": "leftLowerLeg", "leftLowerLeg": "leftFoot", "leftFoot": "leftToe",
+    "rightUpperLeg": "rightLowerLeg", "rightLowerLeg": "rightFoot", "rightFoot": "rightToe",
+}
+SOURCE_CHILD_UAL = {"headTop": "DEF-head", "leftIndex": "DEF-f_index.01.L", "rightIndex": "DEF-f_index.01.R", "leftToe": "DEF-toe.L", "rightToe": "DEF-toe.R"}
+SOURCE_CHILD_MIXAMO = {"headTop": "mixamorig:HeadTop_End", "leftIndex": "mixamorig:LeftHandIndex1", "rightIndex": "mixamorig:RightHandIndex1", "leftToe": "mixamorig:LeftToeBase", "rightToe": "mixamorig:RightToeBase"}
+TARGET_CHILD = {"headTop": "mixamorig:HeadTop_End", "leftIndex": "mixamorig:LeftHandIndex1", "rightIndex": "mixamorig:RightHandIndex1", "leftToe": "mixamorig:LeftToeBase", "rightToe": "mixamorig:RightToeBase"}
 
 def parse_args():
     argv = os.sys.argv[os.sys.argv.index("--") + 1:] if "--" in os.sys.argv else []
@@ -53,6 +64,7 @@ def parse_args():
     parser.add_argument("--format", choices=("fbx", "glb"), required=True)
     parser.add_argument("--actions", default="")
     parser.add_argument("--manifest", default="")
+    parser.add_argument("--disable-bind-correction", action="store_true")
     return parser.parse_args(argv)
 
 def source_file(path):
@@ -103,7 +115,60 @@ def map_bones(source, target, source_kind):
         pairs.append((semantic, target_name, source_name))
     return pairs
 
-def apply_retarget_frame(source, target, pairs, frame):
+def _world_point(armature, bone_name):
+    return armature.matrix_world @ armature.pose.bones[bone_name].head
+
+def _direction(armature, parent_name, child_name):
+    parent = armature.pose.bones[parent_name]
+    if child_name == parent_name:
+        return (armature.matrix_world @ parent.tail - armature.matrix_world @ parent.head).normalized()
+    return (_world_point(armature, child_name) - _world_point(armature, parent_name)).normalized()
+
+def _root_frame(armature, mapping):
+    hips = _world_point(armature, mapping["hips"])
+    up = (_world_point(armature, mapping["head"]) - hips).normalized()
+    side = (_world_point(armature, mapping["leftUpperLeg"]) - hips).normalized()
+    forward = side.cross(up).normalized(); side = up.cross(forward).normalized()
+    return Matrix(((side.x, forward.x, up.x), (side.y, forward.y, up.y), (side.z, forward.z, up.z)))
+
+def apply_world_direction_frame(source, target, pairs, frame, source_kind):
+    bpy.context.scene.frame_set(int(round(frame))); bpy.context.view_layer.update()
+    source_map = UAL_SOURCE if source_kind == "ual" else MIXAMO_SOURCE
+    source_child = {**source_map, **(SOURCE_CHILD_UAL if source_kind == "ual" else SOURCE_CHILD_MIXAMO)}
+    target_map = {key: TARGET_PREFIX + value for key, value in SEMANTIC.items()}
+    target_child = {**target_map, **TARGET_CHILD}
+    # Start each sample from the target bind pose, then aim each mapped bone at
+    # the source's current world direction in the target's root frame.  Reset
+    # matrix_basis rather than assigning matrix_local in arbitrary bone order;
+    # the latter leaves children in the previous parent's pose.
+    for pose_bone in target.pose.bones:
+        pose_bone.rotation_mode = "QUATERNION"
+        pose_bone.matrix_basis = Matrix.Identity(4)
+    bpy.context.view_layer.update()
+    source_root = _root_frame(source, source_map); target_root = _root_frame(target, target_map)
+    for semantic, _target_name, _source_name in pairs:
+        source_dir = source_root.transposed() @ _direction(source, source_map[semantic], source_child[CHILD[semantic]])
+        desired = (target_root.to_3x3() @ source_dir).normalized()
+        target_name = target_map[semantic]; target_pose = target.pose.bones[target_name]
+        current = _direction(target, target_name, target_child[CHILD[semantic]])
+        rotation = current.rotation_difference(desired).to_matrix().to_4x4()
+        # The target armature carries a non-unit object scale.  Apply the
+        # correction in world space, then convert the result back to the
+        # armature space expected by PoseBone.matrix; mixing local pivots with
+        # world vectors rotates the child joint around the wrong point.
+        armature_world = target.matrix_world.copy()
+        armature_inverse = armature_world.inverted()
+        pivot = armature_world @ target_pose.head
+        pose_world = armature_world @ target_pose.matrix
+        pose_world = Matrix.Translation(pivot) @ rotation @ Matrix.Translation(-pivot) @ pose_world
+        target_pose.rotation_mode = "QUATERNION"
+        target_pose.matrix = armature_inverse @ pose_world
+        bpy.context.view_layer.update()
+
+def apply_retarget_frame(source, target, pairs, frame, bind_correction=True, source_kind="ual"):
+    if bind_correction:
+        apply_world_direction_frame(source, target, pairs, frame, source_kind)
+        return
     bpy.context.scene.frame_set(int(round(frame)))
     bpy.context.view_layer.update()
     for _semantic, target_name, source_name in pairs:
@@ -111,7 +176,7 @@ def apply_retarget_frame(source, target, pairs, frame):
         source_pose = source.pose.bones[source_name]
         target_bone = target.data.bones[target_name]
         target_pose = target.pose.bones[target_name]
-        delta = rest_local(source, source_bone).inverted() @ pose_local(source_pose)
+        delta = rest_local(source, source_bone).inverted() @ pose_local(source_pose) if bind_correction else pose_local(source_pose)
         # Bone translations belong to the source rig's scale. Keep target bind
         # locations and transfer rotations; hips motion is normalized later by
         # the metric checker and must never make a target float.
@@ -128,13 +193,13 @@ def new_target_action(target, name):
     target.animation_data.action = action
     return action
 
-def bake_action(source, target, pairs, source_action, output_name):
+def bake_action(source, target, pairs, source_action, output_name, bind_correction=True, source_kind="ual"):
     source.animation_data_create()
     source.animation_data.action = source_action
     target_action = new_target_action(target, output_name)
     start, end = source_action.frame_range
     for frame in range(int(round(start)), int(round(end)) + 1):
-        apply_retarget_frame(source, target, pairs, frame)
+        apply_retarget_frame(source, target, pairs, frame, bind_correction=bind_correction, source_kind=source_kind)
         for _semantic, target_name, _source_name in pairs:
             pb = target.pose.bones[target_name]
             pb.keyframe_insert(data_path="rotation_quaternion", frame=frame, group=target_name)
@@ -150,7 +215,10 @@ def export_target(target, target_objects, path, output_format):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     select_target(target, target_objects)
     if output_format == "fbx":
-        bpy.ops.export_scene.fbx(filepath=path, use_selection=True, object_types={"ARMATURE"}, add_leaf_bones=False, bake_anim=False, axis_forward="-Z", axis_up="Y")
+        active = target.animation_data.action if target.animation_data else None
+        if active:
+            bpy.context.scene.frame_start = int(round(active.frame_range[0])); bpy.context.scene.frame_end = int(round(active.frame_range[1]))
+        bpy.ops.export_scene.fbx(filepath=path, use_selection=True, object_types={"ARMATURE"}, add_leaf_bones=False, bake_anim=True, bake_anim_use_all_actions=False, bake_anim_use_nla_strips=False, bake_anim_step=1.0, bake_anim_simplify_factor=0.0, axis_forward="-Z", axis_up="Y")
     else:
         bpy.ops.export_scene.gltf(filepath=path, export_format="GLB", use_selection=True, export_animations=True, export_animation_mode="ACTIVE_ACTIONS", export_frame_range=True, export_nla_strips=False, export_def_bones=False, export_skins=True)
 
@@ -172,14 +240,14 @@ def main():
         if source_name not in source_actions:
             raise RuntimeError(f"source action not found: {source_name}")
         output_name = source_name
-        bake_action(source, target, pairs, source_actions[source_name], output_name)
+        bake_action(source, target, pairs, source_actions[source_name], output_name, bind_correction=not args.disable_bind_correction, source_kind=args.source_kind)
         source.animation_data.action = None
         extension = ".fbx" if args.format == "fbx" else ".glb"
         output_path = os.path.join(args.output_dir, output_name + extension)
         export_target(target, target_objects, output_path, args.format)
         outputs.append({"sourceAction": source_name, "output": output_path, "frameRange": list(source_actions[source_name].frame_range), "mappedBones": [item[0] for item in pairs]})
         clear_action(target)
-    manifest = {"source": os.path.abspath(args.source), "sourceKind": args.source_kind, "target": os.path.abspath(args.target), "format": args.format, "outputs": outputs}
+    manifest = {"source": os.path.abspath(args.source), "sourceKind": args.source_kind, "target": os.path.abspath(args.target), "format": args.format, "bindCorrection": not args.disable_bind_correction, "outputs": outputs}
     manifest_path = args.manifest or os.path.join(args.output_dir, "retarget-manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2, sort_keys=True)
