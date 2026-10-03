@@ -50,7 +50,7 @@ MIT 静态姿势 `lean/bow/think/fight/kick/throw/push/reach/cross-arms/phone` �
 
 ## 故意错误与旧产物红证据
 
-`--disable-bind-correction` 会真实执行直接局部姿势转换；它的测量中骨方向字段全部为 `null`（目标高度不可定义），因此 `check-retarget.mjs` fail-closed 退出 1，收据在 `evals/runs/retarget-r2/wrong-bind/`。第一轮提交 `a067faf1f` 的真实 `ual-idle.fbx` 测得中位 `32.435°`、p95 `102.983°`、T 字 `true`，`check-retarget` 退出 1，收据在 `evals/runs/retarget-r2/old-a067/`。这两次都是真转换/真播放测量，不是手写 57° fixture。
+`--disable-bind-correction` 会真实执行直接局部姿势转换；它的测量中骨方向字段全部为 `null`（目标高度不可定义），因此 `check-retarget.mjs` fail-closed 退出 1，收据在 `evals/runs/retarget-r2/wrong-bind/`。第一轮提交 `a067faf1f` 的真实 `ual-idle.fbx` 测得中位 `32.435°`、p95 `103.637°`、T 字 `true`，`check-retarget` 退出 1，收据在 `evals/runs/retarget-r2/old-a067/`。这两次都是真转换/真播放测量，不是手写 57° fixture。
 
 ## 目检收据
 
