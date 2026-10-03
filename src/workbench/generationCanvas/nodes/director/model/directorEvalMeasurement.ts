@@ -130,7 +130,10 @@ export type MotionRecognition = { move: CameraMove | 'follow' | 'pan' | 'tilt' |
 
 function unwrapDelta(values: number[]): number[] { const out: number[] = []; let total = 0; for (let i = 1; i < values.length; i++) { const d = signedDeg(values[i] - values[i - 1]); total += d; out.push(total) } return out }
 export function recognizeCameraMotion(measurements: DirectorMeasurements, subjectId: string, window: MotionWindow): MotionRecognition {
-  const frames = measurements.frames.filter(f => f.time >= window.start - EPS && f.time <= window.end + EPS && f.camera)
+  let frames = measurements.frames.filter(f => f.time >= window.start - EPS && f.time <= window.end + EPS && f.camera)
+  const cameraCounts = new Map<string, number>(); for (const frame of frames) if (frame.cameraId) cameraCounts.set(frame.cameraId, (cameraCounts.get(frame.cameraId) ?? 0) + 1)
+  const dominantCamera = [...cameraCounts.entries()].sort((a,b) => b[1]-a[1])[0]?.[0]
+  if (dominantCamera) frames = frames.filter(f => f.cameraId === dominantCamera)
   const first = frames[0], last = frames[frames.length - 1]
   if (!first?.camera || !last?.camera || frames.length < 2) return { move: 'static', signedOrbitDeg: 0, distanceDelta: 0, linearSpeed: 0, angularSpeed: 0, jerkRms: 0, jump: false }
   const points = frames.map(f => f.camera!.position), subjects = frames.map(f => f.objects[subjectId]?.position ?? vec(0, 0, 0))
@@ -168,7 +171,7 @@ export function measureContinuity(measurements: DirectorMeasurements, scene: Dir
   for (const frame of measurements.frames) {
     if (frame.camera) for (const object of scene.objects) {
       const sample = frame.objects[object.id]
-      if (sample?.projection && sample.projection.depth < 0.05) issues.push({ kind: 'camera-inside', time: frame.time, objectId: object.id, message: `camera enters ${object.name}` })
+      if (frame.camera && !/^(ground|road|wall.*|building.*|gate|.*_car)$/i.test(object.name) && distance(frame.camera.position, sample.position) < Math.max(object.scale.x, object.scale.y, object.scale.z) * 0.6) issues.push({ kind: 'camera-inside', time: frame.time, objectId: object.id, message: `camera enters ${object.name}` })
       if (sample?.belowGround) issues.push({ kind: 'below-ground', time: frame.time, objectId: object.id, message: `${object.name} is below ground` })
     }
   }

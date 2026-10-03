@@ -1,0 +1,1069 @@
+[
+  {
+    "id": "courtyard-standoff",
+    "tier": "benchmark",
+    "prompt": "做一段古装悬疑剧情预演：青衣女子带信走进古代庭院，侍卫在院门前拦住她。",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    },
+    "scene": {
+      "tags": [
+        "古代庭院",
+        "夜"
+      ],
+      "required": [
+        "ground",
+        "wall_enclosure",
+        "gate"
+      ],
+      "relations": [
+        "guard near gate (<= 1.5m)"
+      ]
+    },
+    "actors": [
+      {
+        "id": "woman",
+        "category": "person",
+        "desc": "青衣女子",
+        "props": [
+          "letter"
+        ]
+      },
+      {
+        "id": "guard",
+        "category": "person",
+        "desc": "黑衣侍卫"
+      }
+    ],
+    "blocking": [
+      {
+        "actor": "woman",
+        "verb": "walk_to",
+        "target": "gate",
+        "window": [
+          0,
+          4
+        ]
+      },
+      {
+        "actor": "guard",
+        "verb": "sidestep_block",
+        "between": [
+          "woman",
+          "gate"
+        ],
+        "window": [
+          4,
+          8
+        ]
+      },
+      {
+        "actor": "woman",
+        "verb": "stop",
+        "window": [
+          4,
+          8
+        ]
+      },
+      {
+        "actor": "woman",
+        "verb": "hide_object_behind_back",
+        "object": "letter",
+        "window": [
+          4,
+          8
+        ]
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "woman",
+        "angle": "side_rear",
+        "move": "follow"
+      },
+      {
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subjects": [
+          "woman",
+          "guard"
+        ],
+        "move": "static",
+        "transitionIn": "cut"
+      },
+      {
+        "t": [
+          8,
+          10
+        ],
+        "size": "特写",
+        "subject": "woman.hand",
+        "transitionIn": "cut"
+      },
+      {
+        "t": [
+          10,
+          12
+        ],
+        "size": "中近景",
+        "subject": "woman",
+        "angle": "over_shoulder(guard)",
+        "move": "push",
+        "speed": "slow",
+        "transitionIn": "cut"
+      }
+    ],
+    "continuity": [
+      "no_teleport_across_cuts",
+      "axis_180_rule(woman, guard)"
+    ]
+  },
+  {
+    "id": "perfume-orbit",
+    "tier": "benchmark",
+    "prompt": "一只香水瓶立在圆形展台上，镜头缓慢环绕一周，再推近瓶盖。",
+    "scene": {
+      "required": [
+        "bottle",
+        "round_pedestal"
+      ],
+      "relations": [
+        "bottle on pedestal"
+      ],
+      "style": "minimal_geometry"
+    },
+    "actors": [
+      {
+        "id": "bottle",
+        "category": "product",
+        "static": true
+      }
+    ],
+    "shots": [
+      {
+        "move": "orbit",
+        "subject": "bottle",
+        "sweepDeg": 360,
+        "tolDeg": 20,
+        "speed": "slow"
+      },
+      {
+        "move": "push",
+        "endSubject": "bottle.cap",
+        "endSize": "特写",
+        "transitionIn": "continuous"
+      }
+    ],
+    "continuity": [
+      "no_teleport_across_cuts"
+    ]
+  },
+  {
+    "id": "police-chase",
+    "tier": "benchmark",
+    "prompt": "警匪飙车：警车追赶逃逸车穿过城市街道，节奏惊险竞速。",
+    "scene": {
+      "tags": [
+        "城市街道"
+      ],
+      "required": [
+        "road",
+        "buildings_both_sides"
+      ]
+    },
+    "actors": [
+      {
+        "id": "police_car",
+        "category": "vehicle"
+      },
+      {
+        "id": "suspect_car",
+        "category": "vehicle"
+      }
+    ],
+    "blocking": [
+      {
+        "actor": "suspect_car",
+        "verb": "drive_along",
+        "path": "road",
+        "speed": "fast"
+      },
+      {
+        "actor": "police_car",
+        "verb": "chase",
+        "target": "suspect_car"
+      }
+    ],
+    "shots": [
+      {
+        "size": "全景"
+      },
+      {
+        "size": "中景"
+      },
+      {
+        "size": "特写"
+      }
+    ],
+    "move": "follow",
+    "minCount": 3
+  },
+  {
+    "id": "t1-01-push",
+    "tier": "T1",
+    "prompt": "推近镜头：room主体，单镜头push in。",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "room"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "push"
+      }
+    ]
+  },
+  {
+    "id": "t1-02-pull",
+    "tier": "T1",
+    "prompt": "Pull out shot of a street subject in one take.",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "street"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "pull"
+      }
+    ]
+  },
+  {
+    "id": "t1-03-pan",
+    "tier": "T1",
+    "prompt": "摇镜镜头：person主体，单镜头pan。",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "person"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "pan"
+      }
+    ]
+  },
+  {
+    "id": "t1-04-tilt",
+    "tier": "T1",
+    "prompt": "Tilt shot of a product subject in one take.",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "product"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "product"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "tilt"
+      }
+    ]
+  },
+  {
+    "id": "t1-05-orbit",
+    "tier": "T1",
+    "prompt": "环绕镜头：product主体，单镜头orbit。",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "product"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "product"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "orbit"
+      }
+    ]
+  },
+  {
+    "id": "t1-06-follow",
+    "tier": "T1",
+    "prompt": "Follow shot of a person subject in one take.",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "person"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "follow"
+      }
+    ]
+  },
+  {
+    "id": "t1-07-truck",
+    "tier": "T1",
+    "prompt": "横移镜头：street主体，单镜头truck。",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "street"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "truck"
+      }
+    ]
+  },
+  {
+    "id": "t1-08-crane",
+    "tier": "T1",
+    "prompt": "Crane shot of a room subject in one take.",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "room"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "crane"
+      }
+    ]
+  },
+  {
+    "id": "t1-09-over_shoulder",
+    "tier": "T1",
+    "prompt": "越肩镜头：person主体，单镜头over shoulder。",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "person"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "over_shoulder"
+      }
+    ]
+  },
+  {
+    "id": "t1-10-pov",
+    "tier": "T1",
+    "prompt": "POV shot of a person subject in one take.",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "person"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "pov"
+      }
+    ]
+  },
+  {
+    "id": "t1-11-zoom",
+    "tier": "T1",
+    "prompt": "变焦镜头：product主体，单镜头zoom。",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "product"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "product"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "zoom"
+      }
+    ]
+  },
+  {
+    "id": "t1-12-arc",
+    "tier": "T1",
+    "prompt": "Arc shot of a street subject in one take.",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "street"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "arc"
+      }
+    ]
+  },
+  {
+    "id": "t1-13-static",
+    "tier": "T1",
+    "prompt": "固定镜头：room主体，单镜头static。",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "room"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "static"
+      }
+    ]
+  },
+  {
+    "id": "t1-14-dolly",
+    "tier": "T1",
+    "prompt": "Dolly shot of a person subject in one take.",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "person"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "dolly"
+      }
+    ]
+  },
+  {
+    "id": "t1-15-whip",
+    "tier": "T1",
+    "prompt": "甩镜镜头：street主体，单镜头whip。",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "street"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "whip"
+      }
+    ]
+  },
+  {
+    "id": "t1-16-rack_focus",
+    "tier": "T1",
+    "prompt": "Rack focus shot of a product subject in one take.",
+    "duration": {
+      "total": 4,
+      "tol": 0.5
+    },
+    "scene": {
+      "required": [
+        "product"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "product"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "rack_focus"
+      }
+    ]
+  },
+  {
+    "id": "t2-courtyard",
+    "tier": "T2",
+    "prompt": "镜头一全景跟拍女子穿过庭院，镜头二中景静止对峙，镜头三特写后慢推。",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    },
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "subject",
+        "move": "follow"
+      },
+      {
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "static"
+      },
+      {
+        "t": [
+          8,
+          12
+        ],
+        "size": "特写",
+        "subject": "subject",
+        "move": "push"
+      }
+    ]
+  },
+  {
+    "id": "t2-kitchen",
+    "tier": "T2",
+    "prompt": "A precise three-shot kitchen reveal: wide truck, medium static, close push.",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    },
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "subject",
+        "move": "follow"
+      },
+      {
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "static"
+      },
+      {
+        "t": [
+          8,
+          12
+        ],
+        "size": "特写",
+        "subject": "subject",
+        "move": "push"
+      }
+    ]
+  },
+  {
+    "id": "t2-train",
+    "tier": "T2",
+    "prompt": "火车站三镜头：远景摇镜，中景跟拍，特写拉远。",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    },
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "subject",
+        "move": "follow"
+      },
+      {
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "static"
+      },
+      {
+        "t": [
+          8,
+          12
+        ],
+        "size": "特写",
+        "subject": "subject",
+        "move": "push"
+      }
+    ]
+  },
+  {
+    "id": "t2-gallery",
+    "tier": "T2",
+    "prompt": "A gallery product sequence with a slow orbit, a cut to medium, and a cap close-up.",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    },
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "subject",
+        "move": "follow"
+      },
+      {
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "static"
+      },
+      {
+        "t": [
+          8,
+          12
+        ],
+        "size": "特写",
+        "subject": "subject",
+        "move": "push"
+      }
+    ]
+  },
+  {
+    "id": "t2-rooftop",
+    "tier": "T2",
+    "prompt": "屋顶夜戏：全景升镜，中景横移，近景俯拍。",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    },
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "subject",
+        "move": "follow"
+      },
+      {
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "static"
+      },
+      {
+        "t": [
+          8,
+          12
+        ],
+        "size": "特写",
+        "subject": "subject",
+        "move": "push"
+      }
+    ]
+  },
+  {
+    "id": "t3-storm",
+    "tier": "T3",
+    "prompt": "A tense storm arrival with varied cinematic coverage.",
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "size": "全景"
+      },
+      {
+        "size": "中景"
+      },
+      {
+        "size": "特写"
+      }
+    ]
+  },
+  {
+    "id": "t3-cafe",
+    "tier": "T3",
+    "prompt": "咖啡馆里两个人第一次见面，要有环境、交流和细节镜头。",
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "size": "全景"
+      },
+      {
+        "size": "中景"
+      },
+      {
+        "size": "特写"
+      }
+    ]
+  },
+  {
+    "id": "t3-space",
+    "tier": "T3",
+    "prompt": "An astronaut enters a quiet room; make the camera feel weightless.",
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "size": "全景"
+      },
+      {
+        "size": "中景"
+      },
+      {
+        "size": "特写"
+      }
+    ]
+  },
+  {
+    "id": "t3-market",
+    "tier": "T3",
+    "prompt": "集市追逐，镜头要让人感到方向和速度。",
+    "scene": {
+      "required": [
+        "ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "size": "全景"
+      },
+      {
+        "size": "中景"
+      },
+      {
+        "size": "特写"
+      }
+    ]
+  }
+]
