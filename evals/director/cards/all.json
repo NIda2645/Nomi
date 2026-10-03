@@ -372,7 +372,8 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "pan"
+        "move": "pan",
+        "direction": "right"
       }
     ],
     "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
@@ -417,6 +418,7 @@
         "size": "中景",
         "subject": "subject",
         "move": "tilt",
+        "direction": "up",
         "speed": "slow"
       }
     ],
@@ -462,6 +464,7 @@
         "size": "中景",
         "subject": "subject",
         "move": "orbit",
+        "direction": "right",
         "sweepDeg": 360,
         "tolDeg": 20,
         "speed": "slow"
@@ -508,7 +511,8 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "follow"
+        "move": "follow",
+        "direction": "right"
       }
     ],
     "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
@@ -553,6 +557,7 @@
         "size": "中景",
         "subject": "subject",
         "move": "truck",
+        "direction": "right",
         "speed": "medium"
       }
     ],
@@ -598,6 +603,7 @@
         "size": "中景",
         "subject": "subject",
         "move": "crane",
+        "direction": "up",
         "speed": "slow"
       }
     ],
@@ -731,6 +737,7 @@
         "size": "中景",
         "subject": "subject",
         "move": "zoom",
+        "direction": "in",
         "speed": "slow"
       }
     ],
@@ -776,6 +783,7 @@
         "size": "中景",
         "subject": "subject",
         "move": "arc",
+        "direction": "left",
         "sweepDeg": 90,
         "tolDeg": 15,
         "speed": "slow"
@@ -911,7 +919,8 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "whip"
+        "move": "whip",
+        "direction": "right"
       }
     ],
     "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
@@ -1087,7 +1096,8 @@
         ],
         "size": "远景",
         "subject": "subject",
-        "move": "pan"
+        "move": "pan",
+        "direction": "right"
       },
       {
         "t": [
@@ -1137,7 +1147,9 @@
         ],
         "size": "全景",
         "subject": "subject",
-        "move": "orbit"
+        "move": "orbit",
+        "direction": "right",
+        "speed": "slow"
       },
       {
         "t": [
@@ -1187,7 +1199,8 @@
         ],
         "size": "全景",
         "subject": "subject",
-        "move": "crane"
+        "move": "crane",
+        "direction": "up"
       },
       {
         "t": [
@@ -1196,7 +1209,8 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "truck"
+        "move": "truck",
+        "direction": "right"
       },
       {
         "t": [
@@ -1205,7 +1219,8 @@
         ],
         "size": "近景",
         "subject": "subject",
-        "move": "tilt"
+        "move": "tilt",
+        "direction": "down"
       }
     ],
     "reviewNote": "已逐句对照 prompt 重核：每镜景别与运镜按原文填写。"
@@ -1225,40 +1240,9 @@
         "category": "person"
       }
     ],
-    "shots": [
-      {
-        "t": [
-          0,
-          4
-        ],
-        "size": "全景",
-        "subject": "subject",
-        "move": "crane"
-      },
-      {
-        "t": [
-          4,
-          8
-        ],
-        "size": "中景",
-        "subject": "subject",
-        "move": "follow"
-      },
-      {
-        "t": [
-          8,
-          12
-        ],
-        "size": "特写",
-        "subject": "subject",
-        "move": "push"
-      }
-    ],
-    "reviewNote": "已核对：模糊创意题仍约束演员、三档景别和至少一种运镜族。",
-    "duration": {
-      "total": 12,
-      "tol": 1
-    }
+    "coverageRequired": ["全景", "中景", "特写"],
+    "moveAnyOf": ["crane", "follow", "push"],
+    "reviewNote": "已核对：只约束演员、景别集合、运动族集合和暴雨地面，不固定镜头顺序或时间窗。"
   },
   {
     "id": "t3-cafe",
@@ -1289,46 +1273,9 @@
         "category": "person"
       }
     ],
-    "shots": [
-      {
-        "t": [
-          0,
-          4
-        ],
-        "size": "全景",
-        "subjects": [
-          "person_a",
-          "person_b"
-        ],
-        "move": "truck"
-      },
-      {
-        "t": [
-          4,
-          8
-        ],
-        "size": "中景",
-        "subjects": [
-          "person_a",
-          "person_b"
-        ],
-        "move": "static"
-      },
-      {
-        "t": [
-          8,
-          12
-        ],
-        "size": "特写",
-        "subject": "person_a",
-        "move": "push"
-      }
-    ],
-    "reviewNote": "已核对：模糊创意题仍约束演员、三档景别和至少一种运镜族。",
-    "duration": {
-      "total": 12,
-      "tol": 1
-    }
+    "coverageRequired": ["全景", "中景", "特写"],
+    "moveAnyOf": ["truck", "static", "push"],
+    "reviewNote": "已核对：两位演员、景别集合、运动族集合和咖啡桌必需；不固定镜头顺序或时间窗。"
   },
   {
     "id": "t3-space",
@@ -1345,40 +1292,9 @@
         "category": "person"
       }
     ],
-    "shots": [
-      {
-        "t": [
-          0,
-          4
-        ],
-        "size": "全景",
-        "subject": "subject",
-        "move": "orbit"
-      },
-      {
-        "t": [
-          4,
-          8
-        ],
-        "size": "中景",
-        "subject": "subject",
-        "move": "crane"
-      },
-      {
-        "t": [
-          8,
-          12
-        ],
-        "size": "特写",
-        "subject": "subject",
-        "move": "pull"
-      }
-    ],
-    "reviewNote": "已核对：模糊创意题仍约束演员、三档景别和至少一种运镜族。",
-    "duration": {
-      "total": 12,
-      "tol": 1
-    }
+    "coverageRequired": ["全景", "中景", "特写"],
+    "moveAnyOf": ["orbit", "crane", "pull"],
+    "reviewNote": "已核对：只约束宇航员、景别集合、失重感可用运动族集合和安静房间，不固定镜头顺序或时间窗。"
   },
   {
     "id": "t3-market",
@@ -1395,39 +1311,8 @@
         "category": "person"
       }
     ],
-    "shots": [
-      {
-        "t": [
-          0,
-          4
-        ],
-        "size": "全景",
-        "subject": "subject",
-        "move": "follow"
-      },
-      {
-        "t": [
-          4,
-          8
-        ],
-        "size": "中景",
-        "subject": "subject",
-        "move": "truck"
-      },
-      {
-        "t": [
-          8,
-          12
-        ],
-        "size": "特写",
-        "subject": "subject",
-        "move": "push"
-      }
-    ],
-    "reviewNote": "已核对：模糊创意题仍约束演员、三档景别和至少一种运镜族。",
-    "duration": {
-      "total": 12,
-      "tol": 1
-    }
+    "coverageRequired": ["全景", "中景", "特写"],
+    "moveAnyOf": ["follow", "truck", "push"],
+    "reviewNote": "已核对：只约束追逐演员、景别集合、跟拍/横移/推进运动族集合和集市街道，不固定镜头顺序或时间窗。"
   }
 ]

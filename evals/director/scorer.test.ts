@@ -11,6 +11,7 @@ describe('director scorer directionality', () => {
   it('drops L2 for two T1 cards when the subject leaves frame', () => { for(const id of ['t1-05-orbit','t1-06-follow']) { const good=score(id), bad=score(id,'out-of-frame'); expect(good.L2-bad.L2, id).toBeGreaterThanOrEqual(.2) } })
   it('drops L1/L2 for two T2 cards when a shot is removed', () => { for(const id of ['t2-kitchen','t2-train']) { const good=score(id), bad=score(id,'missing-shot'); expect(good.L1-bad.L1, id).toBeGreaterThanOrEqual(.2) } })
   it('drops L1/L2 for two T3 cards when a shot is removed', () => { for(const id of ['t3-storm','t3-market']) { const good=score(id), bad=score(id,'missing-shot'); expect(good.L1-bad.L1, id).toBeGreaterThanOrEqual(.2) } })
+  it('drops L2 when orbit and pan direction are reversed', () => { for (const id of ['t1-05-orbit', 't1-03-pan']) { const good=score(id), bad=score(id,'reverse-direction'); expect(good.L2-bad.L2, id).toBeGreaterThanOrEqual(.2) } })
   it('covers benchmark mutations: orbit, out-of-frame, axis, action and unmatched actor', () => {
     const perfume=card('perfume-orbit'), pa=oracleForCard(perfume), ps=scoreCard(perfume,pa.project,pa.actorMap)
     expect(ps.scores.L2-scoreCard(perfume,mutateOracle(pa.project,'half-orbit'),pa.actorMap).scores.L2).toBeGreaterThanOrEqual(.2)
