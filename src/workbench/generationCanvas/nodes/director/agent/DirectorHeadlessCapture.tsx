@@ -48,6 +48,8 @@ export type DirectorHeadlessCaptureProps = {
   times: number[]
   /** 短边上限（参考视频 720p 封顶）；省略 = 工程导出档位 */
   maxShortSide?: number
+  /** Exact output size for adapters that already own their render viewport. */
+  captureSize?: { width: number; height: number }
   /** Optional per-time camera selector. Returning null produces a black frame. */
   cameraIdAt?: (time: number) => string | null
   /** Burn character labels into frames; omitted keeps the existing product default. */
@@ -78,7 +80,8 @@ function charactersLoaded(registry: SceneRefRegistry, scene: DirectorScene): boo
   })
 }
 
-function captureDimensions(project: DirectorProject, maxShortSide: number | undefined): { width: number; height: number } {
+function captureDimensions(project: DirectorProject, maxShortSide: number | undefined, captureSize: { width: number; height: number } | undefined): { width: number; height: number } {
+  if (captureSize) return captureSize
   const full = exportDimensions(project.exportRatio, project.exportResolution)
   const short = Math.min(full.width, full.height)
   if (!maxShortSide || short <= maxShortSide) return full
@@ -102,7 +105,7 @@ export function resolveHeadlessCameraId(scene: DirectorScene, time: number, came
   return cameraIdAt ? cameraIdAt(time) : (scene.cameras[0]?.id ?? null)
 }
 
-function CaptureDriver({ times, maxShortSide, cameraIdAt, burnLabels = true, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
+function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabels = true, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
   const store = useDirectorStoreApi()
   const registry = useSceneRegistry()
 
@@ -120,7 +123,7 @@ function CaptureDriver({ times, maxShortSide, cameraIdAt, burnLabels = true, onR
         if (cancelled) return
       }
       await nextFrames(SETTLE_FRAMES)
-      const { width, height } = captureDimensions(state.project, maxShortSide)
+      const { width, height } = captureDimensions(state.project, maxShortSide, captureSize)
       const frames: string[] = []
       const cameraIds: Array<string | null> = []
       const frameReadbacks: HeadlessCaptureFrameReadback[] = []
@@ -149,7 +152,7 @@ function CaptureDriver({ times, maxShortSide, cameraIdAt, burnLabels = true, onR
   return null
 }
 
-export function DirectorHeadlessCapture({ project, times, maxShortSide, cameraIdAt, burnLabels, onResult }: DirectorHeadlessCaptureProps): JSX.Element {
+export function DirectorHeadlessCapture({ project, times, maxShortSide, captureSize, cameraIdAt, burnLabels, onResult }: DirectorHeadlessCaptureProps): JSX.Element {
   const store = React.useMemo(() => createDirectorStore({ rawProject: project, defaultSceneName: project.scenes[0]?.name ?? 'Scene 1' }), [project])
   const registry = React.useMemo(() => createSceneRefRegistry(), [])
   const apiRef = React.useRef(null) as ViewportApiRef
@@ -176,7 +179,7 @@ export function DirectorHeadlessCapture({ project, times, maxShortSide, cameraId
               <DirectorEntities />
               <PlaybackBinder />
               <CaptureBinder />
-              <CaptureDriver times={times} maxShortSide={maxShortSide} cameraIdAt={cameraIdAt} burnLabels={burnLabels} onResult={onResult} />
+              <CaptureDriver times={times} maxShortSide={maxShortSide} captureSize={captureSize} cameraIdAt={cameraIdAt} burnLabels={burnLabels} onResult={onResult} />
             </SceneRegistryContext.Provider>
           </FencedCanvas>
         </ViewportApiContext.Provider>

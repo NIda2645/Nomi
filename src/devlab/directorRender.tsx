@@ -2,6 +2,7 @@
 import React, { type JSX } from 'react'
 import { createRoot } from 'react-dom/client'
 import type { DirectorProject } from '../workbench/generationCanvas/nodes/director/model/directorTypes'
+import { exportDimensions } from '../workbench/generationCanvas/nodes/director/model/exportSize'
 import { programCameraIdAt } from '../workbench/generationCanvas/nodes/director/model/programCamera'
 import { DirectorHeadlessCapture, type HeadlessCaptureResult } from '../workbench/generationCanvas/nodes/director/agent/DirectorHeadlessCapture'
 
@@ -11,13 +12,14 @@ type RenderWindow = Window & { __nomiDirectorRenderResult?: Result | { error: st
 
 export function CaptureBridge({ request, onDone }: { request: Request; onDone: (result: Result | { error: string }) => void }): JSX.Element {
   const scene = request.project.scenes[0]
-  const fullWidth = request.width ?? 960
-  const fullHeight = request.height ?? 540
+  const full = exportDimensions(request.project.exportRatio, request.project.exportResolution)
+  const width = request.width ?? Math.min(full.width, 960)
+  const height = request.height ?? Math.min(full.height, Math.round((width * full.height) / full.width))
   return (
     <DirectorHeadlessCapture
       project={request.project}
       times={request.times}
-      maxShortSide={Math.min(fullWidth, fullHeight)}
+      captureSize={{ width, height }}
       cameraIdAt={(time) => scene ? programCameraIdAt(time, scene.cameras, scene.timelineTrackOrder) : null}
       burnLabels={false}
       onResult={(result) => onDone(result ?? { error: 'headless capture returned null' })}
