@@ -53,6 +53,14 @@ function semanticInput(key: string) {
 
 type Submit = (request: unknown, key: string, input: ReturnType<typeof semanticInput>) => Promise<{ providerTaskId: string }>;
 
+function causeNames(error: unknown): string[] {
+  const names: string[] = [];
+  for (let current = error; current && typeof current === "object" && names.length < 10; current = (current as { cause?: unknown }).cause) {
+    names.push(String((current as { name?: unknown }).name));
+  }
+  return names;
+}
+
 const servers: http.Server[] = [];
 const sockets = new Set<net.Socket>();
 
@@ -129,10 +137,11 @@ describe("APIMart 付费提交：每次新连接", () => {
     try {
       const fx = await loopback("hang");
       const { send } = providerFor(fx.origin);
-      const started = Date.now();
       const error = await send("key-1").catch((caught: unknown) => caught);
       expect(error).toBeInstanceOf(Error);
-      expect(Date.now() - started).toBeLessThan(5000);
+      // 直接观测机制：是那道响应超时到点 abort 的（cause 链里有 TimeoutError），不是连接被重置；
+      // 超时没生效时 send 永远不回，测试会在 vitest 的用例超时上红。
+      expect(causeNames(error)).toContain("TimeoutError");
       expect(outboundRequestWasNeverWritten(error)).toBe(false);
       expect(fx.requests.filter((request) => request.method === "POST")).toHaveLength(1);
     } finally {
