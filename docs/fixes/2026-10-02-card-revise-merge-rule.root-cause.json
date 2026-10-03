@@ -2,6 +2,8 @@
   "schema_version": 3,
   "id": "2026-10-02-card-revise-merge-rule",
   "problem_type": "A change made on the paid card was merged into the shot's candidate without the rule every other patch path uses, so switching the mode on the card left the task kind behind",
+  "detected_by": "walkthrough",
+  "recurrence_check_on": "2026-11-01",
   "symptom": "pb02 (2026-10-02): with a canvas reference the card switched itself to Image-to-image and pressed Generate this one; Nomi said it did not start and did not charge. The main process logged 'catalog generation parameter is unsupported: image_urls': the dispatch picked the provider's text-to-image mapping, which takes no reference images. The same happens when the person switches Text-to-image to Image-to-image, or Text-to-video to Image-to-video, on the card by hand.",
   "direct_cause": "electron/capabilityCore/appIntegrationSpendConfirm.ts revise passed the card's patch straight to generation.revise (productionGenerationPlanEdits.applyGenerationCandidatePatch), so a patch with only modeId changed the archetype mode id and kept the old task kind (mode); electron/capabilityCore/generationPlanPatch.ts resolvePlanPatch, which the Agent's draft patch goes through, did not derive the task kind from a changed modeId either.",
   "class_root": "Two write paths patch the same candidate (the Agent's draft patch and the card's revise) and only one went through the shared merge rule; and the merge rule followed the task kind for a model change but not for a mode change, although modeId and mode are two spellings of one fact.",
