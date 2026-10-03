@@ -68,7 +68,7 @@ async function main(): Promise<void> {
       }
     }
     const pair = schemes.length >= 2 && videos.get(`${card.id}:${schemes[0]}`) && videos.get(`${card.id}:${schemes[1]}`)
-      ? await pairwiseOnce(card, registration.value, videos.get(`${card.id}:${schemes[0]}`)!.contactSheet, videos.get(`${card.id}:${schemes[1]}`)!.contactSheet)
+      ? await pairwiseOnce(card, registration.value, videos.get(`${card.id}:${schemes[0]}`)!.contactSheet, videos.get(`${card.id}:${schemes[1]}`)!.contactSheet, schemes[0], schemes[1])
       : undefined
     if (pair) { calls.pairwise += 1; if (pair.fast) calls.fast += 1 }
     if (pair?.value) for (const record of records.filter((item) => item.cardId === card.id && !item.bait)) record.pairwiseWinner = pair.value.winner

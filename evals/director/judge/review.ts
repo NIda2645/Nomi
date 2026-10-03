@@ -41,7 +41,7 @@ export async function reviewOnce(card: DirectorCard, preregistration: Preregistr
   }
 }
 
-export async function pairwiseOnce(card: DirectorCard, preregistration: Preregistration, left: string, right: string, cwd = os.tmpdir()): Promise<{ value?: ReturnType<typeof pairwiseSchema.parse>; error?: string; fast: boolean }> {
+export async function pairwiseOnce(card: DirectorCard, preregistration: Preregistration, left: string, right: string, leftScheme = 'left', rightScheme = 'right', cwd = os.tmpdir()): Promise<{ value?: ReturnType<typeof pairwiseSchema.parse>; error?: string; fast: boolean }> {
   const temp = await fs.mkdtemp(path.join(cwd, 'nomi-director-pair-'))
   try {
     const sides = crypto.randomInt(0, 2) === 0 ? [{ scheme: 'left', source: left }, { scheme: 'right', source: right }] : [{ scheme: 'right', source: right }, { scheme: 'left', source: left }]
@@ -52,7 +52,7 @@ export async function pairwiseOnce(card: DirectorCard, preregistration: Preregis
     }))
     const raw = await runCodex(['-i', targets[0], '-i', targets[1]], pairwisePrompt(card, preregistration), temp)
     const value = pairwiseSchema.parse(parseJsonObject(raw))
-    const sideToScheme = new Map(sides.map(({ scheme, source }) => [scheme, source === left ? 'left' : 'right']))
+    const sideToScheme = new Map(sides.map(({ scheme, source }) => [scheme, source === left ? leftScheme : rightScheme]))
     return { value: { ...value, winner: value.winner === 'left' || value.winner === 'right' ? sideToScheme.get(value.winner) as typeof value.winner : value.winner }, fast: !raw.includes('service tier `priority` is not advertised') }
   } catch (error) {
     return { error: error instanceof Error ? error.message : String(error), fast: false }
