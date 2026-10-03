@@ -10,7 +10,7 @@ import { generationShotKind, type GenerationShotKind } from "../shared/generatio
 import { resolveOwnedArtifactFile, safeProjectRelativePath } from "./artifactProjection";
 import { localAssetUrl } from "../assets/assetPaths";
 import type { ProductionRun, ProductionGenerationShot } from "./productionRunTypes";
-import { logWarn } from "../logging/logger";
+import { logInfo, logWarn } from "../logging/logger";
 import { deriveProductionShotState, productionRunRecordId } from "../shared/productionShotPhase";
 
 /**
@@ -74,6 +74,13 @@ export type MaterializeShotWire = {
   mediaDimensions?: { width: number; height: number };
   /** 没有 result 时，这一镜在节点上的运行状态（见 MaterializeShotGenerationWire）。 */
   generation?: MaterializeShotGenerationWire;
+  /**
+   * 这一镜在 Run 里记着 `canvasDetached`（有人上报过它的节点被拿走了）：**只许动画布上已有的节点**，绝不新建。
+   * 节点真的不在 → 渲染层什么都不做（撤销事实优先，不复活）；节点还在（误报 / 删了又 ⌘Z 撤回）→ 它照常拿到
+   * 真实状态 / 结果，并回报绑定，plan.bind-shot-nodes 据此把 detached 记录纠正回来。
+   * 「节点在不在画布上」只有画布文档说了算，Run 里那条记录不是第二个 owner（S1-5，2026-10-03）。
+   */
+  existingOnly?: true;
 };
 
 export type MaterializeShotsWirePayload = {
@@ -123,7 +130,20 @@ export function materializeShotsSignature(payload: MaterializeShotsWirePayload):
     shot.mediaDimensions ? [shot.mediaDimensions.width, shot.mediaDimensions.height] : null,
     shot.generation ? [shot.generation.state, "runRecordId" in shot.generation ? shot.generation.runRecordId : null] : null,
     shot.candidate?.revision ?? null,
+    shot.existingOnly ?? false,
   ]));
+}
+
+/**
+ * 这个 Run 落过画布没有：有节点绑定，或者记过 detached（落过、后来有人上报节点被拿走）。
+ * 跟随者 / 打开项目对账只跟落过画布的 Run；记过 detached 的也算——那条记录可能是错的或过时的，
+ * 只有画布文档能纠正它（投影对这些镜只动已有节点，见 MaterializeShotWire.existingOnly）。
+ */
+export function runHasBeenOnCanvas(run: ProductionRun): boolean {
+  const plan = run.generationPlan;
+  if (!plan) return false;
+  return Boolean(plan.nodeId) || plan.canvasDetached === true
+    || Boolean(plan.shots?.some((shot) => Boolean(shot.nodeId) || shot.canvasDetached === true));
 }
 
 /** 该 Run 的画布落地稳定 op id（每 Run 一个 → 崩溃/重开补齐都对同一章去重）。 */
@@ -186,8 +206,9 @@ function shotKind(shot: ProductionGenerationShot): GenerationShotKind {
  * 没有 result 的镜带上 `generation`（它在节点上此刻该挂的运行状态）。
  * planName = 计划名（渲染层据它拼分镜组名与分镜表标题）。projectRoot 用于核验产物文件真的在项目里。
  *
- * 用户删掉的占位（`canvasDetached`）不投影：撤销事实优先，补齐 / 跟随都不许把它复活
- * （单镜早就这样判；多镜以前漏了，重开项目会把删掉的镜头节点建回来）。
+ * 记了 `canvasDetached` 的镜照样投影，但标 `existingOnly`：补齐 / 跟随都不许把删掉的节点复活（撤销事实优先），
+ * 而节点其实还在的（切项目被误报成删除、删了又撤回）照样对上真实状态与结果（S1-5，2026-10-03）。
+ * 以前这里直接把它们滤掉——Run 里那条记录一错，节点上的「生成中」就再也没人改，付了钱的图永远落不下来。
  */
 export function buildMaterializeShotsPayload(
   run: ProductionRun,
@@ -195,17 +216,14 @@ export function buildMaterializeShotsPayload(
 ): MaterializeShotsWirePayload | null {
   const plan = run.generationPlan;
   if (!plan) return null;
-  // A deleted single-shot placeholder is an explicit user decision. Keep the
-  // durable artifact in the Run/asset owner, but do not recreate the canvas
-  // node on every reconciliation pass.
-  if ((!plan.shots || plan.shots.length === 0) && plan.canvasDetached) return null;
   // A single-shot semantic operation keeps its candidate at plan.candidate for
   // backwards compatibility (shots[] is intentionally absent). Project it
   // through the same materialize-shots owner so the resident flow gets one
-  // real canvas node instead of an answer-only receipt.
-  const sourceShots = plan.shots && plan.shots.length > 0
-    ? plan.shots.filter((shot) => !shot.canvasDetached)
-    : [{ shotId: plan.candidate.candidateId, candidate: plan.candidate, updatedAt: plan.updatedAt }]
+  // real canvas node instead of an answer-only receipt. A detached single
+  // plan follows the same existing-only rule as a detached shot.
+  const sourceShots: ProductionGenerationShot[] = plan.shots && plan.shots.length > 0
+    ? plan.shots
+    : [{ shotId: plan.candidate.candidateId, candidate: plan.candidate, updatedAt: plan.updatedAt, ...(plan.canvasDetached ? { canvasDetached: true } : {}) }]
   if (sourceShots.length === 0) return null;
 
   // shotId → 已完成镜的本地 result（从 artifacts 投影）。job 谱系：job.metadata.shotId → job → artifact.jobId。
@@ -260,6 +278,7 @@ export function buildMaterializeShotsPayload(
       ...(result ? { result } : {}),
       ...(result && dimensionsByShot.get(shot.shotId) ? { mediaDimensions: dimensionsByShot.get(shot.shotId) } : {}),
       ...(generation ? { generation } : {}),
+      ...(shot.canvasDetached ? { existingOnly: true as const } : {}),
     };
   });
 
@@ -282,6 +301,8 @@ export type CanvasLandingDeps = {
   planName?: string;
   /** 只让已有节点跟上状态（见 MaterializeShotsWirePayload.existingOnly）。 */
   existingOnly?: boolean;
+  /** 打开项目的对账：画布上认不出是同一镜的（老资料、身份对不上）什么都不做，但记一条日志。 */
+  reportUnmatched?: boolean;
   /** Optional lifecycle guard for detached observers.  It is checked before
    * touching the renderer and again before the durable Run bind. */
   isCurrent?: () => boolean;
@@ -303,6 +324,10 @@ export async function landCanvasForRun(run: ProductionRun, deps: CanvasLandingDe
       .map((raw) => (raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {}))
       .map((entry) => ({ shotId: typeof entry.shotId === "string" ? entry.shotId.trim() : "", nodeId: typeof entry.nodeId === "string" ? entry.nodeId.trim() : "" }))
       .filter((binding) => binding.shotId && binding.nodeId);
+    if (deps.reportUnmatched) {
+      const unmatched = payload.shots.filter((shot) => !bindings.some((binding) => binding.shotId === shot.shotId)).length;
+      if (unmatched > 0) logInfo("production-run", "canvas-reconcile-unmatched-shots", { runId: run.runId, unmatched, shots: payload.shots.length });
+    }
     if (bindings.length > 0) {
       if (deps.isCurrent && !deps.isCurrent()) return false;
       await deps.bindShotNodes(run.projectId, run.runId, run.revision, bindings);

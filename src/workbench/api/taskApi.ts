@@ -3,6 +3,7 @@ import { TELEMETRY_ERROR_TYPE_PATTERN, type CapabilitySlot, type DurationBucket,
 import { isTerminalTaskStatus, type TaskStatus } from '../../../electron/shared/taskStatus'
 import { classifyGenerationError } from '../observability/classifyError'
 import { describeOpaqueFailure } from '../observability/opaqueFailure'
+import { trackNodeSubmit } from '../generationCanvas/runner/nodeSubmitInFlight'
 
 export type TaskKind =
   | 'chat'
@@ -197,6 +198,8 @@ export async function runWorkbenchTaskByVendor(
   const desktop = requireDesktopRuntime('task execution')
   const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
   const capability = telemetryCapability(request.kind)
+  // 这一笔在主进程回话之前都算「在途」——切项目重装画布时，装载收敛据此不把它当幽灵转圈收成空闲。
+  const settleSubmit = trackNodeSubmit(typeof request.extras?.nodeId === 'string' ? request.extras.nodeId : undefined)
   try {
     const response = await desktop.tasks.run({
       vendor: normalizedVendor,
@@ -215,6 +218,8 @@ export async function runWorkbenchTaskByVendor(
   } catch (error) {
     if (capability) trackGenerationOutcome(desktop, capability, startedAt, 'failure', error instanceof Error ? error.message : String(error))
     throw error
+  } finally {
+    settleSubmit()
   }
 }
 

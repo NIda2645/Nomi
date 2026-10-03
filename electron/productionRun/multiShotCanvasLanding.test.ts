@@ -177,10 +177,38 @@ describe('buildMaterializeShotsPayload projects each shot\'s run state onto its 
     expect(payload!.shots[0].generation).toMatchObject({ state: 'running', runRecordId: 'production-job-ignored' })
   })
 
-  it('用户删掉的镜（canvasDetached）不投影：补齐 / 跟随都不把它复活', () => {
+  // 「这一镜在不在画布上」只有画布文档说了算；Run 的 canvasDetached 只是一次上报留下的记录，它可能是错的
+  // （S1-5：切项目被误报成删除）或过时的（删了又 ⌘Z 撤回来）。所以记了 detached 的镜**照样投影，但只许动已有节点**：
+  // 节点真的不在 → 渲染层什么都不建（撤销事实优先，不复活）；节点还在 → 它拿到真实状态 / 结果，并回报绑定把记录纠正过来。
+  it('用户删掉的镜（canvasDetached）只投影成「只动已有节点」：补齐 / 跟随都不把它复活，节点还在则对上真实状态', () => {
     const payload = buildMaterializeShotsPayload(run([shot('s1'), shot('s2', { canvasDetached: true })]), { projectRoot: null })
-    expect(payload!.shots.map((s) => s.shotId)).toEqual(['s1'])
-    expect(buildMaterializeShotsPayload(run([shot('s1', { canvasDetached: true })]), { projectRoot: null })).toBeNull()
+    expect(payload!.shots.map((s) => [s.shotId, s.existingOnly ?? false])).toEqual([['s1', false], ['s2', true]])
+    const allDetached = buildMaterializeShotsPayload(run([shot('s1', { canvasDetached: true })]), { projectRoot: null })
+    expect(allDetached!.shots.map((s) => [s.shotId, s.existingOnly])).toEqual([['s1', true]])
+  })
+
+  it('reported case (S1-5): 被误记 detached 的镜，供应商出完图、job 已 adopted —— 投影带上结果，节点还在就落得下', () => {
+    const projectRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-s15-detached-result-'))
+    const rel = 'assets/generated/materialized/fixture.jpg'
+    fs.mkdirSync(path.dirname(path.join(projectRoot, rel)), { recursive: true })
+    fs.writeFileSync(path.join(projectRoot, rel), 'fake-jpg')
+    try {
+      const jobs: ProductionJob[] = [{ jobId: 'job-s1', stageId: 'generate', status: 'adopted', attempt: 1, provider: 'apimart', model: 'image', idempotencyKey: 'k', metadata: { shotId: 's1' }, createdAt: NOW, updatedAt: NOW }]
+      const artifacts: ProductionArtifact[] = [{ artifactId: 'art-1', stageId: 'generate', jobId: 'job-s1', kind: 'image', status: 'ready', version: 1, projectRelativePath: rel, createdAt: NOW }]
+      const stuck = { ...run([shot('s1', { canvasDetached: true })], jobs, artifacts), status: 'needs_attention' as const }
+      const s1 = buildMaterializeShotsPayload(stuck, { projectRoot })!.shots[0]
+      expect(s1).toMatchObject({ shotId: 's1', existingOnly: true })
+      expect(s1.result?.url).toBe(`nomi-local://asset/proj-1/${rel}`)
+    } finally {
+      fs.rmSync(projectRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('class: 单镜计划（没有 shots[]）被记 detached 也同一条规则——投影它的候选，只动已有节点', () => {
+    const single = run([shot('cat')])
+    single.generationPlan = { ...single.generationPlan!, shots: undefined, canvasDetached: true }
+    const payload = buildMaterializeShotsPayload(single, { projectRoot: null })
+    expect(payload!.shots.map((s) => [s.shotId, s.existingOnly])).toEqual([['cat', true]])
   })
 
   it('指纹只看「绑到哪 / 结果是哪个 / 运行态」：同一份状态重投影指纹不变，状态一变指纹就变', () => {

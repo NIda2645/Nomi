@@ -12,7 +12,7 @@
 // 由 ProductionCanvasLandingHost 挂载，经渲染层唯一的制作命令口发 plan.detach-shot-nodes。
 //
 // ctx 纪律：canvasGestureContext 只包同步段（禁跨 await，见其头注释）——本模块每个 store 写入各自 inLandingTxn 包一次。
-import { withProjectAction, isProjectExecutionContextCurrent } from '../project/projectCanvasReadSurface'
+import { withProjectAction, whenProjectAdopted, isProjectExecutionContextCurrent } from '../project/projectCanvasReadSurface'
 import i18n from '../../i18n'
 import { useGenerationCanvasStore } from '../generationCanvas/store/generationCanvasStore'
 import { applyCanvasToolCall, resolveCanvasToolNodeId } from '../generationCanvas/agent/applyCanvasToolCall'
@@ -73,6 +73,11 @@ export type MaterializeShotInput = {
   mediaDimensions?: MediaDimensions
   /** 没有 result 时：这一镜在节点上的运行状态。 */
   generation?: MaterializeShotGeneration
+  /**
+   * Run 里这一镜记着 detached：只许动画布上已有的节点，绝不新建（主进程 MaterializeShotWire.existingOnly）。
+   * 节点还在就照常回填并回报绑定——画布文档才是「节点在不在」的 owner，主进程据绑定纠正那条记录。
+   */
+  existingOnly?: boolean
 }
 
 export type MaterializeShotsPayload = {
@@ -181,6 +186,9 @@ async function rebindLandedShots(
   }
 }
 
+/** 主进程按项目寻址的落地，最多等这个窗口认下那个项目多久（主进程那头的 RPC 期限是 60s）。 */
+const PROJECT_ADOPTION_WAIT_MS = 30_000
+
 /**
  * 确认即落 / 打开项目补齐的**唯一落点**（P1 一个家）。整批一个撤销步：N 节点 + 组 = 一个 Cmd+Z。
  * 幂等：materializationOperationId + clientId(=shotId) 双章去重，已建的跳过、只补缺失的；组按 op 章复用不重建。
@@ -193,7 +201,14 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
 
   // Renderer projection belongs to this project lifetime, not whichever canvas is focused
   // after a model/tool/persistence await. Main-process paid execution continues independently.
-  const project = withProjectAction(current => current, () => { throw new Error('storyboard_project_unavailable') })
+  // A landing main addressed to a project may arrive while this window is still adopting it
+  // (open-project reconciliation fires on main's commit, before our commit reply): wait for the
+  // adoption instead of failing, then require it to be the addressed project.
+  const adoption = payload.projectId
+    ? whenProjectAdopted(PROJECT_ADOPTION_WAIT_MS)
+    : Promise.resolve(withProjectAction(current => current))
+  const project = await adoption
+  if (!project) throw new Error('storyboard_project_unavailable')
   if (payload.projectId && payload.projectId !== project.binding.projectId) throw new Error('storyboard_project_changed')
   project.assertCurrent()
   interruptPendingCanvasWrite()
@@ -205,7 +220,8 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   )
 
   // 分锚/镜：参考行（锚）在上、镜头折行网格（复用 storyboard 布局的 anchorCount 约定）。构造序=先锚后镜。
-  const ordered = incoming.filter(shot => !payload.existingOnly || existingByShot.has(shot.shotId)).sort((a, b) => Number(a.role !== 'anchor') - Number(b.role !== 'anchor'))
+  const existingOnly = (shot: MaterializeShotInput): boolean => payload.existingOnly === true || shot.existingOnly === true
+  const ordered = incoming.filter(shot => !existingOnly(shot) || existingByShot.has(shot.shotId)).sort((a, b) => Number(a.role !== 'anchor') - Number(b.role !== 'anchor'))
   // 全部落进同一分类（分镜组），锚按 kind、镜落 shots。跨分类混编时以「镜头组」为主分类。
   const groupCategoryId: BuiltinCanvasCategoryId = 'shots'
 
@@ -216,7 +232,7 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
   // 这条闸是「打开项目补齐」这类幂等重放不会覆盖用户手改的原因。
   const rebindable = ordered.filter((shot) => {
     const nodeId = existingByShot.get(shot.shotId)
-    if (payload.existingOnly || !nodeId || !shot.candidate) return false
+    if (existingOnly(shot) || !nodeId || !shot.candidate) return false
     const node = useGenerationCanvasStore.getState().nodes.find((candidate) => candidate.id === nodeId)
     const stored = nodeCandidateRevision(node?.meta as Record<string, unknown> | undefined)
     return stored === null || shot.candidate.revision > stored

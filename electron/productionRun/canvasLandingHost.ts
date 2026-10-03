@@ -13,7 +13,7 @@
 //      一份 Run 快照另画一套；两份真相各判各的，供应商早出片了节点还在转。
 // 共用是刻意的（P1 一个家）：几条各写一份的话，任何一份漏了幂等章就会堆出重复节点。
 // 同一个 Run 的落地**逐个排队**：并发的两次 materialize 都会看见「节点还没建」，然后各建一份。
-import { buildMaterializeShotsPayload, landCanvasForRun, materializeShotsSignature } from "./multiShotCanvasLanding";
+import { buildMaterializeShotsPayload, landCanvasForRun, materializeShotsSignature, runHasBeenOnCanvas } from "./multiShotCanvasLanding";
 import type { ProductionRun } from "./productionRunTypes";
 
 export type CanvasLandingHostDeps = {
@@ -34,11 +34,19 @@ export type CanvasLandingHost = {
   /** 草稿账本的投影钩子：agent 一建/一改草稿就投影一次。永不 await（落地不得阻断草稿命令）。 */
   landDraftOnCanvas: (projectId: string, runId: string) => void;
   /**
-   * Run 一次耐久变化之后调（挂在仓库 execute 的事件旁路上）。**只跟已经落在画布上的 Run**
-   * （有节点绑定）——还没落过的由 ①②③ 负责建节点，跟随者只负责让已有节点跟上 Run 的真实状态。
+   * Run 一次耐久变化之后调（挂在仓库 execute 的事件旁路上）。**只跟落过画布的 Run**
+   * （有节点绑定，或记过 detached——见 runHasBeenOnCanvas）——还没落过的由 ①②③ 负责建节点，
+   * 跟随者只负责让已有节点跟上 Run 的真实状态。
    * 投影指纹没变（比如只是又轮询了一次）就不去打扰渲染层。永不抛、永不阻塞调用方。
    */
   followRunChange: (run: ProductionRun) => void;
+  /**
+   * 打开项目时的画布对账（每一个未取消的 Run 都走它）：只让画布上已有、认得出是同一镜的节点对上它——补结果、
+   * 纠正 detached 记录——**绝不新建节点**；认不出来的什么都不做，记一条日志。不看上一次投影的指纹
+   * （渲染层刚从磁盘装载）。没落过画布的 Run 不碰。永不抛。
+   * 以前这里对未结束的 Run 走整份落地：带老 Run 的项目一打开就凭空多出一份节点（#966 CI，canvas-shortcuts C19）。
+   */
+  reconcileExistingCanvas: (projectId: string, runId: string) => Promise<boolean>;
   /**
    * 等这个项目上**Nomi 自己发起的**落地全部结束（永不抛；没有在飞的立即返回）。
    *
@@ -50,6 +58,14 @@ export type CanvasLandingHost = {
    */
   settleCanvasLanding: (projectId: string) => Promise<void>;
 };
+
+/** Run 里这一镜是不是记着 detached（单镜计划的地址是候选 id，与落地投影同一条约定）。 */
+function shotIsDetached(run: ProductionRun, shotId: string): boolean {
+  const plan = run.generationPlan;
+  if (!plan) return false;
+  if (!plan.shots || plan.shots.length === 0) return plan.canvasDetached === true && plan.candidate.candidateId === shotId;
+  return plan.shots.some((shot) => shot.shotId === shotId && shot.canvasDetached === true);
+}
 
 export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLandingHost {
   // 每个项目一份「在飞的落地」聚合承诺。三个落地时机都登记（都会写项目文档），
@@ -82,7 +98,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
   };
   const runLanding = (projectId: string, runId: string, isCurrent?: () => boolean): Promise<boolean> =>
     enqueue(runKey(projectId, runId), () => landOnce(projectId, runId, isCurrent, false));
-  const landOnce = async (projectId: string, runId: string, isCurrent: (() => boolean) | undefined, existingOnly: boolean): Promise<boolean> => {
+  const landOnce = async (projectId: string, runId: string, isCurrent: (() => boolean) | undefined, existingOnly: boolean, reportUnmatched = false): Promise<boolean> => {
     if (isCurrent && !isCurrent()) return false;
     let run: ProductionRun | null | undefined;
     try {
@@ -96,19 +112,24 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     // Historical runs that already have a binding remain reconcilable so reopening a project
     // does not strand their nodes. **This gate has no bypass**: a bypass is the difference
     // between "the agent drafted a plan for you" and "the agent rearranged your canvas".
-    const hasCanvasBinding = Boolean(run.generationPlan?.nodeId)
-      || Boolean(run.generationPlan?.shots?.some((shot) => shot.nodeId));
-    if (run.origin.sourceDocument && !hasCanvasBinding) return false;
+    if (run.origin.sourceDocument && !runHasBeenOnCanvas(run)) return false;
+    const landing = run;
     const signature = signatureOf(run, projectId);
     const landed = await landCanvasForRun(run, {
       requestRenderer: deps.requestRenderer,
       projectRoot: deps.resolveProjectRoot(projectId),
       planName: run.authoring?.title ?? run.brief?.goal,
       ...(existingOnly ? { existingOnly: true } : {}),
+      ...(reportUnmatched ? { reportUnmatched: true } : {}),
       ...(isCurrent ? { isCurrent } : {}),
       bindShotNodes: async (boundProjectId, boundRunId, expectedRevision, bindings) => {
+        // 命令号按「绑到哪」去重：同一份绑定反复落地只记一次。可一镜被记过 detached 之后又回报「节点还在」，
+        // 那是一次**新的**纠正——绑定串和当初一字不差，按旧号会被仓库的幂等重放原样吞掉，detached 永远纠正不回来
+        // （S1-5）。所以纠正带上它纠正的那个 revision，号放在绑定串前面，截断也截不掉。
+        const reattach = bindings.some((binding) => shotIsDetached(landing, binding.shotId));
+        const kind = reattach ? `reattach-${expectedRevision}` : "bind";
         await deps.command(boundProjectId, boundRunId, {
-          commandId: `canvas-landing:${boundRunId}:bind:${bindings.map((binding) => `${binding.shotId}=${binding.nodeId}`).join(",")}`.slice(0, 200),
+          commandId: `canvas-landing:${boundRunId}:${kind}:${bindings.map((binding) => `${binding.shotId}=${binding.nodeId}`).join(",")}`.slice(0, 200),
           expectedRevision,
           type: "plan.bind-shot-nodes",
           payload: { bindings },
@@ -122,11 +143,9 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
   // 已排进队、还没开始的那一次跟随：同一段时间里的多次变化并成一次（开始时摘掉，之后的变化会再排一次）。
   const pendingFollows = new Set<string>();
   const followRunChange = (run: ProductionRun): void => {
-    const plan = run.generationPlan;
-    if (!plan) return;
+    if (!run.generationPlan) return;
     const key = runKey(run.projectId, run.runId);
-    const onCanvas = Boolean(plan.nodeId) || Boolean(plan.shots?.some((shot) => shot.nodeId));
-    if (!onCanvas || !deps.isProjectOpen(run.projectId)) {
+    if (!runHasBeenOnCanvas(run) || !deps.isProjectOpen(run.projectId)) {
       // 项目关了：下次打开时由 ③ 整份补齐，这里的指纹不再代表渲染层手里那份。
       projectedSignature.delete(key);
       return;
@@ -154,9 +173,26 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     track(projectId, work);
     return work;
   };
+  const reconcileExistingCanvas = (projectId: string, runId: string): Promise<boolean> => {
+    const key = runKey(projectId, runId);
+    const work = enqueue(key, async () => {
+      let run: ProductionRun | null | undefined;
+      try {
+        run = deps.readRun(projectId, runId);
+      } catch {
+        return false;
+      }
+      if (!run || !runHasBeenOnCanvas(run)) return false;
+      projectedSignature.delete(key);
+      return landOnce(projectId, runId, undefined, true, true);
+    });
+    track(projectId, work);
+    return work;
+  };
   return {
     landCanvasBestEffort,
     followRunChange,
+    reconcileExistingCanvas,
     landDraftOnCanvas: (projectId, runId) => {
       if (!deps.isProjectOpen(projectId)) return;
       track(projectId, runLanding(projectId, runId));

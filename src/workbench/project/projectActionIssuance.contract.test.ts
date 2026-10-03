@@ -17,7 +17,7 @@ import type { ProjectCanvasReadSurfaceCoordinator, ProjectExecutionContext } fro
 
 const repoRoot = path.resolve(__dirname, '../../..')
 const OWNER = 'src/workbench/project/projectCanvasReadSurface.ts'
-const ISSUERS = new Set(['withProjectAction', 'withMainProjectAction', 'subscribeProjectOpened'])
+const ISSUERS = new Set(['withProjectAction', 'withMainProjectAction', 'subscribeProjectOpened', 'whenProjectAdopted'])
 const PRIVATE_ISSUER_NAMES = ['captureCurrentProjectExecutionContext', 'projectContextIssuers', 'captureProjectExecutionContext']
 
 function productionSources(root: string): string[] {

@@ -662,6 +662,17 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       ...narrateGenerationErrorActions('unknown'),
     }
   }
+  // 同一节点上一笔还在路上，主进程拒了这一笔（这一次还没发出去）：照实说，不当成供应商失败。
+  if (structured?.code === 'node_generation_in_flight') {
+    return {
+      kind: 'unknown',
+      reason: i18n.t('generationCommon.observability.error.nodeInFlight.reason'),
+      hint: i18n.t('generationCommon.observability.error.nodeInFlight.hint'),
+      vendorSide: false,
+      raw,
+      ...narrateGenerationErrorActions('unknown'),
+    }
+  }
   const claimReason = structured?.code === 'production_shot_claimed' ? structured.reason : undefined
   const copy = shotClaimCopy(claimReason as Parameters<typeof shotClaimCopy>[0])
   if (copy) {

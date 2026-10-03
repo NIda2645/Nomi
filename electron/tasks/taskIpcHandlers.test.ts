@@ -144,3 +144,38 @@ describe("task IPC local operation lifecycle", () => {
     expect(completed.preventDefault).not.toHaveBeenCalled();
   });
 });
+
+// S1-5 同类（2026-10-03）：画布单点生成途中切项目再切回来，节点一度显示空闲、「生成全部」把它算进去——
+// 供应商收到第二笔，扣两次钱。花钱边界自己要兜底：同一节点有一笔还在主进程手里时，再来一笔直接拒，并说实话。
+describe("one paid submit in flight per canvas node", () => {
+  beforeEach(() => { vi.resetAllMocks(); mocks.handlers.clear(); mocks.cancelAll.mockResolvedValue(undefined); });
+  const payload = (nodeId: string, projectId = "project-a") => ({ vendor: "fixture", request: { kind: "text_to_image", prompt: "p", extras: { projectId, nodeId } } });
+
+  it("reported case: a second run on a node whose first run has not returned is refused without reaching the provider", async () => {
+    let release!: () => void;
+    const first = new Promise<string>((resolve) => { release = () => resolve("first-result"); });
+    const runTask = vi.fn().mockReturnValueOnce(first).mockResolvedValue("second-result");
+    registerTaskIpcHandlers(async () => ({ runTask }) as unknown as Runtime);
+    const owner = sender(41);
+    const inFlight = call("run", owner, payload("node-1"));
+    await vi.waitFor(() => expect(runTask).toHaveBeenCalledTimes(1));
+
+    await expect(call("run", owner, payload("node-1"))).rejects.toMatchObject({ code: "node_generation_in_flight" });
+    expect(runTask).toHaveBeenCalledTimes(1);
+
+    release();
+    await expect(inFlight).resolves.toBe("first-result");
+    await expect(call("run", owner, payload("node-1"))).resolves.toBe("second-result");
+  });
+
+  it("class: other nodes, the same node id in another project, and requests without a node are not held back", async () => {
+    const runTask = vi.fn(() => new Promise(() => undefined));
+    registerTaskIpcHandlers(async () => ({ runTask }) as unknown as Runtime);
+    const owner = sender(42);
+    void call("run", owner, payload("node-1"));
+    void call("run", owner, payload("node-2"));
+    void call("run", owner, payload("node-1", "project-b"));
+    void call("run", owner, { vendor: "fixture", request: { kind: "text_to_image", prompt: "p", extras: {} } });
+    await vi.waitFor(() => expect(runTask).toHaveBeenCalledTimes(4));
+  });
+});
