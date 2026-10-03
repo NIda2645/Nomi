@@ -203,3 +203,43 @@ describe('anchored parts (hand, cap) are measured on their own', () => {
     expect(sample.anchors).toBeUndefined()
   })
 })
+
+describe('screen-space camera motion recognition', () => {
+  it('recognizes a pure zoom without camera travel', () => {
+    const project = createDefaultProject('zoom')
+    const scene = project.scenes[0]
+    scene.objects = [
+      {
+        id: 'hero',
+        name: 'hero',
+        type: 'character',
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        visible: true,
+        locked: false,
+      },
+    ]
+    scene.cameras = [
+      {
+        id: 'cam',
+        name: 'cam',
+        position: { x: 0, y: 1.5, z: 5 },
+        yaw: 0,
+        pitch: 0,
+        roll: 0,
+        fov: 55,
+        focalLengthMm: 50,
+        motionTrajectory: [
+          { id: 'a', x: 0, y: 1.5, z: 5, yaw: 0, pitch: 0, roll: 0, fov: 55, time: 0, frameIndex: 0 },
+          { id: 'b', x: 0, y: 1.5, z: 5, yaw: 0, pitch: 0, roll: 0, fov: 35, time: 1, frameIndex: 30 },
+        ],
+        trajectoryClips: [{ id: 'clip', startTime: 0, endTime: 1, startFrame: 0, endFrame: 30 }],
+      },
+    ]
+    scene.timelineTrackOrder = ['cam']
+    const result = recognizeCameraMotion(sampleDirectorProject(project, { duration: 1 }), 'hero', { start: 0, end: 1 })
+    expect(result.move).toBe('zoom_in')
+    expect(Math.hypot(result.cameraDelta.x, result.cameraDelta.y, result.cameraDelta.z)).toBe(0)
+  })
+})

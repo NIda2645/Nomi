@@ -100,20 +100,35 @@ function makeObject(id: string, category: string, position: Vec3): DirectorObjec
     scale,
     visible: true,
     locked: false,
+    ...(category === 'person' ? { rig: 'mixamo' as const, posePreset: 'standing_idle' } : {}),
   }
 }
 function makeSceneObject(id: string): DirectorObject {
-  const primitive = id === 'ground' || id.endsWith('_street') || id === 'road' ? 'plane' : 'cube'
-  const isGate = id === 'gate'
+  const primitive =
+    id === 'ground' || id.endsWith('_ground') || id.endsWith('_street') || id === 'road' ? 'plane' : 'cube'
+  const staging: Record<string, Vec3> = {
+    gate: { x: 0.5, y: 0.75, z: 0 },
+    wall_enclosure: { x: 0, y: 0.1, z: 3 },
+    round_pedestal: { x: 0, y: 0.15, z: 0 },
+  }
+  const position = staging[id] ?? { x: 0, y: primitive === 'plane' ? 0 : 0.1, z: primitive === 'plane' ? 0 : 0 }
   return {
     id,
-    name: id === 'gate' ? 'gate' : id === 'road' ? 'road' : 'ground',
+    name: id,
     type: primitive,
-    position: { x: 0, y: primitive === 'plane' || isGate ? 0 : 50, z: primitive === 'plane' || isGate ? 0 : 50 },
+    position,
     rotation: { x: 0, y: 0, z: 0 },
-    scale: primitive === 'plane' ? { x: 20, y: 1, z: 20 } : { x: 1, y: 1, z: 1 },
+    scale:
+      primitive === 'plane'
+        ? { x: 20, y: 1, z: 20 }
+        : id === 'wall_enclosure'
+          ? { x: 8, y: 2, z: 0.2 }
+          : id === 'round_pedestal'
+            ? { x: 2, y: 0.3, z: 2 }
+            : { x: 1, y: 1, z: 1 },
     visible: true,
     locked: false,
+    isAuxiliary: true,
   }
 }
 function base(objects: DirectorObject[], cameras: DirectorCamera[], duration: number): DirectorProject {
@@ -166,7 +181,7 @@ function applyBlocking(
     if (!actor) continue
     const start = action.window?.[0] ?? 0
     const end = action.window?.[1] ?? duration
-    const target = byId(action.target)
+    const target = byId(action.target ?? action.between?.[1])
     const addTrajectory = (points: Waypoint[], trajectoryId: string) => {
       actor.motionTrajectory = [...(actor.motionTrajectory ?? []), ...points].sort((a, b) => a.time - b.time)
       actor.trajectoryClips = [...(actor.trajectoryClips ?? []), clip(trajectoryId, start, end)]
@@ -199,7 +214,7 @@ function applyBlocking(
       addTrajectory(
         [
           entityPoint(actor.position, start),
-          entityPoint({ x: targetPosition.x - 0.8, y: actor.position.y, z: targetPosition.z }, end),
+          entityPoint({ x: targetPosition.x + 1.0, y: actor.position.y, z: targetPosition.z }, end),
         ],
         `${actor.id}-sidestep`,
       )
@@ -222,7 +237,18 @@ function applyBlocking(
         `${actor.id}-stop`,
       )
     }
-    const actionId = action.verb === 'walk_to' ? 'standard_walk' : action.verb === 'run_to' ? 'running' : action.verb === 'stop' ? 'standing_idle' : action.verb === 'sidestep_block' ? 'standard_walk' : action.verb === 'hold_pose' ? action.action : undefined
+    const actionId =
+      action.verb === 'walk_to'
+        ? 'standard_walk'
+        : action.verb === 'run_to'
+          ? 'running'
+          : action.verb === 'stop'
+            ? 'standing_idle'
+            : action.verb === 'sidestep_block'
+              ? 'standard_walk'
+              : action.verb === 'hold_pose'
+                ? action.action
+                : undefined
     addActionClip(actionId)
   }
 }
@@ -295,7 +321,12 @@ function cameraForShot(
   const size = (shot.size ?? shot.endSize ?? '中景') as EvalShotSize
   const ladder: ShotLadder = actor.type === 'character' && !anchor ? 'figure' : 'object'
   const fov = DEFAULT_FOV
-  const distance = Math.max(anchor ? 0.65 : 0.12, distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder))
+  const baseDistance = Math.max(
+    anchor && actor.type === 'character' ? 0.12 : 0.65,
+    distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder),
+  )
+  const distance =
+    actor.type === 'character' && !anchor && (size === '特写' || size === '大特写') ? baseDistance * 0.5 : baseDistance
   const startActor = { ...actor, position: positionAt(actor, start) }
   const endActor = { ...actor, position: positionAt(actor, end) }
   const target = targetPosition(startActor, anchor)
@@ -311,7 +342,8 @@ function cameraForShot(
   }
   const direction = shot.direction
   const sign = direction === 'left' ? -1 : 1
-  const firstPosition = angleOffset(shot.angle, target, distance, actors)
+  let firstPosition = angleOffset(shot.angle, target, distance, actors)
+  if (anchor && actor.type === 'character') firstPosition = { ...firstPosition, x: firstPosition.x + 0.35 }
   let positions = [firstPosition, firstPosition]
   let targets = [target, target]
   let fovs = [fov, fov]
@@ -321,13 +353,13 @@ function cameraForShot(
       ? { x: firstPosition.x, y: firstPosition.y, z: firstPosition.z - 0.8 }
       : angleOffset(shot.angle, target, distance + 0.8, actors)
     positions = [far, firstPosition]
-    fovs = [size === '特写' || size === '大特写' ? 10 : Math.max(15, fov - 20), fov]
+    fovs = [fov, fov]
   } else if (move === 'pull') {
     const far = shot.angle?.startsWith('over_shoulder')
       ? { x: firstPosition.x, y: firstPosition.y, z: firstPosition.z - 0.8 }
       : angleOffset(shot.angle, target, distance + 0.8, actors)
     positions = [firstPosition, far]
-    fovs = [fov, size === '特写' || size === '大特写' ? 10 : Math.max(15, fov - 20)]
+    fovs = [fov, fov]
   } else if (move === 'orbit' || move === 'arc') {
     const sweep = shot.sweepDeg ?? (move === 'arc' ? 90 : 360)
     positions = Array.from({ length: 9 }, (_, index) => {
@@ -413,6 +445,7 @@ function buildCardOracle(card: DirectorCard): AdaptedProject {
     actorMap[actor.id] = object.id
     return object
   })
+  if (!objects.some((object) => object.id === 'ground')) objects.push(makeSceneObject('ground'))
   for (const required of card.scene.required)
     if (!objects.some((object) => object.id === required)) objects.push(makeSceneObject(required))
   applyBlocking(card, objects, actorMap, duration)
@@ -449,13 +482,20 @@ export async function adapt(prompt: string, card: DirectorCard, scheme: Scheme):
   if (scheme === 's1') {
     const result = await adaptS1Prompt(prompt)
     if (!result.ok) {
-      const error = new Error(`s1 planner/compiler failed for ${card.id}: ${result.errors.join('; ')}`) as Error & { planner?: unknown }
+      const error = new Error(`s1 planner/compiler failed for ${card.id}: ${result.errors.join('; ')}`) as Error & {
+        planner?: unknown
+      }
       error.planner = result.planner
       throw error
     }
     return {
       ...result.adapted,
-      metadata: { plannerAttempts: result.planner.attempts, usage: result.planner.usage, rawPlan: result.planner.raw, issues: result.adapted.issues },
+      metadata: {
+        plannerAttempts: result.planner.attempts,
+        usage: result.planner.usage,
+        rawPlan: result.planner.raw,
+        issues: result.adapted.issues,
+      },
     }
   }
   if (scheme === 's1-oracle-plan') {
@@ -495,7 +535,8 @@ export function mutateOracle(
     | 'no-sidestep'
     | 'no-action'
     | 'unmatched-actor'
-    | 'reverse-direction',
+    | 'reverse-direction'
+    | 'counteracting-zoom',
 ): DirectorProject {
   const project = JSON.parse(JSON.stringify(baseProject)) as DirectorProject
   const scene = project.scenes[0]
@@ -549,6 +590,14 @@ export function mutateOracle(
         object.id = `unknown-${object.id}`
         object.name = 'unnamed'
       }
+  if (mutation === 'counteracting-zoom') {
+    const camera = scene.cameras.find((item) => item.motionTrajectory && item.motionTrajectory.length > 1)
+    if (camera?.motionTrajectory)
+      camera.motionTrajectory = camera.motionTrajectory.map((waypoint, index) => ({
+        ...waypoint,
+        fov: (waypoint.fov ?? camera.fov) + (index / Math.max(1, camera.motionTrajectory!.length - 1)) * 20,
+      }))
+  }
   if (mutation === 'reverse-direction') {
     const camera = scene.cameras[0]
     const points = camera?.motionTrajectory

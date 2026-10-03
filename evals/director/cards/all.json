@@ -8,32 +8,28 @@
       "tol": 1
     },
     "scene": {
-      "tags": [
-        "古代庭院",
-        "夜"
-      ],
-      "required": [
-        "ground",
-        "wall_enclosure",
-        "gate"
-      ],
-      "relations": [
-        "guard near gate (<= 1.5m)"
-      ]
+      "tags": ["古代庭院", "夜"],
+      "required": ["ground", "wall_enclosure", "gate"],
+      "relations": ["guard near gate (<= 1.5m)"],
+      "aliases": {
+        "ground": ["地面", "floor"],
+        "wall_enclosure": ["院墙", "墙", "enclosure"],
+        "gate": ["院门", "门"]
+      }
     },
     "actors": [
       {
         "id": "woman",
         "category": "person",
         "desc": "青衣女子",
-        "props": [
-          "letter"
-        ]
+        "props": ["letter"],
+        "aliases": ["青衣女子", "女子", "woman"]
       },
       {
         "id": "guard",
         "category": "person",
-        "desc": "黑衣侍卫"
+        "desc": "黑衣侍卫",
+        "aliases": ["黑衣侍卫", "侍卫", "guard"]
       }
     ],
     "blocking": [
@@ -41,80 +37,50 @@
         "actor": "woman",
         "verb": "walk_to",
         "target": "gate",
-        "window": [
-          0,
-          4
-        ]
+        "window": [0, 4]
       },
       {
         "actor": "guard",
         "verb": "sidestep_block",
-        "between": [
-          "woman",
-          "gate"
-        ],
-        "window": [
-          4,
-          8
-        ]
+        "between": ["woman", "gate"],
+        "window": [4, 8]
       },
       {
         "actor": "woman",
         "verb": "stop",
-        "window": [
-          4,
-          8
-        ]
+        "window": [4, 8]
       },
       {
         "actor": "woman",
         "verb": "hide_object_behind_back",
         "object": "letter",
-        "window": [
-          4,
-          8
-        ],
+        "window": [4, 8],
         "capability": "missing_asset"
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "全景",
         "subject": "woman",
         "angle": "side_rear",
         "move": "follow"
       },
       {
-        "t": [
-          4,
-          8
-        ],
+        "t": [4, 8],
         "size": "中景",
-        "subjects": [
-          "woman",
-          "guard"
-        ],
+        "subjects": ["woman", "guard"],
         "move": "static",
         "transitionIn": "cut"
       },
       {
-        "t": [
-          8,
-          10
-        ],
+        "t": [8, 10],
         "size": "特写",
         "subject": "woman.hand",
         "transitionIn": "cut"
       },
       {
-        "t": [
-          10,
-          12
-        ],
+        "t": [10, 12],
         "size": "中近景",
         "subject": "woman",
         "angle": "over_shoulder(guard)",
@@ -123,30 +89,27 @@
         "transitionIn": "cut"
       }
     ],
-    "continuity": [
-      "no_teleport_across_cuts",
-      "axis_180_rule(woman, guard)"
-    ]
+    "continuity": ["no_teleport_across_cuts", "axis_180_rule(woman, guard)"]
   },
   {
     "id": "perfume-orbit",
     "tier": "benchmark",
     "prompt": "一只香水瓶立在圆形展台上，镜头缓慢环绕一周，再推近瓶盖。",
     "scene": {
-      "required": [
-        "bottle",
-        "round_pedestal"
-      ],
-      "relations": [
-        "bottle on pedestal"
-      ],
-      "style": "minimal_geometry"
+      "required": ["bottle", "round_pedestal"],
+      "relations": ["bottle on pedestal"],
+      "style": "minimal_geometry",
+      "aliases": {
+        "bottle": ["香水瓶", "香水瓶子", "perfume bottle"],
+        "round_pedestal": ["圆形展台", "展台", "pedestal"]
+      }
     },
     "actors": [
       {
         "id": "bottle",
         "category": "product",
-        "static": true
+        "static": true,
+        "aliases": ["香水瓶", "香水瓶子", "perfume bottle"]
       }
     ],
     "shots": [
@@ -156,47 +119,40 @@
         "sweepDeg": 360,
         "tolDeg": 20,
         "speed": "slow",
-        "t": [
-          0,
-          8
-        ]
+        "t": [0, 8]
       },
       {
         "move": "push",
         "endSubject": "bottle.cap",
         "endSize": "特写",
         "transitionIn": "continuous",
-        "t": [
-          8,
-          11
-        ]
+        "t": [8, 11]
       }
     ],
-    "continuity": [
-      "no_teleport_across_cuts"
-    ]
+    "continuity": ["no_teleport_across_cuts"]
   },
   {
     "id": "police-chase",
     "tier": "benchmark",
     "prompt": "警匪飙车：警车追赶逃逸车穿过城市街道，节奏惊险竞速。",
     "scene": {
-      "tags": [
-        "城市街道"
-      ],
-      "required": [
-        "road",
-        "buildings_both_sides"
-      ]
+      "tags": ["城市街道"],
+      "required": ["road", "buildings_both_sides"],
+      "aliases": {
+        "road": ["街道", "道路"],
+        "buildings_both_sides": ["建筑", "两侧建筑", "buildings"]
+      }
     },
     "actors": [
       {
         "id": "police_car",
-        "category": "vehicle"
+        "category": "vehicle",
+        "aliases": ["警车", "police car"]
       },
       {
         "id": "suspect_car",
-        "category": "vehicle"
+        "category": "vehicle",
+        "aliases": ["逃逸车", "逃逸车辆", "getaway car", "suspect car"]
       }
     ],
     "blocking": [
@@ -214,28 +170,19 @@
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "全景",
         "subject": "suspect_car",
         "move": "follow"
       },
       {
-        "t": [
-          4,
-          7
-        ],
+        "t": [4, 7],
         "size": "中景",
         "subject": "police_car",
         "move": "pan"
       },
       {
-        "t": [
-          7,
-          9
-        ],
+        "t": [7, 9],
         "size": "特写",
         "subject": "police_car",
         "move": "push"
@@ -253,23 +200,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "room"
-      ]
+      "required": ["room"],
+      "aliases": {
+        "room": ["走廊", "房间"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["女子"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "push",
@@ -287,23 +232,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "quiet_street"
-      ]
+      "required": ["quiet_street"],
+      "aliases": {
+        "quiet_street": ["安静街道", "quiet street"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["cyclist"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "pull",
@@ -321,23 +264,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "interior"
-      ]
+      "required": ["interior"],
+      "aliases": {
+        "interior": ["室内", "书桌"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["人物", "写字的人物"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "pan",
@@ -355,23 +296,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "shop_counter"
-      ]
+      "required": ["shop_counter"],
+      "aliases": {
+        "shop_counter": ["展台", "柜台"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "product",
-        "aliases": []
+        "aliases": ["perfume bottle", "model"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "tilt",
@@ -390,23 +329,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "shop_counter"
-      ]
+      "required": ["shop_counter"],
+      "aliases": {
+        "shop_counter": ["展台", "柜台"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "product",
-        "aliases": []
+        "aliases": ["咖啡杯"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "orbit",
@@ -427,23 +364,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "interior"
-      ]
+      "required": ["interior"],
+      "aliases": {
+        "interior": ["室内", "书桌"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["cyclist"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "follow",
@@ -461,23 +396,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "quiet_street"
-      ]
+      "required": ["quiet_street"],
+      "aliases": {
+        "quiet_street": ["安静街道", "quiet street"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["雕像"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "truck",
@@ -496,23 +429,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "room"
-      ]
+      "required": ["room"],
+      "aliases": {
+        "room": ["走廊", "房间"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["person"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "crane",
@@ -531,23 +462,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "interior"
-      ]
+      "required": ["interior"],
+      "aliases": {
+        "interior": ["室内", "书桌"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["女子", "男演员"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "over_shoulder"
@@ -564,23 +493,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "interior"
-      ]
+      "required": ["interior"],
+      "aliases": {
+        "interior": ["室内", "书桌"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["kettle"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "pov"
@@ -597,23 +524,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "shop_counter"
-      ]
+      "required": ["shop_counter"],
+      "aliases": {
+        "shop_counter": ["展台", "柜台"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "product",
-        "aliases": []
+        "aliases": ["手表"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "zoom",
@@ -632,23 +557,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "quiet_street"
-      ]
+      "required": ["quiet_street"],
+      "aliases": {
+        "quiet_street": ["安静街道", "quiet street"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["dancer"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "arc",
@@ -669,23 +592,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "room"
-      ]
+      "required": ["room"],
+      "aliases": {
+        "room": ["走廊", "房间"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["人物", "读信的人物"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "static"
@@ -702,23 +623,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "interior"
-      ]
+      "required": ["interior"],
+      "aliases": {
+        "interior": ["室内", "书桌"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["runner"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "dolly",
@@ -736,23 +655,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "quiet_street"
-      ]
+      "required": ["quiet_street"],
+      "aliases": {
+        "quiet_street": ["安静街道", "quiet street"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "person",
-        "aliases": []
+        "aliases": ["actor"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "whip",
@@ -770,23 +687,21 @@
       "tol": 0.5
     },
     "scene": {
-      "required": [
-        "shop_counter"
-      ]
+      "required": ["shop_counter"],
+      "aliases": {
+        "shop_counter": ["展台", "柜台"]
+      }
     },
     "actors": [
       {
         "id": "subject",
         "category": "product",
-        "aliases": []
+        "aliases": ["vase", "woman"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "中景",
         "subject": "subject",
         "move": "rack_focus"
@@ -803,40 +718,33 @@
       "tol": 1
     },
     "scene": {
-      "required": [
-        "ground"
-      ]
+      "required": ["ground"],
+      "aliases": {
+        "ground": ["地面", "floor"]
+      }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": ["女子", "woman"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "全景",
         "subject": "subject",
         "move": "follow"
       },
       {
-        "t": [
-          4,
-          8
-        ],
+        "t": [4, 8],
         "size": "中景",
         "subject": "subject",
         "move": "static"
       },
       {
-        "t": [
-          8,
-          12
-        ],
+        "t": [8, 12],
         "size": "特写",
         "subject": "subject",
         "move": "push"
@@ -853,40 +761,33 @@
       "tol": 1
     },
     "scene": {
-      "required": [
-        "ground"
-      ]
+      "required": ["ground"],
+      "aliases": {
+        "ground": ["地面", "floor"]
+      }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": ["人物", "person"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "全景",
         "subject": "subject",
         "move": "truck"
       },
       {
-        "t": [
-          4,
-          8
-        ],
+        "t": [4, 8],
         "size": "中景",
         "subject": "subject",
         "move": "static"
       },
       {
-        "t": [
-          8,
-          12
-        ],
+        "t": [8, 12],
         "size": "特写",
         "subject": "subject",
         "move": "push"
@@ -903,41 +804,34 @@
       "tol": 1
     },
     "scene": {
-      "required": [
-        "ground"
-      ]
+      "required": ["ground"],
+      "aliases": {
+        "ground": ["地面", "floor"]
+      }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": ["人物", "person"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "远景",
         "subject": "subject",
         "move": "pan",
         "direction": "right"
       },
       {
-        "t": [
-          4,
-          8
-        ],
+        "t": [4, 8],
         "size": "中景",
         "subject": "subject",
         "move": "follow"
       },
       {
-        "t": [
-          8,
-          12
-        ],
+        "t": [8, 12],
         "size": "特写",
         "subject": "subject",
         "move": "pull"
@@ -954,22 +848,21 @@
       "tol": 1
     },
     "scene": {
-      "required": [
-        "ground"
-      ]
+      "required": ["ground"],
+      "aliases": {
+        "ground": ["地面", "floor"]
+      }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": ["产品", "瓶盖", "product"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "全景",
         "subject": "subject",
         "move": "orbit",
@@ -977,19 +870,13 @@
         "speed": "slow"
       },
       {
-        "t": [
-          4,
-          8
-        ],
+        "t": [4, 8],
         "size": "中景",
         "subject": "subject",
         "move": "static"
       },
       {
-        "t": [
-          8,
-          12
-        ],
+        "t": [8, 12],
         "size": "特写",
         "subject": "subject",
         "move": "push"
@@ -1006,42 +893,35 @@
       "tol": 1
     },
     "scene": {
-      "required": [
-        "ground"
-      ]
+      "required": ["ground"],
+      "aliases": {
+        "ground": ["地面", "floor"]
+      }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": ["人物", "person"]
       }
     ],
     "shots": [
       {
-        "t": [
-          0,
-          4
-        ],
+        "t": [0, 4],
         "size": "全景",
         "subject": "subject",
         "move": "crane",
         "direction": "up"
       },
       {
-        "t": [
-          4,
-          8
-        ],
+        "t": [4, 8],
         "size": "中景",
         "subject": "subject",
         "move": "truck",
         "direction": "right"
       },
       {
-        "t": [
-          8,
-          12
-        ],
+        "t": [8, 12],
         "size": "近景",
         "subject": "subject",
         "move": "tilt",
@@ -1055,26 +935,20 @@
     "tier": "T3",
     "prompt": "A tense storm arrival with varied cinematic coverage.",
     "scene": {
-      "required": [
-        "storm_ground"
-      ]
+      "required": ["storm_ground"],
+      "aliases": {
+        "storm_ground": ["暴雨地面", "storm ground"]
+      }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": ["人物", "person"]
       }
     ],
-    "coverageRequired": [
-      "全景",
-      "中景",
-      "特写"
-    ],
-    "moveAnyOf": [
-      "crane",
-      "follow",
-      "push"
-    ],
+    "coverageRequired": ["全景", "中景", "特写"],
+    "moveAnyOf": ["crane", "follow", "push"],
     "reviewNote": "已核对：只约束演员、景别集合、运动族集合和暴雨地面，不固定镜头顺序或时间窗。"
   },
   {
@@ -1082,40 +956,25 @@
     "tier": "T3",
     "prompt": "咖啡馆里两个人第一次见面，要有环境、交流和细节镜头。",
     "scene": {
-      "required": [
-        "cafe_table"
-      ]
+      "required": ["cafe_table"],
+      "aliases": {
+        "cafe_table": ["咖啡桌", "咖啡馆"]
+      }
     },
     "actors": [
       {
         "id": "person_a",
-        "aliases": [
-          "person a",
-          "woman",
-          "first person"
-        ],
+        "aliases": ["person a", "woman", "first person"],
         "category": "person"
       },
       {
         "id": "person_b",
-        "aliases": [
-          "person b",
-          "man",
-          "second person"
-        ],
+        "aliases": ["person b", "man", "second person"],
         "category": "person"
       }
     ],
-    "coverageRequired": [
-      "全景",
-      "中景",
-      "特写"
-    ],
-    "moveAnyOf": [
-      "truck",
-      "static",
-      "push"
-    ],
+    "coverageRequired": ["全景", "中景", "特写"],
+    "moveAnyOf": ["truck", "static", "push"],
     "reviewNote": "已核对：两位演员、景别集合、运动族集合和咖啡桌必需；不固定镜头顺序或时间窗。"
   },
   {
@@ -1123,26 +982,20 @@
     "tier": "T3",
     "prompt": "An astronaut enters a quiet room; make the camera feel weightless.",
     "scene": {
-      "required": [
-        "quiet_room"
-      ]
+      "required": ["quiet_room"],
+      "aliases": {
+        "quiet_room": ["安静房间", "quiet room"]
+      }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": ["宇航员", "astronaut"]
       }
     ],
-    "coverageRequired": [
-      "全景",
-      "中景",
-      "特写"
-    ],
-    "moveAnyOf": [
-      "orbit",
-      "crane",
-      "pull"
-    ],
+    "coverageRequired": ["全景", "中景", "特写"],
+    "moveAnyOf": ["orbit", "crane", "pull"],
     "reviewNote": "已核对：只约束宇航员、景别集合、失重感可用运动族集合和安静房间，不固定镜头顺序或时间窗。"
   },
   {
@@ -1150,26 +1003,20 @@
     "tier": "T3",
     "prompt": "集市追逐，镜头要让人感到方向和速度。",
     "scene": {
-      "required": [
-        "market_street"
-      ]
+      "required": ["market_street"],
+      "aliases": {
+        "market_street": ["集市", "集市街道"]
+      }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": ["追逐者", "人物", "person"]
       }
     ],
-    "coverageRequired": [
-      "全景",
-      "中景",
-      "特写"
-    ],
-    "moveAnyOf": [
-      "follow",
-      "truck",
-      "push"
-    ],
+    "coverageRequired": ["全景", "中景", "特写"],
+    "moveAnyOf": ["follow", "truck", "push"],
     "reviewNote": "已核对：只约束追逐演员、景别集合、跟拍/横移/推进运动族集合和集市街道，不固定镜头顺序或时间窗。"
   }
 ]

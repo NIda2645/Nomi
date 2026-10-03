@@ -18,57 +18,105 @@ const angleDistance = (a: number, b: number): number => {
   const d = Math.abs(a - b) % 360
   return d > 180 ? 360 - d : d
 }
-const mismatch = (time: number, field: string, expected: number | string, actual: number | string, delta?: number, subject?: string): ReadbackMismatch => ({ time, field, expected, actual, ...(delta === undefined ? {} : { delta }), ...(subject ? { subject } : {}) })
+const mismatch = (
+  time: number,
+  field: string,
+  expected: number | string,
+  actual: number | string,
+  delta?: number,
+  subject?: string,
+): ReadbackMismatch => ({
+  time,
+  field,
+  expected,
+  actual,
+  ...(delta === undefined ? {} : { delta }),
+  ...(subject ? { subject } : {}),
+})
 
-function measurementGapReasons(project: DirectorProject, cameraId: string): string[] {
-  const scene = project.scenes.find((item) => item.id === project.activeSceneId) ?? project.scenes[0]
-  const camera = scene?.cameras.find((item) => item.id === cameraId)
-  if (!camera) return []
-  const reasons: string[] = []
-  if (camera.closeupClips?.length) reasons.push('closeup clip')
-  if (camera.rigType === 'follow' || camera.rigType === 'track_aim') reasons.push(`rig=${camera.rigType}`)
-  if (camera.lookAtType && camera.lookAtType !== 'none') reasons.push(`lookAt=${camera.lookAtType}`)
-  if (camera.lookAtObjectId) reasons.push('lookAtObjectId')
-  return reasons
+function measurementGapReasons(_project: DirectorProject, _cameraId: string): string[] {
+  // Camera pose measurement calls the same pure evaluator as product playback, so no supported camera feature is opaque here.
+  return []
 }
 
 /** Compare product capture readback against the permitted pure measurement oracle. */
-export function compareCaptureReadback(project: DirectorProject, times: number[], frames: HeadlessCaptureFrameReadback[], width: number, height: number): { mismatches: ReadbackMismatch[]; measurementSideGaps: MeasurementSideGap[] } {
+export function compareCaptureReadback(
+  project: DirectorProject,
+  times: number[],
+  frames: HeadlessCaptureFrameReadback[],
+  width: number,
+  height: number,
+): { mismatches: ReadbackMismatch[]; measurementSideGaps: MeasurementSideGap[] } {
   const duration = Math.max(0, ...times)
   const measurements = sampleDirectorProject(project, { duration, fps: 30, aspectRatio: width / Math.max(1, height) })
   const mismatches: ReadbackMismatch[] = []
   const measurementSideGaps: MeasurementSideGap[] = []
   for (const [index, time] of times.entries()) {
     const actual = frames[index]
-    const expected = measurements.frames.reduce((best, frame) => Math.abs(frame.time - time) < Math.abs(best.time - time) ? frame : best, measurements.frames[0])
+    const expected = measurements.frames.reduce(
+      (best, frame) => (Math.abs(frame.time - time) < Math.abs(best.time - time) ? frame : best),
+      measurements.frames[0],
+    )
     if (!actual || !expected) {
       mismatches.push(mismatch(time, 'frame', 'present', actual ? 'present' : 'missing'))
       continue
     }
     const gapReasons = actual.cameraId ? measurementGapReasons(project, actual.cameraId) : []
-    if (actual.cameraId && gapReasons.length) measurementSideGaps.push({ time, cameraId: actual.cameraId, reasons: gapReasons })
-    if (actual.cameraId !== expected.cameraId) mismatches.push(mismatch(time, 'cameraId', expected.cameraId ?? 'null', actual.cameraId ?? 'null'))
+    if (actual.cameraId && gapReasons.length)
+      measurementSideGaps.push({ time, cameraId: actual.cameraId, reasons: gapReasons })
+    if (actual.cameraId !== expected.cameraId)
+      mismatches.push(mismatch(time, 'cameraId', expected.cameraId ?? 'null', actual.cameraId ?? 'null'))
     if (!actual.camera || !expected.camera) {
-      if (!gapReasons.length && Boolean(expected.camera) !== Boolean(actual.camera)) mismatches.push(mismatch(time, 'camera', expected.camera ? 'present' : 'null', actual.camera ? 'present' : 'null'))
+      if (!gapReasons.length && Boolean(expected.camera) !== Boolean(actual.camera))
+        mismatches.push(
+          mismatch(time, 'camera', expected.camera ? 'present' : 'null', actual.camera ? 'present' : 'null'),
+        )
     } else if (!gapReasons.length) {
       const fields: Array<[string, number, number]> = [
         ['position.x', expected.camera.position.x, actual.camera.position.x],
         ['position.y', expected.camera.position.y, actual.camera.position.y],
         ['position.z', expected.camera.position.z, actual.camera.position.z],
       ]
-      for (const [field, expectedValue, actualValue] of fields) if (Math.abs(expectedValue - actualValue) > 0.01) mismatches.push(mismatch(time, field, expectedValue, actualValue, Math.abs(expectedValue - actualValue)))
-      for (const [field, expectedValue, actualValue] of [['yaw', expected.camera.yaw, actual.camera.yaw], ['pitch', expected.camera.pitch, actual.camera.pitch], ['roll', expected.camera.roll, actual.camera.roll]] as const) {
+      for (const [field, expectedValue, actualValue] of fields)
+        if (Math.abs(expectedValue - actualValue) > 0.01)
+          mismatches.push(mismatch(time, field, expectedValue, actualValue, Math.abs(expectedValue - actualValue)))
+      for (const [field, expectedValue, actualValue] of [
+        ['yaw', expected.camera.yaw, actual.camera.yaw],
+        ['pitch', expected.camera.pitch, actual.camera.pitch],
+        ['roll', expected.camera.roll, actual.camera.roll],
+      ] as const) {
         const delta = angleDistance(expectedValue, actualValue)
         if (delta > 0.5) mismatches.push(mismatch(time, field, expectedValue, actualValue, delta))
       }
-      if (expected.camera.fov !== actual.camera.fov) mismatches.push(mismatch(time, 'fov', expected.camera.fov, actual.camera.fov))
+      if (expected.camera.fov !== actual.camera.fov)
+        mismatches.push(mismatch(time, 'fov', expected.camera.fov, actual.camera.fov))
     }
     for (const object of project.scenes.find((item) => item.id === project.activeSceneId)?.objects ?? []) {
+      // Readback exposes subject positions for renderable actors. Ground, walls,
+      // gates, and other staging helpers are measured scene geometry, not
+      // subjects; requiring them in the capture frame creates a false F10 gap.
+      if (object.isAuxiliary) continue
       const expectedObject = expected.objects[object.id]
       const actualPosition = actual.subjectPositions[object.id]
-      if (!expectedObject || !actualPosition || gapReasons.length) continue
+      if (!expectedObject) continue
+      if (!actualPosition) {
+        mismatches.push(
+          mismatch(time, 'subject.position', JSON.stringify(expectedObject.position), 'missing', undefined, object.id),
+        )
+        continue
+      }
       const delta = distance(expectedObject.position, actualPosition)
-      if (delta > 0.01) mismatches.push(mismatch(time, 'subject.position', JSON.stringify(expectedObject.position), JSON.stringify(actualPosition), delta, object.id))
+      if (delta > 0.01)
+        mismatches.push(
+          mismatch(
+            time,
+            'subject.position',
+            JSON.stringify(expectedObject.position),
+            JSON.stringify(actualPosition),
+            delta,
+            object.id,
+          ),
+        )
     }
   }
   return { mismatches, measurementSideGaps }
