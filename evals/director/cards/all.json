@@ -154,13 +154,21 @@
         "subject": "bottle",
         "sweepDeg": 360,
         "tolDeg": 20,
-        "speed": "slow"
+        "speed": "slow",
+        "t": [
+          0,
+          8
+        ]
       },
       {
         "move": "push",
         "endSubject": "bottle.cap",
         "endSize": "特写",
-        "transitionIn": "continuous"
+        "transitionIn": "continuous",
+        "t": [
+          8,
+          11
+        ]
       }
     ],
     "continuity": [
@@ -205,13 +213,31 @@
     ],
     "shots": [
       {
-        "size": "全景"
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "suspect_car",
+        "move": "follow"
       },
       {
-        "size": "中景"
+        "t": [
+          4,
+          7
+        ],
+        "size": "中景",
+        "subject": "police_car",
+        "move": "pan"
       },
       {
-        "size": "特写"
+        "t": [
+          7,
+          9
+        ],
+        "size": "特写",
+        "subject": "police_car",
+        "move": "push"
       }
     ],
     "move": "follow",
