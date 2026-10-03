@@ -1,73 +1,261 @@
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createDefaultProject } from '../../src/workbench/generationCanvas/nodes/director/model/directorProject'
-import type { DirectorCamera, DirectorObject, DirectorProject, Vec3 } from '../../src/workbench/generationCanvas/nodes/director/model/directorTypes'
+import { distanceForShotSize, type AnchorSpec, type EvalShotSize, type ShotLadder } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
+import type { DirectorCamera, DirectorObject, DirectorProject, Vec3, Waypoint } from '../../src/workbench/generationCanvas/nodes/director/model/directorTypes'
 import { lookAtAngles } from '../../src/workbench/generationCanvas/nodes/director/model/vec3'
 import type { DirectorCard } from './cardSchema'
 
-export type AdaptedProject = { project: DirectorProject; actorMap?: Record<string,string> }
-
-/** PR #960 lives only on its own branch, so the s0 baseline reads a separate checkout named by env (never a machine path in source). */
+export type AdaptedProject = { project: DirectorProject; actorMap?: Record<string, string>; anchors?: Record<string, AnchorSpec> }
 export const PR960_ROOT_ENV = 'NOMI_EVAL_PR960_ROOT'
-type Pr960PlanModule = {
-  normalizeDirectorPrompt(prompt: string): unknown
-  buildDirectorProjectFromPlan(plan: unknown): { project: DirectorProject }
-}
+type Pr960PlanModule = { normalizeDirectorPrompt(prompt: string): unknown; buildDirectorProjectFromPlan(plan: unknown): { project: DirectorProject } }
 async function importPr960Plan(): Promise<Pr960PlanModule> {
   const root = process.env[PR960_ROOT_ENV]
   if (!root) throw new Error(`${PR960_ROOT_ENV} is not set; point it at a checkout of feat/director-p0 (PR #960) to run the s0 schemes`)
-  const modulePath = path.join(root, 'src/workbench/generationCanvas/nodes/director/model/directorPlan.ts')
-  return (await import(pathToFileURL(modulePath).href)) as Pr960PlanModule
+  return (await import(pathToFileURL(path.join(root, 'src/workbench/generationCanvas/nodes/director/model/directorPlan.ts')).href)) as Pr960PlanModule
 }
 export type Scheme = 'oracle' | 's0-pr960-raw' | 's0-pr960-ideal'
-const point = (x:number,y:number,z:number,time:number, target:Vec3, fov?:number): any => { const a=lookAtAngles({x,y,z},target); return {id:`wp-${time}-${x}-${z}`,x,y,z,time,frameIndex:Math.round(time*30),yaw:a.yaw,pitch:a.pitch,roll:0,...(fov===undefined?{}:{fov})} }
-const entityPoint = (x:number,y:number,z:number,time:number): any => ({id:`entity-${time}-${x}-${z}`,x,y,z,time,frameIndex:Math.round(time*30),yaw:0,pitch:0,roll:0})
-const clip = (id:string,start:number,end:number) => ({id,startTime:start,endTime:end,startFrame:Math.round(start*30),endFrame:Math.round(end*30)})
-function object(id:string, name:string, type:DirectorObject['type'], position:Vec3, scale:Vec3 = {x:1,y:1,z:1}): DirectorObject { return {id,name,type,position,rotation:{x:0,y:0,z:0},scale,visible:true,locked:false} }
-function camera(id:string, start:number, end:number, positions:Vec3[], target:Vec3, fov=45, targets?:Vec3[]): DirectorCamera { const waypoints=positions.map((p,i)=>point(p.x,p.y,p.z,start+(end-start)*i/Math.max(1,positions.length-1),targets?.[i] ?? target)); const first=waypoints[0]; return {id,name:id,position:{x:first.x,y:first.y,z:first.z},yaw:first.yaw,pitch:first.pitch,roll:0,fov,focalLengthMm:0,motionTrajectory:waypoints,trajectoryClips:[clip(`${id}-clip`,start,end)]} }
-function base(sceneObjects:DirectorObject[], cameras:DirectorCamera[], duration:number): DirectorProject { const p=createDefaultProject('oracle'); const s=p.scenes[0]; s.objects=sceneObjects; s.cameras=cameras; s.timelineTrackOrder=cameras.map(c=>c.id); return p }
-function chase(): AdaptedProject { const suspect=object('suspect_car','suspect_car','cube',{x:0,y:.5,z:0},{x:1.8,y:1,z:4}); suspect.motionTrajectory=[entityPoint(0,.5,0,0),entityPoint(0,.5,12,9)]; suspect.trajectoryClips=[clip('suspect-drive',0,9)]; const police=object('police_car','police_car','cube',{x:-2,y:.5,z:-3},{x:1.8,y:1,z:4}); police.motionTrajectory=[entityPoint(-2,.5,-3,0),entityPoint(-2,.5,9,9)]; police.trajectoryClips=[clip('police-chase',0,9)]; const cams=[camera('wide',0,4,[{x:-3,y:4,z:-4},{x:-3,y:4,z:1.3}],{x:0,y:.5,z:2},65),camera('medium',4,7,[{x:-8,y:3,z:8},{x:-8,y:3,z:8}],{x:-2,y:.5,z:4},75,[{x:-4,y:.5,z:4},{x:0,y:.5,z:4}]),camera('close',7,9,[{x:-2,y:2,z:16},{x:-2,y:2,z:13}],{x:0,y:.5,z:9},60)]; return {project:base([suspect,police,object('road','road','plane',{x:0,y:0,z:5},{x:8,y:.1,z:20}),object('buildings_both_sides','buildings_both_sides','cube',{x:0,y:3,z:5},{x:15,y:6,z:20})],cams,9),actorMap:{suspect_car:'suspect_car',police_car:'police_car'}} }
-function perfume(): AdaptedProject { const bottle=object('bottle','bottle','cylinder',{x:0,y:1,z:0},{x:.6,y:2,z:.6}); const pedestal=object('round_pedestal','round_pedestal','cylinder',{x:0,y:0,z:0},{x:3,y:.5,z:3}); const orbit=[]; for(let i=0;i<=16;i++){const a=i/16*Math.PI*2; orbit.push({x:Math.sin(a)*6,y:2.4,z:Math.cos(a)*6})} const cams=[camera('orbit',0,8,orbit,{x:0,y:1.5,z:0},40),camera('cap-push',8,11,[{x:0,y:2,z:5},{x:0,y:1.7,z:2.7}],{x:0,y:1.5,z:0},28)]; return {project:base([bottle,pedestal],cams,11),actorMap:{bottle:'bottle'}} }
-function courtyard(): AdaptedProject { const woman=object('woman','woman','character',{x:-4,y:0,z:0}); woman.motionTrajectory=[entityPoint(-4,0,0,0),entityPoint(0,0,0,4),entityPoint(0,0,0,8)]; woman.trajectoryClips=[clip('woman-walk',0,8)]; woman.actionClips=[{id:'hide',name:'hide_object_behind_back',clipType:'action',startTime:4,endTime:8,startFrame:120,endFrame:240,actionPose:'hide_object_behind_back'}]; const guard=object('guard','guard','character',{x:2,y:0,z:2}); guard.motionTrajectory=[entityPoint(2,0,2,4),entityPoint(1,0,2,8)]; guard.trajectoryClips=[clip('guard-block',4,8)]; const gate=object('gate','gate','cube',{x:0,y:1.5,z:2},{x:3,y:3,z:.2}); const cams=[camera('follow',0,4,[{x:-7,y:2,z:4},{x:-3,y:2,z:4}],{x:0,y:1,z:0},50),camera('two-shot',4,8,[{x:-5,y:2,z:7},{x:-5,y:2,z:7}],{x:0,y:1,z:0},45),camera('hand-close',8,10,[{x:0,y:1.7,z:4},{x:0,y:1.7,z:3}],{x:0,y:1,z:0},30),camera('over-shoulder',10,12,[{x:1,y:1.8,z:4},{x:1,y:1.6,z:3}],{x:0,y:1.1,z:0},35)]; return {project:base([woman,guard,gate,object('ground','ground','plane',{x:0,y:0,z:0},{x:10,y:.1,z:10}),object('wall_enclosure','wall_enclosure','cube',{x:0,y:2,z:5},{x:10,y:4,z:.2})],cams,12),actorMap:{woman:'woman',guard:'guard'}} }
-export function oracleForCard(card: DirectorCard): AdaptedProject { if(card.id==='police-chase') return chase(); if(card.id==='perfume-orbit') return perfume(); if(card.id==='courtyard-standoff') return courtyard(); return buildCardOracle(card) }
-function buildCardOracle(card: DirectorCard): AdaptedProject {
-  const duration=card.duration?.total ?? 12, actorMap:Record<string,string>={}, objects:DirectorObject[]=[]
-  for(const [i,actor] of card.actors.entries()){ const type=actor.category==='person'?'character':actor.category==='product'?'cylinder':actor.category==='vehicle'?'cube':'character'; const id=actor.id; actorMap[id]=id; objects.push(object(id,id,type,{x:i*2-((card.actors.length-1)),y:type==='character'?0:0,z:0},type==='character'?{x:1,y:1,z:1}:{x:1,y:1,z:1})) }
-  for(const required of card.scene.required){ if(objects.some(o=>o.id===required)) continue; objects.push(object(required,required,required==='ground'||required.includes('street')||required.includes('road')?'plane':'cube',{x:0,y:0,z:0},required==='ground'?{x:12,y:.1,z:12}:{x:3,y:2,z:1})) }
-  const byId=(id:string)=>objects.find(o=>o.id===id)
-  for(const action of card.blocking){ const actor=byId(actorMap[action.actor]); if(!actor) continue; const start=action.window?.[0]??0,end=action.window?.[1]??duration; const target=action.target?byId(action.target):undefined; if(['walk_to','run_to'].includes(action.verb)&&target){actor.motionTrajectory=[entityPoint(actor.position.x,actor.position.y,actor.position.z,start),entityPoint(target.position.x,target.position.y,target.position.z,end)];actor.trajectoryClips=[clip(`${actor.id}-walk`,start,end)]} else if(action.verb==='sidestep_block'){actor.motionTrajectory=[entityPoint(actor.position.x,actor.position.y,actor.position.z,start),entityPoint(actor.position.x+.8,actor.position.y,actor.position.z,end)];actor.trajectoryClips=[clip(`${actor.id}-side`,start,end)]} else if(['drive_along','chase'].includes(action.verb)){actor.motionTrajectory=[entityPoint(actor.position.x,actor.position.y,actor.position.z,start),entityPoint(actor.position.x,actor.position.y,actor.position.z+8,end)];actor.trajectoryClips=[clip(`${actor.id}-drive`,start,end)]} else if(action.verb==='hide_object_behind_back'||action.verb==='hold_pose'){actor.actionClips=[{id:`${actor.id}-${action.verb}`,name:action.verb,clipType:'action',startTime:start,endTime:end,startFrame:Math.round(start*30),endFrame:Math.round(end*30),actionPose:action.verb}]}}
-  const oracleShots: DirectorCard['shots'] = card.shots.length ? card.shots : card.coverageRequired.map((size, i) => ({ size, move: card.moveAnyOf?.[i % Math.max(1, card.moveAnyOf.length)] ?? 'static' }))
-  const windows = oracleShots.map((shot, i) => shot.t ?? [i * duration / Math.max(1, oracleShots.length), (i + 1) * duration / Math.max(1, oracleShots.length)] as [number, number])
-  for (const [i, shot] of oracleShots.entries()) if (shot.move === 'follow') { const id = (shot.subject ?? shot.subjects?.[0] ?? card.actors[0]?.id ?? 'subject').split('.')[0], actor = byId(id), w = windows[i]; if (actor && !actor.motionTrajectory) { actor.motionTrajectory = [entityPoint(actor.position.x, actor.position.y, actor.position.z, w[0]), entityPoint(actor.position.x + 3, actor.position.y, actor.position.z, w[1])]; actor.trajectoryClips = [clip(`${actor.id}-follow`, w[0], w[1])] } }
-  const cameras = oracleShots.map((shot, i) => motionCamera(`shot-${i}`, windows[i], shot.move ?? 'static', byId((shot.subject ?? shot.subjects?.[0] ?? card.actors[0]?.id ?? 'subject').split('.')[0])?.position ?? { x: 0, y: .9, z: 0 }, shot.size, shot.direction)); return { project: base(objects, cameras, duration), actorMap }
+type PointOptions = { target: Vec3; fov: number }
+type ShotWindow = [number, number]
+type SubjectRef = { root: string; part?: string }
+const FPS = 30
+const DEFAULT_FOV = 45
+const point = (position: Vec3, time: number, options: PointOptions): Waypoint => {
+  const angles = lookAtAngles(position, options.target)
+  return { id: `wp-${time}-${position.x.toFixed(3)}-${position.y.toFixed(3)}-${position.z.toFixed(3)}`, ...position, time, frameIndex: Math.round(time * FPS), yaw: angles.yaw, pitch: angles.pitch, roll: angles.roll, fov: options.fov }
 }
-function motionCamera(id:string, window:[number,number], move:string, subject:Vec3, size?:string, direction?:'left'|'right'|'up'|'down'|'in'|'out'): DirectorCamera { const [start,end]=window, mid={x:subject.x,y:subject.y+(size==='特写'?0.9:0.7),z:subject.z}, dist=size==='远景'?12:size==='全景'?10:size==='特写'?1.8:size==='近景'?3.5:6, fov=move==='tilt'?70:(size==='特写'?35:size==='远景'||size==='全景'?55:48); const horizontalSign=direction==='left'?-1:1, verticalSign=direction==='down'?-1:1; let positions:Vec3[]=[{x:subject.x,y:mid.y,z:subject.z+dist},{x:subject.x,y:mid.y,z:subject.z+dist}], targets:Vec3[]=[mid,mid], fovs:number[]=[fov,fov]; if(move==='push'||move==='dolly'){positions=[{x:subject.x,y:mid.y,z:subject.z+dist+2},{x:subject.x,y:mid.y,z:subject.z+dist}]} else if(move==='pull'){positions=[{x:subject.x,y:mid.y,z:subject.z+dist},{x:subject.x,y:mid.y,z:subject.z+dist+3}]} else if(move==='orbit'||move==='arc'){const sweep=move==='arc'?90:360;positions=[0,1,2,3,4].map(i=>{const a=horizontalSign*(i/4*sweep- sweep/2)*Math.PI/180;return{x:subject.x+Math.sin(a)*dist,y:mid.y,z:subject.z+Math.cos(a)*dist}})} else if(move==='follow'){positions=[{x:subject.x-3,y:mid.y,z:subject.z+dist},{x:subject.x,y:mid.y,z:subject.z+dist}]} else if(move==='truck'){positions=[{x:subject.x-horizontalSign,y:mid.y,z:subject.z+dist},{x:subject.x+horizontalSign,y:mid.y,z:subject.z+dist}]} else if(move==='crane'){positions=[{x:subject.x,y:mid.y-2*verticalSign,z:subject.z+dist},{x:subject.x,y:mid.y+2*verticalSign,z:subject.z+dist}]} else if(move==='pan'||move==='whip'){targets=[{x:subject.x+2*horizontalSign,y:mid.y,z:subject.z},{x:subject.x-2*horizontalSign,y:mid.y,z:subject.z}]} else if(move==='tilt'){targets=[{x:subject.x,y:mid.y-3*verticalSign,z:subject.z},{x:subject.x,y:mid.y+3*verticalSign,z:subject.z}]} else if(move==='zoom'){fovs=direction==='out'?[fov-10,fov+10]:[fov+10,fov-10]} const waypoints=positions.map((p,i)=>point(p.x,p.y,p.z,start+(end-start)*i/Math.max(1,positions.length-1),targets[Math.min(i,targets.length-1)],fovs[Math.min(i,fovs.length-1)])); const first=waypoints[0]; return{id,name:id,position:{x:first.x,y:first.y,z:first.z},yaw:first.yaw,pitch:first.pitch,roll:0,fov:first.fov??fov,focalLengthMm:0,motionTrajectory:waypoints,trajectoryClips:[clip(`${id}-clip`,start,end)]} }
-export function idealPromptFor(card: DirectorCard): string | null { if(card.id==='police-chase') return 'Shot 1: wide establishing of the police car chasing the getaway car down the street, follow the getaway car 4s. Shot 2: medium shot beside the police car, pan right with it 3s. Shot 3: close-up on the driver, push in 2s.'; if(card.id==='perfume-orbit') return 'Shot 1: orbit 360 deg around the perfume bottle on the round pedestal, linear, 8s. Shot 2: push in 1.2m to the bottle cap, ease out, 3s.'; if(card.id==='courtyard-standoff') return 'Shot 1: wide shot, the woman walks across the courtyard toward the gate, follow the woman from behind-left 4s. Shot 2: two-shot of the guard and the woman at the gate, static 4s. Shot 3: close-up of the woman hand behind her back, then switch to the guard over-the-shoulder, slow push in 0.5m 4s.'; return null }
-const IDEAL_CARD_IDS = new Set(['police-chase', 'perfume-orbit', 'courtyard-standoff'])
+const entityPoint = (position: Vec3, time: number): Waypoint => ({ id: `entity-${time}-${position.x.toFixed(3)}-${position.z.toFixed(3)}`, ...position, time, frameIndex: Math.round(time * FPS), yaw: 0, pitch: 0, roll: 0 })
+const clip = (id: string, start: number, end: number) => ({ id, startTime: start, endTime: end, startFrame: Math.round(start * FPS), endFrame: Math.round(end * FPS) })
+
+function makeObject(id: string, category: string, position: Vec3): DirectorObject {
+  const type: DirectorObject['type'] = category === 'person' ? 'character' : category === 'product' ? 'cylinder' : category === 'vehicle' ? 'cube' : 'cube'
+  const scale = category === 'person' ? { x: 1, y: 1, z: 1 } : category === 'vehicle' ? { x: 1.8, y: 1, z: 4 } : { x: 1, y: 1, z: 1 }
+  return { id, name: id, type, position: { ...position, y: type === 'character' ? 0 : Math.max(0, position.y) }, rotation: { x: 0, y: 0, z: 0 }, scale, visible: true, locked: false }
+}
+function makeSceneObject(id: string): DirectorObject {
+  const primitive = id === 'ground' || id.endsWith('_street') || id === 'road' ? 'plane' : 'cube'
+  const isGate = id === 'gate'
+  return { id, name: id === 'gate' ? 'gate' : id === 'road' ? 'road' : 'ground', type: primitive, position: { x: 0, y: primitive === 'plane' || isGate ? 0 : 50, z: primitive === 'plane' || isGate ? 0 : 50 }, rotation: { x: 0, y: 0, z: 0 }, scale: primitive === 'plane' ? { x: 20, y: 1, z: 20 } : { x: 1, y: 1, z: 1 }, visible: true, locked: false }
+}
+function base(objects: DirectorObject[], cameras: DirectorCamera[], duration: number): DirectorProject {
+  const project = createDefaultProject('oracle')
+  const scene = project.scenes[0]
+  scene.objects = objects
+  scene.cameras = cameras
+  scene.timelineTrackOrder = cameras.map((camera) => camera.id)
+  return project
+}
+function parseSubject(value: string | undefined): SubjectRef | undefined {
+  if (!value) return undefined
+  const [root, part] = value.split('.')
+  return { root, part }
+}
+function shotWindows(card: DirectorCard, duration: number): ShotWindow[] {
+  const count = card.shots.length || card.coverageRequired.length || 1
+  return Array.from({ length: count }, (_, index) => card.shots[index]?.t ?? [index * duration / count, (index + 1) * duration / count])
+}
+function oracleShots(card: DirectorCard): DirectorCard['shots'] {
+  if (card.shots.length) return card.shots
+  return card.coverageRequired.map((size, index) => ({ size, move: card.moveAnyOf?.[index % Math.max(1, card.moveAnyOf.length)] ?? 'static' }))
+}
+function actorPositions(card: DirectorCard): Record<string, Vec3> {
+  const positions: Record<string, Vec3> = {}
+  card.actors.forEach((actor, index) => { positions[actor.id] = { x: (index - (card.actors.length - 1) / 2) * 2, y: actor.category === 'person' ? 0 : 0.5, z: 0 } })
+  return positions
+}
+function applyBlocking(card: DirectorCard, objects: DirectorObject[], actorMap: Record<string, string>, duration: number): void {
+  const byId = (id: string | undefined) => objects.find((object) => object.id === (id ? actorMap[id] ?? id : ''))
+  for (const action of card.blocking) {
+    const actor = byId(action.actor)
+    if (!actor) continue
+    const start = action.window?.[0] ?? 0
+    const end = action.window?.[1] ?? duration
+    const target = byId(action.target)
+    const addTrajectory = (points: Waypoint[], trajectoryId: string) => {
+      actor.motionTrajectory = [...(actor.motionTrajectory ?? []), ...points].sort((a, b) => a.time - b.time)
+      actor.trajectoryClips = [...(actor.trajectoryClips ?? []), clip(trajectoryId, start, end)]
+    }
+    if (['walk_to', 'run_to'].includes(action.verb) && target) {
+      addTrajectory([entityPoint(actor.position, start), entityPoint(target.position, end)], `${actor.id}-${action.verb}`)
+    } else if (action.verb === 'sidestep_block') {
+      const targetPosition = target?.position ?? actor.position
+      addTrajectory([entityPoint(actor.position, start), entityPoint({ x: targetPosition.x - 0.8, y: actor.position.y, z: targetPosition.z }, end)], `${actor.id}-sidestep`)
+    } else if (['drive_along', 'chase'].includes(action.verb)) {
+      const targetPosition = target?.position ?? actor.position
+      addTrajectory([entityPoint(actor.position, start), entityPoint({ x: targetPosition.x, y: actor.position.y, z: targetPosition.z + 0.8 }, end)], `${actor.id}-${action.verb}`)
+    } else if (action.verb === 'stop') {
+      const last = actor.motionTrajectory?.at(-1)
+      addTrajectory([entityPoint(last ? { x: last.x, y: last.y, z: last.z } : actor.position, start), entityPoint(last ? { x: last.x, y: last.y, z: last.z } : actor.position, end)], `${actor.id}-stop`)
+    } else if (action.verb === 'hide_object_behind_back' || action.verb === 'hold_pose') {
+      actor.actionClips = [{ id: `${actor.id}-${action.verb}`, name: action.verb, clipType: 'action', startTime: start, endTime: end, startFrame: Math.round(start * FPS), endFrame: Math.round(end * FPS), actionPose: action.verb }]
+    }
+  }
+}
+function anchorFor(subject: SubjectRef | undefined, actor: DirectorObject): AnchorSpec | undefined {
+  if (!subject?.part) return undefined
+  if (subject.part === 'hand') return { offset: { x: 0.28, y: 1.05, z: 0.12 }, size: { x: 0.18, y: 0.22, z: 0.18 } }
+  if (subject.part === 'cap') return { offset: { x: 0, y: actor.type === 'character' ? 1.7 : 0.95, z: 0 }, size: { x: 0.24, y: 0.2, z: 0.24 } }
+  return { offset: { x: 0, y: 0.5, z: 0 }, size: { x: 0.25, y: 0.25, z: 0.25 } }
+}
+function subjectHeight(actor: DirectorObject, anchor: AnchorSpec | undefined): number {
+  if (anchor) return anchor.size.y
+  return actor.type === 'character' ? 1.75 : actor.type === 'cube' && actor.scale.z > 2 ? 1 : actor.scale.y
+}
+function targetPosition(actor: DirectorObject, anchor: AnchorSpec | undefined): Vec3 {
+  if (anchor) return { x: actor.position.x + anchor.offset.x, y: actor.position.y + anchor.offset.y, z: actor.position.z + anchor.offset.z }
+  if (actor.type === 'character') return { x: actor.position.x, y: actor.position.y + 1.2, z: actor.position.z }
+  return { x: actor.position.x, y: actor.position.y + 0.5, z: actor.position.z }
+}
+function positionAt(actor: DirectorObject, time: number): Vec3 {
+  const points = actor.motionTrajectory
+  if (!points?.length) return actor.position
+  if (time <= points[0].time) return { x: points[0].x, y: points[0].y, z: points[0].z }
+  const last = points[points.length - 1]
+  if (time >= last.time) return { x: last.x, y: last.y, z: last.z }
+  const next = points.find((point) => point.time >= time) ?? last
+  const previous = points[Math.max(0, points.indexOf(next) - 1)]
+  const ratio = (time - previous.time) / Math.max(0.001, next.time - previous.time)
+  return { x: previous.x + (next.x - previous.x) * ratio, y: previous.y + (next.y - previous.y) * ratio, z: previous.z + (next.z - previous.z) * ratio }
+}
+function angleOffset(angle: string | undefined, subject: Vec3, distance: number, actors: Record<string, DirectorObject>): Vec3 {
+  const lower = angle?.toLowerCase() ?? 'front'
+  if (lower === 'side' || lower === 'side_rear') return { x: subject.x - distance, y: subject.y, z: subject.z }
+  if (lower === 'rear' || lower === 'back') return { x: subject.x, y: subject.y, z: subject.z - distance }
+  const match = angle?.match(/(?:over_shoulder|pov)\(([^)]+)\)/)
+  if (match) {
+    const other = actors[match[1]]
+    if (other) {
+      const dx = subject.x - other.position.x
+      const dz = subject.z - other.position.z
+      const length = Math.max(0.001, Math.hypot(dx, dz))
+      return { x: subject.x + dx / length * distance, y: subject.y, z: subject.z + dz / length * distance }
+    }
+  }
+  return { x: subject.x, y: subject.y, z: subject.z - distance }
+}
+function cameraForShot(id: string, shot: DirectorCard['shots'][number], window: ShotWindow, actor: DirectorObject, actors: Record<string, DirectorObject>, anchor: AnchorSpec | undefined): DirectorCamera {
+  const [start, end] = window
+  const size = (shot.size ?? shot.endSize ?? '中景') as EvalShotSize
+  const ladder: ShotLadder = actor.type === 'character' && !anchor ? 'figure' : 'object'
+  const fov = DEFAULT_FOV
+  const distance = Math.max(anchor ? 0.15 : 0.12, distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder))
+  const startActor = { ...actor, position: positionAt(actor, start) }
+  const endActor = { ...actor, position: positionAt(actor, end) }
+  const target = targetPosition(startActor, anchor)
+  const endTarget = targetPosition(endActor, anchor)
+  if (actor.type === 'character' && !anchor && (size === '中近景' || size === '近景' || size === '特写' || size === '大特写')) {
+    const lift = size === '特写' || size === '大特写' ? 0.5 : 0.2
+    target.y += lift
+    endTarget.y += lift
+  }
+  const direction = shot.direction
+  const sign = direction === 'left' ? -1 : 1
+  const firstPosition = angleOffset(shot.angle, target, distance, actors)
+  let positions = [firstPosition, firstPosition]
+  let targets = [target, target]
+  let fovs = [fov, fov]
+  const move = shot.move ?? 'static'
+  if (move === 'push' || move === 'dolly') {
+    const far = shot.angle?.startsWith('over_shoulder') ? { x: firstPosition.x, y: firstPosition.y, z: firstPosition.z - 0.8 } : angleOffset(shot.angle, target, distance + 0.8, actors)
+    positions = [far, firstPosition]
+    fovs = [size === '特写' || size === '大特写' ? 10 : Math.max(15, fov - 20), fov]
+  } else if (move === 'pull') {
+    const far = shot.angle?.startsWith('over_shoulder') ? { x: firstPosition.x, y: firstPosition.y, z: firstPosition.z - 0.8 } : angleOffset(shot.angle, target, distance + 0.8, actors)
+    positions = [firstPosition, far]
+    fovs = [fov, size === '特写' || size === '大特写' ? 10 : Math.max(15, fov - 20)]
+  }
+  else if (move === 'orbit' || move === 'arc') {
+    const sweep = shot.sweepDeg ?? (move === 'arc' ? 90 : 360)
+    positions = Array.from({ length: 9 }, (_, index) => {
+      const radians = sign * (index / 8 - 0.5) * sweep * Math.PI / 180
+      return { x: target.x + Math.sin(radians) * distance, y: target.y, z: target.z + Math.cos(radians) * distance }
+    })
+  } else if (move === 'follow') {
+    const offset = { x: -distance * 0.25, y: 0.5, z: -distance }
+    positions = [{ x: target.x + offset.x, y: target.y + offset.y, z: target.z + offset.z }, { x: endTarget.x + offset.x, y: endTarget.y + offset.y, z: endTarget.z + offset.z }]
+    targets = [target, endTarget]
+  }
+  else if (move === 'truck') {
+    positions = [{ x: firstPosition.x - sign * 0.15, y: firstPosition.y, z: firstPosition.z }, { x: firstPosition.x + sign * 0.15, y: firstPosition.y, z: firstPosition.z }]
+    targets = [{ x: target.x - sign * 0.15, y: target.y, z: target.z }, { x: target.x + sign * 0.15, y: target.y, z: target.z }]
+  }
+  else if (move === 'crane') positions = [{ x: firstPosition.x, y: firstPosition.y - 2 * (direction === 'down' ? -1 : 1), z: firstPosition.z }, { x: firstPosition.x, y: firstPosition.y + 2 * (direction === 'down' ? -1 : 1), z: firstPosition.z }]
+  else if (move === 'pan' || move === 'whip') targets = [target, { x: target.x + sign * 2, y: target.y, z: target.z }]
+  else if (move === 'tilt') {
+    const amount = 0.5
+    targets = direction === 'down' ? [{ x: target.x, y: target.y + amount, z: target.z }, { x: target.x, y: target.y - amount, z: target.z }] : [{ x: target.x, y: target.y - amount, z: target.z }, { x: target.x, y: target.y + amount, z: target.z }]
+  }
+  else if (move === 'zoom') fovs = direction === 'out' ? [35, 55] : [55, 35]
+  if (move !== 'follow' && actor.motionTrajectory && positions.length > 1) {
+    const delta = { x: endTarget.x - target.x, y: endTarget.y - target.y, z: endTarget.z - target.z }
+    const last = positions.length - 1
+    positions[last] = { x: positions[last].x + delta.x, y: positions[last].y + delta.y, z: positions[last].z + delta.z }
+    if (targets.length > 1) {
+      const targetIndex = targets.length - 1
+      targets[targetIndex] = { x: targets[targetIndex].x + delta.x, y: targets[targetIndex].y + delta.y, z: targets[targetIndex].z + delta.z }
+    }
+  }
+  const waypoints = positions.map((position, index) => point(position, start + (end - start) * index / Math.max(1, positions.length - 1), { target: targets[Math.min(index, targets.length - 1)], fov: fovs[Math.min(index, fovs.length - 1)] }))
+  const first = waypoints[0]
+  return { id, name: id, position: { x: first.x, y: first.y, z: first.z }, yaw: first.yaw, pitch: first.pitch, roll: 0, fov: first.fov ?? fov, focalLengthMm: 0, motionTrajectory: waypoints, trajectoryClips: [clip(`${id}-clip`, start, end)] }
+}
+function buildCardOracle(card: DirectorCard): AdaptedProject {
+  const duration = card.duration?.total ?? 12
+  const actorMap: Record<string, string> = {}
+  const positions = actorPositions(card)
+  const actors: Record<string, DirectorObject> = {}
+  const objects = card.actors.map((actor) => { const object = makeObject(actor.id, actor.category, positions[actor.id]); actors[actor.id] = object; actorMap[actor.id] = object.id; return object })
+  for (const required of card.scene.required) if (!objects.some((object) => object.id === required)) objects.push(makeSceneObject(required))
+  applyBlocking(card, objects, actorMap, duration)
+  const shots = oracleShots(card)
+  const windows = shotWindows(card, duration)
+  const anchors: Record<string, AnchorSpec> = {}
+  const cameras = shots.map((shot, index) => {
+    const subject = parseSubject(shot.subject ?? shot.subjects?.[0] ?? shot.endSubject ?? card.actors[0]?.id)
+    const actor = subject ? actors[subject.root] : objects[0]
+    if (!actor) throw new Error(`card ${card.id}: shot ${index} has no subject`)
+    if (shot.move === 'follow' && !actor.motionTrajectory) {
+      const window = windows[index]
+      const direction = shot.direction === 'left' ? -1 : 1
+      actor.motionTrajectory = [entityPoint(actor.position, window[0]), entityPoint({ x: actor.position.x + direction * 2, y: actor.position.y, z: actor.position.z }, window[1])]
+      actor.trajectoryClips = [clip(`${actor.id}-follow`, window[0], window[1])]
+    }
+    const anchor = anchorFor(subject, actor)
+    if (anchor && subject?.part) anchors[`${actor.id}.${subject.part}`] = anchor
+    return cameraForShot(`shot-${index}`, shot, windows[index], actor, actors, anchor)
+  })
+  const project = base(objects, cameras, duration)
+  Object.defineProperty(project, '__evalAnchors', { value: anchors, enumerable: false })
+  return { project, actorMap, anchors }
+}
+export function oracleForCard(card: DirectorCard): AdaptedProject { return buildCardOracle(card) }
 
 export async function adapt(prompt: string, card: DirectorCard, scheme: Scheme): Promise<AdaptedProject> {
   if (scheme === 'oracle') return oracleForCard(card)
   if (scheme === 's0-pr960-ideal') {
-    if (!IDEAL_CARD_IDS.has(card.id)) throw new Error(`s0-pr960-ideal only supports benchmark card ${[...IDEAL_CARD_IDS].join(', ')}; received ${card.id}`)
-    prompt = idealPromptFor(card) ?? (() => { throw new Error(`missing ideal prompt for ${card.id}`) })()
+    if (!new Set(['police-chase', 'perfume-orbit', 'courtyard-standoff']).has(card.id)) throw new Error(`s0-pr960-ideal only supports benchmark cards; received ${card.id}`)
+    prompt = card.id === 'police-chase' ? 'Shot 1: wide establishing of the police car chasing the getaway car down the street, follow the getaway car 4s. Shot 2: medium shot beside the police car, pan right with it 3s. Shot 3: close-up on the driver, push in 2s.' : card.id === 'perfume-orbit' ? 'Shot 1: orbit 360 deg around the perfume bottle on the round pedestal, linear, 8s. Shot 2: push in 1.2m to the bottle cap, ease out, 3s.' : 'Shot 1: wide shot, the woman walks across the courtyard toward the gate, follow the woman from behind-left 4s. Shot 2: two-shot of the guard and the woman at the gate, static 4s. Shot 3: close-up of the woman hand behind her back, then switch to the guard over-the-shoulder, slow push in 0.5m 4s.'
   }
   try {
     const mod = await importPr960Plan()
     const plan = mod.normalizeDirectorPrompt(prompt)
-    const built = mod.buildDirectorProjectFromPlan(plan)
-    return { project: built.project }
+    return { project: mod.buildDirectorProjectFromPlan(plan).project }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     throw new Error(`${scheme} adapter failed for ${card.id}: ${message}`, { cause: error })
   }
 }
-export function mutateOracle(baseProject: DirectorProject, mutation: 'half-orbit'|'out-of-frame'|'missing-shot'|'axis-cross'|'no-sidestep'|'no-action'|'unmatched-actor'|'reverse-direction'): DirectorProject { const p=JSON.parse(JSON.stringify(baseProject)) as DirectorProject; const s=p.scenes[0]
-  if(mutation==='half-orbit'){const c=s.cameras.find(c=>c.motionTrajectory&&c.motionTrajectory.length>=3); if(c?.motionTrajectory) c.motionTrajectory=c.motionTrajectory.slice(0,Math.ceil(c.motionTrajectory.length/2));}
-  if(mutation==='out-of-frame'){const o=s.objects.find(o=>o.type==='character'||o.type==='cylinder'||o.type==='cube'); if(o){o.position.x=30; if(o.motionTrajectory) o.motionTrajectory=o.motionTrajectory.map(w=>({...w,x:30}))}}
-  if(mutation==='missing-shot'){s.cameras=s.cameras.slice(0,Math.max(1,s.cameras.length-1)); s.timelineTrackOrder=s.cameras.map(c=>c.id)}
-  if(mutation==='axis-cross'){const c=s.cameras[0]; if(c?.motionTrajectory) for(const w of c.motionTrajectory) { w.x=-w.x; w.z=-w.z }}
-  if(mutation==='no-sidestep'){const o=s.objects.find(o=>o.id==='guard'); if(o){o.position.x=6; if(o.motionTrajectory) o.motionTrajectory=o.motionTrajectory.map(w=>({...w,x:6}))}}
-  if(mutation==='no-action'){for(const o of s.objects){o.motionTrajectory=undefined;o.trajectoryClips=undefined;o.actionClips=undefined}}
-  if(mutation==='unmatched-actor'){for(const o of s.objects) if(o.type==='character'||o.type==='cylinder') {o.id=`unknown-${o.id}`;o.name='unnamed';} s.timelineTrackOrder=s.cameras.map(c=>c.id)}
-  if(mutation==='reverse-direction'){const c=s.cameras[0], points=c?.motionTrajectory; if(points&&points.length>1){const reversed=[...points].reverse(); c.motionTrajectory=points.map((point,i)=>({...point,x:reversed[i].x,y:reversed[i].y,z:reversed[i].z,yaw:reversed[i].yaw,pitch:reversed[i].pitch,roll:reversed[i].roll}))}}
-  return p }
+
+export function mutateOracle(baseProject: DirectorProject, mutation: 'half-orbit' | 'out-of-frame' | 'missing-shot' | 'axis-cross' | 'no-sidestep' | 'no-action' | 'unmatched-actor' | 'reverse-direction'): DirectorProject {
+  const project = JSON.parse(JSON.stringify(baseProject)) as DirectorProject
+  const scene = project.scenes[0]
+  if (mutation === 'half-orbit') { const camera = scene.cameras.find((item) => item.motionTrajectory && item.motionTrajectory.length >= 3); if (camera?.motionTrajectory) camera.motionTrajectory = camera.motionTrajectory.slice(0, Math.max(2, Math.floor(camera.motionTrajectory.length / 3))) }
+  if (mutation === 'out-of-frame') { const object = scene.objects.find((item) => item.type === 'character' || item.type === 'cylinder' || item.type === 'cube'); if (object) { object.position.x = 30; if (object.motionTrajectory) object.motionTrajectory = object.motionTrajectory.map((waypoint) => ({ ...waypoint, x: 30 })) } }
+  if (mutation === 'missing-shot') { scene.cameras = scene.cameras.slice(0, Math.max(1, scene.cameras.length - 1)); scene.timelineTrackOrder = scene.cameras.map((camera) => camera.id) }
+  if (mutation === 'axis-cross') { const camera = scene.cameras[0]; if (camera?.motionTrajectory) for (const waypoint of camera.motionTrajectory) { waypoint.x = -waypoint.x; waypoint.z = -waypoint.z } }
+  if (mutation === 'no-sidestep') { const object = scene.objects.find((item) => item.id === 'guard'); if (object) { object.position.x = 6; if (object.motionTrajectory) object.motionTrajectory = object.motionTrajectory.map((waypoint) => ({ ...waypoint, x: 6 })) } }
+  if (mutation === 'no-action') for (const object of scene.objects) { object.motionTrajectory = undefined; object.trajectoryClips = undefined; object.actionClips = undefined }
+  if (mutation === 'unmatched-actor') for (const object of scene.objects) if (object.type === 'character' || object.type === 'cylinder') { object.id = `unknown-${object.id}`; object.name = 'unnamed' }
+  if (mutation === 'reverse-direction') { const camera = scene.cameras[0]; const points = camera?.motionTrajectory; if (points && points.length > 1) { const reversed = [...points].reverse(); camera.motionTrajectory = points.map((waypoint, index) => ({ ...waypoint, x: reversed[index].x, y: reversed[index].y, z: reversed[index].z, yaw: reversed[index].yaw, pitch: reversed[index].pitch, roll: reversed[index].roll })) } }
+  return project
+}

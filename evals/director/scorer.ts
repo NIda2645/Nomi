@@ -1,6 +1,7 @@
 import type { DirectorObject, DirectorProject, DirectorScene } from '../../src/workbench/generationCanvas/nodes/director/model/directorTypes'
 import { measureContinuity, recognizeCameraMotion, sampleDirectorProject, type DirectorMeasurements, type MotionRecognition } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
 import type { Direction, DirectorCard } from './cardSchema'
+import type { AnchorSpec } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
 
 /** `null` = the card does not constrain this layer, so it is left out of the total (spec: unconstrained fields are not scored). */
 export type LayerScores = { L0: number; L1: number | null; L2: number | null; L3: number | null; L4: number | null; L5: 'unverified' }
@@ -43,6 +44,12 @@ function distance2(a: { position: { x: number; z: number } }, b: { position: { x
 function findObject(scene: DirectorScene, key: string): DirectorObject | undefined {
   const needle = key.toLowerCase()
   return scene.objects.find((object) => object.id.toLowerCase() === needle || object.name.toLowerCase() === needle || object.name.toLowerCase().includes(needle))
+}
+function sampleForSubject(frame: DirectorMeasurements['frames'][number], subject: string | undefined) {
+  if (!subject) return undefined
+  const [root, part] = subject.split('.')
+  const sample = frame.objects[root]
+  return part ? sample?.anchors?.[part] : sample
 }
 
 export function scoreBlocking(card: DirectorCard, measurements: DirectorMeasurements, scene: DirectorScene, actorMap: Record<string, string | undefined>, reasons: string[]): number | null {
@@ -184,7 +191,8 @@ function scoreMotionAndFraming(card: DirectorCard, measurements: DirectorMeasure
   let count = 0
   for (const [index, shot] of card.shots.entries()) {
     const [start, end] = windows[index] ?? [0, measurements.duration]
-    const subject = shot.subject?.split('.')[0] ?? shot.subjects?.[0]
+    const subjectRef = shot.subject ?? shot.subjects?.[0] ?? shot.endSubject
+    const subject = subjectRef?.split('.')[0]
     const objectId = subject ? actorMap[subject] : Object.values(actorMap).find((id): id is string => !!id)
     const motion = objectId ? recognizeCameraMotion(measurements, objectId, { start, end }) : null
     if (shot.move && motion) {
@@ -205,12 +213,12 @@ function scoreMotionAndFraming(card: DirectorCard, measurements: DirectorMeasure
     }
     if (objectId) {
       const frames = measurements.frames.filter((frame) => frame.time >= start - 1e-4 && (frame.time < end - 1e-4 || end >= measurements.duration - 1e-4))
-      const visible = frames.filter((frame) => frame.objects[objectId]?.projection?.inFrame).length / Math.max(1, frames.length)
+      const visible = frames.filter((frame) => sampleForSubject(frame, subjectRef)?.projection?.inFrame).length / Math.max(1, frames.length)
       total += visible
       count++
       if (visible < 0.95) reasons.push(`${start}-${end}s 主体出画 ${Math.round((1 - visible) * 100)}% 帧`)
       if (shot.size) {
-        const sizes = frames.map((frame) => frame.objects[objectId]?.shotSize).filter((size) => size !== undefined) as string[]
+        const sizes = frames.map((frame) => sampleForSubject(frame, subjectRef)?.shotSize).filter((size) => size !== undefined) as string[]
         const expected = shotAliases[shot.size] ?? shot.size ?? ''
         const hit = sizes.filter((size) => shotSizeMatches(expected, size)).length / Math.max(1, sizes.length)
         total += hit
@@ -237,9 +245,10 @@ function scoreScene(card: DirectorCard, scene: DirectorScene, reasons: string[])
   return hit / card.scene.required.length
 }
 
-export function scoreCard(card: DirectorCard, project: DirectorProject, actorMap?: Record<string, string>): CardScore {
+export function scoreCard(card: DirectorCard, project: DirectorProject, actorMap?: Record<string, string>, anchors?: Record<string, AnchorSpec>): CardScore {
   const scene = project.scenes.find((item) => item.id === project.activeSceneId) ?? project.scenes[0]
-  const measurements = sampleDirectorProject(project, { duration: card.duration?.total ?? undefined })
+  const embeddedAnchors = (project as DirectorProject & { __evalAnchors?: Record<string, AnchorSpec> }).__evalAnchors
+  const measurements = sampleDirectorProject(project, { duration: card.duration?.total ?? undefined, anchors: anchors ?? embeddedAnchors })
   const reasons: string[] = []
   const continuity = scene ? measureContinuity(measurements, scene) : []
   const l0 = continuity.length ? 0 : 1

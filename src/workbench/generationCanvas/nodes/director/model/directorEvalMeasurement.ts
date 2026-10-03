@@ -42,7 +42,8 @@ export type AnchorSpec = { offset: Vec3; size: Vec3 }
 /** `inFrame` = the subject's key point (head for a character, anchor or centre otherwise) is in front of the camera and inside the frame;
  * `contained` = the whole bounds fit inside the frame (only wide shots satisfy this, by definition). */
 export type ProjectionBox = { x: number; y: number; width: number; height: number; heightRatio: number; inFrame: boolean; contained: boolean; depth: number }
-export type ObjectSample = { position: Vec3; yaw: number; projection?: ProjectionBox; shotSize?: EvalShotSize; belowGround: boolean }
+export type AnchorSample = { projection: ProjectionBox; shotSize: EvalShotSize }
+export type ObjectSample = { position: Vec3; yaw: number; projection?: ProjectionBox; shotSize?: EvalShotSize; anchors?: Record<string, AnchorSample>; belowGround: boolean }
 export type CameraSample = { id: string; position: Vec3; yaw: number; pitch: number; roll: number; fov: number }
 export type FrameSample = { frame: number; time: number; cameraId: string | null; camera: CameraSample | null; objects: Record<string, ObjectSample> }
 export type MeasurementOptions = { fps?: number; duration?: number; aspectRatio?: number; anchors?: Record<string, AnchorSpec> }
@@ -167,7 +168,13 @@ function objectSample(scene: DirectorScene, object: DirectorObject, time: number
   const keyPoint = figure ? add(center, vec(0, size.y / 2 - HEAD_BELOW_TOP * Math.abs(object.scale.y), 0)) : center
   const projection = camera ? projectBounds(camera, center, size, aspectRatio, keyPoint) : undefined
   const shotSize = projection ? shotSizeForHeight(projection.heightRatio, figure ? 'figure' : 'object') : undefined
-  return { position, yaw: evaluated?.yaw ?? object.rotation.y, projection, shotSize, belowGround: center.y - size.y / 2 < -0.05 }
+  const anchorSamples: Record<string, AnchorSample> = {}
+  if (frame) for (const [key, spec] of Object.entries(anchors ?? {})) if (key.startsWith(`${object.id}.`)) {
+    const anchorCenter = transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, spec.offset))
+    const anchorProjection = camera ? projectBounds(camera, anchorCenter, spec.size, aspectRatio, anchorCenter) : undefined
+    if (anchorProjection) anchorSamples[key.slice(object.id.length + 1)] = { projection: anchorProjection, shotSize: shotSizeForHeight(anchorProjection.heightRatio, 'object') }
+  }
+  return { position, yaw: evaluated?.yaw ?? object.rotation.y, projection, shotSize, anchors: Object.keys(anchorSamples).length ? anchorSamples : undefined, belowGround: center.y - size.y / 2 < -0.05 }
 }
 
 export function sampleDirectorProject(project: DirectorProject, options: MeasurementOptions = {}): DirectorMeasurements {
