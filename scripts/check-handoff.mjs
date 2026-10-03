@@ -19,7 +19,7 @@ export function parseArgs(argv) {
   const withTests = argv.includes("--with-tests");
   const positional = argv.filter((value) => value !== "--with-tests" && value !== "--");
   if (positional.length !== 1 || !positional[0]) {
-    throw new Error("Usage: pnpm run check:handoff -- <branch> [--with-tests]");
+    throw new Error("Usage: pnpm run handoff:report -- <branch> [--with-tests]");
   }
   return { branch: positional[0], withTests };
 }
@@ -91,7 +91,7 @@ export function formatReport(report) {
   const risk = report.deletionRisk;
   const warning = risk.suspicious ? " ⚠ 回滚嫌疑" : "";
   const lines = [
-    `check:handoff ${report.branch}`,
+    `handoff:report ${report.branch}`,
     `- 底座: ${report.base} behind ${report.behind} commit(s)`,
     `- 删除量: 两点 ${risk.twoPointDeleted} / 三点自身 ${risk.ownDeleted} = ${formatRatio(risk.ratio)}${warning}`,
   ];

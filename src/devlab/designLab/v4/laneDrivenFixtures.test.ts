@@ -20,12 +20,12 @@ const labels: LaneViewModelLabels = {
   toolSummary: () => undefined,
   toolFailure: () => undefined,
   toolFailureDetail: (failure) => failure.code,
+  assistantFailure: (text) => text,
   thinkingLabel: '正在想…',
   formatTokens: (value) => String(value),
   formatCost: (usd) => `$${usd.toFixed(2)}`,
   retryLabel: (attempt, maxAttempts) => `[retry ${attempt}/${maxAttempts}]`,
   unknown: '—',
-  free: '免费',
   taskTitle: '生成任务',
   formatStages: (done, total) => `${done} / ${total} 阶段`,
   formatMoney: (currency, amount) => `${currency} ${amount.toFixed(2)}`,
@@ -92,7 +92,7 @@ describe('design-lab fixtures driven by a LaneSnapshot (probe P6)', () => {
   it('single tool, done: pins the two fields the projection cannot derive yet (why that cell stays hand-written)', () => {
     const receipt = laneDrivenReceipt(laneSnapshotToolDone(), labels)
     expect(receipt.status).toBe('output-available')
-    expect(receipt.output).toBe('clips: 3 · duration: 9.0s · selected: clip-2 (0:03–0:06)')
+    expect(receipt.output).toBeUndefined()
     // 拍板的格子有「3 段 · 9.0s」（按能力渲染的摘要）与「0.4s」（调用→结果的时间戳差）。
     // 前者要一个按能力的摘要渲染点，后者要 `LanePart` 带时间戳过桥——两者都还没有。
     expect(receipt.summary).toBeUndefined()

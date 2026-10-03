@@ -3,8 +3,7 @@
  * 在 pnpm install (postinstall) 时把 Git hooks 写入 Git 配置的 hooks 目录。
  * 已存在则覆盖（保持 source-of-truth 在 scripts/）。
  *
- * Git hooks 必须保持边界明确：pre-commit 只运行敏感数据扫描；pre-push 读取
- * Git 提供的 outgoing refs，校验这棵树有没有被 `pnpm run review:branch` 评审过。
+ * Git hooks 必须保持边界明确：pre-commit 只运行敏感数据扫描；pre-push 只跑 PR 正文门岗的本地半场（不跑模型）。
  * 任一步失败就阻止操作。
  *
  * linked worktree 且启用 extensions.worktreeConfig 时使用该 worktree 的
@@ -22,7 +21,7 @@ const REPO_ROOT = path.resolve(__dirname, '..')
 // 装的 hook（source-of-truth 在 scripts/，随 git 走）。顺序是契约：
 //   · commit-msg = 原有提交信息进度校验。
 //   · pre-commit = 敏感数据扫描，**只有这一件**（2026-09-15 起不再在提交时刻跑模型评审）。
-//   · pre-push = Ponytail 收据校验（要推的树评审过没有）+ PR 正文门岗的本地半场，都不跑模型。
+//   · pre-push = PR 正文门岗的本地半场，不跑模型（2026-10-02 起不再有评审收据校验）。
 //     正文门岗放在这里的理由见 scripts/check-pr-body-gates.mjs：那两条判据此前只在 CI 里跑，
 //     而 CI 一轮 40 分钟——「正文少一行链接」这种十秒能改的事不该花一轮 CI（R17）。
 const HOOKS = Object.freeze([
@@ -41,10 +40,7 @@ const HOOKS = Object.freeze([
   Object.freeze({
     name: 'pre-push',
     commands: Object.freeze([
-      // 收据校验要吃 git 从 stdin 喂的 ref 列表，所以它必须是 exec 的那条（最后一条）；
-      // 正文门岗不读 stdin，放在它前面先跑。
       Object.freeze({ target: 'scripts/check-pr-body-gates.mjs', passArgs: false }),
-      Object.freeze({ target: 'scripts/ponytail-review-hook.mjs', passArgs: true }),
     ]),
   }),
 ])

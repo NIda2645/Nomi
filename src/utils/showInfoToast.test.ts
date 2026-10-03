@@ -4,24 +4,21 @@ const toastMock = vi.hoisted(() => vi.fn())
 
 vi.mock('../ui/toast', () => ({ toast: toastMock }))
 
-import { providerSwitchToastId, showInfoToast } from './showInfoToast'
+import { showInfoToast } from './showInfoToast'
 
-describe('provider recovery toast identity', () => {
+describe('showInfoToast', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('keeps the same transition on one stable toast id', () => {
-    const id = providerSwitchToastId(['node-1', 'broken-vendor', 'old-model', 'healthy-vendor', 'new-model'])
+  it('passes the caller-supplied identity through, so a repeated notice stays one toast', () => {
+    showInfoToast('limit reached', 'canvas-limit')
+    showInfoToast('limit reached', 'canvas-limit')
 
-    showInfoToast('switched', id)
-    showInfoToast('switched', providerSwitchToastId(['node-1', 'broken-vendor', 'old-model', 'healthy-vendor', 'new-model']))
-
-    expect(toastMock).toHaveBeenNthCalledWith(1, 'switched', 'info', id)
-    expect(toastMock).toHaveBeenNthCalledWith(2, 'switched', 'info', id)
-    expect(id).toContain('provider-disconnected-switched:node-1')
+    expect(toastMock).toHaveBeenNthCalledWith(1, 'limit reached', 'info', 'canvas-limit')
+    expect(toastMock).toHaveBeenNthCalledWith(2, 'limit reached', 'info', 'canvas-limit')
   })
 
-  it('separates distinct provider recovery transitions', () => {
-    expect(providerSwitchToastId(['node-1', 'old-vendor', 'old-model', 'new-vendor', 'new-model']))
-      .not.toBe(providerSwitchToastId(['node-2', 'old-vendor', 'old-model', 'new-vendor', 'new-model']))
+  it('leaves the identity to the toast owner when the caller gives none', () => {
+    showInfoToast('saved')
+    expect(toastMock).toHaveBeenCalledWith('saved', 'info', undefined)
   })
 })

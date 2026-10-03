@@ -9,6 +9,9 @@
  */
 import type { GenerationProvider, GenerationProviderRequestInputV1 } from "./generationRuntimeAdapter";
 import { appFetch } from "../appFetch";
+import { createFreshConnectionDispatcher } from "../systemProxy";
+import { vendorHttpTimeoutMs } from "../vendor/vendorHttp";
+import type { Dispatcher } from "undici";
 import { describeOutboundFailure } from "../outboundDispatchEvidence";
 import { extractMaterializationOutputs } from "./apimartGenerationOutputs";
 import { productionGenerationPayloadHash } from "../productionRun/productionGenerationAuthorization";
@@ -500,30 +503,44 @@ export function createCatalogGenerationProvider(options: CatalogGenerationProvid
       url.searchParams.set(key, String(value));
     }
     const method = built.method.toUpperCase();
-    let response: Response;
+    const isSubmission = method !== "GET" && method !== "HEAD" && body !== undefined;
+    // 付费提交每次用**全新连接**，不与任何别的请求共用连接池：共享池里的空闲 keep-alive 连接可能已被对面关掉，
+    // 那时抛出的 UND_ERR_SOCKET 与「请求写出去后连接被重置」一模一样，判不出哪个才是「没发出去」。
+    // 用完（含读完响应体）必须关掉；查询（GET）不受影响，照旧走共享池。
+    let fresh: Dispatcher | undefined;
     try {
-      response = await fetchImpl(url.toString(), {
-        method,
-        headers: built.headers,
-        ...(method === "GET" || method === "HEAD" || body === undefined ? {} : { body: JSON.stringify(body) }),
-      });
-    } catch (error) {
-      // `fetch failed` 是 undici 的外壳，真正的原因在 cause 链里。两件事都要带出去：
-      // 摊平成人话（否则日志与用户看到的永远只有那四个字），以及把 cause 原样挂上——
-      // 提交那一层要靠它判「这次请求到底写出去没有」（`outboundDispatchEvidence.ts`）。
-      throw new CatalogGenerationProviderError(
-        `${vendorKey} ${context} failed: ${describeOutboundFailure(error)}`,
-        { cause: error },
-      );
+      let response: Response;
+      try {
+        if (isSubmission) fresh = await createFreshConnectionDispatcher(undefined, url.toString());
+        response = await fetchImpl(url.toString(), {
+          method,
+          headers: built.headers,
+          ...(isSubmission ? { body: JSON.stringify(body) } : {}),
+          ...(fresh ? { dispatcher: fresh } : {}),
+          // 付费提交要有响应超时（此前没有：供应商接了连接却不回话，会一直挂在「生成中」，136 秒还不报）。
+          // 与旧通道 vendorHttp 同一个时长；到点 abort 发生在请求发出之后，判据把它记成「结果未知」，不自动重发。
+          ...(isSubmission ? { signal: AbortSignal.timeout(vendorHttpTimeoutMs()) } : {}),
+        } as RequestInit);
+      } catch (error) {
+        // `fetch failed` 是 undici 的外壳，真正的原因在 cause 链里。两件事都要带出去：
+        // 摊平成人话（否则日志与用户看到的永远只有那四个字），以及把 cause 原样挂上——
+        // 提交那一层要靠它判「这次请求到底写出去没有」（`outboundDispatchEvidence.ts`）。
+        throw new CatalogGenerationProviderError(
+          `${vendorKey} ${context} failed: ${describeOutboundFailure(error)}`,
+          { cause: error },
+        );
+      }
+      const payload = await readJson(response, vendorKey);
+      const code = payload.code;
+      // 信封码：OpenAI 兼容的中转/网关普遍用 HTTP 200 + 信封 `code` 表达失败（APIMart、kie…）。
+      // 声明了 code 却不是成功码 = 上游拒了，绝不能当成「受理成功」往下走。没有 code 的家不受影响。
+      if (!response.ok || (code !== undefined && code !== 200 && code !== 0)) {
+        throw new CatalogGenerationProviderError(`${vendorKey} ${context} rejected the request: ${providerMessage(payload)}`);
+      }
+      return payload;
+    } finally {
+      if (fresh) void fresh.close().catch(() => undefined);
     }
-    const payload = await readJson(response, vendorKey);
-    const code = payload.code;
-    // 信封码：OpenAI 兼容的中转/网关普遍用 HTTP 200 + 信封 `code` 表达失败（APIMart、kie…）。
-    // 声明了 code 却不是成功码 = 上游拒了，绝不能当成「受理成功」往下走。没有 code 的家不受影响。
-    if (!response.ok || (code !== undefined && code !== 200 && code !== 0)) {
-      throw new CatalogGenerationProviderError(`${vendorKey} ${context} rejected the request: ${providerMessage(payload)}`);
-    }
-    return payload;
   };
 
   /** 渲染一条 op（create / query）——与引擎 A 同一个渲染器，真 key 只在这一层出现。 */

@@ -15,6 +15,7 @@ import { looksLikeMachineCode, isLaneErrorCode, type LaneErrorCode } from '../..
 import type { TranslationKey } from '../../../i18n/translationKey'
 import { classifyGenerationError } from '../../observability/classifyError'
 import { logRendererError } from '../../../desktop/rendererLog'
+import { leaksInternals, stripClassificationMarkers } from '../resident/residentToolText'
 
 type Translate = (key: string, options?: Record<string, unknown>) => string
 
@@ -102,6 +103,8 @@ function showableRaw(raw: string): boolean {
   const text = raw.trim()
   if (!text) return false
   if (looksLikeMachineCode(text)) return false
+  // 带汉字的原始 JSON / 内部标识同样不是人话（`{"code":1,"msg":"系统错误"}`）。
+  if (leaksInternals(text)) return false
   return hasHan(text)
 }
 
@@ -124,12 +127,28 @@ export function laneFailureText(error: unknown, t: Translate): string {
   const raw = asText(error instanceof LaneCommandFailure ? error.diagnostic
     : error instanceof Error ? error.message : typeof error === 'string' ? error : '')
   if (!raw.trim()) return t('agentResident.sendFailed')
+  return classifiedFailureText(raw, t, 'agentResident.sendFailed', code)
+}
 
+/**
+ * 助手回合以 `stopReason: 'error'` 收场时带回来的服务商报文 → 面板那一行红字。
+ * 与 `laneFailureText` 同一套分类、同一条 fail-closed 规矩；区别只在兜底句：这一路的原文来自
+ * 服务商，认不出就老实说「服务商返回了一个没见过的错误」并给出能做的事。原始串只进日志。
+ */
+export function providerFailureText(raw: unknown, t: Translate): string {
+  const text = asText(raw)
+  if (!text.trim()) return t('agentResident.providerUnknownError')
+  return classifiedFailureText(text, t, 'agentResident.providerUnknownError', null)
+}
+
+function classifiedFailureText(raw: string, t: Translate, fallbackKey: 'agentResident.sendFailed' | 'agentResident.providerUnknownError', code: LaneErrorCode | null): string {
   const report = classifyGenerationError(raw)
-  if (report.kind === 'unknown' && !showableRaw(report.reason)) {
+  const reason = stripClassificationMarkers(report.reason)
+  if (report.kind === 'unknown' && !showableRaw(reason)) {
     // 用户读不到的东西不留在界面上，但**必须**留在某处——否则这条错误就彻底消失了。
     logRendererError('lane-unclassified-failure', undefined, { code, diagnostic: raw })
-    return t('agentResident.sendFailed')
+    return t(fallbackKey)
   }
-  return report.providerMessage ? `${report.reason}：${report.providerMessage}` : report.reason
+  const providerMessage = report.providerMessage ? stripClassificationMarkers(report.providerMessage) : ''
+  return providerMessage && !leaksInternals(providerMessage) ? `${reason}：${providerMessage}` : reason
 }

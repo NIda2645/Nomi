@@ -1,0 +1,665 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>FLUX.2 Pro: what it can do and how to prompt it | Nomi</title>
+<meta name="description" content="Black Forest Labs&#39; flagship image model, fusing up to 10 reference images at up to 4MP output, with a strong edge in typography and brand-consistent visuals." />
+<meta name="robots" content="index,follow,max-image-preview:large" />
+<meta name="theme-color" content="#faf9f6" />
+<link rel="canonical" href="https://nomiaqm.com/en/models/flux-2-pro" />
+<link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/flux-2-pro" />
+<link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/flux-2-pro" />
+<link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/flux-2-pro" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="Nomi" />
+<meta property="og:locale" content="en_US" />
+<meta property="og:title" content="FLUX.2 Pro: what it can do and how to prompt it | Nomi" />
+<meta property="og:description" content="Black Forest Labs&#39; flagship image model, fusing up to 10 reference images at up to 4MP output, with a strong edge in typography and brand-consistent visuals." />
+<meta property="og:url" content="https://nomiaqm.com/en/models/flux-2-pro" />
+<meta property="og:image" content="https://nomiaqm.com/assets/social-preview-en.jpg" />
+<meta property="og:image:alt" content="FLUX.2 Pro" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="FLUX.2 Pro: what it can do and how to prompt it | Nomi" />
+<meta name="twitter:description" content="Black Forest Labs&#39; flagship image model, fusing up to 10 reference images at up to 4MP output, with a strong edge in typography and brand-consistent visuals." />
+<meta name="twitter:image" content="https://nomiaqm.com/assets/social-preview-en.jpg" />
+<meta name="twitter:image:alt" content="FLUX.2 Pro" />
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/en/models/flux-2-pro","url":"https://nomiaqm.com/en/models/flux-2-pro","name":"FLUX.2 Pro: what it can do and how to prompt it | Nomi","description":"Black Forest Labs' flagship image model, fusing up to 10 reference images at up to 4MP output, with a strong edge in typography and brand-consistent visuals.","inLanguage":"en","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/social-preview-en.jpg"},"breadcrumb":{"@id":"https://nomiaqm.com/en/models/flux-2-pro#breadcrumbs"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.22.5","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"},{"@type":"BreadcrumbList","@id":"https://nomiaqm.com/en/models/flux-2-pro#breadcrumbs","itemListElement":[{"@type":"ListItem","position":1,"name":"Home","item":"https://nomiaqm.com/en/"},{"@type":"ListItem","position":2,"name":"Models","item":"https://nomiaqm.com/en/models"},{"@type":"ListItem","position":3,"name":"Image models","item":"https://nomiaqm.com/en/models#image"},{"@type":"ListItem","position":4,"name":"FLUX.2 Pro","item":"https://nomiaqm.com/en/models/flux-2-pro"}]},{"@type":"TechArticle","@id":"https://nomiaqm.com/en/models/flux-2-pro#article","headline":"FLUX.2 Pro: what it can do and how to prompt it | Nomi","description":"Black Forest Labs' flagship image model, fusing up to 10 reference images at up to 4MP output, with a strong edge in typography and brand-consistent visuals.","inLanguage":"en","dateModified":"2026-09-28","mainEntityOfPage":{"@id":"https://nomiaqm.com/en/models/flux-2-pro"},"about":{"@type":"Thing","name":"FLUX.2 Pro"},"author":{"@type":"Organization","name":"Nomi","url":"https://nomiaqm.com/"},"citation":["https://bfl.ai/blog/flux-2","https://docs.bfl.ml/flux_2/flux2_overview","https://docs.bfl.ml/guides/prompting_guide_flux2","https://docs.kie.ai/market/flux2/pro-image-to-image.md"]}]}</script>
+<link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;700;900&display=swap" />
+<style>
+:root {
+  --ground: #faf9f6;
+  --paper: #ffffff;
+  --ink: #1e1b17;
+  --ink-2: #4a463f;
+  --ink-3: #6b665e;
+  --ink-4: #a19b92;
+  --line: #e6e2db;
+  --line-soft: #efece6;
+  --dot: #e2ddd5;
+  --accent: #2e6cb4;
+  --accent-soft: #e9f0f9;
+  --shadow-node: 0 1px 2px rgb(30 27 23 / 0.05), 0 12px 32px rgb(30 27 23 / 0.07);
+  --shadow-window: 0 2px 4px rgb(30 27 23 / 0.05), 0 30px 70px rgb(30 27 23 / 0.13);
+  --font-en: "Fraunces", Georgia, "Times New Roman", serif;
+  --font-zh: "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --font-ui: "Inter", "Noto Sans SC", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "Cascadia Code", "SF Mono", Menlo, Consolas, monospace;
+  --radius: 10px;
+  --radius-lg: 16px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #151311;
+    --paper: #1d1b18;
+    --ink: #eeeae3;
+    --ink-2: #cdc7bd;
+    --ink-3: #a29b90;
+    --ink-4: #6f695f;
+    --line: #2f2c27;
+    --line-soft: #26231f;
+    --dot: #2a2723;
+    --accent: #78a6e0;
+    --accent-soft: #1e2a3a;
+    --shadow-node: 0 1px 2px rgb(0 0 0 / 0.3), 0 12px 32px rgb(0 0 0 / 0.35);
+    --shadow-window: 0 2px 4px rgb(0 0 0 / 0.3), 0 30px 70px rgb(0 0 0 / 0.5);
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0;
+  background-color: var(--ground);
+  background-image: radial-gradient(var(--dot) 1px, transparent 1.2px);
+  background-size: 22px 22px;
+  color: var(--ink);
+  font-family: var(--font-zh);
+  font-size: 16px;
+  line-height: 1.7;
+  -webkit-font-smoothing: antialiased;
+}
+html[lang="en"] body { font-family: var(--font-ui); }
+body.modal-open { overflow: hidden; }
+a { color: inherit; }
+img, video { max-width: 100%; display: block; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
+.skip-link { position: absolute; left: 16px; top: -48px; z-index: 50; background: var(--ink); color: var(--ground); padding: 8px 14px; border-radius: 8px; }
+.skip-link:focus { top: 12px; }
+.wrap { width: 100%; max-width: 1180px; margin: 0 auto; padding-inline: 24px; }
+@media (max-width: 560px) { .wrap { padding-inline: 16px; } }
+
+.eyebrow { margin: 0; font-family: var(--font-ui); font-size: 13px; font-weight: 500; letter-spacing: 0.06em; color: var(--ink-3); text-transform: uppercase; }
+.display { margin: 14px 0 0; font-weight: 900; letter-spacing: -0.01em; text-wrap: balance; font-size: clamp(40px, 5.4vw, 68px); line-height: 1.12; }
+.display em { font-style: normal; color: var(--accent); }
+html[lang="en"] .display { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.02em; line-height: 1.04; }
+.lede { margin: 22px 0 0; font-size: 19px; line-height: 1.75; color: var(--ink-2); max-width: 30em; }
+h2 { margin: 10px 0 0; font-weight: 900; font-size: clamp(30px, 3.6vw, 44px); line-height: 1.2; letter-spacing: -0.005em; text-wrap: balance; }
+html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spacing: -0.015em; }
+.body { margin: 16px 0 0; color: var(--ink-2); font-size: 17px; max-width: 34em; }
+
+.button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  font-family: var(--font-ui); font-weight: 600; font-size: 15px; line-height: 1;
+  padding: 13px 20px; border-radius: 999px; text-decoration: none; cursor: pointer; border: 1px solid transparent;
+  background: none; color: inherit;
+  transition: transform 140ms cubic-bezier(.2,.7,.3,1), background-color 140ms, border-color 140ms;
+}
+.button:active { transform: translateY(1px); }
+.button.primary { background: var(--ink); color: var(--ground); }
+.button.primary:hover { background: var(--ink-2); }
+.button.quiet { background: var(--paper); color: var(--ink); border-color: var(--line); }
+.button.quiet:hover { border-color: var(--ink-4); }
+.button.small { padding: 9px 15px; font-size: 14px; }
+
+.site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft); }
+.nav { display: flex; align-items: center; gap: 28px; height: 60px; }
+.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; flex-shrink: 0; }
+.wordmark { font-family: var(--font-en); font-weight: 600; font-size: 24px; letter-spacing: -0.01em; line-height: 1; }
+.wordmark span { color: var(--accent); }
+.wordmark.small { font-size: 20px; }
+.nav-links { display: flex; gap: 22px; font-family: var(--font-ui); font-size: 14px; color: var(--ink-3); }
+.nav-links a { text-decoration: none; white-space: nowrap; }
+.nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--ink); }
+.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.locale { font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; text-decoration: none; white-space: nowrap; }
+.locale:hover { color: var(--ink); border-color: var(--ink-4); }
+.menu-toggle { display: none; font-family: var(--font-ui); font-size: 13px; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; color: var(--ink); cursor: pointer; }
+/* 英文导航最宽，要 820px 才放得下；860px 以下收成「菜单」按钮，中英文用同一个断点。 */
+@media (max-width: 860px) {
+  .menu-toggle { display: inline-flex; }
+  .nav-links { display: none; position: absolute; top: 60px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--ground); border-bottom: 1px solid var(--line); padding: 8px 16px 16px; }
+  .nav-links.open { display: flex; }
+  .nav-links a { padding: 10px 0; font-size: 16px; }
+  .nav { gap: 12px; }
+}
+
+.block { padding-block: 72px; }
+@media (max-width: 760px) { .block { padding-block: 48px; } }
+.block-head { max-width: 44rem; }
+
+.footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
+.footer a { text-decoration: none; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+.footer a:hover { color: var(--ink); }
+
+.download-options { display: grid; gap: 8px; margin-top: 14px; }
+.download-option { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--paper); text-decoration: none; font-family: var(--font-ui); }
+.download-option:hover { border-color: var(--ink-4); }
+.download-option strong { display: block; font-size: 15px; }
+.download-option small { display: block; color: var(--ink-3); font-size: 12px; }
+.download-option > span:last-child { color: var(--accent); font-weight: 600; font-size: 13px; white-space: nowrap; }
+.mac-install-guide { margin-top: 18px; padding: 14px 16px; border-radius: var(--radius); background: var(--line-soft); font-size: 14px; color: var(--ink-2); }
+.mac-install-guide p, .mac-install-guide ol { margin: 8px 0 0; }
+.mac-install-guide ol { padding-left: 20px; }
+.mac-install-command { display: block; margin-top: 8px; padding: 8px 10px; border-radius: 8px; background: var(--paper); border: 1px solid var(--line); font-family: var(--font-mono); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.download-fallback { padding-block: 40px; }
+
+dialog { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 48px); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 0; background: var(--ground); color: var(--ink); box-shadow: var(--shadow-window); }
+dialog::backdrop { background: rgb(20 18 16 / 0.45); }
+.dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 18px; border-bottom: 1px solid var(--line-soft); font-family: var(--font-ui); }
+.dialog-close { background: none; border: 0; font-size: 22px; line-height: 1; cursor: pointer; color: var(--ink-3); padding: 4px 8px; }
+.dialog-body { padding: 16px 18px 20px; overflow-y: auto; }
+.dialog-body > p { margin: 0; color: var(--ink-2); font-size: 14px; }
+
+.lib-hero { padding-block: 40px 8px; }
+.crumbs ol { list-style: none; margin: 0 0 18px; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.crumbs li + li::before { content: "/"; margin-right: 6px; color: var(--ink-4); }
+.crumbs a { text-decoration: none; color: var(--ink-3); }
+.crumbs a:hover { color: var(--ink); }
+.lib-title { font-size: clamp(34px, 4.4vw, 56px); }
+.group-anchors { margin-top: 28px; display: flex; flex-wrap: wrap; gap: 8px; }
+.group-anchors a { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border: 1px solid var(--line); border-radius: 999px; background: var(--paper); font-family: var(--font-ui); font-size: 14px; text-decoration: none; color: var(--ink-2); }
+.group-anchors a span { font-size: 12px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.group-anchors a:hover { border-color: var(--ink-4); color: var(--ink); }
+
+.lib-section { padding-block: 36px; scroll-margin-top: 64px; }
+.section-head { display: flex; align-items: baseline; gap: 12px; }
+.section-head h2 { margin: 0; font-size: clamp(24px, 2.6vw, 32px); }
+.section-head .count { font-family: var(--font-ui); font-size: 14px; color: var(--ink-4); font-variant-numeric: tabular-nums; }
+.section-note { margin: 10px 0 0; color: var(--ink-3); max-width: 44em; font-size: 15px; }
+.card-grid { margin-top: 26px; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 28px 22px; }
+.card-grid.compact { grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 22px 16px; }
+.measure { max-width: 760px; }
+
+/* 节点卡：标题在框外左上，框左右各一个连接点（和首页功能段、App 画布上的节点同一个样子）。 */
+.lib-card { display: flex; flex-direction: column; min-width: 0; }
+.lib-card .node-title { margin: 0 0 6px 2px; min-height: 18px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-frame { position: relative; flex: 1; display: flex; flex-direction: column; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-node); text-decoration: none; color: inherit; }
+.card-frame::before, .card-frame::after { content: ""; position: absolute; top: 50%; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--paper); border: 1px solid var(--ink-4); }
+.card-frame::before { left: -5px; }
+.card-frame::after { right: -5px; }
+a.card-frame:hover { border-color: var(--ink-4); }
+a.card-frame:hover h3 { color: var(--accent); }
+.card-media { aspect-ratio: 16 / 9; max-width: 100%; overflow: hidden; border-radius: calc(var(--radius) - 1px) calc(var(--radius) - 1px) 0 0; background: var(--line-soft); }
+.card-media img { width: 100%; height: 100%; object-fit: cover; }
+.card-body { flex: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 6px; }
+.card-body h3 { margin: 0; font-size: 18px; font-weight: 700; line-height: 1.35; }
+html[lang="en"] .card-body h3 { font-family: var(--font-ui); font-weight: 600; }
+.card-subtitle { margin: 0; font-size: 13px; color: var(--ink-4); }
+.card-text { margin: 0; font-size: 14px; color: var(--ink-3); line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.chips { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.chips li { font-family: var(--font-ui); font-size: 12px; line-height: 1.5; padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+.card-meta { margin: auto 0 0; padding-top: 8px; font-family: var(--font-ui); font-size: 12px; color: var(--ink-4); }
+
+/* 模型页：左边讲，右边一张档案卡（像 App 里的模型档案）。 */
+.model-hero { padding-block: 40px 24px; }
+.model-hero-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 48px; align-items: start; }
+@media (max-width: 900px) { .model-hero-grid { grid-template-columns: 1fr; gap: 28px; } }
+.model-title { font-size: clamp(40px, 5vw, 64px); }
+.model-dates { margin: 14px 0 0; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
+.hero-actions { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; }
+.spec-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-lg); box-shadow: var(--shadow-node); padding: 18px 20px 16px; }
+.spec-head { margin: 0 0 6px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-3); }
+.spec-rows { margin: 0; }
+.spec-rows div { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 12px; padding: 10px 0; border-top: 1px solid var(--line-soft); }
+.spec-rows div:first-child { border-top: 0; }
+.spec-rows dt { font-size: 14px; color: var(--ink-3); }
+.spec-rows dd { margin: 0; display: flex; flex-wrap: wrap; row-gap: 2px; font-size: 14px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.spec-rows dd span { max-width: 100%; }
+.spec-rows dd span:not(:last-child)::after { content: "·"; margin: 0 7px; color: var(--ink-4); }
+.spec-note { margin: 10px 0 0; font-size: 12px; color: var(--ink-4); line-height: 1.6; }
+
+/* 正文排版：模型介绍与技能正文共用。 */
+.prose-wrap { max-width: 760px; }
+.prose { font-size: 17px; line-height: 1.8; color: var(--ink-2); min-width: 0; }
+.prose h2 { margin: 40px 0 12px; font-size: 26px; line-height: 1.3; color: var(--ink); scroll-margin-top: 80px; }
+.prose h2:first-child { margin-top: 0; }
+.prose h3 { margin: 28px 0 8px; font-size: 19px; color: var(--ink); scroll-margin-top: 80px; }
+.prose h4 { margin: 20px 0 6px; font-size: 17px; color: var(--ink); }
+.prose p, .prose ul, .prose ol { margin: 12px 0 0; }
+.prose ul, .prose ol { padding-left: 1.3em; }
+.prose li + li { margin-top: 6px; }
+.prose strong { color: var(--ink); }
+.prose a { color: var(--accent); }
+.prose code { font-family: var(--font-mono); font-size: 0.88em; background: var(--line-soft); padding: 1px 5px; border-radius: 5px; }
+.prose pre { margin: 16px 0 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px; overflow-x: auto; font-size: 14px; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.prose pre code { background: none; padding: 0; font-size: inherit; }
+.prose table { display: block; width: 100%; overflow-x: auto; border-collapse: collapse; margin-top: 16px; font-size: 15px; }
+.prose th, .prose td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+.prose th { color: var(--ink); font-weight: 700; }
+.prose blockquote { margin: 16px 0 0; padding: 2px 0 2px 16px; border-left: 3px solid var(--accent); color: var(--ink-3); }
+.prose hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+.source-list { font-size: 15px; }
+.prose .prompt-block { margin-top: 12px; }
+.prose pre.prompt-text { margin: 0; padding: 14px 16px 44px; background: var(--ground); border-color: var(--line); max-height: none; font-size: 14px; }
+
+/* 技能页：左侧目录吸顶，右侧正文。 */
+.skill-hero { padding-bottom: 0; }
+.hero-chips { margin-top: 18px; }
+.skill-use { padding-block: 28px 8px; }
+.use-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 760px) { .use-grid { grid-template-columns: 1fr; } }
+.use-box { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; }
+.use-box h2 { margin: 0; font-family: var(--font-ui); font-size: 15px; font-weight: 600; letter-spacing: 0; }
+.use-box p { margin: 6px 0 0; font-size: 15px; color: var(--ink-2); }
+.skill-preview { margin: 24px 0 0; }
+.skill-preview img { width: 100%; height: auto; border-radius: var(--radius); border: 1px solid var(--line); }
+.skill-preview figcaption { margin-top: 8px; font-size: 13px; color: var(--ink-4); }
+.skill-body { padding-block: 32px; }
+.skill-layout { display: grid; grid-template-columns: 220px minmax(0, 760px); gap: 48px; justify-content: start; }
+.skill-layout.no-toc { grid-template-columns: minmax(0, 760px); }
+@media (max-width: 960px) { .skill-layout { grid-template-columns: minmax(0, 1fr); gap: 20px; } .toc { position: static; } }
+.skill-main { min-width: 0; }
+.skill-main .attribution { margin-top: 36px; }
+.toc { position: sticky; top: 84px; align-self: start; font-family: var(--font-ui); font-size: 13px; }
+.toc p { margin: 0 0 8px; font-weight: 600; color: var(--ink-3); }
+.toc ol { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+.toc li a { display: block; padding: 4px 0 4px 12px; color: var(--ink-3); text-decoration: none; line-height: 1.5; }
+.toc li a:hover { color: var(--ink); }
+
+/* 效果、表情预设、合集：一条一块，可复制。 */
+.effect-list { padding-block: 28px; }
+.effect-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin-top: 18px; }
+.effect-entry { display: flex; flex-direction: column; min-width: 0; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; scroll-margin-top: 80px; }
+.effect-entry:target { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.effect-media { aspect-ratio: 16 / 9; max-width: 100%; background: var(--line-soft); }
+.effect-media.square { aspect-ratio: 1 / 1; }
+.effect-media img { width: 100%; height: 100%; object-fit: cover; }
+.effect-body { flex: 1; padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; }
+.effect-body h3 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.4; }
+.alt-name { margin-left: 6px; font-family: var(--font-ui); font-size: 13px; font-weight: 400; color: var(--ink-4); }
+.effect-summary { margin: 0; font-size: 14px; color: var(--ink-3); }
+.prompt-block { position: relative; margin-top: auto; }
+.prompt-text { margin: 0; padding: 12px 14px 40px; background: var(--ground); border: 1px solid var(--line-soft); border-radius: 8px; font-family: var(--font-mono); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--ink-2); max-height: 280px; overflow: auto; }
+.slot { background: var(--accent-soft); color: var(--accent); border-radius: 4px; padding: 0 3px; }
+.copy-button { position: absolute; right: 8px; bottom: 8px; font-family: var(--font-ui); font-size: 12px; font-weight: 600; padding: 5px 11px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink-2); cursor: pointer; }
+.copy-button:hover { border-color: var(--ink-4); color: var(--ink); }
+.copy-done { display: none; }
+.copy-button[data-copied] .copy-idle { display: none; }
+.copy-button[data-copied] .copy-done { display: inline; color: var(--accent); }
+.collection-list { display: grid; gap: 18px; margin-top: 24px; }
+.collection-entry { scroll-margin-top: 80px; }
+.collection-entry h3 { margin: 0 0 8px; font-size: 16px; line-height: 1.4; }
+
+/* 出处与许可证。 */
+.attribution { margin-top: 20px; background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; font-size: 14px; }
+.attribution dl { margin: 0; display: grid; gap: 6px; }
+.attribution dl div { display: grid; grid-template-columns: 8em minmax(0, 1fr); gap: 12px; }
+@media (max-width: 560px) { .attribution dl div { grid-template-columns: 1fr; gap: 0; } }
+.attribution dt { color: var(--ink-4); }
+.attribution dd { margin: 0; color: var(--ink-2); overflow-wrap: anywhere; }
+.attribution a { color: var(--accent); }
+.attribution > a { display: inline-block; margin-top: 10px; font-family: var(--font-ui); font-size: 13px; }
+.license-text { margin-top: 10px; }
+.license-text summary { cursor: pointer; font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); }
+.license-text pre { margin: 8px 0 0; max-height: 240px; overflow: auto; font-size: 12px; white-space: pre-wrap; background: var(--ground); padding: 10px 12px; border-radius: 8px; }
+
+/* 页底下载条。 */
+.download-band { padding-block: 48px 24px; }
+.download-band-inner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px 40px; padding: 28px clamp(20px, 4vw, 40px); background: var(--ink); color: var(--ground); border-radius: var(--radius-lg); }
+.download-band h2 { margin: 0; font-size: clamp(22px, 2.4vw, 30px); color: var(--ground); }
+.download-band p { margin: 6px 0 0; font-size: 14px; color: color-mix(in srgb, var(--ground) 70%, transparent); }
+.download-band .button.primary { background: var(--ground); color: var(--ink); }
+.download-band .button.primary:hover { background: color-mix(in srgb, var(--ground) 86%, transparent); }
+</style>
+</head>
+<body class="page-models">
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header">
+  <nav class="nav wrap" aria-label="Primary navigation">
+    <a class="brand" href="/en/" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
+    <div class="nav-links" id="nav-links">
+      <a href="/en/features">Features</a>
+      <a href="/en/models" aria-current="page">Models</a>
+      <a href="/en/prompts">Prompts</a>
+      <a href="/en/skills">Skills</a>
+      <a href="/en/quickstart">Get started</a>
+      <a href="/en/#community">Community</a>
+    </div>
+    <div class="nav-actions">
+      <a class="locale" href="/models/flux-2-pro" data-locale-choice="zh-CN" aria-label="Switch to Chinese">中文</a>
+      <a class="button primary small" data-download-nomi href="#download-options">Download</a>
+      <button class="menu-toggle" type="button" aria-expanded="false" aria-controls="nav-links">Menu</button>
+    </div>
+  </nav>
+</header>
+<main id="main">
+<section class="model-hero">
+  <div class="wrap">
+    <nav class="crumbs" aria-label="breadcrumb"><ol><li><a href="/en/">Home</a></li><li><a href="/en/models">Models</a></li><li><a href="/en/models#image">Image models</a></li><li><span aria-current="page">FLUX.2 Pro</span></li></ol></nav>
+    <div class="model-hero-grid">
+      <div>
+        <p class="eyebrow">Black Forest Labs · Image models</p>
+        <h1 class="display model-title">FLUX.2 Pro</h1>
+        <p class="lede">Black Forest Labs' flagship image model, fusing up to 10 reference images at up to 4MP output, with a strong edge in typography and brand-consistent visuals.</p>
+        <p class="model-dates">Released 2025-11-25 · Last checked 2026-09-28</p>
+        <div class="hero-actions">
+          <a class="button primary" data-download-nomi href="#download-options">Download Nomi</a>
+          <a class="button quiet" href="#prompting-tips">Prompting tips</a>
+        </div>
+      </div>
+      <aside class="spec-card" aria-labelledby="spec-title">
+        <p class="spec-head" id="spec-title">What you can do with it in Nomi</p>
+        <dl class="spec-rows"><div><dt>Modes</dt><dd><span>Text to image</span><span>Image editing</span></dd></div><div><dt>References</dt><dd><span>Reference images 8</span></dd></div><div><dt>Resolution</dt><dd><span>1K</span><span>2K</span></dd></div><div><dt>Aspect ratio</dt><dd><span>Adaptive</span><span>1:1</span><span>4:3</span><span>3:4</span><span>16:9</span><span>9:16</span><span>3:2</span><span>2:3</span></dd></div><div><dt>Connect via</dt><dd><span>Kie.ai</span></dd></div></dl>
+        <p class="spec-note">Combined across the providers Nomi supports. Resolutions and parameters differ by provider; the model picker in the app shows what yours offers.</p>
+      </aside>
+    </div>
+  </div>
+</section>
+<section class="block model-body">
+  <div class="wrap prose-wrap">
+    <article class="prose">
+      <h2 id="what-s-new">What’s new</h2>
+<ul>
+<li><strong>Multi-reference fusion</strong>: combines up to 10 reference images into one new output (the image-editing endpoint Nomi reaches through kie.ai caps at 8 — see Known limits).</li>
+<li><strong>Editing output up to 4MP</strong>: edits keep their detail and coherence instead of degrading with each pass.</li>
+<li><strong>Noticeably stronger text and layout</strong>: small text stays legible in dense layouts, infographics and UI mockups.</li>
+<li><strong>Better world knowledge and prompt adherence</strong>: it follows more complex descriptions, composes more coherently, and holds brand guidelines (colors, fonts, logos) more consistently.</li>
+</ul>
+<h2 id="what-it-s-good-for">What it’s good for</h2>
+<ul>
+<li>Commercial visuals that need to stay on-brand: consistent colors, fonts and logos.</li>
+<li>Text-heavy, precisely laid-out work like infographics and UI mockups.</li>
+<li>Multi-image composition: combining several source images into one new scene while keeping each subject recognizable.</li>
+</ul>
+<h2 id="prompting-tips">Prompting tips</h2>
+<ul>
+<li><strong>Write subject, then action, then style, then context</strong>: put the most important details first — word order visibly affects what the model prioritizes.</li>
+<li><strong>No negative prompts</strong>: the official guide states &quot;FLUX.2 does not support negative prompts&quot; — describe what you want, not what to avoid.</li>
+<li><strong>Be specific about photography</strong>: naming a camera, lens and film stock (&quot;shot on a Hasselblad X2D, 80mm lens, f/2.8&quot;) beats a generic &quot;professional photo&quot;.</li>
+<li><strong>Use hex codes for color</strong>: tying a hex value to a specific object (&quot;the sofa in hex #1B6B6F&quot;) is far more precise than a color name.</li>
+<li><strong>Quote in-image text and describe placement/font</strong>: wrap the text you want rendered in quotes and say where it sits and what typeface it should look like.</li>
+<li><strong>Use structured JSON prompts for complex scenes</strong>: declaring scene, subjects, positions, lighting and camera separately helps with production work that needs to repeat reliably.</li>
+</ul>
+<pre><code class="language-text">A minimalist product shot for a skincare brand, subject centered on a matte pedestal in hex #EDE6DB.
+Shot on a Hasselblad X2D, 80mm lens, f/2.8, soft studio light from the upper left.
+A small card beside the product reads &quot;NEW · Vitamin C Serum&quot; in elegant serif type.
+Square 1:1, clean negative space on the right third for a text overlay.
+</code></pre>
+<h2 id="known-limits">Known limits</h2>
+<ul>
+<li>No negative prompt support — only positive descriptions work.</li>
+<li>Text-to-image and image-to-image are separate model IDs: the edit endpoint Nomi reaches via kie.ai tops out at 8 reference images and supports one extra &quot;auto&quot; aspect-ratio option that text-to-image doesn&#39;t — the two parameter sets aren&#39;t interchangeable.</li>
+<li>Maximum output is 4MP, and dimensions must be multiples of 16 or the request is rejected.</li>
+</ul>
+
+      <h2 id="in-nomi">Using it in Nomi</h2>
+      <p>On the generation canvas, add a image card, pick “FLUX.2 Pro” in the model picker and choose a mode (Text to image, Image editing). Add your references, write the prompt and generate. In the storyboard you can pick it per shot. The first time, connect any one of the providers above under Settings → Models.</p>
+      <h2 id="sources">Sources</h2>
+      <ul class="source-list"><li><a href="https://bfl.ai/blog/flux-2" target="_blank" rel="noreferrer">FLUX.2: Frontier Visual Intelligence (Black Forest Labs blog, 2025-11-25)</a></li><li><a href="https://docs.bfl.ml/flux_2/flux2_overview" target="_blank" rel="noreferrer">FLUX.2 Overview (Black Forest Labs docs)</a></li><li><a href="https://docs.bfl.ml/guides/prompting_guide_flux2" target="_blank" rel="noreferrer">FLUX.2 Prompting Guide (Black Forest Labs docs)</a></li><li><a href="https://docs.kie.ai/market/flux2/pro-image-to-image.md" target="_blank" rel="noreferrer">Flux-2 Pro Image to Image API reference (kie.ai)</a></li></ul>
+    </article>
+  </div>
+</section>
+<section class="block lib-section related" aria-labelledby="related-title">
+  <div class="wrap">
+    <div class="section-head"><h2 id="related-title">Prompts and recipes to use with it</h2></div>
+    <div class="card-grid"><article class="lib-card linked">
+  <p class="node-title">Prompts</p>
+  <a class="card-frame" href="/en/prompts/composition">
+    <div class="card-media"><img src="/assets/library/effect-camera-14-640.webp" alt="Composition" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Composition</h3>
+      
+      <p class="card-text">How the frame is arranged: high and low angles, thirds, symmetry, negative space. A clear composition instruction beats a pile of adjectives.</p>
+      
+      <p class="card-meta">8 prompts</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">Prompts</p>
+  <a class="card-frame" href="/en/prompts/character">
+    <div class="card-media"><img src="/assets/library/effect-character-three-view-640.webp" alt="Character" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Character</h3>
+      
+      <p class="card-text">Turnarounds, expression sheets and character sheets: settle who the character is first, and every later shot looks like the same person.</p>
+      
+      <p class="card-meta">4 prompts</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">Prompts</p>
+  <a class="card-frame" href="/en/prompts/scene">
+    <div class="card-media"><img src="/assets/library/effect-scene-three-view-640.webp" alt="Scene" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Scene</h3>
+      
+      <p class="card-text">A location seen from several angles, so later shots agree with each other.</p>
+      
+      <p class="card-meta">1 prompt</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">Prompts</p>
+  <a class="card-frame" href="/en/prompts/storyboard">
+    <div class="card-media"><img src="/assets/library/effect-storyboard-panels-640.webp" alt="Storyboard" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Storyboard</h3>
+      
+      <p class="card-text">Lay a scene out as storyboard panels and read the whole beat in one image.</p>
+      
+      <p class="card-meta">1 prompt</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">Prompts</p>
+  <a class="card-frame" href="/en/prompts/editing">
+    <div class="card-media"><img src="/assets/library/effect-fill-outpaint-640.webp" alt="Editing" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Editing</h3>
+      
+      <p class="card-text">Extend a frame or restore an old image without changing the subject.</p>
+      
+      <p class="card-meta">2 prompts</p>
+    </div>
+  </a>
+</article>
+<article class="lib-card linked">
+  <p class="node-title">Prompts</p>
+  <a class="card-frame" href="/en/prompts/natural-texture">
+    <div class="card-media"><img src="/assets/library/effect-natural-texture-640.webp" alt="Natural texture" loading="lazy" decoding="async" width="640" height="360" /></div>
+    <div class="card-body">
+      <h3>Natural texture</h3>
+      
+      <p class="card-text">Take the “AI look” out: skin, materials and light that read like real photography.</p>
+      
+      <p class="card-meta">1 prompt</p>
+    </div>
+  </a>
+</article></div>
+  </div>
+</section>
+<section class="download-band">
+  <div class="wrap download-band-inner">
+    <div>
+      <h2>Pro-grade AI video. Models at their real price.</h2>
+      <p>macOS · Windows · AGPL-3.0 · No account</p>
+    </div>
+    <a class="button primary" data-download-nomi href="#download-options">Download Nomi</a>
+  </div>
+</section>
+</main>
+<footer class="footer">
+  <div class="wrap">
+    <span class="wordmark small">No<span>mi</span></span>
+    <nav class="footer-links" aria-label="Site navigation">
+      <a href="/en/features">Features</a>
+      <a href="/en/models">Models</a>
+      <a href="/en/prompts">Prompts</a>
+      <a href="/en/skills">Skills</a>
+      <a href="/en/quickstart">Get started</a>
+    </nav>
+    <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">Source on GitHub</a>
+    <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">Open source · AGPL-3.0</a>
+    <a href="https://github.com/aqm857886159/Nomi/releases" target="_blank" rel="noreferrer">Release notes</a>
+    <a href="https://x.com/sdf297417627618" target="_blank" rel="noreferrer">X / Twitter</a>
+    <a href="/models/flux-2-pro" data-locale-choice="zh-CN">简体中文</a>
+    <span class="made">Every screen in the film is Nomi’s real UI; every image and clip was generated with Nomi.</span>
+  </div>
+</footer>
+<dialog id="download-dialog" aria-labelledby="download-title">
+  <div class="dialog-head"><strong id="download-title">Choose the version for this computer</strong><button class="dialog-close" type="button" aria-label="Close">×</button></div>
+  <div class="dialog-body download-dialog-body"><p>Nomi downloads directly when the platform is known. If the Mac chip cannot be detected reliably, choose the matching installer.</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>macOS 12+ · Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">First launch on macOS</strong>
+  <p>The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.</p>
+  <ol><li>Download the matching DMG and drag Nomi to Applications.</li><li>In Finder, right-click Nomi in Applications, choose Open, then confirm Open.</li><li>If it is still blocked, open System Settings → Privacy &amp; Security, find Nomi, and click Open Anyway.</li></ol>
+  <p>Only if macOS says Nomi is “damaged”: confirm the installer came from an official link above, then open Terminal and run:</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">You do not need to disable Gatekeeper globally, and should not do so.</p>
+</section></div>
+</dialog>
+<noscript><section class="download-fallback" id="download-options"><div class="wrap"><h2>Choose the version for this computer</h2><p>Nomi downloads directly when the platform is known. If the Mac chip cannot be detected reliably, choose the matching installer.</p><div class="download-options"><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe"><span><strong>Windows x64</strong><small>Windows 10 / 11 · .exe installer</small></span><span aria-hidden="true">EXE ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg"><span><strong>Mac with Apple silicon</strong><small>macOS 12+ · M1 / M2 / M3 / M4 · .dmg installer</small></span><span aria-hidden="true">ARM64 ↓</span></a><a class="download-option" data-direct-download href="https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"><span><strong>Mac with Intel</strong><small>macOS 12+ · Intel processor · .dmg installer</small></span><span aria-hidden="true">X64 ↓</span></a></div><section class="mac-install-guide" data-mac-install-guide>
+  <strong class="mac-install-guide-title">First launch on macOS</strong>
+  <p>The current macOS build is not Apple Developer ID signed or notarized. Only use download links on this site or in the official Nomi GitHub repository.</p>
+  <ol><li>Download the matching DMG and drag Nomi to Applications.</li><li>In Finder, right-click Nomi in Applications, choose Open, then confirm Open.</li><li>If it is still blocked, open System Settings → Privacy &amp; Security, find Nomi, and click Open Anyway.</li></ol>
+  <p>Only if macOS says Nomi is “damaged”: confirm the installer came from an official link above, then open Terminal and run:</p>
+  <code class="mac-install-command">xattr -dr com.apple.quarantine "/Applications/Nomi.app"</code>
+  <p class="mac-install-safety">You do not need to disable Gatekeeper globally, and should not do so.</p>
+</section></div></section></noscript>
+<script>(() => {
+  const downloadUrls = {"windowsX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-windows-setup.exe","macArm64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-arm64.dmg","macX64":"https://github.com/aqm857886159/Nomi/releases/latest/download/Nomi-mac-intel.dmg"}
+  const selectDownload = function selectDownload({ platform = '', userAgent = '', architecture = '' } = {}) {
+  const platformText = `${platform} ${userAgent}`.toLowerCase()
+  const architectureText = String(architecture).toLowerCase()
+
+  if (/\b(?:win32|win64|windows)\b/.test(platformText) && !/arm/.test(architectureText)) return downloadUrls.windowsX64
+  if (!/mac|darwin|iphone|ipad/.test(platformText)) return null
+  if (/arm|aarch64/.test(architectureText) || /arm64/.test(platformText)) return downloadUrls.macArm64
+  if (/x86|x64|intel/.test(architectureText)) return downloadUrls.macX64
+  return null
+}
+  const resolveDownloadRequest = function resolveDownloadRequest({ search = '', platform = '', userAgent = '', architecture = '' } = {}) {
+  const params = new URLSearchParams(search)
+  const requestedPlatform = params.get('platform') || ''
+  const requestedArchitecture = params.get('arch') || ''
+  const hasExplicitTarget = params.has('platform') || params.has('arch')
+  const url = hasExplicitTarget
+    ? selectDownload({ platform: requestedPlatform, architecture: requestedArchitecture })
+    : selectDownload({ platform, userAgent, architecture })
+
+  return {
+    autoDownload: params.get('download') === '1',
+    hasExplicitTarget,
+    url,
+  }
+}
+  const localeKey = 'nomi_locale'
+  document.querySelectorAll('[data-locale-choice]').forEach((link) => {
+    if (location.hash) {
+      const destination = new URL(link.href, location.href)
+      destination.hash = location.hash
+      link.href = destination.pathname + destination.search + destination.hash
+    }
+    link.addEventListener('click', () => {
+      try { localStorage.setItem(localeKey, link.dataset.localeChoice) } catch {}
+    })
+  })
+
+  const menuToggle = document.querySelector('.menu-toggle')
+  const navLinks = document.querySelector('#nav-links')
+  const closeMenu = () => {
+    navLinks?.classList.remove('open')
+    menuToggle?.setAttribute('aria-expanded', 'false')
+  }
+  menuToggle?.addEventListener('click', () => {
+    const open = navLinks?.classList.toggle('open') || false
+    menuToggle.setAttribute('aria-expanded', String(open))
+  })
+  navLinks?.querySelectorAll('a').forEach((link) => link.addEventListener('click', closeMenu))
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && navLinks?.classList.contains('open')) {
+      closeMenu()
+      menuToggle?.focus()
+    }
+  })
+
+  // 库页面的「复制」：复制按钮指向的那块提示词原文；剪贴板被拒时退回「选中它」，让人自己按复制。
+  document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => {
+    const source = document.getElementById(button.dataset.copy)
+    if (!source) return
+    try {
+      await navigator.clipboard.writeText(source.innerText.trim())
+      button.dataset.copied = 'true'
+      setTimeout(() => { delete button.dataset.copied }, 1600)
+    } catch {
+      const range = document.createRange()
+      range.selectNodeContents(source)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  }))
+
+  document.querySelectorAll('dialog').forEach((dialog) => {
+    dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())
+    dialog.addEventListener('click', (event) => { if (event.target === dialog) dialog.close() })
+    dialog.addEventListener('close', () => {
+      if (!document.querySelector('dialog[open]')) document.body.classList.remove('modal-open')
+    })
+  })
+
+  const downloadDialog = document.querySelector('#download-dialog')
+  const showDownloadOptions = () => {
+    if (!downloadDialog || typeof downloadDialog.showModal !== 'function') return
+    downloadDialog.showModal()
+    document.body.classList.add('modal-open')
+  }
+  downloadDialog?.querySelectorAll('[data-direct-download]').forEach((link) => link.addEventListener('click', () => {
+    downloadDialog.close()
+  }))
+
+  const resolvePlatformDownload = async () => {
+    const platform = navigator.platform || ''
+    const userAgent = navigator.userAgent || ''
+    let architecture = ''
+    if (navigator.userAgentData?.getHighEntropyValues) {
+      try { architecture = (await navigator.userAgentData.getHighEntropyValues(['architecture'])).architecture || '' } catch {}
+    }
+    return resolveDownloadRequest({ search: location.search, platform, userAgent, architecture })
+  }
+  const applyPlatformDownload = (url) => {
+    if (!url) return
+    document.querySelectorAll('[data-download-nomi]').forEach((link) => {
+      link.href = url
+    })
+  }
+  document.querySelectorAll('[data-download-nomi]').forEach((link) => link.addEventListener('click', async (event) => {
+    event.preventDefault()
+    const request = await resolvePlatformDownload()
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  }))
+  void resolvePlatformDownload().then((request) => {
+    applyPlatformDownload(request.url)
+    if (!request.autoDownload) return
+    const cleanUrl = new URL(location.href)
+    for (const key of ['download', 'source', 'platform', 'arch']) cleanUrl.searchParams.delete(key)
+    history.replaceState(null, '', cleanUrl.pathname + cleanUrl.search + cleanUrl.hash)
+    if (request.url) location.href = request.url
+    else showDownloadOptions()
+  })
+})()</script>
+</body>
+</html>

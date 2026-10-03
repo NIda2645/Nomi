@@ -1,0 +1,12 @@
+{
+  "_doc": "main 上已有的「界面露出」违例：带到期日的欠账，绑到会修它的 PR。到期后同一条违例重新算红；修掉的 PR 同时删掉对应一行。",
+  "debts": [
+    {
+      "rule": "ui-leaked-internals",
+      "kind": "price-wording",
+      "until": "2026-10-15",
+      "boundTo": "#947",
+      "reason": "付费卡合计行写「价格未知」；付费卡 PR 把它改成不报价格的说法"
+    }
+  ]
+}

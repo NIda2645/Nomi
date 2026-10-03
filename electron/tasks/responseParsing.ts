@@ -5,8 +5,8 @@
 import { extractTaskId as extractTaskIdShared } from "../ai/requestPipeline";
 import { firstString, isJsonRecord, readNestedRecord, trim, type JsonRecord } from "../jsonUtils";
 
-/** 与 runtime 的 TaskResult["status"] 结构等价，解耦类型依赖。 */
-export type TaskStatus = "queued" | "running" | "succeeded" | "failed";
+export type { TaskStatus } from "../shared/taskStatus";
+import type { TaskStatus } from "../shared/taskStatus";
 
 export function maybeParseJsonString(value: unknown): unknown {
   if (typeof value !== "string") return value;

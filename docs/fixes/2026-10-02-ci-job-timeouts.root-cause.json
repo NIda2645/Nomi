@@ -1,0 +1,165 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-02-ci-job-timeouts",
+  "problem_type": "CI job 没有超时上限，卡住的 job 会占满 6 小时默认值",
+  "symptom": "Quality Gate 的 Unit job 先后在 09-24（64 分钟）和 10-02（122 分钟）卡住，日志静默，直到人工取消；其间合并队列被堵，job 不报红。",
+  "direct_cause": "两次都是 scripts/check-source-nul-bytes.test.ts 一个测试文件没出结果：它用 execFileSync 同步起子进程跑整仓扫描门岗且没有 timeout，同步调用阻塞事件循环，vitest 的 testTimeout 触发不了；同时 8 个 workflow 里大多数 job 没有 timeout-minutes，GitHub 要跑满 6 小时才会杀。",
+  "class_root": "「一个 job / 一个同步子进程最长能跑多久」没有任何地方强制声明：workflow 不写 timeout-minutes 就默认 360 分钟，测试里的同步子进程不写 timeout 就能绕过 vitest 自己的超时；任何一处卡住都是静默的，不会变红。",
+  "migration": "8 个 workflow 的每个 job 都按近 30 次成功运行的最长耗时乘 2 到 3 倍写上 timeout-minutes（原已有的 win-gate、win-invalid-state-probe 沿用）；nul 门岗测试的两处 execFileSync 加 timeout 与 SIGKILL，超时抛错并附当时的未跟踪文件清单；加一条测试，任何 job 缺 timeout-minutes 就红。没有旧实现需要删除。",
+  "affected_population": [
+    "合并队列与所有 PR 的 Quality Gate：一个卡住的 job 会占住它",
+    "桌面发版链路（desktop-rc / desktop-release / desktop-preview）：打包卡住同样静默",
+    "定时任务（docs-autosync / download-stats / seo-radar / site-data-sync）"
+  ],
+  "scope_paths": [
+    ".github/workflows/quality-gate.yml",
+    ".github/workflows/desktop-rc.yml",
+    ".github/workflows/desktop-release.yml",
+    ".github/workflows/desktop-preview.yml",
+    ".github/workflows/docs-autosync.yml",
+    ".github/workflows/download-stats.yml",
+    ".github/workflows/seo-radar.yml",
+    ".github/workflows/site-data-sync.yml",
+    "scripts/check-source-nul-bytes.test.ts",
+    "scripts/check-quality-gate-workflow.node-test.mjs"
+  ],
+  "entry_points": [
+    ".github/workflows/quality-gate.yml：每个 job 的 timeout-minutes",
+    ".github/workflows/desktop-rc.yml：每个 job 的 timeout-minutes",
+    ".github/workflows/desktop-release.yml：每个 job 的 timeout-minutes",
+    ".github/workflows/desktop-preview.yml：每个 job 的 timeout-minutes",
+    ".github/workflows/docs-autosync.yml：每个 job 的 timeout-minutes",
+    ".github/workflows/download-stats.yml：每个 job 的 timeout-minutes",
+    ".github/workflows/seo-radar.yml：每个 job 的 timeout-minutes",
+    ".github/workflows/site-data-sync.yml：每个 job 的 timeout-minutes",
+    "scripts/check-source-nul-bytes.test.ts：runGate 的 execFileSync"
+  ],
+  "invariants": [
+    "任何 workflow 的任何 job 都声明了 timeout-minutes",
+    "测试里同步起的子进程都带 timeout，卡住时按时失败并指明是谁，而不是无限挂住整个 worker"
+  ],
+  "invariant_owner_layer": {
+    "layer": ".github/workflows/quality-gate.yml",
+    "tests": [
+      "scripts/check-quality-gate-workflow.node-test.mjs"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": ".github/workflows/quality-gate.yml",
+      "symbol": "timeout-minutes"
+    },
+    {
+      "kind": "write",
+      "path": ".github/workflows/desktop-rc.yml",
+      "symbol": "timeout-minutes"
+    },
+    {
+      "kind": "write",
+      "path": ".github/workflows/desktop-release.yml",
+      "symbol": "timeout-minutes"
+    },
+    {
+      "kind": "write",
+      "path": ".github/workflows/desktop-preview.yml",
+      "symbol": "timeout-minutes"
+    },
+    {
+      "kind": "write",
+      "path": ".github/workflows/docs-autosync.yml",
+      "symbol": "timeout-minutes"
+    },
+    {
+      "kind": "write",
+      "path": ".github/workflows/download-stats.yml",
+      "symbol": "timeout-minutes"
+    },
+    {
+      "kind": "write",
+      "path": ".github/workflows/seo-radar.yml",
+      "symbol": "timeout-minutes"
+    },
+    {
+      "kind": "write",
+      "path": ".github/workflows/site-data-sync.yml",
+      "symbol": "timeout-minutes"
+    },
+    {
+      "kind": "read",
+      "path": "scripts/check-source-nul-bytes.test.ts",
+      "symbol": "execFileSync"
+    }
+  ],
+  "door_reduction": {
+    "before": 9,
+    "after": 9,
+    "why_not": "这些入口是各个 workflow 里各自独立的 job，运行器按 job 读各自的 timeout-minutes，不能合并成一处；它们现在都被同一条测试（check-quality-gate-workflow.node-test.mjs）核对，缺一个就红。nul 门岗测试是已知的唯一一处卡死过的同步子进程。"
+  },
+  "regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs",
+    "scripts/check-source-nul-bytes.test.ts"
+  ],
+  "residual_risks": [
+    "nul 门岗子进程为什么不返回（触发条件）未确认，本合同只让它按时红并在报错里附当时的未跟踪文件清单（类型、大小、软链接目标），待下次出现时靠这份清单定位。",
+    "超时数字取自当前的历史耗时，job 变慢到接近上限时需要同步调大，不会自动跟随。",
+    "仓库里其他测试若也用同步子进程且没有 timeout，同样会绕过 vitest 的超时；本次只修了已两次卡死的那一处。"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "timeout-minutes 与 vitest/Node 的 timeout 选项都是已知的标准能力，这次没有新增依赖外部规范的结论。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "09-24 与 10-02 两次 Unit job 都卡在 scripts/check-source-nul-bytes.test.ts，而且只要 job 没有超时，任何新的卡死都会再静默占满 6 小时。",
+    "same_class_scan": [
+      "逐个核对 .github/workflows/*.yml 里 8 个文件的全部 job：此前只有 win-gate、win-invalid-state-probe 有 job 级 timeout-minutes，其余都缺，现已补齐",
+      "对比两次卡死的 Unit 日志与全部 1661 个 vitest 文件：两次未出结果的都只有 scripts/check-source-nul-bytes.test.ts"
+    ]
+  },
+  "generality_proof": "超时由 GitHub 运行器对每个 job 强制，缺失由 check-quality-gate-workflow.node-test.mjs 在每个 PR 上核对，所以今后新增或改动任何 job 都不可能不带上限；同步子进程这一类，在已卡死的文件里用 timeout 把「无限挂」变成「按时红」。",
+  "shared_boundaries": [
+    {
+      "path": ".github/workflows/quality-gate.yml",
+      "symbol": "timeout-minutes",
+      "responsibility": "每个 job 的最长运行时间，卡住时由运行器按时终止并标红"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": ".github/workflows/quality-gate.yml",
+      "entry_point": "timeout-minutes",
+      "disposition": "enforced",
+      "evidence": "全部 9 个 job 现在都有 timeout-minutes；测试遍历所有 workflow 的所有 job，缺一个就红（已删掉一个验证过会红）。"
+    },
+    {
+      "path": "scripts/check-source-nul-bytes.test.ts",
+      "entry_point": "execFileSync",
+      "disposition": "enforced",
+      "evidence": "两处 execFileSync 加了 timeout 与 SIGKILL；用永不返回的子进程模拟，改前 vitest 的 5 秒超时从未触发（61 秒被外层杀掉），改后每个用例 25 秒按时失败并附未跟踪文件清单。"
+    }
+  ],
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": ".github/workflows/quality-gate.yml",
+    "invariant": "每个 workflow 的每个 job 都声明了 timeout-minutes。",
+    "failure_mode": "check:quality-gate-workflow 变红，指出是哪个 workflow 的哪个 job 缺 timeout-minutes；运行时卡住的 job 到点被 GitHub 标为 cancelled，注解为超过最长执行时间。",
+    "exception_policy": "none",
+    "strategy": "超时写在各 job 自己的 timeout-minutes 里（唯一 owner），由一条遍历全部 workflow 的测试钉住「不许缺」。",
+    "artifacts": [
+      ".github/workflows/quality-gate.yml",
+      "scripts/check-quality-gate-workflow.node-test.mjs"
+    ]
+  },
+  "class_regression_tests": [
+    "scripts/check-quality-gate-workflow.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "没有旧的超时实现可删：此前根本没有 job 级超时，只有 desktop-rc 里几个步骤级的 20 分钟，保留且与新数字不冲突。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "没有引入或升级任何依赖。",
+    "exit_criteria": []
+  }
+}

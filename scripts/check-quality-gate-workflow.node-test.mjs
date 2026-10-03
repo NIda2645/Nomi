@@ -437,3 +437,46 @@ test('browser feel fixtures run in the Chromium-equipped desktop lane, never Uni
   const evidence = workflow.jobs['desktop-linux'].steps.find((step) => step.uses === 'actions/upload-artifact@v7')
   assert.match(evidence.with.path, /artifacts\/feel\/\*\*/)
 })
+
+// 没设 timeout-minutes 的 job 卡住时 GitHub 要跑满 6 小时才杀，合并队列堵半天还不报红。
+// 数字按各 job 近 30 次成功运行的最长耗时 ×2~3 给（见引入它的 PR 表）；这里只钉「每个 job 都有」。
+test('every job in every workflow declares a job-level timeout-minutes', () => {
+  const dir = path.join(repoRoot, '.github/workflows')
+  for (const file of fs.readdirSync(dir).filter((name) => /\.ya?ml$/.test(name))) {
+    const doc = load(fs.readFileSync(path.join(dir, file), 'utf8'))
+    for (const [id, job] of Object.entries(doc.jobs ?? {})) {
+      assert.ok(Number.isFinite(job['timeout-minutes']) && job['timeout-minutes'] > 0, `${file} job "${id}" needs timeout-minutes`)
+    }
+  }
+})
+
+// 2026-10-02（复盘 fixes 行 2、60：同一类「CI 缺 Chromium」两次）：不再一条 workflow 一条断言，
+// 而是一次管住所有 workflow——任何 job 只要跑了会拉起真实浏览器的测试入口，就必须先装 Chromium，且装在它之前。
+test('every workflow job that runs browser-backed tests installs Chromium before them', () => {
+  const BROWSER_BACKED = [
+    'pnpm run test:system:unit',
+    'pnpm run test:system:focused',
+    'pnpm run test:system:full',
+    'pnpm run test:system:release',
+    'pnpm run test:system:ci',
+    'pnpm run test',
+  ]
+  const dir = path.join(repoRoot, '.github/workflows')
+  const offenders = []
+  let jobsWithBrowserTests = 0
+  for (const file of fs.readdirSync(dir).filter((name) => /\.ya?ml$/.test(name))) {
+    const doc = load(fs.readFileSync(path.join(dir, file), 'utf8'))
+    for (const [jobName, job] of Object.entries(doc.jobs ?? {})) {
+      const steps = job.steps ?? []
+      const runIndex = steps.findIndex(
+        (step) => typeof step.run === 'string' && BROWSER_BACKED.some((command) => step.run.split('\n').some((line) => line.trim() === command)),
+      )
+      if (runIndex < 0) continue
+      jobsWithBrowserTests += 1
+      const installIndex = steps.findIndex((step) => typeof step.run === 'string' && /playwright install\b.*\bchromium\b/.test(step.run))
+      if (installIndex < 0 || installIndex > runIndex) offenders.push(`${file}:${jobName}`)
+    }
+  }
+  assert.ok(jobsWithBrowserTests > 0, '断言空转：没有找到任何跑浏览器测试的 job')
+  assert.deepEqual(offenders, [], `这些 job 跑了浏览器测试却没在它之前装 Chromium：${offenders.join('、')}`)
+})

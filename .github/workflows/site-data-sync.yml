@@ -1,0 +1,61 @@
+name: Site Data Sync
+
+# 每周把官网数据对齐到 App 当前的目录：重新导出模型、技能和提示词数据，重建页面和 sitemap。
+# 有变化就开一个只含 marketing/ 的 PR；PR 正文列出「能用 API Key 接、没退役、但还没写介绍」的模型清单，
+# 以及目录里已经没有对应模型的孤儿介绍。
+# 这条流水线从不直接写 main，也不替人写介绍或删介绍——页面合不合格由 PR 上的 Contracts（check:site）判定。
+on:
+  schedule:
+    - cron: '47 2 * * 1' # 每周一 02:47 UTC，跟 seo-radar（01:31）错开
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: site-data-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # 不跑根包的 postinstall（它会下载 Electron 运行时）：导出脚本只读 App 的 TS 源，用不到 Electron。
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # 先导出再生成：site-data.json（含派生图片）→ 全部页面 → sitemap 与 page-dates.json → 再核对一遍页面。
+      - name: Re-export site data and rebuild pages
+        run: pnpm run build:site
+
+      - name: Write the pull request body
+        run: |
+          {
+            node scripts/site/model-intro-status.mjs --markdown
+            echo
+            echo "页面是否合格由本 PR 上的 Contracts（\`check:site\`）判定；这个 PR 不会自动合并。"
+          } > "$RUNNER_TEMP/site-data-sync-body.md"
+
+      - name: Open the site-only pull request if anything changed
+        uses: peter-evans/create-pull-request@v7
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: automation/site-data-sync
+          delete-branch: false
+          commit-message: "chore(site): weekly site data sync"
+          title: "chore(site): weekly site data sync"
+          body-path: ${{ runner.temp }}/site-data-sync-body.md
+          add-paths: |
+            marketing/

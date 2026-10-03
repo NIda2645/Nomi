@@ -9,14 +9,14 @@ const labels: LaneViewModelLabels = {
   toolSummary: () => undefined,
   toolFailure: () => undefined,
   toolFailureDetail: (failure) => failure.code,
+  assistantFailure: (text) => text,
   thinkingLabel: '[thinking]',
   formatTokens: (value) => `${value}t`,
   formatCost: (usd) => `$${usd.toFixed(4)}`,
   retryLabel: (attempt, maxAttempts) => `[retry ${attempt}/${maxAttempts}]`,
-  // 这两句在生产里是 i18n 的 `contextUnknown` / `contextCostFree`。测试里写成醒目的假串，
+  // 这一句在生产里是 i18n 的 `contextUnknown`。测试里写成醒目的假串，
   // 是为了让「本层自己编了一个字」当场露馅——占位符长什么样是调用方的事，不是这一层的。
   unknown: '[unknown]',
-  free: '[free]',
   taskTitle: '[task]',
   formatStages: (done, total) => `${done}/${total} stages`,
   formatMoney: (currency, amount) => `${currency} ${amount.toFixed(2)}`,

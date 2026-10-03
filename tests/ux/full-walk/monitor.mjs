@@ -21,6 +21,7 @@ import {
 import { laneMessages, readLaneTranscripts } from '../agent-lane-observer.mjs'
 import { appFramesOf, classifyEgress, REQUIRED_GUARD_LAYERS, vendorHostsOf } from './egress.mjs'
 import { INVARIANTS, invariantById, loadDictionaries, loadLimits, UI_LOCALES, uiText, uiTextPattern } from './invariants.mjs'
+import { activeDebt, collectVisibleTextInPage, findLeaks } from './outcomeText.mjs'
 import { ensurePageProbe, readPageProbe } from './pageProbe.mjs'
 import { unseenPromptAdditions } from './promptTruth.mjs'
 import { finishedNodeSpinner, snapshotAgeMs } from './spinnerVerdict.mjs'
@@ -68,6 +69,31 @@ export function uiClaimPatterns(dictionaries = loadDictionaries()) {
 
 export function providerFailedPatterns(dictionaries = loadDictionaries()) {
   return UI_LOCALES.map((locale) => ({ locale, pattern: new RegExp(uiTextPattern(uiText(locale, PROVIDER_FAILED_KEY, dictionaries), { anchored: true })) }))
+}
+
+/**
+ * 一份模型目录里有的供应商：显示名 / key → key。切家提示点名的是**显示名**（内置家的名字、用户起的来源名称；
+ * 读不到显示名才写 key）——认「某某家：……」时只认真有这一家的，免得把随便一句「X: Y. Z」当成点名；
+ * 点名认成 key，才能去和「哪一家真的失败过」对账（提交记录里记的是 key）。
+ */
+export function vendorKeyByLabel(catalog) {
+  const byLabel = new Map()
+  for (const vendor of catalog?.vendors ?? []) {
+    if (!vendor?.key) continue
+    byLabel.set(vendor.key, vendor.key)
+    if (typeof vendor.name === 'string' && vendor.name.trim()) byLabel.set(vendor.name.trim(), vendor.key)
+  }
+  return byLabel
+}
+
+/** 一条提示的文字是不是「某某家：失败原因。建议」——是就返回它点名的那一家（key）与原因，不是（或点名的不是这一场有的家）返回 null。 */
+export function vendorFailedClaim(text, vendors, patterns = providerFailedPatterns()) {
+  for (const { locale: textLocale, pattern } of patterns) {
+    const match = pattern.exec(text)
+    const vendor = match?.groups ? vendors.get(match.groups.vendor) : undefined
+    if (vendor) return { vendor, reason: match.groups.reason, textLocale }
+  }
+  return null
 }
 
 const normalizePrompt = (value) => String(value ?? '').replace(/\s+/g, ' ').trim()
@@ -690,12 +716,9 @@ export function createInvariantMonitor(options) {
     }
   }
 
-  /** 这一场配置里有的供应商 key（切家提示点名的是 key）：认「某某家：……」时只认真有这一家的，免得把随便一句「X: Y. Z」当成点名。 */
-  function knownVendorKeys() {
-    try {
-      const catalog = JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))
-      return new Set((catalog.vendors ?? []).map((vendor) => vendor?.key).filter(Boolean))
-    } catch { return new Set() }
+  /** 这一场配置里有的供应商（显示名 / key → key），读自隔离设置目录里的模型目录。 */
+  function sceneVendors() {
+    try { return vendorKeyByLabel(JSON.parse(fs.readFileSync(path.join(settingsDir, 'model-catalog.json'), 'utf8'))) } catch { return new Map() }
   }
 
   /** 界面上的状态文字：出现时读后台对一对。toast 可能在步骤收尾前就自己关了，所以页内观察者记下的 toast 文字也一起核。 */
@@ -703,19 +726,15 @@ export function createInvariantMonitor(options) {
     let claims = []
     const patterns = uiClaimPatterns()
     const vendorFailed = providerFailedPatterns()
-    const vendors = knownVendorKeys()
+    const vendors = sceneVendors()
     const toastClaims = Object.values(probe?.toasts ?? {}).flatMap((toast) => (toast.texts ?? []).flatMap((text) => {
       const found = []
       for (const { claim, source } of patterns) {
         if (new RegExp(source).test(text) && !found.some((entry) => entry.claim === claim)) found.push({ claim, text: text.slice(0, 160), node: `toast:${toast.id}` })
       }
       // 「某某家：失败原因。建议」——这条提示点名了一家供应商，说它失败了、原因是什么。
-      for (const { locale: textLocale, pattern } of vendorFailed) {
-        const match = pattern.exec(text)
-        if (!match?.groups || !vendors.has(match.groups.vendor)) continue
-        found.push({ claim: 'vendor-failed', vendor: match.groups.vendor, reason: match.groups.reason, textLocale, text: text.slice(0, 200), node: `toast:${toast.id}` })
-        break
-      }
+      const named = vendorFailedClaim(text, vendors, vendorFailed)
+      if (named) found.push({ claim: 'vendor-failed', ...named, text: text.slice(0, 200), node: `toast:${toast.id}` })
       return found
     }))
     try {
@@ -1060,6 +1079,34 @@ export function createInvariantMonitor(options) {
     }
   }
 
+  /**
+   * 7d：用户看得见的地方（Agent 面板 / 提示条 / 状态行 / 任务卡）不许露出服务商原始 JSON、内部 id、价格预算字样。
+   * main 上已有的违例登记在 outcomeDebts.json（带到期日、绑修它的 PR）：未过期的记进报告的 knownDebts，不算红；过期即红。
+   */
+  const knownDebts = []
+  async function checkOutcomeText() {
+    const regions = await win().evaluate(collectVisibleTextInPage).catch(() => [])
+    const debts = JSON.parse(fs.readFileSync(new URL('./outcomeDebts.json', import.meta.url), 'utf8')).debts
+    const today = new Date().toISOString().slice(0, 10)
+    for (const { source, text } of regions) {
+      for (const leak of findLeaks(text)) {
+        const debt = activeDebt(debts, { rule: 'ui-leaked-internals', kind: leak.kind, text, today })
+        if (debt) {
+          if (!knownDebts.some((entry) => entry.kind === leak.kind && entry.match === leak.match)) {
+            knownDebts.push({ kind: leak.kind, match: leak.match, source, boundTo: debt.boundTo, until: debt.until })
+          }
+          continue
+        }
+        await violate({
+          invariant: 7, rule: 'ui-leaked-internals', key: `${source}|${leak.kind}|${leak.match.slice(0, 40)}`,
+          module: '界面文字的出处：Agent 面板 / 提示条 / 任务卡的文案不许拼供应商原话、内部 id 或价格预算词',
+          message: `${source} 里露出${{ 'raw-json': '原始 JSON（工具入参或服务商回包）', 'internal-id': '内部 id', 'price-wording': '价格 / 预算字样' }[leak.kind]}：「${leak.match.slice(0, 80)}」`,
+          snapshot: { source, kind: leak.kind, match: leak.match, text: text.slice(0, 600) },
+        })
+      }
+    }
+  }
+
   // ── 铁律 8：不白烧 token ─────────────────────────────────────────────────────────────────
 
   function readTranscriptMessages() {
@@ -1138,7 +1185,7 @@ export function createInvariantMonitor(options) {
       if (!/^1\s*(版|versions?)$/i.test(pill.label)) continue
       await violate({
         invariant: 9, rule: '9a-single-version-pill', key: pill.node,
-        module: 'src/workbench/generationCanvas/nodes/NodeResultStack.tsx（showSingleProductionAction → CardStackPeeks forceTrigger）',
+        module: 'src/workbench/generationCanvas/nodes/useNodeResultHistory.ts（nodeHasResultStack 只在 ≥2 版时为真）',
         message: `节点 ${pill.node} 只有 1 版，却显示「${pill.label}」`,
         snapshot: { pill },
       })
@@ -1181,6 +1228,7 @@ export function createInvariantMonitor(options) {
     await checkSurfaces(probe)
     await checkOverlays()
     await checkRawEnglish(probe)
+    await checkOutcomeText()
     await checkTokens()
     await checkNuisance(probe)
     lastCheckAt = Date.now()
@@ -1255,6 +1303,7 @@ export function createInvariantMonitor(options) {
       harnessError: error ? String(error?.stack ?? error).slice(0, 4000) : null,
       invariants: INVARIANTS.map((entry) => ({ id: entry.id, title: entry.title['zh-CN'], violations: violations.filter((violation) => violation.invariant === entry.id).length })),
       violations,
+      knownDebts,
       steps: steps.map(({ label, user, ok, error: stepError, t0, t1, failShot, mainLog }) => ({ label, user, ok, error: stepError, durationMs: (t1 ?? Date.now()) - t0, failShot: failShot ?? null, ...(mainLog ? { mainLog } : {}) })),
       consents: consents.map((consent) => ({ ...consent, scope: consent.scope?.map(({ submissions: attached, ...rest }) => ({ ...rest, submissions: attached?.length ?? 0 })) })),
       submissions,

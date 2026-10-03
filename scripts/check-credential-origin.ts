@@ -116,7 +116,7 @@ function destinationPropertiesOf(argument: ts.Expression | undefined): string[] 
  *
  * 判据走 TypeScript 自己的 AST（仓库里别的门岗，如 `check-capability-lifecycle.mjs`，也是这么做的）。
  * 上一版在这里手搓了正则 + 括号配平解析器——它读不懂字符串里的括号，也分不清注释里的调用
- * （Ponytail 2026-09-18）。语法树没有这些问题，而且少了一半代码。
+ * （评审 2026-09-18）。语法树没有这些问题，而且少了一半代码。
  */
 function scanWriters(): string[] {
   const findings: string[] = []

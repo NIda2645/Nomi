@@ -9,6 +9,7 @@ import {
   ToolbarDuplicateVariantButton,
   ToolbarIconButton,
   ToolbarProvenanceButton,
+  ToolbarReshootButton,
 } from './NodeFloatingToolbar'
 import { extractVideoFrameToNode } from './extractVideoFrameToNode'
 import NodeShotCutPanel from './NodeShotCutPanel'
@@ -88,6 +89,7 @@ export default function NodeVideoFrameToolbar({ reportFeedback, node, downloadin
       />
       <NodeDepthActionButton reportFeedback={reportFeedback} node={node} disabled={busy !== null} />
       <ToolbarDuplicateVariantButton nodeId={node.id} />
+      <ToolbarReshootButton nodeId={node.id} />
       <ToolbarDivider />
       <ToolbarIconButton
         icon={<IconMaximize size={I.size} stroke={I.stroke} />}

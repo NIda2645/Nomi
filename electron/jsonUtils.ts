@@ -112,6 +112,22 @@ export function pickUpstreamMessage(record: JsonRecord, sanitize: (message: stri
 }
 
 /**
+ * 从上游失败响应体里挑出**它自己给的错误码**（不是那句人话）：`{ error: { code: "model_not_found" } }` /
+ * `{ code: "model_not_found" }`。与 `pickUpstreamMessage` 同住一处、同一个「全仓唯一键优先级表」的纪律——
+ * 谁要把上游失败的原因带过 IPC（vendorHttp 的媒体请求、aiSdkVendorError 的文本请求）都读这一份。
+ *
+ * 为什么要带码：状态码（400/422）只说「请求有问题」，从不说**为什么**——把它当成「参数不被接受」就是猜
+ * （2026-09-29：供应商说模型已下线，界面却叫用户去改比例）。上游的错误码才是它自己说的原因。
+ *
+ * 只收**字符串形的标识码**（`[A-Za-z0-9_.:-]`，≤64）；纯数字的业务码走 `logicalCode`，
+ * 自由文本走 `pickUpstreamMessage`。挑不出返回 ""。
+ */
+export function pickUpstreamCode(record: JsonRecord): string {
+  const candidate = firstString(readNestedRecord(record, ["error", "code"]), readNestedRecord(record, ["errors", "code"]), record.code);
+  return /^[A-Za-z][A-Za-z0-9_.:-]{0,63}$/.test(candidate) ? candidate : "";
+}
+
+/**
  * 找出字符串里第一个无法安全放进 HTTP 头/凭证的字符，返回 null 表示安全。
  * 治本于一个真坑（kie createTask 报「Cannot convert argument to a ByteString
  * because the character at index 7 has a value of 34915」）：API 密钥里混进中文/

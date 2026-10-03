@@ -34,6 +34,7 @@ jobs:
   autosync:
     name: Docs Gate Autosync
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       # 从执行时最新 main 重生成；生成分支的更新由 action 负责。
       - uses: actions/checkout@v7

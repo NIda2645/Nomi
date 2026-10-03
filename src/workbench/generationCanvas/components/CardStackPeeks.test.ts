@@ -13,12 +13,12 @@ describe('CardStackPeeks', () => {
     expect(html).toContain('12 版')
   })
 
-  it('does not render a rear card for a single entry', () => {
+  it('shows the version count from two versions on (the badge for 2 reads 2, with one rear card)', () => {
     const html = renderToStaticMarkup(
-      React.createElement(CardStackPeeks, { count: 1, label: '1 版', expanded: false, onToggle: () => undefined, forceTrigger: true }),
+      React.createElement(CardStackPeeks, { count: 2, label: '2 版', expanded: false, onToggle: () => undefined }),
     )
-    expect(html).not.toContain('data-card-stack-rear=')
-    expect(html).toContain('1 版')
+    expect(html.match(/data-card-stack-rear=/g)).toHaveLength(1)
+    expect(html).toContain('2 版')
   })
 
   it('omits the whole control when there is nothing behind the cover', () => {

@@ -9,10 +9,14 @@
 // 不许再长一份」做成了门岗；本门岗补的是它的上游：**决定要不要写之前的那次检索本身**。
 //
 // 判据形状（刻意可机读、不判内容质量）：
-//   ① 计划文档：docs/plan/<日期>-*.md 里必须有「## 先查别人」一节，且节内至少 3 条**带出处**
+//   ① 计划文档：docs/plan/<日期>-*.md 里**如果写了**「## 先查别人」一节，节内至少 3 条**带出处**
 //      （URL 或 file:line）的条目。没有出处的条目 = 没查，只是写了句「查过了」。
-//   ② PR：改动 src/ 或 electron/ 超过 300 行的 PR，正文必须引用一份带该节的计划文档。
-//      300 行是「顺手小修」和「一次实施」的分界——小修不该被逼写调研，大改没查过不该合。
+//   ② PR：只有 diff 新增 / 修改了「自写登记表」（`docs/engineering/self-written.json` 的 entries 或 domainRoots，
+//      也就是**引入了通用能力**）时，正文才必须引用一份带该节的方案，或自己带一节合格的「先查别人」。
+//      （2026-10-01 P0「只写我们独有的」：此前「src/ + electron/ 改动超过 300 行就必须引用」按行数计费，
+//      领域工作（分镜、制作流程、画布……）本来就没有现成的可查，被逼着写「查过了，没有」；而真正造了通用轮子的
+//      小 PR 反而漏过去——#945 引了出处照样自写了上下文裁剪。判据换成「是不是新增通用能力」。）
+//      计划文档（①）同理：**没写这一节不红**（领域方案不需要）；写了就必须写像样——出处不足仍然红。
 // 老文档按**日期阈值**豁免：阈值之前的计划不追溯（追溯只会让门岗一上线就是一片红，然后被无视）。
 //
 // 判据住在 lib 里是为了能被 node-test 喂假仓库：门岗自己的测试如果只能跑真实文档，
@@ -65,8 +69,6 @@ const PLAN_REFERENCE = /docs\/plan\/[\w./+-]+\.md/g
 export const PRIOR_ART_THRESHOLD_DATE = '2026-09-07'
 /** 一节里至少要有几条带出处的条目。模板四问（依赖 / 仓库 / 生态 / 自媒体）答满是 4，留 1 条余量。 */
 export const PRIOR_ART_MIN_SOURCED_ENTRIES = 3
-/** PR 改动预算：src/ + electron/ 的增删行数超过它，就必须引用一份带该节的方案。 */
-export const PRIOR_ART_DIFF_BUDGET = 300
 /** 报告模板的固定四问，写进报错文案，省得每个人再去翻文档。 */
 export const PRIOR_ART_TEMPLATE_QUESTIONS = [
   '依赖里已有？（node_modules 的 d.ts / README，带 file:line）',
@@ -111,10 +113,15 @@ export function extractPriorArtSection(markdown, { planFile = '', fileExists } =
   return { found: true, entries, sourced }
 }
 
-/** 一份计划文档合不合格。返回错误数组（空 = 通过）。 */
-export function evaluatePlan(file, markdown, { fileExists } = {}) {
+/**
+ * 一份计划文档合不合格。返回错误数组（空 = 通过）。
+ * `required: false`（计划文档的常规检查）：没有这一节不红，有就必须像样；
+ * `required: true`（PR 引入通用能力时引用的那份方案）：必须有，而且像样。
+ */
+export function evaluatePlan(file, markdown, { fileExists, required = true } = {}) {
   const section = extractPriorArtSection(markdown, { planFile: file, fileExists })
   if (!section.found) {
+    if (!required) return []
     return [`${file}: 缺少「## 先查别人」一节 —— 实施之前必须先有一份可复核的检索报告。`
       + `\n      模板四问：${PRIOR_ART_TEMPLATE_QUESTIONS.join(' / ')}`]
   }
@@ -135,9 +142,20 @@ export function evaluatePlans({ plans, threshold = PRIOR_ART_THRESHOLD_DATE, fil
   for (const [file, markdown] of plans) {
     const date = planDate(file)
     if (!date || date < threshold) continue
-    errors.push(...evaluatePlan(file, markdown, { fileExists }))
+    errors.push(...evaluatePlan(file, markdown, { fileExists, required: false }))
   }
   return errors
+}
+
+/**
+ * 只评本次改动动过的计划文档（2026-10-02）。老方案里的 file:line / 链接是写它那天指向的文件；之后任何一次
+ * 删除或搬家都会让它们「指不到」，于是每删一个脚本就多一份历史方案变红——门岗红灯里 prior-art 60 次，
+ * 绝大多数是这一类登记摩擦。判据的本意是「新写的方案要有可复核的检索」，不是「历史方案的链接永远活着」。
+ * changed = null（算不出本次改动）→ 退回全量判，不拿算不出来当通过。
+ */
+export function scopePlansToChanged(plans, changed) {
+  if (!changed) return plans
+  return new Map([...plans].filter(([file]) => changed.has(file)))
 }
 
 /** PR 正文里引用到的计划文档路径（去重，保序）。 */
@@ -148,15 +166,22 @@ export function referencedPlans(body) {
 }
 
 /**
- * PR 侧的门岗：改动 src/ 或 electron/ 超过预算时，正文必须引用一份**合格的**计划文档。
- * `plans` 同上；`changedLines` = src/ + electron/ 的增删行合计。
+ * PR 侧的门岗：只有登记表变了（`registryChanged`，= 新增 / 修改了自写登记表的 entry 或 domainRoots）才要求查证；
+ * 查证 = 正文引用一份合格的方案，或正文自己带一节合格的「先查别人」。`plans` 同上。
  */
-export function evaluatePullRequest({ body, changedLines, plans, budget = PRIOR_ART_DIFF_BUDGET, fileExists }) {
-  if (!Number.isFinite(changedLines) || changedLines <= budget) return []
+export function evaluatePullRequest({ body, registryChanged = false, plans = new Map(), fileExists } = {}) {
+  if (!registryChanged) return []
+  const own = extractPriorArtSection(body, { planFile: '', fileExists })
+  if (own.found) {
+    if (own.sourced.length >= PRIOR_ART_MIN_SOURCED_ENTRIES) return []
+    return [`PR 正文的「先查别人」节只有 ${own.sourced.length} 条带出处的条目`
+      + `（要求 ≥ ${PRIOR_ART_MIN_SOURCED_ENTRIES}，共 ${own.entries.length} 条）—— 没有 URL 或 file:line 的条目等于只写了句「查过了」。`]
+  }
   const referenced = referencedPlans(body)
   if (referenced.length === 0) {
-    return [`PR 改动 src/ 与 electron/ 共 ${changedLines} 行（预算 ${budget}），正文没有引用任何 docs/plan/*.md`
-      + '\n      —— 这个量级的实施必须指得到一份带「## 先查别人」节的方案（R27 派工纪律）。']
+    return ['这个 PR 新增 / 修改了自写登记表（docs/engineering/self-written.json），也就是引入了一项通用能力，'
+      + '但正文既没有引用任何 docs/plan/*.md、也没有自己带「## 先查别人」一节'
+      + '\n      —— 自写通用能力必须指得到「别人有没有现成的、为什么不接入」的查证（P0）。']
   }
   const errors = []
   const passing = referenced.filter((file) => {
@@ -165,13 +190,13 @@ export function evaluatePullRequest({ body, changedLines, plans, budget = PRIOR_
       errors.push(`PR 正文引用的方案不存在于本分支：${file}`)
       return false
     }
-    return evaluatePlan(file, markdown, { fileExists }).length === 0
+    return evaluatePlan(file, markdown, { fileExists, required: true }).length === 0
   })
   if (passing.length > 0) return []
   for (const file of referenced) {
     const markdown = plans.get(file)
     if (markdown === undefined) continue
-    errors.push(...evaluatePlan(file, markdown, { fileExists }).map((error) => `PR 引用的方案不合格 → ${error}`))
+    errors.push(...evaluatePlan(file, markdown, { fileExists, required: true }).map((error) => `PR 引用的方案不合格 → ${error}`))
   }
   if (errors.length === 0) errors.push('PR 正文引用的方案都不合格（缺「## 先查别人」节或出处不足）')
   return errors

@@ -1,0 +1,175 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-site-data-drift",
+  "problem_type": "官网页面清单与模型数据各有手写的第二份，App 目录一变就静默漂移",
+  "symptom": "sitemap 和每周 SEO 巡检只认得 5 个手写页面，模型库、提示词库、技能库的 200 多个页面从来不在里面；App 把渠道行并进模型本身、Sora 2 退役后，官网数据没有任何东西提醒该重导，对应的模型介绍成了没人看的死文字；旧的一页手册还停在 0.16。",
+  "direct_cause": "scripts/marketing/site-manifest.mjs 是手写的 5 行页面清单，sitemap、SEO 巡检、docs/seo/config.json 和两份测试各抄一份；marketing/data/site-data.json 只在有人记得时手动重导，既没有定时任务，也没有门岗核对「介绍对得上目录」「页面对得上介绍」。",
+  "class_root": "「官网有哪些页面」「官网列哪些模型」这两件事各有好几份独立的真相（手写清单、配置 JSON、测试里的列表、手动导出的数据），没有一个唯一的 owner 从 App 目录派生它们，目录变化时也没有任何东西报红——新增一类页面就要再手写一份，漏一份就是静默过期。",
+  "migration": "页面清单收进 scripts/marketing/pages.mjs，页面生成器、sitemap（lastmod 按内容哈希）和 SEO 巡检都读它或读它的输出；手写的 site-manifest.mjs、一页手册和它的生成器同 PR 删除（/handbook 在 _redirects 里 301 到 /quickstart）；check:site 接入数据新鲜度、模型介绍、不写价格、站内链接、中英对应、结构化数据、描述长度、许可证署名八道门岗，每道都有会红的单元测试；每周数据同步任务重导数据、重建页面，只开含 marketing/ 的 PR 并列出缺介绍的模型。",
+  "affected_population": [
+    "访客与搜索引擎：只有 5 个页面有 sitemap 条目，其余页面没有",
+    "维护者：模型退役或并入别的模型后，官网仍留着没有对应模型的介绍和页面",
+    "每周 SEO 巡检：只测 5 个页面，新页面的元数据和结构化数据问题没人看"
+  ],
+  "scope_paths": [
+    "scripts/marketing/",
+    "scripts/site/",
+    "scripts/seo/",
+    "scripts/build-marketing-site.mjs",
+    "scripts/build-marketing-sitemap.mjs",
+    "scripts/check-site-attribution.mjs",
+    "scripts/check-site-descriptions.mjs",
+    "scripts/check-site-editorial.mjs",
+    "scripts/check-site-links.mjs",
+    "scripts/check-site-locales.mjs",
+    "scripts/check-site-pricing.mjs",
+    "scripts/check-site-schema.mjs",
+    ".github/workflows/site-data-sync.yml",
+    "marketing/_redirects",
+    "docs/seo/config.json"
+  ],
+  "entry_points": [
+    "scripts/marketing/site-manifest.mjs（已删）：手写的页面清单，sitemap 与巡检的页面来源",
+    "scripts/build-marketing-sitemap.mjs：computeSitemapEntries，sitemap 的页面与日期来源",
+    "scripts/seo/seo-audit.mjs：loadMarketingPages，每周巡检的页面来源",
+    "docs/seo/config.json：publicPaths，巡检配置里的页面清单",
+    "scripts/site/export-site-data.mts：exportModels，模型数据的唯一导出口",
+    "scripts/marketing/library/data.mjs：catalogEligibleModels / publicModels，哪些模型出页"
+  ],
+  "invariants": [
+    "官网有哪些页面只有一个 owner（scripts/marketing/pages.mjs 的 sitePages），页面生成器、sitemap 和 SEO 巡检都从它派生",
+    "每个出页的模型都有中英介绍，每篇介绍都对得上目录里一个有资格出页的模型（没有孤儿介绍、没有孤儿页面）",
+    "生成器不再产出的页面不会留在 marketing/ 里继续上线",
+    "页面上没有报价；站内链接都指向真实存在的页面或文件；中英页面一一对应且 hreflang 两边一致；结构化数据能解析；描述 50–160 字；非 AGPL 条目都署名并带许可证"
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/marketing/pages.mjs",
+    "tests": [
+      "tests/seo/sitemap.node.mjs",
+      "tests/seo/seo-contract.node.mjs",
+      "scripts/check-site-editorial.node-test.mjs"
+    ]
+  },
+  "doors": [
+    { "kind": "write", "path": "scripts/site/export-site-data.mts", "symbol": "exportModels" },
+    { "kind": "read", "path": "scripts/marketing/library/data.mjs", "symbol": "publicModels" },
+    { "kind": "read", "path": "scripts/marketing/pages.mjs", "symbol": "sitePages" },
+    { "kind": "write", "path": "scripts/build-marketing-site.mjs", "symbol": "renderSiteOutputs" },
+    { "kind": "write", "path": "scripts/build-marketing-sitemap.mjs", "symbol": "computeSitemapEntries" },
+    { "kind": "read", "path": "scripts/seo/seo-audit.mjs", "symbol": "loadMarketingPages" }
+  ],
+  "door_reduction": {
+    "before": 6,
+    "after": 6,
+    "why_not": "减掉的是「页面清单」的份数（手写的 site-manifest.mjs、docs/seo/config.json、生成器里的内联数组、手册生成器、两份测试里的列表，共 6 份独立的真相，现在只剩 sitePages 一份）；上面列的 6 扇门是各自要读或写这份唯一清单的消费者，职责不同（导出、选模型、列页面、写页面、写 sitemap、巡检），不能合并，但它们现在都经过同一个 owner。"
+  },
+  "regression_tests": [
+    "tests/seo/sitemap.node.mjs",
+    "tests/seo/seo-contract.node.mjs",
+    "tests/seo/site-data-sync.node.mjs",
+    "scripts/check-site-attribution.node-test.mjs",
+    "scripts/check-site-descriptions.node-test.mjs",
+    "scripts/check-site-editorial.node-test.mjs",
+    "scripts/check-site-links.node-test.mjs",
+    "scripts/check-site-locales.node-test.mjs",
+    "scripts/check-site-pricing.node-test.mjs",
+    "scripts/check-site-schema.node-test.mjs"
+  ],
+  "residual_risks": [
+    "「官方出处」机器只能拦住已知的第三方站（editorial.mjs 的 NON_OFFICIAL_HOSTS），是否真是厂商或供应商自己的站点最终靠抽查。",
+    "每周同步任务用 GITHUB_TOKEN 开 PR，依赖仓库设置里「允许 Actions 创建 PR」（seo-radar 同样依赖）；设置关了任务会红，不会写 main。",
+    "每周 SEO 巡检现在从 GitHub 的服务器访问全部页面，Cloudflare 若把数据中心 IP 拦成 403，报告里会是成片的网络失败（方案 §11 风险 1）；这不是新引入的问题，只是页面数多了。",
+    "App 侧门岗在 Windows 开发机上跑不完（路径分隔符、python3 别名），本合同只在本机核对了官网相关的门岗，其余交给 Linux CI。"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "页面清单、数据导出和门岗都是 Nomi 自己的生成器与脚本，没有第三方运行时决定「官网有哪些页面」；sitemap 与 hreflang 的写法沿用 2026-09-03 干净地址合同里已核过的 Google 文档，这次没有新增依赖外部规范的结论。",
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "App 目录每次增删模型、合并渠道都会让官网数据过期；官网每加一类页面，手写清单就要再多抄一份——两种情形都会再来。",
+    "same_class_scan": [
+      "rg -n \"marketingPages|site-manifest\" scripts tests docs/seo package.json：只剩 docs/ 下的历史记录，代码里已无引用",
+      "全仓扫「官网页面清单」的第二份：scripts/marketing/site-manifest.mjs、docs/seo/config.json 的 publicPaths、tests/seo 两份测试里的页面列表、build-marketing-site.mjs 的内联数组、build-handbook-html.mjs 自带的单页——全部删除，或改成只做「每个路径都是真实生成的页面」的核对",
+      "全仓扫「官网数据的导出口」：scripts/site/export-site-data.mts 是唯一一处，check:site-data 用 --check 核对逐字相同",
+      "全仓扫「读 marketing/content/models 的地方」：只有 scripts/marketing/library/data.mjs（生成器）和 scripts/site/model-intro-status.mjs、scripts/check-site-editorial.mjs（门岗与每周清单），格式定义都来自 scripts/marketing/library/editorial.mjs"
+    ]
+  },
+  "generality_proof": "页面清单的唯一 owner 是 sitePages(siteData)：生成器、sitemap 都读它，每周巡检读它的输出（已提交的 sitemap.xml），所以再加一类页面不需要改第二处；模型数据只有 exportModels 一个导出口并有 --check；介绍与目录的对应、页面与介绍的对应由 check:site-editorial 在每个 PR 上核对，目录变了而介绍没跟上就红；每周同步任务把还没写介绍的模型列成清单。同类问题从另一个入口回来（新页面类型、新模型、新语言）都会撞上这几道门。",
+  "shared_boundaries": [
+    {
+      "path": "scripts/marketing/pages.mjs",
+      "symbol": "sitePages",
+      "responsibility": "官网有哪些页面的唯一 owner：生成器输出与 sitemap 都从它派生"
+    },
+    {
+      "path": "scripts/marketing/library/data.mjs",
+      "symbol": "catalogEligibleModels",
+      "responsibility": "目录里哪些模型有资格出页的唯一定义（页面生成、介绍门岗、每周清单都读它）"
+    },
+    {
+      "path": "scripts/check-site-editorial.mjs",
+      "symbol": "findEditorialProblems",
+      "responsibility": "拦住模型介绍与 App 目录对不上：孤儿介绍、身份不符、缺一种语言、多余页面"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "scripts/build-marketing-sitemap.mjs",
+      "entry_point": "computeSitemapEntries",
+      "disposition": "enforced",
+      "evidence": "sitemap 条目全部由 sitePages 的输出派生，--check 把磁盘上的 sitemap.xml 和 page-dates.json 与重新计算的结果逐字比对。"
+    },
+    {
+      "path": "scripts/seo/seo-audit.mjs",
+      "entry_point": "loadMarketingPages",
+      "disposition": "enforced",
+      "evidence": "每周巡检读已提交的 marketing/sitemap.xml，不再有自己的页面清单；tests/seo/seo-contract.node.mjs 钉住它查的页面数等于 sitemap 的条目数。"
+    },
+    {
+      "path": "docs/seo/config.json",
+      "entry_point": "publicPaths",
+      "disposition": "enforced",
+      "evidence": "已删掉 /handbook；tests/seo/seo-contract.node.mjs 要求里面每个路径都是真实生成的页面。"
+    },
+    {
+      "path": "scripts/site/export-site-data.mts",
+      "entry_point": "exportModels",
+      "disposition": "enforced",
+      "evidence": "模型数据只有这一个导出口；check:site-data 用 --check 核对导出物逐字相同，每周同步任务重导。"
+    }
+  ],
+  "prevention": {
+    "kind": "static-gate",
+    "enforcement_path": "scripts/check-site-editorial.mjs",
+    "invariant": "每个出页的模型都有中英介绍、每篇介绍都对得上目录里一个有资格出页的模型、每篇介绍的出处和核对日期合格。",
+    "failure_mode": "check:site 变红，点名哪篇介绍、哪个页面对不上哪个模型（孤儿介绍、身份不符、缺一种语言、多余页面）；每周同步 PR 的正文同时列出缺介绍的模型和孤儿介绍。",
+    "exception_policy": "none",
+    "strategy": "页面清单、模型资格和介绍格式各只留一个 owner；门岗在每个 PR 上核对生成物与目录对得上；每周同步任务把目录的变化变成一个只含官网文件的 PR。",
+    "artifacts": [
+      "scripts/check-site-editorial.mjs",
+      "scripts/marketing/pages.mjs",
+      "scripts/marketing/library/editorial.mjs",
+      ".github/workflows/site-data-sync.yml",
+      "scripts/check-site-editorial.node-test.mjs",
+      "tests/seo/site-data-sync.node.mjs"
+    ]
+  },
+  "class_regression_tests": [
+    "tests/seo/sitemap.node.mjs",
+    "tests/seo/seo-contract.node.mjs",
+    "scripts/check-site-editorial.node-test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "scripts/marketing/site-manifest.mjs",
+      "scripts/build-handbook-html.mjs",
+      "marketing/handbook.html"
+    ],
+    "rationale": "手写的页面清单、一页手册的生成器和生成物同 PR 删除（P1 加新删旧）；/handbook 与 /handbook.html 由 marketing/_redirects 301 到 /quickstart，不留第二份上手说明。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不升级任何第三方依赖，只新增一个直接 devDependency：marked（精确钉版本，仅构建期把技能和介绍的 Markdown 渲成 HTML，不进安装包；它在锁文件里早已是同一版本的传递依赖）。它不决定任何上面的不变量——不变量由我们自己的 owner 和门岗保证。门岗和生成器其余只用 Node 内置模块与仓库已有的 js-yaml。",
+    "exit_criteria": []
+  }
+}

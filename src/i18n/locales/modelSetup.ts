@@ -51,6 +51,8 @@ export const zhModelSetup = {
     rate_limit: '模型列表请求被限流，请稍后重试。{{error}}',
     network: '模型列表请求未完成，请检查网络或代理后重试。{{error}}',
     invalid_response: '地址返回的内容不是可识别的模型列表，请检查地址或手动输入模型 ID。{{error}}',
+    // 整句由主进程按界面语言给（desktopStrings network.credentialRedirect*），这里原样透出，不再拼前缀。
+    redirect: '{{error}}',
     upstream: '服务返回了模型列表错误，可稍后重试。{{error}}',
   },
   manualEnter: '手动输入',
@@ -72,10 +74,10 @@ export const zhModelSetup = {
   addHeader: '添加 Header',
   diagnostics: '连接诊断（可选）',
   testConnection: '测试连接',
-  testAndSaveHint: '“测试连接”是可选的显式上游请求，可能产生少量额度；“保存”只写入本地，不会发起测试。',
+  testAndSaveHint: '“测试连接”是可选的显式上游请求；“保存”只写入本地，不会发起测试。',
   // T-MO-27：这一下今天确实会发一次真实 POST /chat/completions（onboardingIpc.probeOneProtocol）。
   // 费用边界的 owner（catalog/credentialProbePolicy）还没接到这条路上，所以本批先如实说，不加确认卡。
-  testConnectionSpendHint: '会向该地址发送一次测试请求，可能按供应商计费。',
+  testConnectionSpendHint: '会向该地址发送一次测试请求。',
   connectedProtocol: '已连上 · 用的是 {{protocol}} 协议',
   connected: '连接正常',
   connectedReachabilityOnly:
@@ -101,7 +103,7 @@ export const zhModelSetup = {
   // 旧文案写的是「这是一次真实生产请求……消耗上游额度」——而实际最坏一个模型 6 次付费出图。
   // 2026-09-11 起这一步只做免费自检：不发任何生成请求，也就没有额度可花。
   // 2026-09-12 连词条名里的 confirm / spend 一起退役：这一步不是确认花钱，是开始检查。
-  integrationSelfCheckHint: '自检只做三件事：确认密钥可用、拉一次模型清单、检查调用方式是否完整。不会发起生成请求，也不会消耗额度。',
+  integrationSelfCheckHint: '自检只做三件事：确认密钥可用、拉一次模型清单、检查调用方式是否完整。不会发起生成请求。',
   integrationSelfCheckScope: '自检只访问显示的接入地址。Nomi 不会把 API Key 展示给对话助手。',
   integrationSelfCheckAction: '开始自检',
   integrationSelfCheckFailed: '自检没有跑起来，请检查窗口状态后重试。',
@@ -197,6 +199,7 @@ export const enModelSetup = {
     invalid_response:
       'The response is not a recognized model list. Check the URL or enter a model ID manually. {{error}}',
     upstream: 'The service returned a model-list error. Try again later. {{error}}',
+    redirect: '{{error}}',
   },
   manualEnter: 'Enter Manually',
   fetchModels: 'Get Models',
@@ -220,9 +223,9 @@ export const enModelSetup = {
   diagnostics: 'Connection diagnostics (optional)',
   testConnection: 'Test connection',
   testAndSaveHint:
-    '“Test connection” is an optional explicit upstream request and may use a small amount of credit. “Save” only writes locally and never runs a test.',
+    '“Test connection” is an optional explicit upstream request. “Save” only writes locally and never runs a test.',
   testConnectionSpendHint:
-    'This sends one test request to that address, which the provider may bill you for.',
+    'This sends one test request to that address.',
   connectedProtocol: 'Connected · Using the {{protocol}} protocol',
   connected: 'Connection successful',
   connectedReachabilityOnly:
@@ -250,7 +253,7 @@ export const enModelSetup = {
   integrationUnavailable: 'The integration session is unavailable. Return to Model settings and try again.',
   integrationSelfCheckTitle: 'Start the self-check',
   integrationSelfCheckHint:
-    'The self-check does three things: confirm the key works, fetch the model list once, and check that the call contract is complete. It never sends a generation request, so it costs nothing.',
+    'The self-check does three things: confirm the key works, fetch the model list once, and check that the call contract is complete. It never sends a generation request.',
   integrationSelfCheckScope:
     'The self-check only reaches the integration address shown here. Nomi never shows your API key to the assistant.',
   integrationSelfCheckAction: 'Start self-check',

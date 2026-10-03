@@ -166,6 +166,8 @@ export type GenerationPlanningHandlerDependencies = {
   }) => GenerationAuthorizationPreparation | Promise<GenerationAuthorizationPreparation>;
   start?: (operation: GenerationOperation, lease: ProjectLeaseV2) => unknown | Promise<unknown>;
   reconcile?: (operation: GenerationOperation, outcome: "found" | "not_found", lease: ProjectLeaseV2) => unknown | Promise<unknown>;
+  /** 这份操作对应的制作里，提交结果未知的镜（读任务状态时逐镜告诉 Agent 别再 generate）。缺省 = 读不到制作，不加这段。 */
+  unknownShotsOf?: (operation: GenerationOperation, lease: ProjectLeaseV2) => readonly string[];
 };
 
 function record(value: unknown, label: string): Record<string, unknown> {
@@ -712,6 +714,21 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       const outcome = params.outcome === "found" || params.outcome === "not_found" ? params.outcome : null;
       if (!outcome) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "Reconciliation needs an outcome: pass \"found\" or \"not_found\".");
       return deps.reconcile?.(current, outcome, input.lease) ?? { operationId, outcome, nextAction: outcome === "found" ? "observe" : "manual_review" };
+    }
+    if (input.capability === "read" || input.capability === "events" || input.capability === "steer") {
+      // 结果未知的镜：executionState 仍是 submitted、看上去在等，Agent 会当成「在跑」而去 observe 或自己重新 generate。
+      // 这里逐镜点名并把 nextAction 改成明确的话：让用户去服务商后台核对，不要再 generate（重复提交可能重复扣费）。
+      const unknownShots = deps.unknownShotsOf?.(current, input.lease) ?? [];
+      if (unknownShots.length > 0) {
+        return {
+          operation: current,
+          taskRef: generationTaskReference(operationId),
+          executionState: current.state,
+          unknownShots,
+          nextAction: "ask_user_to_check_provider_do_not_generate",
+          notice: unknownShots.map((shot) => `${shot}: outcome unknown, the provider may have already received it; do not call generate for it again; ask the user to check the provider dashboard, and leave the decision to generate again to the user in the task center.`).join(" "),
+        };
+      }
     }
     if (input.capability === "read" || input.capability === "events" || input.capability === "steer") return { operation: current, taskRef: generationTaskReference(operationId), executionState: current.state === "draft" ? "not_started" : current.state, nextAction: current.state === "draft" ? "preview" : "observe" };
     throw new Error(`Unsupported semantic generation capability: ${input.capability}`);

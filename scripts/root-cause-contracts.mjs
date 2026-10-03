@@ -58,8 +58,6 @@ const HIGH_RISK_EXACT = new Set([
   "scripts/claude-hooks/pre-push-check.sh",   // R11 push 闸：五门戳的判定方
   "scripts/claude-hooks/secret-guard.sh",     // R25 提交前敏感数据扫描
   "scripts/stamp-gates-ok.mjs",               // 五门戳的签发方（凭据怎么盖、绑什么身份）
-  "scripts/ponytail-review-branch.mjs",        // R25 交工前整分支评审：收据的签发方
-  "scripts/ponytail-review-hook.mjs",         // R25 pre-push 收据校验：收据的判定方
   "scripts/install-claude-hooks.cjs",         // 装配器：坏了 = 上面这些根本没装上
   "scripts/install-git-hooks.cjs",
 ]);
@@ -382,6 +380,31 @@ function validateInvariantOwnerLayer(contract, existingFiles, label) {
 }
 
 /**
+ * 「补 / 重写 / 删」的选择（R21.2，2026-10-02 起与症状聚类合并）：同一层被反复修时，合同要写明选了哪条路，
+ * 并给出特征测试路径——不再交一份评审文档。字段可选；一旦写了就必须成立：
+ * 测试文件存在且是测试；选 `rewrite` 时那份特征测试必须出现在本次 diff 里（先钉住旧行为，再重写）。
+ */
+export const REWRITE_DECISIONS = ["patch", "rewrite", "delete"];
+function validateRewriteDecision(contract, changed, existingFiles, label) {
+  const errors = [];
+  const decision = contract?.rewrite_decision;
+  if (decision === undefined) return errors;
+  if (!record(decision) || !REWRITE_DECISIONS.includes(decision.decision)) {
+    errors.push(`${label}: rewrite_decision.decision must be one of ${REWRITE_DECISIONS.join(", ")}`);
+    return errors;
+  }
+  const test = decision.characterization_test;
+  if (!nonEmptyText(test) || !isTestFile(normalized(test))) {
+    errors.push(`${label}: rewrite_decision.characterization_test must be a test file path (the test that pins the old behaviour)`);
+  } else if (!fileExists(test, existingFiles)) {
+    errors.push(`${label}: rewrite_decision.characterization_test does not exist: ${test}`);
+  } else if (decision.decision === "rewrite" && !changed.has(normalized(test))) {
+    errors.push(`${label}: a rewrite must add or change its characterization test in this diff: ${test}`);
+  }
+  return errors;
+}
+
+/**
  * 「这条不变量碰到的状态，一共有几扇门」——动生产代码之前必须先数的那一问（R21，2026-09-11）。
  *
  * 为什么加它：合同已经逼你写清 class_root 和 same_class_entry_points，但那两项都是**叙述**——
@@ -399,6 +422,58 @@ function validateInvariantOwnerLayer(contract, existingFiles, label) {
  * 必须写 `why_not`——允许不减（有时确实不该减），但不允许无声地不减。
  */
 export const DOOR_MAP_SINCE = "2026-09-11";
+
+/**
+ * 复发检查字段（2026-10-02）：`detected_by` 记这个问题是谁先发现的，`recurrence_check_on` 记哪天回头查
+ * 「同类还有没有回来」（默认合并日 + 30 天，由 scripts/eng-metrics.mjs 补默认）。
+ * 新合同属于 recurring、高风险、或逃逸 bug（detected_by 为 user / post-release）时两项必填；
+ * 老合同按文件名日期前缀豁免，追溯只会把几百份历史合同一次性打红。
+ */
+export const RECURRENCE_FIELDS_SINCE = "2026-10-02";
+export const DETECTED_BY = ["user", "post-release", "walkthrough", "ci", "review"];
+
+function validateDetectionFields(contract, changed, label) {
+  const errors = [];
+  const detected = contract?.detected_by;
+  const checkOn = contract?.recurrence_check_on;
+  if (detected !== undefined && !DETECTED_BY.includes(detected)) {
+    errors.push(`${label}: detected_by must be one of ${DETECTED_BY.join(" / ")}`);
+  }
+  if (checkOn !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(String(checkOn))) {
+    errors.push(`${label}: recurrence_check_on must be a YYYY-MM-DD date`);
+  }
+  const scopes = Array.isArray(contract?.scope_paths) ? contract.scope_paths : [];
+  const escaped = detected === "user" || detected === "post-release";
+  const recurring = contract?.recurrence?.classification === "recurring";
+  const highRisk = [...changed].some((file) => isHighRiskProductionFile(file) && scopes.some((scope) => scopeCovers(scope, file)));
+  if (recurring || highRisk || escaped) {
+    if (detected === undefined) errors.push(`${label}: detected_by is required for recurring / high-risk / escaped-bug contracts`);
+    if (checkOn === undefined) errors.push(`${label}: recurrence_check_on is required for recurring / high-risk / escaped-bug contracts`);
+  }
+  return errors;
+}
+
+/**
+ * 门岗只对 schema 不合法阻断（2026-10-02，合同检查降为警告档）：其余发现（高风险文件没带合同、门表没数全、
+ * 归属层、重写决定……）照样打印，但不再拦 PR——合同在两种情况下强制要，由合并前扫描查：
+ * 修的是逃逸 bug，或第二次修同一类问题。
+ */
+const BLOCKING_PATTERNS = [
+  /schema_version must be/,
+  /: id is required/,
+  /change_kind must be/,
+  /: (?:problem_type|symptom|direct_cause|class_root|migration) is required/,
+  /must be a non-empty string array/,
+  /recurrence requires/,
+  /detected_by|recurrence_check_on/,
+  /legacy/,
+];
+export function classifyFindings(errors) {
+  const blocking = [];
+  const warnings = [];
+  for (const error of errors) (BLOCKING_PATTERNS.some((pattern) => pattern.test(error)) ? blocking : warnings).push(error);
+  return { blocking, warnings };
+}
 
 const DOOR_KINDS = new Set(["write", "read"]);
 /**
@@ -581,6 +656,10 @@ function validateContract(contract, changed, existingFiles, index, fileContents)
   if (fileDate && fileDate >= DOOR_MAP_SINCE) {
     errors.push(...validateDoorMap(contract, changed, existingFiles, label, fileContents));
   }
+  if (fileDate && fileDate >= RECURRENCE_FIELDS_SINCE) {
+    errors.push(...validateDetectionFields(contract, changed, label));
+  }
+  errors.push(...validateRewriteDecision(contract, changed, existingFiles, label));
   for (const field of ["affected_population", "scope_paths", "entry_points", "invariants", "regression_tests", "residual_risks"]) {
     if (!nonEmptyTextArray(contract?.[field])) errors.push(`${label}: ${field} must be a non-empty string array`);
   }

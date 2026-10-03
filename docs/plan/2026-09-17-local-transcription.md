@@ -1,4 +1,4 @@
-# 本地转写 provider（批次 3 · T-MO-11）
+# 本地转写 provider（批次 3）
 
 > 📋 方案待拍板 · 状态由 docs-autosync 自动登记，作者请按实修改
 
@@ -22,7 +22,7 @@
 
 ## 先查别人
 
-调研正本：`~/Desktop/nomi-scratch-0917/batch3/T-MO-11-local-transcription-prior-art.md`（比较了 whisper.cpp / sherpa-onnx / faster-whisper / Moonshine / Parakeet / 平台自带 / WASM 七条路，以及 OpenWhispr / Vibe / Buzz / Whishper / Kdenlive 五个近邻实现）。以下每条都是 2026-09-17 亲自打开读过的，不是凭印象：
+调研正本：`~/Desktop/nomi-scratch-0917/batch3/` 下的本地转写 prior-art 调研（比较了 whisper.cpp / sherpa-onnx / faster-whisper / Moonshine / Parakeet / 平台自带 / WASM 七条路，以及 OpenWhispr / Vibe / Buzz / Whishper / Kdenlive 五个近邻实现）。以下每条都是 2026-09-17 亲自打开读过的，不是凭印象：
 
 - **同类桌面应用怎么接**：OpenWhispr（Electron + React，MIT）https://github.com/OpenWhispr/openwhispr/blob/main/src/helpers/whisperServer.js —— spawn 预编译 `whisper-server` 到本机随机端口、POST `/inference`、用 `response_format` 取时间戳。**我们照抄这条路线**（sidecar 而不是 native addon），因为查到的活跃桌面转写应用里没有一个走 node-gyp 编译。
 - **为什么钉死版本**：https://github.com/OpenWhispr/openwhispr/blob/main/scripts/download-whisper-cpp.js 顶注原话——跟 latest 会让上游一次 bump 在两次发版之间静默改变转写输出而没有 diff 可审；同一个文件的注释还记着 Windows 缺 MSVC 运行时 DLL 会 0xC0000135 闪退（CUS-113）。**两条我们都吃下来了**（`docs/engineering/supply-chain-pins.json` + 成员清单里那四个 DLL）。
@@ -83,7 +83,7 @@
 3. ✅ 拆解侧的转写线选择、进度 detail、失败类别与「改用云端重试」。
 4. ✅ 供应链版本钉登记 + `check:supply-chain-pins` 门岗（含会红的判据测试）；R21 合同带门表。
 5. ✅ Windows 真机（10.0.26200，20 核 CPU）：五个文件的 sha256 与清单逐字相同、`tar -xf` 解包、exe 起得来、120 秒音频 115.1 秒出稿（检测 chinese 0.998，88 段）——**约 1× 实时，比 mac 的 Metal 慢一个数量级**。这条实测直接改了产品行为：清单多一格 `gpuAccelerated`、每档多一个 `measuredCpuRealtimeFactor`，开跑前按**这台机器**的倍率报预计耗时，不拿 mac 的数字去糊 Windows。
-6. ◻︎ 未完：英文真素材（本机没有，已登记欠账 `local-speech-english-real-media`）；拆解参数行里的「转写」下拉（等批次 2 的 T-DS-13 参数行组件，socket 已留在 `payload.transcribe`）；Windows 的 cuda / vulkan 加速档（上游有，但要按显卡分发 + 判驱动，等有真机数字再谈）。
+6. ◻︎ 未完：英文真素材（用户 2026-10-01 拍板：英文转写不做真素材验收，欠账 `local-speech-english-real-media` 已撤销）；拆解参数行里的「转写」下拉（等批次 2 的参数行组件，socket 已留在 `payload.transcribe`）；Windows 的 cuda / vulkan 加速档（上游有，但要按显卡分发 + 判驱动，等有真机数字再谈）。
 7. ✅ 09-18 验收脚本复活 + 五条真素材跑通（`dec36f71f` / `dcdd0f74c`）：第 5 条那次提交给进度加了 `starting` 阶段，`scripts/local-speech-live-check.ts` 的二元三目把它当 transcribing 读 → 从 09-17 22:29 起脚本一条素材都跑不完（此前三张收据都在 21:56–21:59）。现在进度 switch 穷尽三阶段、默认素材集从登记表 `coverage[].test` 反查（transcription + transcription-english 一起跑），`scripts/**/*.ts` 收进 `check:test-types` 棘轮让 tsc 看得见这个目录。mac Metal 复验：zh-mixed 527s→380 段 13.2×、zh-only 547s→287 段 11.9×、en-librivox 180s→45 段（english 1.000）、en-nasa 240s→58 段（english **0.385**）、en-prelinger 240s→65 段（english 1.000），接缝时间倒退全 0。
 8. ✅ **片头静音幻听已修（09-18）**：开引擎自带 VAD（`--vad` + 钉死的 Silero v5.1.2，885 KB，已进供应链登记）。没有 VAD 时 NASA 那条前 26 段全是 "Thank you."、第一句真内容被推到 126.0 秒、**约 72 秒真人讲话被吞掉**，语言探测采在静音上（置信 0.385）。四组参数同素材实测：`--vad` 幻听 0 段 / 首句 54.56s（与实测静音结束 54.17s 吻合）/ 置信 1.000；`-mc 0` 只断复读且首句时间戳报错成 30.0s；`-sns` 名字最像对症实测零作用。**不叠 `-mc 0`**——VAD 已解决，再加一道是并行版（P1）。argv 抽成纯函数 `buildServerArgs`，「VAD 必开」「语言必须 auto」由测试盯着。五条真素材复跑全绿：接缝倒退与相邻整句重复全 0，语言 en/zh 全部高置信。根因合同 `docs/fixes/2026-09-18-local-speech-silence-hallucination.root-cause.json`。
 9. ◻︎ **两条没验到的，明说**：① **CER 未复算**——仓库里没有提交过参照真值，档位表那个 6.5% 在本机无法复现；VAD 改变了分段，中文两条的转写文字确有变化（「一堂客」→「一堂课」变好，也有变差的），这个差值**未量化**。要么把参照真值连同算 CER 的脚本提交进仓库，要么这一格永远只能靠人肉印象。② **Windows 的 `measuredCpuRealtimeFactor=1.04` 是 VAD 之前测的**——VAD 多一趟检测但又跳过非语音，净效应未知，本机测不了；「预计 N 分钟」那句提示在 Windows 上因此未复核。

@@ -1,33 +1,1911 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">
   <url>
     <loc>https://nomiaqm.com/</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/" />
   </url>
   <url>
     <loc>https://nomiaqm.com/en/</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>weekly</changefreq>
     <priority>1.0</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/" />
   </url>
   <url>
-    <loc>https://nomiaqm.com/quickstart</loc>
-    <lastmod>2026-09-27</lastmod>
+    <loc>https://nomiaqm.com/en/features</loc>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.9</priority>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/features" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/features" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/features" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/agnes-image-2-1</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/agnes-image-2-1" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/agnes-image-2-1" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/agnes-image-2-1" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/agnes-video-2-5</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/agnes-video-2-5" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/agnes-video-2-5" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/agnes-video-2-5" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/dop</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/dop" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/dop" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/dop" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/flux-1-krea</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/flux-1-krea" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/flux-1-krea" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/flux-1-krea" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/flux-2-klein</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/flux-2-klein" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/flux-2-klein" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/flux-2-klein" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/flux-2-pro</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/flux-2-pro" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/flux-2-pro" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/flux-2-pro" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/gemini-image-3-pro</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gemini-image-3-pro" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gemini-image-3-pro" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gemini-image-3-pro" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/gemini-omni-1-1-flash</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gemini-omni-1-1-flash" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gemini-omni-1-1-flash" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gemini-omni-1-1-flash" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/gpt-image-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gpt-image-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gpt-image-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gpt-image-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/gpt-image-2-5-flare</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gpt-image-2-5-flare" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gpt-image-2-5-flare" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gpt-image-2-5-flare" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/gpt-image-2-5-sunburst</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gpt-image-2-5-sunburst" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gpt-image-2-5-sunburst" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gpt-image-2-5-sunburst" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/grok-imagine-1-5</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/grok-imagine-1-5" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/grok-imagine-1-5" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/grok-imagine-1-5" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/grok-imagine-image-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/grok-imagine-image-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/grok-imagine-image-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/grok-imagine-image-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/hailuo-2-3</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/hailuo-2-3" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/hailuo-2-3" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/hailuo-2-3" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/happyhorse-1-1</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/happyhorse-1-1" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/happyhorse-1-1" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/happyhorse-1-1" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/imagen-4-fast</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/imagen-4-fast" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/imagen-4-fast" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/imagen-4-fast" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/imagen-4-ultra</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/imagen-4-ultra" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/imagen-4-ultra" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/imagen-4-ultra" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/kling-3-0</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/kling-3-0" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/kling-3-0" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/kling-3-0" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/kling-3-0-turbo</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/kling-3-0-turbo" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/kling-3-0-turbo" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/kling-3-0-turbo" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/minimax-h3</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/minimax-h3" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/minimax-h3" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/minimax-h3" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/minimax-h3-max</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/minimax-h3-max" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/minimax-h3-max" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/minimax-h3-max" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/muse-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/muse-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/muse-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/muse-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/nano-banana-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/nano-banana-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/nano-banana-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/nano-banana-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/nano-banana-2-lite</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/nano-banana-2-lite" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/nano-banana-2-lite" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/nano-banana-2-lite" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/qwen-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/qwen-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/qwen-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/qwen-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/qwen-image-3-0</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/qwen-image-3-0" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/qwen-image-3-0" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/qwen-image-3-0" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/runway-gen-4-5</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/runway-gen-4-5" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/runway-gen-4-5" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/runway-gen-4-5" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/runway-gen-4-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/runway-gen-4-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/runway-gen-4-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/runway-gen-4-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/runway-gen-4-turbo</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/runway-gen-4-turbo" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/runway-gen-4-turbo" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/runway-gen-4-turbo" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/seedance-2-5</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/seedance-2-5" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/seedance-2-5" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/seedance-2-5" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/seedream-5-0-lite</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/seedream-5-0-lite" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/seedream-5-0-lite" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/seedream-5-0-lite" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/seedream-5-0-pro</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/seedream-5-0-pro" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/seedream-5-0-pro" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/seedream-5-0-pro" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/soul-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/soul-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/soul-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/soul-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/soul-cinema</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/soul-cinema" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/soul-cinema" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/soul-cinema" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/veo-3-1</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/veo-3-1" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/veo-3-1" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/veo-3-1" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/vidu-q3</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/vidu-q3" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/vidu-q3" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/vidu-q3" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/wan-3-0</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/wan-3-0" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/wan-3-0" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/wan-3-0" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/z-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/z-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/z-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/z-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/models/z-image-turbo</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/z-image-turbo" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/z-image-turbo" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/z-image-turbo" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/camera</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/camera" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/camera" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/camera" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/character</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/character" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/character" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/character" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/collections/evolink-gpt-image-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/evolink-gpt-image-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/evolink-gpt-image-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/evolink-gpt-image-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/collections/imgedify-gpt4o</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/imgedify-gpt4o" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/imgedify-gpt4o" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/imgedify-gpt4o" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/collections/sora-official</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/sora-official" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/sora-official" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/sora-official" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/collections/sora2-viral</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/sora2-viral" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/sora2-viral" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/sora2-viral" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/collections/youmind-nano-banana-pro</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/youmind-nano-banana-pro" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/youmind-nano-banana-pro" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/youmind-nano-banana-pro" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/composition</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/composition" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/composition" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/composition" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/editing</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/editing" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/editing" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/editing" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/expressions</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/expressions" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/expressions" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/expressions" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/natural-texture</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/natural-texture" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/natural-texture" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/natural-texture" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/scene</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/scene" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/scene" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/scene" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/prompts/storyboard</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/storyboard" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/storyboard" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/storyboard" />
   </url>
   <url>
     <loc>https://nomiaqm.com/en/quickstart</loc>
-    <lastmod>2026-09-27</lastmod>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>weekly</changefreq>
     <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/quickstart" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/quickstart" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/quickstart" />
   </url>
   <url>
-    <loc>https://nomiaqm.com/handbook</loc>
-    <lastmod>2026-08-23</lastmod>
+    <loc>https://nomiaqm.com/en/skills</loc>
+    <lastmod>2026-10-02</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>0.7</priority>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/brand-promo</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/brand-promo" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/brand-promo" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/brand-promo" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/creation-edit</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/creation-edit" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/creation-edit" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/creation-edit" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-candle-mood</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-candle-mood" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-candle-mood" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-candle-mood" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-coffee-pour</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-coffee-pour" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-coffee-pour" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-coffee-pour" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-cross-view</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-cross-view" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-cross-view" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-cross-view" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-expression-reference</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-expression-reference" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-expression-reference" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-expression-reference" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-expression-sheet</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-expression-sheet" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-expression-sheet" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-expression-sheet" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-eyewear-light</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-eyewear-light" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-eyewear-light" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-eyewear-light" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-film-storyboard</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-film-storyboard" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-film-storyboard" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-film-storyboard" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-multi-view</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-multi-view" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-multi-view" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-multi-view" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-outpaint</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-outpaint" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-outpaint" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-outpaint" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-product-before-after</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-before-after" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-before-after" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-before-after" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-product-condensation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-condensation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-condensation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-condensation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-product-exploded-view</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-exploded-view" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-exploded-view" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-exploded-view" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-product-turntable</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-turntable" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-turntable" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-turntable" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-product-unboxing</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-unboxing" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-unboxing" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-unboxing" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/curated-restore-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-restore-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-restore-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-restore-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-action</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-action" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-action" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-action" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-art-design</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-art-design" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-art-design" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-art-design" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-cinematography</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-cinematography" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-cinematography" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-cinematography" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-consistency</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-consistency" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-consistency" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-consistency" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-guzhuang</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-guzhuang" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-guzhuang" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-guzhuang" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-keyframe-review</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-keyframe-review" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-keyframe-review" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-keyframe-review" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-performance</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-performance" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-performance" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-performance" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-shot-translation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-shot-translation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-shot-translation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-shot-translation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-sound</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-sound" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-sound" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-sound" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-staging</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-staging" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-staging" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-staging" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-style-otomo-wright</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-style-otomo-wright" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-style-otomo-wright" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-style-otomo-wright" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/director-transitions</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-transitions" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-transitions" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-transitions" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/drama-short</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/drama-short" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/drama-short" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/drama-short" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/model-integration</loc>
+    <lastmod>2026-10-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/model-integration" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/model-integration" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/model-integration" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/release-media-pack</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/release-media-pack" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/release-media-pack" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/release-media-pack" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/skill-author</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/skill-author" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/skill-author" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/skill-author" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/workbench-creation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/workbench-creation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/workbench-creation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/workbench-creation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/workbench-fixation-planner</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/workbench-fixation-planner" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/workbench-fixation-planner" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/workbench-fixation-planner" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/workbench-generation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/workbench-generation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/workbench-generation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/workbench-generation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/workbench-storyboard-planner</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/workbench-storyboard-planner" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/workbench-storyboard-planner" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/workbench-storyboard-planner" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-adaptation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-adaptation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-adaptation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-adaptation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-behavior-psychology</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-behavior-psychology" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-behavior-psychology" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-behavior-psychology" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-dialogue</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-dialogue" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-dialogue" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-dialogue" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-improv</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-improv" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-improv" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-improv" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-incubation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-incubation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-incubation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-incubation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-novel-digester</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-novel-digester" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-novel-digester" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-novel-digester" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-review</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-review" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-review" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-review" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-screenwriter</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-screenwriter" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-screenwriter" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-screenwriter" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-songfangjin</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-songfangjin" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-songfangjin" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-songfangjin" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-structure</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-structure" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-structure" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-structure" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/en/skills/writer-style-schrader</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-style-schrader" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-style-schrader" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-style-schrader" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/features</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/features" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/features" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/features" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/agnes-image-2-1</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/agnes-image-2-1" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/agnes-image-2-1" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/agnes-image-2-1" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/agnes-video-2-5</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/agnes-video-2-5" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/agnes-video-2-5" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/agnes-video-2-5" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/dop</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/dop" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/dop" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/dop" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/flux-1-krea</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/flux-1-krea" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/flux-1-krea" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/flux-1-krea" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/flux-2-klein</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/flux-2-klein" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/flux-2-klein" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/flux-2-klein" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/flux-2-pro</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/flux-2-pro" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/flux-2-pro" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/flux-2-pro" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/gemini-image-3-pro</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gemini-image-3-pro" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gemini-image-3-pro" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gemini-image-3-pro" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/gemini-omni-1-1-flash</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gemini-omni-1-1-flash" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gemini-omni-1-1-flash" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gemini-omni-1-1-flash" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/gpt-image-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gpt-image-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gpt-image-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gpt-image-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/gpt-image-2-5-flare</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gpt-image-2-5-flare" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gpt-image-2-5-flare" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gpt-image-2-5-flare" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/gpt-image-2-5-sunburst</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/gpt-image-2-5-sunburst" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/gpt-image-2-5-sunburst" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/gpt-image-2-5-sunburst" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/grok-imagine-1-5</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/grok-imagine-1-5" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/grok-imagine-1-5" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/grok-imagine-1-5" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/grok-imagine-image-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/grok-imagine-image-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/grok-imagine-image-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/grok-imagine-image-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/hailuo-2-3</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/hailuo-2-3" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/hailuo-2-3" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/hailuo-2-3" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/happyhorse-1-1</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/happyhorse-1-1" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/happyhorse-1-1" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/happyhorse-1-1" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/imagen-4-fast</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/imagen-4-fast" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/imagen-4-fast" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/imagen-4-fast" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/imagen-4-ultra</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/imagen-4-ultra" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/imagen-4-ultra" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/imagen-4-ultra" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/kling-3-0</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/kling-3-0" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/kling-3-0" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/kling-3-0" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/kling-3-0-turbo</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/kling-3-0-turbo" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/kling-3-0-turbo" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/kling-3-0-turbo" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/minimax-h3</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/minimax-h3" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/minimax-h3" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/minimax-h3" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/minimax-h3-max</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/minimax-h3-max" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/minimax-h3-max" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/minimax-h3-max" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/muse-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/muse-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/muse-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/muse-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/nano-banana-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/nano-banana-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/nano-banana-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/nano-banana-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/nano-banana-2-lite</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/nano-banana-2-lite" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/nano-banana-2-lite" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/nano-banana-2-lite" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/qwen-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/qwen-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/qwen-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/qwen-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/qwen-image-3-0</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/qwen-image-3-0" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/qwen-image-3-0" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/qwen-image-3-0" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/runway-gen-4-5</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/runway-gen-4-5" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/runway-gen-4-5" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/runway-gen-4-5" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/runway-gen-4-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/runway-gen-4-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/runway-gen-4-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/runway-gen-4-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/runway-gen-4-turbo</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/runway-gen-4-turbo" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/runway-gen-4-turbo" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/runway-gen-4-turbo" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/seedance-2-5</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/seedance-2-5" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/seedance-2-5" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/seedance-2-5" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/seedream-5-0-lite</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/seedream-5-0-lite" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/seedream-5-0-lite" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/seedream-5-0-lite" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/seedream-5-0-pro</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/seedream-5-0-pro" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/seedream-5-0-pro" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/seedream-5-0-pro" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/soul-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/soul-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/soul-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/soul-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/soul-cinema</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/soul-cinema" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/soul-cinema" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/soul-cinema" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/veo-3-1</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/veo-3-1" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/veo-3-1" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/veo-3-1" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/vidu-q3</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/vidu-q3" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/vidu-q3" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/vidu-q3" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/wan-3-0</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/wan-3-0" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/wan-3-0" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/wan-3-0" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/z-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/z-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/z-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/z-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/models/z-image-turbo</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/models/z-image-turbo" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/models/z-image-turbo" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/models/z-image-turbo" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/camera</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/camera" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/camera" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/camera" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/character</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/character" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/character" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/character" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/collections/evolink-gpt-image-2</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/evolink-gpt-image-2" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/evolink-gpt-image-2" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/evolink-gpt-image-2" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/collections/imgedify-gpt4o</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/imgedify-gpt4o" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/imgedify-gpt4o" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/imgedify-gpt4o" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/collections/sora-official</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/sora-official" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/sora-official" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/sora-official" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/collections/sora2-viral</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/sora2-viral" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/sora2-viral" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/sora2-viral" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/collections/youmind-nano-banana-pro</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/collections/youmind-nano-banana-pro" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/collections/youmind-nano-banana-pro" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/collections/youmind-nano-banana-pro" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/composition</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/composition" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/composition" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/composition" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/editing</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/editing" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/editing" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/editing" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/expressions</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/expressions" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/expressions" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/expressions" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/natural-texture</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/natural-texture" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/natural-texture" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/natural-texture" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/scene</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/scene" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/scene" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/scene" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/prompts/storyboard</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/prompts/storyboard" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/prompts/storyboard" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/prompts/storyboard" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/quickstart</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.9</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/quickstart" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/quickstart" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/quickstart" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.8</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/brand-promo</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/brand-promo" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/brand-promo" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/brand-promo" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/creation-edit</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/creation-edit" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/creation-edit" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/creation-edit" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-candle-mood</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-candle-mood" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-candle-mood" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-candle-mood" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-coffee-pour</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-coffee-pour" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-coffee-pour" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-coffee-pour" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-cross-view</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-cross-view" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-cross-view" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-cross-view" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-expression-reference</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-expression-reference" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-expression-reference" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-expression-reference" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-expression-sheet</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-expression-sheet" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-expression-sheet" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-expression-sheet" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-eyewear-light</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-eyewear-light" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-eyewear-light" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-eyewear-light" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-film-storyboard</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-film-storyboard" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-film-storyboard" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-film-storyboard" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-multi-view</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-multi-view" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-multi-view" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-multi-view" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-outpaint</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-outpaint" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-outpaint" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-outpaint" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-product-before-after</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-before-after" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-before-after" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-before-after" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-product-condensation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-condensation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-condensation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-condensation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-product-exploded-view</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-exploded-view" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-exploded-view" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-exploded-view" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-product-turntable</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-turntable" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-turntable" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-turntable" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-product-unboxing</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-product-unboxing" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-product-unboxing" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-product-unboxing" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/curated-restore-image</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/curated-restore-image" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/curated-restore-image" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/curated-restore-image" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-action</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-action" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-action" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-action" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-art-design</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-art-design" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-art-design" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-art-design" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-cinematography</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-cinematography" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-cinematography" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-cinematography" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-consistency</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-consistency" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-consistency" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-consistency" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-guzhuang</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-guzhuang" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-guzhuang" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-guzhuang" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-keyframe-review</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-keyframe-review" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-keyframe-review" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-keyframe-review" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-performance</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-performance" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-performance" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-performance" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-shot-translation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-shot-translation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-shot-translation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-shot-translation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-sound</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-sound" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-sound" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-sound" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-staging</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-staging" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-staging" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-staging" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-style-otomo-wright</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-style-otomo-wright" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-style-otomo-wright" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-style-otomo-wright" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/director-transitions</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/director-transitions" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/director-transitions" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/director-transitions" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/drama-short</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/drama-short" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/drama-short" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/drama-short" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/model-integration</loc>
+    <lastmod>2026-10-03</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/model-integration" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/model-integration" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/model-integration" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/release-media-pack</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/release-media-pack" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/release-media-pack" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/release-media-pack" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/skill-author</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/skill-author" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/skill-author" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/skill-author" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/workbench-creation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/workbench-creation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/workbench-creation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/workbench-creation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/workbench-fixation-planner</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/workbench-fixation-planner" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/workbench-fixation-planner" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/workbench-fixation-planner" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/workbench-generation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/workbench-generation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/workbench-generation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/workbench-generation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/workbench-storyboard-planner</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/workbench-storyboard-planner" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/workbench-storyboard-planner" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/workbench-storyboard-planner" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-adaptation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-adaptation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-adaptation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-adaptation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-behavior-psychology</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-behavior-psychology" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-behavior-psychology" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-behavior-psychology" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-dialogue</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-dialogue" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-dialogue" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-dialogue" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-improv</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-improv" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-improv" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-improv" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-incubation</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-incubation" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-incubation" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-incubation" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-novel-digester</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-novel-digester" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-novel-digester" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-novel-digester" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-review</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-review" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-review" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-review" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-screenwriter</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-screenwriter" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-screenwriter" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-screenwriter" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-songfangjin</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-songfangjin" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-songfangjin" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-songfangjin" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-structure</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-structure" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-structure" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-structure" />
+  </url>
+  <url>
+    <loc>https://nomiaqm.com/skills/writer-style-schrader</loc>
+    <lastmod>2026-10-02</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.6</priority>
+    <xhtml:link rel="alternate" hreflang="zh-CN" href="https://nomiaqm.com/skills/writer-style-schrader" />
+    <xhtml:link rel="alternate" hreflang="en" href="https://nomiaqm.com/en/skills/writer-style-schrader" />
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://nomiaqm.com/skills/writer-style-schrader" />
   </url>
 </urlset>

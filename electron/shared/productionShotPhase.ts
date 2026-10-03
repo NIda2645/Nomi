@@ -14,6 +14,7 @@
 // 真相源 = Run 的 jobs[] + status（纯派生，无第二份状态）。
 import type { ProductionJob, ProductionJobStatus, ProductionRun, ProductionRunStopReason } from "../productionRun/productionRunTypes";
 import { runStopReason } from "./productionRunStop";
+import { tagNomiError } from "./nomiErrorCodes";
 export { decideShotClaim } from "./decideShotClaim";
 import { shotCountsTowardBatch, shotIncluded } from "./productionShotJobs";
 
@@ -196,6 +197,11 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   // 最新那次任务已脱离制作（画布认领了这一镜、计划被拒 / 脱离画布）：制作不会再派它，
   // 节点上既不是「排队中」也不是「已停 · 提额续拍」——点那个按钮续的会是别的镜头。
   if (job?.status === "detached") return null;
+  // 提交结果未知（连接被重置 / 超时 / 提交途中重启）：供应商可能已经收下。这一镜**不是**「还没开拍」也不是「已停」，
+  // 画成失败并带上机器码，节点按「结果没法确认」说话（与单镜生成同一句话），不给一键重试。
+  if (job && (job.status === "submission_unknown" || job.status === "reconciling")) {
+    return { phase: "failed", job, failureMessage: tagNomiError("submission-unknown", "The provider did not confirm this submission") };
+  }
   const jobPhase = job ? productionJobPhase(job.status) : null;
 
   if (job && jobPhase === "done") return { phase: "done", job };
@@ -220,4 +226,11 @@ export function deriveProductionShotState(run: ProductionRun | null | undefined,
   const total = videoShots.length;
   const index = videoShots.findIndex((candidate) => candidate.shotId === shotId);
   return { phase: "queued", job, ...(index >= 0 && total > 0 ? { queueIndex: index + 1, queueTotal: total } : {}) };
+}
+
+/** 这个 Run 里提交结果未知的镜（供应商可能已经收下）：镜 id（没有就用任务 id）。常驻 Agent 读任务状态时据此被告知别再 generate。 */
+export function unknownSubmissionShotLabels(run: Pick<ProductionRun, "jobs"> | null | undefined): string[] {
+  return (run?.jobs ?? [])
+    .filter((job) => job.status === "submission_unknown" || job.status === "reconciling")
+    .map((job) => (typeof job.metadata?.shotId === "string" && job.metadata.shotId ? job.metadata.shotId : job.jobId));
 }

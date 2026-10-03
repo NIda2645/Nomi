@@ -5,7 +5,7 @@
 export const CORE_SMOKE_FIXTURES = Object.freeze(['empty', 'used'])
 // 阻断门只有 empty（2026-09-22 用户拍板）。used 照跑、照传证据，但**不判**：
 // 实测同一份代码连跑 5 次只有 1 次全绿，三种失败都出自还没修的小窗布局问题
-// （T-CV-19 批量栏压住缩放条 / T-CV-20 托盘贴边被 clamp / T-QA-21 toast 盖住弹窗钮），
+// （批量栏压住缩放条 / 托盘贴边被 clamp / toast 盖住弹窗钮），
 // 证据见 docs/evidence/2026-09-22-core-smoke-negative-control/。把一条 5 次绿 1 次的检查
 // 装成必过门 + 合后收据的 success-only，等于把假红制度化，这正是本防线要根除的东西。
 // **升阻断的条件**：那三条布局 bug 修完，且 used 连跑 5 次全绿——届时把 'used' 加进下面这行即可，
@@ -66,6 +66,16 @@ const VALIDATION_INFRASTRUCTURE_PATTERNS = [
 // 本次不放宽——漏判只是多跑一遍冒烟（安全方向），加进来才需要逐个论证没有门岗挂着它们。
 const DOCS_ONLY_PATTERN = /^(?:docs\/|marketing\/|README[^/]*$|AGENTS\.md$|CLAUDE\.md$)/
 
+// 认得出的路径（2026-10-02，复盘 fixes 行 52、133：新路径悄悄落进「孤立改动 → focused」而漏跑该跑的档）。
+// 默认值反过来：**认不出的路径一律跑全量**，再按事故顺序逐个加性质测试；认得出 = 下面这几类里的某一类。
+// 往这里加一类之前先问「这类路径的改动真的只会影响同目录 sibling 测试吗」，不确定就别加。
+const RECOGNIZED_ROOT_PATTERNS = [
+  /^(?:src|electron|scripts|tests|evals|skills|agent-skills|public|assets|infra|worker|workers|experiments|artifacts|\.claude|\.agents|\.codex|\.superpowers|\.design-sync)\//,
+  /^(?:index|design-lab|director-lab)\.html$/,
+  /^[^/]+\.md$/,
+  /^(?:LICENSE|\.gitignore|\.gitattributes|\.prettierignore|\.prettierrc\.json|\.mcp\.json)$/,
+]
+
 const PACKAGE_PATTERNS = [
   /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.pnpmrc)$/,
   /^electron-builder(?:\.[^/]+)?\.(?:cjs|js|json|ya?ml)$/,
@@ -109,7 +119,31 @@ const JOURNEY_PATTERNS = [
 
 const DESKTOP_PATTERNS = [/^src\/desktop\/bridge\.(?:ts|tsx|js|jsx)$/]
 
+// 「谁决定画布上显示什么」——改它们等于改画布上用户看得见的状态，必须跑 full 画布验收
+// （canvas-landing / canvas-reconcile / batch-production 只在 full 档里）。
+// 来历：#934 改了制作镜头占位的状态判定、#940 / #937 也碰了这一类，只拿到 critical，
+// S5 回归就这样进了 main（画布显示归属那次回归）。清单对着 docs/engineering/concept-owners.json 里
+// 画布显示相关概念的 owner 与写口列的（production.shot-phase / shot-jobs / shot-generation-ownership /
+// run-stop-reason / run-lifecycle-settle / node-run-record），再加画布子树里产出显示的目录。
+// generationCanvas 的每个子目录必须在 scripts/validation-policy.node-test.mjs 里表态
+// （产出显示 → 这里；只管手势 / 样式 → critical），新目录没表态测试就红——
+// 不再靠「想起来再补一个文件名」。
+const CANVAS_DISPLAY_OWNER_PATTERNS = [
+  // 主进程 / 共享层：一镜的阶段、批次成员、认领、停下原因、节点状态
+  /^electron\/shared\/(?:productionShot[^/]*|productionRunStop|decideShotClaim|generationShotEnvelope)(?:\.|$)/,
+  /^electron\/shared\/canvas\//,
+  // 主进程画布落地投影与 Run 状态机（谁写节点运行记录、谁收尾）
+  /^electron\/productionRun\/(?:canvasLandingHost|canvasShotClaim|multiShotCanvasLanding|productionRunCanvasLandingReducer|productionRunLifecycle|productionRunReducer|productionRunProjections|batchScheduleDerivation|batchSchedulerKick|multiShotBatchScheduler)(?:\.|$)/,
+  // 渲染层：落地投影写入点与制作侧的镜头认领 / 动作
+  /^src\/workbench\/capability\/multiShotCanvasLanding(?:\.|$)/,
+  /^src\/workbench\/production\/(?:ProductionCanvasLandingHost|productionCanvasLandingStore|productionShotOwnership|productionShotActions|reportDetachedShotNodes|watchDeletedProductionNodes)(?:\.|$)/,
+  // 画布子树里产出显示的目录（reactFlow 另有自己的 full 规则）
+  /^src\/workbench\/generationCanvas\/(?:nodes|spend|store|runner|model|agent|events|adapters)\//,
+  /^src\/workbench\/generationCanvas\/[^/]+\.(?:ts|tsx)$/,
+]
+
 const CANVAS_PATTERNS = [
+  ...CANVAS_DISPLAY_OWNER_PATTERNS,
   /^src\/workbench\/generationCanvas(?:\/|$)/,
   /^src\/workbench\/settings\/CanvasGestureSection\.tsx$/,
   /^src\/utils\/canvasGesturePreference(?:\.test)?\.ts$/,
@@ -117,6 +151,7 @@ const CANVAS_PATTERNS = [
 ]
 
 const FULL_CANVAS_PATTERNS = [
+  ...CANVAS_DISPLAY_OWNER_PATTERNS,
   /^src\/workbench\/generationCanvas\/reactFlow(?:\/|$)/,
   /^tests\/ux\/(?:canvas-real-suite|react-flow|canvas-drag-pan|group-ports|canvas-shortcuts|canvas-node-context|canvas-context-menu|canvas-batch|canvas-magnetic-handle|canvas-open-fit|selection-toolbar|group-baseline|group-reference).*/,
 ]
@@ -210,6 +245,14 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
   )
   if (ambiguousStructuralChange) {
     return failClosed(files, 'deletion_or_rename_fail_closed')
+  }
+  if (!docsOnly) {
+    const unrecognized = files.find((entry) =>
+      !DOCS_ONLY_PATTERN.test(entry.path)
+      && !matchesAny(entry.path, RECOGNIZED_ROOT_PATTERNS)
+      && !matchesAny(entry.path, VALIDATION_INFRASTRUCTURE_PATTERNS)
+      && !matchesAny(entry.path, PACKAGE_PATTERNS))
+    if (unrecognized) return failClosed(files, `unrecognized_path_fail_closed:${unrecognized.path}`)
   }
   const policy = validationInfrastructure.length > 0
     ? {

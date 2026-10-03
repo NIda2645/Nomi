@@ -1,5 +1,5 @@
 import { capabilitySupportsUndo } from '../../../../electron/shared/agentCapabilities/registry'
-import { redactToolArguments, redactResidentSensitiveText } from '../resident/residentToolText'
+import { redactResidentSensitiveText } from '../resident/residentToolText'
 import { parseQuestionSheet } from '../v4/agentPanelV4Question'
 // Agent lane · 视图投影（纯函数，唯一 owner）
 //
@@ -31,7 +31,6 @@ import {
   isLaneApprovalNote,
   laneApprovalWasRefused,
 } from '../../../../electron/shared/agentLane/laneContracts'
-import { laneToolTextForUser } from '../../../../electron/shared/agentLane/laneToolNextAction'
 import type { LaneToolPublicFailure } from '../../../../electron/shared/agentLane/laneToolFailureEnvelope'
 import type { V4InterventionSource } from '../v4/agentPanelV4Intervention'
 import { resolveModelToolCapabilityId } from '../../../../electron/shared/agentCapabilities/modelFacingToolRegistry'
@@ -63,6 +62,11 @@ export interface LaneViewModelLabels {
    * **两条路都不许把模型正文当文案印出去**：那段字是英文、第三人称、还带 `Next:` 指令。
    */
   toolFailure(text: string, failure?: LaneToolPublicFailure): string | undefined
+  /**
+   * 助手回合带回来的服务商报文 → 面板那一行红字。**原文不进界面**（可能是整段 JSON、带内部分类标记）：
+   * 调用方按失败分类给人话 + 下一步，认不出就说「没见过的错误」。
+   */
+  assistantFailure(text: string): string
   /** 失败的展开体：摘要 + 结构化字段（哪个字段、期望什么类型、合法值）。 */
   toolFailureDetail(failure: LaneToolPublicFailure): string
   /** 思考行左侧那个词。 */
@@ -86,17 +90,6 @@ export interface LaneViewModelLabels {
    * 也不是让整行凭空消失（消失会让人以为这一项不存在）。
    */
   unknown: string
-  /**
-   * 「这个模型不按 token 计费」那句话。三态里的 `not-applicable` 走它（花费行）。
-   *
-   * **本层不给它默认值，也不在 i18n 里预先放一条词条。** 影子期没有任何生产调用方接到
-   * `laneViewModel`（`laneShadowStructure.test.ts` 正是在钉这件事），所以此刻往
-   * `agentPanelV4.*` 里写一条 `contextCostFree` 就是一个谁也到不了的死键——
-   * `check:i18n` 的死键门会直接拦下来，而它拦得对：预先摆一条没人能用的词条，
-   * 和预先摆一段没人调用的代码是同一件事（P1）。接线那一刻由调用方从 i18n 取词传进来，
-   * 与旁边的 `unknown`（今天已经是活的 `agentPanelV4.contextUnknown`）走同一条路。
-   */
-  free: string
   /** 任务卡的标题（「生成任务」）。卡上其余文字全是数字，所以只需要这一句。 */
   taskTitle: string
   /** 「{done} / {total} 阶段」。两个数分开传，是因为不同语言的量词位置不同。 */
@@ -217,8 +210,8 @@ function receiptFor(part: Extract<LanePart, { kind: 'tool-call' }>, labels: Lane
     // 「跑着呢」和「填参数呢」是两件事：`input-available` 说的是参数已经齐了。
     // 结果落定之前不许写 `output-available`——那是在替一件还没发生的事下结论。
     status: part.running ? 'input-available' : 'input-streaming',
-    input: part.args && typeof part.args === 'object' && Object.keys(part.args).length === 0
-      ? undefined : redactToolArguments(part.args) || undefined,
+    // 没有 `input`：入参整段摆出来就是一坨 JSON（带操作 id、供应商路由键）。「做了什么」由上面的
+    // `label` + `summary` 说；原始入参留在转录 / 轨迹里，排查去那儿看，不进面板。
   }
 }
 
@@ -380,7 +373,7 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
     // ——同一句话说两遍是在骗用户，让他以为发生了两件事。收集在上面那一趟预扫里。
     if (part.kind === 'host-note') continue
     if (part.kind === 'error') {
-      push({ kind: 'error', reason: part.text })
+      push({ kind: 'error', reason: labels.assistantFailure(part.text) })
       continue
     }
     if (part.kind === 'task') {
@@ -462,14 +455,15 @@ export function laneViewModel(projection: LaneProjection, labels: LaneViewModelL
             ? (part.failure
               ? redactResidentSensitiveText(labels.toolFailureDetail(part.failure))
               : labels.toolFailure(part.text) && redactResidentSensitiveText(labels.toolFailure(part.text)!)) || undefined
-            : redactResidentSensitiveText(laneToolTextForUser(part.text, part.nextAction)) || undefined },
+            // 成功的回包是给模型读的（英文、带 `User sees:`、可能带 id / JSON），**不进展开体**：「做了什么」
+            // 由这一行的 label + summary 说，撤销钮在行尾；排查去转录 / 轨迹看原文。
+            : undefined },
     }
   }
 
   const { usage } = projection
-  // 花费的 `not-applicable` 有一句比「不渲染」更有用的话：这个模型免费。其余两行没有。
-  const cost = usage.cost.state === 'not-applicable'
-    ? labels.free : metricText(usage.cost, labels.formatCost, labels.unknown)
+  // 花费的 `not-applicable`（这个模型不按 token 计）整行不画：界面不谈钱，不替它说「免费」。
+  const cost = metricText(usage.cost, labels.formatCost, labels.unknown)
   const reasoning = metricText(usage.reasoningTokens, labels.formatTokens, labels.unknown)
   return {
     items: mergeAssistantTextPerTurn(items, turnOf, (at) => skillOfTurn.get(at)),

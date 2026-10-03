@@ -55,10 +55,6 @@ block() {
 
   正确做法：去掉绕过写法，正常提交。
     git commit -m "..."
-  Ponytail 评审已经不在提交时刻跑了（R25，2026-09-15）：交工前跑一次
-    pnpm run review:branch
-  runner 真的不可用时的**唯一明路**是 pnpm run review:branch -- --defer，
-  它留痕进 .claude/ponytail-deferred.log，check:ponytail-review 红到补审为止。
   钩子随 checkout 就在（.claude/settings.json 直指 scripts/claude-hooks/，2026-09-07 起不再需要
   pnpm install）；钩子真的坏了 → 修钩子，不是绕开它。
 EOF

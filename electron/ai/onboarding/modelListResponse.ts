@@ -1,6 +1,7 @@
 import { isJsonRecord, pickUpstreamMessage } from "../../jsonUtils";
 
-export type ModelListFailureKind = "unsupported" | "auth" | "rate_limit" | "network" | "invalid_response" | "upstream";
+// redirect：地址回了跳转，Nomi 为护住密钥没有跟随（与 invalid_response 分开：那条说「内容不是模型列表」，对跳转是错话）。
+export type ModelListFailureKind = "unsupported" | "auth" | "rate_limit" | "network" | "invalid_response" | "upstream" | "redirect";
 
 export type ModelListPage =
   | { ok: true; models: string[]; descriptors?: ModelListDescriptor[]; next?: string; afterId?: string }

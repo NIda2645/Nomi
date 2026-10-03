@@ -8,12 +8,25 @@ import { formatLaneModelIndex } from './laneModelContext.js';
 
 export const LANE_CONTEXT_TOKEN_BUDGET = 80_000;
 const SUMMARY_RESERVE = 5_120;
+/**
+ * pi's cut point counts the retained tail with its own `chars / 4` estimate. Our content is Chinese-first, where one
+ * character is about one token, so that estimate is ~3-4x too low: the default 20k kept ~80k real tokens and a compaction
+ * at 87k barely shrank anything (measured with a real model: 27 of 30 messages retained). Asking for 5k in pi's units
+ * keeps about 20k real tokens. This is pi's own setting, not a second compactor.
+ */
+const KEEP_RECENT_TOKENS = 5_000;
+/**
+ * pi measures the threshold between turns, so the request that crosses it is still sent at full size (measured: trigger 80k
+ * sent 86-90k, one turn of tool results later). The budget is a ceiling per request, so the trigger sits one turn of
+ * headroom (a quarter) below it.
+ */
+const TRIGGER_FRACTION_OF_BUDGET = 0.75;
 
 /** Translate a cost limit to pi's public threshold setting without changing model window facts. */
 export function laneCompactionSettings(window: number, budget = LANE_CONTEXT_TOKEN_BUDGET): CompactionSettings {
   if (!Number.isSafeInteger(budget) || budget <= 0) throw new Error('Lane context token budget must be a positive integer.');
-  const threshold = Math.min(budget, Math.max(1, window - Math.min(16_384, Math.floor(window / 4))));
-  return { enabled: true, reserveTokens: window - threshold, keepRecentTokens: Math.min(20_000, Math.floor(threshold / 4)) };
+  const threshold = Math.min(Math.floor(budget * TRIGGER_FRACTION_OF_BUDGET), Math.max(1, window - Math.min(16_384, Math.floor(window / 4))));
+  return { enabled: true, reserveTokens: window - threshold, keepRecentTokens: Math.min(KEEP_RECENT_TOKENS, Math.floor(threshold / 16)) };
 }
 
 /** pi owns preparation, summary generation, retained tail and the durable compaction entry. */

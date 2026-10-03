@@ -5,9 +5,7 @@ import type { ProjectBinding } from '../shared/projectBinding';
 import type { ProjectAgentAttachmentClaim, ProjectAgentAttachmentRef } from '../shared/workbenchInput'
 import fs from "node:fs";
 import crypto from "node:crypto";
-import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
 import type { ProviderNetworkConfig } from "../providerNetwork";
 import { fetchProviderMedia } from "./providerMediaFetch";
 import { isJsonRecord, nowIso, type JsonRecord } from "../jsonUtils";
@@ -35,8 +33,7 @@ import {
 } from "./assetPaths";
 import { contentTypeFromMagicBytes, isCertifiableMediaContentType, isMarkupMasquerade, resolveContentType } from "./mediaTypes";
 import { validateGlbStructure } from "./model3dValidation";
-import { resolveFfmpegPath } from "../export/ffmpegRunner";
-import { MEDIA_DECODER_PROTOCOL_WHITELIST } from "../export/mediaProbe";
+import { generatedMediaValidationError, verifyGeneratedMediaDecodes } from "./generatedMediaDecode";
 import type { CertificationMediaEvidence } from "../providerAdapter/certificationMedia";
 
 import type { UsageStatus, IntendedRole } from "../connectors/connectorDefinition";
@@ -113,7 +110,7 @@ function generatedMediaKind(contentType: string): "image" | "video" | "audio" | 
 function validatedGeneratedMeta(meta: JsonRecord, declaredRaw: string, bytes: Uint8Array, sourcePath?: string): JsonRecord {
   if (String(meta.kind || "").toLowerCase() !== "generated") return meta;
   if (isMarkupMasquerade(bytes)) {
-    throw new Error("Generated media validation failed (markup_masquerade)");
+    throw generatedMediaValidationError("markup_masquerade");
   }
   const detected = bytes.byteLength >= 12 && Buffer.from(bytes.subarray(0, 4)).toString("ascii") === "glTF"
     ? "model/gltf-binary"
@@ -124,16 +121,16 @@ function validatedGeneratedMeta(meta: JsonRecord, declaredRaw: string, bytes: Ui
     : normalizedDeclared;
   const expectedKind = generatedMediaKind(declared);
   if (!expectedKind) return meta;
-  if (!detected) throw new Error("Generated media validation failed (unknown_bytes)");
+  if (!detected) throw generatedMediaValidationError("unknown_bytes");
   const detectedKind = generatedMediaKind(detected);
   const ambiguousAudioContainer = expectedKind === "audio"
     && (declared === "audio/mp4" && detected === "video/mp4"
       || declared === "audio/webm" && detected === "video/webm");
   if (!detectedKind || (detectedKind !== expectedKind && !ambiguousAudioContainer)) {
-    throw new Error("Generated media validation failed (kind_mismatch)");
+    throw generatedMediaValidationError("kind_mismatch");
   }
   if (!isCertifiableMediaContentType(detected) && !ambiguousAudioContainer) {
-    throw new Error("Generated media validation failed (unsupported_format)");
+    throw generatedMediaValidationError("unsupported_format");
   }
   const claimed = meta.certificationEvidence && typeof meta.certificationEvidence === "object"
     ? meta.certificationEvidence as Partial<CertificationMediaEvidence>
@@ -143,37 +140,16 @@ function validatedGeneratedMeta(meta: JsonRecord, declaredRaw: string, bytes: Ui
   if (claimed) {
     const digest = crypto.createHash("sha256").update(bytes).digest("hex");
     if (claimed.sha256 !== digest || claimed.byteLength !== bytes.byteLength || claimed.kind !== expectedKind
-      || claimed.contentType !== declared) throw new Error("Generated media validation failed (evidence_mismatch)");
+      || claimed.contentType !== declared) throw generatedMediaValidationError("evidence_mismatch");
     return cleanMeta;
   }
   if (expectedKind === "model3d") {
     validateGlbStructure(bytes);
     return cleanMeta;
   }
-  const map = expectedKind === "audio" ? "0:a:0" : "0:v:0";
-  const decodeLimit = expectedKind === "video" ? ["-frames:v", "1"] : expectedKind === "audio" ? ["-t", "1"] : ["-frames:v", "1"];
-  // MP4/MOV commonly stores its index (moov atom) at the end of the file.
-  // Feeding such a container through stdin makes ffmpeg report "partial file"
-  // because a pipe cannot seek. Validate the exact bytes from a 0600 temporary
-  // file when the caller has not already got a Nomi-owned path.
-  let validationPath = sourcePath;
-  let validationDir = "";
-  if (!validationPath || !fs.existsSync(validationPath)) {
-    validationDir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-generated-validation-"));
-    validationPath = path.join(validationDir, "artifact.media");
-    fs.writeFileSync(validationPath, Buffer.from(bytes), { mode: 0o600, flag: "wx" });
-  }
-  try {
-    const result = spawnSync(resolveFfmpegPath(), [
-      "-hide_banner", "-v", "error", "-xerror", "-err_detect", "explode",
-      "-protocol_whitelist", MEDIA_DECODER_PROTOCOL_WHITELIST,
-      "-i", validationPath, "-map", map, ...decodeLimit, "-f", "null", "-",
-    ], { timeout: 12_000, maxBuffer: 64 * 1024, windowsHide: true });
-    if (result.error || result.status !== 0) throw new Error("Generated media validation failed (decode_failed)");
-    return cleanMeta;
-  } finally {
-    if (validationDir) removeScratchAfterUseSync(validationDir);
-  }
+  // 「这份字节能不能解码」由 generatedMediaDecode 一处裁决（判据、超时、日志都在那里）；这里只问、不评。
+  verifyGeneratedMediaDecodes({ kind: expectedKind, bytes, ...(sourcePath ? { sourcePath } : {}), contentType: detected });
+  return cleanMeta;
 }
 
 /**

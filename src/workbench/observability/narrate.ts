@@ -122,12 +122,24 @@ export type GenerationErrorKind =
   // 同族第三条：请求带着密钥，但目的地不是用户保存这把 key 时确认过的 origin。没有计费，
   // 也没有网络要修——下一步是回接入页重新保存一次密钥（那一页是这条连接地址的唯一家）。
   | 'outbound-blocked-credential-origin'
+  // 带密钥的请求被服务商地址跳转了，Nomi 不跟随（防止自定义鉴权头 / POST 正文被带去另一个网站）。
+  // 请求已经到过用户配置的地址，所以不在 NEVER_SENT_KINDS——花没花钱 Nomi 不替它说。
+  | 'credential-redirect'
   | 'server'
   | 'input'
   | 'output-truncated'
+  // 供应商**已经把结果发回来了**，但 Nomi 在本机没能把这个文件读出来（解码不出画面 / 认不出格式 /
+  // 是网页冒充的）。与 unknown 分开：unknown 的说法是「可能是服务商临时故障或额度问题，换一个模型」——
+  // 对一份已经送达的产物，那是把我们这一侧读文件失败栽给服务商，还劝用户换一家（2026-09-29 Seedream 5.0）。
+  // 机器码 NOMI_ERR::output-unreadable::（electron/assets/generatedMediaDecode.ts 抛），不靠英文句子认。
+  | 'output-unreadable'
+  // 付费提交发出后没拿到回复（连接被重置 / 响应超时 / 提交途中进程退出）：供应商**可能已经收下**。
+  // 与 network 分开：network 说「请求没发到」，对这一类是假话；而且重试 = 可能重复提交，所以不给重试按钮。
+  | 'submission-unknown'
   | 'unknown'
 
-const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
+/** 目录（generationCommon.observability.error）里每一类失败的词条 key——单源；noChargeClaims.test 也读它。 */
+export const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   auth: 'auth',
   balance: 'balance',
   quota: 'quota',
@@ -148,9 +160,12 @@ const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   'outbound-blocked': 'outboundBlocked',
   'outbound-blocked-submit': 'outboundBlockedSubmit',
   'outbound-blocked-credential-origin': 'outboundBlockedCredentialOrigin',
+  'credential-redirect': 'credentialRedirect',
   server: 'server',
   input: 'input',
   'output-truncated': 'outputTruncated',
+  'output-unreadable': 'outputUnreadable',
+  'submission-unknown': 'submissionUnknown',
   unknown: 'unknown',
 }
 
@@ -165,12 +180,12 @@ export function narrateGenerationError(
 ): { reason: string; hint: string } {
   const key = ERROR_KEY_BY_KIND[kind]
   const reason = i18n.t(`generationCommon.observability.error.${key}.reason`, params)
-  // These failures occur before the provider is called; never infer billing from a generic failure.
-  const uncharged = kind === 'outbound-blocked-submit' || kind === 'outbound-blocked-credential-origin'
-    || kind === 'asset-upload-failed' || kind === 'asset-invalid'
+  // 认不出的失败：服务商给了错误码就把码带进说明（不编原因，码是用户和我们排查的入口）。
+  const hintKey = kind === 'unknown' && params?.code ? 'hintWithCode' : 'hint'
   return {
-    reason: uncharged ? `${reason} · ${i18n.t('generationCommon.observability.progress.notCharged')}` : reason,
-    hint: i18n.t(`generationCommon.observability.error.${key}.hint`, params),
+    // 标题只说失败的原因，不附「未计费」：现在都走中转站，扣没扣钱 Nomi 不知道，只说失败原因和下一步。
+    reason,
+    hint: i18n.t(`generationCommon.observability.error.${key}.${hintKey}`, params),
   }
 }
 
@@ -195,7 +210,7 @@ export function narrateModelKind(kind: string): string {
 // fix-model-kind：**直接把缺口补上**（改类型 + 按新类型重建调用通道），不是又把用户送去某一页
 // 自己找。这是这次唯一新增的动作——因为它是唯一一类「我们确切知道哪里错、也确切知道怎么改对」的
 // 失败。其余类别我们只知道现象、改不动，所以只能给「去哪儿」或「换一个」。
-export type GenerationErrorAction = 'retry' | 'switch-model' | 'open-model-access' | 'fix-model-kind' | 'reconcile' | 'view-task'
+export type GenerationErrorAction = 'retry' | 'switch-model' | 'open-model-access' | 'fix-model-kind' | 'reconcile' | 'view-task' | 'release-regenerate'
 
 // 每类的主动作 + 次动作都写在表里（2026-09-29 起）。次动作默认是「另一个最可能有用的」：主动作不是重试 →
 // 次给重试（想试还能试，不堵死用户）；主动作就是重试 → 次给换模型（等不及就换一家）。下面三个常量就是这条
@@ -245,6 +260,8 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorActions> = {
   // 同样送去模型接入——但要做的是**重新保存密钥**，不是看代理（hint 里写清）。绝不给 retry 当主动作：
   // 地址没改回来之前，重试一万次都是同一堵墙。
   'outbound-blocked-credential-origin': ACCESS_FIRST,
+  // 地址得改（去模型接入改成跳转后的地址）；不改，重试一万次都是同一个跳转。
+  'credential-redirect': ACCESS_FIRST,
   quota: RETRY_FIRST,
   'poll-timeout': RETRY_FIRST,
   network: RETRY_FIRST,
@@ -253,8 +270,58 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorActions> = {
   'content-policy': RETRY_FIRST,
   input: RETRY_FIRST,
   'output-truncated': RETRY_FIRST,
+  // 只有重试：读不出来发生在我们这一侧，换供应商不是它的解法，更不能把它说成服务商的失败。
+  'output-unreadable': { primary: 'retry', secondary: null },
+  // 不给一键重试：这一镜可能已经被服务商收下，重试可能重复提交。次动作「我核对过了，重新生成」点下去先展开一段确认，
+  // 确认后只释放占用、再走正常的付费确认卡；主动作指路去任务中心看这一笔的时间 / 模型 / 服务商。
+  'submission-unknown': { primary: 'reconcile', secondary: 'release-regenerate' },
   unknown: RETRY_FIRST,
 }
+
+/**
+ * 这一类失败是不是「服务商那一侧的事」。任何一句点名供应商说「它失败了」的话（切家提示：「某某家：原因。建议」）
+ * 都必须先过这一问——我们自己这一侧的失败（读不出产物 / 素材本身不行 / 我们的出站策略拦了 / 目录没配好 / 类型登记错 /
+ * 模型已下线 / 输出被截断）点名供应商就是栽赃，换一家也不是它的解法（2026-09-29 pb06：本机判失败之后提示劝换一家）。
+ * 穷举 Record：新增一类不回答这个问题 → typecheck 红（同上面的动作表）。
+ * `unknown` 例外由分类器按证据定（有供应商说的话才算）——这里只给它一个保守的 false。
+ */
+const VENDOR_SIDE_BY_KIND: Record<GenerationErrorKind, boolean> = {
+  auth: true,
+  balance: true,
+  quota: true,
+  'poll-timeout': true,
+  network: true,
+  'model-config': false,
+  'model-kind-mismatch': false,
+  'model-not-open': true,
+  'model-unavailable-upstream': true,
+  'model-retired': false,
+  'image-route-disabled': true,
+  'account-gate': true,
+  'content-policy': true,
+  'input-image-blocked': true,
+  'asset-upload-failed': false,
+  'asset-too-large': true,
+  'asset-invalid': false,
+  'outbound-blocked': false,
+  'outbound-blocked-submit': false,
+  'outbound-blocked-credential-origin': false,
+  'credential-redirect': false,
+  server: true,
+  input: true,
+  'output-truncated': false,
+  'output-unreadable': false,
+  // 服务商是否收下 Nomi 并不知道，不替它定性（也不触发「换一家」的切家提示）。
+  'submission-unknown': false,
+  unknown: false,
+}
+
+export function narrateIsVendorSideFailure(kind: GenerationErrorKind): boolean {
+  return VENDOR_SIDE_BY_KIND[kind]
+}
+
+/** 全部失败类别——就是上面那张穷举表的键，不另抄一份（单测 / 走查要遍历「目录能说的每一句」时读它）。 */
+export const GENERATION_ERROR_KINDS = Object.keys(VENDOR_SIDE_BY_KIND) as readonly GenerationErrorKind[]
 
 /** 主动作 + 次动作（都出自上面那张表）。次动作 `null` = 不摆第二颗按钮。 */
 export function narrateGenerationErrorActions(kind: GenerationErrorKind): {
@@ -272,6 +339,7 @@ const ACTION_KEY: Record<GenerationErrorAction, string> = {
   retry: 'retry',
   reconcile: 'reconcile',
   'view-task': 'viewTask',
+  'release-regenerate': 'releaseRegenerate',
 }
 
 /** 动作按钮文案（次动作用 `.alt` 变体，如「仍要重试」——避免和主按钮读起来一样重）。

@@ -4,8 +4,3 @@ import { toast } from '../ui/toast'
 export function showInfoToast(message: string, id?: string): void {
   toast(message, 'info', id)
 }
-
-/** Stable identity for one provider-recovery transition; repeated effects update one toast. */
-export function providerSwitchToastId(parts: readonly string[]): string {
-  return ['provider-disconnected-switched', ...parts].map((part) => encodeURIComponent(part)).join(':')
-}

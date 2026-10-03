@@ -62,7 +62,7 @@ const files = [
   '.github/ISSUE_TEMPLATE/business_inquiry.yml',
   'marketing/quickstart.html',
   'marketing/en/quickstart.html',
-  'marketing/handbook.html',
+  'marketing/_redirects',
 ]
 
 expect(/<html lang="zh-CN">/.test(zh), 'Chinese lang is static')
@@ -171,7 +171,7 @@ expect(!fs.existsSync(path.join(root, 'marketing/assets/vendor/ScrollTrigger.min
 expect(sitemap.includes('<loc>https://nomiaqm.com/en/</loc>'), 'English route is in sitemap')
 expect(sitemap.includes('<loc>https://nomiaqm.com/quickstart</loc>'), 'clean quickstart route is in sitemap')
 expect(sitemap.includes('<loc>https://nomiaqm.com/en/quickstart</loc>'), 'English quickstart route is in sitemap')
-expect(sitemap.includes('<loc>https://nomiaqm.com/handbook</loc>'), 'clean handbook route is in sitemap')
+expect(!sitemap.includes('/handbook'), 'the retired handbook route is not in the sitemap (it 301s to /quickstart)')
 expect(!sitemap.includes('/quickstart.html') && !sitemap.includes('/handbook.html'), 'legacy onboarding routes are absent from sitemap')
 expect(zh.includes('social-preview-zh.jpg') && zhQuickstart.includes('social-preview-zh.jpg'), 'Chinese social card')
 expect(en.includes('social-preview-en.jpg') && enQuickstart.includes('social-preview-en.jpg'), 'English social card')

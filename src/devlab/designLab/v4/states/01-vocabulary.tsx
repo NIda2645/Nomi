@@ -118,6 +118,7 @@ function labViewModelLabels(fx: ReturnType<typeof useV4Fixtures>, toolLabel: str
     toolSummary: () => undefined,
     toolFailure: () => undefined,
     toolFailureDetail: (failure) => failure.code,
+    assistantFailure: (text) => text,
     thinkingLabel: fx.t('agentPanelV4.thinkingLabel'),
     formatTokens: (value) => String(value),
     formatCost: (usd) => `$${usd.toFixed(2)}`,
@@ -126,7 +127,6 @@ function labViewModelLabels(fx: ReturnType<typeof useV4Fixtures>, toolLabel: str
     // 3c 的重试行：两个数由调用方填（语序问题），这一格永不渲染重试行，给最朴素的形状。
     retryLabel: (attempt, maxAttempts) => `${attempt}/${maxAttempts}`,
     unknown: fx.t('agentPanelV4.contextUnknown'),
-    free: fx.t('agentPanelV4.contextUnknown'),
     // 任务卡的四个词条。这一格只画工具收据，一条 task 段都没有，所以它们永远不会被渲染——
     // 但类型要求穷尽，而穷尽正是它的价值：哪天这一格接上任务卡，缺的那句话是编译错误，
     // 不是画面上的一块空白。

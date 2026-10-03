@@ -255,7 +255,9 @@ export async function materializeShots(payload: MaterializeShotsPayload): Promis
         return {
           clientId: shot.shotId,
           kind,
-          title: (shot.title || '').trim() || i18n.t('generationCommon.production.canvasLanding.shotFallbackTitle', { shot: shot.shotId }),
+          // 没标题时说「镜头 N」（N = 这一批里的顺序），**不**回退成 shotId：shotId 是候选/事务的内部标识
+          // （`cand-op-…`），印成节点标题用户读不懂，也不是他起的名字。
+          title: (shot.title || '').trim() || i18n.t('generationCommon.production.canvasLanding.shotFallbackTitle', { shot: ordered.indexOf(shot) + 1 }),
           prompt: typeof shot.prompt === 'string' ? shot.prompt : '',
           // 候选的模型身份：节点模型以它为准（写边界 buildPlannedNodeMeta 负责校验+补全档案参数）。
           ...candidateNodeArgs(shot.candidate),

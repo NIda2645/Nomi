@@ -37,7 +37,7 @@ test('正确写法与无关用法一条都不许误伤', () => {
     'if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) main()',
     'if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main()',
     'if (process.argv[1] === url.fileURLToPath(import.meta.url)) main()',
-    // ponytail 三个脚本：先转换好存变量，再比
+    // 先转换好存变量，再比
     "const invokedPath = process.argv[1] ? pathToFileURL(path.resolve(process.argv[1])).href : ''\nif (import.meta.url === invokedPath) main()",
     // 注释、报错文案里提到坏写法：是字符串 / 注释，不是代码
     '// 手拼 `file://${argv[1]}` 在 Windows 上永远不等',

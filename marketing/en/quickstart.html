@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Nomi quick start: from download to your first shot</title>
-<meta name="description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ." />
+<meta name="description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what to make, then keep the good takes and export. FAQ: cost, GPU, privacy." />
 <meta name="robots" content="index,follow,max-image-preview:large" />
 <meta name="theme-color" content="#faf9f6" />
 <link rel="canonical" href="https://nomiaqm.com/en/quickstart" />
@@ -15,16 +15,16 @@
 <meta property="og:site_name" content="Nomi" />
 <meta property="og:locale" content="en_US" />
 <meta property="og:title" content="Nomi quick start: from download to your first shot" />
-<meta property="og:description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ." />
+<meta property="og:description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what to make, then keep the good takes and export. FAQ: cost, GPU, privacy." />
 <meta property="og:url" content="https://nomiaqm.com/en/quickstart" />
 <meta property="og:image" content="https://nomiaqm.com/assets/social-preview-en.jpg" />
 <meta property="og:image:alt" content="Nomi quick start" />
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:title" content="Nomi quick start: from download to your first shot" />
-<meta name="twitter:description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ." />
+<meta name="twitter:description" content="Get started with Nomi in four steps: install, connect a model, tell the agent what to make, then keep the good takes and export. FAQ: cost, GPU, privacy." />
 <meta name="twitter:image" content="https://nomiaqm.com/assets/social-preview-en.jpg" />
 <meta name="twitter:image:alt" content="Nomi quick start" />
-<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/en/quickstart","url":"https://nomiaqm.com/en/quickstart","name":"Nomi quick start: from download to your first shot","description":"Get started with Nomi in four steps: install, connect a model, tell the agent what you want to make, then keep the good takes and export. Plus: cost, GPU, and privacy FAQ.","inLanguage":"en","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/social-preview-en.jpg"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.22.5","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"}]}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://nomiaqm.com/#website","name":"Nomi","url":"https://nomiaqm.com/","inLanguage":["zh-CN","en"]},{"@type":"WebPage","@id":"https://nomiaqm.com/en/quickstart","url":"https://nomiaqm.com/en/quickstart","name":"Nomi quick start: from download to your first shot","description":"Get started with Nomi in four steps: install, connect a model, tell the agent what to make, then keep the good takes and export. FAQ: cost, GPU, privacy.","inLanguage":"en","isPartOf":{"@id":"https://nomiaqm.com/#website"},"about":{"@id":"https://nomiaqm.com/#application"},"primaryImageOfPage":{"@type":"ImageObject","contentUrl":"https://nomiaqm.com/assets/social-preview-en.jpg"}},{"@type":"SoftwareApplication","@id":"https://nomiaqm.com/#application","name":"Nomi","applicationCategory":"MultimediaApplication","operatingSystem":"macOS, Windows","codeRepository":"https://github.com/aqm857886159/Nomi","license":"https://www.gnu.org/licenses/agpl-3.0.html","url":"https://nomiaqm.com/","softwareVersion":"0.22.5","downloadUrl":"https://github.com/aqm857886159/Nomi/releases/latest"}]}</script>
 <link rel="icon" type="image/svg+xml" href="/assets/nomi-logo.svg" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -120,18 +120,19 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
 
 .site-header { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--ground) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid var(--line-soft); }
 .nav { display: flex; align-items: center; gap: 28px; height: 60px; }
-.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; }
+.brand { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; flex-shrink: 0; }
 .wordmark { font-family: var(--font-en); font-weight: 600; font-size: 24px; letter-spacing: -0.01em; line-height: 1; }
 .wordmark span { color: var(--accent); }
 .wordmark.small { font-size: 20px; }
 .nav-links { display: flex; gap: 22px; font-family: var(--font-ui); font-size: 14px; color: var(--ink-3); }
-.nav-links a { text-decoration: none; }
+.nav-links a { text-decoration: none; white-space: nowrap; }
 .nav-links a:hover, .nav-links a[aria-current="page"] { color: var(--ink); }
-.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
-.locale { font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; text-decoration: none; }
+.nav-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.locale { font-family: var(--font-ui); font-size: 13px; color: var(--ink-3); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; text-decoration: none; white-space: nowrap; }
 .locale:hover { color: var(--ink); border-color: var(--ink-4); }
 .menu-toggle { display: none; font-family: var(--font-ui); font-size: 13px; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; color: var(--ink); cursor: pointer; }
-@media (max-width: 760px) {
+/* 英文导航最宽，要 820px 才放得下；860px 以下收成「菜单」按钮，中英文用同一个断点。 */
+@media (max-width: 860px) {
   .menu-toggle { display: inline-flex; }
   .nav-links { display: none; position: absolute; top: 60px; left: 0; right: 0; flex-direction: column; gap: 0; background: var(--ground); border-bottom: 1px solid var(--line); padding: 8px 16px 16px; }
   .nav-links.open { display: flex; }
@@ -146,6 +147,7 @@ html[lang="en"] h2 { font-family: var(--font-en); font-weight: 600; letter-spaci
 .footer { padding-block: 40px 56px; font-family: var(--font-ui); font-size: 13px; color: var(--ink-4); }
 .footer .wrap { display: flex; flex-wrap: wrap; gap: 10px 26px; align-items: center; }
 .footer a { text-decoration: none; }
+.footer-links { display: flex; flex-wrap: wrap; gap: 10px 20px; }
 .footer a:hover { color: var(--ink); }
 
 .download-options { display: grid; gap: 8px; margin-top: 14px; }
@@ -188,8 +190,12 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
 .faq summary::after { content: "+"; font-family: var(--font-ui); font-weight: 400; color: var(--ink-4); }
 .faq details[open] summary::after { content: "–"; }
 .faq p { margin: 10px 0 0; color: var(--ink-2); max-width: 44em; }
-.more { margin: 28px 0 0; color: var(--ink-3); font-size: 15px; }
-.more a { color: var(--accent); }
+.routes { margin-top: 16px; display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.route { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px 18px; scroll-margin-top: 80px; }
+.route h3 { margin: 0; font-size: 17px; line-height: 1.4; }
+.route p { margin: 6px 0 0; font-size: 15px; color: var(--ink-2); }
+.route a { display: inline-block; margin-top: 8px; font-family: var(--font-ui); font-size: 14px; font-weight: 600; color: var(--accent); text-decoration: none; }
+.next-links { margin-top: 16px; display: flex; flex-wrap: wrap; gap: 10px; }
 </style>
 </head>
 <body class="page-quickstart">
@@ -198,9 +204,11 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
   <nav class="nav wrap" aria-label="Primary navigation">
     <a class="brand" href="/en/" aria-label="Nomi"><img src="/assets/nomi-logo.svg" width="26" height="26" alt="" /><span class="wordmark">No<span>mi</span></span></a>
     <div class="nav-links" id="nav-links">
-      <a href="/en/#features">Features</a>
-      <a href="/en/quickstart" aria-current="page">Quick start</a>
-      <a href="/en/#open">Open source</a>
+      <a href="/en/features">Features</a>
+      <a href="/en/models">Models</a>
+      <a href="/en/prompts">Prompts</a>
+      <a href="/en/skills">Skills</a>
+      <a href="/en/quickstart" aria-current="page">Get started</a>
       <a href="/en/#community">Community</a>
     </div>
     <div class="nav-actions">
@@ -252,17 +260,58 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
       </div>
       <div class="shot"><img src="/assets/promo-0.22/still-storyboard.jpg" alt="All four shots generated in the storyboard" width="1920" height="1080" /></div>
     </li></ol>
+    <div class="block-head faq-head" id="routes"><h2>I want to do X — which way?</h2></div>
+    <div class="routes"><article class="route" id="route-same-face">
+      <h3>Keep the same person in every shot</h3>
+      <p>Lock a reference card for the character. Every storyboard shot that uses it carries the reference, so the model knows it is the same person.</p>
+      <a href="/en/skills#character-and-scene">Character and scene recipes →</a>
+    </article>
+<article class="route" id="route-blocking">
+      <h3>Control who stands where and which way they face</h3>
+      <p>Open the 3D director’s stage, pose the characters, place the camera and frame it with your phone; the frame returns to the canvas as the shot’s first frame.</p>
+      <a href="/en/features#director">3D director’s stage →</a>
+    </article>
+<article class="route" id="route-camera">
+      <h3>Make the camera move</h3>
+      <p>Pick a move under Camera in the prompt library (dolly in, pull back, pan, follow, orbit…) and apply it to the shot or copy it into your prompt.</p>
+      <a href="/en/prompts/camera">Camera prompts →</a>
+    </article>
+<article class="route" id="route-pick-model">
+      <h3>Not sure which model to use</h3>
+      <p>Start with the model library: modes, reference limits, durations and where to connect each model, all on one page.</p>
+      <a href="/en/models">Models →</a>
+    </article>
+<article class="route" id="route-sound">
+      <h3>Add captions and music</h3>
+      <p>Switch to Preview and use “+ Captions” and “+ Music” under the timeline, then export MP4.</p>
+      
+    </article>
+<article class="route" id="route-lip-sync">
+      <h3>Precise lip sync</h3>
+      <p>Not supported yet. For shots that need it, make them in another tool and import the result.</p>
+      
+    </article></div>
+    <div class="block-head faq-head" id="stuck"><h2>If you get stuck</h2></div>
+    <div class="faq"><details id="stuck-no-generate"><summary>I connected a model but cannot generate</summary><p>Check whether the model picker marks the model as unavailable and why: usually the key is wrong or that provider has not enabled the model for you. Switch to another provider or enable it in the provider’s console.</p></details><details id="stuck-faces-differ"><summary>The face changes from shot to shot</summary><p>Check that the shots are connected to the character’s reference card. Without it the model does not know who it is; connect it and regenerate those shots.</p></details><details id="stuck-agent-stops"><summary>The agent stopped halfway</summary><p>On long tasks it pauses to confirm, especially before spending money. Read what it is asking and reply “continue”.</p></details></div>
     <div class="block-head faq-head"><h2>FAQ</h2></div>
     <div class="faq"><details><summary>How much does it cost?</summary><p>Nomi itself is free. Generation costs whatever your provider charges, settled directly between you and them. Free models (some on ModelScope, for example) and local ComfyUI cost nothing.</p></details><details><summary>Do I need a GPU?</summary><p>No. By default Nomi uses cloud APIs, so an ordinary laptop is enough. Local ComfyUI is optional — add it if you have a GPU and want to save money.</p></details><details><summary>Is my footage uploaded?</summary><p>Projects live on your own computer. Only when you call an external model does the content that generation needs go to the provider you configured.</p></details><details><summary>Can the agent hand me a finished film?</summary><p>It can go from one sentence to characters, keyframes and video, and lay them on the timeline. Export is still one click by you. On long tasks it may pause to check in — reply “continue”.</p></details></div>
-    <p class="more">Want the detailed walkthrough? <a href="/handbook">Chinese handbook</a> · <a href="https://github.com/aqm857886159/Nomi/blob/main/docs/guide/capability-core-cli-mcp.md" target="_blank" rel="noreferrer">MCP guide</a></p>
+    <div class="block-head faq-head"><h2>Keep going</h2></div>
+    <div class="next-links"><a class="button quiet" href="/en/features">All features</a><a class="button quiet" href="/en/models">Models</a><a class="button quiet" href="/en/prompts">Prompts</a><a class="button quiet" href="/en/skills">Skills</a><a class="button quiet" href="https://github.com/aqm857886159/Nomi/blob/main/docs/guide/capability-core-cli-mcp.md" target="_blank" rel="noreferrer">MCP guide ↗</a></div>
   </div>
 </section>
 </main>
 <footer class="footer">
   <div class="wrap">
     <span class="wordmark small">No<span>mi</span></span>
+    <nav class="footer-links" aria-label="Site navigation">
+      <a href="/en/features">Features</a>
+      <a href="/en/models">Models</a>
+      <a href="/en/prompts">Prompts</a>
+      <a href="/en/skills">Skills</a>
+      <a href="/en/quickstart">Get started</a>
+    </nav>
+    <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">Source on GitHub</a>
     <a href="https://www.gnu.org/licenses/agpl-3.0.html" target="_blank" rel="noreferrer">Open source · AGPL-3.0</a>
-    <a href="https://github.com/aqm857886159/Nomi" target="_blank" rel="noreferrer">GitHub</a>
     <a href="https://github.com/aqm857886159/Nomi/releases" target="_blank" rel="noreferrer">Release notes</a>
     <a href="https://x.com/sdf297417627618" target="_blank" rel="noreferrer">X / Twitter</a>
     <a href="/quickstart" data-locale-choice="zh-CN">简体中文</a>
@@ -344,6 +393,23 @@ dialog::backdrop { background: rgb(20 18 16 / 0.45); }
       menuToggle?.focus()
     }
   })
+
+  // 库页面的「复制」：复制按钮指向的那块提示词原文；剪贴板被拒时退回「选中它」，让人自己按复制。
+  document.querySelectorAll('[data-copy]').forEach((button) => button.addEventListener('click', async () => {
+    const source = document.getElementById(button.dataset.copy)
+    if (!source) return
+    try {
+      await navigator.clipboard.writeText(source.innerText.trim())
+      button.dataset.copied = 'true'
+      setTimeout(() => { delete button.dataset.copied }, 1600)
+    } catch {
+      const range = document.createRange()
+      range.selectNodeContents(source)
+      const selection = window.getSelection()
+      selection?.removeAllRanges()
+      selection?.addRange(range)
+    }
+  }))
 
   document.querySelectorAll('dialog').forEach((dialog) => {
     dialog.querySelector('.dialog-close')?.addEventListener('click', () => dialog.close())

@@ -200,3 +200,19 @@ describe('push 绕口留痕：必须归因到 parser 已识别的每个目标 wo
     assertBypassRecord(treeB.root, command)
   })
 })
+
+// 2026-10-02（复盘 fixes 行 100）：已经在某个远端跟踪分支上的提交，再推（打 tag、推到别的远端分支）不带新内容，不要戳。
+describe('push 闸：不带新内容的推送不要戳', () => {
+  test('HEAD 的提交都已在远端跟踪分支上 → 放行；多一个新提交就重新要戳', () => {
+    const origin = path.join(sandbox, 'origin')
+    const tree = makeWorktree(origin, 'tree-c')
+    fs.rmSync(tree.marker, { force: true })
+    assert.equal(runHook(`cd ${tree.root} && git push`).status, 2, '有新提交又没戳，应当被拦')
+    git(origin, 'update-ref', 'refs/remotes/origin/feature-c', git(tree.root, 'rev-parse', 'HEAD'))
+    assert.equal(runHook(`cd ${tree.root} && git push origin v1.2.3`).status, 0, '提交已在远端跟踪分支上，不该要戳')
+    fs.writeFileSync(path.join(tree.root, 'probe-new.ts'), 'export const fresh = 1\n')
+    git(tree.root, 'add', 'probe-new.ts')
+    git(tree.root, '-c', 'commit.gpgsign=false', 'commit', '-q', '--no-verify', '-m', 'probe: brand new code')
+    assert.equal(runHook(`cd ${tree.root} && git push`).status, 2, '出现远端不认识的新提交，仍要戳')
+  })
+})

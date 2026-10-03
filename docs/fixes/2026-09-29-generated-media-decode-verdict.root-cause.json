@@ -1,0 +1,158 @@
+{
+  "schema_version": 3,
+  "id": "2026-09-29-generated-media-decode-verdict",
+  "problem_type": "供应商已经把图发回来（并计了费），Nomi 却判 decode_failed：「这份字节能不能解码」被答成了「解码器有没有一句抱怨」",
+  "symptom": "2026-09-29 全功能走查 U15 与付费真机验收报的现象：Seedream 5.0 出了一张图（供应商侧已完成、已计费），Nomi 在落地校验处判 Generated media validation failed (decode_failed)，节点落失败卡，还劝用户切到另一家——用户为一张已经拿到的图再付一次钱，还被指去怪供应商。零花费的同类复现（随包 ffmpeg 4.1，脚本等价于 generatedMediaDecode.test.ts 里现场编码的用例）：一张完整、可显示的 PNG，只要 IEND 之后多了 100 个字节，旧判据（-xerror -err_detect explode）就整张拒收；末尾被截短的 JPEG 会被 explode 拒收；单独的 -xerror 与单独的 -err_detect explode 各自拒收一类可显示的图，所以两个开关都不能留。注意：那张真实的图我们没有拿到（要用户的真实密钥，本次没碰），真实产物落在这一类里的哪一种没有核实——付费小额走查 pb90（NOMI_SPEND_OK=1）拿到字节才对得上；修法不依赖对上哪一种。",
+  "direct_cause": "electron/assets/projectAssetStore.ts 的 validatedGeneratedMeta 把「能不能解码」内联成一次 ffmpeg -v error -xerror -err_detect explode … -f null -，退出码非 0 就抛 decode_failed，固定 12 秒超时。这条判据问的是「解码器一句抱怨都没有」：-xerror = 任何一个解码错误（包括第一帧之后的尾包错误）都退出，-err_detect explode = 碰到最轻微的异常就中止（ffmpeg 官方文档原话：Stop and exit on error / abort decoding on minor error detection）；用户要的是「我能不能拿到这张图」。三个后果：① 完整可显示、只是带了解码器不喜欢的东西的图整张被拒收；② 12 秒固定上限把「大文件在忙的机器上读得慢」也判成文件坏了；③ ffmpeg 的原话一个字没留（无从诊断），抛出的英文串没有机器码——渲染层只能把它当成一次普通失败，落进「可能是服务商临时故障，换一个模型」的通用建议（把本机的判定栽给了供应商，见 2026-09-29-failure-reason-from-upstream-evidence）。",
+  "class_root": "「这个产物能不能用」是主进程对一份字节的事实，却由一个间接的东西回答（退出码 = 解码器有没有抱怨），判据没有归属、没有名字、没有留证：证据（解码器有没有产出画面）和噪声（解码器的措辞、尾数据、辅助段）混在同一个退出码里，谁也看不见判决是怎么下的。同一个形状在仓库里还有两处独立的严格解码（模型 / 工作流认证的 mediaProbe.decodeMediaInput、Antigravity 通道自己的 validateAntigravityImage），它们问的是别的问题，见 same_class_entry_points。",
+  "affected_population": [
+    "所有生成产物（图 / 视频 / 音频）落盘：writeAsset、writeDeterministicAsset、copyAssetFile、moveAssetFile 在 kind=generated 时都经 validatedGeneratedMeta，与供应商无关",
+    "字节里带了解码器不喜欢的东西、但完整可显示的产物（实测：IEND 之后带尾数据的 PNG）；文件大、机器忙的场景（旧固定 12 秒上限）",
+    "中英两种界面（失败措辞来自渲染层目录，见 2026-09-29-failure-reason-from-upstream-evidence）"
+  ],
+  "scope_paths": [
+    "electron/assets/generatedMediaDecode.ts",
+    "electron/assets/projectAssetStore.ts"
+  ],
+  "entry_points": [
+    "生成产物写盘的四个入口：writeAsset、writeDeterministicAsset（内存字节）与 copyAssetFile、moveAssetFile（已在 Nomi 自己路径上的文件）——kind=generated 都经 validatedGeneratedMeta → verifyGeneratedMediaDecodes",
+    "图 / 视频 / 音频三种产物共用同一份判决（GeneratedMediaKind）；3D 模型走 GLB 结构校验，不经解码器"
+  ],
+  "external_sources": [
+    {
+      "kind": "official-doc",
+      "url": "https://ffmpeg.org/ffmpeg-all.html",
+      "checked_at": "2026-09-30",
+      "purpose": "-xerror = 「Stop and exit on error」、-err_detect explode = 「abort decoding on minor error detection」、framehash muxer 的输出格式：旧判据问的正是这两个开关（任何一个解码错误就退出），新判据改读 framehash 的帧行与 #dimensions（出没出画面）。随包 ffmpeg 是 4.1（2018），实际行为以实测矩阵为准，见 generality_proof"
+    }
+  ],
+  "invariants": [
+    "判据 = 解码器把第一帧（音频取 1 秒）解出来、宽高为正（framehash 的帧行与 #dimensions）；解码器的抱怨不改判：IEND 之后带尾数据的 PNG、带畸形 EXIF / APP11 JSON / XMP 段的 JPEG、尾部补零或垃圾的 JPEG 都是「能解码」",
+    "读不出来 = 解码器退出非零 / 没出帧 / 没有宽高（随机字节顶着 JPEG 魔数、像素数据被翻了一位的 PNG、被截半的 WebP）；没能核实 = 超时或解码器起不来。两者都拒收，但分开记：decode_failed / decode_unverified，日志里写明是哪一种",
+    "超时随文件大小放宽（12 秒为底、每 MiB +1 秒、封顶 120 秒——主进程这一步是同步的，天花板保护主进程）；超时只算「没核实」，不当作文件有问题的证据",
+    "生成产物校验的每一种失败（解码 / 冒充网页 / 认不出字节 / 类型不符 / 格式不支持 / 证据不符）都带机器码 output-unreadable 抛出（唯一抛法 generatedMediaValidationError）；渲染层按码说「生成的文件没能读出来」，不点名供应商、不劝换一家",
+    "ffmpeg 的原话（截断后）进日志：抱怨了但出图记 generated-media-decoded-with-warnings，拒收记 generated-media-decode-rejected；判决不读它的措辞"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/assets/generatedMediaDecode.ts",
+    "tests": [
+      "electron/assets/generatedMediaDecode.test.ts",
+      "electron/assets/projectAssetStore.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/assets/generatedMediaDecode.ts",
+      "symbol": "verifyGeneratedMediaDecodes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/generatedMediaDecode.ts",
+      "symbol": "generatedMediaValidationError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "generatedMediaValidationError"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "verifyGeneratedMediaDecodes"
+    },
+    {
+      "kind": "write",
+      "path": "electron/assets/projectAssetStore.ts",
+      "symbol": "validatedGeneratedMeta"
+    }
+  ],
+  "door_reduction": {
+    "before": 1,
+    "after": 5,
+    "why_not": "判决的门一直只有一扇：修前是 validatedGeneratedMeta 里内联的 spawnSync（没有名字、无法单测、没有日志）；修后判据搬进 generatedMediaDecode.ts 的 verifyGeneratedMediaDecodes（唯一 owner），projectAssetStore 只调用它。after=5 是把 owner 的定义点、错误工厂和消费方都列全的结果（door-map 数的是「哪个文件里出现了哪个符号」），不是判据变多了。认证路径与 Antigravity 通道的严格解码不是这份状态的入口（见 same_class_entry_points）。"
+  },
+  "generality_proof": "【为什么不是只对某一家、某一次的图有效】(1) 判据里没有供应商、模型、域名或文件名：输入只有字节与 kind，输出只有三态；所有生成产物写盘入口共用它。(2) 实测矩阵（随包 ffmpeg 4.1，20181217；同一份用例在 generatedMediaDecode.test.ts 里用随包 ffmpeg 现场编码）：完整 JPEG / PNG / WebP 三种格式都出 512×512 的帧；PNG 带 100 字节尾数据——旧 -xerror 判 1（拒收）、新判据出帧；JPEG 带畸形 EXIF / APP11 JSON / XMP / 尾部垃圾 / 尾部补零——出帧；末尾被截短的 JPEG——旧 explode 拒收、新判据解出只有上半部分的图；随机字节顶 JPEG 魔数、PNG 像素数据翻一位、WebP 截半——不出帧，判读不出来。(3) 版本：不依赖 ffmpeg 版本的措辞，只读 framehash 的帧行与 #dimensions；换更新的 ffmpeg 判据不变。(4) 平台：字节落在 Nomi 自己的 0600 临时文件（或调用方给的 Nomi 路径）里再读，MP4 的 moov 在尾部也能 seek；spawnSync 带 windowsHide。(5) 旧数据：判据只看字节，与项目里旧节点无关；已经落盘的产物不重判。(6) 别的调用者：四个写盘入口共用 validatedGeneratedMeta，测试覆盖 writeAsset 与 writeDeterministicAsset 的两头（PNG 带尾数据成功、乱码 JPEG 带机器码失败）。(7) 夹具：全功能走查夹具的 corruptResult 原先给「截掉后半段的 JPEG」，按上面的定义它能解码、不再是读不出来的样本，监视器却还把它记成失败——夹具随本次改成随机字节顶 JPEG 魔数，并新增 trailingBytesResult（带尾数据的完整 PNG）；真机走查 pb07（中英各一遍）里前者落「生成的文件没能读出来」、后者照常落地成功。(8) 变异校验（备份还原，逐个跑）：把 -xerror -err_detect explode 加回调用参数、去掉「没出帧」判定、把超时改回固定 12 秒、让「没核实」也放行、去掉机器码——五个变异全部被 generatedMediaDecode.test / projectAssetStore.test 抓红。已知边界（接受）：被截短的 JPEG 会解出一张只有上半部分的图，按「能不能拿到一张图」的定义算能解码，ffmpeg 的抱怨进日志留证。",
+  "shared_boundaries": [
+    {
+      "path": "electron/assets/generatedMediaDecode.ts",
+      "symbol": "verifyGeneratedMediaDecodes",
+      "responsibility": "生成产物「能不能解码」的唯一判定：三态、原话进日志、超时随大小；失败统一带机器码 output-unreadable。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/assets/projectAssetStore.ts",
+      "entry_point": "validatedGeneratedMeta",
+      "disposition": "enforced",
+      "evidence": "writeAsset / writeDeterministicAsset / copyAssetFile / moveAssetFile 四个入口都经它调 verifyGeneratedMediaDecodes；projectAssetStore.test：PNG 带尾数据经 writeAsset 与 writeDeterministicAsset 都成功落盘，乱码 JPEG 抛带机器码的 decode_failed 且什么都没落盘。"
+    },
+    {
+      "path": "electron/assets/generatedMediaDecode.ts",
+      "entry_point": "verifyGeneratedMediaDecodes",
+      "disposition": "enforced",
+      "evidence": "generatedMediaDecode.test 27 条：真编码器产出的 JPEG / PNG / WebP、带尾数据 / 畸形辅助段仍能解码、三种真损坏读不出来（带机器码、原话进日志）、三态、超时随大小、没找到解码器算没核实。"
+    },
+    {
+      "path": "electron/export/mediaProbe.ts",
+      "entry_point": "decodeMediaInput",
+      "disposition": "not-affected",
+      "evidence": "只服务模型 / 工作流认证（providerAdapter/certificationMedia.ts 的 video / audio 分支，certifyOutput 才走）：认证要的是「产物干净」的证据，严格是有意的，且它不判用户拿到的图能不能显示；错误是它自己的 MediaDecodeError / media_corrupt，不走普通生成落地，也不会以 decode_failed 出现在生成失败卡上。"
+    },
+    {
+      "path": "electron/ai/antigravityArtifacts.ts",
+      "entry_point": "validateAntigravityImage",
+      "disposition": "not-affected",
+      "evidence": "Antigravity 本机通道自己的安全校验（输入参考图与输出图都过它）：精确的 PNG / JPEG / WebP 终止字节 + -xerror 是有意的 fail-closed，受信域是本机 CLI 的产物目录，错误码是它自己的 ANTIGRAVITY_IMAGE_INVALID。它不经 validatedGeneratedMeta，不在本合同的判决内；是否放宽由该通道的 owner 决定（见 residual_risks）。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "任何一个新的产物形态（新供应商的图床补丁、新的元数据段、新的容器）都可能带来「完整可显示、解码器有抱怨」的字节；旧判据把抱怨当失败，每来一种就整张拒收一次，用户为已经拿到的图再付一次钱。判据不改的话这条路会随供应商与版本一次次重演。",
+    "same_class_scan": [
+      "git grep -n \"xerror\\|err_detect\"（electron / src / scripts，非测试）：修后只剩 electron/export/mediaProbe.ts（认证路径，not-affected）与 electron/ai/antigravityArtifacts.ts（Antigravity 通道，not-affected）；generatedMediaDecode.ts 里只在注释里出现。",
+      "node scripts/door-map.mjs validatedGeneratedMeta：修前 1 扇（projectAssetStore.ts），四个写盘函数都在同一个文件里经它；修后判据搬到 generatedMediaDecode.ts，见 doors。",
+      "实测矩阵（generality_proof）：单独的 -xerror、单独的 -err_detect explode 各自拒收一类可显示的图，所以两个开关都不留。"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/assets/generatedMediaDecode.ts",
+    "invariant": "生成产物「能不能解码」只有 verifyGeneratedMediaDecodes 一处判：看出没出画面，不看解码器的措辞；失败统一带 output-unreadable。",
+    "failure_mode": "任何人把严格开关（-xerror / -err_detect explode）加回调用参数、去掉「没出帧」判定、把超时改回固定值、让「没核实」放行、或绕开 generatedMediaValidationError 直接抛英文串，generatedMediaDecode.test / projectAssetStore.test 在真编码器产出的字节上红。",
+    "exception_policy": "none",
+    "strategy": "判决收成一个带名字的纯函数加一个执行函数：interpretDecodeRun 把 ffmpeg 一次运行变成三态判决（单测直接喂真实 / 模拟输出），decodeInvocation 是参数的唯一出处，decodeTimeoutMs 是超时的唯一出处；落地入口只调 verifyGeneratedMediaDecodes。",
+    "artifacts": [
+      "electron/assets/generatedMediaDecode.ts",
+      "electron/assets/projectAssetStore.ts",
+      "electron/assets/generatedMediaDecode.test.ts",
+      "electron/assets/projectAssetStore.test.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/assets/generatedMediaDecode.test.ts",
+    "electron/assets/projectAssetStore.test.ts",
+    "tests/ux/full-walk/playbooks/pb07-failure-kinds.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/assets/generatedMediaDecode.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/assets/projectAssetStore.ts"
+    ],
+    "rationale": "没有并行版：projectAssetStore.ts 里内联的 spawnSync（-xerror -err_detect explode、固定 12 秒）整段删除，validatedGeneratedMeta 只调 verifyGeneratedMediaDecodes；不保留旧判据的开关或回退。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "不涉及依赖变更：仍是随包的 @ffmpeg-installer/ffmpeg 4.1；判据不依赖版本措辞，不需要升级它。",
+    "exit_criteria": []
+  },
+  "migration": "无数据迁移：只改新写入产物的校验，已落盘的产物不重判。旧版本因 decode_failed 失败的节点仍显示旧失败，用户重新生成即可（新判据下同样的字节会通过）。",
+  "residual_risks": [
+    "被截短的 JPEG 会解出只有上半部分的图，按本合同的定义算「能解码」（原话进日志）。若产品要拒收残缺图，需要另一条「完整解码」的定义——它会重新引入把可显示的付费产物整张拒收的误判，不在这次做。",
+    "Antigravity 通道 validateAntigravityImage 仍是严格判据（精确终止字节 + -xerror），是它自己的安全边界：带尾数据的真实图在那条通道里会以 ANTIGRAVITY_IMAGE_INVALID 失败。是否放宽由该通道的 owner 定，已报协调会话。",
+    "那张真实的 Seedream 5.0 图我们没有拿到（要用户的真实密钥，本次没碰），真实产物落在实测矩阵的哪一类未核实；付费小额走查 pb90（NOMI_SPEND_OK=1，用户的 Nomi 关着）拿到字节后要补一行证据。"
+  ]
+}

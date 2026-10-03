@@ -9,8 +9,8 @@
 // 规矩：package.json 里定义的每个 `check:*` 脚本，都必须能从 `gates` 链**传递可达**。
 //
 // 为什么必须传递解析、不能只做字面 substring 匹配：
-//   check:site 自己内部就跑了 `build-marketing-sitemap.mjs --check` 和 `pnpm run check:handbook`，
-//   所以 check:handbook / check:sitemap 事实上已被覆盖，只是**没有字面出现在 gates 那一行**。
+//   check:site 自己内部就跑了一串子项（自 2026-10-02 起由 scripts/check-site.mjs 依次执行），
+//   所以 sitemap 等子检查事实上已被覆盖，只是**没有字面出现在 gates 那一行**。
 //   一个朴素的字面检查会对着这两个精确地误报。而误报的下场是有人把门岗关掉——
 //   那就正好重演了本门岗要防的那件事。所以宁可多写几十行解析，也不留假红。
 import fs from 'node:fs'
@@ -40,16 +40,24 @@ const TIER_RUNNER = 'scripts/run-gates-tests.mjs'
  */
 const INTENTIONALLY_OUT_OF_CHAIN = new Map([
   [
-    'check:handoff',
-    // 交接体检是人工收货时按需跑的报告工具；它可选地启动全套件，不应阻塞每次 push。
-    '手动交接体检工具（--with-tests 可启动全套件），不是每次 push 的正确性门岗',
+    'check:test-types',
+    // 2026-10-01 用户按门岗账本拍板「test-types 与 typecheck 合成一次」：typecheck 编排器（scripts/typecheck.mjs）并发拉起它，
+    // scripts/typecheck.node-test.mjs 钉死名单里有它。单独跑 `pnpm run check:test-types` 仍然可用。
+    '由 typecheck 编排器并发驱动（scripts/typecheck.mjs 的 TYPECHECK_JOBS），不再在 gates:contracts 里单列、重复跑一遍',
   ],
   [
-    'check:audit',
-    // 这是**节奏提醒**不是正确性门岗：commit 攒够 25 个就提示该做周期审计（R14）。
-    // 它按时间/计数报红，和这次改动对不对无关。放进 gates 会让「今天该审计了」
-    // 变成「你不能 push」——门岗一旦开始拦无辜的人，人就会开始绕过门岗。
-    '节奏提醒（R14 审计/评测周期），按 commit 数报红，与本次改动正确性无关；入链会无差别拦 push',
+    'check:docs-index',
+    // 2026-10-01 用户按门岗账本拍板移出 PR 的 Contracts：49/49 次都红、永远不阻断。补齐与验收在 docs-autosync 工作流里。
+    '文档索引记账：由 docs-autosync 在 main 上补齐并验收，不进 PR 的 Contracts（门岗账本：advisory 49/49 次红、无读者）',
+  ],
+  [
+    'check:doc-status',
+    '文档状态记账：同 check:docs-index，由 docs-autosync 在 main 上补齐并验收',
+  ],
+  [
+    'check:ledger',
+    // 2026-10-02 用户按「能自动修的改成自动修」拍板移出 PR 的 Contracts：交付账本由 docs-autosync 在 main 上重生成并验收。
+    '交付账本记账：同 check:docs-index，由 docs-autosync 在 main 上重生成并验收，不进 PR 的 Contracts',
   ],
 ])
 

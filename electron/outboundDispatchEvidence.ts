@@ -1,8 +1,8 @@
 /**
  * 「这次出站请求，到底有没有发出去过？」——**唯一**回答它的地方。
  *
- * 一次付费提交失败只有两种性质完全不同的可能：**一个字节都没写出去**（连不上、DNS 解不出、
- * 从连接池里取到一条对面已经关掉的 keep-alive 连接）——供应商那边什么都没发生；
+ * 一次付费提交失败只有两种性质完全不同的可能：**一个字节都没写出去**（DNS 解不出、连不上、
+ * TLS 握手没完成）——供应商那边什么都没发生；
  * 或者**写出去了但结果不知道**（写完才断、响应头等超时）——可能已经收下并扣费。
  * 两者在 `fetch()` 抛出来时长得一模一样（`TypeError: fetch failed`），真相全在 `error.cause` 里。
  *
@@ -44,24 +44,36 @@ function causeChain(error: unknown): ErrorLike[] {
   return chain;
 }
 
+/** TLS 握手阶段就失败（证书不被信任、主机名对不上）：握手没完成，应用层请求一个字节都没发。 */
+const TLS_HANDSHAKE_CODES = new Set([
+  "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
+  "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",
+  "SELF_SIGNED_CERT_IN_CHAIN",
+  "DEPTH_ZERO_SELF_SIGNED_CERT",
+  "CERT_HAS_EXPIRED",
+  "CERT_NOT_YET_VALID",
+  "ERR_TLS_CERT_ALTNAME_INVALID",
+]);
+
+/** 对面在 TLS 握手完成前就把连接复位：同上，请求还没写。 */
+const PRE_TLS_RESET = /before secure TLS connection was established|disconnected before secure TLS/i;
+
+/**
+ * 只有「连上之前」的错误才算证明没写出去：DNS、建连（connect 系统调用 / 连接超时）、TLS 握手前。
+ *
+ * **`UND_ERR_SOCKET` / `ECONNRESET` / `socket hang up` / 头或体超时 / 发出后 abort 一律不在这里**——
+ * 它们既可能是「复用的 keep-alive 连接被对面关了」（没写出去），也可能是「请求已经写出去、
+ * 响应没回来连接就被重置」（供应商可能已经收下并扣费），两者抛出来的码一模一样，判据分不开。
+ * 2026-10-02 真应用复现（D:\tmp\breaker-947 E9）：APIMart 不支持幂等，旧判据把后一种当成前一种
+ * 自动重发，供应商收到的张数多于用户点过的张数。「旧连接」这一种由付费提交每次用新连接
+ * 从构造上消掉（见 `systemProxy.ts` 的 `createFreshConnectionDispatcher`），不再靠猜。
+ */
 function provesNotWritten(node: ErrorLike): boolean {
   const code = typeof node.code === "string" ? node.code : "";
   // 建连阶段失败（`syscall: "connect"` 覆盖 ECONNREFUSED / EHOSTUNREACH / ENETUNREACH / 连接 ETIMEDOUT）。
   if (node.syscall === "connect") return true;
-  if (DNS_CODES.has(code) || CONNECT_CODES.has(code)) return true;
-  // undici 的 SocketError：对面在**没有给出任何响应字节**的情况下把连接关了。
-  //
-  // 为什么不看 `socket.bytesWritten/bytesRead`（第一版看了，CI 当场证伪）：那两个计数是
-  // **整条连接累计**的。keep-alive 复用的连接上一次请求早就写过字节，所以复用场景下它们
-  // 永远不是 0，按它判会把真正的「没写出去」判成 unknown——2026-09-18 PR #810 第一轮 CI
-  // 拿到的真实错误就是这样（`SocketError UND_ERR_SOCKET: other side closed`，计数无从归属）。
-  //
-  // 真正的判据是这条路本身：本函数只用在 `fetch()` **自己抛出**的那一刻，此时连 Response
-  // 都没有，也就不可能收到过任何响应头；而对面是在 keep-alive 边界上主动关的连接。
-  // HTTP/1.1 对这一幕有明确规定（RFC 9112 §9.6 连接关闭与重试）：这样关掉的连接上，
-  // 请求没有被处理，客户端可以在新连接上重试。
-  if (code === "UND_ERR_SOCKET") return true;
-  return false;
+  if (DNS_CODES.has(code) || CONNECT_CODES.has(code) || TLS_HANDSHAKE_CODES.has(code)) return true;
+  return code === "ECONNRESET" && typeof node.message === "string" && PRE_TLS_RESET.test(node.message);
 }
 
 /**
@@ -69,6 +81,21 @@ function provesNotWritten(node: ErrorLike): boolean {
  */
 export function outboundRequestWasNeverWritten(error: unknown): boolean {
   return causeChain(error).some(provesNotWritten);
+}
+
+const TRANSPORT_CODES = new Set(["ECONNRESET", "EPIPE", "ETIMEDOUT", "ECONNABORTED"]);
+
+/**
+ * 这次失败是不是**连接层**失败（连接被重置 / 对面关闭 / 头体超时）——而不是供应商给了一个 HTTP 回复。
+ * 只有这种「结果未知」才值得用同一个幂等键重发（且仅限供应商真支持幂等）；供应商明确回了 4xx/5xx
+ * 就是它的答复，重发不会换来不同结果。用户主动取消（AbortError）不算。
+ */
+export function isTransportLevelFailure(error: unknown): boolean {
+  return causeChain(error).some((node) => {
+    const code = typeof node.code === "string" ? node.code : "";
+    if (code.startsWith("UND_ERR_") || TRANSPORT_CODES.has(code)) return true;
+    return typeof node.message === "string" && /socket hang up|other side closed/i.test(node.message);
+  });
 }
 
 /**

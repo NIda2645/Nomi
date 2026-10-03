@@ -203,7 +203,7 @@ if (advisory && Array.isArray(advisory.watchWords)) {
   const notices = advisoryCapabilityHits({ files: changedSourceFiles(), watchWords: advisory.watchWords, exemptions })
   for (const notice of notices) {
     console.warn(`⚠️ [advisory] ${notice.file}：${notice.kind} \`${notice.where}\` 命中框架能力词「${notice.word}」`
-      + ' —— 先确认框架里是不是已经有了（查 docs/engineering/dependency-capabilities.generated.json），'
+      + ' —— 先确认框架里是不是已经有了（读它的 .d.ts 导出与 README），'
       + `确属无关就登记进 ${advisory.exemptions}`)
   }
   if (notices.length > 0) {

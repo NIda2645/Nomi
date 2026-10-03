@@ -9,13 +9,16 @@ import {
   looksLikeLogicalError,
   redactRequestSecrets,
 } from "../ai/requestPipeline";
-import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamMessage } from "../jsonUtils";
+import { describeIllegalHeader, findIllegalHeader, isJsonRecord, pickUpstreamCode, pickUpstreamMessage } from "../jsonUtils";
 import { fetchVendorWithBaseFallback } from "./vendorBaseFallback";
 import type { Vendor } from "../catalog/types";
 import { vendorAuthSpec } from "../catalog/vendorAuthSpec";
-import { networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
+import { isRedirectRefusal, networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
+import { tagNomiError } from "../shared/nomiErrorCodes";
 import { BoundedResponseError, readBoundedResponseBytes } from "./boundedResponse";
 import { providerDispatcher } from "../providerNetwork";
+import { createFreshConnectionDispatcher } from "../systemProxy";
+import type { Dispatcher } from "undici";
 import { authorizeSubmitDestination } from "./vendorOutboundGuard";
 
 export type VendorErrorCategory = "auth" | "balance" | "quota" | "input" | "server" | "network" | "timeout" | "unknown";
@@ -39,7 +42,8 @@ export function vendorResponseLimitForKind(kind: string): number {
     : DEFAULT_VENDOR_RESPONSE_MAX_BYTES;
 }
 
-function vendorHttpTimeoutMs(): number {
+/** 付费提交 / 供应商请求的响应超时（含读响应体）。付费提交的另一条传输（目录供应商）读同一个值。 */
+export function vendorHttpTimeoutMs(): number {
   const raw = Number(process.env.NOMI_VENDOR_HTTP_TIMEOUT_MS);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_VENDOR_HTTP_TIMEOUT_MS;
 }
@@ -58,6 +62,11 @@ export type VendorErrorStructured = {
   logicalCode?: number | string;
   /** 上游原话,截 256(防日志爆炸,§4.3)。 */
   upstreamMsg: string;
+  /**
+   * 上游**自己给的错误码**（`model_not_found` 这一类字符串标识；没有就不写）。状态码只说「请求有问题」，
+   * 这个码才是它说的原因——渲染层分类优先读它（classifyError 的 UPSTREAM_CODE_KINDS），不靠 400 猜「参数不对」。
+   */
+  upstreamCode?: string;
   /** 查表分类,不是猜:401/403→auth,402→balance,429→quota,400/422→input,5xx→server。 */
   category: VendorErrorCategory;
   retryable: boolean;
@@ -215,26 +224,49 @@ async function requestVendor(
       retryable: false,
     });
   }
+  // 付费提交（非 GET/HEAD）每次用**全新连接**，不与任何别的请求共用连接池：共享池里的空闲 keep-alive 连接
+  // 可能已被对面关掉，那时抛出的 UND_ERR_SOCKET 和「请求写出去后连接被重置」一模一样，分不清哪个才是「没发出去」。
+  // 显式供应商代理（`dispatcher`）本来就是每请求新建的，不重复造。判据与由来见 outboundDispatchEvidence.ts。
+  let freshDispatcher: Dispatcher | undefined;
+  const closeFreshDispatcher = () => {
+    if (freshDispatcher) void freshDispatcher.close().catch(() => undefined);
+  };
   let response: Response;
   try {
+    if (!dispatcher && upperMethod !== "GET" && upperMethod !== "HEAD") {
+      freshDispatcher = await createFreshConnectionDispatcher(controller.signal, finalUrl);
+    }
     // 经 vendorBaseFallback：主域被墙（连接从未建立）→ 零额度探测官方备用域 → 换线重发一次。
     // 仅连接层安全码触发重发，「重试绝不包住付费提交」铁律不破（见 vendorBaseFallback 文件头）。
     response = await fetchVendorWithBaseFallback(finalUrl, {
       method: upperMethod,
       headers,
       signal: controller.signal,
-      ...(dispatcher ? { dispatcher } : {}),
+      ...(dispatcher ?? freshDispatcher ? { dispatcher: dispatcher ?? freshDispatcher } : {}),
       ...(hasBody ? { body: bodyInit } : {}),
     });
   } catch (error: unknown) {
     clearTimeout(timer);
     signal?.removeEventListener("abort", relayAbort);
     if (dispatcher) void dispatcher.close().catch(() => undefined);
+    closeFreshDispatcher();
     const cancellation = callerCancellation(signal);
     if (cancellation) throw cancellation;
     // abort = 我们的超时，给一条说人话的 timeout 错误（仍归 network 类、可重试），而不是裸 "aborted"。
     const aborted = (error instanceof Error && (error.name === "AbortError" || error.name === "TimeoutError"))
       || (error instanceof BoundedResponseError && error.code === "response_timeout");
+    // 带密钥的请求被跳转：appFetch 按「凭据请求不跟随跳转」拒了。不是网络问题，重试只会再撞同一个跳转。
+    if (isRedirectRefusal(error)) {
+      const upstreamMsg = tagNomiError("credential-redirect", "provider endpoint redirected; request stopped to protect the key");
+      throw new VendorRequestError(`Provider request refused redirect at ${vendor.key} ${upperMethod} ${diagnosticUrl}: ${upstreamMsg}`, {
+        vendorKey: vendor.key,
+        method: upperMethod,
+        url: diagnosticUrl,
+        upstreamMsg,
+        category: "network",
+        retryable: false,
+      });
+    }
     const upstreamMsg = aborted
       ? `请求超时（${Math.round(timeoutMs / 1000)}s 无响应）`
       : networkMessage(error);
@@ -294,6 +326,7 @@ async function requestVendor(
     signal?.removeEventListener("abort", relayAbort);
     // per-connection dispatcher 的连接池只属于本次请求；body 已缓冲读完，可安全退休。
     if (dispatcher) void dispatcher.close().catch(() => undefined);
+    closeFreshDispatcher();
   }
   const contentType = String(response.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
   const looksJson = contentType === "application/json"
@@ -323,6 +356,7 @@ async function requestVendor(
     // and status so the failure is diagnosable instead of opaque.
     const detail = rawUpstream && rawUpstream !== "No message available" ? rawUpstream : `(no detail from provider)`;
     const { category, retryable } = categorizeVendorFailure(response.ok ? undefined : response.status, logicalCode ?? undefined);
+    const upstreamCode = pickUpstreamCode(record);
     throw new VendorRequestError(`Provider request failed (${statusLabel}) at ${vendor.key} ${upperMethod} ${diagnosticUrl}: ${detail}`, {
       vendorKey: vendor.key,
       method: upperMethod,
@@ -330,6 +364,7 @@ async function requestVendor(
       ...(response.ok ? {} : { httpStatus: response.status }),
       ...(logicalCode != null ? { logicalCode } : {}),
       upstreamMsg: detail.slice(0, 256),
+      ...(upstreamCode ? { upstreamCode } : {}),
       category,
       retryable,
     });

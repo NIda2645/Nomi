@@ -176,6 +176,12 @@ while IFS= read -r TARGET; do
   if git rev-parse origin/main >/dev/null 2>&1 && [ -z "$(git log origin/main..HEAD --oneline 2>/dev/null)" ]; then
     continue
   fi
+  # 2026-10-02（复盘 fixes 行 100，发版 tag 指向已合并提交被开发机钩子误拦）：HEAD 上没有任何一个提交是
+  # 「所有远端跟踪分支都还不认识」的 → 这次推送不带新内容（打 tag、推已在别的远端分支上的提交），不要戳。
+  # 只要有一个新提交，仍然按下面三项全对验戳。
+  if [ -z "$(git rev-list --max-count=1 HEAD --not --remotes 2>/dev/null)" ] && git for-each-ref --count=1 refs/remotes 2>/dev/null | grep -q .; then
+    continue
+  fi
 
   # outgoing 改动全是 doc/hook → 放行这棵。拿不到文件列表就继续往下验戳（不放行也不误杀）。
   is_docs_only < <(git diff -z --name-only origin/main...HEAD 2>/dev/null) && continue

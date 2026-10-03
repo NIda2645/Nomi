@@ -31,7 +31,8 @@ export function runChecker(fixture, ...args) {
 
   return spawnSync(
     process.execPath,
-    [checker, '--repo-root', fixture.root, '--baseline', fixture.baselinePath, ...args],
+    // 既有用例测的是「判据本身」，所以默认关掉基线自动收缩；要测自动收缩的用例传 { autoShrink: true }。
+    [checker, '--repo-root', fixture.root, '--baseline', fixture.baselinePath, ...(options.autoShrink ? [] : ['--no-auto-shrink']), ...args],
     { encoding: 'utf8', env: environment },
   )
 }

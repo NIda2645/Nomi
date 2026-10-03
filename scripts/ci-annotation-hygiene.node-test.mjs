@@ -266,3 +266,15 @@ test('advisory 委派派生自 CORE_SMOKE_ADVISORY_CHECK_NAMES：把 used 挪出
     fs.rmSync(fixtureDir, { recursive: true, force: true })
   }
 })
+
+test('「疑似不稳定」warning 委派给 vitest 重试提示；同路径同级别的别的 warning 与同标题的 failure 照样是意外', () => {
+  const annotations = [
+    { jobName: 'Unit', path: 'src/a.test.ts', title: '疑似不稳定', message: 'x 重试 1 次后才通过', level: 'warning' },
+    { jobName: 'Unit', path: 'src/a.test.ts', title: '别的警告', message: 'other', level: 'warning' },
+    { jobName: 'Unit', path: 'src/a.test.ts', title: '疑似不稳定', message: 'really failed', level: 'failure' },
+  ]
+  const result = evaluateAnnotations(annotations, { schemaVersion: 1, entries: [] }, new Date('2026-09-05T00:00:00Z'))
+  assert.equal(result.delegated.length, 1)
+  assert.equal(result.delegated[0].owner, 'vitest retry flaky hint')
+  assert.equal(result.unexpected.length, 2)
+})
