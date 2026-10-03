@@ -365,6 +365,19 @@
       "bytes": 728160,
       "modified": false,
       "notes": "Existing repository asset; included for inventory only."
+    },
+    {
+      "file": "src/assets/director/ual/ual-mannequin.glb",
+      "kind": "character+actions",
+      "source": "https://opengameart.org/content/universal-animation-library",
+      "author": "Quaternius",
+      "license": "CC0-1.0",
+      "licenseText": "CC0 1.0 Universal (CC0 1.0) Public Domain Dedication https://creativecommons.org/publicdomain/zero/1.0/",
+      "downloadDate": "2026-10-04",
+      "sha256": "409725611d68a69ee0eee421ce0b6ad696706f64e017e2ee9a1c149d6e2d9460",
+      "bytes": 6622820,
+      "modified": true,
+      "notes": "Extracted registered Godot GLB; removed preview sphere and source materials/textures, assigned neutral white-model material, normalized rest ground to z=0; retained UAL mesh, skeleton and 45 native actions. Original archive remains outside Git."
     }
   ],
   "downloads": [

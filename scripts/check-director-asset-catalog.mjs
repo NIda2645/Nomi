@@ -8,9 +8,12 @@ const catalogSource = fs.readFileSync(path.join(root, 'src/workbench/generationC
 const license = JSON.parse(fs.readFileSync(path.join(root, 'docs/engineering/third-party-assets.json'), 'utf8'))
 const referenced = [...catalogSource.matchAll(/'((?:src\/assets\/director\/)[^']+)'/g)].map((match) => match[1])
 const assetFiles = []
-for (const dir of ['src/assets/director/actions', 'src/assets/director/pose/restored', 'src/assets/director/props']) {
-  for (const entry of fs.readdirSync(path.join(root, dir))) if (/\.(fbx|glb)$/i.test(entry)) assetFiles.push(path.join(dir, entry))
+for (const dir of ['src/assets/director/actions', 'src/assets/director/pose/restored', 'src/assets/director/props', 'src/assets/director/ual']) {
+  const dirPath = path.join(root, dir)
+  if (!fs.existsSync(dirPath)) continue
+  for (const entry of fs.readdirSync(dirPath)) if (/\.(fbx|glb)$/i.test(entry)) assetFiles.push(path.join(dir, entry))
 }
+if (catalogSource.includes('UAL_MANNEQUIN_FILE')) referenced.push('src/assets/director/ual/ual-mannequin.glb')
 const uniqueReferenced = [...new Set(referenced)]
 const missingFiles = uniqueReferenced.filter((file) => !fs.existsSync(path.join(root, file)))
 const unreferenced = assetFiles.filter((file) => !uniqueReferenced.includes(file))

@@ -8,7 +8,7 @@ export type LicenseKind = 'CC0-1.0' | 'MIT' | 'pending-review'
 export type AssetSizeClass = 'tiny' | 'small' | 'medium' | 'large'
 
 export type AssetDimensions = { widthM: number; depthM: number; heightM: number }
-export type AssetOrigin = 'ground-center' | 'ground-min-corner' | 'rig-root'
+export type AssetOrigin = 'ground-center' | 'ground-min-corner' | 'ground-min-z' | 'rig-root'
 
 export type AssetRecord = {
   id: string
@@ -26,7 +26,12 @@ export type AssetRecord = {
   modified: boolean
   clipName?: string
   derivativeFile?: string
-  rig?: 'mixamo' | 'ue4' | 'none'
+  rig?: 'mixamo' | 'ue4' | 'ual' | 'none'
+  durationSec?: number
+  loop?: boolean
+  rootMotion?: boolean
+  requiresStanding?: boolean
+  inspection?: string
 }
 
 export type PlannerAsset = Pick<AssetRecord, 'id' | 'kind' | 'tags' | 'nameZh' | 'nameEn' | 'sizeClass'> & {

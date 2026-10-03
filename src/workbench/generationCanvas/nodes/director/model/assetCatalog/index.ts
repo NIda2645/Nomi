@@ -5,6 +5,7 @@
  */
 import type { AssetRecord, PlannerAsset } from './types'
 import { STORYAI_POSES } from './staticPoses'
+import { UAL_ACTIONS, UAL_MANNEQUIN_FILE, UAL_MANNEQUIN_HEIGHT_M } from './ualActions'
 
 const sourceQuaternius = 'https://opengameart.org/content/universal-animation-library'
 const sourceKenneyRoads = 'https://kenney.nl/assets/city-kit-roads'
@@ -12,8 +13,8 @@ const sourceKenneyCar = 'https://kenney.nl/assets/car-kit'
 const sourceKenneyFurniture = 'https://kenney.nl/assets/furniture-kit'
 const sourceKenneyBuilding = 'https://kenney.nl/assets/building-kit'
 
-const action = (id: string, clipName: string, file: string, tags: string[], zh: string, en: string, source: string, license: AssetRecord['license'] = 'CC0-1.0', derivativeFile?: string): AssetRecord => ({
-  id, kind: 'action', tags, nameZh: zh, nameEn: en, sizeClass: 'tiny', origin: 'rig-root', file, source, license, modified: true, clipName, derivativeFile, rig: 'mixamo',
+const action = (meta: (typeof UAL_ACTIONS)[number]): AssetRecord => ({
+  id: `action-ual-${meta.id.toLowerCase().replaceAll('_', '-')}`, kind: 'action', tags: meta.tags, nameZh: meta.nameZh, nameEn: meta.nameEn, sizeClass: 'tiny', dimensionsM: { widthM: 1.9444, depthM: 0.3696, heightM: UAL_MANNEQUIN_HEIGHT_M }, origin: 'ground-min-z', file: UAL_MANNEQUIN_FILE, source: sourceQuaternius, license: 'CC0-1.0', modified: true, clipName: meta.id, rig: 'ual', durationSec: meta.durationSec, loop: meta.loop, rootMotion: meta.rootMotion, requiresStanding: meta.requiresStanding, inspection: meta.inspection,
 })
 
 const prop = (id: string, file: string, tags: string[], zh: string, en: string, dimensionsM: [number, number, number], source: string): AssetRecord => ({
@@ -21,6 +22,7 @@ const prop = (id: string, file: string, tags: string[], zh: string, en: string, 
 })
 
 export const DIRECTOR_ASSET_CATALOG: AssetRecord[] = [
+  ...UAL_ACTIONS.map(action),
   ...STORYAI_POSES,
   prop('prop-road-straight', 'src/assets/director/props/kenney-road-straight.glb', ['road', 'straight', 'street'], '直路', 'Straight road', [1, 1, 0.02], sourceKenneyRoads),
   prop('prop-road-crossroad', 'src/assets/director/props/kenney-road-crossroad.glb', ['road', 'crossroad', 'intersection'], '十字路口', 'Crossroad', [1, 1, 0.02], sourceKenneyRoads),
@@ -41,6 +43,6 @@ export const DIRECTOR_ASSET_CATALOG: AssetRecord[] = [
 ]
 
 const level = (asset: AssetRecord): PlannerAsset['dimensionsLevel'] => asset.kind === 'action' || asset.kind === 'pose' ? 'animation' : asset.kind === 'setPiece' ? 'building' : (asset.dimensionsM?.heightM ?? 0) > 2 ? 'street' : (asset.dimensionsM?.widthM ?? 0) > 0.8 ? 'room' : 'handheld'
-export const DIRECTOR_PLANNER_ASSETS: PlannerAsset[] = DIRECTOR_ASSET_CATALOG.map(({ dimensionsM: _dimensionsM, file: _file, source: _source, license: _license, modified: _modified, anchors: _anchors, origin: _origin, clipName: _clipName, derivativeFile: _derivativeFile, rig: _rig, ...asset }) => ({ ...asset, dimensionsLevel: level(DIRECTOR_ASSET_CATALOG.find((entry) => entry.id === asset.id)!)}))
+export const DIRECTOR_PLANNER_ASSETS: PlannerAsset[] = DIRECTOR_ASSET_CATALOG.map(({ dimensionsM: _dimensionsM, file: _file, source: _source, license: _license, modified: _modified, anchors: _anchors, origin: _origin, clipName: _clipName, derivativeFile: _derivativeFile, rig: _rig, durationSec: _durationSec, loop: _loop, rootMotion: _rootMotion, requiresStanding: _requiresStanding, inspection: _inspection, ...asset }) => ({ ...asset, dimensionsLevel: level(DIRECTOR_ASSET_CATALOG.find((entry) => entry.id === asset.id)!)}))
 
 export function findDirectorAsset(id: string): AssetRecord | undefined { return DIRECTOR_ASSET_CATALOG.find((asset) => asset.id === id) }
