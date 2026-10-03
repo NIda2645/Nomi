@@ -99,3 +99,29 @@ T4 多轮编辑题、L5 视觉模型整体分、S1 结构化计划+布局/机位
 4. **已验收**：方向反转、出画、少一镜、动作不发生、无名演员、半环绕等变异体保留并通过，降幅门槛 `≥0.2`。
 5. **已完成**：本节已更新三方案基线、分层与分档均值、标尺题、最低五张、旧口径为何错、两条景别梯子、关键点可见、未约束不计分、L0 归零和 `NOMI_EVAL_PR960_ROOT` 运行方式。
 6. **已验证**：`vitest`、`typecheck`、`check:test-types` 已通过；`pnpm run gates` 共 96 道门通过 95 道，唯一阻断是 `check:design-lab` 的 32 张视觉差异。差异集中在本分支未改动的 UI/设计基线路径，未修改基线；远端 PR checks 与 push 收据在交工链最后一段记录。仓库当前没有 `review:branch` script（执行结果为 `ERR_PNPM_NO_SCRIPT`）。
+
+## L5 盲测终审（第 1.5 棒）
+
+L5 评审把导演卡的 prompt 与节目机位逐帧渲染结果分开处理：`director-render.html` 只在 devlab 中挂载现有 three/CaptureBinder 像素链，按 `programCameraIdAt` 选择镜头；`evals/director/judge/run.ts` 把预注册、匿名联系图、Codex 盲评、成对比较、诱饵、测量交叉核与重复方差写入 `evals/runs/director-judge-<时间>/`。评审工作目录由每次调用新建的临时目录提供，只有随机命名的帧图；预期卡先落盘并以 SHA-256 冻结，评审 JSON 强制要求时间码证据。
+
+评审模型固定为 `gpt-6-astra`、`model_reasoning_effort=high`、`service_tier="priority"`。首轮结果必须在报告首行声明诱饵检出率；低于 90% 时批次作废。测量交叉核只统计评审明确给出的可测结论；大方差题标为不稳定。`calibrate.html` 提供 12 段随机预演的 1–5 分校准页；用户未导出校准 JSON 前，报告始终标记「未校准」，不作方案优劣结论。真实媒体、视频模型 B 档与额度证据留给第三棒。
+
+本分支的首轮实跑收据、联系图和未完成项以 `evals/runs/director-judge-*/report.md` 为准；任何 Codex 不可用、渲染失败或 priority 未广告的调用都保留为 `unverified`/`blocked`，不填补为通过。
+
+### 首轮实跑收据（2026-10-03）
+
+运行目录：`evals/runs/director-judge-20261003184155/`；命令覆盖三道标尺题、六张 T1/T2、`oracle` 与 `s0-pr960-raw`，重复 3 次。预注册的 `police-chase` 因模型返回非法时间戳而阻断，故没有伪造该题视频或分数；本次报告仍完整保留阻断记录。正常评审记录为 54 条，诱饵 5 条，优先级 fast 收据 49/54。
+
+这批次按规则作废：诱饵检出率 4/5（80%），低于 90%；测量交叉核仅 2/57（3.5%），不能支持方案优劣结论。可见的重复均值也只作为发现问题用（例如 `courtyard-standoff` 两方案均值 1.00，`perfume-orbit` oracle 1.33 / raw 2.00）；校准页没有用户导出分数，状态仍为「未校准」。首次实现还发现成对比较左右标签映射和预注册时间戳的根因，已在后续提交修正，原始作废报告不回写。
+
+编排者可直接目视读取三张已生成的 oracle 联系图：
+
+- `evals/runs/director-judge-20261003184155/media/courtyard-standoff_oracle-contact.png`
+- `evals/runs/director-judge-20261003184155/media/perfume-orbit_oracle-contact.png`
+- `evals/runs/director-judge-20261003184155/media/t1-01-push_oracle-contact.png`
+
+灰模画面已确认有可读几何体与机位变化；`police-chase` 联系图缺失是预注册阻断的真实结果。校准页现在会复制到每个 run 目录的 `calibrate.html`，与 `calibration-manifest.json` 和媒体相邻，便于离线打分。
+
+本轮 Codex 调用可由原始记录反推为 70 次：9 次预注册、53 次单片评审、8 次成对盲比；额度/Token 收据未由 `codex exec` 暴露，因此成本记为 `unverified`，没有估算一个假数字。`service_tier="priority"` 的单片评审记录有 49/54 fast 收据，其余按报告保留为非 fast 或 blocked。
+
+交工门岗：本分支 `pnpm run gates` 为 96 门 95 通过，唯一阻断是本分支派生端口上的 `ERR_UNSAFE_PORT` warmup；同一时刻干净 `origin/main` 的 `check:design-lab` 则实际跑完 188 用例并有 40 张既有基线 diff。两边失败形态与名单不相同，未盖 `stamp-gates-ok`、未 push、未创建 draft PR；这不是把例外条件扩大解释。
