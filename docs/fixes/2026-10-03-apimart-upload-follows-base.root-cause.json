@@ -1,0 +1,142 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-03-apimart-upload-follows-base",
+  "problem_type": "同一条连接的接口地址有两份真相：生成请求读用户在设置里保存的地址，参考图上传端点却在代码登记表里写死成国际域名",
+  "detected_by": "walkthrough",
+  "recurrence_check_on": "2026-11-02",
+  "symptom": "2026-10-03 0.23 候选版全功能走查（零花费、挂网络闸）：铁律 1 报 2 处参考图上传打向 https://api.apimart.ai/v1/uploads/images、另有打开项目时 GET https://api.apimart.ai/models，均被网络闸拦下。对用户的影响：把 APIMart 地址改成国内线路 https://api.apib.ai、又不会翻墙的用户，生成请求能发出去，参考图传不上去，带参考图的生成失败。",
+  "direct_cause": "① electron/catalog/assetIngestionRegistry.ts 的 CURATED_ASSET_INGESTION.apimart.endpoint 写死国际域名；0.22.5（7b81113fe）只让生成请求跟着用户地址走。② 打开项目时的 GET /models 是 electron/ai/onboarding/vendorHealth.ts 的健康探测：它读的正是用户保存的地址——走查夹具的 APIMart 连接保存的是种子默认地址（夹具不能改 baseUrlHint，会踩 builtinVendorScopeMatches 的 scope 闸，供应商地址只能走 NOMI_E2E_PRODUCTION_FIXTURE 回环口子），而这个口子只被生成请求认，健康探测不认，所以产品行为没错，是夹具口没覆盖到所有读 base 的入口。",
+  "class_root": "「这个用户的这条连接，base 是什么」没有唯一回答者：生成、上传、健康探测各自去拿（或各自写死）地址，改地址、夹具口、国内线路只要漏掉一个读者就会漂。",
+  "affected_population": [
+    "把 APIMart 换到国内线路（api.apib.ai 等）的用户：带参考图的生成（画布与 Agent 路）参考图传不上去",
+    "走查 / E2E 夹具：夹具口只覆盖生成，其它读 base 的入口会漏到真实服务商"
+  ],
+  "scope_paths": [
+    "electron/catalog/userVendorBase.ts",
+    "electron/catalog/assetIngestionRegistry.ts",
+    "electron/catalog/assetLocalization.ts",
+    "electron/catalog/types.ts",
+    "electron/ai/onboarding/vendorHealth.ts",
+    "tests/ux/agent-runtime-fixture.mjs"
+  ],
+  "entry_points": [
+    "画布节点 ↑ 生成（带参考图）",
+    "Agent 付款卡确认后生成（带参考图）",
+    "打开模型面板 / 每日对账的连接健康探测",
+    "设置里改 APIMart 接口地址"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "判据是本仓内部的 base 单一来源；域名重试（vendorBaseFallback）按 origin 在发请求那层改写，不变。",
+  "invariants": [
+    "全仓只有 userVendorBase.userVendorBaseUrl 回答「这条连接的 base」：夹具口（仅 NOMI_E2E_PRODUCTION_FIXTURE=1 + 回环地址 + 夹具点名的那家）优先，否则是用户保存的 baseUrlHint",
+    "上传端点由 base + 声明的 endpointPath 推出来，注册表里不再有第二份写死的域名（默认值取种子 base，只在没有用户连接时用）",
+    "连接健康探测读同一个 base",
+    "0.22.4 的备用域名重试不变：用户填自定义地址时 rewriteVendorUrl 因不在官方名单内不改写"
+  ],
+  "invariant_owner_layer": {
+    "layer": "electron/catalog/userVendorBase.ts",
+    "tests": [
+      "electron/catalog/userVendorBase.test.ts"
+    ]
+  },
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/ai/onboarding/vendorHealth.ts",
+      "symbol": "userVendorBaseUrl"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/userVendorBase.ts",
+      "symbol": "userVendorBaseUrl"
+    },
+    {
+      "kind": "write",
+      "path": "electron/catalog/assetIngestionRegistry.ts",
+      "symbol": "bindIngestionToUserBase"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/types.ts",
+      "symbol": "AssetIngestion"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "symbol": "resolveAssetIngestionWithFallback"
+    }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 5,
+    "why_not": "数门口径把「读 userVendorBaseUrl」也记成门：健康探测与上传绑定是 userVendorBaseUrl 的两个读者，types.ts 是 endpointPath 声明字段的类型。不是新增的写入口——「base 的回答者」从生成/上传/健康探测各取各的，收成 userVendorBaseUrl 一处；生成请求侧的夹具口副本未并，见 residual_risks。"
+  },
+  "generality_proof": "不按供应商写特例：任何 curated 吞入声明只要带 endpointPath，端点就由用户连接的 base 推出，今后给别家登记上传通道照同一写法；健康探测与夹具口走同一个函数。",
+  "shared_boundaries": [
+    {
+      "path": "electron/catalog/userVendorBase.ts",
+      "symbol": "userVendorBaseUrl",
+      "responsibility": "回答这条连接的 base（夹具口 > 用户保存地址）。"
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/generationProviderBootstrap.ts",
+      "entry_point": "createGenerationProviderBootstrap",
+      "disposition": "not-affected",
+      "evidence": "生成请求读用户保存的 live.baseUrlHint（0.22.5 起），行为正确；它自带的夹具口副本未并入 userVendorBaseUrl，residual_risks 记账。"
+    },
+    {
+      "path": "electron/catalog/assetTransportDescribe.ts",
+      "entry_point": "describeAssetTransportChannels",
+      "disposition": "enforced",
+      "evidence": "通道说明读 resolveAssetIngestionWithFallback，自动跟上；userVendorBase.test 经同一函数。"
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "每个新增的读地址入口（上传、探测、下载、余额……）都可能再自己拼一份域名；走查铁律 1 是兜底探测。",
+    "same_class_scan": [
+      "git grep api.apimart.ai -- electron src：非测试、非注释的写死只剩 apimartVendor.ts 种子默认 base 与 vendorBaseFallback.ts 官方域名表（两处都是登记表本体，不是读者）",
+      "git grep apib.ai：同上，只在官方域名表与测试",
+      "door-map userVendorBaseUrl / bindIngestionToUserBase"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/catalog/userVendorBase.ts",
+    "invariant": "端点由唯一的 base 回答者推出；注册表不写第二份域名。",
+    "failure_mode": "漏接的入口会在走查网络闸（scripts/walkthrough-network-guard.cjs）里报铁律 1，零花费。",
+    "exception_policy": "none",
+    "strategy": "curated 吞入声明带 endpointPath，解析时绑定用户 base；健康探测读同一函数；夹具口放进同一函数。",
+    "artifacts": [
+      "electron/catalog/userVendorBase.ts",
+      "electron/catalog/assetIngestionRegistry.ts",
+      "electron/ai/onboarding/vendorHealth.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/catalog/userVendorBase.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/catalog/userVendorBase.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/catalog/assetIngestionRegistry.ts"
+    ],
+    "rationale": "注册表里写死的国际域名上传端点改为由种子 base 与 endpointPath 推出；无开关保留旧行为。"
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "无第三方依赖。",
+    "exit_criteria": []
+  },
+  "migration": "不迁移数据；用户保存的地址本来就在 catalog，下一次上传起生效。",
+  "residual_risks": [
+    "生成请求侧（generationProviderBootstrap、apimartGenerationProvider）各有一份夹具口副本，未并入 userVendorBaseUrl",
+    "目标供应商没有自己的上传通道时兜底走 KIE / APIMart 上传，用户的图会经第三方；本次不修，私有待办已有对应条目",
+    "全功能走查另有一条铁律 9（9b 已保存标签挂 8s）与本问题无关，未处理"
+  ]
+}

@@ -32,6 +32,7 @@ import {
 } from "./assetIngestionRegistry";
 import { readAssetRelayRuntimeConfig, readDefaultAssetRelayRuntimeConfig } from "./assetRelayRuntimeConfig";
 import { isVendorOfBuiltin } from "../shared/builtinVendorIdentity";
+import { APIMART_VENDOR_SEED } from "./apimartVendor";
 
 export {
   ingestionAccepts,
@@ -769,7 +770,7 @@ export function resolveAssetIngestionWithFallback(
   if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey, "kie");
   if (!isVendorOfBuiltin(allVendors, targetVendor?.key, "apimart")) {
     const apimartKey = getApiKey("apimart");
-    if (apimartKey) push(resolveAssetIngestionForKind(allVendors.find((vendor) => vendor.key === "apimart") ?? { key: "apimart" }, mediaKind), apimartKey, "apimart");
+    if (apimartKey) push(resolveAssetIngestionForKind(allVendors.find((vendor) => vendor.key === APIMART_VENDOR_SEED.key) ?? { key: "apimart" }, mediaKind), apimartKey, "apimart");
   }
   // 4. Nomi relay：用户自己的 Relay 优先于 Nomi 公共 Relay，二者均只作为受控兜底。
   const nomiRelay = nomiAssetRelayCandidateFromEnvironment();
