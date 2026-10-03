@@ -77,11 +77,11 @@ async function main() {
   const filter = arg('--cards')
   const cards = await loadCards(filter)
   const idealIds = new Set(['police-chase', 'perfume-orbit', 'courtyard-standoff'])
-  if ((scheme === 's0-pr960-ideal' || scheme === 's1-oracle-plan') && filter && cards.some((c) => !idealIds.has(c.id)))
+  if (scheme === 's0-pr960-ideal' && filter && cards.some((c) => !idealIds.has(c.id)))
     throw new Error(
       `s0-pr960-ideal only accepts police-chase, perfume-orbit, courtyard-standoff; filter ${filter} selected another card`,
     )
-  const selected = scheme === 's0-pr960-ideal' || scheme === 's1-oracle-plan' ? cards.filter((c) => idealIds.has(c.id)) : cards
+  const selected = scheme === 's0-pr960-ideal' ? cards.filter((c) => idealIds.has(c.id)) : cards
   const scores: CardScore[] = []
   const metadata: Record<string, unknown> = {}
   for (const card of selected) {

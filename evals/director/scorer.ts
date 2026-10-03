@@ -195,10 +195,14 @@ function actionEvidence(
   if (actionId) return { ok: actionClipCovers(scene, objectId, window, actionId), missingAsset: actionId }
   return { ok: true }
 }
-function sampleForSubject(frame: DirectorMeasurements['frames'][number], subject: string | undefined) {
+function sampleForSubject(
+  frame: DirectorMeasurements['frames'][number],
+  subject: string | undefined,
+  actorMap: Record<string, string | undefined>,
+) {
   if (!subject) return undefined
   const [root, part] = subject.split('.')
-  const sample = frame.objects[root]
+  const sample = frame.objects[actorMap[root] ?? root]
   return part ? sample?.anchors?.[part] : sample
 }
 
@@ -412,14 +416,14 @@ function scoreMotionAndFraming(
         (frame) => frame.time >= start - 1e-4 && (frame.time < end - 1e-4 || end >= measurements.duration - 1e-4),
       )
       const visible =
-        frames.filter((frame) => sampleForSubject(frame, subjectRef)?.projection?.inFrame).length /
+        frames.filter((frame) => sampleForSubject(frame, subjectRef, actorMap)?.projection?.inFrame).length /
         Math.max(1, frames.length)
       total += visible
       count++
       if (visible < 0.95) reasons.push(`${start}-${end}s 主体出画 ${Math.round((1 - visible) * 100)}% 帧`)
       if (shot.size) {
         const sizes = frames
-          .map((frame) => sampleForSubject(frame, subjectRef)?.shotSize)
+          .map((frame) => sampleForSubject(frame, subjectRef, actorMap)?.shotSize)
           .filter((size) => size !== undefined) as string[]
         const expected = shotAliases[shot.size] ?? shot.size ?? ''
         const hit = sizes.filter((size) => shotSizeMatches(expected, size)).length / Math.max(1, sizes.length)

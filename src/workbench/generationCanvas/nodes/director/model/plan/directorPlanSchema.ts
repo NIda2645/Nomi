@@ -11,6 +11,7 @@ const template = z.enum(['street', 'room', 'courtyard', 'product_stage'])
 const actorKind = z.enum(['person', 'vehicle', 'product', 'prop'])
 const anchorName = z.string().regex(/^[a-z][a-z0-9_]*$/)
 const move = z.enum(CAMERA_MOVES as [CameraMove, ...CameraMove[]])
+const extendedMove = z.union([move, z.enum(['pan', 'tilt', 'whip', 'rack_focus'])])
 
 export const directorPlanSchema = z.object({
   version: z.literal(2).default(2),
@@ -47,7 +48,7 @@ export const directorPlanSchema = z.object({
     size: z.enum(EVAL_SHOT_SIZES as [EvalShotSize, ...EvalShotSize[]]),
     angle: z.union([z.enum(['front', 'three_quarter', 'side', 'side_rear', 'back']), z.object({ over_shoulder: z.string().min(1) }), z.object({ pov: z.string().min(1) })]),
     height: z.enum(['eye', 'low', 'high', 'overhead']),
-    move: z.object({ kind: z.union([move, z.literal('follow'), z.literal('static')]), direction: z.enum(['left', 'right', 'up', 'down', 'forward', 'backward']).optional(), amount: finite.positive().optional(), speed: z.enum(['slow', 'medium', 'fast']).default('medium'), easing: z.enum(['linear', 'ease_in', 'ease_out', 'ease_in_out']).default('linear') }),
+    move: z.object({ kind: z.union([extendedMove, z.literal('follow'), z.literal('static')]), direction: z.enum(['left', 'right', 'up', 'down', 'forward', 'backward']).optional(), amount: finite.positive().optional(), speed: z.enum(['slow', 'medium', 'fast']).default('medium'), easing: z.enum(['linear', 'ease_in', 'ease_out', 'ease_in_out']).default('linear') }),
   }).strict()).min(1),
 }).strict().superRefine((plan, ctx) => {
   const actorIds = new Set(plan.actors.map(a => a.id))

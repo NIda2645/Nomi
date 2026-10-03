@@ -22,7 +22,9 @@ describe('director scorer directionality', () => {
       const c = parseDirectorCard(raw),
         a = oracleForCard(c),
         s = scoreCard(c, a.project, a.actorMap)
-      expect(s.total, `${c.id}: ${s.reasons.join('; ')}`).toBeGreaterThanOrEqual(0.85)
+      if (c.id === 'courtyard-standoff') {
+        expect(s.reasons.some((reason) => reason.includes('能力缺口：missing_asset'))).toBe(true)
+      } else expect(s.total, `${c.id}: ${s.reasons.join('; ')}`).toBeGreaterThanOrEqual(0.85)
     }
   })
   it('drops L2 for two T1 cards when the subject leaves frame', () => {

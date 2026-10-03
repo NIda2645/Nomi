@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { compileDirectorPlan } from './directorPlanCompiler'
 import { measureContinuity, recognizeCameraMotion, sampleDirectorProject, distanceForShotSize } from '../directorEvalMeasurement'
+import { forwardFromAngles, normalize, sub } from '../vec3'
 import { S1_ORACLE_PLANS } from '../../../../../../../evals/director/s1OraclePlans'
 
 describe('S1 director compiler', () => {
@@ -32,8 +33,19 @@ describe('S1 director compiler', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     const woman = result.project.scenes[0].objects.find((object) => object.id === result.actorMap.woman)!
-    expect(woman.actionClips?.map((clip) => clip.actionPose)).toEqual(['standard_walk'])
+    expect(woman.actionClips?.map((clip) => clip.actionPose)).toEqual(['standard_walk', 'standing_idle'])
     expect(woman.actionClips?.some((clip) => clip.actionPose === 'hide_object_behind_back')).toBe(false)
     expect(result.issues.some((issue) => issue.kind === 'missing_asset')).toBe(true)
+  })
+  it('locks the camera pose convention to lookAtAngles', () => {
+    const result = compileDirectorPlan(S1_ORACLE_PLANS['t1-13-static'])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const camera = result.project.scenes[0].cameras[0]
+    const subject = result.project.scenes[0].objects.find((object) => object.id === result.actorMap.subject)!
+    const target = { x: subject.position.x, y: subject.position.y + 1.5, z: subject.position.z }
+    const direction = normalize(sub(target, camera.position))
+    const forward = forwardFromAngles(camera.motionTrajectory?.[0]?.yaw ?? camera.yaw, camera.motionTrajectory?.[0]?.pitch ?? camera.pitch)
+    expect(forward.x * direction.x + forward.y * direction.y + forward.z * direction.z).toBeGreaterThan(0.999)
   })
 })

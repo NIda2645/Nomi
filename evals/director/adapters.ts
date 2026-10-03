@@ -295,7 +295,7 @@ function cameraForShot(
   const size = (shot.size ?? shot.endSize ?? '中景') as EvalShotSize
   const ladder: ShotLadder = actor.type === 'character' && !anchor ? 'figure' : 'object'
   const fov = DEFAULT_FOV
-  const distance = Math.max(anchor ? 0.15 : 0.12, distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder))
+  const distance = Math.max(anchor ? 0.65 : 0.12, distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder))
   const startActor = { ...actor, position: positionAt(actor, start) }
   const endActor = { ...actor, position: positionAt(actor, end) }
   const target = targetPosition(startActor, anchor)
@@ -460,7 +460,7 @@ export async function adapt(prompt: string, card: DirectorCard, scheme: Scheme):
   }
   if (scheme === 's1-oracle-plan') {
     const plan = S1_ORACLE_PLANS[card.id]
-    if (!plan) throw new Error(`s1-oracle-plan only supports the three benchmark cards; received ${card.id}`)
+    if (!plan) throw new Error(`s1-oracle-plan has no hand-written plan for ${card.id}`)
     const result = adaptS1Plan(plan)
     if ('errors' in result) throw new Error(`s1 oracle compiler failed for ${card.id}: ${result.errors.join('; ')}`)
     return { ...result, metadata: { issues: result.issues } }

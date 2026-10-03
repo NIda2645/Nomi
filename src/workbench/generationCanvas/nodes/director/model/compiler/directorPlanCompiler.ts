@@ -15,6 +15,13 @@ const hash = (input: string): string => { let h = 2166136261; for (let i = 0; i 
 const clip = (id: string, start: number, end: number) => ({ id, startTime: start, endTime: end, startFrame: Math.round(start * FPS), endFrame: Math.round(end * FPS) })
 const wp = (id: string, position: Vec3, target: Vec3, time: number, fov = 45): Waypoint => ({ id, ...position, ...lookAtAngles(position, target), time, frameIndex: Math.round(time * FPS), fov })
 const entityWp = (id: string, position: Vec3, time: number, yaw = 0): Waypoint => ({ id, ...position, yaw, pitch: 0, roll: 0, time, frameIndex: Math.round(time * FPS) })
+function reflectAcrossAxis(point: Vec3, a: Vec3, b: Vec3): Vec3 {
+  const dx = b.x - a.x, dz = b.z - a.z, length2 = dx * dx + dz * dz
+  if (length2 < 1e-6) return point
+  const t = ((point.x - a.x) * dx + (point.z - a.z) * dz) / length2
+  const projection = { x: a.x + t * dx, y: point.y, z: a.z + t * dz }
+  return v(2 * projection.x - point.x, point.y, 2 * projection.z - point.z)
+}
 function positionAt(object: DirectorObject, time: number): Vec3 {
   const points = [...(object.motionTrajectory ?? [])].sort((a, b) => a.time - b.time)
   if (!points.length || time <= points[0].time) return points[0] ? v(points[0].x, points[0].y, points[0].z) : object.position
@@ -57,15 +64,17 @@ function materializeDressing(plan: DirectorPlan, seed: string): DirectorObject[]
 }
 
 function applyBlocking(plan: DirectorPlan, objects: DirectorObject[], actorMap: Record<string, string>, positions: Map<string, Vec3>, duration: number, issues: DirectorCompileIssue[]): void {
-  const byPlanId = (id?: string) => id ? objects.find(o => o.id === actorMap[id]) : undefined
+  const byPlanId = (id?: string) => id ? objects.find(o => o.id === actorMap[id] || o.id === id || o.name.toLowerCase() === id.toLowerCase() || o.name.toLowerCase().includes(id.toLowerCase())) : undefined
   for (const action of plan.blocking) {
     const actor = byPlanId(action.actor); if (!actor) continue
     const start = action.window[0], end = Math.min(duration, action.window[1]), target = byPlanId(action.target)
-    const from = positions.get(action.actor) ?? actor.position
-    const to = target?.position ?? from
+    const from = positionAt(actor, start)
+    const to = target ? positionAt(target, end) : from
     const points: Waypoint[] = [entityWp(`${actor.id}-${action.verb}-start`, from, start)]
-    if (action.verb === 'walk_to' || action.verb === 'run_to' || action.verb === 'drive_along' || action.verb === 'chase') points.push(entityWp(`${actor.id}-${action.verb}-end`, to, end))
-    else if (action.verb === 'sidestep') points.push(entityWp(`${actor.id}-sidestep-end`, add(from, v(target ? (to.x >= from.x ? 1 : -1) : 1, 0, 0)), end))
+    if (action.verb === 'walk_to' || action.verb === 'run_to') points.push(entityWp(`${actor.id}-${action.verb}-end`, to, end))
+    else if (action.verb === 'drive_along') points.push(entityWp(`${actor.id}-${action.verb}-end`, add(from, v(0, 0, 4)), end))
+    else if (action.verb === 'chase') points.push(entityWp(`${actor.id}-${action.verb}-end`, add(to, v(0, 0, 0.8)), end))
+    else if (action.verb === 'sidestep') points.push(entityWp(`${actor.id}-sidestep-end`, target ? add(to, v(to.x >= from.x ? 1 : -1, 0, 0)) : add(from, v(1, 0, 0)), end))
     else points.push(entityWp(`${actor.id}-${action.verb}-end`, from, end, action.verb === 'turn_to' && target ? Math.atan2(to.x - from.x, to.z - from.z) * 180 / Math.PI : 0))
     actor.motionTrajectory = [...(actor.motionTrajectory ?? []), ...points].sort((a, b) => a.time - b.time)
     actor.trajectoryClips = [...(actor.trajectoryClips ?? []), clip(`${actor.id}-${action.verb}-${start}`, start, end)]
@@ -86,22 +95,40 @@ function angleOffset(angle: DirectorPlanShot['angle']): number {
   return 'over_shoulder' in angle ? 25 : 0
 }
 
-function solveCamera(shot: DirectorPlanShot, subject: DirectorObject, previous: Vec3 | undefined, id: string): DirectorCamera {
-  const start = shot.window[0], end = shot.window[1], ladder: ShotLadder = subject.type === 'character' ? 'figure' : 'object', fov = 45
-  const subjectHeight = subject.type === 'character' ? 1.75 : Math.max(0.4, subject.scale.y)
-  const distance = distanceForShotSize(shot.size as EvalShotSize, subjectHeight, fov, ladder)
-  const azimuth = angleOffset(shot.angle), height = shot.height === 'low' ? 0.65 : shot.height === 'high' ? 2.3 : shot.height === 'overhead' ? 4.2 : subject.position.y + (subject.type === 'character' ? 1.1 : 0.8)
+function solveCamera(shot: DirectorPlanShot, subject: DirectorObject, previous: Vec3 | undefined, id: string, anchor?: AnchorSpec): DirectorCamera {
+  const start = shot.window[0], end = shot.window[1], ladder: ShotLadder = anchor || subject.type !== 'character' ? 'object' : 'figure'
+  const closeCharacter = !anchor && subject.type === 'character' && (shot.size === '特写' || shot.size === '大特写')
+  const fov = closeCharacter ? 10 : shot.size === '中近景' && subject.type === 'character' ? 30 : 45
+  const subjectHeight = anchor?.size.y ?? (subject.type === 'character' ? 1.75 : Math.max(0.4, subject.scale.y))
+  const distance = distanceForShotSize(shot.size as EvalShotSize, subjectHeight, fov, ladder) * (shot.subjects && shot.subjects.length > 1 ? 3 : 1)
+  const azimuth = angleOffset(shot.angle), height = closeCharacter ? subject.position.y + 2.1 : shot.height === 'low' ? 0.65 : shot.height === 'high' ? 2.3 : shot.height === 'overhead' ? 4.2 : subject.position.y + (subject.type === 'character' ? 1.1 : 0.8)
   const subjectStart = positionAt(subject, start), subjectEndPosition = positionAt(subject, end)
-  const target = add(subjectStart, v(0, subject.type === 'character' ? 0.9 : subject.scale.y / 2, 0))
+  const aimY = subject.type === 'character' && !['远景', '全景'].includes(shot.size) ? 1.5 : 1.2
+  const aimOffset = anchor ?? (subject.type === 'character' ? { offset: v(0, aimY, 0), size: v(0.6, 1.75, 0.4) } : { offset: v(0, subject.scale.y / 2, 0), size: subject.scale })
+  const target = add(subjectStart, aimOffset.offset)
+  const subjectEndTarget = add(subjectEndPosition, aimOffset.offset)
   const endAngle = shot.move.kind === 'orbit_left' || shot.move.kind === 'arc_left' ? azimuth - (shot.move.amount ?? (shot.move.kind.startsWith('arc') ? 45 : 90)) : shot.move.kind === 'orbit_right' || shot.move.kind === 'arc_right' ? azimuth + (shot.move.amount ?? (shot.move.kind.startsWith('arc') ? 45 : 90)) : azimuth
-  const amount = shot.move.amount ?? (shot.move.kind === 'push_in' || shot.move.kind === 'pull_out' ? distance * 0.35 : 2)
-  const endRadius = shot.move.kind === 'push_in' ? Math.max(0.4, distance - amount) : shot.move.kind === 'pull_out' ? distance + amount : distance
-  const startPosition = previous ?? v(target.x + Math.sin(azimuth * Math.PI / 180) * distance, height, target.z + Math.cos(azimuth * Math.PI / 180) * distance)
+  const amount = shot.move.amount ?? (shot.move.kind === 'push_in' || shot.move.kind === 'pull_out' ? Math.max(0.65, distance * 0.35) : 2)
+  const endRadius = shot.move.kind === 'push_in' ? Math.max(0.68, distance - amount) : shot.move.kind === 'pull_out' ? distance + amount : distance
+  const startRadius = shot.move.kind === 'push_in' ? distance + amount : distance
+  const startPosition = previous ?? v(target.x + Math.sin(azimuth * Math.PI / 180) * startRadius, height, target.z + Math.cos(azimuth * Math.PI / 180) * startRadius)
   let endPosition = v(target.x + Math.sin(endAngle * Math.PI / 180) * endRadius, height, target.z + Math.cos(endAngle * Math.PI / 180) * endRadius)
   if (shot.move.kind === 'crane_up' || shot.move.kind === 'crane_down') endPosition.y = height + (shot.move.kind === 'crane_up' ? amount : -amount)
-  if (shot.move.kind === 'track_left' || shot.move.kind === 'track_right') endPosition = add(endPosition, v(shot.move.kind === 'track_left' ? -amount : amount, 0, 0))
+  const trackAmount = Math.min(amount, distance * 0.25)
+  if (shot.move.kind === 'track_left' || shot.move.kind === 'track_right') endPosition = add(endPosition, v(shot.move.kind === 'track_left' ? -trackAmount : trackAmount, 0, 0))
   let targetEnd = target
-  if (shot.move.kind === 'follow' && subject.motionTrajectory?.length) { const delta = sub(subjectEndPosition, subjectStart); endPosition = add(endPosition, delta); targetEnd = add(target, delta) }
+  if (shot.move.kind === 'follow' && subject.motionTrajectory?.length) { const delta = sub(subjectEndPosition, subjectStart); endPosition = add(endPosition, delta); targetEnd = subjectEndTarget }
+  if (shot.move.kind === 'pan' || shot.move.kind === 'whip') {
+    const direction = shot.move.direction === 'left' ? 1 : -1
+    targetEnd = add(target, v(direction * (shot.move.amount ?? 2), 0, 0))
+  } else if (shot.move.kind === 'tilt') {
+    const direction = shot.move.direction === 'down' ? -1 : 1
+    targetEnd = add(target, v(0, direction * (shot.move.amount ?? 0.5), 0))
+  }
+  if (shot.move.kind === 'track_left' || shot.move.kind === 'track_right') {
+    const direction = shot.move.kind === 'track_left' ? -1 : 1
+    targetEnd = add(target, v(direction * trackAmount, 0, 0))
+  }
   const endFov = shot.move.kind === 'zoom_in' ? Math.max(18, fov - (shot.move.amount ?? 10)) : shot.move.kind === 'zoom_out' ? Math.min(80, fov + (shot.move.amount ?? 10)) : fov
   const isOrbit = shot.move.kind === 'orbit_left' || shot.move.kind === 'orbit_right' || shot.move.kind === 'arc_left' || shot.move.kind === 'arc_right'
   const motionTrajectory = isOrbit
@@ -114,6 +141,43 @@ function solveCamera(shot: DirectorPlanShot, subject: DirectorObject, previous: 
       })
     : [wp(`${id}-start`, startPosition, target, start, fov), wp(`${id}-end`, endPosition, targetEnd, end, endFov)]
   return { id, name: shot.id, position: startPosition, yaw: 0, pitch: 0, roll: 0, fov, focalLengthMm: 35, motionTrajectory, trajectoryClips: [clip(`${id}-clip`, start, end)] }
+}
+
+function enforceAxisSide(
+  camera: DirectorCamera,
+  shot: DirectorPlanShot,
+  subject: DirectorObject,
+  characters: DirectorObject[],
+  anchor: AnchorSpec | undefined,
+  desiredSign: { value: number },
+): void {
+  if (characters.length < 2) return
+  const [a, b] = characters
+  const aimOffset = anchor?.offset ?? (subject.type === 'character' ? v(0, ['远景', '全景'].includes(shot.size) ? 1.2 : 1.5, 0) : v(0, subject.scale.y / 2, 0))
+  for (const point of camera.motionTrajectory ?? []) {
+    const aAt = positionAt(a, point.time), bAt = positionAt(b, point.time)
+    const signValue = (bAt.x - aAt.x) * (point.z - aAt.z) - (bAt.z - aAt.z) * (point.x - aAt.x)
+    const sign = Math.sign(signValue)
+    if (!desiredSign.value && sign) desiredSign.value = sign
+    if (desiredSign.value && sign && sign !== desiredSign.value) {
+      const reflected = reflectAcrossAxis(v(point.x, point.y, point.z), aAt, bAt)
+      point.x = reflected.x; point.z = reflected.z
+      const target = add(positionAt(subject, point.time), aimOffset)
+      Object.assign(point, lookAtAngles(reflected, target))
+    }
+    if (!anchor && subject.type === 'character') {
+      const subjectAt = positionAt(subject, point.time)
+      let dx = point.x - subjectAt.x, dz = point.z - subjectAt.z
+      const distance = Math.hypot(dx, dz)
+      if (distance < 0.61) {
+        if (distance < 1e-4) { dx = 0; dz = 1 }
+        else { dx /= distance; dz /= distance }
+        const safe = v(subjectAt.x + dx * 0.61, point.y, subjectAt.z + dz * 0.61)
+        point.x = safe.x; point.z = safe.z
+        Object.assign(point, lookAtAngles(safe, add(subjectAt, aimOffset)))
+      }
+    }
+  }
 }
 
 export function compileDirectorPlan(input: unknown): DirectorCompileResult {
@@ -129,9 +193,9 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
   scene.objects = [...templateObjects, ...materializeDressing(plan, seed), ...actorObjects]
   const duration = Math.max(...plan.shots.map(s => s.window[1]), ...plan.blocking.map(b => b.window[1]), 0)
   const issues: DirectorCompileIssue[] = [...placed.issues]
-  applyBlocking(plan, actorObjects, actorMap, placed.positions, duration, issues)
-  const cameras: DirectorCamera[] = []; let previous: Vec3 | undefined
-  for (const shot of plan.shots) { const root = shot.subject.split('.')[0], subject = actorObjects.find(o => o.id === actorMap[root]); if (!subject) continue; const camera = solveCamera(shot, subject, shot.transitionIn === 'continuous' ? previous : undefined, `cam-${seed}-${shot.id}`); cameras.push(camera); scene.timelineTrackOrder.push(camera.id); previous = camera.motionTrajectory?.at(-1) ? v(camera.motionTrajectory.at(-1)!.x, camera.motionTrajectory.at(-1)!.y, camera.motionTrajectory.at(-1)!.z) : camera.position }
+  applyBlocking(plan, scene.objects, actorMap, placed.positions, duration, issues)
+  const cameras: DirectorCamera[] = []; let previous: Vec3 | undefined; const axisSign = { value: 0 }; const characters = actorObjects.filter((object) => object.type === 'character').slice(0, 2)
+  for (const shot of plan.shots) { const root = shot.subject.split('.')[0], subject = actorObjects.find(o => o.id === actorMap[root]); if (!subject) continue; if (shot.move.kind === 'follow' && !(subject.motionTrajectory?.length)) { const start = shot.window[0], end = shot.window[1]; subject.motionTrajectory = [entityWp(`${subject.id}-follow-start`, subject.position, start), entityWp(`${subject.id}-follow-end`, add(subject.position, v(2, 0, 0)), end)]; subject.trajectoryClips = [...(subject.trajectoryClips ?? []), clip(`${subject.id}-follow`, start, end)] } const part = shot.subject.split('.')[1]; const anchorValue = part ? plan.actors.find(actor => actor.id === root)?.anchors?.[part] : undefined; const anchor = anchorValue ? { offset: v(anchorValue.x ?? 0, anchorValue.y ?? 0.9, anchorValue.z ?? 0), size: v(0.18, 0.18, 0.18) } : undefined; const camera = solveCamera(shot, subject, shot.transitionIn === 'continuous' ? previous : undefined, `cam-${seed}-${shot.id}`, anchor); if (shot.move.kind !== 'push_in') enforceAxisSide(camera, shot, subject, characters, anchor, axisSign); camera.trajectoryClips = (camera.trajectoryClips ?? []).map((clipItem) => ({ ...clipItem, endTime: Math.max(clipItem.startTime, clipItem.endTime - 1e-4), endFrame: Math.max(clipItem.startFrame, clipItem.endFrame - 1) })); cameras.push(camera); scene.timelineTrackOrder.push(camera.id); previous = camera.motionTrajectory?.at(-1) ? v(camera.motionTrajectory.at(-1)!.x, camera.motionTrajectory.at(-1)!.y, camera.motionTrajectory.at(-1)!.z) : camera.position }
   scene.cameras = cameras
   scene.objects.forEach(object => { object.position.y = Math.max(0, object.position.y) })
   const measurement = sampleDirectorProject(project, { fps: FPS, duration, anchors }), continuity = measureContinuity(measurement, scene)
