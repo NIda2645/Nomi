@@ -4159,14 +4159,6 @@
         {
           "path": "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts",
           "symbol": "DIRECTOR_ASSET_CATALOG"
-        },
-        {
-          "path": "scripts/director-assets/retarget_blender.py",
-          "symbol": "apply_retarget_frame"
-        },
-        {
-          "path": "scripts/director-assets/check-retarget.mjs",
-          "symbol": "evaluateAction"
         }
       ],
       "forbidden_derivations": [
@@ -4182,7 +4174,7 @@
         "src/workbench/generationCanvas/nodes/director/model/assetCatalog/types.ts"
       ],
       "since": "2026-10-04",
-      "notes": "A期新增资产与许可证来源的唯一目录；运行时接线留给切换 PR。pending-review 许可资产不得作为已清权 CC0 推理。"
+      "notes": "A期新增资产与许可证来源的唯一目录；本轮采用 UAL 原生 CC0 人偶与动作，运行时接线留给切换 PR。"
     }
   ]
 }

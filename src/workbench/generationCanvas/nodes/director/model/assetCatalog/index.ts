@@ -11,7 +11,6 @@ const sourceKenneyRoads = 'https://kenney.nl/assets/city-kit-roads'
 const sourceKenneyCar = 'https://kenney.nl/assets/car-kit'
 const sourceKenneyFurniture = 'https://kenney.nl/assets/furniture-kit'
 const sourceKenneyBuilding = 'https://kenney.nl/assets/building-kit'
-const restoredSource = 'git:d3f68057c^:src/assets/mannequin-animations.glb (three.js Xbot / Mixamo; license pending review)'
 
 const action = (id: string, clipName: string, file: string, tags: string[], zh: string, en: string, source: string, license: AssetRecord['license'] = 'CC0-1.0', derivativeFile?: string): AssetRecord => ({
   id, kind: 'action', tags, nameZh: zh, nameEn: en, sizeClass: 'tiny', origin: 'rig-root', file, source, license, modified: true, clipName, derivativeFile, rig: 'mixamo',
@@ -22,16 +21,6 @@ const prop = (id: string, file: string, tags: string[], zh: string, en: string, 
 })
 
 export const DIRECTOR_ASSET_CATALOG: AssetRecord[] = [
-  action('action-restored-agree', 'agree', 'src/assets/director/pose/restored/retargeted-agree.glb', ['emote', 'agree', 'nod'], '同意', 'Agree', restoredSource, 'pending-review', 'src/assets/director/pose/restored/agree.fbx'),
-  action('action-restored-head-shake', 'headShake', 'src/assets/director/pose/restored/retargeted-headShake.glb', ['emote', 'head-shake', 'disagree'], '摇头', 'Head shake', restoredSource, 'pending-review', 'src/assets/director/pose/restored/headShake.fbx'),
-  action('action-restored-sad-pose', 'sad_pose', 'src/assets/director/pose/restored/retargeted-sad_pose.glb', ['emote', 'sad', 'static'], '悲伤', 'Sad pose', restoredSource, 'pending-review', 'src/assets/director/pose/restored/sad_pose.fbx'),
-  action('action-restored-sneak-pose', 'sneak_pose', 'src/assets/director/pose/restored/retargeted-sneak_pose.glb', ['locomotion', 'sneak', 'static'], '潜行姿', 'Sneak pose', restoredSource, 'pending-review', 'src/assets/director/pose/restored/sneak_pose.fbx'),
-  action('action-ual-sit-idle', 'Sitting_Idle_Loop', 'src/assets/director/actions/ual-sit-idle.glb', ['sit', 'idle', 'loop'], '坐姿待机', 'Sitting idle', sourceQuaternius),
-  action('action-ual-push', 'Push_Loop', 'src/assets/director/actions/ual-push.glb', ['interaction', 'push', 'loop'], '推', 'Push loop', sourceQuaternius),
-  action('action-ual-punch', 'Punch_Jab', 'src/assets/director/actions/ual-punch.glb', ['combat', 'punch'], '直拳', 'Punch jab', sourceQuaternius),
-  action('action-ual-fall', 'Death01', 'src/assets/director/actions/ual-fall.glb', ['fall', 'death', 'impact'], '跌倒', 'Fall / death', sourceQuaternius),
-  action('action-ual-pickup', 'PickUp_Table', 'src/assets/director/actions/ual-pickup.glb', ['interaction', 'pickup'], '拾取', 'Pick up', sourceQuaternius),
-  action('action-ual-idle', 'Idle_Loop', 'src/assets/director/actions/ual-idle.glb', ['idle', 'loop'], '待机', 'Idle loop', sourceQuaternius),
   ...STORYAI_POSES,
   prop('prop-road-straight', 'src/assets/director/props/kenney-road-straight.glb', ['road', 'straight', 'street'], '直路', 'Straight road', [1, 1, 0.02], sourceKenneyRoads),
   prop('prop-road-crossroad', 'src/assets/director/props/kenney-road-crossroad.glb', ['road', 'crossroad', 'intersection'], '十字路口', 'Crossroad', [1, 1, 0.02], sourceKenneyRoads),
