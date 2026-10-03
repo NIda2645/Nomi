@@ -1,4 +1,5 @@
 import { backfillShotIndexes } from '../model/shotNumbering'
+import { isNodeSubmitInFlight } from '../runner/nodeSubmitInFlight'
 // 画布快照归一化 + 种子节点。从 generationCanvasStore.ts 抽出。
 // 注意：这是 store 专用的深度归一化（过滤未知 kind、position 兜底、groups 走 zod、edges 校验端点），
 // 与 workbenchPersistence.ts 的轻量直通版 normalizeGenerationCanvasSnapshot 行为不同，故改名 normalizeStoreSnapshot。
@@ -41,6 +42,8 @@ function convergeStuckMidFlightNode(
   node: Omit<GenerationCanvasNode, 'categoryId'>,
 ): Omit<GenerationCanvasNode, 'categoryId'> {
   if (node.status !== 'running' && node.status !== 'queued') return node
+  // 这个窗口的提交口上还挂着这个节点的一笔请求（切项目再切回来，不是重启）：它不是幽灵，照旧在生成。
+  if (isNodeSubmitInFlight(node.id)) return node
   const runs: GenerationNodeRunRecord[] = Array.isArray(node.runs) ? node.runs : []
   if (isProductionRunRecord(runs[0])) return node
   const taskId = (runs[0]?.taskId || (node.progress as GenerationNodeProgress | undefined)?.taskId || '').trim()

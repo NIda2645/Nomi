@@ -7,6 +7,7 @@ import { prepareSpendQuote, takeSpendQuote } from "../spendQuote";
 import type { SpendQuoteInput } from "../shared/contracts/spendQuote";
 import { runTaskIpcGuard } from "./taskIpcGuard";
 import { withTaskOwner } from "./localTaskJobs";
+import { withNodeSubmitExclusive } from "./nodeSubmitInFlight";
 import { antigravityImageJobs } from "../catalog/antigravityImageOperation";
 import { cancelComfyCandidateTest, failComfyCandidateEnvelope, runComfyCandidateTest } from "./comfyCandidateTest";
 
@@ -47,7 +48,9 @@ export function registerTaskIpcHandlers(loadRuntimeModule: RuntimeLoader): void 
     }
     return runTaskIpcGuard(payload, async () => {
       const { runTask } = await loadRuntimeModule();
-      return withTaskOwner(event.sender.id, () => runTaskWithIdempotency(payload, () => runTask(payload)));
+      // 同一节点一次只许一笔在途（S1-5 同类）：幂等重放先在 runTaskWithIdempotency 里合并，到不了这道闸。
+      const extras = (payload as { request?: { extras?: Record<string, unknown> } } | null)?.request?.extras;
+      return withTaskOwner(event.sender.id, () => runTaskWithIdempotency(payload, () => withNodeSubmitExclusive(extras, () => runTask(payload))));
     });
   });
 

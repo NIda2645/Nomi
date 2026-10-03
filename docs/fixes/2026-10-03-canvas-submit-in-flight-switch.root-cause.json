@@ -1,0 +1,147 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-03-canvas-submit-in-flight-switch",
+  "problem_type": "A paid canvas submit that is still in flight is forgotten when the project canvas is reloaded, so the node is offered for generation again and the provider receives a second paid request.",
+  "symptom": "Canvas single-node generation: while the request has not come back, go to the project library and back. The node shows idle (image node, enter a prompt) and the bottom bar offers 'Generate all 1'; clicking it sends a second POST to the provider and the node later shows two versions (real app with loopback fixture: provider POSTs 1 -> 2).",
+  "direct_cause": "Reopening the project restores the canvas from disk through normalizeStoreSnapshot; convergeStuckMidFlightNode treats every node persisted as running or queued without a provider task id as a ghost spinner left by a dead process and resets it to idle with its run cancelled. In a project switch the process is alive and the submit is still awaiting nomi:tasks:run, so the node becomes eligible in eligibleGenerationNodeIds (idle or error) and 'Generate all' submits again. Main had no per-node guard: nomi:tasks:run only deduplicates the same idempotency key, and a new click mints a new key.",
+  "class_root": "'Does this node have a paid submit in flight' had no owner that outlives a project-session release: the renderer derived it from persisted node status (project-scoped, collected on load) and the paid-submit boundary in main never checked it. The invariant: while a submit for a node is in flight, the node is shown generating, is not offered for generation, and the paid boundary refuses a second submit for that node, regardless of project switches.",
+  "affected_population": [
+    "Every canvas single-node or batch generation going through nomi:tasks:run whose submit is still in flight when the user leaves the project and comes back",
+    "Synchronous providers are most exposed (no task id until the request returns); asynchronous providers are exposed until their create call returns",
+    "Present in v0.22.5 (same convergeStuckMidFlightNode and eligibility rule, no main guard)"
+  ],
+  "scope_paths": [
+    "electron/tasks/nodeSubmitInFlight.ts",
+    "electron/tasks/taskIpcHandlers.ts",
+    "src/workbench/generationCanvas/runner/nodeSubmitInFlight.ts",
+    "src/workbench/api/taskApi.ts",
+    "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+    "src/workbench/observability/classifyError.ts"
+  ],
+  "entry_points": [
+    "nomi:tasks:run (main paid-submit IPC boundary for all canvas runners)",
+    "runWorkbenchTaskByVendor (the renderer's only caller of tasks:run)",
+    "normalizeStoreSnapshot -> convergeStuckMidFlightNode (project open, external graph apply)",
+    "eligibleGenerationNodeIds ('Generate all' and frame actions)"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "The invariant is about Nomi's own submit lifecycle across its own project-session release; no third-party API decides it.",
+  "invariants": [
+    "Main refuses a nomi:tasks:run for (projectId, nodeId) while another one for the same node has not returned, with structured code node_generation_in_flight; idempotent replays of the same submit are merged before the guard.",
+    "The renderer records every submit it has awaiting tasks:run by node id, for the lifetime of the window process, not of the project session.",
+    "Loading a canvas never collects a running or queued node whose submit is still in flight in this window; it stays generating and therefore out of eligibleGenerationNodeIds.",
+    "The refusal is shown as 'still generating, this one was not sent' (i18n zh and en), not as a provider failure."
+  ],
+  "doors": [
+    { "kind": "write", "path": "electron/tasks/taskIpcHandlers.ts", "symbol": "withNodeSubmitExclusive" },
+    { "kind": "write", "path": "src/workbench/api/taskApi.ts", "symbol": "trackNodeSubmit" },
+    { "kind": "write", "path": "src/workbench/generationCanvas/components/useCanvasFrameActions.ts", "symbol": "eligibleGenerationNodeIds" },
+    { "kind": "write", "path": "src/workbench/generationCanvas/components/useCanvasProductionActions.ts", "symbol": "eligibleGenerationNodeIds" },
+    { "kind": "write", "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts", "symbol": "isNodeSubmitInFlight" },
+    { "kind": "write", "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts", "symbol": "convergeStuckMidFlightNode" }
+  ],
+  "door_reduction": {
+    "before": 3,
+    "after": 6,
+    "why_not": "No door was merged: the fix adds the missing in-flight record (one writer in each process: trackNodeSubmit at the renderer's only tasks:run caller, withNodeSubmitExclusive at main's tasks:run boundary) and one reader in the load convergence. eligibleGenerationNodeIds keeps its two callers (batch dock and frame actions) because it already excludes running nodes; it needed no change once the load convergence stopped resetting in-flight nodes."
+  },
+  "generality_proof": "Every canvas runner reaches the provider through nomi:tasks:run, and the renderer reaches it only through runWorkbenchTaskByVendor, so both in-flight records sit on the single submit path. Every way a node can be offered again after a reload goes through convergeStuckMidFlightNode (the only place that turns a persisted running node idle) followed by the status-based eligibility rule, which now sees the node as running. Any other entry that still submits (a stale UI, an agent, a future button) is refused at the main boundary before a provider call.",
+  "shared_boundaries": [
+    {
+      "path": "electron/tasks/nodeSubmitInFlight.ts",
+      "symbol": "withNodeSubmitExclusive",
+      "responsibility": "One paid submit in flight per (project, canvas node) at the main IPC boundary; refuses the second with a structured, truthful code."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/nodeSubmitInFlight.ts",
+      "symbol": "trackNodeSubmit",
+      "responsibility": "Window-process record of submits awaiting tasks:run, read by the load convergence so a project switch does not collect a live run."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/components/canvasProductionScope.ts",
+      "entry_point": "eligibleGenerationNodeIds",
+      "disposition": "enforced",
+      "evidence": "Excludes non-idle/error nodes; with the in-flight node kept running after load it no longer counts it (nodeSubmitInFlight.test.ts reported case)."
+    },
+    {
+      "path": "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
+      "entry_point": "convergeStuckMidFlightNode",
+      "disposition": "enforced",
+      "evidence": "Skips nodes with a submit in flight in this window; after a restart the record is empty and the ghost spinner is still collected (class test)."
+    },
+    {
+      "path": "electron/tasks/taskIpcHandlers.ts",
+      "entry_point": "nomi:tasks:run",
+      "disposition": "enforced",
+      "evidence": "Wraps runTask in withNodeSubmitExclusive inside runTaskWithIdempotency (taskIpcHandlers.test.ts)."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "confirmAndRunNodeVariants",
+      "disposition": "not-affected",
+      "evidence": "Runs the variants of one node strictly one after another (await per variant), so the per-node guard never refuses them."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any canvas generation that is in flight during a project switch can be resubmitted by the user or by any other entry; the same reload path also runs when an external graph is applied.",
+    "same_class_scan": [
+      "git grep 'tasks.run(' src: runWorkbenchTaskByVendor is the only renderer caller of nomi:tasks:run.",
+      "canvasProductionScope.eligibleGenerationNodeIds is the single status rule for batch generation (idle or error only).",
+      "git show v0.22.5:src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts: identical convergeStuckMidFlightNode; git show v0.22.5:electron/tasks/taskIpcHandlers.ts: no per-node guard.",
+      "Real app before the fix (canvas-switch walk with DOUBLE=1): after switching back the node is idle, 'Generate all 1' is offered, one click raises provider POSTs from 1 to 2 and the node ends with two versions."
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/tasks/nodeSubmitInFlight.ts",
+    "invariant": "At most one paid submit per (project, canvas node) is in flight, and the canvas keeps showing it as generating across project switches.",
+    "failure_mode": "A second submit is refused before any provider call with code node_generation_in_flight and a zh/en message that this request was not sent.",
+    "exception_policy": "none",
+    "strategy": "Guard the shared paid-submit IPC boundary in main and give the renderer's load convergence a process-lifetime record of its own outstanding submits.",
+    "artifacts": [
+      "electron/tasks/nodeSubmitInFlight.ts",
+      "electron/tasks/taskIpcHandlers.ts",
+      "src/workbench/generationCanvas/runner/nodeSubmitInFlight.ts",
+      "src/workbench/api/taskApi.ts",
+      "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/tasks/taskIpcHandlers.test.ts",
+    "src/workbench/generationCanvas/runner/nodeSubmitInFlight.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/tasks/taskIpcHandlers.test.ts",
+    "src/workbench/generationCanvas/runner/nodeSubmitInFlight.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "No old path existed for this record; the load convergence keeps its restart behaviour and only stops collecting runs that are provably alive in this window."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party runtime is involved.",
+    "exit_criteria": []
+  },
+  "migration": "No data migration: both records live in memory only. After a restart nothing is in flight, so persisted spinners are collected exactly as before.",
+  "invariant_owner_layer": {
+    "layer": "electron/tasks/nodeSubmitInFlight.ts",
+    "has_tests": true,
+    "tests": [
+      "electron/tasks/taskIpcHandlers.test.ts",
+      "src/workbench/generationCanvas/runner/nodeSubmitInFlight.test.ts"
+    ],
+    "rationale": "The paid-submit IPC boundary in main owns 'one submit per node in flight' (it is where money is spent and it outlives renderer project sessions); the renderer record is the window's own record of the same outstanding IPC calls, used only so the load convergence tells the truth."
+  },
+  "detected_by": "walkthrough",
+  "recurrence_check_on": "2026-11-02",
+  "residual_risks": [
+    "After a renderer reload (not a project switch) while main still holds a submit, the node is collected to idle again; the main guard still refuses a second submit, but the node does not say 'generating' until the first returns.",
+    "Asynchronous providers: once the create call returns, the node carries a task id and follows the existing recoverable path; a deliberate rerun after that point is a new paid task and is not covered by this per-node guard.",
+    "Not run on a v0.22.5 build; the 0.22.5 conclusion is from reading its code."
+  ]
+}
