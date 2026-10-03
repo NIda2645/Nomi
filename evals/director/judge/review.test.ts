@@ -60,4 +60,27 @@ describe('blind pairwise display mapping', () => {
     expect(result.value?.winner).toBe('s0-pr960-raw')
     await fs.rm(dir, { recursive: true, force: true })
   })
+
+  it('retries malformed pairwise JSON once with the schema error', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'director-pair-test-'))
+    const left = path.join(dir, 'left.png')
+    const right = path.join(dir, 'right.png')
+    await fs.writeFile(left, 'fixture')
+    await fs.writeFile(right, 'fixture')
+    const prompts: string[] = []
+    let call = 0
+    const result = await pairwiseOnce(card, preregistration, left, right, 'oracle', 's0-pr960-raw', dir, {
+      displayOrder: 'forward',
+      runCodex: async (_args, prompt) => {
+        prompts.push(prompt)
+        call += 1
+        return call === 1 ? '{"cardId":"card","leftLabel":"left","rightLabel":"right","winner":"left"}' : '{"cardId":"card","leftLabel":"left","rightLabel":"right","winner":"left","why":"visible"}'
+      },
+    })
+    expect(result.value?.winner).toBe('oracle')
+    expect(result.retries).toBe(1)
+    expect(prompts[1]).toContain('Schema error')
+    expect(prompts[1]).toContain('why')
+    await fs.rm(dir, { recursive: true, force: true })
+  })
 })
