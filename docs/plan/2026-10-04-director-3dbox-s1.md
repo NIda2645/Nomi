@@ -39,7 +39,7 @@ S1 把语言理解和空间求解拆开：规划器只产生导演意图（关�
 
 ## 执行收据（2026-10-04）
 
-- 新增单测 10 个全部通过（schema 3、编译器 5、adapter 2）；三道 S1 oracle 计划均能产出相机与轨迹，确定性深相等通过，闭环问题数为 0。
+- 新增单测 10 个全部通过（schema 3、编译器 5、adapter 2）；三道 S1 oracle 计划均能产出相机与轨迹，确定性深相等通过。编译器不会产出半成品；courtyard oracle 的语义动作按要求记录为 `missing_asset`。
 - `pnpm run typecheck` 通过；单独 ESLint 79 warnings 与 origin/main 棘轮持平，无新增 warning；`check:concept-owners`、`check:vocabularies` 通过。
 - 规划器只从进程环境读取 `NOMI_LOOP_LLM_KEY`，没有把 key 写入文件、日志或 commit。DeepSeek 官方当前模型名为 `deepseek-flash`（V4.1 Flash）。
 
