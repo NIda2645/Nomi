@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultProject } from './directorProject'
 import type { DirectorCamera, DirectorObject, DirectorProject } from './directorTypes'
-import { measureContinuity, recognizeCameraMotion, sampleDirectorProject } from './directorEvalMeasurement'
+import { measureContinuity, projectPoint, recognizeCameraMotion, sampleDirectorProject } from './directorEvalMeasurement'
 import { lookAtAngles } from './vec3'
 
 const wp = (id: string, time: number, p: {x:number;y:number;z:number}, yaw = 0) => ({ id, time, frameIndex: Math.round(time * 30), x: p.x, y: p.y, z: p.z, yaw, pitch: 0, roll: 0 })
@@ -39,4 +39,17 @@ describe('director preview measurement', () => {
     expect(issues.some(i => i.kind === 'below-ground')).toBe(true)
     expect(issues.some(i => i.kind === 'axis-cross')).toBe(true)
   })
+})
+
+it('uses the feet-at-origin convention for character bounds', () => {
+  const character = obj('actor', {x:0,y:0,z:0})
+  const c = cam('camera', [wp('a',0,{x:0,y:0.875,z:5},180)])
+  const p = project([character], [c], 0)
+  const m = sampleDirectorProject(p, {duration:0,fps:30})
+  const frame = m.frames[0], sample = frame.objects.actor
+  expect(sample.belowGround).toBe(false)
+  expect(sample.projection).toBeDefined()
+  const camera = frame.camera!
+  const foot = projectPoint(camera, {x:0,y:0,z:0})
+  expect(Math.abs((sample.projection!.y + sample.projection!.height) - foot.y)).toBeLessThan(0.02)
 })

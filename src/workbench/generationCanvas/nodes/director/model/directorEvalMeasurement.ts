@@ -50,9 +50,24 @@ const sceneDuration = (scene: DirectorScene): number => {
   return ends.length ? Math.max(...ends) : 0
 }
 
+export const OBJECT_ORIGIN_OFFSETS: Record<string, Vec3> = {
+  character: { x: 0, y: 0.875, z: 0 },
+  plane: { x: 0, y: 0, z: 0 },
+  cube: { x: 0, y: 0.5, z: 0 }, sphere: { x: 0, y: 0.5, z: 0 }, cylinder: { x: 0, y: 0.5, z: 0 }, cone: { x: 0, y: 0.5, z: 0 },
+  torus: { x: 0, y: 0.5, z: 0 }, tetrahedron: { x: 0, y: 0.5, z: 0 }, icosahedron: { x: 0, y: 0.5, z: 0 },
+  model: { x: 0, y: 0.5, z: 0 }, group: { x: 0, y: 0, z: 0 }, splat: { x: 0, y: 0, z: 0 },
+}
+/** Render-origin table checked against CharacterEntity (feet at origin) and PrimitiveEntity (mesh y=.5 except plane). */
+export const OBJECT_GEOMETRY_SIZES: Record<string, Vec3> = {
+  character: { x: 0.6, y: 1.75, z: 0.4 }, plane: { x: 1, y: 0.02, z: 1 }, cube: { x: 1, y: 1, z: 1 }, sphere: { x: 1, y: 1, z: 1 }, cylinder: { x: 1, y: 1, z: 1 }, cone: { x: 1, y: 1, z: 1 }, torus: { x: 1.1, y: 0.3, z: 1.1 }, tetrahedron: { x: 1.2, y: 1.2, z: 1.2 }, icosahedron: { x: 1.1, y: 1.1, z: 1.1 }, model: { x: 1, y: 1, z: 1 }, group: { x: 1, y: 1, z: 1 }, splat: { x: 1, y: 1, z: 1 },
+}
 function objectSize(object: DirectorObject): Vec3 {
-  if (object.type === 'character') return { x: 0.6 * Math.abs(object.scale.x), y: 1.75 * Math.abs(object.scale.y), z: 0.4 * Math.abs(object.scale.z) }
-  return { x: Math.max(EPS, Math.abs(object.scale.x)), y: Math.max(EPS, Math.abs(object.scale.y)), z: Math.max(EPS, Math.abs(object.scale.z)) }
+  const base = OBJECT_GEOMETRY_SIZES[object.type] ?? OBJECT_GEOMETRY_SIZES.cube
+  return { x: Math.max(EPS, base.x * Math.abs(object.scale.x)), y: Math.max(EPS, base.y * Math.abs(object.scale.y)), z: Math.max(EPS, base.z * Math.abs(object.scale.z)) }
+}
+function objectCenter(scene: DirectorScene, object: DirectorObject, frame: ReturnType<NonNullable<typeof evaluateSceneObjectPose>>['frame']): Vec3 {
+  const offset = OBJECT_ORIGIN_OFFSETS[object.type] ?? OBJECT_ORIGIN_OFFSETS.cube
+  return transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, offset))
 }
 
 function cameraBasis(camera: CameraSample): { forward: Vec3; right: Vec3; up: Vec3 } {
@@ -60,6 +75,12 @@ function cameraBasis(camera: CameraSample): { forward: Vec3; right: Vec3; up: Ve
   const right = normalize(cross(forward, vec(0, 1, 0)))
   const up = normalize(cross(right, forward))
   return { forward, right, up }
+}
+
+export function projectPoint(camera: CameraSample, point: Vec3, aspectRatio = DEFAULT_ASPECT): { x: number; y: number; depth: number } {
+  const { forward, right, up } = cameraBasis(camera)
+  const d = sub(point, camera.position), depth = dot(d, forward), vertical = Math.max(1e-3, camera.fov * Math.PI / 360)
+  return { x: 0.5 + dot(d, right) / Math.max(EPS, depth) / (2 * Math.tan(vertical) * aspectRatio), y: 0.5 - dot(d, up) / Math.max(EPS, depth) / (2 * Math.tan(vertical)), depth }
 }
 
 export function projectBounds(camera: CameraSample, center: Vec3, size: Vec3, aspectRatio = DEFAULT_ASPECT): ProjectionBox {
@@ -95,11 +116,12 @@ function objectSample(scene: DirectorScene, object: DirectorObject, time: number
   const frame = evaluated?.frame
   const sceneWorld = frame ? transformPoint(sceneFrame(scene.sceneConfig), frame.position) : object.position
   const position = sceneWorld
+  const originCenter = frame ? objectCenter(scene, object, frame) : position
   const anchor = anchors?.[object.id]
-  const center = anchor && frame ? transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, anchor.offset)) : position
+  const center = anchor && frame ? transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, anchor.offset)) : originCenter
   const size = anchor?.size ?? objectSize(object)
   const projection = camera ? projectBounds(camera, center, size, aspectRatio) : undefined
-  return { position, yaw: evaluated?.yaw ?? object.rotation.y, projection, shotSize: projection ? shotSizeForHeight(projection.heightRatio) : undefined, belowGround: position.y - size.y / 2 < -0.05 }
+  return { position, yaw: evaluated?.yaw ?? object.rotation.y, projection, shotSize: projection ? shotSizeForHeight(projection.heightRatio) : undefined, belowGround: center.y - size.y / 2 < -0.05 }
 }
 
 export function sampleDirectorProject(project: DirectorProject, options: MeasurementOptions = {}): DirectorMeasurements {
@@ -113,7 +135,7 @@ export function sampleDirectorProject(project: DirectorProject, options: Measure
   const cuts: number[] = []
   for (let frame = 0; frame <= count; frame++) {
     const time = frame / fps
-    const cameraId = programCameraIdAt(time, scene.cameras, scene.timelineTrackOrder) ?? (scene.cameras[0]?.id ?? null)
+    const cameraId = programCameraIdAt(time, scene.cameras, scene.timelineTrackOrder)
     if (previousCamera !== null && cameraId !== previousCamera) cuts.push(time)
     previousCamera = cameraId
     const camera = cameraId ? scene.cameras.find(item => item.id === cameraId) : undefined
@@ -142,8 +164,11 @@ export function recognizeCameraMotion(measurements: DirectorMeasurements, subjec
   const orbit = unwrapDelta(azimuth).at(-1) ?? 0
   const distanceDelta = distances.at(-1)! - distances[0]
   const dt = Math.max(EPS, last.time - first.time)
+  const cameraDelta = sub(points.at(-1)!, points[0]), subjectDelta = sub(subjects.at(-1)!, subjects[0])
   const cameraTravel = distance(points.at(-1)!, points[0])
-  const angularTravel = Math.abs(signedDeg(last.camera.yaw - first.camera.yaw))
+  const verticalTravel = Math.abs(cameraDelta.y), horizontalTravel = Math.hypot(cameraDelta.x, cameraDelta.z)
+  const coMotion = length(cameraDelta) > EPS && length(subjectDelta) > EPS && (cameraDelta.x * subjectDelta.x + cameraDelta.y * subjectDelta.y + cameraDelta.z * subjectDelta.z) / (length(cameraDelta) * length(subjectDelta)) > 0.8
+  const angularTravel = Math.hypot(signedDeg(last.camera.yaw - first.camera.yaw), last.camera.pitch - first.camera.pitch)
   const subjectScreen = frames.map(f => f.objects[subjectId]?.projection ? [f.objects[subjectId].projection!.x + f.objects[subjectId].projection!.width / 2, f.objects[subjectId].projection!.y + f.objects[subjectId].projection!.height / 2] : [0.5, 0.5])
   const screenDrift = Math.hypot(subjectScreen.at(-1)![0] - subjectScreen[0][0], subjectScreen.at(-1)![1] - subjectScreen[0][1])
   const accel: number[] = []
@@ -154,10 +179,11 @@ export function recognizeCameraMotion(measurements: DirectorMeasurements, subjec
   const jerkRms = jerks.length ? Math.sqrt(jerks.reduce((sum, value) => sum + value * value, 0) / jerks.length) : 0
   const jump = speeds.some((speed, i) => i > 0 && Math.abs(speed - speeds[i - 1]) > 8)
   let move: MotionRecognition['move'] = 'static'
-  if (Math.abs(distanceDelta) >= 0.25) move = distanceDelta < 0 ? 'push_in' : 'pull_out'
+  if (cameraTravel < 0.25 && angularTravel >= 12) move = Math.abs(last.camera.pitch - first.camera.pitch) >= angularTravel ? 'tilt' : 'pan'
+  else if (horizontalTravel < 0.25 && verticalTravel >= 0.25) move = cameraDelta.y > 0 ? 'crane_up' : 'crane_down'
+  else if (Math.abs(distanceDelta) >= 0.25) move = distanceDelta < 0 ? 'push_in' : 'pull_out'
   else if (Math.abs(orbit) >= 25) move = orbit > 0 ? 'orbit_right' : 'orbit_left'
-  else if (cameraTravel < 0.25 && angularTravel >= 12) move = Math.abs(last.camera.pitch - first.camera.pitch) >= angularTravel ? 'tilt' : 'pan'
-  else if (cameraTravel >= 0.25 && screenDrift < 0.08 && distanceDelta < 0.25) move = 'follow'
+  else if (cameraTravel >= 0.25 && coMotion && Math.abs(distanceDelta) < 0.25) move = 'follow'
   else if (cameraTravel >= 0.25) {
     const dx = last.camera.position.x - first.camera.position.x
     move = dx < 0 ? 'track_left' : 'track_right'

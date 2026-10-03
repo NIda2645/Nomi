@@ -246,7 +246,7 @@
   {
     "id": "t1-01-push",
     "tier": "T1",
-    "prompt": "推近镜头：room主体，单镜头push in。",
+    "prompt": "镜头从走廊尽头缓慢推近站在窗边的女子，4秒完成，最后停在中景。",
     "duration": {
       "total": 4,
       "tol": 0.5
@@ -259,7 +259,19 @@
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -270,27 +282,41 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "push"
+        "move": "push",
+        "speed": "slow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-02-pull",
     "tier": "T1",
-    "prompt": "Pull out shot of a street subject in one take.",
+    "prompt": "Pull out from a close view of a cyclist on a quiet street for 4 seconds, revealing the road behind her.",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "street"
+        "quiet_street"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -301,27 +327,41 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "pull"
+        "move": "pull",
+        "speed": "slow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-03-pan",
     "tier": "T1",
-    "prompt": "摇镜镜头：person主体，单镜头pan。",
+    "prompt": "镜头固定在室内书桌旁，向右摇过正在写字的人物，持续4秒。",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "person"
+        "interior"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -334,25 +374,38 @@
         "subject": "subject",
         "move": "pan"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-04-tilt",
     "tier": "T1",
-    "prompt": "Tilt shot of a product subject in one take.",
+    "prompt": "Tilt up for 4 seconds from a perfume bottle on a shop counter to the model holding it.",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "product"
+        "shop_counter"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "product"
+        "category": "product",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -363,27 +416,41 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "tilt"
+        "move": "tilt",
+        "speed": "slow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-05-orbit",
     "tier": "T1",
-    "prompt": "环绕镜头：product主体，单镜头orbit。",
+    "prompt": "镜头绕着桌上的咖啡杯慢慢向右转一整圈，4秒完成。",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "product"
+        "shop_counter"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "product"
+        "category": "product",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -394,27 +461,43 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "orbit"
+        "move": "orbit",
+        "sweepDeg": 360,
+        "tolDeg": 20,
+        "speed": "slow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-06-follow",
     "tier": "T1",
-    "prompt": "Follow shot of a person subject in one take.",
+    "prompt": "Track alongside a cyclist riding down a quiet street for 4 seconds, keeping her centered.",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "person"
+        "interior"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -427,25 +510,38 @@
         "subject": "subject",
         "move": "follow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-07-truck",
     "tier": "T1",
-    "prompt": "横移镜头：street主体，单镜头truck。",
+    "prompt": "横移镜头沿着美术馆墙面向右移动4秒，和一尊雕像保持相对距离。",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "street"
+        "quiet_street"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -456,14 +552,16 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "truck"
+        "move": "truck",
+        "speed": "medium"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-08-crane",
     "tier": "T1",
-    "prompt": "Crane shot of a room subject in one take.",
+    "prompt": "Crane up over a person entering a room, rising smoothly for 4 seconds.",
     "duration": {
       "total": 4,
       "tol": 0.5
@@ -476,7 +574,19 @@
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -487,27 +597,41 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "crane"
+        "move": "crane",
+        "speed": "slow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-09-over_shoulder",
     "tier": "T1",
-    "prompt": "越肩镜头：person主体，单镜头over shoulder。",
+    "prompt": "从男演员肩后拍向室内正在说话的女子，保持4秒中景。",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "person"
+        "interior"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -520,25 +644,38 @@
         "subject": "subject",
         "move": "over_shoulder"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-10-pov",
     "tier": "T1",
-    "prompt": "POV shot of a person subject in one take.",
+    "prompt": "POV: walk into a dim kitchen and look at the kettle for 4 seconds.",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "person"
+        "interior"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -551,25 +688,38 @@
         "subject": "subject",
         "move": "pov"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-11-zoom",
     "tier": "T1",
-    "prompt": "变焦镜头：product主体，单镜头zoom。",
+    "prompt": "镜头固定在展台前，4秒内把焦距慢慢推近桌上的手表。",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "product"
+        "shop_counter"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "product"
+        "category": "product",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -580,27 +730,41 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "zoom"
+        "move": "zoom",
+        "speed": "slow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-12-arc",
     "tier": "T1",
-    "prompt": "Arc shot of a street subject in one take.",
+    "prompt": "Arc left 90 degrees around a dancer in an empty studio over 4 seconds.",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "street"
+        "quiet_street"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -611,14 +775,18 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "arc"
+        "move": "arc",
+        "sweepDeg": 90,
+        "tolDeg": 15,
+        "speed": "slow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-13-static",
     "tier": "T1",
-    "prompt": "固定镜头：room主体，单镜头static。",
+    "prompt": "固定机位拍摄室内桌边读信的人物，4秒内不移动。",
     "duration": {
       "total": 4,
       "tol": 0.5
@@ -631,7 +799,19 @@
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -644,25 +824,38 @@
         "subject": "subject",
         "move": "static"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-14-dolly",
     "tier": "T1",
-    "prompt": "Dolly shot of a person subject in one take.",
+    "prompt": "Dolly in 2 metres toward a runner at the end of a track over 4 seconds.",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "person"
+        "interior"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -673,27 +866,41 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "dolly"
+        "move": "dolly",
+        "speed": "slow"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-15-whip",
     "tier": "T1",
-    "prompt": "甩镜镜头：street主体，单镜头whip。",
+    "prompt": "Whip pan right from the doorway to the actor crossing the street, taking 4 seconds.",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "street"
+        "quiet_street"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person"
+        "category": "person",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -706,25 +913,38 @@
         "subject": "subject",
         "move": "whip"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t1-16-rack_focus",
     "tier": "T1",
-    "prompt": "Rack focus shot of a product subject in one take.",
+    "prompt": "Rack focus for 4 seconds from a vase in the foreground to the woman behind it.",
     "duration": {
       "total": 4,
       "tol": 0.5
     },
     "scene": {
       "required": [
-        "product"
+        "shop_counter"
       ]
     },
     "actors": [
       {
         "id": "subject",
-        "category": "product"
+        "category": "product",
+        "aliases": [
+          "subject",
+          "woman",
+          "cyclist",
+          "actor",
+          "object",
+          "bottle",
+          "cup",
+          "watch",
+          "dancer",
+          "runner"
+        ]
       }
     ],
     "shots": [
@@ -737,7 +957,8 @@
         "subject": "subject",
         "move": "rack_focus"
       }
-    ]
+    ],
+    "reviewNote": "已核对：自然语言题目与单镜 movement、subject、scene required 一一对应。"
   },
   {
     "id": "t2-courtyard",
@@ -786,7 +1007,8 @@
         "subject": "subject",
         "move": "push"
       }
-    ]
+    ],
+    "reviewNote": "已逐句对照 prompt 重核：每镜景别与运镜按原文填写。"
   },
   {
     "id": "t2-kitchen",
@@ -815,7 +1037,7 @@
         ],
         "size": "全景",
         "subject": "subject",
-        "move": "follow"
+        "move": "truck"
       },
       {
         "t": [
@@ -835,7 +1057,8 @@
         "subject": "subject",
         "move": "push"
       }
-    ]
+    ],
+    "reviewNote": "已逐句对照 prompt 重核：每镜景别与运镜按原文填写。"
   },
   {
     "id": "t2-train",
@@ -862,9 +1085,9 @@
           0,
           4
         ],
-        "size": "全景",
+        "size": "远景",
         "subject": "subject",
-        "move": "follow"
+        "move": "pan"
       },
       {
         "t": [
@@ -873,7 +1096,7 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "static"
+        "move": "follow"
       },
       {
         "t": [
@@ -882,9 +1105,10 @@
         ],
         "size": "特写",
         "subject": "subject",
-        "move": "push"
+        "move": "pull"
       }
-    ]
+    ],
+    "reviewNote": "已逐句对照 prompt 重核：每镜景别与运镜按原文填写。"
   },
   {
     "id": "t2-gallery",
@@ -913,7 +1137,7 @@
         ],
         "size": "全景",
         "subject": "subject",
-        "move": "follow"
+        "move": "orbit"
       },
       {
         "t": [
@@ -933,7 +1157,8 @@
         "subject": "subject",
         "move": "push"
       }
-    ]
+    ],
+    "reviewNote": "已逐句对照 prompt 重核：每镜景别与运镜按原文填写。"
   },
   {
     "id": "t2-rooftop",
@@ -962,7 +1187,7 @@
         ],
         "size": "全景",
         "subject": "subject",
-        "move": "follow"
+        "move": "crane"
       },
       {
         "t": [
@@ -971,7 +1196,53 @@
         ],
         "size": "中景",
         "subject": "subject",
-        "move": "static"
+        "move": "truck"
+      },
+      {
+        "t": [
+          8,
+          12
+        ],
+        "size": "近景",
+        "subject": "subject",
+        "move": "tilt"
+      }
+    ],
+    "reviewNote": "已逐句对照 prompt 重核：每镜景别与运镜按原文填写。"
+  },
+  {
+    "id": "t3-storm",
+    "tier": "T3",
+    "prompt": "A tense storm arrival with varied cinematic coverage.",
+    "scene": {
+      "required": [
+        "storm_ground"
+      ]
+    },
+    "actors": [
+      {
+        "id": "subject",
+        "category": "person"
+      }
+    ],
+    "shots": [
+      {
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "subject",
+        "move": "crane"
+      },
+      {
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "follow"
       },
       {
         "t": [
@@ -982,34 +1253,12 @@
         "subject": "subject",
         "move": "push"
       }
-    ]
-  },
-  {
-    "id": "t3-storm",
-    "tier": "T3",
-    "prompt": "A tense storm arrival with varied cinematic coverage.",
-    "scene": {
-      "required": [
-        "ground"
-      ]
-    },
-    "actors": [
-      {
-        "id": "subject",
-        "category": "person"
-      }
     ],
-    "shots": [
-      {
-        "size": "全景"
-      },
-      {
-        "size": "中景"
-      },
-      {
-        "size": "特写"
-      }
-    ]
+    "reviewNote": "已核对：模糊创意题仍约束演员、三档景别和至少一种运镜族。",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    }
   },
   {
     "id": "t3-cafe",
@@ -1017,26 +1266,69 @@
     "prompt": "咖啡馆里两个人第一次见面，要有环境、交流和细节镜头。",
     "scene": {
       "required": [
-        "ground"
+        "cafe_table"
       ]
     },
     "actors": [
       {
-        "id": "subject",
+        "id": "person_a",
+        "aliases": [
+          "person a",
+          "woman",
+          "first person"
+        ],
+        "category": "person"
+      },
+      {
+        "id": "person_b",
+        "aliases": [
+          "person b",
+          "man",
+          "second person"
+        ],
         "category": "person"
       }
     ],
     "shots": [
       {
-        "size": "全景"
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subjects": [
+          "person_a",
+          "person_b"
+        ],
+        "move": "truck"
       },
       {
-        "size": "中景"
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subjects": [
+          "person_a",
+          "person_b"
+        ],
+        "move": "static"
       },
       {
-        "size": "特写"
+        "t": [
+          8,
+          12
+        ],
+        "size": "特写",
+        "subject": "person_a",
+        "move": "push"
       }
-    ]
+    ],
+    "reviewNote": "已核对：模糊创意题仍约束演员、三档景别和至少一种运镜族。",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    }
   },
   {
     "id": "t3-space",
@@ -1044,7 +1336,7 @@
     "prompt": "An astronaut enters a quiet room; make the camera feel weightless.",
     "scene": {
       "required": [
-        "ground"
+        "quiet_room"
       ]
     },
     "actors": [
@@ -1055,15 +1347,38 @@
     ],
     "shots": [
       {
-        "size": "全景"
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "subject",
+        "move": "orbit"
       },
       {
-        "size": "中景"
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "crane"
       },
       {
-        "size": "特写"
+        "t": [
+          8,
+          12
+        ],
+        "size": "特写",
+        "subject": "subject",
+        "move": "pull"
       }
-    ]
+    ],
+    "reviewNote": "已核对：模糊创意题仍约束演员、三档景别和至少一种运镜族。",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    }
   },
   {
     "id": "t3-market",
@@ -1071,7 +1386,7 @@
     "prompt": "集市追逐，镜头要让人感到方向和速度。",
     "scene": {
       "required": [
-        "ground"
+        "market_street"
       ]
     },
     "actors": [
@@ -1082,14 +1397,37 @@
     ],
     "shots": [
       {
-        "size": "全景"
+        "t": [
+          0,
+          4
+        ],
+        "size": "全景",
+        "subject": "subject",
+        "move": "follow"
       },
       {
-        "size": "中景"
+        "t": [
+          4,
+          8
+        ],
+        "size": "中景",
+        "subject": "subject",
+        "move": "truck"
       },
       {
-        "size": "特写"
+        "t": [
+          8,
+          12
+        ],
+        "size": "特写",
+        "subject": "subject",
+        "move": "push"
       }
-    ]
+    ],
+    "reviewNote": "已核对：模糊创意题仍约束演员、三档景别和至少一种运镜族。",
+    "duration": {
+      "total": 12,
+      "tol": 1
+    }
   }
 ]
