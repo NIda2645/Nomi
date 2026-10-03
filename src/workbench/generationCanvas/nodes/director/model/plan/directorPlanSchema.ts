@@ -64,7 +64,81 @@ export type DirectorPlan = z.infer<typeof directorPlanSchema>
 export type DirectorPlanShot = DirectorPlan['shots'][number]
 export type DirectorPlanActor = DirectorPlan['actors'][number]
 
+const ENUM_ALIASES: Record<string, string> = {
+  白天: 'day', 白昼: 'day', daytime: 'day', 夜晚: 'night', 夜间: 'night', studio: 'studio', 摄影棚: 'studio', 棚拍: 'studio',
+  街道: 'street', 城市街道: 'street', room: 'room', 房间: 'room', 室内: 'room', 庭院: 'courtyard', 古代庭院: 'courtyard',
+  展台: 'product_stage', 产品台: 'product_stage', productstage: 'product_stage',
+  人: 'person', 人物: 'person', 角色: 'person', 车辆: 'vehicle', 汽车: 'vehicle', 车: 'vehicle', 产品: 'product', 道具: 'prop',
+  附近: 'near', 前方: 'in_front_of', 前面: 'in_front_of', 后方: 'behind', 后面: 'behind', 左侧: 'left_of', 右侧: 'right_of',
+  位于: 'at', 沿着: 'along',
+  走: 'walk_to', 行走: 'walk_to', walking: 'walk_to', walk: 'walk_to', 跑: 'run_to', 奔跑: 'run_to', run: 'run_to',
+  停止: 'stop', 停下: 'stop', 横移: 'sidestep', 横移挡住: 'sidestep', 侧步: 'sidestep', 驾驶: 'drive_along', 开车: 'drive_along', 追逐: 'chase', 追赶: 'chase', 静止: 'static', 保持姿势: 'hold_pose',
+  wide: '全景', establishing: '全景', medium: '中景', close: '特写', full: '全景',
+  push: 'push_in', pushin: 'push_in', dolly: 'push_in', pull: 'pull_out', pullout: 'pull_out',
+  pan: 'pan', tilt: 'tilt', orbit: 'orbit_right', arc: 'arc_left', follow: 'follow', truck: 'track_right', track: 'track_right', crane: 'crane_up', zoom: 'zoom_in', whip: 'whip', rackfocus: 'rack_focus',
+  cut: 'cut', continuous: 'continuous',
+}
+
+function alias(value: unknown): unknown {
+  if (typeof value !== 'string') return value
+  const trimmed = value.trim(), key = trimmed.toLowerCase().replace(/[\s_-]+/g, '')
+  return ENUM_ALIASES[trimmed] ?? ENUM_ALIASES[key] ?? trimmed
+}
+
+function normalizeMove(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const move = { ...(value as Record<string, unknown>) }
+  move.kind = alias(move.kind)
+  if (move.direction === 'in') move.direction = 'forward'
+  if (move.direction === 'out') move.direction = 'backward'
+  return move
+}
+
+export function normalizeDirectorPlan(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value
+  const input = value as Record<string, unknown>
+  const scene = input.scene && typeof input.scene === 'object' ? { ...(input.scene as Record<string, unknown>) } : input.scene
+  if (scene && typeof scene === 'object') {
+    scene.environment = alias(scene.environment)
+    scene.template = alias(scene.template)
+    if (Array.isArray(scene.setPieces)) scene.setPieces = scene.setPieces.map((piece) => {
+      if (!piece || typeof piece !== 'object') return piece
+      const next = { ...(piece as Record<string, unknown>) }
+      next.relation = next.relation && typeof next.relation === 'object' ? { ...(next.relation as Record<string, unknown>), type: alias((next.relation as Record<string, unknown>).type) } : next.relation
+      return next
+    })
+  }
+  const actors = Array.isArray(input.actors) ? input.actors.map((actor) => {
+    if (!actor || typeof actor !== 'object') return actor
+    const next = { ...(actor as Record<string, unknown>) }
+    next.kind = alias(next.kind)
+    if (next.placement && typeof next.placement === 'object') next.placement = { ...(next.placement as Record<string, unknown>), relation: alias((next.placement as Record<string, unknown>).relation) }
+    return next
+  }) : input.actors
+  const blocking = Array.isArray(input.blocking) ? input.blocking.map((action) => {
+    if (!action || typeof action !== 'object') return action
+    const next = { ...(action as Record<string, unknown>), verb: alias((action as Record<string, unknown>).verb) }
+    if (typeof next.action === 'string') next.action = next.action.trim().toLowerCase().replace(/[\s-]+/g, '_')
+    return next
+  }) : input.blocking
+  const shots = Array.isArray(input.shots) ? input.shots.map((shot) => {
+    if (!shot || typeof shot !== 'object') return shot
+    const next = { ...(shot as Record<string, unknown>) }
+    next.size = alias(next.size)
+    next.transitionIn = alias(next.transitionIn)
+    if (typeof next.angle === 'string') {
+      const angle = next.angle.trim().toLowerCase().replace(/[\s-]+/g, '_')
+      const over = angle.match(/^(?:over_shoulder|overshoulder)[(:]([^)]*)\)?$/)
+      const pov = angle.match(/^pov[(:]([^)]*)\)?$/)
+      next.angle = over ? { over_shoulder: over[1] } : pov ? { pov: pov[1] } : alias(angle)
+    }
+    next.move = normalizeMove(next.move)
+    return next
+  }) : input.shots
+  return { ...input, scene, actors, blocking, shots }
+}
+
 export function parseDirectorPlan(value: unknown): { success: true; data: DirectorPlan } | { success: false; error: z.ZodError } {
-  const result = directorPlanSchema.safeParse(value)
+  const result = directorPlanSchema.safeParse(normalizeDirectorPlan(value))
   return result.success ? result : { success: false, error: result.error }
 }
