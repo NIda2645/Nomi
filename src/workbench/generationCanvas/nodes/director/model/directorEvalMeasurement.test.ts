@@ -1,0 +1,42 @@
+import { describe, expect, it } from 'vitest'
+import { createDefaultProject } from './directorProject'
+import type { DirectorCamera, DirectorObject, DirectorProject } from './directorTypes'
+import { measureContinuity, recognizeCameraMotion, sampleDirectorProject } from './directorEvalMeasurement'
+import { lookAtAngles } from './vec3'
+
+const wp = (id: string, time: number, p: {x:number;y:number;z:number}, yaw = 0) => ({ id, time, frameIndex: Math.round(time * 30), x: p.x, y: p.y, z: p.z, yaw, pitch: 0, roll: 0 })
+function project(objects: DirectorObject[], cameras: DirectorCamera[], duration = 4): DirectorProject {
+  const p = createDefaultProject('test'), scene = p.scenes[0]
+  scene.objects = objects; scene.cameras = cameras; scene.timelineTrackOrder = cameras.map(c => c.id)
+  for (const c of cameras) c.trajectoryClips = [{ id: `${c.id}-clip`, startTime: 0, endTime: duration, startFrame: 0, endFrame: duration * 30 }]
+  return p
+}
+const obj = (id: string, position = {x:0,y:0.875,z:0}): DirectorObject => ({ id, name: id, type: 'character', position, rotation: {x:0,y:0,z:0}, scale:{x:1,y:1,z:1}, visible:true, locked:false })
+const cam = (id: string, points: ReturnType<typeof wp>[]): DirectorCamera => ({ id, name:id, position:points[0] ? {x:points[0].x,y:points[0].y,z:points[0].z}:{x:0,y:1,z:5}, yaw:0,pitch:0,roll:0,fov:45,focalLengthMm:0,visible:true as never, locked:true as never, motionTrajectory:points, trajectoryClips:[] })
+
+describe('director preview measurement', () => {
+  it('measures a full orbit near 360 degrees', () => {
+    const points = Array.from({length: 9}, (_, i) => { const a = i * 45 * Math.PI / 180; return wp(`w${i}`, i / 2, {x: Math.sin(a)*5,y:2,z:Math.cos(a)*5}, (i*45+180)%360) })
+    const c = cam('camera', points), p = project([obj('bottle')], [c], 4)
+    const m = sampleDirectorProject(p, { duration: 4, fps: 2 })
+    expect(Math.abs(recognizeCameraMotion(m, 'bottle', {start:0,end:4}).signedOrbitDeg)).toBeGreaterThan(300)
+  })
+  it('recognizes a slow push and exact out-of-frame frames', () => {
+    const points = [wp('a',0,{x:0,y:1,z:8},180), wp('b',2,{x:0,y:1,z:4},180)]
+    const c = cam('camera', points), subject = obj('subject'), p = project([subject], [c], 2)
+    subject.motionTrajectory = [wp('s0',0,{x:0,y:0.875,z:0}), wp('s1',1,{x:0,y:0.875,z:0}), wp('s2',2,{x:3,y:0.875,z:0})]
+    subject.trajectoryClips = [{id:'s',startTime:0,endTime:2,startFrame:0,endFrame:60}]
+    const m = sampleDirectorProject(p, { duration: 2, fps: 2 })
+    const motion = recognizeCameraMotion(m, 'subject', {start:0,end:2})
+    expect(motion.move).toBe('push_in'); expect(motion.distanceDelta).toBeLessThan(-3)
+    expect(m.frames.filter(f => f.objects.subject.projection?.inFrame).length).toBe(4)
+  })
+  it('catches teleport, axis crossing, camera entry and below-ground', () => {
+    const a = obj('woman'), b = obj('guard', {x:2,y:0.875,z:0})
+    const c = cam('camera', [wp('a',0,{x:0,y:1,z:-2},0), wp('b',1,{x:0,y:1,z:2},180)])
+    const p = project([a,b], [c], 1); a.motionTrajectory = [wp('a0',0,{x:0,y:-1,z:0}), wp('a1',1,{x:0,y:-1,z:0})]; a.trajectoryClips=[{id:'a',startTime:0,endTime:1,startFrame:0,endFrame:30}]
+    const m = sampleDirectorProject(p, {duration:1,fps:1}); const issues = measureContinuity(m,p.scenes[0])
+    expect(issues.some(i => i.kind === 'below-ground')).toBe(true)
+    expect(issues.some(i => i.kind === 'axis-cross')).toBe(true)
+  })
+})
