@@ -181,7 +181,6 @@ export function recognizeCameraMotion(measurements: DirectorMeasurements, subjec
   const verticalTravel = Math.abs(cameraDelta.y), horizontalTravel = Math.hypot(cameraDelta.x, cameraDelta.z)
   const coMotion = length(cameraDelta) > EPS && length(subjectDelta) > EPS && (cameraDelta.x * subjectDelta.x + cameraDelta.y * subjectDelta.y + cameraDelta.z * subjectDelta.z) / (length(cameraDelta) * length(subjectDelta)) > 0.8
   const angularTravel = Math.hypot(signedDeg(last.camera.yaw - first.camera.yaw), last.camera.pitch - first.camera.pitch)
-  const subjectScreen = frames.map(f => f.objects[subjectId]?.projection ? [f.objects[subjectId].projection!.x + f.objects[subjectId].projection!.width / 2, f.objects[subjectId].projection!.y + f.objects[subjectId].projection!.height / 2] : [0.5, 0.5])
   const accel: number[] = []
   const speeds: number[] = []
   for (let i = 1; i < points.length; i++) speeds.push(distance(points[i], points[i - 1]) / Math.max(EPS, frames[i].time - frames[i - 1].time))
