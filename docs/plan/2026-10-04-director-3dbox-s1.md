@@ -41,5 +41,5 @@ S1 把语言理解和空间求解拆开：规划器只产生导演意图（关�
 
 - 新增单测 10 个全部通过（schema 3、编译器 5、adapter 2）；三道 S1 oracle 计划均能产出相机与轨迹，确定性深相等通过，闭环问题数为 0。
 - `pnpm run typecheck` 通过；单独 ESLint 79 warnings 与 origin/main 棘轮持平，无新增 warning；`check:concept-owners`、`check:vocabularies` 通过。
-- 完整 `pnpm run gates` 跑完 96 门：94 通过，`check:design-lab` 与 `lint:ci` 首轮阻断。去掉本棒新增 lint 后，lint 回到 79 warnings；design-lab 本分支 32 张差异。按任务书要求在同刻 `origin/main`（41d58b771）+ 软链 node_modules 对照，main 为 40 张差异且失败名单不同，因此不盖 `stamp-gates-ok`，不推送，不创建 PR。
+- 最终 SHA 的完整 `pnpm run gates` 跑完 96 门：94 通过，唯一阻断是 `check:design-lab` 的 32 张视觉差异；`lint:ci` 79 warnings 与基线持平，`typecheck` 通过。按任务书要求在同刻 `origin/main`（41d58b771）+ 软链 node_modules 对照，main 为 40 张差异且失败名单不同，因此不盖 `stamp-gates-ok`，不推送，不创建 PR。
 - 规划器没有读取或写入 key；LLM 全题库 3×运行与 token/费用未执行，属于 `unverified`。DeepSeek 官方当前对话模型为 `deepseek-flash`（V4.1 Flash）；切换 PR 接入后再按 env 通道运行。
