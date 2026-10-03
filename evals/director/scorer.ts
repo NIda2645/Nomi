@@ -2,7 +2,8 @@ import type { DirectorObject, DirectorProject, DirectorScene } from '../../src/w
 import { measureContinuity, recognizeCameraMotion, sampleDirectorProject, type DirectorMeasurements, type MotionRecognition } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
 import type { Direction, DirectorCard } from './cardSchema'
 
-export type LayerScores = { L0: number; L1: number; L2: number; L3: number; L4: number; L5: 'unverified' }
+/** `null` = the card does not constrain this layer, so it is left out of the total (spec: unconstrained fields are not scored). */
+export type LayerScores = { L0: number; L1: number | null; L2: number | null; L3: number | null; L4: number | null; L5: 'unverified' }
 export type CardScore = { cardId: string; tier?: string; scores: LayerScores; total: number; reasons: string[]; measurements: DirectorMeasurements; status?: 'ok' | 'adapter_error' }
 
 const near = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol
@@ -44,8 +45,8 @@ function findObject(scene: DirectorScene, key: string): DirectorObject | undefin
   return scene.objects.find((object) => object.id.toLowerCase() === needle || object.name.toLowerCase() === needle || object.name.toLowerCase().includes(needle))
 }
 
-export function scoreBlocking(card: DirectorCard, measurements: DirectorMeasurements, scene: DirectorScene, actorMap: Record<string, string | undefined>, reasons: string[]): number {
-  if (!card.blocking.length) return 1
+export function scoreBlocking(card: DirectorCard, measurements: DirectorMeasurements, scene: DirectorScene, actorMap: Record<string, string | undefined>, reasons: string[]): number | null {
+  if (!card.blocking.length) return null
   let good = 0
   for (const action of card.blocking) {
     if (!ACTION_RULES.has(action.verb)) throw new Error(`card ${card.id}: no scoring predicate for blocking verb ${action.verb}`)
@@ -123,8 +124,8 @@ function intervalIoU(a: [number, number], b: [number, number]) {
   return union > 0 ? intersection / union : 0
 }
 
-function scoreCoverage(card: DirectorCard, measurements: DirectorMeasurements, actorMap: Record<string, string | undefined>, reasons: string[]): number {
-  if (!card.coverageRequired.length) return 1
+function scoreCoverage(card: DirectorCard, measurements: DirectorMeasurements, actorMap: Record<string, string | undefined>, reasons: string[]): number | null {
+  if (!card.coverageRequired.length) return null
   const required = new Set(card.coverageRequired.map((size) => shotAliases[size] ?? size))
   const observed = new Set<string>()
   const subjectIds = Object.values(actorMap).filter((id): id is string => !!id)
@@ -137,7 +138,7 @@ function scoreCoverage(card: DirectorCard, measurements: DirectorMeasurements, a
   return hit
 }
 
-function scoreStructure(card: DirectorCard, measurements: DirectorMeasurements, actorMap: Record<string, string | undefined>, reasons: string[]): number {
+function scoreStructure(card: DirectorCard, measurements: DirectorMeasurements, actorMap: Record<string, string | undefined>, reasons: string[]): number | null {
   if (!card.shots.length) return scoreCoverage(card, measurements, actorMap, reasons)
   const expected = alignedShotWindows(card, measurements, reasons)
   const actual = actualShotWindows(measurements)
@@ -166,9 +167,9 @@ function directionMatches(direction: Direction | undefined, motion: MotionRecogn
   return motion.distanceDelta > 0.05 || motion.fovDelta > 0.5
 }
 
-function scoreMotionAndFraming(card: DirectorCard, measurements: DirectorMeasurements, actorMap: Record<string, string | undefined>, reasons: string[]): number {
+function scoreMotionAndFraming(card: DirectorCard, measurements: DirectorMeasurements, actorMap: Record<string, string | undefined>, reasons: string[]): number | null {
   if (!card.shots.length) {
-    if (!card.moveAnyOf?.length) return 1
+    if (!card.moveAnyOf?.length) return null
     const subjectId = Object.values(actorMap).find((id): id is string => !!id)
     if (!subjectId) {
       reasons.push('覆盖型运动约束缺少演员')
@@ -221,11 +222,11 @@ function scoreMotionAndFraming(card: DirectorCard, measurements: DirectorMeasure
       reasons.push(`缺少镜头主体 ${subject ?? 'unknown'}`)
     }
   }
-  return count ? total / count : 1
+  return count ? total / count : null
 }
 
-function scoreScene(card: DirectorCard, scene: DirectorScene, reasons: string[]): number {
-  if (!card.scene.required.length) return 1
+function scoreScene(card: DirectorCard, scene: DirectorScene, reasons: string[]): number | null {
+  if (!card.scene.required.length) return null
   let hit = 0
   for (const required of card.scene.required) {
     const names = [required, ...(card.scene.aliases[required] ?? [])].map((value) => value.toLowerCase())
@@ -248,8 +249,28 @@ export function scoreCard(card: DirectorCard, project: DirectorProject, actorMap
   const l2 = scoreMotionAndFraming(card, measurements, actors, reasons)
   const l3 = scene ? scoreBlocking(card, measurements, scene, actors, reasons) : 0
   const l4 = scene ? scoreScene(card, scene, reasons) : 0
-  const total = (l1 * 0.15 + l2 * 0.4 + l3 * 0.25 + l4 * 0.1) / 0.9
+  const total = l0 === 0 ? 0 : weightedTotal({ L1: l1, L2: l2, L3: l3, L4: l4 }, reasons)
   return { cardId: card.id, tier: card.tier, status: 'ok', scores: { L0: l0, L1: l1, L2: l2, L3: l3, L4: l4, L5: 'unverified' }, total, reasons, measurements }
+}
+
+/** Spec weights (L5 visual judge is scored separately): camera+framing 40%, blocking 25%, structure 15%, scene 10%. */
+export const LAYER_WEIGHTS = { L1: 0.15, L2: 0.4, L3: 0.25, L4: 0.1 } as const
+
+/** Weighted mean over the layers this card actually constrains; an unconstrained layer neither adds free points nor dilutes. */
+function weightedTotal(layers: Record<keyof typeof LAYER_WEIGHTS, number | null>, reasons: string[]): number {
+  let sum = 0
+  let weight = 0
+  for (const key of Object.keys(LAYER_WEIGHTS) as (keyof typeof LAYER_WEIGHTS)[]) {
+    const value = layers[key]
+    if (value === null) continue
+    sum += value * LAYER_WEIGHTS[key]
+    weight += LAYER_WEIGHTS[key]
+  }
+  if (weight === 0) {
+    reasons.push('卡没有约束任何可计分的层')
+    return 0
+  }
+  return sum / weight
 }
 
 export const scorerConfig = { motionRules: [...MOTION_RULES], actionRules: [...ACTION_RULES] }

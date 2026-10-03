@@ -8,11 +8,13 @@ import { scoreCard, type CardScore } from './scorer'
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)))
 function arg(name: string): string | undefined { const i=process.argv.indexOf(name); return i>=0 ? process.argv[i+1] : undefined }
 async function loadCards(filter?: string): Promise<DirectorCard[]> { const raw=JSON.parse(await fs.readFile(path.join(root,'cards/all.json'),'utf8')) as unknown[]; const cards=raw.map(parseDirectorCard); return filter ? cards.filter(c => c.id.includes(filter) || c.tier===filter) : cards }
+/** `—` = the card does not constrain this layer (left out of the total). */
+const layer = (value: number | null) => (value === null ? '—' : value.toFixed(2))
 function report(scheme: Scheme, scores: CardScore[]): string {
   const avg = (subset: CardScore[], key: keyof CardScore['scores']) => { const values = subset.map((score) => score.scores[key]).filter((value): value is number => typeof value === 'number'); return values.length ? (values.reduce((a, b) => a + b, 0) / values.length).toFixed(3) : 'unverified' }
   const averageTotal = (subset: CardScore[]) => (subset.reduce((sum, score) => sum + score.total, 0) / Math.max(1, subset.length)).toFixed(3)
   const lines = [`# Director 3D-BOX report: ${scheme}`, '', `Cards: ${scores.length}`, `Average total (L0-L4 normalized; L5 unverified): ${averageTotal(scores)}`, '', '| Card | Tier | Status | L0 | L1 | L2 | L3 | L4 | Total | Reasons |', '|---|---|---|---:|---:|---:|---:|---:|---:|---|']
-  for (const score of scores) lines.push(`| ${score.cardId} | ${score.tier ?? '-'} | ${score.status ?? 'ok'} | ${score.scores.L0.toFixed(2)} | ${score.scores.L1.toFixed(2)} | ${score.scores.L2.toFixed(2)} | ${score.scores.L3.toFixed(2)} | ${score.scores.L4.toFixed(2)} | ${score.total.toFixed(3)} | ${score.reasons.join('; ').replaceAll('|', '/')} |`)
+  for (const score of scores) lines.push(`| ${score.cardId} | ${score.tier ?? '-'} | ${score.status ?? 'ok'} | ${score.scores.L0.toFixed(2)} | ${layer(score.scores.L1)} | ${layer(score.scores.L2)} | ${layer(score.scores.L3)} | ${layer(score.scores.L4)} | ${score.total.toFixed(3)} | ${score.reasons.join('; ').replaceAll('|', '/')} |`)
   lines.push('', '## Summary', '', `- L0: ${avg(scores, 'L0')}`, `- L1: ${avg(scores, 'L1')}`, `- L2 motion + framing: ${avg(scores, 'L2')}`, `- L3 blocking: ${avg(scores, 'L3')}`, `- L4 scene: ${avg(scores, 'L4')}`, '- L5 overall: unverified (no visual model run)')
   for (const tier of ['benchmark', 'T1', 'T2', 'T3']) { const subset = scores.filter((score) => score.tier === tier); if (subset.length) lines.push(`- ${tier} total mean: ${averageTotal(subset)} (${subset.length} cards)`) }
   return lines.join('\n')

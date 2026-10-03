@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { createDefaultProject } from './directorProject'
 import type { DirectorCamera, DirectorObject, DirectorProject } from './directorTypes'
-import { measureContinuity, projectPoint, recognizeCameraMotion, sampleDirectorProject } from './directorEvalMeasurement'
+import { EVAL_SHOT_SIZES, distanceForShotSize, measureContinuity, projectPoint, recognizeCameraMotion, sampleDirectorProject, shotSizeForHeight } from './directorEvalMeasurement'
 
 const wp = (id: string, time: number, p: {x:number;y:number;z:number}, yaw = 0) => ({ id, time, frameIndex: Math.round(time * 30), x: p.x, y: p.y, z: p.z, yaw, pitch: 0, roll: 0 })
 function project(objects: DirectorObject[], cameras: DirectorCamera[], duration = 4): DirectorProject {
@@ -51,4 +51,30 @@ it('uses the feet-at-origin convention for character bounds', () => {
   const camera = frame.camera!
   const foot = projectPoint(camera, {x:0,y:0,z:0})
   expect(Math.abs((sample.projection!.y + sample.projection!.height) - foot.y)).toBeLessThan(0.02)
+})
+
+describe('director shot-size ladder (where the frame cuts the subject)', () => {
+  const standing = (id: string): DirectorObject => ({ id, name: id, type: 'character', position: { x: 0, y: 0, z: 0 }, rotation: { x: 0, y: 0, z: 0 }, scale: { x: 1, y: 1, z: 1 }, visible: true, locked: false })
+  const looking = (z: number, y = 1.6, yaw = 180) => { const c = cam('camera', [wp('a', 0, { x: 0, y, z }, yaw), wp('b', 1, { x: 0, y, z }, yaw)]); c.fov = 45; return c }
+  const sizeAt = (z: number, yaw = 180) => sampleDirectorProject(project([standing('hero')], [looking(z, 1.6, yaw)], 1), { duration: 1, fps: 1 }).frames[0].objects.hero
+
+  it('round-trips every figure size through distanceForShotSize', () => {
+    for (const size of EVAL_SHOT_SIZES) {
+      const d = distanceForShotSize(size, 1.75, 45, 'figure')
+      expect(sizeAt(d)?.shotSize, `${size} @ ${d.toFixed(2)}m`).toBe(size)
+    }
+  })
+  it('keeps a medium shot in frame by the head even though the body runs past the frame', () => {
+    const sample = sizeAt(distanceForShotSize('中景', 1.75, 45, 'figure'))
+    expect(sample?.shotSize).toBe('中景')
+    expect(sample?.projection?.contained).toBe(false)
+    expect(sample?.projection?.inFrame).toBe(true)
+  })
+  it('reports the subject out of frame when the camera looks away', () => {
+    expect(sizeAt(3, 0)?.projection?.inFrame).toBe(false)
+  })
+  it('uses the object ladder for anchored parts', () => {
+    expect(shotSizeForHeight(1.6, 'object')).toBe('特写')
+    expect(shotSizeForHeight(1.6, 'figure')).toBe('中景')
+  })
 })

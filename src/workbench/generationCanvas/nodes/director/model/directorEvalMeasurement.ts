@@ -15,15 +15,33 @@ import type { StagingShot } from '../agent/stagingVocab'
 
 export type EvalShotSize = '远景' | '全景' | '中景' | '中近景' | '近景' | '特写' | '大特写'
 export const EVAL_SHOT_SIZES: readonly EvalShotSize[] = ['远景', '全景', '中景', '中近景', '近景', '特写', '大特写']
-/** Thresholds are normalized projected subject height. They follow the conventional full-body/waste/face ladder;
- * 1.0 means the subject fills the frame. The exact threshold is intentionally stable for cross-scheme comparison. */
-export const SHOT_SIZE_THRESHOLDS: readonly [number, EvalShotSize][] = [
-  [0.12, '远景'], [0.28, '全景'], [0.48, '中景'], [0.62, '中近景'], [0.78, '近景'], [0.93, '特写'], [Infinity, '大特写'],
+/**
+ * Shot size is read from `heightRatio` = projected subject height / frame height (unclamped; >1 means the subject
+ * runs past the frame edges, which is what medium and close shots are).
+ *
+ * Figure ladder (a whole character): the conventional "where does the frame cut the body" scale. With the head near
+ * the top of frame the visible fraction of the body is ≈ 1/ratio, so: whole body (全景) ≈ 0.33–1.15, cut at the
+ * waist/hips (中景) 1.15–2.3, chest (中近景) 2.3–3.6, shoulders (近景) 3.6–6, face (特写) 6–12, detail (大特写) ≥12;
+ * a figure under a third of the frame height is 远景.
+ * Object ladder (props, products, vehicles, and any anchored part such as `woman.hand` or `bottle.cap`): there is no
+ * body to cut, so size follows how much of the frame the thing fills.
+ */
+export const FIGURE_SHOT_LADDER: readonly [number, EvalShotSize][] = [
+  [0.33, '远景'], [1.15, '全景'], [2.3, '中景'], [3.6, '中近景'], [6, '近景'], [12, '特写'], [Infinity, '大特写'],
 ]
+export const OBJECT_SHOT_LADDER: readonly [number, EvalShotSize][] = [
+  [0.12, '远景'], [0.35, '全景'], [0.6, '中景'], [0.8, '中近景'], [1.1, '近景'], [2.5, '特写'], [Infinity, '大特写'],
+]
+export type ShotLadder = 'figure' | 'object'
+const LADDERS: Record<ShotLadder, readonly [number, EvalShotSize][]> = { figure: FIGURE_SHOT_LADDER, object: OBJECT_SHOT_LADDER }
+/** Distance below the top of a character's bounds that counts as "the head" for visibility. */
+const HEAD_BELOW_TOP = 0.12
 export const STAGING_SHOT_TO_EVAL: Record<StagingShot, EvalShotSize> = { wide: '全景', medium: '中景', close: '特写' }
 
 export type AnchorSpec = { offset: Vec3; size: Vec3 }
-export type ProjectionBox = { x: number; y: number; width: number; height: number; heightRatio: number; inFrame: boolean; depth: number }
+/** `inFrame` = the subject's key point (head for a character, anchor or centre otherwise) is in front of the camera and inside the frame;
+ * `contained` = the whole bounds fit inside the frame (only wide shots satisfy this, by definition). */
+export type ProjectionBox = { x: number; y: number; width: number; height: number; heightRatio: number; inFrame: boolean; contained: boolean; depth: number }
 export type ObjectSample = { position: Vec3; yaw: number; projection?: ProjectionBox; shotSize?: EvalShotSize; belowGround: boolean }
 export type CameraSample = { id: string; position: Vec3; yaw: number; pitch: number; roll: number; fov: number }
 export type FrameSample = { frame: number; time: number; cameraId: string | null; camera: CameraSample | null; objects: Record<string, ObjectSample> }
@@ -83,7 +101,7 @@ export function projectPoint(camera: CameraSample, point: Vec3, aspectRatio = DE
   return { x: 0.5 + dot(d, right) / Math.max(EPS, depth) / (2 * Math.tan(vertical) * aspectRatio), y: 0.5 - dot(d, up) / Math.max(EPS, depth) / (2 * Math.tan(vertical)), depth }
 }
 
-export function projectBounds(camera: CameraSample, center: Vec3, size: Vec3, aspectRatio = DEFAULT_ASPECT): ProjectionBox {
+export function projectBounds(camera: CameraSample, center: Vec3, size: Vec3, aspectRatio = DEFAULT_ASPECT, keyPoint: Vec3 = center): ProjectionBox {
   const { forward, right, up } = cameraBasis(camera)
   const half = mul(size, 0.5)
   const points: Vec3[] = []
@@ -98,12 +116,37 @@ export function projectBounds(camera: CameraSample, center: Vec3, size: Vec3, as
   const x0 = Math.min(...projected.map(p => p.x)), x1 = Math.max(...projected.map(p => p.x))
   const y0 = Math.min(...projected.map(p => p.y)), y1 = Math.max(...projected.map(p => p.y))
   const depth = Math.min(...projected.map(p => p.depth))
-  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0, heightRatio: y1 - y0, inFrame: depth > 0 && x0 >= -EPS && x1 <= 1 + EPS && y0 >= -EPS && y1 <= 1 + EPS, depth }
+  const key = sub(keyPoint, camera.position)
+  const keyDepth = dot(key, forward)
+  const keyX = 0.5 + dot(key, right) / Math.max(EPS, keyDepth) / (2 * tanH)
+  const keyY = 0.5 - dot(key, up) / Math.max(EPS, keyDepth) / (2 * tanV)
+  const inFrame = keyDepth > 0 && keyX >= -EPS && keyX <= 1 + EPS && keyY >= -EPS && keyY <= 1 + EPS
+  const contained = depth > 0 && x0 >= -EPS && x1 <= 1 + EPS && y0 >= -EPS && y1 <= 1 + EPS
+  // Size reads at the subject's own depth plane (how framing is judged on set), so the near face of a deep bounding box
+  // cannot inflate a close shot; this also makes distanceForShotSize an exact inverse.
+  const centerDepth = dot(sub(center, camera.position), forward)
+  const heightRatio = centerDepth > EPS ? size.y / (centerDepth * 2 * tanV) : 0
+  return { x: x0, y: y0, width: x1 - x0, height: y1 - y0, heightRatio, inFrame, contained, depth }
 }
 
-export function shotSizeForHeight(heightRatio: number): EvalShotSize {
-  for (const [threshold, size] of SHOT_SIZE_THRESHOLDS) if (heightRatio < threshold) return size
+export function shotSizeForHeight(heightRatio: number, ladder: ShotLadder = 'object'): EvalShotSize {
+  for (const [threshold, size] of LADDERS[ladder]) if (heightRatio < threshold) return size
   return EVAL_SHOT_SIZES[EVAL_SHOT_SIZES.length - 1]
+}
+
+/** Inverse of the ladder: the band centre's height ratio for a size (geometric mean of its edges; open ends use the inner edge). */
+export function heightRatioForShotSize(size: EvalShotSize, ladder: ShotLadder): number {
+  const rows = LADDERS[ladder]
+  const index = rows.findIndex(([, name]) => name === size)
+  const upper = rows[index][0]
+  const lower = index > 0 ? rows[index - 1][0] : upper / 2
+  return Number.isFinite(upper) ? Math.sqrt(lower * upper) : lower * 1.5
+}
+
+/** Camera distance (along the view axis) that frames a subject of `subjectHeight` metres at `size` with a vertical `fovDeg`. */
+export function distanceForShotSize(size: EvalShotSize, subjectHeight: number, fovDeg: number, ladder: ShotLadder): number {
+  const ratio = heightRatioForShotSize(size, ladder)
+  return subjectHeight / (ratio * 2 * Math.tan((fovDeg * Math.PI) / 360))
 }
 
 function cameraSample(camera: DirectorCamera, time: number): CameraSample {
@@ -120,8 +163,11 @@ function objectSample(scene: DirectorScene, object: DirectorObject, time: number
   const anchor = anchors?.[object.id]
   const center = anchor && frame ? transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, anchor.offset)) : originCenter
   const size = anchor?.size ?? objectSize(object)
-  const projection = camera ? projectBounds(camera, center, size, aspectRatio) : undefined
-  return { position, yaw: evaluated?.yaw ?? object.rotation.y, projection, shotSize: projection ? shotSizeForHeight(projection.heightRatio) : undefined, belowGround: center.y - size.y / 2 < -0.05 }
+  const figure = object.type === 'character' && !anchor
+  const keyPoint = figure ? add(center, vec(0, size.y / 2 - HEAD_BELOW_TOP * Math.abs(object.scale.y), 0)) : center
+  const projection = camera ? projectBounds(camera, center, size, aspectRatio, keyPoint) : undefined
+  const shotSize = projection ? shotSizeForHeight(projection.heightRatio, figure ? 'figure' : 'object') : undefined
+  return { position, yaw: evaluated?.yaw ?? object.rotation.y, projection, shotSize, belowGround: center.y - size.y / 2 < -0.05 }
 }
 
 export function sampleDirectorProject(project: DirectorProject, options: MeasurementOptions = {}): DirectorMeasurements {

@@ -1,9 +1,24 @@
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { createDefaultProject } from '../../src/workbench/generationCanvas/nodes/director/model/directorProject'
 import type { DirectorCamera, DirectorObject, DirectorProject, Vec3 } from '../../src/workbench/generationCanvas/nodes/director/model/directorTypes'
 import { lookAtAngles } from '../../src/workbench/generationCanvas/nodes/director/model/vec3'
 import type { DirectorCard } from './cardSchema'
 
 export type AdaptedProject = { project: DirectorProject; actorMap?: Record<string,string> }
+
+/** PR #960 lives only on its own branch, so the s0 baseline reads a separate checkout named by env (never a machine path in source). */
+export const PR960_ROOT_ENV = 'NOMI_EVAL_PR960_ROOT'
+type Pr960PlanModule = {
+  normalizeDirectorPrompt(prompt: string): unknown
+  buildDirectorProjectFromPlan(plan: unknown): { project: DirectorProject }
+}
+async function importPr960Plan(): Promise<Pr960PlanModule> {
+  const root = process.env[PR960_ROOT_ENV]
+  if (!root) throw new Error(`${PR960_ROOT_ENV} is not set; point it at a checkout of feat/director-p0 (PR #960) to run the s0 schemes`)
+  const modulePath = path.join(root, 'src/workbench/generationCanvas/nodes/director/model/directorPlan.ts')
+  return (await import(pathToFileURL(modulePath).href)) as Pr960PlanModule
+}
 export type Scheme = 'oracle' | 's0-pr960-raw' | 's0-pr960-ideal'
 const point = (x:number,y:number,z:number,time:number, target:Vec3, fov?:number): any => { const a=lookAtAngles({x,y,z},target); return {id:`wp-${time}-${x}-${z}`,x,y,z,time,frameIndex:Math.round(time*30),yaw:a.yaw,pitch:a.pitch,roll:0,...(fov===undefined?{}:{fov})} }
 const entityPoint = (x:number,y:number,z:number,time:number): any => ({id:`entity-${time}-${x}-${z}`,x,y,z,time,frameIndex:Math.round(time*30),yaw:0,pitch:0,roll:0})
@@ -37,7 +52,7 @@ export async function adapt(prompt: string, card: DirectorCard, scheme: Scheme):
     prompt = idealPromptFor(card) ?? (() => { throw new Error(`missing ideal prompt for ${card.id}`) })()
   }
   try {
-    const mod = await import('/Users/aoqimin/Desktop/Nomi-eval-pr960/src/workbench/generationCanvas/nodes/director/model/directorPlan.ts')
+    const mod = await importPr960Plan()
     const plan = mod.normalizeDirectorPrompt(prompt)
     const built = mod.buildDirectorProjectFromPlan(plan)
     return { project: built.project }
