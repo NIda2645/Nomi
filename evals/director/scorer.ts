@@ -12,6 +12,7 @@ import {
 } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
 import type { Direction, DirectorCard } from './cardSchema'
 import type { AnchorSpec } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
+import { findActionEntry } from '../../src/workbench/generationCanvas/nodes/director/model/actionLibrary'
 
 /** `null` = the card does not constrain this layer, so it is left out of the total (spec: unconstrained fields are not scored). */
 export type LayerScores = {
@@ -143,10 +144,65 @@ function findObject(scene: DirectorScene, key: string): DirectorObject | undefin
       object.name.toLowerCase().includes(needle),
   )
 }
-function sampleForSubject(frame: DirectorMeasurements['frames'][number], subject: string | undefined) {
+
+const MOVEMENT_ACTION_BY_VERB = {
+  walk_to: 'standard_walk',
+  run_to: 'running',
+  sidestep_block: 'standard_walk',
+  drive_along: 'standard_walk',
+  chase: 'running',
+} as const
+const STATIC_ACTION_IDS = new Set(['standing_idle', 'kneeling_idle', 'tpose', 'male_sitting_pose_1', 'male_sitting_pose'])
+
+function actionClipCovers(
+  scene: DirectorScene,
+  objectId: string,
+  window: [number, number],
+  actionId: string,
+): boolean {
+  if (!findActionEntry(actionId)) return false
+  const object = scene.objects.find((candidate) => candidate.id === objectId)
+  if (!object || object.type !== 'character') return true
+  return (object.actionClips ?? []).some(
+    (clip) =>
+      clip.startTime <= window[0] + 1e-4 &&
+      clip.endTime >= window[1] - 1e-4 &&
+      (clip.actionPose === actionId || clip.name === actionId),
+  )
+}
+
+function actionEvidence(
+  scene: DirectorScene,
+  objectId: string,
+  action: DirectorCard['blocking'][number],
+  window: [number, number],
+): { ok: boolean; missingAsset?: string } {
+  const object = scene.objects.find((candidate) => candidate.id === objectId)
+  if (!object || object.type !== 'character') return { ok: true }
+  if (action.verb === 'hide_object_behind_back')
+    return { ok: false, missingAsset: 'hide_object_behind_back' }
+  if (action.verb === 'hold_pose') {
+    const actionId = action.action
+    if (!actionId || !findActionEntry(actionId)) return { ok: false, missingAsset: actionId ?? 'hold_pose' }
+    return { ok: actionClipCovers(scene, objectId, window, actionId), missingAsset: actionId }
+  }
+  if (action.verb === 'stop') {
+    const actionId = (action.action && findActionEntry(action.action) ? action.action : 'standing_idle')
+    const ok = STATIC_ACTION_IDS.has(actionId) && actionClipCovers(scene, objectId, window, actionId)
+    return { ok, missingAsset: actionId }
+  }
+  const actionId = MOVEMENT_ACTION_BY_VERB[action.verb as keyof typeof MOVEMENT_ACTION_BY_VERB]
+  if (actionId) return { ok: actionClipCovers(scene, objectId, window, actionId), missingAsset: actionId }
+  return { ok: true }
+}
+function sampleForSubject(
+  frame: DirectorMeasurements['frames'][number],
+  subject: string | undefined,
+  actorMap: Record<string, string | undefined>,
+) {
   if (!subject) return undefined
   const [root, part] = subject.split('.')
-  const sample = frame.objects[root]
+  const sample = frame.objects[actorMap[root] ?? root]
   return part ? sample?.anchors?.[part] : sample
 }
 
@@ -172,42 +228,38 @@ export function scoreBlocking(
     const first = samples[0]
     const last = samples.at(-1)
     let ok = false
+    const evidence = actionEvidence(scene, id, action, window)
     if (first && last && ['walk_to', 'run_to'].includes(action.verb)) {
       const target = action.target ? findObject(scene, action.target) : undefined
       const moved = distance2(first, last) >= 0.5
       const arrived =
         !!target && Math.hypot(last.position.x - target.position.x, last.position.z - target.position.z) <= 2.5
-      ok = moved && arrived
+      ok = moved && arrived && evidence.ok
     } else if (first && last && action.verb === 'stop') {
       const speeds = samples
         .slice(1)
         .map((sample, index) => distance2(sample, samples[index]) / Math.max(0.001, window[1] - window[0]))
-      ok = speeds.length > 0 && speeds.every((speed) => speed < 0.1)
+      ok = speeds.length > 0 && speeds.every((speed) => speed < 0.1) && evidence.ok
     } else if (first && last && action.verb === 'sidestep_block') {
       const moved = Math.abs(last.position.x - first.position.x) >= 0.5
       const target = action.between?.[1] ? findObject(scene, action.between[1]) : undefined
       const nearTarget =
         !!target && Math.hypot(last.position.x - target.position.x, last.position.z - target.position.z) <= 2.5
-      ok = moved && nearTarget
+      ok = moved && nearTarget && evidence.ok
     } else if (first && last && action.verb === 'drive_along') {
-      ok = distance2(first, last) >= 0.5
+      ok = distance2(first, last) >= 0.5 && evidence.ok
     } else if (first && last && action.verb === 'chase') {
       const targetId = action.target ? actorMap[action.target] : undefined
       const targetSamples = targetId ? actorSamples(measurements, targetId, window) : []
       const startDistance = targetSamples[0] ? distance2(first, targetSamples[0]) : Infinity
       const endDistance = targetSamples.at(-1) ? distance2(last, targetSamples.at(-1)!) : Infinity
-      ok = distance2(first, last) >= 0.5 && targetSamples.length > 1 && endDistance <= startDistance + 1
+      ok = distance2(first, last) >= 0.5 && targetSamples.length > 1 && endDistance <= startDistance + 1 && evidence.ok
     } else if (action.verb === 'hide_object_behind_back' || action.verb === 'hold_pose') {
-      ok = (scene.objects.find((object) => object.id === id)?.actionClips ?? []).some(
-        (clip) =>
-          clip.startTime <= window[1] &&
-          clip.endTime >= window[0] &&
-          (clip.name + String(clip.actionPose))
-            .toLowerCase()
-            .includes(action.verb === 'hide_object_behind_back' ? 'hide' : 'hold'),
-      )
+      ok = evidence.ok
     }
     if (ok) good++
+    else if (evidence.missingAsset && !findActionEntry(evidence.missingAsset))
+      reasons.push(`${action.actor} 的动作 ${action.verb} 能力缺口：missing_asset (${evidence.missingAsset})`)
     else reasons.push(`${action.actor} 的动作 ${action.verb} 未在时间窗达成`)
   }
   return good / card.blocking.length
@@ -364,14 +416,14 @@ function scoreMotionAndFraming(
         (frame) => frame.time >= start - 1e-4 && (frame.time < end - 1e-4 || end >= measurements.duration - 1e-4),
       )
       const visible =
-        frames.filter((frame) => sampleForSubject(frame, subjectRef)?.projection?.inFrame).length /
+        frames.filter((frame) => sampleForSubject(frame, subjectRef, actorMap)?.projection?.inFrame).length /
         Math.max(1, frames.length)
       total += visible
       count++
       if (visible < 0.95) reasons.push(`${start}-${end}s 主体出画 ${Math.round((1 - visible) * 100)}% 帧`)
       if (shot.size) {
         const sizes = frames
-          .map((frame) => sampleForSubject(frame, subjectRef)?.shotSize)
+          .map((frame) => sampleForSubject(frame, subjectRef, actorMap)?.shotSize)
           .filter((size) => size !== undefined) as string[]
         const expected = shotAliases[shot.size] ?? shot.size ?? ''
         const hit = sizes.filter((size) => shotSizeMatches(expected, size)).length / Math.max(1, sizes.length)

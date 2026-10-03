@@ -73,7 +73,8 @@
         "window": [
           4,
           8
-        ]
+        ],
+        "capability": "missing_asset"
       }
     ],
     "shots": [

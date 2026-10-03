@@ -272,7 +272,8 @@ export function measureContinuity(measurements: DirectorMeasurements, scene: Dir
   for (const frame of measurements.frames) {
     if (frame.camera) for (const object of scene.objects) {
       const sample = frame.objects[object.id]
-      if (frame.camera && !/^(ground|road|wall.*|building.*|gate|.*_car)$/i.test(object.name) && distance(frame.camera.position, sample.position) < Math.max(object.scale.x, object.scale.y, object.scale.z) * 0.6) issues.push({ kind: 'camera-inside', time: frame.time, objectId: object.id, message: `camera enters ${object.name}` })
+      const ignored = /^(ground|road|wall.*|building.*|gate|.*_car)$/i.test(object.name)
+      if (frame.camera && !ignored && cameraInsideObject(frame.camera.position, sample.position, object)) issues.push({ kind: 'camera-inside', time: frame.time, objectId: object.id, message: `camera enters ${object.name}` })
       if (sample?.belowGround) issues.push({ kind: 'below-ground', time: frame.time, objectId: object.id, message: `${object.name} is below ground` })
     }
   }
@@ -296,6 +297,12 @@ export function measureContinuity(measurements: DirectorMeasurements, scene: Dir
     }
   }
   return issues
+}
+
+function cameraInsideObject(camera: Vec3, origin: Vec3, object: DirectorObject): boolean {
+  const size = objectSize(object), offset = OBJECT_ORIGIN_OFFSETS[object.type] ?? OBJECT_ORIGIN_OFFSETS.cube
+  const center = add(origin, offset)
+  return Math.abs(camera.x - center.x) <= size.x / 2 && Math.abs(camera.y - center.y) <= size.y / 2 && Math.abs(camera.z - center.z) <= size.z / 2
 }
 
 export const isKnownCameraMove = (value: string): value is CameraMove => (CAMERA_MOVES as readonly string[]).includes(value)

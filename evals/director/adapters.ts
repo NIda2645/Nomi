@@ -15,12 +15,21 @@ import type {
   Waypoint,
 } from '../../src/workbench/generationCanvas/nodes/director/model/directorTypes'
 import { lookAtAngles } from '../../src/workbench/generationCanvas/nodes/director/model/vec3'
+import { findActionEntry } from '../../src/workbench/generationCanvas/nodes/director/model/actionLibrary'
 import type { DirectorCard } from './cardSchema'
+import { adaptS1Plan, adaptS1Prompt } from './s1Adapter'
+import { S1_ORACLE_PLANS } from './s1OraclePlans'
 
 export type AdaptedProject = {
   project: DirectorProject
   actorMap?: Record<string, string>
   anchors?: Record<string, AnchorSpec>
+  metadata?: {
+    plannerAttempts?: number
+    usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; estimatedUsd?: number }
+    rawPlan?: string
+    issues?: Array<{ kind: string; message: string; actorId?: string; assetId?: string }>
+  }
 }
 export const PR960_ROOT_ENV = 'NOMI_EVAL_PR960_ROOT'
 type Pr960PlanModule = {
@@ -37,7 +46,7 @@ async function importPr960Plan(): Promise<Pr960PlanModule> {
     pathToFileURL(path.join(root, 'src/workbench/generationCanvas/nodes/director/model/directorPlan.ts')).href
   )) as Pr960PlanModule
 }
-export type Scheme = 'oracle' | 's0-pr960-raw' | 's0-pr960-ideal'
+export type Scheme = 'oracle' | 's0-pr960-raw' | 's0-pr960-ideal' | 's1' | 's1-oracle-plan'
 type PointOptions = { target: Vec3; fov: number }
 type ShotWindow = [number, number]
 type SubjectRef = { root: string; part?: string }
@@ -162,6 +171,24 @@ function applyBlocking(
       actor.motionTrajectory = [...(actor.motionTrajectory ?? []), ...points].sort((a, b) => a.time - b.time)
       actor.trajectoryClips = [...(actor.trajectoryClips ?? []), clip(trajectoryId, start, end)]
     }
+    const addActionClip = (actionId: string | undefined) => {
+      if (actor.type !== 'character') return
+      const entry = actionId ? findActionEntry(actionId) : undefined
+      if (!entry) return
+      actor.actionClips = [
+        ...(actor.actionClips ?? []),
+        {
+          id: `${actor.id}-${entry.id}-${start}`,
+          name: entry.id,
+          clipType: 'action',
+          startTime: start,
+          endTime: end,
+          startFrame: Math.round(start * FPS),
+          endFrame: Math.round(end * FPS),
+          actionPose: entry.id,
+        },
+      ]
+    }
     if (['walk_to', 'run_to'].includes(action.verb) && target) {
       addTrajectory(
         [entityPoint(actor.position, start), entityPoint(target.position, end)],
@@ -194,20 +221,9 @@ function applyBlocking(
         ],
         `${actor.id}-stop`,
       )
-    } else if (action.verb === 'hide_object_behind_back' || action.verb === 'hold_pose') {
-      actor.actionClips = [
-        {
-          id: `${actor.id}-${action.verb}`,
-          name: action.verb,
-          clipType: 'action',
-          startTime: start,
-          endTime: end,
-          startFrame: Math.round(start * FPS),
-          endFrame: Math.round(end * FPS),
-          actionPose: action.verb,
-        },
-      ]
     }
+    const actionId = action.verb === 'walk_to' ? 'standard_walk' : action.verb === 'run_to' ? 'running' : action.verb === 'stop' ? 'standing_idle' : action.verb === 'sidestep_block' ? 'standard_walk' : action.verb === 'hold_pose' ? action.action : undefined
+    addActionClip(actionId)
   }
 }
 function anchorFor(subject: SubjectRef | undefined, actor: DirectorObject): AnchorSpec | undefined {
@@ -279,7 +295,7 @@ function cameraForShot(
   const size = (shot.size ?? shot.endSize ?? '中景') as EvalShotSize
   const ladder: ShotLadder = actor.type === 'character' && !anchor ? 'figure' : 'object'
   const fov = DEFAULT_FOV
-  const distance = Math.max(anchor ? 0.15 : 0.12, distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder))
+  const distance = Math.max(anchor ? 0.65 : 0.12, distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder))
   const startActor = { ...actor, position: positionAt(actor, start) }
   const endActor = { ...actor, position: positionAt(actor, end) }
   const target = targetPosition(startActor, anchor)
@@ -430,6 +446,25 @@ export function oracleForCard(card: DirectorCard): AdaptedProject {
 
 export async function adapt(prompt: string, card: DirectorCard, scheme: Scheme): Promise<AdaptedProject> {
   if (scheme === 'oracle') return oracleForCard(card)
+  if (scheme === 's1') {
+    const result = await adaptS1Prompt(prompt)
+    if (!result.ok) {
+      const error = new Error(`s1 planner/compiler failed for ${card.id}: ${result.errors.join('; ')}`) as Error & { planner?: unknown }
+      error.planner = result.planner
+      throw error
+    }
+    return {
+      ...result.adapted,
+      metadata: { plannerAttempts: result.planner.attempts, usage: result.planner.usage, rawPlan: result.planner.raw, issues: result.adapted.issues },
+    }
+  }
+  if (scheme === 's1-oracle-plan') {
+    const plan = S1_ORACLE_PLANS[card.id]
+    if (!plan) throw new Error(`s1-oracle-plan has no hand-written plan for ${card.id}`)
+    const result = adaptS1Plan(plan)
+    if ('errors' in result) throw new Error(`s1 oracle compiler failed for ${card.id}: ${result.errors.join('; ')}`)
+    return { ...result, metadata: { issues: result.issues } }
+  }
   if (scheme === 's0-pr960-ideal') {
     if (!new Set(['police-chase', 'perfume-orbit', 'courtyard-standoff']).has(card.id))
       throw new Error(`s0-pr960-ideal only supports benchmark cards; received ${card.id}`)

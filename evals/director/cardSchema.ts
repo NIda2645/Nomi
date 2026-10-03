@@ -38,6 +38,8 @@ const blockingSchema = z.object({
   object: z.string().optional(),
   path: z.string().optional(),
   speed: z.string().optional(),
+  action: z.string().optional(),
+  capability: z.enum(['missing_asset']).optional(),
   window: z.tuple([z.number(), z.number()]).optional(),
 })
 const shotSchema = z.object({
