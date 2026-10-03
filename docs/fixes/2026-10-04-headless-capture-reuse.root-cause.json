@@ -23,7 +23,7 @@
   ],
   "internal_only_reason": "The invariant is application-owned: all callers must mount the product capture component and receive its readiness and readback contract.",
   "invariants": [
-    "Every headless capture waits for visible characterMount objects before seeking and capturing.",
+    "Every headless capture waits for visible characterMount objects; callers that opt into action readiness also wait until referenced pose clips are ready.",
     "Every captured frame is produced by SceneRegistry.captureFrame and carries the camera id and actual camera readback when available.",
     "Existing callers that omit optional props retain first-camera selection and burned labels."
   ],
@@ -84,7 +84,7 @@
     "after": 10,
     "why_not": "The seven read doors are public type/component consumers and must remain: staging and camera-move production callers keep their existing lifecycle, the component owns its own result contract, and the devlab caller is added as a third consumer. They converge on DirectorHeadlessCapture rather than being removed."
   },
-  "generality_proof": "The production staging and camera-move callers and the devlab renderer all mount the same DirectorHeadlessCapture component. Optional camera selection and label settings are resolved inside its shared CaptureDriver, while CaptureBinder returns the same actual camera and subject readback for every caller.",
+  "generality_proof": "The production staging and camera-move callers and the devlab renderer all mount the same DirectorHeadlessCapture component. Optional camera selection, label settings, exact dimensions, and action-readiness waiting are resolved inside its shared CaptureDriver, while CaptureBinder returns the same actual camera and subject readback for every caller.",
   "shared_boundaries": [
     {
       "path": "src/workbench/generationCanvas/nodes/director/agent/DirectorHeadlessCapture.tsx",
@@ -129,7 +129,7 @@
   "prevention": {
     "kind": "centralized-boundary",
     "enforcement_path": "src/workbench/generationCanvas/nodes/director/agent/DirectorHeadlessCapture.tsx",
-    "invariant": "All headless callers use the shared readiness wait, seek/settle loop, CaptureBinder path, and result metadata.",
+    "invariant": "All headless callers use the shared readiness wait, optional action-clip readiness, seek/settle loop, CaptureBinder path, and result metadata.",
     "failure_mode": "A missing camera or null frame returns null to the caller; the devlab adapter reports an explicit error to its parent window.",
     "exception_policy": "none",
     "strategy": "Delete the devlab CaptureDriver and mount DirectorHeadlessCapture with an injected camera selector and label option.",

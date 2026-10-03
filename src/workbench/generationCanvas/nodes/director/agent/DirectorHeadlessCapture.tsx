@@ -51,6 +51,8 @@ export type DirectorHeadlessCaptureProps = {
   maxShortSide?: number
   /** Exact output size for adapters that already own their render viewport. */
   captureSize?: { width: number; height: number }
+  /** Wait for referenced action assets before capture; omitted preserves existing callers. */
+  waitForActionClips?: boolean
   /** Optional per-time camera selector. Returning null produces a black frame. */
   cameraIdAt?: (time: number) => string | null
   /** Burn character labels into frames; omitted keeps the existing product default. */
@@ -111,7 +113,7 @@ export function resolveHeadlessCameraId(scene: DirectorScene, time: number, came
   return cameraIdAt ? cameraIdAt(time) : (scene.cameras[0]?.id ?? null)
 }
 
-function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabels = true, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
+function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabels = true, waitForActionClips = false, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
   const store = useDirectorStoreApi()
   const registry = useSceneRegistry()
 
@@ -124,7 +126,7 @@ function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabel
         onResult(null)
         return
       }
-      for (let frame = 0; frame < CHARACTER_LOAD_MAX_FRAMES && (!charactersLoaded(registry, scene) || actionClipsLoading(scene)); frame += 1) {
+      for (let frame = 0; frame < CHARACTER_LOAD_MAX_FRAMES && (!charactersLoaded(registry, scene) || (waitForActionClips && actionClipsLoading(scene))); frame += 1) {
         await nextFrames(1)
         if (cancelled) return
       }
@@ -158,7 +160,7 @@ function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabel
   return null
 }
 
-export function DirectorHeadlessCapture({ project, times, maxShortSide, captureSize, cameraIdAt, burnLabels, onResult }: DirectorHeadlessCaptureProps): JSX.Element {
+export function DirectorHeadlessCapture({ project, times, maxShortSide, captureSize, cameraIdAt, burnLabels, waitForActionClips, onResult }: DirectorHeadlessCaptureProps): JSX.Element {
   const store = React.useMemo(() => createDirectorStore({ rawProject: project, defaultSceneName: project.scenes[0]?.name ?? 'Scene 1' }), [project])
   const registry = React.useMemo(() => createSceneRefRegistry(), [])
   const apiRef = React.useRef(null) as ViewportApiRef
@@ -185,7 +187,7 @@ export function DirectorHeadlessCapture({ project, times, maxShortSide, captureS
               <DirectorEntities />
               <PlaybackBinder />
               <CaptureBinder />
-              <CaptureDriver times={times} maxShortSide={maxShortSide} captureSize={captureSize} cameraIdAt={cameraIdAt} burnLabels={burnLabels} onResult={onResult} />
+              <CaptureDriver times={times} maxShortSide={maxShortSide} captureSize={captureSize} cameraIdAt={cameraIdAt} burnLabels={burnLabels} waitForActionClips={waitForActionClips} onResult={onResult} />
             </SceneRegistryContext.Provider>
           </FencedCanvas>
         </ViewportApiContext.Provider>
