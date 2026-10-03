@@ -44,7 +44,9 @@ export async function renderProject(project: DirectorProject, outDir: string, la
   let browser: Browser | undefined
   try {
     await waitForServer('http://127.0.0.1:5187/director-render.html')
-    browser = await chromium.launch({ headless: true })
+    // Metal keeps readPixels on the native GPU path on macOS; SwiftShader makes a
+    // 30 fps judge run several times slower and is retained only as Chromium's fallback.
+    browser = await chromium.launch({ headless: true, args: ['--use-angle=metal', '--enable-gpu'] })
     const page = await browser.newPage({ viewport: { width: JUDGE_RENDER_WIDTH, height: JUDGE_RENDER_HEIGHT }, deviceScaleFactor: 1 })
     page.on('console', (message) => { if (message.type() === 'error') console.error(`[director-render browser] ${message.text()}`) })
     page.on('pageerror', (error) => console.error(`[director-render pageerror] ${error.message}`))
