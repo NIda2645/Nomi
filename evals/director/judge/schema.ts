@@ -19,7 +19,7 @@ export const visualReviewSchema = z.object({
   rationale: z.string().min(1),
 })
 
-export const preregistrationSchema = z.object({
+const preregistrationFields = {
   cardId: z.string().min(1),
   prompt: z.string().min(1),
   expectedSegments: z.array(z.object({
@@ -31,8 +31,9 @@ export const preregistrationSchema = z.object({
     cut: z.string().min(1),
   })).min(1),
   frozenAt: z.string().datetime(),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
-})
+}
+export const preregistrationDraftSchema = z.object({ ...preregistrationFields, sha256: z.string().regex(/^[a-f0-9]{64}$/).optional() })
+export const preregistrationSchema = z.object({ ...preregistrationFields, sha256: z.string().regex(/^[a-f0-9]{64}$/) })
 
 export const pairwiseSchema = z.object({
   cardId: z.string().min(1),

@@ -17,7 +17,7 @@ const has = (name: string): boolean => process.argv.includes(name)
 async function cards(filter?: string): Promise<DirectorCard[]> {
   const all = JSON.parse(await fs.readFile(path.join(root, 'cards/all.json'), 'utf8')) as unknown[]
   const parsed = all.map(parseDirectorCard)
-  if (!filter) return parsed.filter((card) => card.tier === 'benchmark')
+  if (!filter) return [...parsed.filter((card) => card.tier === 'benchmark').slice(0, 3), ...parsed.filter((card) => card.tier === 'T1' || card.tier === 'T2').slice(0, 6)]
   const requested = new Set(filter.split(',').map((item) => item.trim()).filter(Boolean))
   return parsed.filter((card) => requested.has(card.id) || requested.has(card.tier))
 }
@@ -35,6 +35,7 @@ async function main(): Promise<void> {
   await fs.mkdir(outDir, { recursive: true })
   const records: JudgeRecord[] = []
   const videos = new Map<string, RenderedVideo>()
+  const calibrationVideos: RenderedVideo[] = []
   const prereg = new Map<string, Awaited<ReturnType<typeof preregister>>['value']>()
   for (const card of selectedCards) {
     const registrationPath = path.join(outDir, `${card.id}-expectation.json`)
@@ -50,6 +51,7 @@ async function main(): Promise<void> {
         const adapted = await adapt(card.prompt, card, scheme)
         const rendered = await renderProject(adapted.project, path.join(outDir, 'media'), key)
         videos.set(key, rendered)
+        calibrationVideos.push(rendered)
         for (let repeat = 0; repeat < repeats; repeat += 1) {
           const review = await reviewOnce(card, registration.value, [rendered.contactSheet])
           if (review.value) {
@@ -71,6 +73,7 @@ async function main(): Promise<void> {
     for (const bait of await buildBaits(selectedCards)) {
       try {
         const rendered = await renderProject(bait.adapted.project, path.join(outDir, 'media'), `bait-${bait.id}`)
+        calibrationVideos.push(rendered)
         const registration = prereg.get(bait.promptCard.id)
         if (!registration) continue
         const review = await reviewOnce(bait.promptCard, registration, [rendered.contactSheet])
@@ -80,7 +83,7 @@ async function main(): Promise<void> {
       }
     }
   }
-  await fs.writeFile(path.join(outDir, 'calibration-manifest.json'), JSON.stringify({ items: [...videos.values()].slice(0, 12).map((video) => ({ video: path.relative(outDir, video.video) })) }, null, 2) + '\n')
+  await fs.writeFile(path.join(outDir, 'calibration-manifest.json'), JSON.stringify({ items: calibrationVideos.slice(0, 12).map((video) => ({ video: path.relative(outDir, video.video) })) }, null, 2) + '\n')
   const byCard = selectedCards.map((card) => ({ cardId: card.id, segments: records.filter((record) => record.cardId === card.id && record.score != null).map((record) => record.score), unstable: false }))
   const average = (values: Array<number | undefined>) => values.reduce<number>((sum, value) => sum + (value ?? 0), 0) / Math.max(1, values.length)
   await fs.writeFile(path.join(outDir, 'worst-5.json'), JSON.stringify(byCard.sort((a, b) => average(a.segments) - average(b.segments)).slice(0, 5), null, 2) + '\n')

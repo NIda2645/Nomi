@@ -4,7 +4,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawn } from 'node:child_process'
 import type { DirectorCard } from '../cardSchema'
-import { preregistrationSchema, parseJsonObject, type Preregistration } from './schema'
+import { preregistrationDraftSchema, preregistrationSchema, parseJsonObject, type Preregistration } from './schema'
 import { preregistrationPrompt } from './prompts'
 
 function runCodex(prompt: string, cwd: string): Promise<string> {
@@ -24,7 +24,7 @@ export async function preregister(card: DirectorCard, outFile: string): Promise<
   try {
     const prompt = preregistrationPrompt(card)
     const raw = await runCodex(prompt, temp)
-    const parsed = preregistrationSchema.parse(parseJsonObject(raw))
+    const parsed = preregistrationDraftSchema.parse(parseJsonObject(raw))
     const canonical = JSON.stringify({ ...parsed, sha256: '' })
     const sha256 = crypto.createHash('sha256').update(canonical).digest('hex')
     const value = preregistrationSchema.parse({ ...parsed, sha256 })
