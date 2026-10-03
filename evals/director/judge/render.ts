@@ -8,6 +8,8 @@ import type { DirectorProject } from '../../../src/workbench/generationCanvas/no
 import { DIRECTOR_EXPORT_FPS } from '../../../src/workbench/generationCanvas/nodes/director/model/exportSize'
 
 export type RenderedVideo = { video: string; contactSheet: string; frames: string[]; times: number[]; width: number; height: number; cameraIds: Array<string | null> }
+export const JUDGE_RENDER_WIDTH = 480
+export const JUDGE_RENDER_HEIGHT = 270
 
 function startVite(repoRoot: string): ChildProcess {
   return spawn('pnpm', ['exec', 'vite', '--host', '127.0.0.1', '--port', '5187'], { cwd: repoRoot, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -43,12 +45,12 @@ export async function renderProject(project: DirectorProject, outDir: string, la
   try {
     await waitForServer('http://127.0.0.1:5187/director-render.html')
     browser = await chromium.launch({ headless: true })
-    const page = await browser.newPage({ viewport: { width: 960, height: 540 }, deviceScaleFactor: 1 })
+    const page = await browser.newPage({ viewport: { width: JUDGE_RENDER_WIDTH, height: JUDGE_RENDER_HEIGHT }, deviceScaleFactor: 1 })
     page.on('console', (message) => { if (message.type() === 'error') console.error(`[director-render browser] ${message.text()}`) })
     page.on('pageerror', (error) => console.error(`[director-render pageerror] ${error.message}`))
     await page.goto('http://127.0.0.1:5187/director-render.html', { waitUntil: 'commit' })
     await page.waitForFunction(() => Boolean((window as Window & { __nomiDirectorRenderReady?: boolean }).__nomiDirectorRenderReady))
-    await page.evaluate((request) => window.postMessage({ type: 'nomi-director-render-start', request }, '*'), { project, times, width: 960, height: 540 })
+    await page.evaluate((request) => window.postMessage({ type: 'nomi-director-render-start', request }, '*'), { project, times, width: JUDGE_RENDER_WIDTH, height: JUDGE_RENDER_HEIGHT })
     const result = await page.evaluate(() => new Promise<{ frames: string[]; width: number; height: number; cameraIds: Array<string | null> }>((resolve, reject) => {
       const timer = window.setInterval(() => {
         const value = (window as Window & { __nomiDirectorRenderResult?: unknown }).__nomiDirectorRenderResult
