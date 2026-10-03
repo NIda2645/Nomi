@@ -5,9 +5,11 @@ import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
 import ffmpeg from '@ffmpeg-installer/ffmpeg'
 import { chromium, type Browser } from 'playwright'
 import type { DirectorProject } from '../../../src/workbench/generationCanvas/nodes/director/model/directorTypes'
+import type { HeadlessCaptureFrameReadback } from '../../../src/workbench/generationCanvas/nodes/director/agent/DirectorHeadlessCapture'
 import { DIRECTOR_EXPORT_FPS } from '../../../src/workbench/generationCanvas/nodes/director/model/exportSize'
+import { compareCaptureReadback, type MeasurementSideGap, type ReadbackMismatch } from './readback'
 
-export type RenderedVideo = { video: string; contactSheet: string; frames: string[]; times: number[]; width: number; height: number; cameraIds: Array<string | null> }
+export type RenderedVideo = { video: string; contactSheet: string; frames: string[]; times: number[]; width: number; height: number; cameraIds: Array<string | null>; frameReadbacks: HeadlessCaptureFrameReadback[]; readbackMismatches: ReadbackMismatch[]; measurementSideGaps: MeasurementSideGap[] }
 export const JUDGE_RENDER_WIDTH = 480
 export const JUDGE_RENDER_HEIGHT = 270
 
@@ -53,13 +55,13 @@ export async function renderProject(project: DirectorProject, outDir: string, la
     await page.goto('http://127.0.0.1:5187/director-render.html', { waitUntil: 'commit' })
     await page.waitForFunction(() => Boolean((window as Window & { __nomiDirectorRenderReady?: boolean }).__nomiDirectorRenderReady))
     await page.evaluate((request) => window.postMessage({ type: 'nomi-director-render-start', request }, '*'), { project, times, width: JUDGE_RENDER_WIDTH, height: JUDGE_RENDER_HEIGHT })
-    const result = await page.evaluate(() => new Promise<{ frames: string[]; width: number; height: number; cameraIds: Array<string | null> }>((resolve, reject) => {
+    const result = await page.evaluate(() => new Promise<{ frames: string[]; width: number; height: number; cameraIds: Array<string | null>; frameReadbacks: HeadlessCaptureFrameReadback[] }>((resolve, reject) => {
       const timer = window.setInterval(() => {
         const value = (window as Window & { __nomiDirectorRenderResult?: unknown }).__nomiDirectorRenderResult
         if (!value) return
         window.clearInterval(timer)
         if ('error' in (value as Record<string, unknown>)) reject(new Error(String((value as { error: string }).error)))
-        else resolve(value as { frames: string[]; width: number; height: number; cameraIds: Array<string | null> })
+        else resolve(value as { frames: string[]; width: number; height: number; cameraIds: Array<string | null>; frameReadbacks: HeadlessCaptureFrameReadback[] })
       }, 100)
       window.setTimeout(() => { window.clearInterval(timer); reject(new Error('render timed out after 10 minutes')) }, 600_000)
     }))
@@ -78,7 +80,8 @@ export async function renderProject(project: DirectorProject, outDir: string, la
     const font = ['/System/Library/Fonts/Supplemental/Arial.ttf', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'].find((candidate) => existsSync(candidate))
     const drawtext = `drawtext=${font ? `fontfile=${font}:` : ''}text='t=%{pts\\:1.1f}s':x=12:y=12:fontsize=20:fontcolor=white:box=1:boxcolor=black@0.65`
     ffmpegRun(['-y', '-hide_banner', '-loglevel', 'error', '-i', path.join(frameDir, '%06d.png'), '-vf', `fps=2,${drawtext},tile=4x4:padding=6:margin=6`, '-frames:v', '1', contactSheet])
-    return { video, contactSheet, frames: framePaths, times, width: result.width, height: result.height, cameraIds: result.cameraIds }
+    const readback = compareCaptureReadback(project, times, result.frameReadbacks, result.width, result.height)
+    return { video, contactSheet, frames: framePaths, times, width: result.width, height: result.height, cameraIds: result.cameraIds, frameReadbacks: result.frameReadbacks, readbackMismatches: readback.mismatches, measurementSideGaps: readback.measurementSideGaps }
   } finally {
     await browser?.close()
     server.kill('SIGTERM')
