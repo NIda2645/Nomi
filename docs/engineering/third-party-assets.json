@@ -651,6 +651,28 @@
       "downloadDate": "2026-10-04",
       "license": "CC0-1.0",
       "rawArchiveKeptInGit": false
+    },
+    {
+      "file": "city-kit-suburban.zip",
+      "description": "Kenney City Kit Suburban archive (downloaded, not selected for A期入库)",
+      "sourceUrl": "https://kenney.nl/assets/city-kit-suburban",
+      "bytes": 3022195,
+      "sha256": "5869c35cf30b1c87bdb2d197b6d325eebadd2ef08ea27f04797e8e08d77a9a39",
+      "downloadDate": "2026-10-04",
+      "license": "CC0-1.0",
+      "rawArchiveKeptInGit": false,
+      "selected": false
+    },
+    {
+      "file": "city-kit-commercial.zip",
+      "description": "Kenney City Kit Commercial archive (downloaded, not selected for A期入库)",
+      "sourceUrl": "https://kenney.nl/assets/city-kit-commercial",
+      "bytes": 4093473,
+      "sha256": "f8b09b081c2bb88bcc126e2dec1cb40fd0dad7e7e591b6c26aaefe96fb35276b",
+      "downloadDate": "2026-10-04",
+      "license": "CC0-1.0",
+      "rawArchiveKeptInGit": false,
+      "selected": false
     }
   ]
 }

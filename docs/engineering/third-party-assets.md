@@ -1,6 +1,6 @@
 # Director 3D-BOX 第三方素材登记
 
-本文件与同名 JSON 是 A 期新增素材的登记入口。每个入库二进制文件都在 JSON `assets` 中有 `sha256`、来源、下载日期、是否改动与许可状态；原始压缩包只保留在 `/tmp/nomi-3dbox-assets-dl/`，不入 Git。
+本文件与同名 JSON 是 A 期新增素材的登记入口。每个入库二进制文件都在 JSON `assets` 中有 `sha256`、来源、下载日期、是否改动与许可状态；所有本期下载包（含未精选的 Suburban / Commercial 包）都在 JSON `downloads` 中有大小、sha256 和许可记录。原始压缩包只保留在 `/tmp/nomi-3dbox-assets-dl/`，不入 Git。
 
 ## 可入库许可
 
