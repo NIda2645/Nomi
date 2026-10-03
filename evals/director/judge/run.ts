@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { adapt, type Scheme } from '../adapters'
@@ -7,7 +8,7 @@ import { buildBaits } from './bait'
 import { crossCheck } from './crossCheck'
 import { preregister } from './preregister'
 import { renderProject, type RenderedVideo } from './render'
-import { writeReport, type JudgeRecord } from './report'
+import { summarizePositionProbe, writeReport, type JudgeRecord, type PositionProbe } from './report'
 import { reviewOnce, pairwiseOnce } from './review'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -36,7 +37,8 @@ async function main(): Promise<void> {
   const records: JudgeRecord[] = []
   const videos = new Map<string, RenderedVideo>()
   const calibrationVideos: RenderedVideo[] = []
-  const calls = { preregistration: 0, review: 0, pairwise: 0, fast: 0 }
+  const calls = { preregistration: 0, review: 0, pairwise: 0, fast: 0, retries: 0, blocked: 0 }
+  const positionProbes: PositionProbe[] = []
   const prereg = new Map<string, Awaited<ReturnType<typeof preregister>>['value']>()
   for (const card of selectedCards) {
     const registrationPath = path.join(outDir, `${card.id}-expectation.json`)
@@ -57,6 +59,8 @@ async function main(): Promise<void> {
         for (let repeat = 0; repeat < repeats; repeat += 1) {
           const review = await reviewOnce(card, registration.value, [rendered.contactSheet])
           calls.review += 1
+          calls.retries += review.retries
+          if (review.blocked) calls.blocked += 1
           if (review.fast) calls.fast += 1
           if (review.value) {
             const check = crossCheck(card, adapted, review.value.review)
@@ -67,11 +71,21 @@ async function main(): Promise<void> {
         records.push({ cardId: card.id, scheme, error: error instanceof Error ? error.message : String(error) })
       }
     }
-    const pair = schemes.length >= 2 && videos.get(`${card.id}:${schemes[0]}`) && videos.get(`${card.id}:${schemes[1]}`)
-      ? await pairwiseOnce(card, registration.value, videos.get(`${card.id}:${schemes[0]}`)!.contactSheet, videos.get(`${card.id}:${schemes[1]}`)!.contactSheet, schemes[0], schemes[1])
-      : undefined
-    if (pair) { calls.pairwise += 1; if (pair.fast) calls.fast += 1 }
-    if (pair?.value) for (const record of records.filter((item) => item.cardId === card.id && !item.bait)) record.pairwiseWinner = pair.value.winner
+    const leftVideo = videos.get(`${card.id}:${schemes[0]}`)
+    const rightVideo = videos.get(`${card.id}:${schemes[1]}`)
+    if (schemes.length >= 2 && leftVideo && rightVideo) {
+      const forward = await pairwiseOnce(card, registration.value, leftVideo.contactSheet, rightVideo.contactSheet, schemes[0], schemes[1], os.tmpdir(), { displayOrder: 'forward' })
+      const reverse = await pairwiseOnce(card, registration.value, leftVideo.contactSheet, rightVideo.contactSheet, schemes[0], schemes[1], os.tmpdir(), { displayOrder: 'reverse' })
+      for (const pair of [forward, reverse]) {
+        calls.pairwise += 1
+        calls.retries += pair.retries
+        if (pair.fast) calls.fast += 1
+        if (pair.blocked) calls.blocked += 1
+      }
+      if (positionProbes.length < 3) positionProbes.push({ cardId: card.id, forward: forward.displayWinner, reverse: reverse.displayWinner })
+      const winner = forward.value && reverse.value && forward.value.winner === reverse.value.winner ? forward.value.winner : 'unclear'
+      for (const record of records.filter((item) => item.cardId === card.id && !item.bait)) record.pairwiseWinner = winner
+    }
   }
 
   if (!has('--no-baits')) {
@@ -83,6 +97,8 @@ async function main(): Promise<void> {
         if (!registration) continue
         const review = await reviewOnce(bait.promptCard, registration, [rendered.contactSheet])
         calls.review += 1
+        calls.retries += review.retries
+        if (review.blocked) calls.blocked += 1
         if (review.fast) calls.fast += 1
         records.push({ cardId: bait.id, scheme: 'bait', bait: true, mutation: bait.mutation, score: review.value?.review.userScore, crossCheck: review.value ? crossCheck(bait.promptCard, bait.adapted, review.value.review) : undefined, error: review.error, fast: review.fast })
       } catch (error) {
@@ -95,7 +111,7 @@ async function main(): Promise<void> {
   const byCard = selectedCards.map((card) => ({ cardId: card.id, segments: records.filter((record) => record.cardId === card.id && record.score != null).map((record) => record.score), unstable: false }))
   const average = (values: Array<number | undefined>) => values.reduce<number>((sum, value) => sum + (value ?? 0), 0) / Math.max(1, values.length)
   await fs.writeFile(path.join(outDir, 'worst-5.json'), JSON.stringify(byCard.sort((a, b) => average(a.segments) - average(b.segments)).slice(0, 5), null, 2) + '\n')
-  await writeReport(outDir, records, { schemes, cards: selectedCards.map((card) => card.id), repeats, generatedAt: new Date().toISOString(), calibration: 'unverified', calls })
+  await writeReport(outDir, records, { schemes, cards: selectedCards.map((card) => card.id), repeats, generatedAt: new Date().toISOString(), calibration: 'unverified', calls, positionProbe: positionProbes, positionPreference: summarizePositionProbe(positionProbes) })
   console.log(JSON.stringify({ outDir, cards: selectedCards.length, schemes, repeats, records: records.length, baitRecords: records.filter((record) => record.bait).length }, null, 2))
 }
 

@@ -15,6 +15,15 @@ export type JudgeRecord = {
   fast?: boolean
 }
 
+export type PositionProbe = { cardId: string; forward?: 'left' | 'right' | 'tie' | 'unclear'; reverse?: 'left' | 'right' | 'tie' | 'unclear' }
+
+export function summarizePositionProbe(probes: PositionProbe[]): { total: number; comparable: number; samePosition: number; rate: number | null; flagged: boolean } {
+  const comparable = probes.filter((probe) => (probe.forward === 'left' || probe.forward === 'right') && (probe.reverse === 'left' || probe.reverse === 'right'))
+  const samePosition = comparable.filter((probe) => probe.forward === probe.reverse).length
+  const rate = comparable.length ? samePosition / comparable.length : null
+  return { total: probes.length, comparable: comparable.length, samePosition, rate, flagged: rate !== null && rate >= 0.5 }
+}
+
 export async function writeReport(outDir: string, records: JudgeRecord[], meta: Record<string, unknown>): Promise<void> {
   const normal = records.filter((record) => !record.bait)
   const baits = records.filter((record) => record.bait)
@@ -50,6 +59,9 @@ export async function writeReport(outDir: string, records: JudgeRecord[], meta: 
   const pairwiseCounts = pairwise.reduce<Record<string, number>>((counts, [, winner]) => { counts[winner!] = (counts[winner!] ?? 0) + 1; return counts }, {})
   const pairwiseTotal = pairwise.length
   lines.push('', `Pairwise receipts by card: ${pairwiseTotal ? pairwise.map(([card, winner]) => `${card}=${winner}`).join(', ') : 'unverified'}.`, `Pairwise win rate: ${pairwiseTotal ? Object.entries(pairwiseCounts).map(([winner, count]) => `${winner} ${count}/${pairwiseTotal} (${((count / pairwiseTotal) * 100).toFixed(1)}%)`).join('; ') : 'unverified'}.`, '', '## Raw metadata', '', '```json', JSON.stringify(meta, null, 2), '```', '', '## Reliability notes', '', '- Each normal review is repeated the requested number of times with randomized frame order. Standard deviation >= 1 is marked unstable and excluded from superiority conclusions.', '- Contact sheets and the five worst segments are retained beside this report for human eye review.', '- A calibration page is supplied, but no calibration receipt is assumed until a user exports scores and the rank correlation is computed.')
+  const positionProbe = (meta.positionProbe && typeof meta.positionProbe === 'object' ? meta.positionProbe : []) as PositionProbe[]
+  const positionSummary = summarizePositionProbe(positionProbe)
+  lines.splice(8, 0, `- Position preference probe: ${positionSummary.rate === null ? 'unverified' : `${positionSummary.samePosition}/${positionSummary.comparable} (${(positionSummary.rate * 100).toFixed(1)}%)${positionSummary.flagged ? ' **RED: position bias threshold reached**' : ''}`}.`)
   await fs.writeFile(path.join(outDir, 'report.md'), lines.join('\n') + '\n')
-  await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ meta, records, baitRate, crossCheck: { checked, consistent, consistency: checked ? consistent / checked : null } }, null, 2) + '\n')
+  await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ meta, records, baitRate, positionProbe: positionSummary, crossCheck: { checked, consistent, consistency: checked ? consistent / checked : null } }, null, 2) + '\n')
 }
