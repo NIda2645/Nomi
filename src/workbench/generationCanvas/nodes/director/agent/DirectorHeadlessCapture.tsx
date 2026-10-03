@@ -28,6 +28,7 @@ import { attachWebGLContextRecovery } from '../scene/webglContextRecovery'
 import { seekTo } from '../timeline/timelineCommands'
 import type { CaptureCameraReadback, CaptureCharacterPoseReadback } from '../scene/ViewportApiContext'
 import { poseClipStatus } from '../scene/character/poseClipLibrary'
+import { actionClipsLoading, isTPose, resolveHeadlessCameraId } from './DirectorHeadlessCaptureUtils'
 
 export type HeadlessCaptureFrameReadback = {
   cameraId: string | null
@@ -88,20 +89,8 @@ function charactersLoaded(registry: SceneRefRegistry, scene: DirectorScene): boo
 }
 
 /** Action clips are sampled by the character rig; do not capture while a referenced asset is still loading. */
-export function actionClipsLoading(scene: DirectorScene): boolean {
-  return scene.objects.some((object) => object.type === 'character' && object.visible && object.actionTrackEnabled !== false && (object.actionClips ?? []).some((clip) => clip.clipType === 'action' && Boolean(clip.actionPose) && poseClipStatus(clip.actionPose!) === 'loading'))
-}
-
 function activeReadyAction(object: DirectorScene['objects'][number], time: number): boolean {
   return object.type === 'character' && object.actionTrackEnabled !== false && (object.actionClips ?? []).some((clip) => clip.clipType === 'action' && Boolean(clip.actionPose) && time >= clip.startTime && time <= clip.endTime && poseClipStatus(clip.actionPose!) === 'ready')
-}
-
-export function isTPose(pose: CaptureCharacterPoseReadback): boolean {
-  const shoulderY = (pose.leftShoulder.y + pose.rightShoulder.y) / 2
-  const shoulderSpan = Math.max(0.1, Math.hypot(pose.leftShoulder.x - pose.rightShoulder.x, pose.leftShoulder.z - pose.rightShoulder.z))
-  const leftReach = Math.hypot(pose.leftHand.x - pose.leftShoulder.x, pose.leftHand.z - pose.leftShoulder.z)
-  const rightReach = Math.hypot(pose.rightHand.x - pose.rightShoulder.x, pose.rightHand.z - pose.rightShoulder.z)
-  return Math.abs(pose.leftHand.y - shoulderY) <= 0.08 && Math.abs(pose.rightHand.y - shoulderY) <= 0.08 && leftReach >= shoulderSpan * 0.45 && rightReach >= shoulderSpan * 0.45
 }
 
 function captureDimensions(project: DirectorProject, maxShortSide: number | undefined, captureSize: { width: number; height: number } | undefined): { width: number; height: number } {
@@ -123,10 +112,6 @@ function ContextRecovery(): null {
 function PlaybackBinder(): null {
   useTimelinePlayback()
   return null
-}
-
-export function resolveHeadlessCameraId(scene: DirectorScene, time: number, cameraIdAt: ((time: number) => string | null) | undefined): string | null {
-  return cameraIdAt ? cameraIdAt(time) : (scene.cameras[0]?.id ?? null)
 }
 
 function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabels = true, waitForActionClips = false, rejectTPose = false, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
@@ -177,7 +162,7 @@ function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabel
     return () => {
       cancelled = true
     }
-  }, [maxShortSide, onResult, registry, store, times])
+  }, [burnLabels, cameraIdAt, captureSize, maxShortSide, onResult, rejectTPose, registry, store, times, waitForActionClips])
 
   return null
 }
