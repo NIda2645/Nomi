@@ -21,13 +21,16 @@ function runCodex(prompt: string, cwd: string): Promise<string> {
   })
 }
 
-export async function preregister(card: DirectorCard, outFile: string): Promise<{ value?: Preregistration; error?: string }> {
+type RunCodex = typeof runCodex
+export type PreregisterOptions = { runCodex?: RunCodex; now?: () => Date }
+
+export async function preregister(card: DirectorCard, outFile: string, options: PreregisterOptions = {}): Promise<{ value?: Preregistration; error?: string }> {
   const temp = await fs.mkdtemp(path.join(os.tmpdir(), 'nomi-director-preregister-'))
   try {
     const prompt = preregistrationPrompt(card)
-    const raw = await runCodex(prompt, temp)
+    const raw = await (options.runCodex ?? runCodex)(prompt, temp)
     const parsed = preregistrationDraftSchema.parse(parseJsonObject(raw))
-    const frozen = { ...parsed, frozenAt: new Date().toISOString() }
+    const frozen = { ...parsed, frozenAt: (options.now ?? (() => new Date()))().toISOString() }
     const canonical = JSON.stringify({ ...frozen, sha256: '' })
     const sha256 = crypto.createHash('sha256').update(canonical).digest('hex')
     const value = preregistrationSchema.parse({ ...frozen, sha256 })
