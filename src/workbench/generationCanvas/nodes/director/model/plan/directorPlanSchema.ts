@@ -98,10 +98,11 @@ export function normalizeDirectorPlan(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value
   const input = value as Record<string, unknown>
   const scene = input.scene && typeof input.scene === 'object' ? { ...(input.scene as Record<string, unknown>) } : input.scene
-  if (scene && typeof scene === 'object') {
-    scene.environment = alias(scene.environment)
-    scene.template = alias(scene.template)
-    if (Array.isArray(scene.setPieces)) scene.setPieces = scene.setPieces.map((piece) => {
+  const sceneRecord = scene && typeof scene === 'object' && !Array.isArray(scene) ? scene as Record<string, unknown> : undefined
+  if (sceneRecord) {
+    sceneRecord.environment = alias(sceneRecord.environment)
+    sceneRecord.template = alias(sceneRecord.template)
+    if (Array.isArray(sceneRecord.setPieces)) sceneRecord.setPieces = sceneRecord.setPieces.map((piece: unknown) => {
       if (!piece || typeof piece !== 'object') return piece
       const next = { ...(piece as Record<string, unknown>) }
       next.relation = next.relation && typeof next.relation === 'object' ? { ...(next.relation as Record<string, unknown>), type: alias((next.relation as Record<string, unknown>).type) } : next.relation
@@ -117,7 +118,7 @@ export function normalizeDirectorPlan(value: unknown): unknown {
   }) : input.actors
   const blocking = Array.isArray(input.blocking) ? input.blocking.map((action) => {
     if (!action || typeof action !== 'object') return action
-    const next = { ...(action as Record<string, unknown>), verb: alias((action as Record<string, unknown>).verb) }
+    const next: Record<string, unknown> = { ...(action as Record<string, unknown>), verb: alias((action as Record<string, unknown>).verb) }
     if (typeof next.action === 'string') next.action = next.action.trim().toLowerCase().replace(/[\s-]+/g, '_')
     return next
   }) : input.blocking
