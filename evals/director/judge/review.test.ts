@@ -31,6 +31,7 @@ describe('blind pairwise display mapping', () => {
     expect(result.retries).toBe(1)
     expect(result.blocked).toBe(false)
     expect(prompts[1]).toContain('Schema error')
+    expect(prompts[1]).toContain('userScore')
     await fs.rm(dir, { recursive: true, force: true })
   })
 

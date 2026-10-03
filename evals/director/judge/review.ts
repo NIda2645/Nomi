@@ -39,6 +39,7 @@ export async function reviewOnce(card: DirectorCard, preregistration: Preregistr
   const copied: string[] = []
   const runner = options.runCodex ?? runCodex
   let retries = 0
+  let schemaError = ''
   try {
     for (const image of randomized) {
       const target = path.join(temp, `${crypto.randomBytes(8).toString('hex')}.png`)
@@ -48,11 +49,12 @@ export async function reviewOnce(card: DirectorCard, preregistration: Preregistr
     const args = copied.flatMap((file) => ['-i', file])
     const prompt = reviewPrompt(card, preregistration, copied.map((file) => path.basename(file)))
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const raw = await runner(args, attempt === 0 ? prompt : `${prompt}\nSchema error from the previous response: ${retries === 1 ? 'the response did not match the required JSON schema' : 'invalid JSON'}. Return only a corrected JSON object matching the schema.`, temp)
+      const raw = await runner(args, attempt === 0 ? prompt : `${prompt}\nSchema error from the previous response: ${schemaError}. Return only a corrected JSON object matching the schema.`, temp)
       try {
         const value = judgeOutputSchema.parse({ review: (parseJsonObject(raw) as { review: unknown }).review })
         return { value, fast: !raw.includes('service tier `priority` is not advertised'), raw, retries, blocked: false }
       } catch (error) {
+        schemaError = error instanceof Error ? error.message : String(error)
         if (attempt === 0) { retries = 1; continue }
         return { error: error instanceof Error ? error.message : String(error), fast: false, raw, retries, blocked: true }
       }
@@ -69,6 +71,7 @@ export async function pairwiseOnce(card: DirectorCard, preregistration: Preregis
   const temp = await fs.mkdtemp(path.join(cwd, 'nomi-director-pair-'))
   const runner = options.runCodex ?? runCodex
   let retries = 0
+  let schemaError = ''
   try {
     const reversed = options.displayOrder === 'reverse' || (options.displayOrder !== 'forward' && (options.randomBit ?? (() => crypto.randomInt(0, 2) === 1))())
     const sides = reversed ? [{ source: right, origin: 'right' as const }, { source: left, origin: 'left' as const }] : [{ source: left, origin: 'left' as const }, { source: right, origin: 'right' as const }]
@@ -80,11 +83,12 @@ export async function pairwiseOnce(card: DirectorCard, preregistration: Preregis
     const args = ['-i', targets[0], '-i', targets[1]]
     const prompt = pairwisePrompt(card, preregistration)
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const raw = await runner(args, attempt === 0 ? prompt : `${prompt}\nSchema error from the previous response: the JSON did not match the required pairwise schema. Return only a corrected JSON object.`, temp)
+      const raw = await runner(args, attempt === 0 ? prompt : `${prompt}\nSchema error from the previous response: ${schemaError}. Return only a corrected JSON object.`, temp)
       try {
         const value = pairwiseSchema.parse(parseJsonObject(raw))
         return { value: { ...value, winner: mapPairwiseWinner(value.winner, [sides[0].origin, sides[1].origin], leftScheme, rightScheme) as typeof value.winner }, displayWinner: value.winner, fast: !raw.includes('service tier `priority` is not advertised'), retries, blocked: false }
       } catch (error) {
+        schemaError = error instanceof Error ? error.message : String(error)
         if (attempt === 0) { retries = 1; continue }
         return { error: error instanceof Error ? error.message : String(error), fast: false, retries, blocked: true }
       }
