@@ -4142,6 +4142,39 @@
       ],
       "since": "2026-10-03",
       "notes": "用户连接的 base 地址与夹具回环覆盖由唯一回答者统一提供；上传与健康探测只消费该判据。"
+    },
+    {
+      "name": "导演台素材目录",
+      "subject": "director.asset-catalog",
+      "lifecycle": "catalog",
+      "authority_kind": "schema",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts",
+        "symbol": "DIRECTOR_ASSET_CATALOG"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts",
+          "symbol": "DIRECTOR_ASSET_CATALOG"
+        }
+      ],
+      "forbidden_derivations": [
+        {
+          "symbol": "DIRECTOR_PLANNER_ASSETS",
+          "kind": "reference",
+          "why": "规划器只读精简投影，不得再定义第二份资产清单"
+        }
+      ],
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.test.ts",
+        "src/devlab/directorAssetCatalog.tsx",
+        "src/workbench/generationCanvas/nodes/director/model/assetCatalog/types.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "A期新增资产与许可证来源的唯一目录；运行时接线留给切换 PR。pending-review 许可资产不得作为已清权 CC0 推理。"
     }
   ]
 }
