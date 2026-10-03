@@ -4,6 +4,7 @@ import path from 'node:path'
 export type JudgeRecord = {
   cardId: string
   scheme: string
+  repeat?: number
   bait?: boolean
   mutation?: string
   score?: number
@@ -36,7 +37,17 @@ export async function writeReport(outDir: string, records: JudgeRecord[], meta: 
     '|---|---|---:|---:|---|---|---|',
   ]
   for (const record of records) lines.push(`| ${record.cardId} | ${record.scheme} | ${record.bait ? 'yes' : 'no'} | ${record.score ?? 'unverified'} | ${record.pairwiseWinner ?? 'unverified'} | ${record.crossCheck?.consistency == null ? 'unverified' : `${(record.crossCheck.consistency * 100).toFixed(1)}%`} | ${record.error ? `blocked: ${record.error}` : 'ok'} |`)
-  lines.push('', '## Raw metadata', '', '```json', JSON.stringify(meta, null, 2), '```', '', '## Reliability notes', '', '- Each normal review is repeated three times with randomized frame order. Large score spread is marked unstable in `results.json`.', '- Contact sheets and the five worst segments are retained beside this report for human eye review.', '- A calibration page is supplied, but no calibration receipt is assumed until a user exports scores and the rank correlation is computed.')
+  const groups = new Map<string, number[]>()
+  for (const record of normal) if (record.score != null) groups.set(`${record.cardId}:${record.scheme}`, [...(groups.get(`${record.cardId}:${record.scheme}`) ?? []), record.score])
+  lines.push('', '## Repeats and pairwise summary', '', '| Card | Scheme | n | Mean | SD | Stability |', '|---|---|---:|---:|---:|---|')
+  for (const [key, scores] of groups) {
+    const [cardId, scheme] = key.split(':')
+    const mean = scores.reduce((sum, score) => sum + score, 0) / scores.length
+    const sd = Math.sqrt(scores.reduce((sum, score) => sum + (score - mean) ** 2, 0) / scores.length)
+    lines.push(`| ${cardId} | ${scheme} | ${scores.length} | ${mean.toFixed(2)} | ${sd.toFixed(2)} | ${sd >= 1 ? 'unstable' : 'stable'} |`)
+  }
+  const pairwise = normal.map((record) => record.pairwiseWinner).filter((winner): winner is string => Boolean(winner))
+  lines.push('', `Pairwise receipts: ${pairwise.length ? pairwise.join(', ') : 'unverified'}.`, '', '## Raw metadata', '', '```json', JSON.stringify(meta, null, 2), '```', '', '## Reliability notes', '', '- Each normal review is repeated the requested number of times with randomized frame order. Standard deviation >= 1 is marked unstable and excluded from superiority conclusions.', '- Contact sheets and the five worst segments are retained beside this report for human eye review.', '- A calibration page is supplied, but no calibration receipt is assumed until a user exports scores and the rank correlation is computed.')
   await fs.writeFile(path.join(outDir, 'report.md'), lines.join('\n') + '\n')
   await fs.writeFile(path.join(outDir, 'results.json'), JSON.stringify({ meta, records, baitRate, crossCheck: { checked, consistent, consistency: checked ? consistent / checked : null } }, null, 2) + '\n')
 }

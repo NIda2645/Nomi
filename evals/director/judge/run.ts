@@ -56,8 +56,8 @@ async function main(): Promise<void> {
           const review = await reviewOnce(card, registration.value, [rendered.contactSheet])
           if (review.value) {
             const check = crossCheck(card, adapted, review.value.review)
-            records.push({ cardId: card.id, scheme, score: review.value.review.userScore, judgements: Object.fromEntries(review.value.review.segments.map((segment) => [segment.timecode, segment.judgement === 'seen' ? 1 : segment.judgement === 'partial' ? 0.5 : 0])), crossCheck: check, fast: review.fast })
-          } else records.push({ cardId: card.id, scheme, error: review.error, fast: review.fast })
+            records.push({ cardId: card.id, scheme, repeat, score: review.value.review.userScore, judgements: Object.fromEntries(review.value.review.segments.map((segment) => [segment.timecode, segment.judgement === 'seen' ? 1 : segment.judgement === 'partial' ? 0.5 : 0])), crossCheck: check, fast: review.fast })
+          } else records.push({ cardId: card.id, scheme, repeat, error: review.error, fast: review.fast })
         }
       } catch (error) {
         records.push({ cardId: card.id, scheme, error: error instanceof Error ? error.message : String(error) })
