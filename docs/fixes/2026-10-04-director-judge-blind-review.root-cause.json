@@ -17,7 +17,7 @@
     "evals/director/judge/report.test.ts"
   ],
   "entry_points": ["run.ts preregister/review/pairwise calls", "run.ts report assembly"],
-  "detected_by": "blind-judge second-round probe",
+  "detected_by": "walkthrough",
   "recurrence_check_on": "2026-11-02",
   "invariant_owner_layer": {"layer":"evals/director/judge","tests":["evals/director/judge/review.test.ts","evals/director/judge/preregister.test.ts"]},
   "external_sources": [],
