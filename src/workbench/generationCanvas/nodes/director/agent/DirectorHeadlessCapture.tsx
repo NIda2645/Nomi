@@ -27,6 +27,7 @@ import { ViewportApiContext, type ViewportApiRef } from '../scene/ViewportApiCon
 import { attachWebGLContextRecovery } from '../scene/webglContextRecovery'
 import { seekTo } from '../timeline/timelineCommands'
 import type { CaptureCameraReadback } from '../scene/ViewportApiContext'
+import { poseClipStatus } from '../scene/character/poseClipLibrary'
 
 export type HeadlessCaptureFrameReadback = {
   cameraId: string | null
@@ -80,6 +81,11 @@ function charactersLoaded(registry: SceneRefRegistry, scene: DirectorScene): boo
   })
 }
 
+/** Action clips are sampled by the character rig; do not capture while a referenced asset is still loading. */
+export function actionClipsLoading(scene: DirectorScene): boolean {
+  return scene.objects.some((object) => object.type === 'character' && object.visible && object.actionTrackEnabled !== false && (object.actionClips ?? []).some((clip) => clip.clipType === 'action' && Boolean(clip.actionPose) && poseClipStatus(clip.actionPose!) === 'loading'))
+}
+
 function captureDimensions(project: DirectorProject, maxShortSide: number | undefined, captureSize: { width: number; height: number } | undefined): { width: number; height: number } {
   if (captureSize) return captureSize
   const full = exportDimensions(project.exportRatio, project.exportResolution)
@@ -118,7 +124,7 @@ function CaptureDriver({ times, maxShortSide, captureSize, cameraIdAt, burnLabel
         onResult(null)
         return
       }
-      for (let frame = 0; frame < CHARACTER_LOAD_MAX_FRAMES && !charactersLoaded(registry, scene); frame += 1) {
+      for (let frame = 0; frame < CHARACTER_LOAD_MAX_FRAMES && (!charactersLoaded(registry, scene) || actionClipsLoading(scene)); frame += 1) {
         await nextFrames(1)
         if (cancelled) return
       }
