@@ -27,4 +27,13 @@ describe('S1 director compiler', () => {
     const followPlan = { ...S1_ORACLE_PLANS['police-chase'], shots: S1_ORACLE_PLANS['police-chase'].shots.map(shot => shot.id === 'follow' ? { ...shot, transitionIn: 'cut' as const } : shot) }
     const chase = compileDirectorPlan(followPlan); expect(chase.ok).toBe(true); if (chase.ok) { const m = sampleDirectorProject(chase.project, { duration: chase.duration }); expect(['follow', 'track_right', 'track_left', 'pull_out']).toContain(recognizeCameraMotion(m, chase.actorMap.suspect_car, { start: 2, end: 6 }).move) }
   })
+  it('materializes only action-library ids for blocking', () => {
+    const result = compileDirectorPlan(S1_ORACLE_PLANS['courtyard-standoff'])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const woman = result.project.scenes[0].objects.find((object) => object.id === result.actorMap.woman)!
+    expect(woman.actionClips?.map((clip) => clip.actionPose)).toEqual(['standard_walk'])
+    expect(woman.actionClips?.some((clip) => clip.actionPose === 'hide_object_behind_back')).toBe(false)
+    expect(result.issues.some((issue) => issue.kind === 'missing_asset')).toBe(true)
+  })
 })

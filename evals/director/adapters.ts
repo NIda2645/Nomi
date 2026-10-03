@@ -15,6 +15,7 @@ import type {
   Waypoint,
 } from '../../src/workbench/generationCanvas/nodes/director/model/directorTypes'
 import { lookAtAngles } from '../../src/workbench/generationCanvas/nodes/director/model/vec3'
+import { findActionEntry } from '../../src/workbench/generationCanvas/nodes/director/model/actionLibrary'
 import type { DirectorCard } from './cardSchema'
 import { adaptS1Plan, adaptS1Prompt } from './s1Adapter'
 import { S1_ORACLE_PLANS } from './s1OraclePlans'
@@ -170,6 +171,24 @@ function applyBlocking(
       actor.motionTrajectory = [...(actor.motionTrajectory ?? []), ...points].sort((a, b) => a.time - b.time)
       actor.trajectoryClips = [...(actor.trajectoryClips ?? []), clip(trajectoryId, start, end)]
     }
+    const addActionClip = (actionId: string | undefined) => {
+      if (actor.type !== 'character') return
+      const entry = actionId ? findActionEntry(actionId) : undefined
+      if (!entry) return
+      actor.actionClips = [
+        ...(actor.actionClips ?? []),
+        {
+          id: `${actor.id}-${entry.id}-${start}`,
+          name: entry.id,
+          clipType: 'action',
+          startTime: start,
+          endTime: end,
+          startFrame: Math.round(start * FPS),
+          endFrame: Math.round(end * FPS),
+          actionPose: entry.id,
+        },
+      ]
+    }
     if (['walk_to', 'run_to'].includes(action.verb) && target) {
       addTrajectory(
         [entityPoint(actor.position, start), entityPoint(target.position, end)],
@@ -202,20 +221,9 @@ function applyBlocking(
         ],
         `${actor.id}-stop`,
       )
-    } else if (action.verb === 'hide_object_behind_back' || action.verb === 'hold_pose') {
-      actor.actionClips = [
-        {
-          id: `${actor.id}-${action.verb}`,
-          name: action.verb,
-          clipType: 'action',
-          startTime: start,
-          endTime: end,
-          startFrame: Math.round(start * FPS),
-          endFrame: Math.round(end * FPS),
-          actionPose: action.verb,
-        },
-      ]
     }
+    const actionId = action.verb === 'walk_to' ? 'standard_walk' : action.verb === 'run_to' ? 'running' : action.verb === 'stop' ? 'standing_idle' : action.verb === 'sidestep_block' ? 'standard_walk' : action.verb === 'hold_pose' ? action.action : undefined
+    addActionClip(actionId)
   }
 }
 function anchorFor(subject: SubjectRef | undefined, actor: DirectorObject): AnchorSpec | undefined {

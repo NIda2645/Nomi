@@ -86,6 +86,33 @@ describe('director scorer directionality', () => {
       chs.scores.L0 - scoreCard(chase, mutateOracle(cha.project, 'axis-cross'), cha.actorMap).scores.L0,
     ).toBeGreaterThanOrEqual(0)
   })
+  it('requires real action-library ids and reports semantic actions as missing assets', () => {
+    const c = card('courtyard-standoff')
+    const a = oracleForCard(c)
+    const woman = a.project.scenes[0].objects.find((object) => object.id === a.actorMap?.woman)
+    expect(woman?.actionClips?.some((clip) => clip.name.includes('hide'))).toBe(false)
+    const scored = scoreCard(c, a.project, a.actorMap)
+    expect(scored.scores.L3).toBeLessThan(1)
+    expect(scored.reasons.some((reason) => reason.includes('能力缺口：missing_asset'))).toBe(true)
+
+    const forged = structuredClone(a.project)
+    const forgedWoman = forged.scenes[0].objects.find((object) => object.id === a.actorMap?.woman)!
+    forgedWoman.actionClips = [
+      ...(forgedWoman.actionClips ?? []),
+      {
+        id: 'forged-hide',
+        name: 'hide_object_behind_back',
+        clipType: 'action',
+        actionPose: 'hide_object_behind_back',
+        startTime: 4,
+        endTime: 8,
+        startFrame: 120,
+        endFrame: 240,
+      },
+    ]
+    const forgedScore = scoreCard(c, forged, a.actorMap)
+    expect(forgedScore.scores.L3).toBe(scored.scores.L3)
+  })
   it('leaves unconstrained layers out of the total instead of granting them full marks', () => {
     const orbit = card('t1-05-orbit')
     expect(orbit.blocking).toHaveLength(0)
