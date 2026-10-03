@@ -87,7 +87,7 @@ if hit_block root-cause 'bug|回归|根因|修复|崩|卡死|报错'; then
 fi
 # 命令 / 门岗（全表在 docs/engineering/commands.md）
 if hit_block commands 'gates|check:|门岗|命令|pnpm run'; then
-  echo "【命令全表】CLAUDE.md 只留 gates 一行；各门岗、冒烟、数门、合并前检查命令的全表在 docs/engineering/commands.md；push 前按风险面分层见 docs/engineering/delivery-and-review.md"
+  echo "【命令全表】CLAUDE.md 只留 gates 一行；各门岗、冒烟、数门、合并前检查命令的全表在 docs/engineering/commands.md；push 前按风险面分层见 docs/engineering/delivery-and-review.md｜门岗红了先读它红在哪条判据，不许抬基线或预算挤 PR(R17)"
   echo ""
 fi
 # 交付 / 合并 / 交工评审

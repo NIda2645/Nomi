@@ -160,7 +160,7 @@ P3「全绿不等于完成」的量化门。三档触发：
 
 ## P2 修复走根因流程（旧 R21 / R21.1 / R21.3）
 
-**触发**：所有 bug、回归、CI / 平台失败、flaky、性能 / 安全问题和评审发现，不按目录或改动大小豁免。方法只住在 `.agents/skills/root-cause-remediation/SKILL.md`。可复发 / 高风险 / 逃逸 bug 在改代码前提交 schema-v3 `docs/fixes/*.root-cause.json`；`pnpm run check:root-cause-contracts` **只对 schema 不合法阻断，其余降为警告**，合同强制由合并前扫描（`scripts/merge-preflight.mjs`）查：修的是逃逸 bug，或第二次修同一类问题。v3 新增 `recurrence_check_on`（默认合并日 + 30 天）与 `detected_by`（user / post-release / walkthrough / ci / review）：新合同属 recurring、高风险或逃逸 bug（`detected_by` 为 user 或 post-release）时两项必填，老合同按日期前缀豁免。
+**触发**：所有 bug、回归、CI / 平台失败、flaky、性能 / 安全问题和评审发现，不按目录或改动大小豁免。方法只住在 `.agents/skills/root-cause-remediation/SKILL.md`。可复发 / 高风险 / 逃逸 bug 在改代码前提交 schema-v3 `docs/fixes/*.root-cause.json`；`pnpm run check:root-cause-contracts` **只对 schema 不合法阻断，其余降为警告**，合同强制由合并前扫描（`scripts/merge-preflight.mjs`）查修的是逃逸 bug 的情形；「第二次修同一类问题」目前**暂未检查**，靠协调会话人工。v3 新增 `recurrence_check_on`（默认合并日 + 30 天）与 `detected_by`（user / post-release / walkthrough / ci / review）：新合同属 recurring、高风险或逃逸 bug（`detected_by` 为 user 或 post-release）时两项必填，老合同按日期前缀豁免。
 
 **第三个问题（`invariant_owner_layer`，2026-09-07 起）**：这条不变量从此归哪层管、那一层有没有测试？填 `layer`（确实没人管填 `none`）、`tests`、`structural_ticket`（`none` 或无测试时必填且必须存在）。填 `none` 是诚实答案，代价是一份结构工单。
 

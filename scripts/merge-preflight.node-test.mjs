@@ -9,6 +9,7 @@ import {
   classifyChange,
   extractSection,
   implementationLine,
+  isGrandfathered,
   renderReport,
 } from './merge-preflight.mjs'
 
@@ -113,4 +114,17 @@ test('extractSection：取到下一个二级标题为止，HTML 注释不算内�
   const body = '## 设计卡\n<!-- 模板说明 -->\n内容\n## 验证\nx'
   assert.equal(extractSection(body, '设计卡'), '内容')
   assert.equal(extractSection(body, '独立验收'), null)
+})
+
+test('旧 PR（规则生效前开的）缺项只给警告、不判红；新 PR 照判', () => {
+  assert.equal(isGrandfathered({ createdAt: '2026-10-02T10:00:00Z', effectiveAt: '2026-10-04T00:00:00Z' }), true)
+  assert.equal(isGrandfathered({ createdAt: '2026-10-05T10:00:00Z', effectiveAt: '2026-10-04T00:00:00Z' }), false)
+  assert.equal(isGrandfathered({ createdAt: '2026-10-05T10:00:00Z', effectiveAt: null }), true, '#961 还没合并 = 规则尚未生效')
+  const four = classifyChange([{ path: 'electron/productionRun/productionRunService.ts', status: 'M' }])
+  const input = { pr: 947, classification: four, design: checkDesignCard('随便', four), acceptance: checkIndependentAcceptance('随便'), escape: checkEscapeContract('普通', []) }
+  const old = renderReport({ ...input, grandfathered: true })
+  assert.equal(old.blocked, false)
+  assert.doesNotMatch(old.text, /✖/)
+  assert.match(old.text, /⚠ PR 正文没有/)
+  assert.equal(renderReport({ ...input, grandfathered: false }).blocked, true)
 })

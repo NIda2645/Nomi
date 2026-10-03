@@ -47,6 +47,7 @@ describe('关键词块：命中才注入', () => {
     ['有个 bug 要修', '【修根因 · P2】'],
     ['准备合并这个 PR，先跑 delivery:preflight', '【交付 · R11/R22】'],
     ['pnpm run gates 红了', '【命令全表】'],
+    ['check:filesize 红了', '不许抬基线或预算挤 PR(R17)'],
   ]
   for (const [prompt, expected] of cases) {
     test(`「${prompt}」→ ${expected}`, () => {

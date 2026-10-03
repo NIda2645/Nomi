@@ -136,15 +136,28 @@ export function checkEscapeContract(body, contracts) {
   return { applicable: true, ok: true, lines: [`✅ 逃逸 bug：带了含 detected_by 的合同（${withField.map((contract) => contract.file).join('、')}）`] }
 }
 
-export function renderReport({ pr, classification, design, acceptance, escape }) {
+/**
+ * 规则生效时刻 = 引入本套规则的 PR（#961）的合并时间。比它更早开的 PR（#947、#962 等）没有机会照新模板写，
+ * 只给警告、不判红。参考 PR 还没合并 = 规则尚未生效，所有开着的 PR 都只警告。
+ */
+export const RULES_INTRODUCED_BY_PR = 961
+export function isGrandfathered({ createdAt, effectiveAt }) {
+  if (!effectiveAt) return true
+  if (!createdAt) return false
+  return new Date(createdAt) < new Date(effectiveAt)
+}
+
+export function renderReport({ pr, classification, design, acceptance, escape, grandfathered = false }) {
   const lines = [`合并前扫描 · PR #${pr}`]
   lines.push(classification.fourClass
     ? `· 四类：命中（${classification.classes.join('、')}）——${classification.hits.slice(0, 5).map((hit) => hit.path).join('、')}${classification.hits.length > 5 ? ' …' : ''}`
     : '· 四类：未命中，只查设计卡 ★ 格')
-  lines.push(...design.lines)
-  if (classification.fourClass) lines.push(...acceptance.lines)
-  lines.push(...escape.lines)
-  const blocked = !design.ok || (classification.fourClass && !acceptance.ok) || !escape.ok
+  const soften = (list) => (grandfathered ? list.map((line) => line.replace(/^✖/, '⚠')) : list)
+  lines.push(...soften(design.lines))
+  if (classification.fourClass) lines.push(...soften(acceptance.lines))
+  lines.push(...soften(escape.lines))
+  if (grandfathered) lines.push('· 这是规则生效（#961 合并）之前开的 PR：缺项只给警告，不判红')
+  const blocked = !grandfathered && (!design.ok || (classification.fourClass && !acceptance.ok) || !escape.ok)
   lines.push(blocked ? '结论：✖ 有项没过，先别合（脚本只打印结论，不合并）' : '结论：✅ 扫描干净（脚本只打印结论，不合并；其余合并条件仍看 CI 与收据）')
   return { text: lines.join('\n'), blocked }
 }
@@ -171,7 +184,7 @@ export function main(argv = process.argv.slice(2)) {
     console.error('用法：node scripts/merge-preflight.mjs <PR 号> [--repo owner/name]')
     return 2
   }
-  const view = JSON.parse(gh(['pr', 'view', prArg, '--json', 'body,files,headRefOid,headRepository,headRepositoryOwner'], { repo }))
+  const view = JSON.parse(gh(['pr', 'view', prArg, '--json', 'body,files,headRefOid,headRepository,headRepositoryOwner,createdAt'], { repo }))
   const files = (view.files ?? []).map((file) => ({ path: file.path, status: file.additions > 0 && file.deletions === 0 ? 'A' : 'M' }))
   let diff = ''
   try {
@@ -194,8 +207,15 @@ export function main(argv = process.argv.slice(2)) {
     }
   }
 
+  let effectiveAt = null
+  try {
+    effectiveAt = JSON.parse(gh(['pr', 'view', String(RULES_INTRODUCED_BY_PR), '--json', 'mergedAt'], { repo })).mergedAt || null
+  } catch {
+    effectiveAt = null
+  }
   const report = renderReport({
     pr: prArg,
+    grandfathered: Number(prArg) !== RULES_INTRODUCED_BY_PR && isGrandfathered({ createdAt: view.createdAt, effectiveAt }),
     classification,
     design: checkDesignCard(body, classification),
     acceptance: checkIndependentAcceptance(body),

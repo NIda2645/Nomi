@@ -191,7 +191,7 @@ if (blocking.length > 0) {
   process.exit(1);
 }
 if (warnings.length > 0) {
-  console.error(`⚠ 根因合同：${warnings.length} 条警告不阻断；强制要合同的两种情况（逃逸 bug、第二次修同类问题）由 merge-preflight 查。`);
+  console.error(`⚠ 根因合同：${warnings.length} 条警告不阻断；强制要合同的情况：修的是逃逸 bug 时由 merge-preflight 查（有 detected_by 的合同）；「第二次修同类问题」暂未检查。`);
 }
 if (result.triggeredFiles.length === 0) {
   console.log("✅ 根因合同门禁：本次无高风险生产路径变化");
