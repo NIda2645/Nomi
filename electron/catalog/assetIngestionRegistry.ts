@@ -1,4 +1,8 @@
+import { APIMART_VENDOR_SEED } from "./apimartVendor";
+import { bindIngestionToUserBase } from "./userVendorBase";
 import type { AssetIngestion, AssetMediaKind } from "./types";
+
+const APIMART_UPLOAD_PATH = "/v1/uploads/images";
 
 /** 该通道接受哪些媒体类型；缺省视为图片。none 通道不接受任何素材。 */
 export function ingestionAccepts(ingestion: AssetIngestion, kind: AssetMediaKind): boolean {
@@ -27,7 +31,9 @@ export const CURATED_ASSET_INGESTION: Record<string, AssetIngestion> = {
   },
   apimart: {
     strategy: "upload-multipart",
-    endpoint: "https://api.apimart.ai/v1/uploads/images",
+    // 默认值只在「没有用户连接」时用；有连接时由 userVendorBase 按用户保存的 base 重算。
+    endpoint: `${APIMART_VENDOR_SEED.baseUrl}${APIMART_UPLOAD_PATH}`,
+    endpointPath: APIMART_UPLOAD_PATH,
     urlPath: "url",
     accepts: ["image"],
     visibility: "provider-private",
@@ -149,16 +155,16 @@ export const ANON_UPLOAD_CHAIN: AssetIngestion = {
 };
 
 /** 取某 vendor 的主吞入策略：优先持久化声明，回退 curated 注册表。 */
-export function resolveAssetIngestion(vendor: { key?: string; assetIngestion?: AssetIngestion } | null | undefined): AssetIngestion | null {
+export function resolveAssetIngestion(vendor: { key?: string; assetIngestion?: AssetIngestion; baseUrlHint?: string | null } | null | undefined): AssetIngestion | null {
   if (!vendor) return null;
   if (vendor.assetIngestion) return vendor.assetIngestion;
-  if (vendor.key && CURATED_ASSET_INGESTION[vendor.key]) return CURATED_ASSET_INGESTION[vendor.key];
+  if (vendor.key && CURATED_ASSET_INGESTION[vendor.key]) return bindIngestionToUserBase(CURATED_ASSET_INGESTION[vendor.key], vendor);
   return null;
 }
 
 /** 按媒体类型取专用通道，再回退主声明。 */
 export function resolveAssetIngestionForKind(
-  vendor: { key?: string; assetIngestion?: AssetIngestion } | null | undefined,
+  vendor: { key?: string; assetIngestion?: AssetIngestion; baseUrlHint?: string | null } | null | undefined,
   kind: AssetMediaKind,
 ): AssetIngestion | null {
   if (!vendor) return null;
