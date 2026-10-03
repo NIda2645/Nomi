@@ -472,7 +472,6 @@ test("high-risk matcher covers workflows, providers, media, network, IPC, and pe
   for (const file of [
     ".github/workflows/cla.yml",
     "electron/vendor/vendorHttp.ts",
-    "electron/image/decomposeLayers.ts",
     "electron/ai/antigravityArtifacts.ts",
     "electron/hardenedFetch.ts",
     "electron/providerAdapter/ipc.ts",

@@ -413,10 +413,6 @@
     "e7c7c2430a07eee1e06593fc4ea3949f9167c2309610565d77ca6f410d1d7ae3": 1,
     "3167f2d8fcf5a3f593b96edc0a484b26d6b8456d6c48d84e0a1eaa26f89921fe": 1
   },
-  "tests/ux/decompose-ui.walk.mjs": {
-    "8085690b91cb5538ac2b4801498bdc3ac26c35a91d66938f7dd28d9cedaf5726": 1,
-    "dd972924daf98b2f963ee0f2f4a2be58f0cb5e5e83b6ec764fa8bc04019c4025": 1
-  },
   "tests/ux/deconstruction-panel.walk.mjs": {
     "2c2bbe2ce7683728d71ac8adbef2577bb3d9a8970d1c0779d62d0ed50bb0100b": 1
   },

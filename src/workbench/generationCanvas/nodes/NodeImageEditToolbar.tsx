@@ -1,6 +1,6 @@
 import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
-import { IconBrush, IconCheck, IconCrop, IconDownload, IconFlipHorizontal, IconFlipVertical, IconGrid3x3, IconGridDots, IconLayersSubtract, IconLayoutGrid, IconMaximize, IconRotate2, IconRotateClockwise2, IconScissors, IconSparkles, IconTransform, IconTypography, IconWand } from '@tabler/icons-react'
+import { IconBrush, IconCheck, IconCrop, IconDownload, IconFlipHorizontal, IconFlipVertical, IconGrid3x3, IconLayoutGrid, IconMaximize, IconRotate2, IconRotateClockwise2, IconScissors, IconSparkles, IconTransform, IconCut } from '@tabler/icons-react'
 import { type ImageGridSize, type ImageTransformOp } from './useNodeImageEditing'
 import type { CropGridSize } from './render/ImageCropGridOverlay'
 import { useResultDownload } from './useResultDownload'
@@ -8,14 +8,12 @@ import { FloatingToolbarShell, TOOLBAR_ICON as I, ToolbarButton, ToolbarDivider,
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import WhiteboardModal from './whiteboard/WhiteboardModal'
 import { inferWhiteboardAspectRatio, readWhiteboardState } from './whiteboard/whiteboardState'
-import { applyTextEdit } from '../textEdit/buildTextEditNode'
-import { useDecomposeLayers } from './decompose/useDecomposeLayers'
 import { NomiLoadingMark } from '../../../design'
 
 // 图片节点编辑浮条（按「创作优先级」排左→右，用户拍板）：
-//   左·创作：定妆 · AI编辑▾ ｜ 中·改这张：裁剪 · 抠图 · 切图▾ · 变换▾ ｜ 交接：画板 ｜ 右·工具：全屏 · 下载。
+//   左·创作：定妆（仅锚卡）｜ 中·改这张：抠图 · 裁切▾（裁剪/四视图/九宫格）· 变换▾ ｜ 交接：画板 ｜ 右·工具：全屏 · 下载。
 // 全屏是「看」的工具，不占最左创作主位——与下载同归右侧工具区（此前全屏在最左，抢了 accent 主动作定妆的位）。
-// 低频的截图(2)/变换(4)收进两个下拉，常用动作外露 1 次点击直达。容器/按钮/图标全走 NodeFloatingToolbar
+// 低频的裁切(3)/变换(4)收进两个下拉，常用动作外露 1 次点击直达。容器/按钮/图标全走 NodeFloatingToolbar
 // 共享组件（token 合规，§2/§6）。图片类与素材类节点共用此条。
 
 type Props = {
@@ -33,9 +31,7 @@ type Props = {
   onPreview: () => void
   /** 打开生成记录（原先住卡片右上角，常驻压在图上；2026-08-04 迁来这条浮条）。 */
   onOpenProvenance: () => void
-  /** Tier1「建参考卡」：基于当前图建一个预填身份板提示词的新节点（不自动生成）。缺省不渲染该按钮。 */
-  onMakeup?: () => void
-  /** 这张卡本身是不是「视觉锚」（角色/场景/道具参考卡）。是 → 最左出「定妆」而非「建参考卡」。 */
+  /** 这张卡本身是不是「视觉锚」（角色/场景/道具参考卡）。是 → 最左出「定妆」。 */
   isAnchor?: boolean
   /** 该锚是否已定妆（形象已确认）。isAnchor 时驱动「定妆 / 已定妆✓」两态。 */
   frozen?: boolean
@@ -43,24 +39,18 @@ type Props = {
   onToggleFreeze?: () => void
 }
 
-export default function NodeImageEditToolbar({ reportFeedback, node, editGrid, imageOpBusy, onGridSplit, onCrop, onTransform, onRemoveBackground, removeBackgroundBusy = false, onPreview, onOpenProvenance, onMakeup, isAnchor = false, frozen = false, onToggleFreeze }: Props): JSX.Element {
+export default function NodeImageEditToolbar({ reportFeedback, node, editGrid, imageOpBusy, onGridSplit, onCrop, onTransform, onRemoveBackground, removeBackgroundBusy = false, onPreview, onOpenProvenance, isAnchor = false, frozen = false, onToggleFreeze }: Props): JSX.Element {
 
   const { t } = useTranslation()
   const { downloading, download } = useResultDownload(node, reportFeedback)
   const [whiteboardOpen, setWhiteboardOpen] = React.useState(false)
   const imageUrl = node.result?.type === 'image' ? node.result.url || '' : ''
-  const { decomposeBusy, decomposeState, runDecompose, clearDecompose } = useDecomposeLayers(node, imageUrl, reportFeedback)
-  const busy = editGrid !== null || imageOpBusy || removeBackgroundBusy || decomposeBusy
-  // 拆解出图后自动打开白板（effect-first：用户立刻看到一堆可抓的元素，设计评审定）。
-  React.useEffect(() => {
-    if (decomposeState) setWhiteboardOpen(true)
-  }, [decomposeState])
+  const busy = editGrid !== null || imageOpBusy || removeBackgroundBusy
   return (
     <>
 
       <FloatingToolbarShell ariaLabel={t('generationCommon.imageToolbar.aria')} lockNodeId={node.id}>
-        {/* 锚卡（角色/场景/道具参考卡）：最左是「定妆」= 确认形象、放行下游镜头（F15 装上的操作者）。
-            一功能一个家——锚卡不再显示「建参考卡」（对着参考卡再建参考卡冗余）。 */}
+        {/* 锚卡（角色/场景/道具参考卡）：最左是「定妆」= 确认形象、放行下游镜头（F15 装上的操作者）。 */}
         {isAnchor && onToggleFreeze ? (
           <ToolbarButton
             icon={frozen ? <IconCheck size={I.size} stroke={I.stroke} /> : <IconSparkles size={I.size} stroke={I.stroke} />}
@@ -69,34 +59,10 @@ export default function NodeImageEditToolbar({ reportFeedback, node, editGrid, i
             title={frozen ? t('generationCommon.imageToolbar.frozenHint') : t('generationCommon.imageToolbar.freezeHint')}
             onClick={onToggleFreeze}
           />
-        ) : onMakeup ? (
-          <ToolbarButton
-            icon={<IconSparkles size={I.size} stroke={I.stroke} />}
-            label={t('generationCommon.imageToolbar.makeup')}
-            accent
-            title={t('generationCommon.imageToolbar.makeupHint')}
-            onClick={onMakeup}
-          />
         ) : null}
-        <ToolbarMenu
-          icon={decomposeBusy ? <NomiLoadingMark size={I.size} /> : <IconWand size={I.size} stroke={I.stroke} />}
-          label={decomposeBusy ? t('generationCommon.imageToolbar.decomposing') : t('generationCommon.imageToolbar.aiEdit')}
-          disabled={busy || !imageUrl}
-          items={[
-            { icon: <IconLayersSubtract size={I.size} stroke={I.stroke} />, label: t('generationCommon.imageToolbar.decompose'), onClick: () => { void runDecompose() } },
-            { icon: <IconTypography size={I.size} stroke={I.stroke} />, label: t('generationCommon.imageToolbar.editText'), onClick: () => applyTextEdit(node) },
-          ]}
-        />
-        <ToolbarDivider />
+        {isAnchor && onToggleFreeze ? <ToolbarDivider /> : null}
         <ToolbarDuplicateVariantButton nodeId={node.id} />
         <ToolbarReshootButton nodeId={node.id} />
-        <ToolbarButton
-          icon={<IconCrop size={I.size} stroke={I.stroke} />}
-          label={t('generationCommon.imageToolbar.crop')}
-          title={t('generationCommon.imageToolbar.cropHint')}
-          disabled={busy}
-          onClick={onCrop}
-        />
         {onRemoveBackground ? (
           <ToolbarButton
             icon={removeBackgroundBusy ? <NomiLoadingMark size={I.size} /> : <IconScissors size={I.size} stroke={I.stroke} />}
@@ -108,10 +74,11 @@ export default function NodeImageEditToolbar({ reportFeedback, node, editGrid, i
           />
         ) : null}
         <ToolbarMenu
-          icon={<IconGridDots size={I.size} stroke={I.stroke} />}
-          label={t('generationCommon.imageToolbar.split')}
+          icon={<IconCrop size={I.size} stroke={I.stroke} />}
+          label={t('generationCommon.imageToolbar.cropSplit')}
           disabled={busy}
           items={[
+            { icon: <IconCut size={I.size} stroke={I.stroke} />, label: t('generationCommon.imageToolbar.crop'), title: t('generationCommon.imageToolbar.cropHint'), onClick: onCrop },
             { icon: <IconLayoutGrid size={I.size} stroke={I.stroke} />, label: t('generationCommon.imageToolbar.fourView'), onClick: () => onGridSplit(2) },
             { icon: <IconGrid3x3 size={I.size} stroke={I.stroke} />, label: t('generationCommon.imageToolbar.gridNine'), onClick: () => onGridSplit(3) },
           ]}
@@ -147,9 +114,9 @@ export default function NodeImageEditToolbar({ reportFeedback, node, editGrid, i
           disabled={!imageUrl}
           onClick={onPreview}
         />
-        <ToolbarButton
+        <ToolbarIconButton
           icon={<IconDownload size={I.size} stroke={I.stroke} />}
-          label={t('generationCommon.imageToolbar.download')}
+          ariaLabel={t('generationCommon.imageToolbar.download')}
           title={t('generationCommon.imageToolbar.downloadHint')}
           disabled={downloading}
           onClick={download}
@@ -160,12 +127,10 @@ export default function NodeImageEditToolbar({ reportFeedback, node, editGrid, i
         <WhiteboardModal
           nodeId={node.id}
           sourceKind="image"
-          nodeTitle={`${node.title || t('generationCommon.imageToolbar.image')} · ${decomposeState ? t('generationCommon.imageToolbar.decomposeTitle') : t('generationCommon.imageToolbar.whiteboard')}`}
-          initialState={decomposeState ?? readWhiteboardState(node)}
-          {...(decomposeState
-            ? {}
-            : { initialImage: { url: imageUrl, aspectRatio: inferWhiteboardAspectRatio(node.meta?.imageWidth, node.meta?.imageHeight) } })}
-          onClose={() => { setWhiteboardOpen(false); clearDecompose() }}
+          nodeTitle={`${node.title || t('generationCommon.imageToolbar.image')} · ${t('generationCommon.imageToolbar.whiteboard')}`}
+          initialState={readWhiteboardState(node)}
+          initialImage={{ url: imageUrl, aspectRatio: inferWhiteboardAspectRatio(node.meta?.imageWidth, node.meta?.imageHeight) }}
+          onClose={() => setWhiteboardOpen(false)}
         />
       ) : null}
     </>
