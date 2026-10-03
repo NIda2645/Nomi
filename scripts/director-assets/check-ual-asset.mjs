@@ -34,7 +34,10 @@ export function checkUalAsset({ root = process.cwd(), asset = 'src/assets/direct
     actionCount: manifestData.actions.length,
     missingBones,
     missingActions,
-    pass: bytes.length === manifestData.outputBytes && hash === manifestData.outputSha256 && manifestData.actions.length === 45 && animations.size === 45 && missingBones.length === 0 && missingActions.length === 0,
+    materialNames: (json.materials ?? []).map((material) => material.name),
+    imageCount: (json.images ?? []).length,
+    textureCount: (json.textures ?? []).length,
+    pass: bytes.length === manifestData.outputBytes && hash === manifestData.outputSha256 && manifestData.actions.length === 45 && animations.size === 45 && missingBones.length === 0 && missingActions.length === 0 && (json.images ?? []).length === 0 && (json.textures ?? []).length === 0 && (json.materials ?? []).map((material) => material.name).includes('UAL_WhiteModel'),
   }
   return result
 }
