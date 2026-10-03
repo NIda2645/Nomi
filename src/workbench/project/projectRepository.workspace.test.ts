@@ -17,7 +17,6 @@ function stubBridge(projectsOverride: Partial<DesktopBridge['projects']>): Deskt
     platform: 'darwin',
     video: {} as DesktopBridge['video'],
     screenshot: {} as DesktopBridge['screenshot'],
-    image: {} as DesktopBridge['image'],
     videoDepth: {} as DesktopBridge['videoDepth'],
     onboarding: {} as DesktopBridge['onboarding'],
     skill: {} as DesktopBridge['skill'],
