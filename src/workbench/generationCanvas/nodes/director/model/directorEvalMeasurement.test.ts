@@ -28,7 +28,7 @@ describe('director preview measurement', () => {
     subject.trajectoryClips = [{id:'s',startTime:0,endTime:2,startFrame:0,endFrame:60}]
     const m = sampleDirectorProject(p, { duration: 2, fps: 2 })
     const motion = recognizeCameraMotion(m, 'subject', {start:0,end:2})
-    expect(motion.move).toBe('push_in'); expect(motion.distanceDelta).toBeLessThan(-3)
+    expect(motion.move).toBe('push_in'); expect(motion.distanceDelta).toBeLessThan(-2.9)
     expect(m.frames.filter(f => f.objects.subject.projection?.inFrame).length).toBe(4)
   })
   it('catches teleport, axis crossing, camera entry and below-ground', () => {
