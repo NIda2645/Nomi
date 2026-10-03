@@ -493,6 +493,14 @@ export async function createAgentRuntimeFixture({ rootDir, settingsDir, generati
     if (record.path === '/v1/chat/completions') requests.push(record)
     else if (record.path === '/v1/images/generations' || record.path.startsWith('/higgsfield-ai/')) images.push(record)
     else if (record.path === '/v1/videos/generations') videos.push(record)
+    // APIMart 参考图上传（POST /v1/uploads/images，multipart）。上传端点现在跟着用户的 base 走，夹具口把 base
+    // 指到本机，所以它会落到这里；收下字节、回一个本机取得到的图地址（走查据此证明「没出门」）。
+    if (apimartMode && request.method === 'POST' && record.path === '/v1/uploads/images') {
+      for await (const chunk of request) void chunk
+      record.upload = true
+      jsonResponse(response, 200, { url: `${fixtureOrigin}/fixture/image.jpg` })
+      return
+    }
     const chunks = []
     for await (const chunk of request) chunks.push(chunk)
     record.body = Buffer.concat(chunks).toString('utf8')
