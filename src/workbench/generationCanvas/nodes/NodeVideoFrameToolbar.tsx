@@ -4,7 +4,6 @@ import { IconCut, IconDownload, IconMaximize, IconPhoto, IconPlayerTrackNext, Ic
 import {
   FloatingToolbarShell,
   TOOLBAR_ICON as I,
-  ToolbarButton,
   ToolbarDivider,
   ToolbarDuplicateVariantButton,
   ToolbarIconButton,

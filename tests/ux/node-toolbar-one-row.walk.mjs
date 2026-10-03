@@ -8,7 +8,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { screenshotSettled } from './_assert.mjs'
+import { screenshotSettled, expectVisible, clickOrFail, expectCount } from './_assert.mjs'
 
 const require = createRequire(import.meta.url)
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
@@ -69,7 +69,7 @@ let bar = ''
 async function select(id, label) {
   bar = label
   await win.locator(`[data-node-id="${id}"]`).first().click({ force: true })
-  await win.locator(barSel(label)).waitFor({ state: 'visible', timeout: 15000 })
+  await expectVisible(win.locator(barSel(label)), `浮条出现：${label}`)
   await win.waitForTimeout(400)
   return win.evaluate((sel) => {
     const el = document.querySelector(sel)
@@ -86,7 +86,7 @@ async function openMenu(label, shot) {
 }
 try {
   await win.getByText('工具栏梳理回归').first().hover()
-  await win.getByText(/继续创作|Continue/).first().click({ force: true, timeout: 10000 })
+  await clickOrFail(win.getByText(/继续创作|Continue/).first(), '打开项目', { force: true })
   await win.waitForTimeout(2000)
   let r = await select('img-node', L.img)
   console.log('image', JSON.stringify(r))
@@ -109,7 +109,7 @@ try {
   const before = await win.locator('[data-node-id]').count()
   await win.locator(barSel(L.vid)).getByRole('button', { name: L.extract }).first().click()
   await win.getByRole('menuitem', { name: L.first }).click()
-  await win.waitForTimeout(6000)
+  await expectCount(win.locator('[data-node-id]'), before + 1, `点「${L.first}」后多出一个节点`)
   const after = await win.locator('[data-node-id]').count()
   assert(after === before + 1, `点「${L.first}」抽出一个图片节点（${before}→${after}）`)
   await screenshotSettled(win, { path: path.join(outDir, `${LOCALE}-6-after-extract.png`) })
