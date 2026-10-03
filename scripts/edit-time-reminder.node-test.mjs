@@ -42,6 +42,7 @@ describe('(a) 新建文件', () => {
     const result = decideEditTimeReminder(write('electron/agentLane/laneContextFit.ts'), env())
     assert.equal(result.kind, 'new-file')
     assert.match(result.message, /已查：X、Y；没找到：Z/)
+    assert.match(result.message, /设计卡 ★3/)
     assert.match(result.message, /context-compaction/)
     assert.ok(result.indexBytes <= 2500)
   })

@@ -701,6 +701,26 @@ if (electronRegressions.length > 0) {
   console.error(`  基线文件:scripts/i18n-electron-baseline.json;重拍快照:node scripts/check-i18n-visible-text.mjs --update-electron-baseline`)
 }
 
+// 基线自动收缩（2026-10-02）：某个文件的存量清掉了（或整个文件消失）就把基线往下压，只减不增，
+// 不再要人手跑 --update-electron-baseline——误报的来源是「基线要手动收缩」，不是判据。
+// 增长方向（count 超过基线）上面已经红了，这里永远不抬高任何一个数。
+{
+  const shrunk = {}
+  let shrankBy = 0
+  for (const [file, allowed] of Object.entries(electronBaseline)) {
+    const now = electronByFile.get(file) ?? 0
+    const kept = Math.min(Number.isFinite(allowed) ? allowed : 0, now)
+    shrankBy += (Number.isFinite(allowed) ? allowed : 0) - kept
+    if (kept > 0) shrunk[file] = kept
+  }
+  if (shrankBy > 0) {
+    const sorted = Object.fromEntries(Object.entries(shrunk).sort((a, b) => a[0].localeCompare(b[0], 'en')))
+    fs.writeFileSync(ELECTRON_BASELINE_FILE, `${JSON.stringify(sorted, null, 2)}
+`)
+    console.log(`✂ electron 可见文案基线自动收缩 ${shrankBy} 处（已写回 scripts/i18n-electron-baseline.json）`)
+  }
+}
+
 if (failed) process.exit(1)
 
 const electronTotal = [...electronByFile.values()].reduce((sum, n) => sum + n, 0)

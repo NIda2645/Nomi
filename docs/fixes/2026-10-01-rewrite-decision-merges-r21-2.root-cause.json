@@ -118,9 +118,9 @@
   ],
   "shared_boundaries": [
     {
-      "path": "scripts/symptom-cluster-lib.mjs",
-      "symbol": "evaluateClusters",
-      "responsibility": "The only place that decides whether a hot-layer cluster has been answered."
+      "path": "scripts/root-cause-contracts.mjs",
+      "symbol": "validateRewriteDecision",
+      "responsibility": "The only place that validates a rewrite_decision (the cluster gate that used to decide when one is required was deleted on 2026-10-02)."
     }
   ]
 }

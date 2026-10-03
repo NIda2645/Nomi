@@ -26,9 +26,8 @@ const REAL_PROBLEM_GATES = [
   'check:test-waits',
   'check:vocabularies',
   'check:icon-semantics',
-  // 纸面类里仍保留的三道（用户拍板「其余不动」）：登记 / 合同 / 概念写口
+  // 纸面类里仍保留的两道：合同（只对 schema 阻断）/ 先查别人。概念写口 check:concept-owners 已于 2026-10-02 降为警告档
   'check:root-cause-contracts',
-  'check:concept-owners',
   'check:prior-art',
 ]
 
@@ -39,12 +38,18 @@ test('账本里真问题的门岗：全都还在 PR 的 Contracts 里，且不�
   }
 })
 
-test('被删的门岗不许悄悄回来：三道 advisory 与 door-map 不在 PR 的 Contracts 里，脚本本身还在（docs-autosync 要用）', () => {
-  for (const removed of ['check:docs-index', 'check:doc-status', 'check:research-sources', 'check:door-map']) {
+test('被删的门岗不许悄悄回来：docs-index / doc-status / ledger 与 door-map 不在 PR 的 Contracts 里，脚本本身还在（docs-autosync 要用）', () => {
+  for (const removed of ['check:docs-index', 'check:doc-status', 'check:ledger', 'check:door-map', 'check:research-sources', 'check:symptom-cluster', 'check:archetype-defaults', 'check:archetype-sources', 'check:standard-formats', 'check:dependency-capabilities']) {
     assert.ok(!gates.includes(removed), `${removed} 回到了 gates:contracts`)
   }
-  for (const kept of ['check:docs-index', 'check:doc-status', 'check:research-sources']) {
+  for (const kept of ['check:docs-index', 'check:doc-status', 'check:ledger']) {
     assert.ok(pkg.scripts[kept], `${kept} 的脚本不该删：docs-autosync 还要用`)
+  }
+  for (const gone of ['check:research-sources', 'check:symptom-cluster', 'check:archetype-defaults', 'check:archetype-sources', 'check:standard-formats', 'check:dependency-capabilities', 'check:i18n-dead-keys', 'check:audit', 'check:mcp-legacy-entry', 'check:handoff']) {
+    assert.equal(pkg.scripts[gone], undefined, `${gone} 已按 2026-10-02 的门岗清理删除或改名，不许悄悄回来`)
+  }
+  for (const siteSub of ['data', 'editorial', 'pricing', 'links', 'locales', 'schema', 'descriptions', 'attribution']) {
+    assert.equal(pkg.scripts[`check:site-${siteSub}`], undefined, `check:site-${siteSub} 已并进 check:site`)
   }
   assert.equal(pkg.scripts['check:door-map'], undefined, 'check:door-map 已并入 check:root-cause-contracts')
   for (const file of ['scripts/check-door-map.mjs', 'scripts/door-map-lib.mjs']) {
@@ -54,16 +59,16 @@ test('被删的门岗不许悄悄回来：三道 advisory 与 door-map 不在 PR
   assert.ok(fs.existsSync(path.join(repoRoot, 'scripts/door-map.mjs')))
 })
 
-test('降为提示的：advisory 名单只有 ledger（有机器补齐主体）与 symptom-cluster（用户拍板降级）', () => {
-  assert.deepEqual([...advisory].sort(), ['check:ledger', 'check:symptom-cluster'])
+test('降为提示的：advisory 名单只有 concept-owners（用户拍板降级，「谁说了算」改在设计卡 ★2 格动手前回答）', () => {
+  assert.deepEqual([...advisory].sort(), ['check:concept-owners'])
 })
 
-test('Ponytail 降为提示不是删除：评审本体、收据、延后账本都还在，重新开起来只要改一个值', () => {
+test('Ponytail 已整套删除：脚本、模式开关、延后账本、check 与 review:branch 都不在了', () => {
   for (const file of ['scripts/ponytail-review-branch.mjs', 'scripts/ponytail-review-hook.mjs', 'scripts/check-ponytail-deferred.mjs', 'docs/engineering/ponytail-mode.json']) {
-    assert.ok(fs.existsSync(path.join(repoRoot, file)), `${file} 不见了`)
+    assert.ok(!fs.existsSync(path.join(repoRoot, file)), file + ' 应该已删除（用合并前独立验收代替）')
   }
-  assert.ok(pkg.scripts['review:branch'])
-  assert.ok(gates.includes('check:ponytail-review'), 'check:ponytail-review 仍在链里（提示模式下退出 0）')
+  assert.ok(!pkg.scripts['review:branch'])
+  assert.ok(!gates.includes('check:ponytail-review'))
 })
 
 test('每轮注入的交付账本提醒已从 L0 hook 删掉；gen:ledger / ledger:brief 仍可按需跑', () => {

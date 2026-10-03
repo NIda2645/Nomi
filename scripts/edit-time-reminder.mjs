@@ -49,6 +49,7 @@ export function newFileMessage(rel, indexText) {
     `【已有能力 · 新建文件前】你在新建 ${rel}。动手前先对一遍：这件事仓库或依赖里是不是已经有了？`,
     indexText,
     '请在回复里补一行：`已查：X、Y；没找到：Z`。（只是提醒，不拦你。这份清单只和登记表一样全——登记漏的能力这里列不出来，拿不准就去读依赖的文档。）',
+    '设计卡 ★3「一致与复用」填了吗？（同一件事别处怎么做、复用还是为什么不复用——docs/engineering/design-card.md）',
   ].filter(Boolean).join('\n')
 }
 

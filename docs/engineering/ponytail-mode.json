@@ -1,7 +1,0 @@
-{
-  "_comment": "Ponytail 评审的模式（读取点 scripts/ponytail-mode.mjs）。hint = pre-push 的收据要求与 check:ponytail-review 只打印提示、不阻断；enforce = 照旧阻断。",
-  "mode": "hint",
-  "since": "2026-10-01",
-  "reason": "用户按门岗账本（docs/audit/2026-10-01-gate-ledger.md）拍板降级：最近 50 个 PR 里 47 个写了 Ponytail 节、约 33 个是 --defer（runner 不可用）；check:ponytail-review 在 CI 里 49/49 绿，只验「收据在不在」，没有信息量。",
-  "reenable": "Codex 恢复以后：把本文件的 mode 改成 \"enforce\"，再跑一次 pnpm run review:branch 补一张真收据（评审本体、收据、延后账本都没有删）；之后 pre-push 与 check:ponytail-review 恢复阻断。临时开一次：NOMI_PONYTAIL_MODE=enforce。"
-}

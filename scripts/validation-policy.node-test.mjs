@@ -509,3 +509,20 @@ test('画布显示相关概念在 concept-owners.json 里的 owner 与写口，�
     }
   }
 })
+
+// 2026-10-02（复盘 fixes 行 52、133）：认不出的路径默认跑全量，不再悄悄落进 focused。
+test('认不出的路径 fail-closed 到全量；认得出的孤立改动仍是 focused', () => {
+  for (const file of ['build/entitlements.mac.plist', 'patches/some-dep.patch', 'resources/ffmpeg.bin', 'wrangler.json', 'brand-new-root/thing.ts']) {
+    const policy = classifyValidationPolicy([file])
+    assert.equal(policy.failClosed, true, file)
+    assert.equal(policy.unit, 'full', file)
+    assert.match(policy.reason, /^unrecognized_path_fail_closed:/, file)
+  }
+  // 掺在认得出的文件里也一样：整份 diff 里只要有一个认不出的就升档。
+  assert.equal(classifyValidationPolicy(['src/utils/foo.ts', 'build/x.plist']).failClosed, true)
+  // 认得出的孤立改动不受影响
+  const isolated = classifyValidationPolicy(['src/utils/foo.ts'])
+  assert.equal(isolated.failClosed, false)
+  assert.equal(isolated.reason, 'isolated_change')
+  assert.equal(classifyValidationPolicy(['docs/x.md']).reason, 'docs_only')
+})

@@ -13,7 +13,7 @@
 | `pnpm run test:core-smoke -- --fixture <empty\|used\|profile-copy>` | 核心流程冒烟（空节点 composer / 「2 版」托盘 / 编组框删除+⌘Z / 平移手势）：非纯文档 PR 与 main push 必跑，CI 两遍（空项目 / 用过的项目）；`profile-copy` 只在本机、深拷贝真实资料跑完即删。清单唯一 owner `tests/ux/core-smoke/scenarios.mjs` |
 | `pnpm run test:system:focused` | 普通 PR 的 changed/sibling/related tests；仍须配合 contracts |
 | `pnpm run test:system:full` | 测试基础设施或手动发布边界的显式全量本地验证 |
-| `pnpm run review:branch` | 交工前对整条分支跑一次 Ponytail 评审（超限自动分块）；findings 进 `.claude/ponytail-findings/`，收据进 `.claude/ponytail-receipt.json`，pre-push 只查这张收据 |
+| `node scripts/merge-preflight.mjs <PR 号>` | 协调会话合并前扫描：四类判定、设计卡格、独立验收、逃逸合同；只打印结论 |
 | `pnpm run delivery:preflight` | 任务开始前有界刷新远端基线并验证独立干净分支 |
 | `pnpm run delivery:verify-merged -- --expected-sha <SHA>` | 在真实 merged-main 上记录 exact-SHA CI checks 收据，不本地重跑 |
 | `pnpm run test:e2e` | Playwright smoke（零额度，CI-ready） |
@@ -30,5 +30,13 @@
 | `pnpm run check:rule-aliases` | 规则编号解析门岗（家规文件里任何 `R<数字>` 都要解析得到——合并规则不许留悬空引用）|
 | `pnpm run check:self-written` | 自写登记门岗（P0：diff 里在 `src/`、`electron/` 新增、落在领域目录之外又没被登记表认领的代码文件就报；`enforceFrom` 之前警告、之后阻断；测试 / 类型声明 / 纯接线豁免）|
 | `pnpm run check:framework-surface` | 框架接触面门岗（登记框架公开的**每个字段**都要有一条裁决：派生/常量/不用/上游默认/带到期日的债；上游升级加字段即红）|
-| `pnpm run check:audit` | 审计节奏提醒（≥25 commit 提示） |
 | `npx skills experimental_install` | 从 `skills-lock.json` 还原 `.claude/skills/`（换机/协作者用） |
+
+## 体系工具（2026-10-02）
+
+| 命令 | 用途 |
+|---|---|
+| `node scripts/merge-preflight.mjs <PR 号>`（`pnpm run merge:preflight -- <PR 号>`）| 协调会话合并前扫描：四类判定、设计卡格、独立验收、逃逸合同；只打印结论 |
+| `pnpm run eng:metrics` | 工程三个数一行（逃逸率 · 30 天复发 · 门岗误报 · 到期合同）；SessionStart 也会打印；不作为任何通过条件 |
+| `node scripts/gen-rules-view.mjs` | 由 `docs/engineering/rules.json` 重新生成可读视图 `rules.md` |
+| `pnpm run handoff:report -- <branch>` | 交接体检报告（原 `check:handoff`，不是门岗） |

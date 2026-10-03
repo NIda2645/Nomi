@@ -66,6 +66,16 @@ const VALIDATION_INFRASTRUCTURE_PATTERNS = [
 // 本次不放宽——漏判只是多跑一遍冒烟（安全方向），加进来才需要逐个论证没有门岗挂着它们。
 const DOCS_ONLY_PATTERN = /^(?:docs\/|marketing\/|README[^/]*$|AGENTS\.md$|CLAUDE\.md$)/
 
+// 认得出的路径（2026-10-02，复盘 fixes 行 52、133：新路径悄悄落进「孤立改动 → focused」而漏跑该跑的档）。
+// 默认值反过来：**认不出的路径一律跑全量**，再按事故顺序逐个加性质测试；认得出 = 下面这几类里的某一类。
+// 往这里加一类之前先问「这类路径的改动真的只会影响同目录 sibling 测试吗」，不确定就别加。
+const RECOGNIZED_ROOT_PATTERNS = [
+  /^(?:src|electron|scripts|tests|evals|skills|agent-skills|public|assets|infra|worker|workers|experiments|artifacts|\.claude|\.agents|\.codex|\.superpowers|\.design-sync)\//,
+  /^(?:index|design-lab|director-lab)\.html$/,
+  /^[^/]+\.md$/,
+  /^(?:LICENSE|\.gitignore|\.gitattributes|\.prettierignore|\.prettierrc\.json|\.mcp\.json)$/,
+]
+
 const PACKAGE_PATTERNS = [
   /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|\.pnpmrc)$/,
   /^electron-builder(?:\.[^/]+)?\.(?:cjs|js|json|ya?ml)$/,
@@ -235,6 +245,14 @@ export function classifyValidationPolicy(changedFiles, options = {}) {
   )
   if (ambiguousStructuralChange) {
     return failClosed(files, 'deletion_or_rename_fail_closed')
+  }
+  if (!docsOnly) {
+    const unrecognized = files.find((entry) =>
+      !DOCS_ONLY_PATTERN.test(entry.path)
+      && !matchesAny(entry.path, RECOGNIZED_ROOT_PATTERNS)
+      && !matchesAny(entry.path, VALIDATION_INFRASTRUCTURE_PATTERNS)
+      && !matchesAny(entry.path, PACKAGE_PATTERNS))
+    if (unrecognized) return failClosed(files, `unrecognized_path_fail_closed:${unrecognized.path}`)
   }
   const policy = validationInfrastructure.length > 0
     ? {
