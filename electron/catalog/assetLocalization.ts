@@ -725,7 +725,7 @@ export function nomiPublicAssetRelayCandidate(): IngestionCandidate | null {
  */
 export function resolveAssetIngestionWithFallback(
   targetVendor: { key?: string; assetIngestion?: AssetIngestion; baseUrlHint?: string | null } | null | undefined,
-  allVendors: Array<{ key?: string; assetIngestion?: AssetIngestion }>,
+  allVendors: Array<{ key?: string; assetIngestion?: AssetIngestion; baseUrlHint?: string | null }>,
   getApiKey: (vendorKey: string) => string | null,
   mediaKind: AssetMediaKind = "image",
 ): Array<IngestionCandidate> {
@@ -769,7 +769,7 @@ export function resolveAssetIngestionWithFallback(
   if (kieKey) push(resolveAssetIngestionForKind({ key: "kie" }, mediaKind), kieKey, "kie");
   if (!isVendorOfBuiltin(allVendors, targetVendor?.key, "apimart")) {
     const apimartKey = getApiKey("apimart");
-    if (apimartKey) push(resolveAssetIngestionForKind({ key: "apimart" }, mediaKind), apimartKey, "apimart");
+    if (apimartKey) push(resolveAssetIngestionForKind(allVendors.find((vendor) => vendor.key === "apimart") ?? { key: "apimart" }, mediaKind), apimartKey, "apimart");
   }
   // 4. Nomi relay：用户自己的 Relay 优先于 Nomi 公共 Relay，二者均只作为受控兜底。
   const nomiRelay = nomiAssetRelayCandidateFromEnvironment();
