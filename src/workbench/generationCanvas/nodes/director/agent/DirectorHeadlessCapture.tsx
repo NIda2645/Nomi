@@ -2,7 +2,7 @@
  * [INPUT]: 依赖 react、@react-three/fiber 的 useThree、../../fencedCanvas 的 FencedCanvas、../DirectorEditorContext（DirectorStoreContext / useDirectorStoreApi）、
  *          ../model/directorStore 的 createDirectorStore、../model/exportSize 的 exportDimensions、../scene/{sceneRefs, SceneRegistryContext, ViewportApiContext, webglContextRecovery, useTimelinePlayback}、
  *          ../scene/environment/{SkyGround, PanoramaSphere}、../scene/entities/DirectorEntities、../scene/capture/CaptureBinder、../timeline/timelineCommands 的 seekTo
- * [OUTPUT]: 对外提供 DirectorHeadlessCapture（隐藏画布 + 独立 store：按给定时刻序列逐帧 seek → 等两帧 → 机位 1 出片 → 一次回调 frames[]）、HeadlessCaptureResult、referenceVideoShortSide
+ * [OUTPUT]: 对外提供 DirectorHeadlessCapture（隐藏画布 + 独立 store：等角色 GLB → 按给定时刻序列逐帧 seek → 等两帧 → 按时刻取机位出片 → 一次回调 frames[] + 相机/主体回读）、HeadlessCaptureResult、referenceVideoShortSide
  * [POS]: director/agent 的离屏出片器：AI 来导的站位图（times=[0]）与运镜小片（frameTimes 序列）共用；不开全屏壳，只装 three 世界里出片必需的子系统
  *        （环境 / 实体 / 播放求值 / 出片渲染登记），无 gizmo / 拾取 / 视图立方。等角色 GLB 落地（按对象表里 characterMount 出现判定）再采，不靠墙钟；
  *        像素与全屏壳同一条 CaptureBinder 管线，出图 == 编辑器所见。
@@ -14,7 +14,7 @@ import { useThree } from '@react-three/fiber'
 import { FencedCanvas } from '../../fencedCanvas'
 import { DirectorStoreContext, useDirectorStoreApi } from '../DirectorEditorContext'
 import { createDirectorStore } from '../model/directorStore'
-import type { DirectorProject, DirectorScene } from '../model/directorTypes'
+import type { DirectorProject, DirectorScene, Vec3 } from '../model/directorTypes'
 import { exportDimensions } from '../model/exportSize'
 import { CaptureBinder } from '../scene/capture/CaptureBinder'
 import { DirectorEntities } from '../scene/entities/DirectorEntities'
@@ -26,8 +26,21 @@ import { useTimelinePlayback } from '../scene/useTimelinePlayback'
 import { ViewportApiContext, type ViewportApiRef } from '../scene/ViewportApiContext'
 import { attachWebGLContextRecovery } from '../scene/webglContextRecovery'
 import { seekTo } from '../timeline/timelineCommands'
+import type { CaptureCameraReadback } from '../scene/ViewportApiContext'
 
-export type HeadlessCaptureResult = { frames: string[]; width: number; height: number }
+export type HeadlessCaptureFrameReadback = {
+  cameraId: string | null
+  camera: CaptureCameraReadback | null
+  subjectPositions: Record<string, Vec3>
+}
+
+export type HeadlessCaptureResult = {
+  frames: string[]
+  width: number
+  height: number
+  cameraIds: Array<string | null>
+  frameReadbacks: HeadlessCaptureFrameReadback[]
+}
 
 export type DirectorHeadlessCaptureProps = {
   project: DirectorProject
@@ -35,6 +48,10 @@ export type DirectorHeadlessCaptureProps = {
   times: number[]
   /** 短边上限（参考视频 720p 封顶）；省略 = 工程导出档位 */
   maxShortSide?: number
+  /** Optional per-time camera selector. Returning null produces a black frame. */
+  cameraIdAt?: (time: number) => string | null
+  /** Burn character labels into frames; omitted keeps the existing product default. */
+  burnLabels?: boolean
   onResult: (result: HeadlessCaptureResult | null) => void
 }
 
@@ -81,7 +98,11 @@ function PlaybackBinder(): null {
   return null
 }
 
-function CaptureDriver({ times, maxShortSide, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
+export function resolveHeadlessCameraId(scene: DirectorScene, time: number, cameraIdAt: ((time: number) => string | null) | undefined): string | null {
+  return cameraIdAt ? cameraIdAt(time) : (scene.cameras[0]?.id ?? null)
+}
+
+function CaptureDriver({ times, maxShortSide, cameraIdAt, burnLabels = true, onResult }: Omit<DirectorHeadlessCaptureProps, 'project'>): null {
   const store = useDirectorStoreApi()
   const registry = useSceneRegistry()
 
@@ -90,8 +111,7 @@ function CaptureDriver({ times, maxShortSide, onResult }: Omit<DirectorHeadlessC
     const run = async () => {
       const state = store.getState()
       const scene = state.activeScene()
-      const camera = scene.cameras[0]
-      if (!camera || times.length === 0) {
+      if (times.length === 0 || scene.cameras.length === 0) {
         onResult(null)
         return
       }
@@ -102,18 +122,23 @@ function CaptureDriver({ times, maxShortSide, onResult }: Omit<DirectorHeadlessC
       await nextFrames(SETTLE_FRAMES)
       const { width, height } = captureDimensions(state.project, maxShortSide)
       const frames: string[] = []
+      const cameraIds: Array<string | null> = []
+      const frameReadbacks: HeadlessCaptureFrameReadback[] = []
       for (const time of times) {
         if (cancelled) return
         seekTo(store, time)
         await nextFrames(SEEK_SETTLE_FRAMES)
-        const frame = await registry.captureFrame({ cameraId: camera.id, width, height, burnLabels: true })
+        const cameraId = resolveHeadlessCameraId(scene, time, cameraIdAt)
+        const frame = await registry.captureFrame({ cameraId: cameraId ?? 'black', width, height, burnLabels })
         if (!frame) {
           onResult(null)
           return
         }
         frames.push(frame.dataUrl)
+        cameraIds.push(cameraId)
+        frameReadbacks.push({ cameraId, camera: frame.camera ?? null, subjectPositions: frame.subjectPositions ?? {} })
       }
-      if (!cancelled) onResult({ frames, width, height })
+      if (!cancelled) onResult({ frames, width, height, cameraIds, frameReadbacks })
     }
     void run()
     return () => {
@@ -124,7 +149,7 @@ function CaptureDriver({ times, maxShortSide, onResult }: Omit<DirectorHeadlessC
   return null
 }
 
-export function DirectorHeadlessCapture({ project, times, maxShortSide, onResult }: DirectorHeadlessCaptureProps): JSX.Element {
+export function DirectorHeadlessCapture({ project, times, maxShortSide, cameraIdAt, burnLabels, onResult }: DirectorHeadlessCaptureProps): JSX.Element {
   const store = React.useMemo(() => createDirectorStore({ rawProject: project, defaultSceneName: project.scenes[0]?.name ?? 'Scene 1' }), [project])
   const registry = React.useMemo(() => createSceneRefRegistry(), [])
   const apiRef = React.useRef(null) as ViewportApiRef
@@ -151,7 +176,7 @@ export function DirectorHeadlessCapture({ project, times, maxShortSide, onResult
               <DirectorEntities />
               <PlaybackBinder />
               <CaptureBinder />
-              <CaptureDriver times={times} maxShortSide={maxShortSide} onResult={onResult} />
+              <CaptureDriver times={times} maxShortSide={maxShortSide} cameraIdAt={cameraIdAt} burnLabels={burnLabels} onResult={onResult} />
             </SceneRegistryContext.Provider>
           </FencedCanvas>
         </ViewportApiContext.Provider>
