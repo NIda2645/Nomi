@@ -191,7 +191,7 @@ try {
 
   // ── ③ 点了：真的派出去；供应商那边停在 processing，拍「生成中」 ──
   walk.fixture.holdTasks(true)
-  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮「仍要生成」', { noWaitAfter: true })
+  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮「生成这张」', { noWaitAfter: true })
   await expect.poll(() => walk.fixture.images.length, { message: '按下之后供应商必须真的收到一次生成请求', timeout: stationTimeout({ operations: 4 }) }).toBe(1)
   await recorded(goDone.received, 'generate returns after the approval')
   await expectAbsent(card, { provenBy: cardProof, message: '答完的卡收起来' })

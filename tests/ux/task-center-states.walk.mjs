@@ -71,7 +71,8 @@ function writeStaleRun(projectDir, projectId) {
     projectId,
     status: 'running',
     stages: draft.stages.map((stage) => (stage.stageId === 'generate' ? { ...stage, status: 'running', startedAt: iso(10 * 60_000) } : stage)),
-    generationPlan: { ...draft.generationPlan, operationId: STALE_RUN_ID, state: 'submitted', cardHidden: false, shots, updatedAt: iso(10 * 60_000) },
+    // 已经在跑的批次：卡早就不在用户面前了（没有开着的出价）。
+    generationPlan: { ...draft.generationPlan, operationId: STALE_RUN_ID, state: 'submitted', presentations: [], shots, updatedAt: iso(10 * 60_000) },
     jobs: [
       job(0, 'adopted', 5 * 60_000),
       job(1, 'polling', 20_000, { lastVendorStateChangeAt: iso(6 * 60_000), providerTaskId: 'task-walk-2' }),

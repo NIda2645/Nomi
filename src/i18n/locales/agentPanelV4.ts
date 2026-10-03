@@ -438,29 +438,57 @@ export const zhAgentPanelV4 = {
   /** 「怎么算出来的」那半行。数由报价给，语序在这里。 */
   /** 逐镜参数已经不一样了：那句算式不再成立，改说「逐镜不同」，数字交给下面的逐镜折叠口。 */
   spendParamsBreakdownMixed: '{{count}} 镜 · 逐镜不同',
-  /** 报不出价时的算式：**不印单价、不印时长**。报不出价却印着 ¥0.10/秒，等于自己编了一个数。 */
-  spendParamsBreakdownNoUnit: '{{count}} 镜',
   spendParamsTotalLabel: '合计',
   spendParamsUnavailable: '暂时算不出价格',
   spendParamsPerItem: '逐镜 · {{count}} 镜',
   spendParamsShot: '镜头 {{number}}',
-  /** 确认钮：动词 + 这一刻的合计。改了参数它当场跟着变。 */
-  spendParamsConfirm: '生成 {{amount}}',
-  spendTotalLeadBatch: '{{count}} 镜 · 合计 {{amount}}',
-  /** 算不出价时页脚左下印的那句（用户硬性拍板：算不出价**绝不拦**生成）。 */
-  spendTotalUnknown: '价格未知 · 以供应商账单为准',
-  spendParamsConfirmUnknown: '仍要生成',
-  /** 范围切到「全部」后的同一颗主按钮：多印一句「几镜」，因为这时的数不再是眼前这一页的。 */
-  spendParamsConfirmAll: '生成 {{count}} 镜 {{amount}}',
-  /** 范围切换两档（2026-09-10 v3：批量不再是第二颗文字按钮，是同一个决定的范围）。 */
-  spendParamsScopeEach: '逐镜',
-  spendParamsScopeAll: '全部',
-  spendParamsScopeAria: '生成范围',
+  /** 翻页那一行右端的合计（多镜且报得出价时）。单位跟标题同一条规则：图片说张、视频说段（2026-10-01 用户拍板）。 */
+  spendTotalLeadImage_one: '{{count}} 张 · 合计 {{amount}}',
+  spendTotalLeadImage_other: '{{count}} 张 · 合计 {{amount}}',
+  spendTotalLeadVideo_one: '{{count}} 段 · 合计 {{amount}}',
+  spendTotalLeadVideo_other: '{{count}} 段 · 合计 {{amount}}',
+  /** 主按钮只生成这一页这一镜（2026-09-30 付费卡逐镜）：图片说「这张」，视频说「这段」。 */
+  spendConfirmThisImage: '生成这张',
+  spendConfirmThisVideo: '生成这段',
+  /** 这一镜报得出价时，按钮带上这一下花多少（报不出就不带，没有任何一条路径依赖它）。 */
+  spendConfirmThisImagePriced: '生成这张 {{amount}}',
+  spendConfirmThisVideoPriced: '生成这段 {{amount}}',
+  /** 次动作：这一镜不生成，占位留在画布上，卡上剩下的照旧等人。 */
+  spendRemoveThisImage: '去掉这张',
+  spendRemoveThisVideo: '去掉这段',
+  /**
+   * 「生成剩下 N 张 / 段」（2026-10-01 用户拍板）：等于把卡上还没决定的每一张各点一次「生成这张」，每张各记一笔授权。
+   * N 只数还没决定的；张 / 段跟标题同一条规则（有视频就说段）；报得出价时也不带合计（左下已印）。只剩 1 张时不出现。
+   */
+  spendConfirmRemainingImage_one: '生成剩下 {{count}} 张',
+  spendConfirmRemainingImage_other: '生成剩下 {{count}} 张',
+  spendConfirmRemainingVideo_one: '生成剩下 {{count}} 段',
+  spendConfirmRemainingVideo_other: '生成剩下 {{count}} 段',
+  /**
+   * 「生成剩下 N 张」正在一张一张走（2026-10-02）：标题说到第几张了，动作行只说怎么停（右上那颗 × 就是停下）。
+   * 点了 × 之后、宿主停稳之前：说正在停，已经发出去的照常生成（钱撤不回来，不装作能撤）。
+   */
+  spendBatchProgressImage: '正在发出 {{current}}/{{total}} 张',
+  spendBatchProgressVideo: '正在发出 {{current}}/{{total}} 段',
+  spendBatchStopHint: '按 × 停下剩下的',
+  spendBatchStopping: '正在停下…',
+  spendBatchStoppingHint: '已经发出的照常生成',
+  /** 停下之后那一句（卡这时已经关了）：批下去几张、没发几张，只说事实。 */
+  spendBatchStoppedImage_one: '发出了 {{sent}} 张，剩下 {{count}} 张没发。',
+  spendBatchStoppedImage_other: '发出了 {{sent}} 张，剩下 {{count}} 张没发。',
+  spendBatchStoppedVideo_one: '发出了 {{sent}} 段，剩下 {{count}} 段没发。',
+  spendBatchStoppedVideo_other: '发出了 {{sent}} 段，剩下 {{count}} 段没发。',
   spendParamsDecline: '不要',
   /** 卡上有没提交的手改时，× 先问这一句（D4：撤什么、丢什么，明着说）。 */
   /** 宿主拒绝这一下时的兜底句（它通常自己带一句更具体的，那句优先）。按了没反应是最贵的一种沉默。 */
   spendActionFailed: '暂时无法确认这一步的结果，请查看任务状态后再操作。',
-  spendActionNotStarted: '这一步没成，Nomi 没有开始生成，也没有花钱。可以改一下再按一次。',
+  spendActionNotStarted: '这一步没成，Nomi 没有开始生成。可以改一下再按一次。',
+  /** 第 11 条：卡此刻改不了时不许说「改一下再按」，说改不了、该怎么办。 */
+  spendActionNotStartedLocked: '这一步没成，Nomi 没有开始生成。这张卡现在改不了：点 × 关掉，告诉 Nomi 要怎么改，它会重新起草。',
+  /** 按下去的那一刻卡上的内容刚变了（报价换了一份）：没发起，看一眼现在的样子再按。 */
+  spendActionCardChanged: '卡上的内容刚变了，Nomi 没有开始生成。看一眼现在的样子再按。',
+  /** 这一张已经不在卡上（刚被决定，或卡已关掉）。 */
+  spendActionShotGone: '这一张已经不在卡上了，Nomi 没有为它开始生成。',
 
   // 「全自动」档（2026-09-10 用户拍板 · 增量 2）
   autoModeConfirmTitle: '切到「全自动」？',
@@ -885,22 +913,39 @@ export const enAgentPanelV4 = {
   spendParamsTitleImage_other: 'Generate these {{count}} images?',
   spendParamsModelPicked: 'Nomi picked',
   spendParamsBreakdownMixed: '{{count}} shots · settings differ',
-  spendParamsBreakdownNoUnit: '{{count}} shots',
   spendParamsTotalLabel: 'Total',
   spendParamsUnavailable: 'Price unavailable right now',
   spendParamsPerItem: 'Per shot ({{count}})',
   spendParamsShot: 'Shot {{number}}',
-  spendParamsConfirm: 'Generate {{amount}}',
-  spendTotalLeadBatch: '{{count}} shots · {{amount}} total',
-  spendTotalUnknown: 'Price unknown · billed by provider',
-  spendParamsConfirmUnknown: 'Generate anyway',
-  spendParamsConfirmAll: 'Generate {{count}} shots {{amount}}',
-  spendParamsScopeEach: 'Per shot',
-  spendParamsScopeAll: 'All',
-  spendParamsScopeAria: 'Generation scope',
+  spendTotalLeadImage_one: '{{count}} image · {{amount}} total',
+  spendTotalLeadImage_other: '{{count}} images · {{amount}} total',
+  spendTotalLeadVideo_one: '{{count}} video shot · {{amount}} total',
+  spendTotalLeadVideo_other: '{{count}} video shots · {{amount}} total',
+  spendConfirmThisImage: 'Generate this one',
+  spendConfirmThisVideo: 'Generate this one',
+  spendConfirmThisImagePriced: 'Generate this one {{amount}}',
+  spendConfirmThisVideoPriced: 'Generate this one {{amount}}',
+  spendRemoveThisImage: 'Remove',
+  spendRemoveThisVideo: 'Remove',
+  spendConfirmRemainingImage_one: 'Generate remaining {{count}}',
+  spendConfirmRemainingImage_other: 'Generate remaining {{count}}',
+  spendConfirmRemainingVideo_one: 'Generate remaining {{count}}',
+  spendConfirmRemainingVideo_other: 'Generate remaining {{count}}',
+  spendBatchProgressImage: 'Sending {{current}} of {{total}} images',
+  spendBatchProgressVideo: 'Sending {{current}} of {{total}} videos',
+  spendBatchStopHint: 'Press × to stop the rest',
+  spendBatchStopping: 'Stopping…',
+  spendBatchStoppingHint: 'The ones already sent keep generating',
+  spendBatchStoppedImage_one: 'Sent {{sent}} of {{total}} images; the last one was not sent.',
+  spendBatchStoppedImage_other: 'Sent {{sent}} of {{total}} images; the other {{count}} were not sent.',
+  spendBatchStoppedVideo_one: 'Sent {{sent}} of {{total}} videos; the last one was not sent.',
+  spendBatchStoppedVideo_other: 'Sent {{sent}} of {{total}} videos; the other {{count}} were not sent.',
   spendParamsDecline: 'No',
   spendActionFailed: 'The outcome could not be confirmed. Check the task status before trying again.',
-  spendActionNotStarted: 'That did not go through. Nomi has not started generating and has not spent anything — adjust it and press again.',
+  spendActionNotStarted: 'That did not go through. Nomi has not started generating — adjust it and press again.',
+  spendActionNotStartedLocked: 'That did not go through. Nomi has not started generating. This card can\'t be changed right now: close it with × and tell Nomi what to change, and it will draft it again.',
+  spendActionCardChanged: 'The card just changed, so Nomi has not started generating. Check what it shows now, then press again.',
+  spendActionShotGone: 'This one is no longer on the card, so Nomi has not started generating it.',
 
   autoModeConfirmTitle: 'Switch to Full auto?',
   autoModeConfirmBody: 'Nomi will make undoable edits directly and **paid generation will run without showing you a quote each time** — this confirmation is your authorisation for them. Irreversible actions are still confirmed every time.',

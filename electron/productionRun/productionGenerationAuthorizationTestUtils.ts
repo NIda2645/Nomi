@@ -17,7 +17,6 @@ export function sealAndApproveProductionGeneration(input: Readonly<{
   providers: readonly GenerationProvider[];
   multiShot?: GenerationSealMultiShot;
   resolveShotPrice?: (contract: ExecutionContractV1) => ShotPrice;
-  maximumSpend?: number | null;
   receiptId?: string;
   now: string;
 }>) {
@@ -42,7 +41,6 @@ export function sealAndApproveProductionGeneration(input: Readonly<{
     ...(input.multiShot ? { multiShot: input.multiShot } : {}),
     providers: input.providers,
     resolveShotPrice: input.resolveShotPrice ?? (() => ({ known: true, amount: 0 })),
-    ...(input.maximumSpend !== undefined ? { maximumSpend: input.maximumSpend } : {}),
     now: input.now,
   });
   let run = input.repository.execute(input.projectId, input.operationId, {

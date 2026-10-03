@@ -10,9 +10,10 @@ let server, browser, page, cacheDir
 const ports = {
   projectCanvasReadSurface: `export const withProjectAction = fn => fn({ binding: { projectId: 'project' }, assertCurrent() {} }); export const isProjectExecutionContextCurrent = () => true; export const isProjectImportCancellation = () => false;`,
   bridge: `export const getDesktopBridge = () => ({ productionRuns: { pendingSpend() {} } });`,
-  productionRunApi: `export const productionRunApi = { reviseSpend: async input => { window.spendOwnership.calls.push(input); if (window.spendOwnership.revise) return window.spendOwnership.revise(input); return {ok: !window.spendOwnership.failRevision} }, discardSpend: async (...args) => {window.spendOwnership.calls.push({discard: args}); return {ok:!window.spendOwnership.failDiscard}}, confirmSpend: async (...args) => { window.spendOwnership.calls.push({confirm: args}); return {ok:!window.spendOwnership.failConfirm} }, pendingSpend: async () => ({ surface: 'ready', rows: [structuredClone(window.spendOwnership.pending)] }) };`,
+  productionRunApi: `export const productionRunApi = { reviseSpend: async input => { window.spendOwnership.calls.push(input); if (window.spendOwnership.revise) return window.spendOwnership.revise(input); return {ok: !window.spendOwnership.failRevision} }, discardSpend: async (...args) => {window.spendOwnership.calls.push({discard: args}); return window.spendOwnership.discardReply ? window.spendOwnership.discardReply(...args) : {ok:!window.spendOwnership.failDiscard}}, confirmSpend: async (...args) => { window.spendOwnership.calls.push({confirm: args}); return window.spendOwnership.confirmReply ? window.spendOwnership.confirmReply(...args) : {ok:!window.spendOwnership.failConfirm} }, confirmSpendRemaining: async (...args) => { window.spendOwnership.calls.push({remaining: args}); return window.spendOwnership.remaining ? window.spendOwnership.remaining(...args) : {ok:true} }, pendingSpend: async () => ({ surface: 'ready', rows: [structuredClone(window.spendOwnership.pending)] }) };`,
+  toast: `export const toast = (message, kind) => { window.spendOwnership.toasts.push({ message, kind }) }; export const useToastStore = { getState: () => ({ push: (input) => { window.spendOwnership.toasts.push({ message: input.message, kind: input.type, ttl: input.ttl }); return 'toast' } }) };`,
   modelCatalogCache: `export const preloadModelOptions = async () => []; export const MODEL_REFRESH_EVENT = 'fixture-refresh';`,
-  generationCanvasStore: `export const useGenerationCanvasStore = Object.assign(selector => selector({ nodes: window.spendOwnership.nodes, updateNode() { throw new Error('canvas write forbidden') } }), { getState: () => ({ nodes: window.spendOwnership.nodes }) });`,
+  generationCanvasStore: `export const useGenerationCanvasStore = Object.assign(selector => selector({ nodes: window.spendOwnership.nodes, edges: window.spendOwnership.edges, updateNode() { throw new Error('canvas write forbidden') } }), { getState: () => ({ nodes: window.spendOwnership.nodes, edges: window.spendOwnership.edges }) });`,
   assetUploadApi: `export const importWorkbenchLocalAssetFile = (...args) => window.spendOwnership.upload(...args);`,
 }
 beforeAll(async () => {
@@ -54,12 +55,13 @@ it('positive control: actual panel writer retains an upload when its captured ow
   await page.waitForFunction(() => window.spendOwnership.snapshot().refs?.length === 1)
   expect((await page.evaluate(() => window.spendOwnership.snapshot())).refs).toEqual(['nomi-local://asset/reference.png'])
 })
-it.each(['page', 'scope', 'quote', 'operation', 'revision'])('retires the upload writer after changing %s, including same-node changes', async change => {
+// 付费卡逐镜（2026-09-30）：卡上没有「逐镜 / 全部」范围了，换的只剩页、报价、生成、候选版本。
+it.each(['page', 'quote', 'operation', 'revision'])('retires the upload writer after changing %s, including same-node changes', async change => {
   await upload()
   await page.evaluate(value => window.spendOwnership.change(value), change)
   await page.waitForFunction(value => {
     const s = window.spendOwnership.snapshot()
-    return value === 'page' ? s.page === 1 : value === 'scope' ? s.scope === 'all' : value === 'quote' ? s.quote === 'quote-next' : value === 'operation' ? s.operation === 'operation-next' : s.candidateRevision === 2
+    return value === 'page' ? s.page === 1 : value === 'quote' ? s.quote === 'quote-next' : value === 'operation' ? s.operation === 'operation-next' : s.candidateRevision === 2
   }, change)
   await settle()
   const result = await page.evaluate(() => window.spendOwnership.snapshot())
@@ -193,7 +195,7 @@ it('confirming A keeps unsubmitted B edits across paging and a cold renderer rel
   await page.waitForFunction(() => window.spendOwnership.snapshot().page === 0)
   await page.evaluate(() => window.spendOwnership.confirm())
   await page.waitForFunction(() => !window.spendOwnership.snapshot().busy)
-  expect(await page.evaluate(() => window.spendOwnership.calls.filter(call => call.confirm))).toEqual([{confirm: ['project', 'operation', 'quote', ['a']]}])
+  expect(await page.evaluate(() => window.spendOwnership.calls.filter(call => call.confirm))).toEqual([{confirm: ['project', 'operation', 'quote', 'a']}])
   await page.evaluate(() => window.spendOwnership.change('page'))
   await page.waitForFunction(() => window.spendOwnership.snapshot().page === 1)
   expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('edited')
@@ -205,27 +207,27 @@ it('confirming A keeps unsubmitted B edits across paging and a cold renderer rel
 })
 
 
-it('an all-scope revision failure preserves the remaining shot across quote refresh and paging', async () => {
+// 逐镜（2026-09-30）：点「生成这张」先把这一页摆着的那一份落到这一镜；宿主拒了这一次改动，就不确认，
+// 他在这一镜上没提交的那句话留在卡上——报价刷新、翻页、× 之后同一次生成重新出价都还在。
+it('a refused revision on one shot keeps its unsubmitted edit across quote refresh, paging and a re-bid', async () => {
   await page.evaluate(() => {
-    window.spendOwnership.revise = input => {
-      if (input.shotId === 'b') return {ok:false, message:'fixture refusal'}
-      const pending = window.spendOwnership.pending
-      pending.shots[0].prompt = input.patch.prompt
-      pending.quoteId = 'quote-revised'
-      pending.planVersion++
-      return {ok:true, quoteId:pending.quoteId}
-    }
-    window.spendOwnership.change('scope')
+    window.spendOwnership.revise = input => input.shotId === 'b' ? {ok:false, message:'fixture refusal'} : {ok:true, quoteId:window.spendOwnership.pending.quoteId}
+    window.spendOwnership.change('page')
   })
-  await page.waitForFunction(() => window.spendOwnership.snapshot().scope === 'all')
+  await page.waitForFunction(() => window.spendOwnership.snapshot().page === 1)
   await page.evaluate(() => window.spendOwnership.edit())
   await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
   await page.evaluate(() => window.spendOwnership.confirm())
-  await page.waitForFunction(() => window.spendOwnership.calls.length === 2 && !window.spendOwnership.snapshot().busy)
-  await page.evaluate(() => { window.spendOwnership.change('each'); window.spendOwnership.change('page') })
-  await page.waitForFunction(() => window.spendOwnership.snapshot().page === 1 && window.spendOwnership.snapshot().scope === 'each')
-  expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('edited')
+  await page.waitForFunction(() => window.spendOwnership.calls.length === 1 && !window.spendOwnership.snapshot().busy)
+  expect(await page.evaluate(() => window.spendOwnership.calls[0])).toMatchObject({shotId: 'b', patch: {prompt: 'edited'}})
   expect(await page.evaluate(() => window.spendOwnership.calls.some(call => call.confirm))).toBe(false)
+  await page.evaluate(() => window.spendOwnership.change('quote'))
+  await page.waitForFunction(() => window.spendOwnership.snapshot().quote === 'quote-next')
+  await page.evaluate(() => window.spendOwnership.back())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().page === 0)
+  await page.evaluate(() => window.spendOwnership.change('page'))
+  await page.waitForFunction(() => window.spendOwnership.snapshot().page === 1)
+  expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('edited')
   await page.evaluate(() => window.spendOwnership.discard())
   await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard) && !window.spendOwnership.snapshot().busy)
   // × 收回的是这一次出价（裁决 D）：同一个 operationId 重新出价——哪怕只剩 B 这一镜、报价换了一份——
@@ -244,7 +246,7 @@ it('an all-scope revision failure preserves the remaining shot across quote refr
   expect((await page.evaluate(() => window.spendOwnership.snapshot())).prompt).toBe('b')
 })
 
-// T-QA-30（2026-09-22，与上面那条 T-QA-27 同根）：× 收回的是**这一次出价**，不是这份草稿
+// 2026-09-22（与上面那条同根）：× 收回的是**这一次出价**，不是这份草稿
 // （裁决 D）。同一个 operationId 再 `generate` = 重新出价，报价指纹必然换一份——而用户在卡上
 // **没提交**的那句话是「这一次操作」的东西，不是「这一次报价」的东西，必须原样还在。
 // 阳性对照写在同一条里：换一次 operationId 就是另一本账本，一个字都带不过去。
@@ -298,4 +300,95 @@ it('a storage quota failure never interrupts the card and never leaks the previo
   await page.waitForFunction(() => window.spendOwnership.snapshot().operation === 'operation-next')
   expect(await page.evaluate(() => window.spendOwnership.snapshot().prompt)).toBe('a')
   expect(await page.evaluate(() => window.spendOwnership.calls)).toEqual([])
+})
+
+// 2026-10-02 真 App 实测：「生成剩下 6 张」要走半分钟，这半分钟里卡上那颗 × 走的是 act()，被 busy 闸吞掉，6 张全发。
+// 宿主级测试一直绿，是因为它绕过了渲染层的 busy 闸、直接调宿主的收回。这两条走真闸：渲染层的 act() 在 busy 时点 ×。
+it('「生成剩下」交给宿主之后点 ×：× 立刻送到主进程，不排在那一下后面；卡关掉时照实说发了几张、剩几张没发', async () => {
+  await page.evaluate(() => {
+    const f = window.spendOwnership
+    f.revise = () => ({ ok: true, quoteId: 'quote' })
+    f.remaining = () => new Promise(resolve => { f.releaseRemaining = resolve })
+  })
+  await page.evaluate(() => window.spendOwnership.confirmRemaining())
+  await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.remaining))
+  const running = await page.evaluate(() => window.spendOwnership.snapshot())
+  expect(running.busy).toBe(true)
+  expect(running.batchRunning).toBe(true)
+  expect(running.progress).toBe('按 × 停下剩下的')
+  expect(running.title).toMatch(/^正在发出 1\/2 段$/)
+  await page.evaluate(() => window.spendOwnership.discard())
+  await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard))
+  const calls = await page.evaluate(() => window.spendOwnership.calls)
+  // × 没等宿主那一叠跑完：此刻那一叠还在路上，收回已经送到了。带的是这一叠交出去时那一版报价（宿主认这一叠出过的每一版）。
+  expect(calls.filter(call => call.remaining)).toHaveLength(1)
+  expect(calls.find(call => call.discard).discard).toEqual(['project', 'operation', 'quote'])
+  expect((await page.evaluate(() => window.spendOwnership.snapshot())).title).toBe('正在停下…')
+  await page.evaluate(() => window.spendOwnership.releaseRemaining({ ok: true, code: 'spend_confirmed', batchStopped: { sent: 1, notSent: 1 } }))
+  await page.waitForFunction(() => window.spendOwnership.toasts.length > 0)
+  expect(await page.evaluate(() => window.spendOwnership.toasts)).toEqual([{ message: '发出了 1 段，剩下 1 段没发。', kind: 'info', ttl: 8000 }])
+  const after = await page.evaluate(() => window.spendOwnership.snapshot())
+  expect(after.busy).toBe(false)
+  expect(after.batchRunning).toBe(false)
+})
+
+it('「生成剩下」还在落候选时点 ×：不再往下改、不交给宿主，带着最新那一版报价收回出价；说一张都没发', async () => {
+  await page.evaluate(() => window.spendOwnership.edit())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
+  await page.evaluate(() => window.spendOwnership.change('page'))
+  await page.waitForFunction(() => window.spendOwnership.snapshot().page === 1)
+  await page.evaluate(() => window.spendOwnership.edit())
+  await page.waitForFunction(() => window.spendOwnership.snapshot().prompt === 'edited')
+  await page.evaluate(() => {
+    const f = window.spendOwnership
+    let revisions = 0
+    f.revise = () => {
+      revisions += 1
+      return revisions === 1 ? new Promise(resolve => { f.releaseRevise = () => resolve({ ok: true, quoteId: 'quote-r1' }) }) : { ok: true, quoteId: `quote-r${revisions}` }
+    }
+  })
+  await page.evaluate(() => window.spendOwnership.confirmRemaining())
+  await page.waitForFunction(() => typeof window.spendOwnership.releaseRevise === 'function')
+  await page.evaluate(() => window.spendOwnership.discard())
+  await page.evaluate(() => window.spendOwnership.releaseRevise())
+  await page.waitForFunction(() => window.spendOwnership.calls.some(call => call.discard))
+  const calls = await page.evaluate(() => window.spendOwnership.calls)
+  expect(calls.filter(call => call.remaining), '没交给宿主').toEqual([])
+  expect(calls.filter(call => call.shotId), '只改了第一张就停').toHaveLength(1)
+  expect(calls.find(call => call.discard).discard).toEqual(['project', 'operation', 'quote-r1'])
+  await page.waitForFunction(() => window.spendOwnership.toasts.length > 0)
+  expect(await page.evaluate(() => window.spendOwnership.toasts)).toEqual([{ message: '发出了 0 段，剩下 2 段没发。', kind: 'info', ttl: 8000 }])
+})
+
+// 10-02 搞破坏线 X2：「生成这张」在路上时点 ×。× 不排在那一下后面；宿主等手上那一镜落定才回，回的是这一次出价最终批下几张、
+// 没发几张——提示照它说（那一镜可能在 × 之前已经过了核对、照样批下花钱）。被打断的那一下随后的失败不再另弹一句。
+async function stopWhileConfirming(confirmed, stopped) {
+  await page.evaluate(() => {
+    const f = window.spendOwnership
+    f.revise = () => ({ ok: true, quoteId: 'quote' })
+    f.confirmReply = () => new Promise(resolve => { f.releaseConfirm = resolve })
+    f.discardReply = () => new Promise(resolve => { f.releaseDiscard = resolve })
+  })
+  await page.evaluate(() => window.spendOwnership.confirm())
+  await page.waitForFunction(() => typeof window.spendOwnership.releaseConfirm === 'function')
+  expect((await page.evaluate(() => window.spendOwnership.snapshot())).busy).toBe(true)
+  await page.evaluate(() => window.spendOwnership.discard())
+  await page.waitForFunction(() => typeof window.spendOwnership.releaseDiscard === 'function')
+  const calls = await page.evaluate(() => window.spendOwnership.calls)
+  expect(calls.filter(call => call.confirm), '× 没排在「生成这张」后面：那一下还在路上，收回已经送到').toHaveLength(1)
+  expect(calls.find(call => call.discard).discard).toEqual(['project', 'operation', 'quote'])
+  await page.evaluate((reply) => window.spendOwnership.releaseConfirm(reply), confirmed)
+  await page.evaluate((reply) => window.spendOwnership.releaseDiscard(reply), { ok: true, code: 'discarded', batchStopped: stopped })
+  await page.waitForFunction(() => window.spendOwnership.toasts.length > 0 && !window.spendOwnership.snapshot().busy)
+  return page.evaluate(() => window.spendOwnership.toasts)
+}
+
+it('「生成这张」在路上时点 ×、那一镜照样批下了：提示照宿主最终批下的说「发出了 1 段」', async () => {
+  expect(await stopWhileConfirming({ ok: true, code: 'spend_confirmed' }, { sent: 1, notSent: 1 }))
+    .toEqual([{ message: '发出了 1 段，剩下 1 段没发。', kind: 'info', ttl: 8000 }])
+})
+
+it('「生成这张」在路上时点 ×、那一镜还没批下就被收回：只说「发出了 0 段」，不再弹那一下的失败', async () => {
+  expect(await stopWhileConfirming({ ok: false, code: 'failed', message: 'generation_quote_changed' }, { sent: 0, notSent: 2 }))
+    .toEqual([{ message: '发出了 0 段，剩下 2 段没发。', kind: 'info', ttl: 8000 }])
 })

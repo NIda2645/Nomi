@@ -643,6 +643,19 @@
       "revisitWhen": "出现能读自定义「模块归属清单」并对 diff 新增文件做归属断言的现成门岗时"
     },
     {
+      "id": "generate-outcome-receipt",
+      "capability": "generate 回执：把宿主给的逐镜结局（在生成 / 发出前就失败 / 用户去掉 / 画布接手 / 没决定 + 原因）读成给模型的那句话",
+      "status": "to-replace",
+      "plan": "docs/research/2026-09-29-agent-message-layer-conformance/report.md",
+      "paths": ["electron/shared/agentLane/generateOutcomeReceipt.ts"],
+      "alternativesChecked": [
+        { "name": "AI SDK 工具的 toModelOutput：同一个工具 part 的 output 改写成给模型看的那份", "source": "docs/research/2026-09-29-agent-message-layer-conformance/report.md:249" },
+        { "name": "pi 的 tool_result 钩子：可以改工具结果（中间件式串联）", "source": "node_modules/@earendil-works/pi-coding-agent/docs/extensions.md:842" }
+      ],
+      "whyNotIntegrated": "回执说的事实（这一次出价里每一镜的结局）是按镜头花钱的领域事实，住在宿主（generationPresentationOutcome），这里只渲染；把值映射成模型看的文字是通用机制。lane 跑在 pi 上、不装 AI SDK 运行时（框架中立，0.24 B / C1 之前不换），toModelOutput 今天没有宿主可挂；pi 的 tool_result 能改结果，但回执要的是「工具等到卡关掉、再按宿主的值说话」，那一跳在 before_tool 的等待里，不在结果钩子上。",
+      "revisitWhen": "C1（一次工具调用一条 part，字段对齐 AI SDK ToolUIPart）落地时并进那条 part 的 toModelOutput"
+    },
+    {
       "id": "vitest-flaky-annotation",
       "capability": "把重试后才通过的测试变成 PR 检查结果里的 warning 注解（疑似不稳定）",
       "status": "justified",

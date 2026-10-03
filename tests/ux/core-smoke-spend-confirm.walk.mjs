@@ -112,7 +112,8 @@ try {
     await clickOrFail(card.locator(INTERVENTION_REJECT), '收回这次出价')
     await expectAbsent(card, { provenBy: cardProof, message: '收回之后付款卡退出介入槽' })
     const declined = flattenRequestText((await recorded(turnDone.received, 'generate returns once the user closed the card')).body)
-    expect(declined, '模型读到的是「他关了这张卡」，不是一个错误').toContain('closed the priced card without approving')
+    // 付费卡逐镜（2026-09-30）：回执渲染宿主的逐镜结局——没决定的这一镜「没生成、没花钱」，原因是他关了卡。
+    expect(declined, '模型读到的是「他关了这张卡」，不是一个错误').toContain('the user closed the card (×) before deciding them')
     // 落地轮询在这段时间里对这份计划又跑过好几趟——节点数还是要一个不多一个不少。
     await expect.poll(async () => (await readProject(win, projectId)).payload.generationCanvas.nodes.map((entry) => entry.id).sort(),
       { timeout: DEFAULT_TIMEOUT_MS, message: '× 一个节点都不删（09-21 Q3：不生成≠我的节点没了）' })
@@ -125,7 +126,7 @@ try {
     // 请求一次适应视图，2026-09-25 拍板删了）。基线在视口停稳时读；另挂一个改写记录器，抓首尾相同的来回闪。
     const viewportBeforeConfirm = await waitForCanvasViewportSettled(win)
     const viewportWrites = await recordCanvasViewportWrites(win)
-    await clickOrFail(card.locator(INTERVENTION_CONFIRM), '按下那颗印着价的确认钮')
+    await clickOrFail(card.locator(INTERVENTION_CONFIRM), '按下那颗印着价的「生成这张」')
     // 顺序照 `agent-spend-confirm-executes.walk.mjs:162-172`：先等出站请求（那是「钱真的动了」的第一个
     // 证据），再等 `generate` 把结论递回正在等的那个回合。反过来写会让「还没跑起来」以超时的形状报出来。
     await expect.poll(() => fixture.images.length + hostRefusals.length,

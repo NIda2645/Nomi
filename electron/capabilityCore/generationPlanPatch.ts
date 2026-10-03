@@ -5,8 +5,11 @@
 // 完整的单元（两种参数两种待遇那条分界线就住在这里），拆出来比塞在 handler 里更好读、可单测。
 import { admitPlanCandidate, type PlanCandidate } from "./executionContract";
 import { normalizeVideoCandidate, stripParametersNotAccepted, videoCompileOptions } from "./mcpGenerationVideoResolve";
+import { admitShotIdentity, declaredModeForModel } from "./semanticGenerationCandidate";
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
+import { resolveArchetypeForModel } from "../shared/modelArchetypes";
+import { modeTransportFor } from "../shared/videoCapabilities/modeTransport";
 
 /** 读盘归一只需要草稿的这几样（避免把 handler 的大类型拖进来）。 */
 type GenerationOperationLike = {
@@ -16,6 +19,27 @@ type GenerationOperationLike = {
 };
 
 const normalizedModelIdentity = (value: string): string => value.trim().toLowerCase();
+/** 目录里任务种类的两种拼法（`text-to-image` / `text_to_image`）是同一个种类。 */
+const sameTaskKind = (left: string, right: string): boolean =>
+  left.trim().toLowerCase().replace(/[-\s]/g, "_") === right.trim().toLowerCase().replace(/[-\s]/g, "_");
+
+/**
+ * 档案里的一个生成方式（`t2i` / `i2i` / `i2v` …）在这个模型上是哪一种任务，按目录里这个模型的拼法写出来。
+ * 种类只由 `modeTransportFor` 定（供应商特化 > 模式 > 档案）——画布挑 mapping 桶、视频候选归一用的都是它；
+ * 这里不另写一张表。认不出这个模型或这个模式 = undefined（不改种类）。
+ */
+function modeForArchetypeMode(
+  registry: Parameters<typeof declaredModeForModel>[0],
+  providerId: string,
+  modelId: string,
+  modeId: string,
+): string | undefined {
+  const archetype = resolveArchetypeForModel({ modelKey: modelId, vendorKey: providerId });
+  const mode = archetype?.modes.find((candidate) => normalizedModelIdentity(candidate.id) === normalizedModelIdentity(modeId));
+  const transport = mode && archetype ? modeTransportFor(mode, archetype, providerId) : undefined;
+  if (!transport) return undefined;
+  return declaredModeForModel(registry, providerId, modelId, transport) ?? transport;
+}
 
 export type PlanPatchResolution = {
   normalizedPatch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
@@ -30,7 +54,7 @@ export type PlanPatchResolution = {
 export function resolvePlanPatch(input: {
   baseCandidate: PlanCandidate;
   userPatch: Partial<Omit<PlanCandidate, "candidateId" | "revision">>;
-  registry: Pick<ModuleRegistry, "resolve">;
+  registry: Pick<ModuleRegistry, "resolve"> & Partial<Pick<ModuleRegistry, "snapshot">>;
   videoModelCandidates?: readonly VideoModelCandidate[];
 }): PlanPatchResolution {
   const { baseCandidate, userPatch, registry, videoModelCandidates } = input;
@@ -38,10 +62,26 @@ export function resolvePlanPatch(input: {
   const nextModelId = typeof userPatch.modelId === "string" ? userPatch.modelId : baseCandidate.modelId;
   const modelChanged = normalizedModelIdentity(nextProviderId) !== normalizedModelIdentity(baseCandidate.providerId)
     || normalizedModelIdentity(nextModelId) !== normalizedModelIdentity(baseCandidate.modelId);
-  const modeChanged = typeof userPatch.mode === "string" && normalizedModelIdentity(userPatch.mode) !== normalizedModelIdentity(baseCandidate.mode);
+  // 只换了生成方式（档案模式 id）、没写种类：种类跟着这个生成方式走（付费卡上切「文生图 / 图生图」、画布连来参考图时卡自己
+  // 切过去，都是这一下）。不跟的话候选就成了「模式 id 说改图、种类说文生图」——派发按种类挑供应商的 mapping，
+  // 文生图那一份不收参考图，点下去在出站前被拒（2026-10-02 pb02：`catalog generation parameter is unsupported: image_urls`）。
+  const modeIdChanged = typeof userPatch.modeId === "string" && userPatch.modeId.trim() !== ""
+    && normalizedModelIdentity(userPatch.modeId) !== normalizedModelIdentity(baseCandidate.modeId ?? "");
+  const modeFromModeId = userPatch.mode === undefined && modeIdChanged
+    ? modeForArchetypeMode(registry, nextProviderId, nextModelId, userPatch.modeId as string)
+    : undefined;
+  const modeChanged = (typeof userPatch.mode === "string" && normalizedModelIdentity(userPatch.mode) !== normalizedModelIdentity(baseCandidate.mode))
+    || (modeFromModeId !== undefined && !sameTaskKind(modeFromModeId, baseCandidate.mode));
+  // 换了模型、没另写模式：这一镜还是同一种任务（图还是图），只是模式字符串按新模型目录里的拼法来。
+  // 新模型做不了这一种就不换——下面 `admitShotIdentity` 当场拒绝，不悄悄把图片镜头变成视频镜头（第 9 条）。
+  const followedMode = modelChanged && userPatch.mode === undefined && modeFromModeId === undefined
+    ? declaredModeForModel(registry, nextProviderId, nextModelId, baseCandidate.mode)
+    : undefined;
+  const nextMode = modeFromModeId !== undefined && !sameTaskKind(modeFromModeId, baseCandidate.mode) ? modeFromModeId : followedMode;
   const mergedCandidate = {
     ...baseCandidate,
     ...userPatch,
+    ...(nextMode ? { mode: nextMode } : {}),
     ...(modelChanged && userPatch.variantId === undefined ? { variantId: undefined } : {}),
     ...((modelChanged || modeChanged) && userPatch.modeId === undefined ? { modeId: undefined } : {}),
     parameters: userPatch.parameters ?? baseCandidate.parameters,
@@ -52,6 +92,8 @@ export function resolvePlanPatch(input: {
     : { candidate: mergedCandidate, cleared: [] as string[] };
   const clearedParameters = stripped.cleared;
   const normalizedCandidate = normalizeVideoCandidate(stripped.candidate, videoModelCandidates);
+  // 模型或模式变了：和建镜头时同一道账——这一对在目录里必须真有（第 9 条，矛盾的镜头造不出来）。
+  if (modelChanged || modeChanged) admitShotIdentity(normalizedCandidate, registry);
   // 判的是**归一之后**的候选：变体别名（`fast-face` → `fast`）要先被认成正名，
   // 否则合法的别名会被自己的变体清单拒掉。
   if (userPatch.parameters !== undefined) {
@@ -63,6 +105,7 @@ export function resolvePlanPatch(input: {
   return {
     normalizedPatch: {
       ...userPatch,
+      ...(nextMode && nextMode !== baseCandidate.mode ? { mode: nextMode } : {}),
       // 清理过就必须**连同清理后的参数一起落盘**。漏掉这一行时清理只是算了一遍、报了一遍，
       // 存的还是旧参数——「不上报 clearedParameters」那个变异当时因此杀不掉（2026-09-22 验收）。
       ...(clearedParameters.length ? { parameters: stripped.candidate.parameters } : {}),

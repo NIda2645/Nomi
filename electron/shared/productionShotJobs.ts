@@ -12,14 +12,36 @@ export function isUnsubmittedJobStatus(status: ProductionJob["status"]): boolean
   }
 }
 
+/**
+ * 这一个作业**有没有可能**已经到过供应商（可能扣过钱）。「没有」只有两种证据：
+ *   · 还没跨过提交边界（`isUnsubmittedJobStatus`：`submitOnce` 先落提交意图、再出站）；
+ *   · 跨过之后被证明一个字节都没写出去（`markNotDispatched` → `provider_not_reached`，判据在 `outboundDispatchEvidence.ts`）。
+ * 其余一律按「可能到过」——宁可让人多核对一次，也不许把一笔可能的扣费说成没花钱。
+ *
+ * 面板付费卡的失败文案、Agent `generate` 的失败码、这一次出价的逐镜结局，都只读这一个判据（付费卡① 23:30 第 3 点）。
+ */
+export function jobMayHaveReachedProvider(job: Pick<ProductionJob, "status" | "errorCode">): boolean {
+  return !isUnsubmittedJobStatus(job.status) && !jobFailedBeforeSending(job);
+}
+
+/** 这一个作业已经结束、而且结束在出站之前（证明过没写出去）：没花钱，也不会再自己发。 */
+export function jobFailedBeforeSending(job: Pick<ProductionJob, "status" | "errorCode">): boolean {
+  return job.status === "needs_attention" && job.errorCode === "provider_not_reached";
+}
+
+/** 这些作业里有没有任何一笔可能到过供应商。一个作业都没有 = 没有。 */
+export function anySubmissionMayHaveReachedProvider(jobs: readonly Pick<ProductionJob, "status" | "errorCode">[]): boolean {
+  return jobs.some(jobMayHaveReachedProvider);
+}
+
 /** Stable shot address for both multi-shot metadata and legacy single-shot plans. */
-export function productionShotId(run: ProductionRun, shotId: string): string | undefined {
+export function productionShotId(run: Pick<ProductionRun, "generationPlan">, shotId: string): string | undefined {
   if (run.generationPlan?.shots?.length) return shotId;
   return run.generationPlan?.candidate.candidateId === shotId ? shotId : undefined;
 }
 
 /** The one owner of the shot → generation job correspondence. */
-export function jobsForShot(run: ProductionRun, shotId: string): ProductionJob[] {
+export function jobsForShot(run: Pick<ProductionRun, "generationPlan" | "jobs">, shotId: string): ProductionJob[] {
   if (!productionShotId(run, shotId)) return [];
   const multiShot = Boolean(run.generationPlan?.shots?.length);
   return run.jobs.filter((job) => job.stageId === "generate" && (multiShot ? job.metadata?.shotId === shotId : true));

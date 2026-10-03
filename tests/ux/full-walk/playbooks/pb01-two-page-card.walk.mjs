@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 剧本 PB01 · 「让 Agent 画两张图，付费卡两页，我只在第 1 页点了『仍要生成』」
+// 剧本 PB01 · 「让 Agent 画两张图，付费卡两页，我只在第 1 页点了『生成这张』」
 //
 // 已知问题（0.22.1）：点付费卡里的「仍要生成」就直接开跑，第二张卡还没确认；Agent 说「已经开始跑」。
 // 这是一个真实创作者会做的事：让 Agent 起草两镜、在付费卡上翻一翻、在第 1 页按下去。
@@ -7,12 +7,12 @@
 // 乱用：翻到第 2 页再翻回来才按；点完再点一下出好的那张图看看（节点角标）。
 // 变体由跑器指派：base（中文）/ en（英文界面，同一条路）。
 //
-// 零花费：大脑与供应商都是本机夹具；目录里不种价（= 今天每一台干净装机），所以卡上是「仍要生成」。
+// 零花费：大脑与供应商都是本机夹具；目录里不种价（= 今天每一台干净装机），卡上不说价格的话，主按钮是「生成这张」。
 import { DEFAULT_TIMEOUT_MS, clickOrFail, expect } from '../../_assert.mjs'
 import { findNodeHitPoint } from '../../_canvasHit.mjs'
 import { stationTimeout } from '../../_station-budget.mjs'
 import { FIXTURE_APIMART_MODEL, FIXTURE_APIMART_VENDOR } from '../../agent-runtime-fixture.mjs'
-import { APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM, expandResidentPanel, sendCanvas } from '../../agent-runtime-walk-support.mjs'
+import { APPROVAL_CARD, CANVAS_PANEL, INTERVENTION_CONFIRM, closeSpendCard, expandResidentPanel, sendCanvas } from '../../agent-runtime-walk-support.mjs'
 import { clickVisiblePart } from '../actions.mjs'
 import { operationIdOf, scriptTurn } from '../brain.mjs'
 import { startPlaybook } from '../launch.mjs'
@@ -64,9 +64,16 @@ try {
     await expect(card().locator('[data-v4-block="pager"]')).toContainText('1/2')
   })
 
-  await monitor.step('在第 1 页点「仍要生成」', async () => {
+  await monitor.step('在第 1 页点「生成这张」', async () => {
     await monitor.consentSpendCard(card(), { label: '第 1 页的主按钮' })
     await clickOrFail(card().locator(INTERVENTION_CONFIRM), '付费卡主按钮（第 1 页）', { noWaitAfter: true })
+  })
+
+  // 付费卡逐镜（2026-09-30）：点了的生成，没点的留在卡上等人——卡不消失、只剩第 2 张；用户不想要它，就点 × 关掉。
+  await monitor.step('卡还在、只剩第 2 张；点 × 关掉（第 2 张不生成）', async () => {
+    await expect(card().locator('[data-v4-block="slot-title"]'), '卡还在、标题只数还没决定的第 2 张')
+      .toContainText(EN ? 'Generate this image?' : '生成这 1 张图片？', { timeout: DEFAULT_TIMEOUT_MS })
+    await closeSpendCard(card(), '关掉付费卡（第 2 张不生成）')
   })
 
   await monitor.step('等出图、等这一轮 Agent 说完', async () => {
@@ -98,24 +105,23 @@ try {
     await smoke.win.waitForTimeout(monitor.limits.savedFeedbackWindowMs.value + 1000)
   }, { user: false, surfaces: [] })
 
-  // 乱用：点开「1 版」托盘，按「重拍这镜」——用户对这一张不满意，想再来一张。
-  await monitor.step('乱用：打开版本托盘，按「重拍这镜」', async () => {
-    const pill = smoke.win.locator('[data-card-stack-side] > button[aria-label]').first()
-    await clickOrFail(pill, '节点旁的版本胶囊')
-    const rerun = smoke.win.getByRole('button', { name: EN ? 'Re-film shot' : '重拍这镜' }).first()
-    // 托盘从节点右边弹出，窄窗 / 英文长字时会伸到右侧 Agent 面板底下：按钮只露出一截。人会点露出来的那截。
-    const hit = await clickVisiblePart(smoke.win, rerun, '托盘里的「重拍这镜」')
+  // 乱用：对这一张不满意，按「重拍这镜」想再来一张。#953 起只有 1 版不再挂「几版」角标，「重拍这镜」住在选中节点时
+  // 出现的浮条里（上一步已经点选了这张图）——像人一样在浮条上点它。
+  await monitor.step('乱用：在节点浮条上按「重拍这镜」', async () => {
+    const rerun = smoke.win.locator('[data-node-floating-toolbar="true"]').getByRole('button', { name: EN ? 'Re-film shot' : '重拍这镜' }).first()
+    // 浮条可能被右侧 Agent 面板盖住一截：人会点露出来的那截；露出的不够就是一条违反。
+    const hit = await clickVisiblePart(smoke.win, rerun, '浮条里的「重拍这镜」')
     if (hit.covered) {
       await monitor.violate({
         invariant: 7, rule: 'control-partly-covered', key: `rerun|${EN ? 'en' : 'zh'}`,
-        module: 'src/workbench/generationCanvas/nodes/NodeResultStack.tsx（版本托盘贴着节点右边弹出，不避让右侧面板 / 画布边界）',
-        message: `版本托盘里的「${EN ? 'Re-film shot' : '重拍这镜'}」只有 ${hit.reachable}/${hit.total} 个采样点点得到——其余被右侧面板盖住或伸出了画布`,
+        module: 'src/workbench/generationCanvas/nodes/NodeFloatingToolbar.tsx（选中节点的浮条，floatingToolbarClamp 只夹在画布里，不避让右侧面板）',
+        message: `节点浮条里的「${EN ? 'Re-film shot' : '重拍这镜'}」只有 ${hit.reachable}/${hit.total} 个采样点点得到——其余被右侧面板盖住或伸出了画布`,
         snapshot: { hit },
       })
     }
     const spendCard = card()
     const dialog = smoke.win.locator('[data-spend-confirm-dialog]').first()
-    // 结论也可能是托盘里那一行就地的状态字（节点自己的反馈位，role=status）。
+    // 结论也可能是节点自己的反馈位上就地的状态字（role=status）。
     const toast = smoke.win.locator('.mantine-Notification-root, [data-node-result-stack] ~ [role="status"], [role="status"]').filter({ hasText: /\S/ }).first()
     await expect.poll(async () => (await spendCard.count()) + (await dialog.count()) + (await toast.count()),
       { message: '按下「重拍这镜」之后有个结论（付费卡 / 确认框 / 提示）', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)

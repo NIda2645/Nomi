@@ -23,12 +23,12 @@ function undefinedParameterKeys(patch: { parameters?: Readonly<Record<string, un
 describe('付费卡改稿 → 宿主 schema · 报告里那一幕', () => {
   it('Seedance 2.0 卡：生成框自动补了画幅 16:9，确认时送出的每一条改稿宿主都收', () => {
     const shots: PendingSpendShot[] = ['shot-1', 'shot-2'].map((shotId, index) => ({
-      shotId, index: index + 1, prompt: '清晨的渔港', providerId: 'apimart', modelId: 'doubao-seedance-2.0', modeId: 't2v', variantId: 'fast',
+      shotId, index: index + 1, prompt: '清晨的渔港', providerId: 'apimart', modelId: 'doubao-seedance-2.0', kind: 'video', modeId: 't2v', variantId: 'fast',
       parameters: { resolution: '480p', generate_audio: false, duration: 4 }, price: { known: false },
     }))
     const node = projectSpendNode(shots[0]!)!
     const filled = { ...node, meta: { ...(node.meta as Record<string, unknown>), size: '16:9' } }
-    const draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, shots[0]!, filled, 'all')
+    const draft = draftAfterNodeEdit(EMPTY_SPEND_DRAFT, shots[0]!, filled)
     const revisions = revisionsForConfirm(shots, draft)
     expect(revisions.length, '补了默认值 = 有改稿要送').toBeGreaterThan(0)
     for (const revision of revisions) {
@@ -49,7 +49,8 @@ describe('付费卡改稿 → 宿主 schema · 每一个图片 / 视频档案', 
     it(`${archetype.id}：卡上改一个参数，送出去的改稿宿主都收`, () => {
       const modelId = archetype.catalogModelKey ?? archetype.variants?.[0]?.modelKey ?? archetype.identifierPatterns[0]!
       const shot: PendingSpendShot = {
-        shotId: 'shot-1', index: 1, prompt: 'p', providerId: 'apimart', modelId, modeId: archetype.defaultModeId,
+        // 卡体的种类只读宿主给的那一格（第 9 条）；这里只遍历图片 / 视频档案，所以就是档案自己的种类。
+        shotId: 'shot-1', index: 1, prompt: 'p', providerId: 'apimart', modelId, kind: archetype.kind as 'image' | 'video', modeId: archetype.defaultModeId,
         parameters: {}, price: { known: false },
       }
       const node = projectSpendNode(shot)

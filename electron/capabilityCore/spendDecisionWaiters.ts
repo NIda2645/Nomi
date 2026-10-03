@@ -21,6 +21,11 @@
 // 用户在卡上改一次参数，quoteId 就换一个；等的那个回合等的是「这份计划他批不批」，不是「这个报价他批不批」。
 // 查不到登记 = 这张卡不是 lane 出的（分镜编辑器「提交执行计划」等）——递送是 no-op，那条路照旧工作。
 
+/**
+ * 递过去的只是「卡关了、怎么关的」（2026-09-30 付费卡逐镜）：`confirmed` = 每一镜都决定了（生成这张 / 去掉这张），
+ * `declined` = 他点了 ×。哪一镜在生成、哪一镜去掉了、哪一镜没决定，回合自己去问宿主（`readPresentationOutcome`），
+ * 这张表不带第二份逐镜状态。
+ */
 export type SpendDecision =
   | Readonly<{ kind: "confirmed" }>
   | Readonly<{ kind: "declined" }>;

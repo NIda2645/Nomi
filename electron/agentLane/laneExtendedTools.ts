@@ -1,3 +1,4 @@
+import { describeGenerateOutcome } from '../shared/agentLane/generateOutcomeReceipt'
 import type { RuntimeToolCall, RuntimeToolDecision } from '../shared/agentCapabilities/transportContracts'
 import type { LaneApprovalDecision } from '../shared/agentLane/laneContracts'
 import type { LaneToolNextAction } from '../shared/agentLane/laneToolContract'
@@ -128,6 +129,16 @@ function generateReceipt(result: unknown): LaneToolNextAction {
   const decision = generateUserDecisionOf(result)
   const operationId = operationIdOf(result)
   const id = operationId ? { operationId } : {}
+  // 付费卡（逐镜）：回执只渲染宿主给的逐镜结局（`describeGenerateOutcome`），一个字都不自己加。
+  if (decision?.outcome === 'card_closed') {
+    const receipt = describeGenerateOutcome(decision.shots)
+    return { kind: receipt.kind, ...(receipt.kind === 'job_running' && operationId ? { jobId: operationId } : {}), ...id, userSees: receipt.userSees }
+  }
+  if (decision?.outcome === 'redirected' && decision.shots) {
+    const receipt = describeGenerateOutcome(decision.shots)
+    return { kind: receipt.kind, ...(receipt.kind === 'job_running' && operationId ? { jobId: operationId } : {}), ...id,
+      userSees: `While the priced card was waiting, the user wrote: "${decision.userSaid}". That is his answer for the shots he had not decided yet. ${receipt.userSees} Do what he wrote (revise the draft with draft_shots if he asked for changes).` }
+  }
   if (decision?.outcome === 'approved') {
     return { kind: 'job_running', ...(operationId ? { jobId: operationId } : {}),
       userSees: 'The user approved the priced card, so generation has started and their provider credit is being spent. No card is waiting any more; progress shows in the task list. Do not call generate again for this draft.' }

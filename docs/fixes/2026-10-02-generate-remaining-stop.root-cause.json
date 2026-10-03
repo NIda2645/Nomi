@@ -1,0 +1,190 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-02-generate-remaining-stop",
+  "problem_type": "Stopping a running paid batch from the card did nothing: the card's close button went through the same busy gate as the actions it was meant to interrupt, and the host refused it on a quote the batch itself had just replaced",
+  "detected_by": "walkthrough",
+  "recurrence_check_on": "2026-11-01",
+  "symptom": "Real app, final head of #947, fixture vendor (2026-10-02): press Generate remaining 6, wait until the host has approved the first one, press × on the card. Nothing happens; all six are sent and the card closes as 'every shot decided', not as 'the user closed it'. Repeated in Chinese and English, with × tried every 2 seconds while 6, 6, 3 and 1 shots were still undecided. Meanwhile the card kept showing the next undecided shot with Remove and Generate this one, as if it were waiting for a click, while the host approved it on its own. Second walk on the fixed head (2026-10-02 afternoon): on a 3-shot card, press Generate this one and × right after it; the × reached the host after the approval had replaced the quote, was refused as generation_quote_changed, and the card stayed open with the other two shots.",
+  "direct_cause": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts: discard (the ×) ran through act(), which returns at once while busy is true, and Generate remaining keeps busy true for the whole batch (about 3 seconds per shot). electron/capabilityCore/appIntegrationSpendConfirm.ts discardPendingSpend only accepted the card's current quoteId, while every decision on the card replaces it (each approved shot of Generate remaining, a single Generate this one, Remove), so a × sent with the quote the person saw was refused as generation_quote_changed whenever it arrived after that action.",
+  "class_root": "The renderer had one gate for every card action and treated the stop like another spend action; the host-level tests for 'stop in the middle' called the host's withdraw directly, so they stayed green while the only path a person can take (the card's ×) never reached it. The same gate swallowed Remove and Generate this one while a single confirm was in flight, without any visible sign.",
+  "affected_population": [
+    "Everyone who presses Generate remaining N and wants to stop it: all N are generated and paid",
+    "Everyone who presses Remove / Generate this one / × while a single confirm is still on its way (1-3 seconds): the press is swallowed without any sign"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "src/workbench/ai/v4/agentPanelSpendCard.ts",
+    "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
+    "src/workbench/ai/ProjectAgentResidentShell.tsx",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "electron/productionRun/productionRunTypes.ts"
+  ],
+  "entry_points": [
+    "The card's ×: slot-dismiss -> useAgentPanelSpendConfirm.discard -> productionRunApi.discardSpend -> IPC discard-spend -> appIntegrationSpendConfirm.discardPendingSpend",
+    "Generate remaining N: batch -> useAgentPanelSpendConfirm.confirmRemaining -> persistShown (one revise per page) -> IPC confirm-spend-remaining -> appIntegrationSpendConfirm.confirmRemainingShots (one confirmOneShot per shot)",
+    "Typing while the card is open and stopping the turn close the presentation through the lane (withdrawPresentation), not through the card's gate"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "How a paid card is answered, withdrawn and stopped in the middle is Nomi's own spend-authority flow; no external protocol defines it.",
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "tests": [
+      "electron/capabilityCore/agentPanelSpendRemaining.e2e.test.ts",
+      "tests/ux/spend-panel-write-ownership.test.mjs",
+      "tests/ux/agent-spend-stop-midway.walk.mjs"
+    ],
+    "why": "Where a running batch stops, and how many shots were approved before it stopped, is decided only by the host: confirmRemainingShots checks between shots whether the card is still open and returns batchStopped, and discardPendingSpend accepts any quote a decision on the card replaced in the open presentation (noteReplacing in confirmOneShot and removePendingSpendShot; not for edits, C09). The renderer only sends the × at once and draws what the host projects. The harness test goes through the renderer's real busy gate, which the host-level tests bypassed."
+  },
+  "invariants": [
+    "The card's × reaches the host whenever it is pressed; nothing the card is doing at that moment can swallow it.",
+    "A stopped Generate remaining sends exactly the shots approved before the stop, and the card says how many were sent and how many were not.",
+    "While a batch is running the card does not offer per-shot actions; while a single action is on its way the other actions are visibly disabled."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "replacedInOpenPresentation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "batchStopped"
+    },
+    {
+      "kind": "read",
+      "path": "src/devlab/designLab/v4/states/07-spend-params.tsx",
+      "symbol": "projectSpendCard"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/ProjectAgentResidentShell.tsx",
+      "symbol": "batchRunning"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/AgentPanelV4Cards.tsx",
+      "symbol": "actionsDisabled"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/agentPanelSpendCard.ts",
+      "symbol": "projectSpendCard"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "projectSpendCard"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "spendBatchStoppedKey"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "batchStopped"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "discardPendingSpend"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "confirmRemainingShots"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "discardPendingSpendConfirmation"
+    }
+  ],
+  "door_reduction": {
+    "before": 6,
+    "after": 12,
+    "why_not": "The stop still has one owner (confirmRemainingShots decides where a running batch stops; discardPendingSpend is the × it listens for). Every added door is a reader of that one result: the quotes of a running batch (read only by discardPendingSpend), the batchStopped field on the action result (declared once, read by the card hook), and the card's progress / disabled state (drawn from the host projection by projectSpendCard and the card component). The IPC handler stays the single route from the renderer."
+  },
+  "generality_proof": "Nothing depends on the model, vendor, shot kind or batch size: the host stops between any two shots of any batch, the renderer sends the × for any card, and the progress and the summary read the host's projection and the click-time stack (image or video wording through the same orderWording rule as the title).",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "confirmRemainingShots",
+      "responsibility": "Approves the stack one shot at a time, checks between shots whether the card was closed, and reports how many were approved before a stop."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "discardPendingSpend",
+      "responsibility": "Withdraws the offer; accepts any quote that a decision on the card (Generate this one, Remove, each shot of Generate remaining) replaced in the presentation that is still open. A quote replaced by an edit is not accepted (C09: a delayed close cannot dismiss a newer displayed quote), and an Agent re-bid is a new presentation, so an old card's × is still refused."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "entry_point": "discard",
+      "disposition": "enforced",
+      "evidence": "No longer goes through act(): during a batch it marks the stop (the persist loop stops before the next page; after hand-over it sends the × at once); during a single confirm it is sent at once. spend-panel-write-ownership.test.mjs covers both through the real gate."
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "entry_point": "remove / confirm / confirmRemaining while busy",
+      "disposition": "enforced",
+      "evidence": "Stay behind the gate on purpose (the shot they would act on is already being confirmed), but are now visibly disabled (actionsDisabled), and during a batch they are not drawn at all."
+    },
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "entry_point": "typing while the card is open / stopping the turn",
+      "disposition": "not-affected",
+      "evidence": "These close the presentation through withdrawPresentation in the lane, not through the card's gate; the running batch sees the card closed at its next check and reports batchStopped the same way."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The host-level test of 'stop in the middle' (agentPanelSpendRemaining.e2e) bypassed the renderer, so the green test and the broken user path coexisted; the same shape (a stop routed through the gate of the thing it stops) can come back with any new long-running card action.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs --write=discardPendingSpend,confirmRemainingShots,discardPendingSpendConfirmation --read=replacedInOpenPresentation,spendBatchStoppedKey,batchStopped,batchRunning,actionsDisabled,projectSpendCard",
+      "rg \"act\\(async\" src/workbench/ai/v4/useAgentPanelSpendConfirm.ts -> confirm, confirmRemaining, remove, and the non-busy × path; the × no longer depends on busy"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "invariant": "A running batch stops at the host between shots when the card is closed, and reports how many shots were approved before the stop; the card's × is never queued behind the card's other actions.",
+    "failure_mode": "If the × arrives after the last shot was approved, nothing is left to stop: the card has already closed with every shot decided, and the result says so.",
+    "exception_policy": "none",
+    "strategy": "Send the × from the renderer without the busy gate; let the host accept the quotes the card's decisions replaced in the open presentation and return batchStopped; show progress instead of per-shot actions while the batch runs.",
+    "artifacts": [
+      "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "src/workbench/ai/v4/agentPanelSpendCard.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/agentPanelSpendRemaining.e2e.test.ts",
+    "tests/ux/spend-panel-write-ownership.test.mjs",
+    "src/workbench/ai/v4/agentPanelSpendCard.test.ts",
+    "tests/ux/agent-spend-stop-midway.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "tests/ux/spend-panel-write-ownership.test.mjs"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts"
+    ],
+    "rationale": "Deleted in place: the × going through act() and being dropped while busy; the host's exact-quote-only check for a × that arrives after a decision on the card replaced the quote (first narrowed to a running batch, runningBatches; that narrowing is removed too)."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency handles the card's actions.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data changes.",
+  "residual_risks": [
+    "While the host approves a shot, the main process blocks the UI thread for about 2 seconds at a time (pre-existing: project-folder containment checks on every run read, and the module registry rebuilt from the catalog on every read). A × pressed then reaches the host one or two shots later; in the fixture walk the stop landed after 4 and 5 of 6. Reported to the coordinator as its own lane.",
+    "With the network down, Generate remaining still approves every shot locally and each then fails to send; nothing is charged, but each has to be retried (known limitation for 0.23; 0.24 stops the batch on the first send that fails for network reasons)."
+  ]
+}

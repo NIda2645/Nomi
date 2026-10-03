@@ -211,10 +211,10 @@ export function V4Intervention({
   labels,
   onConfirm,
   onPage,
-  onScope,
   onReject,
   onEscalate,
   onAlternate,
+  onBatch,
   onAnswer,
   onPlanToggle,
   onCollapsePlan,
@@ -240,13 +240,13 @@ export function V4Intervention({
   onConfirm?: () => void
   /** 翻到第几张卡（`data.pager` 在时才有意义）。 */
   onPage?: (index: number) => void
-  /** 切范围：这一镜 / 全部（`data.pager.scope` 在时才有意义）。 */
-  onScope?: (value: 'each' | 'all') => void
   /** 拒绝。`reason` 是渐进披露出来的那一行，可为空。 */
   onReject?: (reason?: string) => void
   /** 「不再问 →」——**这一个能力**以后不再问，不是整个项目（2026-09-06 拍板 ②）。 */
   onEscalate?: () => void
   onAlternate?: () => void
+  /** 整叠的动作（付费卡上是「生成剩下 N 张 / 段」），`data.batchLabel` 在时才有意义。 */
+  onBatch?: () => void
   /**
    * 用户回答了这个问题。**chip 和卡内那一行回车走同一个动作**（拍板 ⑤：选项本身就是回答）。
    * 以前这里是 `onOption`，宿主把标签填进下方 composer 就算完——那不是提交，是帮你打字。
@@ -355,13 +355,36 @@ export function V4Intervention({
   // 局部量，抽成独立组件要把它们全当 prop 再传一遍，那是把一处可读的 JSX 换成十个参数。
   const slotFooter = hasActions ? (
     <>
-        {/* 翻页 + 范围切换单独占一行，压在主按钮正上方：它们决定按钮上印的那个数，
-            所以要挨着它；而挤进同一行会让 390px 的卡横向溢出（实测 350px 可用宽放不下）。 */}
-        {pager && !rejecting && data.kind !== 'reject-reason' ? (
-          <V4Pager pager={pager} onPage={onPage} onScope={onScope} />
+        {/* ── 翻页那一行 = 「这一叠」：第几页 + 一共多少（2026-10-01 用户看样张后拍板）──
+            翻页器本身一个像素不动（提问卡也用它）；报得出价时右端印这一叠的合计「N 张 / 段 · 合计 ¥X」（单位跟标题同一条规则）。
+            单独占一行、压在动作行正上方：挤进动作行会让 390px 的卡横向溢出（实测 350px 可用宽放不下）。 */}
+        {(pager || data.totalLead) && !rejecting && data.kind !== 'reject-reason' ? (
+          <V4Row as="div" data-v4-block="pager-row">
+            {pager ? <V4Pager pager={pager} onPage={onPage} /> : null}
+            {data.totalLead ? (
+              <>
+                <span className="flex-1" />
+                {/* 这一叠要花多少。**颜色是 ink，不是警示色**：价格不是警告（设计系统 §2.1.2b）。
+                    不截断、不折行：这一行除了翻页器只有它，放得下。 */}
+                <span
+                  className={cn('shrink-0 whitespace-nowrap text-caption tabular-nums', data.price?.total ? 'text-nomi-ink' : 'text-nomi-ink-60')}
+                  data-v4-block="slot-total"
+                  // 走查认「这张卡报不报得出价」靠的就是这个属性（`PRICE_TOTAL` / `PRICE_UNAVAILABLE` 两个共享选择器）。
+                  data-v4-price={data.price?.total ? 'total' : 'unavailable'}
+                >
+                  {data.totalLead}
+                </span>
+              </>
+            ) : null}
+          </V4Row>
         ) : null}
-        <V4Row as="div" className="text-caption">
-          {rejecting || data.kind === 'reject-reason' ? (
+        {/* 动作行可以折成两行：放不下一行时，左边的整颗换到上一行（靠左），右边这一张的两颗保持一组、靠右——
+            不截断、不挤压、主按钮不被挤到下一行（2026-10-01）。中文在默认面板宽下一行放得下。 */}
+        <V4Row as="div" className="flex-wrap text-caption" data-v4-block="actions">
+          {data.progress ? (
+            // 动作已经交出去、正在一张一张走（付费卡「生成剩下 N 张」）：不摆任何按钮，只说怎么停——右上那颗 × 就是停下。
+            <span className="text-caption text-nomi-ink-60" data-v4-block="slot-progress">{data.progress.hint}</span>
+          ) : rejecting || data.kind === 'reject-reason' ? (
             <>
               <span className="flex-1" />
               <WorkbenchButton size="sm" onClick={() => { setRejecting(false); setReason('') }} data-v4-control="cancel-reject">
@@ -378,26 +401,13 @@ export function V4Intervention({
             </>
           ) : (
             <>
-              {/* ── 左下：**元信息**（2026-09-22 换壳后的新排布）──
-                  徽章（「不可逆」「付费」）、价格行、「不再问 →」、「收起清单」都在这一侧。
-                  它们的共同点是**读的东西 / 次要的东西**，不是这张卡要人按的那一下。 */}
-              {/* 这次要花多少。放在这里而不是按钮上：按钮只说动作，金额只印一处。
-                  **颜色是 ink，不是警示色**：价格不是警告（设计系统 §2.1.2b——语义靠色相，
-                  警示色留给真的警示）。合计用正文档；「价格未知」那句用次级 ink——它是一句
-                  如实交代，不是报错，而且**按钮照常可点**（花钱边界的产品拍板）。 */}
-              {data.totalLead ? (
-                <span
-                  // **不 truncate**：这一格在算不出价时是一整句交代（「价格未知 · 以供应商账单为准」），
-                  // 截成「Price unknown — your provider…」等于把唯一要说的话切掉一半（EN 真截图上看到的）。
-                  // 放不下就折行，不省略。
-                  className={cn('min-w-0 tabular-nums', data.price?.total ? 'text-nomi-ink' : 'text-nomi-ink-60')}
-                  data-v4-block="slot-total"
-                  // 走查认「这张卡报不报得出价」靠的就是这个属性（`PRICE_TOTAL` /
-                  // `PRICE_UNAVAILABLE` 两个共享选择器）。它跟着那个数从卡体搬到页脚。
-                  data-v4-price={data.price?.total ? 'total' : 'unavailable'}
-                >
-                  {data.totalLead}
-                </span>
+              {/* ── 左：**整叠的动作 + 元信息** ──
+                  「生成剩下 N 张」（付费卡多镜时，2026-10-01 用户拍板）在最左：整叠的动作在左、这一张的动作在右，
+                  最贵的那颗离主按钮最远，不容易误点。「不再问 →」「收起清单」这类次要的东西也在这一侧。 */}
+              {data.batchLabel && onBatch ? (
+                <WorkbenchButton size="sm" className="shrink-0" onClick={onBatch} disabled={data.actionsDisabled === true} data-v4-control="batch">
+                  {data.batchLabel}
+                </WorkbenchButton>
               ) : null}
               {canEscalate ? (
                 <button type="button" className="text-micro text-nomi-ink-40" onClick={onEscalate} data-v4-control="escalate">
@@ -414,35 +424,36 @@ export function V4Intervention({
                   {planCollapsed ? labels.expandPlan : labels.collapsePlan}
                 </button>
               ) : null}
-              <span className="flex-1" />
-              {/* ── 右下：**动作**。安静次按钮在左、深色主按钮在右（参照物的排法）。
+              {/* ── 右：**这一张的动作**，一组、靠右。安静次按钮在左、深色主按钮在右（参照物的排法）。
                   否定动作那颗 × 已经搬到卡右上角，由外壳统一摆，这里不再有它。 */}
-              {data.alternateLabel ? (
-                // 次动作 = 现役描边按钮（agent 专章 §8.2：主次只用颜色分，深底=主、描边=次；
-                // 文字链不与按钮同排）。
-                <WorkbenchButton size="sm" onClick={onAlternate} data-v4-control="alternate">
-                  {data.alternateLabel}
-                </WorkbenchButton>
-              ) : null}
-              <WorkbenchButton
-                variant="primary"
-                size="sm"
-                onClick={onConfirm}
-                data-v4-control="confirm"
-                // `data-v4-price` 这个走查锚点**跟着那个数走**：多镜 / 未知价时它挂在页脚左下那一格上；
-                // 单镜且报得出价时左下留空（同一个数不说两遍），数只印在这颗按钮上，锚点也就挂在这里。
-                // 未知价时不挂——那一档根本没有「合计」可言，走查靠它不存在来认。
-                {...(!data.totalLead && data.price?.total ? { 'data-v4-price': 'total' } : {})}
-                // 单动作最小宽 72px（agent 专章 §8.2），否则两个字的按钮会缩成小方块。尺寸阶梯上没有 72，取上一档 80（`min-w-20`），不写任意值。
-                // `shrink-0`：左下那句话折行时不许来挤主按钮——被挤的永远该是说明，不是动作。
-                className="min-w-20 shrink-0"
-              >
-                {data.kind === 'approval-irreversible' || data.kind === 'spend' ? (
-                  <IconCheck aria-hidden="true" />
+              <span className="flex grow items-center justify-end gap-1.5" data-v4-block="card-actions">
+                {data.alternateLabel ? (
+                  // 次动作 = 现役描边按钮（agent 专章 §8.2：主次只用颜色分，深底=主、描边=次；
+                  // 文字链不与按钮同排）。
+                  <WorkbenchButton size="sm" onClick={onAlternate} disabled={data.actionsDisabled === true} data-v4-control="alternate">
+                    {data.alternateLabel}
+                  </WorkbenchButton>
                 ) : null}
-                {data.confirmLabel ?? labels.confirm}
-                <span aria-hidden="true" className="text-micro opacity-70">⏎</span>
-              </WorkbenchButton>
+                <WorkbenchButton
+                  variant="primary"
+                  size="sm"
+                  onClick={onConfirm}
+                  disabled={data.actionsDisabled === true}
+                  data-v4-control="confirm"
+                  // `data-v4-price` 这个走查锚点**跟着那个数走**：多镜时它挂在翻页那一行右端的合计上；
+                  // 单镜且报得出价时那一格不出现（同一个数不说两遍），数只印在这颗按钮上，锚点也就挂在这里。
+                  // 未知价时不挂——那一档根本没有「合计」可言，走查靠它不存在来认。
+                  {...(!data.totalLead && data.price?.total ? { 'data-v4-price': 'total' } : {})}
+                  // 单动作最小宽 72px（agent 专章 §8.2），否则两个字的按钮会缩成小方块。尺寸阶梯上没有 72，取上一档 80（`min-w-20`），不写任意值。
+                  className="min-w-20 shrink-0"
+                >
+                  {data.kind === 'approval-irreversible' || data.kind === 'spend' ? (
+                    <IconCheck aria-hidden="true" />
+                  ) : null}
+                  {data.confirmLabel ?? labels.confirm}
+                  <span aria-hidden="true" className="text-micro opacity-70">⏎</span>
+                </WorkbenchButton>
+              </span>
             </>
           )}
         </V4Row>

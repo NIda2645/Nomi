@@ -223,6 +223,26 @@
       "reason": "「按契约与 operation 覆盖解出效果类」这条不变量现在由同文件的 capabilityEffectClassOf 承担，lane 审批闸 laneApprovalGate 的 subjectOf 直接调它。resolveCapabilityEffectClass 是它按别名查契约的一层包装，旧 projectAgentHost 在 36f343204 删除后已无调用方，2026-09-24 同类扫描（docs/fixes/2026-09-24-stale-tool-name-lists.root-cause.json）一并删除。"
     },
     {
+      "contract": "docs/fixes/2026-09-10-agent-draft-single-ledger.root-cause.json",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "sealGenerationShots",
+      "anchor": {
+        "path": "electron/productionRun/productionGenerationSeal.ts",
+        "symbol": "sealGenerationShots"
+      },
+      "reason": "2026-10-01 付费卡逐镜：封印那一段（逐镜冻结子合同、封印范围）从 reducer 搬进 productionGenerationSeal.ts，同名同职责，reducer 的 generation.seal 只调用它。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-22-waiting-for-user-one-owner.root-cause.json",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "withdrawGenerationPresentation",
+      "anchor": {
+        "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+        "symbol": "withdrawGenerationPresentation"
+      },
+      "reason": "2026-10-01 付费卡逐镜：出价账的写口集中到 productionGenerationPresentationEdits.ts（present / 去掉一镜 / 收回 / 都决定完了自己关），收回出价同名搬家，现在多记一个关的原因。"
+    },
+    {
       "contract": "docs/fixes/2026-09-03-seo-clean-route-drift.root-cause.json",
       "path": "scripts/marketing/site-manifest.mjs",
       "symbol": "marketingPages",

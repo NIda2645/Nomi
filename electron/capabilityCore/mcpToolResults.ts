@@ -38,11 +38,11 @@ const RUN_STATUS_HINT: Record<string, { zh: string; en: string; nextZh: string; 
 
 /**
  * 停着的 Run **为什么停**（Run 在停下那一刻记下的事实，投影里的 `stopReason`）→ 给 Agent 转述的人话与下一步。
- * 以前 needs_attention 一律说「有任务卡住了」，Agent 没法告诉用户是预算、失败还是重启后要核对。
+ * 以前 needs_attention 一律说「有任务卡住了」，Agent 没法告诉用户是失败、要他再确认一次还是重启后要核对。
  * 穷尽：多一种停下原因而这里没表态，类型检查当场红。
  */
 const STOP_REASON_HINT: Record<ProductionRunStopReason | 'unknown', { zh: string; en: string; nextZh: string; nextEn: string; action: string }> = {
-  budget: { zh: '批过的额度用完了', en: 'approved budget used up', nextZh: '已知价格的镜头把批过的额度用完了；续拍要先在 Nomi 里续额度', nextEn: 'Priced shots used up the approved budget; continuing needs a budget top-up in Nomi', action: 'raise_budget' },
+  consent_expired: { zh: '需要用户再确认一次', en: 'needs the user to confirm again', nextZh: '批过的镜头还没开拍，离用户上一次确认已经太久了；请用户在 Nomi 里点一下「继续」，那一下就是确认（你替不了他）', nextEn: 'The approved shots have not started and the user\'s last confirmation is too old; ask the user to click Continue in Nomi — that click is the confirmation, you cannot give it for them', action: 'ask_user_to_continue' },
   failed: { zh: '有镜头没生成成功', en: 'a shot failed', nextZh: '有镜头没生成成功，这一批停下了。可以在 Nomi 画布上重做那一镜，或取消这次制作', nextEn: 'A shot failed, so the batch stopped. Redo that shot on the Nomi canvas, or cancel the run', action: 'rework_or_cancel' },
   user_paused: { zh: '用户暂停了', en: 'paused by the user', nextZh: '已提交的花费不退但产物保留；未提交的不再花钱。可继续或取消', nextEn: 'Submitted spend is not refundable but its output is kept; nothing new will be charged. Resume or cancel', action: 'resume_or_cancel' },
   user_cancelled: { zh: '用户取消了', en: 'cancelled by the user', nextZh: '未提交的任务不计费', nextEn: 'Unsubmitted jobs are not charged', action: 'none' },

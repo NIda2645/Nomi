@@ -1,0 +1,163 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-02-card-revise-merge-rule",
+  "problem_type": "A change made on the paid card was merged into the shot's candidate without the rule every other patch path uses, so switching the mode on the card left the task kind behind",
+  "detected_by": "walkthrough",
+  "recurrence_check_on": "2026-11-01",
+  "symptom": "pb02 (2026-10-02): with a canvas reference the card switched itself to Image-to-image and pressed Generate this one; Nomi said it did not start and did not charge. The main process logged 'catalog generation parameter is unsupported: image_urls': the dispatch picked the provider's text-to-image mapping, which takes no reference images. The same happens when the person switches Text-to-image to Image-to-image, or Text-to-video to Image-to-video, on the card by hand.",
+  "direct_cause": "electron/capabilityCore/appIntegrationSpendConfirm.ts revise passed the card's patch straight to generation.revise (productionGenerationPlanEdits.applyGenerationCandidatePatch), so a patch with only modeId changed the archetype mode id and kept the old task kind (mode); electron/capabilityCore/generationPlanPatch.ts resolvePlanPatch, which the Agent's draft patch goes through, did not derive the task kind from a changed modeId either.",
+  "class_root": "Two write paths patch the same candidate (the Agent's draft patch and the card's revise) and only one went through the shared merge rule; and the merge rule followed the task kind for a model change but not for a mode change, although modeId and mode are two spellings of one fact.",
+  "affected_population": [
+    "Every paid card where the mode changes: the card aligning itself to canvas references, or the person switching the mode bar",
+    "Card model changes across catalogs with different mode spellings (now normalized by the same rule as the Agent's patch)"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/generationPlanPatch.ts",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "electron/capabilityCore/appIntegration.ts"
+  ],
+  "entry_points": [
+    "The card's revise: IPC revise-spend -> appIntegrationSpendConfirm.revise -> normalizePatch (resolvePlanPatch) -> operations.revise -> generation.revise",
+    "The Agent's draft patch: draft_shots / generation patch -> mcpGenerationTools -> resolvePlanPatch -> operations.patch"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "How a patch merges into a shot's candidate and which task kind an archetype mode means are Nomi's own catalog and archetype rules.",
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/generationPlanPatch.ts",
+    "tests": [
+      "electron/capabilityCore/generationPlanPatch.test.ts",
+      "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts"
+    ],
+    "why": "resolvePlanPatch is the one merge rule for candidate patches: the task kind follows a model change or a mode change (via modeTransportFor, the same function the canvas and the video normalizer use), and the model and mode pair is admitted against the catalog. Both write paths now call it."
+  },
+  "invariants": [
+    "A candidate's task kind and its archetype mode id never disagree after a patch: changing modeId alone moves the task kind to that mode's transport kind in the catalog's spelling.",
+    "Every patch to a shot's candidate, from the Agent or from the card, goes through the same merge rule before it is written."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "symbol": "declaredModeForModel"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "symbol": "modeForArchetypeMode"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts",
+      "symbol": "resolvePlanPatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "resolvePlanPatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "normalizePatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "symbol": "resolvePlanPatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "applyGenerationCandidatePatch"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "applyGenerationCandidatePatch"
+    }
+  ],
+  "door_reduction": {
+    "before": 6,
+    "after": 8,
+    "why_not": "The rule itself has one owner (resolvePlanPatch); the added doors are the card path calling it through an injected dependency (required, so a host that forgets to wire it does not compile) and the mode lookup inside it. applyGenerationCandidatePatch stays the single place that writes the merged patch into the plan for both commands."
+  },
+  "generality_proof": "The task kind is derived from the model's archetype mode through modeTransportFor and written in the catalog's own spelling (declaredModeForModel), so it covers image and video archetypes, vendor-specific transports and any catalog spelling without a model-specific branch; video candidates already followed modeId inside normalizeVideoCandidate, images had no equivalent.",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/generationPlanPatch.ts",
+      "symbol": "resolvePlanPatch",
+      "responsibility": "Merges a patch into a shot's candidate: the task kind follows a model or mode change, leftover parameters are cleared, named parameters and the model/mode pair are admitted."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "normalizePatch",
+      "responsibility": "The card's revise calls the merge rule (injected, required) against the unsealed candidate before writing."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "revise",
+      "disposition": "enforced",
+      "evidence": "A cross-category model swap is now refused when revised, not later at confirm (agentPanelSpendConfirm.e2e.test.ts); pb02 path B sends the canvas reference with the image-edit transport."
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationTools.ts",
+      "entry_point": "patch",
+      "disposition": "enforced",
+      "evidence": "Already used resolvePlanPatch; now also gets the task kind from a modeId-only patch (generationPlanPatch.test.ts)."
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationVideoResolve.ts",
+      "entry_point": "normalizeVideoCandidate",
+      "disposition": "not-affected",
+      "evidence": "Video candidates already derive the transport kind from modeId at every compile point; the merge rule now agrees with it before the compile."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The paid card's A2 change (2026-10-01) routed every shot-building path through admitShotIdentity but missed the card's own revise; the same shape (one entry skipping the shared rule) is what that change set out to remove.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs --write=resolvePlanPatch,applyGenerationCandidatePatch,normalizePatch --read=modeForArchetypeMode,declaredModeForModel",
+      "rg \"operations.revise\\(|operations.patch\\(\" electron -> the card revise and the MCP patch; both go through resolvePlanPatch now"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/generationPlanPatch.ts",
+    "invariant": "Every candidate patch goes through resolvePlanPatch, which keeps the task kind and the archetype mode id in agreement.",
+    "failure_mode": "A patch whose model or mode cannot be admitted is refused when it is made (the card says it did not start and did not charge), not later at dispatch.",
+    "exception_policy": "none",
+    "strategy": "Derive the task kind from a changed modeId with modeTransportFor in the merge rule; inject the merge rule into the card's revise as a required dependency.",
+    "artifacts": [
+      "electron/capabilityCore/generationPlanPatch.ts",
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "electron/capabilityCore/appIntegration.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/generationPlanPatch.test.ts",
+    "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+    "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts",
+    "tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/generationPlanPatch.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts"
+    ],
+    "rationale": "Deleted in place: the card revise writing the raw patch into the candidate; it now writes only what the merge rule returns."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency merges candidates.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data changes. Drafts already saved with a mismatched mode and modeId are corrected by the next patch; video drafts were already normalized at compile.",
+  "residual_risks": [
+    "A card patch with parameters the catalog does not admit is now refused when made (earlier it was refused at confirm); the card says it did not start."
+  ]
+}

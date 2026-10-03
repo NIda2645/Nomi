@@ -25,9 +25,10 @@ export const zhGenerationCommon = {
     failed: '没能确认 ComfyUI 已取消任务；它可能仍在本地运行',
   },
   spendHostingDisclosure: {
-    message: '这次要用到参考图，需先上传到公共临时托管——素材会离开本机，链接短期有效，并存在隐私风险。配置 KIE 后可改用它（免费，且会优先使用）。',
+    // 只说事实（2026-10-01）：不说「免费」，也不替用户推荐某一家上传通道。
+    message: '这次要用到参考图，需先上传到公共临时托管——素材会离开本机，链接短期有效，并存在隐私风险。可以在设置里换上传通道。',
     remember: '记住我的选择，以后不再问',
-    autonomousBlocked: '这次生成要用到本机素材，需要先上传到公共临时托管，但自动任务不会替你做这个决定。请先在设置里配置 KIE 上传（免费），或把「匿名素材托管」策略改为允许，然后重试。',
+    autonomousBlocked: '这次生成要用到本机素材，需要先上传到公共临时托管，但自动任务不会替你做这个决定。请先在设置里换一个上传通道，或把「匿名素材托管」策略改为允许，然后重试。',
   },
   provenance: {
     dialogAria: '生成记录',
@@ -761,7 +762,8 @@ export const zhGenerationCommon = {
     expandPrompt: '展开提示词',
     collapsePrompt: '收起提示词',
     variantCountTitle: '每次生成 {{count}} 个',
-    variantCountOption: '{{count}} 个',
+    variantCountOption_one: '{{count}} 个',
+    variantCountOption_other: '{{count}} 个',
     generate: '生成',
     generateAsset: '生成素材',
     uploading: '上传中',
@@ -1465,17 +1467,20 @@ export const zhGenerationCommon = {
       // 没点就不叫排队中：卡正摆着它 → 等你确认；从没被批过、也没人在问 → 还没生成（都不转圈）。
       awaitingConfirmation: '等你确认',
       notGenerated: '还没生成',
+      // 付费卡上点了「去掉这张 / 这段」：不生成，占位留着。
+      removedNotGenerated: '已去掉，不生成',
       queued: '排队中',
       queuedNth: '排队中 · 第 {{index}}/{{total}}',
-      stoppedBudget: '预算已用完，这镜还没开拍。提额后可继续拍剩下的。',
       stoppedManual: '已停止剩余镜头。想继续可从这里接着拍。',
       // 已停的另外几种真实原因（2026-09-29：以前一律说成「预算已用完」）。没有能按的「继续」时，文案里说清能做什么。
       stoppedAfterFailure: '前面有镜头没生成成功，这一镜还没开拍。选中它可以单独生成，或在任务面板取消这次制作。',
       stoppedForRecovery: 'Nomi 重启后要先核对之前在跑的镜头，这一镜还没开拍。打开任务面板核对。',
       stoppedCancelled: '这次制作已取消，这一镜没有开拍。选中它可以单独生成。',
-      // 上一版留下的、没记停下原因的制作：不猜原因，只说停了。
-      stoppedUnknown: '这次制作停下了，这一镜还没开拍。想继续可从这里接着拍。',
-      raiseBudget: '提额续拍',
+      // 上一版留下的、没记停下原因（或记着这一版已经没有的原因）的制作：不猜原因，只说停了。
+      stoppedUnknown: '已停，这镜还没开拍。',
+      // 批过的镜离你上一次点头太久、没人替你续（付费卡① 第 13 条）：点「继续」那一下就是确认。
+      stoppedConsentExpired: '这镜还没开拍，需要你再确认一次。',
+      resume: '继续',
       continueRemaining: '继续剩余',
       // 用户删掉占位节点、但这件事没能记进制作流程：被删的那一镜可能照样生成并计费。动作 = 打开任务面板（暂停 / 取消）。
       detachFailed: '删掉的镜头没能从制作流程里撤下，它可能照样生成。打开任务面板可以暂停或取消这次制作。',
@@ -1494,7 +1499,6 @@ export const zhGenerationCommon = {
         providerUnavailable: '这一镜用的模型现在接不上供应商（连接被删了，或 Key 没配好），这次没有开拍。到「模型接入」接好后再点一次。',
         noPriorAttempt: '这一镜还没生成过，先让它正常开拍。',
         previousAttemptUnsettled: '这一镜上一次还没出结果，等它出来再重做。',
-        queuedShotsPending: '还有镜头在排队，这一镜现在不能单独重做。可以选中它在画布上单独生成，或在任务面板取消这次制作。',
         attemptLimit: '这一镜已经重做到上限了。可以选中它在画布上单独生成。',
         runChanged: '这一批刚好有别的更新，这次没做成。再点一次。',
         approvalStale: '确认的时候项目刚好有变动，这次没有开拍。再点一次，重新确认。',
@@ -1600,9 +1604,9 @@ export const enGenerationCommon = {
     failed: 'Nomi could not confirm that ComfyUI cancelled the job. It may still be running locally.',
   },
   spendHostingDisclosure: {
-    message: 'This generation uses a reference image, so it must first be uploaded to a public temporary host—the asset leaves this computer, the link is short-lived, and there is a privacy risk. Configure KIE to use its free upload channel instead (it is preferred).',
+    message: 'This generation uses a reference image, so it must first be uploaded to a public temporary host—the asset leaves this computer, the link is short-lived, and there is a privacy risk. You can change the upload channel in Settings.',
     remember: 'Remember my choice and do not ask again',
-    autonomousBlocked: 'This generation needs a local asset uploaded to a public temporary host, and an automated run will not make that choice for you. Configure KIE upload (free) in settings, or set the anonymous asset hosting policy to allow, then retry.',
+    autonomousBlocked: 'This generation needs a local asset uploaded to a public temporary host, and an automated run will not make that choice for you. Change the upload channel in Settings, or set the anonymous asset hosting policy to allow, then retry.',
   },
   provenance: {
     dialogAria: 'Generation record',
@@ -2314,7 +2318,9 @@ export const enGenerationCommon = {
     expandPrompt: 'Expand prompt',
     collapsePrompt: 'Collapse prompt',
     variantCountTitle: 'Generate {{count}} per run',
-    variantCountOption: '{{count}} outputs',
+    // 复数走 i18n 规则，不拼串：「1 outputs」是 2026-10-01 真机截图上看到的。
+    variantCountOption_one: '{{count}} output',
+    variantCountOption_other: '{{count}} outputs',
     generate: 'Generate',
     generateAsset: 'Generate asset',
     uploading: 'Uploading',
@@ -3017,18 +3023,22 @@ export const enGenerationCommon = {
       // Not clicked means not queued: on the card → waiting for the user; never approved and nobody asking → not generated.
       awaitingConfirmation: 'Waiting for you',
       notGenerated: 'Not generated',
+      removedNotGenerated: 'Removed — not generated',
       queued: 'Queued',
       queuedNth: 'Queued · {{index}}/{{total}}',
-      stoppedBudget: 'Budget ran out before this shot. Raise it to keep filming the rest.',
       stoppedManual: 'Remaining shots stopped. Continue filming from here.',
       // The other real reasons a run stops (2026-09-29: all of them used to read as "budget ran out"). Without a working
       // "continue", the sentence itself says what the user can do.
       stoppedAfterFailure: 'An earlier shot failed, so this one hasn\'t started. Select it to generate it on its own, or cancel the run in Tasks.',
       stoppedForRecovery: 'After restarting, Nomi has to check the shots that were running, so this one hasn\'t started. Open Tasks to check them.',
       stoppedCancelled: 'This run was cancelled before this shot started. Select it to generate it on its own.',
-      // A run from the previous version that never recorded why it stopped: say it stopped, never guess why.
-      stoppedUnknown: 'This run stopped before this shot started. Continue filming from here.',
-      raiseBudget: 'Raise budget',
+      // A run from an older version that never recorded why it stopped (or recorded a reason this version no longer has):
+      // say it stopped, never guess why.
+      stoppedUnknown: 'Stopped — this shot hasn\'t started.',
+      // The approved shots waited too long after your last go-ahead and nobody renewed it (paid card rule 13): the
+      // "Continue" click is the confirmation.
+      stoppedConsentExpired: 'This shot hasn\'t started — it needs your go-ahead again.',
+      resume: 'Continue',
       continueRemaining: 'Continue remaining',
       // The user deleted a placeholder but the production run never recorded it: that shot may still generate and bill.
       detachFailed: 'The deleted shot could not be withdrawn from the production run, so it may still generate. Open Tasks to pause or cancel the run.',
@@ -3048,7 +3058,6 @@ export const enGenerationCommon = {
         providerUnavailable: 'This shot\'s model can\'t reach a provider right now (the connection was removed or its key isn\'t set), so nothing started. Reconnect it in Model Access, then try again.',
         noPriorAttempt: 'This shot hasn\'t been generated yet. Let it film first.',
         previousAttemptUnsettled: 'This shot\'s last attempt hasn\'t finished. Wait for it before redoing.',
-        queuedShotsPending: 'Other shots are still queued, so this one can\'t be redone on its own yet. Select it to generate it on the canvas, or cancel the run in Tasks.',
         attemptLimit: 'This shot has reached its redo limit. Select it to generate it on the canvas.',
         runChanged: 'This run just changed, so this didn\'t go through. Try again.',
         approvalStale: 'The project changed while you were confirming, so nothing started. Try again and confirm once more.',

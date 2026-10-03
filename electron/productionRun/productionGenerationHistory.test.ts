@@ -11,14 +11,30 @@ import type { ProductionRun } from './productionRunTypes'
 
 type Contract = { contractHash: string }
 
+/** 一张快照：批这个 job 的那道门带着它冻住的信封（2026-09-30 起授权按门存）。 */
 function snapshot(digest: string, contractHash: string): ProductionRun {
   return {
     projectId: 'project-1', runId: 'run-1', planVersion: 1,
-    jobs: [], gates: [], artifacts: [],
+    jobs: [], artifacts: [],
+    gates: [{ gateId: `gate-${digest}`, scope: 'budget_envelope', status: 'approved', planHash: digest, authorizationDigest: digest,
+      authorizationEnvelope: { gateId: `gate-${digest}`, jobs: [{ jobId: 'job-1', attempt: 1, contractHash }] } }],
+    generationPlan: {
+      state: 'submitted',
+      contract: { contractHash } as unknown as Contract,
+    },
+  } as unknown as ProductionRun
+}
+
+/** 上一版写下的快照：信封挂在计划上，门上没有。读的时候由 normalizeLegacySpendAuthority 搬到门上。 */
+function legacySnapshot(digest: string, contractHash: string): ProductionRun {
+  return {
+    projectId: 'project-1', runId: 'run-1', planVersion: 1,
+    jobs: [], artifacts: [],
+    gates: [{ gateId: 'gate-1', scope: 'budget_envelope', status: 'approved', planHash: digest, authorizationDigest: digest }],
     generationPlan: {
       state: 'submitted', authorizationDigest: digest, authorizationGateId: 'gate-1',
       contract: { contractHash } as unknown as Contract,
-      authorizationEnvelope: { jobs: [{ jobId: 'job-1', attempt: 1, contractHash }] },
+      authorizationEnvelope: { gateId: 'gate-1', jobs: [{ jobId: 'job-1', attempt: 1, contractHash }] },
     },
   } as unknown as ProductionRun
 }
@@ -86,4 +102,11 @@ it('an addressed execution that is missing or ambiguous is reported, not thrown,
   expect(findGenerationExecutionJob(ambiguous, {})).toBeUndefined()
   const { repository } = countingRepository([])
   expect(() => readGenerationExecution(repository, missing, {})).toThrow(/identity is missing or ambiguous/)
+})
+
+it('an event snapshot written by the previous version (envelope on the plan) still yields its frozen contract', () => {
+  const run = runWithJob('digest-current', 'digest-old')
+  const archive = [legacySnapshot('digest-old', 'hash-old'), snapshot('digest-current', 'hash-current')]
+  const { repository } = countingRepository(archive)
+  expect(readGenerationExecution(repository, run, {}).contract.contractHash).toBe('hash-old')
 })

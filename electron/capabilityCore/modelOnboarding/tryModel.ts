@@ -97,7 +97,7 @@ export async function tryModel(
   // 档位代答（「全自动」）与逐次问人（其余档）的**区别只有一处**：令牌上带不带这次的报价。
   //   · 带 → `assertAndConsumeQuotedSpend` 认得出这笔就是已授权的那一笔，直接扣、直接发；
   //   · 不带 → 它一定会走到 `confirm()`，也就是一定会去问用户（报价卡在用户自己的 Nomi 窗口里，
-  //     未知价那一档的措辞由渲染层的报价卡负责，见 i18n `spendParamsConfirmUnknown`）。
+  //     报价卡怎么说由渲染层负责，见 `src/workbench/ai/v4/agentPanelSpendCard.ts`：报不出价时卡上不说任何价格的话）。
   // 两条路都经同一个钱闸，这里没有第二套判据，也没有任何「跳过闸」的分支。
   const policyAnswers = spendDecidedByPolicy(deps.approvalPolicy?.());
   const quoted = quoteSpendLine({ vendorKey, modelKey, parameters: {} });

@@ -1,0 +1,214 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-02-paid-card-canvas-reference-mode",
+  "problem_type": "The paid card showed and sent references connected on the canvas only when the host's shot was already in a mode with reference slots; a reference removed on the card came back on the next render; and removing one on the card went through the canvas's own remove path and deleted the canvas edge",
+  "detected_by": "walkthrough",
+  "recurrence_check_on": "2026-11-01",
+  "symptom": "Full walk pb02 (2026-10-02): the person connected a reference photo to the placeholder of an Agent-drafted image shot and pressed Generate this one on the paid card. The card said 'Text to image' and showed no reference; the provider received 0 references although the canvas showed the connection (sent-references-on-canvas). Removing a canvas-connected reference on the card did not stick: the next render put it back and it was sent anyway. The card's composer also treated the canvas edges of the placeholder as its own, so the × on such a reference disconnected the edge on the canvas before anything was generated.",
+  "direct_cause": "src/workbench/ai/v4/spendCardDraft.ts projectSpendNode built the card node in the host shot's mode (gpt-image-2 t2i, no reference slots) and then placed the canvas references into it, so applySpendReferences had no slot and dropped them; useAgentPanelSpendConfirm read the canvas references from the placed canvas node's own slots. Edits on the card were diffed against the host shot (candidatePatchFromNode without a baseline), so removing a canvas reference or switching the promoted mode back looked identical to the host's copy and recorded nothing. The card node took the placeholder's id (projectSpendNode: id = shot.nodeId), so NodeParameterControls resolved the live canvas edges as the card node's own fills and decideArrayReferenceRemoval answered disconnect-edge, which NodeParameterControls executes with the store's disconnectEdge directly, outside the write-access seam.",
+  "class_root": "Which mode can consume the live reference edges of a node has one rule on the canvas (resolveModeForConnectedReferences, applied when an edge is created, when the model changes and at submit), but the paid card became a fourth consumer of canvas references without applying it; and once canvas references became part of the card's default projection, the card's edit ledger kept diffing against the host's copy instead of the card the person started from. The card editor shared the placeholder's identity, so canvas-structure logic in the shared composer acted on the canvas from the panel host.",
+  "affected_population": [
+    "Agent-drafted image shots whose default mode is text-only (for example GPT Image 2 text to image) with a reference connected on the canvas",
+    "Any paid card where the person removes a canvas-connected reference or switches the mode the card aligned for it"
+  ],
+  "scope_paths": [
+    "src/workbench/ai/v4/spendCardDraft.ts",
+    "src/workbench/ai/v4/spendCardReferences.ts",
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx"
+  ],
+  "entry_points": [
+    "Paid card body and every page sent by Generate remaining: useAgentPanelSpendConfirm.shownNodeFor -> defaultNodeFor -> projectSpendNode -> placeSpendReferences",
+    "An edit on the card (reference removed, mode switched, prompt or parameter changed): writeAccess.updateNode -> draftAfterNodeEdit(baseline = defaultNodeFor) -> candidatePatchFromNode",
+    "Pressing Generate this one / Generate remaining: persistShown -> candidatePatchFromNode(shown node, host shot) -> generation.revise",
+    "Removing a reference on the card: AssetReference × -> NodeParameterControls.handleAssetRemove -> decideArrayReferenceRemoval (remove-upload on the card node) -> card write access",
+    "Picking a canvas asset for an edge-backed parameter slot: NodeParameterControls.handleAssetPick -> edge only with the canvas connect capability, otherwise the card's own slot"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Which reference edges a generation node consumes and which mode receives them is Nomi's own canvas rule over its own model archetypes; no third-party library decides it.",
+  "invariant_owner_layer": {
+    "layer": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+    "tests": [
+      "src/workbench/ai/v4/spendCardCanvasReferences.test.ts",
+      "src/workbench/generationCanvas/agent/referenceEdgeCapability.test.ts"
+    ],
+    "why": "resolveModeForConnectedReferences is the only rule for which mode receives the live reference edges; the canvas applies it at edge creation, model change and submit, and the paid card now applies the same function in placeSpendReferences instead of keeping the host's mode."
+  },
+  "invariants": [
+    "A reference connected on the canvas to a paid shot's placeholder is shown on the card and sent, in a mode that can receive it, chosen by the canvas's own rule.",
+    "The card node is not the canvas node (its own id): the shared composer cannot read or write the placeholder's canvas edges from the panel; canvas references reach the card only through placeSpendReferences.",
+    "Removing a canvas reference on the card leaves the canvas edge in place, is not sent, and does not keep the card in a reference mode for it.",
+    "Edits on the card are recorded relative to the card the person started from; what is sent is always the card as shown."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "symbol": "resolveModeForConnectedReferences"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "symbol": "canvasReferenceInputs"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/buildNodeModelChangePatch.ts",
+      "symbol": "resolveModeForConnectedReferences"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/useNodeModelAutoSelect.ts",
+      "symbol": "resolveModeForConnectedReferences"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "resolveModeForConnectedReferences"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/runProjectDelivery.ts",
+      "symbol": "resolveModeForConnectedReferences"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "placeSpendReferences"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "draftAfterNodeEdit"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "reconcileNodeModeWithConnectedReferences"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "keptReferenceUrls"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "symbol": "findNodeResultUrl"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "symbol": "storeConnectNodes"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "symbol": "canConnect"
+    }
+  ],
+  "door_reduction": {
+    "before": 8,
+    "after": 13,
+    "why_not": "The mode rule keeps one owner (resolveModeForConnectedReferences) and the card reads it in one place (placeSpendReferences); the added doors are the card's exclusion set (keptReferenceUrls), the url lookup it shares with the slot resolver (findNodeResultUrl), and the composer's edge-creating call now gated by the canvas connect capability. The canvas's own readers stay separate because each is a different user moment."
+  },
+  "generality_proof": "The card calls the canvas's rule with the card node and the live canvas graph, so it aligns the mode for any archetype and any slot kind the canvas aligns for (image references, first and last frames, video and audio references), and for every host model, without a model-specific branch.",
+  "shared_boundaries": [
+    {
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "symbol": "placeSpendReferences",
+      "responsibility": "Builds the card's default references: the host shot's own plus the canvas-connected ones, in the mode chosen by the canvas's own rule (resolveModeForConnectedReferences in src/workbench/generationCanvas/agent/referenceEdgeCapability.ts, called, not copied)."
+    },
+    {
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "candidatePatchFromNode",
+      "responsibility": "Turns the card as shown into a patch: relative to the default card for the edit ledger, relative to the host shot for what is sent."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "entry_point": "placeSpendReferences",
+      "disposition": "enforced",
+      "evidence": "A text-only host shot with a connected canvas image is shown in i2i with the image and sends modeId i2i plus the reference (spendCardCanvasReferences.test.ts, pb02)."
+    },
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "entry_point": "writeAccess.updateNode",
+      "disposition": "enforced",
+      "evidence": "Edits are recorded against defaultNodeFor; removing the canvas reference and switching back to text to image both stick (spendCardCanvasReferences.test.ts)."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "reconcileNodeModeWithConnectedReferences",
+      "disposition": "not-affected",
+      "evidence": "The canvas's own submit path already applies the rule; unchanged."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/buildNodeModelChangePatch.ts",
+      "entry_point": "buildNodeModelChangePatch",
+      "disposition": "not-affected",
+      "evidence": "Model changes on the canvas already re-align the mode with the live edges; unchanged."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "entry_point": "handleAssetPick (edge-backed parameter slot, canvas asset)",
+      "disposition": "enforced",
+      "evidence": "Creates a canvas edge only when the write access carries the canvas connect capability; the paid card writes its own slot instead (spendCardCanvasReferences.test.ts covers the removal decision; the pick path is the same seam)."
+    },
+    {
+      "path": "src/workbench/generationCanvas/nodes/NodeParameterControls.tsx",
+      "entry_point": "handleArrayRemove",
+      "disposition": "enforced",
+      "evidence": "On the card node (own id) the canvas has no edges to it, so decideArrayReferenceRemoval answers remove-upload and the canvas edge is untouched (spendCardCanvasReferences.test.ts, pb02 path C)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same class (a node left in a text-only mode silently drops connected references) was reported on 2026-07-28 for canvas nodes after a model change and fixed with the submit-time reconcile; the paid card was a new consumer that skipped the rule.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs --write=placeSpendReferences,draftAfterNodeEdit,reconcileNodeModeWithConnectedReferences --read=resolveModeForConnectedReferences,canvasReferenceInputs",
+      "rg \"resolveReferenceSlots\\(\" src/workbench/ai -> only spendCardReferences.ts (canvasReferenceInputs, applySpendReferences, referenceInputsFromNode), all on the card node after the mode is aligned"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "src/workbench/ai/v4/spendCardReferences.ts",
+    "invariant": "The paid card shows and sends a node's canvas references only after aligning the mode with the canvas's own rule (resolveModeForConnectedReferences), in placeSpendReferences; card edits are recorded against the card the person started from.",
+    "failure_mode": "Without the alignment a connected reference has no slot and is silently not sent; the walk monitor flags it as sent-references-on-canvas.",
+    "exception_policy": "none",
+    "strategy": "Call the canvas rule in the card's projection; record card edits against the card the person started from; the monitor compares what is sent with the host's references plus the canvas ones.",
+    "artifacts": [
+      "src/workbench/ai/v4/spendCardReferences.ts",
+      "src/workbench/ai/v4/spendCardDraft.ts",
+      "tests/ux/full-walk/monitor.mjs"
+    ]
+  },
+  "regression_tests": [
+    "src/workbench/ai/v4/spendCardCanvasReferences.test.ts",
+    "src/workbench/ai/v4/spendCardDraft.test.ts",
+    "tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs",
+    "tests/ux/spend-panel-write-ownership.test.mjs"
+  ],
+  "class_regression_tests": [
+    "src/workbench/ai/v4/spendCardCanvasReferences.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/ai/v4/spendCardDraft.ts"
+    ],
+    "rationale": "Deleted in place: withCanvasReferences (canvas references merged into the host's mode without alignment), the unused baselineReferenceInputs parameter, and the card node taking the placeholder's id; replaced by placeSpendReferences, a baseline card node and a card-local id."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency decides reference slots or modes.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data changes. A card ledger saved by the previous build was relative to the host shot; read against the default card it applies the same fields, so a saved prompt or parameter edit is kept.",
+  "residual_risks": [
+    "Canvas edges connected after a shot was approved are not added to the already approved send (the approval binds what was shown).",
+    "Edge-backed parameter references (parameter image slots wired by canvas edges) are not merged into the card; the card shows and sends only archetype slot references from the canvas.",
+    "An upload made on the card is recorded with the card's own node id as its owner, not the placeholder's."
+  ]
+}

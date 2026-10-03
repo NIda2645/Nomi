@@ -11,12 +11,16 @@
 // 这条链第一次能在真实界面上被断言。
 //
 // 四条（全部是真人视角看得见的事）：
-//   ① 卡上印的是**具体金额**（¥0.30），主按钮上也带着这个数——不是「仍要生成」那一档；
+//   ① 卡上印的是**具体金额**（¥0.30）；主按钮是「生成这张」并带着这一镜的价（2026-09-30 付费卡逐镜：
+//      报得出价时可以带，没有任何一条路径依赖它）；
 //   ② 按下去：供应商真的收到一次生成请求，送的就是卡上那一镜；
 //   ③ **账本记的是同一个数**：盘上那份 Run 的授权信封里 `price.maximum === 0.3`，
 //      `budget.unknownJobCount` 是 0（这一镜的价是知道的），预留额度也是同一个数；
 //   ④ 产物真的落回草稿那一刻建的那个节点，卡收起来；一分钱没花（供应商是本机 loopback）。
 //   ⑤ 英文一样（EN 串长 1.5-2 倍，截断只有眼睛看得出）。
+//   ⑥ 两张一起摆（2026-10-01）：这一叠的合计「2 张 · 合计 ¥0.60」印在**翻页那一行的右端**、一行放得下
+//      （以前在动作行左边，英文挤成三行）；单位跟标题同一条规则（图片说张、英文与标题同词「2 images」）；
+//      「生成剩下 2 张」在动作行最左，按钮上不再印合计；中英各拍一张。
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -48,18 +52,18 @@ function readRunEnvelope(projectRoot, runId) {
   if (!fs.existsSync(snapshot)) return null
   const run = JSON.parse(fs.readFileSync(snapshot, 'utf8')).run
   return {
-    state: run?.generationPlan?.state, envelope: run?.generationPlan?.authorizationEnvelope,
+    state: run?.generationPlan?.state, envelope: run?.gates?.filter((gate) => gate.scope === 'budget_envelope' && gate.authorizationEnvelope).at(-1)?.authorizationEnvelope,
     budget: run?.budget, policy: run?.policy,
     artifacts: Array.isArray(run?.artifacts) ? run.artifacts : [],
   }
 }
 
-async function draft(walk, win, { ask, planCall, generateCall, prompt, done }) {
+async function draft(walk, win, { ask, planCall, generateCall, prompt, prompts = [prompt], done }) {
   const planner = walk.fixture.expectText({
     label: `the agent drafts a generation on a priced model (${planCall})`,
     match: (body) => flattenRequestText(body).includes(ask.split('：')[0].split(':')[0]),
     reply: { type: 'tool', id: planCall, name: 'draft_shots', args: {
-      shots: [{ prompt, taskKind: 'text_to_image', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL }, parameters: {} }],
+      shots: prompts.map((text) => ({ prompt: text, taskKind: 'text_to_image', candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL }, parameters: {} })),
     } },
   })
   let operationId
@@ -86,6 +90,33 @@ async function draft(walk, win, { ask, planCall, generateCall, prompt, done }) {
   return { operationId, turnDone }
 }
 
+/**
+ * ⑥ 两张一起摆、报得出价：合计在翻页那一行的右端、一行放得下；「生成剩下 2 张」在动作行最左、不带合计。
+ * 看完就关（×），让等这张卡的那个回合收尾。
+ */
+async function twoShotPricedCard(walk, win, { locale, ask, planCall, done, prompts }) {
+  const two = await draft(walk, win, { ask, planCall, generateCall: `${planCall}-generate`, prompts, done })
+  const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
+  const total = card.locator(`[data-v4-block="pager-row"] ${PRICE_TOTAL}`)
+  await proveProbe(total, `${locale}：两张的卡上有这一叠的合计`)
+  await expect(total, `${locale}：合计 = 两张 × 0.30`).toContainText('0.60')
+  // 单位跟标题同一条规则（2026-10-01 用户拍板）：图片说「张」，英文与标题同词。
+  await expect(total, `${locale}：合计的单位和标题一样`).toContainText(locale === 'zh' ? '2 张 · 合计' : '2 images')
+  const totalBox = await total.boundingBox()
+  const pagerBox = await card.locator('[data-v4-block="pager"]').boundingBox()
+  expect(Math.abs((totalBox?.y ?? 0) + (totalBox?.height ?? 0) / 2 - ((pagerBox?.y ?? 0) + (pagerBox?.height ?? 0) / 2)),
+    `${locale}：合计和翻页器在同一行`).toBeLessThan(6)
+  expect(totalBox?.height ?? 99, `${locale}：合计一行放得下，不折行`).toBeLessThan(24)
+  const batch = card.locator('[data-v4-control="batch"]')
+  await expect(batch, `${locale}：「生成剩下 2 张」在`).toContainText(locale === 'zh' ? '生成剩下 2 张' : 'Generate remaining 2')
+  await expect(batch, `${locale}：批量按钮上不印合计（合计已在翻页那一行）`).not.toContainText('¥')
+  await expect(card.locator(INTERVENTION_CONFIRM), `${locale}：主按钮仍带这一张的价`).toContainText('0.30')
+  const file = await walk.snap(`priced-two-shots-${locale}`)
+  await card.screenshot({ path: file.replace(/\.png$/, '-card.png') })
+  await closeSpendCard(card, `${locale}：看完关掉两张的卡`)
+  await recorded(two.turnDone.received, `${locale}: the two-shot generate returns once its card was closed`)
+}
+
 const walk = await createRuntimeWalk('spend-priced-card', { generationProvider: 'apimart' })
 let failure
 try {
@@ -109,8 +140,9 @@ try {
   await expect(card.locator(PRICE_TOTAL), '价格位印的就是目录里那一行算出来的钱').toContainText('0.30')
   // 基线由上面那条证过：同一个 `data-v4-price` 属性**测得到东西**，所以这里的「没看到」不是探针失灵。
   await expectAbsent(card.locator(PRICE_UNAVAILABLE), { provenBy: totalProbe, message: '有价这一档不该出现「暂时算不出价格」' })
-  await expect(card.locator(INTERVENTION_CONFIRM), '主按钮上带着那个数（用户按下去之前就知道要花多少）')
-    .toContainText('0.30')
+  // 付费卡逐镜（第 1、7 条）：主按钮只生成这一镜；报得出价时带上这一下花多少（用户按下去之前就知道）。
+  await expect(card.locator(INTERVENTION_CONFIRM), '主按钮是「生成这张」').toContainText('生成这张')
+  await expect(card.locator(INTERVENTION_CONFIRM), '主按钮上带着这一镜的价').toContainText('0.30')
   expect(walk.fixture.images, '卡还没按之前，一次供应商生成都没发生').toHaveLength(0)
   await walk.snap('priced-card-zh')
 
@@ -123,7 +155,7 @@ try {
     if (text.includes('[spend-confirm] host refused')) hostRefusals.push(text)
   })
   const nodeId = (await readProject(win, projectId)).payload.generationCanvas.nodes[0].id
-  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮（带金额）', { noWaitAfter: true })
+  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮「生成这张」', { noWaitAfter: true })
 
   await expect.poll(() => walk.fixture.images.length,
     { message: '按下带价格的主按钮之后，供应商必须真的收到一次生成请求', timeout: DEFAULT_TIMEOUT_MS }).toBeGreaterThan(0)
@@ -150,6 +182,12 @@ try {
   await expectAbsent(card, { provenBy: cardProbe, message: '答完的卡要收起来' })
   await walk.snap('priced-card-after-confirm-zh')
 
+  // ── ⑥ 两张一起摆（中文）──
+  await twoShotPricedCard(walk, win, {
+    locale: 'zh', ask: 'S_PRICED_TWO：再画两张青瓷茶杯。', planCall: 's-priced-two-1', done: 'S_PRICED_TWO_DONE：两张都起好了。',
+    prompts: ['一只青瓷茶杯，晨光斜照', '一只青瓷茶杯，傍晚逆光'],
+  })
+
   // ── ⑤ 英文：同一档再摆一张新卡（按过的那张已经收起来了，看不到「待确认」的英文长相）──
   await win.evaluate(() => localStorage.setItem('nomi:locale:v1', 'en'))
   await win.reload()
@@ -162,16 +200,24 @@ try {
   const enTotalProbe = await proveProbe(enCard.locator(PRICE_TOTAL), 'EN: the card renders a data-v4-price="total" slot')
   await expect(enCard.locator(PRICE_TOTAL), 'EN：价格位印的是同一个数').toContainText('0.30')
   await expectAbsent(enCard.locator(PRICE_UNAVAILABLE), { provenBy: enTotalProbe, message: 'EN：有价这一档没有 unavailable 那一格' })
-  await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：主按钮上也带着那个数').toContainText('0.30')
+  await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：Generate this one').toContainText('Generate this one')
+  await expect(enCard.locator(INTERVENTION_CONFIRM), 'EN：主按钮上也带着这一镜的价').toContainText('0.30')
   await walk.snap('priced-card-en')
   // EN 这张只是来看长相的；看完就答（关掉），让等它的那个回合收尾。
   await closeSpendCard(enCard, 'close the EN card')
   await recorded(en.turnDone.received, 'the EN generate returns once its card was closed')
 
+  // ── ⑥ 两张一起摆（英文）：合计以前在动作行左边会挤成三行，现在在翻页那一行，一行放得下 ──
+  await twoShotPricedCard(walk, win, {
+    locale: 'en', ask: 'S_PRICED_TWO_EN: draw two more celadon teacups.', planCall: 's-priced-two-en-1', done: 'S_PRICED_TWO_EN_DONE: both are drafted.',
+    prompts: ['A celadon teacup in slanting morning light', 'A celadon teacup against the evening light'],
+  })
+
   walk.report.verified = ['priced-card-shows-the-amount-zh-and-en',
     'confirm-really-reaches-the-vendor',
     'ledger-records-the-same-amount-the-card-showed',
-    'artifact-lands-on-the-node-the-draft-created']
+    'artifact-lands-on-the-node-the-draft-created',
+    'two-shot-total-on-the-pager-row-one-line-zh-and-en']
 } catch (error) {
   failure = error
   process.exitCode = 1

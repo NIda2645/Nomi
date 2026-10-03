@@ -89,7 +89,7 @@ function sealedRun(): ProductionRun {
     projectRevision: 0,
     operation: { operationId: "op-r", projectId: "project-1", candidate: a, planVersion: 1 },
     contract: contractA,
-    multiShot: { shots: sealed, planHash: "plan-hash-r" },
+    multiShot: { shots: sealed, scope: sealed.filter((shot) => shot.included !== false).map((shot) => shot.shotId), planHash: "plan-hash-r" },
     run: draft,
     providers: [provider()],
     resolveShotPrice: () => ({ known: true, amount: 0.3 }),
@@ -117,11 +117,8 @@ describe("generation.revise · 卡上改参数", () => {
     expect(plan.state).toBe("draft");
     // 封印/授权字段整组清零——重新计价、重新封印、重新出卡才能拿到新的 digest。
     expect(plan.contract).toBeUndefined();
-    expect(plan.planHash).toBeUndefined();
-    expect(plan.authorizationDigest).toBeUndefined();
-    expect(plan.authorizationEnvelope).toBeUndefined();
-    expect(plan.authorizationGateId).toBeUndefined();
     expect(plan.costCertainty).toBeUndefined();
+    // 那一份授权住在它自己那道门上：门被撤回（下面那条），计划上本来就不挂授权。
     expect(effect.run.gates).toEqual([expect.objectContaining({ status: "revoked" })]);
     expect(effect.run.jobs).toEqual([]);
     expect(effect.run.planVersion).toBe(2);
@@ -168,7 +165,7 @@ describe("generation.revise · 卡上改参数", () => {
     }, NOW)).toThrow(/begun execution/);
   });
 
-  it("门已经被决定（批了/拒了）→ 拒绝", () => {
+  it("批过的镜（在生成 / 生成过）不能改：那时钱已经花出去了", () => {
     const run = sealedRun();
     const decided: ProductionRun = {
       ...run,
@@ -177,20 +174,40 @@ describe("generation.revise · 卡上改参数", () => {
     expect(() => applyProductionCommand(decided, {
       commandId: "revise-decided", expectedRevision: decided.revision, type: "generation.revise",
       payload: { shotId: "shot-a", patch: { prompt: "改不动了" } }, issuedAt: NOW,
-    }, NOW)).toThrow(/before the spend gate is decided/);
+    }, NOW)).toThrow(/already generating or generated/);
   });
 
-  it("已提交的计划不可改：那时钱已经花出去了", () => {
+  it("那道门被拒了：这一镜没生成，卡上照样能改（先解封那份没被批准的合同，再改）", () => {
+    const run = sealedRun();
+    const rejected: ProductionRun = { ...run, gates: run.gates.map((gate) => ({ ...gate, status: "rejected" as const })) };
+    const revised = applyProductionCommand(rejected, {
+      commandId: "revise-rejected", expectedRevision: rejected.revision, type: "generation.revise",
+      payload: { shotId: "shot-a", patch: { prompt: "再试一次" } }, issuedAt: NOW,
+    }, NOW).run;
+    const shot = revised.generationPlan!.shots!.find((entry) => entry.shotId === "shot-a")!;
+    expect(shot.candidate.prompt).toBe("再试一次");
+    expect(shot.contract).toBeUndefined();
+    expect(shot.candidate.sealedContractHash).toBeUndefined();
+  });
+
+  it("已经在跑的计划（逐镜）：批过的那一镜不能改，卡上还没决定的那一镜能改；多镜计划必须点名改哪一镜", () => {
     const a = candidate("cand-a", "shot a");
-    const run = draftRun([{ shotId: "shot-a", candidate: a, updatedAt: NOW }], a);
-    const submitted: ProductionRun = {
+    const b = candidate("cand-b", "shot b");
+    const run = draftRun([{ shotId: "shot-a", candidate: a, updatedAt: NOW }, { shotId: "shot-b", candidate: b, updatedAt: NOW }], a);
+    const live: ProductionRun = {
       ...run,
+      gates: [{ gateId: "gate-a", scope: "budget_envelope", status: "approved", planHash: "d-a", authorizationDigest: "d-a",
+        authorizationEnvelope: { gateId: "gate-a", jobs: [{ shotId: "shot-a" }] } as never, title: "", summary: "", jobIds: [], createdAt: NOW, expiresAt: NOW }],
       generationPlan: { ...run.generationPlan!, state: "submitted" },
     };
-    expect(() => applyProductionCommand(submitted, {
-      commandId: "revise-submitted", expectedRevision: 5, type: "generation.revise",
-      payload: { patch: { prompt: "晚了" } }, issuedAt: NOW,
-    }, NOW)).toThrow(/submitted or cancelled/);
+    const revise = (payload: Record<string, unknown>) => applyProductionCommand(live, {
+      commandId: `revise-${JSON.stringify(payload).length}`, expectedRevision: 5, type: "generation.revise", payload, issuedAt: NOW,
+    }, NOW);
+    expect(() => revise({ shotId: "shot-a", patch: { prompt: "晚了" } })).toThrow(/already generating or generated/);
+    expect(() => revise({ patch: { prompt: "改哪一镜？" } })).toThrow(/must name its shot/);
+    const revised = revise({ shotId: "shot-b", patch: { prompt: "还来得及" } }).run;
+    expect(revised.generationPlan!.shots!.find((shot) => shot.shotId === "shot-b")!.candidate.prompt).toBe("还来得及");
+    expect(revised.generationPlan!.state).toBe("submitted");
   });
 });
 
@@ -240,7 +257,6 @@ describe("generation.revise · 卡上换模型与 Run 白名单（#748）", () =
     expect(next.policy.allowedModels).toContain("fixture-model-pro");
     // 放行的只是判据里的身份，不是那笔钱：旧授权照撤，仍要重新出卡、重新由真人按一次。
     expect(next.generationPlan!.state).toBe("draft");
-    expect(next.generationPlan!.authorizationDigest).toBeUndefined();
     expect(next.gates.every((gate) => gate.status !== "waiting")).toBe(true);
     expect(next.policy.maxSpend).toBe(FROZEN.maxSpend);
   });
@@ -275,21 +291,22 @@ describe("generation.present · 同一方案的新付费范围", () => {
       type: "generation.present", payload: { shotIds }, issuedAt: NOW }, NOW).run;
   }
 
-  it("S04: narrows a waiting sealed card atomically and revokes its old authority", () => {
+  it("S04: re-presenting one shot of a waiting sealed card revokes its old authority; the other shot stays in the draft (no silent drop)", () => {
     const run = sealedRun();
     const next = present(run, ["shot-b"]);
     expect(next.generationPlan?.state).toBe("draft");
-    expect(next.generationPlan?.shots?.map((shot) => [shot.shotId, shot.included])).toEqual([["shot-a", false], ["shot-b", true]]);
+    // 付费卡逐镜：不再靠「把别的镜取消勾选」来缩范围——这一次出价只摆 shot-b，shot-a 仍在草稿里（下一次出价还能问它）。
+    expect(next.generationPlan?.presentations?.at(-1)?.shotIds).toEqual(["shot-b"]);
+    expect(next.generationPlan?.shots?.map((shot) => [shot.shotId, shot.included !== false])).toEqual([["shot-a", true], ["shot-b", true]]);
     expect(next.gates[0].status).toBe("revoked");
     expect(next.jobs).toEqual([]);
-    expect(next.generationPlan?.authorizationEnvelope).toBeUndefined();
     expect(next.generationPlan?.shots?.every((shot) => !shot.contract && !shot.approvedReceiptId)).toBe(true);
   });
 
   it("S06: completed batch leaves the same creative identities available for the next batch", () => {
     const run = sealedRun();
     const completed: ProductionRun = { ...run, status: "completed",
-      generationPlan: { ...run.generationPlan!, state: "submitted", approvedReceiptId: "first-batch" },
+      generationPlan: { ...run.generationPlan!, state: "submitted" },
       gates: run.gates.map((gate) => ({ ...gate, status: "approved" })),
       jobs: run.jobs.map((job) => ({ ...job, status: "ready" })) };
     const next = present(completed, ["shot-b"]);
@@ -299,12 +316,15 @@ describe("generation.present · 同一方案的新付费范围", () => {
     expect(next.generationPlan?.shots?.map((shot) => shot.shotId)).toEqual(["shot-a", "shot-b"]);
     expect(next.generationPlan?.state).toBe("draft");
     expect(next.planVersion).toBe(completed.planVersion + 1);
-    expect(next.generationPlan?.approvedReceiptId).toBeUndefined();
+    // 上一批的批准住在它自己那道门上（原样留着），计划上没有一份「当前批准」可以沿用到下一批。
+    expect(next.generationPlan).not.toHaveProperty("approvedReceiptId");
   });
 
   it("S07: unknown previous submission cannot be reset by presenting another batch", () => {
     const run = sealedRun();
+    // 结果未知的那一笔已经批过（提交过的 job 一定有一份批过的授权盖着）。
     const uncertain: ProductionRun = { ...run,
+      gates: run.gates.map((gate) => ({ ...gate, status: "approved" as const })),
       generationPlan: { ...run.generationPlan!, state: "submitted" },
       jobs: run.jobs.map((job) => ({ ...job, status: "submission_unknown" })) };
     expect(() => present(uncertain, ["shot-b"])).toThrow(/reconcil|unsettled|in.flight/i);

@@ -9,8 +9,12 @@
 //   anchor-fail         参考卡生成失败 → 没开拍的视频镜说真实原因（不说「预算已用完 / 提额续拍」）；在参考卡上点「重试」→ 说人话。
 //   pause-settle        三镜图片，第 1 镜在供应商那边时按急停 → 第 1 镜收尾后落到「已暂停」→ 第 3 镜「继续剩余」→ 剩下两镜出片。
 //   pause-resume-early  急停后第 1 镜还没回来就点「继续剩余」→ 直接接着拍，不报错。
-//   upgrade-open        「从上一版升级上来的资料」：NOMI_PFF_UPGRADE_FROM=<上一版跑 pause-settle / anchor-fail 留下的 report.json>，
+//   upgrade-open        「从上一版升级上来的资料」：NOMI_PFF_UPGRADE_FROM=<上一版跑 pause-settle / anchor-fail / consent-late-release 留下的 report.json>，
 //                        在同一份资料上换这一版打开那个项目，看旧 Run 被怎么接住。
+//   consent-late-release 付费卡① 第 13 条：参考卡 + 两镜视频批了之后，过了同意窗口（10 分钟）才在任务卡上放行形象 → 那一下点击续上同意，两镜照样派出去。
+//   consent-late-resume  同上，换成急停：第 1 镜收尾、落到「已暂停」，过了同意窗口才点「继续剩余」→ 剩下两镜照样派出去。
+//
+// 等同意窗口是真的等（批准之后十分钟多一点），不改任何时钟、不改盘上的数据。
 //
 // 中文走完主路径；要看文案的那几步同时切到英文再拍一张（英文界面里不许出现中文、不许出现主进程英文原话以外的拼接）。
 import fs from 'node:fs'
@@ -26,7 +30,7 @@ import {
 } from './agent-runtime-walk-support.mjs'
 
 const SCENARIO = process.env.NOMI_PFF_SCENARIO || 'checkpoint'
-const SCENARIOS = new Set(['checkpoint', 'anchor-fail', 'pause-settle', 'pause-resume-early', 'upgrade-open'])
+const SCENARIOS = new Set(['checkpoint', 'anchor-fail', 'pause-settle', 'pause-resume-early', 'upgrade-open', 'consent-late-release', 'consent-late-resume'])
 if (!SCENARIOS.has(SCENARIO)) throw new Error(`NOMI_PFF_SCENARIO 只认 ${[...SCENARIOS].join(' / ')}`)
 
 const IMAGE = { providerId: 'apimart', modelId: 'gpt-image-2' }
@@ -285,6 +289,27 @@ async function closeTaskPanel(win) {
   await waitForVisualQuiescence(win)
 }
 
+/**
+ * 等这一批的同意窗口真的过去：从批准它的那一刻（付费门的 `decidedAt`）起算，等到它那份信封的到期时间再多 30 秒。
+ * 两个版本都适用：上一版派发时核的就是信封的到期时间，这一版的同意窗口与它等长（10 分钟）。
+ * 这是这几行测试的前提本身（时间必须真的过去），不是拿墙钟去猜某件事做完了没有。
+ */
+async function outlastConsentWindow(projectRoot, operationId) {
+  const run = readRun(projectRoot, operationId)
+  const gates = (run?.gates ?? []).filter((gate) => gate.scope === 'budget_envelope' && gate.status === 'approved')
+  // 这一版信封住在门上；上一版（付费卡逐镜之前）整批一份，住在计划上。
+  const expiries = [...gates.map((gate) => gate.authorizationEnvelope?.expiresAt), run?.generationPlan?.authorizationEnvelope?.expiresAt].filter(Boolean)
+  if (!gates.length || !expiries.length) throw new Error('没有批过的付费门，等不了它的同意窗口')
+  const lapsesAt = Math.max(...expiries.map((value) => Date.parse(value))) + 30_000
+  log(`等同意窗口过去：到 ${new Date(lapsesAt).toISOString()}（批准于 ${gates.map((gate) => gate.decidedAt).join(', ')}）`)
+  await expect.poll(() => Date.now() >= lapsesAt, { message: '同意窗口过去', timeout: stationTimeout({ operations: 50 }), intervals: [15_000] }).toBe(true)
+  return new Date(lapsesAt).toISOString()
+}
+
+/** 这一批批过的付费门上记的「谁续过同意」（这一版才有；上一版这一格不存在）。 */
+const renewedBy = (projectRoot, operationId) => (readRun(projectRoot, operationId)?.gates ?? [])
+  .filter((gate) => gate.scope === 'budget_envelope').map((gate) => gate.consentRenewedBy ?? null)
+
 /** 英文界面里这一块不许有中文。 */
 function assertNoCjk(text, where) {
   const hit = CJK.exec(text ?? '')
@@ -311,13 +336,58 @@ try {
     await win.waitForFunction((id) => location.href.includes(`projectId=${encodeURIComponent(id)}`), projectId)
     await openCanvas(win)
     const nodeIds = readRun(projectRoot, operationId).generationPlan.shots.map((shot) => shot.nodeId).filter(Boolean)
-    if (previousScenario === 'pause-settle') {
+    if (previousScenario === 'consent-late-release') {
+      // 上一版：放行形象晚于 10 分钟，两镜视频派发时撞上「授权已过期」、一直「排队中」（F1）。这一版打开同一个项目。
+      const run0 = readRun(projectRoot, operationId)
+      const videoNodeIds = run0.generationPlan.shots.filter((planShot) => planShot.role !== 'anchor').map((planShot) => planShot.nodeId)
+      await row('U5', '升级（老资料）：上一版过了同意窗口、视频镜一直「排队中」的批次，打开后如实停下——「这镜还没开拍，需要你再确认一次」并给「继续」', async () => {
+        await expect.poll(() => readRun(projectRoot, operationId)?.stop?.reason ?? null, { timeout: stationTimeout({ operations: 6 }), intervals: [500] }).toBe('consent_expired')
+        await fitView(win)
+        await expect.poll(async () => (await faces(win, videoNodeIds)).every((face) => face.placeholder === 'stopped' && face.action === 'resume-consent'),
+          { timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
+        if (walk.fixture.videos.length !== 0) throw new Error(`没人点就派出去了 ${walk.fixture.videos.length} 镜`)
+        await assertNoBudgetCopy(win, videoNodeIds, '老资料打开后')
+        return `${readRun(projectRoot, operationId).status} · stop=${readRun(projectRoot, operationId).stop?.reason} · ${jobsOf(readRun(projectRoot, operationId))} · ${JSON.stringify((await faces(win, videoNodeIds)).map((face) => [face.placeholderText, face.action]))}`
+      })
+      await shot('U5', 'zh-consent-expired')
+      await zoomShot(win, 'U5', 'zh-consent-expired', [videoNodeIds[0]])
+      // 同一张小标的英文：切过去拍一张、再切回来（界面语言只是渲染层的事，Run 一个字不动）。
+      await setLocale(win, 'en')
+      await fitView(win)
+      await row('U5en', '升级（老资料，英文）：同一张小标说英文、没有中文、不说预算', async () => {
+        const all = await faces(win, videoNodeIds)
+        for (const face of all) if (face.placeholderText) assertNoCjk(face.placeholderText, `卡 ${face.id}`)
+        if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? ''))) throw new Error(`英文界面有预算文案：${JSON.stringify(all.map((face) => face.placeholderText))}`)
+        return JSON.stringify(all.map((face) => face.placeholderText))
+      })
+      await shot('U5en', 'en-consent-expired')
+      await zoomShot(win, 'U5en', 'en-consent-expired', [videoNodeIds[0]])
+      await setLocale(win, 'zh-CN')
+      await fitView(win)
+      await row('U6', '点「继续」（这一下就是确认）：两镜视频派出去并出片', async () => {
+        await focusNode(win, videoNodeIds[0])
+        await clickOrFail(win.locator(`[data-node-id="${videoNodeIds[0]}"] [data-production-shot-action]`).first(), '这镜的「继续」', { noWaitAfter: true })
+        await expect.poll(() => walk.fixture.videos.length, { timeout: stationTimeout({ operations: 4 }) }).toBe(2)
+        walk.fixture.releaseVideos()
+        for (const nodeId of videoNodeIds) {
+          await expect(win.locator(`[data-node-id="${nodeId}"][data-status="success"]`)).toBeVisible({ timeout: stationTimeout({ operations: 6 }) })
+        }
+        return `${jobsOf(readRun(projectRoot, operationId))} · 续同意：${JSON.stringify(renewedBy(projectRoot, operationId))}`
+      })
+      await fitView(win)
+      await shot('U6', 'zh-after-continue')
+      await zoomShot(win, 'U6', 'zh-after-continue', videoNodeIds)
+      await setLocale(win, 'en')
+      await fitView(win)
+      await shot('U6', 'en-after-continue')
+      await zoomShot(win, 'U6', 'en-after-continue', videoNodeIds)
+    } else if (previousScenario === 'pause-settle') {
       await row('U1', '升级：上一版一直「暂停中」的制作，打开后落到「已暂停」；没开拍的镜头不猜原因、不说预算，给「继续」', async () => {
         await expect.poll(() => readRun(projectRoot, operationId)?.status, { timeout: stationTimeout({ operations: 4 }), intervals: [500] }).toBe('paused')
         await fitView(win)
         await expect.poll(async () => (await faces(win, nodeIds)).some((face) => face.placeholder === 'stopped'), { timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
         const all = await faces(win, nodeIds)
-        if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? '') || face.action === 'resume-budget')) throw new Error(`升级后挂着预算文案：${JSON.stringify(all)}`)
+        if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? ''))) throw new Error(`升级后挂着预算文案：${JSON.stringify(all)}`)
         return `${readRun(projectRoot, operationId).status} · stop=${JSON.stringify(readRun(projectRoot, operationId).stop ?? null)} · ${jobsOf(readRun(projectRoot, operationId))} · ${JSON.stringify(all.map((face) => [face.placeholderText, face.action]).filter(([text]) => text))}`
       })
       await zoomShot(win, 'U1', 'zh-legacy-paused', [nodeIds.at(-1)])
@@ -339,7 +409,7 @@ try {
         } catch {
           // 派不出去时如实写清卡在哪：Run 的状态、每镜的 job、批准信封的到期时间对比现在。
           const after = readRun(projectRoot, operationId)
-          const expiresAt = after?.generationPlan?.authorizationEnvelope?.expiresAt
+          const expiresAt = after?.gates?.filter((gate) => gate.scope === 'budget_envelope' && gate.authorizationEnvelope).at(-1)?.authorizationEnvelope?.expiresAt
           const lapsed = expiresAt && Date.parse(expiresAt) <= Date.now()
           throw new Error(`点了「继续剩余」，剩下的镜头没有派出去（夹具只收到 ${walk.fixture.images.length - before} 笔）：Run ${after?.status} · ${jobsOf(after)}`
             + `${lapsed ? ` · 批准信封 ${expiresAt} 到期（现在 ${new Date().toISOString()}）——派发时核「授权过期」，一直拒` : ''}`)
@@ -382,7 +452,86 @@ try {
     const consent = win.getByRole('button', { name: '不分享', exact: true }).first()
     if (await consent.isVisible().catch(() => false)) await consent.click()
 
-    if (SCENARIO === 'checkpoint' || SCENARIO === 'anchor-fail') {
+    if (SCENARIO === 'consent-late-release') {
+      const videoShot = (n, prompt) => ({ title: `镜${n}`, prompt, taskKind: 'text_to_video', candidate: VIDEO, durationSec: 4, parameters: { resolution: '480p', generate_audio: false } })
+      const shots = [
+        { title: '渔港参考', role: 'anchor', storyboard: { kind: 'scene', carrier: 'visual' }, prompt: '清晨的渔港全景，薄雾', taskKind: 'text_to_image', candidate: IMAGE },
+        videoShot(1, '清晨渔港，小船轻晃'), videoShot(2, '码头上一只猫晒太阳'),
+      ]
+      const { operationId, planShots, goDone } = await draftAndRelease(win, projectRoot, { tag: 'PCL', shots })
+      walk.report.seed.operationId = operationId
+      await recorded(goDone.received, 'generate returns')
+      const [, video1, video2] = planShots
+      await row('C1', '参考卡出图后停在「形象确认」，两镜视频批过了、还没派', async () => {
+        await expect.poll(() => readRun(projectRoot, operationId)?.gates?.find((gate) => gate.scope === 'anchor_checkpoint')?.status ?? null,
+          { timeout: stationTimeout({ operations: 8 }) }).toBe('waiting')
+        return jobsOf(readRun(projectRoot, operationId))
+      })
+      const lapsedAt = await outlastConsentWindow(projectRoot, operationId)
+      await openTaskCard(win)
+      await shot('C2', 'zh-checkpoint-after-window')
+      await clickOrFail(win.locator(`${TASK_CARD} [data-production-primary-action]`).first(), '制作卡主按钮（过目后开拍）')
+      await clickOrFail(win.locator('[data-anchor-checkpoint-primary][data-anchor-checkpoint-mode="approve"]'), '形象确认卡「开拍」（同意窗口已过）')
+      await closeTaskPanel(win)
+      await row('C2', `过了同意窗口（${lapsedAt} 之后）才放行形象：这一下点击续上同意，两镜视频照样派出去（不卡在「排队中」）`, async () => {
+        await expect.poll(() => walk.fixture.videos.length, { timeout: stationTimeout({ operations: 4 }) }).toBe(2)
+        return `${jobsOf(readRun(projectRoot, operationId))} · 续同意：${JSON.stringify(renewedBy(projectRoot, operationId))}`
+      })
+      await fitView(win)
+      await shot('C2', 'zh-videos-generating')
+      await zoomShot(win, 'C2', 'zh-videos-generating', [video1.nodeId, video2.nodeId])
+      walk.fixture.releaseVideos()
+      await row('C3', '两镜视频出片、落回各自的卡；整批收尾', async () => {
+        for (const planShot of [video1, video2]) {
+          await expect(win.locator(`[data-node-id="${planShot.nodeId}"][data-status="success"]`)).toBeVisible({ timeout: stationTimeout({ operations: 6 }) })
+        }
+        await expect.poll(() => readRun(projectRoot, operationId)?.status, { timeout: stationTimeout({ operations: 4 }) }).not.toBe('running')
+        return `${readRun(projectRoot, operationId).status} · ${jobsOf(readRun(projectRoot, operationId))}`
+      })
+      await fitView(win)
+      await shot('C3', 'zh-landed')
+      await zoomShot(win, 'C3', 'zh-landed', [video1.nodeId, video2.nodeId])
+      await setLocale(win, 'en')
+      await fitView(win)
+      await shot('C3', 'en-landed')
+      await zoomShot(win, 'C3', 'en-landed', [video1.nodeId, video2.nodeId])
+    } else if (SCENARIO === 'consent-late-resume') {
+      const imageShot = (n, prompt) => ({ title: `镜${n}`, prompt, taskKind: 'text_to_image', candidate: IMAGE })
+      const shots = [imageShot(1, '清晨渔港'), imageShot(2, '码头的猫'), imageShot(3, '海鸥')]
+      const { operationId, planShots, goDone } = await draftAndRelease(win, projectRoot, { tag: 'PCR', shots, beforeGenerate: () => walk.fixture.holdSubmits(true) })
+      walk.report.seed.operationId = operationId
+      const [, , shot3] = planShots
+      const nodeIds = planShots.map((planShot) => planShot.nodeId)
+      await expect.poll(() => walk.fixture.images.length, { message: '第 1 镜的提交到了夹具（压着）', timeout: stationTimeout({ operations: 4 }) }).toBe(1)
+      await openTaskCard(win)
+      await clickOrFail(win.locator(`${TASK_CARD} [data-production-control="pause"]`).first(), '任务卡「暂停」（急停）')
+      await expect.poll(() => readRun(projectRoot, operationId)?.status, { timeout: DEFAULT_TIMEOUT_MS }).toMatch(/^paus/)
+      await closeTaskPanel(win)
+      walk.fixture.holdSubmits(false)
+      await recorded(goDone.received, 'generate returns')
+      await row('C4', '急停后第 1 镜收尾，落到「已暂停」', async () => {
+        await expect.poll(() => readRun(projectRoot, operationId)?.status, { timeout: stationTimeout({ operations: 4 }), intervals: [500] }).toBe('paused')
+        return jobsOf(readRun(projectRoot, operationId))
+      })
+      const lapsedAt = await outlastConsentWindow(projectRoot, operationId)
+      await row('C5', `过了同意窗口（${lapsedAt} 之后）才点「继续剩余」：这一下点击续上同意，剩下两镜派出去并出片`, async () => {
+        await focusNode(win, shot3.nodeId)
+        await shot('C5', 'zh-stopped-shot3-after-window')
+        await zoomShot(win, 'C5', 'zh-stopped-shot3-after-window', [shot3.nodeId])
+        await clickOrFail(win.locator(`[data-node-id="${shot3.nodeId}"] [data-production-shot-action]`).first(), '第 3 镜「继续剩余」', { noWaitAfter: true })
+        await expect.poll(() => walk.fixture.images.length, { timeout: stationTimeout({ operations: 4 }) }).toBe(3)
+        await expect.poll(() => readRun(projectRoot, operationId).jobs.filter((job) => job.status === 'ready' || job.status === 'adopted').length,
+          { timeout: stationTimeout({ operations: 4 }) }).toBe(3)
+        return `${jobsOf(readRun(projectRoot, operationId))} · 续同意：${JSON.stringify(renewedBy(projectRoot, operationId))}`
+      })
+      await fitView(win)
+      await shot('C5', 'zh-after-resume')
+      await zoomShot(win, 'C5', 'zh-after-resume', nodeIds)
+      await setLocale(win, 'en')
+      await fitView(win)
+      await shot('C5', 'en-after-resume')
+      await zoomShot(win, 'C5', 'en-after-resume', nodeIds)
+    } else if (SCENARIO === 'checkpoint' || SCENARIO === 'anchor-fail') {
       const videoShot = (n, prompt) => ({ title: `镜${n}`, prompt, taskKind: 'text_to_video', candidate: VIDEO, durationSec: 4, parameters: { resolution: '480p', generate_audio: false } })
       const shots = [
         { title: '渔港参考', role: 'anchor', storyboard: { kind: 'scene', carrier: 'visual' }, prompt: '清晨的渔港全景，薄雾', taskKind: 'text_to_image', candidate: IMAGE },
@@ -403,7 +552,7 @@ try {
           await expect.poll(() => readRun(projectRoot, operationId)?.gates?.find((gate) => gate.scope === 'anchor_checkpoint')?.status ?? null,
             { timeout: stationTimeout({ operations: 8 }) }).toBe('waiting')
           const run = readRun(projectRoot, operationId)
-          return `参考卡 ${jobsOf(run)}；封信封时项目版本 ${run.generationPlan?.authorizationEnvelope?.projectRevision}`
+          return `参考卡 ${jobsOf(run)}；封信封时项目版本 ${run.gates?.filter((gate) => gate.scope === 'budget_envelope' && gate.authorizationEnvelope).at(-1)?.authorizationEnvelope?.projectRevision}`
         })
         await openTaskCard(win)
         await shot('T1', 'zh-checkpoint-card')
@@ -461,7 +610,7 @@ try {
           await expect.poll(async () => (await faces(win, [video1.nodeId, video2.nodeId])).every((face) => face.placeholder === 'stopped'),
             { timeout: DEFAULT_TIMEOUT_MS }).toBe(true)
           const all = await faces(win, [video1.nodeId, video2.nodeId])
-          if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? '') || face.action === 'resume-budget')) {
+          if (all.some((face) => BUDGET_COPY.test(face.placeholderText ?? ''))) {
             throw new Error(`视频镜上挂着预算文案：${JSON.stringify(all.map((face) => [face.placeholderText, face.action]))}`)
           }
           return JSON.stringify(all.map((face) => [face.placeholderText, face.action]))

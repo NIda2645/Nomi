@@ -5,6 +5,7 @@
 
 import type { ProductionRunRepository } from './productionRunRepository'
 import type { ProductionRun, RunCommand, RunCommandResult } from './productionRunTypes'
+import { renewDispatchConsent } from './productionDispatchConsentEdits'
 
 // 已提交给供应商的任务**无法撤回、钱已花出**——暂停/取消都只能让它们跑完收尾（结果保留不浪费），能守住的边界是
 // 「不再提交新任务」。pausing → paused 那一步不在这里、也不在任何驱动里：它是生命周期 owner
@@ -39,11 +40,18 @@ export function applyRunControl(
     return repository.execute(projectId, runId, { ...runCommand, type: 'run.status', payload: { status: 'pausing', reason: 'user_paused' } })
   }
   if (action === 'resume') {
-    if (current.status === 'running') return { run: current, events: [] }
+    // 用户在 Nomi 窗口里点的「继续」（受信边界盖了真人手势章）同时续上批过、还没发出去的那几镜的同意
+    // （付费卡① 第 13 条）。MCP 宿主 / Agent 的 resume 没有这个章，不续：没人点，同意就不该被延长。
+    const renew = (run: ProductionRun) => (runCommand.humanGesture === true
+      ? renewDispatchConsent(repository, projectId, runId, run, 'resume', runCommand.issuedAt)
+      : undefined)
+    if (current.status === 'running') return renew(current) ?? { run: current, events: [] }
     // 急停后在跑的那一镜还没回来（pausing）也能接着拍：用户改主意了，不必等它收尾（2026-09-29：以前这里报
     // 「run status pausing is not resumable」，而画布上的「继续剩余」正摆在他面前）。
     if (!['pausing', 'paused', 'needs_attention'].includes(current.status)) throw illegal()
-    return repository.execute(projectId, runId, { ...runCommand, type: 'run.status', payload: { status: 'running' } })
+    const resumed = repository.execute(projectId, runId, { ...runCommand, type: 'run.status', payload: { status: 'running' } })
+    const renewed = renew(resumed.run)
+    return renewed ? { run: renewed.run, events: [...resumed.events, ...renewed.events] } : resumed
   }
   if (action === 'cancel') {
     if (current.status === 'cancelled') return { run: current, events: [] }
