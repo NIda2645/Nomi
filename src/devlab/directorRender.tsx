@@ -11,7 +11,7 @@ type Result = HeadlessCaptureResult
 type RenderWindow = Window & { __nomiDirectorRenderResult?: Result | { error: string }; __nomiDirectorRenderReady?: boolean }
 
 export function CaptureBridge({ request, onDone }: { request: Request; onDone: (result: Result | { error: string }) => void }): JSX.Element {
-  const scene = request.project.scenes[0]
+  const scene = request.project.scenes.find((item) => item.id === request.project.activeSceneId) ?? request.project.scenes[0]
   const full = exportDimensions(request.project.exportRatio, request.project.exportResolution)
   const width = request.width ?? Math.min(full.width, 960)
   const height = request.height ?? Math.min(full.height, Math.round((width * full.height) / full.width))
