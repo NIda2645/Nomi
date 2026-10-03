@@ -570,11 +570,6 @@ function registerIpc(): void {
   registerVideoIpc(projectInteraction);
   registerScreenshotIpc();
   registerTikhubConnectorIpc();
-  ipcMain.handle("nomi:image:decompose-layers", async (event, payload) => {
-    assertTrustedSender(event);
-    const { decomposeLayers } = await import("./image/decomposeLayers");
-    return decomposeLayers(payload);
-  });
   registerDirectorMobileIpc();
   registerExportJobIpc({
     getActiveProjectSelection: () => canvasReadSurfaceRuntime.getCommittedProjectSelection(),

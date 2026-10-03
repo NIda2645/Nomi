@@ -14,7 +14,6 @@ const localizedFiles = [
   "electron/catalog/customCallIpc.ts",
   "electron/catalog/customCallRunner.ts",
   "electron/catalog/runwayOfficial.ts",
-  "electron/image/decomposeLayers.ts",
   "electron/review/technicalCheck.ts",
 ];
 

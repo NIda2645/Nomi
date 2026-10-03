@@ -10,7 +10,6 @@
 
 import { ANCHOR_META_KEYS, isVisualAnchorNode, isAnchorFrozen, type AnchorFrozenMark } from '../model/anchorBibleKeys'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
-import { applyFixationMakeup } from './buildFixationNode'
 import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 
 /** 这个节点现在是不是「已定妆」的视觉锚（供 UI 决定按钮态；非锚恒 false）。 */
@@ -49,19 +48,17 @@ export function toggleAnchorLook(nodeId: string): void {
 }
 
 /**
- * 锚卡浮条的「创作主动作」四件套（isAnchor/frozen/onToggleFreeze/onMakeup），一次算好回给巨壳 spread。
- * 一功能一个家：isAnchor 时浮条显「定妆」（放行下游镜头），非锚显「建参考卡」——两者互斥、同位。
+ * 锚卡浮条的「创作主动作」三件套（isAnchor/frozen/onToggleFreeze），一次算好回给巨壳 spread。
+ * isAnchor 时浮条最左显「定妆」（放行下游镜头）。
  */
 export function anchorFreezeToolbarProps(node: GenerationCanvasNode): {
   isAnchor: boolean
   frozen: boolean
   onToggleFreeze: () => void
-  onMakeup: () => void
 } {
   return {
     isAnchor: isVisualAnchorNode(node),
     frozen: isAnchorFrozen(node),
     onToggleFreeze: () => toggleAnchorLook(node.id),
-    onMakeup: () => applyFixationMakeup(node),
   }
 }

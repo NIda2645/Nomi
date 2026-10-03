@@ -260,17 +260,6 @@ export type DesktopBridge = DesktopMediaBridge &
   }
   assets: DesktopAssetsSurface
   browser?: DesktopBrowserSurface
-  image: {
-    /** 元素拆解：一张图 → Replicate qwen-image-layered → N 张落地 RGBA 图层 URL（对标 Lovart Edit Elements）。
-     *  走付费令牌（grantId）；见 electron/image/decomposeLayers.ts。 */
-    decomposeLayers: (payload: {
-      nodeId?: string
-      imageUrl: string
-      numLayers?: number
-      grantId?: string
-      projectId?: string
-    }) => Promise<{ layers: string[] }>
-  }
   /** 导演台出片 + 手机虚拟相机。开发页 / 老 preload 没有这座桥 → 对话框明说需要桌面运行时。 */
   director?: DesktopDirectorBridge
   /** Generation strategy resolver GUI 窄 IPC：planning seam 在 main（候选/决策与 agent/MCP 同源），

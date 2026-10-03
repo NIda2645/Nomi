@@ -181,10 +181,6 @@ export const mediaBridge = {
       return () => ipcRenderer.removeListener("nomi:screenshot:failed", listener);
     },
   },
-  image: {
-    decomposeLayers: (payload: unknown) =>
-      ipcRenderer.invoke("nomi:image:decompose-layers", payload) as Promise<{ layers: string[] }>,
-  },
   videoDepth: {
     prepare: (payload: unknown) => ipcRenderer.invoke("nomi:video-depth:prepare", payload) as Promise<unknown>,
     readFrames: (payload: unknown) =>

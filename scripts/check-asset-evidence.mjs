@@ -90,7 +90,6 @@ const RULES = [
     //   - IPC 转发层（assetsIpc.ts 的 nomi:assets:import-remote-url）只是把渲染层 payload 转给
     //     importRemoteAsset，该函数内部自己调用 sanitizeSourceEvidence 处理 sourceEvidence 字段——不是新写入路径
     exemptFiles: [
-      'electron/image/decomposeLayers.ts',    // kind: "generated"，AI 合成层
       'electron/assets/assetsIpc.ts',         // IPC 转发层，importRemoteAsset 内部处理 sourceEvidence
     ],
     // 豁免仍需要的证据：抹注释后还有 importRemoteAsset / moveAssetFile 调用（不含函数声明）。

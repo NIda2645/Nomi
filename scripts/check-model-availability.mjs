@@ -86,7 +86,6 @@ export const VENDOR_CONNECTION_PREDICATES = {
   'electron/catalog/catalogHealth.ts': '健康度里的 enabledApiKeys 统计的是「钥匙」不是「模型」',
   'src/ui/onboarding/onboardingDrawerConnections.ts': '抽屉卡片分组「已连接 / 可添加」，问的是连接本身',
   'src/workbench/settings/settingsAutomationView.ts': '自动化设置里的连接状态灯（connected / disconnected）',
-  'src/workbench/generationCanvas/nodes/decompose/useDecomposeLayers.ts': '「元素拆解」要的是 Replicate 这家通不通，不经过任何模型行',
   'src/workbench/generationCanvas/runner/assetUploadConsent.ts': 'kie 在这里是**素材上传宿主**不是模型供应商，问的是能不能往它那儿传文件',
 }
 
