@@ -14,7 +14,7 @@ const sourceKenneyFurniture = 'https://kenney.nl/assets/furniture-kit'
 const sourceKenneyBuilding = 'https://kenney.nl/assets/building-kit'
 
 const action = (meta: (typeof UAL_ACTIONS)[number]): AssetRecord => ({
-  id: `action-ual-${meta.id.toLowerCase().replaceAll('_', '-')}`, kind: 'action', tags: meta.tags, nameZh: meta.nameZh, nameEn: meta.nameEn, sizeClass: 'tiny', dimensionsM: { widthM: 1.9444, depthM: 0.3696, heightM: UAL_MANNEQUIN_HEIGHT_M }, origin: 'ground-min-z', file: UAL_MANNEQUIN_FILE, source: sourceQuaternius, license: 'CC0-1.0', modified: true, clipName: meta.id, rig: 'ual', durationSec: meta.durationSec, loop: meta.loop, rootMotion: meta.rootMotion, requiresStanding: meta.requiresStanding, inspection: meta.inspection,
+  id: `action-ual-${meta.id.toLowerCase().replace(/_/g, '-')}`, kind: 'action', tags: meta.tags, nameZh: meta.nameZh, nameEn: meta.nameEn, sizeClass: 'tiny', dimensionsM: { widthM: 1.9444, depthM: 0.3696, heightM: UAL_MANNEQUIN_HEIGHT_M }, origin: 'ground-min-z', file: UAL_MANNEQUIN_FILE, source: sourceQuaternius, license: 'CC0-1.0', modified: true, clipName: meta.id, rig: 'ual', durationSec: meta.durationSec, loop: meta.loop, rootMotion: meta.rootMotion, requiresStanding: meta.requiresStanding, inspection: meta.inspection,
 })
 
 const prop = (id: string, file: string, tags: string[], zh: string, en: string, dimensionsM: [number, number, number], source: string): AssetRecord => ({
