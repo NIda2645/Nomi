@@ -99,3 +99,11 @@ T4 多轮编辑题、L5 视觉模型整体分、S1 结构化计划+布局/机位
 4. **已验收**：方向反转、出画、少一镜、动作不发生、无名演员、半环绕等变异体保留并通过，降幅门槛 `≥0.2`。
 5. **已完成**：本节已更新三方案基线、分层与分档均值、标尺题、最低五张、旧口径为何错、两条景别梯子、关键点可见、未约束不计分、L0 归零和 `NOMI_EVAL_PR960_ROOT` 运行方式。
 6. **已验证**：`vitest`、`typecheck`、`check:test-types` 已通过；`pnpm run gates` 共 96 道门通过 95 道，唯一阻断是 `check:design-lab` 的 32 张视觉差异。差异集中在本分支未改动的 UI/设计基线路径，未修改基线；远端 PR checks 与 push 收据在交工链最后一段记录。仓库当前没有 `review:branch` script（执行结果为 `ERR_PNPM_NO_SCRIPT`）。
+
+## L5 盲测终审（第 1.5 棒）
+
+L5 评审把导演卡的 prompt 与节目机位逐帧渲染结果分开处理：`director-render.html` 只在 devlab 中挂载现有 three/CaptureBinder 像素链，按 `programCameraIdAt` 选择镜头；`evals/director/judge/run.ts` 把预注册、匿名联系图、Codex 盲评、成对比较、诱饵、测量交叉核与重复方差写入 `evals/runs/director-judge-<时间>/`。评审工作目录由每次调用新建的临时目录提供，只有随机命名的帧图；预期卡先落盘并以 SHA-256 冻结，评审 JSON 强制要求时间码证据。
+
+评审模型固定为 `gpt-6-astra`、`model_reasoning_effort=high`、`service_tier="priority"`。首轮结果必须在报告首行声明诱饵检出率；低于 90% 时批次作废。测量交叉核只统计评审明确给出的可测结论；大方差题标为不稳定。`calibrate.html` 提供 12 段随机预演的 1–5 分校准页；用户未导出校准 JSON 前，报告始终标记「未校准」，不作方案优劣结论。真实媒体、视频模型 B 档与额度证据留给第三棒。
+
+本分支的首轮实跑收据、联系图和未完成项以 `evals/runs/director-judge-*/report.md` 为准；任何 Codex 不可用、渲染失败或 priority 未广告的调用都保留为 `unverified`/`blocked`，不填补为通过。
