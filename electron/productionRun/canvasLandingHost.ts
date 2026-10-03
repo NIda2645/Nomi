@@ -58,6 +58,14 @@ export type CanvasLandingHost = {
   settleCanvasLanding: (projectId: string) => Promise<void>;
 };
 
+/** Run 里这一镜是不是记着 detached（单镜计划的地址是候选 id，与落地投影同一条约定）。 */
+function shotIsDetached(run: ProductionRun, shotId: string): boolean {
+  const plan = run.generationPlan;
+  if (!plan) return false;
+  if (!plan.shots || plan.shots.length === 0) return plan.canvasDetached === true && plan.candidate.candidateId === shotId;
+  return plan.shots.some((shot) => shot.shotId === shotId && shot.canvasDetached === true);
+}
+
 export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLandingHost {
   // 每个项目一份「在飞的落地」聚合承诺。三个落地时机都登记（都会写项目文档），
   // settleCanvasLanding 只等它，不改任何一条链的执行顺序。
@@ -104,6 +112,7 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
     // does not strand their nodes. **This gate has no bypass**: a bypass is the difference
     // between "the agent drafted a plan for you" and "the agent rearranged your canvas".
     if (run.origin.sourceDocument && !runHasBeenOnCanvas(run)) return false;
+    const landing = run;
     const signature = signatureOf(run, projectId);
     const landed = await landCanvasForRun(run, {
       requestRenderer: deps.requestRenderer,
@@ -112,8 +121,13 @@ export function createCanvasLandingHost(deps: CanvasLandingHostDeps): CanvasLand
       ...(existingOnly ? { existingOnly: true } : {}),
       ...(isCurrent ? { isCurrent } : {}),
       bindShotNodes: async (boundProjectId, boundRunId, expectedRevision, bindings) => {
+        // 命令号按「绑到哪」去重：同一份绑定反复落地只记一次。可一镜被记过 detached 之后又回报「节点还在」，
+        // 那是一次**新的**纠正——绑定串和当初一字不差，按旧号会被仓库的幂等重放原样吞掉，detached 永远纠正不回来
+        // （S1-5）。所以纠正带上它纠正的那个 revision，号放在绑定串前面，截断也截不掉。
+        const reattach = bindings.some((binding) => shotIsDetached(landing, binding.shotId));
+        const kind = reattach ? `reattach-${expectedRevision}` : "bind";
         await deps.command(boundProjectId, boundRunId, {
-          commandId: `canvas-landing:${boundRunId}:bind:${bindings.map((binding) => `${binding.shotId}=${binding.nodeId}`).join(",")}`.slice(0, 200),
+          commandId: `canvas-landing:${boundRunId}:${kind}:${bindings.map((binding) => `${binding.shotId}=${binding.nodeId}`).join(",")}`.slice(0, 200),
           expectedRevision,
           type: "plan.bind-shot-nodes",
           payload: { bindings },
