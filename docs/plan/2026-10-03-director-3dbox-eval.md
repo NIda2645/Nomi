@@ -121,3 +121,7 @@ L5 评审把导演卡的 prompt 与节目机位逐帧渲染结果分开处理：
 - `evals/runs/director-judge-20261003184155/media/t1-01-push_oracle-contact.png`
 
 灰模画面已确认有可读几何体与机位变化；`police-chase` 联系图缺失是预注册阻断的真实结果。校准页现在会复制到每个 run 目录的 `calibrate.html`，与 `calibration-manifest.json` 和媒体相邻，便于离线打分。
+
+本轮 Codex 调用可由原始记录反推为 70 次：9 次预注册、53 次单片评审、8 次成对盲比；额度/Token 收据未由 `codex exec` 暴露，因此成本记为 `unverified`，没有估算一个假数字。`service_tier="priority"` 的单片评审记录有 49/54 fast 收据，其余按报告保留为非 fast 或 blocked。
+
+交工门岗：本分支 `pnpm run gates` 为 96 门 95 通过，唯一阻断是本分支派生端口上的 `ERR_UNSAFE_PORT` warmup；同一时刻干净 `origin/main` 的 `check:design-lab` 则实际跑完 188 用例并有 40 张既有基线 diff。两边失败形态与名单不相同，未盖 `stamp-gates-ok`、未 push、未创建 draft PR；这不是把例外条件扩大解释。
