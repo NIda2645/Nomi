@@ -105,7 +105,7 @@ function rendererCommandPayload(type: string, value: unknown): Record<string, un
   if (type === "policy.refresh") return {};
   if (type === "job.reconcile") {
     const outcome = typeof raw.outcome === "string" ? raw.outcome.trim() : "";
-    if (outcome !== "found" && outcome !== "not_found") throw new Error("Invalid production reconciliation outcome");
+    if (outcome !== "found" && outcome !== "not_found" && outcome !== "user_checked_abandon") throw new Error("Invalid production reconciliation outcome");
     return { jobId: identifier(raw.jobId, "job"), outcome };
   }
   // A4 暂停/继续/取消。合法性（当前状态允不允许这个动作）由 applyRunControl 判，这里只管形状。
@@ -180,7 +180,7 @@ function rendererCommand(value: unknown): RunCommand {
     // 认它当人证（productionRunApprovalReceipt.ts）。只盖在真的要它的命令上（gate.decide），别在整条渲染
     // 通道上撒一个万能标记。注意：这只证「来自受信窗口」，不是一条带签名的手势证明；升级成
     // createMainProcessGestureAttestation 需要确认卡先领 challenge，见 docs/fixes 合同的残留风险。
-    ...(type === "gate.decide" ? { humanGesture: true as const } : {}),
+    ...(type === "gate.decide" || type === "job.reconcile" ? { humanGesture: true as const } : {}),
   };
 }
 

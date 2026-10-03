@@ -13,16 +13,6 @@
       "reason": "Runway 图像归一化在 09-02 模块拆分中原样移到同目录 runwayImage.ts，符号未改名。"
     },
     {
-      "contract": "docs/fixes/2026-09-02-ponytail-staged-diff-enobufs.root-cause.json",
-      "path": "scripts/ponytail-review-hook.mjs",
-      "symbol": "runGit / collectReviewDiff",
-      "anchor": {
-        "path": "scripts/ponytail-review-branch.mjs",
-        "symbol": "runGit"
-      },
-      "reason": "09-15 Ponytail 改制后钩子只查收据不跑模型，评审执行连同 runGit 搬到 ponytail-review-branch.mjs；collectReviewDiff 随之删除（见同批 retirements）。"
-    },
-    {
       "contract": "docs/fixes/2026-09-02-runway-ratio-module-split.root-cause.json",
       "path": "electron/catalog/runwayOfficial.ts",
       "symbol": "normalizeRunwaySeedance25Body / normalizeRunwayVideoContract / normalizeRunwayImageReferences",
@@ -611,6 +601,48 @@
       "path": "scripts/check-door-map.mjs",
       "symbol": "evaluatePullRequest",
       "reason": "check:door-map 已于 2026-10-01 并入 check:root-cause-contracts（用户按门岗账本 docs/audit/2026-10-01-gate-ledger.md 拍板）：被删的只是「recurring 合同的 PR 正文必须引用那份合同」这一半（窗口里 5 次红全是补引用 / 补门表）；门表合法性（必填、path 存在、符号对得上、不许行号、不许重复）一直在 root-cause-contracts.mjs 的 validateDoorMap，不变量仍有主人。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-02-ponytail-staged-diff-enobufs.root-cause.json",
+      "path": "scripts/ponytail-review-hook.mjs",
+      "symbol": "runGit / collectReviewDiff",
+      "reason": "交工前评审整套（适配器、收据、pre-push 收据判据）已于 2026-10-02 删除，用合并前独立验收代替；这条合同守的评审 diff 读取不变量随之不再适用。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-07-absent-number-printed-as-zero.root-cause.json",
+      "path": "scripts/check-archetype-sources.mjs",
+      "symbol": "文本模型价目段",
+      "reason": "2026-10-02 门岗清理：check:archetype-sources 零红且 R5.1 降为建议档，已整体删除；价目「缺失不写成 0」由类型与单测守（electron/catalog/types.ts 的价目字段）。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-07-prior-art-not-enforced.root-cause.json",
+      "path": "scripts/symptom-cluster-lib.mjs",
+      "symbol": "findClusters and evaluateClusters",
+      "reason": "2026-10-02 门岗清理：check:symptom-cluster 红 11 次真拦 0 次，已整体删除；重写判据改由 RW 规则与 edit-time-reminder 提示承担。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-07-standard-format-not-aligned.root-cause.json",
+      "path": "scripts/check-standard-formats.mjs",
+      "symbol": "check:standard-formats",
+      "reason": "2026-10-02 门岗清理：check:standard-formats 零红，R5.5 降为建议档，已整体删除；官方夹具仍留在 tests/fixtures/standard-formats/ 由对应单测引用。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-07-standard-format-not-aligned.root-cause.json",
+      "path": "docs/engineering/standard-formats.json",
+      "symbol": "formats[]",
+      "reason": "同上：登记表随 check:standard-formats 一并删除。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-07-standard-format-not-aligned.root-cause.json",
+      "path": "scripts/standard-formats-lib.mjs",
+      "symbol": "scanSources / validateRegistry / evaluateFixtures / evaluateTouchpoints",
+      "reason": "同上：判据库随 check:standard-formats 一并删除。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-20-ponytail-bounded-diff-read.root-cause.json",
+      "path": "scripts/ponytail-review-branch.mjs",
+      "symbol": "chunkBranchDiff",
+      "reason": "交工前评审整套已于 2026-10-02 删除，分块读 diff 的对象不复存在。"
     }
   ],
   "unverified": [
@@ -952,11 +984,6 @@
       "symbol": "check:mcp-scope-reachable"
     },
     {
-      "contract": "docs/fixes/2026-09-07-absent-number-printed-as-zero.root-cause.json",
-      "path": "scripts/check-archetype-sources.mjs",
-      "symbol": "文本模型价目段"
-    },
-    {
       "contract": "docs/fixes/2026-09-07-framework-boundary-not-enforced.root-cause.json",
       "path": "scripts/check-framework-boundary.mjs",
       "symbol": "collectSources plus the registry/baseline comparison"
@@ -990,16 +1017,6 @@
       "contract": "docs/fixes/2026-09-07-relay-catalog-listing-is-not-liveness.root-cause.json",
       "path": "scripts/model-radar.ts",
       "symbol": "apimart-llm lane"
-    },
-    {
-      "contract": "docs/fixes/2026-09-07-standard-format-not-aligned.root-cause.json",
-      "path": "scripts/check-standard-formats.mjs",
-      "symbol": "check:standard-formats"
-    },
-    {
-      "contract": "docs/fixes/2026-09-07-standard-format-not-aligned.root-cause.json",
-      "path": "docs/engineering/standard-formats.json",
-      "symbol": "formats[]"
     },
     {
       "contract": "docs/fixes/2026-09-07-standard-format-not-aligned.root-cause.json",

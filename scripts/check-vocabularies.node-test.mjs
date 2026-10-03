@@ -559,3 +559,41 @@ test('the generic authoritative-owner template cannot make the gate green', () =
     cleanup(fixture)
   }
 })
+
+test('基线自动收缩：已消失 owner 的条目与松掉的 debtCap 由门岗自己收，不再红灯逼人手改', () => {
+  const fixture = makeFixture(
+    {},
+    {
+      debtCap: 1,
+      registered: [
+        { site: 'src/deleted.ts::type:DeletedStatus/type-union', members: ['queued', 'running'], reason: 'This reason must not hide a deleted owner.' },
+      ],
+      debt: [],
+    },
+  )
+  try {
+    const result = runChecker(fixture, { autoShrink: true })
+    assert.equal(result.status, 0, `${result.stdout}
+${result.stderr}`)
+    assert.match(result.stdout, /基线自动收缩/)
+    const next = JSON.parse(fs.readFileSync(fixture.baselinePath, 'utf8'))
+    assert.deepEqual(next.registered, [])
+    assert.equal(next.debtCap, 0)
+  } finally {
+    cleanup(fixture)
+  }
+})
+
+test('基线自动收缩只减不增：新增 owner 仍然红，也不会被自动登记', () => {
+  const fixture = makeFixture({ 'src/new.ts': 'type Fresh = "queued" | "running" | "success"' }, { debtCap: 0, registered: [], debt: [] })
+  try {
+    const result = runChecker(fixture, { autoShrink: true })
+    assert.equal(result.status, 1, `${result.stdout}
+${result.stderr}`)
+    const next = JSON.parse(fs.readFileSync(fixture.baselinePath, 'utf8'))
+    assert.deepEqual(next.registered, [])
+    assert.deepEqual(next.debt, [])
+  } finally {
+    cleanup(fixture)
+  }
+})

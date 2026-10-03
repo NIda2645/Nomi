@@ -24,7 +24,7 @@
 | A3 | CLAUDE.md 维护纪律段（AGENTS.md 漂移故事） | 2026-08-25 双份手工维护撞号故事（完整案例） | check:agents-sync 门岗 已硬拦漂移；故事属教训应在 docs/lessons/ | 保留「禁止手改 AGENTS.md，改纪律只改 CLAUDE.md + gen:agents」，删故事 |
 | A4 | CLAUDE.md 三闸段（三闸详细展开） | 动手前/报完成前/push 前的详细 inline 规则（与 hook 几乎逐字重复）| self-check.sh hook 每轮注入三闸全文；L1 重复只增加上下文长度 | 压缩为 2 句：「三闸由 hook 自动注入，不在此复述。细节见 self-check.sh + CLAUDE.md §P1–P5。」 |
 | A5 | CLAUDE.md 每日雷达「抓的时候不是随便抓」（4 维细节） | 论文雷达的 4 维筛选标准（最新/火不火/有没有用/成熟度）| nomi-research-radar skill 内已包含筛选逻辑；L1 无需重复维度列表 | 删 4 维列表，保留「维度见技能」一句 |
-| A6 | CLAUDE.md 并行纪律（ponytail/force-push 长注释） | 「评审钩子按远端旧 tip→新 tip 算…重建一律走新分支，见 R25」注释块 | R25 行的索引已指向详细规则；实现细节属 L2 | 删括号内实现细节，保留「不 force-push main / 不向已存在远端分支 force-push 重建内容」核心约束 |
+| A6 | CLAUDE.md 并行纪律（评审/force-push 长注释） | 「评审钩子按远端旧 tip→新 tip 算…重建一律走新分支，见 R25」注释块 | R25 行的索引已指向详细规则；实现细节属 L2 | 删括号内实现细节，保留「不 force-push main / 不向已存在远端分支 force-push 重建内容」核心约束 |
 | A7 | CLAUDE.md P1 段（搬家不留转发壳·现存29个反例） | re-export 壳细节 + 现有数量 | check:filesize + 代码审查；数量会过期；具体规则在 L2 R1 | 删「搬家不留转发壳」段落，L2 R1 已有 |
 | A8 | CLAUDE.md P2 段（schema-v3/recurring 细节） | recurring/高风险交 schema-v3 合同、旧 v1/v2 只读 | check:root-cause-contracts 门岗 + R21 行已索引 | 保留 P2 的判断部分，删 schema-v3 合同细节（属 L2 R21）|
 | A9 | CLAUDE.md 三闸段 inline 控件层级规则 | §1.5 控件层级规则·手法优先级·先分组→再去重→再归位 | 设计系统文档 docs/design/nomi-design-system.md §1.5；P5 已指向 | 删 inline 展开，P5「加/挪控件先过设计系统 §1.5」保留 |

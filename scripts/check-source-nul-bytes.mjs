@@ -8,7 +8,7 @@
 //     2026-09-02 实测：`grep -an "expectNoCjkInEnglishDom" tests/ux/_assert.mjs` 零命中，
 //     我一度据此认定该函数不在这个文件里——它就在第 232 行。
 //   · `git diff` 显示 `Bin 3372 -> 3703 bytes` 而不是行 diff，于是这个文件的改动**没法评审**，
-//     pre-commit 的 Ponytail 评审也读不到它。
+//     提交前的评审也读不到它。
 //
 // 两个工具的阈值还不一样，更难察觉：git 只看**前 8000 字节**里有没有 NUL，grep 看整个文件。
 // 所以同一个 NUL，可能 git diff 正常、grep 却瞎——单看其中一个工具会误判「这文件没事」。

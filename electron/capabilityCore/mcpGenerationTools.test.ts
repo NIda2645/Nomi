@@ -118,6 +118,25 @@ describe("semantic MCP generation tools", () => {
     });
   });
 
+  it("resident agent read (check_job): an unknown-outcome shot is named and nextAction is not observe", async () => {
+    const operations = createInMemoryGenerationOperationStore();
+    const unknown: string[] = [];
+    const handler = createGenerationPlanningHandler({ registry, operations, now: () => "2026-08-23T00:00:00.000Z", unknownShotsOf: () => unknown });
+    const created = await handler({ capability: "create", params: { candidate: candidate() }, lease });
+    const operationId = (created as { operation: { operationId: string } }).operation.operationId;
+
+    // 没有未知的镜：照旧。
+    expect(await handler({ capability: "read", params: { operationId }, lease })).not.toHaveProperty("unknownShots");
+
+    unknown.push("shot-3");
+    const read = await handler({ capability: "read", params: { operationId }, lease }) as { nextAction: string; unknownShots: string[]; notice: string };
+    expect(read.nextAction).toBe("ask_user_to_check_provider_do_not_generate");
+    expect(read.nextAction).not.toBe("observe");
+    expect(read.unknownShots).toEqual(["shot-3"]);
+    expect(read.notice).toContain("shot-3: outcome unknown, the provider may have already received it; do not call generate for it again");
+    expect(read.notice).toContain("ask the user to check the provider dashboard");
+  });
+
   it("exposes one vocabulary for MCP and GUI adapters", () => {
     // 面收敛（surface-16-collapse）：operation 族 8 步塌成 5 个贴生命周期的工具（get_context 进 nomi_read）。
     expect(MCP_GENERATION_TOOL_CATALOG.map((tool) => tool.name)).toEqual([

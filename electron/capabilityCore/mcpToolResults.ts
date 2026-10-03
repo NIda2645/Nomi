@@ -436,6 +436,14 @@ export function buildToolOutcome(
         `${unknownJobs.length} job(s) have an unverified provider state; waiting for reconciliation and no automatic resubmit.`,
       ),
       `  ${recovery?.message}`,
+      // 逐镜点名：Agent 读到这一行就不该再自己去 generate 这一镜（重复提交 = 可能重复扣费）；要不要重新生成由用户核对后在任务中心决定。
+      ...unknownJobs.map((job) => {
+        const meta = job.metadata && typeof job.metadata === 'object' ? job.metadata as Record<string, unknown> : {}
+        const label = str(meta.shotId) || str(job.shotId) || str(job.jobId)
+        return L(ctx,
+          `  ${label} 结果未知，服务商可能已经收下；不要再调用 generate 生成它；请让用户去服务商后台核对，要不要重新生成由用户在任务中心决定。`,
+          `  ${label}: outcome unknown, the provider may have already received it; do not call generate for it again; ask the user to check the provider dashboard, and leave the decision to generate again to the user in the task center.`)
+      }),
     ] : []
     // B3：状态转述带当前信任档位（非默认时才占一行，避免默认档噪音）。
     const trustLevel = str(value.trustLevel) || 'key_confirm'

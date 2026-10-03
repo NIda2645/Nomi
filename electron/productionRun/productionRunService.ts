@@ -1,4 +1,5 @@
 import crypto from 'node:crypto'
+import { tagNomiError } from '../shared/nomiErrorCodes'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -302,6 +303,32 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       const outcome = runCommand.payload.outcome
       const job = current.jobs.find((candidate) => candidate.jobId === jobId)
       if (!job || job.status !== 'submission_unknown') throw new Error('Production job is not awaiting reconciliation')
+      if (outcome === 'user_checked_abandon') {
+        // 「我去服务商后台核对过了，没有这一笔」：把那次结果未知的尝试记成「用户核对后放弃」，释放这一镜的占用
+        // （job → needs_attention，画布重新可以生成），预留按用户核对过的事实 provider-safe 释放。
+        // 只认来自 Nomi 自己窗口的真人手势（productionRunIpc 盖章）；不开拍——重新生成仍要在正常的付费确认卡上点。
+        if (runCommand.humanGesture !== true) throw new Error('A user gesture is required to release an unconfirmed submission')
+        const released = repository.execute(safeProjectId, safeRunId, {
+          ...runCommand,
+          type: 'job.status',
+          payload: {
+            jobId,
+            status: 'needs_attention',
+            patch: { errorCode: 'user_checked_abandoned', errorMessage: `User checked the provider and abandoned this unconfirmed attempt at ${runCommand.issuedAt}` },
+          },
+        })
+        const reservationId: string = `${safeRunId}:${jobId}:${job.attempt}`
+        if (repository.readBudgetLedger(safeProjectId, safeRunId).reservations[reservationId]?.status === 'unsettled') {
+          return repository.execute(safeProjectId, safeRunId, {
+            commandId: `${runCommand.commandId}:release`,
+            expectedRevision: released.run.revision,
+            type: 'budget.entry',
+            payload: { entry: { billingEntryId: `${reservationId}:release-user-checked`, kind: 'release', reservationId, providerSafe: true, occurredAt: runCommand.issuedAt } },
+            issuedAt: runCommand.issuedAt,
+          })
+        }
+        return released
+      }
       if (outcome === 'not_found') {
         return repository.execute(safeProjectId, safeRunId, {
           ...runCommand,
@@ -592,7 +619,30 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
         let changedUnknown = false
         for (const job of current.jobs) {
           if (!isStillAtProvider(job)) continue
-          if (isSemanticSingleShot) continue
+          if (isSemanticSingleShot) {
+            // 提交在路上时进程没了（硬杀 / 断电）：请求发没发出去、供应商收没收下，Nomi 都不知道——结果未知，
+            // 和连接被重置是同一档。此前这里直接跳过，job 永远停在 submitting、画布一直写「生成中」。
+            // 已经拿到任务号的（polling 等）仍由 ProductionGenerationSubmission 的恢复路径接手。
+            if (job.status === 'submitting' && !job.providerTaskId) {
+              try {
+                current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
+                  jobId: job.jobId,
+                  status: 'submission_unknown',
+                  patch: { errorCode: 'submission_unknown_restart', errorMessage: tagNomiError('submission-unknown', 'Nomi was closed while the request was being sent') },
+                }, `recovery-${current.runId}-${job.jobId}-submit-unknown`).run
+                const reservationId: string = `${current.runId}:${job.jobId}:${job.attempt}`
+                if (repository.readBudgetLedger(safeProjectId, current.runId).reservations[reservationId]?.status === 'reserved') {
+                  current = executeInternal(safeProjectId, current.runId, current, 'budget.entry', {
+                    entry: { billingEntryId: `${reservationId}:mark-unsettled`, kind: 'mark_unsettled', reservationId, occurredAt: new Date().toISOString() },
+                  }, `recovery-${current.runId}-${job.jobId}-unsettled`).run
+                }
+                changedUnknown = true
+              } catch {
+                // A concurrent command may have already settled this job.
+              }
+            }
+            continue
+          }
           try {
             current = executeInternal(safeProjectId, current.runId, current, 'job.status', {
               jobId: job.jobId,

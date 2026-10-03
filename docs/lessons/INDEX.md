@@ -4,7 +4,7 @@
 >
 > **谁读**：接手本仓任何工作的人或执行体（Claude / Codex / 协作者）。动手前不必通读——**按触发场景查**：写走查查 A 区、判测试红绿查 B 区、动分支/合并查 C 区、排查线上/平台故障查 D 区、做产品判断查 E 区。
 >
-> **和 `CLAUDE.md` 的分工**：`CLAUDE.md` 是**永远相关**的原则（P1–P5 / D1–D6 / 18 条 R 规则），必须每轮加载；本目录是**触发才查**的具体坑，可以有很多条、可以过期作废。原则升进 CLAUDE.md，细节留这里。规则详解在 [`../engineering-rules.md`](../engineering-rules.md)，编排纪律在 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)。
+> **和 `CLAUDE.md` 的分工**：`CLAUDE.md` 是**永远相关**的原则（原则 + 少数常驻规则），必须每轮加载；本目录是**触发才查**的具体坑，可以有很多条、可以过期作废。原则升进 CLAUDE.md，细节留这里。规则详解在 [`../engineering-rules.md`](../engineering-rules.md)，编排纪律在 [`../engineering/agent-orchestration-playbook.md`](../engineering/agent-orchestration-playbook.md)。
 
 ## 维护纪律
 
@@ -14,19 +14,9 @@
 - **过期了就标，不要静默留着**：结论被推翻 → 头部状态改 `⛔ 已反转`，正文保留「当初为什么误判」（误判过程本身是教训）；已被门岗/代码结构消化 → 标 `✅ 已固化`，写清由哪个门岗接管。**删除只在这条彻底不再可能发生时**。
 - **不进本目录的三类**：① 战况快照 / 路线图（几天就过期，属 `docs/plan` 或 `docs/DELIVERY-LEDGER.md`）；② 本机环境与个人账号偏好（属本机记忆）；③ 当前架构事实（属 [`../ARCHITECTURE-NOW.md`](../ARCHITECTURE-NOW.md)）。
 
-## 规则编号映射（2026-09-14 合并 30 → 17）
+## 规则编号映射
 
-> 本目录的历史教训里写的是**当时的**编号，一律**不改**（改了就成了改历史）。碰到旧号照这张表换算；正本在 [`../engineering-rules.md`](../engineering-rules.md) 的「编号别名表」。
-
-| 旧号 | 现在 | 旧号 | 现在 |
-|---|---|---|---|
-| R6 | R5.2 | R23 | 仍在 L2 `R23`（不再进 L1）|
-| R10 | R1（CSS 段）| R26 | R17.3 |
-| R12 | R9（巨壳门岗）| R28 | R17（升为主号）|
-| R16 | R13.2 | R29 | R5.4 |
-| R18 | R17.2 | R30 | R13.3 |
-| R19 | R11.1 | R31 | R5.5 |
-| R20 | R5.3 | — | — |
+> 本目录的历史教训里写的是**当时的**编号，一律**不改**（改了就成了改历史）。碰到旧号去 [`../engineering/rules.json`](../engineering/rules.json)（视图 `rules.md`）里按 `aliases` 查：旧号都写在新规则的 aliases 里。
 
 ## 文件格式
 
@@ -99,6 +89,7 @@
 
 - [管道跑测试会吞掉退出码](piped-test-runs-mask-exit-codes.md) — `| tail` 的 exit 0 是 tail 的；错的 reporter 名会「全绿」通过
 - [门岗对它看不见的东西永远是绿的](a-gate-is-green-on-what-it-cannot-see.md) — 门岗说「通过」前先确认要查的东西在它扫描范围里；文件夹样张曾整片逃过契约门岗
+- [接框架与外部契约的几次学费](framework-and-external-contract-lessons.md) — 接框架 / SDK、对接外部格式或供应商 API、断言某工具不支持某能力、给安全关键依赖设计可选成员时翻
 - [测试文件不进主 typecheck](tests-are-not-typechecked.md) — 已由 `check:test-types` 接管，但 `pnpm typecheck` 仍看不见测试
 - [判测试翻红前先查别的 worktree](flaky-test-check-other-worktrees-first.md) — 并行 suite 能把耗时放大 40x，和真 flake 长得一样
 - [写在规则里的分档，没人把它接到本机入口上](local-gates-ran-full-suite-and-jammed-the-machine-lock.md) — ✅ 已固化；`pnpm run gates` 排队十几分钟、9 棵树抢一把锁时读；判据存在 ≠ 判据被调用，改验证策略先 grep 全部调用点

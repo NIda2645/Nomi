@@ -61,9 +61,9 @@
   "generality_proof": "The rule applies to every ref kind and every caller of the hook (CI runner, developer machine) because it asks Git whether the object is already in remote-tracking history rather than special-casing release tags, CI environment variables, or workflow names.",
   "shared_boundaries": [
     {
-      "path": "scripts/ponytail-review-branch.mjs",
-      "symbol": "verifyPushReceipt",
-      "responsibility": "Decide which pushed refs carry new content and verify those against the receipt tree."
+      "path": "scripts/claude-hooks/pre-push-check.sh",
+      "symbol": "--not --remotes",
+      "responsibility": "Decide which pushes carry new content: only commits no remote-tracking branch knows about need the gates stamp (the receipt gate that used to decide this was deleted on 2026-10-02)."
     }
   ],
   "same_class_entry_points": [

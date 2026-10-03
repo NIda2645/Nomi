@@ -264,6 +264,14 @@ describe('派出去了没有', () => {
     expect(all.filter(jobAwaitsHuman)).toEqual(['planned', 'authorization_required'])
   })
 
+  it('提交结果未知的一镜：画成失败并带机器码（说「结果没法确认」），不是「还没开拍 / 已停」', () => {
+    for (const status of ['submission_unknown', 'reconciling'] as const) {
+      const state = deriveProductionShotState(run({ status: 'needs_attention', stop: 'failed', shots: [{ shotId: 's1' }], jobs: [job('s1', status)] }), 's1')
+      expect(state?.phase, status).toBe('failed')
+      expect(state?.phase === 'failed' ? state.failureMessage : '').toContain('NOMI_ERR::submission-unknown::')
+    }
+  })
+
   it('没有 job = 没被批过：不管计划到了哪一步都不在任何队列里（草稿卡摆着 = 等你确认，其余 = 还没生成）', () => {
     expect(deriveProductionShotState(run({ planState: 'draft', shots: [{ shotId: 's1' }] }), 's1')?.phase).toBe('awaiting_confirmation')
     for (const planState of ['sealed', 'submitted', 'cancelled'] as const) {

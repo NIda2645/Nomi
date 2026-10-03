@@ -209,6 +209,25 @@ export function mapDoors(options) {
   return dedupeDoors(mapDoorOccurrences(options))
 }
 
+/** 给合同检查用：按文件或符号数门，返回门表（不带行号）。合同缺 doors 时由检查自己调它补全（R21.3）。 */
+export function doorsForTargets(targets, { roots = DEFAULT_ROOTS, includeTests = false } = {}) {
+  const targetSymbols = new Set()
+  for (const target of targets) {
+    if (SOURCE_EXTENSION.test(target) && fs.existsSync(path.resolve(repoRoot, target))) {
+      for (const name of exportedSymbolsOf(target)) targetSymbols.add(name)
+    } else if (!target.includes('/')) {
+      targetSymbols.add(target)
+    }
+  }
+  if (targetSymbols.size === 0) return []
+  return mapDoors({
+    files: collectSourceFiles(roots, includeTests),
+    readFile: (file) => fs.readFileSync(path.resolve(repoRoot, file), 'utf8'),
+    targetSymbols,
+    forced: new Map(),
+  })
+}
+
 function main() {
   const { targets, forced, roots, includeTests } = parseArgs(process.argv.slice(2))
   const targetSymbols = new Set()

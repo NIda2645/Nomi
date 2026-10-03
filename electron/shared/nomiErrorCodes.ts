@@ -41,6 +41,9 @@ export type NomiErrorCode =
   // 与 asset-* 不同：那几条是**参考素材**的问题（请求没发出去）；这条是**产物**的问题（请求已经完成）。
   // 所以它不能说「服务商失败了」、不能劝换一家——失败发生在我们这一侧读文件的那一步。
   | 'output-unreadable'
+  // 付费提交发出后没拿到回复（连接被重置 / 响应超时 / 提交途中进程退出）：供应商**可能已经收下**，
+  // Nomi 没法自动核对。不能说「没发到」，也不能自动重发；下一步是先去服务商后台核对。
+  | 'submission-unknown'
 
 const MARKER_PREFIX = 'NOMI_ERR::'
 const MARKER_SUFFIX = '::'

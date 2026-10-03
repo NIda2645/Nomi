@@ -27,7 +27,7 @@ export function gateKindOf(gate: { gateId: string; scope: string }): ProductionG
   if (gate.scope === 'export') return 'export'
   return 'stage'
 }
-export type ProductionRunPrimaryAction = 'open-stage' | 'open-gate' | 'review-script' | 'review-storyboard' | 'reconcile' | 'review-rough-cut' | 'open-export' | 'resume-run' | null
+export type ProductionRunPrimaryAction = 'open-stage' | 'open-gate' | 'review-script' | 'review-storyboard' | 'reconcile' | 'release-unknown' | 'review-rough-cut' | 'open-export' | 'resume-run' | null
 /** A4 情境控制（§1.5 L2：进行中才出现，不占常驻预算）。 */
 export type ProductionRunControl = 'pause' | 'cancel'
 
@@ -50,6 +50,8 @@ export type ProductionRunView = {
   gateKind?: ProductionGateKind
   /** Exact provider submission covered by a confirm_all shot gate. */
   gateJob?: { index: number; nodeId: string; provider: string; model: string }
+  /** 提交结果未知的那一笔：时间 / 模型 / 服务商，给用户拿去服务商后台比对。 */
+  unknownJob?: { provider: string; model: string; at: string }
   /** 门该在哪决定：外部驱动 → 指路回 CLI（Nomi 只兜底）；nomi 自主发起 → 门在 Nomi 是主路径。 */
   decisionHome: ProductionDecisionHome
   targetId?: string
@@ -192,8 +194,11 @@ export function buildProductionRunView(
       tone: 'danger',
       titleKey: 'generationCommon.production.status.submissionUnknown',
       descriptionKey: 'generationCommon.production.description.submissionUnknown',
-      primaryAction: 'reconcile',
+      // 没拿到任务号 = Nomi 没法跟踪、只能让用户去服务商后台核对；核对完才有「我核对过了，重新生成」。有任务号仍走原来的对账。
+      primaryAction: unknown.providerTaskId ? 'reconcile' : 'release-unknown',
       targetId: unknown.jobId,
+      // 给用户拿去和服务商后台比对的三项：提交时间、模型、服务商。
+      unknownJob: { provider: unknown.provider, model: unknown.model, at: unknown.updatedAt },
     }
   }
   // 历史遗留坏 Run：draft 且一个阶段一道门都没有——起草时的 playbook 没实现，流水线没建起来

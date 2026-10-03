@@ -160,14 +160,14 @@ test('package.json 的 gates:contracts 就是这个 runner，且 advisory 只限
   // 这就是「不许悄悄降级门岗」那道棘轮本体。
   // 2026-10-01 用户按门岗账本（docs/audit/2026-10-01-gate-ledger.md）拍板：docs-index / doc-status / research-sources
   // 三道 advisory 49/49 次都红、永远不阻断、没有读者，移出 PR 的 Contracts（脚本留着，docs-autosync 还要用）。
-  const AUTOSYNC_BACKED = ['check:ledger']
+  const AUTOSYNC_BACKED = []
   // 判断题提醒：机器原理上补不了，硬拦会逼出假章节。目前没有（research-sources 已移出 PR）。
   const JUDGMENT_REMINDERS = []
   // 降级为提示（用户拍板）：判据仍在、仍会打印，只是不再阻断 PR。symptom-cluster 6 次红全是补一份结构评审文档。
-  const DOWNGRADED_HINTS = ['check:symptom-cluster']
+  const DOWNGRADED_HINTS = ['check:concept-owners']
   assert.deepEqual([...advisory].sort(), [...AUTOSYNC_BACKED, ...JUDGMENT_REMINDERS, ...DOWNGRADED_HINTS].sort())
   // 三道被移出的 advisory 不许悄悄回到 PR 的 Contracts 里
-  for (const removed of ['check:docs-index', 'check:doc-status', 'check:research-sources', 'check:door-map']) {
+  for (const removed of ['check:docs-index', 'check:doc-status', 'check:ledger', 'check:research-sources', 'check:door-map']) {
     assert.ok(!gates.includes(removed), `${removed} 已按用户拍板移出 PR 的 Contracts`)
   }
 

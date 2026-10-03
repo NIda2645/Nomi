@@ -99,6 +99,13 @@ const appDispatcher = new class extends Dispatcher {
 export async function getAppDispatcher(signal?: AbortSignal, target?: string | URL): Promise<Dispatcher> {
   signal?.throwIfAborted();
   if (isPrivateTarget(target)) return appDispatcher;
+  await settleRoute(signal);
+  if (!activeRoute) throw applicationError ?? new Error('Application network settings are not ready');
+  return appDispatcher;
+}
+
+/** 等到「最新一次网络设置」应用完（期间又来新设置就再等）；不判断是否成功，那由取路由的人判。 */
+async function settleRoute(signal?: AbortSignal): Promise<void> {
   let pending: Promise<void>;
   do {
     signal?.throwIfAborted();
@@ -117,8 +124,6 @@ export async function getAppDispatcher(signal?: AbortSignal, target?: string | U
     });
   } while (pending !== applyQueue);
   signal?.throwIfAborted();
-  if (!activeRoute) throw applicationError ?? new Error('Application network settings are not ready');
-  return appDispatcher;
 }
 
 /**
@@ -337,6 +342,71 @@ export class SelectiveProxyDispatcher extends Dispatcher {
   }
 }
 
+/** 一条路由的 dispatcher：公网走当前解析出的代理（没有就直连），私网/回环永远直连。 */
+function buildRouteDispatcher(resolution: ProxyResolution): Dispatcher {
+  const direct = new Agent();
+  const socks = resolution.kind === 'socks' ? parseSocksProxyUrl(resolution.url) : null;
+  return isActiveProxy(resolution)
+    ? new SelectiveProxyDispatcher(socks ? createSocksDispatcher(socks) : new ProxyAgent(resolution.url), direct)
+    : direct;
+}
+
+/**
+ * 付费提交专用的 dispatcher 本体：**只属于这一次请求**，第一次派发时才按当前已提交的路由造出内层
+ * （公网走代理 / 直连，私网永远直连），内层连接池不与任何别的请求共用；`close()` 时一起关掉。
+ * 路由没就绪就在派发那一刻抛错（与应用级 dispatcher 同一条规矩）。
+ */
+class FreshConnectionDispatcher extends Dispatcher {
+  private inner: Dispatcher | undefined;
+  constructor(private readonly target: string | URL | undefined) { super(); }
+
+  dispatch(options: Dispatcher.DispatchOptions, handler: Dispatcher.DispatchHandlers): boolean {
+    if (!this.inner) {
+      if (isPrivateTarget(this.target) || isPrivateTarget(options.origin)) this.inner = new Agent();
+      else {
+        if (!activeRoute) throw applicationError ?? new Error('Application network settings are not ready');
+        this.inner = buildRouteDispatcher(activeRoute.resolution);
+      }
+    }
+    return this.inner.dispatch(options, handler);
+  }
+
+  close(): Promise<void>;
+  close(callback: () => void): void;
+  close(callback?: () => void): Promise<void> | void {
+    const done = this.inner ? this.inner.close() : Promise.resolve();
+    if (callback) { done.then(() => callback(), () => callback()); return; }
+    return done;
+  }
+
+  destroy(): Promise<void>;
+  destroy(err: Error | null): Promise<void>;
+  destroy(callback: () => void): void;
+  destroy(err: Error | null, callback: () => void): void;
+  destroy(errOrCallback?: Error | null | (() => void), callback?: () => void): Promise<void> | void {
+    const err = typeof errOrCallback === 'function' ? null : errOrCallback ?? null;
+    const cb = typeof errOrCallback === 'function' ? errOrCallback : callback;
+    const done = this.inner ? this.inner.destroy(err) : Promise.resolve();
+    if (cb) { done.then(() => cb(), () => cb()); return; }
+    return done;
+  }
+}
+
+/**
+ * 付费提交专用：**只属于这一次请求、不与任何别的请求共用连接池**的 dispatcher，调用方用完必须 `close()`。
+ *
+ * 为什么：共享池里的空闲 keep-alive 连接可能已被对面关掉，请求写上去就是 `UND_ERR_SOCKET`，
+ * 和「请求写出去后连接被重置」抛出来的码一模一样——无法区分，只能把后者也当「没写出去」自动重发，
+ * 而不支持幂等的供应商就会收到两笔（2026-10-02 真应用复现）。每次新建连接，第一种情形就不存在，
+ * 此后任何连接层错误的含义只剩「连上之前」或「连上之后」，由 outboundDispatchEvidence 判。
+ * 路由（系统代理 / 自定义代理 / 私网直连）与应用级 dispatcher 同源：同一份 activeRoute 的解析结果。
+ */
+export async function createFreshConnectionDispatcher(signal?: AbortSignal, target?: string | URL): Promise<Dispatcher> {
+  signal?.throwIfAborted();
+  if (!isPrivateTarget(target)) await settleRoute(signal);
+  return new FreshConnectionDispatcher(target);
+}
+
 /** Serialize both stacks. Superseded work never publishes a stale resolution. */
 export function applySystemProxy(session: Session, prefs: ProxyPrefs = FOLLOW_SYSTEM): Promise<ProxyResolution> {
   const generation = ++requestedGeneration;
@@ -356,11 +426,7 @@ export function applySystemProxy(session: Session, prefs: ProxyPrefs = FOLLOW_SY
         && resolution.source !== 'system'
         ? { proxyRules: resolution.url, proxyBypassRules: LOCAL_BYPASS_RULES }
         : { mode: selected.mode === 'off' ? 'direct' : 'system' };
-      const direct = new Agent();
-      const socks = resolution.kind === 'socks' ? parseSocksProxyUrl(resolution.url) : null;
-      const dispatcher = isActiveProxy(resolution)
-        ? new SelectiveProxyDispatcher(socks ? createSocksDispatcher(socks) : new ProxyAgent(resolution.url), direct)
-        : direct;
+      const dispatcher = buildRouteDispatcher(resolution);
       candidate = { dispatcher, resolution, chromiumConfig };
       await session.setProxy(chromiumConfig);
       if (generation !== requestedGeneration) {

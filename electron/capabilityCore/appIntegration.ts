@@ -21,6 +21,7 @@ import { HEARTBEAT_INTERVAL_MS, type InstanceAdvertisement } from './instanceAdv
 import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import type { FetchTaskResultFn, RunTaskFn } from './core'
 import { getProductionRunService, subscribeProductionRunChanges } from '../productionRun/productionRunRuntime'
+import { unknownSubmissionShotLabels } from '../shared/productionShotPhase'
 import type { ApprovalReceiptAuthority } from './approvalReceipt'
 import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/workspaceRepository'
 import type { DispatchContext } from './dispatcher'
@@ -433,6 +434,7 @@ export async function startCapabilityCore(
           if (started.nextAction === 'observe') observeSingleShotRun(submission, lease.projectId, operation.operationId)
           return started
         },
+        unknownShotsOf: (operation, lease) => unknownSubmissionShotLabels(generationService.repository.read(lease.projectId, operation.operationId)),
         reconcile: async (operation, outcome, lease) => {
           const providerBootstrap = readProviderBootstrap()
           if (outcome === 'not_found') return { operationId: operation.operationId, outcome, nextAction: 'manual_review' }

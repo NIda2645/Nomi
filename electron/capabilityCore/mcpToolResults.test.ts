@@ -253,6 +253,16 @@ describe('buildToolErrorOutcome (A6 错误契约)', () => {
     expect(outcome).toMatchObject({ recovery: { allowAutomaticRetry: false, allowNewAttempt: true, nextAction: 'manual_review' } })
   })
 
+  it('names the unknown shot and tells the agent not to generate it again (the user decides in the task center)', () => {
+    const run = { runId: 'run-1', status: 'needs_attention', stageId: 'generate', budget: {}, jobs: [{ jobId: 'job-1', status: 'submission_unknown', metadata: { shotId: 'shot-1' } }] }
+    const zh = buildToolOutcome('nomi_read', { target: 'run', projectId: 'p1', runId: 'run-1' }, run).text
+    expect(zh).toContain('shot-1 结果未知，服务商可能已经收下；不要再调用 generate 生成它')
+    expect(zh).toContain('请让用户去服务商后台核对，要不要重新生成由用户在任务中心决定')
+    const en = buildToolOutcome('nomi_read', { target: 'run', projectId: 'p1', runId: 'run-1' }, run, 'en').text
+    expect(en).toContain('shot-1: outcome unknown, the provider may have already received it; do not call generate for it again')
+    expect(en).toContain('leave the decision to generate again to the user in the task center')
+  })
+
   it('keeps the recovery message in the requested locale', () => {
     const { text, outcome } = buildToolOutcome('nomi_read', { target: 'run', projectId: 'p1', runId: 'run-1' }, {
       runId: 'run-1', status: 'needs_attention', stageId: 'generate',

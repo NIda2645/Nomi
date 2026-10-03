@@ -645,12 +645,43 @@ function renderFailures(failures) {
   }
 }
 
+/**
+ * 基线自动收缩（2026-10-02）：门岗账本里它的误报几乎都来自「基线要手动收缩」——词表已经删了，基线里的
+ * 条目还在，于是红灯逼人去手改 JSON。收缩方向永远安全（只删已经不存在的 owner、只把 debtCap 往下压），
+ * 所以改成门岗自己做：删掉已消失 owner 的条目（成员相同的「搬家」留给人判）、debtCap 对齐当前 debt 数，
+ * 写回文件并打印一行。**增长方向一律不自动**：新增 owner、成员漂移、cap 变大仍然红。
+ */
+export function autoShrinkBaseline(baselinePath, baseline, vocabularies) {
+  const currentSites = new Set(vocabularies.map((vocabulary) => vocabulary.site))
+  const registeredSites = new Set(baselineEntries(baseline).map((entry) => entry.site))
+  const unregistered = vocabularies.filter((vocabulary) => !registeredSites.has(vocabulary.site))
+  const gone = (entry) =>
+    !currentSites.has(entry.site) && !unregistered.some((vocabulary) => sameMembers(vocabulary.members, entry.members))
+  const next = { ...baseline, registered: [...(baseline.registered ?? [])], debt: [...(baseline.debt ?? [])] }
+  const removed = []
+  for (const bucket of ['registered', 'debt']) {
+    next[bucket] = next[bucket].filter((entry) => {
+      if (!gone(entry)) return true
+      removed.push(entry.site)
+      return false
+    })
+  }
+  const capBefore = Number(baseline.debtCap ?? 0)
+  if (next.debt.length < capBefore) next.debtCap = next.debt.length
+  if (removed.length === 0 && next.debtCap === baseline.debtCap) return baseline
+  fs.writeFileSync(baselinePath, `${JSON.stringify(next, null, 2)}
+`)
+  console.log(`✂ 基线自动收缩：删除 ${removed.length} 个已消失的 owner${next.debtCap === baseline.debtCap ? '' : `，debtCap ${capBefore} → ${next.debtCap}`}（只减不增，已写回 ${path.basename(baselinePath)}）`)
+  return next
+}
+
 export function run({
   repoRoot,
   baselinePath,
   updateBaseline = false,
   referenceBaselinePath = null,
   environment = process.env,
+  autoShrink = false,
 }) {
   const vocabularies = scanRepository(repoRoot)
   let baseline = loadBaseline(baselinePath)
@@ -663,6 +694,7 @@ export function run({
     baseline = writePendingEntries(baselinePath, baseline, vocabularies)
     console.log(`已更新 ${path.relative(repoRoot, baselinePath)}；新增 owner 保持 TODO，解释清楚前门岗仍会失败。`)
   }
+  if (autoShrink && !updateBaseline) baseline = autoShrinkBaseline(baselinePath, baseline, vocabularies)
   const resolution = resolveReferenceBaselines({
     repoRoot,
     baselinePath,
@@ -710,6 +742,7 @@ function main() {
     baselinePath,
     referenceBaselinePath,
     updateBaseline: argv.includes('--update-baseline'),
+    autoShrink: !argv.includes('--no-auto-shrink'),
   })
 }
 

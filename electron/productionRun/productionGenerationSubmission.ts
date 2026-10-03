@@ -22,7 +22,7 @@ import { createProductionRunIntentLog } from "./productionRunIntentLog";
 import { productionRunPaths } from "./productionRunPaths";
 import { createProductionRunLock } from "./productionRunLock";
 import type { ProductionRunRepository } from "./productionRunRepository";
-import { outboundRequestWasNeverWritten } from "../outboundDispatchEvidence";
+import { isTransportLevelFailure, outboundRequestWasNeverWritten } from "../outboundDispatchEvidence";
 import {
   SubmissionNotDispatchedError,
   SubmissionReceiptUnknownError,
@@ -475,6 +475,11 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
         beforeDispatch: async (dispatchInput) => {
           await deps.beforeDispatch?.({ run: dispatchInput.run, job: dispatchInput.job });
         },
+        // 供应商档案真声明了幂等（并把键带到请求上）才允许在「结果未知」后用同一个键重发一次；
+        // 目前没有任何生产供应商声明（APIMart 明确 false），所以生产里这条恒为 false。
+        canResendAfterUnknown: (error, dispatchInput) =>
+          providers.some((provider) => provider.providerId === dispatchInput.job.provider && provider.capabilities.submitIdempotency === true)
+          && isTransportLevelFailure(error),
         dispatch: async (dispatchInput) => {
           const currentBinding = dispatchInput.job.executionBinding;
           if (!currentBinding) throw new Error("Generation job is missing its sealed execution binding");
@@ -488,11 +493,10 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
             rawReceipt = result.raw;
             return { providerTaskId: result.providerTaskId };
           } catch (error) {
-            // 「一个字节都没写出去」是**可证明**的一档（连不上 / DNS 解不出 / 从池里取到一条
-            // 对面已关的 keep-alive 连接），它和「写出去了不知道结果」性质完全不同：
-            // 前者供应商那边什么都没发生，后者可能已经在扣费。此前两者都落进
-            // `markSubmittedUnknown()`，于是一次根本没发出去的提交也被记成「可能已收下」
-            // （2026-09-18 C9 间歇红的根因）。判据只有一个 owner：`outboundDispatchEvidence.ts`。
+            // 「一个字节都没写出去」是**可证明**的一档（只认连上之前的失败：DNS / 建连 / TLS 握手前），
+            // 它和「写出去了不知道结果」性质完全不同：前者供应商那边什么都没发生，后者可能已经在扣费。
+            // 连上之后的任何失败（连接被重置、对面关闭、响应超时）都是后者。判据只有一个 owner：
+            // `outboundDispatchEvidence.ts`。
             if (error instanceof SubmissionNotDispatchedError) throw error;
             if (outboundRequestWasNeverWritten(error)) {
               throw new SubmissionNotDispatchedError(error instanceof Error ? error.message : String(error));
