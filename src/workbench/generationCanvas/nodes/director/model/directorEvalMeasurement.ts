@@ -103,7 +103,7 @@ export function projectBounds(camera: CameraSample, center: Vec3, size: Vec3, as
 
 export function shotSizeForHeight(heightRatio: number): EvalShotSize {
   for (const [threshold, size] of SHOT_SIZE_THRESHOLDS) if (heightRatio < threshold) return size
-  return '大特写'
+  return EVAL_SHOT_SIZES[EVAL_SHOT_SIZES.length - 1]
 }
 
 function cameraSample(camera: DirectorCamera, time: number): CameraSample {

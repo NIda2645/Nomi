@@ -4062,10 +4062,10 @@
     {
       "name": "预演测量",
       "subject": "director.eval.measurement",
-      "lifecycle": "evaluation",
-      "authority_kind": "measurement",
-      "trust_domain": "shared",
-      "fact_kind": "derived",
+      "lifecycle": "frozen-execution",
+      "authority_kind": "projection",
+      "trust_domain": "renderer",
+      "fact_kind": "projection",
       "migration_status": "converged",
       "owner": {
         "path": "src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement.ts",
@@ -4092,19 +4092,19 @@
     {
       "name": "导演卡",
       "subject": "director.eval.card",
-      "lifecycle": "evaluation",
+      "lifecycle": "frozen-execution",
       "authority_kind": "schema",
-      "trust_domain": "shared",
+      "trust_domain": "test",
       "fact_kind": "value-object",
       "migration_status": "converged",
       "owner": {
         "path": "evals/director/cardSchema.ts",
-        "symbol": "DirectorCardSchema"
+        "symbol": "directorCardSchema"
       },
       "write_api": [
         {
           "path": "evals/director/cardSchema.ts",
-          "symbol": "DirectorCardSchema"
+          "symbol": "directorCardSchema"
         }
       ],
       "forbidden_derivations": [],
@@ -4115,6 +4115,33 @@
       ],
       "since": "2026-10-03",
       "notes": "评测标准答案卡 schema 唯一 owner；未约束字段不计分。"
+    },
+    {
+      "name": "用户连接 base",
+      "subject": "catalog.connection.user-base",
+      "lifecycle": "catalog",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/catalog/userVendorBase.ts",
+        "symbol": "userVendorBaseUrl"
+      },
+      "write_api": [
+        {
+          "path": "electron/catalog/userVendorBase.ts",
+          "symbol": "userVendorBaseUrl"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/ai/onboarding/vendorHealth.ts",
+        "electron/catalog/assetLocalization.ts",
+        "electron/catalog/assetIngestionRegistry.ts"
+      ],
+      "since": "2026-10-03",
+      "notes": "用户连接的 base 地址与夹具回环覆盖由唯一回答者统一提供；上传与健康探测只消费该判据。"
     }
   ]
 }
