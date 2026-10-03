@@ -25,4 +25,10 @@ describe('director plan v2 schema', () => {
     const result = parseDirectorPlan({ ...valid, scene: { ...valid.scene, environment: 'mars' } })
     expect(result.success).toBe(false)
   })
+  it('does not guess lossy shot direction or size aliases', () => {
+    const move = { ...valid.shots[0].move, kind: 'orbit' }
+    expect(parseDirectorPlan({ ...valid, shots: [{ ...valid.shots[0], move }] }).success).toBe(false)
+    expect(parseDirectorPlan({ ...valid, shots: [{ ...valid.shots[0], size: 'close' }] }).success).toBe(false)
+    expect(parseDirectorPlan({ ...valid, shots: [{ ...valid.shots[0], size: 'wide' }] }).success).toBe(false)
+  })
 })

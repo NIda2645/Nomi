@@ -65,17 +65,32 @@ export type DirectorPlanShot = DirectorPlan['shots'][number]
 export type DirectorPlanActor = DirectorPlan['actors'][number]
 
 const ENUM_ALIASES: Record<string, string> = {
-  白天: 'day', 白昼: 'day', daytime: 'day', 夜晚: 'night', 夜间: 'night', studio: 'studio', 摄影棚: 'studio', 棚拍: 'studio',
-  街道: 'street', 城市街道: 'street', room: 'room', 房间: 'room', 室内: 'room', 庭院: 'courtyard', 古代庭院: 'courtyard',
-  展台: 'product_stage', 产品台: 'product_stage', productstage: 'product_stage',
+  // These Chinese day terms are exact synonyms of the single `day` enum.
+  白天: 'day', 白昼: 'day', daytime: 'day',
+  // These Chinese night terms are exact synonyms of the single `night` enum.
+  夜晚: 'night', 夜间: 'night',
+  // These studio terms all name the same studio environment.
+  摄影棚: 'studio', 棚拍: 'studio',
+  // `街道` is the direct Chinese equivalent of the `street` template.
+  街道: 'street',
+  // These room terms are direct labels for the room template, without shot-direction meaning.
+  房间: 'room', 室内: 'room',
+  // `庭院` is the direct Chinese equivalent of the `courtyard` template.
+  庭院: 'courtyard',
+  // These actor-kind terms preserve the schema's four-way kind distinction.
   人: 'person', 人物: 'person', 角色: 'person', 车辆: 'vehicle', 汽车: 'vehicle', 车: 'vehicle', 产品: 'product', 道具: 'prop',
+  // Each relation term is a direct bilingual or inflected spelling of one relation enum.
   附近: 'near', 前方: 'in_front_of', 前面: 'in_front_of', 后方: 'behind', 后面: 'behind', 左侧: 'left_of', 右侧: 'right_of',
   位于: 'at', 沿着: 'along',
+  // These movement verbs preserve the requested action and do not choose a direction.
   走: 'walk_to', 行走: 'walk_to', walking: 'walk_to', walk: 'walk_to', 跑: 'run_to', 奔跑: 'run_to', run: 'run_to',
-  停止: 'stop', 停下: 'stop', 横移: 'sidestep', 横移挡住: 'sidestep', 侧步: 'sidestep', 驾驶: 'drive_along', 开车: 'drive_along', 追逐: 'chase', 追赶: 'chase', 静止: 'static', 保持姿势: 'hold_pose',
-  wide: '全景', establishing: '全景', medium: '中景', close: '特写', full: '全景',
-  push: 'push_in', pushin: 'push_in', dolly: 'push_in', pull: 'pull_out', pullout: 'pull_out',
-  pan: 'pan', tilt: 'tilt', orbit: 'orbit_right', arc: 'arc_left', follow: 'follow', truck: 'track_right', track: 'track_right', crane: 'crane_up', zoom: 'zoom_in', whip: 'whip', rackfocus: 'rack_focus',
+  停止: 'stop', 停下: 'stop', 横移: 'sidestep', 侧步: 'sidestep', 驾驶: 'drive_along', 开车: 'drive_along', 追逐: 'chase', 追赶: 'chase', 保持姿势: 'hold_pose',
+  // `medium` is the only English size synonym with a one-to-one Chinese enum here.
+  medium: '中景',
+  // Push/pull spellings preserve direction; separators are removed by `alias`.
+  push: 'push_in', pushin: 'push_in', pull: 'pull_out', pullout: 'pull_out',
+  // These names are exact canonical spellings or separator/case variants.
+  follow: 'follow', whip: 'whip', rackfocus: 'rack_focus',
   cut: 'cut', continuous: 'continuous',
 }
 
@@ -89,6 +104,7 @@ function normalizeMove(value: unknown): unknown {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return value
   const move = { ...(value as Record<string, unknown>) }
   move.kind = alias(move.kind)
+  // `in`/`out` are unambiguous direction shorthands; no camera kind is inferred.
   if (move.direction === 'in') move.direction = 'forward'
   if (move.direction === 'out') move.direction = 'backward'
   return move

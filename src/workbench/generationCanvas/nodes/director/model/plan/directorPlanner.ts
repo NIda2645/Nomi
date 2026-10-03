@@ -1,9 +1,11 @@
 import { directorPlanSchema, normalizeDirectorPlan, type DirectorPlan } from './directorPlanSchema'
 
 export type PlannerUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number; estimatedUsd?: number }
-export type PlannerResult = { ok: true; plan: DirectorPlan; attempts: number; usage: PlannerUsage; raw: string } | { ok: false; attempts: number; errors: string[]; usage: PlannerUsage }
+export type PlannerResult =
+  | { ok: true; plan: DirectorPlan; attempts: number; usage: PlannerUsage; raw: string; rawSchemaPasses: number; normalizedSchemaPasses: number; responseCount: number }
+  | { ok: false; attempts: number; errors: string[]; usage: PlannerUsage; rawSchemaPasses: number; normalizedSchemaPasses: number; responseCount: number }
 
-const SYSTEM = `You are a deterministic film director planner. Return one JSON object matching the Director Plan v2 schema. Never emit xyz coordinates, positions, rotations, distances, or camera coordinates. Express spatial intent with actor placement relations, blocking verbs, shot size, angle, height and camera move. Follow cinematography principles: a shot serves narrative or emotion, static is valid, dialogue defaults to medium, and preserve the 180 degree axis. Use windows in seconds.\nSchema keys: scene(tags,environment,template?,dressing?,setPieces), actors(id,kind,desc,anchors?,placement), blocking(actor,verb,target?,window,action?), shots(id,window,transitionIn,subject,subjects?,size,angle,height,move(kind,direction?,amount?,speed,easing)). If dressing is present it must be an AiSceneSpec object with groups, each group containing elements; omit dressing when unsure. setPieces must be objects like {id,kind,relation:{type,ref}}, never strings.\nLegal values (choose exactly; common Chinese/English synonyms are normalized): environment=day|night|studio; template=street|room|courtyard|product_stage; actor kind=person|vehicle|product|prop; placement relation=near|in_front_of|behind|left_of|right_of|on|between|along|at; blocking verb=walk_to|run_to|stop|sidestep|turn_to|hold_pose|drive_along|chase|static; action ids=standing_idle|kneeling_down|kneeling|standing_up|standard_walk|running|male_sitting_pose_1|male_sitting_pose|kneeling_idle|tpose; transition=cut|continuous; shot size=远景|全景|中景|中近景|近景|特写|大特写; angle=front|three_quarter|side|side_rear|back or {over_shoulder:actor}/{pov:actor}; height=eye|low|high|overhead; move kind=orbit_left|orbit_right|push_in|pull_out|crane_up|crane_down|track_left|track_right|arc_left|arc_right|zoom_in|zoom_out|dolly_zoom|pan|tilt|whip|rack_focus|follow|static.\nCinematography skill points: framing is psychological distance; movement needs a narrative/emotional reason; blocking, camera and focus form one causal chain; over-shoulder keeps 20-30% foreground shoulder; POV binds camera to the actor eye; ease-in/ease-out changes attention.`
+const SYSTEM = `You are a deterministic film director planner. Return one JSON object matching the Director Plan v2 schema. Never emit xyz coordinates, positions, rotations, distances, or camera coordinates. Express spatial intent with actor placement relations, blocking verbs, shot size, angle, height and camera move. Follow cinematography principles: a shot serves narrative or emotion, static is valid, dialogue defaults to medium, and preserve the 180 degree axis. Use windows in seconds.\nSchema keys: scene(tags,environment,template?,dressing?,setPieces), actors(id,kind,desc,anchors?,placement), blocking(actor,verb,target?,window,action?), shots(id,window,transitionIn,subject,subjects?,size,angle,height,move(kind,direction?,amount?,speed,easing)). If dressing is present it must be an AiSceneSpec object with groups, each group containing elements; omit dressing when unsure. setPieces must be objects like {id,kind,relation:{type,ref}}, never strings.\nLegal values (choose exactly; only case, whitespace, and separator variants are normalized). Do not infer an ambiguous size or camera direction from words such as wide, close, orbit, truck, track, crane, zoom, or dolly; choose the exact legal value: environment=day|night|studio; template=street|room|courtyard|product_stage; actor kind=person|vehicle|product|prop; placement relation=near|in_front_of|behind|left_of|right_of|on|between|along|at; blocking verb=walk_to|run_to|stop|sidestep|turn_to|hold_pose|drive_along|chase|static; action ids=standing_idle|kneeling_down|kneeling|standing_up|standard_walk|running|male_sitting_pose_1|male_sitting_pose|kneeling_idle|tpose; transition=cut|continuous; shot size=远景|全景|中景|中近景|近景|特写|大特写; angle=front|three_quarter|side|side_rear|back or {over_shoulder:actor}/{pov:actor}; height=eye|low|high|overhead; move kind=orbit_left|orbit_right|push_in|pull_out|crane_up|crane_down|track_left|track_right|arc_left|arc_right|zoom_in|zoom_out|dolly_zoom|pan|tilt|whip|rack_focus|follow|static.\nCinematography skill points: framing is psychological distance; movement needs a narrative/emotional reason; blocking, camera and focus form one causal chain; over-shoulder keeps 20-30% foreground shoulder; POV binds camera to the actor eye; ease-in/ease-out changes attention.`
 
 const EXAMPLES = [
   { scene: { tags: ['courtyard', 'standoff'], environment: 'day', template: 'courtyard', setPieces: [] }, actors: [{ id: 'a', kind: 'person', desc: 'detective', placement: { relation: 'at', ref: 's1-courtyard-ground' } }, { id: 'b', kind: 'person', desc: 'suspect', placement: { relation: 'right_of', ref: 'a' } }], blocking: [{ actor: 'a', verb: 'walk_to', target: 'b', window: [0, 3] }], shots: [{ id: 'establish', window: [0, 2], transitionIn: 'cut', subject: 'a', size: '全景', angle: 'front', height: 'eye', move: { kind: 'static', speed: 'slow', easing: 'linear' } }, { id: 'push', window: [2, 5], transitionIn: 'cut', subject: 'b', size: '近景', angle: { over_shoulder: 'a' }, height: 'eye', move: { kind: 'push_in', amount: 1, speed: 'slow', easing: 'ease_out' } }] },
@@ -28,17 +30,26 @@ async function callModel(system: string, user: string): Promise<{ content: strin
 
 export async function planDirector(description: string): Promise<PlannerResult> {
   const errors: string[] = [], usage: PlannerUsage = {}
+  let rawSchemaPasses = 0
+  let normalizedSchemaPasses = 0
+  let responseCount = 0
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const retryHint = attempt > 1 && errors.length ? `\nYour previous JSON failed validation. Correct these exact errors and return the complete JSON again: ${errors.join(' | ')}` : ''
-      const response = await callModel(SYSTEM, prompt(description) + retryHint);
+      const response = await callModel(SYSTEM, prompt(description) + retryHint)
+      responseCount += 1
       usage.inputTokens = (usage.inputTokens ?? 0) + (response.usage.inputTokens ?? 0); usage.outputTokens = (usage.outputTokens ?? 0) + (response.usage.outputTokens ?? 0); usage.totalTokens = (usage.totalTokens ?? 0) + (response.usage.totalTokens ?? 0)
-      const parsed = directorPlanSchema.safeParse(normalizeDirectorPlan(JSON.parse(response.content)))
-      if (parsed.success) return { ok: true, plan: parsed.data, attempts: attempt, usage, raw: response.content }
+      const decoded = JSON.parse(response.content)
+      if (directorPlanSchema.safeParse(decoded).success) rawSchemaPasses += 1
+      const parsed = directorPlanSchema.safeParse(normalizeDirectorPlan(decoded))
+      if (parsed.success) {
+        normalizedSchemaPasses += 1
+        return { ok: true, plan: parsed.data, attempts: attempt, usage, raw: response.content, rawSchemaPasses, normalizedSchemaPasses, responseCount }
+      }
       errors.push(...parsed.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`))
     } catch (error) { errors.push(error instanceof Error ? error.message : String(error)) }
   }
-  return { ok: false, attempts: 2, errors, usage }
+  return { ok: false, attempts: 2, errors, usage, rawSchemaPasses, normalizedSchemaPasses, responseCount }
 }
 
 export const directorPlannerPrompt = prompt
