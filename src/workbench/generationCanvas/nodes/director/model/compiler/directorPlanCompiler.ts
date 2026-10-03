@@ -2,7 +2,7 @@ import { normalizeAiScene } from '../aiScene'
 import { createDefaultProject } from '../directorProject'
 import { distanceForShotSize, measureContinuity, sampleDirectorProject, type AnchorSpec, type EvalShotSize, type ShotLadder } from '../directorEvalMeasurement'
 import type { DirectorCamera, DirectorObject, DirectorProject, Vec3, Waypoint } from '../directorTypes'
-import { ACTION_LIBRARY, findActionEntry } from '../actionLibrary'
+import { findActionEntry } from '../actionLibrary'
 import { lookAtAngles } from '../vec3'
 import { directorPlanSchema, type DirectorPlan, type DirectorPlanActor, type DirectorPlanShot } from '../plan/directorPlanSchema'
 import { buildS1TemplateObjects } from './s1SceneTemplates'
@@ -23,7 +23,7 @@ function positionAt(object: DirectorObject, time: number): Vec3 {
   return v(previous.x + (next.x - previous.x) * ratio, previous.y + (next.y - previous.y) * ratio, previous.z + (next.z - previous.z) * ratio)
 }
 
-export type DirectorCompileIssue = { kind: 'unknown-ref' | 'overlap' | 'measurement'; message: string; time?: number; objectId?: string }
+export type DirectorCompileIssue = { kind: 'unknown-ref' | 'overlap' | 'measurement' | 'missing_asset'; message: string; time?: number; objectId?: string; actorId?: string; assetId?: string }
 export type DirectorCompileResult = { ok: true; project: DirectorProject; actorMap: Record<string, string>; anchors: Record<string, AnchorSpec>; issues: DirectorCompileIssue[]; duration: number } | { ok: false; errors: string[] }
 
 function actorObject(actor: DirectorPlanActor, position: Vec3, id: string): DirectorObject {
@@ -56,7 +56,7 @@ function materializeDressing(plan: DirectorPlan, seed: string): DirectorObject[]
   return normalized.groups.flatMap((group, gi) => group.elements.map((element, ei) => ({ id: `dress-${seed}-${gi}-${ei}`, name: element.name, type: element.type, position: element.position, rotation: element.rotation, scale: element.scale, color: element.color, roughness: element.roughness, metalness: element.metalness, opacity: element.opacity, wireframe: element.wireframe, flatShading: element.flatShading, visible: true, locked: true, isAuxiliary: true })))
 }
 
-function applyBlocking(plan: DirectorPlan, objects: DirectorObject[], actorMap: Record<string, string>, positions: Map<string, Vec3>, duration: number): void {
+function applyBlocking(plan: DirectorPlan, objects: DirectorObject[], actorMap: Record<string, string>, positions: Map<string, Vec3>, duration: number, issues: DirectorCompileIssue[]): void {
   const byPlanId = (id?: string) => id ? objects.find(o => o.id === actorMap[id]) : undefined
   for (const action of plan.blocking) {
     const actor = byPlanId(action.actor); if (!actor) continue
@@ -71,8 +71,12 @@ function applyBlocking(plan: DirectorPlan, objects: DirectorObject[], actorMap: 
     actor.trajectoryClips = [...(actor.trajectoryClips ?? []), clip(`${actor.id}-${action.verb}-${start}`, start, end)]
     if (actor.type === 'character') {
       const chosen = action.action ?? (action.verb === 'run_to' || action.verb === 'chase' ? 'running' : action.verb === 'walk_to' || action.verb === 'drive_along' || action.verb === 'sidestep' ? 'standard_walk' : 'standing_idle')
-      const entry = findActionEntry(chosen) ?? ACTION_LIBRARY[0]
-      actor.actionClips = [...(actor.actionClips ?? []), { id: `${actor.id}-action-${start}`, name: entry.id, clipType: 'action', actionPose: entry.id, startTime: start, endTime: end, startFrame: Math.round(start * FPS), endFrame: Math.round(end * FPS) }]
+      const entry = findActionEntry(chosen)
+      if (entry) {
+        actor.actionClips = [...(actor.actionClips ?? []), { id: `${actor.id}-action-${start}`, name: entry.id, clipType: 'action', actionPose: entry.id, startTime: start, endTime: end, startFrame: Math.round(start * FPS), endFrame: Math.round(end * FPS) }]
+      } else {
+        issues.push({ kind: 'missing_asset', actorId: action.actor, objectId: actor.id, assetId: chosen, message: `no action-library asset for ${chosen}; left the semantic action unmaterialized` })
+      }
     }
   }
 }
@@ -99,7 +103,17 @@ function solveCamera(shot: DirectorPlanShot, subject: DirectorObject, previous: 
   let targetEnd = target
   if (shot.move.kind === 'follow' && subject.motionTrajectory?.length) { const delta = sub(subjectEndPosition, subjectStart); endPosition = add(endPosition, delta); targetEnd = add(target, delta) }
   const endFov = shot.move.kind === 'zoom_in' ? Math.max(18, fov - (shot.move.amount ?? 10)) : shot.move.kind === 'zoom_out' ? Math.min(80, fov + (shot.move.amount ?? 10)) : fov
-  return { id, name: shot.id, position: startPosition, yaw: 0, pitch: 0, roll: 0, fov, focalLengthMm: 35, motionTrajectory: [wp(`${id}-start`, startPosition, target, start, fov), wp(`${id}-end`, endPosition, targetEnd, end, endFov)], trajectoryClips: [clip(`${id}-clip`, start, end)] }
+  const isOrbit = shot.move.kind === 'orbit_left' || shot.move.kind === 'orbit_right' || shot.move.kind === 'arc_left' || shot.move.kind === 'arc_right'
+  const motionTrajectory = isOrbit
+    ? Array.from({ length: 9 }, (_, index) => {
+        const ratio = index / 8
+        const angle = (azimuth + (endAngle - azimuth) * ratio) * Math.PI / 180
+        const radius = distance + (endRadius - distance) * ratio
+        const point = v(target.x + Math.sin(angle) * radius, height, target.z + Math.cos(angle) * radius)
+        return wp(`${id}-orbit-${index}`, point, target, start + (end - start) * ratio, fov + (endFov - fov) * ratio)
+      })
+    : [wp(`${id}-start`, startPosition, target, start, fov), wp(`${id}-end`, endPosition, targetEnd, end, endFov)]
+  return { id, name: shot.id, position: startPosition, yaw: 0, pitch: 0, roll: 0, fov, focalLengthMm: 35, motionTrajectory, trajectoryClips: [clip(`${id}-clip`, start, end)] }
 }
 
 export function compileDirectorPlan(input: unknown): DirectorCompileResult {
@@ -114,12 +128,13 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
   for (const actor of plan.actors) { const id = `actor-${seed}-${actor.id}`; actorMap[actor.id] = id; const position = placed.positions.get(actor.id) ?? v(); const obj = actorObject(actor, position, id); actorObjects.push(obj); for (const [name, offset] of Object.entries(actor.anchors ?? {})) anchors[`${id}.${name}`] = { offset: { x: offset?.x ?? 0, y: offset?.y ?? 0.9, z: offset?.z ?? 0 }, size: v(0.18, 0.18, 0.18) } }
   scene.objects = [...templateObjects, ...materializeDressing(plan, seed), ...actorObjects]
   const duration = Math.max(...plan.shots.map(s => s.window[1]), ...plan.blocking.map(b => b.window[1]), 0)
-  applyBlocking(plan, actorObjects, actorMap, placed.positions, duration)
+  const issues: DirectorCompileIssue[] = [...placed.issues]
+  applyBlocking(plan, actorObjects, actorMap, placed.positions, duration, issues)
   const cameras: DirectorCamera[] = []; let previous: Vec3 | undefined
   for (const shot of plan.shots) { const root = shot.subject.split('.')[0], subject = actorObjects.find(o => o.id === actorMap[root]); if (!subject) continue; const camera = solveCamera(shot, subject, shot.transitionIn === 'continuous' ? previous : undefined, `cam-${seed}-${shot.id}`); cameras.push(camera); scene.timelineTrackOrder.push(camera.id); previous = camera.motionTrajectory?.at(-1) ? v(camera.motionTrajectory.at(-1)!.x, camera.motionTrajectory.at(-1)!.y, camera.motionTrajectory.at(-1)!.z) : camera.position }
   scene.cameras = cameras
   scene.objects.forEach(object => { object.position.y = Math.max(0, object.position.y) })
   const measurement = sampleDirectorProject(project, { fps: FPS, duration, anchors }), continuity = measureContinuity(measurement, scene)
-  const issues: DirectorCompileIssue[] = [...placed.issues, ...continuity.map(item => ({ kind: 'measurement' as const, message: item.message, time: item.time, objectId: item.objectId }))]
+  issues.push(...continuity.map(item => ({ kind: 'measurement' as const, message: item.message, time: item.time, objectId: item.objectId })))
   return { ok: true, project, actorMap, anchors, issues, duration }
 }

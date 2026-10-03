@@ -2,7 +2,6 @@ import { z } from 'zod'
 import { aiSceneSchema } from '../aiScene'
 import { EVAL_SHOT_SIZES, type EvalShotSize } from '../directorEvalMeasurement'
 import { CAMERA_MOVES, type CameraMove } from '../../agent/cameraMoveVocab'
-import { ACTION_LIBRARY } from '../actionLibrary'
 
 const finite = z.number().finite()
 const windowSchema = z.tuple([finite.nonnegative(), finite.nonnegative()]).refine(([a, b]) => b > a, 'window end must be greater than start')
@@ -12,7 +11,6 @@ const template = z.enum(['street', 'room', 'courtyard', 'product_stage'])
 const actorKind = z.enum(['person', 'vehicle', 'product', 'prop'])
 const anchorName = z.string().regex(/^[a-z][a-z0-9_]*$/)
 const move = z.enum(CAMERA_MOVES as [CameraMove, ...CameraMove[]])
-const actionId = z.enum(ACTION_LIBRARY.map(item => item.id) as [string, ...string[]])
 
 export const directorPlanSchema = z.object({
   version: z.literal(2).default(2),
@@ -35,7 +33,10 @@ export const directorPlanSchema = z.object({
     verb: z.enum(['walk_to', 'run_to', 'stop', 'sidestep', 'turn_to', 'hold_pose', 'drive_along', 'chase', 'static']),
     target: z.string().min(1).optional(),
     window: windowSchema,
-    action: actionId.optional(),
+    // Keep semantic intent open. The compiler resolves the small real asset
+    // library and reports missing_asset for an unavailable pose instead of
+    // manufacturing a clip name that cannot render.
+    action: z.string().min(1).optional(),
   })).default([]),
   shots: z.array(z.object({
     id: z.string().min(1),
