@@ -7,8 +7,14 @@ import type { ProductionRun } from './productionRunTypes'
  * 「以后 ¥X 内别再逐镜问」绑在什么上，只有这一份定义。这些用例钉的是它的**诚实边界**：
  * 那个 X 只能从已封存授权算出来；算不出就抛，绝不凑一个数字去问用户批准。
  */
+/** 授权住在它自己那道门上（2026-09-30）：夹具把 sealedPlan 里的信封摆到一道付费门上，计划上不留。 */
 function runWith(plan: Record<string, unknown> | undefined): ProductionRun {
-  return { runId: 'run-1', generationPlan: plan } as unknown as ProductionRun
+  if (!plan) return { runId: 'run-1', generationPlan: plan, gates: [] } as unknown as ProductionRun
+  const { authorizationEnvelope, authorizationDigest, ...rest } = plan as { authorizationEnvelope?: unknown; authorizationDigest?: string }
+  const gates = authorizationEnvelope
+    ? [{ gateId: 'gate-trust', scope: 'budget_envelope', status: 'approved', planHash: authorizationDigest, authorizationDigest, authorizationEnvelope }]
+    : []
+  return { runId: 'run-1', generationPlan: rest, gates } as unknown as ProductionRun
 }
 
 function sealedPlan(

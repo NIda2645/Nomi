@@ -82,14 +82,10 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
         state: "sealed" as const,
         // P4 S6.5: freeze the multi-shot bundle (per-shot sub-contracts + plan hash) exactly as the durable
         // reducer does. The gate projection reads these; a single-shot seal omits them (unchanged).
-        ...(multiShot ? { shots: multiShot.shots.map((shot) => ({ ...shot, candidate: { ...shot.candidate } })), planHash: multiShot.planHash } : {}),
+        ...(multiShot ? { shots: multiShot.shots.map((shot) => ({ ...shot, candidate: { ...shot.candidate } })) } : {}),
         ...(authorization
-          ? {
-              authorizationEnvelope: structuredClone(authorization.envelope),
-              authorizationDigest: authorization.authorizationDigest,
-              authorizationGateId: authorization.envelope.gateId,
-              planHash: authorization.authorizationDigest,
-            }
+          ? { authorization: { gateId: authorization.envelope.gateId, digest: authorization.authorizationDigest,
+              envelope: structuredClone(authorization.envelope), status: "waiting" as const } }
           : {}),
         updatedAt: now,
       });
@@ -102,8 +98,7 @@ export function createInMemoryGenerationOperationStore(): GenerationOperationSto
       // 内存版没有门：sealed 即「已出价未决」。与 durable reducer 同一条边——回 draft、未 present。
       if (current.state !== "draft" && current.state !== "sealed") return current;
       if (current.state === "draft" && current.cardHidden === true) return current;
-      const { contract: _contract, planHash: _planHash, authorizationEnvelope: _envelope, authorizationDigest: _digest,
-        authorizationGateId: _gateId, ...draft } = current;
+      const { contract: _contract, authorization: _authorization, ...draft } = current;
       const next = freeze({ ...draft, candidate: { ...current.candidate, sealedContractHash: undefined },
         state: "draft" as const, cardHidden: true, updatedAt: now });
       operations.set(keyFor(projectId, operationId), next);

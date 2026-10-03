@@ -31,16 +31,24 @@ describe('会红：每一类违例', () => {
 })
 
 describe('词表对着真实词典核对（词典里「价格未知」类文案改了词表要跟着改）', () => {
+  const dictionaries = loadDictionaries()
+  const flat = (node, prefix = '') => Object.entries(node).flatMap(([key, value]) => (typeof value === 'string' ? [[`${prefix}${key}`, value]] : value && typeof value === 'object' ? flat(value, `${prefix}${key}.`) : []))
+  const find = (locale, suffix) => flat(dictionaries[locale]).filter(([key]) => key.endsWith(suffix)).map(([, value]) => value)
+
   it('这几条真实文案都被词表抓得到', () => {
-    const dictionaries = loadDictionaries()
-    const flat = (node, prefix = '') => Object.entries(node).flatMap(([key, value]) => (typeof value === 'string' ? [[`${prefix}${key}`, value]] : value && typeof value === 'object' ? flat(value, `${prefix}${key}.`) : []))
     for (const locale of ['zh-CN', 'en']) {
-      const entries = flat(dictionaries[locale])
-      const find = (suffix) => entries.filter(([key]) => key.endsWith(suffix)).map(([, value]) => value)
-      for (const suffix of ['spendTotalUnknown', 'estCostUnknown', 'shotPriceUnknown', 'stoppedBudget', 'raiseBudget']) {
-        const values = find(suffix)
+      for (const suffix of ['estCostUnknown', 'shotPriceUnknown']) {
+        const values = find(locale, suffix)
         expect(values.length, `${locale} 词典里找不到 ${suffix}`).toBeGreaterThan(0)
         for (const value of values) expect(kinds(value), `${locale}.${suffix} = ${value}`).toContain('price-wording')
+      }
+    }
+  })
+
+  it('付费卡那几句（合计「价格未知」、停下「预算已用完 · 提额续拍」）已从词典删掉，不许回来（#947）', () => {
+    for (const locale of ['zh-CN', 'en']) {
+      for (const suffix of ['spendTotalUnknown', 'stoppedBudget', 'raiseBudget']) {
+        expect(find(locale, suffix), `${locale} 词典里又出现了 ${suffix}`).toEqual([])
       }
     }
   })
@@ -126,9 +134,8 @@ describe('不谈钱：没花钱 / 免费 / 不计费 这类断言', () => {
   const OWNED_BY_SPEND_CARD_LANE = Object.freeze([
     'onboardingProviders.drawer.home.kieHint',
     'onboardingProviders.keyOnly.probeCostPaid', 'onboardingProviders.keyOnly.probeCostPaidUnpriced', 'onboardingProviders.keyOnly.probeCostUnknown',
-    'generationCommon.spendHostingDisclosure.message', 'generationCommon.spendHostingDisclosure.autonomousBlocked',
     'generationCommon.production.checkpoint.subtitleWithReuse', 'generationCommon.production.checkpoint.note', 'generationCommon.production.checkpoint.noteWithBudget',
-    'runtime.capability.credentialProbeMessage', 'agentPanelV4.spendActionNotStarted',
+    'runtime.capability.credentialProbeMessage',
   ])
   const flatOf = (node, prefix = '') => Object.entries(node).flatMap(([key, value]) => (typeof value === 'string' ? [[`${prefix}${key}`, value]] : value && typeof value === 'object' ? flatOf(value, `${prefix}${key}.`) : []))
   // 设计实验室的样例串（fixture*）只在 devlab 里渲染，用户界面不出现（同上面「整本词典」那条的豁免）。

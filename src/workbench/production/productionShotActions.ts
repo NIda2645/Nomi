@@ -24,7 +24,6 @@ export const SHOT_ACTION_FAILURE_COPY = {
   provider_unavailable: 'generationCommon.production.canvasLanding.actionFailure.providerUnavailable',
   no_prior_attempt: 'generationCommon.production.canvasLanding.actionFailure.noPriorAttempt',
   previous_attempt_unsettled: 'generationCommon.production.canvasLanding.actionFailure.previousAttemptUnsettled',
-  queued_shots_pending: 'generationCommon.production.canvasLanding.actionFailure.queuedShotsPending',
   attempt_limit: 'generationCommon.production.canvasLanding.actionFailure.attemptLimit',
   run_changed: 'generationCommon.production.canvasLanding.actionFailure.runChanged',
   approval_stale: 'generationCommon.production.canvasLanding.actionFailure.approvalStale',

@@ -21,7 +21,7 @@ const OPTIONS: ModelOption[] = [
 function shot(id: string, overrides: Partial<PendingSpendShot> = {}): PendingSpendShot {
   return {
     shotId: id, nodeId: `node-${id}`, index: 1, prompt: '六棱柱',
-    providerId: 'apimart', modelId: 'gpt-image-2',
+    providerId: 'apimart', modelId: 'gpt-image-2', kind: 'image',
     parameters: { size: '1024x1024' }, price: { known: true, amount: 0.3 },
     ...overrides,
   }
@@ -35,9 +35,9 @@ function pending(shots: PendingSpendShot[]): PendingSpendConfirm {
   }
 }
 
-function editedTo(base: PendingSpendShot, meta: Record<string, unknown>, scope: 'each' | 'all' = 'each'): SpendDraft {
+function editedTo(base: PendingSpendShot, meta: Record<string, unknown>, draft: SpendDraft = EMPTY_SPEND_DRAFT): SpendDraft {
   const node = { id: base.nodeId!, kind: 'image', position: { x: 0, y: 0 }, prompt: base.prompt, meta } as unknown as GenerationCanvasNode
-  return draftAfterNodeEdit(EMPTY_SPEND_DRAFT, base, node, scope)
+  return draftAfterNodeEdit(draft, base, node)
 }
 
 describe('spendCardEstimate', () => {
@@ -74,10 +74,11 @@ describe('spendCardEstimate', () => {
     expect(repriced.knownSubtotal).toBe(0)
   })
 
-  it('「全部」模式改一个参数 → 每一镜都重算，合计按镜累加', () => {
+  it('每一镜各自改了参数 → 每一镜都重算，合计按镜累加', () => {
     const first = shot('a')
     const second = shot('b', { index: 2 })
-    const draft = editedTo(first, { modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024' }, 'all')
+    const draft = editedTo(second, { modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024' },
+      editedTo(first, { modelKey: 'gpt-image-2', modelVendor: 'apimart', size: '1536x1024' }))
     const repriced = repricePendingSpend(pending([first, second]), draft, resolve)
     expect(repriced.shots.map((entry) => entry.price)).toEqual([
       { known: true, amount: 0.5 }, { known: true, amount: 0.5 },

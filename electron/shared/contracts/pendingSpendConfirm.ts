@@ -12,6 +12,7 @@
  * 的 `ShotPrice` 同形，那边是求值的家，这里是过线的形状。
  */
 import type { ResidentSurfaceDisabledReason, ResidentSurfaceOffPhase } from "./residentSurfaceLifecycle";
+import type { GenerationShotKind } from "../generationShotKind";
 
 import { z } from 'zod';
 import { generationReferenceSchema, type GenerationReference } from '../agentCapabilities/generationPlanSchemas';
@@ -41,6 +42,11 @@ export type PendingSpendShot = Readonly<{
   prompt: string;
   providerId: string;
   modelId: string;
+  /**
+   * 这一镜出来的是图片还是视频（宿主按 `generationShotKind` 算，和画布节点、派发同一个答案）。
+   * 卡标题说「张 / 段」、卡体那张生成框的种类都只读它，不再各自去解读 `mode` 或模型目录（2026-09-30 第 9 条）。
+   */
+  kind: GenerationShotKind;
   mode?: string;
   modeId?: string;
   /**

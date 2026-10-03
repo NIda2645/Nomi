@@ -5,7 +5,7 @@
 // 降到 budget_only 就是一次付费放行（此后逐镜确认门不再生成，剩余镜头直接提交给供应商），所以它
 // 需要一张收据，且这张收据必须绑死「哪个 run + 多少钱」。
 //
-// 绑定的料**全部来自已封存的授权信封**（generationPlan.authorizationEnvelope）：逐镜单价、合计、
+// 绑定的料**全部来自已封存的授权信封**（最近一道付费门上的那一份）：逐镜单价、合计、
 // 币种、项目版本、planVersion 都在里面，且信封本身已被 authorizationDigest 冻结。于是：
 //   · 改计划 / 改价 → digest 变 → 收据的 contractHash 失配 → 拒；
 //   · 换 run 或改上限 → costScope 串变 → 拒。
@@ -15,6 +15,7 @@
 // 抛错——宁可拒绝，也绝不把未知价当 ¥0 报给用户（shotPricing.ts 的同一条诚实规则）。
 import { trustGrantCostScope, trustGrantGateId } from "./productionRunGateIdentity";
 import type { ProductionRun } from "./productionRunTypes";
+import { spendAuthorizationGates } from "../shared/productionSpendAuthority";
 
 export class TrustGrantUnavailableError extends Error {
   readonly code = "trust_grant_unavailable" as const;
@@ -56,8 +57,10 @@ export type TrustGrantBinding = {
  */
 export function readTrustGrantBinding(run: ProductionRun): TrustGrantBinding {
   const plan = run.generationPlan;
-  const envelope = plan?.authorizationEnvelope;
-  const digest = plan?.authorizationDigest;
+  // 最近一份授权（每份住在自己那道门上）。降档要绑的就是用户刚看过、刚封好的那一份。
+  const latest = spendAuthorizationGates(run).at(-1);
+  const envelope = latest?.authorizationEnvelope;
+  const digest = latest?.authorizationDigest;
   if (!envelope || !digest) {
     throw new TrustGrantUnavailableError("This run has no sealed paid authorization to grant trust over");
   }

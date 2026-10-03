@@ -1,0 +1,165 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-02-stop-outcome-race",
+  "problem_type": "When the paid card was closed while one of its shots was still being approved, the Agent's receipt and the card's closing notice were read before that approval landed, so a shot that was then approved, sent and paid for was reported as not generated",
+  "detected_by": "walkthrough",
+  "recurrence_check_on": "2026-11-01",
+  "symptom": "Breaker acceptance of #947 at 2e37960e6, fixture vendor (2026-10-02). X2: press Generate this one on a 3-shot card, then × right away; the × reached the host 4.7 seconds later (main process busy). The vendor received shot 1 and its image landed, but the Agent's receipt said 'Not generated and nothing spent for shot-1, shot-2, shot-3: the user closed the card', and no notice said anything was sent. X4: press Generate remaining 6 and × in the middle; the notice and the vendor both said 3 shots, but the receipt counted only 2 as generating and said shot 3 cost nothing, while it had been paid for and had landed.",
+  "direct_cause": "electron/capabilityCore/appIntegrationSpendConfirm.ts discardPendingSpend withdrew the offer and, in its finally, handed the decision to the waiting turn at once; the turn then read the per-shot outcome immediately. The × is deliberately not queued, so it could land while confirmOneShot for shot k had passed the card's checks but not yet sealed its gate: the withdraw found no gate to revoke, the outcome read at that moment had shot k undecided, and shot k was then sealed, approved and sent. The × also returned no count, so a stopped single Generate this one showed no notice at all.",
+  "class_root": "The outcome of a presentation was read the moment it was closed, by whoever closed it, while a card action that decides spend could still be in flight in the card's queue. The queue lived inside createPendingSpendActions, so the other closer (the lane's withdraw when the user types while the card is open, followed by readPresentationOutcome) could not wait for it either.",
+  "affected_population": [
+    "Everyone who presses × on the paid card while a shot is being approved (a single Generate this one, or Generate remaining): the Agent is told a paid shot was not generated, and may offer to generate it again",
+    "Everyone who types into the Agent panel while a Generate this one is being approved: same wrong receipt through the lane's redirected path"
+  ],
+  "scope_paths": [
+    "electron/capabilityCore/spendCardActionQueue.ts",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "electron/capabilityCore/generationTransportAdapters.ts",
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts"
+  ],
+  "entry_points": [
+    "The card's ×: slot-dismiss -> useAgentPanelSpendConfirm.discard -> IPC discard-spend -> appIntegrationSpendConfirm.discardPendingSpend",
+    "Typing while the card is open: laneExtendedDesktopPorts.preflightGenerate (redirected) -> generation.withdrawPresentation -> generation.readPresentationOutcome",
+    "The card closing because every shot is decided: confirmOneShot / removePendingSpendShot finally -> settleWaiterIfClosed -> lane -> readPresentationOutcome"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "When a paid card's outcome is final, and who may read it, is Nomi's own spend-authority flow; no external protocol defines it.",
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/spendCardActionQueue.ts",
+    "tests": [
+      "electron/capabilityCore/agentPanelSpendRemaining.e2e.test.ts",
+      "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts",
+      "tests/ux/spend-panel-write-ownership.test.mjs",
+      "tests/ux/agent-spend-stop-midway.walk.mjs"
+    ],
+    "why": "The card's actions are serialized per presentation in one queue (serializeCardAction), and the only way to read a final outcome is after cardActionsSettled: the × waits for it before it answers the card, and readPresentationOutcome (the only reader behind the Agent's receipt) waits for it before it reads. The closers stay unqueued so they can still interrupt; only the telling of the result waits."
+  },
+  "invariants": [
+    "The receipt the Agent gets after the card closes lists as generating exactly the shots the host approved, including one whose approval was in flight when the card was closed.",
+    "The × answers the card with the host's final count (sent / not sent) for this presentation, and the card's notice says that count; the interrupted action's own failure is not shown on top of it.",
+    "Closing the card is never queued behind the action it interrupts."
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/spendCardActionQueue.ts",
+      "symbol": "serializeCardAction"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "serializeCardAction"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "cardActionsSettled"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/generationTransportAdapters.ts",
+      "symbol": "cardActionsSettled"
+    },
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "symbol": "readPresentationOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "batchStopped"
+    }
+  ],
+  "door_reduction": {
+    "before": 4,
+    "after": 6,
+    "why_not": "One queue, one wait (cardActionsSettled), and two places that tell a final result: the × telling the card (it needs the count for the notice) and readPresentationOutcome telling the Agent (both lane paths read through it). The queue moved out of createPendingSpendActions into its own module so the lane's reader can wait on the same queue instead of keeping a second notion of 'in flight'; the local copy was deleted in the same change."
+  },
+  "generality_proof": "Nothing depends on the model, vendor, shot kind, batch size or who closes the card: any closer (×, typing, every shot decided) and any card action (Generate this one, Remove, Generate remaining) go through the same queue and the same wait.",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/spendCardActionQueue.ts",
+      "symbol": "cardActionsSettled",
+      "responsibility": "Resolves when the presentation's queued card actions have all landed; reading the run after it gives the host's final approved set."
+    },
+    {
+      "path": "electron/capabilityCore/spendCardActionQueue.ts",
+      "symbol": "serializeCardAction",
+      "responsibility": "Runs a presentation's card actions one after another; the queue cardActionsSettled waits on."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "discardPendingSpend",
+      "disposition": "enforced",
+      "evidence": "Waits for cardActionsSettled after the withdraw and returns batchStopped from the final outcome; agentPanelSpendRemaining.e2e.test.ts creates the race on the single path and on Generate remaining (× lands after the card's checks, before the gate)."
+    },
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "entry_point": "redirected (typing while the card is open)",
+      "disposition": "enforced",
+      "evidence": "Reads through readPresentationOutcome, which now waits; agentPanelSpendRemaining.e2e.test.ts 'typing while Generate this one is being approved' fails without the wait."
+    },
+    {
+      "path": "electron/agentLane/laneExtendedDesktopPorts.ts",
+      "entry_point": "stopped (turn stopped / window closed)",
+      "disposition": "not-affected",
+      "evidence": "Returns generation_cancelled without reading or claiming any per-shot outcome."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "entry_point": "operation view presentationOutcome (external MCP read / status)",
+      "disposition": "not-affected",
+      "evidence": "A polled read model, not a one-time verdict: a read during the race shows the shot undecided and the next read shows it generating."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Any new way of closing the card, or any new reader of the outcome, can again read before an in-flight approval lands; the breaker line found it through two different closers (single and batch) on the first try.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs --write=serializeCardAction --read=cardActionsSettled,readPresentationOutcome",
+      "rg \"withdrawPresentation|operations.withdraw\" electron -> discardPendingSpend, laneExtendedDesktopPorts (redirected, stopped, no window), stalePresentationSweep (startup, nothing in flight)"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/spendCardActionQueue.ts",
+    "invariant": "A presentation's final outcome is read only after its queued card actions have landed.",
+    "failure_mode": "If a queued action hangs (a single-shot vendor submit that never times out), the × answer and the receipt wait as long as it does; the card itself closes at once.",
+    "exception_policy": "none",
+    "strategy": "Move the card's action queue into one module, expose cardActionsSettled, and make both tellers of a final result (the × and readPresentationOutcome) wait on it; the renderer shows the ×'s count after an interrupted single action.",
+    "artifacts": [
+      "electron/capabilityCore/spendCardActionQueue.ts",
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "electron/capabilityCore/generationTransportAdapters.ts",
+      "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/agentPanelSpendRemaining.e2e.test.ts",
+    "electron/capabilityCore/agentPanelSpendBatches.e2e.test.ts",
+    "tests/ux/spend-panel-write-ownership.test.mjs",
+    "tests/ux/agent-spend-stop-midway.walk.mjs"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/agentPanelSpendRemaining.e2e.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts"
+    ],
+    "rationale": "Deleted in place: the queue local to createPendingSpendActions (moved, not copied), and the × answering before the in-flight action landed."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency orders the card's actions.",
+    "exit_criteria": []
+  },
+  "migration": "No stored data changes; the queue is in memory and empty after a restart (the startup sweep withdraws a presentation left open).",
+  "residual_risks": [
+    "A single-shot plan's start awaits the vendor's submit; while a submit hangs without a timeout (breaker S2, assigned to its own lane), a × or a typed message landing in that approval waits as long for its answer and receipt. Before this change the receipt for that card already waited the same way when the shot closed the card."
+  ]
+}

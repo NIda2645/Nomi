@@ -1,6 +1,7 @@
 import type { ExecutionContractV1 } from "../capabilityCore/executionContract";
 import type { ProductionRunRepository } from "./productionRunRepository";
 import type { ProductionJob, ProductionRun } from "./productionRunTypes";
+import { authorizationGateForJob, normalizeLegacySpendAuthority } from "../shared/productionSpendAuthority";
 
 /**
  * 一次执行的身份：哪一镜、第几次尝试。找不到或对不上，调用方要**分得清**这是「恢复态坏了」
@@ -51,10 +52,13 @@ export function readGenerationExecution(
 ): { job: ProductionJob; contract: ExecutionContractV1; currentAuthority: boolean } {
   const job = findGenerationExecutionJob(run, input);
   if (!job) throw new Error("Generation execution identity is missing or ambiguous");
-  const fromSnapshot = (snapshot: ProductionRun | undefined): ExecutionContractV1 | undefined => {
+  const fromSnapshot = (stored: ProductionRun | undefined): ExecutionContractV1 | undefined => {
+    // 事件里的旧快照可能还是「授权挂在计划上」的形状：先归一，再按「批这个 job 的那道门」找冻住的那一份。
+    const snapshot = stored ? normalizeLegacySpendAuthority(stored) : undefined;
     const plan = snapshot?.generationPlan;
-    if (!plan || !job.authorizationDigest || plan.authorizationDigest !== job.authorizationDigest) return undefined;
-    const authorized = plan.authorizationEnvelope?.jobs.find(entry => entry.jobId === job.jobId && entry.attempt === job.attempt);
+    if (!snapshot || !plan || !job.authorizationDigest) return undefined;
+    const authorized = authorizationGateForJob(snapshot, job)?.authorizationEnvelope.jobs
+      .find(entry => entry.jobId === job.jobId && entry.attempt === job.attempt);
     const contract = input.shotId ? plan.shots?.find(shot => shot.shotId === input.shotId)?.contract : plan.contract;
     return authorized && contract?.contractHash === authorized.contractHash ? contract : undefined;
   };
@@ -62,7 +66,7 @@ export function readGenerationExecution(
   if (current) return {
     job, contract: current,
     currentAuthority: ["sealed", "submitted"].includes(run.generationPlan!.state)
-      && run.gates.some(gate => gate.gateId === run.generationPlan!.authorizationGateId && gate.status === "approved"),
+      && authorizationGateForJob(run, job)?.status === "approved",
   };
   const key = [run.projectId, run.runId, job.jobId, job.attempt, job.authorizationDigest ?? ""].join(FROZEN_CONTRACT_KEY_SEPARATOR);
   const indexed = frozenContracts.get(key);

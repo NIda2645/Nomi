@@ -72,41 +72,44 @@ function provider(submits: string[], { failing = new Set<string>(), duringSubmit
   };
 }
 
-function setup(shots: ProductionGenerationShot[]) {
+function setup(shots: ProductionGenerationShot[], clock: () => string = now) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-stop-reason-"));
   roots.push(root);
-  const repository = createProductionRunRepository({ projectDirResolver: (projectId) => (projectId === PROJECT ? root : null), now });
+  const repository = createProductionRunRepository({ projectDirResolver: (projectId) => (projectId === PROJECT ? root : null), now: clock });
   repository.createGenerationDraft({ operationId: RUN, projectId: PROJECT, origin: { host: "semantic-mcp" }, candidate: shots[0].candidate, shots,
     policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["image-model", "video-model"], maxSpend: null, maxAttemptsPerJob: 3 } });
   sealAndApproveProductionGeneration({
     repository, projectId: PROJECT, operationId: RUN, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, projectRevision: 0,
     candidate: shots[0].candidate, contract: shots[0].contract!, providers: [provider([])],
-    multiShot: { shots, planHash: "plan-hash-stop" }, resolveShotPrice: () => ({ known: false }), receiptId: "receipt-plan", now: now(),
+    multiShot: { shots, scope: shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId), planHash: "plan-hash-stop" }, resolveShotPrice: () => ({ known: false }), receiptId: "receipt-plan", now: clock(),
   });
   const run = repository.read(PROJECT, RUN)!;
-  repository.execute(PROJECT, RUN, { commandId: "submit", expectedRevision: run.revision, type: "generation.submit", payload: {}, issuedAt: now() });
+  repository.execute(PROJECT, RUN, { commandId: "submit", expectedRevision: run.revision, type: "generation.submit", payload: {}, issuedAt: clock() });
   return { root, repository };
 }
 
-async function drive(root: string, repository: Repository, vendor: GenerationProvider) {
+async function drive(root: string, repository: Repository, vendor: GenerationProvider, clock: () => string = now) {
   const submission = createProductionGenerationSubmission({
     repository, beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }),
     projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider: vendor,
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.mp4` }),
-    now,
+    now: clock,
   });
-  return await createMultiShotBatchScheduler({ repository, submission, projectId: PROJECT, runId: RUN, perShotPrice: () => ({ known: false }), now, sleep: async () => {} }).runToQuiescence();
+  return await createMultiShotBatchScheduler({ repository, submission, projectId: PROJECT, runId: RUN, now: clock, sleep: async () => {} }).runToQuiescence();
 }
 
 const shotState = (run: ProductionRun, shotId: string) => deriveProductionShotState(run, shotId);
 
-/** 上一版的写法：Run 停着、身上没有 stop。这一版的写入口不允许无原因停下，所以直接把这样一条事件接在日志尾巴上。 */
-function appendLegacyStatus(root: string, repository: Repository, status: ProductionRun["status"]): void {
+/**
+ * 上一版的写法：Run 停着、身上没有 stop（或者记着这一版已经删掉的原因，比如 `budget`）。这一版的写入口不允许
+ * 这样停下，所以直接把这样一条事件接在日志尾巴上。
+ */
+function appendLegacyStatus(root: string, repository: Repository, status: ProductionRun["status"], legacyStop?: { reason: string; at: string }): void {
   const current = repository.read(PROJECT, RUN)!;
   const eventsPath = productionRunPaths(root, RUN).events;
   const last = JSON.parse(fs.readFileSync(eventsPath, "utf8").trim().split("\n").at(-1)!) as RunEvent;
   const { stop: _dropped, ...withoutStop } = current;
-  const run: ProductionRun = { ...withoutStop, status, revision: current.revision + 1, snapshotCursor: last.cursor + 1 };
+  const run = { ...withoutStop, status, revision: current.revision + 1, snapshotCursor: last.cursor + 1, ...(legacyStop ? { stop: legacyStop } : {}) } as ProductionRun;
   const event: RunEvent = { ...last, eventId: `evt-legacy-${status}`, cursor: last.cursor + 1, runRevision: run.revision, commandId: `legacy-${status}`, type: "run.status.changed", message: status, payload: { run, commandType: "run.status" } };
   fs.appendFileSync(eventsPath, `${JSON.stringify(event)}\n`, "utf8");
 }
@@ -216,5 +219,106 @@ describe("a run records why it stopped, at the moment it stops", () => {
     expect(settled.status).toBe("paused");
     expect(settled.stop, "不替旧数据编一个原因").toBeUndefined();
     expect(shotState(settled, "shot-2")).toMatchObject({ phase: "stopped", stoppedReason: "unknown" });
+  });
+
+  it("上一版记成「预算」停下的 Run（2026-10-01 删了这个原因）：读出来是中性的「已停」，绝不再说成预算已用完", () => {
+    const { root, repository } = setup([shotEntry("shot-1", "shot"), shotEntry("shot-2", "shot")]);
+    const run = repository.read(PROJECT, RUN)!;
+    repository.execute(PROJECT, RUN, { commandId: "start", expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: now() });
+    appendLegacyStatus(root, repository, "needs_attention", { reason: "budget", at: now() });
+
+    const legacy = repository.read(PROJECT, RUN)!;
+    expect(legacy.status).toBe("needs_attention");
+    expect(legacy.stop, "这一版不认识的原因当作没记").toBeUndefined();
+    expect(runStopReason(legacy)).toBe("unknown");
+    expect(shotState(legacy, "shot-1")).toMatchObject({ phase: "stopped", stoppedReason: "unknown" });
+  });
+});
+
+// ── 付费卡① 第 13 条（2026-10-01）：同意跟着点击走 ──
+//
+// 批过的镜离用户最后一次点头（批准它 / 放行形象 / 停下后点「继续」）超过同意窗口还没发出去：没有人替他续，
+// 派发拒绝、批次如实停在 consent_expired，画布写「需要你再确认一次」并给「继续」——不是一直「排队中」。
+// 他点「继续」（Nomi 窗口里的真人手势）那一下就续上；MCP / Agent 的继续没有手势章，不续。
+describe("dispatch consent follows the person's clicks (paid card rule 13)", () => {
+  const T0 = "2026-09-29T00:00:00.000Z";
+  const LATER = "2026-09-29T00:11:00.000Z"; // 批准之后 11 分钟：过了 10 分钟的同意窗口
+
+  function clockAt(start: string) {
+    let current = start;
+    return { now: () => current, set: (value: string) => { current = value; } };
+  }
+
+  function resume(repository: Repository, at: string, humanGesture: boolean) {
+    const run = repository.read(PROJECT, RUN)!;
+    return applyRunControl(repository, PROJECT, RUN, run, {
+      commandId: `resume-${run.revision}`, expectedRevision: run.revision, type: "run.control", payload: { action: "resume" }, issuedAt: at,
+      ...(humanGesture ? { humanGesture: true as const } : {}),
+    });
+  }
+
+  it("批过的镜过了同意窗口还没发出去：一笔都不派，批次停在 consent_expired，镜说的是「需要你再确认一次」而不是排队中", async () => {
+    const clock = clockAt(T0);
+    const { root, repository } = setup([shotEntry("shot-1", "shot"), shotEntry("shot-2", "shot")], clock.now);
+    clock.set(LATER);
+    const submits: string[] = [];
+    await drive(root, repository, provider(submits), clock.now);
+
+    const run = repository.read(PROJECT, RUN)!;
+    expect(submits, "同意过期的镜一笔都不交给供应商").toEqual([]);
+    expect(run).toMatchObject({ status: "needs_attention", stop: { reason: "consent_expired" } });
+    for (const shotId of ["shot-1", "shot-2"]) {
+      expect(shotState(run, shotId)).toMatchObject({ phase: "stopped", stoppedReason: "consent_expired" });
+    }
+    expect(logs.warn.mock.calls.map((call) => call[1]), "同意过期不是一次失败").not.toContain("batch-dispatch-failed");
+  });
+
+  it("用户点「继续」（Nomi 窗口里的真人手势）：续上这几镜的同意，同一批接着派出去、拍完", async () => {
+    const clock = clockAt(T0);
+    const { root, repository } = setup([shotEntry("shot-1", "shot"), shotEntry("shot-2", "shot")], clock.now);
+    clock.set(LATER);
+    await drive(root, repository, provider([]), clock.now);
+    expect(repository.read(PROJECT, RUN)?.stop?.reason).toBe("consent_expired");
+
+    const resumed = resume(repository, LATER, true);
+    expect(resumed.run.gates.filter((gate) => gate.scope === "budget_envelope").map((gate) => ({ by: gate.consentRenewedBy, at: gate.consentRenewedAt })))
+      .toEqual([{ by: "resume", at: LATER }]);
+    const submits: string[] = [];
+    await drive(root, repository, provider(submits), clock.now);
+
+    const run = repository.read(PROJECT, RUN)!;
+    expect(submits, "两镜都交给了供应商").toHaveLength(2);
+    expect(run.stop).toBeUndefined();
+    for (const shotId of ["shot-1", "shot-2"]) expect(shotState(run, shotId)?.phase).toBe("done");
+  });
+
+  it("MCP / Agent 的「继续」（没有真人手势章）不续：派到时照样过期，如实停回 consent_expired", async () => {
+    const clock = clockAt(T0);
+    const { root, repository } = setup([shotEntry("shot-1", "shot"), shotEntry("shot-2", "shot")], clock.now);
+    clock.set(LATER);
+    await drive(root, repository, provider([]), clock.now);
+
+    const resumed = resume(repository, LATER, false);
+    expect(resumed.run.status).toBe("running");
+    expect(resumed.run.gates.some((gate) => gate.consentRenewedAt), "没人点，同意不被延长").toBe(false);
+    const submits: string[] = [];
+    await drive(root, repository, provider(submits), clock.now);
+
+    expect(submits).toEqual([]);
+    expect(repository.read(PROJECT, RUN)).toMatchObject({ status: "needs_attention", stop: { reason: "consent_expired" } });
+  });
+
+  it("续过的同意也会再过期：续的那一刻起再算一个窗口，不是一次续永久有效", async () => {
+    const clock = clockAt(T0);
+    const { root, repository } = setup([shotEntry("shot-1", "shot")], clock.now);
+    clock.set(LATER);
+    await drive(root, repository, provider([]), clock.now);
+    resume(repository, LATER, true);
+    clock.set("2026-09-29T00:22:00.000Z"); // 续完又过了 11 分钟才轮到派
+
+    const submits: string[] = [];
+    await drive(root, repository, provider(submits), clock.now);
+    expect(submits).toEqual([]);
+    expect(repository.read(PROJECT, RUN)?.stop?.reason).toBe("consent_expired");
   });
 });

@@ -1,3 +1,4 @@
+import { spendAuthorizationGates } from "../shared/productionSpendAuthority";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -246,7 +247,7 @@ describe("P4 S2 real-number ledger on submission", () => {
     expect(submit).toHaveBeenCalledTimes(1);
 
     const run = repository.read("project-1", "op-1")!;
-    const envelope = run.generationPlan!.authorizationEnvelope!;
+    const envelope = spendAuthorizationGates(run)[0].authorizationEnvelope;
     expect(envelope.jobs[0].price.maximum).toBeNull();
     expect(envelope.budget.unknownJobCount).toBe(1);
     // 已知价之和是 0 —— 因为**一笔已知的都没有**，不是因为这一笔是免费的。那句话由 unknownJobCount 说。

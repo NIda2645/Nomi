@@ -118,7 +118,7 @@ function setup(shots: ProductionGenerationShot[]) {
       buildRequest: (input) => input,
       submit: async () => ({ providerTaskId: "unused" }),
     }],
-    multiShot: { shots, planHash: "plan-hash-not-dispatched" },
+    multiShot: { shots, scope: shots.filter((shot) => shot.included !== false).map((shot) => shot.shotId), planHash: "plan-hash-not-dispatched" },
     resolveShotPrice: () => ({ known: true, amount: 6 }),
     receiptId: "receipt-plan",
     now: now(),
@@ -135,7 +135,7 @@ function scheduler(root: string, repository: ReturnType<typeof createProductionR
   });
   return createMultiShotBatchScheduler({
     repository, submission, projectId: "project-1", runId: "op-batch",
-    perShotPrice: () => ({ known: true, amount: 6 }), now,
+    now,
   });
 }
 

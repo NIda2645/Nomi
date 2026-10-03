@@ -133,15 +133,19 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
   // 卡体是画布节点那张生成框**整件**，但写入面换成卡自己的账本（`spend.writeAccess`）：
   // 用户还没答应花这笔钱，画布上那个草稿节点就不该被改；改动在按下「生成」那一刻
   // 才由主进程落进候选、再投影回画布（单向，没有拉锯）。见 nodeWriteAccess 顶部注释。
+  // 「生成剩下 N 张」在一张一张走时卡体只给看（`inert`）：这一叠在点下去那一刻已经落进候选，此刻再改就是
+  // 「卡上看到的」≠「发出去的」；写口那头同样关着（`spend.writeAccess.canWrite`）。
   const spendComposer = spend.pending && spend.node ? (
-    <NodeWriteAccessProvider value={spend.writeAccess}>
-      <NodeGenerationComposer
-        node={spend.node}
-        visualSize={spend.node.size ?? { width: 340, height: 192 }}
-        host="panel"
-        onFeedback={() => undefined}
-      />
-    </NodeWriteAccessProvider>
+    <div className="contents" inert={spend.batchRunning}>
+      <NodeWriteAccessProvider value={spend.writeAccess}>
+        <NodeGenerationComposer
+          node={spend.node}
+          visualSize={spend.node.size ?? { width: 340, height: 192 }}
+          host="panel"
+          onFeedback={() => undefined}
+        />
+      </NodeWriteAccessProvider>
+    </div>
   ) : null
   // 切到「全自动」要先问一句（换档本身可撤销，所以它就是介入槽的可撤销档）。
   const autoMode = useAgentPanelAutoMode(actions.permission, actions.setPermission)
@@ -161,7 +165,10 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
     onConfirm: spend.confirm,
     onReject: spend.discard,
     onPage: spend.setPage,
-    onScope: spend.setScope,
+    // 次动作 =「去掉这张 / 这段」：这一镜不生成，卡上剩下的照旧等人（付费卡逐镜）。
+    onAlternate: spend.remove,
+    // 整叠的动作 =「生成剩下 N 张 / 段」：卡上还没决定的每一张各点一次「生成这张」（2026-10-01）。
+    onBatch: spend.confirmRemaining,
   }
   const autoModeSlotHandlers = { onConfirm: autoMode.confirm, onReject: autoMode.cancel }
   // 计划行的两根线（勾选 / 收起）与「这张卡是谁给的」无关——三个数据源都可能带清单，

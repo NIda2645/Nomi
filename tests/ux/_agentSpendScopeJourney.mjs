@@ -65,11 +65,6 @@ export async function checkSpendScopeJourney(walk, win) {
     await expect(card).toBeVisible()
     return { settled: async () => flattenRequestText((await recorded(result.received, done)).body) }
   }
-  const setScope = async scope => {
-    const radio = pager.getByRole('radio', { name: scope === 'all' ? '全部' : '逐镜', exact: true })
-    await clickOrFail(radio, `原付款卡范围 ${scope}`)
-    await expect(radio).toHaveAttribute('aria-checked', 'true')
-  }
   const pageTo = async index => {
     const current = /([1-3])\/3/.exec(await pager.innerText())
     expect(current, 'Pagination belongs to the three requested shots, not the 33-item plan').toBeTruthy()
@@ -97,29 +92,28 @@ export async function checkSpendScopeJourney(walk, win) {
   const firstTurn = await present(operationId, requestedIds)
   expect(await graph()).toEqual(draftedGraph)
   const initialGraph = await graph()
-  const presentedShots = originalShots.map(shot => ({ ...shot, included: requestedIds.includes(shot.shotId) }))
+  // 付费卡逐镜（2026-09-30）：点名摆上卡只开一次出价，不改这一批——33 镜原样留着（以前会把没点名的 30 镜移出这一批）。
+  const presentedShots = originalShots
   expect((await readRun(operationId)).generationPlan.shots).toEqual(presentedShots)
   await expect(card.locator('[data-v4-price="total"]')).toContainText('0.90')
-  await setScope('each')
+  // 只有一层改动：每一页改的只落在那一镜上（「逐镜 / 全部」切换和「全部」那一层已删）。
   await pageTo(2)
   await expect(input).toHaveText('CJ1_anchor_2 原始画面')
   const editedPrompt = 'CJ1 第二卡独立草稿，不串其他镜头'
   await input.fill(editedPrompt)
+  await clickOrFail(size.locator('button').first(), '第二镜尺寸控件')
+  await clickOrFail(win.getByRole('option', { name: '1536x1024', exact: true }).first(), '只改第二镜的尺寸')
+  await expect(size).toHaveAttribute('data-parameter-chip-value', '1536x1024')
   await pageTo(3)
   await expect(input).toHaveText('CJ1_anchor_3 原始画面')
+  await expect(size, '第三镜的尺寸没被第二镜带走').toHaveAttribute('data-parameter-chip-value', '1024x1024')
   await pageTo(2)
-  await expect(input).toHaveText(editedPrompt)
-  await setScope('all')
-  await clickOrFail(size.locator('button').first(), '原全部范围尺寸控件')
-  await clickOrFail(win.getByRole('option', { name: '1536x1024', exact: true }).first(), '全部三卡修改尺寸')
-  await expect(size).toHaveAttribute('data-parameter-chip-value', '1536x1024')
-  await setScope('each')
   await expect(input).toHaveText(editedPrompt)
   await expect(size).toHaveAttribute('data-parameter-chip-value', '1536x1024')
   expect(await graph()).toEqual(initialGraph)
   expect((await readRun(operationId)).generationPlan.shots).toEqual(presentedShots)
   expect(walk.fixture.images).toHaveLength(0)
-  await walk.snap('cj1-three-of-33-pager-and-two-edit-layers')
+  await walk.snap('cj1-three-of-33-pager-and-per-shot-edits')
 
   // ── 「两笔同时待决」这一段 2026-09-22 起不再存在，而且不该存在 ──
   //
@@ -154,10 +148,11 @@ export async function checkSpendScopeJourney(walk, win) {
   await decline('关闭第一笔')
   await expectAbsent(card, { provenBy: firstProof, message: '第一笔关掉之后槽里不再留着它' })
   // × 把结论递回正在等的那个回合：成功形状的「用户没同意」，不是错误。
-  expect(await firstTurn.settled(), '第一笔的回合读到的是「他关了这张卡」').toContain('closed the priced card without approving')
+  expect(await firstTurn.settled(), '第一笔的回合读到的是「他关了这张卡」').toContain('the user closed the card (×) before deciding them')
   await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
   expect(await pending(), '第一笔关掉之后没有任何待决').toEqual([])
-  expect((await readRun(operationId)).generationPlan, '× 收回的是出价，不是计划').toMatchObject({ state: 'draft', cardHidden: true })
+  expect((await readRun(operationId)).generationPlan, '× 收回的是出价，不是计划').toMatchObject({ state: 'draft' })
+  expect((await readRun(operationId)).generationPlan.presentations.at(-1)?.closed?.by, '这一次出价记的是「用户关了卡」').toBe('user_closed')
   expect((await readRun(operationId)).generationPlan.shots, '33 镜一个不少').toHaveLength(33)
   // × 一个占位都不删：卡上摆出来的那三镜、没摆出来的 30 镜、分镜表，全都留在画布上。
   const bothGraph = beforeDeclineGraph
@@ -177,10 +172,13 @@ export async function checkSpendScopeJourney(walk, win) {
   const proof = await proveProbe(card, 'Second pending really appears before dismissal')
   await decline('关闭第二笔')
   await expectAbsent(card, { provenBy: proof, message: 'Both declined operations leave the slot' })
-  expect(await secondTurn.settled(), '第二笔的回合同样读到「他关了这张卡」').toContain('closed the priced card without approving')
+  expect(await secondTurn.settled(), '第二笔的回合同样读到「他关了这张卡」').toContain('the user closed the card (×) before deciding them')
   await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
-  expect((await readRun(operationId)).generationPlan).toMatchObject({ state: 'draft', cardHidden: true })
-  expect((await readRun(otherOperationId)).generationPlan).toMatchObject({ state: 'draft', cardHidden: true })
+  for (const id of [operationId, otherOperationId]) {
+    const plan = (await readRun(id)).generationPlan
+    expect(plan.state).toBe('draft')
+    expect(plan.presentations.at(-1)?.closed?.by).toBe('user_closed')
+  }
   // 两笔都 × 掉之后：对**旧的那个 operationId** 再 generate = 重新出价，卡真的再出来（不用重新起草）。
   const afterBothDeclined = (await graph()).nodes.map(node => node.id).sort()
   expect(afterBothDeclined, '第二次 × 同样一个节点都没动').toEqual(afterFirstDecline)
@@ -188,16 +186,14 @@ export async function checkSpendScopeJourney(walk, win) {
   expect((await pending()).map(row => row.operationId), '同一份草稿重新出价').toEqual([operationId])
   expect((await pending())[0].shots.map(shot => shot.shotId), '还是原来那三镜').toEqual(requestedIds)
   expect((await readRun(operationId)).generationPlan.shots, '镜头、参数、锚点一个字不丢').toEqual(presentedShots)
-  // T-QA-30（2026-09-22 修）：他在这张卡上**没提交**的那两层手改也一个字不丢——
-  // 账本锚的是这一次生成（`spendDraftKey` 只含 projectId/runId/operationId），重新出价换的只是报价指纹。
-  // 两层各查一层：逐镜那层挂在第二镜上，全部那层在哪一镜都该显示。
-  await setScope('each')
+  // 他在这张卡上**没提交**的手改一个字不丢——账本锚的是这一次生成（`spendDraftKey` 只含
+  // projectId/runId/operationId），重新出价换的只是报价指纹。改动只落在第二镜上。
   await pageTo(2)
   await expect(input, '重新出价带回他在第二镜上没提交的那句话').toHaveText(editedPrompt)
-  await expect(size, '全部层那个尺寸也跟着回来').toHaveAttribute('data-parameter-chip-value', '1536x1024')
+  await expect(size, '第二镜那个尺寸也跟着回来').toHaveAttribute('data-parameter-chip-value', '1536x1024')
   await pageTo(3)
-  await expect(input, '逐镜那层仍然只落在第二镜上').toHaveText('CJ1_anchor_3 原始画面')
-  await expect(size, '全部层压在每一镜上').toHaveAttribute('data-parameter-chip-value', '1536x1024')
+  await expect(input, '改动仍然只落在第二镜上').toHaveText('CJ1_anchor_3 原始画面')
+  await expect(size, '第三镜还是原来的尺寸').toHaveAttribute('data-parameter-chip-value', '1024x1024')
   // 「× 之后画布不多也不少」不靠墙钟等：上面这一整个模型回合（两次账本变更 + 一次读 + 回合落定）期间，
   // 落地对这两份计划各被触发过不止一次（账本每变一次它就重算一遍）。
   expect((await graph()).nodes.map(node => node.id).sort(), '× 之后经过一整个回合，画布节点一个不多也一个不少').toEqual(afterBothDeclined)
@@ -207,12 +203,12 @@ export async function checkSpendScopeJourney(walk, win) {
   await walk.snap('cj1-withdrawn-quote-can-be-requoted')
   // 收尾：把重新出的这张卡也 × 掉，别把一个还在等人的回合留给下一段（和退出路）。
   await decline('关闭重新出的那张卡')
-  expect(await requotedTurn.settled(), '重新出价的那一轮同样以成功形状收尾').toContain('closed the priced card without approving')
+  expect(await requotedTurn.settled(), '重新出价的那一轮同样以成功形状收尾').toContain('the user closed the card (×) before deciding them')
   await waitForV4TurnIdle(win, { panel: CANVAS_PANEL, settledBy: panel.getByText(/CJ1_TOOL_\d+_DONE/).last() })
   expect(await pending(), '收尾之后介入槽是空的').toEqual([])
   walk.report.spendScopeJourney = { projectId, projectRoot, operationId, otherOperationId, requestedIds, planItems: 33,
     pendingOrder: 'serial — one lane-issued card at a time (2026-09-22 ruling A/E)', graphCounts: { nodes: bothGraph.nodes.length, edges: bothGraph.edges.length, groups: bothGraph.groups.length },
-    verified: ['three-of-33', 'shot-pagination', 'each-and-all-edit-layers', 'serial-cards-second-has-own-draft', 'close-isolation', 'decline-withdraws-only-the-quote-and-the-same-draft-requotes',
-      'requote-restores-both-unsubmitted-edit-layers'],
+    verified: ['three-of-33', 'shot-pagination', 'per-shot-edits', 'serial-cards-second-has-own-draft', 'close-isolation', 'decline-withdraws-only-the-quote-and-the-same-draft-requotes',
+      'requote-restores-unsubmitted-per-shot-edits'],
     mediaSubmissions: 0, boundary: 'Real Electron UI/Agent tools/storage with text loopback. No confirmation execution, generated-history, next-execution-batch or arbitrary pending navigation claim.' }
 }

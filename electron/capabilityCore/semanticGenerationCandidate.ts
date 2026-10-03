@@ -1,7 +1,10 @@
 import { transportTaskKindForModeId } from "../shared/videoCapabilities";
+import { resolveShotTaskKind, type ShotTaskKindRefusal } from "../shared/generationShotKind";
+import { modelKindForTaskKind } from "../shared/capabilityModeManifest";
 import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import type { GenerationDefaultTaskKind } from "../settings/generationModelDefaultsContract";
 import type { PlanCandidate } from "./executionContract";
+import { ModuleRegistryError, type ModuleResolveInput } from "./moduleRegistry";
 
 /**
  * The model-facing create tool intentionally accepts a short, natural request
@@ -156,8 +159,11 @@ function references(value: unknown, resolve?: ResolveAssetReferenceIdentity): un
   return value.map((item) => pinAssetReference(item, resolve));
 }
 
-/** Infer only the semantic task family; model/mode selection remains catalog-owned. */
-export function inferGenerationTaskKind(params: SemanticGenerationCandidateParams): GenerationDefaultTaskKind {
+/**
+ * 这一镜**明写**的种类：`taskKind`，或者一个本身就是任务名的 `mode`，或者能推出任务名的 `modeId`。
+ * 三种写法说的是同一件事实，归成一个；一个都没写 = undefined（不往下猜）。
+ */
+function explicitTaskKind(params: SemanticGenerationCandidateParams): GenerationDefaultTaskKind | undefined {
   const explicit = params.taskKind;
   if (explicit !== undefined) {
     if (!isTaskKind(explicit)) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "taskKind must be text_to_image, image_edit, text_to_video or image_to_video");
@@ -166,16 +172,116 @@ export function inferGenerationTaskKind(params: SemanticGenerationCandidateParam
   const mode = normalized(params.mode);
   if (isTaskKind(mode)) return mode;
   // 模型明说了模式，就别再去猜种类——模式定了，种类就定了（`transportTaskKindForModeId` 从档案扫出来，
-  // 不手抄）。2026-09-22 之前这里直接跳到下面的提示词启发式：模型写了 `modeId: "i2v"`，我们猜了
-  // `text_to_video`，再拿自己猜的那个去和它明说的模式比对，然后把冲突算在它头上
-  // （run2 A3/A6 三次，正文写着「this shot asks for text_to_video」——模型一个字都没这么说）。
+  // 不手抄）。2026-09-22 之前模型写了 `modeId: "i2v"`，我们按提示词猜了 `text_to_video`，再把冲突算在它头上。
   const declaredByModeId = transportTaskKindForModeId(text(params.modeId));
-  if (declaredByModeId && isTaskKind(declaredByModeId)) return declaredByModeId;
-  const prompt = text(params.prompt).toLowerCase();
-  const hasReferences = Array.isArray(params.references) && params.references.length > 0;
-  const videoIntent = /(视频|短片|镜头|分镜|动画|video|clip|film|animate|motion)/i.test(prompt);
-  if (videoIntent) return hasReferences ? "image_to_video" : "text_to_video";
-  return hasReferences ? "image_edit" : "text_to_image";
+  return declaredByModeId && isTaskKind(declaredByModeId) ? declaredByModeId : undefined;
+}
+
+/** 点名的模型在目录里声明了哪些模式。没点名、没有目录、或目录里没有它 = undefined。给了 providerId 就只在那家里找。 */
+function namedModelModes(registry: SemanticGenerationCandidateDeps["registry"], modelId: string, providerId: string): readonly string[] | undefined {
+  if (!modelId) return undefined;
+  let found: string[] | undefined;
+  for (const manifest of registry?.snapshot?.() ?? []) {
+    const providers = manifest && typeof manifest === "object" ? (manifest as { providers?: unknown }).providers : undefined;
+    if (!Array.isArray(providers)) continue;
+    for (const provider of providers) {
+      if (!provider || typeof provider !== "object") continue;
+      const candidateProviderId = text((provider as { providerId?: unknown }).providerId);
+      if (!candidateProviderId || (providerId && candidateProviderId !== providerId)) continue;
+      const models = (provider as { models?: unknown }).models;
+      if (!Array.isArray(models)) continue;
+      const model = models.find((candidate) => candidate && typeof candidate === "object" && text((candidate as { modelId?: unknown }).modelId) === modelId) as { modes?: unknown } | undefined;
+      if (!model || !Array.isArray(model.modes)) continue;
+      found = [...(found ?? []), ...model.modes.filter((mode): mode is string => typeof mode === "string")];
+    }
+  }
+  return found;
+}
+
+const TASK_KINDS_TEXT = "text_to_image, image_edit, text_to_video or image_to_video";
+
+/** 「这个模型做不了这一种」——两处拒绝（定种类时、核目录时）说同一句话。 */
+function cannotDo(modelId: string, requested: string, supported: readonly string[]): string {
+  return `Model ${modelId} cannot do ${requested}. It does: ${supported.join(", ")}. Name a model that does ${requested}, or change taskKind.`;
+}
+
+/**
+ * 种类定不下来时给调用方（多半是 Agent，外部 MCP 宿主也是）的那句话：说清是哪一种情形、下一步怎么写。
+ * 写给模型看，和这一层其余的拒绝一样用英文（它照着改参数，不转述原话）。
+ */
+function refuseShotTaskKind(refusal: ShotTaskKindRefusal, modelId: string): never {
+  switch (refusal.reason) {
+    case "kind_unspecified":
+      return refuseToModel(GENERATION_ARGUMENT_REFUSAL, modelId
+        ? `Model ${modelId} is not in the model catalog, so Nomi cannot tell what it makes. Name a model from list_models, or set taskKind (${TASK_KINDS_TEXT}).`
+        : `Say what this shot makes: set taskKind (${TASK_KINDS_TEXT}), or name a model from list_models. Nomi does not guess it from the prompt.`);
+    case "model_cannot_do":
+      return refuseToModel(GENERATION_ARGUMENT_REFUSAL, refusal.requested
+        ? cannotDo(modelId, refusal.requested, refusal.declared)
+        : `Model ${modelId} makes neither images nor videos (it does: ${refusal.declared.join(", ") || "nothing published"}). Name an image or video model from list_models.`);
+    case "model_ambiguous":
+      return refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Model ${modelId} makes both images and videos; set taskKind to one of: ${refusal.supported.join(", ")}.`);
+  }
+}
+
+/**
+ * 这一镜要哪一种生成任务——**只从「点名的模型 + 明写的种类」来**（2026-09-30 付费卡① 第 9 条）。
+ * 以前这里按提示词关键词猜（「镜头」「视频」→ 视频），于是点名的图片模型被配上了视频模式，
+ * 卡标题、卡体、画布节点、派发各说各的。判据住在 `generationShotKind.resolveShotTaskKind`；这里只负责拒绝时说人话。
+ */
+export function shotTaskKind(deps: Pick<SemanticGenerationCandidateDeps, "params" | "registry">): GenerationDefaultTaskKind {
+  const modelId = text(deps.params.modelId);
+  const explicit = explicitTaskKind(deps.params);
+  const verdict = resolveShotTaskKind({
+    ...(explicit ? { explicit } : {}),
+    ...(modelId ? { modelModes: namedModelModes(deps.registry, modelId, text(deps.params.providerId)) } : {}),
+    hasReferences: Array.isArray(deps.params.references) && deps.params.references.length > 0,
+  });
+  if (!verdict.ok) return refuseShotTaskKind(verdict.refusal, modelId);
+  return verdict.taskKind;
+}
+
+/**
+ * 换模型时这一镜的模式怎么跟过去：同一种任务（比如文生图）在新模型的目录里写成哪一个模式字符串（拼法以目录为准）。
+ * 新模型做不了这一种 = undefined——交给 `admitShotIdentity` 当场拒绝，不悄悄换成别的种类。
+ */
+export function declaredModeForModel(
+  registry: SemanticGenerationCandidateDeps["registry"],
+  providerId: string,
+  modelId: string,
+  mode: string,
+): string | undefined {
+  const wanted = normalized(mode);
+  return namedModelModes(registry, modelId, providerId)?.find((declared) => normalized(declared) === wanted);
+}
+
+/**
+ * 一镜的「模型 + 模式」在目录里真有这一对——建镜头的**每一条路**（单镜 create、多镜 create、剧本拟镜、改草稿）
+ * 落盘前都过这一道，和派发前编译合同用的是同一个判据（`registry.resolve`）。矛盾的镜头当场拒绝、说清原因，
+ * 不留到点「生成这张」那一刻才发现。参考卡（anchor）只能是图片：它是定形象用的那张图。
+ */
+export function admitShotIdentity(
+  candidate: Pick<PlanCandidate, "moduleId" | "providerId" | "modelId" | "mode">,
+  registry: { resolve(input: ModuleResolveInput): unknown; snapshot?: () => readonly unknown[] },
+  role?: string,
+): void {
+  if (role === "anchor" && modelKindForTaskKind(candidate.mode) !== "image") {
+    refuseToModel(GENERATION_ARGUMENT_REFUSAL, `A reference card (role "anchor") must be an image: it fixes how a character or place looks. This one is ${candidate.mode}. Name an image model for it, or make it a normal shot.`);
+  }
+  try {
+    registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode });
+  } catch (error) {
+    if (!(error instanceof ModuleRegistryError)) throw error;
+    const declared = namedModelModes(registry, candidate.modelId, candidate.providerId) ?? [];
+    if (declared.length === 0) {
+      refuseToModel(GENERATION_ARGUMENT_REFUSAL, `Model ${candidate.providerId}/${candidate.modelId} is not in the model catalog. Name a model from list_models.`);
+    }
+    if (!declared.some((mode) => normalized(mode) === normalized(candidate.mode))) {
+      refuseToModel(GENERATION_ARGUMENT_REFUSAL, cannotDo(candidate.modelId, candidate.mode, declared));
+    }
+    // 模型做得了这一种，目录却对不上（模块 / 拼法）：照目录的原话说，别说成「做不了」。
+    refuseToModel(GENERATION_ARGUMENT_REFUSAL, `${error.message}. Model ${candidate.modelId} declares: ${declared.join(", ")}.`);
+  }
 }
 
 function modeFromSnapshot(
@@ -286,7 +392,7 @@ export function semanticCandidateFromParams(deps: SemanticGenerationCandidateDep
   const prompt = text(deps.params.prompt);
   if (!prompt) refuseToModel(GENERATION_ARGUMENT_REFUSAL, "prompt is required when candidate is omitted");
 
-  const taskKind = inferGenerationTaskKind(deps.params);
+  const taskKind = shotTaskKind(deps);
   const configured = deps.defaultModelForTaskKind?.(taskKind);
   // A production semantic request must never infer a spend-bearing model from
   // catalog row order. The only implicit identity is the saved Workbench
@@ -368,8 +474,9 @@ export function declaredDefaultDeviations(
 ): DeclaredDefaultDeviation[] {
   if (!defaultFor) return [];
   return items.flatMap(({ shotId, params, candidate }): DeclaredDefaultDeviation[] => {
-    const byMode = normalized(candidate.mode);
-    const taskKind = isTaskKind(byMode) ? byMode : inferGenerationTaskKind(params);
+    // 种类读建好的候选（它在建镜头那一刻已经和点名的模型对过账），不再按提示词另猜一遍。
+    const taskKind = normalized(candidate.mode);
+    if (!isTaskKind(taskKind)) return [];
     const declared = defaultFor(taskKind);
     if (!declared || (declared.providerId === candidate.providerId && declared.modelId === candidate.modelId)) return [];
     const userDefault = `${declared.providerId}/${declared.modelId}`;

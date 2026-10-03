@@ -1,3 +1,4 @@
+import { spendAuthorizationGates } from "../shared/productionSpendAuthority";
 // 未知价 × 每一条路径（2026-09-21 用户拍板）——零额度 loopback 端到端。
 //
 // 这台机器就是干净装机：目录一条价都没填（`unpriced: true` ⇒ 整条链的价格全是 `{ known:false }`），
@@ -54,8 +55,8 @@ describe("未知价：Agent 面板 / 全自动 两条路都跑得通，且哪儿
 
       // ② 账本上它是「未知」不是「0 元」。
       const run = base.repository.read(PROJECT_ID, OPERATION_ID)!;
-      expect(run.generationPlan!.authorizationEnvelope!.jobs[0].price.maximum).toBeNull();
-      expect(run.generationPlan!.authorizationEnvelope!.budget.unknownJobCount).toBe(1);
+      expect(spendAuthorizationGates(run)[0].authorizationEnvelope.jobs[0].price.maximum).toBeNull();
+      expect(spendAuthorizationGates(run)[0].authorizationEnvelope.budget.unknownJobCount).toBe(1);
       expect(run.budget.unknownInFlight).toBe(1);
       const reserve = base.repository.readBudgetLedger(PROJECT_ID, OPERATION_ID).entries.find((entry) => entry.kind === "reserve");
       expect(reserve).toMatchObject({ kind: "reserve", amount: null });
@@ -86,7 +87,7 @@ describe("未知价：Agent 面板 / 全自动 两条路都跑得通，且哪儿
 
       const run = base.repository.read(PROJECT_ID, operationId)!;
       expect(run.generationPlan!.state).toBe("submitted");
-      expect(run.generationPlan!.authorizationEnvelope!.budget.unknownJobCount).toBe(1);
+      expect(spendAuthorizationGates(run)[0].authorizationEnvelope.budget.unknownJobCount).toBe(1);
       // 全自动也一样：账上是「未知」，不是「这次不花钱」。
       expect(run.budget.reserved).toBe(0);
       expect(run.budget.unknownInFlight).toBe(1);

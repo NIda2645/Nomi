@@ -78,24 +78,14 @@ describe("ProductionRun-owned generation operation store", () => {
     const contract = compileExecutionContract(edited.candidate, registry);
     const sealed = await operations.seal("project-1", "op-1", contract, "2026-08-23T00:00:02.000Z");
     expect(sealed).toMatchObject({ state: "sealed", contract: { contractHash: contract.contractHash } });
-    // Approval is owned by the Run authority, not by a second operation-store
-    // history. Exercise the same durable command that the signed gate uses.
-    const approving = service.readFull("project-1", "op-1");
-    const approved = await service.command("project-1", "op-1", {
-      commandId: "generation.approve:op-1:receipt-1",
-      expectedRevision: approving.revision,
-      type: "generation.approve",
-      payload: { receiptId: "receipt-1", contractHash: contract.contractHash },
-      issuedAt: "2026-08-23T00:00:02.500Z",
-    });
-    expect(approved.run.generationPlan).toMatchObject({ state: "sealed", approvedReceiptId: "receipt-1" });
+    // 批准住在「批这一份的那道门」上（gate.decide），不在草稿存储里另记一份，所以这里只验封印能跨重启读回。
 
     const restartedService = createProductionRunService({
       repository: createProductionRunRepository({ projectDirResolver: () => root, now: () => "2026-08-23T00:00:03.000Z" }),
       projectRootResolver: () => root,
       sleep: async () => {},
     });
-    expect(createProductionGenerationOperationStore(restartedService).read("project-1", "op-1")).toMatchObject({ state: "sealed", approvedReceiptId: "receipt-1", contract: { contractHash: contract.contractHash } });
+    expect(createProductionGenerationOperationStore(restartedService).read("project-1", "op-1")).toMatchObject({ state: "sealed", contract: { contractHash: contract.contractHash } });
   });
 
   it("persists the authenticated transport origin instead of replacing it with a semantic default", async () => {

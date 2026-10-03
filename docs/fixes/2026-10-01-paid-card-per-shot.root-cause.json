@@ -1,0 +1,474 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-01-paid-card-per-shot",
+  "problem_type": "Approval and dispatch of a multi-shot paid card had no per-shot owner: the Run carried one plan-level authorization, so \"approve this shot\" could only be expressed by removing the other shots from the batch, nothing recorded which shots a card asked about or how each was decided, and the Agent receipt and the card each said their own thing",
+  "symptom": "On a two-shot Agent card the title said 2 images and the only button was the price-unknown confirm. Clicking it on page 1 sent exactly one shot to the vendor; the other shot was taken out of the batch and no card ever asked about it again. The Agent was told generation had started for the draft and that no card was waiting, so it said both shots were running. A reference image connected on the canvas to a shot's placeholder was neither shown on the card nor sent. Every generate failure was reported as \"may have been submitted\" even when nothing reached the vendor.",
+  "direct_cause": "src/workbench/ai/v4/agentPanelSpendCard.ts rendered the each/all scope toggle only when every price was known (never through relays), so useAgentPanelSpendConfirm always confirmed the current page alone; electron/capabilityCore/appIntegrationSpendConfirm.ts confirmPendingSpend then re-presented the plan with only the selected shot (the others left the batch) and sealed one plan-level authorization; electron/agentLane/laneExtendedTools.ts generateReceipt hard-coded \"generation has started … No card is waiting … Do not call generate again for this draft\" on the approved branch; src/workbench/ai/v4/spendCardDraft.ts projectSpendNode resolved reference slots with no canvas edges.",
+  "class_root": "Authorization lived once per plan (generationPlan.authorizationEnvelope) and a second approval replaced the first, so per-shot consent had no place to live: the only way to approve one shot was to shrink the batch, and the Run had no record of which shots the card had asked about, which the user removed, or how the card was closed. The renderer, the confirm path and the Agent receipt each reconstructed \"what happened to the other shots\" on their own.",
+  "affected_population": [
+    "Every multi-shot Agent draft confirmed on the panel card (images and image-to-video)",
+    "External MCP hosts that request a gate for a live multi-shot plan (generation_gate_request)",
+    "Full-auto approval, which approves the same per-presentation gate on the user's behalf",
+    "Shots taken over on the canvas while a card is open",
+    "Runs written by earlier versions (plan-level envelope, cardHidden flag) read after upgrade"
+  ],
+  "scope_paths": [
+    "electron/shared/productionSpendAuthority.ts",
+    "electron/shared/productionGenerationPresentation.ts",
+    "electron/shared/agentLane/generateOutcomeReceipt.ts",
+    "electron/productionRun/productionGenerationPresentationEdits.ts",
+    "electron/productionRun/productionGenerationSeal.ts",
+    "electron/productionRun/productionGenerationPlanEdits.ts",
+    "electron/productionRun/productionRunReducer.ts",
+    "electron/productionRun/productionRunRepository.ts",
+    "electron/productionRun/productionRunTypes.ts",
+    "electron/productionRun/productionGenerationSubmission.ts",
+    "electron/productionRun/productionGenerationHistory.ts",
+    "electron/productionRun/productionRunTrustGrant.ts",
+    "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+    "electron/productionRun/productionGenerationAuthorizationState.ts",
+    "electron/productionRun/productionGenerationOperationStore.ts",
+    "electron/productionRun/productionPendingSpend.ts",
+    "electron/productionRun/productionActionIpc.ts",
+    "electron/productionRun/multiShotBatchScheduler.ts",
+    "electron/productionRun/batchScheduleDerivation.ts",
+    "electron/productionRun/stalePresentationSweep.ts",
+    "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "electron/capabilityCore/mcpGenerationMultiShot.ts",
+    "electron/capabilityCore/mcpGenerationOperationMemoryStore.ts",
+    "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+    "electron/catalog/assetLocalization.ts",
+    "electron/agentLane/laneExtendedTools.ts",
+    "src/workbench/ai/v4/agentPanelSpendCard.ts",
+    "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+    "src/workbench/ai/v4/spendCardDraft.ts"
+  ],
+  "entry_points": [
+    "Panel card per-shot actions: src/workbench/ai/v4/useAgentPanelSpendConfirm.ts → electron/productionRun/productionActionIpc.ts (confirm one shot / remove one shot / ×) → electron/capabilityCore/appIntegrationSpendConfirm.ts",
+    "External MCP gate request for a live multi-shot plan: electron/capabilityCore/mcpGenerationTools.ts → electron/capabilityCore/mcpGenerationMultiShot.ts resolveGateScope",
+    "Agent turn waiting on the card (redirected / cancelled / no window): electron/agentLane/laneExtendedDesktopPorts.ts → withdraw with a reason",
+    "Scheduler dispatch: electron/productionRun/multiShotBatchScheduler.ts → electron/productionRun/productionGenerationSubmission.ts prepareAuthorizedSubmission",
+    "Canvas take-over while the card is open: electron/shared/decideShotClaim.ts",
+    "Old Runs on read: electron/productionRun/productionRunRepository.ts (normalizeLegacySpendAuthority + normalizeLegacyPresentation)"
+  ],
+  "external_sources": [],
+  "internal_only_reason": "Who approved which shot and what was dispatched is Nomi's own production-run state machine (gates, envelopes, jobs); no third-party library or external format decides it. The Agent receipt is shaped as one host value so it can later become the tool call's output (AI SDK ToolUIPart mapping, Agent message-layer research), but nothing in that SDK is used here.",
+  "invariant_owner_layer": {
+    "layer": "electron/shared/productionGenerationPresentation.ts",
+    "tests": [
+      "electron/shared/productionGenerationPresentation.test.ts",
+      "electron/shared/agentLane/generateOutcomeReceipt.test.ts",
+      "electron/capabilityCore/agentPanelSpendPerShot.e2e.test.ts",
+      "electron/productionRun/productionGenerationAuthorizationFlow.test.ts"
+    ],
+    "why": "The per-shot outcome (generating / failed before sending / removed / taken by the canvas / undecided with the reason) is derived in one place from the Run's own facts: the presentation ledger (written only by productionGenerationPresentationEdits through the reducer), the gate that approved each shot (productionSpendAuthority) and whether a job may have reached the provider (productionShotJobs). The card's shot list and title, the seal scope, the placeholder phase and the Agent receipt all read it, so none of them can keep a second copy of per-shot state."
+  },
+  "invariants": [
+    "A shot is dispatched only under a spend gate whose own envelope names it, approved by the click on that shot (or by full-auto approving that same gate); the dispatcher verifies the job against the gate that approved it.",
+    "A shot on an open card leaves it only by being generated, removed by the user, taken over on the canvas, or the card being closed with a recorded reason (× / the user wrote / stopped); the presentation records which.",
+    "The card's title counts exactly the undecided shots; the presentation closes itself when none are left.",
+    "The Agent receipt renders only the host's per-shot outcome; it says all shots are generating only when every shot on the card is.",
+    "What the card shows for a shot (model, parameters, references including canvas-connected ones) is what that shot's click sends.",
+    "A repeated click on the same shot dispatches it once; a failure says nothing was spent only when no job may have reached the provider.",
+    "The paid confirmation path says no money word that is not true today: no price-unknown line, no generate-anyway label, and the upload-channel disclosure states facts (public temporary host, short-lived link, privacy risk, the channel can be changed in Settings) without calling any provider free or recommending one.",
+    "A failure on one shot is judged on that shot's own jobs: an earlier shot on the same card that went out does not make a later not-started failure read as \"may have been submitted\"."
+  ],
+  "doors": [
+    {
+      "kind": "read",
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "symbol": "describeGenerateOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "generationPresentationOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "symbol": "GenerationSealMultiShot"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/mcpGenerationOperationMemoryStore.ts",
+      "symbol": "GenerationOperationStore"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/runOwnedGenerationGateAuthority.ts",
+      "symbol": "waitingAuthorizationGates"
+    },
+    {
+      "kind": "read",
+      "path": "electron/catalog/assetLocalization.ts",
+      "symbol": "AnonymousAssetConsentRequiredError"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "symbol": "shotIncluded"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/multiShotBatchScheduler.ts",
+      "symbol": "latestSpendAuthorizationDigest"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/prepareProductionGenerationAuthorization.ts",
+      "symbol": "authorizationGateForJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationAuthorizationState.ts",
+      "symbol": "authorizationUnits"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationHistory.ts",
+      "symbol": "authorizationGateForJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationOperationStore.ts",
+      "symbol": "generationPresentationOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+      "symbol": "undecidedShotIds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSeal.ts",
+      "symbol": "undecidedShotIds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "authorizationGateForJob"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionPendingSpend.ts",
+      "symbol": "undecidedShotIds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTrustGrant.ts",
+      "symbol": "spendAuthorizationGates"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/productionRunTypes.ts",
+      "symbol": "GenerationPresentation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/productionRun/stalePresentationSweep.ts",
+      "symbol": "currentPresentation"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/agentLane/generateOutcomeReceipt.ts",
+      "symbol": "GeneratePresentationOutcome"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionGenerationPresentation.ts",
+      "symbol": "spendAuthorizationGates"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionShotPhase.ts",
+      "symbol": "undecidedShotIds"
+    },
+    {
+      "kind": "read",
+      "path": "electron/shared/productionSpendAuthority.ts",
+      "symbol": "spendAuthorizationGates"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/agentPanelSpendCard.ts",
+      "symbol": "spendCardPage"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardDraft.ts",
+      "symbol": "readSpendDraft"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/spendCardReferences.ts",
+      "symbol": "canvasReferenceInputs"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "symbol": "projectSpendCard"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "removePendingSpendShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "confirmPendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "discardPendingSpendConfirmation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionActionIpc.ts",
+      "symbol": "removePendingSpendShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationHistory.ts",
+      "symbol": "normalizeLegacySpendAuthority"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationPlanEdits.ts",
+      "symbol": "revokeWaitingAndUnseal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+      "symbol": "revokeWaitingAndUnseal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "prepareAuthorizedSubmission"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "applyGenerationRevise"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "applyGenerationSeal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "presentGenerationPlan"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "removePresentedShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "revokeWaitingAndUnseal"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunReducer.ts",
+      "symbol": "withdrawGenerationPresentation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "normalizeLegacyPresentation"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "normalizeLegacySpendAuthority"
+    },
+    {
+      "kind": "write",
+      "path": "electron/productionRun/productionRunRepository.ts",
+      "symbol": "settlePresentation"
+    }
+  ],
+  "door_reduction": {
+    "before": 44,
+    "after": 44,
+    "why_not": "The writes already funnel into one command path: the renderer's three card actions reach the host through productionActionIpc → appIntegrationSpendConfirm, and every state change is a reducer command (seal, revise, present, remove, withdraw) plus the repository closing a resolved presentation inside the same step and normalizing old Runs once on read. The reads are different surfaces asking the same two owners (productionSpendAuthority for \"which gate approved this job\", productionGenerationPresentation for \"what happened to each shot on the card\"): dispatch, history, trust grant, the scheduler's command id, the card projection, the seal scope, the placeholder phase, the operation view and the Agent receipt. None decides on its own; merging them would put renderer, MCP and lane concerns into one module."
+  },
+  "generality_proof": "The same per-gate authorization and presentation ledger serve the panel card, external MCP gate requests (resolveGateScope seals only the undecided shots it names), full-auto (approves the same gate the card would), canvas take-over (decideShotClaim takes a shot off the card) and restart (old Runs are normalized once on read). No caller can dispatch a shot without a gate naming it, and no caller can make a shot leave the card without a presentation record saying why.",
+  "shared_boundaries": [
+    {
+      "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+      "symbol": "presentGenerationPlan",
+      "responsibility": "Opens a presentation over the named shots, or the never-authorized standing shots, or a new round; supersedes an open one and revokes its waiting gates."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+      "symbol": "removePresentedShot",
+      "responsibility": "Removes one shot from the open card and the batch; revokes only the waiting gate that covers it."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+      "symbol": "withdrawGenerationPresentation",
+      "responsibility": "Closes the open card with the reason the undecided shots were left (× / the user wrote / stopped)."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationPresentationEdits.ts",
+      "symbol": "settlePresentation",
+      "responsibility": "Closes the presentation as resolved inside the deciding step once every shot is decided."
+    },
+    {
+      "path": "electron/shared/productionGenerationPresentation.ts",
+      "symbol": "generationPresentationOutcome",
+      "responsibility": "The one per-shot outcome value the receipt, the operation view and the confirm path read."
+    },
+    {
+      "path": "electron/shared/productionGenerationPresentation.ts",
+      "symbol": "undecidedShotIds",
+      "responsibility": "The shots still on the card; the title, the pending projection and the seal scope count these."
+    },
+    {
+      "path": "electron/shared/agentLane/generateOutcomeReceipt.ts",
+      "symbol": "describeGenerateOutcome",
+      "responsibility": "Renders the outcome for the model and adds nothing of its own."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "symbol": "prepareAuthorizedSubmission",
+      "responsibility": "Dispatch verifies each job against the gate that approved it."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/ai/v4/useAgentPanelSpendConfirm.ts",
+      "entry_point": "useAgentPanelSpendConfirm",
+      "disposition": "enforced",
+      "evidence": "Sends only the user's action for the shot on the current page (confirm with shotId and the patch the page shows, remove, ×); keeps no per-shot state of its own (agentPanelSpendCard.test.ts, spendCardCanvasReferences.test.ts)."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "createPendingSpendActions",
+      "disposition": "enforced",
+      "evidence": "Confirm seals and approves one shot, serialized per operation and idempotent for a shot already decided; remove and × go to the presentation writers (agentPanelSpendPerShot.e2e.test.ts, agentPanelSpendConfirm.e2e.test.ts)."
+    },
+    {
+      "path": "electron/capabilityCore/mcpGenerationMultiShot.ts",
+      "entry_point": "resolveGateScope",
+      "disposition": "enforced",
+      "evidence": "An MCP gate request on a live plan seals only undecided shots it names (default: the undecided shots of the open card), abandoning a stale waiting gate first (mcpGenerationTools.test.ts)."
+    },
+    {
+      "path": "electron/agentLane/laneExtendedTools.ts",
+      "entry_point": "generateReceipt",
+      "disposition": "enforced",
+      "evidence": "card_closed and redirected outcomes render describeGenerateOutcome; the hard-coded approved sentence is deleted (laneExtendedDesktopPorts.test.ts, generateOutcomeReceipt.test.ts)."
+    },
+    {
+      "path": "electron/productionRun/productionGenerationSubmission.ts",
+      "entry_point": "prepareAuthorizedSubmission",
+      "disposition": "enforced",
+      "evidence": "Looks up the job's own gate through authorizationGateForJob and refuses a job no approved gate names (productionGenerationAuthorizationFlow.test.ts, productionGenerationSubmission.test.ts)."
+    },
+    {
+      "path": "electron/shared/decideShotClaim.ts",
+      "entry_point": "decideShotClaim",
+      "disposition": "not-affected",
+      "evidence": "A canvas claim already takes the shot away from production; the outcome now lists it as taken over by the canvas instead of silently dropping it from the card."
+    },
+    {
+      "path": "electron/catalog/assetLocalization.ts",
+      "entry_point": "AnonymousAssetConsentRequiredError",
+      "disposition": "enforced",
+      "evidence": "The consent error and the Agent confirm box's hosting disclosure (generationCommon spendHostingDisclosure, zh/en) no longer call one upload provider free or recommend it; they state the facts and point to the upload-channel setting."
+    },
+    {
+      "path": "electron/productionRun/batchScheduleDerivation.ts",
+      "entry_point": "anchorsOf",
+      "disposition": "enforced",
+      "evidence": "The look checkpoint waits only for reference cards that were approved in this batch (included and sealed), the same rule anchorCheckpoint uses; a reference card still undecided on the card does not hold back the shots already approved (batchScheduleDerivation.test.ts)."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "entry_point": "reconcileOpenProjectHook (stale presentation sweep)",
+      "disposition": "enforced",
+      "evidence": "A card left open by a previous process is closed with the reason stopped: the sweep wiring now passes the closer through to the presentation writer (it used to drop it, so the outcome read as user_closed); agentPanelSpendConfirm.e2e.test.ts asserts the recorded closer and agent-spend-waiting-owner.walk.mjs checks it after a real restart."
+    },
+    {
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "entry_point": "confirmRemainingShots (\"generate the remaining N\" on the card, 2026-10-01)",
+      "disposition": "enforced",
+      "evidence": "Confirms each undecided shot through the same per-shot confirmOneShot (its own gate, receipt and dispatch; no total authorization), only when the named shots are exactly the card's current stack and each shot is unchanged since the click; stops at the first failure and when the card is closed part way (agentPanelSpendRemaining.e2e.test.ts)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "The same missing owner produced three user-visible defects on one card (shot silently dropped, false all-started receipt, canvas reference not sent) and earlier a queued shot losing its authorization when a later approval replaced the plan-level one.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs --write=confirmPendingSpendConfirmation,removePendingSpendShot,discardPendingSpendConfirmation,applyGenerationSeal,presentGenerationPlan,removePresentedShot,withdrawGenerationPresentation,settlePresentation,prepareAuthorizedSubmission --read=generationPresentationOutcome,undecidedShotIds,describeGenerateOutcome",
+      "rg \"authorizationEnvelope\" electron src -> only gates carry it; the plan-level field is read only by normalizeLegacySpendAuthority",
+      "rg \"generation has started\" electron -> only the full-auto receipt, where every shot is approved by policy",
+      "rg \"cardHidden\" electron src -> only normalizeLegacyPresentation and the stale presentation sweep read it"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/shared/productionGenerationPresentation.ts",
+    "invariant": "Clicked shots are generated, removed shots are not, and every other shot either stays on the card or has a recorded reason; the receipt says exactly that.",
+    "failure_mode": "A job without an approved gate naming its shot cannot be dispatched; a shot cannot leave an open card except through the four presentation writers; the receipt has no text of its own.",
+    "exception_policy": "none",
+    "strategy": "Move authorization onto each gate, record each card presentation on the Run, derive one per-shot outcome from them, and make the card, the seal scope, the placeholder and the receipt read it; delete the plan-level envelope, the price-gated scope toggle and its all path, the shrink-the-batch confirm and the hard-coded receipt.",
+    "artifacts": [
+      "electron/shared/productionSpendAuthority.ts",
+      "electron/shared/productionGenerationPresentation.ts",
+      "electron/productionRun/productionGenerationPresentationEdits.ts",
+      "electron/shared/agentLane/generateOutcomeReceipt.ts",
+      "docs/engineering/concept-owners.json"
+    ]
+  },
+  "regression_tests": [
+    "electron/shared/productionGenerationPresentation.test.ts",
+    "electron/shared/agentLane/generateOutcomeReceipt.test.ts",
+    "electron/capabilityCore/agentPanelSpendPerShot.e2e.test.ts",
+    "electron/capabilityCore/agentPanelSpendConfirm.e2e.test.ts",
+    "electron/productionRun/productionGenerationAuthorizationFlow.test.ts",
+    "electron/agentLane/laneExtendedDesktopPorts.test.ts",
+    "src/workbench/ai/v4/agentPanelSpendCard.test.ts",
+    "src/workbench/ai/v4/spendCardCanvasReferences.test.ts",
+    "tests/ux/agent-spend-confirm-executes.walk.mjs",
+    "tests/ux/full-walk/playbooks/pb01-two-page-card.walk.mjs",
+    "electron/shared/productionShotJobs.test.ts",
+    "electron/capabilityCore/generationTransportAdapters.test.ts",
+    "electron/capabilityCore/agentPanelSpendRemaining.e2e.test.ts",
+    "src/workbench/ai/v4/spendCardFailure.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/shared/productionGenerationPresentation.test.ts",
+    "electron/capabilityCore/agentPanelSpendPerShot.e2e.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "electron/agentLane/laneExtendedTools.ts",
+      "src/workbench/ai/v4/agentPanelSpendCard.ts",
+      "src/workbench/ai/v4/agentPanelV4Types.ts"
+    ],
+    "rationale": "Deleted in place: the confirm path that re-presented the plan with only the selected shot before sealing, the approved branch's hard-coded receipt, the price-gated each/all scope toggle with its all layer and labels, the price-unknown footer line and the generate-anyway label, and the plan-level authorization fields (envelope, digest, gate id, approved receipt, plan hash). Old Runs are normalized once on read."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party dependency controls authorization, presentation or dispatch.",
+    "exit_criteria": []
+  },
+  "migration": "Old Runs are normalized once on read: a plan-level envelope moves onto the gate that approved it (normalizeLegacySpendAuthority), and cardHidden becomes a presentation record (normalizeLegacyPresentation: hidden → none, visible draft or sealed-and-waiting → one open presentation over the included shots). Shots an earlier version silently excluded stay excluded; nothing is resurrected.",
+  "residual_risks": [
+    "Each per-shot click seals, approves and dispatches on its own; a 33-shot card takes about two seconds per click in the e2e harness.",
+    "The settings page's own upload guidance (outside the Agent confirm box) is unchanged; only the confirm-box sentence and the consent error were brought to the facts-only wording.",
+    "Stopped shots still use budget wording; that copy belongs to a later change in this series."
+  ]
+}

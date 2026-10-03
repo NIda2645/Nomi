@@ -152,14 +152,17 @@ export async function closeSpendCard(card, label = '关掉这张报价卡') {
   if (await confirm.isVisible().catch(() => false)) await clickOrFail(confirm, `${label}（确认）`)
 }
 
-/** One I/O safety bound, not a polling/sleep-based completion signal. */
-export async function recorded(promise, label) {
+/**
+ * One I/O safety bound, not a polling/sleep-based completion signal.
+ * `bound` 默认 60 秒；一步的工作量随数据变大时（33 镜的草稿要落 33 个节点）由调用方按 `stationTimeout` 给。
+ */
+export async function recorded(promise, label, bound = 60_000) {
   let timer
   try {
     return await Promise.race([
       promise,
       new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), 60_000)
+        timer = setTimeout(() => reject(new Error(`Timed out waiting for ${label}`)), bound)
       }),
     ])
   } finally {

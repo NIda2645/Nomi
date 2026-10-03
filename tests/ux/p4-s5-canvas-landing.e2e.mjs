@@ -56,9 +56,9 @@ function landedRun(projectId, nodeIds, { stopped = false } = {}) {
   const job = (shotId, nodeId, status) => ({ jobId: `job-${shotId}`, stageId: 'generate', status, attempt: 1, provider: 'apimart', model: 'video', idempotencyKey: `k-${shotId}`, nodeId, metadata: { shotId }, createdAt: NOW, updatedAt: NOW })
   return {
     schemaVersion: 1, runId: RUN_ID, projectId, revision: 1,
-    // 停下的原因只有一个来处：Run 停下那一刻记下的 stop（预算停批 = needs_attention + budget）。
+    // 停下的原因只有一个来处：Run 停下那一刻记下的 stop（同意过期 = needs_attention + consent_expired）。
     status: stopped ? 'needs_attention' : 'running',
-    ...(stopped ? { stop: { reason: 'budget', at: NOW } } : {}),
+    ...(stopped ? { stop: { reason: 'consent_expired', at: NOW } } : {}),
     stageId: 'generate', playbook: { name: 'generation.single-shot', version: '1.0.0' }, origin: { host: 'semantic-mcp' },
     policy: { trustedHosts: [], allowedProviders: [], allowedModels: [], maxSpend: 13, maxAttemptsPerJob: 1, minimizeUploads: true },
     budget: { currency: 'CNY', authorized: 13, reserved: 0, actual: 0, unsettled: 0 },
@@ -241,14 +241,14 @@ try {
   await win.evaluate(() => { document.documentElement.setAttribute('data-mantine-color-scheme', 'light'); document.documentElement.style.colorScheme = 'light' })
   await win.waitForTimeout(300)
 
-  // ── 同一批停下（预算停批，按生命周期 owner 的写法记下原因）：批过、没派出去的镜「已停」；从没被批过的 shot-3 仍是「还没生成」 ──
+  // ── 同一批停下（同意过期，按生命周期 owner 的写法记下原因）：批过、没派出去的镜「已停」；从没被批过的 shot-3 仍是「还没生成」 ──
   await pinRun(landedRun(projectId, {}, { stopped: true }))
   await expect.poll(async () => (await placeholderStates())['shot-2'], { message: '停下：shot-2 的小标换成「已停」', timeout: DEFAULT_TIMEOUT_MS }).toBe('stopped')
   const stoppedStates = await placeholderStates()
   check(stoppedStates['shot-2'] === 'stopped' && stoppedStates['anchor-1'] === 'stopped', `停下：批过的参考卡与 shot-2「已停」（实得 ${JSON.stringify(stoppedStates)}）`)
   check(stoppedStates['shot-3'] === 'not_generated', `停下：从没被批过的 shot-3 不是「已停」、不挂续拍钮（实得 ${stoppedStates['shot-3']}）`)
   const stopReason = await win.evaluate(() => document.querySelector('[data-shot-placeholder-state="stopped"] [data-shot-stop-reason]')?.getAttribute('data-shot-stop-reason'))
-  check(stopReason === 'budget', `已停的原因照 Run 记下的说（实得 ${stopReason}）`)
+  check(stopReason === 'consent_expired', `已停的原因照 Run 记下的说（实得 ${stopReason}）`)
   // 已停占位用 warning 底、非 danger（截计算色不比字面串）。
   const stoppedIsWarning = await win.evaluate(() => {
     const el = document.querySelector('[data-shot-placeholder-state="stopped"]')

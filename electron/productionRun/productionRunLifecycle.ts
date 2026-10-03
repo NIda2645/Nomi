@@ -64,8 +64,8 @@ export function applyOwedLifecycleStep(current: ProductionRun, now: string): Pro
 /**
  * 用户重做一镜（新授权的一次尝试）时，这次停下能不能随之解除——解除了，停着的批次才会把这一镜派出去。
  * - `failed`：停就是因为有镜头没成，重做正是在处理它；
- * - `unknown`：上一版停下时没记原因（失败或预算）。解除是安全的：新这一镜有自己的授权，其余镜头的额度仍由派发前的预算判据挡着；
- * - `budget`：要先续额度（「继续剩余」那条路），不因重做一镜绕过；
+ * - `unknown`：上一版停下时没记原因。解除是安全的：新这一镜有自己的授权，其余镜头派不派仍各看批它的那一份；
+ * - `consent_expired`：重做这一镜就是一次新的点头，它自己派得出去；别的镜同意仍过期，派到它们时会如实再停；
  * - `user_paused` / `user_cancelled`：用户自己停的，重做一镜不替他改主意；
  * - `restart_recovery`：要先核对重启前在跑的任务。
  */
@@ -73,8 +73,8 @@ export function retryLiftsStop(reason: ProductionRunStopReason | "unknown"): boo
   switch (reason) {
     case "failed":
     case "unknown":
+    case "consent_expired":
       return true;
-    case "budget":
     case "user_paused":
     case "user_cancelled":
     case "restart_recovery":

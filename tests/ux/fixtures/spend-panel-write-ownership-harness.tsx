@@ -21,31 +21,33 @@ const slot = resolveNodeArraySlots(meta).find(slot => slot.accept === 'image') ?
 if (!slot) throw new Error('reference fixture requires a real model array slot')
 const nodes: GenerationCanvasNode[] = ['a', 'b'].map(id => ({ id, kind: 'video', title: id, position: { x: 0, y: 0 }, prompt: id, meta: { ...meta, [slot.metaKey]: [] } }))
 const pending: PendingSpendConfirm = { projectId: 'project', runId: 'run', operationId: 'operation', quoteId: 'quote', planVersion: 1, candidateRevision: 1, currency: 'CNY', knownSubtotal: 2, unknownShotCount: 0,
-  shots: nodes.map((node, index) => ({ shotId: node.id, nodeId: node.id, index: index + 1, prompt: node.id, modelId: 'seedance-2', providerId: 'fixture', mode: 'text-to-video', modeId: 'omni', parameters: { [slot.metaKey]: [] }, price: { known: true, amount: 1 } })) }
+  shots: nodes.map((node, index) => ({ shotId: node.id, nodeId: node.id, index: index + 1, prompt: node.id, modelId: 'seedance-2', providerId: 'fixture', kind: 'video' as const, mode: 'text-to-video', modeId: 'omni', parameters: { [slot.metaKey]: [] }, price: { known: true, amount: 1 } })) }
 let refresh: (() => void) | undefined
 let releaseUpload: ((value: unknown) => void) | undefined
 let uploads = 0
 let completed = 0
 let stale: NodeWriteAccess | undefined
+// 上传那一刻卡上那张框的 id（卡自己的 id，不是画布占位节点的 id）：退役之后拿同一个 id 也读不到、写不进。
+let staleId = ''
 let model!: ReturnType<typeof useAgentPanelSpendConfirm>
 const feedback: string[] = []
 const calls: unknown[] = []
-const fixture = { nodes, pending, calls,
+const toasts: { message: string; kind: string }[] = []
+const fixture = { nodes, edges: [], pending, calls, toasts,
   refresh: () => refresh?.(),
   edit: () => model.node && model.writeAccess.updateNode(model.node.id, { prompt: 'edited' }),
   confirm: () => model.confirm(),
+  confirmRemaining: () => model.confirmRemaining(),
   discard: () => model.discard(),
   detach: () => { nodes.splice(0); pending.shots.forEach(shot => { delete (shot as {nodeId?: string}).nodeId }); refresh?.() },
   narrow: () => { (pending.shots as unknown[]).splice(0, 1); refresh?.() },
   slotKey: slot.metaKey,
   upload: () => { uploads++; return new Promise(resolve => { releaseUpload = resolve }) },
   setRefresh: (callback: () => void) => { refresh = callback },
-  snapshot: () => ({ busy: model.busy, page: model.page, scope: model.scope, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
-    meta: model.node?.meta, refs: model.node?.meta?.[slot.metaKey], prompt: model.node?.prompt, uploads, completed, feedback, staleNode: stale?.latestNode('a')?.id, staleWritable: stale?.canWrite?.() }),
+  snapshot: () => ({ busy: model.busy, batchRunning: model.batchRunning, title: model.slot?.title, progress: model.slot?.progress?.hint, page: model.page, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
+    meta: model.node?.meta, refs: model.node?.meta?.[slot.metaKey], prompt: model.node?.prompt, uploads, completed, feedback, staleNode: stale?.latestNode(staleId)?.id, staleWritable: stale?.canWrite?.() }),
   change: (field: string) => {
     if (field === 'page') model.setPage(1)
-    else if (field === 'scope') model.setScope('all')
-    else if (field === 'each') model.setScope('each')
     else { Object.assign(pending, field === 'quote' ? { quoteId: 'quote-next' } : field === 'operation' ? { operationId: 'operation-next' } : { candidateRevision: 2 }); refresh?.() }
   },
   // 重新出价：宿主收回这一次出价（× / 待决时打字 / 重启）之后，同一份草稿再 `generate`
@@ -54,13 +56,14 @@ const fixture = { nodes, pending, calls,
   back: () => model.setPage(0),
   finish: () => releaseUpload?.({ id: 'asset', data: { url: 'nomi-local://asset/reference.png' } }),
   unmount: () => root.unmount(),
-  staleWrite: () => stale?.updateNode('a', { prompt: 'late mutation' }),
+  staleWrite: () => stale?.updateNode(staleId, { prompt: 'late mutation' }),
 }
 Object.assign(window, { spendOwnership: fixture })
 function Drop({ node, access }: { node: GenerationCanvasNode; access: NodeWriteAccess }) {
   const drop = useNodeAssetDrop(node, message => feedback.push(message), access)
   return <button id="upload" onClick={() => {
     stale = access
+    staleId = node.id
     void drop.dropHandlers.onDrop({ preventDefault() {}, stopPropagation() {}, dataTransfer: { getData: () => '', files: [new File(['fixture'], 'reference.png', { type: 'image/png' })] } } as unknown as React.DragEvent<HTMLElement>).finally(() => { completed++ })
   }}>upload</button>
 }

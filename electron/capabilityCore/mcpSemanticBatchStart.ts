@@ -12,7 +12,7 @@ export type SemanticBatchStartScheduler = Readonly<{
   runToQuiescence: () => Promise<unknown>;
 }>;
 
-type DurableBatchRun = Pick<ProductionRun, "projectId" | "runId" | "revision" | "generationPlan">;
+type DurableBatchRun = Pick<ProductionRun, "projectId" | "runId" | "revision" | "planVersion" | "generationPlan">;
 
 export type SemanticBatchStartDependencies = Readonly<{
   readRun: (projectId: string, runId: string) => DurableBatchRun | null;

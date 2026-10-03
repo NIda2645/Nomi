@@ -1,6 +1,4 @@
-import { budgetExceeds, createBudgetAmountAccumulator } from "./budgetLedger";
 import type {
-  BudgetLedgerSummary,
   ProductionGate,
   ProductionGenerationPlan,
   ProductionGenerationShot,
@@ -8,7 +6,6 @@ import type {
   ProductionRunStatus,
   ProductionRun,
 } from "./productionRunTypes";
-import type { ShotPrice } from "./shotPricing";
 import { productionGenerationJobId } from "./productionGenerationAuthorization";
 import { jobAwaitsHuman, productionJobPhase } from "../shared/productionShotPhase";
 import { decideShotClaim } from "../shared/decideShotClaim";
@@ -21,15 +18,19 @@ import { isStoppedRunStatus } from "../shared/productionRunStop";
  * ## Why there is no second source of truth
  *
  * The scheduler owns NO mutable state. Every tick recomputes "the next dispatch set" purely from the
- * durable Run — `plan.shots` (anchors + video shots, partitioned by role) + `jobs[]` + the budget
- * `ledger` summary + the anchor checkpoint gate. A crash-restart re-runs THIS SAME function over the
- * reloaded Run and gets THE SAME answer, because:
+ * durable Run — `plan.shots` (anchors + video shots, partitioned by role) + `jobs[]` + the anchor
+ * checkpoint gate. A crash-restart re-runs THIS SAME function over the reloaded Run and gets THE SAME
+ * answer, because:
  *
  *   - "has this unit been dispatched?" = does `jobs[]` contain a job for `(shotId, currentAttempt)`?
  *     The jobId is derived by the shared ProductionRun authorization identity helper,
  *     so the durable job list IS the ledger of what was submitted. We never keep a private set.
- *   - "how much have we spent?" = the budget summary (reserved + actual + unsettled). The ledger is an
- *     append-only replay — itself a single source of truth. Halt is judged against `authorized`.
+ *   - "may this unit be dispatched?" = is its job `authorized` — i.e. did a person approve the gate that
+ *     covers exactly this shot (one approval per click on the paid card). There is no Run-level spend
+ *     halt any more (2026-10-01, paid card ①): it judged a whole batch against one ceiling, but approvals
+ *     are per shot, so it could only ever stop shots a person had approved. The ledger's reserve stays
+ *     the hard wall at dispatch, and whether the approval is still fresh is judged at dispatch too
+ *     (`productionDispatchConsent`) — neither is a scheduling decision.
  *   - "did the anchor pass?" = the anchor checkpoint gate's status, written into the Run (never the
  *     renderer store). Waiting → shots blocked; approved → shots released.
  *
@@ -76,26 +77,7 @@ export type CheckpointState = {
   readyAnchorJobIds: string[];
 };
 
-/**
- * The structured halt signal (plan §3.3): the batch cannot afford every remaining shot under the
- * plan-level authorized ceiling. `haltedAtShotId` is the first shot (checkbox order) that would breach;
- * counts let `nomi_get_run` show "已完成 N / 剩余 M" without the scheduler holding any state.
- */
-export type BudgetHalt = {
-  haltedAtShotId: string;
-  /** Included video shots already finished (ready/adopted). */
-  completedCount: number;
-  /** Included video shots cleared for dispatch this tick (fit under the cap). */
-  dispatchableCount: number;
-  /** 这批里价格未知、不参与上限比较的镜头数（诚实披露，绝不折成金额）。 */
-  unknownDispatchCount: number;
-  /** Included video shots that did not fit (from the halt point onward, minus already-finished/in-flight). */
-  remainingCount: number;
-  authorized: number;
-  currency: string;
-};
-
-/** Progress projection over the video shots (for stop/halt status queries). All derived from jobs[]. */
+/** Progress projection over the video shots (for stop status queries). All derived from jobs[]. */
 export type BatchProgress = {
   total: number;
   completed: number;
@@ -103,37 +85,11 @@ export type BatchProgress = {
   pending: number;
 };
 
-/**
- * P4 S4: raised when the budget genuinely runs out mid-batch and the orchestrator must halt the Run
- * (plan §3.3). Carries the structured "已完成 N / 剩余 M" so the caller never silently over-spends.
- * The ledger's `reserve` is the last hard wall (it throws "Budget authorization exceeded"); this typed
- * error is the STRUCTURED halt the derivation raises PROACTIVELY so the Run enters a queryable halt.
- */
-export class BudgetExhaustedError extends Error {
-  readonly code = "budget_exhausted" as const;
-
-  constructor(readonly halt: BudgetHalt) {
-    super(`budget_exhausted: authorized ${halt.authorized} ${halt.currency} covers ${halt.completedCount + halt.dispatchableCount} of ${halt.completedCount + halt.dispatchableCount + halt.remainingCount} shot(s); halted at ${halt.haltedAtShotId}`);
-    this.name = "BudgetExhaustedError";
-  }
-}
-
 export type BatchDerivationInput = {
   runId: string;
   runStatus: ProductionRunStatus;
   plan: ProductionGenerationPlan;
   jobs: ProductionJob[];
-  budget: BudgetLedgerSummary;
-  /**
-   * Resolve a shot's derived price (S2).
-   *
-   * **未知价不进金额比较**（2026-09-21）：它既不加进已提交负债，也不触发 halt。从前这里写的是
-   * `price.known ? price.amount : 0`——那行今天被上游的 `assertKnownShotPrice` 挡着不可达，
-   * 一开闸就会变成「一批全是未知价的镜头被判定 running + 0 ≤ authorized、全部派出去」的静默口：
-   * 上限证明看起来成立，其实什么都没证明。未知单独计数（`unknownDispatchCount`），
-   * 它能不能派由「这个 job 在不在人批过的那份信封里」决定，不由金额决定。
-   */
-  perShotPrice: (shotId: string) => ShotPrice;
   /** The current anchor checkpoint gate, if one was opened. */
   anchorGate?: ProductionGate;
   now: string;
@@ -159,9 +115,6 @@ export type BatchDerivationResult = {
    * 只看**当前尝试**：返工成功后，上一次失败的那个 job 不再算——以前按全部 job 数，重做成功的批次收尾时照样被判「有镜头没成」。
    */
   failedUnits: string[];
-  /** 本 tick 派出去的镜头里价格未知的笔数。`nomi_get_run` 据此如实说「另有 N 镜价格未知」。 */
-  unknownDispatchCount: number;
-  halt?: BudgetHalt;
 };
 
 /** Job statuses that mean "this unit finished successfully" — never re-dispatch. */
@@ -232,7 +185,9 @@ function toTask(runId: string, shot: ProductionGenerationShot): DispatchTask {
  * checkpoint is where a person approves the look before the paid video shots run.
  */
 function anchorsOf(plan: ProductionGenerationPlan): ProductionGenerationShot[] {
-  return (plan.shots ?? []).filter((shot) => shot.role === "anchor" && shotIncluded(shot));
+  // 逐镜（付费卡①）：卡上还没点的参考卡没有合同、也不是这一批的活——形象确认只等批过的那几张
+  // （与 `anchorCheckpoint.currentAnchorCheckpointGate` 同一条：勾进这一批、有封印合同的参考卡）。
+  return (plan.shots ?? []).filter((shot) => shot.role === "anchor" && shotIncluded(shot) && Boolean(shot.contract));
 }
 
 /**
@@ -307,7 +262,7 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   // orchestrator lands their results; completed jobs are preserved (both reflected in `progress`).
   const stopped = isStoppedRunStatus(input.runStatus);
   if (stopped) {
-    return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress, failedUnits, unknownDispatchCount: 0 };
+    return { anchorDispatch: [], shotDispatch: [], observe, checkpoint, progress, failedUnits };
   }
 
   // Anchors go first. Any anchor still needing a job (fresh or a rejected-checkpoint re-attempt) is
@@ -318,60 +273,15 @@ export function deriveBatchPlan(input: BatchDerivationInput): BatchDerivationRes
   const checkpointReleased = checkpoint.status === "approved";
   if (anchors.length > 0 && !checkpointReleased) {
     // Anchors present but checkpoint not released → dispatch anchors (if any pending), block shots.
-    return { anchorDispatch, shotDispatch: [], observe, checkpoint, progress, failedUnits, unknownDispatchCount: 0 };
+    return { anchorDispatch, shotDispatch: [], observe, checkpoint, progress, failedUnits };
   }
 
-  // Checkpoint approved by a person, or no anchors at all → consider video shots.
-  // Budget halt (plan §3.3): walk included, not-yet-started shots in checkbox order, accumulating the
-  // ALREADY-COMMITTED liability (reserved + actual + unsettled) + each candidate shot's price. The first
-  // shot that would breach `authorized` halts the batch there (that shot and all after are not dispatched).
-  const authorized = input.budget.authorized;
-  const committed = input.budget.reserved + input.budget.actual + input.budget.unsettled;
-  const addLiability = createBudgetAmountAccumulator();
-  addLiability(committed);
-  const shotDispatch: DispatchTask[] = [];
-  let halt: BudgetHalt | undefined;
-  let dispatchableCount = 0;
-  let unknownDispatchCount = 0;
-  let haltIndex = -1;
+  // Checkpoint approved by a person, or no anchors at all → every approved, not-yet-started shot goes, in
+  // checkbox order. Each one was approved on its own (its job is `authorized` only after its own gate was
+  // approved), so there is nothing left to weigh here: no Run-level ceiling, no price (2026-10-01).
+  const shotDispatch = videoShots
+    .filter((shot) => needsDispatch(input.run, shot)) // finished, claimed, in flight or not approved → skip
+    .map((shot) => toTask(input.runId, shot));
 
-  for (let i = 0; i < videoShots.length; i += 1) {
-    const shot = videoShots[i];
-    if (!needsDispatch(input.run, shot)) continue; // finished, claimed, or in-flight → skip
-    const price = input.perShotPrice(shot.shotId);
-    if (!price.known) {
-      // 算不出价 → 这一镜不进金额比较，也不因为金额被 halt。它照常派（人已经在信封上批过它）。
-      unknownDispatchCount += 1;
-      dispatchableCount += 1;
-      shotDispatch.push(toTask(input.runId, shot));
-      continue;
-    }
-    if (budgetExceeds(addLiability(price.amount), authorized)) {
-      // This shot breaches the cap → halt here; do not dispatch it or any later shot.
-      haltIndex = i;
-      halt = {
-        haltedAtShotId: shot.shotId,
-        completedCount: completed,
-        dispatchableCount,
-        unknownDispatchCount,
-        remainingCount: 0,
-        authorized,
-        currency: input.budget.currency,
-      };
-      break;
-    }
-    dispatchableCount += 1;
-    shotDispatch.push(toTask(input.runId, shot));
-  }
-
-  if (halt && haltIndex >= 0) {
-    let remaining = 0;
-    for (let i = haltIndex; i < videoShots.length; i += 1) {
-      const shot = videoShots[i];
-      if (needsDispatch(input.run, shot)) remaining += 1;
-    }
-    halt = { ...halt, dispatchableCount, remainingCount: remaining };
-  }
-
-  return { anchorDispatch, shotDispatch, observe, checkpoint, progress, failedUnits, unknownDispatchCount, ...(halt ? { halt } : {}) };
+  return { anchorDispatch, shotDispatch, observe, checkpoint, progress, failedUnits };
 }

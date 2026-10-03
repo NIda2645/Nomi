@@ -26,7 +26,7 @@
 // 在自造 loopback 供应商上逐拍钉住。
 //
 // 四条（全部是真人视角看得见的事）：
-//   ① 卡在介入槽里等着（这台机器算不出价，主按钮是「仍要生成」）
+//   ① 卡在介入槽里等着（这台机器算不出价，主按钮是「生成这张」，卡上不说价格的话）
 //   ② 在卡上把清晰度换成 2K——真的点开下拉再选一项，不是往 store 里写值
 //   ③ 按主按钮 → **改动真的到了宿主**：盘上那份候选里清晰度就是改后的那个
 //   ③-b **而且它真的随请求发到了供应商**：出站报文里 resolution 逐字是 2K。
@@ -71,7 +71,7 @@ function readRun(projectRoot, runId) {
   if (!fs.existsSync(snapshot)) return null
   const run = JSON.parse(fs.readFileSync(snapshot, 'utf8')).run
   return {
-    envelope: run?.generationPlan?.authorizationEnvelope,
+    envelope: run?.gates?.filter((gate) => gate.scope === 'budget_envelope' && gate.authorizationEnvelope).at(-1)?.authorizationEnvelope,
     artifacts: Array.isArray(run?.artifacts) ? run.artifacts : [],
   }
 }
@@ -121,10 +121,8 @@ try {
 
   const card = win.locator(`${CANVAS_PANEL} ${APPROVAL_CARD}[data-kind="spend"]`)
   const cardProbe = await proveProbe(card, 'The paid confirmation lives in the agent panel intervention slot')
-  await expect(card.locator(PRICE_UNAVAILABLE), '这台机器的目录里没有价目，卡上如实说算不出')
-    // 2026-09-22 换壳：这句话搬到页脚左下，措辞按用户拍板换成下面这一句
-    // （它比「暂时算不出」多说了一件事：钱还是会扣，只是由供应商算）。锚点没变。
-    .toHaveText('价格未知 · 以供应商账单为准')
+  // 这台机器的目录里没有价目：付费卡逐镜之后（2026-09-30 第 7 条）卡上不说任何价格的话，「价格未知」那一行删了。
+  await expectAbsent(card.locator(PRICE_UNAVAILABLE), { provenBy: cardProbe, message: '没有「价格未知 · 以供应商账单为准」那一行' })
   expect(walk.fixture.images, '卡还没按之前，一次供应商生成都没发生').toHaveLength(0)
 
   // ② 在卡上把清晰度换掉。这是真的点开下拉再选一项——不是往 store 里写一个值。
@@ -159,7 +157,7 @@ try {
     if (text.includes('[spend-confirm] host refused')) hostRefusals.push(text)
     if (process.env.NOMI_WALK_DEBUG === '1') console.log('[console]', message.type(), text.slice(0, 400))
   })
-  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮「仍要生成」', { noWaitAfter: true })
+  await clickOrFail(card.locator(INTERVENTION_CONFIRM), '卡上的主按钮「生成这张」', { noWaitAfter: true })
 
   // 先等「有结论」再判对错：只等 images 的话，一次被拒会以超时的形状报出来，看不见真正的原因。
   await expect.poll(() => walk.fixture.images.length + hostRefusals.length,
@@ -168,7 +166,8 @@ try {
   expect(walk.fixture.images, '按下确认之后，供应商必须真的收到一次生成请求').not.toHaveLength(0)
   // 确认把结论递回正在等的那个回合：`generate` 此刻才返回，而且说的是真话——已经开跑。
   expect(flattenRequestText((await recorded(plannerDone.received, 'generate returns once the user approved the card')).body),
-    '模型读到「用户批了、已经开始生成」').toContain('The user approved the priced card')
+    // 付费卡逐镜（2026-09-30）：回执渲染宿主的逐镜结局——这张卡上的每一镜都在生成，才说「都在生成」。
+    '模型读到「用户批了、已经开始生成」').toContain('All 1 shot(s) on the card are generating')
   const submitted = walk.fixture.images[0].body
   expect(JSON.stringify(submitted), '发出去的就是卡上那一镜').toContain('六棱柱')
   // 卡上改的那处提示词**真的到了线缆上**（loopback 供应商收到的请求体里就有它）。

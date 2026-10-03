@@ -1,3 +1,4 @@
+import { currentPresentation } from "../shared/productionGenerationPresentation";
 // 重启之后，把「上一个进程摆出去、还没人答」的那几次**出价**撤回（裁决 C，2026-09-22 二次裁决）。
 //
 // ── 它在解决哪个真实摩擦 ──
@@ -26,7 +27,7 @@ export const PROCESS_STARTED_AT = new Date().toISOString();
 
 export type StalePresentationSweepDeps = Readonly<{
   listRuns(projectId: string): readonly ProductionRun[];
-  withdraw(projectId: string, operationId: string, now: string): unknown | Promise<unknown>;
+  withdraw(projectId: string, operationId: string, now: string, reason: "stopped"): unknown | Promise<unknown>;
   now?(): string;
   processStartedAt?: string;
   onError?(operationId: string, error: unknown): void;
@@ -39,10 +40,12 @@ export async function withdrawStalePresentations(deps: StalePresentationSweepDep
   for (const run of deps.listRuns(projectId)) {
     const awaiting = awaitingSpendDecision(run);
     if (!awaiting) continue;
-    // `updatedAt` 在 present / seal 那一刻被盖过章；ISO 串同宽，字典序即时间序。
-    if (awaiting.plan.updatedAt.localeCompare(startedAt) >= 0) continue;
+    // 这一次出价开出来的那一刻；ISO 串同宽，字典序即时间序。
+    const openedAt = currentPresentation(awaiting.plan)?.openedAt ?? awaiting.plan.updatedAt;
+    if (openedAt.localeCompare(startedAt) >= 0) continue;
     try {
-      await deps.withdraw(projectId, awaiting.plan.operationId, deps.now?.() ?? new Date().toISOString());
+      // 问这句话的那个回合随上一个进程没了：这一次出价关成 stopped（没决定的镜记「被停」）。
+      await deps.withdraw(projectId, awaiting.plan.operationId, deps.now?.() ?? new Date().toISOString(), "stopped");
       withdrawn.push(awaiting.plan.operationId);
     } catch (error) {
       deps.onError?.(awaiting.plan.operationId, error);

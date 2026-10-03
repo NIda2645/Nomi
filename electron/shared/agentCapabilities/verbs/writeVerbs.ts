@@ -35,14 +35,16 @@ export const draftShotSchema = z.object({
   storyboard: storyboardAuthorFieldsSchema.optional().describe("Original author fields; anchors require kind and carrier."),
   title: z.string().trim().min(1).max(120).optional().describe("Short human title in the user's language, shown on the canvas node and spend card."),
   prompt: z.string().trim().min(1).max(8_000).optional().describe("Prompt in the user's language. Required for a new shot; when revising (operationId + shotId) send it only to change it."),
-  taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce; omit to infer it (a named modeId decides it)."),
+  // 2026-09-30（付费卡① 第 9 条）：种类不再按提示词猜。点名了模型（或 modeId）就由它定；两样都没点名时必须写明。
+  // 措辞压到最短：这几句算在 draft_shots 的 schema 预算里（stage3-probe-p5 的 core 785），规矩写一遍在这里，modeId / modelId / 顶层只留指向。
+  taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to make. Omit when modelId or modeId decides it; otherwise required."),
   role: z.enum(["anchor", "shot"]).optional().describe("anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot."),
   durationSec: z.number().positive().max(600).optional().describe("Clip length in seconds; omit for stills. The only place for length, never parameters."),
   modelId: z.string().trim().min(1).optional().describe("Catalog model id from list_models; omit for the user's default."),
   // 2026-09-22：`taskKind` 与 `modeId` 是同一件事实的两种写法。模式定了，种类就定了
   // （`transportTaskKindForModeId` 从档案扫出来），所以说明书直接告诉模型「写了模式就别再写种类」——
   // 两个都填正是它自己给自己造矛盾的地方（run2 A3/A6 三次）。
-  modeId: z.string().trim().min(1).optional().describe("Mode id from list_models. It decides the job kind: omit taskKind with it."),
+  modeId: z.string().trim().min(1).optional().describe("Mode id from list_models; it decides taskKind."),
   candidate: z.object({
     providerId: z.string().trim().min(1).describe("Provider id from list_models."),
     modelId: z.string().trim().min(1).describe("Model id from list_models."),
@@ -181,7 +183,7 @@ export function writeVerbs(): VerbDeclaration[] {
     promptGuidelines: [...READ_GUIDELINES, ...CANVAS_NODE_PROMPT_GUIDELINES],
     schema: z.object({
       operationId: z.string().trim().min(1).max(160).optional().describe("operationId from an earlier draft_shots call, to update it."),
-      taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to produce for every shot; omit to infer per shot."),
+      taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("Default taskKind for shots that set none."),
       candidate: z.object({
         providerId: z.string().trim().min(1).describe("Provider id from list_models."),
         modelId: z.string().trim().min(1).describe("Model id from list_models."),

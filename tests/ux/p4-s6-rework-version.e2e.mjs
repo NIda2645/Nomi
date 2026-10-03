@@ -5,7 +5,7 @@
 //      展开有「重拍这镜」——成功镜第一次返工的唯一入口（另两个入口都在错误态上，等 ≥2 才出=入口死锁）。非多镜节点
 //      同 selected 同有 result 也不出条（阳性对照）。返工落第二版后：展开列版本；点旧版 → rollbackHistory 切 result
 //      （**切回旧版→再切新版**，计划 §4 J2 要求的断言）；顺序不跳（rollbackHistory 不重排）。
-//   ② 已停占位：resume 钮从 disabled 留位变 active（data-production-shot-action=resume-budget/-manual）。
+//   ② 已停占位：resume 钮从 disabled 留位变 active（data-production-shot-action=resume-consent/-manual）。
 //   ③ 失败占位：rework 钮 active（data-production-shot-action=rework）。
 // 截图人眼判断（R13）：版本条展开态（光/暗）。断言用 _assert 体系 + expectAbsent 阳性对照（切前旧版不是当前）。
 import fs from 'node:fs'
@@ -185,13 +185,13 @@ try {
   }, { runId: RUN_ID, projectId })
   await win.waitForTimeout(400)
 
-  // 已停占位的 resume 钮 = active 值（resume-budget 或 resume-manual），且非 disabled。
+  // 已停占位的 resume 钮 = active 值（resume-consent 或 resume-manual），且非 disabled。
   const resumeAction = await win.evaluate((id) => {
     const host = document.querySelector(`[data-production-shot-node="${id}"][data-shot-placeholder-state="stopped"]`)
     const btn = host?.querySelector('[data-production-shot-action]')
     return btn ? { action: btn.getAttribute('data-production-shot-action'), disabled: btn.disabled } : null
   }, stoppedNode)
-  check(resumeAction && /^resume-(budget|manual)$/.test(resumeAction.action || ''), `已停占位续拍钮=active（data-*=${resumeAction?.action}，非 pending-s6 留位）`)
+  check(resumeAction && /^resume-(consent|manual)$/.test(resumeAction.action || ''), `已停占位续拍钮=active（data-*=${resumeAction?.action}，非 pending-s6 留位）`)
   check(resumeAction && resumeAction.disabled === false, '续拍钮可点（非 disabled）')
 
   // 失败镜 = 普通生成那张失败卡（节点 status=error），不再有制作专属的失败占位。

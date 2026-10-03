@@ -1,4 +1,3 @@
-import { resolveGenerationShotScope } from "../shared/agentCapabilities/generationShotScope";
 // 生成计划的**候选补丁**与**撤未点头的授权**（`generation.patch` / `generation.revise` /
 // `generation.trial_narrow` 三条命令共用的那一段写法）。
 //
@@ -16,6 +15,8 @@ import type {
   ProductionRun,
   RunCommand,
 } from "./productionRunTypes";
+import { approvedAuthorizationGatesForShot, spendAuthorizationGates, waitingAuthorizationGates } from "../shared/productionSpendAuthority";
+import type { ProductionCommandEffect } from "./productionRunReducer";
 
 /** Update one shot inside a plan by id; throws if the plan has no such shot. */
 export function replaceShot(
@@ -60,26 +61,29 @@ function record(payload: Record<string, unknown>, key: string): Record<string, u
  */
 export function revokeWaitingGenerationAuthorization(
   current: ProductionRun,
-  plan: ProductionGenerationPlan,
+  _plan: ProductionGenerationPlan,
   now: string,
   what: string,
+  /** 只撤盖着这一镜的那几份（去掉 / 改这一镜时，别的镜正在点的那一下不许被一起撤掉）。缺省 = 全部在等的。 */
+  onlyShotId?: string,
 ): Readonly<{ gates: ProductionGate[]; jobs: ProductionJob[]; planVersion: number }> {
-  if (!plan.authorizationDigest || !plan.authorizationGateId) {
-    throw new Error(`${what} requires an authorized generation plan`);
-  }
-  const authorizationGate = current.gates.find((gate) => gate.gateId === plan.authorizationGateId);
-  if (!authorizationGate || authorizationGate.status !== "waiting") {
+  // 撤的是**还在等人决定**的那几份授权（每份住在自己那道门上）；已经批过的那几份与它们的 job 一个不动。
+  const waiting = waitingAuthorizationGates(current)
+    .filter((gate) => onlyShotId === undefined || gate.authorizationEnvelope.jobs.some((job) => job.shotId === onlyShotId));
+  if (waiting.length === 0) {
     throw new Error(`${what} is available only before the spend gate is decided`);
   }
-  const abandonedJobs = current.jobs.filter((job) => job.authorizationDigest === plan.authorizationDigest);
+  const revokedDigests = new Set(waiting.map((gate) => gate.authorizationDigest));
+  const abandonedJobs = current.jobs.filter((job) => job.authorizationDigest !== undefined && revokedDigests.has(job.authorizationDigest));
   if (abandonedJobs.some((job) => job.status !== "authorization_required")) {
     throw new Error(`${what} cannot replace an authorization that has begun execution`);
   }
+  const revokedGateIds = new Set(waiting.map((gate) => gate.gateId));
   return {
-    gates: current.gates.map((gate) => gate.gateId === authorizationGate.gateId
+    gates: current.gates.map((gate) => revokedGateIds.has(gate.gateId)
       ? { ...gate, status: "revoked" as const, decidedAt: now }
       : gate),
-    jobs: current.jobs.filter((job) => job.authorizationDigest !== plan.authorizationDigest),
+    jobs: current.jobs.filter((job) => job.authorizationDigest === undefined || !revokedDigests.has(job.authorizationDigest)),
     planVersion: current.planVersion + 1,
   };
 }
@@ -94,13 +98,6 @@ export function unsealedGenerationPlanFields(plan: ProductionGenerationPlan, now
       candidate: { ...shot.candidate, sealedContractHash: undefined }, approvedReceiptId: undefined,
       approvedAt: undefined, approvedAttempt: undefined })) } : {}),
     contract: undefined,
-    planHash: undefined,
-    authorizationEnvelope: undefined,
-    authorizationDigest: undefined,
-    authorizationGateId: undefined,
-    approvedReceiptId: undefined,
-    approvedAt: undefined,
-    approvedAttempt: undefined,
     costCertainty: undefined,
     updatedAt: now,
   };
@@ -214,53 +211,87 @@ export function hasUnsettledLiability(run: ProductionRun): boolean {
 }
 
 /**
- * 撤回**这一次出价**，计划留着：回到 draft / 未 present（裁决 C，2026-09-22 二次裁决改窄）。
- *
- * 三种回答者共用这一条边：报价卡上的 ×（2026-09-22 下午用户拍板「× 只关这次请求，节点和草稿都留着」）、
- * 用户在卡待决时打字、以及「问这句话的那个回合没了」（应用重启 / 按停止 / 关窗）。三种都不是
- * 「不要这份草稿」，所以镜头 / 参数 / 锚点一个不动，画布占位节点一个不删，
- * 只把「正摆在用户面前等他点头」这件事收回去：卡不再投影，封印了的先把那道还在等的门撤掉。
- * 用户再说一句「生成」= 对同一份草稿重新出价（新的 planVersion、新的 quoteId）。
- *
- * 计划级终态（`generation.cancel`）只剩用户自己不要这份草稿那一条路（左侧栏删草稿 / 外部宿主撤草稿）。
- *
- * 「未 present」用的就是 `cardHidden` 的本义（草稿还没摆到用户面前），不新增字段。
- * 幂等：已经是未 present / 已提交 / 已终结 / 门已经决过（钱的事已经定了）→ 原样返回。
+ * 撤掉还在等人决定的那几份授权（一次点击失败留下的、或上一版整份封印留下的），并让只被它们封过的镜回到
+ * 可编辑的草稿样子。已经批过的授权与它们的镜一个不动。没有在等的门 = 原样返回。
  */
-export function withdrawGenerationPresentation(current: ProductionRun, now: string): ProductionRun {
+export function revokeWaitingAndUnseal(current: ProductionRun, now: string, what: string, onlyShotId?: string): ProductionRun {
   const plan = current.generationPlan;
-  if (!plan) throw new Error("Generation plan not found");
-  if (plan.state === "draft") {
-    if (plan.cardHidden === true) return current;
-    return { ...current, generationPlan: { ...plan, cardHidden: true, updatedAt: now }, updatedAt: now };
+  const waiting = waitingAuthorizationGates(current)
+    .filter((gate) => onlyShotId === undefined || gate.authorizationEnvelope.jobs.some((job) => job.shotId === onlyShotId));
+  if (!plan || waiting.length === 0) return current;
+  const waitingShots = new Set(waiting.flatMap((gate) => gate.authorizationEnvelope.jobs.map((job) => job.shotId)));
+  const revoked = revokeWaitingGenerationAuthorization(current, plan, now, what, onlyShotId);
+  const next: ProductionRun = { ...current, ...revoked };
+  const approvedShots = new Set(spendAuthorizationGates(next).filter((gate) => gate.status === "approved")
+    .flatMap((gate) => gate.authorizationEnvelope.jobs.map((job) => job.shotId)));
+  // 一份批过的授权、一道在等的门都不剩 = 计划回到草稿：顶层合同、计价那几格一起清（`unsealedGenerationPlanFields` 是清零的唯一一处）。
+  if (approvedShots.size === 0 && waitingAuthorizationGates(next).length === 0) {
+    return { ...next, generationPlan: unsealedGenerationPlanFields(plan, now), updatedAt: now };
   }
-  if (plan.state !== "sealed") return current;
-  const gate = current.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
-  if (!gate || gate.status !== "waiting") return current;
-  const revoked = revokeWaitingGenerationAuthorization(current, plan, now, "Withdraw");
-  return { ...current, ...revoked,
-    generationPlan: { ...unsealedGenerationPlanFields(plan, now), cardHidden: true, updatedAt: now }, updatedAt: now };
+  const unseal = (shotId: string) => waitingShots.has(shotId) && !approvedShots.has(shotId);
+  const generationPlan: ProductionGenerationPlan = {
+    ...plan,
+    // 「sealed」只表示「第一份授权正在等人决定」；撤掉之后还有批过的，就是在跑（还有别的门在等就仍是 sealed）。
+    ...(plan.state === "sealed" && approvedShots.size > 0 ? { state: "submitted" as const } : {}),
+    ...(plan.shots
+      ? { shots: plan.shots.map((shot) => unseal(shot.shotId)
+          ? { ...shot, contract: undefined, candidate: { ...shot.candidate, sealedContractHash: undefined },
+              approvedReceiptId: undefined, approvedAt: undefined, approvedAttempt: undefined, updatedAt: now }
+          : shot) }
+      : {}),
+    updatedAt: now,
+  };
+  return { ...next, generationPlan, updatedAt: now };
 }
 
-/** The complete draft survives changes to the current spend request. */
-export function presentGenerationPlan(current: ProductionRun, requested: unknown, now: string): ProductionRun {
-  const plan = current.generationPlan;
-  if (!plan) throw new Error("Generation plan not found");
-  const scope = resolveGenerationShotScope(plan.shots?.map((shot) => shot.shotId) ?? [plan.candidate.candidateId], requested);
-  let reopened = current;
-  if (plan.state === "sealed") {
-    reopened = { ...current, ...revokeWaitingGenerationAuthorization(current, plan, now, "Present") };
-  } else if (plan.state !== "draft") {
-    if (hasUnsettledLiability(current)) throw new Error("generation_reconciliation_required: previous batch is unsettled or in flight");
+/**
+ * 付费卡上改参数（`generation.revise`，2026-09-11）：只改**还没决定**的镜（逐镜决定以后，计划里可能已经有镜在生成）。
+ *
+ * 为什么不能沿用框架的「改了直接跑」：pi 不改写转录里那条 assistant toolCall，面板收据上写的和实际执行的会分叉——
+ * 而用户是照着收据点的头。钱这条轴上「收据 = 实际执行」是领域约束，不是偏好。所以：
+ *   · 改的是一镜已经批过的镜（在生成 / 生成过）→ 拒：那是已经发生的事；
+ *   · 有一份等人决定的授权盖着这一镜（一次点击没点完）→ 先撤它、只解封它盖着的镜，再改；
+ *   · 其余直接改候选（不碰画布，2026-09-11）。
+ */
+export function applyGenerationRevise(current: ProductionRun, command: RunCommand, now: string): ProductionCommandEffect {
+  const currentPlan = current.generationPlan;
+  if (!currentPlan) throw new Error("Generation plan not found");
+  if (currentPlan.state === "cancelled") throw new Error("A cancelled generation plan cannot be revised");
+  const rawShotId = typeof command.payload.shotId === "string" ? command.payload.shotId.trim() : "";
+  const target = rawShotId || (currentPlan.shots?.length ? "" : currentPlan.candidate.candidateId);
+  if (!target && currentPlan.state !== "draft") throw new Error("A multi-shot revision must name its shot");
+  if (target && approvedAuthorizationGatesForShot(current, target).length > 0) {
+    throw new Error(`Shot ${target} is already generating or generated; it cannot be revised`);
   }
-  const { cardHidden: _cardHidden, ...visible } = unsealedGenerationPlanFields(plan, now);
-  return { ...reopened,
-    // A settled batch can open a fresh request even after completion/cancellation. Jobs remain immutable.
-    ...(plan.state === "submitted" || plan.state === "cancelled" ? { status: "draft" as const } : {}),
-    planVersion: current.planVersion + 1,
-    generationPlan: { ...visible,
-      candidate: visible.shots?.find(shot => scope.includes(shot.shotId))?.candidate ?? visible.candidate,
-      ...(visible.shots ? { shots: visible.shots.map((shot) => ({ ...shot, included: scope.includes(shot.shotId) })) } : {}),
-      updatedAt: now }, updatedAt: now };
+  const revoked = revokeWaitingAndUnseal(current, now, "Revise", target || undefined);
+  const plan = unsealUnapprovedShot(revoked.generationPlan!, target, now);
+  const patched = applyGenerationCandidatePatch(plan, command, now);
+  return {
+    run: {
+      ...revoked,
+      // 卡上换模型是**真人**按的，不该撞上那道防 agent 的白名单（#748 已知缺口）。放行的只是判据里的身份，不是那笔钱。
+      policy: policyAdmittingUserRevisedIdentity(current.policy, currentPlan, patched),
+      generationPlan: patched,
+      updatedAt: now,
+    },
+    eventType: "generation.plan.updated",
+    message: currentPlan.operationId,
+  };
 }
 
+/**
+ * 改的这一镜还带着一份**没被批准**的封印（那道门被拒了 / 撤了，`included` 那份合同还挂着）：先把它解封，再改。
+ * 不解封就会出现「候选改了、封的还是旧合同」——派发核的是合同，用户看的是候选。没有点名镜的草稿改顶层候选，同理。
+ */
+function unsealUnapprovedShot(plan: ProductionGenerationPlan, shotId: string, now: string): ProductionGenerationPlan {
+  if (!shotId) return plan;
+  if (!plan.shots?.length) {
+    return plan.contract && plan.state !== "submitted" ? unsealedGenerationPlanFields(plan, now) : plan;
+  }
+  return {
+    ...plan,
+    shots: plan.shots.map((shot) => shot.shotId === shotId && shot.contract
+      ? { ...shot, contract: undefined, candidate: { ...shot.candidate, sealedContractHash: undefined }, updatedAt: now }
+      : shot),
+  };
+}

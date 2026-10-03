@@ -138,7 +138,7 @@ export default function NodeParameterControls({
   const nodes = useGenerationCanvasStore((state) => state.nodes)
   const edges = useGenerationCanvasStore((state) => state.edges)
   // 写入面由宿主接住（付费确认卡走它自己的草稿账本，确认前不碰画布）——见 nodeWriteAccess。
-  const { updateNode, latestNode } = useNodeWriteAccess()
+  const { updateNode, latestNode, connectNodes: canConnect } = useNodeWriteAccess()
   const storeConnectNodes = useGenerationCanvasStore((state) => state.connectNodes)
   const storeDisconnectEdge = useGenerationCanvasStore((state) => state.disconnectEdge)
   const meta = React.useMemo<Record<string, unknown>>(() => node.meta || {}, [node.meta])
@@ -596,7 +596,8 @@ export default function NodeParameterControls({
     if (slot.persistAsEdge) {
       const img = imageUrlSlots.find((i) => i.key === slot.key)
       if (!img) return
-      if (asset.source === 'canvas' && asset.origin.source === 'canvas') handleSlotAssignment(img, asset.origin.nodeId)
+      // 连边是改画布，只有握着连边权能的宿主（画布）才建边；付费确认卡只写它自己的参考槽（见 nodeWriteAccess）。
+      if (asset.source === 'canvas' && asset.origin.source === 'canvas' && canConnect) handleSlotAssignment(img, asset.origin.nodeId)
       else setSingleFrameUrlMeta(img, asset.renderUrl)
       return
     }

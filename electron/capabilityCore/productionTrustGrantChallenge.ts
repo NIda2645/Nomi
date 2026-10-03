@@ -6,7 +6,7 @@
 //   收据（nomi_verify_client_generation_gate）→ 收据随 run.control 回来，在 Run 命令边界验+消费。
 // 没有第二套收据、没有第二把密钥、没有第二个确认面（P1）。
 //
-// 这里只做一件事：把**已封存授权**（generationPlan.authorizationEnvelope）翻译成一张挑战——
+// 这里只做一件事：把**已封存授权**（最近一道付费门上的信封）翻译成一张挑战——
 // 逐镜价目、合计、上限、绑定 digest 全部来自信封，本模块不算价、不查目录、不写任何持久状态。
 // 算不出正数上限（没封存 / 有镜头没定价）→ 抛错，调用方据此**不弹、直接拒绝**（永不 ¥0）。
 import { assertOnlyFields, requiredIdentifier } from './dispatcherParams'

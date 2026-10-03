@@ -598,7 +598,7 @@
                   "type": "number"
                 },
                 "modeId": {
-                  "description": "Mode id from list_models. It decides the job kind: omit taskKind with it.",
+                  "description": "Mode id from list_models; it decides taskKind.",
                   "minLength": 1,
                   "type": "string"
                 },
@@ -899,7 +899,7 @@
                   "type": "object"
                 },
                 "taskKind": {
-                  "description": "What to produce; omit to infer it (a named modeId decides it).",
+                  "description": "What to make. Omit when modelId or modeId decides it; otherwise required.",
                   "enum": [
                     "text_to_image",
                     "image_edit",
@@ -922,7 +922,7 @@
             "type": "array"
           },
           "taskKind": {
-            "description": "What to produce for every shot; omit to infer per shot.",
+            "description": "Default taskKind for shots that set none.",
             "enum": [
               "text_to_image",
               "image_edit",

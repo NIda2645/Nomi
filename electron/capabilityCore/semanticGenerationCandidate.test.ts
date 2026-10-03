@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import type { PlanCandidate } from "./executionContract";
 import { createModuleRegistry } from "./moduleRegistry";
 import {
-  inferGenerationTaskKind,
+  admitShotIdentity,
+  declaredModeForModel,
   isLongFormGenerationRequest,
   requestedVideoDurationSeconds,
   semanticCandidateFromParams,
+  shotTaskKind,
 } from "./semanticGenerationCandidate";
 
 const registry = createModuleRegistry([{
@@ -47,17 +49,99 @@ describe("semantic generation candidate", () => {
     expect(isLongFormGenerationRequest({ prompt: "生成一张小猫头像" })).toBe(false);
   });
 
-  it("infers image, edit, and video intent from user language", () => {
-    expect(inferGenerationTaskKind({ prompt: "生成一个小猫头像" })).toBe("text_to_image");
-    expect(inferGenerationTaskKind({ prompt: "把这张图改成水彩风", references: [{}] })).toBe("image_edit");
-    expect(inferGenerationTaskKind({ prompt: "生成一段品牌视频" })).toBe("text_to_video");
-    expect(inferGenerationTaskKind({ prompt: "让这张图动起来做成视频", references: [{}] })).toBe("image_to_video");
+  // ── 2026-09-30 付费卡① 第 9 条：种类只从「点名的模型 + 明写的种类」来，提示词一个字都不看 ──
+  describe("一镜是图还是视频（shotTaskKind）", () => {
+    it("点名的模型只做图片 → 图片；带参考图 → 改图。提示词里写「镜头 / 视频」也不改它", () => {
+      expect(shotTaskKind({ params: { prompt: "做一个封面，3:4，镜头感强一点", modelId: "image-model" }, registry })).toBe("text_to_image");
+      expect(shotTaskKind({ params: { prompt: "把这一段视频的画面改成水彩", modelId: "image-model", references: [{}] }, registry })).toBe("image_edit");
+    });
+
+    it("点名的模型只做视频 → 视频；带参考图 → 图生视频。提示词里写「一张图」也不改它", () => {
+      expect(shotTaskKind({ params: { prompt: "一张海报那样的静帧", modelId: "video-model" }, registry })).toBe("text_to_video");
+      expect(shotTaskKind({ params: { prompt: "一张图", modelId: "video-model", references: [{}] }, registry })).toBe("image_to_video");
+    });
+
+    it("明写的种类说了算；mode / modeId 是同一件事实的另外两种写法", () => {
+      expect(shotTaskKind({ params: { prompt: "一段视频", taskKind: "text_to_image" }, registry })).toBe("text_to_image");
+      expect(shotTaskKind({ params: { prompt: "x", mode: "image-edit" }, registry })).toBe("image_edit");
+      expect(shotTaskKind({ params: { prompt: "x", modeId: "i2v" }, registry })).toBe("image_to_video");
+    });
+
+    it("没点名模型、也没写种类 → 当场拒绝，说清下一步怎么写（不按提示词猜）", () => {
+      const attempt = () => shotTaskKind({ params: { prompt: "生成一段品牌视频" }, registry });
+      expect(attempt).toThrow(/set taskKind/);
+      expect(attempt).toThrow(/does not guess it from the prompt/);
+    });
+
+    it("点名的模型做不了写明的那一种 → 当场拒绝，并列出它能做什么", () => {
+      const attempt = () => shotTaskKind({ params: { prompt: "x", taskKind: "text_to_video", modelId: "image-model" }, registry });
+      expect(attempt).toThrow(/image-model cannot do text_to_video/);
+      expect(attempt).toThrow(/text_to_image, image_edit/);
+    });
+
+    it("点名的模型既出图又出视频、又没写种类 → 请它写明，不替它选", () => {
+      const both = createModuleRegistry([{
+        moduleId: "generation.single-shot", version: "test", inputKinds: ["text"], outputKinds: ["image", "video"],
+        modes: ["text_to_image", "text_to_video"], parameterSchema: {}, assetInputSchema: {},
+        providers: [{ providerId: "fixture", models: [{ modelId: "omni-model", modes: ["text_to_image", "text_to_video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } }] }],
+      }]);
+      expect(() => shotTaskKind({ params: { prompt: "x", modelId: "omni-model" }, registry: both })).toThrow(/makes both images and videos/);
+      expect(shotTaskKind({ params: { prompt: "x", modelId: "omni-model", taskKind: "text_to_video" }, registry: both })).toBe("text_to_video");
+    });
+
+    it("点名的模型不出图也不出视频 → 说它做什么，不说「不在目录里」", () => {
+      const audio = createModuleRegistry([{
+        moduleId: "generation.single-shot", version: "test", inputKinds: ["text"], outputKinds: ["audio"],
+        modes: ["text_to_audio"], parameterSchema: {}, assetInputSchema: {},
+        providers: [{ providerId: "fixture", models: [{ modelId: "voice-model", modes: ["text_to_audio"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } }] }],
+      }]);
+      expect(() => shotTaskKind({ params: { prompt: "x", modelId: "voice-model" }, registry: audio })).toThrow(/makes neither images nor videos \(it does: text_to_audio\)/);
+    });
+  });
+
+  describe("建镜头那一刻的身份核对（admitShotIdentity）", () => {
+    const shot = { moduleId: "generation.single-shot", providerId: "fixture", modelId: "image-model", mode: "text_to_image" };
+
+    it("目录里真有这一对 → 放行", () => {
+      expect(() => admitShotIdentity(shot, registry)).not.toThrow();
+    });
+
+    it("视频镜头配图片模型 → 当场拒绝，说清它能做什么（第 21 行：不会出一张自相矛盾的卡）", () => {
+      const attempt = () => admitShotIdentity({ ...shot, mode: "text_to_video" }, registry);
+      expect(attempt).toThrow(/image-model cannot do text_to_video\. It does: text_to_image, image_edit/);
+    });
+
+    it("参考卡只能是图片", () => {
+      expect(() => admitShotIdentity({ ...shot, modelId: "video-model", mode: "text_to_video" }, registry, "anchor")).toThrow(/must be an image/);
+      expect(() => admitShotIdentity(shot, registry, "anchor")).not.toThrow();
+    });
+
+    it("目录里没有这个模型 → 说「不在目录里」，不说「做不了」", () => {
+      expect(() => admitShotIdentity({ ...shot, modelId: "ghost" }, registry)).toThrow(/fixture\/ghost is not in the model catalog/);
+    });
+
+    it("模型做得了、目录却对不上（模块错了）→ 照目录原话说，不冤枉模型", () => {
+      expect(() => admitShotIdentity({ ...shot, moduleId: "other.module" }, registry)).toThrow(/Unknown module: other\.module\. Model image-model declares: text_to_image, image_edit/);
+    });
+  });
+
+  it("换模型时模式按新模型目录里的拼法跟过去；新模型做不了这一种 = 不跟（交给核对去拒绝）", () => {
+    const spelled = createModuleRegistry([{
+      moduleId: "generation.single-shot", version: "test", inputKinds: ["text"], outputKinds: ["image", "video"],
+      modes: ["text-to-image", "text_to_video"], parameterSchema: {}, assetInputSchema: {},
+      providers: [{ providerId: "fixture", models: [
+        { modelId: "hyphen-image", modes: ["text-to-image"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
+        { modelId: "clip-model", modes: ["text_to_video"], parameterSchema: {}, capabilities: { submitIdempotency: true, query: true, reconcile: true, cancel: true } },
+      ] }],
+    }]);
+    expect(declaredModeForModel(spelled, "fixture", "hyphen-image", "text_to_image")).toBe("text-to-image");
+    expect(declaredModeForModel(spelled, "fixture", "clip-model", "text_to_image")).toBeUndefined();
   });
 
   it("uses the live registry when no saved default exists", () => {
     const candidate = semanticCandidateFromParams({
       operationId: "op-fallback",
-      params: { prompt: "生成一个头像" },
+      params: { prompt: "生成一个头像", taskKind: "text_to_image" },
       candidateFrom: parse,
       allowRegistryFallback: true,
       registry,
@@ -74,7 +158,7 @@ describe("semantic generation candidate", () => {
   it("参考素材只给 assetId 时，身份由注入的解析器补齐", () => {
     const candidate = semanticCandidateFromParams({
       operationId: "op-ref",
-      params: { prompt: "把这张图改成水彩风", references: [{ assetId: "asset-1", role: "character" }] },
+      params: { prompt: "把这张图改成水彩风", taskKind: "image_edit", references: [{ assetId: "asset-1", role: "character" }] },
       candidateFrom: parse,
       allowRegistryFallback: true,
       registry,
@@ -88,7 +172,7 @@ describe("semantic generation candidate", () => {
     const pinned = { assetId: "asset-2", contentHash: "b".repeat(64), version: 3, kind: "image" as const };
     const candidate = semanticCandidateFromParams({
       operationId: "op-pinned",
-      params: { prompt: "把这张图改成水彩风", references: [pinned] },
+      params: { prompt: "把这张图改成水彩风", taskKind: "image_edit", references: [pinned] },
       candidateFrom: parse,
       allowRegistryFallback: true,
       registry,
@@ -101,7 +185,7 @@ describe("semantic generation candidate", () => {
   it("素材不在本项目时报人话，而不是一个模型看不懂的 Required", () => {
     const attempt = () => semanticCandidateFromParams({
       operationId: "op-missing",
-      params: { prompt: "把这张图改成水彩风", references: [{ assetId: "asset-ghost" }] },
+      params: { prompt: "把这张图改成水彩风", taskKind: "image_edit", references: [{ assetId: "asset-ghost" }] },
       candidateFrom: parse,
       allowRegistryFallback: true,
       registry,
@@ -112,7 +196,7 @@ describe("semantic generation candidate", () => {
     // 阳性对照：同一条路在解析得到时是通的，所以上面的红不是「这条路恒抛」。
     expect(() => semanticCandidateFromParams({
       operationId: "op-present",
-      params: { prompt: "把这张图改成水彩风", references: [{ assetId: "asset-ghost" }] },
+      params: { prompt: "把这张图改成水彩风", taskKind: "image_edit", references: [{ assetId: "asset-ghost" }] },
       candidateFrom: parse,
       allowRegistryFallback: true,
       registry,
@@ -203,13 +287,19 @@ describe("semantic generation candidate", () => {
   it("still refuses when nothing names a model — the module lookup is not a way in", () => {
     // 阳性对照：上一条的绿不是因为判据恒真。没点名 + 没默认 = 照旧拒绝，不许按目录行序挑一个花钱。
     expect(() => semanticCandidateFromParams({
-      operationId: "op-unnamed", params: { prompt: "生成一张图" }, candidateFrom: parse, registry,
+      operationId: "op-unnamed", params: { prompt: "生成一张图", taskKind: "text_to_image" }, candidateFrom: parse, registry,
     })).toThrow(/没有配置可用的图片模型/);
     // 点了名但目录里没有这个身份，也照旧拒绝（不为不存在的模型编一个 module）。
     expect(() => semanticCandidateFromParams({
       operationId: "op-unknown",
-      params: { prompt: "生成一张图", providerId: "fixture", modelId: "not-in-catalog" },
+      params: { prompt: "生成一张图", taskKind: "text_to_image", providerId: "fixture", modelId: "not-in-catalog" },
       candidateFrom: parse, registry,
     })).toThrow(/没有配置可用的图片模型/);
+    // 种类也没写：先问它要哪一种（目录里认不出这个模型，就不知道它出什么）。
+    expect(() => semanticCandidateFromParams({
+      operationId: "op-unknown-kind",
+      params: { prompt: "生成一张图", providerId: "fixture", modelId: "not-in-catalog" },
+      candidateFrom: parse, registry,
+    })).toThrow(/not-in-catalog is not in the model catalog/);
   });
 });

@@ -1,18 +1,28 @@
-import { deriveBatchPlan, BudgetExhaustedError, type BatchDerivationResult, type BudgetHalt, type CheckpointState, type DispatchTask } from "./batchScheduleDerivation";
-import type { ProductionGenerationShot, ProductionRun } from "./productionRunTypes";
+import { deriveBatchPlan, type BatchDerivationResult, type CheckpointState, type DispatchTask } from "./batchScheduleDerivation";
+import type { ProductionRun } from "./productionRunTypes";
 import type { ProductionRunRepository } from "./productionRunRepository";
 import type { ProductionGenerationSubmission } from "./productionGenerationSubmission";
-import type { ShotPrice } from "./shotPricing";
 import { currentAnchorCheckpointGate, buildAnchorCheckpointGate } from "./anchorCheckpoint";
 import { logInfo, logWarn } from "../logging/logger";
+import { latestSpendAuthorizationDigest } from "../shared/productionSpendAuthority";
+import { DispatchConsentLapsedError } from "../shared/productionDispatchConsent";
 
 /**
  * P4 S4 — the durable batch scheduler orchestrator (plan §3.3). It has NO persistent state of its own:
  * every tick it reads the durable Run, calls the pure `deriveBatchPlan`, and turns the answer into side
  * effects (reserve + submit inside the Run lock via the submission facade; open/decide the anchor
- * checkpoint gate; halt the Run on budget exhaustion). A crash-restart re-runs the SAME loop over the
- * reloaded Run and converges — because "what was submitted" lives in `jobs[]`, "what was spent" lives in
+ * checkpoint gate; stop the Run when it cannot go on by itself). A crash-restart re-runs the SAME loop over
+ * the reloaded Run and converges — because "what was submitted" lives in `jobs[]`, "what was spent" lives in
  * the ledger, and "did the anchor pass" lives in the gate. See batchScheduleDerivation.ts for why.
+ *
+ * ## Consent that went stale (2026-10-01, paid card ① rule 13)
+ *
+ * A shot a person approved is only dispatched while that approval is fresh — the dispatch gate
+ * (`productionGenerationSubmission`) asks `productionDispatchConsent`, the one owner of that question, and
+ * refuses with `DispatchConsentLapsedError` once the window since the person's last click (approve, release
+ * the look, continue) has passed. That is not a failure and not a reason to wait: nobody is going to renew it
+ * but the person, so the drive stops the Run with `consent_expired` and the canvas asks him to click once more.
+ * It never leaves the shot "queued" with nothing that will ever dispatch it.
  *
  * ## Single writer, bounded polling, no CAS churn
  *
@@ -53,8 +63,6 @@ export type BatchSchedulerDependencies = {
   submission: Pick<ProductionGenerationSubmission, "start" | "poll" | "materialize">;
   projectId: string;
   runId: string;
-  /** Resolve a shot's derived price (S2) for the halt accounting. */
-  perShotPrice: (shot: ProductionGenerationShot) => ShotPrice;
   now?: () => string;
   /** Wait between observe rounds. Injectable (like `now`) so tests drive a virtual clock; default real setTimeout. */
   sleep?: (ms: number) => Promise<void>;
@@ -76,10 +84,9 @@ export type BatchSchedulerDependencies = {
 export type BatchOutcome = {
   progress: BatchDerivationResult["progress"];
   checkpoint: CheckpointState;
-  halt?: BudgetHalt;
   /**
-   * True when the batch reached a stable resting point (all shots done, or blocked on checkpoint/halt/
-   * stop). False when pollable in-flight work outlived this drive's wait budget (slow provider) or the
+   * True when the batch reached a stable resting point (all shots done, or blocked on checkpoint/stop).
+   * False when pollable in-flight work outlived this drive's wait budget (slow provider) or the
    * tick safety valve fired — the caller should re-kick later; the derivation's `observe` resumes it.
    */
   quiescent: boolean;
@@ -110,7 +117,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
   function command(run: ProductionRun, type: string, payload: Record<string, unknown>, suffix: string): ProductionRun {
     return deps.repository.execute(run.projectId, run.runId, {
-      commandId: `batch.scheduler:${run.runId}:${run.generationPlan?.authorizationDigest ?? run.planVersion}:${suffix}`,
+      commandId: `batch.scheduler:${run.runId}:${latestSpendAuthorizationDigest(run) ?? run.planVersion}:${suffix}`,
       expectedRevision: run.revision,
       type,
       payload,
@@ -123,7 +130,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
    * "settled" = the unit reached a state the derivation reacts to (ready / attention); "pending" = still
    * processing (or a transient poll/materialize error — swallowed with a warn so one flaky query can't
    * kill the sibling units' long-running observation; the next round retries, bounded by the horizon).
-   * Budget errors cannot originate here: poll/materialize never reserve — submit-path halts are untouched.
+   * Dispatch refusals cannot originate here: poll/materialize never reserve and never re-check consent.
    */
   async function observeUnitOnce(task: DispatchTask): Promise<"settled" | "pending"> {
     try {
@@ -158,7 +165,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
   /** Open the anchor checkpoint gate (§3.2) referencing the ready anchor jobs — a free quality gate. */
   function openCheckpoint(run: ProductionRun, checkpoint: CheckpointState): ProductionRun {
-    const gate = buildAnchorCheckpointGate({ runId: run.runId, planHash: run.generationPlan?.planHash ?? "", anchorJobIds: checkpoint.readyAnchorJobIds, now: now() });
+    const gate = buildAnchorCheckpointGate({ runId: run.runId, planHash: latestSpendAuthorizationDigest(run) ?? "", anchorJobIds: checkpoint.readyAnchorJobIds, now: now() });
     return command(run, "gate.add", { gate }, `open-anchor-checkpoint:${gate.gateId}`);
   }
 
@@ -175,8 +182,8 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
     }
   }
 
-  /** 批次自己停下（§3.3：可查询的停，绝不静默超支）。原因在停的这一刻写进命令，由生命周期 owner 落成 run.stop。 */
-  function stopRun(reason: "budget" | "failed"): void {
+  /** 批次自己停下（可查询的停）。原因在停的这一刻写进命令，由生命周期 owner 落成 run.stop。 */
+  function stopRun(reason: "consent_expired" | "failed"): void {
     const run = requireRun(deps);
     if (run.status !== "running") return;
     command(run, "run.status", { status: "needs_attention", reason }, `batch-stop-${reason}-${run.revision}`);
@@ -184,19 +191,37 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
 
   /**
    * 这一趟驱动歇下来了（再没有能自己派、能自己轮询的活）：批次该不该停、为什么停，**只在这里判一次**。
-   *   · 预算不够派下一镜（halt）→ 停，原因 budget；
+   *   · 这一趟里有批过的单元因为同意过了窗口派不出去（`consentLapsed`）→ 停，原因 consent_expired：只有用户再点一下
+   *     能续上，等下去不会有任何变化（付费卡① 第 13 条）。排在失败前面：点了「继续」之后真正没成的镜照样会如实停在 failed；
    *   · 有单元的当前尝试确定没成（参考卡或视频镜），而且不是在等人看形象（检查点 waiting）→ 停，原因 failed；
    *   · 其余（等人看形象、整批做完交给收尾）不停。
    * 以前这几种各有各的调用点：整批做完时才判失败，于是参考卡失败时（检查点卡在 pending_anchors）Run 永远 running、
-   * 视频镜永远「排队中」（2026-09-18 C9 与 2026-09-29 用户实见同一族）。
+   * 视频镜永远「排队中」（2026-09-18 C9 与 2026-09-29 用户实见同一族）。2026-10-01 删掉了「预算不够 → 停在 budget」：
+   * 授权按镜批之后，它只会停下一镜用户亲手批过的镜（见 batchScheduleDerivation 文件头）。
    */
-  function settleAtRest(result: BatchDerivationResult): void {
-    if (result.halt) {
-      stopRun("budget");
+  function settleAtRest(result: BatchDerivationResult, consentLapsed: ReadonlySet<string>): void {
+    if (consentLapsed.size > 0) {
+      stopRun("consent_expired");
       return;
     }
     if (result.checkpoint.status === "waiting") return;
     if (result.failedUnits.length > 0) stopRun("failed");
+  }
+
+  /**
+   * 派一个单元；同意过了窗口（`DispatchConsentLapsedError`）不是失败，记进 `consentLapsed`，这一趟不再碰它。
+   * 返回 false = 没派出去（同意过期）。其余错误原样抛给调用方处置。
+   */
+  async function dispatchWithConsent(task: DispatchTask, consentLapsed: Set<string>): Promise<boolean> {
+    try {
+      await dispatchUnit(task);
+      return true;
+    } catch (error) {
+      if (!(error instanceof DispatchConsentLapsedError)) throw error;
+      consentLapsed.add(task.shotId);
+      logInfo("production-run", "batch-dispatch-consent-lapsed", { shotId: task.shotId, gateId: error.gateId });
+      return false;
+    }
   }
 
   async function runToQuiescence(): Promise<BatchOutcome> {
@@ -204,6 +229,8 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
     let lastResult: BatchDerivationResult | undefined;
     // 这一趟驱动里已经失败过的镜：不在同一趟里反复重试，也**不让它带走整批**。
     const failedShots = new Set<string>();
+    // 这一趟里因为同意过了窗口没派出去的单元（参考卡或视频镜）：歇下来时据此停在 consent_expired。
+    const consentLapsed = new Set<string>();
 
     // A confirmed multi-shot plan drives the run. Gate approval already wrote the only budget
     // authorization; the scheduler may start execution but can never mint or raise spend authority.
@@ -237,11 +264,6 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
         runStatus: run.status,
         plan,
         jobs: run.jobs,
-        budget: run.budget,
-        perShotPrice: (shotId) => {
-          const shot = (plan.shots ?? []).find((candidate) => candidate.shotId === shotId);
-          return shot ? deps.perShotPrice(shot) : { known: false };
-        },
         anchorGate,
         now: now(),
       });
@@ -253,43 +275,31 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
         openCheckpoint(run, result.checkpoint);
         continue; // re-derive with the gate present
       }
-      // 2. Dispatch anchors first (fresh or a rejected-checkpoint re-attempt).
-      if (result.anchorDispatch.length > 0) {
+      // 2. Dispatch anchors first (fresh or a rejected-checkpoint re-attempt). One whose consent went stale is
+      // left alone for the rest of this drive (re-dispatching it would only be refused again).
+      const pendingAnchors = result.anchorDispatch.filter((task) => !consentLapsed.has(task.shotId));
+      if (pendingAnchors.length > 0) {
         if (!consumeTick()) break;
-        for (const task of result.anchorDispatch) {
-          await dispatchUnit(task);
+        for (const task of pendingAnchors) {
+          await dispatchWithConsent(task, consentLapsed);
         }
         continue; // re-derive: anchors now have jobs; checkpoint may open next
       }
 
       // 3. Dispatch shots (the derivation only clears them once the checkpoint released / no anchors).
-      // Reserve happens inside the Run lock; if the ledger's reserve throws "Budget authorization
-      // exceeded", that is the last hard wall → structured halt.
-      const pendingDispatch = result.shotDispatch.filter((task) => !failedShots.has(task.shotId));
+      // Reserve happens inside the Run lock; the ledger's reserve is the hard wall against spending more
+      // than was approved — hitting it is a failure of that one shot, like any other dispatch error below.
+      const pendingDispatch = result.shotDispatch.filter((task) => !failedShots.has(task.shotId) && !consentLapsed.has(task.shotId));
       if (pendingDispatch.length > 0) {
         if (!consumeTick()) break;
         for (const task of pendingDispatch) {
           if (options.maxShotsPerRun !== undefined && dispatchedShots >= options.maxShotsPerRun) {
-            return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
+            return { progress: result.progress, checkpoint: result.checkpoint, quiescent: true };
           }
           try {
-            await dispatchUnit(task);
-            dispatchedShots += 1;
+            if (await dispatchWithConsent(task, consentLapsed)) dispatchedShots += 1;
           } catch (error) {
-            if (isBudgetExceeded(error)) {
-              stopRun("budget");
-              const finalRun = requireRun(deps);
-              const finalGate = currentAnchorCheckpointGate(finalRun);
-              const finalResult = deriveBatchPlan({
-                run: finalRun,
-                runId: finalRun.runId, runStatus: finalRun.status, plan: finalRun.generationPlan!, jobs: finalRun.jobs, budget: finalRun.budget,
-                perShotPrice: (shotId) => { const shot = (finalRun.generationPlan?.shots ?? []).find((c) => c.shotId === shotId); return shot ? deps.perShotPrice(shot) : { known: false }; },
-                anchorGate: finalGate, now: now(),
-              });
-              const halt = finalResult.halt ?? buildExhaustedHalt(finalRun, task.shotId, deps.perShotPrice);
-              throw new BudgetExhaustedError(halt);
-            }
-            // 预算之外的失败**只带走这一镜**。此前这里 `throw error` 会逐出 `runToQuiescence`，
+            // 派不出去的失败**只带走这一镜**。此前这里 `throw error` 会逐出 `runToQuiescence`，
             // 上游只剩一行 logWarn、无人重踢——于是一次瞬时出站失败把整批带走：
             // 已经付过钱、真在飞的兄弟镜停在 `polling` 再没人轮询，剩下的镜从未派发，
             // Run 连 `needs_attention` 都不进（2026-09-18 C9 间歇红的根因第三层）。
@@ -302,7 +312,7 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
             else logWarn("production-run", "batch-dispatch-failed", { shotId: task.shotId }, error);
           }
         }
-        continue; // re-derive: dispatched shots now have jobs; halt/completion decided next
+        continue; // re-derive: dispatched shots now have jobs; stop/completion decided next
       }
 
       // 4. Units in flight → poll them in rounds with REAL waits between rounds (the slow-provider fix:
@@ -317,13 +327,13 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
         if (settledCount > 0) {
           if (!consumeTick()) break;
           backoffStep = 0; // a settle means siblings are likely close too — poll faster again
-          continue; // re-derive: checkpoint may open / halt may apply / batch may complete
+          continue; // re-derive: checkpoint may open / batch may complete
         }
         if (sleptMs >= pollHorizonMs) {
           // In-flight work outlived this drive's wait budget. Rest HONESTLY (quiescent: false — never
           // true while pollable work remains): the durable Run keeps the jobs at provider_accepted/
           // polling, so any re-kick (timer / project reopen / restart) resumes via `observe`.
-          return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: false };
+          return { progress: result.progress, checkpoint: result.checkpoint, quiescent: false };
         }
         const delayMs = Math.min(POLL_DELAY_START_MS * 2 ** backoffStep, POLL_DELAY_CAP_MS, pollHorizonMs - sleptMs);
         backoffStep += 1;
@@ -336,30 +346,22 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
       // pending_anchors here means anchors are neither dispatchable nor pollable (e.g. needs_attention)
       // — a genuine rest until the user re-attempts them; settleAtRest says whether that rest is a stop.
       if (result.checkpoint.status === "waiting" || result.checkpoint.status === "pending_anchors" || result.checkpoint.status === "rejected") {
-        settleAtRest(result);
-        return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
+        settleAtRest(result, consentLapsed);
+        return { progress: result.progress, checkpoint: result.checkpoint, quiescent: true };
       }
 
-      // 7. Budget halt → halt the Run and rest (提额续拍 is a fresh scheduler run). In-flight units have
-      // already settled (case 5 runs first), so halting never strands pollable paid work.
-      if (result.halt) {
-        settleAtRest(result);
-        return { progress: result.progress, checkpoint: result.checkpoint, halt: result.halt, quiescent: true };
-      }
-
-      // 8. Nothing to dispatch, observe or decide → the batch is complete (or stopped).
-      // Keep QA/assembly/export in the owning production pipeline.  This
-      // callback is only emitted for a fully settled batch; checkpoint waits,
-      // budget halts, and partial test drives never trigger it.
+      // 7. Nothing to dispatch, observe or decide → the batch is complete (or stopped, or waiting for the
+      // person to renew consent). Keep QA/assembly/export in the owning production pipeline. This callback
+      // is only emitted for a fully settled batch; checkpoint waits and partial test drives never trigger it.
       await notifyBatchComplete(result.progress);
-      settleAtRest(result);
-      return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: true };
+      settleAtRest(result, consentLapsed);
+      return { progress: result.progress, checkpoint: result.checkpoint, quiescent: true };
     }
 
     // Bounded-out (should not happen for a healthy batch) — report the last derived state. The loop ran
     // at least once (maxTicks >= 8), so lastResult is set; fall back to an empty progress only defensively.
     const result = lastResult ?? { progress: { total: 0, completed: 0, inFlight: 0, pending: 0 }, checkpoint: { status: "not_required" as const, readyAnchorJobIds: [] }, anchorDispatch: [], shotDispatch: [], observe: [], failedUnits: [] };
-    return { progress: result.progress, checkpoint: result.checkpoint, ...(result.halt ? { halt: result.halt } : {}), quiescent: false };
+    return { progress: result.progress, checkpoint: result.checkpoint, quiescent: false };
   }
 
   return { runToQuiescence };
@@ -373,29 +375,6 @@ function isShotClaimDenied(error: unknown): boolean {
 function claimDenialReason(error: unknown): string {
   const reason = (error as { reason?: unknown }).reason;
   return typeof reason === "string" ? reason : "unknown";
-}
-
-function isBudgetExceeded(error: unknown): boolean {
-  if (error instanceof BudgetExhaustedError) return true;
-  const message = error instanceof Error ? error.message : "";
-  return /Budget authorization exceeded|budget_exhausted/i.test(message);
-}
-
-/** Build a halt structure when the ledger's hard wall fired but the derivation had not pre-flagged it. */
-function buildExhaustedHalt(run: ProductionRun, haltedAtShotId: string, perShotPrice: (shot: ProductionGenerationShot) => ShotPrice): BudgetHalt {
-  const shots = (run.generationPlan?.shots ?? []).filter((shot) => shot.role !== "anchor" && shot.included !== false);
-  let completed = 0;
-  let remaining = 0;
-  let reachedHalt = false;
-  for (const shot of shots) {
-    const jobId = `generation-${run.runId}-${shot.shotId}-${(shot.contract?.contractHash ?? "").slice(0, 16)}`;
-    const job = run.jobs.find((candidate) => candidate.jobId === jobId || candidate.jobId.startsWith(`${jobId}-attempt-`));
-    if (job && (job.status === "ready" || job.status === "adopted")) completed += 1;
-    if (shot.shotId === haltedAtShotId) reachedHalt = true;
-    if (reachedHalt && !(job && (job.status === "ready" || job.status === "adopted"))) remaining += 1;
-  }
-  void perShotPrice;
-  return { haltedAtShotId, completedCount: completed, dispatchableCount: 0, unknownDispatchCount: 0, remainingCount: remaining, authorized: run.budget.authorized, currency: run.budget.currency };
 }
 
 export type MultiShotBatchScheduler = ReturnType<typeof createMultiShotBatchScheduler>;

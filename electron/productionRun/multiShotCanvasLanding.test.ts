@@ -85,10 +85,10 @@ describe('buildMaterializeShotsPayload', () => {
   // 它在 33 镜的计划上说不通：卡上只摆 3 镜，× 终结整份计划，另外 30 个占位成了孤儿。已随裁决删。
   it('× 收回出价之后计划回到未 present 的 draft：占位照旧投影，一个不少', () => {
     const multi = run([shot('s1'), shot('s2')])
-    multi.generationPlan = { ...multi.generationPlan!, state: 'draft', cardHidden: true }
+    multi.generationPlan = { ...multi.generationPlan!, state: 'draft', presentations: [{ shotIds: ['s1', 's2'], openedAt: NOW, fromGate: 0, closed: { at: NOW, by: 'user_closed' } }] }
     expect(buildMaterializeShotsPayload(multi, { projectRoot: '/tmp/x' })?.shots).toHaveLength(2)
     const single = run([shot('cat')])
-    single.generationPlan = { ...single.generationPlan!, shots: undefined, state: 'draft', cardHidden: true }
+    single.generationPlan = { ...single.generationPlan!, shots: undefined, state: 'draft', presentations: [{ shotIds: ['cat'], openedAt: NOW, fromGate: 0, closed: { at: NOW, by: 'user_closed' } }] }
     expect(buildMaterializeShotsPayload(single, { projectRoot: '/tmp/x' })?.shots).toHaveLength(1)
   })
 
@@ -133,12 +133,12 @@ describe('buildMaterializeShotsPayload projects each shot\'s run state onto its 
     expect(payload!.shots.find((s) => s.shotId === 's2')?.generation).toEqual({ state: 'ended' })
   })
 
-  it('供应商拒了的镜 → failed（带人话原因，节点显示普通生成那张失败卡）；预算停批时没开拍的镜 → ended（已停小标另管）', () => {
+  it('供应商拒了的镜 → failed（带人话原因，节点显示普通生成那张失败卡）；批次停下时没开拍的镜 → ended（已停小标另管）', () => {
     // 「为什么停」只读 Run 在停下那一刻记下的事实（run.stop），不再由某个 job 的错因码决定。
     const halted = { ...run([shot('s1'), shot('s2')], [
       job('s1', 'needs_attention', { errorCode: 'provider_task_failed', errorMessage: '供应商拒绝了这次生成' }),
       job('s2', 'authorized'),
-    ]), status: 'needs_attention' as const, stop: { reason: 'budget' as const, at: NOW } }
+    ]), status: 'needs_attention' as const, stop: { reason: 'consent_expired' as const, at: NOW } }
     const payload = buildMaterializeShotsPayload(halted, { projectRoot: null })
     expect(payload!.shots.find((s) => s.shotId === 's1')?.generation)
       .toEqual({ state: 'failed', runRecordId: 'production-job-s1', startedAt: Date.parse(NOW), message: '供应商拒绝了这次生成' })

@@ -1,4 +1,5 @@
 import { sumBudgetAmounts } from "./budgetLedger";
+import { generationShotKind } from "../shared/generationShotKind";
 import { createHash } from "node:crypto";
 // 「有一笔生成在等你点头」的**宿主投影**（纯函数，唯一 owner）。
 //
@@ -26,6 +27,8 @@ import type { PlanCandidate } from "../capabilityCore/executionContract";
 import { deriveShotPrice, type ModelPricing, type ShotPrice } from "./shotPricing";
 import type { ProductionGenerationPlan, ProductionRun } from "./productionRunTypes";
 import type { PendingSpendConfirm, PendingSpendShot } from "../shared/contracts/pendingSpendConfirm";
+import { waitingAuthorizationGates } from "../shared/productionSpendAuthority";
+import { presentationIsOpen, undecidedShotIds } from "../shared/productionGenerationPresentation";
 
 /** Agent lane 自己发起的那条路。`generationTransportAdapters` 的 `plan()` 就是这么盖的章。 */
 export const IN_APP_AGENT_ORIGIN_HOST = "nomi";
@@ -41,11 +44,13 @@ function candidatePrice(candidate: PlanCandidate, resolvePricing: PricingResolve
 
 type PricingResolver = (providerId: string, modelId: string) => ModelPricing | undefined;
 
-function shotsOf(plan: ProductionGenerationPlan, resolvePricing: PricingResolver): PendingSpendShot[] {
-  const entries = (plan.shots ?? []).filter((shot) => shot.included !== false);
-  const source = entries.length > 0
-    ? entries.map((shot) => ({ shotId: shot.shotId, nodeId: shot.nodeId, candidate: shot.candidate }))
-    : [{ shotId: plan.candidate.candidateId, nodeId: plan.nodeId, candidate: plan.candidate }];
+/** 卡上摆的那几镜 = 这一次出价里**还没决定**的镜（按计划顺序），页码按它们重排。 */
+function shotsOf(plan: ProductionGenerationPlan, undecided: readonly string[], resolvePricing: PricingResolver): PendingSpendShot[] {
+  const wanted = new Set(undecided);
+  // 图还是视频：和画布节点、派发读的是同一个函数（第 9 条），在这里就从这一镜本身读出来，卡上标题与卡体都只读这一格。
+  const source = plan.shots?.length
+    ? plan.shots.filter((shot) => wanted.has(shot.shotId)).map((shot) => ({ shotId: shot.shotId, nodeId: shot.nodeId, kind: generationShotKind(shot), candidate: shot.candidate }))
+    : wanted.has(plan.candidate.candidateId) ? [{ shotId: plan.candidate.candidateId, nodeId: plan.nodeId, kind: generationShotKind({ candidate: plan.candidate }), candidate: plan.candidate }] : [];
   return source.map((entry, index) => ({
     shotId: entry.shotId,
     ...(entry.nodeId ? { nodeId: entry.nodeId } : {}),
@@ -53,6 +58,7 @@ function shotsOf(plan: ProductionGenerationPlan, resolvePricing: PricingResolver
     prompt: entry.candidate.prompt ?? "",
     providerId: entry.candidate.providerId,
     modelId: entry.candidate.modelId,
+    kind: entry.kind,
     ...(entry.candidate.mode ? { mode: entry.candidate.mode } : {}),
     ...(entry.candidate.modeId ? { modeId: entry.candidate.modeId } : {}),
     ...(entry.candidate.variantId ? { variantId: entry.candidate.variantId } : {}),
@@ -81,22 +87,20 @@ export type SpendAnsweredByPolicy = (projectId: string, operationId: string) => 
 export function awaitingSpendDecision(
   run: ProductionRun,
   spendAnsweredByPolicy?: SpendAnsweredByPolicy,
-): Readonly<{ plan: ProductionGenerationPlan; gateId?: string }> | undefined {
+): Readonly<{ plan: ProductionGenerationPlan; undecided: readonly string[]; gateId?: string }> | undefined {
   if (run.origin.host !== IN_APP_AGENT_ORIGIN_HOST) return undefined;
   const plan = run.generationPlan;
-  if (!plan) return undefined;
-  if (plan.state === "sealed") {
-    const gate = run.gates.find((candidate) => candidate.gateId === plan.authorizationGateId);
-    // 封印了却没有一道在等的门 = 这笔已经被决定过了，不该再问一次。
-    if (!gate || gate.status !== "waiting") return undefined;
-    return { plan, gateId: gate.gateId };
-  }
-  if (plan.state !== "draft") return undefined;
-  // `draft_shots` 建的草稿：落了画布、带单价，但模型还没调 `generate`——这一笔还不是「在等你点头」。
-  if (plan.cardHidden === true) return undefined;
-  // 「全自动」档正在替用户决这一笔。它不在等人，别摆卡。
-  if (spendAnsweredByPolicy?.(run.projectId, plan.operationId) === true) return undefined;
-  return { plan };
+  // 计划已取消（用户删了这份草稿）：没有要问的了。
+  if (!plan || plan.state === "cancelled") return undefined;
+  // 卡在不在，只看这一次出价（2026-09-30 付费卡逐镜）：开着、而且还有没决定的镜。点过「生成这张」的镜
+  // 已经在跑、去掉的不生成——它们不再出现在卡上；一镜都不剩时这一次出价自己关掉。
+  if (!presentationIsOpen(plan)) return undefined;
+  const undecided = undecidedShotIds(run);
+  if (undecided.length === 0) return undefined;
+  // 「全自动」档正在替用户决这一笔（草稿落盘到封印之间那一段）。它不在等人，别摆卡；策略答不了、门还在等时照旧出卡。
+  if (plan.state === "draft" && spendAnsweredByPolicy?.(run.projectId, plan.operationId) === true) return undefined;
+  const waiting = waitingAuthorizationGates(run).at(-1);
+  return { plan, undecided, ...(waiting ? { gateId: waiting.gateId } : {}) };
 }
 
 /**
@@ -123,8 +127,8 @@ export function projectPendingSpendConfirm(
 ): PendingSpendConfirm | undefined {
   const awaiting = awaitingSpendDecision(run, spendAnsweredByPolicy);
   if (!awaiting) return undefined;
-  const { plan, gateId } = awaiting;
-  const shots = shotsOf(plan, resolvePricing);
+  const { plan, gateId, undecided } = awaiting;
+  const shots = shotsOf(plan, undecided, resolvePricing);
   // 走到这里意味着**这一笔确实在等人点头**（draft，或封印后那道门还 `waiting`），却一镜都投影不出来。
   // 那不是「没有要确认的东西」，是「我知道有，但我画不出来」——写成 `undefined` 的后果是：
   // 门一直等着，面板一张卡都没有，用户只看到沉默（2026-09-11 那次的形状）。
@@ -145,7 +149,7 @@ export function projectPendingSpendConfirm(
     quoteId: createHash("sha256").update(JSON.stringify({
       projectId: run.projectId, operationId: plan.operationId, planVersion: run.planVersion,
       candidateRevision: plan.candidate.revision,
-      revisions: plan.shots?.filter((shot) => shot.included !== false).map((shot) => [shot.shotId, shot.candidate.revision]),
+      revisions: plan.shots?.filter((shot) => undecided.includes(shot.shotId)).map((shot) => [shot.shotId, shot.candidate.revision]),
       shots: shots.map(({ nodeId: _nodeId, ...shot }) => shot), currency: run.budget.currency,
     })).digest("hex"),
     candidateRevision: plan.candidate.revision,
