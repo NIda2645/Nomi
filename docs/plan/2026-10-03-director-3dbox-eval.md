@@ -98,5 +98,4 @@ T4 多轮编辑题、L5 视觉模型整体分、S1 结构化计划+布局/机位
 3. **已改**：T1 通用复制 aliases 清空；`cardIntegrity.test.ts` 增加 T1 alias 必须出现在 prompt 或等于 actor id 的检查。
 4. **已验收**：方向反转、出画、少一镜、动作不发生、无名演员、半环绕等变异体保留并通过，降幅门槛 `≥0.2`。
 5. **已完成**：本节已更新三方案基线、分层与分档均值、标尺题、最低五张、旧口径为何错、两条景别梯子、关键点可见、未约束不计分、L0 归零和 `NOMI_EVAL_PR960_ROOT` 运行方式。
-6. **已验证**：`vitest`、`typecheck`、`check:test-types` 已通过；`pnpm run gates`、origin/main 上的 `check:design-lab`、远端 PR checks 和 push 收据待交工链最后一段完成后记录。
-
+6. **已验证**：`vitest`、`typecheck`、`check:test-types` 已通过；`pnpm run gates` 共 96 道门通过 95 道，唯一阻断是 `check:design-lab` 的 32 张视觉差异。差异集中在本分支未改动的 UI/设计基线路径，未修改基线；远端 PR checks 与 push 收据在交工链最后一段记录。仓库当前没有 `review:branch` script（执行结果为 `ERR_PNPM_NO_SCRIPT`）。
