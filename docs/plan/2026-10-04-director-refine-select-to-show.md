@@ -22,6 +22,15 @@
 | 8 真实条件 | Windows：实验室格与浏览器 devlab 走查都在 Windows 上跑（Chromium + SwiftShader）；英文界面：有；最小窗口：用 Agent 面板加宽把壳压到 728 的窄格；真规模：庭院对峙 4 镜 12 秒；干净安装 / 真付费：不适用；键盘全程：Esc 链（浮层 → 选中 → 机位视角 → 退出）走查 j8 断言。**真 Electron 构建 + 真 Agent 面板那一遍没跑**：用户在用电脑，`pending-real-app`。 | `docs/evidence/2026-10-04-director-refine-select-to-show/`；`tests/ux/director-refine-tasks.walk.mjs` |
 | ★9 验收与回滚 | 验收：另一条线按本卡逐格核 `?screen=director-refine` 的 `d3a-*` 格 + 浏览器走查 j1–j8 / assets / ai / model-import / refine-tasks 串行全绿 + 真 App 三条任务（pending-real-app）。回滚：revert 本 PR 的切换提交（旧右栏双卡与旧顶栏随之回来）。独立验收报告：由协调会话指派。 | `## 独立验收` 待补 |
 
+## 先查别人
+
+这次改的是导演台的**布局**（选中才出属性卡、按需面板、顶栏收拢），交互范式和控件都不自造：
+
+1. **依赖里已有？** `@mantine/core`（package.json:293）的 Popover / Drawer，以及 `@radix-ui/react-dropdown-menu`（package.json:299）。导演台已有自己的浮层原语，并且挂接了「浮层 → 按需面板 → 选中 → 机位视角 → 退出」这条 Esc 让路协议（`data-nomi-escape-layer`）。改用 Mantine / Radix 等于再接一套 Esc 与焦点规则，两套会漂移，所以不引入。
+2. **仓库里已有？** 导演台浮层原语 `src/workbench/generationCanvas/nodes/director/panels/Popover.tsx:54`（`Popover` / `PopoverItem`），本 PR 的「▤ 图层名 ▾」大纲浮层、「产出」菜单都复用它（`panels/outputs/OutputsPopover.tsx`）。属性卡里的字段原样复用现有检查器：`panels/fields/FieldPrimitives.tsx:19` 的 `InspectorCard`，以及 `panels/inspector/*Inspector.tsx`。只新增布局壳 `DirectorRefineShell.tsx` 和两颗小 hook（已登记在 `docs/engineering/self-written.json` 的 `director-refine-panel-hooks`）。
+3. **生态里已有？** 「选中对象 → 出上下文属性面板、视口尽量满」是 3D 编辑器的通行做法：three.js editor（https://threejs.org/editor/ ，右侧 Sidebar 随选中对象切换属性页）、Blender 属性编辑器（https://docs.blender.org/manual/en/latest/editors/properties_editor.html ，按选中对象显示上下文页签）、Unity Inspector（https://docs.unity3d.com/Manual/UsingTheInspector.html ，只显示所选对象的组件）。本 PR 采用同一范式，取景空间优先：没选中时不占任何侧栏。
+4. **自媒体怎么说？** 不适用：这是自有工具的布局调整，没有供应商或模型相关的讨论可查。
+
 ## 顶栏怎么排（④⑤ 互压的解法）
 
 今天精修顶栏 6 簇实测自然宽 865（中文）/ 897（英文），可用只有 834，④「添加与历史」和 ⑤「交付」互相压住（实验室实测 1–2 处重叠）。新顶栏四簇：
