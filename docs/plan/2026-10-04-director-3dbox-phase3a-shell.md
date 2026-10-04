@@ -26,3 +26,17 @@
 | 镜头条只读，显示实测景别 / 运镜 / 时长 | 4fps 调用 `directorEvalMeasurement`，镜头按钮只切预览机位 | 定向测量测试 + 代码审阅；真机 `unverified` |
 | 预览小窗与主按钮占位 | 复用 `DirectorViewport` 现有预览小窗；主按钮禁用并标占位 | 代码已实现；出片留给 3b |
 | 空工程态 | 镜头条显示空态，不创建计划 schema | 代码已实现；真机 `unverified` |
+
+## R13 第二轮真机收货（2026-10-04）
+
+Playwright/Electron dev 构建（`NOMI_DIRECTOR_3DBOX=true`）截图已入库，均为 1280×933 PNG 且小于 400 KB：
+
+| 截图 | 实际画面 | 样张对账 |
+|---|---|---|
+| `docs/evidence/2026-10-04-director-3dbox-shell/zh-empty-director.png` | 中文导演视图，画布区占左侧，顶部导演/精修、右上出片占位、左上预览小窗、底部只读镜头条为空态；右侧 Agent 保留 | 对上布局 A 的画布占位、PIP、只读镜头条、Agent 不被覆盖；未对上的是空工程仍有右侧 Agent 反馈卡（属于现有壳） |
+| `docs/evidence/2026-10-04-director-3dbox-shell/zh-three-director.png` | 中文三镜注入走查截图，导演视图壳与 Agent 保持；当前画面未显示可播放机位 | 三镜工程注入未形成有效镜头数据，记录为未对账，不宣称通过 |
+| `docs/evidence/2026-10-04-director-3dbox-shell/zh-three-refine.png` | 中文精修切换后回到完整编辑器：对象/资产面板、时间轴、工具条可见 | 对上“精修＝现有整套原样”，且导演壳不再覆盖编辑器 |
+| `docs/evidence/2026-10-04-director-3dbox-shell/en-empty-director.png` | English Director view，Director/Refine、Produce、Program、No cameras yet、Shot strip 英文可见 | 对上布局 A 与英文轨；未对上的是尚未完成三镜英文截图 |
+| `docs/evidence/2026-10-04-director-3dbox-shell/flag-off-legacy-director.png` | 开关关中文旧导演台，对照图保留旧全屏编辑器与原镜头条 | 对上开关关旧行为与旧控件层级；与开关开空态壳有明确视觉差异 |
+
+R13 英文三镜工程两张截图因隔离工程落盘重载时未能稳定重新打开节点，保留为未完成项；没有把中文三镜空镜头截图当作三镜验收通过。
