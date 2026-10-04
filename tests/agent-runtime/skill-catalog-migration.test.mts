@@ -181,9 +181,9 @@ test('S55 · 真实 ChatCut 技能的提示词：正文原样、权威节在正�
 // 发现与解析（S2 S3 S4 S10 S11 S12 S37 S38 S39 S42）
 // ─────────────────────────────────────────────────────────────────────────────
 
-test('S3/S6 · 仓内 88 个内置技能经 pi 加载：88 条、零 pi 诊断——判官与被判的是同一把尺子', async () => {
+test('S3/S6 · 仓内 89 个内置技能经 pi 加载：89 条、零 pi 诊断——判官与被判的是同一把尺子', async () => {
   const { records, diagnostics } = await discoverSkillRecords([{ path: REPO_SKILLS, origin: 'builtin' }]);
-  assert.equal(records.length, 88);
+  assert.equal(records.length, 89); // 2026-10-04 +director-3dbox（带 requires-flag，开关关时不可选，但文件在仓内）
   assert.deepEqual(diagnostics, []);
   for (const record of records) {
     assert.equal(record.origin, 'builtin');

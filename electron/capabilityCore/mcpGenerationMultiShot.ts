@@ -25,6 +25,7 @@ import {
   isLongFormGenerationRequest,
   requestedVideoDurationSeconds,
   semanticCandidateFromParams,
+  type AssetReferenceIdentity,
   type SemanticGenerationCandidateDeps,
 } from "./semanticGenerationCandidate";
 import type { ShotPrice } from "../productionRun/shotPricing";
@@ -263,7 +264,7 @@ export type MultiShotHelperDeps = {
   /** P4 §5.1.4: 校验复用锚（references）存在且属于本项目。未注入 = 不校验（向后兼容）。 */
   assertReferencesResolvable?: AssertReferencesResolvable;
   /** assetId → 可引用身份。与单镜路同一台解析器；未注入 = 只收已经带身份的参考。 */
-  resolveAssetReferenceIdentity?: (projectId: string, assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined;
+  resolveAssetReferenceIdentity?: (projectId: string, assetId: string) => AssetReferenceIdentity | undefined;
 };
 
 /** Minimal operation shape the seal helper reads (avoids importing the full GenerationOperation type). */

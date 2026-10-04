@@ -22,6 +22,7 @@ import {
   pushUndoSnapshot,
 } from '../events/canvasUndoJournal'
 import { makeChangeId } from '../../../../electron/shared/agentCapabilities/changeId'
+import { directorWriteCompensation } from '../nodes/director/agent/directorWriteCompensation'
 
 export type ProposalStep = {
   toolCallId: string
@@ -36,6 +37,7 @@ export type CompensationOp =
   | { kind: 'disconnect-edges'; pairs: { source: string; target: string }[] }
   | { kind: 'restore-prompt'; nodeId: string; prompt: string; promptOverridden?: boolean }
   | { kind: 'restore-graph'; nodes: unknown[]; edges: unknown[] }
+  | { kind: 'restore-node-fields'; nodeId: string; meta: Record<string, unknown>; prompt: string }
 
 /** 编辑哨点:commit 时记下 AI 落地的节点状态,整笔撤销前对比——用户改过的要列明再丢。 */
 export type ProposalWatchNode = { nodeId: string; title: string; prompt: string }
@@ -99,6 +101,9 @@ function captureStepCompensation(
       .map((edge) => ({ source: edge.source, target: edge.target }))
     if (pairs.length) ops.push({ kind: 'disconnect-edges', pairs })
   }
+  // 3D-BOX（director.write）：新建 = 删掉建出的导演节点；修订 = 导演节点 meta 放回去；两者都把要挂预演的
+  // 视频节点放回提议之前（预演是事后由常驻 Host 挂上去的，撤销要连它一起退）。
+  ops.push(...directorWriteCompensation(step.toolName, step.effectiveArgs, before, after))
   return ops
 }
 

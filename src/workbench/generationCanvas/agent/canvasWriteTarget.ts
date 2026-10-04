@@ -22,6 +22,14 @@ import {
 import {
   assertCanvasDeleteAdmissionMatches,
 } from '../../../../electron/shared/agentCapabilities/canvasDeleteEvidence'
+import { assertDirectorWriteAdmissionMatches } from '../../../../electron/shared/agentCapabilities/canvasWriteEvidence'
+import {
+  directorWriteReferenceIds,
+  directorWriteResultSchema,
+  directorWriteSemanticInputSchema,
+  type DirectorWriteInput,
+  type DirectorWriteResult,
+} from '../../../../electron/shared/agentCapabilities/directorWrite'
 import { surfacePortFailure, SurfacePortWireError } from '../../../../electron/shared/surfacePortBinding'
 import type { GenerationCanvasSnapshot, GenerationNodeResult } from '../model/generationCanvasTypes'
 import { buildStepDetailLabels, summarizeToolCall } from '../components/toolCallSummary'
@@ -147,6 +155,22 @@ export function captureCanvasWriteBatchRawEvidence(
   return parsed.data
 }
 
+/** 3D-BOX（director.write）取证：整张画布的批量证据 + 它点名的那一个节点（目标镜头 / 要改的 3D-BOX 节点）。 */
+export function captureDirectorWriteRawEvidence(
+  snapshot: GenerationCanvasSnapshot,
+  input: DirectorWriteInput,
+): CanvasWriteBatchRawEvidence {
+  const evidence = captureCanvasWriteBatchRawEvidence(snapshot)
+  const knownNodeIds = new Set(snapshot.nodes.map((node) => node.id))
+  const resolvedReferences = directorWriteReferenceIds(input).flatMap((requestedId) => {
+    const nodeId = resolveCanvasToolNodeId(requestedId)
+    return knownNodeIds.has(nodeId) ? [{ requestedId, nodeId }] : []
+  })
+  const parsed = canvasWriteBatchRawEvidenceSchema.safeParse({ ...evidence, resolvedReferences })
+  if (!parsed.success) throw new CanvasWriteEvidenceError('capability_input_invalid')
+  return parsed.data
+}
+
 export function captureCanvasDeleteRawEvidence(
   snapshot: GenerationCanvasSnapshot,
   input: CanvasDeleteInput,
@@ -242,10 +266,12 @@ function assertExecutionCurrent(request: CanvasWriteTargetExecution): void {
 export async function executeCanvasWriteTarget(
   request: CanvasWriteTargetExecution,
   readSnapshot: () => GenerationCanvasSnapshot,
-): Promise<CanvasWriteResult | CanvasDeleteResult> {
+): Promise<CanvasWriteResult | CanvasDeleteResult | DirectorWriteResult> {
   assertExecutionCurrent(request)
   const deleteParsed = canvasDeleteSemanticInputSchema.safeParse(request.input)
   if (deleteParsed.success) return executeCanvasDeleteTarget(request, deleteParsed.data, readSnapshot)
+  const directorParsed = directorWriteSemanticInputSchema.safeParse(request.input)
+  if (directorParsed.success) return executeDirectorWriteTarget(request, directorParsed.data, readSnapshot)
   const parsed = canvasWriteSemanticInputSchema.safeParse(request.input)
   if (!parsed.success) throw new SurfacePortWireError('capability_input_invalid')
   const input = parsed.data
@@ -422,6 +448,61 @@ export async function executeCanvasWriteTarget(
     categoryId,
     nodeCount: afterSnapshot.nodes.filter((node) => (node.categoryId ?? 'shots') === categoryId).length,
   } satisfies CanvasWriteResult
+}
+
+/**
+ * 3D-BOX 计划写入：与画布写同一条提议事务（审批、收据、changeId、撤销日志）。领域拒绝也照常提交一条
+ * 空收据（这一步什么都没写），把原因交回主进程翻给模型——传输错误码装不下「当前修订号是什么」。
+ */
+async function executeDirectorWriteTarget(
+  request: CanvasWriteTargetExecution,
+  input: DirectorWriteInput,
+  readSnapshot: () => GenerationCanvasSnapshot,
+): Promise<DirectorWriteResult> {
+  assertExecutionCurrent(request)
+  const receiptCoordinator = createProposalReceiptCoordinator({
+    summary: summarizeToolCall(input.operation, input),
+    stepLabels: buildStepDetailLabels(input.operation, input),
+    hostApprovalId: request.approvalId,
+    hostActionHash: request.actionHash,
+  })
+  const referenceIds = directorWriteReferenceIds(input)
+  let outcome: Awaited<ReturnType<typeof applyProposalBatch>>
+  try {
+    outcome = await applyProposalBatch(
+      [{ toolCallId: request.approvalId, toolName: input.operation, effectiveArgs: input as unknown as Record<string, unknown> }],
+      { canWrite: () => {
+        assertExecutionCurrent(request)
+        return true
+      } },
+      receiptCoordinator,
+      {
+        proposalId: request.receiptProposalId,
+        beforePrepare() {
+          try {
+            assertExecutionCurrent(request)
+            assertDirectorWriteAdmissionMatches(
+              captureDirectorWriteRawEvidence(readSnapshot(), input),
+              { target: request.target, preconditions: request.preconditions },
+              referenceIds,
+            )
+          } catch (error) {
+            throw wireError(error)
+          }
+        },
+      },
+    )
+  } catch (error) {
+    throw wireError(error)
+  }
+  if (outcome.status !== 'committed') throw wireError(outcome.failure)
+  const domain = (outcome.results[0] ?? null) as Record<string, unknown> | null
+  if (!domain) throw new SurfacePortWireError('capability_receipt_unresolved')
+  const parsed = directorWriteResultSchema.safeParse(domain.applied === true
+    ? { ...domain, proposalId: outcome.proposalId, changeId: makeChangeId('canvas', outcome.proposalId), operation: input.operation }
+    : { ...domain, proposalId: outcome.proposalId, operation: input.operation })
+  if (!parsed.success) throw new SurfacePortWireError('capability_execution_failed')
+  return parsed.data
 }
 
 async function executeCanvasDeleteTarget(
