@@ -25,7 +25,10 @@
     "evals/director/judge/run.ts",
     "evals/director/judge/review.test.ts",
     "evals/director/judge/preregister.ts",
-    "evals/director/judge/preregister.test.ts"
+    "evals/director/judge/preregister.test.ts",
+    "evals/director/judge/crossCheck.ts",
+    "evals/director/judge/crossCheck.test.ts",
+    "scripts/director-calibration-align.mjs"
   ],
   "entry_points": [
     "useTimelinePlayback camera loop",
@@ -46,7 +49,9 @@
     "Readback subject comparison consumes binding actor IDs; scene geometry remains visible and is not used as a subject fallback.",
     "A camera entering renderable geometry is recorded as a continuity problem.",
     "Every model review and pairwise call has a six-minute timeout, at most two attempts, and timeout records continue the batch.",
-    "Preregistration and review model calls have a six-minute timeout and a blocked result never stops the batch."
+    "Preregistration and review model calls have a six-minute timeout and a blocked result never stops the batch.",
+    "Cross-check direction and cut claims are measured within the claim time window and use a bound actor before comparing vocabulary.",
+    "Calibration exports can be aligned to judge records with reproducible Spearman and same-bin calculations; missing human exports remain unverified."
   ],
   "doors": [
     {
@@ -138,7 +143,8 @@
       "rg -n 'resolveActors|actorMap|scene.required' evals/director",
       "rg -n compareCaptureReadback evals/director",
       "rg -n isAuxiliary evals/director src/workbench/generationCanvas/nodes/director/scene",
-      "rg -n 'DIRECTOR_REVIEW_TIMEOUT_MS|withTimeout' evals/director/judge"
+      "rg -n 'DIRECTOR_REVIEW_TIMEOUT_MS|withTimeout' evals/director/judge",
+      "rg -n 'directionMatches|parseWindow|calibration-alignment' evals/director/judge scripts"
     ]
   },
   "prevention": {
@@ -155,7 +161,9 @@
       "evals/director/scorer.ts",
       "evals/director/judge/readback.ts",
       "evals/director/judge/review.ts",
-      "evals/director/judge/preregister.ts"
+      "evals/director/judge/preregister.ts",
+      "evals/director/judge/crossCheck.ts",
+      "scripts/director-calibration-align.mjs"
     ]
   },
   "regression_tests": [
@@ -163,13 +171,15 @@
     "src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement.test.ts",
     "evals/director/scorer.test.ts",
     "evals/director/judge/readback.test.ts",
-    "evals/director/judge/review.test.ts"
+    "evals/director/judge/review.test.ts",
+    "evals/director/judge/crossCheck.test.ts"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement.test.ts",
     "evals/director/scorer.test.ts",
     "evals/director/judge/readback.test.ts",
-    "evals/director/judge/review.test.ts"
+    "evals/director/judge/review.test.ts",
+    "evals/director/judge/crossCheck.test.ts"
   ],
   "legacy_paths": {
     "status": "not-applicable",
