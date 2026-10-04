@@ -111,6 +111,14 @@ jobs:
         run: pnpm run test:system:contracts
       - name: Autosync publication regression
         run: node --test docs/fixes/docs-autosync.node-test.mjs
+      # 方向检查（RW）只警告、不阻断：列出本 PR 里碰了「反复修的地方」却没带 Direction-Check trailer 的 fix 提交。
+      # 真正的拦截在 git commit-msg（scripts/check-direction-trailer.mjs）；这里兜 --no-verify 之类绕过的情况。
+      - name: Direction check (warn only)
+        continue-on-error: true
+        if: github.event_name == 'pull_request'
+        env:
+          DIRECTION_BASE: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/fix-churn.mjs --range "$DIRECTION_BASE..HEAD" --warn | tee -a "$GITHUB_STEP_SUMMARY"
 
   # 3D-BOX 开关开的那张工具面（方案 docs/plan/2026-10-04-director-3dbox-phase3.md §5）：同一族门岗按开关开再跑一遍，
   # 第一步先证明开关真的开了（check-director3dbox-face-on.ts），否则后面会安静地验成开关关的面。
