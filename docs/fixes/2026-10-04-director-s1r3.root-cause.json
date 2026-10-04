@@ -14,7 +14,10 @@
     "src/workbench/generationCanvas/nodes/director/model/plan/directorPlanner.ts",
     "src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler.ts",
     "src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler.test.ts",
-    "docs/plan/2026-10-04-director-3dbox-s1r3.md"
+    "docs/plan/2026-10-04-director-3dbox-s1r3.md",
+    "src/workbench/generationCanvas/nodes/director/model/plan/directorPlanSchema.ts",
+    "src/workbench/generationCanvas/nodes/director/model/plan/directorPlanSchema.test.ts",
+    "docs/plan/2026-10-04-director-3dbox-phase3.md"
   ],
   "entry_points": [
     "planDirector(description)",
@@ -25,7 +28,9 @@
   "invariants": [
     "Planner examples are outside the evaluation card scenes and preserve no benchmark answer.",
     "Actor descriptions and set-piece kinds retain user nouns, each shot.subject resolves to an actor or actor anchor, and legal kind/template/move enums are used.",
-    "A follow shot over a moving actor has camera and subject co-motion with stable framing rather than a stationary or fabricated actor path."
+    "A follow shot over a moving actor has camera and subject co-motion with stable framing rather than a stationary or fabricated actor path.",
+    "Compiler entity ids are derived only from plan names: actor:<id>, shot:<id>/camera, setPiece:<id>; repeated compilation is byte-for-byte deterministic and a local plan rename changes only its entity id.",
+    "Every person has a valid action clip covering t=0; stacked on-relations preserve vertical separation and product_stage always materializes s1-product-ground."
   ],
   "doors": [
     {
@@ -92,7 +97,7 @@
   "prevention": {
     "kind": "centralized-boundary",
     "enforcement_path": "src/workbench/generationCanvas/nodes/director/model/plan/directorPlanner.ts",
-    "invariant": "Each response must use original user nouns for entity descriptions/refs, legal enum values, and existing subjects for every shot; compiler follow motion must co-move with an actor trajectory.",
+    "invariant": "Each response must use original user nouns for entity descriptions/refs, legal enum values, and existing subjects for every shot; compiler follow motion must co-move with an actor trajectory, stable entity ids must not include a plan hash, every person must have action evidence from t=0, and stacked product props must remain separated.",
     "failure_mode": "Schema errors are returned with exact paths and retried once; unresolved plans become adapter_error, while compiler issues remain explicit and no half-built project is returned.",
     "exception_policy": "none",
     "strategy": "Make the rule explicit at the only model boundary and keep deterministic motion handling at the only compiler boundary used by both live and oracle plans.",
@@ -102,10 +107,12 @@
     ]
   },
   "regression_tests": [
-    "src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler.test.ts"
+    "src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler.test.ts",
+    "src/workbench/generationCanvas/nodes/director/model/plan/directorPlanSchema.test.ts"
   ],
   "class_regression_tests": [
-    "src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler.test.ts"
+    "src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler.test.ts",
+    "src/workbench/generationCanvas/nodes/director/model/plan/directorPlanSchema.test.ts"
   ],
   "legacy_paths": {
     "status": "not-applicable",
