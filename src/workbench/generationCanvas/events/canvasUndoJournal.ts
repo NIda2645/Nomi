@@ -8,7 +8,9 @@ import { replayCanvasEvents, emptyCanvasProjection, type CanvasProjection } from
 import { getActiveCanvasGestureContext } from './canvasGestureContext'
 import { interruptPendingCanvasWrite } from './canvasWriteBoundary'
 
-type JournalEvent = { type: string; payload: Record<string, unknown> }
+type JournalEvent = { type: string; payload: Record<string, unknown>; source?: string; txnId?: string }
+
+export type CanvasChangeConflict = Readonly<{ changeId: string; objectIds: readonly string[]; conflictingEventTypes: readonly string[] }>
 
 const HISTORY_LIMIT = 80
 
@@ -78,6 +80,29 @@ export function getUndoJournalPosition(): number {
  * the transaction's compensation target; replacing/clearing its canvas does. */
 export function getUndoJournalGeneration(): number {
   return generation
+}
+
+/** Read conflict evidence from the same session journal used by Cmd+Z. */
+export function findCanvasChange(changeId: string): CanvasChangeConflict | null {
+  const commitIndex = journal.findIndex((event) => event.type === 'agent.txn.committed' && event.payload.changeId === changeId)
+  if (commitIndex < 0) return null
+  const payload = journal[commitIndex].payload
+  const objectIds = Array.isArray(payload.objectIds)
+    ? payload.objectIds.filter((value): value is string => typeof value === 'string')
+    : []
+  const ids = new Set(objectIds)
+  const conflictingEventTypes = new Set<string>()
+  for (const event of journal.slice(commitIndex + 1)) {
+    if (event.payload.changeId === changeId || event.txnId === journal[commitIndex].txnId) continue
+    const payloadIds = Object.values(event.payload).flatMap((value) => {
+      if (typeof value === 'string') return [value]
+      if (Array.isArray(value)) return value.filter((item): item is string => typeof item === 'string')
+      if (value && typeof value === 'object') return Object.values(value as Record<string, unknown>).filter((item): item is string => typeof item === 'string')
+      return []
+    })
+    if (event.type === 'canvas.snapshot.restored' || payloadIds.some((id) => ids.has(id))) conflictingEventTypes.add(event.type)
+  }
+  return { changeId, objectIds, conflictingEventTypes: [...conflictingEventTypes] }
 }
 
 /**

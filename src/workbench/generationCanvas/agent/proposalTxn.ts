@@ -21,6 +21,7 @@ import {
   getUndoJournalPosition,
   pushUndoSnapshot,
 } from '../events/canvasUndoJournal'
+import { makeChangeId } from '../../../../electron/shared/agentCapabilities/changeId'
 
 export type ProposalStep = {
   toolCallId: string
@@ -300,6 +301,12 @@ export async function applyProposalBatch(
     const watchNodes: ProposalWatchNode[] = snapshot.nodes
       .filter((node) => watchIds.has(node.id))
       .map((node) => ({ nodeId: node.id, title: node.title, prompt: node.prompt || '' }))
+    const objectIds = new Set<string>(watchNodes.map((node) => node.nodeId))
+    for (const op of compensation) {
+      if ('nodeIds' in op) op.nodeIds.forEach((id) => objectIds.add(id))
+      if ('nodeId' in op) objectIds.add(op.nodeId)
+      if ('pairs' in op) op.pairs.forEach((pair) => { objectIds.add(pair.source); objectIds.add(pair.target) })
+    }
 
     if (receiptCoordinator) {
       receiptCommitInFlight = true
@@ -339,6 +346,8 @@ export async function applyProposalBatch(
           type: 'agent.txn.committed',
           payload: {
             proposalId,
+            changeId: makeChangeId('canvas', proposalId),
+            objectIds: [...objectIds],
             steps: steps.map((step) => ({ toolCallId: step.toolCallId, toolName: step.toolName })),
             ...(Object.keys(clientIdToNodeId).length ? { clientIdToNodeId } : {}),
             reconciliation: {

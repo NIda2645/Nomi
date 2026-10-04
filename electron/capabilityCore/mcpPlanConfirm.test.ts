@@ -29,7 +29,7 @@ class PlanHarness {
       if (method === 'canvas.write') {
         const count = Array.isArray(params.nodes) ? params.nodes.length : 0
         const ids = Array.from({ length: count }, (_, i) => `n${i}`)
-        return { applied: true, proposalId: 'proposal-test', operation: 'create_canvas_nodes', affectedNodeIds: ids, affectedEdgeIds: [], clientIdToNodeId: {}, connectedCount: 0, skippedEdges: [], reconciliation: { ok: true, deviationCount: 0 } }
+        return { applied: true, proposalId: 'proposal-test', changeId: 'canvas:v1:proposal-test', operation: 'create_canvas_nodes', affectedNodeIds: ids, affectedEdgeIds: [], clientIdToNodeId: {}, connectedCount: 0, skippedEdges: [], reconciliation: { ok: true, deviationCount: 0 } }
       }
       throw new Error(`unexpected invoke: ${method}`)
     })

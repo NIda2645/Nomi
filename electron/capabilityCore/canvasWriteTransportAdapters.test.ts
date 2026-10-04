@@ -71,6 +71,7 @@ async function setup(rawEvidence: unknown = RAW_EVIDENCE) {
       return {
         applied: true,
         proposalId: receiptProposalId,
+        changeId: `canvas:v1:${receiptProposalId}`,
         operation,
         result: { persisted: true, operation },
         reconciliation: { ok: true, deviationCount: 0 },
@@ -80,6 +81,7 @@ async function setup(rawEvidence: unknown = RAW_EVIDENCE) {
       ? {
           applied: true,
           proposalId: receiptProposalId,
+          changeId: `canvas:v1:${receiptProposalId}`,
           operation: "tidy_canvas",
           affectedNodeIds: ["node-real"],
           categoryId: "shots",
@@ -89,6 +91,7 @@ async function setup(rawEvidence: unknown = RAW_EVIDENCE) {
       : {
           applied: true,
           proposalId: receiptProposalId,
+          changeId: `canvas:v1:${receiptProposalId}`,
           operation: "set_node_prompt",
           affectedNodeIds: ["node-real"],
           reconciliation: { ok: true, deviationCount: 0 },
@@ -215,6 +218,7 @@ describe("canvas.write Pi transport", () => {
       result: {
         applied: true,
         proposalId: "receipt-a",
+        changeId: "canvas:v1:receipt-a",
         operation: "set_node_prompt",
         affectedNodeIds: ["node-real"],
         reconciliation: { ok: true, deviationCount: 0 },

@@ -5,16 +5,25 @@ import { timelineDiffResultSchema, timelineEditPlanSchema } from "./timelineRead
 
 const canonicalIdSchema = z.string().trim().min(1);
 const revisionSchema = canonicalIdSchema.max(64);
+const changeIdSchema = canonicalIdSchema.max(200).describe("Versioned reversible change id returned by a write.");
 const applyEditPlanInputSchema = timelineEditPlanSchema.extend({ operation: z.literal("apply_edit_plan") });
-const undoTimelineEditPiInputSchema = z
-  .object({
-    undoToken: canonicalIdSchema.max(160),
-    expectedRevision: revisionSchema,
+export const undoTimelineEditInputBaseSchema = z.object({
+    changeId: changeIdSchema.optional(),
+    // Kept at the transport edge for existing MCP callers; semantic callers use changeId.
+    undoToken: canonicalIdSchema.max(160).optional(),
+    expectedRevision: revisionSchema.optional(),
     reason: z.string().trim().max(300).optional(),
-  })
-  .strict();
-const undoTimelineEditInputSchema = undoTimelineEditPiInputSchema.extend({
+  });
+const undoTimelineEditLegacyPiInputSchema = z.object({
+  undoToken: canonicalIdSchema.max(160),
+  expectedRevision: revisionSchema,
+  reason: z.string().trim().max(300).optional(),
+}).strict();
+const undoTimelineEditInputSchema = undoTimelineEditInputBaseSchema.extend({
   operation: z.literal("undo_timeline_edit"),
+}).superRefine((value, context) => {
+  if (!value.changeId && !value.undoToken) context.addIssue({ code: z.ZodIssueCode.custom, path: ["changeId"], message: "changeId is required" });
+  if (value.changeId && value.undoToken) context.addIssue({ code: z.ZodIssueCode.custom, path: ["undoToken"], message: "give changeId, not both changeId and undoToken" });
 });
 
 export const timelineWriteSemanticInputSchema = z.union([
@@ -49,6 +58,7 @@ export const timelineWriteResultSchema = z.discriminatedUnion("operation", [
       diagnostics: z.array(timelineDiagnosticSchema).optional(),
       diff: timelineDiffResultSchema.optional(),
       undoToken: canonicalIdSchema.max(160).optional(),
+      changeId: changeIdSchema.optional(),
     })
     .strict(),
   z
@@ -58,6 +68,7 @@ export const timelineWriteResultSchema = z.discriminatedUnion("operation", [
       revision: revisionSchema,
       code: canonicalIdSchema.max(120).optional(),
       undone: z.boolean(),
+      changeId: changeIdSchema.optional(),
     })
     .strict(),
 ]);
@@ -84,16 +95,24 @@ export function timelineWritePiInputSchemaForAlias(alias: string): z.ZodTypeAny 
     case TIMELINE_WRITE_ALIASES.applyPlan:
       return timelineEditPlanSchema;
     case TIMELINE_WRITE_ALIASES.undo:
-      return undoTimelineEditPiInputSchema;
+      return undoTimelineEditLegacyPiInputSchema;
     default:
       return undefined;
   }
 }
 
 export function timelineWriteInputForAlias(alias: string, value: unknown): TimelineWriteInput | undefined {
+  if (alias === TIMELINE_WRITE_ALIASES.undo && value && typeof value === "object" && "changeId" in value) {
+    return timelineWriteSemanticInputSchema.parse({ operation: alias, ...(value as Record<string, unknown>) });
+  }
   const schema = timelineWritePiInputSchemaForAlias(alias);
   if (!schema) return undefined;
-  return timelineWriteSemanticInputSchema.parse({ operation: alias, ...schema.parse(value) });
+  const parsed = schema.parse(value) as Record<string, unknown>;
+  if (alias === TIMELINE_WRITE_ALIASES.undo && parsed.changeId === undefined && parsed.undoToken !== undefined) {
+    parsed.changeId = parsed.undoToken;
+    delete parsed.undoToken;
+  }
+  return timelineWriteSemanticInputSchema.parse({ operation: alias, ...parsed });
 }
 
 

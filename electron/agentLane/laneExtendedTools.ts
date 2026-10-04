@@ -88,9 +88,16 @@ function nextActionFor(
       const how = confirmed
         ? 'The user approved the review card, so the planned timeline edit is now applied.'
         : 'The timeline edit applied directly — this approval mode did not ask, and no card is waiting for the user.'
-      // 契约返回的字段叫 `undoToken`，`undo` 收的字段也叫 `undoToken`——原样带过去，不改名。
-      // （这里曾经改成 `changeId`：一条工具结果里正文印 undoToken、末行印 changeId，模型得自己猜。）
-      return { kind: 'none', userSees: `${how} It is reversible; call undo to take it back.`, ...(typeof record.undoToken === 'string' ? { undoToken: record.undoToken } : {}) }
+      const changeId = typeof record.changeId === 'string'
+        ? record.changeId
+        : typeof record.undoToken === 'string' ? record.undoToken : undefined
+      return { kind: 'none', userSees: `${how} It is reversible; call undo to take it back.`, ...(changeId ? { changeId } : {}) }
+    }
+    case 'arrange_canvas':
+    case 'make_artifact':
+    case 'stage_shot': {
+      const changeId = typeof record.changeId === 'string' ? record.changeId : undefined
+      return { kind: 'none', userSees: 'The canvas change is applied. It is reversible; call undo to take it back.', ...(changeId ? { changeId } : {}) }
     }
     case 'undo':
       return { kind: 'none', userSees: 'The timeline is back to before that change.' }

@@ -409,7 +409,9 @@ function timelinePreconditions(input: TimelineReadInput | TimelineWriteInput): P
     return Object.freeze({ timeline: Object.freeze({ revision: input.baseRevision }) });
   }
   if (input.operation === "undo_timeline_edit") {
-    return Object.freeze({ timeline: Object.freeze({ revision: input.expectedRevision }) });
+    return typeof input.expectedRevision === "string"
+      ? Object.freeze({ timeline: Object.freeze({ revision: input.expectedRevision }) })
+      : EMPTY_PRECONDITIONS;
   }
   return EMPTY_PRECONDITIONS;
 }
