@@ -1,6 +1,7 @@
 import { normalizeAiScene } from '../aiScene'
 import { createDefaultProject } from '../directorProject'
 import { originYForBottom, originYForCenter, scaledBounds } from '../directorSpace'
+import { syncInTimeline } from '../timeGrid'
 import {
   distanceForShotSize,
   measureContinuity,
@@ -594,6 +595,8 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
       : camera.position
   }
   scene.cameras = cameras
+  // 在不在时间轴由片段推出——和编辑器同一条规则（timeGrid.syncInTimeline），编译器不另写一份
+  for (const entity of [...scene.objects, ...scene.cameras]) syncInTimeline(entity)
   const measurement = sampleDirectorProject(project, { fps: FPS, duration, anchors }),
     continuity = measureContinuity(measurement, scene)
   issues.push(

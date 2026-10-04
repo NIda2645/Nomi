@@ -318,7 +318,7 @@ const LEDGER = {
   floating: [1, 1], // 信（on 女子）悬在半空：携带物没挂到手上（留给 ②：用父子关系）
   interpenetrating: [21, 5], // 人站进院墙 / 院门 / 彼此（e 类，留给 ②）
   offFloor: [0, 0],
-  offTimeline: [112, 34], // 编译器从不置 inTimeline（F17）——第二步修
+  offTimeline: [0, 0], // 第二步：编译器出口走 timeGrid.syncInTimeline（编辑器同一条规则）；起点 112 / 34
   cameraInside: [0, 0], // 现有避让在渲染真值下也成立——锁住
   occluded: [30, 6],
   carriedDrift: [1, 1], // 女子走 3.5m，信留在原地
