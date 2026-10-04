@@ -488,12 +488,12 @@ function enforceAxisSide(
       const target = add(positionAt(subject, point.time), aimOffset)
       Object.assign(point, lookAtAngles(corrected, target))
     }
-    if (!anchor && subject.type === 'character') {
-      const subjectAt = positionAt(subject, point.time)
+    for (const nearby of characters) {
+      const subjectAt = positionAt(nearby, point.time)
       let dx = point.x - subjectAt.x,
         dz = point.z - subjectAt.z
       const distance = Math.hypot(dx, dz)
-      if (distance < 0.61) {
+      if (distance < 0.61 && Math.abs(point.y - (subjectAt.y + 0.875)) < 0.95) {
         if (distance < 1e-4) {
           dx = 0
           dz = 1
