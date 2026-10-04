@@ -48,6 +48,14 @@ describe('director scorer directionality', () => {
       expect(layerOf(good, 'L1') - layerOf(bad, 'L1'), id).toBeGreaterThanOrEqual(0.2)
     }
   })
+  it('rejects a push that is counteracted by reverse zoom', () => {
+    const c = card('t1-01-push')
+    const a = oracleForCard(c)
+    const good = scoreCard(c, a.project, a.actorMap)
+    const bad = scoreCard(c, mutateOracle(a.project, 'counteracting-zoom'), a.actorMap)
+    expect(layerOf(good.scores, 'L2') - layerOf(bad.scores, 'L2')).toBeGreaterThanOrEqual(0.2)
+    expect(bad.reasons.some((reason) => reason.includes('互相抵消'))).toBe(true)
+  })
   it('drops L2 when orbit and pan direction are reversed', () => {
     for (const id of ['t1-05-orbit', 't1-03-pan']) {
       const good = score(id),
@@ -141,5 +149,37 @@ describe('director scorer directionality', () => {
     const a = oracleForCard(c)
     const bad = { ...c, blocking: [{ actor: 'woman', verb: 'teleport_actor', window: [0, 1] }] as any }
     expect(() => scoreCard(bad, a.project, a.actorMap)).toThrow(/no scoring predicate/)
+  })
+})
+
+import { bindCardEntities } from './binding'
+describe('director entity binding', () => {
+  it('keeps oracle staging objects renderable; binding, not isAuxiliary, defines subjects', () => {
+    const c = card('police-chase')
+    const a = oracleForCard(c)
+    const actorIds = new Set(Object.values(a.actorMap ?? {}))
+    const staging = a.project.scenes[0].objects.filter((object) => !actorIds.has(object.id))
+    expect(staging.length).toBeGreaterThan(0)
+    expect(staging.every((object) => object.isAuxiliary !== true)).toBe(true)
+  })
+
+  it('does not bind a same-kind guard to the woman when keywords do not match', () => {
+    const c = card('courtyard-standoff')
+    const a = oracleForCard(c)
+    const project = structuredClone(a.project)
+    const woman = project.scenes[0].objects.find((object) => object.id === 'woman')!
+    woman.id = 'guard-copy'
+    woman.name = 'guard'
+    const binding = bindCardEntities(c, project.scenes[0])
+    expect(binding.actorMap.woman).toBeUndefined()
+    expect(binding.actorRate).toBeLessThan(1)
+  })
+  it('rejects an actor when the scene object kind is incompatible', () => {
+    const c = card('courtyard-standoff')
+    const a = oracleForCard(c)
+    const project = structuredClone(a.project)
+    const woman = project.scenes[0].objects.find((object) => object.id === 'woman')!
+    woman.type = 'cube'
+    expect(bindCardEntities(c, project.scenes[0]).actorMap.woman).toBeUndefined()
   })
 })
