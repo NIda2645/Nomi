@@ -154,9 +154,13 @@ P3「全绿不等于完成」的量化门。三档触发：
 
 **分层边界门岗（旧 R17.3）** `check:boundaries`（`dependency-cruiser`，规则 `.dependency-cruiser.mjs`，基线 `scripts/boundaries-baseline.json`）：`src/` → `electron/` 存量冻结只减不增（走 `src/desktop/bridge.ts` 或 `electron/shared/contracts/`）；`electron/` → `src/` 与 `src/` → `scripts/` 硬零；新增完全静态循环（非 dynamic-import、非 type-only）判红，存量冻结。归属地图 `docs/architecture/module-ownership-map.md`。
 
-## RW 重写判据（旧 R21.2，试用到 2026-10-15）
+## RW 方向检查（旧 R21.2「重写判据」升级，试用到 2026-10-15）
 
-出现任一条就停止打补丁：① 同一文件 14 天内第三次因 bug 修改；② 要给现有函数加第三个特例分支或参数；③ 改一处要读两处以上旁路逻辑。此时选定「补 / 重写 / 删」之一并给出特征测试路径：选**重写**先写特征测试钉住旧行为，范围限一个模块，**同一次提交删掉旧的**（P1）；选补或删同样写明特征测试并说明为什么不重写。根因合同可带 `rewrite_decision: { decision, characterization_test }`，写了就必须成立（选项合法、测试文件存在、选 rewrite 时测试在本次 diff 里）。判据只判做没做，不判做得好不好。动手那一刻的提醒：`scripts/claude-hooks/edit-time-reminder.sh`（只提醒不拦）——文件近 14 天已有 ≥3 次 fix 提交时提醒先过本判据；在 `src/`、`electron/` 新建文件时附接口级已有能力清单并要一行「已查过 / 没找到」。数字是试用值，校准用提交历史回测。
+**触发**（任一即停止派修补）：① 同一文件或同一概念目录，14 天内第 3 个 fix 提交；② 出现 revert 一个 fix 的提交；③ 修复因评测分数下降被回滚；④ 同一条线派第 3 轮及以上修补（交接单 / 任务书里的「第 N 轮」同样算）；⑤ 要加第三个特例分支。①② 由 `node scripts/fix-churn.mjs` 计算（目录只认「概念大小」：fix 碰过的不同源码文件 ≤6 个，忙碌大目录不整体算，否则回测里几乎每个 fix 都命中）；③④⑤ 靠人工和任务书检查。
+
+**动作**：先写特征测试钉住现状，再做「类根因复盘」一页（模板 [`direction-check-template.md`](engineering/direction-check-template.md)：归类表、为什么一直冒、不改结构的 2–3 个可验证预测、靶子独立性检查、P0 现成方案、补 / 重写 / 删对比 + 推荐、用户要权衡的核心），结构性结论交用户拍板。选重写时范围限一个模块，同一次提交删掉旧的（P1）。根因合同可带 `rewrite_decision: { decision, characterization_test }`，写了就必须成立。
+
+**执行点（谁执行都绕不过）**：git commit-msg `scripts/check-direction-trailer.mjs`（fix 提交碰热点必须带 `Direction-Check: <复盘文档路径>`，文档须在 `docs/` 下、存在、不是空壳；按内容判，没有环境变量开关；revert 与 merge 不拦）；派工前 `fix-churn.mjs`；CI contracts 里只警告的 `Direction check` 步骤（兜 `--no-verify`）；Claude 编辑提醒 `edit-time-reminder`（调同一个计数器，只提醒）；`self-check` 在用户消息出现「第 N 轮 / 再修 / 又坏了 / 还是不对」时注入提示块。起因与限制见编排手册 §20。
 
 ## P2 修复走根因流程（旧 R21 / R21.1 / R21.3）
 
@@ -187,6 +191,8 @@ P3「全绿不等于完成」的量化门。三档触发：
 ## R27 多智能体编排
 
 任务书带开工三行头与概念占用；收货三查；一个概念一个 PR、按阶段攒（提交不压缩）；协调会话运作（状态落盘、工人不建卡不直接问用户、CI 绿 + 扫描干净才合、最多 3 个等收据）。正文：[`engineering/agent-orchestration-playbook.md`](engineering/agent-orchestration-playbook.md)。
+
+**省 token（2026-10-04）**：派活前先数轮次，同一处第 3 轮就停改派复盘；协调会话不读大文件全文（先看大小和标题，按段读；读子 agent 结论不读过程）；子 agent 同时最多 3 个、默认 Sonnet、不再派子 agent；任务书写清范围 / 不碰清单 / 停点（`scripts/check-dispatch-brief.mjs`）；确定性的活用脚本；长输出落文件；卡住 3 次就停下报告。详见编排手册 §20。
 
 ## R33 概念的 owner 先于目录（含 R33.2 – R33.5）
 
