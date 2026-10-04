@@ -52,12 +52,17 @@
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler.ts",
       "symbol": "DirectorCompileResult"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/nodes/director/model/plan/directorPlanSchema.ts",
+      "symbol": "directorPlanModelSchema"
     }
   ],
   "door_reduction": {
     "before": 4,
-    "after": 4,
-    "why_not": "PlannerResult/PlannerUsage and compiler issue/result are separate public type boundaries consumed by the same modules; merging them would erase distinct error and usage contracts without reducing an entry point."
+    "after": 5,
+    "why_not": "Compiler type boundaries and the model-facing schema are separate public contracts consumed by different gates and callers; keeping all three makes each changed boundary auditable."
   },
   "generality_proof": "All S1 requests enter through planDirector and then compileDirectorPlan; the schema and compiler are shared by every card and by hand-authored oracle plans. Enforcing the invariant in the prompt/schema-facing planner and the follow trajectory solver covers different scenes, actor kinds, and retries without card IDs or aliases.",
   "shared_boundaries": [

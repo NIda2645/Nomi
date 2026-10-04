@@ -64,127 +64,102 @@ export type DirectorPlan = z.infer<typeof directorPlanSchema>
 export type DirectorPlanShot = DirectorPlan['shots'][number]
 export type DirectorPlanActor = DirectorPlan['actors'][number]
 
-/**
- * Model-facing projection of the execution schema. It keeps the same legal
- * values and strict object boundaries, but replaces the root version literal
- * with a single numeric range so JSON Schema consumers never receive a root
- * `const`. Descriptions live on every field the planner can fill.
- */
-const modelFinite = z.number().finite().describe('A finite number in scene meters or seconds.')
-const modelWindow = z
-  .tuple([modelFinite.nonnegative().describe('Window start in seconds.'), modelFinite.nonnegative().describe('Window end in seconds.')])
-  .refine(([start, end]) => end > start, 'window end must be greater than start')
-  .describe('An increasing [start, end] time window in seconds.')
-const modelRelation = relation.describe('How an actor or set piece is placed relative to its reference.')
-const modelActorKind = actorKind.describe('Entity kind: person, vehicle, product, or prop.')
-const modelMove = z
-  .enum([...CAMERA_MOVES, 'follow', 'static'] as [CameraMove, 'follow', 'static'])
-  .describe('Camera move vocabulary; choose one legal movement kind.')
+/** Model projection derives field constraints from the execution contract. */
+const planShape = directorPlanSchema.innerType().shape
+const sceneShape = planShape.scene.shape
+const actorShape = planShape.actors.element.shape
+const blockingShape = planShape.blocking.removeDefault().element.shape
+const shotShape = planShape.shots.element.shape
+const pieceShape = sceneShape.setPieces.removeDefault().element.shape
+const moveShape = shotShape.move.shape
+const vectorModel = z.object({
+  x: finite.describe('Local horizontal offset in meters.'),
+  y: finite.describe('Local vertical offset in meters.'),
+  z: finite.describe('Local depth offset in meters.'),
+}).strict().describe('Named part offset relative to its actor.')
+const dressingElement = aiSceneSchema.shape.groups.element.shape.elements.removeDefault().element
+const dressingShape = dressingElement.shape
+const dressingModel = aiSceneSchema.extend({
+  sceneName: aiSceneSchema.shape.sceneName.describe('User-language name of the setting.'),
+  sceneConfig: aiSceneSchema.shape.sceneConfig.unwrap().extend({
+    skyColor: aiSceneSchema.shape.sceneConfig.unwrap().shape.skyColor.describe('Sky color as #rrggbb.'),
+    groundOpacity: aiSceneSchema.shape.sceneConfig.unwrap().shape.groundOpacity.describe('Ground opacity from 0 to 1.'),
+  }).strict().optional().describe('Optional appearance of the setting.'),
+  groups: z.array(aiSceneSchema.shape.groups.element.extend({
+    name: aiSceneSchema.shape.groups.element.shape.name.describe('Name of this set-piece group.'),
+    elements: z.array(dressingElement.extend({
+      type: dressingShape.type.describe('Primitive geometry type.'),
+      name: dressingShape.name.describe('User noun naming this piece.'),
+      position: dressingShape.position.describe('Center [x,y,z] in meters.'),
+      rotation: dressingShape.rotation.describe('Euler [x,y,z] in degrees.'),
+      scale: dressingShape.scale.describe('Dimensions [x,y,z] in meters.'),
+      color: dressingShape.color.describe('Surface color as #rrggbb.'),
+      roughness: dressingShape.roughness.describe('Surface roughness from 0 to 1.'),
+      metalness: dressingShape.metalness.describe('Metalness from 0 to 1.'),
+      opacity: dressingShape.opacity.describe('Opacity from 0 to 1.'),
+      wireframe: dressingShape.wireframe.describe('Whether to show wireframe geometry.'),
+      flatShading: dressingShape.flatShading.describe('Whether to use flat shading.'),
+    }).strict()).default([]).describe('Primitive objects in this group.'),
+  }).strict()).min(1).describe('Named groups of scene dressing.'),
+}).strict()
+const modelMoveKinds = z.enum([...move.options, 'pan', 'tilt', 'whip', 'rack_focus', 'follow', 'static'])
 
-export const directorPlanModelSchema = z
-  .object({
-    version: z.number().int().min(2).max(2).describe('Schema version. Always use 2.'),
-    scene: z
-      .object({
-        tags: z.array(z.string().min(1).describe('A user-language scene noun or constraint.')).default([]).describe('Scene nouns and constraints from the user wording.'),
-        environment: environment.describe('Lighting context: day, night, or studio.'),
-        template: template.optional().describe('One compiler template: street, room, courtyard, or product_stage.'),
-        dressing: aiSceneSchema.optional().describe('Optional primitive dressing; omit when no concrete scene item is known.'),
-        setPieces: z
-          .array(
-            z
-              .object({
-                id: z.string().min(1).describe('Stable name for this scene piece, preferably a user-language noun.'),
-                kind: z.string().min(1).describe('What the scene piece is called.'),
-                relation: z
-                  .object({
-                    type: modelRelation.describe('Placement relation to the referenced anchor.'),
-                    ref: z.string().min(1).describe('Template anchor or earlier set-piece id.'),
-                  })
-                  .strict()
-                  .optional()
-                  .describe('Optional relation to a template anchor or earlier piece.'),
-              })
-              .strict(),
-          )
-          .default([])
-          .describe('Named scene pieces that must be materialized by the compiler.'),
-      })
-      .strict()
-      .describe('Scene template, environment, nouns, and named set pieces.'),
-    actors: z
-      .array(
-        z
-          .object({
-            id: z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]*$/).describe('Stable role id used by blocking and shots.'),
-            kind: modelActorKind,
-            desc: z.string().min(1).describe('The actor name or noun copied from the user wording.'),
-            anchors: z
-              .record(anchorName, z.object({ x: modelFinite, y: modelFinite, z: modelFinite }).strict().describe('Named sub-part offset in meters.'))
-              .optional()
-              .describe('Optional named sub-parts such as a hand or cap.'),
-            placement: z
-              .object({
-                relation: modelRelation.describe('Placement relation to the reference.'),
-                ref: z.string().min(1).describe('Template anchor, set-piece id, or earlier actor id.'),
-              })
-              .strict()
-              .describe('Where this actor starts in the scene.'),
-          })
-          .strict(),
-      )
-      .min(1)
-      .describe('Every subject that appears in blocking or shots, named with user nouns.'),
-    blocking: z
-      .array(
-        z
-          .object({
-            actor: z.string().min(1).describe('Actor id that performs the action.'),
-            verb: z.enum(['walk_to', 'run_to', 'stop', 'sidestep', 'turn_to', 'hold_pose', 'drive_along', 'chase', 'static']).describe('Blocking verb.'),
-            target: z.string().min(1).optional().describe('Actor or set-piece id used as the destination or focus.'),
-            window: modelWindow,
-            action: z.string().min(1).optional().describe('Optional action-library id for a hold or movement pose.'),
-          })
-          .strict(),
-      )
-      .default([])
-      .describe('Time-coded actor movement and pose instructions.'),
-    shots: z
-      .array(
-        z
-          .object({
-            id: z.string().min(1).describe('Stable shot name.'),
-            window: modelWindow,
-            transitionIn: z.enum(['cut', 'continuous']).describe('Whether this shot cuts or continues from the previous camera.'),
-            subject: z.string().min(1).describe('Required primary subject id, optionally with a named anchor.'),
-            subjects: z.array(z.string().min(1).describe('Additional visible subject id.')).optional().describe('Other subjects that should remain in the composition.'),
-            size: z.enum(EVAL_SHOT_SIZES as [EvalShotSize, ...EvalShotSize[]]).describe('Shot size from 远景 through 大特写.'),
-            angle: z
-              .union([
-                z.enum(['front', 'three_quarter', 'side', 'side_rear', 'back']),
-                z.object({ over_shoulder: z.string().min(1).describe('Actor id over whose shoulder the camera looks.') }).strict(),
-                z.object({ pov: z.string().min(1).describe('Actor id whose point of view is used.') }).strict(),
-              ])
-              .describe('Camera angle or an over-shoulder/POV reference.'),
-            height: z.enum(['eye', 'low', 'high', 'overhead']).describe('Camera height.'),
-            move: z
-              .object({
-                kind: modelMove,
-                direction: z.enum(['left', 'right', 'up', 'down', 'forward', 'backward']).optional().describe('Natural-language movement direction when the kind needs one.'),
-                amount: modelFinite.positive().optional().describe('Movement amount in meters or degrees.'),
-                speed: z.enum(['slow', 'medium', 'fast']).default('medium').describe('Movement speed.'),
-                easing: z.enum(['linear', 'ease_in', 'ease_out', 'ease_in_out']).default('linear').describe('Movement easing.'),
-              })
-              .strict()
-              .describe('Camera movement and direction.'),
-          })
-          .strict(),
-      )
-      .min(1)
-      .describe('Ordered shots; every shot has a subject, size, and camera movement.'),
-  })
-  .strict()
-  .describe('Strict Director plan produced from the user wording.')
+export const directorPlanModelSchema = directorPlanSchema.innerType().extend({
+  // A numeric singleton range preserves v2 without emitting unsupported const.
+  version: z.number().int().min(2).max(2).default(2).describe('Director plan version; always 2.'),
+  scene: planShape.scene.extend({
+    tags: sceneShape.tags.describe('Scene nouns and constraints copied from the user wording.'),
+    environment: sceneShape.environment.describe('Lighting context: day, night, or studio.'),
+    template: sceneShape.template.describe('Closest supported scene template.'),
+    dressing: dressingModel.optional().describe('Optional primitive scene dressing.'),
+    setPieces: z.array(sceneShape.setPieces.removeDefault().element.extend({
+      id: pieceShape.id.describe('Stable id of this named scene piece.'),
+      kind: pieceShape.kind.describe('Scene-piece noun copied from the user wording.'),
+      relation: pieceShape.relation.unwrap().extend({
+        type: pieceShape.relation.unwrap().shape.type.describe('Spatial relation to the reference.'),
+        ref: pieceShape.relation.unwrap().shape.ref.describe('Template anchor or earlier set-piece id.'),
+      }).strict().optional().describe('Relation to a scene anchor.'),
+    }).strict()).default([]).describe('Named scene objects required by the brief.'),
+  }).strict().describe('Setting, lighting, and scene objects.'),
+  actors: z.array(planShape.actors.element.extend({
+    id: actorShape.id.describe('Stable ASCII role id derived from the user noun.'),
+    kind: actorShape.kind.describe('Human=person, transport=vehicle, presented item=product, inert item=prop.'),
+    desc: actorShape.desc.describe('Actor noun copied verbatim from the user wording.'),
+    anchors: z.record(anchorName, vectorModel).optional().describe('Named parts with local offsets; reference as actor.part.'),
+    placement: actorShape.placement.extend({
+      relation: actorShape.placement.shape.relation.describe('Spatial relation to the reference.'),
+      ref: actorShape.placement.shape.ref.describe('Template anchor, set-piece id, or actor id.'),
+    }).strict().describe('Initial actor placement.'),
+  }).strict()).min(1).describe('All subjects named in the brief.'),
+  blocking: z.array(planShape.blocking.removeDefault().element.extend({
+    actor: blockingShape.actor.describe('Actor performing this action.'),
+    verb: blockingShape.verb.describe('Movement or pose intent.'),
+    target: blockingShape.target.describe('Destination or focus actor/set-piece id.'),
+    window: blockingShape.window.describe('Increasing [start,end] time window in seconds.'),
+    action: blockingShape.action.describe('Optional action-library id; unavailable actions remain explicit gaps.'),
+  }).strict()).default([]).describe('Time-coded actor movement and pose.'),
+  shots: z.array(planShape.shots.element.extend({
+    id: shotShape.id.describe('Stable shot name.'),
+    window: shotShape.window.describe('Increasing [start,end] time window in seconds.'),
+    transitionIn: shotShape.transitionIn.describe('Cut or continuous transition from the previous shot.'),
+    subject: shotShape.subject.describe('Primary actor id or actor.part reference.'),
+    subjects: shotShape.subjects.describe('Other actors simultaneously framed in this shot.'),
+    size: shotShape.size.describe('Requested shot size from 远景 through 大特写.'),
+    angle: z.union([
+      shotShape.angle.options[0],
+      shotShape.angle.options[1].extend({ over_shoulder: shotShape.angle.options[1].shape.over_shoulder.describe('Actor whose shoulder is foreground.') }).strict(),
+      shotShape.angle.options[2].extend({ pov: shotShape.angle.options[2].shape.pov.describe('Actor whose viewpoint is used.') }).strict(),
+    ]).describe('Camera angle or actor-relative point of view.'),
+    height: shotShape.height.describe('Camera height relative to the subject.'),
+    move: shotShape.move.extend({
+      kind: modelMoveKinds.describe('Camera movement using the supported vocabulary.'),
+      direction: moveShape.direction.describe('Direction requested by the user.'),
+      amount: moveShape.amount.describe('Orbit/arc/pan degrees, translation meters, zoom degrees of FOV.'),
+      speed: moveShape.speed.describe('Camera movement speed.'),
+      easing: moveShape.easing.describe('Camera movement easing.'),
+    }).strict().describe('Camera movement intent.'),
+  }).strict()).min(1).describe('Ordered shots covering the whole brief.'),
+}).strict().describe('Director Plan v2 model-facing projection; execution validation still checks references.')
 
 const ENUM_ALIASES: Record<string, string> = {
   // These Chinese day terms are exact synonyms of the single `day` enum.
