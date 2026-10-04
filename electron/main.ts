@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
+import { mainWindowWebPreferences } from "./mainWindowWebPreferences";
 import { startCatalogReconciliation } from "./ai/onboarding/vendorHealth";
 import type { Rectangle, WebContents } from "electron";
 import path from "node:path";
@@ -288,12 +289,7 @@ async function createWindow(
     // macOS/Linux：保留原生窗口 chrome（红绿灯/拖拽/缩放全交系统，零回归）。
     frame: process.platform !== "win32",
     icon: path.join(__dirname, "../build/icon.png"),
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
+    webPreferences: mainWindowWebPreferences(__dirname),
     ...backgroundWindowOptions(),
   });
   installBackgroundWindowBehavior(mainWindow);

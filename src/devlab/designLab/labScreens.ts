@@ -27,6 +27,8 @@ import { VENDOR_ORDER_STATES } from './vendorOrder/vendorOrderStates'
 import { VIDEO_DEPTH_STATES } from './videoDepth/videoDepthStates'
 import { DEPTH_ACTION_CELL_HEIGHT, DEPTH_ACTION_CELL_WIDTH } from './videoDepth/videoDepthLabKit'
 import { STAGE_HEIGHT as VENDOR_ORDER_STAGE_HEIGHT, STAGE_WIDTH as VENDOR_ORDER_STAGE_WIDTH } from './vendorOrder/vendorOrderLabKit'
+import { DIRECTOR_3DBOX_STATES } from './director3dbox/director3dboxStates'
+import { DIRECTOR_3DBOX_CELL_HEIGHT, DIRECTOR_3DBOX_CELL_WIDTH } from './director3dbox/director3dboxCell'
 import type { LabScreen, LabState } from './labScreen'
 
 /**
@@ -151,6 +153,14 @@ export const LAB_SCREENS: readonly LabScreen[] = [
     cell: { width: VENDOR_ORDER_STAGE_WIDTH, height: VENDOR_ORDER_STAGE_HEIGHT + 40 },
   },
   { id: 'creation-columns', label: '创作三栏 · 外框样张', states: CREATION_COLUMNS_STATES, cell: { width: 1440, height: 900 } },
+  {
+    id: 'director-3dbox',
+    label: '导演视图（3D-BOX）',
+    states: DIRECTOR_3DBOX_STATES,
+    // 整屏取景：导演台是 portal 到 body 的 fixed 外壳，右侧是常驻 Agent 面板。
+    // 格子尺寸 = 真机走查窗口内容区，实验室图与真机截图同尺寸才能并排对账。
+    cell: { width: DIRECTOR_3DBOX_CELL_WIDTH, height: DIRECTOR_3DBOX_CELL_HEIGHT },
+  },
 ]
 
 export function findLabScreen(id: string | null): LabScreen {

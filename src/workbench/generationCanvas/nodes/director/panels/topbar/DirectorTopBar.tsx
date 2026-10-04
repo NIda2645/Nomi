@@ -4,7 +4,7 @@
  *          ../outputs/OutputsPopover
  * [OUTPUT]: 对外提供 DirectorTopBar：导演台唯一的常驻控件条，五个功能簇 ——
  *           ① 场景（图层名 + 切换）｜② 视图（重置视角 / 视图 ▾）｜③ 工具（选择·移动·旋转·缩放 ｜ 画线·逐点）｜
- *           ④ 添加与历史（＋添加 ▾ ｜ 撤销 / 重做）｜⑤ 交付（截图 / 产出 / 退出）
+ *           ④ 添加与历史（＋添加 ▾ ｜ 撤销 / 重做）｜⑤ 交付（截图 / 产出 / 退出）；另导出 Cluster（功能簇胶囊，导演视图顶栏复用）
  * [POS]: director/panels/topbar 的装配根。2026-09-09 之前这些控件分在四条带上（顶栏 + 视口左缘 + 视口底中 + 视口右下），
  *        是设计系统 §1.5.4 点名的反例；收成五簇后正好用满 L1「每个面 ≤5 个功能簇」的预算，视口四边不再有控件。
  *        簇与簇之间留 gap 而不是分隔线：§1.5.3 要求分段要有名字或可见边界，浮起来的独立胶囊本身就是边界。
@@ -24,8 +24,8 @@ import { ViewportToolbar } from '../viewport/ViewportToolbar'
 import { AddObjectMenu } from './AddObjectMenu'
 import { ViewMenu } from './ViewMenu'
 
-/** 一个功能簇 = 一枚浮起的胶囊。边界靠间距和描边，不靠分隔线（§1.5.3）。 */
-function Cluster({ label, children, testId, className }: { label: string; children: React.ReactNode; testId?: string; className?: string }): JSX.Element {
+/** 一个功能簇 = 一枚浮起的胶囊。边界靠间距和描边，不靠分隔线（§1.5.3）。导演视图（3D-BOX）顶栏同用这一枚，不另抄一份样式。 */
+export function Cluster({ label, children, testId, className }: { label: string; children: React.ReactNode; testId?: string; className?: string }): JSX.Element {
   return (
     <div
       className={cn('pointer-events-auto flex items-center gap-1 rounded-nomi-lg border border-nomi-line bg-nomi-paper/95 p-1 shadow-nomi-md backdrop-blur', className)}
@@ -44,9 +44,12 @@ export type DirectorTopBarProps = {
   onCancelCreation?: () => void
   onOpenSettings?: () => void
   onOpenHelp?: () => void
+  director3dBox?: boolean
+  viewMode?: 'director' | 'refine'
+  onViewModeChange?: (mode: 'director' | 'refine') => void
 }
 
-export function DirectorTopBar({ onResetView, onExit, onCancelCreation, onOpenSettings, onOpenHelp }: DirectorTopBarProps): JSX.Element {
+export function DirectorTopBar({ onResetView, onExit, onCancelCreation, onOpenSettings, onOpenHelp, director3dBox = false, viewMode = 'refine', onViewModeChange }: DirectorTopBarProps): JSX.Element {
   const { t } = useTranslation()
   const store = useDirectorStoreApi()
   const outputs = useOutputs()
@@ -98,6 +101,10 @@ export function DirectorTopBar({ onResetView, onExit, onCancelCreation, onOpenSe
       </Cluster>
 
       <div className="flex items-start gap-3">
+        {director3dBox ? <Cluster label={t('director.topbar.viewModeAria')} testId="director-view-mode">
+          <button type="button" className={cn('rounded-nomi-sm px-2 py-1 text-caption', viewMode === 'director' ? 'bg-nomi-accent-soft text-nomi-accent' : 'text-nomi-ink-60')} aria-pressed={viewMode === 'director'} onClick={() => onViewModeChange?.('director')}>{t('director.topbar.directorView')}</button>
+          <button type="button" className={cn('rounded-nomi-sm px-2 py-1 text-caption', viewMode === 'refine' ? 'bg-nomi-accent-soft text-nomi-accent' : 'text-nomi-ink-60')} aria-pressed={viewMode === 'refine'} onClick={() => onViewModeChange?.('refine')}>{t('director.topbar.refineView')}</button>
+        </Cluster> : null}
         {/* ② 视图 */}
         <Cluster label={t('director.topbar.viewAria')} testId="director-view-cluster">
           <WorkbenchIconButton size="sm" icon={<IconRefresh size={16} stroke={1.9} />} label={`${t('director.topbar.resetCamera')} (${formatHotkey(DIRECTOR_HOTKEYS.resetCamera)})`} onClick={onResetView} />

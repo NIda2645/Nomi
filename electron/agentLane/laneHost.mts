@@ -26,6 +26,7 @@ import { ASK_USER_VERB_NAME } from '../shared/agentCapabilities/askUser.js';
 // 「不重试」说的是不写重试循环：`LANE_RETRY_POLICY` 是**配置**，退避、事件、状态全是 pi 的。
 //
 // 对照今天的宿主：`electron/projectAgentHost/` 是 52 个生产文件、9 688 行。
+import { director3dBoxProof } from '../shared/featureFlags/director3dbox.js';
 import { configureLaneContextBudget, laneCompactionSettings } from './laneContextBudget.mjs';
 import { formatLaneModelIndex } from './laneModelContext.js';
 import { convertToLlm } from '@earendil-works/pi-agent-core';
@@ -50,6 +51,9 @@ import { projectLaneSnapshot, type LaneModelFacts } from '../shared/agentLane/la
 import { openLaneNativeDesktop } from './laneNativeDesktop.mjs';
 import { LANE_DEFERRED_TOOL_GROUPS } from './laneToolCatalog.js';
 import { appendLaneContinuation, laneContinuationText } from './laneContinuation.mjs';
+
+// Bootstrap proof is intentionally read before the pi runtime is assembled.
+export const DIRECTOR_3DBOX_BOOTSTRAP_PROOF = director3dBoxProof();
 
 /** 阶段 1 的观测：pi 每个 delta 自报的 `contentIndex`，与我们从 content 数组下标推出来的那个。 */
 export interface LaneOrderObservation {

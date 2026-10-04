@@ -4,9 +4,10 @@
  *          ./model/directorStore 的 createDirectorStore、./DirectorEditorContext、
  *          ./panels/EditorSplit、./panels/side/SidePanels、./panels/viewport/DirectorViewport、./timeline/DirectorTimeline、./scene/ViewportApiContext、
  *          ./scene/viewSettings（偏好读写）、./useDirectorHotkeys、./useMobileCamera、./MobileCameraContext、
- *          ./panels/dialogs/{MobileConnectDialog, SettingsDialog, HelpDialog}、./model/directorTypes
+ *          ./panels/dialogs/{MobileConnectDialog, SettingsDialog, HelpDialog}、./model/directorTypes、./DirectorViewShell、./directorSessionRegistry、../../../../featureFlags/director3dbox
  *          ./model/cameraCoordinateSpace / sceneObjectGraph 的当前世界视角转图层局部位姿、创建模式取消登记
  * [OUTPUT]: 对外提供 DirectorEditor（default）：全屏壳 —— 顶栏 / 视口 / 时间轴（S2）/ 右栏 五区域 + 可拖分栏 + 退出确认 + 自动保存 +
+ *           开关开启时提供占画布区的导演视图外壳，镜头条只读且沿用实测模块；编辑器会话登记为外部 AI 写入入口
  *           区域感知快捷键 + 手机虚拟相机桥 + 本机偏好（漫游 / 灵敏度 / 视口主题）与设置 / 帮助对话框
  * [POS]: director 的页面根：创建并注入 store 与视口 API，负责「打开/关闭/写回」生命周期与区域布局（方案 §4.0 O1–O5）。
  *        壳从 Windows 自绘窗口栏之下起画（不是 inset-0 铺满）：那条 32px 是系统拖拽带，盖住它顶部工具条
@@ -50,6 +51,11 @@ import { isTextTarget, useDirectorHotkeys } from './useDirectorHotkeys'
 import { transformCameraPose } from './model/cameraCoordinateSpace'
 import { invertFrame, sceneFrame } from './model/sceneObjectGraph'
 import { orderedTimelineEntities } from './model/timelineTracks'
+import { registerDirectorSession } from './directorSessionRegistry'
+import { isDirector3DBoxEnabled } from '../../../../featureFlags/director3dbox'
+import { DirectorViewShell, type DirectorViewMode } from './DirectorViewShell'
+import { useWorkbenchStore } from '../../../workbenchStore'
+import { assistantPaneWidth } from '../../../assistantWidthBounds'
 
 export type DirectorEditorProps = {
   rawProject: unknown
@@ -79,15 +85,18 @@ function readTimelineCollapsed(): boolean {
 }
 
 type EditorBodyProps = {
+  nodeTitle: string
   scopeRef: React.MutableRefObject<DirectorHotkeyScope>
   onExit: () => void
   preferences: DirectorPreferences
   onChangePreferences: (next: DirectorPreferences) => void
   nodeId?: string
   onSendToCanvas?: (output: DirectorOutput) => void
+  onExternalProjectChange?: (project: DirectorProject) => void
 }
 
 type EditorStageProps = {
+  nodeTitle: string
   scopeRef: React.MutableRefObject<DirectorHotkeyScope>
   preferences: DirectorPreferences
   cancelCreationRef: React.MutableRefObject<(() => void) | null>
@@ -97,6 +106,10 @@ type EditorStageProps = {
   onExit: () => void
   onOpenSettings: () => void
   onOpenHelp: () => void
+  director3dBox: boolean
+  viewMode: DirectorViewMode
+  onViewModeChange: (mode: DirectorViewMode) => void
+  onProduce: () => void
 }
 
 /**
@@ -104,7 +117,7 @@ type EditorStageProps = {
  * 而那个 Provider 是 EditorBody 渲染的 —— 在 EditorBody 自己的函数体里调，拿到的是 provider 之外的空值，
  * useViewportApi() 当场抛错、整块懒加载壳落到「加载失败」（2026-09-09 真机走查抓到）。
  */
-function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollapsed, onToggleTimeline, onResetView, onExit, onOpenSettings, onOpenHelp }: EditorStageProps): JSX.Element {
+function EditorStage({ nodeTitle, scopeRef, preferences, cancelCreationRef, timelineCollapsed, onToggleTimeline, onResetView, onExit, onOpenSettings, onOpenHelp, director3dBox, viewMode, onViewModeChange, onProduce }: EditorStageProps): JSX.Element {
   const { t } = useTranslation()
   // 创建模式只调一次 hook，经 CreationModeContext 下发：视口要指针路由与 ghost ref，顶栏「＋添加」要能发起。
   // 两处各调一次 = 两份互不知情的模式状态（P1 的并行版）。
@@ -113,6 +126,20 @@ function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollaps
   const creationMode = React.useMemo(() => ({ placement, boxDraw }), [placement, boxDraw])
   // 时间轴上一个实体都没有时把它钉成一条：比例记忆不动，加了轨道立刻回到用户自己的分栏
   const timelineEmpty = useDirectorStore((state) => orderedTimelineEntities(state.activeScene()).length === 0)
+  if (director3dBox && viewMode === 'director') {
+    return <DirectorViewShell
+      nodeTitle={nodeTitle}
+      scopeRef={scopeRef}
+      placement={placement}
+      boxDraw={boxDraw}
+      cancelCreationRef={cancelCreationRef}
+      theme={preferences.theme}
+      viewSettings={preferences.view}
+      onExit={onExit}
+      onViewModeChange={onViewModeChange}
+      onProduce={onProduce}
+    />
+  }
   return (
     <CreationModeContext.Provider value={creationMode}>
       <div className="relative min-h-0 flex-1">
@@ -134,6 +161,7 @@ function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollaps
               placement={placement}
               boxDraw={boxDraw}
               cancelCreationRef={cancelCreationRef}
+              showAiSceneBar={!director3dBox}
             />
             <SidePanels />
           </div>
@@ -145,13 +173,16 @@ function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollaps
           onCancelCreation={() => cancelCreationRef.current?.()}
           onOpenSettings={onOpenSettings}
           onOpenHelp={onOpenHelp}
+          director3dBox={director3dBox}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
         />
       </div>
     </CreationModeContext.Provider>
   )
 }
 
-function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId, onSendToCanvas }: EditorBodyProps): JSX.Element {
+function EditorBody({ nodeTitle, scopeRef, onExit, preferences, onChangePreferences, nodeId, onSendToCanvas, onExternalProjectChange }: EditorBodyProps): JSX.Element {
   const apiRef = React.useRef<ViewportApi | null>(null)
   const cancelCreationRef = React.useRef<(() => void) | null>(null)
   const store = useDirectorStoreApi()
@@ -161,6 +192,8 @@ function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId
   const outputs = useDirectorOutputs({ apiRef, ownerNodeId: nodeId, onSendToCanvas })
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [helpOpen, setHelpOpen] = React.useState(false)
+  const director3dBox = isDirector3DBoxEnabled()
+  const [viewMode, setViewMode] = React.useState<DirectorViewMode>('director')
   const [timelineCollapsed, setTimelineCollapsed] = React.useState(readTimelineCollapsed)
   const toggleTimeline = React.useCallback(() => {
     setTimelineCollapsed((collapsed) => {
@@ -172,6 +205,12 @@ function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId
       return !collapsed
     })
   }, [])
+
+  React.useEffect(() => registerDirectorSession(nodeId, {
+    store,
+    defaultSceneName: t('director.node.sceneDefaultName'),
+    onExternalProjectChange,
+  }), [nodeId, onExternalProjectChange, store, t])
 
   useDirectorHotkeys({
     scopeRef,
@@ -212,6 +251,7 @@ function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId
       {/* 五个功能簇一条悬浮顶栏（2026-09-09 用户拍板，方案 docs/plan/2026-09-09-director-chrome-five-clusters.md）：
           2026-09-04 那条整行标题栏连同视口左缘 / 底中 / 右下三条浮层一起收进这里，视口四边不再有控件带。 */}
       <EditorStage
+        nodeTitle={nodeTitle}
         scopeRef={scopeRef}
         preferences={preferences}
         cancelCreationRef={cancelCreationRef}
@@ -221,6 +261,10 @@ function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId
         onExit={onExit}
         onOpenSettings={() => setSettingsOpen(true)}
         onOpenHelp={() => setHelpOpen(true)}
+        director3dBox={director3dBox}
+        viewMode={viewMode}
+        onViewModeChange={setViewMode}
+        onProduce={() => undefined}
       />
       <MobileConnectDialog />
       <SettingsDialog
@@ -262,6 +306,9 @@ export default function DirectorEditor({ rawProject, nodeTitle, readOnly = false
     storeRef.current = createDirectorStore({ rawProject, defaultSceneName: t('director.node.sceneDefaultName') })
   }
   const store = storeRef.current
+  const director3dBox = isDirector3DBoxEnabled()
+  const assistantWidth = useWorkbenchStore((state) => state.editingPanelLayout.assistantWidth)
+  const assistantCollapsed = useWorkbenchStore((state) => state.projectAgentDockCollapsed)
   const onProjectChangeRef = React.useRef(onProjectChange)
   onProjectChangeRef.current = onProjectChange
   const scopeRef = React.useRef<DirectorHotkeyScope>('viewport')
@@ -359,18 +406,30 @@ export default function DirectorEditor({ rawProject, nodeTitle, readOnly = false
       <TooltipProvider>
         <div
           className="fixed inset-x-0 bottom-0 isolate flex flex-col overflow-hidden bg-nomi-bg text-nomi-ink font-nomi-sans"
-          style={{ top: currentFullscreenOverlayTopOffset(), zIndex: FULLSCREEN_Z_INDEX }}
+          style={director3dBox
+            ? { top: currentFullscreenOverlayTopOffset(), right: assistantCollapsed ? 0 : assistantPaneWidth(assistantWidth), zIndex: FULLSCREEN_Z_INDEX }
+            : { top: currentFullscreenOverlayTopOffset(), zIndex: FULLSCREEN_Z_INDEX }}
           role="dialog"
           aria-modal="true"
           aria-label={nodeTitle ? `${t('director.editor.aria')} · ${nodeTitle}` : t('director.editor.aria')}
           tabIndex={0}
           data-testid="director-editor"
+          data-director-3dbox={director3dBox ? 'on' : undefined}
           onKeyDown={(event) => event.stopPropagation()}
           onKeyUp={(event) => event.stopPropagation()}
           onPointerDown={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
         >
-          <EditorBody scopeRef={scopeRef} onExit={() => void handleExit()} preferences={preferences} onChangePreferences={changePreferences} nodeId={nodeId} onSendToCanvas={onSendToCanvas} />
+          <EditorBody
+            nodeTitle={nodeTitle}
+            scopeRef={scopeRef}
+            onExit={() => void handleExit()}
+            preferences={preferences}
+            onChangePreferences={changePreferences}
+            nodeId={nodeId}
+            onSendToCanvas={onSendToCanvas}
+            onExternalProjectChange={(project) => onProjectChangeRef.current(project)}
+          />
         </div>
       </TooltipProvider>
     </DirectorStoreContext.Provider>
