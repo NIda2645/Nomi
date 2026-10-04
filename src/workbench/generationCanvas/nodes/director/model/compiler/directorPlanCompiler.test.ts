@@ -1,113 +1,46 @@
 import { describe, expect, it } from 'vitest'
 import { compileDirectorPlan } from './directorPlanCompiler'
-import {
-  measureContinuity,
-  recognizeCameraMotion,
-  sampleDirectorProject,
-  distanceForShotSize,
-} from '../directorEvalMeasurement'
+import { measureContinuity, recognizeCameraMotion, sampleDirectorProject, distanceForShotSize } from '../directorEvalMeasurement'
 import { forwardFromAngles, normalize, sub } from '../vec3'
 import { S1_ORACLE_PLANS } from '../../../../../../../evals/director/s1OraclePlans'
 
 describe('S1 director compiler', () => {
   it('compiles all hand-written oracle plans', () => {
-    for (const plan of Object.values(S1_ORACLE_PLANS)) {
-      const result = compileDirectorPlan(plan)
-      expect(result.ok).toBe(true)
-      if (result.ok) expect(result.project.scenes[0].cameras.length).toBe(plan.shots.length)
-    }
+    for (const plan of Object.values(S1_ORACLE_PLANS)) { const result = compileDirectorPlan(plan); expect(result.ok).toBe(true); if (result.ok) expect(result.project.scenes[0].cameras.length).toBe(plan.shots.length) }
   })
   it('is deterministic and uses the measurement distance owner', () => {
-    const plan = S1_ORACLE_PLANS['perfume-orbit']
-    const a = compileDirectorPlan(plan),
-      b = compileDirectorPlan(plan)
-    expect(a).toEqual(b)
-    if (a.ok) {
-      const scene = a.project.scenes[0],
-        camera = scene.cameras[0],
-        product = scene.objects.find((o) => o.id === a.actorMap.bottle)!
-      const distance = Math.hypot(camera.position.x - product.position.x, camera.position.z - product.position.z)
-      expect(distance).toBeCloseTo(distanceForShotSize('特写', product.scale.y, 45, 'object'), 4)
-      expect(sampleDirectorProject(a.project, { duration: a.duration }).frames.length).toBeGreaterThan(1)
-    }
+    const plan = S1_ORACLE_PLANS['perfume-orbit']; const a = compileDirectorPlan(plan), b = compileDirectorPlan(plan); expect(a).toEqual(b)
+    if (a.ok) { const scene = a.project.scenes[0], camera = scene.cameras[0], product = scene.objects.find(o => o.id === a.actorMap.bottle)!; const distance = Math.hypot(camera.position.x - product.position.x, camera.position.z - product.position.z); expect(distance).toBeCloseTo(distanceForShotSize('特写', product.scale.y, 45, 'object'), 4); expect(sampleDirectorProject(a.project, { duration: a.duration }).frames.length).toBeGreaterThan(1) }
   })
   it('returns structured errors without a half-built project', () => {
-    const result = compileDirectorPlan({ version: 2, scene: { tags: [], environment: 'day' }, actors: [], shots: [] })
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.errors.length).toBeGreaterThan(0)
+    const result = compileDirectorPlan({ version: 2, scene: { tags: [], environment: 'day' }, actors: [], shots: [] }); expect(result.ok).toBe(false); if (!result.ok) expect(result.errors.length).toBeGreaterThan(0)
   })
   it('measurement catches a deliberately bad camera placement', () => {
-    const result = compileDirectorPlan(S1_ORACLE_PLANS['perfume-orbit'])
-    expect(result.ok).toBe(true)
-    if (!result.ok) return
-    const scene = result.project.scenes[0],
-      actor = scene.objects.find((o) => o.id === result.actorMap.bottle)!,
-      camera = scene.cameras[0]
+    const result = compileDirectorPlan(S1_ORACLE_PLANS['perfume-orbit']); expect(result.ok).toBe(true); if (!result.ok) return
+    const scene = result.project.scenes[0], actor = scene.objects.find(o => o.id === result.actorMap.bottle)!, camera = scene.cameras[0]
     camera.position = { ...actor.position }
-    camera.motionTrajectory = camera.motionTrajectory?.map((point) => ({
-      ...point,
-      x: actor.position.x,
-      y: actor.position.y,
-      z: actor.position.z,
-    }))
+    camera.motionTrajectory = camera.motionTrajectory?.map(point => ({ ...point, x: actor.position.x, y: actor.position.y, z: actor.position.z }))
     const measurements = sampleDirectorProject(result.project, { duration: result.duration })
-    expect(measureContinuity(measurements, scene).some((issue) => issue.kind === 'camera-inside')).toBe(true)
+    expect(measureContinuity(measurements, scene).some(issue => issue.kind === 'camera-inside')).toBe(true)
   })
   it('compiles orbit and follow into measurable camera motion', () => {
-    const orbit = compileDirectorPlan(S1_ORACLE_PLANS['perfume-orbit'])
-    expect(orbit.ok).toBe(true)
-    if (orbit.ok) {
-      const m = sampleDirectorProject(orbit.project, { duration: orbit.duration })
-      expect(recognizeCameraMotion(m, orbit.actorMap.bottle, { start: 0, end: 5 }).move).toBe('orbit_right')
-    }
-    const followPlan = {
-      ...S1_ORACLE_PLANS['police-chase'],
-      shots: S1_ORACLE_PLANS['police-chase'].shots.map((shot) =>
-        shot.id === 'follow' ? { ...shot, transitionIn: 'cut' as const } : shot,
-      ),
-    }
-    const chase = compileDirectorPlan(followPlan)
-    expect(chase.ok).toBe(true)
-    if (chase.ok) {
-      const m = sampleDirectorProject(chase.project, { duration: chase.duration })
-      expect(['follow', 'track_right', 'track_left', 'pull_out']).toContain(
-        recognizeCameraMotion(m, chase.actorMap.suspect_car, { start: 2, end: 6 }).move,
-      )
-    }
+    const orbit = compileDirectorPlan(S1_ORACLE_PLANS['perfume-orbit']); expect(orbit.ok).toBe(true); if (orbit.ok) { const m = sampleDirectorProject(orbit.project, { duration: orbit.duration }); expect(recognizeCameraMotion(m, orbit.actorMap.bottle, { start: 0, end: 5 }).move).toBe('orbit_right') }
+    const followPlan = { ...S1_ORACLE_PLANS['police-chase'], shots: S1_ORACLE_PLANS['police-chase'].shots.map(shot => shot.id === 'follow' ? { ...shot, transitionIn: 'cut' as const } : shot) }
+    const chase = compileDirectorPlan(followPlan); expect(chase.ok).toBe(true); if (chase.ok) { const m = sampleDirectorProject(chase.project, { duration: chase.duration }); expect(['follow', 'track_right', 'track_left', 'pull_out']).toContain(recognizeCameraMotion(m, chase.actorMap.suspect_car, { start: 2, end: 6 }).move) }
   })
   it('keeps vehicle close shots outside the vehicle footprint and resolves template aliases', () => {
     const plan = {
       version: 2 as const,
       scene: { tags: ['street'], environment: 'day' as const, template: 'street' as const, setPieces: [] },
-      actors: [
-        {
-          id: 'van',
-          kind: 'vehicle' as const,
-          desc: 'delivery van',
-          placement: { relation: 'at' as const, ref: 's1-street-floor' },
-        },
-      ],
+      actors: [{ id: 'van', kind: 'vehicle' as const, desc: 'delivery van', placement: { relation: 'at' as const, ref: 's1-street-floor' } }],
       blocking: [{ actor: 'van', verb: 'drive_along' as const, window: [0, 4] as [number, number] }],
-      shots: [
-        {
-          id: 'close',
-          window: [0, 4] as [number, number],
-          transitionIn: 'cut' as const,
-          subject: 'van',
-          size: '近景' as const,
-          angle: 'front' as const,
-          height: 'eye' as const,
-          move: { kind: 'follow' as const, speed: 'fast' as const, easing: 'linear' as const },
-        },
-      ],
+      shots: [{ id: 'close', window: [0, 4] as [number, number], transitionIn: 'cut' as const, subject: 'van', size: '近景' as const, angle: 'front' as const, height: 'eye' as const, move: { kind: 'follow' as const, speed: 'fast' as const, easing: 'linear' as const } }],
     }
     const result = compileDirectorPlan(plan)
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(result.issues.some((issue) => issue.kind === 'unknown-ref')).toBe(false)
-    expect(result.issues.some((issue) => issue.kind === 'measurement' && issue.message.includes('camera enters'))).toBe(
-      false,
-    )
+    expect(result.issues.some((issue) => issue.kind === 'measurement' && issue.message.includes('camera enters'))).toBe(false)
   })
   it('materializes only action-library ids for blocking', () => {
     const result = compileDirectorPlan(S1_ORACLE_PLANS['courtyard-standoff'])
@@ -126,10 +59,7 @@ describe('S1 director compiler', () => {
     const subject = result.project.scenes[0].objects.find((object) => object.id === result.actorMap.subject)!
     const target = { x: subject.position.x, y: subject.position.y + 1.5, z: subject.position.z }
     const direction = normalize(sub(target, camera.position))
-    const forward = forwardFromAngles(
-      camera.motionTrajectory?.[0]?.yaw ?? camera.yaw,
-      camera.motionTrajectory?.[0]?.pitch ?? camera.pitch,
-    )
+    const forward = forwardFromAngles(camera.motionTrajectory?.[0]?.yaw ?? camera.yaw, camera.motionTrajectory?.[0]?.pitch ?? camera.pitch)
     expect(forward.x * direction.x + forward.y * direction.y + forward.z * direction.z).toBeGreaterThan(0.999)
   })
 })
