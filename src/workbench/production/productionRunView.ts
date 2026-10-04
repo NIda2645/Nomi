@@ -6,7 +6,7 @@ import type {
   ProductionRunStatus,
   ProductionRunSummary,
 } from '../../../electron/productionRun/productionRunTypes'
-import { OUTPUT_RETRIEVAL_FAILED } from '../../../electron/productionRun/productionRunTypes'
+import { jobAwaitsRetrieval } from '../../../electron/shared/productionShotPhase'
 import { isBuiltinMcpClient } from '../../../electron/shared/mcpClientRegistry'
 import type { TaskCenterGroup } from '../taskCenter/taskCenterProjection'
 import { productionPlaybookLabelKey } from './productionRunLabels'
@@ -152,7 +152,7 @@ export function buildProductionRunView(
   const job = latestJob(run)
   const unknown = run.jobs.find((value) => value.status === 'submission_unknown')
   // 已生成、取回失败（#975 A2）：结果在服务商那边，丢的只是下载——唯一的下一步是「重新取回」（不重新生成）。
-  const unretrieved = run.jobs.find((value) => value.status === 'needs_attention' && value.errorCode === OUTPUT_RETRIEVAL_FAILED && Boolean(value.providerTaskId))
+  const unretrieved = run.jobs.find((value) => jobAwaitsRetrieval(value))
   const waitingGate = run.gates.find((value) => value.status === 'waiting')
   const skills = [...new Map(
     run.gates.flatMap((gate) => gate.contract?.skills ?? [])

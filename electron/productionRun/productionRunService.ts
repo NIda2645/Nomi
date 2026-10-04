@@ -24,7 +24,8 @@ import { readAutomationPolicySettings } from '../settings/automationPolicySettin
 import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings'
 import { readConnectedModelScope } from './connectedModelScope'
 import { assertProductionPolicyReady } from './productionPolicyReadiness'
-import { OUTPUT_RETRIEVAL_FAILED, normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
+import { normalizeTrustLevel, trustLevelOf } from './productionRunTypes'
+import { jobAwaitsRetrieval } from '../shared/productionShotPhase'
 import { assertCallerDeclaredTrustLevel, trustLevelFromApprovalPolicy } from './productionRunTrustAuthority'
 import { createGateApprovalOwner } from './productionRunApprovalReceipt'
 import { isAnchorCheckpointGate } from './anchorCheckpoint'
@@ -303,7 +304,7 @@ export function createProductionRunService(deps: ServiceDeps = {}) {
       const current = requireRun(safeProjectId, safeRunId)
       const jobId = typeof runCommand.payload.jobId === 'string' ? runCommand.payload.jobId.trim() : ''
       const job = current.jobs.find((candidate) => candidate.jobId === jobId)
-      if (!job || job.status !== 'needs_attention' || job.errorCode !== OUTPUT_RETRIEVAL_FAILED || !job.providerTaskId) {
+      if (!job || !jobAwaitsRetrieval(job)) {
         throw new Error('Production job is not waiting for its result to be retrieved')
       }
       if (!isSemanticMultiShotRun(current)) throw new Error('Retrieving a result again is only available for batch shots')

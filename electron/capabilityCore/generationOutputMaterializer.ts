@@ -5,6 +5,8 @@ import { hardenedFetchDiagnostics, type HardenedFetchResult } from "../hardenedF
 import { isOutboundDestinationRefusedError } from "../networkOutboundPolicy";
 import { logWarn } from "../logging/logger";
 import { OUTPUT_RETRIEVAL_FAILED } from "../productionRun/productionRunTypes";
+import { GeneratedMediaValidationError } from "../assets/generatedMediaDecode";
+import { stripNomiErrorCode } from "../shared/nomiErrorCodes";
 import { writeDeterministicAsset } from "../assets/projectAssetStore";
 import { exceedsProviderMediaCap, fetchProviderMedia, type ProviderMediaFetchOptions } from "../assets/providerMediaFetch";
 import type { Vendor } from "../catalog/types";
@@ -66,6 +68,8 @@ function isAbort(error: unknown): boolean {
 /** 这次取回失败，换个时间再取会不会不一样（见 GenerationOutputRetrievalError）。 */
 function retrievalFailureIsDeterministic(error: unknown): boolean {
   if (isOutboundDestinationRefusedError(error)) return true;
+  // 落盘前的字节 / 解码校验没过：同一份字节再校验也是同一个结论（V-975：坏 MP4 每 15 秒整段重下一次）。
+  if (error instanceof GeneratedMediaValidationError) return true;
   if (isAbort(error)) return false;
   const status = hardenedFetchDiagnostics(error)?.status ?? null;
   if (status === null) return false;
@@ -74,7 +78,8 @@ function retrievalFailureIsDeterministic(error: unknown): boolean {
 }
 
 function retrievalError(error: unknown): GenerationOutputRetrievalError {
-  const detail = error instanceof Error ? error.message : String(error);
+  // 内层错误自带的机器码（如 output-unreadable）剥掉，只留事实：外层只有一个码，渲染层按它说话。
+  const detail = stripNomiErrorCode(error instanceof Error ? error.message : String(error));
   return new GenerationOutputRetrievalError(detail, retrievalFailureIsDeterministic(error), { cause: error });
 }
 
@@ -164,12 +169,19 @@ export function createGenerationOutputMaterializer(deps: GenerationOutputMateria
       throw new GenerationOutputRetrievalError(`Generation output content type does not match ${input.output.kind}`, true);
     }
     const materializationKey = `${input.providerTaskId}:${input.output.providerOutputId || input.output.url}`;
-    const stored = storeAsset(input.projectId, bytes, fileNameFor(input.output), normalizedType, {
-      kind: "generated",
-      source: "external-mcp",
-      providerTaskId: input.providerTaskId,
-      ...(input.output.providerOutputId ? { providerOutputId: input.output.providerOutputId } : {}),
-    }, materializationKey) as StoredAsset;
+    let stored: StoredAsset;
+    try {
+      stored = storeAsset(input.projectId, bytes, fileNameFor(input.output), normalizedType, {
+        kind: "generated",
+        source: "external-mcp",
+        providerTaskId: input.providerTaskId,
+        ...(input.output.providerOutputId ? { providerOutputId: input.output.providerOutputId } : {}),
+      }, materializationKey) as StoredAsset;
+    } catch (error) {
+      // 落盘校验（字节认不出、解码不了、类型对不上）也是取回这一步的确定性失败；别的落盘错误（磁盘满等）原样抛。
+      if (error instanceof GeneratedMediaValidationError) throw retrievalError(error);
+      throw error;
+    }
     const artifactId = typeof stored.id === "string" ? stored.id.trim() : "";
     const projectRelativePath = typeof stored.data?.relativePath === "string" ? stored.data.relativePath.trim() : "";
     const thumbnailRelativePath = typeof stored.data?.thumbnailRelativePath === "string" ? stored.data.thumbnailRelativePath.trim() : "";

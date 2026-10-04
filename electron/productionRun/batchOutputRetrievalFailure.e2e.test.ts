@@ -20,7 +20,14 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// 落盘走真的 writeDeterministicAsset（含生成产物的字节 / 解码校验）；只把项目根换成临时目录。
+const assetRoot = vi.hoisted(() => ({ dir: "" }));
+vi.mock("../projects/repository", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../projects/repository")>(),
+  projectDirById: () => assetRoot.dir,
+}));
 
 import { compileExecutionContract, type PlanCandidate } from "../capabilityCore/executionContract";
 import { createModuleRegistry } from "../capabilityCore/moduleRegistry";
@@ -35,6 +42,9 @@ import { createProductionShotDispatchGuard } from "./productionShotDispatchGuard
 import { registerBatchSchedulerKicker } from "./batchSchedulerKick";
 import { createProductionRunService } from "./productionRunService";
 import { matchNomiErrorCode } from "../shared/nomiErrorCodes";
+import { writeDeterministicAsset } from "../assets/projectAssetStore";
+import { deriveProductionShotState } from "../shared/productionShotPhase";
+import { buildMaterializeShotsPayload } from "./multiShotCanvasLanding";
 import type { ProductionGenerationShot } from "./productionRunTypes";
 
 const NOW_BASE = Date.parse("2026-10-04T00:00:00.000Z");
@@ -118,12 +128,15 @@ function wire(input: {
   outputOrigin: () => string;
   counts: { submits: number; queries: number };
   fetchCalls: { count: number };
+  realAssetStore?: boolean;
 }) {
   // 真取回器：连接地址来自「目录」（这里是 vendorBase），私网例外只问 #975 A 的那一句判据。
   const materializer = createGenerationOutputMaterializer({
     resolveVendor: () => ({ baseUrlHint: input.vendorBase() }),
     fetchOutput: (url, options) => { input.fetchCalls.count += 1; return fetchProviderMedia(url, options); },
-    writeAsset: (_projectId, bytes) => ({ id: `asset-${bytes.length}`, data: { relativePath: "assets/generated/out.mp4" } }) as never,
+    writeAsset: input.realAssetStore
+      ? writeDeterministicAsset
+      : ((_projectId: string, bytes: Buffer) => ({ id: `asset-${bytes.length}`, data: { relativePath: "assets/generated/out.mp4" } })) as never,
   });
   const submission = createProductionGenerationSubmission({
     repository: input.repository,
@@ -165,12 +178,41 @@ describe("#975 A2：确定性的取回失败停下来，不再一轮轮重查重
     expect(matchNomiErrorCode(job.errorMessage ?? "")).toBe("output-retrieval-failed");
     expect(job.errorMessage).not.toContain(files.origin); // 结果地址（可能带签名）不进人话
     expect(run.status).toBe("needs_attention");
+    // V-975：镜头阶段投影只有一份判据——这一镜是「已生成、待取回」，不是「失败」；画布节点据此挂「可找回」。
+    expect(deriveProductionShotState(run, "shot-1")?.phase).toBe("unretrieved");
+    const payload = buildMaterializeShotsPayload(run, { projectRoot: null });
+    expect(payload?.shots.find((entry) => entry.shotId === "shot-1")?.generation).toMatchObject({ state: "recoverable" });
 
     // 再踢一次（定时器 / 重开项目 / 重启）：这一镜不在观察列表里了，不查、不下、不提交。
     await scheduler.runToQuiescence();
     expect(fetchCalls.count).toBe(1);
     expect(counts.queries).toBe(1);
     expect(counts.submits).toBe(1);
+  });
+
+  it("V-975：产物取回来了但是坏 MP4（落盘校验 unknown_bytes）：同样取一次就停，不再每 15 秒整段重下", async () => {
+    assetRoot.dir = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-975-assets-"));
+    roots.push(assetRoot.dir);
+    const files = await startFileServer(); // 交出去的就是 20 字节的「MP4 头」，不是一段能解码的视频
+    const { root, repository } = setup([shot("shot-1")]);
+    const counts = { submits: 0, queries: 0 };
+    const fetchCalls = { count: 0 };
+    // 连接地址就是产物所在的 origin（#975 A 放行），失败只发生在真的落盘校验这一步。
+    const scheduler = wire({ root, repository, vendorBase: () => files.origin, outputOrigin: () => files.origin, counts, fetchCalls, realAssetStore: true });
+
+    await scheduler.runToQuiescence();
+    await scheduler.runToQuiescence(); // 再踢一次：不查、不下
+
+    expect(files.downloads()).toBe(1);
+    expect(fetchCalls.count).toBe(1);
+    expect(counts.queries).toBe(1);
+    expect(counts.submits).toBe(1);
+    const job = repository.read("project-1", "op-batch")!.jobs[0]!;
+    expect(job.status).toBe("needs_attention");
+    expect(job.errorCode).toBe("output_retrieval_failed");
+    expect(matchNomiErrorCode(job.errorMessage ?? "")).toBe("output-retrieval-failed");
+    expect(job.errorMessage).toContain("unknown_bytes");
+    expect(repository.read("project-1", "op-batch")!.status).toBe("needs_attention");
   });
 
   it("重新取回：只查一次、取一次，零新提交；取到了就落盘，这一镜 ready", async () => {

@@ -1,7 +1,7 @@
 import { deriveBatchPlan, type BatchDerivationResult, type CheckpointState, type DispatchTask } from "./batchScheduleDerivation";
 import type { ProductionRun } from "./productionRunTypes";
 import type { ProductionRunRepository } from "./productionRunRepository";
-import { GenerationOutputRetrievalFailedError, type ProductionGenerationSubmission } from "./productionGenerationSubmission";
+import { GenerationMaterializationUnsupportedError, GenerationOutputRetrievalFailedError, type ProductionGenerationSubmission } from "./productionGenerationSubmission";
 import { currentAnchorCheckpointGate, buildAnchorCheckpointGate } from "./anchorCheckpoint";
 import { logInfo, logWarn } from "../logging/logger";
 import { latestSpendAuthorizationDigest } from "../shared/productionSpendAuthority";
@@ -154,7 +154,8 @@ export function createMultiShotBatchScheduler(deps: BatchSchedulerDependencies) 
       if (polled.nextAction === "attention") return "settled"; // provider failed → job is needs_attention, leave it
       return "pending";
     } catch (error) {
-      if (error instanceof GenerationOutputRetrievalFailedError) {
+      // 两种都已经由提交门面耐久地落成 needs_attention：已结清，不再重查重下。
+      if (error instanceof GenerationOutputRetrievalFailedError || error instanceof GenerationMaterializationUnsupportedError) {
         logWarn("production-run", "batch-output-retrieval-failed", { shotId: task.shotId }, error);
         return "settled";
       }
