@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { createMcpProtocol, type McpInvokeOptions, type McpTransport } from './mcpProtocol'
 import { dispatch } from './dispatcher'
 import type { PlanConfirmInfo, ProjectGateway } from './gateway'
+import { canvasWriteResultSchema } from '../shared/agentCapabilities/canvasWrite'
 
 // T1 · 画布方案确认 elicitation-first + 会话级信任（plan 2026-08-18-t1-elicitation-first-plan-confirm）。
 // 纯协议层单测（注入假 transport）——不 spawn 进程、不碰真实库/App。验证：
@@ -29,7 +30,7 @@ class PlanHarness {
       if (method === 'canvas.write') {
         const count = Array.isArray(params.nodes) ? params.nodes.length : 0
         const ids = Array.from({ length: count }, (_, i) => `n${i}`)
-        return { applied: true, proposalId: 'proposal-test', operation: 'create_canvas_nodes', affectedNodeIds: ids, affectedEdgeIds: [], clientIdToNodeId: {}, connectedCount: 0, skippedEdges: [], reconciliation: { ok: true, deviationCount: 0 } }
+        return { applied: true, proposalId: 'proposal-test', changeId: 'canvas:v1:proposal-test', operation: 'create_canvas_nodes', affectedNodeIds: ids, affectedEdgeIds: [], clientIdToNodeId: {}, connectedCount: 0, skippedEdges: [], reconciliation: { ok: true, deviationCount: 0 } }
       }
       throw new Error(`unexpected invoke: ${method}`)
     })
@@ -316,6 +317,10 @@ describe('nomi-mcp · dispatch 层 planConfirmed 预批准方案门', () => {
     expect(spy.planCalls).toHaveLength(0) // 关键：confirmPlan 未被调 → 渲染层不弹卡
     expect(spy.getApplied()).toBe(1)
     expect((result as { affectedNodeIds: string[] }).affectedNodeIds).toHaveLength(2)
+    expect(canvasWriteResultSchema.parse(result)).toMatchObject({
+      applied: true,
+      changeId: expect.stringMatching(/^canvas:v1:/),
+    })
   })
 
   it('planConfirmed 未设：≥2 节点批量建节点照常调 gateway.confirmPlan（老路径不变）', async () => {

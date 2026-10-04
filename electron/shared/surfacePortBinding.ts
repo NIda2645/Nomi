@@ -403,6 +403,9 @@ export const SURFACE_PORT_WIRE_ERROR_CODE_LIST = [
   "surface_port_unavailable",
   "surface_port_stale",
   "surface_owner_mismatch",
+  // Domain-level reversible write refusal that must survive the renderer/main
+  // surface boundary so the Agent can explain a same-object conflict.
+  "undo_conflict",
 ] as const;
 
 export type SurfacePortWireErrorCode = (typeof SURFACE_PORT_WIRE_ERROR_CODE_LIST)[number];

@@ -5,6 +5,7 @@ import { jsonTolerantArray } from "./jsonArgTolerance";
 import { cameraMoveParamsObjectSchema, stagingReferenceParamsSchema, storyboardPlanParamsSchema } from "./canvasModelShapes";
 
 const canonicalIdSchema = z.string().trim().min(1);
+const changeIdSchema = z.string().trim().min(1).max(200).describe("Versioned reversible change id returned by this write.");
 export const CANVAS_WRITE_MAX_PROMPT_CHARS = 262_144;
 const nonBlankPromptSchema = z
   .string()
@@ -470,6 +471,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("set_node_prompt"),
       affectedNodeIds: z.array(canonicalIdSchema).length(1),
       reconciliation: reconciliationSchema,
@@ -479,6 +481,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("create_canvas_nodes"),
       affectedNodeIds: z.array(canonicalIdSchema).min(1).max(24),
       affectedEdgeIds: z.array(canonicalIdSchema),
@@ -492,6 +495,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("connect_canvas_edges"),
       affectedNodeIds: z.array(canonicalIdSchema),
       affectedEdgeIds: z.array(canonicalIdSchema),
@@ -504,6 +508,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("tidy_canvas"),
       affectedNodeIds: z.array(canonicalIdSchema),
       categoryId: canonicalIdSchema,
@@ -515,6 +520,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("propose_storyboard_plan"),
       result: z.unknown(),
       reconciliation: reconciliationSchema,
@@ -524,6 +530,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("patch_shots"),
       changedShotIndexes: z.array(z.number().int().min(1)).max(24),
       changedFields: z.array(z.string().trim().min(1)).max(8),
@@ -535,6 +542,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("arrange_storyboard_to_timeline"),
       result: z.unknown(),
       reconciliation: reconciliationSchema,
@@ -544,6 +552,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("create_staging_reference"),
       result: z.unknown(),
       reconciliation: reconciliationSchema,
@@ -553,6 +562,7 @@ export const canvasWriteResultSchema = z.union([
     .object({
       applied: z.literal(true),
       proposalId: canonicalIdSchema,
+      changeId: changeIdSchema,
       operation: z.literal("create_camera_move"),
       result: z.unknown(),
       reconciliation: reconciliationSchema,

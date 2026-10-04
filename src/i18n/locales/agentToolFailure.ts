@@ -41,6 +41,7 @@ export const zhAgentToolFailure = {
   capability_policy_stale: '权限设置在执行途中变了，这一步没有执行。',
   capability_output_invalid: '它返回的结果不合规，已经丢掉，没有落到项目里。',
   capability_timeout: '这一步等太久被停掉了，可能没做完。看一眼当前状态再决定要不要重来。',
+  undo_conflict: '这项改动之后同一对象又被改过，不能安全撤销。',
   // ── lane 工具自有 ──
   tool_arguments_invalid: '它这次的参数不对，这一步没有执行。',
   tool_execution_failed: '这一步没做成。看一眼当前状态，再让它重试。',
@@ -79,6 +80,7 @@ export const enAgentToolFailure = {
   capability_policy_stale: 'Permissions changed while it was running, so the step did not run.',
   capability_output_invalid: 'What it returned was malformed and was discarded. Nothing reached the project.',
   capability_timeout: 'That step took too long and was stopped; it may be half-done. Check the current state before retrying.',
+  undo_conflict: 'The same object changed after this action, so it was not safely undone.',
   tool_arguments_invalid: 'It passed the wrong arguments, so the step did not run.',
   tool_execution_failed: 'That step did not go through. Check the current state, then ask it to retry.',
   tool_timed_out: 'That step took too long and was stopped. Check the current state before retrying.',

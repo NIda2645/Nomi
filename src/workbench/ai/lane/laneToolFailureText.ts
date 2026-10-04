@@ -51,6 +51,7 @@ export const AGENT_TOOL_FAILURE_TEXT_KEY = {
   capability_policy_stale: 'agentToolFailure.capability_policy_stale',
   capability_output_invalid: 'agentToolFailure.capability_output_invalid',
   capability_timeout: 'agentToolFailure.capability_timeout',
+  undo_conflict: 'agentToolFailure.undo_conflict',
   tool_arguments_invalid: 'agentToolFailure.tool_arguments_invalid',
   tool_execution_failed: 'agentToolFailure.tool_execution_failed',
   tool_timed_out: 'agentToolFailure.tool_timed_out',

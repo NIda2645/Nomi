@@ -63,7 +63,7 @@ const RAW: Readonly<Record<string, Readonly<Record<string, readonly VerbFieldPro
     operations: ["model-authored", "from-read:read_timeline.clips"],
   },
   undo: {
-    undoToken: ["from-read:edit_timeline.undoToken"],
+    changeId: ["from-read:edit_timeline.changeId"],
     expectedRevision: ["from-read:read_timeline.revision"],
   },
   generate: {

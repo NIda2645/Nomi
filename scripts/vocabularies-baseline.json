@@ -1051,7 +1051,8 @@
         "surface_owner_mismatch",
         "surface_port_stale",
         "surface_port_suspended",
-        "surface_port_unavailable"
+        "surface_port_unavailable",
+        "undo_conflict"
       ],
       "reason": "C4 的 canonical owner 本体：端口线上错误码的唯一手写元组，同文件的 SurfacePortWireErrorCode 类型与 SURFACE_PORT_WIRE_ERROR_CODES 集合都从它 derive，transport adapter 一律 spread CAPABILITY_TRANSPORT_PUBLIC_ERROR_CODES。它就是本条规则要求大家收敛过来的那一份。",
       "site": "electron/shared/surfacePortBinding.ts::variable:SURFACE_PORT_WIRE_ERROR_CODE_LIST/as-const"

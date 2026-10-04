@@ -1804,14 +1804,14 @@
       "aliasBoundInput": null,
       "alsoCovers": null,
       "contractId": "timeline.write",
-      "description": "Revert one timeline change you made, by the undoToken its result returned. The user says undo, go back, or that the last change was wrong. It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here. undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
+      "description": "Revert one reversible change you made, by the changeId its result returned. The user says undo, go back, or that the last change was wrong. It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. If a later edit touched the same object, undo is rejected with the conflict reason. changeId from any reversible Agent write; expectedRevision is required only for a timeline change and may be omitted for a canvas change. The change lands in the project as a reversible local edit (in step-by-step approval mode the user confirms it first; otherwise it applies right away). This local edit grants no new spending permission; use the tool result for any generation status.",
       "effect": "reversible_local",
       "effectGroups": null,
       "examples": [
         {
           "arguments": {
-            "expectedRevision": "revision-2",
-            "undoToken": "undo-1"
+            "changeId": "timeline:v1:receipt-1",
+            "expectedRevision": "revision-2"
           },
           "when": "Revert the last plan:"
         }
@@ -1828,27 +1828,26 @@
         "internal"
       ],
       "promptGuidelines": null,
-      "promptSnippet": "Revert one timeline change you made, by the undoToken its result returned.",
+      "promptSnippet": "Revert one reversible change you made, by the changeId its result returned.",
       "publishedJsonSchema": {
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "properties": {
+          "changeId": {
+            "description": "The changeId returned by the reversible write you are reverting.",
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
           "expectedRevision": {
             "description": "Current timeline revision from read_timeline.",
             "maxLength": 64,
             "minLength": 1,
             "type": "string"
-          },
-          "undoToken": {
-            "description": "The undoToken returned by the write you are reverting.",
-            "maxLength": 160,
-            "minLength": 1,
-            "type": "string"
           }
         },
         "required": [
-          "undoToken",
-          "expectedRevision"
+          "changeId"
         ],
         "type": "object"
       }

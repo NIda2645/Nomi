@@ -21,6 +21,8 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { emitCanvasGesture } from '../events/canvasEventEmitter'
 import { withCanvasGestureContext } from '../events/canvasGestureContext'
 import { pushUndoSnapshot } from '../events/canvasUndoJournal'
+import { findCanvasChange } from '../events/canvasUndoJournal'
+import { makeChangeId, parseChangeId } from '../../../../electron/shared/agentCapabilities/changeId'
 import { ownPendingCanvasWrite } from '../events/canvasWriteBoundary'
 import type { GenerationCanvasEdge, GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { laneReceiptClient } from '../../ai/lane/laneReceiptClient'
@@ -32,6 +34,7 @@ export type CommittedProposalRecord = ProjectAgentCommittedProposalRecord
 let current: CommittedProposalRecord | null = null
 let currentReceipt: ProjectAgentProposalReceiptView | null = null
 const listeners = new Set<() => void>()
+const locallyUndoneChangeIds = new Set<string>()
 
 function notify(): void {
   listeners.forEach((listener) => listener())
@@ -41,6 +44,7 @@ export function setCommittedProposal(record: CommittedProposalRecord): void {
   const parsed = parseProjectAgentCommittedProposal(record)
   if (!parsed) throw new Error('Project Agent proposal receipt is invalid')
   current = parsed
+  locallyUndoneChangeIds.delete(makeChangeId('canvas', parsed.proposalId))
   notify()
 }
 
@@ -358,6 +362,41 @@ export function detectLostUserEdits(record: CommittedProposalRecord): string[] {
     else if (node.title !== watch.title) lost.push(`「${watch.title}」的标题已被你改为「${node.title}」`)
   }
   return lost
+}
+
+/** Synchronous dispatcher used by the shared `undo` surface.  The normal UI
+ * path keeps its durable receipt CAS; this path reuses the same compensation
+ * owner and journal conflict evidence without creating another history. */
+export function runProposalUndoByChangeId(changeId: string): void {
+  const parsed = parseChangeId(changeId)
+  if (!parsed || parsed.kind !== 'canvas') {
+    throw Object.assign(new Error('undo_change_not_found'), { code: 'undo_change_not_found' })
+  }
+  const record = current
+  if (!record || record.proposalId !== parsed.id) {
+    throw Object.assign(new Error('undo_change_not_found'), { code: 'undo_change_not_found' })
+  }
+  if (locallyUndoneChangeIds.has(changeId)) {
+    throw Object.assign(new Error('undo_change_not_found'), { code: 'undo_change_not_found' })
+  }
+  const journalChange = findCanvasChange(changeId)
+  const lost = detectLostUserEdits(record)
+  if (journalChange?.conflictingEventTypes.length || lost.length) {
+    const reason = lost[0] ?? `同一对象已有后续改动（${journalChange?.conflictingEventTypes.join(', ') || 'unknown'}）`
+    throw Object.assign(new Error(`undo_conflict: ${reason}`), { code: 'undo_conflict' })
+  }
+  const ctx = {
+    source: 'user' as const,
+    txnId: `txn_undo_${record.proposalId}`,
+    proposalId: record.proposalId,
+    suppressUndoBarriers: false,
+  }
+  withCanvasGestureContext(ctx, () => {
+    pushUndoSnapshot()
+    applyCompensationOps(record.compensation)
+    emitCanvasGesture([{ type: 'agent.txn.reverted', payload: { proposalId: record.proposalId, changeId, ops: record.compensation.length } }])
+  })
+  locallyUndoneChangeIds.add(changeId)
 }
 
 /**

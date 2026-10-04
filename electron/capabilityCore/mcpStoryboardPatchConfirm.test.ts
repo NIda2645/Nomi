@@ -13,6 +13,7 @@ class StoryboardPatchHarness {
   readonly invoke = vi.fn(async () => ({
     applied: true,
     proposalId: 'proposal-canonical-patch',
+    changeId: 'canvas:v1:proposal-canonical-patch',
     operation: 'patch_shots',
     changedShotIndexes: [2],
     changedFields: ['prompt', 'aspectRatio'],

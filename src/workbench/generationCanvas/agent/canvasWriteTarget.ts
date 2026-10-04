@@ -13,6 +13,7 @@ import {
   type CanvasWriteOperation,
   type CanvasWriteResult,
 } from '../../../../electron/shared/agentCapabilities/canvasWrite'
+import { makeChangeId } from '../../../../electron/shared/agentCapabilities/changeId'
 import {
   canvasDeleteSemanticInputSchema,
   type CanvasDeleteInput,
@@ -314,6 +315,7 @@ export async function executeCanvasWriteTarget(
     return {
       applied: true,
       proposalId: outcome.proposalId,
+      changeId: makeChangeId('canvas', outcome.proposalId),
       operation: input.operation,
       affectedNodeIds: [admittedNodeId],
       reconciliation,
@@ -331,6 +333,7 @@ export async function executeCanvasWriteTarget(
     return {
       applied: true,
       proposalId: outcome.proposalId,
+      changeId: makeChangeId('canvas', outcome.proposalId),
       operation: input.operation,
       reconciliation,
       affectedNodeIds: createdNodeIds,
@@ -359,6 +362,7 @@ export async function executeCanvasWriteTarget(
     return {
       applied: true,
       proposalId: outcome.proposalId,
+      changeId: makeChangeId('canvas', outcome.proposalId),
       operation: input.operation,
       reconciliation,
       affectedNodeIds,
@@ -384,6 +388,7 @@ export async function executeCanvasWriteTarget(
       return {
         applied: true,
         proposalId: outcome.proposalId,
+        changeId: makeChangeId('canvas', outcome.proposalId),
         operation: input.operation,
         changedShotIndexes: Array.isArray(domain?.changedShotIndexes)
           ? domain.changedShotIndexes.filter((value): value is number => typeof value === 'number')
@@ -398,6 +403,7 @@ export async function executeCanvasWriteTarget(
     return {
       applied: true,
       proposalId: outcome.proposalId,
+      changeId: makeChangeId('canvas', outcome.proposalId),
       operation: input.operation,
       result: outcome.results[0] ?? null,
       reconciliation,
@@ -407,6 +413,7 @@ export async function executeCanvasWriteTarget(
   return {
     applied: true,
     proposalId: outcome.proposalId,
+    changeId: makeChangeId('canvas', outcome.proposalId),
     operation: input.operation,
     reconciliation,
     affectedNodeIds: afterSnapshot.nodes
