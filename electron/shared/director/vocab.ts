@@ -19,7 +19,8 @@ export type DirectorSceneTemplate = (typeof DIRECTOR_SCENE_TEMPLATES)[number]
 export const DIRECTOR_ENVIRONMENT_WORDS = [
   'room', 'interior', 'indoor', 'indoors', 'outdoor', 'outdoors', 'ground', 'floor', 'street', 'courtyard', 'studio', 'hallway', 'corridor',
   'quiet_room', 'quiet_street', 'market_street', 'storm_ground', 'empty_street', 'empty_room',
-  '房间', '室内', '室外', '街道', '庭院', '地面', '走廊',
+  'gallery', 'museum', 'cafe', 'kitchen', 'station', 'rooftop', 'shop', 'office', 'library', 'park',
+  '房间', '室内', '室外', '街道', '庭院', '地面', '走廊', '美术馆', '画廊', '咖啡馆', '厨房', '车站', '屋顶', '商店', '办公室', '图书馆', '公园',
 ] as const
 export const isEnvironmentWord = (kind: string): boolean =>
   (DIRECTOR_ENVIRONMENT_WORDS as readonly string[]).includes(kind.trim().toLowerCase().replace(/[\s-]+/g, '_'))

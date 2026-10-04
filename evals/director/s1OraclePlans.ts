@@ -1,5 +1,12 @@
 import type { DirectorPlan } from '../../electron/shared/director/directorPlanSchema'
-import type { DirectorSceneTemplate } from '../../electron/shared/director/vocab'
+import { isEnvironmentWord, type DirectorSceneTemplate } from '../../electron/shared/director/vocab'
+import cards from './cards/all.json'
+import { parseDirectorCard, type DirectorCard } from './cardSchema'
+
+// 靶子由题卡派生：演员种类取自卡片 category（雕像 / 水壶是 prop、瓶子是 product），场景词取自卡片 scene.required；不再一律当 person
+const CARDS = new Map<string, DirectorCard>((cards as unknown[]).map((raw) => parseDirectorCard(raw)).map((card) => [card.id, card]))
+const ACTOR_KINDS = ['person', 'vehicle', 'product', 'prop'] as const
+const kindOf = (category: string): (typeof ACTOR_KINDS)[number] => ((ACTOR_KINDS as readonly string[]).includes(category) ? (category as (typeof ACTOR_KINDS)[number]) : 'prop')
 
 const shot = (id: string, window: [number, number], subject: string, size: DirectorPlan['shots'][number]['size'], angle: DirectorPlan['shots'][number]['angle'], kind: DirectorPlan['shots'][number]['move']['kind'], amount?: number): DirectorPlan['shots'][number] => ({ id, window, transitionIn: 'cut', subject, size, angle, height: 'eye', move: { kind, amount: amount ?? (kind === 'orbit_right' ? 90 : undefined), speed: 'medium', easing: 'linear' } })
 
@@ -35,11 +42,16 @@ const TEMPLATE_FOR_REQUIRED: Record<string, { template: DirectorSceneTemplate; r
   storm_ground: { template: 'street', ref: 's1-street-ground' },
   market_street: { template: 'street', ref: 's1-street-ground' },
   courtyard: { template: 'courtyard', ref: 's1-courtyard-ground' },
+  gallery: { template: 'room', ref: 's1-room-floor' },
 }
 
-function requiredPlan(id: string, required: string, shots: Array<{ id: string; window: [number, number]; size: DirectorPlan['shots'][number]['size']; subject?: string; kind: PlanMove; angle?: DirectorPlan['shots'][number]['angle']; amount?: number; direction?: DirectorPlan['shots'][number]['move']['direction'] }>, duration: number, actorIds: string[] = ['subject']): DirectorPlan {
+function requiredPlan(id: string, shots: Array<{ id: string; window: [number, number]; size: DirectorPlan['shots'][number]['size']; subject?: string; kind: PlanMove; angle?: DirectorPlan['shots'][number]['angle']; amount?: number; direction?: DirectorPlan['shots'][number]['move']['direction'] }>): DirectorPlan {
+  const card = CARDS.get(id)
+  if (!card) throw new Error(`oracle plan ${id} has no card`)
+  const required = card.scene.required[0]
+  const actorIds = card.actors.map((actor) => actor.id)
   const placement = TEMPLATE_FOR_REQUIRED[required] ?? { template: 'street' as const, ref: 's1-street-ground' }
-  const actors = actorIds.map((actorId, index) => ({ id: actorId, kind: 'person' as const, desc: actorId, placement: index === 0 ? { relation: 'at' as const, ref: placement.ref } : { relation: 'right_of' as const, ref: actorIds[0] } }))
+  const actors = card.actors.map((actor, index) => ({ id: actor.id, kind: kindOf(actor.category), desc: actor.id, placement: index === 0 ? (kindOf(actor.category) === 'product' && !isEnvironmentWord(required) ? { relation: 'on' as const, ref: required } : { relation: 'at' as const, ref: placement.ref }) : { relation: 'right_of' as const, ref: actorIds[0] } }))
   return {
     version: 2,
     scene: { tags: [id, required], environment: placement.template === 'street' ? 'night' : 'day', template: placement.template, setPieces: [{ id: required, kind: required, relation: { type: 'at', ref: placement.ref } }] },
@@ -56,10 +68,7 @@ const singleMotion: Record<string, { kind: PlanMove; direction?: DirectorPlan['s
   't1-10-pov': { kind: 'static', angle: { pov: 'subject' } }, 't1-11-zoom': { kind: 'zoom_in' }, 't1-12-arc': { kind: 'arc_left', direction: 'left', amount: 90 },
   't1-13-static': { kind: 'static' }, 't1-14-dolly': { kind: 'push_in' }, 't1-15-whip': { kind: 'pan', direction: 'right' }, 't1-16-rack_focus': { kind: 'static' },
 }
-const requiredByCard: Record<string, string> = {
-  't1-01-push': 'room', 't1-02-pull': 'quiet_street', 't1-03-pan': 'interior', 't1-04-tilt': 'shop_counter', 't1-05-orbit': 'shop_counter', 't1-06-follow': 'interior', 't1-07-truck': 'quiet_street', 't1-08-crane': 'room', 't1-09-over_shoulder': 'interior', 't1-10-pov': 'interior', 't1-11-zoom': 'shop_counter', 't1-12-arc': 'quiet_street', 't1-13-static': 'room', 't1-14-dolly': 'interior', 't1-15-whip': 'quiet_street', 't1-16-rack_focus': 'shop_counter',
-}
-for (const [id, move] of Object.entries(singleMotion)) S1_ORACLE_PLANS[id] = requiredPlan(id, requiredByCard[id], [{ id: 'shot', window: [0, 4], size: '中景', kind: move.kind, direction: move.direction, amount: move.amount, angle: move.angle }], 4, ['subject'])
+for (const [id, move] of Object.entries(singleMotion)) S1_ORACLE_PLANS[id] = requiredPlan(id, [{ id: 'shot', window: [0, 4], size: '中景', kind: move.kind, direction: move.direction, amount: move.amount, angle: move.angle }])
 
 const t2Shots: Record<string, Array<{ id: string; kind: PlanMove; size: DirectorPlan['shots'][number]['size']; direction?: DirectorPlan['shots'][number]['move']['direction'] }>> = {
   't2-courtyard': [{ id: 'wide', kind: 'follow', size: '全景' }, { id: 'medium', kind: 'static', size: '中景' }, { id: 'close', kind: 'push_in', size: '特写' }],
@@ -68,12 +77,12 @@ const t2Shots: Record<string, Array<{ id: string; kind: PlanMove; size: Director
   't2-gallery': [{ id: 'wide', kind: 'orbit_right', size: '全景', direction: 'right' }, { id: 'medium', kind: 'static', size: '中景' }, { id: 'close', kind: 'push_in', size: '特写' }],
   't2-rooftop': [{ id: 'wide', kind: 'crane_up', size: '全景', direction: 'up' }, { id: 'medium', kind: 'track_right', size: '中景', direction: 'right' }, { id: 'close', kind: 'tilt', size: '近景', direction: 'down' }],
 }
-for (const [id, rows] of Object.entries(t2Shots)) S1_ORACLE_PLANS[id] = requiredPlan(id, 'ground', rows.map((row, index) => ({ id: row.id, window: [index * 4, (index + 1) * 4] as [number, number], size: row.size, kind: row.kind, direction: row.direction })), 12)
+for (const [id, rows] of Object.entries(t2Shots)) S1_ORACLE_PLANS[id] = requiredPlan(id, rows.map((row, index) => ({ id: row.id, window: [index * 4, (index + 1) * 4] as [number, number], size: row.size, kind: row.kind, direction: row.direction })))
 
-const t3Specs: Record<string, { required: string; moves: [PlanMove, PlanMove, PlanMove]; actors?: string[] }> = {
-  't3-storm': { required: 'storm_ground', moves: ['crane_up', 'follow', 'push_in'] },
-  't3-cafe': { required: 'cafe_table', moves: ['track_right', 'static', 'push_in'], actors: ['person_a', 'person_b'] },
-  't3-space': { required: 'quiet_room', moves: ['orbit_right', 'crane_up', 'pull_out'] },
-  't3-market': { required: 'market_street', moves: ['follow', 'track_right', 'push_in'] },
+const t3Specs: Record<string, { moves: [PlanMove, PlanMove, PlanMove] }> = {
+  't3-storm': { moves: ['crane_up', 'follow', 'push_in'] },
+  't3-cafe': { moves: ['track_right', 'static', 'push_in'] },
+  't3-space': { moves: ['orbit_right', 'crane_up', 'pull_out'] },
+  't3-market': { moves: ['follow', 'track_right', 'push_in'] },
 }
-for (const [id, spec] of Object.entries(t3Specs)) S1_ORACLE_PLANS[id] = requiredPlan(id, spec.required, spec.moves.map((kind, index) => ({ id: `coverage-${index}`, window: [index * 4, (index + 1) * 4] as [number, number], size: (['全景', '中景', '特写'] as const)[index], kind })), 12, spec.actors)
+for (const [id, spec] of Object.entries(t3Specs)) S1_ORACLE_PLANS[id] = requiredPlan(id, spec.moves.map((kind, index) => ({ id: `coverage-${index}`, window: [index * 4, (index + 1) * 4] as [number, number], size: (['全景', '中景', '特写'] as const)[index], kind })))
