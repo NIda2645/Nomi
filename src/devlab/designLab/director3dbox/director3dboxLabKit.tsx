@@ -23,7 +23,9 @@ import type { DirectorE2EBridge } from '../../../workbench/generationCanvas/node
 import { assistantPaneWidth } from '../../../workbench/assistantWidthBounds'
 import { S1_ORACLE_PLANS } from '../../../../evals/director/s1OraclePlans'
 import { ShellStage, labHostState } from '../v4/agentPanelV4LabHost'
-import type { Director3dBoxFixture, LabDrive } from './director3dboxCell'
+import { RefineLayoutContext } from '../../../workbench/generationCanvas/nodes/director/panels/refineLayoutPreview'
+import { useWorkbenchStore } from '../../../workbench/workbenchStore'
+import type { Director3dBoxFixture, LabDrive, LabRefineLayout, LabStep } from './director3dboxCell'
 /** 右侧 Agent 面板宽：与 v4 实验室同一取值，导演视图占的画布宽因此与真机 1280 窗口一致（≈858）。 */
 const AGENT_PANEL_WIDTH = 390
 
@@ -41,12 +43,13 @@ function courtyardFixture(): DirectorProject {
   return courtyardProject
 }
 
-// 只读开关证明：形状与 preload 给渲染端的那份一致（src/desktop/bridge.ts 的 featureFlags.director3dbox）
-function installReadOnlyBridge(): void {
+// 只读开关证明：形状与 preload 给渲染端的那份一致（src/desktop/bridge.ts 的 featureFlags.director3dbox）。
+// 开关关 = 旧导演台（没有导演视图，壳铺满窗口）——精修新布局要证明「旧导演台一起变，不分两套」。
+function installReadOnlyBridge(flag: 'on' | 'off'): void {
   const host = window as unknown as { nomiDesktop?: Record<string, unknown> }
   host.nomiDesktop = {
     ...(host.nomiDesktop ?? {}),
-    featureFlags: { director3dbox: { enabled: true, source: 'env', fingerprint: 'director3dbox:on:2026-11-15', expiresOn: '2026-11-15' } },
+    featureFlags: { director3dbox: { enabled: flag === 'on', source: 'env', fingerprint: `director3dbox:${flag}:2026-11-15`, expiresOn: '2026-11-15' } },
   }
   try {
     window.localStorage.setItem('__nomiE2E', '1')
@@ -95,9 +98,46 @@ async function clickWhenPresent(selector: string): Promise<void> {
   throw new Error(`director3dbox lab: 等不到 ${selector}`)
 }
 
-async function driveAndSettle(drive: LabDrive, project: DirectorProject | null): Promise<void> {
-  if (drive !== 'none') await clickWhenPresent('[data-testid="director-shot-2"]')
-  if (drive === 'shot-2-refine') await clickWhenPresent('[data-testid="director-view-header"] button[aria-pressed="false"]')
+async function clickTextWhenPresent(selector: string, text: string): Promise<void> {
+  for (let frame = 0; frame < SETTLE_MAX_FRAMES; frame += 1) {
+    const element = [...document.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.trim() === text)
+    if (element) {
+      element.click()
+      await nextFrame()
+      return
+    }
+    await nextFrame()
+  }
+  throw new Error(`director3dbox lab: 等不到 ${selector} 里的「${text}」`)
+}
+
+async function pointerWhenPresent(selector: string, text: string): Promise<void> {
+  for (let frame = 0; frame < SETTLE_MAX_FRAMES; frame += 1) {
+    const element = [...document.querySelectorAll<HTMLElement>(selector)].find((item) => item.textContent?.trim() === text)
+    if (element) {
+      const box = element.getBoundingClientRect()
+      const init: PointerEventInit = { bubbles: true, cancelable: true, composed: true, pointerId: 1, pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1, clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }
+      element.dispatchEvent(new PointerEvent('pointerdown', init))
+      await nextFrame()
+      element.dispatchEvent(new PointerEvent('pointerup', { ...init, buttons: 0 }))
+      window.dispatchEvent(new PointerEvent('pointerup', { ...init, buttons: 0 }))
+      await nextFrame()
+      return
+    }
+    await nextFrame()
+  }
+  throw new Error(`director3dbox lab: 等不到 ${selector} 里的「${text}」`)
+}
+
+async function runStep(step: LabStep): Promise<void> {
+  if ('click' in step) return clickWhenPresent(step.click)
+  if ('pointer' in step) return pointerWhenPresent(step.pointer.selector, step.pointer.text)
+  if ('clickText' in step) return clickTextWhenPresent(step.clickText.selector, step.clickText.text)
+  window.dispatchEvent(new KeyboardEvent('keydown', { key: step.press, bubbles: true, cancelable: true }))
+  await nextFrame()
+}
+
+async function waitSettled(project: DirectorProject | null): Promise<void> {
   for (let frame = 0; frame < SETTLE_MAX_FRAMES; frame += 1) {
     if (sceneSettled(project)) {
       for (let tail = 0; tail < SETTLE_TAIL_FRAMES; tail += 1) await nextFrame()
@@ -108,15 +148,41 @@ async function driveAndSettle(drive: LabDrive, project: DirectorProject | null):
   throw new Error('director3dbox lab: 3D 场景没有落定（角色模型或动作片段一直没就绪）')
 }
 
-export function Director3dBoxStage({ locale, fixture, drive = 'none', release }: { locale: AppLocale; fixture: Director3dBoxFixture; drive?: LabDrive; release: () => void }): JSX.Element {
+async function driveAndSettle(drive: LabDrive, steps: readonly LabStep[], project: DirectorProject | null): Promise<void> {
+  if (drive !== 'none') await clickWhenPresent('[data-testid="director-shot-2"]')
+  if (drive === 'shot-2-refine') await clickWhenPresent('[data-testid="director-view-header"] button[aria-pressed="false"]')
+  // 场景先落定再点：选中 / 进机位视角都要角色挂上之后才有意义，点完再等一次（选中描边、机位视角会重排画面）
+  if (steps.length > 0) await waitSettled(project)
+  for (const step of steps) await runStep(step)
+  await waitSettled(project)
+}
+
+const NO_STEPS: readonly LabStep[] = []
+
+export type Director3dBoxStageProps = {
+  locale: AppLocale
+  fixture: Director3dBoxFixture
+  drive?: LabDrive
+  /** 精修「选中才出」格在 drive 之后要点的真按钮 */
+  steps?: readonly LabStep[]
+  layout?: LabRefineLayout
+  flag?: 'on' | 'off'
+  /** Agent 面板宽：缺省 390（壳 858）；窄格给 520，把壳压到 728（真机最小窗 1100 × 默认 Agent 时的壳宽） */
+  agentWidth?: number
+  release: () => void
+}
+
+export function Director3dBoxStage({ locale, fixture, drive = 'none', steps = NO_STEPS, layout = 'docked-cards', flag = 'on', agentWidth = AGENT_PANEL_WIDTH, release }: Director3dBoxStageProps): JSX.Element {
   React.useMemo(() => {
-    installReadOnlyBridge()
+    installReadOnlyBridge(flag)
+    // 导演台壳的右缘读工作台 store 的 Agent 宽（真机同一个值），实验室把它设成这一格要的宽
+    useWorkbenchStore.getState().setAssistantWidth(agentWidth)
     void i18n.changeLanguage(locale)
-  }, [locale])
+  }, [agentWidth, flag, locale])
   const project = React.useMemo(() => (fixture === 'courtyard' ? courtyardFixture() : null), [fixture])
   React.useEffect(() => {
     let alive = true
-    driveAndSettle(drive, project)
+    driveAndSettle(drive, steps, project)
       .catch((error: unknown) => {
         // 抛到页面层：视觉基线把 pageerror 当失败，不会拿一张没落定的图去比
         if (alive) window.setTimeout(() => { throw error })
@@ -126,14 +192,16 @@ export function Director3dBoxStage({ locale, fixture, drive = 'none', release }:
       alive = false
       release()
     }
-  }, [drive, project, release])
+  }, [drive, project, release, steps])
   const title = project ? COURTYARD_TITLE[locale] : i18n.t('director.node.title')
   const noop = React.useCallback(() => undefined, [])
   return (
     <>
-      <DirectorEditor rawProject={project ?? undefined} nodeTitle={title} readOnly onClose={noop} onProjectChange={noop} />
-      <div className="fixed inset-y-0 right-0 bg-nomi-bg p-4" style={{ width: assistantPaneWidth(AGENT_PANEL_WIDTH) }}>
-        <ShellStage surface="generation" snapshot={labHostState({ items: [] })} width={AGENT_PANEL_WIDTH} height={window.innerHeight - assistantPaneWidth(0)} />
+      <RefineLayoutContext.Provider value={layout}>
+        <DirectorEditor rawProject={project ?? undefined} nodeTitle={title} readOnly onClose={noop} onProjectChange={noop} />
+      </RefineLayoutContext.Provider>
+      <div className="fixed inset-y-0 right-0 bg-nomi-bg p-4" style={{ width: assistantPaneWidth(agentWidth) }}>
+        <ShellStage surface="generation" snapshot={labHostState({ items: [] })} width={agentWidth} height={window.innerHeight - assistantPaneWidth(0)} />
       </div>
     </>
   )
