@@ -3,7 +3,7 @@
 > 状态：📋 方案待拍板（2026-10-05，只读核查 + 计划；生产代码未动，只加了一份特征测试）
 > 基线：`origin/main@a6e067250`（#977 合入后）。论断都带文件:行或命令；量不了的标 `unverified`。
 > 上游方案：[`2026-09-26-architecture-single-owner-governance.md`](2026-09-26-architecture-single-owner-governance.md)（定稿决策、Phase 2 vertical pilot）、[`2026-09-21-one-generation-engine.md`](2026-09-21-one-generation-engine.md)、[`../audit/2026-09-26-phase-zero-construction-cards.md`](../audit/2026-09-26-phase-zero-construction-cards.md)（P0-1 / P0-2 / P1-6）、[`2026-09-28-production-shot-claim.md`](2026-09-28-production-shot-claim.md)。
-> 特征测试：`electron/productionRun/engineConvergenceCharacterization.test.ts`（1 条绿钉现状，1 条 `it.fails` 钉新发现的双扣缺口）。
+> 特征测试：核查时写的 `engineConvergenceCharacterization.test.ts` 已在第 0 步改名为 `electron/productionRun/canvasShotClaimAttempt.test.ts` 并翻成普通回归测试（路径 6 已修，见 [`2026-10-05-canvas-claim-attempt-id.md`](2026-10-05-canvas-claim-attempt-id.md)）。
 
 ## 0. 一句话现状
 
@@ -88,13 +88,13 @@
 
 | # | 路径 | 现在还能复现吗 | 锁住它的测试 |
 |---|---|---|---|
-| 1 | 暂停 / 停下后画布生成同一镜，再点「继续剩余」 | 不能 | `multiShotBatchScheduler.e2e.test.ts`「paused → canvas claim: scheduler submits zero and canvas submits exactly once」「同意过期停下 → 画布接手 shot-2 → 用户点「继续」：只续上、只派 shot-3」；`productionBatchSettlesAfterRelease.e2e.test.ts`「the canvas taking over a queued shot while the batch is paused」；本次新增 `engineConvergenceCharacterization.test.ts` 第 1 条（走真实的主进程认领入口 `claimCanvasProductionShot`） |
+| 1 | 暂停 / 停下后画布生成同一镜，再点「继续剩余」 | 不能 | `multiShotBatchScheduler.e2e.test.ts`「paused → canvas claim: scheduler submits zero and canvas submits exactly once」「同意过期停下 → 画布接手 shot-2 → 用户点「继续」：只续上、只派 shot-3」；`productionBatchSettlesAfterRelease.e2e.test.ts`「the canvas taking over a queued shot while the batch is paused」；`canvasShotClaimAttempt.test.ts` 第 1 条（走真实的主进程认领入口 `claimCanvasProductionShot`） |
 | 2 | 确认卡等着时在画布生成（原「提额续拍卡」那条已随 Run 级预算停在 #947 删掉） | 不能：等确认的镜归制作，画布被拒（`awaiting_confirmation`） | `productionShotPhase.test.ts`「报价卡等确认：付费范围里的镜归制作流程，不在范围里的不归」「approval gate waiting follows the run stop state…」；#921 付费真机 S1 |
 | 3 | 删掉镜头节点后调度器照样生成 | 不能 | `multiShotBatchScheduler.e2e.test.ts`「canvasDetached after node deletion: scheduler submits zero」；`productionShotDetachReport.e2e.test.ts` 两条；`productionRunReducerCanvasLanding.test.ts`「detach marks an unsubmitted job detached…」；#966 补了「切项目被误判成删节点」的反方向 |
 | 4 | 制作已发出、可能已扣（在途 / 结果未知 / 对账中）时画布再生成 | 不能 | `multiShotBatchScheduler.e2e.test.ts`「submission_unknown/reconciling: canvas is rejected with needs_reconcile…」；`productionShotPhase.test.ts`「a canvas claim record never outranks a same-attempt job that may already be paid」「unknown/reconciling remain production-owned」；`submissionNotDispatched.test.ts`「⑤ 结果未知的镜：放行前画布不能生成…」 |
 | 5 | Run 处于需要处理（needs_attention）时调度器照样派 | 不能 | `multiShotBatchScheduler.e2e.test.ts` 两条「同意过期停下」都断言停下后「过期的镜一笔都没交」；`decideShotClaim` 把 needs_attention 算停下（`productionRunStop.ts:11-17`）。**缺口**：`batchScheduleDerivation.test.ts:324` 的「停下不派」循环只列了 pausing / paused / cancelled，没列 needs_attention（建议补一格，第一刀第 0 步顺手） |
 | 反向 | 返工卡被拒后整批永久卡死 | 不能：被拒的镜交还画布，可再返工 | `multiShotBatchScheduler.e2e.test.ts`「rejected rework gate releases canvas once and allows a later rework attempt」；`productionShotPhase.test.ts`「rejected gate releases an unsubmitted shot」 |
-| **6（新）** | **同一镜第二次被画布接手，认领被命令号重放吞掉**：批次停下 → 画布接手 shot-2 → 用户又让制作返工 shot-2（批了，但这类停下不随返工解除，Run 仍停着）→ 用户在画布再生成 shot-2 → 点「继续」→ 制作照派 attempt 2 | **能**（夹具复现，零花费；真 App `unverified`） | `engineConvergenceCharacterization.test.ts` 第 2 条（`it.fails`：期望写成「不该双扣」，今天失败所以测试是绿的；修好那天变红，逼着摘掉 `.fails`） |
+| **6（新）** | **同一镜第二次被画布接手，认领被命令号重放吞掉**：批次停下 → 画布接手 shot-2 → 用户又让制作返工 shot-2（批了，但这类停下不随返工解除，Run 仍停着）→ 用户在画布再生成 shot-2 → 点「继续」→ 制作照派 attempt 2 | 核查时**能**（夹具复现，零花费；真 App `unverified`）；第 0 步已修（分支 `fix/canvas-claim-attempt-id`） | `canvasShotClaimAttempt.test.ts` 的 reported case 与「第 2、3 次认领各自落盘」；同类的删节点上报（撤销后再删）一并修，见该文件 detach 一条 |
 
 **路径 6 的机理**：画布认领写的命令号是 `shot.claim:<runId>:<shotId>`（`canvasShotClaim.ts:29`），不带 attempt；仓库按命令号幂等重放、原样返回第一次的结果（`productionRunRepository.ts:482-486`）。第二次认领没落盘，attempt 2 的 job 仍是 authorized，认领记录还停在 attempt 1，于是 `decideShotClaim` 对制作判「归制作」（`decideShotClaim.ts:84` 只认同 attempt 的认领）。把命令号换成带 attempt 的写法，同一条测试就不再双扣（本地验证过，临时探针已删）。它和 #966 直接原因 ③「纠正型绑定命令号与当初一字不差、被幂等重放吞掉」是同一类：**写命令的人没把「这是哪一次」放进命令身份**。这一类在收敛后会整体消失（画布不再需要向制作「认领」，见 §5）。
 
@@ -128,7 +128,7 @@
 1. **对拍**：同一节点同一参数，经旧路 `nomi:tasks:run` 与新路「单镜 Run → 提交出口 → 引擎 A 传输」，出站报文逐字节相同（复用 `electron/parity/generationParity.matrix.test.ts` 的夹具与 loopback 供应商）。覆盖 mapping 异步、同步返回、自定义调用脚本、multipart 四种传输。
 2. **画布 ↑ 的耐久性**：发出请求后在「写出去之后、回执之前」杀进程，重启后这一镜是 `submission_unknown`、节点写「结果没法确认」、不能再点 ↑（今天会被收成空闲、可再扣一次）。
 3. **单节点在途**：同一节点连点两次，只有一个 attempt 发出（替代 `nodeSubmitInFlight` 的进程内锁）。
-4. **绑定了制作镜头的节点**：画布 ↑ 等于该 Run 的新 attempt；§3 的 6 条路径在新结构下各有一条「供应商只收到一次」的端到端（把 `engineConvergenceCharacterization.test.ts` 第 2 条的 `.fails` 摘掉）。
+4. **绑定了制作镜头的节点**：画布 ↑ 等于该 Run 的新 attempt；§3 的 6 条路径在新结构下各有一条「供应商只收到一次」的端到端（路径 6 已在第 0 步由 `canvasShotClaimAttempt.test.ts` 锁住）。
 5. **旧项目**：带旧运行记录（含在途 taskId）的节点打开后照旧能找回结果；新一次 ↑ 才建 Run。
 6. **3D-BOX 准入**：预演未好时，主进程准入拒绝建 attempt（不止渲染层置灰）。
 7. **性能**：单次 ↑ 从点击到供应商请求发出的额外耗时，和 500 个画布 Run 的项目打开耗时（见格 7）。
@@ -179,7 +179,7 @@
 | 6 外部数据与失败 | 外部来源：供应商 API（各家 mapping 声明）、用户保存的连接、参考素材。偏差处理全部沿用：出站报文由 `buildProfileHttpRequest` 渲染；「有没有写出去」只认 `outboundDispatchEvidence.ts`；未知不当失败、不重提；上游失败原文脱敏后说人话，不甩锅给 key。新增风险：引擎 A 的同步传输（自定义脚本、同步音频）在提交出口里没有「受理号」，包装时用 attempt 身份当 providerTaskId，结果直接进物化 | 官方规范按各 mapping 注释；`electron/parity/engineDifferences.test.ts` |
 | 7 性能预算 | 实测（本机 Windows、临时目录、测试辅助函数）：单镜 Run 建草稿 + 封存 + 批准 p50 33.6 ms / p95 37.8 ms / max 59.7 ms（30 次）。未测、作为第 1 步的门：① 点击到供应商请求发出的额外耗时 p95 ≤ 150 ms；② 500 个画布 Run 的项目打开耗时与内存；③ 任务中心 500 条 Run 的渲染 | 本次临时探针（已删）；第 1 步交付 `test:canvas:performance` 输出 |
 | 8 真实条件 | 全部 `unverified`：Windows 真 App、英文界面、最小窗口、真规模（500 节点）、干净安装、真付费（每种 kind 1 次小额）、0.23 回滚兼容 | 第 1、3 步各交截图（自己亲眼 Read） |
-| ★9 验收与回滚 | 验收（另一条线）：§5.2 的 7 组测试全绿；付费走查里每个入口「供应商只收到一次」；`engineConvergenceCharacterization.test.ts` 摘掉 `.fails` 后绿；`check:concept-owners` 显示 `spend.pending-identity` converged。回滚：每步 revert 一个提交，无数据回写（§5.6） | `## 独立验收` 待补（验收线不得是实现线） |
+| ★9 验收与回滚 | 验收（另一条线）：§5.2 的 7 组测试全绿；付费走查里每个入口「供应商只收到一次」；`canvasShotClaimAttempt.test.ts` 全绿；`check:concept-owners` 显示 `spend.pending-identity` converged。回滚：每步 revert 一个提交，无数据回写（§5.6） | `## 独立验收` 待补（验收线不得是实现线） |
 
 **格 5 中途表**（第 1–3 步完成后的样子；「今天」一列是对照）
 
@@ -230,4 +230,4 @@
 
 ## 自己写了什么、为什么必须
 
-本次只加了一份特征测试 `electron/productionRun/engineConvergenceCharacterization.test.ts`，没有生产代码。计划里唯一的新文件 `canvasTransportProvider.ts` 是接线（领域约束：把画布那台的传输挂到按镜头花钱的同一提交出口），没有新判据、没有新状态机、不引新库。
+核查时只加了一份特征测试（第 0 步已改名为 `electron/productionRun/canvasShotClaimAttempt.test.ts`），没有生产代码。计划里唯一的新文件 `canvasTransportProvider.ts` 是接线（领域约束：把画布那台的传输挂到按镜头花钱的同一提交出口），没有新判据、没有新状态机、不引新库。

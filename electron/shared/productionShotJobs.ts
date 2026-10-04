@@ -53,6 +53,14 @@ export function latestJobForShot(run: ProductionRun, shotId: string): Production
     .sort((a, b) => (b.attempt - a.attempt) || (Date.parse(b.createdAt) - Date.parse(a.createdAt)))[0];
 }
 
+/**
+ * 这一镜此刻是第几次尝试（最新那个 job 的 attempt；一个 job 都没有 = 第 1 次）。画布认领记在哪一次、判定口拿认领比哪一次、
+ * 认领命令号带哪一次，都读这一个值——三处各算一遍，就会出现「记的是第 2 次、号还是第 1 次的」那种漂移。
+ */
+export function currentShotAttempt(run: ProductionRun, shotId: string): number {
+  return latestJobForShot(run, shotId)?.attempt ?? 1;
+}
+
 /** 这一镜勾没勾进这一批（`included` 缺省 = 勾进了）。 */
 export function shotIncluded(shot: Pick<ProductionGenerationShot, "included">): boolean {
   return shot.included !== false;
