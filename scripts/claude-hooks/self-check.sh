@@ -67,7 +67,7 @@ hit_block() {
 
 # 设计卡：碰花钱 / 长跑 / 可打断 / 新界面（原【设计流程】+【画新面】两块合成一块；词表收窄，只留这四类的信号词）
 if hit_block design-card '付费|扣费|花钱|确认.*生成|批量生成|长跑|队列|取消|中断|断网|新页面|新面板|新界面|画新|新增.*(面板|页面|界面|区域)|从零.*(设计|做)|出个样|样张|mockup'; then
-  echo "【设计卡】碰花钱 / 长跑 / 可打断 / 新界面 → 动手前先写设计卡 docs/engineering/design-card.md（四类 9 格全填，其他改动只填 ★1/2/3/4/9），写进任务书或 docs/plan，PR 正文 ## 设计卡 放链接；四类合并前还要另一条线独立验收（## 独立验收，验收线编号不能与实现线相同）｜UI 改动走 nomi-design-flow：先看真实 UI → 组件复用 → 样张带 data-* 挂点与异常态 → 拍板后产契约（pnpm run check:mockup-contracts）(R8)；先读 docs/design/nomi-design-system.md；加/挪控件先过 §1.5 控件层级"
+  echo "【设计卡】碰花钱 / 长跑 / 可打断 / 新界面 → 动手前先写设计卡 docs/engineering/design-card.md（四类 9 格全填，其他改动只填 ★1/2/3/4/9），写进任务书或 docs/plan，PR 正文 ## 设计卡 放链接；四类合并前还要另一条线独立验收（## 独立验收，验收线编号不能与实现线相同）｜新增或改动用户可见界面：拍板样张必须是设计实验室用生产组件 + 真实宿主数据（ShellStage 手法）搭出的屏，拍板后生产代码就是它；手写 HTML / 交互 widget 只准标 exploration 做方向探索，不能作实现合同；新组件先写生产目录本体，实验室只给数据；样张用 data-mockup-region 做整张对账表，契约登记 labScreen 后跑 pnpm run check:mockup-contracts (R8)；先看真实 UI 与 docs/design/nomi-design-system.md；加/挪控件先过 §1.5 控件层级"
   echo ""
 fi
 # 碰框架 / 三方库 / SDK（R5.1 / R5.4）：词表收窄，只留依赖与供应商接口的信号词

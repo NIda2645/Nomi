@@ -57,11 +57,11 @@
 
 0. **先看这个 UI 真实当前长什么样**（改 / 扩现有界面必做）：读完整渲染外壳组件，或看 `docs/design/app-screenshots-*` 真实截图。样张 = 真实布局 + 你的改动，不准从零散片段在脑子里拼整体。
 1. 先读 `docs/design/nomi-design-system.md` 与 `src/design/` 现有组件；token-only（禁非 token 的 px / hex / 圆角）；Nomi 品牌用真品牌（`NomiWordmark` / `NomiLogoMark`）。
-2. 涉及交互的样张必须是用户能亲手拖 / 点 / 调的可交互 widget（首选 `mcp__visualize__show_widget`），纯静态排版才允许静态 mockup。
-3. 用户确认后才实现。
-4. 实现后与获批样张逐项对账：截图并排比，每处差异当场补齐或说明暂缓原因。样张是验收合同，不是参考图。
+2. 拍板样张必须是设计实验室里由生产组件 + 真实宿主数据（ShellStage 手法）搭出的屏；新组件还没有时，先在生产目录写组件本体，实验室只给数据，不在 devlab 另画 JSX。手写 HTML / 交互 widget 只允许标 `exploration` 做布局 A/B 等方向探索，不能进入验收合同。
+3. 用户确认后才实现；确认后的生产代码就是那张实验室屏，不再另起一套复刻实现。
+4. 实现后做**整张对账表**：样张每个区域各占一行，状态只能是「一致」「差异 + 原因」或「推迟到某阶段」，不许只挑几条；实验室屏的 `data-mockup-region` 每个都必须有对应行。截图并排比，每处差异当场补齐或说明暂缓原因。样张是验收合同，不是参考图。
 5. 任何新功能 / 新对象，讲它在用户旅程哪一步出现、在界面哪几处露出、怎么被用到时，出一张可视路径图，别让用户靠文字拼。
-6. 设计落地 = 规范驱动 + computed style 核对：改完跑 `tests/ux/design-fidelity.e2e.mjs`；加自定义 Tailwind token 同步进 `cn()` 的 `extendTailwindMerge`。样张契约用 `pnpm run check:mockup-contracts`。
+6. 设计落地 = 规范驱动 + computed style 核对：改完跑 `tests/ux/design-fidelity.e2e.mjs`；加自定义 Tailwind token 同步进 `cn()` 的 `extendTailwindMerge`。新验收合同必须登记 `labScreen`（屏、状态、宿主、生产组件、`data-mockup-region` 对账表），并跑 `pnpm run check:mockup-contracts`。
 
 ## R9 模块化 + 防巨壳（含旧 R12）
 
