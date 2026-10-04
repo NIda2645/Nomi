@@ -203,4 +203,27 @@ describe("试跑等待上限", () => {
       vi.useRealTimers();
     }
   });
+
+  it("单次查询卡死也不拖过上限：卡 60 秒的查询在 40 秒预算处被截断，按到点返回（假时钟）", async () => {
+    const { TRY_MODEL_WAIT_BUDGET_MS } = await import("./tryModel");
+    const { pollTaskToTerminal } = await import("../pollTaskToTerminal");
+    vi.useFakeTimers();
+    try {
+      const fetch = vi.fn(() => new Promise<never>(() => undefined));
+      let settledAt = -1;
+      const started = Date.now();
+      const pending = pollTaskToTerminal({
+        initial: { id: "job-hang", status: "queued", assets: [] },
+        fetch: fetch as never, vendor: "v", taskKind: "text_to_image", prompt: "p", modelKey: "m",
+        timeoutMs: TRY_MODEL_WAIT_BUDGET_MS, intervalMs: 1500,
+      }).then((out) => { settledAt = Date.now() - started; return out; });
+      await vi.advanceTimersByTimeAsync(60_000);
+      const out = await pending;
+      expect(out.ended).toBe("timeout");
+      expect(out.result.id).toBe("job-hang");
+      expect(settledAt).toBeLessThanOrEqual(TRY_MODEL_WAIT_BUDGET_MS);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

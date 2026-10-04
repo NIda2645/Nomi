@@ -42,18 +42,28 @@ export async function pollTaskToTerminal(input: {
   const startedAt = Date.now()
   let failureStreakStartedAt: number | null = null
   while (result.status && !isTerminalTaskStatus(result.status)) {
-    if (Date.now() - startedAt > input.timeoutMs) {
+    if (Date.now() - startedAt >= input.timeoutMs) {
       return { result, ended: 'timeout', waitedMs: Date.now() - startedAt }
     }
-    await sleep(input.intervalMs)
+    // 睡眠也不越过预算：最后一次间隔被截短，保证总等待不超过 timeoutMs。
+    await sleep(Math.min(input.intervalMs, Math.max(0, input.timeoutMs - (Date.now() - startedAt))))
     try {
-      const polled = await input.fetch({
-        taskId: result.id || '',
-        vendor: input.vendor,
-        taskKind: input.taskKind,
-        prompt: input.prompt,
-        modelKey: input.modelKey,
-      })
+      // 每一次查询自己也有截止时间（剩余预算）：否则一次卡住的查询能把总等待拖过上限。
+      // 卡住 = 这次查询不通（同下面的 catch：免费重试 / 到点放弃），绝不当成任务失败。
+      const remaining = Math.max(0, input.timeoutMs - (Date.now() - startedAt))
+      let budgetTimer: ReturnType<typeof setTimeout> | undefined
+      const polled = await Promise.race([
+        input.fetch({
+          taskId: result.id || '',
+          vendor: input.vendor,
+          taskKind: input.taskKind,
+          prompt: input.prompt,
+          modelKey: input.modelKey,
+        }),
+        new Promise<never>((_resolve, reject) => {
+          budgetTimer = setTimeout(() => reject(new Error('poll_attempt_budget_exhausted')), remaining)
+        }),
+      ]).finally(() => clearTimeout(budgetTimer))
       result = polled.result
       failureStreakStartedAt = null
     } catch {
