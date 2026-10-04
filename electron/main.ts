@@ -1,5 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
-import { director3dBoxProof } from "./shared/featureFlags/director3dbox";
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron"; import { director3dBoxProof } from "./shared/featureFlags/director3dbox";
 import { startCatalogReconciliation } from "./ai/onboarding/vendorHealth";
 import type { Rectangle, WebContents } from "electron";
 import path from "node:path";
@@ -167,7 +166,6 @@ async function loadCapabilityCoreModule(): Promise<typeof import("./capabilityCo
   });
   return capabilityCoreModulePromise;
 }
-
 function getActiveCapabilityPort(): number | null {
   return capabilityPortCache;
 }
@@ -387,9 +385,7 @@ function registerSyncIpc<TArgs extends unknown[], TResult>(
   });
 }
 function registerIpc(): void {
-  const flag = director3dBoxProof();
-  registerSyncIpc("nomi:feature-flags:director3dbox", () => flag);
-  logInfo("main", "director3dbox-resolved", { enabled: flag.enabled, source: flag.source, fingerprint: flag.fingerprint, expiresOn: flag.expiresOn });
+  const flag = director3dBoxProof(); registerSyncIpc("nomi:feature-flags:director3dbox", () => flag); logInfo("main", "director3dbox-resolved", { enabled: flag.enabled, source: flag.source, fingerprint: flag.fingerprint, expiresOn: flag.expiresOn });
   const selectedWorkspaceRoots = new Set<string>();
   // Static app-main Surface authority: registered before createWindow and
   // independent from the delayed/optional external capability core.

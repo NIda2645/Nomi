@@ -10,16 +10,17 @@ import { runtimeBridge } from "./preload/runtimeBridge";
 
 type ProductionDeepLinkPayload = { projectId: string; runId?: string; nodeId?: string; artifactId?: string };
 const localDirector3dBox = director3dBoxProof();
+const reportDirector3dBoxWarning = (event: string, fields: Record<string, string>): void => ipcRenderer.send("nomi:log:renderer", { level: "warn", event, fields });
 const director3dBox = (() => {
   try {
     const mainProof = invokeSync<typeof localDirector3dBox>('nomi:feature-flags:director3dbox');
     if (mainProof.fingerprint !== localDirector3dBox.fingerprint) {
-      console.warn(`[nomi:feature-flags] fingerprint mismatch preload=${localDirector3dBox.fingerprint} main=${mainProof.fingerprint}; forcing off`);
+      reportDirector3dBoxWarning("director3dbox-fingerprint-mismatch", { preload: localDirector3dBox.fingerprint, main: mainProof.fingerprint });
       return { ...mainProof, enabled: false, source: 'default' as const, fingerprint: 'director3dbox:off:2026-11-15' };
     }
     return mainProof;
   } catch (error) {
-    console.warn(`[nomi:feature-flags] main proof unavailable; forcing off (${error instanceof Error ? error.message : String(error)})`);
+    reportDirector3dBoxWarning("director3dbox-main-proof-unavailable", { reason: error instanceof Error ? error.name : "unknown" });
     return { ...localDirector3dBox, enabled: false, source: 'default' as const, fingerprint: 'director3dbox:off:2026-11-15' };
   }
 })();
