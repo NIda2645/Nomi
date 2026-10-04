@@ -1,5 +1,6 @@
-import { resolveIndexedReferencePreview } from './pendingSpendReferences'
+// 开关引导模块必须是第一个导入：它在本进程装好共享层的开关视图，之后导入的工具注册表才按同一个值装配。
 import { director3dBoxProof } from '../shared/featureFlags/director3dbox'
+import { resolveIndexedReferencePreview } from './pendingSpendReferences'
 import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 
 const DIRECTOR_3DBOX_BOOTSTRAP_PROOF = director3dBoxProof()
