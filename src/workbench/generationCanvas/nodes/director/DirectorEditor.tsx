@@ -2,11 +2,11 @@
  * [INPUT]: 依赖 react / react-dom 的 createPortal、react-i18next、../../../../design 的 confirmDialog / TooltipProvider、
  *          ../fullscreenZIndex 的 FULLSCREEN_Z_INDEX、../../../../ui/app-shell/windowChrome 的 currentFullscreenOverlayTopOffset、
  *          ./model/directorStore 的 createDirectorStore、./DirectorEditorContext、
- *          ./panels/EditorSplit、./panels/side/SidePanels、./panels/viewport/DirectorViewport、./timeline/DirectorTimeline、./scene/ViewportApiContext、
+ *          ./scene/ViewportApiContext、
  *          ./scene/viewSettings（偏好读写）、./useDirectorHotkeys、./useMobileCamera、./MobileCameraContext、
- *          ./panels/dialogs/{MobileConnectDialog, SettingsDialog, HelpDialog}、./model/directorTypes、./DirectorViewShell、./DirectorRefineShell、./panels/refineLayoutPreview（样张期接缝）、./directorSessionRegistry、../../../../featureFlags/director3dbox
+ *          ./panels/dialogs/{MobileConnectDialog, SettingsDialog, HelpDialog}、./model/directorTypes、./DirectorViewShell、./DirectorRefineShell、./directorSessionRegistry、../../../../featureFlags/director3dbox
  *          ./model/cameraCoordinateSpace / sceneObjectGraph 的当前世界视角转图层局部位姿、创建模式取消登记
- * [OUTPUT]: 对外提供 DirectorEditor（default）：全屏壳 —— 顶栏 / 视口 / 时间轴（S2）/ 右栏 五区域 + 可拖分栏 + 退出确认 + 自动保存 +
+ * [OUTPUT]: 对外提供 DirectorEditor（default）：全屏壳 —— 精修（DirectorRefineShell：顶栏 / 满宽视口 / 选中才出的属性卡 / 时间轴）+ 退出确认 + 自动保存 +
  *           开关开启时提供占画布区的导演视图外壳，镜头条只读且沿用实测模块；编辑器会话登记为外部 AI 写入入口
  *           区域感知快捷键 + 手机虚拟相机桥 + 本机偏好（漫游 / 灵敏度 / 视口主题）与设置 / 帮助对话框
  * [POS]: director 的页面根：创建并注入 store 与视口 API，负责「打开/关闭/写回」生命周期与区域布局（方案 §4.0 O1–O5）。
@@ -30,7 +30,6 @@ import { useMobileCamera } from './useMobileCamera'
 import { createDirectorStore, type DirectorStore } from './model/directorStore'
 import type { DirectorProject, DirectorLinkedAsset } from './model/directorTypes'
 import type { DirectorHotkeyScope } from './model/hotkeys'
-import { EditorSplit } from './panels/EditorSplit'
 import { OutputsContext, type DirectorOutput } from './OutputsContext'
 import { CanvasImagesContext, EMPTY_CANVAS_IMAGES, type CanvasImage } from './panels/CanvasImagesContext'
 import { EMPTY_LINKED_ASSETS, LinkedAssetsContext } from './panels/LinkedAssetsContext'
@@ -38,14 +37,10 @@ import { useDirectorOutputs } from './useDirectorOutputs'
 import { HelpDialog } from './panels/dialogs/HelpDialog'
 import { MobileConnectDialog } from './panels/dialogs/MobileConnectDialog'
 import { SettingsDialog } from './panels/dialogs/SettingsDialog'
-import { SidePanels } from './panels/side/SidePanels'
 import { CreationModeContext } from './panels/CreationModeContext'
-import { DirectorTopBar } from './panels/topbar/DirectorTopBar'
 import { useBoxDraw } from './scene/creation/useBoxDraw'
 import { useCharacterPlacement } from './scene/creation/useCharacterPlacement'
-import { DirectorViewport } from './panels/viewport/DirectorViewport'
 import { readDirectorPreferences, writeDirectorPreferences, type DirectorPreferences } from './scene/viewSettings'
-import { DirectorTimeline, TIMELINE_COLLAPSED_PX, TIMELINE_EMPTY_PX } from './timeline/DirectorTimeline'
 import { ViewportApiContext, type ViewportApi } from './scene/ViewportApiContext'
 import { isTextTarget, useDirectorHotkeys } from './useDirectorHotkeys'
 import { transformCameraPose } from './model/cameraCoordinateSpace'
@@ -55,7 +50,6 @@ import { registerDirectorSession } from './directorSessionRegistry'
 import { isDirector3DBoxEnabled } from '../../../../featureFlags/director3dbox'
 import { DirectorViewShell, type DirectorViewMode } from './DirectorViewShell'
 import { DirectorRefineShell } from './DirectorRefineShell'
-import { RefineLayoutContext } from './panels/refineLayoutPreview'
 import { useWorkbenchStore } from '../../../workbenchStore'
 import { assistantPaneWidth } from '../../../assistantWidthBounds'
 
@@ -128,7 +122,6 @@ function EditorStage({ nodeTitle, scopeRef, preferences, cancelCreationRef, time
   const creationMode = React.useMemo(() => ({ placement, boxDraw }), [placement, boxDraw])
   // 时间轴上一个实体都没有时把它钉成一条：比例记忆不动，加了轨道立刻回到用户自己的分栏
   const timelineEmpty = useDirectorStore((state) => orderedTimelineEntities(state.activeScene()).length === 0)
-  const refineLayout = React.useContext(RefineLayoutContext)
   if (director3dBox && viewMode === 'director') {
     return <DirectorViewShell
       nodeTitle={nodeTitle}
@@ -143,67 +136,25 @@ function EditorStage({ nodeTitle, scopeRef, preferences, cancelCreationRef, time
       onProduce={onProduce}
     />
   }
-  // 样张期接缝（panels/refineLayoutPreview）：只有设计实验室会走到这一支；拍板后它成为唯一的精修 / 旧导演台布局，下面的旧右栏双卡同 PR 删除
-  if (refineLayout === 'select-to-show') {
-    return (
-      <CreationModeContext.Provider value={creationMode}>
-        <DirectorRefineShell
-          scopeRef={scopeRef}
-          placement={placement}
-          boxDraw={boxDraw}
-          cancelCreationRef={cancelCreationRef}
-          theme={preferences.theme}
-          viewSettings={preferences.view}
-          timelineCollapsed={timelineCollapsed}
-          timelineEmpty={timelineEmpty}
-          onToggleTimeline={onToggleTimeline}
-          onResetView={onResetView}
-          onExit={onExit}
-          onOpenSettings={onOpenSettings}
-          onOpenHelp={onOpenHelp}
-          viewMode={director3dBox ? { value: viewMode, onChange: onViewModeChange } : undefined}
-        />
-      </CreationModeContext.Provider>
-    )
-  }
+  // 精修 = 「选中才出」（2026-10-04 用户拍板方向 A）：3D-BOX 开关开时的「精修」与开关关时的旧导演台是同一个壳
   return (
     <CreationModeContext.Provider value={creationMode}>
-      <div className="relative min-h-0 flex-1">
-        {/* 右栏是压在视口上的浮窗（2026-09-09 第 2 期，获批样张形态）：3D 画面在卡片下连贯铺满。
-            暗区靠指针穿透消掉——只有卡片本身挡指针，卡间空隙与留白点得到视口，判据见 SidePanels 的 POS。 */}
-        <EditorSplit
-          direction="vertical"
-          storageKey="director.center"
-          defaultRatio={0.8}
-          minRatio={0.35}
-          maxRatio={0.94}
-          collapsedSecondPx={timelineCollapsed ? TIMELINE_COLLAPSED_PX : timelineEmpty ? TIMELINE_EMPTY_PX : undefined}
-        >
-          <div className="relative h-full w-full">
-            <DirectorViewport
-              theme={preferences.theme}
-              viewSettings={preferences.view}
-              scopeRef={scopeRef}
-              placement={placement}
-              boxDraw={boxDraw}
-              cancelCreationRef={cancelCreationRef}
-              showAiSceneBar={!director3dBox}
-            />
-            <SidePanels />
-          </div>
-          <DirectorTimeline collapsed={timelineCollapsed} onToggleCollapsed={onToggleTimeline} scopeRef={scopeRef} />
-        </EditorSplit>
-        <DirectorTopBar
-          onResetView={onResetView}
-          onExit={onExit}
-          onCancelCreation={() => cancelCreationRef.current?.()}
-          onOpenSettings={onOpenSettings}
-          onOpenHelp={onOpenHelp}
-          director3dBox={director3dBox}
-          viewMode={viewMode}
-          onViewModeChange={onViewModeChange}
-        />
-      </div>
+      <DirectorRefineShell
+        scopeRef={scopeRef}
+        placement={placement}
+        boxDraw={boxDraw}
+        cancelCreationRef={cancelCreationRef}
+        theme={preferences.theme}
+        viewSettings={preferences.view}
+        timelineCollapsed={timelineCollapsed}
+        timelineEmpty={timelineEmpty}
+        onToggleTimeline={onToggleTimeline}
+        onResetView={onResetView}
+        onExit={onExit}
+        onOpenSettings={onOpenSettings}
+        onOpenHelp={onOpenHelp}
+        viewMode={director3dBox ? { value: viewMode, onChange: onViewModeChange } : undefined}
+      />
     </CreationModeContext.Provider>
   )
 }
@@ -274,8 +225,7 @@ function EditorBody({ nodeTitle, scopeRef, onExit, preferences, onChangePreferen
     <OutputsContext.Provider value={outputs}>
       <CameraRecorderContext.Provider value={recorder}>
       <MobileCameraContext.Provider value={mobile}>
-      {/* 五个功能簇一条悬浮顶栏（2026-09-09 用户拍板，方案 docs/plan/2026-09-09-director-chrome-five-clusters.md）：
-          2026-09-04 那条整行标题栏连同视口左缘 / 底中 / 右下三条浮层一起收进这里，视口四边不再有控件带。 */}
+      {/* 精修布局（顶栏 / 视口 / 属性卡 / 时间轴）在 DirectorRefineShell，导演视图在 DirectorViewShell；这里只管装配与生命周期 */}
       <EditorStage
         nodeTitle={nodeTitle}
         scopeRef={scopeRef}

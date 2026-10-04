@@ -2,16 +2,16 @@
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design 的 WorkbenchButton、../../../../../../vendor/tablerIcons、../Popover 的 Popover / PopoverItem、
  *          ../../DirectorEditorContext、../CreationModeContext 的 useCreationMode、../../model/cameraPresets、../../model/directorIds、../../model/directorTypes、
  *          ../../model/cameraCoordinateSpace / sceneObjectGraph（当前视角与选中主体按完整层级转换）、../../scene/ViewportApiContext、../usePanoramaImport、../imageFile
- * [OUTPUT]: 对外提供 AddObjectMenu：顶栏「＋ 添加 ▾」——角色（女 / 男 → 放置模式）、机位（14 预设，相对选中主体）、灯光（3 种）、方块（画框模式）、导入 720 全景；
- *           传 onOpenAssets 时触发器只画「＋」（公认图形，名字在 hover），菜单底部多一行「资产库」打开左侧抽屉（精修「选中才出」布局）
+ * [OUTPUT]: 对外提供 AddObjectMenu：顶栏「＋」（公认图形，名字在 hover）——角色（女 / 男 → 放置模式）、机位（14 预设，相对选中主体）、灯光（3 种）、方块（画框模式）、导入 720 全景；
+ *           菜单底部「资产库」打开左侧抽屉（精修「选中才出」布局，资产库不再常驻）
  * [POS]: director/panels/topbar 的创建入口，取代 2026-09-09 之前的视口左缘竖排创建栏（设计系统 §1.5.3「归位」：这四项本来就是
  *        「往场景里加东西」一个心智，四个平铺竖条正是 §1.5.4 的反例）。只发意图，落地 / 画框仍由 scene/creation 的 hook 执行。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
-import { WorkbenchButton, WorkbenchIconButton } from '../../../../../../design'
-import { IconBulb, IconChevronDown, IconChevronRight, IconCube, IconFolderOpen, IconMan, IconPhoto, IconPlus, IconUser, IconVideo, IconWoman } from '../../../../../../vendor/tablerIcons'
+import { WorkbenchIconButton } from '../../../../../../design'
+import { IconBulb, IconChevronRight, IconCube, IconFolderOpen, IconMan, IconPhoto, IconPlus, IconUser, IconVideo, IconWoman } from '../../../../../../vendor/tablerIcons'
 import { useDirectorStore, useDirectorStoreApi } from '../../DirectorEditorContext'
 import { transformCameraPose } from '../../model/cameraCoordinateSpace'
 import { CAMERA_PRESETS, buildCameraFromPreset } from '../../model/cameraPresets'
@@ -27,7 +27,7 @@ import { usePanoramaImport } from '../usePanoramaImport'
 const LIGHT_TYPES: DirectorLightType[] = ['directional', 'point', 'spot']
 type Sub = 'character' | 'camera' | 'light' | null
 
-export function AddObjectMenu({ onOpenAssets }: { onOpenAssets?: () => void } = {}): JSX.Element {
+export function AddObjectMenu({ onOpenAssets }: { onOpenAssets: () => void }): JSX.Element {
   const { t } = useTranslation()
   const store = useDirectorStoreApi()
   const apiRef = useViewportApi()
@@ -99,7 +99,7 @@ export function AddObjectMenu({ onOpenAssets }: { onOpenAssets?: () => void } = 
         open={open}
         onClose={close}
         panelClassName="w-[228px] max-h-[420px] overflow-auto"
-        trigger={onOpenAssets ? (
+        trigger={
           <WorkbenchIconButton
             size="sm"
             icon={<IconPlus size={16} stroke={1.9} />}
@@ -109,20 +109,7 @@ export function AddObjectMenu({ onOpenAssets }: { onOpenAssets?: () => void } = 
             data-testid="director-add-menu"
             onClick={() => (open ? close() : setOpen(true))}
           />
-        ) : (
-          <WorkbenchButton
-            size="sm"
-            className={modeActive ? 'gap-1 bg-nomi-accent-soft text-nomi-accent' : 'gap-1'}
-            aria-label={t('director.topbar.addAria')}
-            aria-expanded={open}
-            data-testid="director-add-menu"
-            onClick={() => (open ? close() : setOpen(true))}
-          >
-            <IconPlus size={16} stroke={1.9} />
-            {t('director.topbar.add')}
-            <IconChevronDown size={14} stroke={1.9} />
-          </WorkbenchButton>
-        )}
+        }
       >
         {sub === null ? (
           <>
@@ -137,12 +124,10 @@ export function AddObjectMenu({ onOpenAssets }: { onOpenAssets?: () => void } = 
               <IconPhoto size={16} stroke={1.9} />
               <span className="flex-1 text-left">{t('director.bottomBar.panoramaImport')}</span>
             </PopoverItem>
-            {onOpenAssets ? (
-              <PopoverItem onClick={() => { close(); onOpenAssets() }}>
-                <IconFolderOpen size={16} stroke={1.9} />
-                <span className="flex-1 text-left" data-testid="director-open-assets">{t('director.regions.assets')}</span>
-              </PopoverItem>
-            ) : null}
+            <PopoverItem onClick={() => { close(); onOpenAssets() }}>
+              <IconFolderOpen size={16} stroke={1.9} />
+              <span className="flex-1 text-left" data-testid="director-open-assets">{t('director.regions.assets')}</span>
+            </PopoverItem>
           </>
         ) : null}
         {sub === 'character' ? (

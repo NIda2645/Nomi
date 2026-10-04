@@ -15,10 +15,10 @@ import { useDirectorStore } from '../../DirectorEditorContext'
 import { Popover, PopoverItem } from '../Popover'
 import { SceneObjectsTab } from '../side/SceneObjectsTab'
 
-// 图层名封顶：顶栏在最窄的壳（728）里要放下四簇，长名字截断、全名在 hover 里
+// 图层名封顶 96px，长名字截断；窄壳（compact）里只留 ▤ 图标——全名都在触发器的悬停里
 const NAME_STYLE: React.CSSProperties = { maxWidth: 96 }
 
-export function SceneMenu({ onOpenSceneSettings }: { onOpenSceneSettings: () => void }): JSX.Element {
+export function SceneMenu({ onOpenSceneSettings, compact = false }: { onOpenSceneSettings: () => void; compact?: boolean }): JSX.Element {
   const { t } = useTranslation()
   const sceneName = useDirectorStore((state) => state.activeScene().name)
   const [open, setOpen] = React.useState(false)
@@ -31,6 +31,7 @@ export function SceneMenu({ onOpenSceneSettings }: { onOpenSceneSettings: () => 
       side="bottom"
       align="start"
       panelClassName="flex w-max min-w-[240px] max-w-[320px] flex-col p-1"
+      passEditorHotkeys
       trigger={
         <button
           type="button"
@@ -43,7 +44,7 @@ export function SceneMenu({ onOpenSceneSettings }: { onOpenSceneSettings: () => 
           onClick={() => setOpen((value) => !value)}
         >
           <IconStack2 size={16} stroke={1.9} className="shrink-0 text-nomi-ink-40" />
-          <span className="min-w-0 truncate" style={NAME_STYLE}>{sceneName}</span>
+          {compact ? null : <span className="min-w-0 truncate" style={NAME_STYLE}>{sceneName}</span>}
           <IconChevronDown size={14} stroke={1.9} className="shrink-0 text-nomi-ink-40" />
         </button>
       }

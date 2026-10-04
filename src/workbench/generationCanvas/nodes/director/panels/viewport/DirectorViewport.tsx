@@ -8,7 +8,7 @@
  *           指针事件先给创建模式 hook，再落到画布拾取；悬浮态写入 hoveredRef / scopeRef；
  *           presentation（导演视图）时编辑辅助物不画、不可点选、小窗改说「正在播哪一镜」
  * [POS]: director/panels/viewport 的视口装配（清单 §2 全部 DOM 侧），three 世界在 scene/DirectorCanvas。
- *        2026-09-09 五簇重排后视口上不再有控件带：创建栏 / 底栏 / 显示模式三条已并进 topbar/DirectorTopBar，
+ *        2026-09-09 五簇重排后视口上不再有控件带：创建栏 / 底栏 / 显示模式三条已并进顶栏（今天是 topbar/RefineTopBar），
  *        这里只剩内容与情境浮层（标签 / HUD / POV / 画中画 / AI 入口）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
@@ -46,13 +46,11 @@ export type DirectorViewportProps = {
   showAiSceneBar?: boolean
   /** 导演视图（3D-BOX）的看法：编辑辅助物不画、不可点选、小窗跟播放头的节目机位并说「正在播哪一镜」。缺省 = 精修 / 旧导演台。 */
   presentation?: DirectorViewportPresentation
-  /** 视图立方住哪个角（透传给画布）；缺省右上 */
-  viewCubeCorner?: 'top-right' | 'bottom-right'
 }
 
 export type DirectorViewportPresentation = { kind: 'director'; nowPlaying: string | null }
 
-export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, scopeRef, placement, boxDraw, cancelCreationRef, showAiSceneBar = true, presentation, viewCubeCorner }: DirectorViewportProps): JSX.Element {
+export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, scopeRef, placement, boxDraw, cancelCreationRef, showAiSceneBar = true, presentation }: DirectorViewportProps): JSX.Element {
   const { t } = useTranslation()
   const hoveredRef = React.useRef(false)
   const apiRef = useViewportApi()
@@ -152,7 +150,6 @@ export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, 
         aspect={exportAspectRatio(exportRatio) ?? 16 / 9}
         onLabels={setLabels}
         onPovRejected={reject}
-        viewCubeCorner={viewCubeCorner}
         presentation={presentation ? 'director' : 'edit'}
       />
       <AspectGuide pipRectRef={pipRectRef} />

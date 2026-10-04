@@ -8,7 +8,7 @@
  *        大纲 / 场景设置 / 资产库各一次点击可达（顶栏「▤ 图层名 ▾」、它底部的「场景设置」、「＋ ▾」底部的「资产库」）。
  *        空场景时视口正中一句提示（往哪儿加东西）。这个壳只持有两个瞬态：场景设置卡开着、资产库抽屉开着——都不持久，关窗口就没了。
  *        时间轴、分栏比例键（director.center）、折叠记忆与旧布局完全一样，没动。
- *        样张阶段只经 panels/refineLayoutPreview 的接缝在设计实验室出现；拍板后由 EditorStage 直接渲染，并删掉 SidePanels / DirectorTopBar。
+ *        2026-10-04 拍板后由 EditorStage 直接渲染，旧右栏双卡（SidePanels）与旧顶栏（DirectorTopBar）同 PR 删除。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import React, { type JSX } from 'react'
@@ -82,7 +82,6 @@ export function DirectorRefineShell({ scopeRef, placement, boxDraw, cancelCreati
             boxDraw={boxDraw}
             cancelCreationRef={cancelCreationRef}
             showAiSceneBar={!viewMode}
-            viewCubeCorner="bottom-right"
           />
           {sceneEmpty ? (
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center" data-testid="director-refine-empty">

@@ -79,7 +79,6 @@ export { default as IconCloudDownload } from '@tabler/icons-react/dist/esm/icons
 export { default as IconCode } from '@tabler/icons-react/dist/esm/icons/IconCode.mjs'
 export { default as IconCoin } from '@tabler/icons-react/dist/esm/icons/IconCoin.mjs'
 export { default as IconCopy } from '@tabler/icons-react/dist/esm/icons/IconCopy.mjs'
-export { default as IconContrast } from '@tabler/icons-react/dist/esm/icons/IconContrast.mjs'
 export { default as IconCornerDownLeft } from '@tabler/icons-react/dist/esm/icons/IconCornerDownLeft.mjs'
 export { default as IconCornerDownRight } from '@tabler/icons-react/dist/esm/icons/IconCornerDownRight.mjs'
 export { default as IconCrop } from '@tabler/icons-react/dist/esm/icons/IconCrop.mjs'

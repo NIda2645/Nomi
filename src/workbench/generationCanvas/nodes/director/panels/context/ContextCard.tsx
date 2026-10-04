@@ -100,6 +100,7 @@ export function ContextCard({ sceneSettingsOpen, onCloseSceneSettings, onCancelC
       data-nomi-right-panel="director"
       // 只有「场景设置」这一态自己吃 Esc（关卡）；选中实体时 Esc 归壳：清选中，卡随之收走
       data-nomi-escape-layer={hasSelection ? undefined : 'director-scene-settings'}
+      data-nomi-hotkeys="pass"
     >
       <div className="pointer-events-auto flex max-h-full min-h-0 flex-col overflow-hidden rounded-nomi-lg border border-nomi-line bg-nomi-paper shadow-nomi-lg">
         <ContextInspector onClose={close} headerActions={hasPathSubject ? <PathDrawButtons onCancelCreation={onCancelCreation} /> : null} />
