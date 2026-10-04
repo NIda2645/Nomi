@@ -85,6 +85,7 @@ function readTimelineCollapsed(): boolean {
 }
 
 type EditorBodyProps = {
+  nodeTitle: string
   scopeRef: React.MutableRefObject<DirectorHotkeyScope>
   onExit: () => void
   preferences: DirectorPreferences
@@ -95,6 +96,7 @@ type EditorBodyProps = {
 }
 
 type EditorStageProps = {
+  nodeTitle: string
   scopeRef: React.MutableRefObject<DirectorHotkeyScope>
   preferences: DirectorPreferences
   cancelCreationRef: React.MutableRefObject<(() => void) | null>
@@ -115,7 +117,7 @@ type EditorStageProps = {
  * 而那个 Provider 是 EditorBody 渲染的 —— 在 EditorBody 自己的函数体里调，拿到的是 provider 之外的空值，
  * useViewportApi() 当场抛错、整块懒加载壳落到「加载失败」（2026-09-09 真机走查抓到）。
  */
-function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollapsed, onToggleTimeline, onResetView, onExit, onOpenSettings, onOpenHelp, director3dBox, viewMode, onViewModeChange, onProduce }: EditorStageProps): JSX.Element {
+function EditorStage({ nodeTitle, scopeRef, preferences, cancelCreationRef, timelineCollapsed, onToggleTimeline, onResetView, onExit, onOpenSettings, onOpenHelp, director3dBox, viewMode, onViewModeChange, onProduce }: EditorStageProps): JSX.Element {
   const { t } = useTranslation()
   // 创建模式只调一次 hook，经 CreationModeContext 下发：视口要指针路由与 ghost ref，顶栏「＋添加」要能发起。
   // 两处各调一次 = 两份互不知情的模式状态（P1 的并行版）。
@@ -126,6 +128,7 @@ function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollaps
   const timelineEmpty = useDirectorStore((state) => orderedTimelineEntities(state.activeScene()).length === 0)
   if (director3dBox && viewMode === 'director') {
     return <DirectorViewShell
+      nodeTitle={nodeTitle}
       scopeRef={scopeRef}
       placement={placement}
       boxDraw={boxDraw}
@@ -133,7 +136,6 @@ function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollaps
       theme={preferences.theme}
       viewSettings={preferences.view}
       onExit={onExit}
-      onResetView={onResetView}
       onViewModeChange={onViewModeChange}
       onProduce={onProduce}
     />
@@ -180,7 +182,7 @@ function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollaps
   )
 }
 
-function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId, onSendToCanvas, onExternalProjectChange }: EditorBodyProps): JSX.Element {
+function EditorBody({ nodeTitle, scopeRef, onExit, preferences, onChangePreferences, nodeId, onSendToCanvas, onExternalProjectChange }: EditorBodyProps): JSX.Element {
   const apiRef = React.useRef<ViewportApi | null>(null)
   const cancelCreationRef = React.useRef<(() => void) | null>(null)
   const store = useDirectorStoreApi()
@@ -249,6 +251,7 @@ function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId
       {/* 五个功能簇一条悬浮顶栏（2026-09-09 用户拍板，方案 docs/plan/2026-09-09-director-chrome-five-clusters.md）：
           2026-09-04 那条整行标题栏连同视口左缘 / 底中 / 右下三条浮层一起收进这里，视口四边不再有控件带。 */}
       <EditorStage
+        nodeTitle={nodeTitle}
         scopeRef={scopeRef}
         preferences={preferences}
         cancelCreationRef={cancelCreationRef}
@@ -402,7 +405,7 @@ export default function DirectorEditor({ rawProject, nodeTitle, readOnly = false
     <DirectorStoreContext.Provider value={store}>
       <TooltipProvider>
         <div
-          className="fixed bottom-0 left-0 isolate flex flex-col overflow-hidden bg-nomi-bg text-nomi-ink font-nomi-sans"
+          className="fixed inset-x-0 bottom-0 isolate flex flex-col overflow-hidden bg-nomi-bg text-nomi-ink font-nomi-sans"
           style={director3dBox
             ? { top: currentFullscreenOverlayTopOffset(), right: assistantCollapsed ? 0 : assistantPaneWidth(assistantWidth), zIndex: FULLSCREEN_Z_INDEX }
             : { top: currentFullscreenOverlayTopOffset(), zIndex: FULLSCREEN_Z_INDEX }}
@@ -418,6 +421,7 @@ export default function DirectorEditor({ rawProject, nodeTitle, readOnly = false
           onWheel={(event) => event.stopPropagation()}
         >
           <EditorBody
+            nodeTitle={nodeTitle}
             scopeRef={scopeRef}
             onExit={() => void handleExit()}
             preferences={preferences}

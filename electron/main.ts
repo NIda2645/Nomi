@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
-import { director3dBoxProof } from "./shared/featureFlags/director3dbox";
+import { mainWindowWebPreferences } from "./mainWindowWebPreferences";
 import { startCatalogReconciliation } from "./ai/onboarding/vendorHealth";
 import type { Rectangle, WebContents } from "electron";
 import path from "node:path";
@@ -167,6 +167,7 @@ async function loadCapabilityCoreModule(): Promise<typeof import("./capabilityCo
   });
   return capabilityCoreModulePromise;
 }
+
 function getActiveCapabilityPort(): number | null {
   return capabilityPortCache;
 }
@@ -288,13 +289,7 @@ async function createWindow(
     // macOS/Linux：保留原生窗口 chrome（红绿灯/拖拽/缩放全交系统，零回归）。
     frame: process.platform !== "win32",
     icon: path.join(__dirname, "../build/icon.png"),
-    webPreferences: {
-      preload: path.join(__dirname, "preload.js"),
-      additionalArguments: [`--nomi-director3dbox-proof=${encodeURIComponent(JSON.stringify(director3dBoxProof()))}`],
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false,
-    },
+    webPreferences: mainWindowWebPreferences(__dirname),
     ...backgroundWindowOptions(),
   });
   installBackgroundWindowBehavior(mainWindow);
@@ -377,8 +372,7 @@ function registerSyncIpc<TArgs extends unknown[], TResult>(
 ): void {
   ipcMain.on(channel, (event, ...args: TArgs) => {
     try {
-      assertTrustedSender(event);
-      event.returnValue = { ok: true, value: handler(...args) };
+      assertTrustedSender(event); event.returnValue = { ok: true, value: handler(...args) };
     } catch (error) {
       event.returnValue = {
         ok: false,
@@ -387,15 +381,7 @@ function registerSyncIpc<TArgs extends unknown[], TResult>(
     }
   });
 }
-
 function registerIpc(): void {
-  const flag = director3dBoxProof();
-  logInfo("main", "director3dbox-resolved", {
-    enabled: flag.enabled,
-    source: flag.source,
-    fingerprint: flag.fingerprint,
-    expiresOn: flag.expiresOn,
-  });
   const selectedWorkspaceRoots = new Set<string>();
   // Static app-main Surface authority: registered before createWindow and
   // independent from the delayed/optional external capability core.

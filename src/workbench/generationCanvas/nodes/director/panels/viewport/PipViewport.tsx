@@ -1,7 +1,8 @@
 /**
  * [INPUT]: 依赖 react、react-i18next、../../../../../../design（NomiSelect / WorkbenchButton / WorkbenchIconButton）、../../../../../../vendor/tablerIcons、../../../../../../utils/cn、
  *          ../../DirectorEditorContext、../../scene/pipCamera（PipRect / pipCameraIdOf）、../../model/cameraLens 的 exportAspectRatio
- * [OUTPUT]: 对外提供 PipViewport：画中画节目小窗的 DOM 外壳（默认左上，头部 机位下拉 · mm · 画幅 chip / LIVE / 折叠、透明画面区、进入·退出机位 + FOV 读数、拖标题移动、拖角缩放 280–520px）
+ * [OUTPUT]: 对外提供 PipViewport：画中画节目小窗的 DOM 外壳（默认左上，头部 机位下拉 · mm · 画幅 chip / LIVE / 折叠、透明画面区、进入·退出机位 + FOV 读数、拖标题移动、拖角缩放 280–520px）；
+ *           导演视图（presentation）时同一个组件改成钉在视口左下、只有一行「▷ 镜头 N · 景别 · 运镜 · 画幅」，不给机位下拉 / 焦距 / FOV / 进入视角
  * [POS]: director/panels/viewport 的画中画（清单 §2.5 V7）：画面本身由 scene/PipRenderer 在主画布同一位置剪裁渲染，这里只量矩形写进 ref、
  *        没有机位或节目黑场时盖黑底「无信号」；位置/宽度/折叠持久到 localStorage。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -9,12 +10,13 @@
 import React, { type JSX } from 'react'
 import { useTranslation } from 'react-i18next'
 import { NomiSelect, WorkbenchButton, WorkbenchIconButton } from '../../../../../../design'
-import { IconChevronDown, IconChevronUp, IconVideo } from '../../../../../../vendor/tablerIcons'
+import { IconChevronDown, IconChevronUp, IconPlayerPlayFilled, IconVideo } from '../../../../../../vendor/tablerIcons'
 import { cn } from '../../../../../../utils/cn'
 import { useDirectorStore, useDirectorStoreApi } from '../../DirectorEditorContext'
 import { exportAspectRatio } from '../../model/cameraLens'
 import { pipCameraIdOf, type PipRect } from '../../scene/pipCamera'
 import { DIRECTOR_TOP_CHROME_PX } from '../topbar/topChrome'
+import type { DirectorViewportPresentation } from './DirectorViewport'
 
 const STORAGE_KEY = 'nomi:director:pip:v2'
 const MIN_WIDTH = 160
@@ -50,13 +52,15 @@ function writeLayout(layout: PipLayout): void {
   }
 }
 
-export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.MutableRefObject<PipRect>; canvasHostRef: React.RefObject<HTMLDivElement | null> }): JSX.Element | null {
+export function PipViewport({ rectRef, canvasHostRef, presentation }: { rectRef: React.MutableRefObject<PipRect>; canvasHostRef: React.RefObject<HTMLDivElement | null>; presentation?: DirectorViewportPresentation }): JSX.Element | null {
   const { t } = useTranslation()
   const store = useDirectorStoreApi()
   const cameras = useDirectorStore((state) => state.activeScene().cameras)
   const exportRatio = useDirectorStore((state) => state.project.exportRatio)
   const activeCameraId = useDirectorStore((state) => state.activeCameraId)
-  const shownCameraId = useDirectorStore((state) => pipCameraIdOf(state))
+  // 导演视图只回答「正在播哪一镜」：小窗跟播放头的节目机位，和 PipRenderer 用同一条选台规则
+  const directorMode = presentation?.kind === 'director'
+  const shownCameraId = useDirectorStore((state) => pipCameraIdOf(state, { followProgram: directorMode }))
   const isLive = useDirectorStore((state) => state.timeline.isPlaying || Boolean(state.recording))
   const recording = useDirectorStore((state) => Boolean(state.recording))
   const closeupBlocked = useDirectorStore((state) => (shownCameraId ? state.isCameraInCloseupAt(shownCameraId) : false))
@@ -74,7 +78,7 @@ export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.Mutable
   React.useEffect(() => {
     const screen = screenRef.current
     const host = canvasHostRef.current
-    if (!showPreview || !screen || !host || layout.collapsed || !shownCameraId) {
+    if (!showPreview || !screen || !host || (layout.collapsed && !directorMode) || !shownCameraId) {
       rectRef.current = null
       return undefined
     }
@@ -91,7 +95,7 @@ export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.Mutable
       observer.disconnect()
       rectRef.current = null
     }
-  }, [canvasHostRef, layout, rectRef, shownCameraId, showPreview])
+  }, [canvasHostRef, directorMode, layout, rectRef, shownCameraId, showPreview])
 
   const beginDrag = (event: React.PointerEvent<HTMLElement>) => {
     if (event.button !== 0) return
@@ -153,6 +157,37 @@ export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.Mutable
   const shown = cameras.find((camera) => camera.id === shownCameraId) ?? null
   const inPovOfShown = shown !== null && activeCameraId === shown.id
   const enterBlockedReason = recording ? t('director.camera.pipRecordingBlocked') : closeupBlocked ? t('director.camera.pipEnterBlocked') : null
+  const ratioLabel = exportRatio === 'free' ? t('director.aspect.free') : exportRatio
+  const screen = (
+    <div ref={screenRef} className={cn('relative z-30 w-full', shown ? '' : 'bg-nomi-media-veil')} style={{ aspectRatio: String(aspect) }}>
+      {!shown ? (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-nomi-media-veil text-caption text-nomi-media-ink/70">
+          {cameras.length === 0 ? t('director.camera.pipNoCamera') : t('director.camera.pipNoSignal')}
+        </div>
+      ) : null}
+      <div className="absolute bottom-0 right-0 size-3 cursor-nwse-resize" title={t('director.camera.pipResize')} onPointerDown={beginResize} />
+    </div>
+  )
+
+  if (directorMode) {
+    // 导演视图：钉在视口左下（样张位置），不可拖也不可折叠——它是这一面唯一的「成片在播什么」读数，折起来就没处看了
+    return (
+      <div
+        ref={rootRef}
+        className="pointer-events-auto absolute bottom-3 left-3 z-30 flex flex-col overflow-hidden rounded-nomi-lg border border-nomi-line bg-transparent shadow-nomi-lg"
+        style={{ width: layout.width }}
+        data-testid="director-pip"
+        data-pip-presentation="director"
+      >
+        {screen}
+        <div className="flex items-center gap-1.5 bg-nomi-paper px-2 py-1 text-caption text-nomi-ink-60" data-testid="director-pip-now-playing">
+          <IconPlayerPlayFilled size={12} stroke={2} className={cn('shrink-0', isLive ? 'text-nomi-accent' : 'text-nomi-ink-60')} aria-label={t('director.view.nowPlaying')} />
+          <span className="min-w-0 flex-1 truncate font-medium text-nomi-ink">{presentation.nowPlaying ?? t('director.camera.pipTitle')}</span>
+          <span className="shrink-0 font-nomi-mono text-micro">{ratioLabel}</span>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div
@@ -168,7 +203,7 @@ export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.Mutable
         {shown ? (
           <>
             <span className="rounded-nomi-sm bg-nomi-ink-10 px-1 font-nomi-mono text-micro text-nomi-ink-60">{t('director.camera.pipMm', { mm: shown.focalLengthMm })}</span>
-            <span className="rounded-nomi-sm bg-nomi-ink-10 px-1 font-nomi-mono text-micro text-nomi-ink-60">{exportRatio === 'free' ? t('director.aspect.free') : exportRatio}</span>
+            <span className="rounded-nomi-sm bg-nomi-ink-10 px-1 font-nomi-mono text-micro text-nomi-ink-60">{ratioLabel}</span>
           </>
         ) : null}
         {isLive ? <span className="rounded-nomi-sm bg-nomi-danger px-1 text-micro font-semibold text-nomi-paper">{t('director.camera.pipLive')}</span> : null}
@@ -197,14 +232,7 @@ export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.Mutable
       </div>
       {layout.collapsed ? null : (
         <>
-          <div ref={screenRef} className={cn('relative z-30 w-full', shown ? '' : 'bg-nomi-media-veil')} style={{ aspectRatio: String(aspect) }}>
-            {!shown ? (
-              <div className="absolute inset-0 z-40 flex items-center justify-center bg-nomi-media-veil text-caption text-nomi-media-ink/70">
-                {cameras.length === 0 ? t('director.camera.pipNoCamera') : t('director.camera.pipNoSignal')}
-              </div>
-            ) : null}
-            <div className="absolute bottom-0 right-0 size-3 cursor-nwse-resize" title={t('director.camera.pipResize')} onPointerDown={beginResize} />
-          </div>
+          {screen}
           <div className="flex items-center justify-between gap-2 bg-nomi-paper px-2 py-1 font-nomi-mono text-micro text-nomi-ink-40">
             <span>{shown ? t('director.camera.pipFov', { fov: shown.fov.toFixed(1), mm: shown.focalLengthMm }) : '—'}</span>
             {shown ? (
