@@ -25,7 +25,9 @@ import { spendDecidedByPolicy, type ProjectAgentApprovalPolicy } from "../../sha
 import { quoteSpendLine } from "../../spendQuote";
 import { mintSpendGrant, isSpendAuthorizationError } from "../../spendGrant";
 import { sanitizedAdapterJson, redactAdapterSecrets } from "../../providerAdapter/redaction";
-import type { RunTaskFn } from "../core";
+import { resolveCapabilityPollTimeoutMs, type FetchTaskResultFn, type RunTaskFn } from "../core";
+import { pollTaskToTerminal } from "../pollTaskToTerminal";
+import { isTerminalTaskStatus } from "../../shared/taskStatus";
 import { billableRequests, noBlast, unverified, type OnboardingFailure, type OnboardingResult } from "./envelope";
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
@@ -35,6 +37,14 @@ const NEUTRAL_PROMPT = "A single red apple on a plain white table, soft daylight
 
 export type TryModelDeps = {
   runTask: RunTaskFn;
+  /**
+   * 异步供应商提交后「查到终态」用的那一条（与画布 / headless 生成同源：`runtime.fetchTaskResult`）。
+   * 缺席时遇到 queued 只会如实说「已提交、仍在处理」，**不会**判失败。
+   */
+  fetchTaskResult?: FetchTaskResultFn;
+  /** 试跑最多等多久（毫秒）。缺省沿用 headless 生成的上限（视频 15 分钟、其余 4 分钟）。 */
+  pollTimeoutMs?: number;
+  pollIntervalMs?: number;
   /**
    * 用户此刻选的审批档位（宿主持有的那一份快照，与 `generationTransportAdapters` 读的是同一份）。
    *
@@ -136,6 +146,34 @@ export async function tryModel(
       evidence: { bodyExcerpt: redactAdapterSecrets(message, 512) },
       nextAction: "Read the message against the documentation URL the card declared for that mode, fix the field it names, and submit the card again.",
     };
+  }
+
+  // 异步供应商：提交即收费，首次返回只有 queued 没有产物。**这不是失败**——
+  // 等到终态（同一条查询链路），等不到就如实说「仍在处理」，绝不报 provider_failed（否则 AI 会重试再花一次钱）。
+  const taskId = typeof result.id === "string" ? result.id : "";
+  if (result.status && !isTerminalTaskStatus(result.status)) {
+    const polled = deps.fetchTaskResult
+      ? await pollTaskToTerminal({
+          initial: result,
+          fetch: deps.fetchTaskResult,
+          vendor: vendorKey,
+          taskKind,
+          prompt: text(args.prompt) || NEUTRAL_PROMPT,
+          modelKey,
+          timeoutMs: deps.pollTimeoutMs ?? resolveCapabilityPollTimeoutMs(taskKind),
+          intervalMs: deps.pollIntervalMs ?? (taskKind === "text_to_video" || taskKind === "image_to_video" ? 3000 : 1500),
+        })
+      : { result, ended: "timeout" as const, waitedMs: 0 };
+    result = polled.result;
+    if (polled.ended !== "terminal") {
+      return {
+        ok: false, code: "still_processing",
+        message: `The provider accepted this test generation${taskId ? ` (task ${taskId})` : ""} and it is still processing (status=${result.status || "queued"}). The charge for it has already been made. This is NOT a failure.`,
+        ...(taskId ? { taskId } : {}),
+        evidence: { bodyExcerpt: sanitizedAdapterJson(result.raw).slice(0, 512) },
+        nextAction: `Do NOT retry and do NOT call nomi_try_model again for this model now: that would submit and charge a second job. Tell the user the test is submitted and still running${taskId ? `, with task id ${taskId}` : ""}; they can check that job in the provider's own console. Only try again later if the user asks.`,
+      };
+    }
   }
 
   const assets = Array.isArray(result.assets) ? result.assets : [];

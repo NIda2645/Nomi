@@ -789,6 +789,8 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         ...(ctx.openCredentialsInNomi ? { openCredentialsInNomi: ctx.openCredentialsInNomi } : {}),
         // 试跑走的就是画布那条执行器；这里只是把同一个 runTask 递过去，不另起一条。
         runTask: ctx.runTask,
+        // 异步供应商提交后的等待走同一条任务查询（与画布 / headless 生成同源），不另写轮询。
+        ...(ctx.fetchTaskResult ? { fetchTaskResult: ctx.fetchTaskResult } : {}),
         // 「该不该问人」由用户的档位决定，不由入口决定：档位原样往下递，判据只有
         // `spendDecidedByPolicy` 一处。宿主没给 = 不猜 = 照旧问人。
         ...(ctx.approvalPolicy ? { approvalPolicy: ctx.approvalPolicy } : {}),
