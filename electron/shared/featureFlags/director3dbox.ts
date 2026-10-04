@@ -6,6 +6,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { installDirector3DBoxFace } from './director3dboxFace'
 
 export const DIRECTOR_3DBOX_FLAG = 'director3dbox' as const
 export const DIRECTOR_3DBOX_EXPIRY = '2026-11-15' as const
@@ -67,6 +68,8 @@ export function resolveDirector3DBoxFlag(env: NodeJS.ProcessEnv = process.env, b
 }
 
 export const director3dBoxFlag = resolveDirector3DBoxFlag()
+// 共享层（工具注册表等导入期装配的常量）只读 globalThis 上这一份；见 director3dboxFace.ts。
+installDirector3DBoxFace(director3dBoxFlag.enabled)
 
 export function director3dBoxEnabled(): boolean {
   return director3dBoxFlag.enabled

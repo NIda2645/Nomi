@@ -45,12 +45,12 @@ import { executeAssetReadTarget, executeExportReadTarget } from '../timeline/age
 import { executeCanonicalCanvasPlanPatch } from './canonicalCanvasPlanPatch'
 import { handleMcpHostSurfaceOp } from './mcpHostSurfaceOps'
 import { presentStoryboard } from './storyboardPresent'
+import { directorPreviewBlocksOp } from './directorPreviewBlocksOp'
 import { patchAgentStoryboardDesign, upsertAgentStoryboardDesign } from '../creation/storyboard/agentStoryboardDesign'
 import { confirmCredentialProbeSpend, spendModelLine } from './credentialProbeSpendCard'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
-// 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
-// 单一真相源：画布读写复用 store 现成动作（readDocumentSnapshot / applyExternalGraph），
+// 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。单一真相源：画布读写复用 store 现成动作（readDocumentSnapshot / applyExternalGraph），
 // 付费确认复用全仓唯一的 useSpendConfirmStore（不另造并行 UI，P1）。
 
 type SpendConfirmPayload = {
@@ -416,6 +416,7 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
   const landed = await handleMultiShotCanvasLandingOp(op, data)
   if (landed !== null) return landed
   if (op === 'storyboard.present') return presentStoryboard(data)
+  if (op === 'director.preview-blocks') return directorPreviewBlocksOp(data)
   if (op === 'storyboard.upsert-design') return upsertAgentStoryboardDesign(data)
   if (op === 'storyboard.patch-design') return patchAgentStoryboardDesign(data)
 

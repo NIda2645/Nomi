@@ -25,9 +25,11 @@ import { readGenerationCanvasSnapshot } from './generationCanvas/agent/generatio
 import {
   captureCanvasDeleteRawEvidence,
   captureCanvasWriteRawEvidence,
+  captureDirectorWriteRawEvidence,
   executeCanvasWriteTarget,
 } from './generationCanvas/agent/canvasWriteTarget'
 import { canvasDeleteSemanticInputSchema } from '../../electron/shared/agentCapabilities/canvasDelete'
+import { directorWriteSemanticInputSchema, isDirectorWriteOperation } from '../../electron/shared/agentCapabilities/directorWrite'
 import {
   executeTimelineReadTarget,
   executeTimelineWriteTarget,
@@ -235,6 +237,10 @@ export default function NomiStudioApp(): JSX.Element {
                 readGenerationCanvasSnapshot(),
                 canvasDeleteSemanticInputSchema.parse(input),
               )
+            }
+            // 3D-BOX（director.write）：preload 只在开关开时放行这两个操作进来。
+            if (isDirectorWriteOperation(operation)) {
+              return captureDirectorWriteRawEvidence(readGenerationCanvasSnapshot(), directorWriteSemanticInputSchema.parse(input))
             }
             return captureCanvasWriteRawEvidence(
               readGenerationCanvasSnapshot(),

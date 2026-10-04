@@ -26,6 +26,12 @@ import {
   type CanvasWriteResult,
 } from "../shared/agentCapabilities/canvasWrite";
 import {
+  DIRECTOR_WRITE_CAPABILITY,
+  directorWriteResultSchema,
+  directorWriteSemanticInputSchema,
+  type DirectorWriteResult,
+} from "../shared/agentCapabilities/directorWrite";
+import {
   DOCUMENT_READ_CAPABILITY,
   documentReadSemanticInputSchema,
   documentReadResultSchema,
@@ -111,7 +117,8 @@ export type CanvasWritePort = Readonly<{
     input: Readonly<{
       operation:
         | import("../shared/agentCapabilities/canvasWrite").CanvasWriteOperation
-        | CanvasDeleteInput["operation"];
+        | CanvasDeleteInput["operation"]
+        | import("../shared/agentCapabilities/directorWrite").DirectorWriteOperation;
       input?: unknown;
       nodeId?: string;
       signal: AbortSignal;
@@ -326,6 +333,8 @@ function parseInput(invocation: AnyVerifiedInvocation): void {
           ? canvasDeleteSemanticInputSchema
           : invocation.capability.id === CANVAS_WRITE_CAPABILITY.id
           ? canvasWriteSemanticInputSchema
+          : invocation.capability.id === DIRECTOR_WRITE_CAPABILITY.id
+          ? directorWriteSemanticInputSchema
           : invocation.capability.id === EXPORT_READ_CAPABILITY.id
             ? exportReadSemanticInputSchema
             : invocation.capability.id === EXPORT_WRITE_CAPABILITY.id
@@ -343,7 +352,7 @@ function parseInput(invocation: AnyVerifiedInvocation): void {
 function projectOutput(
   source: unknown,
   invocation: AnyVerifiedInvocation,
-): AssetReadResult | CanvasReadResult | DocumentReadResult | DocumentWriteResult | CanvasDeleteResult | CanvasWriteResult | ExportReadResult | ExportWriteResult | TimelineReadResult | TimelineWriteResult {
+): AssetReadResult | CanvasReadResult | DocumentReadResult | DocumentWriteResult | CanvasDeleteResult | CanvasWriteResult | DirectorWriteResult | ExportReadResult | ExportWriteResult | TimelineReadResult | TimelineWriteResult {
   if (invocation.capability.id === ASSET_READ_CAPABILITY.id) {
     try {
       return projectAssetReadResult(source, assetReadSemanticInputSchema.parse(invocation.input).operation);
@@ -368,6 +377,13 @@ function projectOutput(
   if (invocation.capability.id === CANVAS_WRITE_CAPABILITY.id) {
     try {
       return canvasWriteResultSchema.parse(source);
+    } catch {
+      throw new CapabilityExecutionError("capability_output_invalid");
+    }
+  }
+  if (invocation.capability.id === DIRECTOR_WRITE_CAPABILITY.id) {
+    try {
+      return directorWriteResultSchema.parse(source);
     } catch {
       throw new CapabilityExecutionError("capability_output_invalid");
     }
@@ -484,8 +500,10 @@ export class CapabilityExecutorRegistry {
             signal,
           }));
         }
+        // 3D-BOX 计划写入（director.write）与画布写同一个渲染端写口（同一条 surface port、同一本收据 / 撤销日志）。
         case CANVAS_DELETE_CAPABILITY.id:
         case CANVAS_WRITE_CAPABILITY.id:
+        case DIRECTOR_WRITE_CAPABILITY.id:
           return approvedWriteAdapter(resolveCanvasWritePort);
         case ASSET_READ_CAPABILITY.id: {
           if (!resolveAssetReadPort) throw new CapabilityExecutionError("capability_unsupported");
@@ -546,6 +564,10 @@ export class CapabilityExecutorRegistry {
     const isCanvasWrite =
       invocation.capability.id === CANVAS_WRITE_CAPABILITY.id &&
       invocation.capability.version === CANVAS_WRITE_CAPABILITY.version;
+    // 3D-BOX：仅内部的 director.write（开关开才注册）走画布写同一个渲染端写口。
+    const isDirectorWrite =
+      invocation.capability.id === DIRECTOR_WRITE_CAPABILITY.id &&
+      invocation.capability.version === DIRECTOR_WRITE_CAPABILITY.version;
     const isCanvasDelete =
       invocation.capability.id === CANVAS_DELETE_CAPABILITY.id &&
       invocation.capability.version === CANVAS_DELETE_CAPABILITY.version;
@@ -564,11 +586,11 @@ export class CapabilityExecutorRegistry {
     const isTimelineWrite =
       invocation.capability.id === TIMELINE_WRITE_CAPABILITY.id &&
       invocation.capability.version === TIMELINE_WRITE_CAPABILITY.version;
-    if (!isAssetRead && !isCanvasRead && !isDocumentRead && !isDocumentWrite && !isCanvasDelete && !isCanvasWrite && !isExportRead && !isExportWrite && !isTimelineRead && !isTimelineWrite) {
+    if (!isAssetRead && !isCanvasRead && !isDocumentRead && !isDocumentWrite && !isCanvasDelete && !isCanvasWrite && !isDirectorWrite && !isExportRead && !isExportWrite && !isTimelineRead && !isTimelineWrite) {
       throw new CapabilityExecutionError("capability_unsupported");
     }
     parseInput(invocation);
-    const mutating = isDocumentWrite || isCanvasWrite || isCanvasDelete || isTimelineWrite || isExportWrite;
+    const mutating = isDocumentWrite || isCanvasWrite || isDirectorWrite || isCanvasDelete || isTimelineWrite || isExportWrite;
     let writeStarted = false;
 
     return bounded(

@@ -17,6 +17,7 @@ import type { GenerationCanvasNode } from '../model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { NodeWriteAccessProvider, useNodeWriteAccess } from './nodeWriteAccess'
 import { canRunGenerationNode, confirmAndRunNode, confirmAndRunNodeVariants, regenerateNodeInPlace, unmetReferenceDependencyForNode } from '../runner/generationRunController'
+import { directorPreviewSpendBlock } from './director/model/directorPreviewState'
 import type { UnmetReferenceDependency } from './controls/referenceDependency'
 import { collectUngeneratedReferenceAncestors } from '../runner/referenceAncestors'
 import { buildDependencyWaves } from '../runner/dependencyWaves'
@@ -176,6 +177,8 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
   // 与 canGenerate 同一个判定（unmetReferenceDependencyForNode），composer 不再按 node.kind 重猜原因。
   // 订阅**字符串**而非对象：对象选择器每帧新引用会破坏 v0.7.2 的 primitive 订阅防抖；
   // 文案仍留到渲染时用 t() 格式化，保证切语言能实时重渲。
+  // 3D-BOX 预演挡着这一镜的生成（渲染中 / 失败）：与 canRunGenerationNode 同一个判据，这里只取原因（原始值订阅）。
+  const directorPreviewBlock = useGenerationCanvasStore((state) => directorPreviewSpendBlock(node.id, state.nodes)?.reason ?? null)
   const unmetDependencyKey = useGenerationCanvasStore((state) =>
     JSON.stringify(unmetReferenceDependencyForNode(node, { nodes: state.nodes, edges: state.edges })),
   )
@@ -551,7 +554,9 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
           </div>
         ) : null}
         {inPanel ? null : (() => {
-          const disabledReason = unmetDependency
+          const disabledReason = directorPreviewBlock
+            ? t(directorPreviewBlock === 'rendering' ? 'director.agent.spendBlockedRendering' : 'director.agent.spendBlockedFailed')
+            : unmetDependency
             ? t('generationCommon.composer.referenceCompanionRequired', {
                 slot: unmetDependency.slotLabel,
                 companions: unmetDependency.companionLabels.join(t('generationCommon.composer.companionOr')),
@@ -591,7 +596,7 @@ export default function NodeGenerationComposer({ onFeedback, node, visualSize, h
                 data-bar-segment="generate"
                 className={cn(GENERATE_BUTTON_CLASS, 'ml-auto')}
                 aria-label={hasResult ? t('generationCommon.composer.regenerate') : t('generationCommon.composer.generateAsset')}
-                disabled={!canGenerateNow || productionClaimBlocked}
+                disabled={!canGenerateNow || productionClaimBlocked || directorPreviewBlock !== null}
                 onClick={handleGenerate}
               >
                 {isGenerating ? '···' : '↑'}

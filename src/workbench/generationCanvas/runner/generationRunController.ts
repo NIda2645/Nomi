@@ -8,6 +8,7 @@ import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useWorkbenchStore } from '../../workbenchStore'
 import { useProductionCanvasLandingStore } from '../../production/productionCanvasLandingStore'
 import { isNodeGenerationOwnedByProduction } from '../../production/productionShotOwnership'
+import { directorPreviewSpendBlock } from '../nodes/director/model/directorPreviewState'
 import { reportCanvasFeedback } from '../components/canvasFeedback'
 import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
 import { mintSpendGrant } from '../../api/taskApi'
@@ -233,6 +234,11 @@ export async function runGenerationNode(
   const initialState = await readRunGraph(target)
   const initialNode = initialState?.nodes.find((node) => node.id === id)
   if (!initialState || !initialNode) throw new Error('node not found')
+  // 3D-BOX 花钱闸（方案 §8）：这一镜挂着的参考预演还在渲染 / 渲染失败 → 不放行，不发出一次没有参考的付费生成。
+  const previewBlock = directorPreviewSpendBlock(id, initialState.nodes)
+  if (previewBlock) {
+    throw new Error(i18n.t(previewBlock.reason === 'rendering' ? 'director.agent.spendBlockedRendering' : 'director.agent.spendBlockedFailed'))
+  }
   if (!canRunGenerationNode(initialNode, { nodes: initialState.nodes, edges: initialState.edges })) {
     throw new Error(
       initialNode.kind === 'video'
@@ -672,6 +678,8 @@ export function canRunGenerationNode(
   if (!node) return false
   // 这一镜归制作流程生成（报价卡等确认 / 排队 / 生成中）：画布再发一次就是重复生成、重复扣费。
   if ('id' in node && node.id && isNodeGenerationOwnedByProduction(node, useProductionCanvasLandingStore.getState().runs)) return false
+  // 这一镜的 3D-BOX 参考预演还没好（渲染中 / 失败）：花钱就是发一次没有参考的生成。判据只住 directorPreviewState。
+  if ('id' in node && node.id && directorPreviewSpendBlock(node.id, context.nodes ?? useGenerationCanvasStore.getState().nodes)) return false
   const executionKind = getGenerationNodeExecutionKind(node.kind)
   if (executionKind === 'image') {
     // L3 护栏：档案当前模式是「图生图」(image_edit) 且声明了参考槽、却一张参考都递不进来 → 不可生成

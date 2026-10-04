@@ -111,7 +111,7 @@
 | P2 | 词表与计划 schema 搬到 `electron/shared/director/` | #974 合入后（测量的景别刻度归尺子专班，届时概念空出来） |
 | U | 统一撤销（`canvas.write` 撤销契约 + changeId + `undo` 分派 + 冲突规则），产品级、独立 PR、用户签字 | 与 P1 并行（不碰计划 / 编译器） |
 | 3a | 开关引导模块 + 指纹核对 + 预览包 + 导演视图外壳（布局 A、导演 / 精修、AiSceneBar 不挂、镜头条只读）+ 一个写者一本历史 + 焦点快捷键 | 不碰计划 schema，可与 P1 / U 并行；历史并入依赖 U |
-| 3b | `director.write` 契约 + 升级 stage_shot（新建 + 补丁）+ look_at_canvas + 预演挂接与花钱闸 + skill + 开关开的面进 CI | P1、P2、U 之后 |
+| 3b（设计卡 `docs/plan/2026-10-04-director-3dbox-3b-design-card.md`） | `director.write` 契约 + 升级 stage_shot（新建 + 补丁）+ look_at_canvas + 预演挂接与花钱闸 + skill + 开关开的面进 CI | P1、P2、U 之后 |
 | 3c | 覆盖层 + 最小改动 + 镜头条选中联动 | 3b 之后 |
 | 3R | UAL 角色运行时：编译器 / 规划器 / 尺子动作 id 切到 UAL、`ual-rig.json` 接姿势与 IK、旧 X Bot 工程可读 | 编译器（S1）、尺子（ruler）协同一轮；3b 之后 |
 | 3d | 样张对账、真机走查、**Agent 模型在环评测**（真实 Agent 模型调 stage_shot）、盲测复核 → 门槛评估 | 全部之后 |

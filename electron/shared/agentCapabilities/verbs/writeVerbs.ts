@@ -21,6 +21,9 @@ import { LaneDomainFailure, wrongVerbFailure } from "../../agentLane/laneToolCon
 import type { VerbDeclaration } from "../verbDeclaration";
 import { DOCUMENT_ID_TRANSPORT_FIELD, READ_GUIDELINES } from "./readVerbs";
 import { canvasWriteInputOf, documentWriteInputOf } from "./verbSemanticInput";
+import { directorStageShotModelSchema, directorWriteInputOf, prepareDirectorStageShotArguments } from "./directorStageShotFace";
+import { director3dBoxFaceEnabled } from "../../featureFlags/director3dboxFace";
+import { DIRECTOR_PLAN_MODEL_GUIDELINES } from "../../director/directorPlanGuidelines";
 import {
   cancelJobModelSchema, editTimelineModelSchema, exportVideoModelSchema, generateModelSchema,
   saveSkillModelSchema, startModelSetupModelSchema, undoModelSchema,
@@ -368,6 +371,44 @@ export function writeVerbs(): VerbDeclaration[] {
     semanticInputOf: (args) => canvasWriteInputOf("stage_shot", args),
   };
 
+  // 3D-BOX（开关开）：同名换芯。契约 `director.write`（仅内部，不投影到对外 MCP），新建交整份导演计划，
+  // 修改交按名字寻址的补丁；任一构建只装配 stageShot / directorStageShot 其中一份（见文件末尾的 return）。
+  // 到期 2026-11-15：切换 PR 同 commit 删掉旧的 stageShot 与这条分叉。
+  const directorStageShot: VerbDeclaration = {
+    name: "stage_shot", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "director.write", effect: "reversible_local", nextAction: "none",
+    effectGroups: ["canvas-node-creation"],
+    describe: {
+      does: "Build or change a 3D-BOX director plan; Nomi compiles a gray 3D preview with blocking and cameras and attaches it to the shot as reference video.",
+      useWhen: "The user describes a scene, blocking or camera coverage, or asks to change part of an existing preview.",
+      notWhen: "Not for producing the final shot: once the user approves the preview, that is generate. Not for prompt edits or new shots (draft_shots), links or layout (arrange_canvas), or hand-made artifacts (make_artifact).",
+      params: "Create: plan (+ target.shotId). Change: target.directorNodeId, baseRevision and edits from look_at_canvas or the last stage_shot result.",
+    },
+    promptGuidelines: DIRECTOR_PLAN_MODEL_GUIDELINES,
+    schema: directorStageShotModelSchema,
+    examples: [
+      {
+        when: "Preview a two-person dialogue for a shot:",
+        arguments: {
+          target: { shotId: "shot-3" },
+          plan: {
+            scene: { environment: "day", template: "room", tags: ["图书馆"] },
+            actors: [
+              { id: "librarian", kind: "person", desc: "管理员", placement: { relation: "at", ref: "s1-room-floor" } },
+              { id: "student", kind: "person", desc: "学生", placement: { relation: "in_front_of", ref: "librarian" } },
+            ],
+            shots: [
+              { id: "over_librarian", window: [0, 3], transitionIn: "cut", subject: "student", size: "中景", angle: { over_shoulder: "librarian" }, height: "eye", move: { kind: "static" } },
+              { id: "over_student", window: [3, 6], transitionIn: "cut", subject: "librarian", size: "中景", angle: { over_shoulder: "student" }, height: "eye", move: { kind: "push_in", speed: "slow" } },
+            ],
+          },
+        },
+      },
+      { when: "Make the second shot a close-up:", arguments: { target: { directorNodeId: "node-director-1" }, baseRevision: "dplan-0123456789abcdef", edits: [{ op: "replace", path: "/shots/over_student/size", value: "特写" }] } },
+    ],
+    prepareArguments: prepareDirectorStageShotArguments,
+    semanticInputOf: (args) => directorWriteInputOf(args),
+  };
+
   const editTimeline: VerbDeclaration = {
     name: "edit_timeline", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "timeline.write", effect: "reversible_local", nextAction: "user_sees_review_card", internalGroup: "timeline",
     describe: {
@@ -480,5 +521,5 @@ export function writeVerbs(): VerbDeclaration[] {
     prepareArguments: modelArgumentTolerance({}),
   };
 
-  return [writeScript, draftShots, generate, arrangeCanvas, makeArtifact, stageShot, editTimeline, undo, deleteFromCanvas, exportVideo, cancelJob, saveSkill, startModelSetup];
+  return [writeScript, draftShots, generate, arrangeCanvas, makeArtifact, director3dBoxFaceEnabled() ? directorStageShot : stageShot, editTimeline, undo, deleteFromCanvas, exportVideo, cancelJob, saveSkill, startModelSetup];
 }

@@ -50,5 +50,6 @@
 > poseBlend.ts: 动作混合纯数学：片段头 0.25s 淡入（上一片段间隙 <0.2s 从其末帧交叉，否则从静止）/ 片段尾不淡出 / 片段外：相邻间隙 ≤0.5s 交叉、否则尾后 0.25s 淡回静止；姿态片段不参与交叉；custom_pose 关键帧对与插值系数
 > lookAtSolve.ts: 视线纯数学：片段权重缓入缓出、头部相对身体 yaw/pitch 限幅 + 超限 smoothstep 衰减、颈 0.15 / 脊 0.3 / 头 0.55 分配
 > *.test.ts: 与同名模块对照参考数值案例的单测
+> directorPreviewState.ts: 3D-BOX 预演状态唯一判据：读 directorPlan / directorPreview meta、directorPreviewSpendBlock（渲染中 / 失败挡生成，最新一份为准）、按生成操作找被挡的镜头；runner 与 generate 预检共用
 > 法则: 成员完整·一行一文件·父级链接·技术词前置
 > [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
