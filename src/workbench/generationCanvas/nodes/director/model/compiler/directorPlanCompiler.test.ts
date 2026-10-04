@@ -31,6 +31,27 @@ describe('S1 director compiler', () => {
       expect(sampleDirectorProject(a.project, { duration: a.duration }).frames.length).toBeGreaterThan(1)
     }
   })
+  it('derives entity ids from plan names and isolates a renamed shot', () => {
+    const plan = S1_ORACLE_PLANS['perfume-orbit']
+    const first = compileDirectorPlan(plan)
+    const second = compileDirectorPlan(plan)
+    expect(first.ok).toBe(true)
+    expect(second.ok).toBe(true)
+    if (!first.ok || !second.ok) return
+    const scene = first.project.scenes[0]
+    expect(scene.objects.map((object) => object.id)).toEqual(second.project.scenes[0].objects.map((object) => object.id))
+    expect(scene.cameras.map((camera) => camera.id)).toEqual(second.project.scenes[0].cameras.map((camera) => camera.id))
+    expect(scene.objects.some((object) => object.id === 'actor:bottle')).toBe(true)
+    expect(scene.cameras[0].id).toBe('shot:orbit/camera')
+    const changed = compileDirectorPlan({
+      ...plan,
+      shots: plan.shots.map((shot, index) => (index === 0 ? { ...shot, id: 'orbit-renamed' } : shot)),
+    })
+    expect(changed.ok).toBe(true)
+    if (!changed.ok) return
+    expect(changed.project.scenes[0].objects.map((object) => object.id)).toEqual(scene.objects.map((object) => object.id))
+    expect(changed.project.scenes[0].cameras.map((camera) => camera.id)).toEqual(['shot:orbit-renamed/camera', 'shot:push/camera'])
+  })
   it('returns structured errors without a half-built project', () => {
     const result = compileDirectorPlan({ version: 2, scene: { tags: [], environment: 'day' }, actors: [], shots: [] })
     expect(result.ok).toBe(false)
@@ -115,6 +136,25 @@ describe('S1 director compiler', () => {
     expect(woman.actionClips?.map((clip) => clip.actionPose)).toEqual(['standard_walk', 'standing_idle'])
     expect(woman.actionClips?.some((clip) => clip.actionPose === 'hide_object_behind_back')).toBe(false)
     expect(result.issues.some((issue) => issue.kind === 'missing_asset')).toBe(true)
+  })
+  it('regression: benchmark roles have action evidence at t=0 and no L0 geometry failure', () => {
+    for (const plan of [S1_ORACLE_PLANS['courtyard-standoff'], S1_ORACLE_PLANS['perfume-orbit']]) {
+      const result = compileDirectorPlan(plan)
+      expect(result.ok).toBe(true)
+      if (!result.ok) continue
+      const scene = result.project.scenes[0]
+      const measurements = sampleDirectorProject(result.project, { duration: result.duration, anchors: result.anchors })
+      const continuity = measureContinuity(measurements, scene)
+      expect(continuity.some((issue) => issue.kind === 'teleport')).toBe(false)
+      for (const actor of plan.actors.filter((item) => item.kind === 'person')) {
+        const object = scene.objects.find((item) => item.id === result.actorMap[actor.id])
+        expect(object?.actionClips?.some((clip) => clip.clipType === 'action' && clip.startTime <= 1e-4)).toBe(true)
+      }
+      if (plan.scene.template === 'product_stage') {
+        expect(scene.objects.some((object) => object.id === 's1-product-ground')).toBe(true)
+        expect(continuity.some((issue) => issue.kind === 'camera-inside')).toBe(false)
+      }
+    }
   })
   it('locks the camera pose convention to lookAtAngles', () => {
     const result = compileDirectorPlan(S1_ORACLE_PLANS['t1-13-static'])
