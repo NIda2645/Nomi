@@ -26,8 +26,8 @@ describe('directorPreviewSpendBlock (3D-BOX 花钱闸唯一判据)', () => {
 
   it('maps a generate operation to its blocked shots by the landing stamps', () => {
     const nodes = [
-      shot('v1', { materializationOperationId: 'op-1', productionShotId: 'shot-1' }),
-      shot('v2', { materializationOperationId: 'op-1', productionShotId: 'shot-2' }),
+      shot('v1', { materializationOperationId: 'canvas-landing:op-1', productionRunId: 'op-1', productionShotId: 'shot-1' }),
+      shot('v2', { materializationOperationId: 'canvas-landing:op-1', productionRunId: 'op-1', productionShotId: 'shot-2' }),
       shot('v3', { storyboardDesignId: 'design-1', shotId: 's-3' }),
       director('d1', { status: 'rendering', targetNodeId: 'v1', updatedAt: 1 }),
       director('d3', { status: 'failed', reason: 'too_long', targetNodeId: 'v3', updatedAt: 1 }),
@@ -39,8 +39,8 @@ describe('directorPreviewSpendBlock (3D-BOX 花钱闸唯一判据)', () => {
 
   it('a ready video_ref preview the draft candidate does not carry blocks the Agent generate; carrying it passes; shots without a preview are untouched', () => {
     const nodes = [
-      shot('v1', { materializationOperationId: 'op-1', productionShotId: 'shot-1' }),
-      shot('v2', { materializationOperationId: 'op-1', productionShotId: 'shot-2' }),
+      shot('v1', { materializationOperationId: 'canvas-landing:op-1', productionRunId: 'op-1', productionShotId: 'shot-1' }),
+      shot('v2', { materializationOperationId: 'canvas-landing:op-1', productionRunId: 'op-1', productionShotId: 'shot-2' }),
       director('d1', { status: 'ready', attach: 'video_ref', assetId: 'asset-p1', targetNodeId: 'v1', updatedAt: 1 }),
     ]
     expect(directorPreviewBlocksForOperation(nodes, 'op-1', undefined, { 'shot-1': [], 'shot-2': [] }))
@@ -51,7 +51,7 @@ describe('directorPreviewSpendBlock (3D-BOX 花钱闸唯一判据)', () => {
   })
 
   it('a preview that could only be written into the prompt (model has no reference-video slot) is not required in the candidate', () => {
-    const nodes = [shot('v1', { materializationOperationId: 'op-1', productionShotId: 'shot-1' }), director('d1', { status: 'ready', attach: 'prompt_only', assetId: 'asset-p1', targetNodeId: 'v1', updatedAt: 1 })]
+    const nodes = [shot('v1', { materializationOperationId: 'canvas-landing:op-1', productionRunId: 'op-1', productionShotId: 'shot-1' }), director('d1', { status: 'ready', attach: 'prompt_only', assetId: 'asset-p1', targetNodeId: 'v1', updatedAt: 1 })]
     expect(directorPreviewBlocksForOperation(nodes, 'op-1', undefined, { 'shot-1': [] })).toEqual([])
   })
 })

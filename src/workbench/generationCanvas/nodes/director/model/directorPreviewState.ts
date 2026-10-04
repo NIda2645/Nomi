@@ -9,6 +9,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'
+import { productionMetaOf } from '../../../model/productionMeta'
 import { DIRECTOR_NODE_KIND, DIRECTOR_PLAN_META_KEY, DIRECTOR_PREVIEW_META_KEY } from './directorNodeMeta'
 
 /** 预演帧率：Seedance 参考视频要求 ≥ 23.8fps（与运镜小片同一个值）。 */
@@ -107,7 +108,7 @@ function metaString(node: Pick<GenerationCanvasNode, 'meta'>, key: string): stri
 
 /**
  * Agent 的 `generate` 出卡**之前**问的那一句：这次要生成的镜头里，哪些被 3D-BOX 预演挡着。
- * 镜头 ↔ 画布节点按落地章认（Agent 分镜 `materializationOperationId × productionShotId`；
+ * 镜头 ↔ 画布节点按落地章认（Agent 分镜 = 制作流程章 `productionMetaOf`：runId 就是 operationId × shotId；
  * 文稿分镜 `storyboardDesignId × shotId`）；没好的判据仍是同一个 `directorPreviewSpendBlock`。
  *
  * 多一条只读核对（2026-10-04 拍板 A）：`generate` 付费提交的是草稿**候选**，不是画布节点——预演挂在节点上，
@@ -124,9 +125,13 @@ export function directorPreviewBlocksForOperation(
   const scope = shotIds && shotIds.length ? new Set(shotIds) : null
   const blocks: DirectorPreviewOperationBlock[] = []
   for (const node of nodes) {
-    const fromOperation = metaString(node, 'materializationOperationId') === operationId
+    // Agent 分镜的落地章是制作流程那一份（唯一 owner productionMetaOf）。不要读 materializationOperationId：
+    // 那是落地事务的幂等章，值是 `canvas-landing:<operationId>`（2026-10-04 真机第 7 跑：按它认，一镜都认不出，
+    // 花钱闸在 Agent 路上整条失效、带空参考的报价卡照样出了）。
+    const production = productionMetaOf(node)
+    const fromOperation = production?.runId === operationId
     if (!fromOperation && metaString(node, 'storyboardDesignId') !== operationId) continue
-    const shotId = fromOperation ? metaString(node, 'productionShotId') : metaString(node, 'shotId')
+    const shotId = fromOperation ? production?.shotId : metaString(node, 'shotId')
     if (scope && shotId && !scope.has(shotId)) continue
     const block = directorPreviewSpendBlock(node.id, nodes)
     if (block) {
