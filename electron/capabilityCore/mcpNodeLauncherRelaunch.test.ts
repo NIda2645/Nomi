@@ -3,6 +3,7 @@
 // 假 Nomi 无界面；广告与日志都在临时 NOMI_CAPABILITY_DIR，不碰真实 ~/.nomi。
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import crypto from 'node:crypto'
+import net from 'node:net'
 import { createRequire } from 'node:module'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -158,5 +159,29 @@ describe('mcpNodeLauncher relaunches a Nomi that went away', () => {
 
     for (const frame of frames) expect(launcher.text(frame)).toContain('relaunched-')
     expect(launcher.starts()).toBe(2)
+  }, 30_000)
+
+  it('advert looks alive (pid still exists, e.g. an unreaped zombie on Linux/macOS) but the port refuses -> treated as dead, relaunched, request not lost', async () => {
+    const root = tempRoot()
+    const capabilityDir = path.join(root, 'capability')
+    fs.mkdirSync(capabilityDir, { recursive: true })
+    const closedPort = await new Promise<number>((resolve) => {
+      const probe = net.createServer().listen(0, '127.0.0.1', () => {
+        const { port } = probe.address() as net.AddressInfo
+        probe.close(() => resolve(port))
+      })
+    })
+    // pid = this test process: guaranteed "alive" to the launcher's liveness probe, nobody listens on the port.
+    fs.writeFileSync(path.join(capabilityDir, 'instance.json'), JSON.stringify({
+      version: 2, pid: process.pid, port: closedPort, token: 'dead', startedAt: Date.now(),
+      projectsRoot: capabilityDir, heartbeatAt: Date.now(), appVersion: 'test',
+    }))
+    const launcher = startLauncher(root, 0)
+    await launcher.init()
+
+    const frame = await launcher.readProjects()
+
+    expect(launcher.text(frame)).toContain('relaunched-')
+    expect(launcher.starts()).toBe(1)
   }, 30_000)
 })

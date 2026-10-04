@@ -235,7 +235,11 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
  *     10 分钟自退 / 输掉单实例竞争）就重新拉起；还在拖着退出（广告已清、进程未结束）就等它结束再拉起，不白等 60s。
  *     轮询期间若冒出 mismatch/stale/legacy（并发会话抢注）也即时快速失败。
  */
-async function ensureLiveInstance(signal?: AbortSignal): Promise<InstanceAdvertisement> {
+async function ensureLiveInstance(
+  signal?: AbortSignal,
+  /** 刚被「连接被拒」证伪的实例：广告还在、pid 看着还活（Linux/macOS 上被杀未回收的僵尸进程 kill(pid,0) 仍成功），但端口已无人监听。 */
+  refused?: InstanceAdvertisement,
+): Promise<InstanceAdvertisement> {
   const aborted = () => (signal?.reason instanceof Error ? signal.reason : new Error('MCP request cancelled'))
   if (signal?.aborted) throw aborted()
   const library = expectedLibrary()
@@ -245,7 +249,9 @@ async function ensureLiveInstance(signal?: AbortSignal): Promise<InstanceAdverti
   for (;;) {
     if (signal?.aborted) throw aborted()
     const verdict = readAdvertVerdict(library)
-    if (verdict.kind === 'match') {
+    const isRefused = verdict.kind === 'match' && refused !== undefined
+      && verdict.instance.pid === refused.pid && verdict.instance.port === refused.port
+    if (verdict.kind === 'match' && !isRefused) {
       if (booted) booted.sawLive = true
       spawnsSinceLive = 0
       failedExitsSinceLive = 0
@@ -256,7 +262,7 @@ async function ensureLiveInstance(signal?: AbortSignal): Promise<InstanceAdverti
     if (booted?.failure) throw new Error(`Nomi 启动失败：${booted.failure}`)
     if (attempted && Date.now() >= deadline) break
     attempted = true
-    if (booted && bootedAlive(booted) && booted.sawLive) {
+    if (booted && bootedAlive(booted) && (booted.sawLive || isRefused)) {
       // 见过它活、现在没广告：它在退出中。等它结束（下一轮就会重拉），但不无限等。
       exitingSince ||= Date.now()
       if (Date.now() - exitingSince > EXITING_WAIT_MS) {
@@ -273,6 +279,11 @@ async function ensureLiveInstance(signal?: AbortSignal): Promise<InstanceAdverti
   }
   const detail = booted?.exit ? ` Nomi launcher exited before MCP was ready (code=${booted.exit.code} signal=${booted.exit.signal})` : ''
   throw new Error(`Nomi 启动失败：60 秒内没有拉起可用实例。请先手动打开一次 Nomi，再重试该 MCP 操作。${detail}`)
+}
+
+function isConnectionRefused(error: unknown): boolean {
+  const cause = error instanceof Error ? (error.cause as { code?: unknown; errors?: Array<{ code?: unknown }> } | undefined) : undefined
+  return cause?.code === 'ECONNREFUSED' || Boolean(cause?.errors?.some((item) => item?.code === 'ECONNREFUSED'))
 }
 
 async function callViaRpc(
@@ -331,9 +342,17 @@ const protocol = createMcpProtocol({
   send: (message) => process.stdout.write(`${JSON.stringify(message)}\n`),
   invoke: async (method, params, options) => {
     const requestSignal = (params as Record<PropertyKey, unknown>)[MCP_REQUEST_SIGNAL] as AbortSignal | undefined
-    const instance = await ensureLiveInstance(requestSignal)
-    await refreshLauncherLocale(instance)
-    return invokeLiveRpc(instance, method, params, options)
+    let instance = await ensureLiveInstance(requestSignal)
+    // 广告看着活、端口却拒连 = 实例刚死（进程未回收的窗口）。请求没送达，重发安全：换一个活实例再试一次。
+    for (let attempt = 0; ; attempt += 1) {
+      try {
+        await refreshLauncherLocale(instance)
+        return await invokeLiveRpc(instance, method, params, options)
+      } catch (error) {
+        if (attempt > 0 || !isConnectionRefused(error)) throw error
+        instance = await ensureLiveInstance(requestSignal, instance)
+      }
+    }
   },
   invokeIfOpen: async (method, params, options) => {
     const instance = readLiveInstance()
