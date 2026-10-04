@@ -27,3 +27,15 @@
 ## 用量
 
 DeepSeek 共 3 跑真正发出请求（第 3、4、5 跑），约 26 次模型请求，输入约 83 万 token（含缓存命中），输出约 6 千 token。
+
+## 拍板 A 之后（第 6–8 跑，同一脚本，出卡即停、从不点；跑前自查脚本里没有任何点确认的动作）
+
+| 跑 | 结果 | 截图 |
+|---|---|---|
+| 6 | 建预演、补丁都通；出片回合模型只把这一镜换成全能参考、没放预演素材，然后先问时长，没调 generate | — |
+| 7 | 模型同样没放预演素材就调了 generate，**报价卡出了、参考槽是空的**（未点确认、零扣费）。根因：预检按落地幂等章 `materializationOperationId` 认镜头，它的值是 `canvas-landing:<operationId>`，一镜都认不出，Agent 路上的三条闸全部失效；改用唯一 owner `productionMetaOf`（`dea424652`） | `run7-04-card-without-preview-before-fix.png` |
+| 8 | 模型先把素材塞进 `storyboard.referenceBindings`（不是候选 references）→ `generate` **被预检拒**：「the 3D-BOX preview is ready, but the draft that would be generated does not use it (shot shot-1 needs preview asset …)」→ 模型照提示用 `draft_shots` 把素材放进 references → 再 `generate` → **报价卡出现**：全能参考、参考槽 1 项。落盘候选 = `omni` + 预演素材 id；`runs/<op>/jobs` 不存在，没有任何提交 | `run8-02-preview-attached.png`、`run8-04-spend-card-with-preview.png` |
+
+未验证：报价卡把这条视频参考的缩略图显示成「图已失效」（素材本身是 `video/mp4`）；它在派发时进不进视频参考槽，没点确认所以没验证。
+
+用量（第 6–8 跑）：约 35 次模型请求，输入约 113 万 token（含缓存命中），输出约 5.6 千 token。
