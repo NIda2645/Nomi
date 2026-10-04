@@ -4,7 +4,7 @@
 
 ## 最终数字
 
-最终代码的三轮目录由 `/tmp/nomi-s1r3-final2.json` 收据指向；三轮均为 28 张、无 adapter error。
+最终代码三轮目录：`evals/runs/director-20261004050831-s1`、`evals/runs/director-20261004051624-s1`、`evals/runs/director-20261004052357-s1`；三轮均为 28 张、无 adapter error。
 
 | 轮次 | 全题库均值 | 对应率 | 开发集均值 | 开发集对应率 | 留出集均值 | 留出集对应率 |
 |---|---:|---:|---:|---:|---:|---:|
