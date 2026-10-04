@@ -1,13 +1,13 @@
 # Director 3D-BOX shell R13 evidence (2026-10-04)
 
-All seven files are 1280×933 PNGs and under 400 KB. The six flag-on files are true Electron/Playwright captures from the baked dev build (`NOMI_DIRECTOR_3DBOX=true`); the flag-off comparison uses the same launcher with `NOMI_DESKTOP_DEV=1` and `NOMI_DIRECTOR_3DBOX=false`.
+The checked-in PNGs are the existing Playwright/Electron evidence set from the third-round build. They remain 1280×933 and under 400 KB. The fourth-round source fixes are in commit `cbd28023cfd3d583573665ac4e5ccd968eaff5470`; the startup regression was re-run independently against that build (three flag-off runs passed).
 
-- `zh-empty-director.png`: zh-CN empty Director view. The canvas-only shell keeps Agent on the right, shows the dark PIP empty state, four topbar clusters, disabled `用这段预演出成片 ▾`, and an empty read-only shot strip.
-- `zh-three-director.png`: zh-CN `t2-courtyard` project after external store write, 2-second autosave window, and reload. Three cards show `远景/拉远`, `远景/static`, `全景/推近` with measured time windows.
-- `zh-three-refine.png`: zh-CN Refine mode with the existing scene/object panel, inspector, PIP, and timeline unchanged.
-- `en-empty-director.png`: English empty Director view with `Director/Refine`, `Produce from this preview`, Program, and the empty shot strip.
-- `en-three-director.png`: English three-shot Director view with `Far/Pull out`, `Far/Static`, and `Wide/Push in` cards.
-- `en-three-refine.png`: English Refine mode using the existing full editor.
-- `flag-off-legacy-director.png`: flag-off Chinese comparison; the old full Director desk and its original controls remain visible.
+- `zh-empty-director.png`: 中文空工程导演视图；画布区导演壳、右侧 Agent、顶部四簇、禁用主按钮和空镜头条。
+- `zh-three-director.png`: 中文三镜导演视图；底部三张只读镜头卡和实测时长。
+- `zh-three-refine.png`: 中文精修视图；沿用既有对象、资产、检查器和时间轴。
+- `en-empty-director.png`: English empty Director view with the existing Agent pane and empty shot strip.
+- `en-three-director.png`: English three-shot Director view with three measured cards.
+- `en-three-refine.png`: English Refine view using the existing editor.
+- `flag-off-legacy-director.png`: flag-off legacy Director desk comparison.
 
-The Chinese captures were re-read after the PIP z-index fix. The English captures were produced by the earlier true Electron run and re-read; a later attempt to refresh the English set was blocked by a concurrent Electron process from another worktree, so the English empty capture remains the pre-z-index image and is retained as an evidence limitation rather than claimed as a refreshed dark-PIP capture.
+第四轮要求的六张同一最终构建重拍（含 zh 三镜 light mode）尚未完成，因此本目录不能作为第四轮截图已完成的证明；旧图中 PIP 空态和英文 `static` 仍可能反映修复前画面。代码门岗已确认 PIP 使用 `--nomi-media-veil`，中英文运镜词汇由同一表提供。
