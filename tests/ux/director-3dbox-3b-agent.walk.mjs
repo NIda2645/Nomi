@@ -189,7 +189,13 @@ try {
   const dir = projectDir()
   if (dir) {
     const payload = JSON.parse(fs.readFileSync(path.join(dir, '.nomi', 'project.json'), 'utf8'))
-    const nodes = payload?.canvas?.nodes ?? payload?.generationCanvas?.nodes ?? []
+    const findNodes = (value, depth = 0) => {
+      if (!value || typeof value !== 'object' || depth > 6) return null
+      if (Array.isArray(value.nodes) && value.nodes.some((node) => node?.kind)) return value.nodes
+      for (const child of Object.values(value)) { const found = findNodes(child, depth + 1); if (found) return found }
+      return null
+    }
+    const nodes = findNodes(payload) ?? []
     report.persistedDirector = nodes.filter((node) => node.kind === 'director').map((node) => ({ id: node.id, revision: node.meta?.directorPlan?.revision, preview: node.meta?.directorPreview && { ...node.meta.directorPreview, notes: node.meta.directorPreview.notes } }))
   }
   fs.writeFileSync(path.join(shotsDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`)

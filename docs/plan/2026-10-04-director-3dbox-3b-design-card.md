@@ -41,3 +41,20 @@
 
 - 结果里 `reorderedOverrides: []`、`changedEntities: []` 两个字段本段恒为空数组，3c 填；字段已进结果 schema。
 - `planPatch.ts` 返回补丁**直接改到的实体 id**（`touched`：`shot:<id>` / `actor:<id>` / `setPiece:<id>`，与编译器的稳定 id 同一套写法），3c 用它决定丢哪条覆盖。
+
+## 真机结果（门槛 ① 替身回合，2026-10-04）
+
+证据：`docs/evidence/2026-10-04-director-3dbox-3b/README.md`。真实 DeepSeek 在真 App 里：一句话 → `draft_shots` → `stage_shot` 整份计划 → 离屏预演以 video_ref 挂到视频镜头 → 按名字补丁改末镜为特写（新修订号、实测回读特写、重渲重挂）——**通**。
+到「出片」这一步**没通**：见下。
+
+## 待拍板：预演怎么进到真正付费的那份载荷（架构岔路）
+
+**事实**：Agent 的 `generate` 派发的是草稿**候选**（主进程制作流程的账本），不是画布节点 meta；候选 → 节点是单向投影（`useAgentPanelSpendConfirm.ts` 头注释）。
+预演挂接（`computeAttachCameraMove`）改的是**节点**（切全能参考、填参考视频），候选里没有这条预演——第 4 跑派发的信封就是 `t2v`、`references: []`。
+花钱闸（`directorPreviewSpendBlock`）照样对：渲染中 / 失败时不出卡；但「就绪后出的卡」里没有预演。手动点节点生成钮那条路（`runGenerationNode`）读节点，是带预演的。
+
+| 选项 | 做法 | 代价 |
+|---|---|---|
+| A（推荐） | 预演就绪时登记成项目素材（有 assetId），`look_at_canvas` / `stage_shot` 结果给出它；`generate` 出卡前预检再加一条：这一镜有就绪预演而候选没带它 → 不出卡，告诉模型用 `draft_shots` 改这一镜（参考 = 预演 assetId、模式 = 有参考视频槽的那个）。候选仍只有 `draft_shots` 一个写者 | 预检要读一次候选（生成面现成的 read）；多一次模型回合 |
+| B | 预演挂接时渲染端顺手改候选（走 `generation.revise`） | 候选多一个写者，破「候选 → 节点单向」；与付费卡的覆写账本抢同一份载荷 |
+| C | 维持现状，Agent 路径只出「文字兜底」，带参考出片只走节点生成钮 | 一句话到出片的主路径拿不到预演，3D-BOX 的价值在 Agent 路上落空 |
