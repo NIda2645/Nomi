@@ -123,7 +123,7 @@ function directorReceiptText(result: DirectorApplied): string {
   lines.push(preview.status === "rendering"
     ? `Preview: rendering${preview.targetNodeId ? ` for ${preview.targetNodeId}` : ""}; generation of that shot waits until it is attached.`
     : preview.status === "failed" ? `Preview: failed (${preview.reason ?? "unknown"}); generation of that shot stays blocked until it is retried.`
-      : preview.status === "ready" ? `Preview: attached${preview.attach === "prompt_only" ? " as a text description only (this model takes no reference video; camera accuracy will be lower)" : " as reference video"}.`
+      : preview.status === "ready" ? `Preview: attached${preview.attach === "prompt_only" ? " as a text description only (this model takes no reference video; camera accuracy will be lower)" : " as reference video"}${preview.assetId ? `; preview asset id ${preview.assetId}` : ""}.`
         : "Preview: standalone (no shot attached).");
   lines.push(`Plan at ${result.revision} (base for the next edits): ${JSON.stringify(result.plan)}`);
   return lines.join("\n");

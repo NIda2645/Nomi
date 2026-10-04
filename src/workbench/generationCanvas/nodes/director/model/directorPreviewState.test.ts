@@ -36,4 +36,22 @@ describe('directorPreviewSpendBlock (3D-BOX 花钱闸唯一判据)', () => {
     expect(directorPreviewBlocksForOperation(nodes, 'op-1', ['shot-2'])).toEqual([])
     expect(directorPreviewBlocksForOperation(nodes, 'design-1')).toEqual([{ nodeId: 'v3', shotId: 's-3', reason: 'failed', failure: 'too_long' }])
   })
+
+  it('a ready video_ref preview the draft candidate does not carry blocks the Agent generate; carrying it passes; shots without a preview are untouched', () => {
+    const nodes = [
+      shot('v1', { materializationOperationId: 'op-1', productionShotId: 'shot-1' }),
+      shot('v2', { materializationOperationId: 'op-1', productionShotId: 'shot-2' }),
+      director('d1', { status: 'ready', attach: 'video_ref', assetId: 'asset-p1', targetNodeId: 'v1', updatedAt: 1 }),
+    ]
+    expect(directorPreviewBlocksForOperation(nodes, 'op-1', undefined, { 'shot-1': [], 'shot-2': [] }))
+      .toEqual([{ nodeId: 'v1', shotId: 'shot-1', reason: 'not_referenced', previewAssetId: 'asset-p1' }])
+    expect(directorPreviewBlocksForOperation(nodes, 'op-1', undefined, { 'shot-1': ['asset-p1'], 'shot-2': [] })).toEqual([])
+    // 手动生成钮读节点（预演已挂在节点上），不受候选核对影响。
+    expect(directorPreviewSpendBlock('v1', nodes)).toBeNull()
+  })
+
+  it('a preview that could only be written into the prompt (model has no reference-video slot) is not required in the candidate', () => {
+    const nodes = [shot('v1', { materializationOperationId: 'op-1', productionShotId: 'shot-1' }), director('d1', { status: 'ready', attach: 'prompt_only', assetId: 'asset-p1', targetNodeId: 'v1', updatedAt: 1 })]
+    expect(directorPreviewBlocksForOperation(nodes, 'op-1', undefined, { 'shot-1': [] })).toEqual([])
+  })
 })

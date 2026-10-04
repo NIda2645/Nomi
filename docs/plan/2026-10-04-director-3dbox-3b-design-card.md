@@ -47,7 +47,7 @@
 证据：`docs/evidence/2026-10-04-director-3dbox-3b/README.md`。真实 DeepSeek 在真 App 里：一句话 → `draft_shots` → `stage_shot` 整份计划 → 离屏预演以 video_ref 挂到视频镜头 → 按名字补丁改末镜为特写（新修订号、实测回读特写、重渲重挂）——**通**。
 到「出片」这一步**没通**：见下。
 
-## 待拍板：预演怎么进到真正付费的那份载荷（架构岔路）
+## 预演怎么进到真正付费的那份载荷（2026-10-04 协调会话拍板 A，已实现）
 
 **事实**：Agent 的 `generate` 派发的是草稿**候选**（主进程制作流程的账本），不是画布节点 meta；候选 → 节点是单向投影（`useAgentPanelSpendConfirm.ts` 头注释）。
 预演挂接（`computeAttachCameraMove`）改的是**节点**（切全能参考、填参考视频），候选里没有这条预演——第 4 跑派发的信封就是 `t2v`、`references: []`。
@@ -58,3 +58,5 @@
 | A（推荐） | 预演就绪时登记成项目素材（有 assetId），`look_at_canvas` / `stage_shot` 结果给出它；`generate` 出卡前预检再加一条：这一镜有就绪预演而候选没带它 → 不出卡，告诉模型用 `draft_shots` 改这一镜（参考 = 预演 assetId、模式 = 有参考视频槽的那个）。候选仍只有 `draft_shots` 一个写者 | 预检要读一次候选（生成面现成的 read）；多一次模型回合 |
 | B | 预演挂接时渲染端顺手改候选（走 `generation.revise`） | 候选多一个写者，破「候选 → 节点单向」；与付费卡的覆写账本抢同一份载荷 |
 | C | 维持现状，Agent 路径只出「文字兜底」，带参考出片只走节点生成钮 | 一句话到出片的主路径拿不到预演，3D-BOX 的价值在 Agent 路上落空 |
+
+**实现（A）**：预演 mp4 本来就落成项目素材（`framesToVideo` 返回 assetId），ready 时记进导演节点 `directorPreview.assetId`，`stage_shot` 结果的 `preview.assetId` 与 `look_at_canvas` 的 `previewAssetId` 给出它（都是结果字段，模型参数面一个字不加，两份基线不变）。`generate` 出卡前预检多一步只读：主进程读草稿每一镜候选带了哪些素材，交给渲染端同一个判据 `directorPreviewBlocksForOperation`——预演已就绪、以参考视频挂上、而候选没带这份素材 → 不出卡，告诉模型用 `draft_shots` 改这一镜（references 加素材 id、换能收参考视频的模式）。读不到候选 = 不出卡（fail-closed）。以文字兜底挂上的（模型没有参考视频槽）不要求。

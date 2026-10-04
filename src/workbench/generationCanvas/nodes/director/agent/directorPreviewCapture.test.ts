@@ -53,8 +53,8 @@ describe('3D-BOX preview capture (Host 纯逻辑那一半)', () => {
   it('attaches the finished preview as the shot reference video, marks it ready, lifts the spend gate, and stays inside the staging change for undo', async () => {
     const { shotId, directorNodeId, revision, proposalId } = await staged()
     expect(directorPreviewSpendBlock(shotId, useGenerationCanvasStore.getState().nodes)?.reason).toBe('rendering')
-    applyPreviewCaptured(directorNodeId, revision, 'nomi-local://asset/p/preview.mp4', output)
-    expect(readDirectorPreview(node(directorNodeId))).toMatchObject({ status: 'ready', attach: 'video_ref', videoUrl: 'nomi-local://asset/p/preview.mp4' })
+    applyPreviewCaptured(directorNodeId, revision, 'nomi-local://asset/p/preview.mp4', 'asset-preview-1', output)
+    expect(readDirectorPreview(node(directorNodeId))).toMatchObject({ status: 'ready', attach: 'video_ref', videoUrl: 'nomi-local://asset/p/preview.mp4', assetId: 'asset-preview-1' })
     expect(node(shotId)?.meta?.referenceVideoUrls).toEqual(['nomi-local://asset/p/preview.mp4'])
     expect(node(shotId)?.prompt).toContain('@Video1')
     expect(directorPreviewSpendBlock(shotId, useGenerationCanvasStore.getState().nodes)).toBeNull()
@@ -64,7 +64,7 @@ describe('3D-BOX preview capture (Host 纯逻辑那一半)', () => {
 
   it('drops a late result whose revision is no longer current', async () => {
     const { shotId, directorNodeId } = await staged()
-    expect(applyPreviewCaptured(directorNodeId, 'dplan-stale', 'nomi-local://asset/p/old.mp4', output)).toBeNull()
+    expect(applyPreviewCaptured(directorNodeId, 'dplan-stale', 'nomi-local://asset/p/old.mp4', 'asset-old', output)).toBeNull()
     expect(readDirectorPreview(node(directorNodeId))?.status).toBe('rendering')
     expect(node(shotId)?.meta?.referenceVideoUrls).toBeUndefined()
   })

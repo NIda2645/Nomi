@@ -278,9 +278,9 @@ describe('generate × 3D-BOX 预演闸', () => {
   const generateCall: RuntimeToolCall = { toolName: 'generate', args: { operationId: 'op-1', shotIds: ['shot-1'] }, toolCallId: 'call-generate' }
   const host = { signal, canAskUser: true, waitForUser: () => { throw new Error('must not wait: no card is shown') } }
 
-  async function run(directorPreviewBlocks: LaneExtendedDesktopPortsInput['directorPreviewBlocks'], presented: Record<string, unknown> = { nextAction: 'await_user' }) {
+  async function run(directorPreviewBlocks: LaneExtendedDesktopPortsInput['directorPreviewBlocks'], presented: Record<string, unknown> = { nextAction: 'await_user' }, candidateReferences: Record<string, string[]> = { 'shot-1': [] }) {
     const f = setup()
-    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: presented })), withdrawPresentation: vi.fn(async () => undefined), readPresentationOutcome: vi.fn(async () => undefined), dispose: vi.fn() }
+    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: presented })), withdrawPresentation: vi.fn(async () => undefined), readPresentationOutcome: vi.fn(async () => undefined), readShotReferenceAssetIds: vi.fn(async () => candidateReferences), dispose: vi.fn() }
     vi.mocked(f.input.generation).mockReturnValue(generation as never)
     const assembly = createLaneExtendedDesktopPorts({ ...f.input, directorPreviewBlocks })
     await assembly.toolLifecycle.prepare(generateCall, signal)
@@ -292,7 +292,7 @@ describe('generate × 3D-BOX 预演闸', () => {
   it('preview still rendering → no spend card, nothing spent, the model is told why and when to retry', async () => {
     const blocks = vi.fn(async () => [{ nodeId: 'node-v1', shotId: 'shot-1', reason: 'rendering' as const }])
     const { outcome, generation } = await run(blocks)
-    expect(blocks).toHaveBeenCalledWith('op-1', ['shot-1'])
+    expect(blocks).toHaveBeenCalledWith('op-1', ['shot-1'], { 'shot-1': [] })
     expect(generation.tryExecute).not.toHaveBeenCalled()
     expect(outcome.ok).toBe(false)
     expect(outcome.failure?.code).toBe('director_preview_pending')
@@ -308,6 +308,27 @@ describe('generate × 3D-BOX 预演闸', () => {
 
   it('cannot ask the renderer → fail closed: no card, nothing spent', async () => {
     const { outcome, generation } = await run(async () => { throw new Error('renderer gone') })
+    expect(generation.tryExecute).not.toHaveBeenCalled()
+    expect(outcome.failure?.message).toContain('could not check')
+  })
+
+  it('preview ready but the draft does not carry it → no card, the model is told exactly which asset to add with draft_shots', async () => {
+    const { outcome, generation } = await run(async () => [{ nodeId: 'node-v1', shotId: 'shot-1', reason: 'not_referenced' as const, previewAssetId: 'asset-preview-1' }])
+    expect(generation.tryExecute).not.toHaveBeenCalled()
+    expect(outcome.failure?.code).toBe('director_preview_pending')
+    expect(outcome.failure?.message).toContain('shot shot-1 needs preview asset asset-preview-1')
+    expect(outcome.failure?.message).toContain('draft_shots')
+    expect(outcome.failure?.message).toContain('nothing was spent')
+  })
+
+  it('the draft cannot be read → fail closed, no card', async () => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: {} })), withdrawPresentation: vi.fn(async () => undefined), readPresentationOutcome: vi.fn(async () => undefined), readShotReferenceAssetIds: vi.fn(async () => { throw new Error('gone') }), dispose: vi.fn() }
+    vi.mocked(f.input.generation).mockReturnValue(generation as never)
+    const assembly = createLaneExtendedDesktopPorts({ ...f.input, directorPreviewBlocks: async () => [] })
+    await assembly.toolLifecycle.prepare(generateCall, signal)
+    await assembly.toolLifecycle.approved(generateCall, f.record, host as never)
+    const outcome = await assembly.tools.find((tool) => tool.name === 'generate')!.execute(generateCall.args, { toolCallId: generateCall.toolCallId, signal }) as { ok: boolean; failure?: { message: string } }
     expect(generation.tryExecute).not.toHaveBeenCalled()
     expect(outcome.failure?.message).toContain('could not check')
   })

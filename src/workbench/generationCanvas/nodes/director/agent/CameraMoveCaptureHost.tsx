@@ -124,7 +124,7 @@ async function persistPreview(nodeId: string, revision: string, fps: number, tit
   const persisted = await persistDirectorFramesVideo(capture.frames, nodeId, title, fps, originProject)
   if (!persisted.url || (originProject && !isProjectExecutionContextCurrent(originProject))) return false
   const createdAt = Date.now()
-  const outcome = applyPreviewCaptured(nodeId, revision, persisted.url, { id: createOutputId(), name: title, width: capture.width, height: capture.height, duration: capture.frames.length / fps, createdAt })
+  const outcome = applyPreviewCaptured(nodeId, revision, persisted.url, persisted.assetId, { id: createOutputId(), name: title, width: capture.width, height: capture.height, duration: capture.frames.length / fps, createdAt })
   if (outcome?.toast) toast(outcome.toast.message, outcome.toast.level)
   return true
 }

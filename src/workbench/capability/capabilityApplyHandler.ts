@@ -421,7 +421,10 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
   if (op === 'director.preview-blocks') {
     const operationId = typeof data.operationId === 'string' ? data.operationId : ''
     const shotIds = Array.isArray(data.shotIds) ? data.shotIds.filter((value): value is string => typeof value === 'string') : undefined
-    return { blocks: operationId ? directorPreviewBlocksForOperation(useGenerationCanvasStore.getState().nodes, operationId, shotIds) : [] }
+    // 主进程只读出的「每一镜候选带了哪些素材」；判据仍在 directorPreviewState 这一处。
+    const raw = data.candidateReferences && typeof data.candidateReferences === 'object' && !Array.isArray(data.candidateReferences) ? data.candidateReferences as Record<string, unknown> : undefined
+    const candidateReferences = raw ? Object.fromEntries(Object.entries(raw).map(([shotId, ids]) => [shotId, Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []])) : undefined
+    return { blocks: operationId ? directorPreviewBlocksForOperation(useGenerationCanvasStore.getState().nodes, operationId, shotIds, candidateReferences) : [] }
   }
   if (op === 'storyboard.upsert-design') return upsertAgentStoryboardDesign(data)
   if (op === 'storyboard.patch-design') return patchAgentStoryboardDesign(data)

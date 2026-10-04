@@ -28,7 +28,7 @@ import type { DirectorProject } from '../model/directorTypes'
 
 type Issue = { kind: string; message: string; time?: number; ref?: string }
 type Cut = { shot: string | null; start: number; end: number; shotSize: string | null; move: string }
-type Preview = { status: 'none' | 'rendering' | 'ready' | 'failed'; targetNodeId?: string; attach?: 'video_ref' | 'prompt_only'; reason?: string }
+type Preview = { status: 'none' | 'rendering' | 'ready' | 'failed'; targetNodeId?: string; attach?: 'video_ref' | 'prompt_only'; assetId?: string; reason?: string }
 
 export type DirectorWriteDomainResult =
   | {
@@ -105,6 +105,7 @@ function previewView(meta: DirectorPreviewMeta | null | undefined): Preview {
     status: meta.status,
     ...(meta.targetNodeId ? { targetNodeId: meta.targetNodeId } : {}),
     ...(meta.attach ? { attach: meta.attach } : {}),
+    ...(meta.assetId ? { assetId: meta.assetId } : {}),
     ...(meta.reason ? { reason: meta.reason === 'too_long' ? `longer than ${DIRECTOR_PREVIEW_MAX_SECONDS}s` : meta.reason } : {}),
   }
 }

@@ -30,6 +30,8 @@ export type DirectorPreviewMeta = Readonly<{
   /** ready：挂成参考视频，还是模型没有参考视频槽只写进提示词。 */
   attach?: 'video_ref' | 'prompt_only'
   videoUrl?: string
+  /** ready 时预演 mp4 在项目素材库里的 id：Agent 改候选时把它放进 `draft_shots` 的 references。 */
+  assetId?: string
   /** 动作库没有的细节动作（编译器报 missing_asset 的那些）：挂接时写进视频节点提示词，交给视频模型演。 */
   notes?: readonly string[]
   updatedAt: number
@@ -61,10 +63,10 @@ export type DirectorPreviewSpendBlock = Readonly<{ reason: 'rendering' | 'failed
  * 这个视频节点此刻能不能花钱：以**最近一次**指向它的 3D-BOX 预演为准（新预演顶替旧的）。
  * 渲染中 / 失败 → 挡；已挂好 / 没有预演 → 放行。
  */
-export function directorPreviewSpendBlock(
+function latestDirectorPreviewFor(
   nodeId: string,
   nodes: readonly Pick<GenerationCanvasNode, 'id' | 'kind' | 'meta'>[],
-): DirectorPreviewSpendBlock | null {
+): { node: Pick<GenerationCanvasNode, 'id'>; preview: DirectorPreviewMeta } | null {
   let latest: { node: Pick<GenerationCanvasNode, 'id'>; preview: DirectorPreviewMeta } | null = null
   for (const node of nodes) {
     if (node.kind !== DIRECTOR_NODE_KIND) continue
@@ -72,6 +74,14 @@ export function directorPreviewSpendBlock(
     if (!preview || preview.targetNodeId !== nodeId) continue
     if (!latest || preview.updatedAt >= latest.preview.updatedAt) latest = { node, preview }
   }
+  return latest
+}
+
+export function directorPreviewSpendBlock(
+  nodeId: string,
+  nodes: readonly Pick<GenerationCanvasNode, 'id' | 'kind' | 'meta'>[],
+): DirectorPreviewSpendBlock | null {
+  const latest = latestDirectorPreviewFor(nodeId, nodes)
   if (!latest || latest.preview.status === 'ready') return null
   return {
     reason: latest.preview.status,
@@ -80,7 +90,15 @@ export function directorPreviewSpendBlock(
   }
 }
 
-export type DirectorPreviewOperationBlock = Readonly<{ nodeId: string; shotId?: string; reason: 'rendering' | 'failed'; failure?: DirectorPreviewFailure }>
+export type DirectorPreviewOperationBlock = Readonly<{
+  nodeId: string
+  shotId?: string
+  /** rendering / failed：预演没好；not_referenced：预演好了，但这一镜真正要付费提交的候选没带它。 */
+  reason: 'rendering' | 'failed' | 'not_referenced'
+  failure?: DirectorPreviewFailure
+  /** not_referenced 时：要放进候选 references 的那个素材 id。 */
+  previewAssetId?: string
+}>
 
 function metaString(node: Pick<GenerationCanvasNode, 'meta'>, key: string): string | undefined {
   const value = node.meta?.[key]
@@ -90,12 +108,18 @@ function metaString(node: Pick<GenerationCanvasNode, 'meta'>, key: string): stri
 /**
  * Agent 的 `generate` 出卡**之前**问的那一句：这次要生成的镜头里，哪些被 3D-BOX 预演挡着。
  * 镜头 ↔ 画布节点按落地章认（Agent 分镜 `materializationOperationId × productionShotId`；
- * 文稿分镜 `storyboardDesignId × shotId`）；判据仍是同一个 `directorPreviewSpendBlock`。
+ * 文稿分镜 `storyboardDesignId × shotId`）；没好的判据仍是同一个 `directorPreviewSpendBlock`。
+ *
+ * 多一条只读核对（2026-10-04 拍板 A）：`generate` 付费提交的是草稿**候选**，不是画布节点——预演挂在节点上，
+ * 候选里不一定有。`candidateReferences`（主进程只读出的「每一镜候选带了哪些素材」）给了这一镜、它的预演已就绪
+ * 且是以参考视频挂上的，而候选没带这份预演素材 → 挡（not_referenced），由 Agent 用 `draft_shots` 改候选。
+ * 候选仍只有 `draft_shots` 一个写者；这里不写任何东西。以文字兜底挂上的（模型没有参考视频槽）不要求。
  */
 export function directorPreviewBlocksForOperation(
   nodes: readonly Pick<GenerationCanvasNode, 'id' | 'kind' | 'meta'>[],
   operationId: string,
   shotIds?: readonly string[],
+  candidateReferences?: Readonly<Record<string, readonly string[]>>,
 ): DirectorPreviewOperationBlock[] {
   const scope = shotIds && shotIds.length ? new Set(shotIds) : null
   const blocks: DirectorPreviewOperationBlock[] = []
@@ -105,7 +129,15 @@ export function directorPreviewBlocksForOperation(
     const shotId = fromOperation ? metaString(node, 'productionShotId') : metaString(node, 'shotId')
     if (scope && shotId && !scope.has(shotId)) continue
     const block = directorPreviewSpendBlock(node.id, nodes)
-    if (block) blocks.push({ nodeId: node.id, ...(shotId ? { shotId } : {}), reason: block.reason, ...(block.failure ? { failure: block.failure } : {}) })
+    if (block) {
+      blocks.push({ nodeId: node.id, ...(shotId ? { shotId } : {}), reason: block.reason, ...(block.failure ? { failure: block.failure } : {}) })
+      continue
+    }
+    const referenced = shotId ? candidateReferences?.[shotId] : undefined
+    const ready = latestDirectorPreviewFor(node.id, nodes)?.preview
+    if (referenced && ready?.status === 'ready' && ready.attach === 'video_ref' && ready.assetId && !referenced.includes(ready.assetId)) {
+      blocks.push({ nodeId: node.id, shotId: shotId!, reason: 'not_referenced', previewAssetId: ready.assetId })
+    }
   }
   return blocks
 }

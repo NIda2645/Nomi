@@ -39,6 +39,11 @@ export type PiGenerationTransportAdapter = Readonly<{
    * 读不到（没有出价 / 读失败）→ `undefined`，回执照实说「不知道」，不替宿主编。
    */
   readPresentationOutcome(operationId: string): Promise<GeneratePresentationOutcome | undefined>;
+  /**
+   * 宿主内部、只读：这份草稿每一镜的**候选**带了哪些参考素材（shotId → assetId[]）。3D-BOX 出卡前预检用它核对
+   * 「就绪的预演进没进真正付费的那份载荷」。读不到 → 抛，调用方按 fail-closed 处理（不出卡）。
+   */
+  readShotReferenceAssetIds?(operationId: string): Promise<Readonly<Record<string, readonly string[]>>>;
   dispose(): void;
 }>;
 
@@ -577,6 +582,18 @@ export function createPiGenerationTransportAdapter(
       } catch {
         return undefined;
       }
+    },
+    async readShotReferenceAssetIds(operationIdToRead) {
+      if (disposed) throw new Error("surface_port_unavailable");
+      const signal = new AbortController().signal;
+      const read = await plan("read", { operationId: operationIdToRead }, await lease(signal), signal) as {
+        operation?: { shots?: ReadonlyArray<{ shotId?: unknown; candidate?: { references?: ReadonlyArray<{ assetId?: unknown }> } }> };
+      };
+      const shots = read?.operation?.shots;
+      if (!Array.isArray(shots)) throw new Error("generation_operation_not_found");
+      return Object.fromEntries(shots.flatMap((shot) => typeof shot.shotId === "string"
+        ? [[shot.shotId, (shot.candidate?.references ?? []).flatMap((reference: { assetId?: unknown } | undefined) => typeof reference?.assetId === "string" ? [reference.assetId] : [])]]
+        : []));
     },
     dispose() { disposed = true; },
   });

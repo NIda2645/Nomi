@@ -71,6 +71,8 @@ const canvasReadNodeSchema = z
         issueCount: z.number().int().nonnegative(),
         preview: z.enum(["none", "rendering", "ready", "failed"]),
         previewTargetNodeId: trimmedNonEmptyStringSchema.optional(),
+        /** 预演就绪后在项目素材库里的 id（`draft_shots` 的 references 收它）。 */
+        previewAssetId: trimmedNonEmptyStringSchema.optional(),
       })
       .strict()
       .optional(),
@@ -278,6 +280,7 @@ function projectDirectorBox(meta: UnknownRecord | undefined): CanvasReadNode["di
   const preview = asRecord(meta?.directorPreview);
   const status = preview?.status;
   const target = nonEmptyString(preview?.targetNodeId);
+  const assetId = status === "ready" ? nonEmptyString(preview?.assetId) : undefined;
   const issueCount = finiteNumber(planMeta?.issueCount);
   return {
     revision,
@@ -287,6 +290,7 @@ function projectDirectorBox(meta: UnknownRecord | undefined): CanvasReadNode["di
     issueCount: issueCount !== undefined && issueCount >= 0 ? Math.floor(issueCount) : 0,
     preview: status === "rendering" || status === "ready" || status === "failed" ? status : "none",
     ...(target ? { previewTargetNodeId: target } : {}),
+    ...(assetId ? { previewAssetId: assetId } : {}),
   };
 }
 

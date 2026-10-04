@@ -40,3 +40,18 @@ describe('look_at_canvas on a 3D-BOX node', () => {
     expect(formatCanvasForAgent(result)).not.toContain('3D-BOX revision')
   })
 })
+
+describe('look_at_canvas gives the ready preview asset id', () => {
+  it('shows previewAssetId only once the preview is ready', () => {
+    installDirector3DBoxFace(true)
+    const ready = structuredClone(canvas) as { nodes: Array<{ meta?: Record<string, unknown> }> }
+    const meta = ready.nodes[1].meta!
+    meta.directorPreview = { ...(meta.directorPreview as Record<string, unknown>), status: 'ready', assetId: 'asset-preview-1' }
+    const result = projectCanvasRead(ready)
+    expect(result.nodes.find((node) => node.id === 'node-d1')?.director?.previewAssetId).toBe('asset-preview-1')
+    expect(formatCanvasForAgent(result)).toContain('preview=ready→node-v1 previewAssetId=asset-preview-1')
+    resetDirector3DBoxFaceForTests()
+    installDirector3DBoxFace(true)
+    expect(projectCanvasRead(canvas).nodes.find((node) => node.id === 'node-d1')?.director?.previewAssetId).toBeUndefined()
+  })
+})

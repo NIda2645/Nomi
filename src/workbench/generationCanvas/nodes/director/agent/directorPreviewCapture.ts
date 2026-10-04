@@ -71,7 +71,7 @@ function inProposal<T>(preview: DirectorPreviewMeta, fn: () => T): T {
  * 预演 mp4 已落盘 → 挂到它的视频节点（唯一挂接核心）→ 导演节点预演写回 ready（含挂法：参考视频 / 只写进提示词）。
  * 返回挂接给出的提示（模型不接参考视频时那句「精度会低」由调用方 toast）。修订已变 = 丢弃，返回 null。
  */
-export function applyPreviewCaptured(nodeId: string, revision: string, videoUrl: string, output: Readonly<{ id: string; name: string; width: number; height: number; duration: number; createdAt: number }>):
+export function applyPreviewCaptured(nodeId: string, revision: string, videoUrl: string, assetId: string | undefined, output: Readonly<{ id: string; name: string; width: number; height: number; duration: number; createdAt: number }>):
   { toast?: { message: string; level: 'warning' } } | null {
   const node = sameRevision(nodeId, revision)
   if (!node) return null
@@ -89,6 +89,7 @@ export function applyPreviewCaptured(nodeId: string, revision: string, videoUrl:
       ...preview,
       status: 'ready',
       videoUrl,
+      ...(assetId ? { assetId } : {}),
       ...(outcome.kind === 'patch' ? { attach: outcome.mode } : {}),
       updatedAt: Date.now(),
     }

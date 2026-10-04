@@ -83,6 +83,8 @@ const previewSchema = z.object({
   targetNodeId: canonicalIdSchema.optional(),
   /** 渲染好以后怎么挂：模型有参考视频槽 = video_ref；没有 = 只能写进提示词（精度低）。 */
   attach: z.enum(["video_ref", "prompt_only"]).optional(),
+  /** ready 时预演在项目素材库里的 id（`draft_shots` 的 references 收它）。 */
+  assetId: z.string().trim().min(1).max(512).optional(),
   reason: z.string().max(200).optional(),
 }).strict();
 

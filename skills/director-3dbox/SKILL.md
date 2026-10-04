@@ -11,6 +11,8 @@ metadata:
       - look_at_canvas
       - stage_shot
       - undo
+      - draft_shots
+      - list_models
       - generate
     required-providers:
       - video
@@ -57,6 +59,7 @@ license: AGPL-3.0-only
 5. **聊着改**：用户要改哪里，就只交改动的那几处，用上一次结果里的 revision；不要把整份计划重写一遍。结果说没有变化时，直接告诉用户「已经是这样了」。
 6. **撤销**：用户说撤销、改回去，就用 undo 撤掉上一次 stage_shot 结果里的那个 changeId。
 7. **出片**：用户明确说「就用这个出片」之后，交给生成环节（generate）。预演还在渲染或者渲染失败时，先把原因告诉用户，等预演好了（look_at_canvas 那一行显示 ready）再来；失败的预演请用户在节点上点「重试预演」，太长的就把计划缩短。
+8. **让预演真正进到这一镜的草稿里**：预演好了以后，look_at_canvas 那一行会给出 `previewAssetId`。生成环节拒绝并说「草稿没有用上预演」时，用 draft_shots 改这一镜（同一个 operationId 和 shotId）：把这个素材 id 放进 references，模式换成这个模型能收参考视频的那个（用 list_models 查），只改这两件，提示词别动；改完再交给生成环节。
 
 ## 计划怎么写
 

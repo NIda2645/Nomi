@@ -60,16 +60,22 @@ export interface LaneExtendedDesktopPortsInput {
    * 3D-BOX 花钱闸（开关开的构建才接上）：这次要生成的镜头里，哪些挂着还没好的参考预演。
    * 出卡**之前**问——问到了就不出卡、不花钱，原因交给模型；问不到（渲染层不在）也不出卡（fail-closed）。
    */
-  directorPreviewBlocks?(operationId: string, shotIds: readonly string[] | undefined): Promise<readonly DirectorPreviewBlock[]>
+  directorPreviewBlocks?(operationId: string, shotIds: readonly string[] | undefined, candidateReferences: Readonly<Record<string, readonly string[]>>): Promise<readonly DirectorPreviewBlock[]>
 }
 
-export type DirectorPreviewBlock = Readonly<{ nodeId: string; shotId?: string; reason: 'rendering' | 'failed'; failure?: string }>
+export type DirectorPreviewBlock = Readonly<{ nodeId: string; shotId?: string; reason: 'rendering' | 'failed' | 'not_referenced'; failure?: string; previewAssetId?: string }>
 
 /** 预演挡着的那几镜 → 一句模型读得懂、能照做的话（不出卡、没花钱、下一步是什么）。 */
 export function directorPreviewBlockedDecision(blocks: readonly DirectorPreviewBlock[]): Extract<RuntimeToolDecision, { ok: false }> {
   const rendering = blocks.filter((block) => block.reason === 'rendering')
   const failed = blocks.filter((block) => block.reason === 'failed')
+  const unreferenced = blocks.filter((block) => block.reason === 'not_referenced')
   const name = (block: DirectorPreviewBlock) => block.shotId ?? block.nodeId
+  if (!rendering.length && !failed.length && unreferenced.length) {
+    return { ok: false, code: 'director_preview_pending',
+      message: `No spend card was shown and nothing was spent: the 3D-BOX preview is ready, but the draft that would be generated does not use it (${unreferenced.map((block) => `shot ${name(block)} needs preview asset ${block.previewAssetId}`).join('; ')}). `
+        + 'Update those shots with draft_shots (same operationId and shotId): add the preview asset id to references and pick a mode of that model that accepts a reference video (list_models). Then call generate again.' }
+  }
   const parts = [
     rendering.length ? `the 3D-BOX preview for ${rendering.map(name).join(", ")} is still rendering` : '',
     failed.length ? `the 3D-BOX preview for ${failed.map(name).join(", ")} failed${failed.some((block) => block.failure === 'too_long') ? ' (longer than the 10-second preview limit)' : ''}` : '',
@@ -224,7 +230,10 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
       const shotIds = Array.isArray(args.shotIds) ? args.shotIds.filter((value): value is string => typeof value === 'string') : undefined
       let blocks: readonly DirectorPreviewBlock[]
       try {
-        blocks = await input.directorPreviewBlocks(String(args.operationId ?? ''), shotIds)
+        // 只读：候选里每一镜带了哪些素材。写者仍只有 draft_shots。
+        if (!generation.readShotReferenceAssetIds) throw new Error('director_preview_candidate_unreadable')
+        const candidateReferences = await generation.readShotReferenceAssetIds(String(args.operationId ?? ''))
+        blocks = await input.directorPreviewBlocks(String(args.operationId ?? ''), shotIds, candidateReferences)
       } catch {
         return { ok: false, code: 'director_preview_pending', message: 'No spend card was shown and nothing was spent: Nomi could not check whether the 3D-BOX previews for these shots are ready. Call generate again in a moment.' }
       }
