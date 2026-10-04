@@ -13,7 +13,7 @@ const shot = (id: string, window: [number, number], subject: string, size: Direc
 export const S1_ORACLE_PLANS: Record<string, DirectorPlan> = {
   'courtyard-standoff': {
     version: 2, scene: { tags: ['courtyard'], environment: 'day', template: 'courtyard', setPieces: [] },
-    actors: [{ id: 'woman', kind: 'person', desc: '青衣女子', anchors: { hand: { x: 1, y: 0, z: 0 } }, placement: { relation: 'at', ref: 's1-courtyard-ground' } }, { id: 'guard', kind: 'person', desc: '黑衣侍卫', placement: { relation: 'at', ref: 's1-courtyard-gate' } }],
+    actors: [{ id: 'woman', kind: 'person', desc: '青衣女子', anchors: { hand: { x: 0.3, y: 1, z: 0.2 } }, placement: { relation: 'at', ref: 's1-courtyard-ground' } }, { id: 'guard', kind: 'person', desc: '黑衣侍卫', placement: { relation: 'at', ref: 's1-courtyard-gate' } }],
     blocking: [{ actor: 'woman', verb: 'walk_to', target: 'gate', window: [0, 4] }, { actor: 'guard', verb: 'sidestep', target: 'woman', window: [4, 8] }, { actor: 'woman', verb: 'stop', window: [4, 8] }, { actor: 'woman', verb: 'hold_pose', window: [4, 8], action: 'hide_object_behind_back' }],
     shots: [shot('wide', [0, 4], 'woman', '全景', 'side_rear', 'follow'), { ...shot('medium', [4, 8], 'guard', '中景', 'three_quarter', 'static'), subjects: ['woman', 'guard'] }, shot('hand', [8, 10], 'woman.hand', '特写', 'front', 'static'), { ...shot('over-shoulder', [10, 12], 'woman', '中近景', { over_shoulder: 'guard' }, 'push_in') }],
   },
