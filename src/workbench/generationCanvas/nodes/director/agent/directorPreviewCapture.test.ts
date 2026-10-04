@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import type { DirectorWriteInput } from '../../../../../../electron/shared/agentCapabilities/directorWrite'
 import { applyProposalBatch } from '../../../agent/proposalTxn'
 import { generationCanvasTools } from '../../../agent/generationCanvasTools'
 import { findCanvasChange } from '../../../events/canvasUndoJournal'

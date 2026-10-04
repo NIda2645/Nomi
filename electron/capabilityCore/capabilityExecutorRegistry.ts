@@ -500,9 +500,9 @@ export class CapabilityExecutorRegistry {
             signal,
           }));
         }
+        // 3D-BOX 计划写入（director.write）与画布写同一个渲染端写口（同一条 surface port、同一本收据 / 撤销日志）。
         case CANVAS_DELETE_CAPABILITY.id:
         case CANVAS_WRITE_CAPABILITY.id:
-        // 3D-BOX 计划写入与画布写同一个渲染端写口（同一条 surface port、同一本收据 / 撤销日志）。
         case DIRECTOR_WRITE_CAPABILITY.id:
           return approvedWriteAdapter(resolveCanvasWritePort);
         case ASSET_READ_CAPABILITY.id: {
