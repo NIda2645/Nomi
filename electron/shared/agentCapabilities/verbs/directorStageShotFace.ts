@@ -19,7 +19,7 @@ import { modelArgumentTolerance } from "../modelArgumentTolerance";
  */
 const planModel = directorPlanModelSchema.extend({
   scene: directorPlanModelSchema.shape.scene.omit({ dressing: true }).describe("Setting, lighting, and scene objects."),
-});
+}).describe("The whole director plan. Only when creating a new preview.");
 const planShape = planModel.shape;
 const shotModel = planShape.shots.element;
 const actorModel = planShape.actors.element;
@@ -48,8 +48,8 @@ export const directorStageShotModelSchema = z.object({
       .describe("Existing 3D-BOX node id; required with edits."),
   }).strict().optional()
     .describe("Omit for a standalone preview; shotId to build one for a shot; directorNodeId to edit one."),
-  plan: planModel.optional()
-    .describe("The whole director plan. Only when creating a new preview."),
+  // 描述只挂在 planModel 上一处：外层再 describe 会盖掉内层，模型面就丢了一句契约声明的话（laneToolSchema 的无损断言）。
+  plan: planModel.optional(),
   baseRevision: z.string().trim().min(1).max(64).optional()
     .describe("Current revision of that node; required with edits."),
   edits: z.array(z.object({

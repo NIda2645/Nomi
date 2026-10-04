@@ -85,3 +85,15 @@ describe('3D-BOX tool face', () => {
     expect(seen).toEqual(['true:create_director_plan'])
   })
 })
+
+describe('3D-BOX tool face survives the lane schema bridge', () => {
+  // 真机首跑抓到的：外层 .describe() 盖掉了计划 schema 自己那句描述，lane 装配期的无损断言当场抛，
+  // 整个 Agent 面板起不来。单测这里按开关开 / 关各把全部内部动词过一遍同一个桥。
+  it.each([false, true])('every internal verb converts without information loss (flag %s)', async (enabled) => {
+    const { internal } = await face(enabled)
+    const { toModelVisibleSchema } = await import('../agentLane/laneToolSchema.mts')
+    for (const spec of internal) {
+      expect(() => toModelVisibleSchema(spec.schema, { toolName: spec.name } as never), spec.name).not.toThrow()
+    }
+  }, 60_000)
+})
