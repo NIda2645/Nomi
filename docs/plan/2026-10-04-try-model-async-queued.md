@@ -9,7 +9,7 @@
 试跑花一次钱，只该得到一个明确说法：出图了 / 供应商拒了（带原话）/ 已提交还在跑。最后一种是新增的：AI 要把「已提交、别重试」转述给用户，而不是改卡重来。
 
 ## 3. owner
-- 提交后等什么、等多久：`electron/capabilityCore/pollTaskToTerminal.ts`（全仓唯一一份，画布同款 headless 生成也用它）。
+- 提交后等什么、等多久：`electron/capabilityCore/pollTaskToTerminal.ts`（现在只给试跑用；`generateOnProject` 那一族由收敛第 0 步整体删除，删完它就是唯一一份）。
 - 把等待结果翻成试跑回复：`electron/capabilityCore/modelOnboarding/tryModel.ts`。
 - 钱闸不动：仍是 `spendGrant` + `spendDecidedByPolicy`。
 
@@ -18,7 +18,7 @@
 | 时刻 / 事件 | 钱 | 这次试跑 | AI / 用户看到 |
 |---|---|---|---|
 | 确认前 / 未确认 / 没窗口 | 没花 | 没发生 | needs_input，可再调 |
-| 供应商收下（queued），正在等 | 已花 | 进行中，最多等 4 分钟（视频 15 分钟，`NOMI_POLL_TIMEOUT_MS` 可改） | 工具调用还在等 |
+| 供应商收下（queued），正在等 | 已花 | 进行中，最多等 40 秒（试跑是一次 MCP 工具调用，外部宿主工具超时约 60 秒，挂更久会被客户端断开） | 工具调用还在等 |
 | 等到 succeeded | 已花，换来产物 | 成功 | 产物 + 供应商原文 |
 | 等到明确失败 | 以供应商为准，原话在返回里 | 失败 | provider_failed + 原话 |
 | 等不到终态（到点） | 已花 | 未完成，不是失败 | still_processing + 任务号 + 明说「不要重试」 |
@@ -34,16 +34,16 @@
 - 同步供应商：完全走原来的路，行为不变。
 
 ## 6. 性能数字
-等待间隔：视频 3 秒、其余 1.5 秒（与画布同策）；上限同 headless 生成。不加新后台任务。
+等待间隔：视频 3 秒、其余 1.5 秒；上限 40 秒（`TRY_MODEL_WAIT_BUDGET_MS`）。不加新后台任务。
 
 ## 7. 真实条件
 本机 loopback 假异步供应商 + 真 `runTask` / `fetchTaskResult`；不发起任何真实付费生成。
 
 ## 8. 验收
-`electron/capabilityCore/modelOnboarding/tryModelAsyncQueued.test.ts`（4 条，修前红：真实代码把 queued 判成 provider_failed）；`electron/capabilityCore` 全目录对照干净 main 无新增红。
+`electron/capabilityCore/modelOnboarding/tryModelAsyncQueued.test.ts`（4 条，修前红：真实代码把 queued 判成 provider_failed）；另有假时钟测试钉等待上限 ≤ 40 秒；`electron/capabilityCore` 全目录对照干净 main 无新增红。
 
 ## 9. 自己写了什么、为什么必须
-没有新写通用能力：`pollTaskToTerminal` 是把 `generateOnProject` 里已有的轮询搬成共享函数（净减一份循环）。新增的只有 `still_processing` 结果码——它表达「花了钱的单子还在跑」的领域语义。
+`pollTaskToTerminal` 是从 `generateOnProject` 的轮询抄出的最小等待函数（`generateOnProject` 不动，由收敛第 0 步删）。新增的只有 `still_processing` 结果码——它表达「花了钱的单子还在跑」的领域语义。
 
 ## 方向检查（RW）
 
@@ -58,7 +58,7 @@
 | `renderStaticFrame` 注释记载的首帧漏轮询 | 新调用者没抄轮询 | 同一类 |
 
 ### 2. 为什么这一类会一直出现
-轮询写在调用者里，新调用者不抄就漏。本次把主循环收成一个函数并迁入两处；`renderStaticFrame` 与 ComfyUI 认证还各有一份。
+轮询写在调用者里，新调用者不抄就漏。本次新增共享函数给试跑用；`generateOnProject` 由收敛第 0 步删除；`renderStaticFrame` 与 ComfyUI 认证那两份循环记为后续单独收口。
 
 ### 3. 不改结构的话会冒出什么
 
@@ -78,11 +78,14 @@
 | 选项 | 做什么 | 代价 | 风险 | 推荐 |
 |---|---|---|---|---|
 | 补 | 只在 tryModel 里再写一个循环 | 小 | 第三份循环 | 否 |
-| 重写（限一个模块） | 抽共享 `pollTaskToTerminal`，主循环与试跑共用 | 中 | 动了画布同款生成的循环 | 是（本次） |
+| 重写（限一个模块） | 抽共享 `pollTaskToTerminal`，试跑独用，等收敛第 0 步删旧后即为唯一一份 | 中 | 删旧循环交给收敛第 0 步 | 是（本次） |
 | 删 | 去掉试跑 | 失去接入验证 | 大 | 否 |
 
 ### 7. 用户要权衡的核心
-剩下两份轮询（`renderStaticFrame`、ComfyUI 认证）要不要也并进来；本次热修不动，避免扩大花钱路径的改动面。
+`renderStaticFrame` 和 ComfyUI 认证那两份循环何时并进来；本次热修不动，避免扩大花钱路径的改动面。
 
 ## 特征测试清单
 `tryModelAsyncQueued.test.ts` 钉住：queued→成功、queued→明确失败、等不到终态、宿主缺查询函数；同步供应商由既有 `acceptanceLoopback.test.ts` 钉住。
+
+## 后续项
+- AI 能按任务号查任务：建议 0.24 B 线给 `nomi_read` 加任务查询目标；这次不做，`still_processing` 只把任务号交给用户去供应商后台查。

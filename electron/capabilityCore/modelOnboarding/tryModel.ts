@@ -25,10 +25,17 @@ import { spendDecidedByPolicy, type ProjectAgentApprovalPolicy } from "../../sha
 import { quoteSpendLine } from "../../spendQuote";
 import { mintSpendGrant, isSpendAuthorizationError } from "../../spendGrant";
 import { sanitizedAdapterJson, redactAdapterSecrets } from "../../providerAdapter/redaction";
-import { resolveCapabilityPollTimeoutMs, type FetchTaskResultFn, type RunTaskFn } from "../core";
+import type { FetchTaskResultFn, RunTaskFn } from "../core";
 import { pollTaskToTerminal } from "../pollTaskToTerminal";
 import { isTerminalTaskStatus } from "../../shared/taskStatus";
 import { billableRequests, noBlast, unverified, type OnboardingFailure, type OnboardingResult } from "./envelope";
+
+/**
+ * 试跑最多等 40 秒。试跑是**一次 MCP 工具调用**，外部宿主有工具超时（例如 Codex 默认 60 秒）：
+ * 挂 15 分钟会被客户端断开，AI 看到的是断线而不是结果。40 秒留出 20 秒余量给提交和返回；
+ * 等不到就返回 `still_processing`（已收费、不要重试），任务本身不受影响。
+ */
+export const TRY_MODEL_WAIT_BUDGET_MS = 40_000;
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
@@ -42,7 +49,7 @@ export type TryModelDeps = {
    * 缺席时遇到 queued 只会如实说「已提交、仍在处理」，**不会**判失败。
    */
   fetchTaskResult?: FetchTaskResultFn;
-  /** 试跑最多等多久（毫秒）。缺省沿用 headless 生成的上限（视频 15 分钟、其余 4 分钟）。 */
+  /** 试跑最多等多久（毫秒）。只能往小调（测试用），封顶 `TRY_MODEL_WAIT_BUDGET_MS`。 */
   pollTimeoutMs?: number;
   pollIntervalMs?: number;
   /**
@@ -160,7 +167,7 @@ export async function tryModel(
           taskKind,
           prompt: text(args.prompt) || NEUTRAL_PROMPT,
           modelKey,
-          timeoutMs: deps.pollTimeoutMs ?? resolveCapabilityPollTimeoutMs(taskKind),
+          timeoutMs: Math.min(deps.pollTimeoutMs ?? TRY_MODEL_WAIT_BUDGET_MS, TRY_MODEL_WAIT_BUDGET_MS),
           intervalMs: deps.pollIntervalMs ?? (taskKind === "text_to_video" || taskKind === "image_to_video" ? 3000 : 1500),
         })
       : { result, ended: "timeout" as const, waitedMs: 0 };

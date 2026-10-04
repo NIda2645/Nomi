@@ -1,7 +1,7 @@
 /**
  * 把一个「已提交、还在路上」的任务查到终态——**主进程里唯一一份**「提交之后怎么等」。
  *
- * 画布同款的 headless 生成（`generateOnProject`）和接模型试跑（`tryModel`）都问它：
+ * 接模型试跑（`tryModel`）问它（`generateOnProject` 那一族由收敛第 0 步整体删除，删完它就是唯一一份）：
  * 任务已经被供应商收下 = 钱已经花了，所以这里
  *   · 查询失败一律免费重试，绝不冒泡（一次网络抖动不能终止已付费任务）；
  *   · 到点 / 持续查不通只是**告诉调用方「没等到」**，由调用方决定怎么说——不在这里编造失败。
@@ -9,7 +9,9 @@
  * 它从不重发提交，所以也不可能重复扣费。
  */
 import { isTerminalTaskStatus } from '../shared/taskStatus'
-import type { FetchTaskResultFn, TaskResultLike } from './core'
+import type { FetchTaskResultFn } from './core'
+
+type TaskResultLike = Awaited<ReturnType<FetchTaskResultFn>>['result']
 
 /** 查结果连续失败多久才放弃（与渲染层 catalogTaskActions 的 POLL_FAILURE_GRACE_MS 配对，改一处必改另一处）。 */
 export const POLL_FAILURE_GRACE_MS = 45_000

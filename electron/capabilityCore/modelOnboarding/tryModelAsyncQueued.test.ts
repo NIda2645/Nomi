@@ -180,3 +180,27 @@ describe("nomi_try_model 遇到异步供应商", () => {
     expect(submits).toBe(1);
   });
 });
+
+describe("试跑等待上限", () => {
+  it("上限不超过 40 秒；假时钟下等不到终态就在上限内放弃（不真等）", async () => {
+    const { TRY_MODEL_WAIT_BUDGET_MS } = await import("./tryModel");
+    const { pollTaskToTerminal } = await import("../pollTaskToTerminal");
+    expect(TRY_MODEL_WAIT_BUDGET_MS).toBeLessThanOrEqual(40_000);
+    vi.useFakeTimers();
+    try {
+      const fetch = vi.fn(async () => ({ result: { id: "job-x", status: "running", assets: [] } }));
+      const pending = pollTaskToTerminal({
+        initial: { id: "job-x", status: "queued", assets: [] },
+        fetch: fetch as never, vendor: "v", taskKind: "text_to_image", prompt: "p", modelKey: "m",
+        timeoutMs: TRY_MODEL_WAIT_BUDGET_MS, intervalMs: 3000,
+      });
+      await vi.advanceTimersByTimeAsync(TRY_MODEL_WAIT_BUDGET_MS + 3000);
+      const out = await pending;
+      expect(out.ended).toBe("timeout");
+      expect(out.result.id).toBe("job-x");
+      expect(out.waitedMs).toBeLessThanOrEqual(TRY_MODEL_WAIT_BUDGET_MS + 3000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});

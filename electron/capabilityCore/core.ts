@@ -46,9 +46,8 @@ export type GenerateIntent = 'image' | 'video' | 'text' | 'audio'
 export type { MakeVerifyDeps, ShotVerifyDepsContext } from './shotVerifyDepsContext'
 import type { MakeVerifyDeps } from './shotVerifyDepsContext'
 import { isTerminalTaskStatus } from '../shared/taskStatus'
-import { pollTaskToTerminal, POLL_FAILURE_GRACE_MS } from './pollTaskToTerminal'
 
-export type TaskResultLike = {
+type TaskResultLike = {
   id?: string
   status?: string
   // 字段宽容：runtime.TaskResult 的可空字段（string | null）也吃，避免传输边界处理 null
@@ -71,6 +70,10 @@ export type RunTaskFn = (payload: { vendor: string; request: unknown }) => Promi
 /** fetchTaskResult 的形状（注入式）。异步 vendor（modelscope 图 / 视频）返 queued，需轮询到终态。 */
 export type FetchTaskResultFn = (payload: { taskId: string; vendor: string; taskKind: string; prompt: string; modelKey: string }) => Promise<{ result: TaskResultLike }>
 
+// 任务已提交（付费已发生）后，查结果连续失败多久才放弃轮询、落失败终态。短于此 = 网络
+// 抖动，免费重试查询（绝不冒泡终止已付费任务）；与渲染层 catalogTaskActions 的
+// POLL_FAILURE_GRACE_MS 同策——**配对常量，改一处必改另一处**。
+const POLL_FAILURE_GRACE_MS = 45_000
 
 /** Headless/MCP 轮询上限：视频 API 官方建议客户端最多等待 15 分钟，允许环境变量覆盖。 */
 export function resolveCapabilityPollTimeoutMs(kind: string, envValue: string | undefined = process.env.NOMI_POLL_TIMEOUT_MS): number {
@@ -614,30 +617,56 @@ export async function generateOnProject(
     if (fetchTaskResultFn && result.status && !isTerminalTaskStatus(result.status)) {
       // 慢 vendor（如 APIMart H3 官方资源有限）可经 NOMI_POLL_TIMEOUT_MS 覆盖本进程轮询上限；
       // 视频默认 15 分钟与供应商建议一致，避免 5 分钟时任务仍在上游排队却被本地判失败。
+      const timeoutMs = resolveCapabilityPollTimeoutMs(kind)
       // 轮询间隔与渲染层同策：视频 3s、其余 1.5s（厂商文档要求查询间隔 ≥3-5s，见
       // docs/plan/2026-07-31-seedance-api-contract-reconciliation.md §三）。跨进程边界拿不到
-      // 渲染层的 resolvePollIntervalMs，故此处是**配对常量，改一处必改另一处**。
-      const polled = await pollTaskToTerminal({
-        initial: result,
-        fetch: fetchTaskResultFn,
-        vendor: input.vendor,
-        taskKind: kind,
-        prompt,
-        modelKey: input.modelKey,
-        timeoutMs: resolveCapabilityPollTimeoutMs(kind),
-        intervalMs: kind === 'text_to_video' || kind === 'image_to_video' ? 3000 : 1500,
-      })
-      result = polled.result
-      // 到点 / 持续查不通必须落**终态**：旧版直接 break，result 保持 queued/running 且不带 error ——
-      // 调用方（MCP/agent/CLI）拿到一个永远非终态的结果。超时≠上游一定失败，故文案明说任务可能仍在供应商侧运行。
-      if (polled.ended !== 'terminal') {
-        result = {
-          ...result,
-          status: 'failed',
-          error: desktopT(polled.ended === 'timeout' ? 'tasks.pollTimedOut' : 'tasks.pollFailed', {
-            seconds: Math.round(polled.waitedMs / 1000),
-            status: result.status || 'unknown',
-          }),
+      // 渲染层的 resolvePollIntervalMs，故此处是**配对常量，改一处必改另一处**（同 vendorErrorIpc
+      // 的 MARKER 约定）。本循环一次只跑一个任务，不存在批量同相位问题，故不叠抖动/退避。
+      const pollIntervalMs = kind === 'text_to_video' || kind === 'image_to_video' ? 3000 : 1500
+      const startedAt = Date.now()
+      let pollFailureStreakStartedAt: number | null = null
+      while (result.status && !isTerminalTaskStatus(result.status)) {
+        if (Date.now() - startedAt > timeoutMs) {
+          // 到点必须落**终态**：旧版直接 break，result 保持 queued/running 且不带 error —— 调用方
+          // （MCP/agent/CLI）拿到一个永远非终态的结果，等同「转圈但没人告诉你出了什么事」。
+          // 超时≠上游一定失败，故文案明说任务可能仍在供应商侧运行。
+          result = {
+            ...result,
+            status: 'failed',
+            error: desktopT('tasks.pollTimedOut', {
+              seconds: Math.round((Date.now() - startedAt) / 1000),
+              status: result.status || 'unknown',
+            }),
+          }
+          break
+        }
+        await delay(pollIntervalMs)
+        try {
+          const polled = await fetchTaskResultFn({
+            taskId: result.id || '',
+            vendor: input.vendor,
+            taskKind: kind,
+            prompt,
+            modelKey: input.modelKey,
+          })
+          result = polled.result
+          pollFailureStreakStartedAt = null
+        } catch {
+          // 查结果失败：免费重试，绝不冒泡——任务已提交付费，一次网络抖动不能终止它。
+          // 持续失败超 grace → 落失败终态（不重发，文案明说任务可能仍在供应商侧）。
+          const now = Date.now()
+          if (pollFailureStreakStartedAt == null) pollFailureStreakStartedAt = now
+          if (now - pollFailureStreakStartedAt > POLL_FAILURE_GRACE_MS) {
+            result = {
+              ...result,
+              status: 'failed',
+              error: desktopT('tasks.pollFailed', {
+                seconds: Math.round((now - pollFailureStreakStartedAt) / 1000),
+                status: result.status || 'unknown',
+              }),
+            }
+            break
+          }
         }
       }
     }
