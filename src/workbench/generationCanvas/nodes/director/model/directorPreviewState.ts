@@ -1,0 +1,79 @@
+/**
+ * [INPUT]: 依赖 ./directorNodeMeta 的 DIRECTOR_NODE_KIND / DIRECTOR_PREVIEW_META_KEY / DIRECTOR_PLAN_META_KEY、../../../model/generationCanvasTypes
+ * [OUTPUT]: 对外提供 DirectorPreviewMeta、DirectorPlanMeta、readDirectorPreview、readDirectorPlanMeta、directorPreviewSpendBlock、
+ *           DIRECTOR_PREVIEW_MAX_SECONDS、DIRECTOR_PREVIEW_FPS
+ * [POS]: 3D-BOX 预演状态的**唯一判据**（方案 §8 花钱闸）：「这一镜挂着的参考预演还没好（渲染中 / 失败）就不许花钱」。
+ *        判据只住这里；消费者是全部付费提交的唯一咽喉 `canRunGenerationNode`（生成钮 / runGenerationNode / 生成索引）
+ *        与 `generate` 的出卡前检查（拿原因给 Agent）。纯函数、零 React / three，runner 可直接 import。
+ *        状态写在**导演节点**上（targetNodeId 指向它要挂的视频节点），不写到视频节点：撤销导演节点，闸自然解除。
+ * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
+ */
+import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'
+import { DIRECTOR_NODE_KIND, DIRECTOR_PLAN_META_KEY, DIRECTOR_PREVIEW_META_KEY } from './directorNodeMeta'
+
+/** 预演帧率：Seedance 参考视频要求 ≥ 23.8fps（与运镜小片同一个值）。 */
+export const DIRECTOR_PREVIEW_FPS = 24
+/** 预演时长上限 = 离屏录制 240 帧 / 24fps。超过直接判失败并说明，不分段（分段与提上限待真机测内存）。 */
+export const DIRECTOR_PREVIEW_MAX_SECONDS = 10
+
+export type DirectorPreviewFailure = 'too_long' | 'capture_failed'
+
+export type DirectorPreviewMeta = Readonly<{
+  status: 'rendering' | 'ready' | 'failed'
+  /** 要挂的视频节点；独立预演没有。 */
+  targetNodeId?: string
+  /** 这次预演对应的计划修订号：迟到的旧渲染结果按它丢弃。 */
+  revision: string
+  /** 写下这次预演的那笔提议：Host 的后续写入沿用它的事务身份，撤销不把它当成「别人的后续改动」。 */
+  proposalId?: string
+  reason?: DirectorPreviewFailure
+  /** ready：挂成参考视频，还是模型没有参考视频槽只写进提示词。 */
+  attach?: 'video_ref' | 'prompt_only'
+  videoUrl?: string
+  updatedAt: number
+}>
+
+export type DirectorPlanMeta = Readonly<{ plan: unknown; revision: string }>
+
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+}
+
+export function readDirectorPreview(node: Pick<GenerationCanvasNode, 'meta'> | undefined): DirectorPreviewMeta | null {
+  const raw = record(node?.meta?.[DIRECTOR_PREVIEW_META_KEY])
+  if (!raw) return null
+  if (raw.status !== 'rendering' && raw.status !== 'ready' && raw.status !== 'failed') return null
+  if (typeof raw.revision !== 'string' || !raw.revision) return null
+  return raw as unknown as DirectorPreviewMeta
+}
+
+export function readDirectorPlanMeta(node: Pick<GenerationCanvasNode, 'meta'> | undefined): DirectorPlanMeta | null {
+  const raw = record(node?.meta?.[DIRECTOR_PLAN_META_KEY])
+  if (!raw || typeof raw.revision !== 'string' || !raw.revision || !record(raw.plan)) return null
+  return { plan: raw.plan, revision: raw.revision }
+}
+
+export type DirectorPreviewSpendBlock = Readonly<{ reason: 'rendering' | 'failed'; directorNodeId: string; failure?: DirectorPreviewFailure }>
+
+/**
+ * 这个视频节点此刻能不能花钱：以**最近一次**指向它的 3D-BOX 预演为准（新预演顶替旧的）。
+ * 渲染中 / 失败 → 挡；已挂好 / 没有预演 → 放行。
+ */
+export function directorPreviewSpendBlock(
+  nodeId: string,
+  nodes: readonly Pick<GenerationCanvasNode, 'id' | 'kind' | 'meta'>[],
+): DirectorPreviewSpendBlock | null {
+  let latest: { node: Pick<GenerationCanvasNode, 'id'>; preview: DirectorPreviewMeta } | null = null
+  for (const node of nodes) {
+    if (node.kind !== DIRECTOR_NODE_KIND) continue
+    const preview = readDirectorPreview(node)
+    if (!preview || preview.targetNodeId !== nodeId) continue
+    if (!latest || preview.updatedAt >= latest.preview.updatedAt) latest = { node, preview }
+  }
+  if (!latest || latest.preview.status === 'ready') return null
+  return {
+    reason: latest.preview.status,
+    directorNodeId: latest.node.id,
+    ...(latest.preview.reason ? { failure: latest.preview.reason } : {}),
+  }
+}

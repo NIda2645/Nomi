@@ -143,7 +143,7 @@ export const directorPlanModelSchema = directorPlanSchema.innerType().extend({
     transitionIn: shotShape.transitionIn.describe('Cut or continuous transition from the previous shot.'),
     subject: shotShape.subject.describe('Primary actor id or actor.part reference.'),
     subjects: shotShape.subjects.describe('Other actors simultaneously framed in this shot.'),
-    size: shotShape.size.describe('Requested shot size from 远景 through 大特写.'),
+    size: shotShape.size.describe('Requested shot size, widest "远景" to tightest "大特写".'),
     angle: z.union([
       shotShape.angle.options[0],
       shotShape.angle.options[1].extend({ over_shoulder: shotShape.angle.options[1].shape.over_shoulder.describe('Actor whose shoulder is foreground.') }).strict(),
