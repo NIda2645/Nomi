@@ -232,14 +232,11 @@ describe('工具结果末行里的引用名 = 模型下一步真能填的字段�
     return outcome.nextAction!
   }
 
-  it('edit_timeline 交回的撤销令牌，名字就是 undo 收的那个字段', async () => {
-    const next = await nextActionOf('edit_timeline', { undoToken: 'undo-1' }, {
+  it('edit_timeline 的正文已带 canonical changeId，尾行不重复同一句柄', async () => {
+    const next = await nextActionOf('edit_timeline', { changeId: 'timeline:v1:undo-1' }, {
       baseRevision: 'revision-1', summary: '劈成两半', operations: [{ kind: 'split', clipId: 'clip-1', atFrame: 30 }],
     })
-    const undoFields = fieldsOf('undo')
-    const named = refNamesOf(next).filter(name => renderLaneToolNextAction(next).includes(`${name}=undo-1`))
-    expect(named.length).toBeGreaterThan(0)
-    for (const name of named) expect(undoFields).toContain(name)
+    expect(renderLaneToolNextAction(next)).not.toContain('changeId=timeline:v1:undo-1')
   })
 
   it('draft_shots 交回的草稿 id，名字就是 draft_shots 与 generate 收的那个字段', async () => {

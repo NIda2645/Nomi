@@ -88,10 +88,9 @@ function nextActionFor(
       const how = confirmed
         ? 'The user approved the review card, so the planned timeline edit is now applied.'
         : 'The timeline edit applied directly — this approval mode did not ask, and no card is waiting for the user.'
-      const changeId = typeof record.changeId === 'string'
-        ? record.changeId
-        : typeof record.undoToken === 'string' ? record.undoToken : undefined
-      return { kind: 'none', userSees: `${how} It is reversible; call undo to take it back.`, ...(changeId ? { changeId } : {}) }
+      // The canonical changeId is already in the serialized timeline result;
+      // keep the provider-facing tail single-source instead of repeating it.
+      return { kind: 'none', userSees: `${how} It is reversible; call undo to take it back.` }
     }
     case 'arrange_canvas':
     case 'make_artifact':
