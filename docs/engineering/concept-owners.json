@@ -1327,6 +1327,10 @@
         {
           "path": "electron/shared/productionRunCommandId.ts",
           "symbol": "detachShotNodesCommandId"
+        },
+        {
+          "path": "electron/shared/productionRunCommandId.ts",
+          "symbol": "canvasShotClaimCommandId"
         }
       ],
       "forbidden_derivations": [],
@@ -2301,6 +2305,10 @@
         {
           "path": "electron/shared/productionShotJobs.ts",
           "symbol": "latestJobForShot"
+        },
+        {
+          "path": "electron/shared/productionShotJobs.ts",
+          "symbol": "currentShotAttempt"
         }
       ],
       "forbidden_derivations": [],
