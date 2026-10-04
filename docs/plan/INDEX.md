@@ -313,6 +313,8 @@
 
 ## 🤖 自动收录（待人工归位）
 
+- [2026-10-04 样张合同必须从真实实验室屏产生](2026-10-04-mockup-real-components-rule.md) — P5/R8 规则、设计 hook 与 `check:mockup-contracts` 门岗收成同一条真实组件 + 真实宿主数据判据；含 HTML 历史基线、整张区域对账与违规夹具红证（🚧 进行中）
+
 > 这些链接由 `.github/workflows/docs-autosync.yml` 在 main 上自动补登，只保证「能被搜到」，
 > 不代表已归好类。顺手把某一行挪进上面对应主题的表里即可——挪走后本区自然变短。
 
