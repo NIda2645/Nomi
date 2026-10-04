@@ -158,7 +158,7 @@ export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.Mutable
     <div
       ref={rootRef}
       // 画面区必须透明：画中画的像素是 PipRenderer 直接画在主画布同一位置的，外壳只给标题栏 / 页脚上底色
-      className="pointer-events-auto absolute flex flex-col overflow-hidden rounded-nomi-lg border border-nomi-line bg-transparent shadow-nomi-lg"
+      className="pointer-events-auto absolute z-30 flex flex-col overflow-hidden rounded-nomi-lg border border-nomi-line bg-transparent shadow-nomi-lg"
       style={{ left: layout.left, top: layout.top, width: layout.width }}
       data-testid="director-pip"
     >
@@ -197,9 +197,9 @@ export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.Mutable
       </div>
       {layout.collapsed ? null : (
         <>
-          <div ref={screenRef} className={cn('relative w-full', shown ? '' : 'bg-nomi-ink')} style={{ aspectRatio: String(aspect) }}>
+          <div ref={screenRef} className={cn('relative z-30 w-full', shown ? '' : 'bg-nomi-ink')} style={{ aspectRatio: String(aspect) }}>
             {!shown ? (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-nomi-ink text-caption text-nomi-paper/70">
+              <div className="absolute inset-0 z-40 flex items-center justify-center bg-nomi-ink text-caption text-nomi-paper/70">
                 {cameras.length === 0 ? t('director.camera.pipNoCamera') : t('director.camera.pipNoSignal')}
               </div>
             ) : null}

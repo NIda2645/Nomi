@@ -417,7 +417,15 @@ export default function DirectorEditor({ rawProject, nodeTitle, readOnly = false
           onPointerDown={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
         >
-      <EditorBody scopeRef={scopeRef} onExit={() => void handleExit()} preferences={preferences} onChangePreferences={changePreferences} nodeId={nodeId} onSendToCanvas={onSendToCanvas} onExternalProjectChange={project => onProjectChangeRef.current(project)} />
+          <EditorBody
+            scopeRef={scopeRef}
+            onExit={() => void handleExit()}
+            preferences={preferences}
+            onChangePreferences={changePreferences}
+            nodeId={nodeId}
+            onSendToCanvas={onSendToCanvas}
+            onExternalProjectChange={(project) => onProjectChangeRef.current(project)}
+          />
         </div>
       </TooltipProvider>
     </DirectorStoreContext.Provider>

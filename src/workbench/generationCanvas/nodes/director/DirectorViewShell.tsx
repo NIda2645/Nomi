@@ -11,7 +11,7 @@ import type { ViewSettings } from './scene/viewSettings'
 import type { DirectorProject } from './model/directorTypes'
 import { DirectorViewport } from './panels/viewport/DirectorViewport'
 import { WorkbenchIconButton } from '../../../../design'
-import { IconArrowBackUp, IconArrowForwardUp, IconChevronDown, IconRefresh, IconX } from '../../../../vendor/tablerIcons'
+import { IconArrowBackUp, IconArrowForwardUp, IconArrowLeft, IconChevronDown, IconRefresh } from '../../../../vendor/tablerIcons'
 
 export type DirectorViewMode = 'director' | 'refine'
 
@@ -79,7 +79,7 @@ export function DirectorViewShell({ scopeRef, placement, boxDraw, cancelCreation
   return <div className="relative flex h-full min-h-0 flex-col bg-nomi-bg text-nomi-ink" data-testid="director-3dbox-view" data-director-view="director">
     <div className="pointer-events-none absolute inset-x-3 top-3 z-20 grid grid-cols-[auto_auto_auto_auto] items-start gap-3">
       <div className="pointer-events-auto flex items-center gap-2 rounded-nomi-lg border border-nomi-line bg-nomi-paper/95 p-1 shadow-nomi-md backdrop-blur" data-testid="director-view-back-cluster">
-        <WorkbenchIconButton size="sm" icon={<IconX size={16} stroke={1.9} />} label={t('director.editor.exit')} onClick={onExit} />
+        <WorkbenchIconButton size="sm" icon={<IconArrowLeft size={16} stroke={1.9} />} label={t('director.editor.exit')} onClick={onExit} />
         <span className="px-2 text-body-sm font-semibold">{t('director.view.title')}</span>
       </div>
       <div className="pointer-events-auto flex items-center gap-2 rounded-nomi-lg border border-nomi-line bg-nomi-paper/95 p-1 shadow-nomi-md backdrop-blur" data-testid="director-view-header">
