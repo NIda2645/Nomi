@@ -171,11 +171,19 @@ try {
   await shot('03-after-patch')
 
   // ⑤ 出片：报价 / 确认卡出现即停（绝不点确认）
-  await sendAndWait('预演可以了，就用它出这一镜。', {
+  await sendAndWait('预演可以了，就用它出这一镜，模式换成能吃参考视频的那个。', {
     timeoutMs: stationTimeout({ turns: 1 }),
     stopOnSpendCard: true,
     until: async () => (await confirmVisible()) || (await spendCardVisible()),
   })
+  // 模型这一回合可能先问一句（时长、模式）而不出片：用户再说一句「就这样出」——仍是出卡即停、从不点。
+  if (!((await confirmVisible()) || (await spendCardVisible()))) {
+    await sendAndWait('时长就按现在的，别的都不用改，直接出这一镜。', {
+      timeoutMs: stationTimeout({ turns: 1 }),
+      stopOnSpendCard: true,
+      until: async () => (await confirmVisible()) || (await spendCardVisible()),
+    })
+  }
   const cardShown = (await confirmVisible()) || (await spendCardVisible())
   report.spendCardText = redact((await win.locator('[data-v4-block="intervention"], [data-spend-confirm-dialog]').allInnerTexts().catch(() => [])).join('\n---\n')).slice(0, 2000)
   await shot('04-spend-card')
