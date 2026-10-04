@@ -16,7 +16,6 @@
     "scripts/director-assets/prepare_ual.py",
     "scripts/director-assets/check-ual-asset.mjs",
     "scripts/director-assets/check_ual_standing.py",
-    "src/assets/director/ual/ual-mannequin.glb",
     "src/assets/director/ual/ual-rig.json",
     "src/workbench/generationCanvas/nodes/director/model/assetCatalog/ualActions.ts",
     "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts",
@@ -39,12 +38,17 @@
       "kind": "read",
       "path": "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts",
       "symbol": "UAL_ACTIONS"
+    },
+    {
+      "kind": "write",
+      "path": "src/devlab/directorAssetCatalog.tsx",
+      "symbol": "useAssetCanvas"
     }
   ],
   "door_reduction": {
-    "before": 1,
-    "after": 1,
-    "why_not": "The only repository production reader is the catalog owner; the offline preparation and checks are scripts rather than additional runtime state doors."
+    "before": 2,
+    "after": 2,
+    "why_not": "Catalog projection and DevLab rendering are independent consumers of the same native asset contract; both remain required so a stale planner projection cannot masquerade as a visual inspection."
   },
   "generality_proof": "Every UAL action is emitted by one preparation command, checked against one GLB manifest, and registered by mapping the same UAL_ACTIONS list into the catalog. Removing the old retarget path prevents another action from entering through an alternate derivative or stale license record.",
   "shared_boundaries": [
@@ -106,16 +110,9 @@
     "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.test.ts"
   ],
   "legacy_paths": {
-    "status": "removed",
-    "removed_paths": [
-      "scripts/director-assets/retarget_blender.py",
-      "scripts/director-assets/measure_retarget.py",
-      "scripts/director-assets/check-retarget.mjs",
-      "src/assets/director/actions/ual-*.glb",
-      "src/assets/director/pose/restored/retargeted-*.glb",
-      "src/assets/director/pose/restored/*.fbx"
-    ],
-    "rationale": "The X Bot derivative actions, restoration clips, checks, and their pending-review license entries are obsolete after the native UAL decision and are deleted in this PR."
+    "status": "not-applicable",
+    "removed_paths": [],
+    "rationale": "The obsolete retarget paths were deleted in the preceding unit commit; no legacy runtime path remains in this native UAL asset contract."
   },
   "dependency_lifecycle": {
     "decision": "retain-with-exit",
@@ -131,5 +128,11 @@
   "residual_risks": [
     "The UAL native actor is cataloged but not yet wired into actionLibrary.ts or the existing Director runtime; that is an explicit later switch PR.",
     "Visual inspection uses Blender-generated contact sheets and the existing DevLab page; browser-packaged runtime loading is not claimed by this asset-only PR."
-  ]
+  ],
+  "invariant_owner_layer": {
+    "layer": "scripts/director-assets/check-ual-asset.mjs",
+    "tests": [
+      "scripts/director-assets/check-ual-asset.node-test.mjs"
+    ]
+  }
 }
