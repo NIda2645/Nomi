@@ -91,15 +91,12 @@ async function sendAndWait(message, { until, timeoutMs, stopOnSpendCard = false 
   let approvals = 0
   await win.waitForTimeout(3000)
   while (Date.now() < deadline) {
-    if (await spendCardVisible()) {
+    // 任何一张待确认的卡（报价卡、确认卡）出现都**只截图、不点**：第 3 次真机跑（2026-10-04）这里曾自动点了确认，
+    // 报价卡的文字没被识别成报价卡，于是发出了一次生成提交——被占位密钥当场拒（invalid API key），没有扣费，
+    // 但这一步本就不该点。现在出卡即停：出片回合把它当终点，其余回合把它当异常。
+    if (await confirmVisible() || await spendCardVisible()) {
       if (stopOnSpendCard) break
-      throw new Error('报价卡在不该出现的回合出现了（未点确认）')
-    }
-    if (await confirmVisible()) {
-      await win.locator('[data-v4-control="confirm"]').first().click().catch(() => {})
-      approvals += 1
-      await win.waitForTimeout(1500)
-      continue
+      throw new Error('确认 / 报价卡在不该出现的回合出现了（未点）')
     }
     const done = await until()
     if (done && !(await running())) break
@@ -177,9 +174,9 @@ try {
   await sendAndWait('预演可以了，就用它出这一镜。', {
     timeoutMs: stationTimeout({ turns: 1 }),
     stopOnSpendCard: true,
-    until: spendCardVisible,
+    until: async () => (await confirmVisible()) || (await spendCardVisible()),
   })
-  const cardShown = await spendCardVisible()
+  const cardShown = (await confirmVisible()) || (await spendCardVisible())
   report.spendCardText = redact((await win.locator('[data-v4-block="intervention"], [data-spend-confirm-dialog]').allInnerTexts().catch(() => [])).join('\n---\n')).slice(0, 2000)
   await shot('04-spend-card')
   check('报价 / 确认卡出现（未点确认）', cardShown)
