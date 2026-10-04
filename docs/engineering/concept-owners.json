@@ -4183,6 +4183,95 @@
       ],
       "since": "2026-10-04",
       "notes": "A期新增资产与许可证来源的唯一目录；本轮采用 UAL 原生 CC0 人偶与动作，处理与校验边界也登记在同一 owner，运行时接线留给切换 PR。"
+    },
+    {
+      "name": "导演计划 v2 schema",
+      "subject": "director.plan.v2",
+      "lifecycle": "author",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/director/directorPlanSchema.ts",
+        "symbol": "directorPlanSchema"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/director/directorPlanSchema.ts",
+          "symbol": "directorPlanSchema"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "src/workbench/generationCanvas/nodes/director/model/plan/directorPlanner.ts",
+        "src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler.ts",
+        "evals/director/s1Adapter.ts",
+        "evals/director/s1OraclePlans.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "计划执行与模型投影同源；原文件删除。"
+    },
+    {
+      "name": "导演计划词表",
+      "subject": "director.plan.vocab",
+      "lifecycle": "author",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/director/vocab.ts",
+        "symbol": "CAMERA_MOVES"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/director/vocab.ts",
+          "symbol": "CAMERA_MOVES"
+        },
+        {
+          "path": "electron/shared/director/vocab.ts",
+          "symbol": "EVAL_SHOT_SIZES"
+        },
+        {
+          "path": "electron/shared/director/vocab.ts",
+          "symbol": "DIRECTOR_SCENE_TEMPLATES"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/shared/director/directorPlanSchema.ts",
+        "src/workbench/generationCanvas/nodes/director/agent/cameraMoveVocab.ts",
+        "src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "只拥有景别、运镜、场景模板成员；显示文字与测量阈值留各自消费层。"
+    },
+    {
+      "name": "导演场景 dressing schema",
+      "subject": "director.scene.dressing-schema",
+      "lifecycle": "author",
+      "authority_kind": "schema",
+      "trust_domain": "shared",
+      "fact_kind": "value-object",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/shared/director/aiSceneSchema.ts",
+        "symbol": "aiSceneSchema"
+      },
+      "write_api": [
+        {
+          "path": "electron/shared/director/aiSceneSchema.ts",
+          "symbol": "aiSceneSchema"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "electron/shared/director/directorPlanSchema.ts",
+        "src/workbench/generationCanvas/nodes/director/model/aiScene.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "原渲染层定义移动到共享层，保持同一 Zod 形状；渲染层继续消费。"
     }
   ]
 }

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { EVAL_SHOT_SIZES } from '../../../../../../electron/shared/director/vocab'
 import { createDefaultProject } from './directorProject'
 import type { DirectorCamera, DirectorObject, DirectorProject } from './directorTypes'
 import {
-  EVAL_SHOT_SIZES,
   distanceForShotSize,
   measureContinuity,
   projectPoint,
@@ -96,6 +96,22 @@ describe('director preview measurement', () => {
     const issues = measureContinuity(m, p.scenes[0])
     expect(issues.some((i) => i.kind === 'below-ground')).toBe(true)
     expect(issues.some((i) => i.kind === 'axis-cross')).toBe(true)
+  })
+
+  it('reports camera entry into scene geometry even when an old fixture marks it auxiliary', () => {
+    const gate: DirectorObject = {
+      id: 'gate',
+      name: 'gate',
+      type: 'cube',
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 4, y: 4, z: 4 },
+      visible: true,
+      locked: false,
+    }
+    const p = project([gate], [cam('camera', [wp('a', 0, { x: 0, y: 2, z: 0 }, 180)])], 0)
+    const issues = measureContinuity(sampleDirectorProject(p, { duration: 0, fps: 1 }), p.scenes[0])
+    expect(issues.some((issue) => issue.kind === 'camera-inside' && issue.objectId === 'gate')).toBe(true)
   })
 })
 
@@ -201,5 +217,45 @@ describe('anchored parts (hand, cap) are measured on their own', () => {
       anchors: { 'villain.hand': { offset: { x: 0, y: 1, z: 0 }, size: { x: 0.1, y: 0.1, z: 0.1 } } },
     }).frames[0].objects.hero
     expect(sample.anchors).toBeUndefined()
+  })
+})
+
+describe('screen-space camera motion recognition', () => {
+  it('recognizes a pure zoom without camera travel', () => {
+    const project = createDefaultProject('zoom')
+    const scene = project.scenes[0]
+    scene.objects = [
+      {
+        id: 'hero',
+        name: 'hero',
+        type: 'character',
+        position: { x: 0, y: 0, z: 0 },
+        rotation: { x: 0, y: 0, z: 0 },
+        scale: { x: 1, y: 1, z: 1 },
+        visible: true,
+        locked: false,
+      },
+    ]
+    scene.cameras = [
+      {
+        id: 'cam',
+        name: 'cam',
+        position: { x: 0, y: 1.5, z: 5 },
+        yaw: 0,
+        pitch: 0,
+        roll: 0,
+        fov: 55,
+        focalLengthMm: 50,
+        motionTrajectory: [
+          { id: 'a', x: 0, y: 1.5, z: 5, yaw: 0, pitch: 0, roll: 0, fov: 55, time: 0, frameIndex: 0 },
+          { id: 'b', x: 0, y: 1.5, z: 5, yaw: 0, pitch: 0, roll: 0, fov: 35, time: 1, frameIndex: 30 },
+        ],
+        trajectoryClips: [{ id: 'clip', startTime: 0, endTime: 1, startFrame: 0, endFrame: 30 }],
+      },
+    ]
+    scene.timelineTrackOrder = ['cam']
+    const result = recognizeCameraMotion(sampleDirectorProject(project, { duration: 1 }), 'hero', { start: 0, end: 1 })
+    expect(result.move).toBe('zoom_in')
+    expect(Math.hypot(result.cameraDelta.x, result.cameraDelta.y, result.cameraDelta.z)).toBe(0)
   })
 })

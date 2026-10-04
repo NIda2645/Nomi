@@ -46,6 +46,7 @@ import { withCredentialElicitationTicket } from '../integrationCertification/cre
 import { currentCatalogFingerprint, dispatchModelOnboarding } from './modelOnboarding/dispatch'
 import { buildOnboardingKit } from './modelOnboarding/kit'
 import { dispatchModelSpec } from './modelSpecRead'
+import { makeChangeId } from '../shared/agentCapabilities/changeId'
 
 /** 带 id = 读那一个；不带 = 列出这个客户端自己的会话。 */
 const readIntegrationSession = (sessions: IntegrationSessionService, sessionId: unknown, owner: CapabilityOriginHost) =>
@@ -133,7 +134,6 @@ function errorCodeOf(error: unknown): string | undefined {
     ? String((error as { code?: unknown }).code ?? '') || undefined
     : undefined
 }
-
 function leaseFailureCode(error: unknown): Extract<
   RpcPublicErrorCode,
   'lease_invalid' | 'project_scope_changed' | 'project_binding_stale' | 'lease_expired' | 'lease_revoked'
@@ -572,7 +572,8 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
       if (input.operation === 'set_node_prompt') {
         const result = await setProjectNodePrompt(base, input.nodeId, input.prompt)
         if (!result.changed) throw new CanvasGraphError('node_not_found', `Canvas node not found: ${input.nodeId}`)
-        return { applied: true, proposalId: proposalId(), operation: input.operation, affectedNodeIds: [input.nodeId], reconciliation: canvasRecovery() }
+        const proposal = proposalId()
+        return { applied: true, proposalId: proposal, changeId: makeChangeId('canvas', proposal), operation: input.operation, affectedNodeIds: [input.nodeId], reconciliation: canvasRecovery() }
       }
       if (input.operation === 'create_canvas_nodes') {
         // 这条 headless 路把 planned node **逐字段重建**成 `NodeSpec`（`canvasGraph.ts`，七个字段），
@@ -612,14 +613,16 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
           ? await connectProjectNodes(ctx.makeGateway(lease.projectId), edges)
           : { edgeIds: [], skipped: [] }
         const skippedEdges = connected.skipped.map((item) => ({ source: item.connection.source, target: item.connection.target, reason: item.reason }))
-        return { applied: true, proposalId: proposalId(), operation: input.operation, affectedNodeIds: created.ids, affectedEdgeIds: connected.edgeIds, clientIdToNodeId, connectedCount: connected.edgeIds.length, skippedEdges, reconciliation: canvasRecovery(skippedEdges.length) }
+        const proposal = proposalId()
+        return { applied: true, proposalId: proposal, changeId: makeChangeId('canvas', proposal), operation: input.operation, affectedNodeIds: created.ids, affectedEdgeIds: connected.edgeIds, clientIdToNodeId, connectedCount: connected.edgeIds.length, skippedEdges, reconciliation: canvasRecovery(skippedEdges.length) }
       }
       if (input.operation === 'connect_canvas_edges') {
         const connected = await connectProjectNodes(ctx.makeGateway(lease.projectId), input.edges.map((edge) => ({
           source: edge.sourceClientId, target: edge.targetClientId, ...(edge.mode ? { mode: edge.mode } : {}),
         })))
         const skippedEdges = connected.skipped.map((item) => ({ source: item.connection.source, target: item.connection.target, reason: item.reason }))
-        return { applied: true, proposalId: proposalId(), operation: input.operation, affectedNodeIds: [], affectedEdgeIds: connected.edgeIds, connectedCount: connected.edgeIds.length, skippedEdges, reconciliation: canvasRecovery(skippedEdges.length) }
+        const proposal = proposalId()
+        return { applied: true, proposalId: proposal, changeId: makeChangeId('canvas', proposal), operation: input.operation, affectedNodeIds: [], affectedEdgeIds: connected.edgeIds, connectedCount: connected.edgeIds.length, skippedEdges, reconciliation: canvasRecovery(skippedEdges.length) }
       }
       // ── 剩下的 6 个 operation 是**渲染层拥有**的（分镜/站位/运镜/时间轴落地/整理布局）：
       // 它们的耐久 owner 是创作区 store，主进程这条路没有实现。

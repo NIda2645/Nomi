@@ -393,14 +393,14 @@ export function writeVerbs(): VerbDeclaration[] {
   const undo: VerbDeclaration = {
     name: "undo", profiles: ["internal"], profileReason: "mcpHandwrittenTransport", contractId: "timeline.write", effect: "reversible_local", nextAction: "none", internalGroup: "timeline",
     describe: {
-      does: "Revert one timeline change you made, by the undoToken its result returned.",
+      does: "Revert one reversible change you made, by the changeId its result returned.",
       useWhen: "The user says undo, go back, or that the last change was wrong.",
-      notWhen: "It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. Canvas nodes are undone by the user (Cmd+Z), not here.",
-      params: "undoToken from the result of edit_timeline; expectedRevision is the current revision from read_timeline.",
+      notWhen: "It cannot un-spend money or un-export; those are not undoable and check_job or cancel_job are the verbs there. If a later edit touched the same object, undo is rejected with the conflict reason.",
+      params: "changeId from any reversible Agent write; expectedRevision is required only for a timeline change and may be omitted for a canvas change.",
     },
     // 模型面 = `timeline.write` 的 `undo_timeline_edit` 分支减掉 `operation` 与 `reason`（`verbProjections.ts`）。
     schema: undoModelSchema,
-    examples: [{ when: "Revert the last plan:", arguments: { undoToken: "undo-1", expectedRevision: "revision-2" } }],
+    examples: [{ when: "Revert the last plan:", arguments: { changeId: "timeline:v1:receipt-1", expectedRevision: "revision-2" } }],
     prepareArguments: modelArgumentTolerance({}),
   };
 

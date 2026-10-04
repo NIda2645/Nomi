@@ -33,12 +33,12 @@ function report(scheme: Scheme, scores: CardScore[]): string {
     `Cards: ${scores.length}`,
     `Average total (L0-L4 normalized; L5 unverified): ${averageTotal(scores)}`,
     '',
-    '| Card | Tier | Status | L0 | L1 | L2 | L3 | L4 | Total | Reasons |',
-    '|---|---|---|---:|---:|---:|---:|---:|---:|---|',
+    '| Card | Tier | Status | L0 | L1 | L2 | L3 | L4 | Correspondence | Total | Reasons |',
+    '|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|',
   ]
   for (const score of scores)
     lines.push(
-      `| ${score.cardId} | ${score.tier ?? '-'} | ${score.status ?? 'ok'} | ${score.scores.L0.toFixed(2)} | ${layer(score.scores.L1)} | ${layer(score.scores.L2)} | ${layer(score.scores.L3)} | ${layer(score.scores.L4)} | ${score.total.toFixed(3)} | ${score.reasons.join('; ').replaceAll('|', '/')} |`,
+      `| ${score.cardId} | ${score.tier ?? '-'} | ${score.status ?? 'ok'} | ${score.scores.L0.toFixed(2)} | ${layer(score.scores.L1)} | ${layer(score.scores.L2)} | ${layer(score.scores.L3)} | ${layer(score.scores.L4)} | ${(score.correspondenceRate * 100).toFixed(1)}% | ${score.total.toFixed(3)} | ${score.reasons.join('; ').replaceAll('|', '/')} |`,
     )
   lines.push(
     '',
@@ -49,7 +49,23 @@ function report(scheme: Scheme, scores: CardScore[]): string {
     `- L2 motion + framing: ${avg(scores, 'L2')}`,
     `- L3 blocking: ${avg(scores, 'L3')}`,
     `- L4 scene: ${avg(scores, 'L4')}`,
+    `- Correspondence rate: ${((scores.reduce((sum, score) => sum + score.correspondenceRate, 0) / Math.max(1, scores.length)) * 100).toFixed(1)}%`,
     '- L5 overall: unverified (no visual model run)',
+  )
+  const capabilityGaps = [
+    ...new Set(
+      scores.flatMap((score) =>
+        score.reasons.filter(
+          (reason) => reason.includes('能力缺口') || reason.includes('缺少演员') || reason.includes('场景缺少'),
+        ),
+      ),
+    ),
+  ]
+  lines.push(
+    '',
+    '## Capability gaps',
+    '',
+    ...(capabilityGaps.length ? capabilityGaps.map((gap) => `- ${gap}`) : ['- none observed']),
   )
   for (const tier of ['benchmark', 'T1', 'T2', 'T3']) {
     const subset = scores.filter((score) => score.tier === tier)
@@ -68,12 +84,14 @@ function adapterErrorScore(card: DirectorCard, error: unknown): CardScore {
     total: 0,
     reasons: [`adapter_error: ${message}`],
     measurements: { fps: 30, duration: card.duration?.total ?? 0, frames: [], cuts: [] },
+    correspondenceRate: 0,
   }
 }
 
 async function main() {
   const scheme = (arg('--scheme') ?? 'oracle') as Scheme
-  if (!['oracle', 's0-pr960-raw', 's0-pr960-ideal', 's1', 's1-oracle-plan'].includes(scheme)) throw new Error(`unknown scheme: ${scheme}`)
+  if (!['oracle', 's0-pr960-raw', 's0-pr960-ideal', 's1', 's1-oracle-plan'].includes(scheme))
+    throw new Error(`unknown scheme: ${scheme}`)
   const filter = arg('--cards')
   const cards = await loadCards(filter)
   const idealIds = new Set(['police-chase', 'perfume-orbit', 'courtyard-standoff'])
@@ -92,7 +110,8 @@ async function main() {
       metadata[card.id] = { elapsedMs: elapsedMs(started), ...adapted.metadata }
     } catch (error) {
       scores.push(adapterErrorScore(card, error))
-      const planner = error && typeof error === 'object' && 'planner' in error ? (error as { planner?: unknown }).planner : undefined
+      const planner =
+        error && typeof error === 'object' && 'planner' in error ? (error as { planner?: unknown }).planner : undefined
       metadata[card.id] = { elapsedMs: elapsedMs(started), planner }
     }
   }

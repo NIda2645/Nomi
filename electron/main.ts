@@ -53,7 +53,7 @@ import { registerLocalProtocol } from "./protocol/localProtocol";
 import { installMainWindowInteractions } from "./mainWindowInteractions";
 import { getMainWindow, setMainWindow } from "./appWindowRegistry";
 import { createMainWindowGuard } from "./mainWindowPresence";
-import { assertTrustedSender, assertTrustedUiSender } from "./ipcSenderGuard";
+import { assertTrustedFireAndForget, assertTrustedSender, assertTrustedSync, assertTrustedUiSender } from "./ipcSenderGuard";
 import { registerDirectorMobileIpc } from "./director/mobileBridgeIpc";
 import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
 import { registerVideoIpc } from "./video/videoIpc";
@@ -371,13 +371,12 @@ function registerSyncIpc<TArgs extends unknown[], TResult>(
   handler: (...args: TArgs) => TResult,
 ): void {
   ipcMain.on(channel, (event, ...args: TArgs) => {
+    const trusted = assertTrustedSync(event, assertTrustedSender);
+    if (!trusted.ok) return void (event.returnValue = trusted);
     try {
-      assertTrustedSender(event); event.returnValue = { ok: true, value: handler(...args) };
+      event.returnValue = { ok: true, value: handler(...args) };
     } catch (error) {
-      event.returnValue = {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
+      event.returnValue = { ok: false, error: error instanceof Error ? error.message : String(error) };
     }
   });
 }
@@ -421,11 +420,11 @@ function registerIpc(): void {
     recoverProject,
   });
   ipcMain.on("nomi:app:reopen-library-window", (event) => {
-    assertTrustedSender(event);
+    if (!assertTrustedFireAndForget(event, "nomi:app:reopen-library-window", assertTrustedSender)) return;
     recreateMainWindowFromSender(event.sender, { preserveRoute: false, reason: "reopen library window" });
   });
   ipcMain.on("nomi:app:hard-reload-window", (event) => {
-    assertTrustedSender(event);
+    if (!assertTrustedFireAndForget(event, "nomi:app:hard-reload-window", assertTrustedSender)) return;
     recreateMainWindowFromSender(event.sender, { preserveRoute: true, reason: "hard reload window" });
   });
   // 读目录的 IPC 是**纯读**：种子对账（写盘）只在启动期跑一次。挂在读上时，盘上版本比应用新就会
