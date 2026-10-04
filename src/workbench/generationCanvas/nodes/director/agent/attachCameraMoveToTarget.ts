@@ -13,7 +13,8 @@ import { archetypeForNode, findVideoRefMode } from '../../../agent/referenceEdge
 import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'
 import { isVideoLikeGenerationNodeKind } from '../../../model/generationNodeKinds'
 import { applyArchetypeModeSwitch, readArchetypeArray } from '../../controls/archetypeMeta'
-import { CAMERA_MOVE_DESC, CAMERA_MOVE_LABEL, type CameraMove } from './cameraMoveVocab'
+import { CAMERA_MOVE_DESC, CAMERA_MOVE_LABEL } from './cameraMoveVocab'
+import type { CameraMove } from '../../../../../../electron/shared/director/vocab'
 
 /** 目标节点里记「当前已附的运镜 mp4」的 meta 键（替换判据） */
 export const CAMERA_MOVE_ATTACHED_URL_KEY = 'cameraMoveAttachedUrl'

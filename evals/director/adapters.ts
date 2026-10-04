@@ -1,12 +1,13 @@
+import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { createDefaultProject } from '../../src/workbench/generationCanvas/nodes/director/model/directorProject'
 import {
   distanceForShotSize,
   type AnchorSpec,
-  type EvalShotSize,
   type ShotLadder,
 } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
+import type { EvalShotSize } from '../../electron/shared/director/vocab'
 import type {
   DirectorCamera,
   DirectorObject,
@@ -32,6 +33,7 @@ export type AdaptedProject = {
   }
 }
 export const PR960_ROOT_ENV = 'NOMI_EVAL_PR960_ROOT'
+export const S1_SNAPSHOT_ROOT_ENV = 'NOMI_EVAL_S1_RUN_ROOT'
 type Pr960PlanModule = {
   normalizeDirectorPrompt(prompt: string): unknown
   buildDirectorProjectFromPlan(plan: unknown): { project: DirectorProject }
@@ -45,6 +47,25 @@ async function importPr960Plan(): Promise<Pr960PlanModule> {
   return (await import(
     pathToFileURL(path.join(root, 'src/workbench/generationCanvas/nodes/director/model/directorPlan.ts')).href
   )) as Pr960PlanModule
+}
+async function adaptS1Snapshot(card: DirectorCard): Promise<AdaptedProject> {
+  const root = process.env[S1_SNAPSHOT_ROOT_ENV]
+  if (!root) throw new Error(`${S1_SNAPSHOT_ROOT_ENV} is not set`)
+  const snapshot = JSON.parse(await fs.readFile(path.join(root, 'scores.json'), 'utf8')) as {
+    metadata?: Record<
+      string,
+      { plannerAttempts?: number; usage?: NonNullable<AdaptedProject['metadata']>['usage']; rawPlan?: string }
+    >
+  }
+  const rawPlan = snapshot.metadata?.[card.id]?.rawPlan
+  if (!rawPlan) throw new Error(`${S1_SNAPSHOT_ROOT_ENV} has no rawPlan for ${card.id}`)
+  const result = adaptS1Plan(JSON.parse(rawPlan))
+  if ('errors' in result) throw new Error(`s1 snapshot compiler failed for ${card.id}: ${result.errors.join('; ')}`)
+  const metadata = snapshot.metadata?.[card.id]
+  return {
+    ...result,
+    metadata: { plannerAttempts: metadata?.plannerAttempts, usage: metadata?.usage, rawPlan, issues: result.issues },
+  }
 }
 export type Scheme = 'oracle' | 's0-pr960-raw' | 's0-pr960-ideal' | 's1' | 's1-oracle-plan'
 type PointOptions = { target: Vec3; fov: number }
@@ -100,18 +121,42 @@ function makeObject(id: string, category: string, position: Vec3): DirectorObjec
     scale,
     visible: true,
     locked: false,
+    ...(category === 'person' ? { rig: 'mixamo' as const, posePreset: 'standing_idle' } : {}),
   }
 }
 function makeSceneObject(id: string): DirectorObject {
-  const primitive = id === 'ground' || id.endsWith('_street') || id === 'road' ? 'plane' : 'cube'
-  const isGate = id === 'gate'
+  const primitive =
+    id === 'ground' || id.endsWith('_ground') || id.endsWith('_street') || id === 'road'
+      ? 'plane'
+      : id === 'bottle_cap'
+        ? 'cylinder'
+        : 'cube'
+  const staging: Record<string, Vec3> = {
+    gate: { x: 0.5, y: 0.75, z: 0 },
+    wall_enclosure: { x: 0, y: 0.1, z: 3 },
+    round_pedestal: { x: 0, y: 0.15, z: 0 },
+    buildings_both_sides: { x: 9, y: 1, z: 0 },
+    bottle_cap: { x: 0, y: 1.2, z: 0 },
+  }
+  const position = staging[id] ?? { x: 0, y: primitive === 'plane' ? 0 : 0.1, z: primitive === 'plane' ? 0 : 0 }
   return {
     id,
-    name: id === 'gate' ? 'gate' : id === 'road' ? 'road' : 'ground',
+    name: id,
     type: primitive,
-    position: { x: 0, y: primitive === 'plane' || isGate ? 0 : 50, z: primitive === 'plane' || isGate ? 0 : 50 },
+    position,
     rotation: { x: 0, y: 0, z: 0 },
-    scale: primitive === 'plane' ? { x: 20, y: 1, z: 20 } : { x: 1, y: 1, z: 1 },
+    scale:
+      primitive === 'plane'
+        ? { x: 20, y: 1, z: 20 }
+        : id === 'wall_enclosure'
+          ? { x: 8, y: 2, z: 0.2 }
+          : id === 'round_pedestal'
+            ? { x: 2, y: 0.3, z: 2 }
+            : id === 'buildings_both_sides'
+              ? { x: 1, y: 2, z: 10 }
+              : id === 'bottle_cap'
+                ? { x: 0.35, y: 0.25, z: 0.35 }
+                : { x: 1, y: 1, z: 1 },
     visible: true,
     locked: false,
   }
@@ -145,11 +190,13 @@ function oracleShots(card: DirectorCard): DirectorCard['shots'] {
 }
 function actorPositions(card: DirectorCard): Record<string, Vec3> {
   const positions: Record<string, Vec3> = {}
+  const spacing = card.actors.length > 1 && card.actors.every((actor) => actor.category === 'vehicle') ? 4 : 2
+  const vehicleRun = spacing === 4
   card.actors.forEach((actor, index) => {
     positions[actor.id] = {
-      x: (index - (card.actors.length - 1) / 2) * 2,
+      x: (index - (card.actors.length - 1) / 2) * spacing,
       y: actor.category === 'person' ? 0 : 0.5,
-      z: 0,
+      z: vehicleRun ? (index === 0 ? -4 : 0) : 0,
     }
   })
   return positions
@@ -166,7 +213,7 @@ function applyBlocking(
     if (!actor) continue
     const start = action.window?.[0] ?? 0
     const end = action.window?.[1] ?? duration
-    const target = byId(action.target)
+    const target = byId(action.target ?? action.between?.[1])
     const addTrajectory = (points: Waypoint[], trajectoryId: string) => {
       actor.motionTrajectory = [...(actor.motionTrajectory ?? []), ...points].sort((a, b) => a.time - b.time)
       actor.trajectoryClips = [...(actor.trajectoryClips ?? []), clip(trajectoryId, start, end)]
@@ -199,16 +246,29 @@ function applyBlocking(
       addTrajectory(
         [
           entityPoint(actor.position, start),
-          entityPoint({ x: targetPosition.x - 0.8, y: actor.position.y, z: targetPosition.z }, end),
+          entityPoint({ x: targetPosition.x + 1.0, y: actor.position.y, z: targetPosition.z }, end),
         ],
         `${actor.id}-sidestep`,
       )
-    } else if (['drive_along', 'chase'].includes(action.verb)) {
+    } else if (action.verb === 'drive_along') {
       const targetPosition = target?.position ?? actor.position
       addTrajectory(
         [
           entityPoint(actor.position, start),
-          entityPoint({ x: targetPosition.x, y: actor.position.y, z: targetPosition.z + 0.8 }, end),
+          entityPoint(
+            { x: targetPosition.x, y: actor.position.y, z: target ? targetPosition.z + 0.8 : targetPosition.z + 8 },
+            end,
+          ),
+        ],
+        `${actor.id}-${action.verb}`,
+      )
+    } else if (action.verb === 'chase') {
+      const targetPosition = target?.position ?? actor.position
+      const targetEnd = target ? positionAt(target, end) : targetPosition
+      addTrajectory(
+        [
+          entityPoint(actor.position, start),
+          entityPoint({ x: targetEnd.x - 2.5, y: actor.position.y, z: targetEnd.z - 2.5 }, end),
         ],
         `${actor.id}-${action.verb}`,
       )
@@ -222,7 +282,18 @@ function applyBlocking(
         `${actor.id}-stop`,
       )
     }
-    const actionId = action.verb === 'walk_to' ? 'standard_walk' : action.verb === 'run_to' ? 'running' : action.verb === 'stop' ? 'standing_idle' : action.verb === 'sidestep_block' ? 'standard_walk' : action.verb === 'hold_pose' ? action.action : undefined
+    const actionId =
+      action.verb === 'walk_to'
+        ? 'standard_walk'
+        : action.verb === 'run_to'
+          ? 'running'
+          : action.verb === 'stop'
+            ? 'standing_idle'
+            : action.verb === 'sidestep_block'
+              ? 'standard_walk'
+              : action.verb === 'hold_pose'
+                ? action.action
+                : undefined
     addActionClip(actionId)
   }
 }
@@ -295,7 +366,16 @@ function cameraForShot(
   const size = (shot.size ?? shot.endSize ?? '中景') as EvalShotSize
   const ladder: ShotLadder = actor.type === 'character' && !anchor ? 'figure' : 'object'
   const fov = DEFAULT_FOV
-  const distance = Math.max(anchor ? 0.65 : 0.12, distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder))
+  const baseDistance = Math.max(
+    anchor && actor.type === 'character' ? 0.12 : 0.65,
+    distanceForShotSize(size, subjectHeight(actor, anchor), fov, ladder),
+  )
+  const distance =
+    actor.type === 'character' && !anchor && (size === '特写' || size === '大特写') ? baseDistance * 0.5 : baseDistance
+  const vehicleClearance =
+    actor.type === 'cube' && actor.scale.z > 2 ? Math.hypot(actor.scale.x / 2, actor.scale.z / 2) + 1.2 : 0
+  const productClearance = actor.type === 'cylinder' && anchor ? 1.1 : 0
+  const safeDistance = Math.max(distance, vehicleClearance, productClearance)
   const startActor = { ...actor, position: positionAt(actor, start) }
   const endActor = { ...actor, position: positionAt(actor, end) }
   const target = targetPosition(startActor, anchor)
@@ -311,7 +391,10 @@ function cameraForShot(
   }
   const direction = shot.direction
   const sign = direction === 'left' ? -1 : 1
-  const firstPosition = angleOffset(shot.angle, target, distance, actors)
+  let firstPosition = angleOffset(shot.angle, target, safeDistance, actors)
+  if (anchor && actor.type === 'character') firstPosition = { ...firstPosition, x: firstPosition.x + 0.35 }
+  if (anchor && actor.type !== 'character') firstPosition = { ...firstPosition, y: firstPosition.y - 0.3 }
+  if (vehicleClearance) firstPosition = { ...firstPosition, y: firstPosition.y + 0.25 }
   let positions = [firstPosition, firstPosition]
   let targets = [target, target]
   let fovs = [fov, fov]
@@ -319,23 +402,27 @@ function cameraForShot(
   if (move === 'push' || move === 'dolly') {
     const far = shot.angle?.startsWith('over_shoulder')
       ? { x: firstPosition.x, y: firstPosition.y, z: firstPosition.z - 0.8 }
-      : angleOffset(shot.angle, target, distance + 0.8, actors)
+      : angleOffset(shot.angle, target, safeDistance + 0.8, actors)
     positions = [far, firstPosition]
-    fovs = [size === '特写' || size === '大特写' ? 10 : Math.max(15, fov - 20), fov]
+    fovs = [fov, fov]
   } else if (move === 'pull') {
     const far = shot.angle?.startsWith('over_shoulder')
       ? { x: firstPosition.x, y: firstPosition.y, z: firstPosition.z - 0.8 }
-      : angleOffset(shot.angle, target, distance + 0.8, actors)
+      : angleOffset(shot.angle, target, safeDistance + 0.8, actors)
     positions = [firstPosition, far]
-    fovs = [fov, size === '特写' || size === '大特写' ? 10 : Math.max(15, fov - 20)]
+    fovs = [fov, fov]
   } else if (move === 'orbit' || move === 'arc') {
     const sweep = shot.sweepDeg ?? (move === 'arc' ? 90 : 360)
     positions = Array.from({ length: 9 }, (_, index) => {
       const radians = (sign * (index / 8 - 0.5) * sweep * Math.PI) / 180
-      return { x: target.x + Math.sin(radians) * distance, y: target.y, z: target.z + Math.cos(radians) * distance }
+      return {
+        x: target.x + Math.sin(radians) * safeDistance,
+        y: target.y,
+        z: target.z + Math.cos(radians) * safeDistance,
+      }
     })
   } else if (move === 'follow') {
-    const offset = { x: -distance * 0.25, y: 0.5, z: -distance }
+    const offset = { x: -safeDistance * 0.25, y: 0.5, z: -safeDistance }
     positions = [
       { x: target.x + offset.x, y: target.y + offset.y, z: target.z + offset.z },
       { x: endTarget.x + offset.x, y: endTarget.y + offset.y, z: endTarget.z + offset.z },
@@ -373,6 +460,21 @@ function cameraForShot(
     const delta = { x: endTarget.x - target.x, y: endTarget.y - target.y, z: endTarget.z - target.z }
     const last = positions.length - 1
     positions[last] = { x: positions[last].x + delta.x, y: positions[last].y + delta.y, z: positions[last].z + delta.z }
+    if (['push', 'pull', 'dolly'].includes(move)) {
+      const toward = {
+        x: endTarget.x - positions[last].x,
+        y: endTarget.y - positions[last].y,
+        z: endTarget.z - positions[last].z,
+      }
+      const length = Math.max(0.001, Math.hypot(toward.x, toward.y, toward.z))
+      const direction = move === 'pull' ? -1 : 1
+      const amount = actor.type === 'cube' && actor.scale.z > 2 ? 1.2 * direction : 0
+      positions[last] = {
+        x: positions[last].x + (toward.x / length) * amount,
+        y: positions[last].y + (toward.y / length) * amount,
+        z: positions[last].z + (toward.z / length) * amount,
+      }
+    }
     if (targets.length > 1) {
       const targetIndex = targets.length - 1
       targets[targetIndex] = {
@@ -403,7 +505,9 @@ function cameraForShot(
   }
 }
 function buildCardOracle(card: DirectorCard): AdaptedProject {
-  const duration = card.duration?.total ?? 12
+  const shots = oracleShots(card)
+  const shotEnds = shots.flatMap((shot) => (shot.t ? [shot.t[1]] : []))
+  const duration = card.duration?.total ?? (shotEnds.length ? Math.max(...shotEnds) : 12)
   const actorMap: Record<string, string> = {}
   const positions = actorPositions(card)
   const actors: Record<string, DirectorObject> = {}
@@ -413,10 +517,11 @@ function buildCardOracle(card: DirectorCard): AdaptedProject {
     actorMap[actor.id] = object.id
     return object
   })
+  if (!objects.some((object) => object.id === 'ground')) objects.push(makeSceneObject('ground'))
   for (const required of card.scene.required)
     if (!objects.some((object) => object.id === required)) objects.push(makeSceneObject(required))
+  if (shots.some((shot) => (shot.endSubject ?? '').endsWith('.cap'))) objects.push(makeSceneObject('bottle_cap'))
   applyBlocking(card, objects, actorMap, duration)
-  const shots = oracleShots(card)
   const windows = shotWindows(card, duration)
   const anchors: Record<string, AnchorSpec> = {}
   const cameras = shots.map((shot, index) => {
@@ -447,15 +552,23 @@ export function oracleForCard(card: DirectorCard): AdaptedProject {
 export async function adapt(prompt: string, card: DirectorCard, scheme: Scheme): Promise<AdaptedProject> {
   if (scheme === 'oracle') return oracleForCard(card)
   if (scheme === 's1') {
+    if (process.env[S1_SNAPSHOT_ROOT_ENV]) return adaptS1Snapshot(card)
     const result = await adaptS1Prompt(prompt)
     if (!result.ok) {
-      const error = new Error(`s1 planner/compiler failed for ${card.id}: ${result.errors.join('; ')}`) as Error & { planner?: unknown }
+      const error = new Error(`s1 planner/compiler failed for ${card.id}: ${result.errors.join('; ')}`) as Error & {
+        planner?: unknown
+      }
       error.planner = result.planner
       throw error
     }
     return {
       ...result.adapted,
-      metadata: { plannerAttempts: result.planner.attempts, usage: result.planner.usage, rawPlan: result.planner.raw, issues: result.adapted.issues },
+      metadata: {
+        plannerAttempts: result.planner.attempts,
+        usage: result.planner.usage,
+        rawPlan: result.planner.raw,
+        issues: result.adapted.issues,
+      },
     }
   }
   if (scheme === 's1-oracle-plan') {
@@ -495,7 +608,8 @@ export function mutateOracle(
     | 'no-sidestep'
     | 'no-action'
     | 'unmatched-actor'
-    | 'reverse-direction',
+    | 'reverse-direction'
+    | 'counteracting-zoom',
 ): DirectorProject {
   const project = JSON.parse(JSON.stringify(baseProject)) as DirectorProject
   const scene = project.scenes[0]
@@ -549,6 +663,14 @@ export function mutateOracle(
         object.id = `unknown-${object.id}`
         object.name = 'unnamed'
       }
+  if (mutation === 'counteracting-zoom') {
+    const camera = scene.cameras.find((item) => item.motionTrajectory && item.motionTrajectory.length > 1)
+    if (camera?.motionTrajectory)
+      camera.motionTrajectory = camera.motionTrajectory.map((waypoint, index) => ({
+        ...waypoint,
+        fov: (waypoint.fov ?? camera.fov) + (index / Math.max(1, camera.motionTrajectory!.length - 1)) * 20,
+      }))
+  }
   if (mutation === 'reverse-direction') {
     const camera = scene.cameras[0]
     const points = camera?.motionTrajectory

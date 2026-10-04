@@ -11,6 +11,7 @@ import {
   type MotionRecognition,
 } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
 import type { Direction, DirectorCard } from './cardSchema'
+import { bindCardEntities } from './binding'
 import type { AnchorSpec } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
 import { findActionEntry } from '../../src/workbench/generationCanvas/nodes/director/model/actionLibrary'
 
@@ -31,6 +32,7 @@ export type CardScore = {
   reasons: string[]
   measurements: DirectorMeasurements
   status?: 'ok' | 'adapter_error'
+  correspondenceRate: number
 }
 
 const near = (a: number, b: number, tol: number) => Math.abs(a - b) <= tol
@@ -83,47 +85,6 @@ const shotSizeMatches = (expected: string, actual: string) =>
   (expected === '中近景' && actual === '近景') ||
   (expected === '特写' && actual === '大特写')
 
-function resolveActors(
-  card: DirectorCard,
-  scene: DirectorScene,
-  actorMap?: Record<string, string>,
-): Record<string, string | undefined> {
-  const out: Record<string, string | undefined> = {}
-  const used = new Set<string>()
-  for (const actor of card.actors) {
-    const explicit = actorMap?.[actor.id]
-    if (explicit && scene.objects.some((object) => object.id === explicit)) {
-      out[actor.id] = explicit
-      used.add(explicit)
-      continue
-    }
-    const names = [actor.id, ...actor.aliases].map((value) => value.toLowerCase())
-    const named = scene.objects.filter(
-      (object) =>
-        !used.has(object.id) &&
-        names.some(
-          (name) =>
-            object.id.toLowerCase() === name ||
-            object.name.toLowerCase() === name ||
-            object.name.toLowerCase().includes(name),
-        ),
-    )
-    const candidate =
-      named.length === 1
-        ? named[0]
-        : named.find((object) =>
-            actor.category === 'person'
-              ? object.type === 'character'
-              : actor.category === 'vehicle'
-                ? object.type === 'cube'
-                : false,
-          )
-    out[actor.id] = candidate?.id
-    if (candidate) used.add(candidate.id)
-  }
-  return out
-}
-
 function actorSamples(measurements: DirectorMeasurements, id: string, window: [number, number]) {
   return measurements.frames
     .filter((frame) => frame.time >= window[0] - 1e-4 && frame.time <= window[1] + 1e-4)
@@ -152,14 +113,15 @@ const MOVEMENT_ACTION_BY_VERB = {
   drive_along: 'standard_walk',
   chase: 'running',
 } as const
-const STATIC_ACTION_IDS = new Set(['standing_idle', 'kneeling_idle', 'tpose', 'male_sitting_pose_1', 'male_sitting_pose'])
+const STATIC_ACTION_IDS = new Set([
+  'standing_idle',
+  'kneeling_idle',
+  'tpose',
+  'male_sitting_pose_1',
+  'male_sitting_pose',
+])
 
-function actionClipCovers(
-  scene: DirectorScene,
-  objectId: string,
-  window: [number, number],
-  actionId: string,
-): boolean {
+function actionClipCovers(scene: DirectorScene, objectId: string, window: [number, number], actionId: string): boolean {
   if (!findActionEntry(actionId)) return false
   const object = scene.objects.find((candidate) => candidate.id === objectId)
   if (!object || object.type !== 'character') return true
@@ -179,15 +141,14 @@ function actionEvidence(
 ): { ok: boolean; missingAsset?: string } {
   const object = scene.objects.find((candidate) => candidate.id === objectId)
   if (!object || object.type !== 'character') return { ok: true }
-  if (action.verb === 'hide_object_behind_back')
-    return { ok: false, missingAsset: 'hide_object_behind_back' }
+  if (action.verb === 'hide_object_behind_back') return { ok: false, missingAsset: 'hide_object_behind_back' }
   if (action.verb === 'hold_pose') {
     const actionId = action.action
     if (!actionId || !findActionEntry(actionId)) return { ok: false, missingAsset: actionId ?? 'hold_pose' }
     return { ok: actionClipCovers(scene, objectId, window, actionId), missingAsset: actionId }
   }
   if (action.verb === 'stop') {
-    const actionId = (action.action && findActionEntry(action.action) ? action.action : 'standing_idle')
+    const actionId = action.action && findActionEntry(action.action) ? action.action : 'standing_idle'
     const ok = STATIC_ACTION_IDS.has(actionId) && actionClipCovers(scene, objectId, window, actionId)
     return { ok, missingAsset: actionId }
   }
@@ -258,9 +219,16 @@ export function scoreBlocking(
       ok = evidence.ok
     }
     if (ok) good++
-    else if (evidence.missingAsset && !findActionEntry(evidence.missingAsset))
-      reasons.push(`${action.actor} 的动作 ${action.verb} 能力缺口：missing_asset (${evidence.missingAsset})`)
-    else reasons.push(`${action.actor} 的动作 ${action.verb} 未在时间窗达成`)
+    else if (
+      action.capability === 'missing_asset' ||
+      (evidence.missingAsset && !findActionEntry(evidence.missingAsset))
+    ) {
+      // A card-declared unavailable capability is recorded as a partial oracle result, not a silent zero.
+      good += 0.6
+      reasons.push(
+        `${action.actor} 的动作 ${action.verb} 能力缺口：missing_asset (${evidence.missingAsset ?? action.verb})`,
+      )
+    } else reasons.push(`${action.actor} 的动作 ${action.verb} 未在时间窗达成`)
   }
   return good / card.blocking.length
 }
@@ -348,7 +316,7 @@ function moveMatches(expected: string, actual: string): boolean {
   if (normalized === 'orbit') return actual === 'orbit_left' || actual === 'orbit_right'
   if (normalized === 'track') return actual === 'track_left' || actual === 'track_right'
   if (normalized === 'crane') return actual === 'crane_up' || actual === 'crane_down'
-  if (normalized === 'zoom') return true
+  if (normalized === 'zoom') return actual === 'zoom_in' || actual === 'zoom_out' || actual === 'dolly_zoom'
   return actual === normalized
 }
 
@@ -393,9 +361,17 @@ function scoreMotionAndFraming(
     const objectId = subject ? actorMap[subject] : Object.values(actorMap).find((id): id is string => !!id)
     const motion = objectId ? recognizeCameraMotion(measurements, objectId, { start, end }) : null
     if (shot.move && motion) {
-      const ok = moveMatches(shot.move, motion.move) && directionMatches(shot.direction, motion)
+      const expectedZoom =
+        (motionAliases[shot.move] ?? shot.move) === 'zoom_in' ||
+        (motionAliases[shot.move] ?? shot.move) === 'zoom_out' ||
+        shot.move === 'zoom'
+      const ok =
+        moveMatches(shot.move, motion.move) &&
+        directionMatches(shot.direction, motion) &&
+        (expectedZoom || motion.issues.length === 0)
       total += ok ? 1 : 0
       count++
+      if (motion.issues.length) reasons.push(...motion.issues.map((issue) => `${start}-${end}s ${issue}`))
       if (!ok)
         reasons.push(
           `${start}-${end}s 运镜 ${motion.move} / 方向 ${motion.signedOrbitDeg.toFixed(1)}° 不满足 ${shot.move}${shot.direction ? ` ${shot.direction}` : ''}`,
@@ -422,11 +398,23 @@ function scoreMotionAndFraming(
       count++
       if (visible < 0.95) reasons.push(`${start}-${end}s 主体出画 ${Math.round((1 - visible) * 100)}% 帧`)
       if (shot.size) {
-        const sizes = frames
+        const framingFrames =
+          shot.move === 'pull'
+            ? frames.filter((frame) => frame.time <= start + (end - start) * 0.35)
+            : ['push', 'dolly', 'zoom'].includes(shot.move ?? '')
+              ? frames.filter((frame) => frame.time >= start + (end - start) * 0.65)
+              : frames
+        const sizes = framingFrames
           .map((frame) => sampleForSubject(frame, subjectRef, actorMap)?.shotSize)
           .filter((size) => size !== undefined) as string[]
         const expected = shotAliases[shot.size] ?? shot.size ?? ''
-        const hit = sizes.filter((size) => shotSizeMatches(expected, size)).length / Math.max(1, sizes.length)
+        const anchorSubject = subjectRef?.includes('.')
+        const hit =
+          sizes.filter((size) =>
+            anchorSubject && expected === '特写'
+              ? ['中近景', '近景', '特写', '大特写'].includes(size)
+              : shotSizeMatches(expected, size),
+          ).length / Math.max(1, sizes.length)
         total += hit
         count++
         if (hit < 0.85) reasons.push(`${start}-${end}s 景别命中率 ${Math.round(hit * 100)}%`)
@@ -439,22 +427,15 @@ function scoreMotionAndFraming(
   return count ? total / count : null
 }
 
-function scoreScene(card: DirectorCard, scene: DirectorScene, reasons: string[]): number | null {
+function scoreScene(
+  card: DirectorCard,
+  sceneMap: Record<string, string | undefined>,
+  reasons: string[],
+): number | null {
   if (!card.scene.required.length) return null
   let hit = 0
   for (const required of card.scene.required) {
-    const names = [required, ...(card.scene.aliases[required] ?? [])].map((value) => value.toLowerCase())
-    const found = scene.objects.some(
-      (object) =>
-        names.some(
-          (name) =>
-            object.id.toLowerCase() === name ||
-            object.name.toLowerCase() === name ||
-            object.name.toLowerCase().includes(name),
-        ) ||
-        (required === 'ground' && object.type === 'plane'),
-    )
-    if (found) hit++
+    if (sceneMap[required]) hit++
     else reasons.push(`场景缺少 ${required}`)
   }
   return hit / card.scene.required.length
@@ -476,11 +457,15 @@ export function scoreCard(
   const continuity = scene ? measureContinuity(measurements, scene) : []
   const l0 = continuity.length ? 0 : 1
   if (continuity.length) reasons.push(...continuity.slice(0, 5).map((issue) => issue.message))
-  const actors = scene ? resolveActors(card, scene, actorMap) : {}
+  const binding = scene
+    ? bindCardEntities(card, scene)
+    : { actorMap: {}, sceneMap: {}, correspondenceRate: 0, missing: [] as string[] }
+  reasons.push(...binding.missing)
+  const actors = binding.actorMap
   const l1 = scene ? scoreStructure(card, measurements, actors, reasons) : 0
   const l2 = scoreMotionAndFraming(card, measurements, actors, reasons)
   const l3 = scene ? scoreBlocking(card, measurements, scene, actors, reasons) : 0
-  const l4 = scene ? scoreScene(card, scene, reasons) : 0
+  const l4 = scene ? scoreScene(card, binding.sceneMap, reasons) : 0
   const total = l0 === 0 ? 0 : weightedTotal({ L1: l1, L2: l2, L3: l3, L4: l4 }, reasons)
   return {
     cardId: card.id,
@@ -490,6 +475,7 @@ export function scoreCard(
     total,
     reasons,
     measurements,
+    correspondenceRate: binding.correspondenceRate,
   }
 }
 
