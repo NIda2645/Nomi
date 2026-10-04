@@ -10,11 +10,9 @@ import { evaluateSceneObjectPose } from './evaluatedSceneObject'
 import { programCameraIdAt } from './programCamera'
 import { sceneFrame, transformPoint, type SceneFrame } from './sceneObjectGraph'
 import { forwardFromAngles, normalize, signedDeg, sub } from './vec3'
-import { CAMERA_MOVES, type CameraMove } from '../agent/cameraMoveVocab'
+import { CAMERA_MOVES, EVAL_SHOT_SIZES, type CameraMove, type EvalShotSize } from '../../../../../../electron/shared/director/vocab'
 import type { StagingShot } from '../agent/stagingVocab'
 
-export type EvalShotSize = '远景' | '全景' | '中景' | '中近景' | '近景' | '特写' | '大特写'
-export const EVAL_SHOT_SIZES: readonly EvalShotSize[] = ['远景', '全景', '中景', '中近景', '近景', '特写', '大特写']
 /**
  * Shot size is read from `heightRatio` = projected subject height / frame height (unclamped; >1 means the subject
  * runs past the frame edges, which is what medium and close shots are).

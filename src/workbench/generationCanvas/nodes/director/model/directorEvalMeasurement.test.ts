@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
+import { EVAL_SHOT_SIZES } from '../../../../../../electron/shared/director/vocab'
 import { createDefaultProject } from './directorProject'
 import type { DirectorCamera, DirectorObject, DirectorProject } from './directorTypes'
 import {
-  EVAL_SHOT_SIZES,
   distanceForShotSize,
   measureContinuity,
   projectPoint,

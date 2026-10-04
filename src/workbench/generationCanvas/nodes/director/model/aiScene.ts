@@ -6,35 +6,11 @@
  *        类型名映射到 V2 八种几何体（多出的映射到最近似）、旋转弧度 / 角度启发式（全部 |r| ≤ 2π 视为弧度）、提示词模板；物化进 store 在 storeAiSceneActions。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
-import { z } from 'zod'
 import { DIRECTOR_PRIMITIVE_TYPES, type DirectorPrimitiveType, type Vec3 } from './directorTypes'
 import { RAD_TO_DEG } from './vec3'
 
-const vec3Schema = z.tuple([z.number(), z.number(), z.number()])
-
-export const aiSceneElementSchema = z.object({
-  type: z.string(),
-  name: z.string().optional(),
-  position: vec3Schema.optional(),
-  rotation: vec3Schema.optional(),
-  scale: vec3Schema.optional(),
-  color: z.string().optional(),
-  roughness: z.number().optional(),
-  metalness: z.number().optional(),
-  opacity: z.number().optional(),
-  wireframe: z.boolean().optional(),
-  flatShading: z.boolean().optional(),
-})
-
-export const aiSceneSchema = z.object({
-  sceneName: z.string().optional(),
-  sceneConfig: z.object({ skyColor: z.string().optional(), groundOpacity: z.number().optional() }).optional(),
-  groups: z.array(z.object({ name: z.string().optional(), elements: z.array(aiSceneElementSchema).default([]) })).min(1),
-})
-
-export type AiSceneSpec = z.infer<typeof aiSceneSchema>
-export type AiSceneElement = z.infer<typeof aiSceneElementSchema>
-export type AiSceneGroup = AiSceneSpec['groups'][number]
+import { aiSceneSchema } from '../../../../../../electron/shared/director/aiSceneSchema'
+import type { AiSceneSpec, AiSceneGroup } from '../../../../../../electron/shared/director/aiSceneSchema'
 
 export const AI_SCENE_MAX_ELEMENTS = 60
 
