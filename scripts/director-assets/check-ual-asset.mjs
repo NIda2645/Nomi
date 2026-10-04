@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from 'node:fs'
 import crypto from 'node:crypto'
+import { pathToFileURL } from 'node:url'
 
 export function readGlb(file) {
   const bytes = fs.readFileSync(file)
@@ -42,7 +43,7 @@ export function checkUalAsset({ root = process.cwd(), asset = 'src/assets/direct
   return result
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const result = checkUalAsset()
   console.log(JSON.stringify(result, null, 2))
   if (!result.pass) process.exit(1)

@@ -4159,6 +4159,14 @@
         {
           "path": "src/workbench/generationCanvas/nodes/director/model/assetCatalog/index.ts",
           "symbol": "DIRECTOR_ASSET_CATALOG"
+        },
+        {
+          "path": "scripts/director-assets/prepare_ual.py",
+          "symbol": "main"
+        },
+        {
+          "path": "scripts/director-assets/check-ual-asset.mjs",
+          "symbol": "checkUalAsset"
         }
       ],
       "forbidden_derivations": [
@@ -4174,7 +4182,7 @@
         "src/workbench/generationCanvas/nodes/director/model/assetCatalog/types.ts"
       ],
       "since": "2026-10-04",
-      "notes": "A期新增资产与许可证来源的唯一目录；本轮采用 UAL 原生 CC0 人偶与动作，运行时接线留给切换 PR。"
+      "notes": "A期新增资产与许可证来源的唯一目录；本轮采用 UAL 原生 CC0 人偶与动作，处理与校验边界也登记在同一 owner，运行时接线留给切换 PR。"
     }
   ]
 }
