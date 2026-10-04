@@ -82,7 +82,9 @@ export type OnboardingFailure = {
   ok: false;
   code:
     | "wrong_verb" | "needs_input" | "not_found" | "invalid_args" | "stale_fingerprint"
-    | "declaration_rejected" | "credential_origin_mismatch" | "no_generic_contract" | "provider_failed";
+    | "declaration_rejected" | "credential_origin_mismatch" | "no_generic_contract" | "provider_failed"
+    /** 已提交、钱已花、供应商还在处理：**不是失败**，不许重试（重试 = 再花一次）。 */
+    | "still_processing";
   message: string;
   useInstead?: string;
   /** 缺什么**一次列全**（09-10 实测 22 次失败里 9 次死在逐个抛）。 */
@@ -90,6 +92,8 @@ export type OnboardingFailure = {
   rejections?: OnboardingRejection[];
   /** 上游原文，截断但不改写（≤512）。 */
   evidence?: { status?: number; bodyExcerpt?: string };
+  /** `still_processing` 时供应商给的任务号。 */
+  taskId?: string;
   nextAction: string;
 };
 

@@ -267,6 +267,8 @@ const FS_READ_SPY = /spyOn\(\s*fs\s*,\s*['"](readFileSync|readFile|readSync|read
 const WALLCLOCK_BUDGET_BASELINE = new Map([
   // 断言 launcher 的 FAST_FAIL_BUDGET_MS 生产超时真的生效（抢注者活着时绝不挂死等待）。
   ['electron/capabilityCore/mcpNodeLauncher.test.ts', 1],
+  // 断言试跑等待的 TRY_MODEL_WAIT_BUDGET_MS 生产硬上限真的生效（假时钟；超过它外部宿主 60 秒超时会先断线，AI 可能重试二次扣费）。
+  ['electron/capabilityCore/modelOnboarding/tryModelAsyncQueued.test.ts', 1],
 ])
 
 // Station waits share the existing R18 gate. AST parsing excludes prose and comments.
