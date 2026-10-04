@@ -77,6 +77,7 @@
     {"path":"electron/assets/","reason":"项目素材库：导入、本地化、解码判定、素材声明与引用","exclude":["electron/assets/download*","electron/assets/scratch*","electron/assets/storageCapacity*","electron/assets/localFileCopy*","electron/assets/nativeFileBridge*","electron/assets/clipboardFilePaths*"]},
     {"path":"electron/video/","reason":"创作向视频处理：抽帧、切镜检测、深度、拆解"},
     {"path":"electron/director/","reason":"导演台与运镜：移动端桥与镜头语言"},
+    {"path":"electron/shared/director/","reason":"3D-BOX 导演计划（schema、词表、按名字寻址的补丁与修订号、写法指导）：Nomi 独有的导演领域对象，渲染端编译器与主进程工具面共用（P2 从 src 搬来）"},
     {"path":"electron/workspace/","reason":"项目工作区：项目身份、清单、迁移的盘上形态","exclude":["electron/workspace/workspaceManifestLock*","electron/workspace/workspaceManifestTransaction*","electron/workspace/workspaceSync*","electron/workspace/workspaceFileIndex*","electron/workspace/workspaceFileDelete*"]},
     {"path":"electron/projects/","reason":"项目库：目录、最近项目与项目身份"},
     {"path":"electron/memory/","reason":"项目记忆：创作事实的沉淀"},
@@ -667,6 +668,32 @@
       ],
       "whyNotIntegrated": "现成能力只把 flaky 写进 Job Summary，没人读；合并前要用 gh api 读 check-run 注解。这份 reporter 只做格式转换（flaky → ::warning），不自己判定什么是 flaky。",
       "revisitWhen": "vitest 的 github-actions reporter 提供 flaky 注解开关时，删掉这份 reporter"
+    },
+    {
+      "id": "director3dbox-build-flag",
+      "capability": "3D-BOX 构建期功能开关：进程引导模块 + 共享层只读视图（工具注册表在导入期按它装配）",
+      "status": "justified",
+      "paths": [
+        "electron/shared/featureFlags/director3dbox.ts",
+        "electron/shared/featureFlags/director3dboxFace.ts"
+      ],
+      "alternativesChecked": [
+        {
+          "name": "OpenFeature JS SDK（运行时求值 + provider）",
+          "source": "https://openfeature.dev/docs/reference/technologies/client/web/"
+        },
+        {
+          "name": "Vite define 把构建变量烤进渲染端 bundle（已在用，只覆盖渲染端）",
+          "source": "vite.config.ts:197"
+        },
+        {
+          "name": "Electron app.isPackaged 区分打包与开发",
+          "source": "https://www.electronjs.org/docs/latest/api/app#appispackaged-readonly"
+        }
+      ],
+      "whyNotIntegrated": "领域约束：同一张 Agent 工具面在主进程、preload、pi 岛、MCP 进程、门岗与 vitest 六处于导入期装配成常量，开关必须在每个进程首个导入时就定死且彼此一致（打包只认烤进去的值）；运行时求值的 SDK 回答不了「导入那一刻是哪张面」，渲染端 define 也到不了主进程。两个文件合计不到 120 行，且随开关 2026-11-15 到期整体删除。",
+      "revisitWhen": "切换 PR（门槛达标后）同 commit 删开关与这两个文件；或出现第二个需要跨进程一致的构建开关时改接现成方案",
+      "revisitBy": "2026-11-15"
     }
   ]
 }
