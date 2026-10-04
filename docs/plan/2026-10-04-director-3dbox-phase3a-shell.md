@@ -16,34 +16,10 @@
 
 临时债：R13 真机截图与 Windows/英文走查，owner=3d 验收线，到期 2026-11-15；到期前未清即保持 `unverified`，不把本地绿灯写成完成。
 
-## 样张对账（布局 A / 导演视图 v2）
+## 样张对账 · 前三轮（已被第六轮取代）
 
-| 样张约束 | 实现 | 证据 / 状态 |
-|---|---|---|
-| 导演视图占画布区，Agent 保留在右侧 | `DirectorEditor` 依据 flag 给壳留下 `assistantPaneWidth`，`DirectorViewShell` 只填画布区 | 七张 R13 真截图；中英文导演态均对上 |
-| 导演 / 精修切换；精修沿用现有导演台 | `DirectorViewShell` 与既有 `EditorSplit` 分支切换，flag 关闭完全走旧分支 | `core-smoke --fixture empty`（flag off）通过 |
-| AiSceneBar 不挂 | 导演视图传 `showAiSceneBar={false}` | zh/en 导演态截图；未出现 AiSceneBar |
-| 镜头条只读，显示实测景别 / 运镜 / 时长 | 4fps 调用 `directorEvalMeasurement`，镜头按钮只切预览机位 | zh/en 三镜截图各有 3 卡；定向测量测试通过 |
-| 预览小窗与主按钮占位 | 复用 `DirectorViewport` 现有预览小窗；主按钮显示 `用这段预演出成片 ▾` / `Produce from this preview`，禁用并给 3b 原因提示 | zh/en 导演截图；出片留给 3b |
-| 空工程态 | 镜头条显示空态，不创建计划 schema；PIP 空态使用 `bg-nomi-media-veil` 语义 token | `pnpm run check:tokens`；第四轮截图重拍待完成 |
-
-## R13 第三轮真机收货（2026-10-04）
-
-Playwright/Electron dev 构建（`NOMI_DIRECTOR_3DBOX=true`）截图已入库，均为 1280×933 PNG 且小于 400 KB：
-
-| 截图 | 实际画面 | 样张对账 |
-|---|---|---|
-| `zh-empty-director.png` | 中文空工程导演视图：返回+标题、导演/精修+重置、撤销/重做、禁用主按钮四簇；PIP 深色空态；右侧 Agent 与底部空镜头条保留 | 对上样张布局 A、v2 四簇顶栏、深色空态；右侧反馈卡属于既有 Agent 壳 |
-| `zh-three-director.png` | 中文三镜导演视图：PIP 有机位预览，底部 3 卡为 0.0–4.3s 远景/拉远、4.3–8.3s 远景/static、8.3–12.0s 全景/推近 | 对上样张只读镜头条、实测景别/运镜/时长与画布占区 |
-| `zh-three-refine.png` | 中文精修：既有对象/资产面板、检查器、时间轴与 PIP | 对上“精修＝今天整套原样” |
-| `en-empty-director.png` | English Director view with Director/Refine, Produce, Program and empty shot strip | 对上英文轨；该文件是 z-index 修复前的已读证据，PIP 浅色空态差异保留为限制 |
-| `en-three-director.png` | English three-shot Director view with 3 cards: 0.0–4.3s Far/Pull out, 4.3–8.3s Far/Static, 8.3–12.0s Wide/Push in | 对上英文镜头条与测量文案 |
-| `en-three-refine.png` | English Refine with the existing full editor | 对上精修原样复用 |
-| `flag-off-legacy-director.png` | 开关关中文旧导演台：原工具条、场景对象/资产面板、时间轴与浅色旧 PIP | 对上开关关逐字节旧壳对照；未改变旧分支 |
-
-三镜重载丢失的根因已修复：外部 registry 写入过去只更新 mounted store，没有同步调用节点 writer，2 秒自动保存或重载前会把旧 `node.meta.directorProject` 写回；现在外部写入在同一调用栈导出并写入节点，测试覆盖写入后重载保留 3 镜。开关关走同一旧分支，core-smoke empty 通过。
-
-CI `Canvas Acceptance (Linux) (1)` 新一轮 [run 37184939085](https://github.com/aqm857886159/Nomi/actions/runs/37184939085) 仍为 7/8：第 8 项是 `read-only-reload`，在断言前因 Electron spawn 60s timeout 退出，因此没有第 8 项输出；`open-fit` 自身 5 条断言全部打印并通过。干净 `origin/main` 的 [run 37169425485 job](https://github.com/aqm857886159/Nomi/actions/runs/37169425485/job/111339218677) 同 job 通过，说明本 PR 没有改动 `open-fit` 判据，当前红是走查启动不稳定。
+前三轮的对账表与截图表按「手写 HTML 样张 → 照图复刻」做，五轮返工仍多处漂移；对应截图已从证据目录删除（不是同一份代码截的）。
+现行整张对账表见文末「第六轮」。第三轮的外部写入持久化根因修复（`directorSessionRegistry` 同步写回节点）仍然有效。
 
 ## R13 第四轮（2026-10-04）
 
@@ -58,3 +34,74 @@ CI `Canvas Acceptance (Linux) (1)` 新一轮 [run 37184939085](https://github.co
 - 开关取值：`NOMI_DIRECTOR_3DBOX=false` → `enabled:false, source:env, director3dbox:off:2026-11-15`；`true` → `enabled:true, source:env, director3dbox:on:2026-11-15`。打包配置 `dist-electron/feature-flags.json` 在 false 构建为 false，true 构建为 true。
 - `read-only-reload`：flag-off 三次均通过（约 15.68s、其余两次均 exit 0）；flag-on 三次 15.51s、15.41s、15.43s，均通过。
 - 截图：空态与精修已用最终构建重拍；三镜和 flag-off 旧图仍未全部满足最终 HEAD / 浅色模式要求，证据 README 明确标为未完成。
+
+## 第六轮：设计实验室 + 真组件（2026-10-04 用户拍板）
+
+**做法换了**：样张不再手写 HTML。设计实验室新屏 `director-3dbox`（`src/devlab/designLab/director3dbox/`，登记在 `labScreens.ts` 与 `tests/ux/design-lab/labStates.mjs`）每格渲染**现役 `DirectorEditor`**（开关开时默认面就是 `DirectorViewShell`，精修是同一编辑器的另一分支）+ 现役 Agent 面板（v4 实验室 `ShellStage`）。devlab 里一行界面 JSX 都不写，夹具只给三样：courtyard-standoff 计划经现役编译器编出的工程、只读开关证明桥（形状同 preload 给的那份）、点真按钮（第 2 张镜头卡 / 「精修」）。3D 场景异步落定 → 格子登记就绪持有（`labReadyHold.ts`），角色挂上、动作片段就绪才举旗，不用墙钟。拍板后生产代码就是格子里那份，不存在复刻。
+
+**为什么用 courtyard-standoff 而不是 t2-courtyard**：任务书写「courtyard 三镜」。`S1_ORACLE_PLANS` 里 `t2-courtyard` 虽然叫 courtyard，实际是 `required: 'ground'` → room 模板 + 名叫 `subject` 的占位角色（「角色名是英文 id」的根源就是它的计划数据本身）；唯一用庭院模板、带「青衣女子 / 黑衣侍卫」的是 `courtyard-standoff`，也正是样张画的那一题（4 镜 0–4 / 4–8 / 8–10 / 10–12 秒）。所以三态里的「三镜」实为这 4 镜工程；如需严格 3 镜，换 fixture 一行即可。
+
+格子（`capture: 'viewport'`、暗色、1280×933 = 真机走查窗口内容区）：
+`d3-empty-director-zh / -en`（空工程导演视图）｜`d3-courtyard-director-zh / -en`（点第 2 镜）｜`d3-courtyard-refine-zh / -en`（精修）。
+视觉基线：按实验室规矩登记为「基线待用户拍板」（`calibration.json`），拍板后 `pnpm run design-lab:update -- --screen director-3dbox`。
+
+### 生产组件改了什么（全部只在开关开的导演视图里生效）
+
+| 区域 | 改动 | owner |
+|---|---|---|
+| 顶栏 | 三列网格：左「‹ 工程名 · 镜头 N」（N = 播放头所在镜）、中「导演 / 精修」居中、右撤销重做 + 出成片；删掉多出的重置视角——它的家是精修顶栏「② 视图」簇 + 快捷键（§1.5.2 一功能一个家）；功能簇复用精修顶栏导出的 `Cluster` | `DirectorViewShell.tsx` |
+| 镜头条 | 拆成 `panels/shotStrip/DirectorShotStrip.tsx`：播放行（播放/暂停 · `04.3 / 12.0s` · N 个镜头实测说明）、卡宽按时长等比、播放指针穿过当前卡、每卡「景别 · 运镜」+ 这一镜的角色动作、当前镜高亮、点卡跳到该镜开头 | 同左；文案 `shotLabels.ts`（卡、小窗、标题三处同一份措辞） |
+| 实测摘要 | `model/directorShotSummaries.ts`：主体改取画面里最大的非场景件物体。旧实现取第一个对象 = 地面方块，t2-courtyard 被量成「远景/远景/全景」，现在量回「全景跟随 / 中景固定 / 特写推近」（单测钉住）。「这一镜在做什么」只取工程里真实的动作片段，没有就写「这一镜没有动作片段」，不编 | 同左 |
+| 预览小窗 | **同一个 `PipViewport`**：导演视图时钉在视口左下，只一行「▷ 镜头 N · 景别 · 运镜 · 画幅」，不给机位下拉 / 焦距 / FOV / 进入视角，不可拖不可折叠；画面跟播放头的节目机位（`pipCameraIdOf(state, { followProgram })`，`PipRenderer` 同一条规则）。▷ 是状态指示不是按钮——播放的唯一入口在播放行。精修里原样 | `PipViewport.tsx` / `pipCamera.ts` |
+| 视口 | 导演视图收掉机位模型 / 视锥线框、路标、把手、gizmo、视图立方（复用出片已认的 editor-only 旗；网格与地面另打「参照」旗留着），不可点选；进场时自由相机落到 `directorOverviewPose` 的俯视看全场位姿一次。角色头顶名牌 = 计划里的 `desc` | `HideEditingHelpers.tsx`、`sceneRefs.ts`、`SkyGround.tsx`、`model/directorOverviewPose.ts` |
+| 开关关回归 | 外壳 className 早先丢了 `inset-x-0`，旧导演台只铺到内容宽、右侧露出画布（真机截图实测）；恢复与 main 一致 | `DirectorEditor.tsx` |
+| 巨壳 | `electron/main.ts` 回到 683 行（基线同步下调）：主窗口 webPreferences（安全开关原值 + 3D-BOX 证明参数与日志）拆到 `electron/mainWindowWebPreferences.ts` | 同左 |
+
+### 整张对账表（样张 = `director-3dbox-mockup-render.png` 上半部；实验室图 = `docs/evidence/2026-10-04-director-3dbox-shell/lab-*.png`）
+
+| # | 区域 | 样张 | 实验室截图 | 状态 |
+|---|---|---|---|---|
+| 1 | 整体布局 | 导演视图占画布区，右侧 Agent 面板 | 左 858px 导演视图 + 右现役 Agent 面板（真机同） | 一致 |
+| 2 | 顶栏左 | ‹ +「古装庭院对峙 · 镜头 4」 | ‹ +「古装庭院对峙 · 镜头 2」；空工程「导演台」 | 一致（N 按任务书取播放头所在镜；样张选中第 2 镜却写镜头 4，是样张自身不一致） |
+| 3 | 顶栏中 | 「导演 / 精修」居中 | 同；刷新图标已删 | 一致；重置视角去向 = 精修顶栏「② 视图」簇 + 快捷键 |
+| 4 | 顶栏右 | 撤销 / 重做 + 「用这段预演出成片」 | 撤销 / 重做 +「用这段预演出成片 ▾」一行，禁用并提示 | 一致；▾ 是第四五轮拍板，出片接线推迟 3b |
+| 5 | 顶栏外形 | 999px 胶囊 | 复用精修顶栏 `Cluster`（`rounded-nomi-lg`） | 有差异：同一面同一族胶囊，不为导演视图另造一种圆角 |
+| 6 | 视口 · 场景 | 示意图：院墙、院门、两人、轨迹虚线、编号机位 1–4 | 真 3D：院墙、门、树、两人，俯视看全场 | 一致（场景）；编号机位与轨迹虚线没有——任务书要求导演视图隐藏编辑用机位线框，编号机位属「选中联动」，推迟 3c |
+| 7 | 视口 · 编辑辅助物 | 无视锥、无把手 | 无视锥 / 路标 / 把手 / gizmo / 视图立方 | 一致 |
+| 8 | 视口 · 角色名 | 青衣女子 / 黑衣侍卫 | 同（取计划 `desc`） | 一致 |
+| 9 | 视口 · 网格 | 可见 | 可见 | 一致 |
+| 10 | 视口 · 角色按身份配色 | 两人不同灰度 | 两人都是默认浅灰 | **推迟到 P1（S1 编译器）**：颜色必须是工程数据（编译器写 `color`），盲评渲染与预览才是同一个 owner（方案 §7.7）；编译器此刻由 S1 线持有，本线不碰 |
+| 11 | 视口 · 明暗分开 | 地面 / 墙 / 人三档 | 地面石板蓝、墙浅、门深红、树绿、人浅灰——人与墙同一亮度段 | 部分；随第 10 行一起 |
+| 12 | 视口 · T 姿势 | — | 4.27 秒在播动作片段，非 T 姿势 | 3R |
+| 13 | 小窗位置 | 视口左下 | 视口左下 | 一致 |
+| 14 | 小窗标题 | ▷「镜头 2 · 中景 · 静止」+ 16:9 | ▷「镜头 2 · 全景 · 推近」+ 16:9 | 格式一致；值是实测（样张是计划值）。▷ 为指示不是按钮（样张是按钮）：§1.5.2 播放只留播放行一个入口。宽 280（用户可拖，样张 232） |
+| 15 | 小窗不显示机位下拉 / 焦距 / FOV / 进入视角 | 不显示 | 不显示 | 一致 |
+| 16 | 精修里的小窗 | 照旧 | 29mm · 16:9 · 机位下拉 · FOV · 进入视角 | 一致 |
+| 17 | 播放行 | ▷「04.9 / 12.0s」「· 4 个镜头 · 下面的景别和运镜是实测值（不是计划值）」 | ▷「04.3 / 12.0s」「· 4 个镜头 · 景别和运镜是实测值（不是计划值）」 | 一致（04.3 = 点第 2 卡跳到该镜实测开头 4.25s） |
+| 18 | 播放指针 | 竖线穿过卡片 | 竖线穿过当前卡（在第 2 卡左缘） | 一致 |
+| 19 | 卡宽 | 按时长（flex 4/4/2/2） | 按实测时长等比 | 一致 |
+| 20 | 卡 · 第一行 | 「1 · 0–4s」 | 「1 · 0.0–4.3秒」 | 有差异：时间窗是实测（4fps 采样，切点落在 4.25s）；刻度归尺子专班 #974 |
+| 21 | 卡 · 第二行 | 全景·侧后方跟拍 / 中景·静止 / 特写·手部 / 越肩·慢推 | 全景·跟随 / 全景·推近 / 中近景·固定 / 中近景·推近 | 格式一致；值是实测。第 2 镜实测与计划不符、第 3 镜量的是人物不是手部锚点——这正是「实测值」要暴露的，交 S1 编译器 / 尺子专班 |
+| 22 | 卡 · 第三行 | 「青衣女子走向院门」「侍卫横步挡门 · 女子藏信」 | 「青衣女子行走」「青衣女子站立 · 黑衣侍卫行走」「这一镜没有动作片段」 | 有差异：只读工程里真实的动作片段；计划的目标（院门）与语义动作（藏信）没进工程——**推迟 3b**：stage_shot 把规范化计划存进节点后改读计划 blocking |
+| 23 | 当前镜高亮 | 第 2 卡蓝边蓝底 | 第 2 卡蓝边蓝底 | 一致 |
+| 24 | 点卡跳到该镜开头 | 示意 | 点第 2 卡 → 播放头 4.25s、标题与小窗都变镜头 2（真机脚本断言） | 一致 |
+| 25 | 卡上问题徽标 | 「已修：出画 → 拉近」 | 无 | 推迟 3b（问题清单） |
+| 26 | 右侧面板 · 头部 | 「Nomi Agent · 同一个会话」 | 现役 Agent 面板头部 | 一致（布局）；文案是样张示意，面板属工作台不改 |
+| 27 | 右侧 · 对话里的 stage_shot 过程卡与检查结果 | 有 | 空会话 | 推迟 3b |
+| 28 | 右侧 · composer「正在改：镜头 2 · 中景」 | 有 | 无 | 推迟 3c（选中联动） |
+| 29 | 精修顶栏（样张 v3） | ‹ 标题 + 工具簇 … 导演/精修 … 撤销 + 出成片 | 旧五簇 + 模式切换；858px 下 ④⑤ 簇互压（英文还压住 ①） | **冲突，需拍板**：样张 v3 是精简顶栏，方案 §7.4 写「精修 = 今天整套工具原样」。试过「放不下就换行」，第二行又压住场景对象卡的页签，已撤回；按「样张与需求矛盾就停下上报」不自选。重叠是布局 A 让出右侧后才出现的 3a 缺陷 |
+| 30 | 精修 · 对象 / 属性卡、关键帧时间轴 | 原样 | 原样 | 一致 |
+| 31 | 空工程 | 样张没画 | 「导演台」、小窗「还没有机位」、镜头条空态提示 | 新增（样张未覆盖） |
+| 32 | 英文轨 | — | 全部走 i18n；2 秒窄卡英文被截断「Medium close · St…」 | 有差异：卡宽按时长等比的代价，悬停 / 选中看全名留到 3c |
+| 33 | 开关关 | 旧导演台原样 | 全屏旧导演台，AiSceneBar 在，无 3D-BOX 外壳（真机） | 一致（修掉 `inset-x-0` 回归后） |
+
+### 门岗与测试
+
+`pnpm run typecheck`、`check:tokens`、`check:i18n`、`check:mockup-contracts`、`check:filesize` 通过；vitest `nodes/director` + 开关共 60 文件 357 测试通过（含新 `directorShotSummaries.test.ts` 7 条）；实验室注册表单测 3 文件 30 条通过。实验室视觉基线：`director-3dbox` 屏按规矩登记待拍板，无基线可比；全屏实验室视觉道的结果见 PR 正文（main 自身的动效截图不稳定，判据是「分支失败 ⊆ 同时刻 main 失败」）。
+
+### 没做完
+
+- 第 10/11 行角色配色与明暗：要编译器写数据，等 S1 线。
+- 第 22 行镜头描述读计划：等 3b 把计划存进节点。
+- 第 29 行精修顶栏：样张与方案冲突，待用户拍板后修重叠。
+- Windows / 最小窗口 / 英文真机走查仍挂 3d 验收线（到期 2026-11-15）。
