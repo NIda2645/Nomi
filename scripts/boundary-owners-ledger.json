@@ -251,6 +251,16 @@
         "symbol": "sitePages"
       },
       "reason": "2026-10-01 手写的 5 页清单 site-manifest.mjs 删除（它只列了首页、快速上手和手册，模型库等页面从没进过），官网页面清单收进由生成器派生的 pages.mjs 的 sitePages；「干净地址在 sitemap、巡检、页面里只有一份真相」这条不变量现在由它承担（见 docs/fixes/2026-10-01-site-data-drift.root-cause.json）。"
+    },
+    {
+      "contract": "docs/fixes/2026-08-29-shot-verification-reason-locale.root-cause.json",
+      "path": "electron/capabilityCore/shotVerifyCore.ts",
+      "symbol": "buildShotVerifyPrompt",
+      "anchor": {
+        "path": "src/workbench/generationCanvas/agent/shotVerify.ts",
+        "symbol": "buildShotVerifyPrompt"
+      },
+      "reason": "2026-10-05 主进程那份审片纯核只服务于没有生产调用方的 core.generateOnProject（MCP 单发生成已退役），随它整族删除（docs/plan/2026-10-05-engine-convergence-cut1.md 第 0 步）。「判分提示词带理由语言、评分口径不变」这条不变量现在只有渲染层这一份在承担，合同里它本来就是声明过的另一个主人。"
     }
   ],
   "retirements": [
