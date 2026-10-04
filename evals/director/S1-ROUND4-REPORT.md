@@ -1,6 +1,6 @@
 # S1 第四轮收货报告：回归与 Phase 3 前置
 
-分支：`feat/director-3dbox-s1r3`。PR：[#979](https://github.com/aqm857886159/Nomi/pull/979)。当前 HEAD 待推送为本报告提交后的 SHA；PR #974 已合入且远端 base 分支已删除，#979 当前 base 为 `main`，这是 GitHub 可用的实际 base。
+分支：`feat/director-3dbox-s1r3`。PR：[#979](https://github.com/aqm857886159/Nomi/pull/979)。最终推送 SHA 见交付收据；PR #974 已合入且远端 base 分支已删除，#979 当前 base 为 `main`，这是 GitHub 可用的实际 base。
 
 留出纪律保持不变：调参期间没有读 T3（`t3-storm`、`t3-cafe`、`t3-space`、`t3-market`）或 T2（`t2-gallery`、`t2-rooftop`）的分数、reasons、rawPlan；三轮最终收据生成后才一次性读取。开发集为其余 22 张。
 
@@ -63,4 +63,4 @@ R3 三轮失败计划已固化为编译器回归夹具，覆盖庭院/香水每�
 - `node scripts/check-root-cause-contracts.mjs`：通过。
 - 模型投影测试与共享 structural/vendor 判据通过。
 
-最终 `pnpm run gates` 尚未在本提交上完成；此前门岗唯一阻断是既有 `check:design-lab` baseline drift（与同刻干净 main 对照的例外）及 advisory `check:concept-owners`。因此本轮状态是**已修复并有评测/单测收据，待最终 gates、push 和 PR 更新**。Windows packaged runtime、L5 视觉评审和真实媒体仍未验证。
+最终 `pnpm run gates` 已执行完整链：`check:fresh-base` 通过（先合入 `origin/main` `fd076b01e3dd`），`gates:contracts` 为 96 项中 94 通过、1 个既有 design-lab 阻断、1 个 concept-owners advisory；其余 build/typecheck/lint 链继续完成。design-lab 的 32 张差异均来自未改动的既有视觉基线，符合本轮约定的“同刻干净 main”例外；本分支没有修改 `tests/ux/design-lab` 或其基线。`check:concept-owners` 的 advisory 指向尺子专班与历史概念登记，已列入转交，不改变本轮代码结论。Windows packaged runtime、L5 视觉评审和真实媒体仍未验证。
