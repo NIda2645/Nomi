@@ -63,6 +63,18 @@ export function assertTrustedSender(event: IpcEvent): void {
 }
 
 /**
+ * Bootstrap-only trust check for synchronous preload calls made before the
+ * first navigation has established a stable frame URL.
+ */
+export function assertTrustedBootstrapSender(event: IpcEvent): void {
+  const senderWindow = BrowserWindow.fromWebContents(event.sender);
+  const record = appWindowRecordOf(senderWindow);
+  if (!record || record.role !== "main" || record.window.webContents !== event.sender) {
+    throw new UntrustedIpcSenderError();
+  }
+}
+
+/**
  * Nomi 自有 UI 面：主窗口 + 我们自己建、挂了 Nomi preload 的辅助窗（素材盒浮层、浏览器 chrome 菜单）。
  *
  * 给两类通道用：应用内浏览器自己的控制通道（`browser:*`），以及素材盒这种**界面就长在辅助窗里**

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { useDirectorStore } from './DirectorEditorContext'
 import type { DirectorHotkeyScope } from './model/hotkeys'
 import { sampleDirectorProject, recognizeCameraMotion, type EvalShotSize } from './model/directorEvalMeasurement'
-import { CAMERA_MOVE_LABEL } from './agent/cameraMoveVocab'
+import { CAMERA_MOVE_LABEL, CAMERA_MOVE_LABEL_EN } from './agent/cameraMoveVocab'
 import type { BoxDrawApi } from './scene/creation/useBoxDraw'
 import type { CharacterPlacementApi } from './scene/creation/useCharacterPlacement'
 import type { DirectorViewportTheme } from './scene/sceneTheme'
@@ -34,13 +34,6 @@ const shotSizeEn: Record<EvalShotSize, string> = {
   远景: 'Far', 全景: 'Wide', 中景: 'Medium', 中近景: 'Medium close',
   近景: 'Close', 特写: 'Close-up', 大特写: 'Extreme close-up',
 }
-const moveEn: Record<string, string> = {
-  static: 'Static', follow: 'Follow', pan: 'Pan', tilt: 'Tilt',
-  orbit_left: 'Orbit left', orbit_right: 'Orbit right', push_in: 'Push in', pull_out: 'Pull out',
-  crane_up: 'Crane up', crane_down: 'Crane down', track_left: 'Track left', track_right: 'Track right',
-  arc_left: 'Arc left', arc_right: 'Arc right', zoom_in: 'Zoom in', zoom_out: 'Zoom out', dolly_zoom: 'Dolly zoom',
-}
-
 function summaries(project: DirectorProject, locale: string): ShotSummary[] {
   const measurements = sampleDirectorProject(project, { fps: 4 })
   const boundaries = [0, ...measurements.cuts, measurements.duration]
@@ -59,8 +52,8 @@ function summaries(project: DirectorProject, locale: string): ShotSummary[] {
       cameraId: frame?.cameraId ?? null,
       shotSize,
       move: locale.startsWith('en')
-        ? (moveEn[motion] ?? motion)
-        : (motion in CAMERA_MOVE_LABEL ? CAMERA_MOVE_LABEL[motion as keyof typeof CAMERA_MOVE_LABEL] : motion),
+        ? (CAMERA_MOVE_LABEL_EN[motion] ?? motion)
+        : (CAMERA_MOVE_LABEL[motion] ?? motion),
     }
   })
 }
@@ -93,7 +86,10 @@ export function DirectorViewShell({ scopeRef, placement, boxDraw, cancelCreation
         <WorkbenchIconButton size="sm" icon={<IconArrowBackUp size={16} stroke={1.9} />} label={t('director.view.undo')} disabled={!canUndo} onClick={undo} />
         <WorkbenchIconButton size="sm" icon={<IconArrowForwardUp size={16} stroke={1.9} />} label={t('director.view.redo')} disabled={!canRedo} onClick={redo} />
       </div>
-      <button type="button" className="pointer-events-auto rounded-nomi-lg border border-nomi-accent bg-nomi-accent px-3 py-2 text-body-sm font-semibold text-white shadow-nomi-md disabled:cursor-not-allowed disabled:opacity-60" disabled onClick={onProduce} title={t('director.view.producePlaceholder')} data-testid="director-produce-placeholder">{t('director.view.produce')} <IconChevronDown size={15} stroke={2} aria-hidden="true" /></button>
+      <div className="pointer-events-auto inline-flex shrink-0 rounded-nomi-lg border border-nomi-accent bg-nomi-accent text-body-sm font-semibold text-white shadow-nomi-md disabled:cursor-not-allowed disabled:opacity-60" role="group" aria-label={t('director.view.produce')} data-testid="director-produce-placeholder" title={t('director.view.producePlaceholder')}>
+        <button type="button" className="min-w-0 whitespace-nowrap px-3 py-2" disabled onClick={onProduce}>{t('director.view.produce')}</button>
+        <button type="button" className="grid shrink-0 place-items-center border-l border-white/25 px-2" disabled aria-label={t('director.view.produceMenu')}><IconChevronDown size={15} stroke={2} aria-hidden="true" /></button>
+      </div>
     </div>
     <div className="relative min-h-0 flex-1">
       <DirectorViewport theme={theme} viewSettings={viewSettings} scopeRef={scopeRef} placement={placement} boxDraw={boxDraw} cancelCreationRef={cancelCreationRef} showAiSceneBar={false} />

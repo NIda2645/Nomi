@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron"; import { director3dBoxProof } from "./shared/featureFlags/director3dbox";
+import { app, BrowserWindow, dialog, ipcMain, protocol, session, shell } from "electron";
+import { director3dBoxProof } from "./shared/featureFlags/director3dbox";
 import { startCatalogReconciliation } from "./ai/onboarding/vendorHealth";
 import type { Rectangle, WebContents } from "electron";
 import path from "node:path";
@@ -52,7 +53,7 @@ import { registerLocalProtocol } from "./protocol/localProtocol";
 import { installMainWindowInteractions } from "./mainWindowInteractions";
 import { getMainWindow, setMainWindow } from "./appWindowRegistry";
 import { createMainWindowGuard } from "./mainWindowPresence";
-import { assertTrustedSender, assertTrustedUiSender } from "./ipcSenderGuard";
+import { assertTrustedBootstrapSender, assertTrustedSender, assertTrustedUiSender } from "./ipcSenderGuard";
 import { registerDirectorMobileIpc } from "./director/mobileBridgeIpc";
 import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
 import { registerVideoIpc } from "./video/videoIpc";
@@ -375,7 +376,25 @@ function registerSyncIpc<TArgs extends unknown[], TResult>(
 ): void {
   ipcMain.on(channel, (event, ...args: TArgs) => {
     try {
-      assertTrustedSender(event); event.returnValue = { ok: true, value: handler(...args) };
+      assertTrustedSender(event);
+      event.returnValue = { ok: true, value: handler(...args) };
+    } catch (error) {
+      event.returnValue = {
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      };
+    }
+  });
+}
+
+function registerBootstrapSyncIpc<TArgs extends unknown[], TResult>(
+  channel: string,
+  handler: (...args: TArgs) => TResult,
+): void {
+  ipcMain.on(channel, (event, ...args: TArgs) => {
+    try {
+      assertTrustedBootstrapSender(event);
+      event.returnValue = { ok: true, value: handler(...args) };
     } catch (error) {
       event.returnValue = {
         ok: false,
@@ -385,7 +404,14 @@ function registerSyncIpc<TArgs extends unknown[], TResult>(
   });
 }
 function registerIpc(): void {
-  const flag = director3dBoxProof(); registerSyncIpc("nomi:feature-flags:director3dbox", () => flag); logInfo("main", "director3dbox-resolved", { enabled: flag.enabled, source: flag.source, fingerprint: flag.fingerprint, expiresOn: flag.expiresOn });
+  const flag = director3dBoxProof();
+  registerBootstrapSyncIpc("nomi:feature-flags:director3dbox", () => flag);
+  logInfo("main", "director3dbox-resolved", {
+    enabled: flag.enabled,
+    source: flag.source,
+    fingerprint: flag.fingerprint,
+    expiresOn: flag.expiresOn,
+  });
   const selectedWorkspaceRoots = new Set<string>();
   // Static app-main Surface authority: registered before createWindow and
   // independent from the delayed/optional external capability core.
