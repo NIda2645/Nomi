@@ -124,7 +124,7 @@ function createPlan(input: Extract<DirectorWriteInput, { operation: 'create_dire
     position,
     meta: {
       [DIRECTOR_PROJECT_META_KEY]: compiled.project,
-      [DIRECTOR_PLAN_META_KEY]: { plan, revision },
+      [DIRECTOR_PLAN_META_KEY]: { plan, revision, issueCount: compiled.issues.length },
       ...(preview ? { [DIRECTOR_PREVIEW_META_KEY]: preview } : {}),
     },
   }]))
@@ -172,7 +172,7 @@ function patchPlan(input: Extract<DirectorWriteInput, { operation: 'patch_direct
     const fresh = store.nodes.find((candidate) => candidate.id === directorNodeId)
     const meta: Record<string, unknown> = { ...(fresh?.meta ?? node.meta ?? {}) }
     if (!mounted) meta[DIRECTOR_PROJECT_META_KEY] = compiled.project
-    meta[DIRECTOR_PLAN_META_KEY] = { plan: patched.plan, revision }
+    meta[DIRECTOR_PLAN_META_KEY] = { plan: patched.plan, revision, issueCount: compiled.issues.length }
     if (preview) meta[DIRECTOR_PREVIEW_META_KEY] = preview
     else delete meta[DIRECTOR_PREVIEW_META_KEY]
     store.updateNode(directorNodeId, { meta })

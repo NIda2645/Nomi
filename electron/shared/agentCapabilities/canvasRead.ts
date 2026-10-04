@@ -3,6 +3,7 @@ import { taskReferenceSchema } from './taskReference';
 import { resolveShotIdentities } from "../canvas/shotNumbering";
 import { generationNodeStatusSchema, parseGenerationNodeStatus } from "../canvas/generationNodeStatus";
 import type { CapabilityContract } from "./capabilityContract";
+import { director3dBoxFaceEnabled } from "../featureFlags/director3dboxFace";
 
 const URI_SCHEME_RESULT_ID = /^[a-z][a-z0-9+.-]*:/i;
 const trimmedNonEmptyStringSchema = z.string().trim().min(1);
@@ -57,6 +58,22 @@ const canvasReadNodeSchema = z
      * 修复前这份投影**一个模型字段都不返回**：写路径又不校验模型键，于是外部宿主写错一个
      * modelKey，既拦不住也读不回来——错误完全不可观测。
      */
+    /**
+     * 3D-BOX 节点（开关开的构建才有）：补丁要用的修订号与名字。完整计划在每次 `stage_shot` 的结果里，
+     * 这里只放一行能装下的东西——整张画布共用一份摘要预算，不让一个预演挤掉别的节点。
+     */
+    director: z
+      .object({
+        revision: trimmedNonEmptyStringSchema,
+        shots: z.array(z.string()).max(64),
+        actors: z.array(z.string()).max(64),
+        setPieces: z.array(z.string()).max(64),
+        issueCount: z.number().int().nonnegative(),
+        preview: z.enum(["none", "rendering", "ready", "failed"]),
+        previewTargetNodeId: trimmedNonEmptyStringSchema.optional(),
+      })
+      .strict()
+      .optional(),
     model: z
       .object({
         modelKey: trimmedNonEmptyStringSchema,
@@ -240,6 +257,39 @@ function projectNodeModel(meta: UnknownRecord | undefined): CanvasReadNode["mode
   };
 }
 
+function namesOf(value: unknown, key: "id"): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item) => {
+    const name = nonEmptyString(asRecord(item)?.[key]);
+    return name ? [name] : [];
+  }).slice(0, 64);
+}
+
+/**
+ * 3D-BOX 节点摘要。读的键与写的键同一组（导演节点 meta 的 `directorPlan` / `directorPreview`，
+ * 写者是 `stage_shot` 的渲染端执行体）。开关关的构建一个字不多。
+ */
+function projectDirectorBox(meta: UnknownRecord | undefined): CanvasReadNode["director"] | undefined {
+  if (!director3dBoxFaceEnabled()) return undefined;
+  const planMeta = asRecord(meta?.directorPlan);
+  const revision = nonEmptyString(planMeta?.revision);
+  const plan = asRecord(planMeta?.plan);
+  if (!revision || !plan) return undefined;
+  const preview = asRecord(meta?.directorPreview);
+  const status = preview?.status;
+  const target = nonEmptyString(preview?.targetNodeId);
+  const issueCount = finiteNumber(planMeta?.issueCount);
+  return {
+    revision,
+    shots: namesOf(plan.shots, "id"),
+    actors: namesOf(plan.actors, "id"),
+    setPieces: namesOf(asRecord(plan.scene)?.setPieces, "id"),
+    issueCount: issueCount !== undefined && issueCount >= 0 ? Math.floor(issueCount) : 0,
+    preview: status === "rendering" || status === "ready" || status === "failed" ? status : "none",
+    ...(target ? { previewTargetNodeId: target } : {}),
+  };
+}
+
 function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefined {
   const node = asRecord(value);
   const id = nonEmptyString(node?.id);
@@ -262,6 +312,7 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
   const prompt = typeof node.prompt === "string" ? node.prompt : "";
   const runId = nonEmptyString(asRecord(node.meta)?.productionRunId);
   const model = projectNodeModel(asRecord(node.meta));
+  const director = kind === "director" ? projectDirectorBox(asRecord(node.meta)) : undefined;
 
   return {
     id,
@@ -276,6 +327,7 @@ function projectNode(value: unknown, seen: Set<string>): CanvasReadNode | undefi
     ...(resultIds.length ? { resultIds } : {}),
     ...(runId ? { taskRef: { domain: 'generation' as const, jobId: runId } } : {}),
     ...(model ? { model } : {}),
+    ...(director ? { director } : {}),
   };
 }
 
