@@ -162,6 +162,41 @@ export type ToolbarMenuItem = {
   onClick: () => void
 }
 
+/**
+ * 分组下拉的**触发钮**（图标 + 字 + ▾）。单独导出，是因为下拉的「壳」有两种（这里的手写 `ToolbarMenu`、
+ * 快捷动作那几颗走 `WorkbenchMenu` 的 `ToolbarActionMenu` / 走 `AnchoredPopover` 的宫格点阵），
+ * 但浮条上的钮只能长一个样——外观定义只留这一份。
+ */
+export const ToolbarMenuTrigger = React.forwardRef<HTMLButtonElement, {
+  icon: React.ReactNode
+  label: string
+  open: boolean
+  disabled?: boolean
+  haspopup?: 'menu' | 'dialog'
+  onClick: () => void
+  onPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void
+  dataAttributes?: Record<`data-${string}`, string>
+}>(function ToolbarMenuTrigger({ icon, label, open, disabled, haspopup = 'menu', onClick, onPointerDown, dataAttributes }, ref) {
+  return (
+    <button
+      ref={ref}
+      type="button"
+      className={cn(buttonBase, 'gap-1 px-3', variantClass(false), open && 'bg-nomi-ink-05 text-nomi-ink')}
+      aria-haspopup={haspopup}
+      aria-expanded={open}
+      aria-label={label}
+      disabled={disabled}
+      onClick={onClick}
+      onPointerDown={onPointerDown}
+      {...dataAttributes}
+    >
+      {icon}
+      <span>{label}</span>
+      <IconChevronDown size={13} stroke={1.6} aria-hidden />
+    </button>
+  )
+})
+
 /** 分组下拉（裁切▾ / 变换▾ / 抽帧▾ / 拆解▾）：把低频同类动作收一处。向上展开（工具栏在节点上方，不挡节点），自带点外关闭。 */
 export function ToolbarMenu({ icon, label, items, disabled }: { icon: React.ReactNode; label: string; items: ToolbarMenuItem[]; disabled?: boolean }): JSX.Element {
   const [open, setOpen] = React.useState(false)
@@ -178,19 +213,7 @@ export function ToolbarMenu({ icon, label, items, disabled }: { icon: React.Reac
   }, [open])
   return (
     <div ref={ref} className="relative inline-flex">
-      <button
-        type="button"
-        className={cn(buttonBase, 'gap-1 px-3', variantClass(false), open && 'bg-nomi-ink-05 text-nomi-ink')}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label={label}
-        disabled={disabled}
-        onClick={() => setOpen((value) => !value)}
-      >
-        {icon}
-        <span>{label}</span>
-        <IconChevronDown size={13} stroke={1.6} aria-hidden />
-      </button>
+      <ToolbarMenuTrigger icon={icon} label={label} open={open} disabled={disabled} onClick={() => setOpen((value) => !value)} />
       {open ? (
         <div
           className={cn(

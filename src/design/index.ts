@@ -33,6 +33,7 @@ export type {
   WorkbenchMenuAction,
   WorkbenchMenuCheckbox,
   WorkbenchMenuGroup,
+  WorkbenchMenuNote,
   WorkbenchMenuIcon,
   WorkbenchMenuNode,
   WorkbenchMenuProps,
@@ -51,7 +52,7 @@ export { BodyPortal } from './portal'
 export { AnchoredPopover } from './AnchoredPopover'
 export type { AnchoredPopoverProps } from './AnchoredPopover'
 export { resolveAnchoredPopoverPlacement } from './anchoredPopoverPlacement'
-export type { AnchoredPopoverAlign } from './anchoredPopoverPlacement'
+export type { AnchoredPopoverAlign, AnchoredPopoverSide } from './anchoredPopoverPlacement'
 export { hasOpenDialogAbove, hasOpenPopupAbove, isInsidePopupAbove, NOMI_OVERLAY_Z_INDEX } from './overlayLayers'
 export { useOverlayEscape } from './useOverlayEscape'
 export { nomiDesignTokens } from './tokens'

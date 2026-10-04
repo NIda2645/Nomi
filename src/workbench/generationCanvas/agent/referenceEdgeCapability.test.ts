@@ -374,3 +374,34 @@ describe('connectionCreateKindsForSource — 从「+」圈拖到空白处能接�
     }
   })
 })
+
+import { connectionCreateVerdictsForSource } from './referenceEdgeCapability'
+
+describe('connectionCreateVerdictsForSource — 接不上的要说原因（2026-10-04「用这个节点生成…」）', () => {
+  const ALL = ['image', 'video', 'text', 'audio'] as const
+
+  it('与 connectionCreateKindsForSource 同一份判据：放行的种类逐一相等', () => {
+    for (const kind of GENERATION_NODE_KINDS) {
+      const source = node(`s-${kind}`, kind)
+      const allowed = connectionCreateVerdictsForSource(source, ['image', 'video'] as const).filter((v) => v.ok).map((v) => v.kind)
+      expect(allowed, kind).toEqual(connectionCreateKindsForSource(source))
+    }
+  })
+
+  it('图片源接不出文本节点时给出「没有模型收」的原因，而不是从菜单里消失', () => {
+    const verdicts = connectionCreateVerdictsForSource(node('i', 'image'), ALL)
+    expect(verdicts.map((v) => v.kind)).toEqual([...ALL])
+    const text = verdicts.find((v) => v.kind === 'text')
+    expect(text).toMatchObject({ ok: false, reason: 'no_model_accepts', asset: 'image' })
+  })
+
+  it('不产可参考素材的源：原因是源本身，而不是目标', () => {
+    for (const kind of GENERATION_NODE_KINDS) {
+      const source = node(`s-${kind}`, kind)
+      if (kind === 'text' || referenceAssetKindForNode(source)) continue
+      for (const verdict of connectionCreateVerdictsForSource(source, ALL)) {
+        expect(verdict, `${kind}→${verdict.kind}`).toMatchObject({ ok: false, reason: 'source_not_referenceable' })
+      }
+    }
+  })
+})

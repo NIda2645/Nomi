@@ -47,6 +47,13 @@ type NodeContextMenuProps = {
   /** 少于两个选中项 → 建组禁用并说明为什么。 */
   canGroup: boolean
   onAction: (action: NodeContextMenuAction) => void
+  /**
+   * 「复制为变体」：复制这个节点和它的**上游连线**（不带结果），一个撤销点——就是浮条上那颗
+   * 同名图标钮的同一个动作（store 的 `duplicateNodeForRegeneration`），这里只是它的第二个发现入口
+   * （§1.5.2：菜单是发现入口，不是第二份实现）。宿主给了回调才出这一项（同 `NodeAddMenu` 的
+   * `onImportFiles`）；2026-10-04 样张阶段生产宿主还没给。
+   */
+  onDuplicateVariant?: () => void
   onClose: () => void
   /**
    * 菜单里的 pointerdown 要不要往上冒。画布宿主在 `window` 上挂了「点外面就关菜单」，
@@ -62,6 +69,7 @@ export default function NodeContextMenu({
   canPaste,
   canGroup,
   onAction,
+  onDuplicateVariant,
   onClose,
   onPointerDown,
 }: NodeContextMenuProps): JSX.Element {
@@ -80,6 +88,15 @@ export default function NodeContextMenu({
       disabledReason: t('canvas.nodeMenuPasteEmpty'),
       onSelect: () => onAction('paste'),
     },
+    ...(onDuplicateVariant
+      ? [{
+          id: 'duplicate-variant',
+          label: t('generationCommon.node.duplicateVariant'),
+          description: t('generationCommon.quickActions.duplicateVariantHint'),
+          icon: IconCopy,
+          onSelect: onDuplicateVariant,
+        }]
+      : []),
     {
       id: 'group',
       label: t('canvas.nodeMenuGroup'),

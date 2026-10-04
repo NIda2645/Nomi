@@ -14,7 +14,7 @@
 // 跨「所有模式」union 校验(非当前模式):拒的是「这个模型根本不吃这类参考」的硬错(用户两例),
 // 不拒「模型支持但当前选错模式」的软错(那个由 availableModels 喂能力给 agent + 用户在计划卡
 // 改模式兜)——避免误伤可恢复的模式选择问题。目标未声明档案(未知/未设模型)一律放行(P4 通用回退)。
-import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode } from '../model/generationCanvasTypes'
+import type { GenerationCanvasEdge, GenerationCanvasEdgeMode, GenerationCanvasNode, GenerationNodeKind } from '../model/generationCanvasTypes'
 import { getGenerationNodeDefinition, getGenerationNodeExecutionKind } from '../model/generationNodeKinds'
 import type { ArchetypeMode, ArchetypeReferenceSlotKind, ModelArchetype } from '../../../../electron/shared/modelArchetypes'
 import { MODEL_ARCHETYPES, resolveArchetypeForModel } from '../../../../electron/shared/modelArchetypes'
@@ -191,13 +191,35 @@ export function connectionCreateKindsForSources(sources: readonly GenerationCanv
 }
 
 export function connectionCreateKindsForSource(source: GenerationCanvasNode): ConnectionCreateKind[] {
+  return connectionCreateVerdictsForSource(source, CONNECTION_CREATE_KINDS)
+    .filter((verdict) => verdict.ok)
+    .map((verdict) => verdict.kind)
+}
+
+/** 为什么接不上：源根本不产可参考的素材 / 这一类节点没有任何模型收这种素材。 */
+export type ConnectionCreateBlockReason = 'source_not_referenceable' | 'no_model_accepts'
+
+export type ConnectionCreateVerdict<K extends GenerationNodeKind = GenerationNodeKind> =
+  | { kind: K; ok: true }
+  | { kind: K; ok: false; reason: ConnectionCreateBlockReason; asset: ReferenceAssetKind | null }
+
+/**
+ * 「从这个源能新建并接上哪一类节点」的**带原因**判据（2026-10-04 节点「用这个节点生成…」菜单：
+ * 接不上的要灰掉并说原因，不是藏起来）。上面的 `connectionCreateKindsForSource` 由它派生——
+ * 两个入口（拖线松手 / 点「+」）问的是同一个问题，判据只能有一份。
+ */
+export function connectionCreateVerdictsForSource<K extends GenerationNodeKind>(
+  source: GenerationCanvasNode,
+  kinds: readonly K[],
+): ConnectionCreateVerdict<K>[] {
   const asset = referenceAssetKindForNode(source)
-  return CONNECTION_CREATE_KINDS.filter((kind) => {
-    if (isTextPromptEdge(source, { ...source, kind })) return true
-    if (!asset) return false
-    return MODEL_ARCHETYPES.some((archetype) =>
+  return kinds.map((kind): ConnectionCreateVerdict<K> => {
+    if (isTextPromptEdge(source, { ...source, kind })) return { kind, ok: true }
+    if (!asset) return { kind, ok: false, reason: 'source_not_referenceable', asset }
+    const accepted = MODEL_ARCHETYPES.some((archetype) =>
       archetype.kind === kind && archetype.modes.some((mode) => mode.slots.some((slot) => SLOT_ACCEPTS[slot.kind].includes(asset))),
     )
+    return accepted ? { kind, ok: true } : { kind, ok: false, reason: 'no_model_accepts', asset }
   })
 }
 

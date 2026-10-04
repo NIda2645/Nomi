@@ -73,4 +73,6 @@
 ## 6. 本轮做了什么 / 没做什么
 
 - 做了：本卡；`WorkbenchMenu` / `AnchoredPopover` 的通用扩展；`connectionCreateVerdictsForSource`（判据带原因，旧函数改为由它派生）；`quickActions/` 下的派生规划纯函数与派发口接口、价格标签、浮条组件、宫格点阵、「用这个节点生成…」菜单；右键菜单「复制为变体」项（宿主不传回调就不出现，生产宿主本轮未传）；实验室屏 `node-quick-actions`。
+- 顺手修的原语缺陷：`WorkbenchMenu` 的分段 / 单选组盒子不是 grid，项（`inline-flex`）在组里横排，面板被撑到 500+ px（生产里还没有用分段的菜单，所以之前没暴露）。
+- 本地门岗：typecheck ✓、改动文件 eslint 0 警告、filesize ✓、i18n 四道 ✓、tokens ✓（GridSplitPicker 原先两处 `justify-between` 已改成内容流）、icon-semantics ✓、controls ✓、self-written ✓、test-waits ✓、walkthroughs ✓；concept-owners 剩 36 处 `unregistered-boundary`，全部来自 `docs/fixes/*.root-cause.json`，与本改动无关（main 原有）。`check:design-lab` 与 `design-lab-node-quick-actions.walk.mjs` 在 Windows 上起不来（ESM 盘符路径 / `spawn npx` ENOENT，仓库已知的 Windows 门岗问题），截图改用同一 URL 约定的本地 Playwright 脚本出，`unverified` 于 macOS 门岗。
 - 没做：接任何真实入口；新效果条目（多机位九宫格 / 下一刻 / 前一刻 / 剧情四宫格，以及按 10 条写法补强现有条目）；宫格切分 `{rows, cols}` 落到切割框；派发口实现；Agent 工具。

@@ -232,6 +232,7 @@
     "design-lab:walk:settings": "python3 scripts/with-gates-lock.py -- node ./tests/ux/design-lab-settings.walk.mjs",
     "design-lab:walk:canvas-frame": "python3 scripts/with-gates-lock.py -- node ./tests/ux/design-lab-canvas-frame.walk.mjs",
     "design-lab:walk:node-composer-bar": "python3 scripts/with-gates-lock.py -- node ./tests/ux/design-lab-node-composer-bar.walk.mjs",
+    "design-lab:walk:node-quick-actions": "python3 scripts/with-gates-lock.py -- node ./tests/ux/design-lab-node-quick-actions.walk.mjs",
     "design-lab:walk:depth-action": "python3 scripts/with-gates-lock.py -- node ./tests/ux/design-lab-depth-action.walk.mjs",
     "check:skills-format": "node --test ./scripts/check-skills-format.node-test.mjs && node ./scripts/check-skills-format.mjs",
     "check:gates-lock": "node --test scripts/with-gates-lock.node-test.mjs",
