@@ -103,7 +103,7 @@
     {
       "id": "P5",
       "aliases": [],
-      "rule": "想清楚再动手：碰花钱 / 长跑 / 可打断 / 新界面先写设计卡；UI 改动先读设计系统、出样张、用户拍板；重要改动动手前先 grill 一轮（每题带默认答案、连带面单独成题），纯 bug 修复不问。",
+      "rule": "想清楚再动手：碰花钱 / 长跑 / 可打断 / 新界面先写设计卡；新增或改动用户可见界面，拍板样张必须是设计实验室用生产组件 + 真实宿主数据（ShellStage 手法）搭出的屏，拍板后生产代码就是它；手写 HTML / 交互 widget 只准标 exploration 做方向探索，不能作实现合同；新组件先写生产目录本体，实验室只给数据；重要改动动手前先 grill 一轮（每题带默认答案、连带面单独成题），纯 bug 修复不问。",
       "disease": "没想清楚就写，返工与连带面漏掉",
       "enforcement": [
         "template:docs/engineering/design-card.md",
@@ -175,7 +175,7 @@
     {
       "id": "R8",
       "aliases": [],
-      "rule": "用户可见改动先出可体验样张并拍板，实现后逐项对账；样张带 data-* 挂点与异常态，拍板后产契约。",
+      "rule": "用户可见改动先出设计实验室样张并拍板：屏由生产组件 + 真实宿主数据（ShellStage 手法）渲染；实现后用整张对账表逐区域核对，每个 data-mockup-region 都有一致 / 差异+原因 / 推迟阶段的一行；手写 HTML / 交互 widget 只可标 exploration，不能作实现合同；拍板后生产代码就是实验室屏。",
       "disease": "实现与获批样张不一致",
       "enforcement": [
         "gate:check:mockup-contracts",
