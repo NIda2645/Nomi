@@ -23,9 +23,8 @@ import type { DirectorE2EBridge } from '../../../workbench/generationCanvas/node
 import { assistantPaneWidth } from '../../../workbench/assistantWidthBounds'
 import { S1_ORACLE_PLANS } from '../../../../evals/director/s1OraclePlans'
 import { ShellStage, labHostState } from '../v4/agentPanelV4LabHost'
-import { RefineLayoutContext } from '../../../workbench/generationCanvas/nodes/director/panels/refineLayoutPreview'
 import { useWorkbenchStore } from '../../../workbench/workbenchStore'
-import type { Director3dBoxFixture, LabDrive, LabRefineLayout, LabStep } from './director3dboxCell'
+import type { Director3dBoxFixture, LabDrive, LabStep } from './director3dboxCell'
 /** 右侧 Agent 面板宽：与 v4 实验室同一取值，导演视图占的画布宽因此与真机 1280 窗口一致（≈858）。 */
 const AGENT_PANEL_WIDTH = 390
 
@@ -165,14 +164,13 @@ export type Director3dBoxStageProps = {
   drive?: LabDrive
   /** 精修「选中才出」格在 drive 之后要点的真按钮 */
   steps?: readonly LabStep[]
-  layout?: LabRefineLayout
   flag?: 'on' | 'off'
   /** Agent 面板宽：缺省 390（壳 858）；窄格给 520，把壳压到 728（真机最小窗 1100 × 默认 Agent 时的壳宽） */
   agentWidth?: number
   release: () => void
 }
 
-export function Director3dBoxStage({ locale, fixture, drive = 'none', steps = NO_STEPS, layout = 'docked-cards', flag = 'on', agentWidth = AGENT_PANEL_WIDTH, release }: Director3dBoxStageProps): JSX.Element {
+export function Director3dBoxStage({ locale, fixture, drive = 'none', steps = NO_STEPS, flag = 'on', agentWidth = AGENT_PANEL_WIDTH, release }: Director3dBoxStageProps): JSX.Element {
   React.useMemo(() => {
     installReadOnlyBridge(flag)
     // 导演台壳的右缘读工作台 store 的 Agent 宽（真机同一个值），实验室把它设成这一格要的宽
@@ -197,9 +195,7 @@ export function Director3dBoxStage({ locale, fixture, drive = 'none', steps = NO
   const noop = React.useCallback(() => undefined, [])
   return (
     <>
-      <RefineLayoutContext.Provider value={layout}>
-        <DirectorEditor rawProject={project ?? undefined} nodeTitle={title} readOnly onClose={noop} onProjectChange={noop} />
-      </RefineLayoutContext.Provider>
+      <DirectorEditor rawProject={project ?? undefined} nodeTitle={title} readOnly onClose={noop} onProjectChange={noop} />
       <div className="fixed inset-y-0 right-0 bg-nomi-bg p-4" style={{ width: assistantPaneWidth(agentWidth) }}>
         <ShellStage surface="generation" snapshot={labHostState({ items: [] })} width={agentWidth} height={window.innerHeight - assistantPaneWidth(0)} />
       </div>

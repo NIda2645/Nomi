@@ -5,7 +5,7 @@
 import React, { type JSX } from 'react'
 import type { AppLocale } from '../../../i18n'
 import { holdDesignLabReady } from '../labReadyHold'
-import type { Director3dBoxFixture, LabDrive, LabRefineLayout, LabStep } from './director3dboxCell'
+import type { Director3dBoxFixture, LabDrive, LabStep } from './director3dboxCell'
 
 const Stage = React.lazy(() => import('./director3dboxLabKit').then((module) => ({ default: module.Director3dBoxStage })))
 
@@ -14,7 +14,6 @@ export type Director3dBoxLazyStageProps = {
   fixture: Director3dBoxFixture
   drive?: LabDrive
   steps?: readonly LabStep[]
-  layout?: LabRefineLayout
   flag?: 'on' | 'off'
   agentWidth?: number
 }

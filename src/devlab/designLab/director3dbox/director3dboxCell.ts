@@ -23,5 +23,3 @@ export type LabStep =
   | { clickText: { selector: string; text: string } }
   | { press: 'Escape' }
 
-/** 精修布局：缺省 = 现役（右栏双卡）；'select-to-show' = 2026-10-04 拍板的方向 A，只经样张期接缝出现。 */
-export type LabRefineLayout = 'docked-cards' | 'select-to-show'
