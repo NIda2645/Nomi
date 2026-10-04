@@ -474,7 +474,7 @@ export function scoreCard(
   const p = spatial ? SPATIAL_CRITERIA.filter((criterion) => !violations.some((item) => item.criterion === criterion)).length / SPATIAL_CRITERIA.length : null
   for (const criterion of SPATIAL_CRITERIA) {
     const hits = violations.filter((item) => item.criterion === criterion)
-    if (hits.length) reasons.push(`物理 ${criterion} ×${hits.length}：${hits.slice(0, 2).map((item) => item.message).join('；')}`)
+    if (hits.length) reasons.push(`物理 ${criterion} ×${hits.length}：${hits.slice(0, 2).map((item) => [item.subject, item.other, item.value === undefined ? undefined : item.value.toFixed(2)].filter(Boolean).join(' / ')).join('；')}`)
   }
   const total = l0 === 0 ? 0 : weightedTotal({ L1: l1, L2: l2, L3: l3, L4: l4, P: p }, reasons)
   return {

@@ -12,7 +12,8 @@ import { evaluateEntityTransform } from './trajectoryEval'
 
 export const SPATIAL_CRITERIA = ['floating', 'interpenetrating', 'offFloor', 'cameraInside', 'occluded', 'carriedDrift'] as const
 export type SpatialCriterion = (typeof SPATIAL_CRITERIA)[number]
-export type SpatialViolation = { criterion: SpatialCriterion; message: string }
+/** 违例码 + 结构化字段（实体 id、数值）；人话由评测报告那一层拼，这里不放可见文字。 */
+export type SpatialViolation = { criterion: SpatialCriterion; subject: string; other?: string; value?: number }
 
 /** 计划层面的信息（哪个镜头拍谁、谁拿着什么）；没有计划的工程只量不依赖它的几条。 */
 export type SpatialAuditContext = {
@@ -73,7 +74,7 @@ function floating(scene: DirectorScene): SpatialViolation[] {
     const box = boxes.get(object.id)
     if (!box || object.parentId || box.min.y <= EPS) continue
     const resting = [...boxes].some(([otherId, other]) => otherId !== object.id && Math.abs(other.max.y - box.min.y) <= EPS && xzOverlap(box, other))
-    if (!resting) out.push({ criterion: 'floating', message: `${object.name} 悬空 ${box.min.y.toFixed(2)}m` })
+    if (!resting) out.push({ criterion: 'floating', subject: object.id, value: box.min.y })
   }
   return out
 }
@@ -94,7 +95,7 @@ function interpenetrating(scene: DirectorScene, carried: Set<string>): SpatialVi
         const key = [a, b].sort().join(' x ')
         if (!seen.has(key) && overlapDepth(boxes.get(a)!, boxes.get(b)!) > EPS) {
           seen.add(key)
-          out.push({ criterion: 'interpenetrating', message: `${key} 互穿` })
+          out.push({ criterion: 'interpenetrating', subject: a, other: b })
         }
       }
   }
@@ -111,7 +112,7 @@ function offFloor(scene: DirectorScene): SpatialViolation[] {
     if (!box || walkable(box) || object.parentId) continue
     // 陷进可行走面的深度：面顶高出脚底多少（只看 30cm 以内，更深的是别的问题）
     const sink = Math.max(0, ...floors.filter(([id, floor]) => id !== object.id && xzOverlap(box, floor)).map(([, floor]) => floor.max.y - box.min.y).filter((depth) => depth <= WALKABLE_MAX_THICKNESS))
-    if (sink > EPS) out.push({ criterion: 'offFloor', message: `${object.name} 陷进地面 ${sink.toFixed(2)}m` })
+    if (sink > EPS) out.push({ criterion: 'offFloor', subject: object.id, value: sink })
   }
   return out
 }
@@ -130,7 +131,7 @@ function cameraInside(scene: DirectorScene): SpatialViolation[] {
         const key = `${camera.id}>${object.id}`
         if (box && !seen.has(key) && contains(box, p)) {
           seen.add(key)
-          out.push({ criterion: 'cameraInside', message: `机位 ${camera.name ?? camera.id} 在 ${object.name} 里` })
+          out.push({ criterion: 'cameraInside', subject: camera.id, other: object.id })
         }
       }
     }
@@ -179,7 +180,7 @@ function occluded(scene: DirectorScene, context: SpatialAuditContext, carried: S
         const key = `${shot.cameraId}|${object.id}`
         if (!seen.has(key) && segmentHitsBox(from, to, box)) {
           seen.add(key)
-          out.push({ criterion: 'occluded', message: `${shot.cameraId} 的主体被 ${object.name} 挡住` })
+          out.push({ criterion: 'occluded', subject: shot.cameraId, other: object.id })
         }
       }
     }
@@ -201,7 +202,7 @@ function carriedDrift(scene: DirectorScene, pairs: [string, string][]): SpatialV
       return Math.hypot(p.x - q.x, p.z - q.z)
     }
     const drift = Math.max(...times.map((t) => Math.abs(gap(t) - gap(0))))
-    if (drift > EPS) out.push({ criterion: 'carriedDrift', message: `${item.name} 没跟着 ${holder.name} 走，落下 ${drift.toFixed(2)}m` })
+    if (drift > EPS) out.push({ criterion: 'carriedDrift', subject: item.id, other: holder.id, value: drift })
   }
   return out
 }

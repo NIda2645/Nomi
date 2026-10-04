@@ -175,7 +175,7 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
 
   it('违例总账（棘轮：修好一类就把对应数字改小）', () => {
     const ledger = { cases: corpus.length, ...Object.fromEntries(SPATIAL_CRITERIA.map((criterion) => [criterion, [count(criterion), casesWith(criterion)]])) }
-    if (process.env.DIRECTOR_INVARIANT_DUMP) console.log(JSON.stringify({ ledger, results: results.filter((r) => r.violations.length).map((r) => ({ id: r.id, violations: r.violations.map((v) => `${v.criterion}: ${v.message}`) })) }, null, 2))
+    if (process.env.DIRECTOR_INVARIANT_DUMP) console.log(JSON.stringify({ ledger, results: results.filter((r) => r.violations.length).map((r) => ({ id: r.id, violations: r.violations.map((v) => `${v.criterion}: ${v.subject} ${v.other ?? ''} ${v.value ?? ''}`) })) }, null, 2))
     expect(ledger).toEqual(LEDGER)
   })
 })
