@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import regressionPlans from './directorPlanCompiler.regressions.json'
 import { compileDirectorPlan } from './directorPlanCompiler'
 import {
   measureContinuity,
@@ -133,7 +134,7 @@ describe('S1 director compiler', () => {
     expect(result.ok).toBe(true)
     if (!result.ok) return
     const woman = result.project.scenes[0].objects.find((object) => object.id === result.actorMap.woman)!
-    expect(woman.actionClips?.map((clip) => clip.actionPose)).toEqual(['standard_walk', 'standing_idle'])
+    expect([...new Set(woman.actionClips?.map((clip) => clip.actionPose))]).toEqual(['standard_walk', 'standing_idle'])
     expect(woman.actionClips?.some((clip) => clip.actionPose === 'hide_object_behind_back')).toBe(false)
     expect(result.issues.some((issue) => issue.kind === 'missing_asset')).toBe(true)
   })
@@ -145,16 +146,42 @@ describe('S1 director compiler', () => {
       const scene = result.project.scenes[0]
       const measurements = sampleDirectorProject(result.project, { duration: result.duration, anchors: result.anchors })
       const continuity = measureContinuity(measurements, scene)
-      expect(continuity.some((issue) => issue.kind === 'teleport')).toBe(false)
+      expect(continuity).toEqual([])
       for (const actor of plan.actors.filter((item) => item.kind === 'person')) {
         const object = scene.objects.find((item) => item.id === result.actorMap[actor.id])
         expect(object?.actionClips?.some((clip) => clip.clipType === 'action' && clip.startTime <= 1e-4)).toBe(true)
       }
       if (plan.scene.template === 'product_stage') {
-        expect(scene.objects.some((object) => object.id === 's1-product-ground')).toBe(true)
+        expect(scene.objects.find((object) => object.id === 's1-product-ground')).toMatchObject({ visible: true, isAuxiliary: false })
         expect(continuity.some((issue) => issue.kind === 'camera-inside')).toBe(false)
       }
     }
+  })
+  it.each(regressionPlans)('replays R3 regression $source without L0 failures', ({ plan }) => {
+    const result = compileDirectorPlan(plan)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(measureContinuity(sampleDirectorProject(result.project, { duration: result.duration, anchors: result.anchors }), result.project.scenes[0])).toEqual([])
+  })
+  it('fills idle gaps and keeps adjacent movement clips continuous in playback', () => {
+    const plan = structuredClone(S1_ORACLE_PLANS['courtyard-standoff'])
+    plan.blocking = [
+      { actor: 'guard', verb: 'hold_pose', window: [0, 6], action: 'standing_idle' },
+      { actor: 'guard', verb: 'sidestep', window: [6, 7] },
+      { actor: 'guard', verb: 'hold_pose', window: [8, 10], action: 'standing_idle' },
+    ]
+    const result = compileDirectorPlan(plan)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const scene = result.project.scenes[0]
+    const frames = sampleDirectorProject(result.project, { duration: result.duration }).frames
+    const before = frames.find((frame) => frame.time === 6)!.objects[result.actorMap.guard].position
+    const after = frames.find((frame) => frame.time > 6)!.objects[result.actorMap.guard].position
+    expect(Math.hypot(after.x - before.x, after.z - before.z)).toBeLessThan(0.1)
+    for (const object of scene.objects.filter((item) => item.type === 'character')) {
+      for (const time of [0, 1, 6, 7.5, 11]) expect(object.actionClips?.some((clip) => clip.startTime <= time && clip.endTime >= time)).toBe(true)
+    }
+    expect(scene.objects.filter((object) => object.id.startsWith('s1-')).every((object) => !object.isAuxiliary)).toBe(true)
   })
   it('locks the camera pose convention to lookAtAngles', () => {
     const result = compileDirectorPlan(S1_ORACLE_PLANS['t1-13-static'])

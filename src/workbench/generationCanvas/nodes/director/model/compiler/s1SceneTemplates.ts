@@ -1,7 +1,7 @@
 import type { DirectorObject } from '../directorTypes'
 
 type Template = 'street' | 'room' | 'courtyard' | 'product_stage'
-const object = (id: string, name: string, type: DirectorObject['type'], position: { x: number; y: number; z: number }, scale: { x: number; y: number; z: number }, color = '#94a3b8'): DirectorObject => ({ id, name, type, position, rotation: { x: 0, y: 0, z: 0 }, scale, color, visible: true, locked: true, isAuxiliary: true })
+const object = (id: string, name: string, type: DirectorObject['type'], position: { x: number; y: number; z: number }, scale: { x: number; y: number; z: number }, color = '#94a3b8'): DirectorObject => ({ id, name, type, position, rotation: { x: 0, y: 0, z: 0 }, scale, color, visible: true, locked: true, isAuxiliary: false })
 const block = (id: string, name: string, position: { x: number; y: number; z: number }, scale: { x: number; y: number; z: number }, color?: string) => object(id, name, 'cube', position, scale, color)
 
 /** S1-only template adapter. Existing street/room builders remain untouched; these objects preserve their semantic layout. */

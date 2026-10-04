@@ -2,6 +2,8 @@ import { normalizeAiScene } from '../aiScene'
 import { createDefaultProject } from '../directorProject'
 import {
   distanceForShotSize,
+  OBJECT_GEOMETRY_SIZES,
+  OBJECT_ORIGIN_OFFSETS,
   measureContinuity,
   sampleDirectorProject,
   type AnchorSpec,
@@ -9,6 +11,7 @@ import {
   type ShotLadder,
 } from '../directorEvalMeasurement'
 import type { DirectorCamera, DirectorObject, DirectorProject, Vec3, Waypoint } from '../directorTypes'
+import { evaluateEntityTransform } from '../trajectoryEval'
 import { findActionEntry } from '../actionLibrary'
 import { lookAtAngles } from '../vec3'
 import {
@@ -57,19 +60,7 @@ function reflectAcrossAxis(point: Vec3, a: Vec3, b: Vec3): Vec3 {
   return v(2 * projection.x - point.x, point.y, 2 * projection.z - point.z)
 }
 function positionAt(object: DirectorObject, time: number): Vec3 {
-  const points = [...(object.motionTrajectory ?? [])].sort((a, b) => a.time - b.time)
-  if (!points.length || time <= points[0].time)
-    return points[0] ? v(points[0].x, points[0].y, points[0].z) : object.position
-  const last = points.at(-1)!
-  if (time >= last.time) return v(last.x, last.y, last.z)
-  const next = points.find((point) => point.time >= time)!,
-    previous = points[points.indexOf(next) - 1],
-    ratio = (time - previous.time) / Math.max(1e-6, next.time - previous.time)
-  return v(
-    previous.x + (next.x - previous.x) * ratio,
-    previous.y + (next.y - previous.y) * ratio,
-    previous.z + (next.z - previous.z) * ratio,
-  )
+  return evaluateEntityTransform(object, time).position
 }
 
 export type DirectorCompileIssue = {
@@ -192,7 +183,7 @@ function materializeDressing(plan: DirectorPlan): DirectorObject[] {
       flatShading: element.flatShading,
       visible: true,
       locked: true,
-      isAuxiliary: true,
+      isAuxiliary: false,
     })),
   )
 }
@@ -201,7 +192,6 @@ function applyBlocking(
   plan: DirectorPlan,
   objects: DirectorObject[],
   actorMap: Record<string, string>,
-  positions: Map<string, Vec3>,
   duration: number,
   issues: DirectorCompileIssue[],
 ): void {
@@ -210,12 +200,13 @@ function applyBlocking(
       ? objects.find(
           (o) =>
             o.id === actorMap[id] ||
+            o.id === `setPiece:${id}` ||
             o.id === id ||
             o.name.toLowerCase() === id.toLowerCase() ||
             o.name.toLowerCase().includes(id.toLowerCase()),
         )
       : undefined
-  for (const action of plan.blocking) {
+  for (const action of [...plan.blocking].sort((a, b) => a.window[0] - b.window[0])) {
     const actor = byPlanId(action.actor)
     if (!actor) continue
     const start = action.window[0],
@@ -247,8 +238,12 @@ function applyBlocking(
           action.verb === 'turn_to' && target ? (Math.atan2(to.x - from.x, to.z - from.z) * 180) / Math.PI : 0,
         ),
       )
-    actor.motionTrajectory = [...(actor.motionTrajectory ?? []), ...points].sort((a, b) => a.time - b.time)
-    actor.trajectoryClips = [...(actor.trajectoryClips ?? []), clip(`${actor.id}-${action.verb}-${start}`, start, end)]
+    const trajectoryClip = clip(`${actor.id}-${action.verb}-${start}`, start, end)
+    // Explicit ownership preserves the shared start waypoint of adjacent clips.
+    // Without it, playback assigns that point to the previous clip and jumps
+    // straight to the new clip's endpoint on the first frame after the cut.
+    actor.motionTrajectory = [...(actor.motionTrajectory ?? []), ...points.map((point) => ({ ...point, clipId: trajectoryClip.id }))].sort((a, b) => a.time - b.time)
+    actor.trajectoryClips = [...(actor.trajectoryClips ?? []), trajectoryClip]
     if (actor.type === 'character') {
       const chosen =
         action.action ??
@@ -285,37 +280,24 @@ function applyBlocking(
   }
 }
 
-function ensureInitialCharacterActions(
-  plan: DirectorPlan,
-  objects: DirectorObject[],
-  actorMap: Record<string, string>,
-  duration: number,
-): void {
-  const entry = findActionEntry('standing_idle')
-  if (!entry || duration <= 0) return
-  for (const actor of plan.actors.filter((item) => item.kind === 'person')) {
-    const object = objects.find((item) => item.id === actorMap[actor.id])
-    if (!object || object.type !== 'character') continue
-    const clips = object.actionClips ?? []
-    if (clips.some((item) => item.clipType === 'action' && item.startTime <= 1e-4 && item.endTime > 1e-4)) continue
-    const firstActionStart = Math.min(
-      duration,
-      ...plan.blocking.filter((item) => item.actor === actor.id).map((item) => item.window[0]),
-    )
-    const end = Number.isFinite(firstActionStart) ? firstActionStart : duration
-    object.actionClips = [
-      ...clips,
-      {
-        id: `${object.id}-action-initial-idle`,
-        name: entry.id,
-        clipType: 'action' as const,
-        actionPose: entry.id,
-        startTime: 0,
-        endTime: Math.max(1 / FPS, end),
-        startFrame: 0,
-        endFrame: Math.round(Math.max(1 / FPS, end) * FPS),
-      },
-    ].sort((a, b) => a.startTime - b.startTime)
+function ensureCharacterActionCoverage(objects: DirectorObject[], duration: number): void {
+  const entry = findActionEntry('standing_idle')!
+  for (const object of objects.filter((item) => item.type === 'character')) {
+    const clips = [...(object.actionClips ?? [])].sort((a, b) => a.startTime - b.startTime)
+    let cursor = 0
+    const addIdle = (start: number, end: number) => {
+      if (end <= start) return
+      clips.push({
+        ...clip(`${object.id}/idle:${start}`, start, end),
+        name: entry.id, clipType: 'action', actionPose: entry.id,
+      })
+    }
+    for (const action of [...clips]) {
+      addIdle(cursor, action.startTime)
+      cursor = Math.max(cursor, action.endTime)
+    }
+    addIdle(cursor, duration)
+    object.actionClips = clips.sort((a, b) => a.startTime - b.startTime)
   }
 }
 
@@ -449,65 +431,53 @@ function solveCamera(
   }
 }
 
-function enforceAxisSide(
+function constrainCameraPath(
   camera: DirectorCamera,
   shot: DirectorPlanShot,
   subject: DirectorObject,
-  characters: DirectorObject[],
+  objects: DirectorObject[],
   anchor: AnchorSpec | undefined,
   desiredSign: { value: number },
 ): void {
-  if (characters.length < 2) return
-  const [a, b] = characters
-  const aimOffset =
-    anchor?.offset ??
-    (subject.type === 'character'
-      ? v(0, ['远景', '全景'].includes(shot.size) ? 1.2 : 1.5, 0)
-      : v(0, subject.scale.y / 2, 0))
-  for (const point of camera.motionTrajectory ?? []) {
-    const aAt = positionAt(a, point.time),
-      bAt = positionAt(b, point.time)
-    const signValue = (bAt.x - aAt.x) * (point.z - aAt.z) - (bAt.z - aAt.z) * (point.x - aAt.x)
-    const sign = Math.sign(signValue)
+  const characters = objects.filter((object) => object.type === 'character').slice(0, 2)
+  const aimOffset = anchor?.offset ?? (subject.type === 'character'
+    ? v(0, ['远景', '全景'].includes(shot.size) ? 1.2 : 1.5, 0)
+    : v(0, subject.scale.y / 2, 0))
+  const frameCount = Math.max(1, Math.ceil((shot.window[1] - shot.window[0]) * FPS))
+  const baked = Array.from({ length: frameCount + 1 }, (_, frame) => {
+    const time = shot.window[0] + (shot.window[1] - shot.window[0]) * frame / frameCount
+    const pose = evaluateEntityTransform(camera, time)
+    let point = { ...pose.position }
+    const original = { ...point }
+    const a = characters[0] && positionAt(characters[0], time)
+    const b = characters[1] && positionAt(characters[1], time)
+    const axisSide = (candidate: Vec3) => a && b
+      ? (b.x - a.x) * (candidate.z - a.z) - (b.z - a.z) * (candidate.x - a.x) : 0
+    const sign = Math.sign(axisSide(point))
     if (!desiredSign.value && sign) desiredSign.value = sign
-    if (desiredSign.value && sign !== desiredSign.value) {
-      let corrected = reflectAcrossAxis(v(point.x, point.y, point.z), aAt, bAt)
-      const dx = bAt.x - aAt.x,
-        dz = bAt.z - aAt.z,
-        axisLength = Math.hypot(dx, dz)
-      // Reflection can land exactly on the moving axis. Nudge to the chosen
-      // half-plane so the next sampled frame cannot flip the 180-degree side.
-      const correctedSign = Math.sign(dx * (corrected.z - aAt.z) - dz * (corrected.x - aAt.x))
-      if (axisLength > 1e-6 && correctedSign !== desiredSign.value) {
-        const mid = v((aAt.x + bAt.x) / 2, corrected.y, (aAt.z + bAt.z) / 2)
-        const radius = Math.max(1, Math.hypot(point.x - mid.x, point.z - mid.z))
-        corrected = v(mid.x - (dz / axisLength) * desiredSign.value * radius, point.y, mid.z + (dx / axisLength) * desiredSign.value * radius)
-      }
-      point.x = corrected.x
-      point.z = corrected.z
-      const target = add(positionAt(subject, point.time), aimOffset)
-      Object.assign(point, lookAtAngles(corrected, target))
+    if (a && b && sign && desiredSign.value !== sign) point = reflectAcrossAxis(point, a, b)
+    for (const object of objects) {
+      if (!object.visible || object.isAuxiliary || object.type === 'plane') continue
+      const origin = positionAt(object, time)
+      const base = OBJECT_GEOMETRY_SIZES[object.type] ?? OBJECT_GEOMETRY_SIZES.cube
+      const center = add(origin, OBJECT_ORIGIN_OFFSETS[object.type] ?? OBJECT_ORIGIN_OFFSETS.cube)
+      const half = v(base.x * Math.abs(object.scale.x) / 2 + 0.08, base.y * Math.abs(object.scale.y) / 2 + 0.08, base.z * Math.abs(object.scale.z) / 2 + 0.08)
+      if (Math.abs(point.x - center.x) > half.x || Math.abs(point.y - center.y) > half.y || Math.abs(point.z - center.z) > half.z) continue
+      const candidates = (['x', 'y', 'z'] as const).flatMap((axis) => [-1, 1].map((direction) => ({
+        ...point, [axis]: center[axis] + direction * (half[axis] + 0.02),
+      }))).filter((candidate) => candidate.y >= 0 && (!desiredSign.value || !a || !b || axisSide(candidate) * desiredSign.value >= 0))
+      candidates.sort((left, right) => Math.hypot(left.x - point.x, left.y - point.y, left.z - point.z) - Math.hypot(right.x - point.x, right.y - point.y, right.z - point.z))
+      if (candidates[0]) point = candidates[0]
     }
-    for (const nearby of characters) {
-      const subjectAt = positionAt(nearby, point.time)
-      let dx = point.x - subjectAt.x,
-        dz = point.z - subjectAt.z
-      const distance = Math.hypot(dx, dz)
-      if (distance < 0.61 && Math.abs(point.y - (subjectAt.y + 0.875)) < 0.95) {
-        if (distance < 1e-4) {
-          dx = 0
-          dz = 1
-        } else {
-          dx /= distance
-          dz /= distance
-        }
-        const safe = v(subjectAt.x + dx * 0.61, point.y, subjectAt.z + dz * 0.61)
-        point.x = safe.x
-        point.z = safe.z
-        Object.assign(point, lookAtAngles(safe, add(subjectAt, aimOffset)))
-      }
+    const changed = Math.hypot(point.x - original.x, point.y - original.y, point.z - original.z) > 1e-6
+    return {
+      ...wp(`${camera.id}/frame:${frame}`, point, add(positionAt(subject, time), aimOffset), time, pose.fov ?? camera.fov),
+      ...(changed ? {} : { yaw: pose.rotation.y, pitch: pose.rotation.x, roll: pose.rotation.z }),
+      clipId: camera.trajectoryClips?.[0]?.id,
     }
-  }
+  })
+  camera.motionTrajectory = baked
+  camera.position = v(baked[0].x, baked[0].y, baked[0].z)
 }
 
 export function compileDirectorPlan(input: unknown): DirectorCompileResult {
@@ -537,7 +507,7 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
       scale: v(1.4, 1, 1.4),
       visible: true,
       locked: true,
-      isAuxiliary: true,
+      isAuxiliary: false,
     })
     pieces.set(piece.id, pos)
   }
@@ -560,12 +530,11 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
   scene.objects = [...templateObjects, ...materializeDressing(plan), ...actorObjects]
   const duration = Math.max(...plan.shots.map((s) => s.window[1]), ...plan.blocking.map((b) => b.window[1]), 0)
   const issues: DirectorCompileIssue[] = [...placed.issues]
-  applyBlocking(plan, scene.objects, actorMap, placed.positions, duration, issues)
-  ensureInitialCharacterActions(plan, scene.objects, actorMap, duration)
+  applyBlocking(plan, scene.objects, actorMap, duration, issues)
+  ensureCharacterActionCoverage(scene.objects, duration)
   const cameras: DirectorCamera[] = []
   let previous: Vec3 | undefined
   const axisSign = { value: 0 }
-  const characters = actorObjects.filter((object) => object.type === 'character').slice(0, 2)
   for (const shot of plan.shots) {
     const root = shot.subject.split('.')[0],
       subject = actorObjects.find((o) => o.id === actorMap[root])
@@ -591,7 +560,7 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
       `shot:${shot.id}/camera`,
       anchor,
     )
-    enforceAxisSide(camera, shot, subject, characters, anchor, axisSign)
+    constrainCameraPath(camera, shot, subject, scene.objects, anchor, axisSign)
     camera.trajectoryClips = (camera.trajectoryClips ?? []).map((clipItem) => ({
       ...clipItem,
       endTime: Math.max(clipItem.startTime, clipItem.endTime - 1e-4),
