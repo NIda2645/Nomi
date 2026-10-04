@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collectStructuralFailures, collectVendorCompatibilityFailures, toPublishedJsonSchema } from '../../../../../../../electron/shared/agentCapabilities/modelVisibleJsonSchema'
+import { collectStructuralFailures, collectVendorCompatibilityFailures, toPublishedJsonSchema } from '../agentCapabilities/modelVisibleJsonSchema'
 import { directorPlanModelSchema, directorPlanSchema, normalizeDirectorPlan, parseDirectorPlan } from './directorPlanSchema'
 
 describe('director plan model projection', () => {

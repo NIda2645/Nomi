@@ -1,4 +1,4 @@
-import { directorPlanSchema, normalizeDirectorPlan, type DirectorPlan } from './directorPlanSchema'
+import { directorPlanSchema, normalizeDirectorPlan, type DirectorPlan } from '../../../../../../../electron/shared/director/directorPlanSchema'
 
 export type PlannerUsage = { inputTokens?: number; outputTokens?: number; totalTokens?: number; estimatedUsd?: number }
 export type PlannerResult =
