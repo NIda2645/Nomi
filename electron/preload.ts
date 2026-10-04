@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
+import { director3dBoxProof } from './shared/featureFlags/director3dbox';
 import { createCanvasReadSurfacePreloadBridge } from './surfacePortPreloadBridge';
 import { getSetChannels, invokeSync } from "./preload/ipcCall";
 // 四族桥面各自成模块（R9：preload.ts 是组装层，桥面本身不占它的额度）。形状逐字节不变。
@@ -8,6 +9,20 @@ import { modelOnboardingBridge } from "./preload/modelOnboardingBridge";
 import { runtimeBridge } from "./preload/runtimeBridge";
 
 type ProductionDeepLinkPayload = { projectId: string; runId?: string; nodeId?: string; artifactId?: string };
+const localDirector3dBox = director3dBoxProof();
+const director3dBox = (() => {
+  try {
+    const mainProof = invokeSync<typeof localDirector3dBox>('nomi:feature-flags:director3dbox');
+    if (mainProof.fingerprint !== localDirector3dBox.fingerprint) {
+      console.warn(`[nomi:feature-flags] fingerprint mismatch preload=${localDirector3dBox.fingerprint} main=${mainProof.fingerprint}; forcing off`);
+      return { ...mainProof, enabled: false, source: 'default' as const, fingerprint: 'director3dbox:off:2026-11-15' };
+    }
+    return mainProof;
+  } catch (error) {
+    console.warn(`[nomi:feature-flags] main proof unavailable; forcing off (${error instanceof Error ? error.message : String(error)})`);
+    return { ...localDirector3dBox, enabled: false, source: 'default' as const, fingerprint: 'director3dbox:off:2026-11-15' };
+  }
+})();
 let queuedProductionDeepLink: ProductionDeepLinkPayload | null = null;
 const productionDeepLinkListeners = new Set<(payload: ProductionDeepLinkPayload) => void>();
 ipcRenderer.on("nomi:production-deep-link", (_event, payload: ProductionDeepLinkPayload) => {
@@ -18,6 +33,7 @@ ipcRenderer.on("nomi:production-deep-link", (_event, payload: ProductionDeepLink
 
 contextBridge.exposeInMainWorld("nomiDesktop", {
   platform: process.platform,
+  featureFlags: { director3dbox: director3dBox },
   i18n: {
     setLocale: (locale: "zh-CN" | "en") => ipcRenderer.send("nomi:i18n:set-locale", locale),
     // 首启探测系统语言用；拿不到就返回 ""（渲染层据此回落默认语言，绝不抛断首帧）。

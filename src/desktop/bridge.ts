@@ -180,6 +180,9 @@ export type DesktopUpdateEvent =
 export type DesktopBridge = DesktopMediaBridge &
   DesktopVideoDepthBridge & DesktopConnectorBridge & {
   platform: string
+  featureFlags?: {
+    director3dbox?: { enabled: boolean; source: 'baked' | 'env' | 'default'; fingerprint: string; expiresOn: string }
+  }
   i18n?: {
     setLocale: (locale: 'zh-CN' | 'en') => void
     /** OS 原生 locale（如 'en-US' / 'zh-CN'）；仅真 Electron 有，jsdom/测试无 → 首启回落默认语言。老 preload 可能无此口。 */

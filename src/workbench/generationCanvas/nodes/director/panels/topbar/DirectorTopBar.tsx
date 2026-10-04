@@ -44,9 +44,12 @@ export type DirectorTopBarProps = {
   onCancelCreation?: () => void
   onOpenSettings?: () => void
   onOpenHelp?: () => void
+  director3dBox?: boolean
+  viewMode?: 'director' | 'refine'
+  onViewModeChange?: (mode: 'director' | 'refine') => void
 }
 
-export function DirectorTopBar({ onResetView, onExit, onCancelCreation, onOpenSettings, onOpenHelp }: DirectorTopBarProps): JSX.Element {
+export function DirectorTopBar({ onResetView, onExit, onCancelCreation, onOpenSettings, onOpenHelp, director3dBox = false, viewMode = 'refine', onViewModeChange }: DirectorTopBarProps): JSX.Element {
   const { t } = useTranslation()
   const store = useDirectorStoreApi()
   const outputs = useOutputs()
@@ -98,6 +101,10 @@ export function DirectorTopBar({ onResetView, onExit, onCancelCreation, onOpenSe
       </Cluster>
 
       <div className="flex items-start gap-3">
+        {director3dBox ? <Cluster label={t('director.topbar.viewModeAria')} testId="director-view-mode">
+          <button type="button" className={cn('rounded-nomi-sm px-2 py-1 text-caption', viewMode === 'director' ? 'bg-nomi-accent-soft text-nomi-accent' : 'text-nomi-ink-60')} aria-pressed={viewMode === 'director'} onClick={() => onViewModeChange?.('director')}>{t('director.topbar.directorView')}</button>
+          <button type="button" className={cn('rounded-nomi-sm px-2 py-1 text-caption', viewMode === 'refine' ? 'bg-nomi-accent-soft text-nomi-accent' : 'text-nomi-ink-60')} aria-pressed={viewMode === 'refine'} onClick={() => onViewModeChange?.('refine')}>{t('director.topbar.refineView')}</button>
+        </Cluster> : null}
         {/* ② 视图 */}
         <Cluster label={t('director.topbar.viewAria')} testId="director-view-cluster">
           <WorkbenchIconButton size="sm" icon={<IconRefresh size={16} stroke={1.9} />} label={`${t('director.topbar.resetCamera')} (${formatHotkey(DIRECTOR_HOTKEYS.resetCamera)})`} onClick={onResetView} />

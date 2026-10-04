@@ -55,6 +55,7 @@
     "check:symlinks": "node ./scripts/check-no-machine-symlinks.mjs",
     "install:agent-worktree-janitor": "node ./scripts/install-agent-worktree-janitor.mjs",
     "check:electron-install": "node --test ./scripts/electron-install-identity.node-test.mjs && node ./scripts/check-electron-install.mjs",
+    "check:packaged-flags": "node ./scripts/check-packaged-flags.mjs",
     "check:controls": "node ./scripts/check-control-contract.mjs",
     "check:e2e-launch": "node ./scripts/check-e2e-launch.mjs",
     "check:feedback-worker": "node --test ./infra/feedback-worker/test/worker.node-test.mjs",

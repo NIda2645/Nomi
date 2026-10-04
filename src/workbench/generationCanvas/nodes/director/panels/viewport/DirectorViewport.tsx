@@ -42,9 +42,10 @@ export type DirectorViewportProps = {
   placement: CharacterPlacementApi
   boxDraw: BoxDrawApi
   cancelCreationRef?: React.MutableRefObject<(() => void) | null>
+  showAiSceneBar?: boolean
 }
 
-export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, scopeRef, placement, boxDraw, cancelCreationRef }: DirectorViewportProps): JSX.Element {
+export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, scopeRef, placement, boxDraw, cancelCreationRef, showAiSceneBar = true }: DirectorViewportProps): JSX.Element {
   const { t } = useTranslation()
   const hoveredRef = React.useRef(false)
   const apiRef = useViewportApi()
@@ -151,9 +152,9 @@ export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, 
       <PathDrawHud pathDraw={pathDraw} />
       <PipViewport rectRef={pipRectRef} canvasHostRef={hostRef} />
       {/* AI 搭场景是视口底部中央唯一的常驻入口（原底栏那条 8 簇的胶囊 2026-09-09 已并入顶栏五簇） */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+      {showAiSceneBar ? <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
         <AiSceneBar open={aiOpen} onClose={() => setAiOpen(false)} onOpen={() => setAiOpen(true)} />
-      </div>
+      </div> : null}
     </div>
   )
 }
