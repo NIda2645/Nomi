@@ -1,3 +1,4 @@
+import { scaledBounds } from '../../src/workbench/generationCanvas/nodes/director/model/directorSpace'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -306,7 +307,7 @@ function anchorFor(subject: SubjectRef | undefined, actor: DirectorObject): Anch
 }
 function subjectHeight(actor: DirectorObject, anchor: AnchorSpec | undefined): number {
   if (anchor) return anchor.size.y
-  return actor.type === 'character' ? 1.75 : actor.type === 'cube' && actor.scale.z > 2 ? 1 : actor.scale.y
+  return scaledBounds(actor.type, actor.scale).size.y
 }
 function targetPosition(actor: DirectorObject, anchor: AnchorSpec | undefined): Vec3 {
   if (anchor)

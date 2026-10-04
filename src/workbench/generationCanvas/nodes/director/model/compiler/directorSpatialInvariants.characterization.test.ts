@@ -17,7 +17,7 @@ import { compileDirectorPlan } from './directorPlanCompiler'
 import regressions from './directorPlanCompiler.regressions.json'
 import { S1_ORACLE_PLANS } from '../../../../../../../evals/director/s1OraclePlans'
 import { PrimitiveEntity, PrimitiveGeometry } from '../../scene/entities/PrimitiveEntity'
-import { OBJECT_GEOMETRY_SIZES } from '../directorEvalMeasurement'
+import { scaledBounds } from '../directorSpace'
 import { evaluateEntityTransform } from '../trajectoryEval'
 import { normalizeAiScene } from '../aiScene'
 import { exportAiScene } from '../storeAiSceneActions'
@@ -111,7 +111,7 @@ function floating(scene: DirectorScene): string[] {
   for (const object of scene.objects.filter(solid)) {
     const box = boxes.get(object.id)
     if (!box || object.parentId) continue
-    if (Math.abs(box.min.y) <= EPS) continue
+    if (box.min.y <= EPS) continue // 贴地或在地面以下（地面板本身向下长 5cm；陷地另由 I2b 量）
     const resting = [...boxes].some(([otherId, other]) => otherId !== object.id && Math.abs(other.max.y - box.min.y) <= EPS && xzOverlap(box, other))
     if (!resting) out.push(`${object.id} 底在 ${box.min.y.toFixed(2)}m`)
   }
@@ -241,21 +241,24 @@ function audit(entry: Compiled) {
   }
 }
 
-describe('空间事实只有一份：手抄尺寸表 vs 渲染真值', () => {
-  it('OBJECT_GEOMETRY_SIZES 与渲染组件的包围盒逐类型对账（今天不一致的类型列在账上）', () => {
+describe('空间事实只有一份：共用包围盒 vs 渲染组件真值', () => {
+  it('directorSpace 量出的包围盒与渲染组件元素树里的几何逐类型一致（独立读 JSX 对账，不读共用表）', () => {
+    const one = { x: 1, y: 1, z: 1 }
     const mismatched = PRIMITIVES.filter((type) => {
-      const size = new THREE.Box3().setFromObject(renderMeshOf(type), true).getSize(new THREE.Vector3())
-      const table = OBJECT_GEOMETRY_SIZES[type]
-      return Math.abs(size.x - table.x) > EPS || Math.abs(size.y - table.y) > EPS || Math.abs(size.z - table.z) > EPS
+      const rendered = new THREE.Box3().setFromObject(renderMeshOf(type), true)
+      const shared = scaledBounds(type, one)
+      const size = rendered.getSize(new THREE.Vector3())
+      return Math.abs(size.x - shared.size.x) > 1e-6 || Math.abs(size.y - shared.size.y) > 1e-6 || Math.abs(size.z - shared.size.z) > 1e-6 || Math.abs(rendered.min.y - shared.min.y) > 1e-6
     })
-    expect(mismatched).toEqual(['torus', 'tetrahedron', 'icosahedron'])
+    expect(mismatched).toEqual([])
   })
 
-  it('渲染：每个非 plane 原语以脚底为原点（网格中心在 y=0.5）——tetrahedron / icosahedron / torus 的底不在 0', () => {
+  it('渲染：torus / tetrahedron / icosahedron 的底不在原点（落地必须走 originYForBottom，不能假定底 = 原点）', () => {
     const bottoms = Object.fromEntries(PRIMITIVES.map((type) => [type, Number(new THREE.Box3().setFromObject(renderMeshOf(type), true).min.y.toFixed(3))]))
     expect(bottoms).toMatchObject({ cube: 0, sphere: 0, cylinder: 0, cone: 0 })
     expect(bottoms.tetrahedron).toBeGreaterThan(EPS)
     expect(bottoms.icosahedron).toBeGreaterThan(EPS)
+    expect(bottoms.torus).toBeLessThan(0)
   })
 })
 
@@ -286,7 +289,7 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
     expect(corpus.length).toBe(Object.keys(S1_ORACLE_PLANS).length + (regressions as unknown[]).length)
   })
 
-  it('违例总账（数字来自 e22cc8ea3 的编译器；修好一类就把对应数字改小）', () => {
+  it('违例总账（棘轮：修好一类就把对应数字改小）', () => {
     const ledger = {
       cases: corpus.length,
       floating: [count('floating'), casesWith('floating')],
@@ -302,14 +305,21 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
   })
 })
 
-/** 今天的违例账（e22cc8ea3）：[违例条数, 涉及几道计划]。 */
+/**
+ * 违例账：[违例条数, 涉及几道计划]。起点 = origin/main（第一步开工前，08756793c）：
+ *   floating 158/34、interpenetrating 17/5、offFloor 27/27、offTimeline 112/34、cameraInside 0、occluded 27/12、carriedDrift 1/1
+ * 第一步①空间事实：模板按「底」声明 + 地面顶面 = 0 + 落地走 originYForBottom → floating / offFloor 清零。
+ *   interpenetrating 17→21：以前墙和门悬在半空（底在 2m / 1.2m），人在下面走过去不碰；现在墙立在地上，
+ *   「at 院门」「走位终点取目标原点」把人放进了墙里——这是 e 类（关系词没有空间语义），留给舞台模型一步。
+ *   occluded 27/12→30/6：同样，墙落地后挡住的是真挡；case 数 12→6 是因为编译器不再把环境词（room / interior / 街道……）做成 1.4m 灰盒（环境词挂在不渲染的辅助分组上）。
+ */
 const LEDGER = {
   cases: 34,
-  floating: [1, 1], // 信（on 女子）悬在 1.10m：携带物没挂到手上
-  interpenetrating: [2, 1], // 女子走位穿过北墙与院门（F15 WIP 遗留）
-  offFloor: [124, 34], // 模板地面是 5cm 厚的板（顶在 0.05），所有东西按 y=0 站——地面有两个高度
-  offTimeline: [112, 34], // 编译器从不置 inTimeline（F17）
+  floating: [1, 1], // 信（on 女子）悬在半空：携带物没挂到手上（留给 ②：用父子关系）
+  interpenetrating: [21, 5], // 人站进院墙 / 院门 / 彼此（e 类，留给 ②）
+  offFloor: [0, 0],
+  offTimeline: [112, 34], // 编译器从不置 inTimeline（F17）——第二步修
   cameraInside: [0, 0], // 现有避让在渲染真值下也成立——锁住
-  occluded: [19, 7], // 侍卫被推到院墙外、占位灰盒挡主体……分数照样 0.88–1.00
+  occluded: [30, 6],
   carriedDrift: [1, 1], // 女子走 3.5m，信留在原地
 }

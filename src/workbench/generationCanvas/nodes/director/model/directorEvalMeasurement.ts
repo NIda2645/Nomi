@@ -1,13 +1,14 @@
 /**
  * [INPUT]: DirectorProject and existing pure trajectory/program-camera evaluators.
  * [OUTPUT]: deterministic frame samples, pinhole projections, shot-size and camera-motion recognition,
- *           and continuity checks for offline director evaluation. Zero React/THREE.
+ *           and continuity checks for offline director evaluation. Zero React; object size / origin come from ./directorSpace (geometry-only three, no rendering).
  * [POS]: single owner of preview measurement; evals/director and future agent self-checks consume it.
  */
 import type { DirectorCamera, DirectorObject, DirectorProject, DirectorScene, Vec3 } from './directorTypes'
 import { evaluateCameraPose } from './cameraPoseEval'
 import { evaluateSceneObjectPose } from './evaluatedSceneObject'
 import { programCameraIdAt } from './programCamera'
+import { scaledBounds } from './directorSpace'
 import { sceneFrame, transformPoint, type SceneFrame } from './sceneObjectGraph'
 import { forwardFromAngles, normalize, signedDeg, sub } from './vec3'
 import { CAMERA_MOVES, EVAL_SHOT_SIZES, type CameraMove, type EvalShotSize } from '../../../../../../electron/shared/director/vocab'
@@ -115,46 +116,15 @@ const sceneDuration = (scene: DirectorScene): number => {
   return ends.length ? Math.max(...ends) : 0
 }
 
-export const OBJECT_ORIGIN_OFFSETS: Record<string, Vec3> = {
-  character: { x: 0, y: 0.875, z: 0 },
-  plane: { x: 0, y: 0, z: 0 },
-  cube: { x: 0, y: 0.5, z: 0 },
-  sphere: { x: 0, y: 0.5, z: 0 },
-  cylinder: { x: 0, y: 0.5, z: 0 },
-  cone: { x: 0, y: 0.5, z: 0 },
-  torus: { x: 0, y: 0.5, z: 0 },
-  tetrahedron: { x: 0, y: 0.5, z: 0 },
-  icosahedron: { x: 0, y: 0.5, z: 0 },
-  model: { x: 0, y: 0.5, z: 0 },
-  group: { x: 0, y: 0, z: 0 },
-  splat: { x: 0, y: 0, z: 0 },
-}
-/** Render-origin table checked against CharacterEntity (feet at origin) and PrimitiveEntity (mesh y=.5 except plane). */
-export const OBJECT_GEOMETRY_SIZES: Record<string, Vec3> = {
-  character: { x: 0.6, y: 1.75, z: 0.4 },
-  plane: { x: 1, y: 0.02, z: 1 },
-  cube: { x: 1, y: 1, z: 1 },
-  sphere: { x: 1, y: 1, z: 1 },
-  cylinder: { x: 1, y: 1, z: 1 },
-  cone: { x: 1, y: 1, z: 1 },
-  torus: { x: 1.1, y: 0.3, z: 1.1 },
-  tetrahedron: { x: 1.2, y: 1.2, z: 1.2 },
-  icosahedron: { x: 1.1, y: 1.1, z: 1.1 },
-  model: { x: 1, y: 1, z: 1 },
-  group: { x: 1, y: 1, z: 1 },
-  splat: { x: 1, y: 1, z: 1 },
-}
+// 尺寸 / 原点 / 包围盒一律读 ./directorSpace（渲染真值，three Box3 量出来），这里不再抄表
 function objectSize(object: DirectorObject): Vec3 {
-  const base = OBJECT_GEOMETRY_SIZES[object.type] ?? OBJECT_GEOMETRY_SIZES.cube
-  return {
-    x: Math.max(EPS, base.x * Math.abs(object.scale.x)),
-    y: Math.max(EPS, base.y * Math.abs(object.scale.y)),
-    z: Math.max(EPS, base.z * Math.abs(object.scale.z)),
-  }
+  const size = scaledBounds(object.type, object.scale).size
+  return { x: Math.max(EPS, size.x), y: Math.max(EPS, size.y), z: Math.max(EPS, size.z) }
 }
 function objectCenter(scene: DirectorScene, object: DirectorObject, frame: SceneFrame): Vec3 {
-  const offset = OBJECT_ORIGIN_OFFSETS[object.type] ?? OBJECT_ORIGIN_OFFSETS.cube
-  return transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, offset))
+  // frame 的基底已含 scale，所以这里只取单位 scale 下的包围盒中心
+  const center = scaledBounds(object.type, { x: 1, y: 1, z: 1 }).center
+  return transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, center))
 }
 
 function cameraBasis(camera: CameraSample): { forward: Vec3; right: Vec3; up: Vec3 } {
@@ -563,9 +533,9 @@ export function measureContinuity(measurements: DirectorMeasurements, scene: Dir
 }
 
 function cameraInsideObject(camera: Vec3, origin: Vec3, object: DirectorObject): boolean {
-  const size = objectSize(object),
-    offset = OBJECT_ORIGIN_OFFSETS[object.type] ?? OBJECT_ORIGIN_OFFSETS.cube
-  const center = add(origin, offset)
+  const bounds = scaledBounds(object.type, object.scale),
+    size = objectSize(object)
+  const center = add(origin, bounds.center)
   return (
     Math.abs(camera.x - center.x) <= size.x / 2 &&
     Math.abs(camera.y - center.y) <= size.y / 2 &&
