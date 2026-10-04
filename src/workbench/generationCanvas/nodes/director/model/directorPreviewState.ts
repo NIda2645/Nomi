@@ -30,6 +30,8 @@ export type DirectorPreviewMeta = Readonly<{
   /** ready：挂成参考视频，还是模型没有参考视频槽只写进提示词。 */
   attach?: 'video_ref' | 'prompt_only'
   videoUrl?: string
+  /** 动作库没有的细节动作（编译器报 missing_asset 的那些）：挂接时写进视频节点提示词，交给视频模型演。 */
+  notes?: readonly string[]
   updatedAt: number
 }>
 
@@ -76,4 +78,34 @@ export function directorPreviewSpendBlock(
     directorNodeId: latest.node.id,
     ...(latest.preview.reason ? { failure: latest.preview.reason } : {}),
   }
+}
+
+export type DirectorPreviewOperationBlock = Readonly<{ nodeId: string; shotId?: string; reason: 'rendering' | 'failed'; failure?: DirectorPreviewFailure }>
+
+function metaString(node: Pick<GenerationCanvasNode, 'meta'>, key: string): string | undefined {
+  const value = node.meta?.[key]
+  return typeof value === 'string' && value.trim() ? value.trim() : undefined
+}
+
+/**
+ * Agent 的 `generate` 出卡**之前**问的那一句：这次要生成的镜头里，哪些被 3D-BOX 预演挡着。
+ * 镜头 ↔ 画布节点按落地章认（Agent 分镜 `materializationOperationId × productionShotId`；
+ * 文稿分镜 `storyboardDesignId × shotId`）；判据仍是同一个 `directorPreviewSpendBlock`。
+ */
+export function directorPreviewBlocksForOperation(
+  nodes: readonly Pick<GenerationCanvasNode, 'id' | 'kind' | 'meta'>[],
+  operationId: string,
+  shotIds?: readonly string[],
+): DirectorPreviewOperationBlock[] {
+  const scope = shotIds && shotIds.length ? new Set(shotIds) : null
+  const blocks: DirectorPreviewOperationBlock[] = []
+  for (const node of nodes) {
+    const fromOperation = metaString(node, 'materializationOperationId') === operationId
+    if (!fromOperation && metaString(node, 'storyboardDesignId') !== operationId) continue
+    const shotId = fromOperation ? metaString(node, 'productionShotId') : metaString(node, 'shotId')
+    if (scope && shotId && !scope.has(shotId)) continue
+    const block = directorPreviewSpendBlock(node.id, nodes)
+    if (block) blocks.push({ nodeId: node.id, ...(shotId ? { shotId } : {}), reason: block.reason, ...(block.failure ? { failure: block.failure } : {}) })
+  }
+  return blocks
 }

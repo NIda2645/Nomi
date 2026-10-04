@@ -272,3 +272,48 @@ describe('generate：等用户住在预检期，结局以成功形状交给 exec
     expect(await f.execute(generateCall)).toMatchObject({ ok: false })
   })
 })
+
+// ── 3D-BOX 花钱闸：出卡之前问预演；挡着就不出卡、不花钱，原因交给模型 ──
+describe('generate × 3D-BOX 预演闸', () => {
+  const generateCall: RuntimeToolCall = { toolName: 'generate', args: { operationId: 'op-1', shotIds: ['shot-1'] }, toolCallId: 'call-generate' }
+  const host = { signal, canAskUser: true, waitForUser: () => { throw new Error('must not wait: no card is shown') } }
+
+  async function run(directorPreviewBlocks: LaneExtendedDesktopPortsInput['directorPreviewBlocks'], presented: Record<string, unknown> = { nextAction: 'await_user' }) {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => ({ ok: true as const, result: presented })), withdrawPresentation: vi.fn(async () => undefined), readPresentationOutcome: vi.fn(async () => undefined), dispose: vi.fn() }
+    vi.mocked(f.input.generation).mockReturnValue(generation as never)
+    const assembly = createLaneExtendedDesktopPorts({ ...f.input, directorPreviewBlocks })
+    await assembly.toolLifecycle.prepare(generateCall, signal)
+    await assembly.toolLifecycle.approved(generateCall, f.record, host as never)
+    const outcome = await assembly.tools.find((tool) => tool.name === 'generate')!.execute(generateCall.args, { toolCallId: generateCall.toolCallId, signal }) as { ok: boolean; failure?: { message: string; code: string } }
+    return { outcome, generation }
+  }
+
+  it('preview still rendering → no spend card, nothing spent, the model is told why and when to retry', async () => {
+    const blocks = vi.fn(async () => [{ nodeId: 'node-v1', shotId: 'shot-1', reason: 'rendering' as const }])
+    const { outcome, generation } = await run(blocks)
+    expect(blocks).toHaveBeenCalledWith('op-1', ['shot-1'])
+    expect(generation.tryExecute).not.toHaveBeenCalled()
+    expect(outcome.ok).toBe(false)
+    expect(outcome.failure?.code).toBe('director_preview_pending')
+    expect(outcome.failure?.message).toContain('shot-1 is still rendering')
+    expect(outcome.failure?.message).toContain('nothing was spent')
+  })
+
+  it('preview failed (too long) → still blocked and the model is told to shorten or retry', async () => {
+    const { outcome, generation } = await run(async () => [{ nodeId: 'node-v1', shotId: 'shot-1', reason: 'failed' as const, failure: 'too_long' }])
+    expect(generation.tryExecute).not.toHaveBeenCalled()
+    expect(outcome.failure?.message).toContain('longer than the 10-second preview limit')
+  })
+
+  it('cannot ask the renderer → fail closed: no card, nothing spent', async () => {
+    const { outcome, generation } = await run(async () => { throw new Error('renderer gone') })
+    expect(generation.tryExecute).not.toHaveBeenCalled()
+    expect(outcome.failure?.message).toContain('could not check')
+  })
+
+  it('no blocks → presents the card exactly as before', async () => {
+    const { generation } = await run(async () => [], { spendDecision: { decidedBy: 'policy:full_auto' }, started: {} })
+    expect(generation.tryExecute).toHaveBeenCalledTimes(1)
+  })
+})

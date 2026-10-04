@@ -71,13 +71,28 @@ function cutsOf(project: DirectorProject): Cut[] {
   }))
 }
 
-function previewMetaFor(targetNodeId: string | undefined, revision: string, duration: number, proposalId: string | undefined): DirectorPreviewMeta | undefined {
+/** 动作库缺的细节动作（方案拍板 8）：按计划里的角色名 + 语义动作 + 时间窗写成一句，挂接时进视频节点提示词。 */
+function missingActionNotes(plan: DirectorPlan, issues: readonly DirectorCompileIssue[]): string[] {
+  const notes: string[] = []
+  for (const issue of issues) {
+    if (issue.kind !== 'missing_asset' || !issue.actorId || !issue.assetId) continue
+    const actor = plan.actors.find((candidate) => candidate.id === issue.actorId)
+    const action = plan.blocking.find((item) => item.actor === issue.actorId && item.action === issue.assetId)
+    const window = action ? `${action.window[0]}–${action.window[1]} 秒` : ''
+    const note = `${actor?.desc ?? issue.actorId}${window ? ` ${window}` : ''}：${issue.assetId.replace(/_/g, ' ')}`
+    if (!notes.includes(note)) notes.push(note)
+  }
+  return notes
+}
+
+function previewMetaFor(targetNodeId: string | undefined, revision: string, duration: number, proposalId: string | undefined, notes: readonly string[]): DirectorPreviewMeta | undefined {
   if (!targetNodeId) return undefined
   const tooLong = duration > DIRECTOR_PREVIEW_MAX_SECONDS + 1e-6
   return {
     status: tooLong ? 'failed' : 'rendering',
     targetNodeId,
     revision,
+    ...(notes.length ? { notes: [...notes] } : {}),
     ...(proposalId ? { proposalId } : {}),
     ...(tooLong ? { reason: 'too_long' as const } : {}),
     updatedAt: Date.now(),
@@ -114,7 +129,7 @@ function createPlan(input: Extract<DirectorWriteInput, { operation: 'create_dire
   const compiled = compileOrReject(plan)
   if (!compiled.ok) return compiled.rejection
   const revision = directorPlanRevision(plan)
-  const preview = previewMetaFor(targetNodeId, revision, compiled.duration, context.proposalId)
+  const preview = previewMetaFor(targetNodeId, revision, compiled.duration, context.proposalId, missingActionNotes(plan, compiled.issues))
   const position = layoutPlannedNodes(['image'], nodes)[0]
   const created = context.inCtx(() => generationCanvasTools.create_nodes([{
     kind: DIRECTOR_NODE_KIND,
@@ -164,7 +179,7 @@ function patchPlan(input: Extract<DirectorWriteInput, { operation: 'patch_direct
   const compiled = compileOrReject(patched.plan)
   if (!compiled.ok) return compiled.rejection
   const revision = directorPlanRevision(patched.plan)
-  const preview = previewMetaFor(currentPreview?.targetNodeId, revision, compiled.duration, context.proposalId)
+  const preview = previewMetaFor(currentPreview?.targetNodeId, revision, compiled.duration, context.proposalId, missingActionNotes(patched.plan, compiled.issues))
   context.inCtx(() => {
     // 一个写者（方案 §3）：编辑器开着 → 进编辑器 store（3a 的唯一外部写口会立刻落到节点 meta）；关着 → 直接写节点 meta。
     const mounted = hasDirectorSession(directorNodeId) && writeExternalDirectorProject(directorNodeId, compiled.project)

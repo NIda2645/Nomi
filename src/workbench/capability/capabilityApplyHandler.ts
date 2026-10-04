@@ -45,6 +45,7 @@ import { executeAssetReadTarget, executeExportReadTarget } from '../timeline/age
 import { executeCanonicalCanvasPlanPatch } from './canonicalCanvasPlanPatch'
 import { handleMcpHostSurfaceOp } from './mcpHostSurfaceOps'
 import { presentStoryboard } from './storyboardPresent'
+import { directorPreviewBlocksForOperation } from '../generationCanvas/nodes/director/model/directorPreviewState'
 import { patchAgentStoryboardDesign, upsertAgentStoryboardDesign } from '../creation/storyboard/agentStoryboardDesign'
 import { confirmCredentialProbeSpend, spendModelLine } from './credentialProbeSpendCard'
 
@@ -416,6 +417,12 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
   const landed = await handleMultiShotCanvasLandingOp(op, data)
   if (landed !== null) return landed
   if (op === 'storyboard.present') return presentStoryboard(data)
+  // 3D-BOX 花钱闸：Agent 的 generate 出卡前问「这次的镜头里哪些被预演挡着」（判据住 directorPreviewState）。
+  if (op === 'director.preview-blocks') {
+    const operationId = typeof data.operationId === 'string' ? data.operationId : ''
+    const shotIds = Array.isArray(data.shotIds) ? data.shotIds.filter((value): value is string => typeof value === 'string') : undefined
+    return { blocks: operationId ? directorPreviewBlocksForOperation(useGenerationCanvasStore.getState().nodes, operationId, shotIds) : [] }
+  }
   if (op === 'storyboard.upsert-design') return upsertAgentStoryboardDesign(data)
   if (op === 'storyboard.patch-design') return patchAgentStoryboardDesign(data)
 

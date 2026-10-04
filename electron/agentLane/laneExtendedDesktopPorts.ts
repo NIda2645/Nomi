@@ -56,6 +56,27 @@ export interface LaneExtendedDesktopPortsInput {
   receipts: Pick<ProjectAgentProposalReceiptService, 'read'>
   onTaskCreated?(call: RuntimeToolCall, result: unknown): Promise<void>
   context?(): LaneComposerContext
+  /**
+   * 3D-BOX 花钱闸（开关开的构建才接上）：这次要生成的镜头里，哪些挂着还没好的参考预演。
+   * 出卡**之前**问——问到了就不出卡、不花钱，原因交给模型；问不到（渲染层不在）也不出卡（fail-closed）。
+   */
+  directorPreviewBlocks?(operationId: string, shotIds: readonly string[] | undefined): Promise<readonly DirectorPreviewBlock[]>
+}
+
+export type DirectorPreviewBlock = Readonly<{ nodeId: string; shotId?: string; reason: 'rendering' | 'failed'; failure?: string }>
+
+/** 预演挡着的那几镜 → 一句模型读得懂、能照做的话（不出卡、没花钱、下一步是什么）。 */
+export function directorPreviewBlockedDecision(blocks: readonly DirectorPreviewBlock[]): Extract<RuntimeToolDecision, { ok: false }> {
+  const rendering = blocks.filter((block) => block.reason === 'rendering')
+  const failed = blocks.filter((block) => block.reason === 'failed')
+  const name = (block: DirectorPreviewBlock) => block.shotId ?? block.nodeId
+  const parts = [
+    rendering.length ? `the 3D-BOX preview for ${rendering.map(name).join(", ")} is still rendering` : '',
+    failed.length ? `the 3D-BOX preview for ${failed.map(name).join(", ")} failed${failed.some((block) => block.failure === 'too_long') ? ' (longer than the 10-second preview limit)' : ''}` : '',
+  ].filter(Boolean)
+  return { ok: false, code: 'director_preview_pending',
+    message: `No spend card was shown and nothing was spent: ${parts.join('; ')}. Generating now would send the shot without its reference video. `
+      + (failed.length ? 'Tell the user; shorten the plan with stage_shot edits or ask him to press Retry preview on the 3D-BOX node, then call generate again.' : 'Tell the user the preview is still rendering and call generate again once look_at_canvas shows preview=ready.') }
 }
 
 function failure(code: string): Extract<RuntimeToolDecision, { ok: false }> {
@@ -198,6 +219,17 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
   async function preflightGenerate(entry: Pending, host: NonNullable<Parameters<NonNullable<OpenLaneOptions['toolLifecycle']>['approved']>[2]>): Promise<RuntimeToolDecision> {
     const generation = input.generation()
     if (!generation) return generationSurfaceUnavailable()
+    if (input.directorPreviewBlocks) {
+      const args = entry.call.args as { operationId?: unknown; shotIds?: unknown }
+      const shotIds = Array.isArray(args.shotIds) ? args.shotIds.filter((value): value is string => typeof value === 'string') : undefined
+      let blocks: readonly DirectorPreviewBlock[]
+      try {
+        blocks = await input.directorPreviewBlocks(String(args.operationId ?? ''), shotIds)
+      } catch {
+        return { ok: false, code: 'director_preview_pending', message: 'No spend card was shown and nothing was spent: Nomi could not check whether the 3D-BOX previews for these shots are ready. Call generate again in a moment.' }
+      }
+      if (blocks.length) return directorPreviewBlockedDecision(blocks)
+    }
     const { call: transport } = translate(entry.call)
     const operationId = String((entry.call.args as { operationId?: unknown }).operationId ?? '')
     let early: SpendDecision | undefined
