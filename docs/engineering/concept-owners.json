@@ -1776,6 +1776,36 @@
       "notes": "PR #916（合同 docs/fixes/2026-09-28-mcp-passive-request-cold-launch.root-cause.json）：外部 AI 工具列一下资源就把 Nomi 窗口拉起来。initialize / tools/list / resources/list / resources/templates/list / ping 这类被动发现在没有活实例时只读返回、不冷启动；分流只在 createMcpProtocol，只探测不拉起的调用走 invokeIfOpen。真实工具调用仍可后台拉起（用户拍板）。"
     },
     {
+      "name": "MCP 调用怎么找到活 Nomi 并把请求转过去",
+      "subject": "mcp.live-instance-forwarding",
+      "lifecycle": "host",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/mcpLoopbackRpcCall.ts",
+        "symbol": "callMcpLoopbackRpc"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/mcpLoopbackRpcCall.ts",
+          "symbol": "callMcpLoopbackRpc"
+        },
+        {
+          "path": "electron/capabilityCore/mcpNodeLauncher.ts",
+          "symbol": "ensureLiveInstance"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/mcpLoopbackRpcCall.test.ts",
+      "allowed_consumers": [
+        "electron/capabilityCore/mcpStdioServer.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "合同 docs/fixes/2026-10-04-mcp-launcher-relaunch.root-cause.json：两份 MCP 启动器转发给活 Nomi 的请求（planConfirmed / documentConfirmed、超时、取消、错误解析）只在 callMcpLoopbackRpc 构造；裸 Node launcher 的「连现成实例 / 快速失败 / 重新拉起」只在 ensureLiveInstance 判断，按广告 + 自己拉起的子进程状态每轮重判。"
+    },
+    {
       "name": "后台启动的 Nomi 何时空闲退出",
       "subject": "host.background-idle-exit",
       "lifecycle": "host",

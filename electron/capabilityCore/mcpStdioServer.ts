@@ -32,7 +32,6 @@ import { readWorkspaceProject, resolveWorkspaceProjectDir } from '../workspace/w
 import { ensureWorkspaceProjectIdentity } from '../workspace/workspaceProjectIdentity'
 import { getProjectLocationState, getWorkspaceRepositoryDeps } from '../runtimePaths'
 import { dispatchAndEnrich } from './mcpResultEnrichLive'
-import { rpcErrorFromPayload } from './mcpRpcError'
 import {
   MCP_CLIENT_PROOF_ENV,
   ensureCapabilitySigningKey,
@@ -60,7 +59,7 @@ import { installCatalogRowLookup } from './modelSpecRead'
 import type { McpConnectionContext } from './mcpConnectionContext'
 import { createMcpStdioProjectSessionRouter } from './mcpStdioProjectSessionRouter'
 import { createProductionMcpStdioProjectSessionBinding } from './mcpStdioProjectSessionBinding'
-import { createMcpLoopbackRpcRequest } from './mcpLoopbackRpcRequest'
+import { callMcpLoopbackRpc } from './mcpLoopbackRpcCall'
 import { createHeadlessCanvasReadExecutionRuntime, type CanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
 import { createMcpCanvasReadTransportAdapter } from './canvasReadTransportAdapters'
 import type { VerifiedProjectSessionBinding } from './projectSessionRuntime'
@@ -137,12 +136,6 @@ function currentLibrary(): { projectsRoot: string; isDefault: boolean } {
   return { projectsRoot: location.path, isDefault: location.source === 'default' }
 }
 
-// 传输兜底超时：须 ≥ 服务端最长合法耗时（core.ts 视频轮询 300s）才不误杀真生成；默认 360s，可经 env 调。
-function transportTimeoutMs(): number {
-  const raw = Number(process.env.NOMI_RPC_TIMEOUT_MS)
-  return Number.isFinite(raw) && raw > 0 ? raw : 360_000
-}
-
 async function callViaRpc(
   instance: InstanceAdvertisement,
   method: string,
@@ -150,42 +143,15 @@ async function callViaRpc(
   connection: McpConnectionContext,
   options?: McpInvokeOptions,
 ): Promise<unknown> {
-  const timeoutMs = transportTimeoutMs()
-  const controller = new AbortController()
-  const relayAbort = () => controller.abort(options?.signal?.reason)
-  if (options?.signal?.aborted) relayAbort()
-  else options?.signal?.addEventListener('abort', relayAbort, { once: true })
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  let res: Response
-  try {
-    res = await appFetch(`http://127.0.0.1:${instance.port}/rpc`, {
-      ...createMcpLoopbackRpcRequest({
-        token: instance.token,
-        clientProof: String(process.env[MCP_CLIENT_PROOF_ENV] || ''),
-        connection,
-        method,
-        params,
-        planConfirmed: options?.planConfirmed,
-        documentConfirmed: options?.documentConfirmed,
-        signal: controller.signal,
-      }),
-    })
-  } catch (error) {
-    if (options?.signal?.aborted) throw options.signal.reason instanceof Error ? options.signal.reason : new Error('MCP request cancelled')
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error(
-        `Nomi 无响应（${Math.round(timeoutMs / 1000)}s 超时）——生成可能仍在后台跑，可稍后用 nomi_read（target=canvas）查结果。`,
-        { cause: error },
-      )
-    }
-    throw error
-  } finally {
-    clearTimeout(timer)
-    options?.signal?.removeEventListener('abort', relayAbort)
-  }
-  const body = (await res.json()) as { ok?: boolean; error?: unknown; result?: unknown }
-  if (!body.ok) throw rpcErrorFromPayload(body, res.status)
-  return body.result
+  return callMcpLoopbackRpc({
+    instance,
+    fetchImpl: appFetch,
+    clientProof: String(process.env[MCP_CLIENT_PROOF_ENV] || ''),
+    connection,
+    method,
+    params,
+    options,
+  })
 }
 
 /**
