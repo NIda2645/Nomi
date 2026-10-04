@@ -10,6 +10,8 @@ import type { DirectorViewportTheme } from './scene/sceneTheme'
 import type { ViewSettings } from './scene/viewSettings'
 import type { DirectorProject } from './model/directorTypes'
 import { DirectorViewport } from './panels/viewport/DirectorViewport'
+import { WorkbenchIconButton } from '../../../../design'
+import { IconArrowBackUp, IconArrowForwardUp, IconChevronDown, IconRefresh, IconX } from '../../../../vendor/tablerIcons'
 
 export type DirectorViewMode = 'director' | 'refine'
 
@@ -20,6 +22,8 @@ type Props = {
   cancelCreationRef: React.MutableRefObject<(() => void) | null>
   theme: DirectorViewportTheme
   viewSettings: ViewSettings
+  onExit: () => void
+  onResetView: () => void
   onViewModeChange: (mode: DirectorViewMode) => void
   onProduce: () => void
 }
@@ -61,23 +65,35 @@ function summaries(project: DirectorProject, locale: string): ShotSummary[] {
   })
 }
 
-export function DirectorViewShell({ scopeRef, placement, boxDraw, cancelCreationRef, theme, viewSettings, onViewModeChange, onProduce }: Props): JSX.Element {
+export function DirectorViewShell({ scopeRef, placement, boxDraw, cancelCreationRef, theme, viewSettings, onExit, onResetView, onViewModeChange, onProduce }: Props): JSX.Element {
   const { t, i18n } = useTranslation()
   const project = useDirectorStore((state) => state.project)
   const setPreviewCamera = useDirectorStore((state) => state.setPreviewCamera)
   const shots = React.useMemo(() => summaries(project, i18n.language), [i18n.language, project])
   const currentPreview = useDirectorStore((state) => state.previewCameraId)
+  const canUndo = useDirectorStore((state) => state.undoStack.length > 0)
+  const canRedo = useDirectorStore((state) => state.redoStack.length > 0)
+  const undo = useDirectorStore((state) => state.undo)
+  const redo = useDirectorStore((state) => state.redo)
 
   return <div className="relative flex h-full min-h-0 flex-col bg-nomi-bg text-nomi-ink" data-testid="director-3dbox-view" data-director-view="director">
-    <div className="pointer-events-none absolute inset-x-3 top-3 z-20 grid grid-cols-[1fr_auto] items-start gap-3">
-      <div className="pointer-events-auto flex items-center gap-3 rounded-nomi-lg border border-nomi-line bg-nomi-paper/95 px-3 py-2 shadow-nomi-md backdrop-blur" data-testid="director-view-header">
-        <span className="text-body-sm font-semibold">{t('director.view.title')}</span>
+    <div className="pointer-events-none absolute inset-x-3 top-3 z-20 grid grid-cols-[auto_auto_auto_auto] items-start gap-3">
+      <div className="pointer-events-auto flex items-center gap-2 rounded-nomi-lg border border-nomi-line bg-nomi-paper/95 p-1 shadow-nomi-md backdrop-blur" data-testid="director-view-back-cluster">
+        <WorkbenchIconButton size="sm" icon={<IconX size={16} stroke={1.9} />} label={t('director.editor.exit')} onClick={onExit} />
+        <span className="px-2 text-body-sm font-semibold">{t('director.view.title')}</span>
+      </div>
+      <div className="pointer-events-auto flex items-center gap-2 rounded-nomi-lg border border-nomi-line bg-nomi-paper/95 p-1 shadow-nomi-md backdrop-blur" data-testid="director-view-header">
+        <WorkbenchIconButton size="sm" icon={<IconRefresh size={16} stroke={1.9} />} label={t('director.topbar.resetCamera')} onClick={onResetView} />
         <div className="flex items-center rounded-nomi-sm border border-nomi-line-soft p-0.5" role="group" aria-label={t('director.topbar.viewModeAria')}>
           <button type="button" className="rounded-nomi-sm bg-nomi-accent-soft px-2 py-1 text-caption text-nomi-accent" aria-pressed="true">{t('director.topbar.directorView')}</button>
           <button type="button" className="rounded-nomi-sm px-2 py-1 text-caption text-nomi-ink-60 hover:text-nomi-ink" aria-pressed="false" onClick={() => onViewModeChange('refine')}>{t('director.topbar.refineView')}</button>
         </div>
       </div>
-      <button type="button" className="pointer-events-auto rounded-nomi-lg border border-nomi-accent bg-nomi-accent px-3 py-2 text-body-sm font-semibold text-white shadow-nomi-md disabled:cursor-not-allowed disabled:opacity-60" disabled={!shots.length} onClick={onProduce} title={t('director.view.producePlaceholder')} data-testid="director-produce-placeholder">{t('director.view.produce')}</button>
+      <div className="pointer-events-auto flex items-center gap-1 rounded-nomi-lg border border-nomi-line bg-nomi-paper/95 p-1 shadow-nomi-md backdrop-blur" data-testid="director-view-history-cluster">
+        <WorkbenchIconButton size="sm" icon={<IconArrowBackUp size={16} stroke={1.9} />} label={t('director.view.undo')} disabled={!canUndo} onClick={undo} />
+        <WorkbenchIconButton size="sm" icon={<IconArrowForwardUp size={16} stroke={1.9} />} label={t('director.view.redo')} disabled={!canRedo} onClick={redo} />
+      </div>
+      <button type="button" className="pointer-events-auto rounded-nomi-lg border border-nomi-accent bg-nomi-accent px-3 py-2 text-body-sm font-semibold text-white shadow-nomi-md disabled:cursor-not-allowed disabled:opacity-60" disabled onClick={onProduce} title={t('director.view.producePlaceholder')} data-testid="director-produce-placeholder">{t('director.view.produce')} <IconChevronDown size={15} stroke={2} aria-hidden="true" /></button>
     </div>
     <div className="relative min-h-0 flex-1">
       <DirectorViewport theme={theme} viewSettings={viewSettings} scopeRef={scopeRef} placement={placement} boxDraw={boxDraw} cancelCreationRef={cancelCreationRef} showAiSceneBar={false} />

@@ -91,6 +91,7 @@ type EditorBodyProps = {
   onChangePreferences: (next: DirectorPreferences) => void
   nodeId?: string
   onSendToCanvas?: (output: DirectorOutput) => void
+  onExternalProjectChange?: (project: DirectorProject) => void
 }
 
 type EditorStageProps = {
@@ -131,6 +132,8 @@ function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollaps
       cancelCreationRef={cancelCreationRef}
       theme={preferences.theme}
       viewSettings={preferences.view}
+      onExit={onExit}
+      onResetView={onResetView}
       onViewModeChange={onViewModeChange}
       onProduce={onProduce}
     />
@@ -177,7 +180,7 @@ function EditorStage({ scopeRef, preferences, cancelCreationRef, timelineCollaps
   )
 }
 
-function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId, onSendToCanvas }: EditorBodyProps): JSX.Element {
+function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId, onSendToCanvas, onExternalProjectChange }: EditorBodyProps): JSX.Element {
   const apiRef = React.useRef<ViewportApi | null>(null)
   const cancelCreationRef = React.useRef<(() => void) | null>(null)
   const store = useDirectorStoreApi()
@@ -201,7 +204,11 @@ function EditorBody({ scopeRef, onExit, preferences, onChangePreferences, nodeId
     })
   }, [])
 
-  React.useEffect(() => registerDirectorSession(nodeId, { store, defaultSceneName: t('director.node.sceneDefaultName') }), [nodeId, store, t])
+  React.useEffect(() => registerDirectorSession(nodeId, {
+    store,
+    defaultSceneName: t('director.node.sceneDefaultName'),
+    onExternalProjectChange,
+  }), [nodeId, onExternalProjectChange, store, t])
 
   useDirectorHotkeys({
     scopeRef,
@@ -410,7 +417,7 @@ export default function DirectorEditor({ rawProject, nodeTitle, readOnly = false
           onPointerDown={(event) => event.stopPropagation()}
           onWheel={(event) => event.stopPropagation()}
         >
-          <EditorBody scopeRef={scopeRef} onExit={() => void handleExit()} preferences={preferences} onChangePreferences={changePreferences} nodeId={nodeId} onSendToCanvas={onSendToCanvas} />
+      <EditorBody scopeRef={scopeRef} onExit={() => void handleExit()} preferences={preferences} onChangePreferences={changePreferences} nodeId={nodeId} onSendToCanvas={onSendToCanvas} onExternalProjectChange={project => onProjectChangeRef.current(project)} />
         </div>
       </TooltipProvider>
     </DirectorStoreContext.Provider>

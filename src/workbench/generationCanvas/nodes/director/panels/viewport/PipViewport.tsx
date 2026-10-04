@@ -199,7 +199,7 @@ export function PipViewport({ rectRef, canvasHostRef }: { rectRef: React.Mutable
         <>
           <div ref={screenRef} className={cn('relative w-full', shown ? '' : 'bg-nomi-ink')} style={{ aspectRatio: String(aspect) }}>
             {!shown ? (
-              <div className="absolute inset-0 flex items-center justify-center text-caption text-nomi-paper/70">
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-nomi-ink text-caption text-nomi-paper/70">
                 {cameras.length === 0 ? t('director.camera.pipNoCamera') : t('director.camera.pipNoSignal')}
               </div>
             ) : null}
