@@ -102,6 +102,7 @@ describe('render to measurement readback', () => {
       ],
       480,
       270,
+      new Set(['hero']),
     )
     expect(result.mismatches).toEqual([])
   })

@@ -154,6 +154,15 @@ describe('director scorer directionality', () => {
 
 import { bindCardEntities } from './binding'
 describe('director entity binding', () => {
+  it('keeps oracle staging objects renderable; binding, not isAuxiliary, defines subjects', () => {
+    const c = card('police-chase')
+    const a = oracleForCard(c)
+    const actorIds = new Set(Object.values(a.actorMap ?? {}))
+    const staging = a.project.scenes[0].objects.filter((object) => !actorIds.has(object.id))
+    expect(staging.length).toBeGreaterThan(0)
+    expect(staging.every((object) => object.isAuxiliary !== true)).toBe(true)
+  })
+
   it('does not bind a same-kind guard to the woman when keywords do not match', () => {
     const c = card('courtyard-standoff')
     const a = oracleForCard(c)

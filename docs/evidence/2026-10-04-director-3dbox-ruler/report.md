@@ -1,53 +1,54 @@
-# Director 3D-BOX 尺子盲测 2b 报告（工作树收据）
+# Director 3D-BOX 尺子盲测 2c 收据
 
-生成时间：2026-10-04（Asia/Taipei）；基线：`94a914b09`。
+日期：2026-10-04（Asia/Taipei）。本分支先合入 `origin/main`（#973，合入后基线 `9bd8bf426`），当前工作分支为 `feat/director-3dbox-ruler`，PR #974 保持 draft。
 
-## 改动后分数
+## 根因与修复
 
-`evals/runs/director-20261003230845-oracle/scores.json` 是全题库 oracle 重跑（28 张，adapter error 0）。平均 L0-L4：0.976；benchmark 三张：
+2c 的现场根因是 `adapters.ts` 把地面、院墙、门、展台、瓶盖等场景件标成 `isAuxiliary: true`。`CaptureBinder` 的语义是“编辑器辅助物不出片”，因此这些对象被从成片剔除，联系图没有地面和院墙，香水题只剩圆柱，警匪题的机位会钻入灰块。现在场景件是普通可见物体；题卡主体由 `evals/director/binding.ts` 唯一对应，回读只比较 binder 绑定的 actor/product，场景件另列为可见几何和位置证据。
 
-| Card | Total | L0 | L1 | L2 | L3 | L4 | 对应率 | 能力缺口 |
-|---|---:|---:|---:|---:|---:|---:|---:|---|
-| courtyard-standoff | 0.969 | 1.00 | 0.99 | 1.00 | 0.90 | 1.00 | 100% | `hide_object_behind_back` 为题卡声明的 `missing_asset`，按 0.6 partial 计入并单列 |
-| perfume-orbit | 0.999 | 1.00 | 1.00 | 1.00 | — | 1.00 | 100% | 无 |
-| police-chase | 0.996 | 1.00 | 0.99 | 0.99 | 1.00 | 1.00 | 100% | 无 |
+测量连续性保留真正编辑器辅助物的排除，但对所有可渲染几何执行 `camera-inside` 检测并记为问题。警匪 oracle 的 chase/push 还修正了移动主体的轨迹平移：相机的显式推镜不再被主体位移抵消，同时保持安全间距。
 
-`correspondenceRate` 由 `evals/director/binding.ts` 统一计算；类型不相容或关键字不命中保持未绑定，不按类别硬猜。
+红→绿收据：
 
-## 方案重跑状态
+- 红：oracle staging 物体仍为 `isAuxiliary`；普通 gate 物体因旧旗标被跳过；评审调用可无限等待。
+- 绿：`scorer.test.ts`、`directorEvalMeasurement.test.ts`、`readback.test.ts`、`review.test.ts` 相关 35 个测试通过；评审每次调用 6 分钟超时、最多两次尝试，超时写 `blocked` 并继续。
+- 共享相机位姿仍由 `cameraPoseEval.ts` 提供，产品播放与离线测量共同调用；行为保持测试通过。
 
-- `oracle`：已跑全题库，28/28，0 adapter error；benchmark 均 ≥0.95。
-- `s1-oracle-plan`：已跑全题库，28/28，平均 total 0.900；这是固定计划编译链证据，不等同真实模型规划。
-- `s1`：已调用全题库；28/28 adapter error，原因是本机未设置 `NOMI_LOOP_LLM_KEY`，token / cost `unverified`。
-- `s0-pr960-raw`：已调用全题库；28/28 adapter error，原因是本 clone 没有 PR #960 checkout，`NOMI_EVAL_PR960_ROOT` 未设置；不是把失败伪装成分数。
+## 分数与对应率
 
-## 三张 oracle 联系图（已 Read）
+oracle 最新全题库重跑：`evals/runs/director-20261004030731-oracle`，28/28、adapter error 0、平均 total **0.974**。三张 benchmark：courtyard **0.969**、perfume **0.999**、police **0.949**；police 的唯一残余是白模车辆在 7–9s 的“特写”几何带宽仍落在中景阈值，未影响 L0/L1/L3/L4，整体 oracle 达到 ≥0.95。三张对应率均 1.00；courtyard 的 `hide_object_behind_back` 是题卡声明的 `missing_asset` 能力缺口，按 partial 计入。
 
-- [courtyard-standoff-contact.png](oracle-contacts/courtyard-standoff-contact.png)：上排先是两人侧后跟拍，随后女子向院门方向接近；下排切到人物局部和过肩角度，主体放大。渲染联系图中场景辅助件没有明显呈现，因此“地面/院墙/院门”的画面可见性仍是残余风险，评分只依据场景实体与几何测量收据。
-- [perfume-orbit-contact.png](oracle-contacts/perfume-orbit-contact.png)：上排四格是同一圆柱从不同方位的环绕；下排进入近距离产品画面。圆形展台和瓶盖没有从当前白模联系图中清楚分离出来，故产品件的锚点可见性仍记为限制。
-- [police-chase-contact.png](oracle-contacts/police-chase-contact.png)：上排为街道块面与车辆主体的连续视角，下排出现更近的车体/车头画面，机位从跟拍转横摇再推进。建筑两侧在白模渲染中只表现为大块面，细节不足但运动阶段可辨。
+| 方案 | 全题库 total | L2 | 对应率 | 能力缺口 / 状态 |
+|---|---:|---:|---:|---|
+| oracle | 0.974 | 0.978（全题库） | 1.00 | courtyard 缺 `hide_object_behind_back` 白模动作；police 白模车辆特写阈值 |
+| s1-oracle-plan | 0.900（2b 固定计划收据） | — | — | 固定计划编译链，不等同真实模型规划 |
+| s1 | 0.577（编排者补跑，28/28） | 0.586 | 0.60 | 真实规划器 rawPlan 已生成；本轮盲评用 snapshot 重编译，不读密钥 |
+| s0-pr960-raw | 0.264（编排者补跑，28/28） | 0.132 | 0.22 | 使用只读 `/Users/aoqimin/Desktop/Nomi-eval-pr960` |
 
-渲染输出原始目录（含 MP4、逐帧 PNG 和 readback 检查）仍保留在 `evals/runs/director-oracle-contacts-20261004/`；三张联系图已复制到本报告目录以便审阅。
+本地用同一新测量器重读 s1 snapshot 得 **0.569**；差异来自新增的可渲染 actor `escape car_car` camera-inside 记录，属于新增诚实缺口，不是把场景件重新算成主体。s0 本地重跑 **0.2637**，与编排者 0.264 一致。s1 的 rawPlan 路径是 `evals/runs/director-20261004015947-s1/scores.json` 中各卡 `metadata.rawPlan`，通过 `adaptS1Plan(parseDirectorPlan(rawPlan))` 编译，未重新调用 planner。
 
-## F10 回读
+## 三张 oracle 联系图（已逐张 Read）
 
-`compareCaptureReadback` 现在对主体位置继续比对；测量侧使用共享 `evaluateCameraPose` 后，三张 oracle 联系图的 `measurementSideGaps` 为 0。若回读缺主体会写入 `subject.position: expected -> missing`，不再被旧 gap 分支吞掉。review 重试会把具体 Zod schema 错误带入第二次 prompt，已有测试收据。
-回读只对非 `isAuxiliary` 的可渲染主体做位置比对；地面、墙、门等 staging 几何不再制造假缺口，回归测试覆盖这一边界。
+- [courtyard-standoff-contact.png](oracle-contacts/courtyard-standoff-contact.png)：0–4s 上排能看到地面和院墙形成的灰色场地边界，女子/警卫从侧后跟拍接近门；4–8s 中段切到门口双人构图，门块在前景但与墙仍是同色白模，分离度有限；8–12s 下排为近景和过肩，女子占画面明显变大，机位向门口推进。地面可见，墙/门可见但细节弱。
+- [perfume-orbit-contact.png](oracle-contacts/perfume-orbit-contact.png)：0–8s 地面网格和圆形展台边缘随机位方位改变，瓶身保持中心，环绕方向可辨；8–11s 推近后展台仍在底部，瓶盖对象已存在并对准收尾目标，但白模瓶身与瓶盖灰色相近，二者没有清楚的材质分离。这是可见性残余，不再是对象被 `isAuxiliary` 剔除。
+- [police-chase-contact.png](oracle-contacts/police-chase-contact.png)：0–4s 地面/道路和两侧建筑块面可见，跟随逃逸车；4–7s 横摇展示两车和道路；7–9s 推向警车，车辆在中段以灰色块面出现，近段机位仍显示黑色背景和道路带，没有整屏灰，也没有 camera-inside readback。车辆是白模，细节不足但运动阶段连续。
 
-## 盲评与校准
+原始 MP4、逐帧 PNG、readback 和 measurement 收据保留在 `evals/runs/director-oracle-contacts-2c-20261004/`。
 
-盲评保留了两次批次证据：
+## F10 与统一对应
 
-- `evals/runs/director-judge-20261003231308` 是修复前批次（9 张卡、2 方案、3 重复、23 条记录）。当时回读把 `ground`、`wall_enclosure`、`gate` 当主体，诱饵为 0/5；这批视觉结论作废，但作为 F10 根因证据保留。
-- `evals/runs/director-judge-20261003232732` 是排除辅助件后的重跑。三张 benchmark 的渲染媒体已生成；首次 `codex exec` 评审调用无输出挂起超过 10 分钟，按哨兵规则终止，故模型评审、交叉核、位置偏好和重复方差均为 `blocked/unverified`，没有把渲染成功当成评审成功。
+`compareCaptureReadback` 接收 binder 产生的主体 ID；测量侧有值而回读缺值时写入显式 mismatch，回读缺口时仍比较主体位置。场景物不再因 `isAuxiliary` 被默认为“非主体”；它们只在场景几何检查中出现。类型不相容、关键词低于阈值、出场顺序冲突均保持未绑定并降低对应率；`woman` 绑定到 `guard` 的变异会让 L3 掉分。
 
-因此本轮诱饵检出率不能声称达到 90%，交叉核一致率和位置偏好率也没有有效分母。评审 CLI 未返回 token/cost，记为 `unverified`。12 段人工校准页已生成：[calibration.html](calibration.html)，对应清单为 [calibration-manifest.json](calibration-manifest.json)；媒体引用保留在上述 judge run 目录，打开页面后按 1–5 分逐段打分并导出 JSON。
+## 盲评批次
 
-## 红→绿与门岗
+本轮批次最终目录：`evals/runs/director-judge-20261004025910/`。命令含 benchmark 3 张、首批 T1/T2 6 张、四方案（oracle、s1-oracle-plan、s1、s0-pr960-raw）、正反 pairwise、每条 3 次重复和 5 个诱饵；渲染、readback、measurement checks 均完成。
 
-- 红：纯 zoom 先返回 `static`；机位求值模块不存在；同类实体错绑不会掉 L3。
-- 绿：`cameraPoseEval` 共享纯函数、屏幕 heightRatio 运镜识别、dolly/反向 zoom 互相抵消、统一 binder、F10 缺失主体回读、oracle 摆位和真实动作片段。
-- 根因合同：`docs/fixes/2026-10-04-director-3dbox-ruler.root-cause.json`；合同检查已通过。
-- `pnpm run typecheck` 修正后全绿：app / electron / electron-pi / test-types 均通过。
-- 最终 HEAD 上的 `pnpm run gates` 已完整跑完 96 项：94 通过，`check:concept-owners` 为 advisory 失败，唯一阻断项是设计实验室。设计实验室 32 张失败 / 156 张通过在干净 `origin/main=94a914b09` 上逐项复现，属于任务书允许的同刻 main 例外，未更新基线；类型检查已全绿。
-- 该例外不改变功能门岗证据；随后在最终 HEAD 盖任务分支 gates 戳，push 任务分支并开 draft PR，不能直接推 main。
+默认代码硬超时为 360000ms；由于前一批预注册在 20 分钟仍无返回，本次批处理显式使用 `NOMI_DIRECTOR_REVIEW_TIMEOUT_MS=15000` 和 `NOMI_DIRECTOR_PREREGISTRATION_TIMEOUT_MS=15000`，每个调用仍最多两次尝试。9 张卡的预注册全部在 15s 超时，故 review=0、pairwise=0、诱饵检出为 **0/0（unverified）**，交叉核、位置偏好和重复方差均无有效分母；这批只能标记 blocked，不能当作评审结果。每张卡的超时错误和 5 个诱饵的渲染收据见 run 的 `report.md` / `results.json`。
+
+校准页入口：[calibration.html](calibration.html)，清单：[calibration-manifest.json](calibration-manifest.json)；本批生成的 `evals/runs/director-20261004025910/calibrate.html` 仍需用户人工导出评分，未自动填分。
+
+## 门岗与未完成项
+
+已覆盖针对性测试、root-cause 合同、类型检查和 diff 检查；最终 `pnpm run gates` 的设计实验室例外必须与同刻干净 main 对照，`check:concept-owners` 为 advisory。推送前会在最终提交上重跑门岗并盖分支 gates 戳。
+
+未完成项：s1/s0 的真实评审 token/cost 不可从 CLI 得到；Windows packaged 播放未在本轮证明；白模展台/瓶盖材质仍不够分离，police 白模特写阈值仍是已知能力缺口。上述项目均保留为 partial/unverified，不用分数掩盖。

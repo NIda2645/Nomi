@@ -19,7 +19,13 @@
     "evals/director/scorer.ts",
     "evals/director/run.ts",
     "evals/director/judge/readback.ts",
-    "evals/director/cards/all.json"
+    "evals/director/cards/all.json",
+    "evals/director/judge/render.ts",
+    "evals/director/judge/review.ts",
+    "evals/director/judge/run.ts",
+    "evals/director/judge/review.test.ts",
+    "evals/director/judge/preregister.ts",
+    "evals/director/judge/preregister.test.ts"
   ],
   "entry_points": [
     "useTimelinePlayback camera loop",
@@ -35,7 +41,12 @@
     "Push/pull recognition uses projected subject height ratio; FOV-only motion is zoom and opposing dolly plus zoom is reported as cancellation.",
     "Every scheme maps card actors and scene requirements through one type-compatible, keyword-aware, one-to-one binder; unresolved entities lower the corresponding score.",
     "Oracle scene pieces are placed at local scene coordinates, ground is present, and unsupported remote placeholders are never used.",
-    "Readback compares subject positions even when an old measurement gap would have been reported; missing measured subjects are explicit mismatches."
+    "Readback compares subject positions even when an old measurement gap would have been reported; missing measured subjects are explicit mismatches.",
+    "Renderable oracle scene pieces never carry isAuxiliary; only editor-only objects may be excluded by capture semantics.",
+    "Readback subject comparison consumes binding actor IDs; scene geometry remains visible and is not used as a subject fallback.",
+    "A camera entering renderable geometry is recorded as a continuity problem.",
+    "Every model review and pairwise call has a six-minute timeout, at most two attempts, and timeout records continue the batch.",
+    "Preregistration and review model calls have a six-minute timeout and a blocked result never stops the batch."
   ],
   "doors": [
     {
@@ -80,6 +91,16 @@
       "path": "evals/director/judge/readback.ts",
       "symbol": "compareCaptureReadback",
       "responsibility": "Compare every measurable subject position and report missing readback values explicitly."
+    },
+    {
+      "path": "evals/director/judge/render.ts",
+      "symbol": "renderProject",
+      "responsibility": "Pass binder subject IDs into capture readback while retaining all renderable scene geometry."
+    },
+    {
+      "path": "evals/director/judge/review.ts",
+      "symbol": "reviewOnce/pairwiseOnce",
+      "responsibility": "Bound model review duration, carry schema errors to retry, and return blocked records so a batch continues."
     }
   ],
   "same_class_entry_points": [
@@ -115,13 +136,15 @@
       "rg -n evaluateCameraPose src evals/director",
       "rg -n sampleDirectorProject src evals/director",
       "rg -n 'resolveActors|actorMap|scene.required' evals/director",
-      "rg -n compareCaptureReadback evals/director"
+      "rg -n compareCaptureReadback evals/director",
+      "rg -n isAuxiliary evals/director src/workbench/generationCanvas/nodes/director/scene",
+      "rg -n 'DIRECTOR_REVIEW_TIMEOUT_MS|withTimeout' evals/director/judge"
     ]
   },
   "prevention": {
     "kind": "centralized-boundary",
-    "enforcement_path": "evals/director/binding.ts",
-    "invariant": "All actor and scene references are resolved once through type compatibility, card wording keywords and one-to-one assignment; unresolved entries remain undefined and score as missing.",
+    "enforcement_path": "evals/director/judge/review.ts",
+    "invariant": "Scene visibility follows capture semantics; subject identity follows the binder; renderable camera collisions and review timeouts remain explicit evidence.",
     "failure_mode": "A kind mismatch or below-threshold match is left unbound, recorded in correspondenceRate/reasons, and cannot silently receive full L2/L3/L4 credit.",
     "exception_policy": "none",
     "strategy": "Keep camera semantics in the model owner and make scoring consume the same binder regardless of scheme; tests cover pure zoom, type mismatch, same-kind wrong-name binding, readback missing subjects and oracle acceptance.",
@@ -130,19 +153,23 @@
       "src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement.ts",
       "evals/director/binding.ts",
       "evals/director/scorer.ts",
-      "evals/director/judge/readback.ts"
+      "evals/director/judge/readback.ts",
+      "evals/director/judge/review.ts",
+      "evals/director/judge/preregister.ts"
     ]
   },
   "regression_tests": [
     "src/workbench/generationCanvas/nodes/director/model/cameraPoseEval.test.ts",
     "src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement.test.ts",
     "evals/director/scorer.test.ts",
-    "evals/director/judge/readback.test.ts"
+    "evals/director/judge/readback.test.ts",
+    "evals/director/judge/review.test.ts"
   ],
   "class_regression_tests": [
     "src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement.test.ts",
     "evals/director/scorer.test.ts",
-    "evals/director/judge/readback.test.ts"
+    "evals/director/judge/readback.test.ts",
+    "evals/director/judge/review.test.ts"
   ],
   "legacy_paths": {
     "status": "not-applicable",

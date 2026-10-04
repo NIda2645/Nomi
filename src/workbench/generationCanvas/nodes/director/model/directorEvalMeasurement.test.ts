@@ -97,6 +97,22 @@ describe('director preview measurement', () => {
     expect(issues.some((i) => i.kind === 'below-ground')).toBe(true)
     expect(issues.some((i) => i.kind === 'axis-cross')).toBe(true)
   })
+
+  it('reports camera entry into scene geometry even when an old fixture marks it auxiliary', () => {
+    const gate: DirectorObject = {
+      id: 'gate',
+      name: 'gate',
+      type: 'cube',
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 4, y: 4, z: 4 },
+      visible: true,
+      locked: false,
+    }
+    const p = project([gate], [cam('camera', [wp('a', 0, { x: 0, y: 2, z: 0 }, 180)])], 0)
+    const issues = measureContinuity(sampleDirectorProject(p, { duration: 0, fps: 1 }), p.scenes[0])
+    expect(issues.some((issue) => issue.kind === 'camera-inside' && issue.objectId === 'gate')).toBe(true)
+  })
 })
 
 it('uses the feet-at-origin convention for character bounds', () => {

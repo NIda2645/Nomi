@@ -46,11 +46,23 @@ export function compareCaptureReadback(
   frames: HeadlessCaptureFrameReadback[],
   width: number,
   height: number,
+  subjectIds?: ReadonlySet<string>,
 ): { mismatches: ReadbackMismatch[]; measurementSideGaps: MeasurementSideGap[] } {
   const duration = Math.max(0, ...times)
   const measurements = sampleDirectorProject(project, { duration, fps: 30, aspectRatio: width / Math.max(1, height) })
   const mismatches: ReadbackMismatch[] = []
   const measurementSideGaps: MeasurementSideGap[] = []
+  const sceneObjects = project.scenes.find((item) => item.id === project.activeSceneId)?.objects ?? []
+  // The judge supplies the card binding for production runs. The type-based
+  // fallback keeps this low-level helper useful in focused tests without
+  // treating isAuxiliary as a subject classification.
+  const requiredSubjectIds =
+    subjectIds ??
+    new Set(
+      sceneObjects
+        .filter((object) => object.type === 'character' || object.type === 'cylinder')
+        .map((object) => object.id),
+    )
   for (const [index, time] of times.entries()) {
     const actual = frames[index]
     const expected = measurements.frames.reduce(
@@ -91,11 +103,11 @@ export function compareCaptureReadback(
       if (expected.camera.fov !== actual.camera.fov)
         mismatches.push(mismatch(time, 'fov', expected.camera.fov, actual.camera.fov))
     }
-    for (const object of project.scenes.find((item) => item.id === project.activeSceneId)?.objects ?? []) {
-      // Readback exposes subject positions for renderable actors. Ground, walls,
-      // gates, and other staging helpers are measured scene geometry, not
-      // subjects; requiring them in the capture frame creates a false F10 gap.
-      if (object.isAuxiliary) continue
+    for (const object of sceneObjects) {
+      // Binding decides which objects are card subjects. Other scene geometry
+      // remains renderable and is intentionally reported separately by the
+      // capture image, rather than being hidden through isAuxiliary.
+      if (!requiredSubjectIds.has(object.id)) continue
       const expectedObject = expected.objects[object.id]
       const actualPosition = actual.subjectPositions[object.id]
       if (!expectedObject) continue

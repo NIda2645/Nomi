@@ -503,8 +503,13 @@ export function measureContinuity(measurements: DirectorMeasurements, scene: Dir
     if (frame.camera)
       for (const object of scene.objects) {
         const sample = frame.objects[object.id]
-        const ignored = object.isAuxiliary || /^(ground|road|wall.*|building.*|gate|.*_car)$/i.test(object.name)
-        if (frame.camera && !ignored && cameraInsideObject(frame.camera.position, sample.position, object))
+        if (
+          frame.camera &&
+          !object.isAuxiliary &&
+          object.type !== 'plane' &&
+          sample &&
+          cameraInsideObject(frame.camera.position, sample.position, object)
+        )
           issues.push({
             kind: 'camera-inside',
             time: frame.time,
