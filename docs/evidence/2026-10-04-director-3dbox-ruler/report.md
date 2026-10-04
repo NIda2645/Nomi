@@ -52,3 +52,50 @@ oracle 最新全题库重跑：`evals/runs/director-20261004030731-oracle`，28/
 已覆盖针对性测试、root-cause 合同、类型检查和 diff 检查；最终 `pnpm run gates` 的设计实验室例外必须与同刻干净 main 对照，`check:concept-owners` 为 advisory。推送前会在最终提交上重跑门岗并盖分支 gates 戳。
 
 未完成项：s1/s0 的真实评审 token/cost 不可从 CLI 得到；Windows packaged 播放未在本轮证明；白模展台/瓶盖材质仍不够分离，police 白模特写阈值仍是已知能力缺口。上述项目均保留为 partial/unverified，不用分数掩盖。
+
+## 2d 外部盲评收货：87 条交叉核查
+
+编排者外部 shell 完成的批次在 `evals/runs/director-judge-20261004032450/`：9 卡、oracle/s1/s0、3 次重复；诱饵 5/5（100%），位置偏好 0/2，评审均值 oracle 2.00、s1 1.67、s0 1.26。交叉核查为 **7/87（8%）**；因此下面先按 7 条一致、80 条 disagreement 归档，不把一致率当作质量目标。
+
+对 80 条 disagreement 逐条对照 `results.json` 的 claim/timecode 与对应 contact sheet 后，归档如下：
+
+| 类别 | 条数 | 处理 | 代表证据 |
+|---|---:|---|---|
+| 词表 / 粒度没对上 | 26 | 可改；归一化中英“推近 / pull-out / 摇摄 / 环绕”和“未见切换=0”，不改变画面结论 | `media/t1-01-push_oracle-contact.png`、`media/t1-02-pull_oracle-contact.png`、`media/perfume-orbit_oracle-contact.png` |
+| 测量错 | 4 | 可改；交叉核改为按 claim timecode 分段，并优先使用 binder actor，而非 scene.objects 的第一个对象 | `media/perfume-orbit_s1-contact.png`（后段推近被整段 orbit 覆盖）、`media/courtyard-standoff_oracle-contact.png` |
+| 评审错（画面确实如测量） | 3 | 不改；保留评审的错误判断，避免为了提高一致率迁就模型 | `media/t1-03-pan_oracle-contact.png`、`media/t1-01-push_oracle-contact.png` |
+| 渲染粗糙导致看不出 | 47 | 不改评分器；列为白模/块面证据缺口 | `media/police-chase_oracle-contact.png`、`media/t1-05-orbit_oracle-contact.png`、`media/t1-06-follow_oracle-contact.png` |
+
+本轮代码只处理前两类：`crossCheck.ts` 现在解析 timecode、对 cuts 使用区间、按 `adapted.actorMap` 选主体，并用 `directionMatches` 归一化中英文运动词。新增 `crossCheck.test.ts` 覆盖推近、拉远、摇摄、环绕及真实方向不一致。剩余两类只写报告，不为一致率改测量语义。
+
+## s1 被拦的段落与转交 S1
+
+外部批次报告的 s1 评审分为 27 段，其中 13 段被拦。原始 `results.json` 可逐条定位到以下 render gate：
+
+| 卡 | 被拦原因 | 判定 | 转交 |
+|---|---|---|---|
+| courtyard-standoff（00:00–00:03、00:03–00:07、00:07–00:10） | `t-pose: ... woman@0, ... guard@0` | 正确：S1 工程在 t=0 没有动作片段 | S1：补角色初始动作/姿态片段 |
+| t1-01-push（00:00–00:04） | `t-pose: ... woman@0` | 正确 | S1 |
+| t1-02-pull（0.0–4.0s） | `t-pose: ... cyclist@0` | 正确 | S1 |
+| t1-03-pan（00:00–00:04） | `t-pose: ... writer@0` | 正确 | S1 |
+| t1-04-tilt（00:00–00:04） | `t-pose: ... model@0` | 正确 | S1 |
+| t1-05-orbit（00:00–00:04） | readback 缺 `s1-product-ground`，预期位置存在、实际缺失 | 非 T-pose；属于 S1 场景实体/回读绑定缺口 | S1 |
+| t1-06-follow（00:00–00:04） | `t-pose: ... cyclist@0` | 正确 | S1 |
+
+结果文件按卡保留 9 个直接 segment range；编排者统计的 13 段还包含 4 个 segment-level gate，当前 `results.json` 没有独立错误行，报告不伪造其细节。T-pose 判定没有放宽：角色本就没有动作片段时仍拦截；只有将来出现“有动作片段却被误判”的最小复现，才会改判据并补测试。
+
+## 2d 校准页与对齐脚本
+
+校准页已更新为自包含页面：[calibration.html](calibration.html)。manifest 已内联，视频使用相对路径，页面中文说明先读题目原话再打 1–5 分，可写一句理由，完成 12 段后可一键导出 JSON；不再依赖浏览器通过 `<input type=file>` 读取 manifest。
+
+用户导出的 JSON 可用 `scripts/director-calibration-align.mjs` 对齐评审结果：
+
+```bash
+node scripts/director-calibration-align.mjs \
+  --human /path/to/director-judge-calibration.json \
+  --judge evals/runs/director-judge-20261004032450/results.json \
+  --manifest evals/runs/director-judge-20261004032450/calibration-manifest.json \
+  --out /path/to/director-calibration-alignment.json
+```
+
+脚本输出样本数、Spearman、同档比例及逐行对齐结果；当前尚无人工作业导出，所以报告不填虚构的一致性数字。
