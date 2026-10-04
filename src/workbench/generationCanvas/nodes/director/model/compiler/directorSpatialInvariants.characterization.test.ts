@@ -141,7 +141,7 @@ describe('AI 搭场景（产品路径 AiSceneBar）：提示词写「中心坐�
     const fixtureBoxes = worldBoxes(fixture)
     for (const element of AI_SCENE_FIXTURE.groups.flatMap((group) => group.elements)) {
       const object = fixture.objects.find((o) => o.name === element.name)!
-      expect(fixtureBoxes.get(object.id)!.getCenter(new THREE.Vector3()).y, element.name).toBeCloseTo(element.position[1], 1)
+      expect(fixtureBoxes.get(object.id)!.getCenter(new THREE.Vector3()).y, element.name).toBeCloseTo(element.position![1], 1)
     }
   })
 })
