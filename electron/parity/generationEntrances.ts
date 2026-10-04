@@ -74,16 +74,6 @@ export const GENERATION_ENTRANCES: readonly GenerationEntrance[] = [
     dispatchProfile: "runtime+projection+retry",
   },
   {
-    id: "external-mcp-generate",
-    userAction: "外部 MCP 单发生成（`nomi_generate` / `generate`）",
-    engine: "runtime",
-    entrySite: "electron/capabilityCore/core.ts:580-612",
-    dispatchSite: "electron/runtime.ts:309 runTask",
-    projectsPromptMentions: false,
-    appendsRetryDirective: false,
-    dispatchProfile: "runtime+raw",
-  },
-  {
     id: "try-model",
     userAction: "接入试跑一次（`nomi_try_model`）",
     engine: "runtime",

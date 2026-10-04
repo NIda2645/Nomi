@@ -24,8 +24,6 @@
     {"path":"electron/capabilityCore/spendDecision*","reason":"按镜头花钱的决定与等待"},
     {"path":"electron/capabilityCore/policySpend*","reason":"花钱判决：审批档位 × 金额语义"},
     {"path":"electron/capabilityCore/pendingSpend*","reason":"待确认付费的参考素材"},
-    {"path":"electron/capabilityCore/i2vTwoHop*","reason":"图生视频两跳：参考图先落地再提交的领域流程"},
-    {"path":"electron/capabilityCore/firstFramePainter*","reason":"首帧绘制：视频节点首帧的领域操作"},
     {"path":"electron/capabilityCore/timeline*","reason":"时间轴领域的传输适配"},
     {"path":"electron/capabilityCore/skill*TransportAdapters*","reason":"技能库读写的传输适配"},
     {"path":"electron/capabilityCore/nodeKind*","reason":"画布节点种类的领域词表"},

@@ -3,6 +3,8 @@
 // 判定只读 decideShotClaim（唯一判定口），落盘只走 Run reducer 的 `shot.claim`。
 // 普通画布节点没有 run / shot 绑定，这里什么都不做，走原来的路。
 import { decideShotClaim } from "../shared/decideShotClaim";
+import { canvasShotClaimCommandId } from "../shared/productionRunCommandId";
+import { currentShotAttempt } from "../shared/productionShotJobs";
 import { getRegisteredProductionRunService } from "./productionRunServiceRegistry";
 
 const text = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
@@ -26,7 +28,8 @@ export function claimCanvasProductionShot(projectId: string, extras: Record<stri
     if (!current || decision.holder !== "canvas" || decision.reason === "canvas_claimed") return;
     try {
       service.repository.execute(projectId, productionRunId, {
-        commandId: `shot.claim:${productionRunId}:${productionShotId}`,
+        // 号带「第几次」：同一镜第二次被画布接手是新的一条认领，不能被第一次的幂等重放吞掉（双扣路径 6）。
+        commandId: canvasShotClaimCommandId(productionRunId, productionShotId, currentShotAttempt(current, productionShotId)),
         expectedRevision: current.revision,
         type: "shot.claim",
         payload: { shotId: productionShotId, by: "canvas" },
