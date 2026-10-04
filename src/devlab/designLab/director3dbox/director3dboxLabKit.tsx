@@ -9,7 +9,10 @@
 //   · 桥：只读的 3D-BOX 开关证明（真机由主进程经 preload 给；实验室没有 Electron，给一份同形状的只读值），
 //     以及导演台既有的 E2E 取证桥开关（只用来读「角色挂上没有」，不写任何东西）；
 //   · 用户动作：点第 2 张镜头卡 / 点「精修」，走的是界面上那两颗真按钮，不往 store 里塞状态。
-// 等待：3D 场景是异步落定的（角色 GLB、动作片段），格子登记一个就绪持有（labReadyHold），场景真落定才释放。
+// 等待：3D 场景是异步落定的（角色 GLB、动作片段），格子在轻量外壳里登记一个就绪持有（labReadyHold），场景真落定才释放。
+// 这个模块只经 director3dboxLazyStage 动态加载：导演台模块图里有模块级的人偶 GLB 预取（CharacterEntity 的
+// useGLTF.preload），静态 import 会让实验室**每一屏**都去拉、去解析它，别的屏的动效截图跟着变（2026-10-04 实测
+// process-feedback 三格因此稳定翻红）。
 import React, { type JSX } from 'react'
 import i18n from '../../../i18n'
 import type { AppLocale } from '../../../i18n'
@@ -20,11 +23,7 @@ import type { DirectorE2EBridge } from '../../../workbench/generationCanvas/node
 import { assistantPaneWidth } from '../../../workbench/assistantWidthBounds'
 import { S1_ORACLE_PLANS } from '../../../../evals/director/s1OraclePlans'
 import { ShellStage, labHostState } from '../v4/agentPanelV4LabHost'
-import { holdDesignLabReady } from '../labReadyHold'
-
-/** 取景框 = 真机走查窗口的内容区（ACCEPTANCE_VIEWPORT 1280×933），实验室格子与真机截图同尺寸才能并排比。 */
-export const DIRECTOR_3DBOX_CELL_WIDTH = 1280
-export const DIRECTOR_3DBOX_CELL_HEIGHT = 933
+import type { Director3dBoxFixture, LabDrive } from './director3dboxCell'
 /** 右侧 Agent 面板宽：与 v4 实验室同一取值，导演视图占的画布宽因此与真机 1280 窗口一致（≈858）。 */
 const AGENT_PANEL_WIDTH = 390
 
@@ -34,7 +33,7 @@ const COURTYARD_TITLE: Record<AppLocale, string> = { 'zh-CN': '古装庭院对�
 
 let courtyardProject: DirectorProject | null = null
 /** 现役编译器把 oracle 计划编成工程；编不出来就当场抛（夹具坏了要红，不许悄悄换成空工程）。 */
-export function courtyardFixture(): DirectorProject {
+function courtyardFixture(): DirectorProject {
   if (courtyardProject) return courtyardProject
   const compiled = compileDirectorPlan(S1_ORACLE_PLANS[PLAN_ID])
   if (!compiled.ok) throw new Error(`director3dbox lab: ${PLAN_ID} 编译失败：${compiled.errors.join('; ')}`)
@@ -55,8 +54,6 @@ function installReadOnlyBridge(): void {
     // 无存储：取证桥不挂，下面的就绪等待会超时并报错，不会静默截一张空场景
   }
 }
-
-export type LabDrive = 'none' | 'shot-2' | 'shot-2-refine'
 
 function nextFrame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()))
@@ -111,12 +108,12 @@ async function driveAndSettle(drive: LabDrive, project: DirectorProject | null):
   throw new Error('director3dbox lab: 3D 场景没有落定（角色模型或动作片段一直没就绪）')
 }
 
-export function Director3dBoxStage({ locale, project, drive = 'none' }: { locale: AppLocale; project: DirectorProject | null; drive?: LabDrive }): JSX.Element {
+export function Director3dBoxStage({ locale, fixture, drive = 'none', release }: { locale: AppLocale; fixture: Director3dBoxFixture; drive?: LabDrive; release: () => void }): JSX.Element {
   React.useMemo(() => {
     installReadOnlyBridge()
     void i18n.changeLanguage(locale)
   }, [locale])
-  const [release] = React.useState(() => holdDesignLabReady('director-3dbox'))
+  const project = React.useMemo(() => (fixture === 'courtyard' ? courtyardFixture() : null), [fixture])
   React.useEffect(() => {
     let alive = true
     driveAndSettle(drive, project)

@@ -28,7 +28,7 @@ import { VIDEO_DEPTH_STATES } from './videoDepth/videoDepthStates'
 import { DEPTH_ACTION_CELL_HEIGHT, DEPTH_ACTION_CELL_WIDTH } from './videoDepth/videoDepthLabKit'
 import { STAGE_HEIGHT as VENDOR_ORDER_STAGE_HEIGHT, STAGE_WIDTH as VENDOR_ORDER_STAGE_WIDTH } from './vendorOrder/vendorOrderLabKit'
 import { DIRECTOR_3DBOX_STATES } from './director3dbox/director3dboxStates'
-import { DIRECTOR_3DBOX_CELL_HEIGHT, DIRECTOR_3DBOX_CELL_WIDTH } from './director3dbox/director3dboxLabKit'
+import { DIRECTOR_3DBOX_CELL_HEIGHT, DIRECTOR_3DBOX_CELL_WIDTH } from './director3dbox/director3dboxCell'
 import type { LabScreen, LabState } from './labScreen'
 
 /**
