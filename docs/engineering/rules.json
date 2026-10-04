@@ -70,15 +70,19 @@
       "aliases": [
         "R21.2"
       ],
-      "rule": "重写判据：同一文件 14 天内第三次因 bug 修改、要给现有函数加第三个特例分支、改一处要读两处以上旁路逻辑，任一出现就停止打补丁，选补 / 重写 / 删，并先写特征测试钉住旧行为。",
-      "disease": "同一处被反复补，散文式修复越积越多",
+      "rule": "方向检查（原重写判据）：同一文件或同一概念目录 14 天内第 3 个 fix 提交、出现 revert fix 的提交、修复因评测分数下降被回滚、同一条线派第 3 轮及以上修补、要加第三个特例分支，任一出现就停止派修补，先做类根因复盘（归类表、为什么一直冒、预测、靶子独立性检查、P0 现成方案、补 / 重写 / 删对比），结构性结论交用户拍板，复盘前先写特征测试钉住现状。",
+      "disease": "同一处被反复补，没人回头问方向和靶子对不对（评测靶子由同一条线自己写、本身有错）",
       "enforcement": [
-        "hook:edit-time-reminder"
+        "gate:scripts/check-direction-trailer.mjs",
+        "coordinator-tool:scripts/fix-churn.mjs",
+        "hook:edit-time-reminder",
+        "hook:self-check(方向检查块)",
+        "template:docs/engineering/direction-check-template.md"
       ],
-      "evidence": "edit-time-reminder 单测；复盘 14 天 17 个修复提交仍只写散文",
+      "evidence": "2026-10-04 导演计划编译器一天约 13 个提交、9 个 fix（含一次 revert 和一次因 oracle 分数下降的回滚），协调层照交接单又派第五轮；旧执行点只有 Claude 编辑提醒，修复由 Codex 执行时 hook 不跑，派工那一步也没有检查；根因是缺舞台模型层，且评测靶子本身有错",
       "owner": "协调会话",
       "review_on": "2026-12-01",
-      "delete_when": "试用期（到 10-15）内复发数无改善则删",
+      "delete_when": "30 天内热点 fix 提交带 Direction-Check 的比例持续为 100% 且无第 3 轮修补，则只保留 git 层",
       "level": "l2"
     },
     {
@@ -465,12 +469,14 @@
         "PB19",
         "PB19.3a"
       ],
-      "rule": "多智能体编排：任务书带开工三行头与概念占用；收货三查；一个概念一个 PR、按阶段攒（提交不压缩）；协调会话运作见编排手册。",
+      "rule": "多智能体编排：任务书带开工三行头与概念占用；收货三查；一个概念一个 PR、按阶段攒（提交不压缩）；协调会话运作见编排手册。省 token：①派活前先数轮次（同一处第 3 轮就停，改派复盘）；②协调会话不读大文件全文，先看大小和标题再按段读，读子 agent 结论不读过程；③子 agent 同时最多 3 个（含续跑）、默认 Sonnet，只有根因未定 / 碰花钱边界 / 结构改动才用 Opus，不再派子 agent；④任务书写清范围、不碰清单和停点，交货报告要短；⑤确定性的活用脚本不交给模型；⑥长输出落文件只看摘要，同一文件不反复读；⑦卡住 3 次就停下报告。",
       "disease": "派工混乱、合并失控",
       "enforcement": [
-        "coordinator-tool:scripts/merge-preflight.mjs"
+        "coordinator-tool:scripts/merge-preflight.mjs",
+        "coordinator-tool:scripts/check-dispatch-brief.mjs",
+        "hook:self-check(省 token 块)"
       ],
-      "evidence": "docs/engineering/agent-orchestration-playbook.md",
+      "evidence": "docs/engineering/agent-orchestration-playbook.md（§19 运作、§20 省 token）；2026-10-04 导演编译器第五轮修补是派工层没数轮次、协调层读全文又派工的典型",
       "owner": "协调会话",
       "review_on": "2026-12-01",
       "delete_when": "不适用",
