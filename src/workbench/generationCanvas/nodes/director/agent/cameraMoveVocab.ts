@@ -1,18 +1,16 @@
 /**
  * [INPUT]: 依赖 ./stagingVocab 的 SHOT_FRAMING / StagingShot（景别复用站位词表，单一真相源）
- * [OUTPUT]: 对外提供 CameraMove / CAMERA_MOVES / ZOOM_MOVES、CameraSpeed / CAMERA_SPEED_DURATION、CAMERA_MOVE_LABEL、CAMERA_MOVE_FRAMING、CAMERA_MOVE_DESC，再导出 SHOT_FRAMING / StagingShot
+ * [OUTPUT]: 对外提供 CameraMove / ZOOM_MOVES、CameraSpeed / CAMERA_SPEED_DURATION、CAMERA_MOVE_LABEL、CAMERA_MOVE_FRAMING、CAMERA_MOVE_DESC，再导出 SHOT_FRAMING / StagingShot
  * [POS]: director/agent 的运镜词汇表（原 V1 cameraMoveVocab，切换门入籍）：13 个电影运镜（10 个机位运动 + 3 个变焦族），
  *        create_camera_move 工具 schema 与工具摘要 / 手动运镜控件都从这里取；配 ./cameraMoveBuilder。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { SHOT_FRAMING, type StagingShot } from './stagingVocab'
-import { CAMERA_MOVES, type CameraMove } from '../../../../../../electron/shared/director/vocab'
+import type { CameraMove } from '../../../../../../electron/shared/director/vocab'
 
 export { SHOT_FRAMING }
 export type { StagingShot }
 
-export { CAMERA_MOVES } from '../../../../../../electron/shared/director/vocab'
-export type { CameraMove } from '../../../../../../electron/shared/director/vocab'
 
 // 变焦族（FOV 随段进度渐变）
 export const ZOOM_MOVES = new Set<CameraMove>(['zoom_in', 'zoom_out', 'dolly_zoom'])

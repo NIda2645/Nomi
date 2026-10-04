@@ -7,10 +7,10 @@ import {
   measureContinuity,
   sampleDirectorProject,
   type AnchorSpec,
-  type EvalShotSize,
   type ShotLadder,
 } from '../directorEvalMeasurement'
 import type { DirectorCamera, DirectorObject, DirectorProject, Vec3, Waypoint } from '../directorTypes'
+import type { EvalShotSize } from '../../../../../../../electron/shared/director/vocab'
 import { evaluateEntityTransform } from '../trajectoryEval'
 import { findActionEntry } from '../actionLibrary'
 import { lookAtAngles } from '../vec3'

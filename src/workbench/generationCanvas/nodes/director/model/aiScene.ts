@@ -9,9 +9,8 @@
 import { DIRECTOR_PRIMITIVE_TYPES, type DirectorPrimitiveType, type Vec3 } from './directorTypes'
 import { RAD_TO_DEG } from './vec3'
 
-import { aiSceneSchema, type AiSceneSpec, type AiSceneElement, type AiSceneGroup } from '../../../../../../electron/shared/director/aiSceneSchema'
-export { aiSceneSchema } from '../../../../../../electron/shared/director/aiSceneSchema'
-export type { AiSceneSpec, AiSceneElement, AiSceneGroup } from '../../../../../../electron/shared/director/aiSceneSchema'
+import { aiSceneSchema } from '../../../../../../electron/shared/director/aiSceneSchema'
+import type { AiSceneSpec, AiSceneGroup } from '../../../../../../electron/shared/director/aiSceneSchema'
 
 export const AI_SCENE_MAX_ELEMENTS = 60
 

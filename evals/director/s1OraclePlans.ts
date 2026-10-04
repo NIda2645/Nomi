@@ -1,4 +1,5 @@
 import type { DirectorPlan } from '../../electron/shared/director/directorPlanSchema'
+import type { DirectorSceneTemplate } from '../../electron/shared/director/vocab'
 
 const shot = (id: string, window: [number, number], subject: string, size: DirectorPlan['shots'][number]['size'], angle: DirectorPlan['shots'][number]['angle'], kind: DirectorPlan['shots'][number]['move']['kind'], amount?: number): DirectorPlan['shots'][number] => ({ id, window, transitionIn: 'cut', subject, size, angle, height: 'eye', move: { kind, amount: amount ?? (kind === 'orbit_right' ? 90 : undefined), speed: 'medium', easing: 'linear' } })
 
@@ -23,7 +24,7 @@ export const S1_ORACLE_PLANS: Record<string, DirectorPlan> = {
 }
 
 type PlanMove = DirectorPlan['shots'][number]['move']['kind']
-const TEMPLATE_FOR_REQUIRED: Record<string, { template: 'street' | 'room' | 'courtyard' | 'product_stage'; ref: string }> = {
+const TEMPLATE_FOR_REQUIRED: Record<string, { template: DirectorSceneTemplate; ref: string }> = {
   ground: { template: 'room', ref: 's1-room-floor' },
   room: { template: 'room', ref: 's1-room-floor' },
   interior: { template: 'room', ref: 's1-room-floor' },
