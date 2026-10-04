@@ -276,7 +276,6 @@ describe('nomi-mcp · dispatch 层 planConfirmed 预批准方案门', () => {
     const gateway: ProjectGateway = {
       readDoc: async () => ({ nodes: [], edges: [] }),
       apply: async () => { applied += 1 },
-      confirmSpend: async () => null,
       confirmPlan: async (info) => { planCalls.push(info); return true },
     }
     return { gateway, planCalls, getApplied: () => applied }
