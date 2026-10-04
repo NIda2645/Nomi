@@ -142,7 +142,7 @@ describe("nomi_try_model 遇到异步供应商", () => {
       pollTimeoutMs,
       // 档位代答：不需要 Nomi 窗口；钱闸照走同一个函数。
       approvalPolicy: () => ({ mode: "project", spend: "confirm" }),
-    }, { vendorKey, modelKey: "async-paint", prompt }) as Promise<Record<string, any>>;
+    }, { vendorKey, modelKey: "async-paint", prompt }) as Promise<Record<string, unknown> & { code?: string; ok?: boolean; taskId?: string; nextAction?: string; message?: string; state?: { assets: unknown[] } }>;
   }
 
   it("提交返回 queued、查几次后才出图：试跑成功，且只提交了一次", async () => {
