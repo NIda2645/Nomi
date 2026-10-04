@@ -564,6 +564,10 @@ export class CapabilityExecutorRegistry {
     const isCanvasWrite =
       invocation.capability.id === CANVAS_WRITE_CAPABILITY.id &&
       invocation.capability.version === CANVAS_WRITE_CAPABILITY.version;
+    // 3D-BOX：仅内部的 director.write（开关开才注册）走画布写同一个渲染端写口。
+    const isDirectorWrite =
+      invocation.capability.id === DIRECTOR_WRITE_CAPABILITY.id &&
+      invocation.capability.version === DIRECTOR_WRITE_CAPABILITY.version;
     const isCanvasDelete =
       invocation.capability.id === CANVAS_DELETE_CAPABILITY.id &&
       invocation.capability.version === CANVAS_DELETE_CAPABILITY.version;
@@ -582,11 +586,11 @@ export class CapabilityExecutorRegistry {
     const isTimelineWrite =
       invocation.capability.id === TIMELINE_WRITE_CAPABILITY.id &&
       invocation.capability.version === TIMELINE_WRITE_CAPABILITY.version;
-    if (!isAssetRead && !isCanvasRead && !isDocumentRead && !isDocumentWrite && !isCanvasDelete && !isCanvasWrite && !isExportRead && !isExportWrite && !isTimelineRead && !isTimelineWrite) {
+    if (!isAssetRead && !isCanvasRead && !isDocumentRead && !isDocumentWrite && !isCanvasDelete && !isCanvasWrite && !isDirectorWrite && !isExportRead && !isExportWrite && !isTimelineRead && !isTimelineWrite) {
       throw new CapabilityExecutionError("capability_unsupported");
     }
     parseInput(invocation);
-    const mutating = isDocumentWrite || isCanvasWrite || isCanvasDelete || isTimelineWrite || isExportWrite;
+    const mutating = isDocumentWrite || isCanvasWrite || isDirectorWrite || isCanvasDelete || isTimelineWrite || isExportWrite;
     let writeStarted = false;
 
     return bounded(
