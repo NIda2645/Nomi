@@ -43,7 +43,7 @@ import { catalogSecretsProvider } from "./events/secretsProvider";
 import { registerOnboardingIpc } from "./ai/onboarding/onboardingIpc";
 import { registerProviderAdapterIpc } from "./providerAdapter/ipc";
 import { registerExistingConnectionIpc } from "./providerAdapter/existingConnectionIpc";
-import { registerUpdaterIpc } from "./update/autoUpdater";
+import { registerUpdaterIpc, startAutoUpdateCheck } from "./update/autoUpdater";
 import { setRendererTarget } from "./capabilityCore/rendererBridge";
 import { readMcpInfo, installMcp, uninstallMcp } from "./capabilityCore/mcpConfig";
 import { registerNomiProtocolClient } from "./protocolRegistration";
@@ -594,6 +594,7 @@ function registerIpc(): void {
     loadCore: loadCapabilityCoreModule,
   });
   registerUpdaterIpc();
+  startAutoUpdateCheck();
   setEventLogSecretsProvider(catalogSecretsProvider);
 }
 const SKIP_CROSS_ORIGIN_ISOLATION = process.env.NOMI_E2E === "1";
