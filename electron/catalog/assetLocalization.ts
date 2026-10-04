@@ -70,22 +70,8 @@ export function trustedOriginalUrl(asset: Pick<LocalAsset, "originalUrl" | "ageM
   return asset.originalUrl;
 }
 
-/**
- * 代码所有的本地生成后端可回收产物 origin。安全例外集中在素材边界，不让通用 runtime 写供应商分支；
- * 仅 curated ComfyUI（含多实例的每一台）生效，用户导入的普通 vendor 不能靠持久化字段自行打开私网下载。
- * 多实例下信任范围不变：仍是「只信这个 vendor **自己** 配置的 origin」，多一台=多一个用户亲手填的地址。
- */
-export function trustedLocalOutputOrigin(
-  vendor: { key?: string; baseUrlHint?: string | null } | null | undefined,
-): string | null {
-  if (!isComfyuiVendor(vendor) || !vendor?.baseUrlHint) return null;
-  try {
-    const url = new URL(vendor.baseUrlHint);
-    return url.protocol === "http:" || url.protocol === "https:" ? url.origin : null;
-  } catch {
-    return null;
-  }
-}
+// 取回产物时信任哪个本机 / 内网 origin：不在这里判（此前只信 ComfyUI 的那份已删，#975 A），
+// 全仓唯一的判据是 electron/vendor/vendorOutboundGuard.ts 的 trustedRetrievalOrigin。
 export type LocalAssetReader = (url: string) => LocalAsset | null;
 export type HttpPostJson = (url: string, headers: Record<string, string>, body: unknown) => Promise<unknown>;
 // extraFields：multipart 里除 file 外的文本字段(如 KIE stream 的 uploadPath/fileName)。
