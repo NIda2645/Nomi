@@ -136,6 +136,9 @@ export type GenerationErrorKind =
   // 付费提交发出后没拿到回复（连接被重置 / 响应超时 / 提交途中进程退出）：供应商**可能已经收下**。
   // 与 network 分开：network 说「请求没发到」，对这一类是假话；而且重试 = 可能重复提交，所以不给重试按钮。
   | 'submission-unknown'
+  // 已生成、取回失败（#975 A2，机器码 NOMI_ERR::output-retrieval-failed::）：结果在服务商那边，丢的只是下载。
+  // 与 outbound-blocked 分开：那条的下一步是去看网络；这条覆盖整个确定性取回失败族，下一步只有「重新取回」。
+  | 'output-retrieval-failed'
   | 'unknown'
 
 /** 目录（generationCommon.observability.error）里每一类失败的词条 key——单源；noChargeClaims.test 也读它。 */
@@ -166,6 +169,7 @@ export const ERROR_KEY_BY_KIND: Record<GenerationErrorKind, string> = {
   'output-truncated': 'outputTruncated',
   'output-unreadable': 'outputUnreadable',
   'submission-unknown': 'submissionUnknown',
+  'output-retrieval-failed': 'outputRetrievalFailed',
   unknown: 'unknown',
 }
 
@@ -275,6 +279,8 @@ const ACTION_BY_KIND: Record<GenerationErrorKind, GenerationErrorActions> = {
   // 不给一键重试：这一镜可能已经被服务商收下，重试可能重复提交。次动作「我核对过了，重新生成」点下去先展开一段确认，
   // 确认后只释放占用、再走正常的付费确认卡；主动作指路去任务中心看这一笔的时间 / 模型 / 服务商。
   'submission-unknown': { primary: 'reconcile', secondary: 'release-regenerate' },
+  // 只指路去任务面板（那里有「重新取回」）。绝不给 retry：重试 = 再生成一份、再花一次钱，而这一份已经做好了。
+  'output-retrieval-failed': { primary: 'view-task', secondary: null },
   unknown: RETRY_FIRST,
 }
 
@@ -313,6 +319,8 @@ const VENDOR_SIDE_BY_KIND: Record<GenerationErrorKind, boolean> = {
   'output-unreadable': false,
   // 服务商是否收下 Nomi 并不知道，不替它定性（也不触发「换一家」的切家提示）。
   'submission-unknown': false,
+  // 失败在 Nomi 取回这一侧（策略 / 对方拒绝下载 / 返回的不是可用文件），不点名服务商「失败了」。
+  'output-retrieval-failed': false,
   unknown: false,
 }
 

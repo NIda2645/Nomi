@@ -31,7 +31,8 @@ import {
 } from "./submissionOutbox";
 import { classifyGenerationResume, type GenerationResumeDecision } from "./productionRunResume";
 import { createProductionExecutionBinding, type ProductionExecutionBinding } from "./productionExecutionBinding";
-import type { ProductionArtifact, ProductionJob, ProductionRun } from "./productionRunTypes";
+import { OUTPUT_RETRIEVAL_FAILED, type ProductionArtifact, type ProductionJob, type ProductionRun } from "./productionRunTypes";
+import { tagNomiError } from "../shared/nomiErrorCodes";
 
 export { SubmissionReceiptUnknownError, SubmissionReconciliationRequiredError };
 
@@ -92,6 +93,25 @@ export class GenerationMaterializationError extends Error {
     super(message);
     this.name = "GenerationMaterializationError";
   }
+}
+
+/**
+ * 供应商说成了、产物取不回来，而且再取一次也不会不一样（#975 A2）。抛出前这一镜已经**耐久地**进了
+ * needs_attention（errorCode = output_retrieval_failed）：调用方据此把它当成「已结清」而不是「还在处理」，
+ * 不许下一轮再查再下。仍是 GenerationMaterializationError（code materialization_failed），既有的单镜对账照旧认得。
+ */
+export class GenerationOutputRetrievalFailedError extends GenerationMaterializationError {
+  constructor(message: string) {
+    super(message);
+    this.name = "GenerationOutputRetrievalFailedError";
+  }
+}
+
+type RetrievalFailure = { code?: unknown; deterministic?: unknown; message?: unknown };
+
+function deterministicRetrievalFailure(error: unknown): error is RetrievalFailure & { message: string } {
+  const value = error as RetrievalFailure | null;
+  return Boolean(value && typeof value === "object" && value.code === OUTPUT_RETRIEVAL_FAILED && value.deterministic === true);
 }
 
 export type GenerationSubmissionResumeResult = GenerationResumeDecision & {
@@ -611,7 +631,27 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     }
     if (extracted.outputs.length !== 1) throw new GenerationMaterializationError(extracted.outputs.length === 0 ? "Provider did not expose a materializable output" : "Single-shot generation returned more than one output");
     if (!deps.materializeOutput) throw new GenerationMaterializationUnsupportedError();
-    const receipt = await deps.materializeOutput({ projectId: input.projectId, operationId: run.runId, run, job, contract, providerTaskId: job.providerTaskId, output: extracted.outputs[0] });
+    let receipt: Awaited<ReturnType<NonNullable<typeof deps.materializeOutput>>>;
+    try {
+      receipt = await deps.materializeOutput({ projectId: input.projectId, operationId: run.runId, run, job, contract, providerTaskId: job.providerTaskId, output: extracted.outputs[0] });
+    } catch (error) {
+      if (!deterministicRetrievalFailure(error)) throw error;
+      // 确定性的取回失败：记成「已生成但取回失败」，停下来交给人（重新取回免费、不重新生成）。
+      // 人话带稳定码，渲染层按码说话（不重新生成、去任务面板点「重新取回」）。
+      const current = requiredRun(deps.repository, input.projectId, input.operationId);
+      const currentJob = current.jobs.find((candidate) => candidate.jobId === jobId);
+      if (currentJob && currentJob.status !== "needs_attention") {
+        command(current, "job.status", {
+          jobId,
+          status: "needs_attention",
+          patch: {
+            errorCode: OUTPUT_RETRIEVAL_FAILED,
+            errorMessage: tagNomiError("output-retrieval-failed", `The provider finished this shot, but Nomi could not retrieve the result: ${error.message}`),
+          },
+        }, `retrieval-failed:${jobId}:${current.revision}`);
+      }
+      throw new GenerationOutputRetrievalFailedError(error.message);
+    }
     const artifactId = typeof receipt.artifactId === "string" ? receipt.artifactId.trim() : "";
     const contentHash = typeof receipt.contentHash === "string" ? receipt.contentHash.trim() : "";
     const projectRelativePath = typeof receipt.projectRelativePath === "string" ? receipt.projectRelativePath.trim() : "";
