@@ -32,7 +32,7 @@ import { createClipId, createKeyframeId, createWaypointId } from './directorIds'
 import type { CommitProject, SelectedClipType, StoreGet, StoreSet } from './directorStore'
 import type { ActionClip, BoneKeyframe, CloseupClip, DirectorCamera, DirectorObject, LookAtClip, TimelineEntity, TrajectoryClip, Vec3, Waypoint } from './directorTypes'
 import { findTrajectoryClipAt } from './editLayer'
-import { entityClips, FRAME_EPSILON, laneClips, quantizeToFrame, secondsToFrame, syncInTimeline } from './timeGrid'
+import { FRAME_EPSILON, laneClips, quantizeToFrame, secondsToFrame, syncInTimeline } from './timeGrid'
 
 export type ClipFamily = Exclude<SelectedClipType, null>
 export type InsertMode = 'append' | 'prepend' | 'at_time'

@@ -271,7 +271,8 @@ function objectSample(
     projection,
     shotSize,
     anchors: Object.keys(anchorSamples).length ? anchorSamples : undefined,
-    belowGround: center.y - size.y / 2 < -0.05,
+    // 分组没有几何，量不出「在地面以下」（它的 1 米占位盒只是兜底，不是渲染真值）
+    belowGround: object.type !== 'group' && center.y - size.y / 2 < -0.05,
   }
 }
 

@@ -19,6 +19,7 @@ import type {
 import { lookAtAngles } from '../../src/workbench/generationCanvas/nodes/director/model/vec3'
 import { findActionEntry } from '../../src/workbench/generationCanvas/nodes/director/model/actionLibrary'
 import type { DirectorCard } from './cardSchema'
+import type { SpatialAuditContext } from '../../src/workbench/generationCanvas/nodes/director/model/directorSpatialAudit'
 import { adaptS1Plan, adaptS1Prompt } from './s1Adapter'
 import { S1_ORACLE_PLANS } from './s1OraclePlans'
 
@@ -26,6 +27,8 @@ export type AdaptedProject = {
   project: DirectorProject
   actorMap?: Record<string, string>
   anchors?: Record<string, AnchorSpec>
+  /** 只有走 S1 编译器的方案带；没有它就不量物理层。 */
+  spatial?: SpatialAuditContext
   metadata?: {
     plannerAttempts?: number
     usage?: { inputTokens?: number; outputTokens?: number; totalTokens?: number; estimatedUsd?: number }

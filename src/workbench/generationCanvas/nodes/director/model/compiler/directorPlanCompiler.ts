@@ -1,6 +1,7 @@
 import { normalizeAiScene } from '../aiScene'
 import { createDefaultProject } from '../directorProject'
 import { originYForBottom, originYForCenter, scaledBounds } from '../directorSpace'
+import type { SpatialAuditContext } from '../directorSpatialAudit'
 import { syncInTimeline } from '../timeGrid'
 import {
   distanceForShotSize,
@@ -79,6 +80,8 @@ export type DirectorCompileResult =
       anchors: Record<string, AnchorSpec>
       issues: DirectorCompileIssue[]
       duration: number
+      /** 物理判据需要的计划信息（谁拍谁、谁拿着什么），评测打分用。 */
+      spatial: SpatialAuditContext
     }
   | { ok: false; errors: string[] }
 
@@ -607,5 +610,16 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
       objectId: item.objectId,
     })),
   )
-  return { ok: true, project, actorMap, anchors, issues, duration }
+  const spatial: SpatialAuditContext = {
+    shots: plan.shots.flatMap((shot) => {
+      const subjectId = actorMap[shot.subject.split('.')[0]]
+      return subjectId && cameras.some((camera) => camera.id === `shot:${shot.id}/camera`)
+        ? [{ cameraId: `shot:${shot.id}/camera`, subjectId, window: shot.window as [number, number] }]
+        : []
+    }),
+    carried: plan.actors
+      .filter((actor) => actor.placement.relation === 'on' && actorMap[actor.placement.ref])
+      .map((actor) => [actorMap[actor.id], actorMap[actor.placement.ref]] as [string, string]),
+  }
+  return { ok: true, project, actorMap, anchors, issues, duration, spatial }
 }

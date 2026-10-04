@@ -87,7 +87,6 @@ export function localBounds(type: DirectorObjectType): THREE.Box3 {
 }
 
 export type ScaledBounds = { min: Vec3; max: Vec3; center: Vec3; size: Vec3 }
-const vec = (v: THREE.Vector3): Vec3 => ({ x: v.x, y: v.y, z: v.z })
 
 /** 带 scale（不带旋转）的、相对原点的包围盒：编译器避让、测量、AI 搭场景落地都用这个。 */
 export function scaledBounds(type: DirectorObjectType, scale: Vec3): ScaledBounds {
