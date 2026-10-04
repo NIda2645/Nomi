@@ -34,8 +34,6 @@ export const zhDirector = {
     produceDescription: '用这段预演出成片',
     produceMenu: '打开出片选项',
     producePlaceholder: '3b 接入前暂不可用',
-    undo: '撤销',
-    redo: '重做',
     empty: '还没有可播放的镜头，先让 Agent 搭一段预演',
     unknown: '未测量',
     noCamera: '机位未测量',
@@ -71,6 +69,13 @@ export const zhDirector = {
     viewModeAria: '导演视图模式',
     directorView: '导演',
     refineView: '精修',
+    // 精修「选中才出」顶栏（2026-10-04）：图层名即入口，点开是大纲 + 场景设置
+    sceneMenuAria: '场景「{{name}}」：图层、对象与场景设置',
+    sceneSettings: '场景设置',
+    viewHistoryAria: '视图、撤销与产出',
+  },
+  refine: {
+    emptyScene: '场景还是空的 · 点顶栏「＋」加角色、机位或灯光',
   },
   addMenu: {
     sectionAdd: '添加到场景',
@@ -79,6 +84,7 @@ export const zhDirector = {
   viewMenu: {
     display: '几何体显示',
     prefs: '偏好设置（漫游 / 灵敏度）',
+    resetView: '重置视角',
   },
   regions: {
     sceneObjects: '场景对象',
@@ -289,7 +295,7 @@ export const zhDirector = {
   },
   assets: {
     search: '搜索资产…',
-    folder: { linked: '连线引用', uploads: '用户上传', splats: '泼溅场景', models: '预设模型', lights: '基础灯光', primitives: '基础几何体' },
+    folder: { linked: '连线引用', uploads: '用户上传', splats: '泼溅场景', primitives: '基础几何体' },
     kind: { model: '模型', splat: '泼溅', panorama: '全景', scene: '场景' },
     upload: '上传',
     uploadHint: '导入 GLB / GLTF / FBX 模型、PLY / SPZ / SPLAT / KSPLAT / SOG 泼溅、全景图或导演台场景 JSON',
@@ -964,8 +970,6 @@ export const enDirector = {
     produceDescription: 'Produce from this preview',
     produceMenu: 'Open production options',
     producePlaceholder: 'Unavailable until 3b is connected',
-    undo: 'Undo',
-    redo: 'Redo',
     empty: 'No playable shots yet. Ask Agent to stage a preview first.',
     unknown: 'Not measured',
     noCamera: 'Camera not measured',
@@ -1000,6 +1004,12 @@ export const enDirector = {
     viewModeAria: 'Director view mode',
     directorView: 'Director',
     refineView: 'Refine',
+    sceneMenuAria: 'Scene “{{name}}”: layers, objects and scene settings',
+    sceneSettings: 'Scene settings',
+    viewHistoryAria: 'View, undo and outputs',
+  },
+  refine: {
+    emptyScene: 'The scene is empty · use + in the top bar to add a character, camera or light',
   },
   addMenu: {
     sectionAdd: 'Add to scene',
@@ -1008,6 +1018,7 @@ export const enDirector = {
   viewMenu: {
     display: 'Primitive display',
     prefs: 'Preferences (fly / sensitivity)',
+    resetView: 'Reset view',
   },
   regions: {
     sceneObjects: 'Scene objects',
@@ -1218,7 +1229,7 @@ export const enDirector = {
   },
   assets: {
     search: 'Search assets…',
-    folder: { linked: 'Linked inputs', uploads: 'Uploads', splats: 'Splat scenes', models: 'Preset models', lights: 'Basic lights', primitives: 'Basic primitives' },
+    folder: { linked: 'Linked inputs', uploads: 'Uploads', splats: 'Splat scenes', primitives: 'Basic primitives' },
     kind: { model: 'Model', splat: 'Splat', panorama: 'Panorama', scene: 'Scene' },
     upload: 'Upload',
     uploadHint: 'Import GLB / GLTF / FBX models, PLY / SPZ / SPLAT / KSPLAT / SOG splats, panoramas or Director scene JSON',

@@ -57,6 +57,8 @@ export type DirectorCanvasProps = {
   onLabels: (labels: ProjectedLabel[]) => void
   onPovRejected: (reasonKey: string) => void
   presentation?: 'edit' | 'director'
+  /** 视图立方住哪个角：缺省右上；精修「选中才出」放右下（右上是属性卡出现的地方，卡一出就把它盖住） */
+  viewCubeCorner?: 'top-right' | 'bottom-right'
 }
 
 function PickingBinder({ enabledRef, onPovRejected }: { enabledRef: React.MutableRefObject<boolean>; onPovRejected: (reasonKey: string) => void }): null {
@@ -75,7 +77,7 @@ function ContextRecovery(): null {
   return null
 }
 
-function ViewCube(): JSX.Element {
+function ViewCube({ corner }: { corner: 'top-right' | 'bottom-right' }): JSX.Element {
   const recording = useDirectorStore((state) => Boolean(state.recording))
   const groupRef = React.useRef<THREE.Group>(null)
   React.useLayoutEffect(() => {
@@ -83,7 +85,7 @@ function ViewCube(): JSX.Element {
   }, [])
   return (
     <group ref={groupRef}>
-      <GizmoHelper alignment="top-right" margin={[56, 56]}>
+      <GizmoHelper alignment={corner} margin={[56, 56]}>
         <GizmoViewcube color="#2a2d33" hoverColor="#3b82f6" textColor="#e5e7eb" strokeColor="#6b7280" opacity={0.9} font="20px sans-serif" onClick={recording ? (event) => { event.stopPropagation(); return null } : undefined} />
       </GizmoHelper>
     </group>
@@ -118,7 +120,7 @@ export function DirectorCanvas(props: DirectorCanvasProps): JSX.Element {
         <PickingBinder enabledRef={props.pickingEnabledRef} onPovRejected={props.onPovRejected} />
         <PlaybackBinder />
         <LabelProjector onLabels={props.onLabels} />
-        {props.presentation === 'director' ? <HideEditingHelpers /> : <ViewCube />}
+        {props.presentation === 'director' ? <HideEditingHelpers /> : <ViewCube corner={props.viewCubeCorner ?? 'top-right'} />}
         <SelectionOutline />
         <PipRenderer rectRef={props.pipRectRef} followProgram={props.presentation === 'director'} />
         <CaptureBinder />

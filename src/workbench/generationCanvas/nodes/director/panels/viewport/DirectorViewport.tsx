@@ -46,11 +46,13 @@ export type DirectorViewportProps = {
   showAiSceneBar?: boolean
   /** 导演视图（3D-BOX）的看法：编辑辅助物不画、不可点选、小窗跟播放头的节目机位并说「正在播哪一镜」。缺省 = 精修 / 旧导演台。 */
   presentation?: DirectorViewportPresentation
+  /** 视图立方住哪个角（透传给画布）；缺省右上 */
+  viewCubeCorner?: 'top-right' | 'bottom-right'
 }
 
 export type DirectorViewportPresentation = { kind: 'director'; nowPlaying: string | null }
 
-export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, scopeRef, placement, boxDraw, cancelCreationRef, showAiSceneBar = true, presentation }: DirectorViewportProps): JSX.Element {
+export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, scopeRef, placement, boxDraw, cancelCreationRef, showAiSceneBar = true, presentation, viewCubeCorner }: DirectorViewportProps): JSX.Element {
   const { t } = useTranslation()
   const hoveredRef = React.useRef(false)
   const apiRef = useViewportApi()
@@ -150,6 +152,7 @@ export function DirectorViewport({ theme, viewSettings = DEFAULT_VIEW_SETTINGS, 
         aspect={exportAspectRatio(exportRatio) ?? 16 / 9}
         onLabels={setLabels}
         onPovRejected={reject}
+        viewCubeCorner={viewCubeCorner}
         presentation={presentation ? 'director' : 'edit'}
       />
       <AspectGuide pipRectRef={pipRectRef} />

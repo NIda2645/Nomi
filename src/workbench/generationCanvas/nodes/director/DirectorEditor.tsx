@@ -4,7 +4,7 @@
  *          ./model/directorStore 的 createDirectorStore、./DirectorEditorContext、
  *          ./panels/EditorSplit、./panels/side/SidePanels、./panels/viewport/DirectorViewport、./timeline/DirectorTimeline、./scene/ViewportApiContext、
  *          ./scene/viewSettings（偏好读写）、./useDirectorHotkeys、./useMobileCamera、./MobileCameraContext、
- *          ./panels/dialogs/{MobileConnectDialog, SettingsDialog, HelpDialog}、./model/directorTypes、./DirectorViewShell、./directorSessionRegistry、../../../../featureFlags/director3dbox
+ *          ./panels/dialogs/{MobileConnectDialog, SettingsDialog, HelpDialog}、./model/directorTypes、./DirectorViewShell、./DirectorRefineShell、./panels/refineLayoutPreview（样张期接缝）、./directorSessionRegistry、../../../../featureFlags/director3dbox
  *          ./model/cameraCoordinateSpace / sceneObjectGraph 的当前世界视角转图层局部位姿、创建模式取消登记
  * [OUTPUT]: 对外提供 DirectorEditor（default）：全屏壳 —— 顶栏 / 视口 / 时间轴（S2）/ 右栏 五区域 + 可拖分栏 + 退出确认 + 自动保存 +
  *           开关开启时提供占画布区的导演视图外壳，镜头条只读且沿用实测模块；编辑器会话登记为外部 AI 写入入口
@@ -54,6 +54,8 @@ import { orderedTimelineEntities } from './model/timelineTracks'
 import { registerDirectorSession } from './directorSessionRegistry'
 import { isDirector3DBoxEnabled } from '../../../../featureFlags/director3dbox'
 import { DirectorViewShell, type DirectorViewMode } from './DirectorViewShell'
+import { DirectorRefineShell } from './DirectorRefineShell'
+import { RefineLayoutContext } from './panels/refineLayoutPreview'
 import { useWorkbenchStore } from '../../../workbenchStore'
 import { assistantPaneWidth } from '../../../assistantWidthBounds'
 
@@ -126,6 +128,7 @@ function EditorStage({ nodeTitle, scopeRef, preferences, cancelCreationRef, time
   const creationMode = React.useMemo(() => ({ placement, boxDraw }), [placement, boxDraw])
   // 时间轴上一个实体都没有时把它钉成一条：比例记忆不动，加了轨道立刻回到用户自己的分栏
   const timelineEmpty = useDirectorStore((state) => orderedTimelineEntities(state.activeScene()).length === 0)
+  const refineLayout = React.useContext(RefineLayoutContext)
   if (director3dBox && viewMode === 'director') {
     return <DirectorViewShell
       nodeTitle={nodeTitle}
@@ -139,6 +142,29 @@ function EditorStage({ nodeTitle, scopeRef, preferences, cancelCreationRef, time
       onViewModeChange={onViewModeChange}
       onProduce={onProduce}
     />
+  }
+  // 样张期接缝（panels/refineLayoutPreview）：只有设计实验室会走到这一支；拍板后它成为唯一的精修 / 旧导演台布局，下面的旧右栏双卡同 PR 删除
+  if (refineLayout === 'select-to-show') {
+    return (
+      <CreationModeContext.Provider value={creationMode}>
+        <DirectorRefineShell
+          scopeRef={scopeRef}
+          placement={placement}
+          boxDraw={boxDraw}
+          cancelCreationRef={cancelCreationRef}
+          theme={preferences.theme}
+          viewSettings={preferences.view}
+          timelineCollapsed={timelineCollapsed}
+          timelineEmpty={timelineEmpty}
+          onToggleTimeline={onToggleTimeline}
+          onResetView={onResetView}
+          onExit={onExit}
+          onOpenSettings={onOpenSettings}
+          onOpenHelp={onOpenHelp}
+          viewMode={director3dBox ? { value: viewMode, onChange: onViewModeChange } : undefined}
+        />
+      </CreationModeContext.Provider>
+    )
   }
   return (
     <CreationModeContext.Provider value={creationMode}>
