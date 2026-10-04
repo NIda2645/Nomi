@@ -19,8 +19,11 @@ import { LaneDomainFailure } from "../shared/agentLane/laneToolContract";
 export interface CanvasLanePort {
   read(context: LaneToolExecutionContext): Promise<unknown>;
   write(input: CanvasWriteInput, context: LaneToolExecutionContext): Promise<CanvasWriteResult>;
-  /** 3D-BOX（开关开时才有这个动词）：同一个渲染端写口，契约 `director.write`。 */
-  writeDirector(input: DirectorWriteInput, context: LaneToolExecutionContext): Promise<DirectorWriteResult>;
+  /**
+   * 3D-BOX（开关开时才有这个动词）：同一个渲染端写口，契约 `director.write`。可选：开关关的构建与只测画布读写的
+   * 夹具不必提供；开关开却没接上时，`stage_shot` 如实报「这个宿主不支持」。
+   */
+  writeDirector?(input: DirectorWriteInput, context: LaneToolExecutionContext): Promise<DirectorWriteResult>;
 }
 
 export function createCanvasLaneTools(port: CanvasLanePort): LaneToolDescriptor[] {
@@ -36,6 +39,7 @@ export function createCanvasLaneTools(port: CanvasLanePort): LaneToolDescriptor[
     if (spec.contractId === DIRECTOR_WRITE_CAPABILITY.id) {
       return bindLaneTool(spec, async (args, context) => {
         const input = toSemanticInput(spec, args as Record<string, unknown>) as DirectorWriteInput;
+        if (!port.writeDirector) throw new LaneDomainFailure({ code: "capability_unsupported", message: "This host has no 3D-BOX director surface, so stage_shot cannot build a preview here.", nextAction: "Tell the user the 3D-BOX preview is not available in this session. Nothing was changed." });
         const result = await port.writeDirector(input, context);
         if (!result.applied) throw new LaneDomainFailure(directorRejection(result));
         return { ok: true, text: directorReceiptText(result), details: result, nextAction: {
