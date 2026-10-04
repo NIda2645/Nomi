@@ -70,7 +70,7 @@ function App() {
   ] as const
   return <main style={{ maxWidth: 1100, margin: '0 auto', padding: 24 }}>
     <h1 style={{ margin: '0 0 6px', fontSize: 24 }}>Director 3D-BOX Asset Lab</h1>
-    <p style={{ color: '#aab4c4', marginTop: 0 }}>A 期素材真渲染目检：一次只开一个 WebGL context，使用链接逐项检查动作和道具（动作用检查材质便于读骨骼连续性）。</p>
+    <p style={{ color: '#aab4c4', marginTop: 0 }}>A 期素材真渲染目检：UAL 原生人偶使用 Nomi 灰色白模材质与地面网格；一次只开一个 WebGL context，使用链接逐项检查动作和道具。</p>
     <section style={{ display: 'grid', gridTemplateColumns: 'minmax(480px, 1fr) 280px', gap: 20, alignItems: 'start' }}>
       <article style={{ background: '#20252e', border: '1px solid #323b49', borderRadius: 10, overflow: 'hidden' }}>
         <canvas ref={ref} width={640} height={440} style={{ display: 'block', width: '100%', height: 440 }} />
