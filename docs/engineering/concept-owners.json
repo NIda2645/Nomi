@@ -1776,6 +1776,36 @@
       "notes": "PR #916（合同 docs/fixes/2026-09-28-mcp-passive-request-cold-launch.root-cause.json）：外部 AI 工具列一下资源就把 Nomi 窗口拉起来。initialize / tools/list / resources/list / resources/templates/list / ping 这类被动发现在没有活实例时只读返回、不冷启动；分流只在 createMcpProtocol，只探测不拉起的调用走 invokeIfOpen。真实工具调用仍可后台拉起（用户拍板）。"
     },
     {
+      "name": "MCP 调用怎么找到活 Nomi 并把请求转过去",
+      "subject": "mcp.live-instance-forwarding",
+      "lifecycle": "host",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/mcpLoopbackRpcCall.ts",
+        "symbol": "callMcpLoopbackRpc"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/mcpLoopbackRpcCall.ts",
+          "symbol": "callMcpLoopbackRpc"
+        },
+        {
+          "path": "electron/capabilityCore/mcpNodeLauncher.ts",
+          "symbol": "ensureLiveInstance"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/mcpLoopbackRpcCall.test.ts",
+      "allowed_consumers": [
+        "electron/capabilityCore/mcpStdioServer.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "合同 docs/fixes/2026-10-04-mcp-launcher-relaunch.root-cause.json：两份 MCP 启动器转发给活 Nomi 的请求（planConfirmed / documentConfirmed、超时、取消、错误解析）只在 callMcpLoopbackRpc 构造；裸 Node launcher 的「连现成实例 / 快速失败 / 重新拉起」只在 ensureLiveInstance 判断，按广告 + 自己拉起的子进程状态每轮重判。"
+    },
+    {
       "name": "后台启动的 Nomi 何时空闲退出",
       "subject": "host.background-idle-exit",
       "lifecycle": "host",
@@ -4280,6 +4310,36 @@
       ],
       "since": "2026-10-04",
       "notes": "原渲染层定义移动到共享层，保持同一 Zod 形状；渲染层继续消费。"
+    },
+    {
+      "name": "试跑一单后怎么说（已提交算不算失败）",
+      "subject": "onboarding.try-model-outcome",
+      "lifecycle": "spend-authority",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+        "symbol": "tryModel"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+          "symbol": "tryModel"
+        },
+        {
+          "path": "electron/capabilityCore/pollTaskToTerminal.ts",
+          "symbol": "pollTaskToTerminal"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/modelOnboarding/tryModelAsyncQueued.test.ts",
+      "allowed_consumers": [
+        "electron/capabilityCore/modelOnboarding/dispatch.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "异步供应商提交即收费：非终态不是失败。tryModel 经 pollTaskToTerminal 最多等 40 秒（外部宿主工具超时约 60 秒），等不到返回 still_processing（带任务号、明说不要重试），只有供应商自己报终态失败才是 provider_failed。设计卡 docs/plan/2026-10-04-try-model-async-queued.md，合同 docs/fixes/2026-10-04-try-model-async-queued.root-cause.json。"
     }
   ]
 }

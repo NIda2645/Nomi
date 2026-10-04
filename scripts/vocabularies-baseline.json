@@ -1827,6 +1827,16 @@
       ],
       "reason": "任务状态四态的中立合同：主进程（responseParsing 重导出）与渲染层（taskApi 重导出）共用这一份，不再各自重复写在两个实现层。",
       "site": "electron/shared/taskStatus.ts::type:TaskStatus/type-union"
+    },
+    {
+      "members": [
+        "failed",
+        "none",
+        "ready",
+        "rendering"
+      ],
+      "reason": "3D-BOX 导演节点上挂的预演（参考视频）的生命周期：none 没有预演 / rendering 离屏录制中 / ready 可挂接 / failed 录制失败。它回答「这一镜的预演能不能当参考视频、能不能放行付费生成」，是 3D-BOX 花钱闸（directorPreviewState）的判据。收进 electron/shared/director/directorPreviewStatus.ts 作 as-const 单源，主进程合同 directorWrite、画布读取视图 canvasRead 的 z.enum、渲染端 applyDirectorWrite 的 Preview 与 directorPreviewState 的 DirectorPreviewMeta（Exclude none）都从它取，不各抄一份。不能复用现有 owner：画布节点状态 GENERATION_NODE_STATUSES 说的是一次生成任务的排队 / 成功 / 可找回，预演没有排队与可找回两格，却多一个「没有预演」；并进去会让生成状态表长出与它无关的成员。",
+      "site": "electron/shared/director/directorPreviewStatus.ts::variable:DIRECTOR_PREVIEW_STATUSES/as-const"
     }
   ],
   "debt": [

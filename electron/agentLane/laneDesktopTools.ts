@@ -9,6 +9,8 @@ import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContrac
 import type { ProjectAgentApprovalPolicy } from '../shared/agentCapabilities/capabilityApprovalPolicy'
 import type { RuntimeToolCall, RuntimeToolDecision } from '../shared/agentCapabilities/transportContracts'
 import type { CanvasWriteResult } from '../shared/agentCapabilities/canvasWrite'
+import { DIRECTOR_WRITE_CAPABILITY, type DirectorWriteResult } from '../shared/agentCapabilities/directorWrite'
+import { director3dBoxFaceEnabled } from '../shared/featureFlags/director3dboxFace'
 import type { DocumentWriteResult } from '../shared/agentCapabilities/documentWrite'
 import { LaneDomainFailure, type OpenLaneOptions } from './laneRuntimePort'
 import { laneFailureFromDecision } from '../shared/agentLane/laneFailureFromDecision'
@@ -139,6 +141,18 @@ export function createDesktopLaneTools(input: {
         }
         return resultOf(decision, 'canvas write') as CanvasWriteResult
       },
+      // 3D-BOX：同一条审批 → 收据 → 渲染端写口，只是契约换成 `director.write`。
+      writeDirector: async (_value, context) => {
+        const prepared = preparedCanvases.get(context.toolCallId)
+        const approval = approvals.get(context.toolCallId)
+        if (!prepared || !approval || !approvedCalls.delete(context.toolCallId)) throw new Error('capability_authority_invalid')
+        preparedCanvases.delete(context.toolCallId)
+        const decision = await canvasWrite.execute(prepared, approval, context.signal)
+        if (decision.ok && !committedProjectAgentReceiptMatchesApproval(input.binding, input.receipts.read(), approval)) {
+          throw new Error('capability_receipt_unresolved')
+        }
+        return resultOf(decision, 'stage_shot') as DirectorWriteResult
+      },
     }),
     ...createTimelineLaneTools({ read: async ({ operation, ...args }, context) => resultOf(await timelineRead.tryExecute({
       // The alias transport owns operation binding; its strict args exclude that semantic field.
@@ -171,6 +185,11 @@ export function createDesktopLaneTools(input: {
         }, signal)
         if (!prepared) throw new Error('capability_unsupported')
         preparedDocuments.set(call.toolCallId, prepared)
+      } else if (tool.contractId === DIRECTOR_WRITE_CAPABILITY.id) {
+        // `stage_shot`（3D-BOX）→ `director.write` 语义输入；传输层按契约 id 认路，证据与审批同画布写。
+        const prepared = await canvasWrite.prepare({ ...call, toolName: DIRECTOR_WRITE_CAPABILITY.id, args: toSemanticInput(tool, verbArgs as Record<string, unknown>) }, signal)
+        if (!prepared) throw new Error('capability_unsupported')
+        preparedCanvases.set(call.toolCallId, prepared)
       } else if (tool.contractId === 'canvas.write') {
         // 三个画布写动词 → 契约 operation（声明上的 `semanticInputOf`）；传输层按 `nomi_canvas_edit` + operation 认路。
         const prepared = await canvasWrite.prepare({ ...call, toolName: 'nomi_canvas_edit', args: toSemanticInput(tool, verbArgs as Record<string, unknown>) }, signal)
@@ -216,6 +235,12 @@ export function createDesktopLaneTools(input: {
       }
       return generation
     }, onTaskCreated: input.onTaskCreated, context: input.context,
+    // 3D-BOX 花钱闸：只在开关开的构建接上（开关关时 generate 的预检逐字不变）。问的是渲染端唯一判据。
+    ...(director3dBoxFaceEnabled() ? { directorPreviewBlocks: async (operationId: string, shotIds: readonly string[] | undefined, candidateReferences: Readonly<Record<string, readonly string[]>>) => {
+      const reply = await requestRenderer("director.preview-blocks", { projectId: input.binding.projectId, operationId, ...(shotIds ? { shotIds } : {}), candidateReferences }, 10_000) as { blocks?: unknown } | null
+      if (!reply || !Array.isArray(reply.blocks)) throw new Error("director_preview_blocks_unavailable")
+      return reply.blocks as never
+    } } : {}),
   })
   return {
     tools: [...tools, ...extended.tools],

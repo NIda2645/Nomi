@@ -84,9 +84,9 @@ test('quality gate uses Node 24-native actions without a forced runtime shim', (
     (job) => job.steps?.flatMap((step) => (typeof step.uses === 'string' ? [step.uses] : [])) ?? [],
   )
 
-  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 9)
-  assert.equal(actionUses.filter((uses) => uses === 'pnpm/action-setup@v6').length, 7)
-  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 8)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/checkout@v7').length, 10)
+  assert.equal(actionUses.filter((uses) => uses === 'pnpm/action-setup@v6').length, 8)
+  assert.equal(actionUses.filter((uses) => uses === 'actions/setup-node@v7').length, 9)
   assert.ok(actionUses.includes('actions/upload-artifact@v7'))
   assert.ok(actionUses.every((uses) => !/@v4$/.test(uses)))
   for (const job of Object.values(workflow.jobs)) {
@@ -343,6 +343,7 @@ test('Quality Gate requires mandatory jobs and every risk-selected optional surf
   assert.deepEqual(quality.needs, [
     'scope',
     'contracts',
+    'director3dbox-face',
     'unit',
     'core-smoke',
     'desktop-linux',
@@ -375,6 +376,14 @@ test('Quality Gate requires mandatory jobs and every risk-selected optional surf
   assert.match(command, /"\$\{\{ needs\.scope\.outputs\.canvas \}\}" = "critical"/)
   assert.match(command, /"\$\{\{ needs\.scope\.outputs\.canvas \}\}" = "full"/)
   assert.match(command, /needs\['desktop-linux'\]\.result/)
+  // 3D-BOX 开关开的那张工具面：每次都要验（便宜、只看声明），开关真的开着由 job 第一步自证。
+  assert.match(command, /needs\['director3dbox-face'\]\.result \}\}" = "success"/)
+  const flagFace = workflow.jobs['director3dbox-face']
+  const flagStep = flagFace.steps.find((step) => step.run === 'pnpm run check:director3dbox-face')
+  assert.equal(flagStep.env.NOMI_DESKTOP_DEV, '1')
+  assert.equal(flagStep.env.NOMI_DIRECTOR_3DBOX, 'true')
+  assert.ok(runCommands(flagFace).includes('pnpm run check:director3dbox-face'))
+  assert.match(packageJson.scripts['check:director3dbox-face'], /^pnpm exec tsx scripts\/check-director3dbox-face-on\.ts && /)
   assert.match(command, /needs\['canvas-acceptance'\]\.result/)
   assert.match(command, /needs\['canvas-performance'\]\.result/)
   assert.match(command, /needs\['mac-package'\]\.result/)

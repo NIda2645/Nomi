@@ -1,6 +1,7 @@
 import type { MediaImportRejection } from "./contracts/mediaImportPolicy";
 import type { ProjectBinding } from "./projectBinding";
 import type { CanvasWriteOperation } from "./agentCapabilities/canvasWrite";
+import type { DirectorWriteOperation } from "./agentCapabilities/directorWrite";
 import type { CanvasDeleteInput } from "./agentCapabilities/canvasDelete";
 import type { AssetReadInput } from "./agentCapabilities/assetRead";
 import type { ExportReadInput, ExportWriteInput } from "./agentCapabilities/exportCapabilities";
@@ -158,7 +159,7 @@ export type DocumentWriteSurfaceReplyWire = Readonly<{
 export type CanvasWriteCaptureSurfaceRequestWire = Readonly<{
   requestId: string;
   binding: SurfacePortBindingWire;
-  operation: CanvasWriteOperation | CanvasDeleteInput["operation"];
+  operation: CanvasWriteOperation | CanvasDeleteInput["operation"] | DirectorWriteOperation;
   input?: unknown;
   nodeId?: string;
 }>;
@@ -308,7 +309,7 @@ export type CanvasReadSurfaceBridge = Readonly<{
     handler: (
       request: Readonly<{
         binding: SurfacePortBindingWire;
-        operation: CanvasWriteOperation | CanvasDeleteInput["operation"];
+        operation: CanvasWriteOperation | CanvasDeleteInput["operation"] | DirectorWriteOperation;
         input?: unknown;
         nodeId?: string;
       }>,
