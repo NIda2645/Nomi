@@ -21,7 +21,7 @@ import { scaledBounds } from '../directorSpace'
 import { evaluateEntityTransform } from '../trajectoryEval'
 import { auditDirectorSpace, SPATIAL_CRITERIA, type SpatialAuditContext, type SpatialCriterion } from '../directorSpatialAudit'
 import { entityClips } from '../timeGrid'
-import { normalizeAiScene } from '../aiScene'
+import { AI_SCENE_FIXTURE, normalizeAiScene } from '../aiScene'
 import { exportAiScene } from '../storeAiSceneActions'
 import type { DirectorObject, DirectorProject, DirectorScene } from '../directorTypes'
 
@@ -106,21 +106,43 @@ describe('空间事实只有一份：共用包围盒 vs 渲染组件真值', () 
   })
 })
 
-describe('AI 搭场景（产品路径 AiSceneBar）按提示词的「中心坐标」直接物化', () => {
-  it('提示词自带示例：贴地的东西全部悬空半个身高（今天的行为，锁账）', () => {
-    const spec = {
-      sceneName: 'probe',
-      groups: [{ name: 'g', elements: [
-        { type: 'cube', name: '门', position: [0, 1.1, -3.05], scale: [1.2, 2.2, 0.1] },
-        { type: 'cube', name: '长椅', position: [4, 0.25, 1.5], scale: [1.8, 0.5, 0.6] },
-        { type: 'cylinder', name: '垃圾桶', position: [6, 0.45, 1.5], scale: [0.5, 0.9, 0.5] },
-      ] }],
+describe('AI 搭场景（产品路径 AiSceneBar）：提示词写「中心坐标」，物化后渲染出来的几何中心就是那个坐标', () => {
+  const spec = {
+    sceneName: 'probe',
+    groups: [{ name: 'g', elements: [
+      { type: 'cube', name: '门', position: [0, 1.1, -3.05], scale: [1.2, 2.2, 0.1] },
+      { type: 'cube', name: '长椅', position: [4, 0.25, 1.5], scale: [1.8, 0.5, 0.6] },
+      { type: 'cylinder', name: '垃圾桶', position: [6, 0.45, 1.5], scale: [0.5, 0.9, 0.5] },
+      { type: 'torus', name: '花环', position: [1, 0.55, 2], scale: [1, 1, 1] },
+      { type: 'tetrahedron', name: '锥饰', position: [-2, 0.6, 2], scale: [1, 1, 1] },
+    ] }],
+  }
+  const layer = exportAiScene(normalizeAiScene(spec as never, 'probe'))
+  const boxes = worldBoxes(layer)
+
+  it('贴地的东西底在 0（以前悬空半个身高：门 1.1m、长椅 0.25m、垃圾桶 0.45m）', () => {
+    for (const name of ['门', '长椅', '垃圾桶']) {
+      const object = layer.objects.find((o) => o.name === name)!
+      expect(Number(boxes.get(object.id)!.min.y.toFixed(3)), name).toBe(0)
     }
-    const layer = exportAiScene(normalizeAiScene(spec as never, 'probe'))
-    const boxes = worldBoxes(layer)
-    const bottoms = layer.objects.filter((o) => o.type !== 'group').map((o) => [o.name, Number(boxes.get(o.id)!.min.y.toFixed(2))])
-    // 提示词说「物体贴地（y = 高/2）」；渲染以脚底为原点 → 底 = 高/2，而不是 0。
-    expect(Object.fromEntries(bottoms)).toEqual({ 门: 1.1, 长椅: 0.25, 垃圾桶: 0.45 })
+  })
+
+  it('每个元素渲染出来的几何中心 = 提示词给的中心坐标（圆环 / 四面体这类底不在原点的也一样）', () => {
+    for (const element of spec.groups[0].elements) {
+      const object = layer.objects.find((o) => o.name === element.name)!
+      const center = boxes.get(object.id)!.getCenter(new THREE.Vector3())
+      expect(center.y, element.name).toBeCloseTo(element.position[1], 1)
+      expect(center.x, element.name).toBeCloseTo(element.position[0], 1)
+    }
+  })
+
+  it('提示词自带夹具（街角咖啡馆）整体不悬空：每个元素的中心高度与夹具一致', () => {
+    const fixture = exportAiScene(normalizeAiScene(AI_SCENE_FIXTURE, 'fx'))
+    const fixtureBoxes = worldBoxes(fixture)
+    for (const element of AI_SCENE_FIXTURE.groups.flatMap((group) => group.elements)) {
+      const object = fixture.objects.find((o) => o.name === element.name)!
+      expect(fixtureBoxes.get(object.id)!.getCenter(new THREE.Vector3()).y, element.name).toBeCloseTo(element.position[1], 1)
+    }
   })
 })
 

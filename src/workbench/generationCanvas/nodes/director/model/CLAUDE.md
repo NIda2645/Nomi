@@ -1,6 +1,6 @@
 # director/model/
 > L2 | 父级: ../CLAUDE.md
-> 导演台 V2 的纯层：零 React / 零 THREE，全部可在 node 单测里跑。渲染层与面板只消费这里的求值与判定，不各自算。
+> 导演台 V2 的纯层：零 React、除 directorSpace 外零 THREE（该文件只用几何类与 Box3 量包围盒，无 WebGL），全部可在 node 单测里跑。渲染层与面板只消费这里的求值与判定，不各自算。
 > 成员清单
 > assetFolders.ts: 资产目录祖先链与目标可移动性共用判定；拒绝父环，折叠搜索保留命中祖先
 > rigs.ts: rig无关的语义骨映射、体形预设、关节轴文案键，骨架操作共用
@@ -38,6 +38,8 @@
 > storeCameraActions.ts: 机位级动作：进出 POV（受 canEnterCameraPOV 门）、Shift+A 固化当前视角为「机位 N」、角色轨 / 机位轨创建特写（建完选中机位 + 那段特写）、录制运镜起 / 停 / 放弃（简化成关键帧）、特写烘焙成路径（固定 12 个等距样本）
 > exportSize.ts: 出片尺寸与帧数单一真相：分辨率档给短边、画幅比给宽高比（free = 视口比）、宽高取偶；30fps、总帧 = 内容末 × 30、上限 1800
 > storeOutputActions.ts: 产物动作：截图 / 视频增删（只存资产句柄）、录制进度瞬态
+> directorSpace.ts: 空间事实唯一 owner：图元几何表（渲染 PrimitiveEntity 与量尺共读）、three Box3 量出的包围盒（localBounds / scaledBounds）、唯一的「底 / 中心 → 原点」换算（originYForBottom / originYForCenter）、角色身高与脚印；编译器 / 测量 / AI 搭场景都从这里量，不各抄一份
+> directorSpatialAudit.ts: 编译产物的物理六判据（不悬空 / 不互穿 / 只有一个地面高度 / 机位不在物体里 / 看得见主体 / 携带物跟人走），评测打分的 P 层；包围盒只读 directorSpace
 > aiScene.ts: AI 搭场景纯层：zod 契约（sceneName / sceneConfig / groups[elements]）、容错解析（剥围栏抓 JSON）、类型名 → 八种几何体、旋转弧度启发式（全部 |r| ≤ 2π）、提示词模板、固定夹具「街角咖啡馆」
 > storeAiSceneActions.ts: AI 场景物化：当前图层固定为请求发起层并校验仍存在，或创建/激活新图层；几何分组与可选资产句柄在同一工程事务落下，一次撤销
 > assetKinds.ts: 资产类型判定单一真相（后缀 / MIME → model / splat / panorama / scene）+ 上传 accept 串，资产库与连线引用共用
