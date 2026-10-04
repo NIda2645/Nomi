@@ -4,8 +4,7 @@ import { createCatalogGenerationProvider as createProvider } from "./apimartGene
 import type { CatalogState } from "../catalog/types";
 import { APIMART_IMAGE_MODELS } from "../catalog/apimartImages";
 import { APIMART_VIDEO_MODELS } from "../catalog/apimartVideos";
-import { APIMART_IMAGE_QUERY_OP, APIMART_STATUS_MAPPING, APIMART_VENDOR_SEED, APIMART_VIDEO_QUERY_OP } from "../catalog/apimartVendor";
-import { registerRequestTransform } from "../tasks/requestTransforms";
+import { APIMART_IMAGE_QUERY_OP, APIMART_STATUS_MAPPING, APIMART_VENDOR_SEED } from "../catalog/apimartVendor";
 import { spendReferenceKey } from "../shared/contracts/pendingSpendConfirm";
 
 /** 授权时封存的那份 URL 快照，键就是付费卡上那一条参考的身份。 */
@@ -79,49 +78,6 @@ function catalogFixture(overrides: Partial<CatalogState> = {}): CatalogState {
   };
 }
 
-function dualModeCatalogFixture(): CatalogState {
-  const base = catalogFixture();
-  const sharedModels: CatalogState["models"] = [
-    { modelKey: "shared-model", vendorKey: "apimart", labelZh: "Shared", kind: "image", enabled: true, meta: { archetypeId: "shared", adapter: { state: "verified", activeRevision: "fixture", modes: [{ taskKind: "text_to_image", state: "verified" }] } }, createdAt: "now", updatedAt: "now" },
-    { modelKey: "shared-model", vendorKey: "apimart", labelZh: "Shared", kind: "video", enabled: true, meta: { archetypeId: "shared", adapter: { state: "verified", activeRevision: "fixture", modes: [{ taskKind: "text_to_video", state: "verified" }] } }, createdAt: "now", updatedAt: "now" },
-  ];
-  const sharedMappings: CatalogState["mappings"] = [
-    { id: "shared-image", vendorKey: "apimart", modelKey: "shared-model", taskKind: "text_to_image", name: "Shared image", enabled: true, create: { method: "POST", path: "/v1/images/generations", body: { model: "{{model.modelKey}}", prompt: "{{request.prompt}}" }, response_mapping: { task_id: "data.0.task_id" } }, query: APIMART_IMAGE_QUERY_OP, createdAt: "now", updatedAt: "now" },
-    { id: "shared-video", vendorKey: "apimart", modelKey: "shared-model", taskKind: "text_to_video", name: "Shared video", enabled: true, create: { method: "POST", path: "/v1/videos/generations", body: { model: "{{model.modelKey}}", prompt: "{{request.prompt}}" }, response_mapping: { task_id: "data.0.task_id" } }, query: APIMART_IMAGE_QUERY_OP, createdAt: "now", updatedAt: "now" },
-  ];
-  return { ...base, models: sharedModels, mappings: sharedMappings };
-}
-
-/**
- * 一家**用户自己接的**供应商（非内置 direct-key）：`Authorization: Key <k>` 的方案词、
- * 自己的 base、自己的轮询路径。BL-1 的整条判据就是靠它证明「执行器与供应商无关」。
- */
-function acmeCatalog(): CatalogState {
-  const base = catalogFixture();
-  return {
-    ...base,
-    vendors: [
-      ...base.vendors,
-      { key: "acme", name: "Acme", enabled: true, baseUrlHint: "https://acme.example", authType: "bearer", authHeader: "Authorization", authScheme: "Key", createdAt: "now", updatedAt: "now" },
-    ],
-    models: [
-      ...base.models,
-      { vendorKey: "acme", modelKey: "acme-image", kind: "image", enabled: true, labelZh: "Acme 图", createdAt: "now", updatedAt: "now" },
-    ],
-    mappings: [
-      ...base.mappings,
-      {
-        id: "acme-text_to_image", vendorKey: "acme", modelKey: "acme-image", taskKind: "text_to_image",
-        name: "Acme 文生图", enabled: true,
-        create: { method: "POST", path: "/v2/jobs", body: { model: "{{model.modelKey}}", prompt: "{{request.prompt}}" }, response_mapping: { task_id: "id" } },
-        query: { method: "GET", path: "/v2/jobs/{{providerMeta.task_id}}", response_mapping: { status: "status" } },
-        createdAt: "now", updatedAt: "now",
-      },
-    ],
-    apiKeysByVendor: { ...base.apiKeysByVendor },
-  } as CatalogState;
-}
-
 function createApimartGenerationProvider(options: Omit<Parameters<typeof createProvider>[0], "vendorKey"> & { vendorKey?: string; catalogReader?: () => CatalogState }) {
   return createProvider({ vendorKey: "apimart", catalogReader: () => catalogFixture(), ...options });
 }
@@ -166,14 +122,32 @@ describe("V-3b: where does a 3D-BOX preview mp4 land in the sealed provider body
     referenceUrls: approvedUrls([[reference, URL]]), parameters: { duration: 5 },
   })) as Record<string, unknown>;
 
-  it("what draft_shots really stores: model gives only assetId, host pins hash+version (no kind)", () => {
-    const pinned = pinAssetReference({ assetId: "asset-pre" }, () => ({ contentHash: "a".repeat(64), version: 1 })) as Record<string, unknown>;
-    console.log("PINNED_REFERENCE", JSON.stringify(pinned))
-    expect(pinned.kind).toBeUndefined();
+  const identity = { contentHash: "a".repeat(64), version: 1 };
+
+  it("draft_shots: model gives only assetId, host pins hash+version AND the asset's own kind -> mp4 lands in video_urls", () => {
+    const pinned = pinAssetReference({ assetId: "asset-pre" }, () => ({ ...identity, kind: "video" as const })) as Record<string, unknown>;
+    expect(pinned.kind).toBe("video");
     const b = body(pinned);
-    console.log("BODY_WITHOUT_KIND", JSON.stringify(b))
-    // The video must be in the video channel. If it is only in an image channel, the preview was NOT sent as a reference video.
-    expect(JSON.stringify(b.video_urls ?? b.videoUrls ?? null)).toContain("preview.mp4");
+    expect(JSON.stringify(b.video_urls ?? null)).toContain("preview.mp4");
+    expect(JSON.stringify(b.image_urls ?? null)).not.toContain("preview.mp4");
+  });
+
+  it("an image asset still goes through image_urls", () => {
+    const pinned = pinAssetReference({ assetId: "asset-img" }, () => ({ ...identity, kind: "image" as const })) as Record<string, unknown>;
+    expect(pinned.kind).toBe("image");
+    const b = provider().buildRequest(input({
+      modelId: "doubao-seedance-2.0", mode: "image_to_video", modeId: "omni", references: [pinned],
+      referenceUrls: approvedUrls([[pinned, "https://cdn.example/pic.png"]]), parameters: { duration: 5 },
+    })) as Record<string, unknown>;
+    expect(JSON.stringify(b.image_urls ?? null)).toContain("pic.png");
+    expect(b.video_urls).toBeUndefined();
+  });
+
+  it("the asset decides: a caller kind that disagrees is overridden, on the fresh and on the already-pinned path", () => {
+    const resolve = () => ({ ...identity, kind: "video" as const });
+    expect((pinAssetReference({ assetId: "a", kind: "image" }, resolve) as Record<string, unknown>).kind).toBe("video");
+    expect((pinAssetReference({ assetId: "a", ...identity, kind: "image" }, resolve) as Record<string, unknown>).kind).toBe("video");
+    expect((pinAssetReference({ assetId: "a", ...identity }, resolve) as Record<string, unknown>).kind).toBe("video");
   });
 
   it("control: same reference with kind=video lands in the video channel", () => {

@@ -139,10 +139,11 @@ export function directorPreviewBlocksForOperation(
       blocks.push({ nodeId: node.id, ...(shotId ? { shotId } : {}), reason: block.reason, ...(block.failure ? { failure: block.failure } : {}) })
       continue
     }
-    const referenced = shotId ? candidateReferences?.[shotId] : undefined
+    // 键 '' = 单镜草稿（没有镜头 id 的那一镜）；与主进程 readShotReferenceAssetIds 同一约定。
+    const referenced = candidateReferences?.[shotId ?? '']
     const ready = latestDirectorPreviewFor(node.id, nodes)?.preview
     if (referenced && ready?.status === 'ready' && ready.attach === 'video_ref' && ready.assetId && !referenced.includes(ready.assetId)) {
-      blocks.push({ nodeId: node.id, shotId: shotId!, reason: 'not_referenced', previewAssetId: ready.assetId })
+      blocks.push({ nodeId: node.id, ...(shotId ? { shotId } : {}), reason: 'not_referenced', previewAssetId: ready.assetId })
     }
   }
   return blocks

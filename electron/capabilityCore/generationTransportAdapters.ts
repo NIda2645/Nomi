@@ -587,12 +587,19 @@ export function createPiGenerationTransportAdapter(
       if (disposed) throw new Error("surface_port_unavailable");
       const signal = new AbortController().signal;
       const read = await plan("read", { operationId: operationIdToRead }, await lease(signal), signal) as {
-        operation?: { shots?: ReadonlyArray<{ shotId?: unknown; candidate?: { references?: ReadonlyArray<{ assetId?: unknown }> } }> };
+        operation?: {
+          candidate?: { references?: ReadonlyArray<{ assetId?: unknown }> };
+          shots?: ReadonlyArray<{ shotId?: unknown; candidate?: { references?: ReadonlyArray<{ assetId?: unknown }> } }>;
+        };
       };
-      const shots = read?.operation?.shots;
-      if (!Array.isArray(shots)) throw new Error("generation_operation_not_found");
-      return Object.fromEntries(shots.flatMap((shot) => typeof shot.shotId === "string"
-        ? [[shot.shotId, (shot.candidate?.references ?? []).flatMap((reference: { assetId?: unknown } | undefined) => typeof reference?.assetId === "string" ? [reference.assetId] : [])]]
+      const operation = read?.operation;
+      if (!operation) throw new Error("generation_operation_not_found");
+      const assetIdsOf = (references: ReadonlyArray<{ assetId?: unknown } | undefined> | undefined) =>
+        (references ?? []).flatMap((reference) => typeof reference?.assetId === "string" ? [reference.assetId] : []);
+      // 单镜草稿没有 shots 数组，参考在 operation.candidate 上：按「一镜」处理，键 "" = 没有镜头 id 的那一镜。
+      if (!Array.isArray(operation.shots)) return { "": assetIdsOf(operation.candidate?.references) };
+      return Object.fromEntries(operation.shots.flatMap((shot) => typeof shot.shotId === "string"
+        ? [[shot.shotId, assetIdsOf(shot.candidate?.references)]]
         : []));
     },
     dispose() { disposed = true; },

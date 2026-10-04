@@ -1,5 +1,5 @@
 import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
-import { pinAssetReference } from "./semanticGenerationCandidate";
+import { pinAssetReference, type AssetReferenceIdentity } from "./semanticGenerationCandidate";
 import { storyboardPlanFromDraftSubjects, presentStoryboardAuthoring, patchStoryboardAuthoring, upsertStoryboardDesign, storyboardSavedFact, type StoryboardSavedFact } from './mcpGenerationMultiShot';
 import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
@@ -157,7 +157,7 @@ export type GenerationPlanningHandlerDependencies = {
    * 模型只知道 assetId（`look_at_media` 返回的就是它），身份归项目素材库管——这条 seam 就是
    * 2026-09-18「宿主要求动词给不出的字段」那一类的解法，与多镜候选合成同一条纪律。
    */
-  resolveAssetReferenceIdentity?: (projectId: string, assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined;
+  resolveAssetReferenceIdentity?: (projectId: string, assetId: string) => AssetReferenceIdentity | undefined;
   prepareAuthorization?: (input: {
     lease: ProjectLeaseV2;
     operation: GenerationOperation;
@@ -205,7 +205,7 @@ export function gateRowsFor<T extends { role?: "anchor" | "shot"; included?: boo
 function pinReference(
   projectId: string,
   value: unknown,
-  resolve: ((projectId: string, assetId: string) => Readonly<{ contentHash: string; version: number }> | undefined) | undefined,
+  resolve: ((projectId: string, assetId: string) => AssetReferenceIdentity | undefined) | undefined,
 ): unknown {
   return pinAssetReference(value, resolve ? (assetId: string) => resolve(projectId, assetId) : undefined);
 }

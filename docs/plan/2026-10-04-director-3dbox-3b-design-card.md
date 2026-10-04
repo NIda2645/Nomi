@@ -60,3 +60,34 @@
 | C | 维持现状，Agent 路径只出「文字兜底」，带参考出片只走节点生成钮 | 一句话到出片的主路径拿不到预演，3D-BOX 的价值在 Agent 路上落空 |
 
 **实现（A）**：预演 mp4 本来就落成项目素材（`framesToVideo` 返回 assetId），ready 时记进导演节点 `directorPreview.assetId`，`stage_shot` 结果的 `preview.assetId` 与 `look_at_canvas` 的 `previewAssetId` 给出它（都是结果字段，模型参数面一个字不加，两份基线不变）。`generate` 出卡前预检多一步只读：主进程读草稿每一镜候选带了哪些素材，交给渲染端同一个判据 `directorPreviewBlocksForOperation`——预演已就绪、以参考视频挂上、而候选没带这份素材 → 不出卡，告诉模型用 `draft_shots` 改这一镜（references 加素材 id、换能收参考视频的模式）。读不到候选 = 不出卡（fail-closed）。以文字兜底挂上的（模型没有参考视频槽）不要求。
+
+## 方向检查：V-3b 验收打回的两处缺陷（L-3b-fix，2026-10-04）
+
+### 0. 一句话根因
+「这条参考是图还是视频」这个事实有两个来源——素材本身（媒体类型）和调用方填的 `kind`——而传输层只信后者；`pinAssetReference` 补哈希和版本时只补身份、不补种类，于是模型只给 `assetId` 的参考（`draft_shots` 全部如此）永远没有 `kind`，预演 mp4 被当图片发走。
+
+### 1. 归类表
+
+| bug | 直接原因 | 类 |
+|---|---|---|
+| 预演 mp4 进了 `image_urls`、报价卡显示「图已失效」 | 参考无 `kind`，`apimartGenerationProjection` 只有 `kind==="video"` 才进 `video_urls`；报价卡 `kind ?? 'image'` 把它放进图片槽 | 同一事实两个来源，边界没把它钉成唯一来源 |
+| 开关开时单镜草稿 `generate` 永不出卡 | `readShotReferenceAssetIds` 只认 `operation.shots`，单镜草稿没有这个数组就当「找不到 operation」 | 一个读取口只认多镜形状，单镜形状被当成「不存在」 |
+
+### 2. 为什么会一直出现
+候选的参考身份由宿主补，但补的是「哈希 + 版本」这一对，种类被当成调用方的语义字段留了下来；任何不带 `kind` 的入口（模型、外部宿主、将来的新动词）都会掉进图片通道。
+
+### 3. 预测与验证
+| 预测 | 验证 |
+|---|---|
+| 其它只给 `assetId` 的视频 / 音频参考（不只预演）此前都进错通道 | `verify985PreviewPayload.test.ts`：素材种类 → `video_urls`；图片仍进 `image_urls` |
+| 调用方填了与素材不一致的 `kind`，以素材为准 | 同文件第三条（新钉住的、已钉住的、缺 `kind` 的三种形状） |
+| 只要读取口再多一种草稿形状就会再被当成「找不到」 | `verify985SingleShotRead.test.ts`：单镜按一镜读、真不存在的 operation 仍抛 |
+
+### 4. 现成方案（P0）
+不新增机制：`assetKindFromContentType` 已是全仓唯一的媒体类型分类，`resolveProjectAssetReferenceIdentity` 已是唯一的参考身份来源；这次只让它多返回一个 `kind`，`pinAssetReference`（全仓唯一的补身份处，door-map：写入口 2 扇——`mcpGenerationTools` 的 patch 与 `semanticGenerationCandidate` 的 create，都走这一个函数）顺手带上。已钉住身份的参考也会对一次种类，但哈希 / 版本逐字节不变。
+
+### 5. 补 / 重写 / 删
+补（一个边界函数多一个字段）。不重写。
+
+### 已知限制
+外部 MCP 的 `generate` 不走 `generate` 出卡前预检（只有内置 Agent 路径有），留给发动机收敛那一刀统一处理。单镜草稿的参考键约定为 `""`（没有镜头 id 的那一镜），主进程与渲染端各一处用到，写在两处注释里。

@@ -70,3 +70,18 @@ describe('V-3b spend gate on the real Agent landing stamps', () => {
     expect(directorPreviewBlocksOp({ operationId: RUN, candidateReferences: { 'shot-1': ['a1'] } }).blocks.map((b) => b.reason)).toEqual(['rendering'])
   })
 })
+
+describe('V-3b single-shot draft (no shot id): the not_referenced check still applies', () => {
+  it('ready preview not carried by the single-shot candidate -> blocked; carried -> clear', async () => {
+    const project = createProjectSessionTestHarness(); await project.open('project-a')
+    resetClientIdRegistry()
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [], edges: [], groups: [] })
+    // 单镜草稿落地的节点只有 runId 章、没有 shotId。
+    const nodeId = 'single-node'
+    useGenerationCanvasStore.getState().restoreSnapshot({ nodes: [{ id: nodeId, kind: 'video', title: '', position: { x: 0, y: 0 }, meta: { productionRunId: RUN } } as unknown as GenerationCanvasNode], edges: [], groups: [] } as never)
+    addDirector('d1', { status: 'ready', attach: 'video_ref', assetId: 'asset-pre', targetNodeId: nodeId })
+    expect(directorPreviewBlocksOp({ operationId: RUN, candidateReferences: { '': ['other'] } }).blocks.map((b) => b.reason)).toEqual(['not_referenced'])
+    expect(directorPreviewBlocksOp({ operationId: RUN, candidateReferences: { '': ['asset-pre'] } }).blocks).toEqual([])
+    project.dispose()
+  })
+})
