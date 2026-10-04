@@ -314,7 +314,7 @@ function solveCamera(
     distanceForShotSize(shot.size as EvalShotSize, subjectHeight, fov, ladder) *
     (shot.subjects && shot.subjects.length > 1 ? 3 : 1)
   const azimuth = angleOffset(shot.angle),
-    height = closeCharacter
+    requestedHeight = closeCharacter
       ? subject.position.y + 2.1
       : shot.height === 'low'
         ? 0.65
@@ -323,6 +323,9 @@ function solveCamera(
           : shot.height === 'overhead'
             ? 4.2
             : subject.position.y + (subject.type === 'character' ? 1.1 : 0.8)
+  const height = subject.name.endsWith('_car')
+    ? Math.max(requestedHeight, subject.position.y + subject.scale.y + 0.1)
+    : requestedHeight
   const subjectStart = positionAt(subject, start),
     subjectEndPosition = positionAt(subject, end)
   const aimY = subject.type === 'character' && !['远景', '全景'].includes(shot.size) ? 1.5 : 1.2
