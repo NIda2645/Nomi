@@ -45,13 +45,12 @@ import { executeAssetReadTarget, executeExportReadTarget } from '../timeline/age
 import { executeCanonicalCanvasPlanPatch } from './canonicalCanvasPlanPatch'
 import { handleMcpHostSurfaceOp } from './mcpHostSurfaceOps'
 import { presentStoryboard } from './storyboardPresent'
-import { directorPreviewBlocksForOperation } from '../generationCanvas/nodes/director/model/directorPreviewState'
+import { directorPreviewBlocksOp } from './directorPreviewBlocksOp'
 import { patchAgentStoryboardDesign, upsertAgentStoryboardDesign } from '../creation/storyboard/agentStoryboardDesign'
 import { confirmCredentialProbeSpend, spendModelLine } from './credentialProbeSpendCard'
 
 // 能力核 A 模式实时桥 · 渲染层处理器。
-// 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。
-// 单一真相源：画布读写复用 store 现成动作（readDocumentSnapshot / applyExternalGraph），
+// 主进程把外部 MCP 的画布读/写/付费确认转发到这里（只在该项目正打开时路由），处理后回结果。单一真相源：画布读写复用 store 现成动作（readDocumentSnapshot / applyExternalGraph），
 // 付费确认复用全仓唯一的 useSpendConfirmStore（不另造并行 UI，P1）。
 
 type SpendConfirmPayload = {
@@ -417,15 +416,7 @@ export async function handleCapabilityApply(op: string, payload: unknown): Promi
   const landed = await handleMultiShotCanvasLandingOp(op, data)
   if (landed !== null) return landed
   if (op === 'storyboard.present') return presentStoryboard(data)
-  // 3D-BOX 花钱闸：Agent 的 generate 出卡前问「这次的镜头里哪些被预演挡着」（判据住 directorPreviewState）。
-  if (op === 'director.preview-blocks') {
-    const operationId = typeof data.operationId === 'string' ? data.operationId : ''
-    const shotIds = Array.isArray(data.shotIds) ? data.shotIds.filter((value): value is string => typeof value === 'string') : undefined
-    // 主进程只读出的「每一镜候选带了哪些素材」；判据仍在 directorPreviewState 这一处。
-    const raw = data.candidateReferences && typeof data.candidateReferences === 'object' && !Array.isArray(data.candidateReferences) ? data.candidateReferences as Record<string, unknown> : undefined
-    const candidateReferences = raw ? Object.fromEntries(Object.entries(raw).map(([shotId, ids]) => [shotId, Array.isArray(ids) ? ids.filter((id): id is string => typeof id === 'string') : []])) : undefined
-    return { blocks: operationId ? directorPreviewBlocksForOperation(useGenerationCanvasStore.getState().nodes, operationId, shotIds, candidateReferences) : [] }
-  }
+  if (op === 'director.preview-blocks') return directorPreviewBlocksOp(data)
   if (op === 'storyboard.upsert-design') return upsertAgentStoryboardDesign(data)
   if (op === 'storyboard.patch-design') return patchAgentStoryboardDesign(data)
 

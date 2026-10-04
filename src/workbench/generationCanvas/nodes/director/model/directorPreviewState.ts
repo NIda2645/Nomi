@@ -8,6 +8,7 @@
  *        状态写在**导演节点**上（targetNodeId 指向它要挂的视频节点），不写到视频节点：撤销导演节点，闸自然解除。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
+import type { DirectorPreviewStatus } from '../../../../../../electron/shared/director/directorPreviewStatus'
 import type { GenerationCanvasNode } from '../../../model/generationCanvasTypes'
 import { productionMetaOf } from '../../../model/productionMeta'
 import { DIRECTOR_NODE_KIND, DIRECTOR_PLAN_META_KEY, DIRECTOR_PREVIEW_META_KEY } from './directorNodeMeta'
@@ -20,7 +21,7 @@ export const DIRECTOR_PREVIEW_MAX_SECONDS = 10
 export type DirectorPreviewFailure = 'too_long' | 'capture_failed'
 
 export type DirectorPreviewMeta = Readonly<{
-  status: 'rendering' | 'ready' | 'failed'
+  status: Exclude<DirectorPreviewStatus, 'none'>
   /** 要挂的视频节点；独立预演没有。 */
   targetNodeId?: string
   /** 这次预演对应的计划修订号：迟到的旧渲染结果按它丢弃。 */

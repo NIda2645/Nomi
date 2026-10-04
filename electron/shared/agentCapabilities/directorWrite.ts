@@ -12,6 +12,7 @@
 import { z } from "zod";
 
 import type { CapabilityContract } from "./capabilityContract";
+import { DIRECTOR_PREVIEW_STATUSES } from "../director/directorPreviewStatus";
 import { directorPlanSchema } from "../director/directorPlanSchema";
 import { DIRECTOR_PLAN_EDIT_OPS } from "../director/planPatch";
 
@@ -56,9 +57,6 @@ export type DirectorWriteInput = z.infer<typeof directorWriteSemanticInputSchema
 export function directorWriteReferenceIds(input: DirectorWriteInput): string[] {
   return input.operation === "create_director_plan" ? (input.shotNodeId ? [input.shotNodeId] : []) : [input.directorNodeId];
 }
-
-export const DIRECTOR_PREVIEW_STATUSES = ["none", "rendering", "ready", "failed"] as const;
-export type DirectorPreviewStatus = (typeof DIRECTOR_PREVIEW_STATUSES)[number];
 
 const issueSchema = z.object({
   kind: z.string().trim().min(1).max(64),

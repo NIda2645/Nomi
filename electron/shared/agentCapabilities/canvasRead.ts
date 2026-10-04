@@ -2,6 +2,7 @@ import { z } from "zod";
 import { taskReferenceSchema } from './taskReference';
 import { resolveShotIdentities } from "../canvas/shotNumbering";
 import { generationNodeStatusSchema, parseGenerationNodeStatus } from "../canvas/generationNodeStatus";
+import { DIRECTOR_PREVIEW_STATUSES } from "../director/directorPreviewStatus";
 import type { CapabilityContract } from "./capabilityContract";
 import { director3dBoxFaceEnabled } from "../featureFlags/director3dboxFace";
 
@@ -69,7 +70,7 @@ const canvasReadNodeSchema = z
         actors: z.array(z.string()).max(64),
         setPieces: z.array(z.string()).max(64),
         issueCount: z.number().int().nonnegative(),
-        preview: z.enum(["none", "rendering", "ready", "failed"]),
+        preview: z.enum(DIRECTOR_PREVIEW_STATUSES),
         previewTargetNodeId: trimmedNonEmptyStringSchema.optional(),
         /** 预演就绪后在项目素材库里的 id（`draft_shots` 的 references 收它）。 */
         previewAssetId: trimmedNonEmptyStringSchema.optional(),

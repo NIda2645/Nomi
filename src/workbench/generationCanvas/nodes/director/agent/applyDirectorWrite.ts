@@ -11,6 +11,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import i18n from '../../../../../i18n'
+import type { DirectorPreviewStatus } from '../../../../../../electron/shared/director/directorPreviewStatus'
 import { parseDirectorPlan, type DirectorPlan } from '../../../../../../electron/shared/director/directorPlanSchema'
 import { applyDirectorPlanEdits, canonicalDirectorPlan, directorPlanRevision } from '../../../../../../electron/shared/director/planPatch'
 import type { DirectorWriteInput } from '../../../../../../electron/shared/agentCapabilities/directorWrite'
@@ -28,7 +29,7 @@ import type { DirectorProject } from '../model/directorTypes'
 
 type Issue = { kind: string; message: string; time?: number; ref?: string }
 type Cut = { shot: string | null; start: number; end: number; shotSize: string | null; move: string }
-type Preview = { status: 'none' | 'rendering' | 'ready' | 'failed'; targetNodeId?: string; attach?: 'video_ref' | 'prompt_only'; assetId?: string; reason?: string }
+type Preview = { status: DirectorPreviewStatus; targetNodeId?: string; attach?: 'video_ref' | 'prompt_only'; assetId?: string; reason?: string }
 
 export type DirectorWriteDomainResult =
   | {
