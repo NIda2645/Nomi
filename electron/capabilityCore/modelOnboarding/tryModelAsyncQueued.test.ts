@@ -148,7 +148,7 @@ describe("nomi_try_model 遇到异步供应商", () => {
   it("提交返回 queued、查几次后才出图：试跑成功，且只提交了一次", async () => {
     const tried = await run("ok apple");
     expect(tried.ok, JSON.stringify(tried)).toBe(true);
-    expect(tried.state.assets.length).toBeGreaterThan(0);
+    expect(tried.state?.assets.length ?? 0).toBeGreaterThan(0);
     expect(submits).toBe(1);
     expect(polls.get("job-ok")).toBeGreaterThanOrEqual(3);
   });
