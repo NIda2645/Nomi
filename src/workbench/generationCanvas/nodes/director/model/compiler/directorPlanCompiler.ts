@@ -108,6 +108,47 @@ const pieceOf = (object: DirectorObject): Piece => ({
   top: object.position.y + scaledBounds(object.type, object.scale).max.y,
 })
 
+// ── 站位不进实心物体：全场只有这一条规则（用 directorSpace 的包围盒），不按「谁和谁」写特例 ──
+const isStandable = (object: DirectorObject) => object.visible && !object.isAuxiliary && object.type !== 'plane' && object.type !== 'group'
+function solidBox(object: DirectorObject, position: Vec3) {
+  const box = scaledBounds(object.type, object.scale)
+  return { min: add(position, box.min), max: add(position, box.max) }
+}
+/**
+ * 把落脚点沿 `retreat`（水平单位向量）推到所有挡路实心物体（外扩演员半宽）之外。
+ * 只看和演员身高有竖直交集、且不是地面 / 路面这类薄板的东西。
+ */
+function clearOfSolids(point: Vec3, actor: DirectorObject, obstacles: { object: DirectorObject; position: Vec3 }[], retreat: (box: { min: Vec3; max: Vec3 }) => Vec3): Vec3 {
+  const body = scaledBounds(actor.type, actor.scale)
+  const half = { x: body.size.x / 2, z: body.size.z / 2 }
+  const p = { ...point }
+  for (let pass = 0; pass < 8; pass += 1) {
+    const hit = obstacles
+      .filter(({ object }) => object.id !== actor.id && isStandable(object))
+      .map(({ object, position }) => solidBox(object, position))
+      .find((box) =>
+        box.max.y - box.min.y > 0.3 &&
+        box.min.y < p.y + body.max.y - 0.02 && box.max.y > p.y + 0.02 &&
+        p.x > box.min.x - half.x && p.x < box.max.x + half.x && p.z > box.min.z - half.z && p.z < box.max.z + half.z)
+    if (!hit) break
+    const direction = retreat(hit)
+    const length = Math.hypot(direction.x, direction.z)
+    // 没有明确的退路方向（在场景中心）就朝 +z（面向观众那一侧）退
+    const d = length > 1e-6 ? { x: direction.x / length, z: direction.z / length } : { x: 0, z: 1 }
+    const exits = [
+      d.x > 1e-6 ? (hit.max.x + half.x - p.x) / d.x : d.x < -1e-6 ? (hit.min.x - half.x - p.x) / d.x : Infinity,
+      d.z > 1e-6 ? (hit.max.z + half.z - p.z) / d.z : d.z < -1e-6 ? (hit.min.z - half.z - p.z) / d.z : Infinity,
+    ]
+    const t = Math.min(...exits)
+    if (!Number.isFinite(t)) break
+    // 留出落脚间隙：人 30cm，车按车身半长（跟车距离），机位才有地方进去
+    const gap = Math.max(0.3, half.z)
+    p.x += d.x * (t + gap)
+    p.z += d.z * (t + gap)
+  }
+  return p
+}
+
 function resolveTemplateRef(ref: string, pieces: Map<string, Piece>): Piece | undefined {
   const direct = pieces.get(ref)
   if (direct) return direct
@@ -131,11 +172,13 @@ const HELD_CENTER_HEIGHT = 1
 function positionActors(
   plan: DirectorPlan,
   pieces: Map<string, Piece>,
+  staticSolids: DirectorObject[],
 ): { positions: Map<string, Vec3>; issues: DirectorCompileIssue[] } {
   const positions = new Map<string, Vec3>(),
     issues: DirectorCompileIssue[] = []
   const occupied = new Set<string>()
   const placed = new Map<string, Piece>()
+  const placedObjects = new Map<string, DirectorObject>()
   const actorKinds = new Map(plan.actors.map((actor) => [actor.id, actor.kind]))
   for (const [index, actor] of plan.actors.entries()) {
     const ref = resolveTemplateRef(actor.placement.ref, pieces) ?? placed.get(actor.placement.ref)
@@ -167,6 +210,14 @@ function positionActors(
     p.y = heldByPerson
       ? originYForCenter(probe.type, probe.scale, HELD_CENTER_HEIGHT)
       : originYForBottom(probe.type, probe.scale, relation === 'on' ? ref.top : 0)
+    if (relation !== 'on') {
+      // 站进墙 / 门 / 先到的人里面就往场景中心退出来（模板都以原点为中心，里面在中心那一侧）
+      const solids = [...staticSolids.map((object) => ({ object, position: object.position })), ...[...positions].map(([id, position]) => ({ object: placedObjects.get(id)!, position }))]
+      const cleared = clearOfSolids(p, probe, solids, (box) => ({ x: -(box.min.x + box.max.x) / 2, y: 0, z: -(box.min.z + box.max.z) / 2 }))
+      if (cleared.x !== p.x || cleared.z !== p.z) issues.push({ kind: 'overlap', objectId: actor.id, message: `moved ${actor.id} out of a solid` })
+      p.x = cleared.x
+      p.z = cleared.z
+    }
     const key = `${Math.round(p.x * 10)}:${Math.round(p.y * 10)}:${Math.round(p.z * 10)}`
     if (occupied.has(key) && relation !== 'on') {
       p.x += 0.8
@@ -175,6 +226,7 @@ function positionActors(
     }
     occupied.add(key)
     positions.set(actor.id, p)
+    placedObjects.set(actor.id, { ...probe, position: p })
     placed.set(actor.id, pieceOf({ ...probe, position: p }))
   }
   return { positions, issues }
@@ -229,14 +281,21 @@ function applyBlocking(
       end = Math.min(duration, action.window[1]),
       target = byPlanId(action.target)
     const from = positionAt(actor, start)
-    const to = target ? positionAt(target, end) : from
+    // 落脚点：留在出发点的地面高度（不照抄目标原点的高度），并且不进任何实心物体——
+    // 向「出发点」那一侧退出来，也就是停在目标跟前，而不是钻进目标里
+    const reach = (point: Vec3): Vec3 => {
+      const level = { ...point, y: from.y }
+      const solids = objects.filter((item) => item.id !== actor.id).map((item) => ({ object: item, position: positionAt(item, end) }))
+      return clearOfSolids(level, actor, solids, () => ({ x: from.x - level.x, y: 0, z: from.z - level.z }))
+    }
+    const to = target ? reach(positionAt(target, end)) : from
     const points: Waypoint[] = [entityWp(`${actor.id}-${action.verb}-start`, from, start)]
     if (action.verb === 'walk_to' || action.verb === 'run_to')
       points.push(entityWp(`${actor.id}-${action.verb}-end`, to, end))
     else if (action.verb === 'drive_along')
       points.push(entityWp(`${actor.id}-${action.verb}-end`, add(from, v(0, 0, 4)), end))
     else if (action.verb === 'chase')
-      points.push(entityWp(`${actor.id}-${action.verb}-end`, add(to, v(0, 0, 0.8)), end))
+      points.push(entityWp(`${actor.id}-${action.verb}-end`, reach(add(to, v(0, 0, 0.8))), end))
     else if (action.verb === 'sidestep')
       points.push(
         entityWp(
@@ -536,7 +595,8 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
     templateObjects.push(object)
     pieces.set(piece.id, pieceOf(object))
   }
-  const placed = positionActors(plan, pieces),
+  const dressing = materializeDressing(plan)
+  const placed = positionActors(plan, pieces, [...templateObjects, ...dressing]),
     actorMap: Record<string, string> = {},
     anchors: Record<string, AnchorSpec> = {},
     actorObjects: DirectorObject[] = []
@@ -552,7 +612,7 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
         size: v(0.18, 0.18, 0.18),
       }
   }
-  scene.objects = [...templateObjects, ...materializeDressing(plan), ...actorObjects]
+  scene.objects = [...templateObjects, ...dressing, ...actorObjects]
   const duration = Math.max(...plan.shots.map((s) => s.window[1]), ...plan.blocking.map((b) => b.window[1]), 0)
   const issues: DirectorCompileIssue[] = [...placed.issues]
   applyBlocking(plan, scene.objects, actorMap, duration, issues)

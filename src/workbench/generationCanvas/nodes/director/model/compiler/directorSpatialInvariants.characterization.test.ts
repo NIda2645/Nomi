@@ -184,17 +184,18 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
  * 违例账：[违例条数, 涉及几道计划]。起点 = origin/main（第一步开工前，08756793c）：
  *   floating 158/34、interpenetrating 17/5、offFloor 27/27、offTimeline 112/34（已改由上面「在时间轴上」一条直接断言为 0）、
  *   cameraInside 0、occluded 27/12、carriedDrift 1/1
- * 第一步①空间事实：模板按「底」声明 + 地面顶面 = 0 + 落地走 originYForBottom → floating / offFloor 清零。
- *   interpenetrating 17→21：以前墙和门悬在半空（底在 2m / 1.2m），人在下面走过去不碰；现在墙立在地上，
- *   「at 院门」「走位终点取目标原点」把人放进了墙里——这是 e 类（关系词没有空间语义），留给舞台模型一步。
- *   occluded 27/12→30/6：墙落地后挡住的是真挡；case 数 12→6 是因为编译器不再把环境词（room / interior / 街道……）做成 1.4m 灰盒。
+ * ① 空间事实（模板按「底」声明 + 地面顶面 = 0 + 落地走 originYForBottom）：floating / offFloor 清零；
+ *   墙和门落地后，「at 院门」「走到目标原点」把人放进了墙里（interpenetrating 一度升到 21）。
+ * ② 站位不进实心物体（clearOfSolids，一条按包围盒的通用规则，不按谁和谁写特例）：初始摆位与 walk_to / chase 的落脚点
+ *   都退出实心物体、留落脚间隙；落脚点高度留在出发点的地面高度 → interpenetrating 21→1、occluded 30→12。
+ *   剩下的是 e 类（关系词没有空间语义：机位绕到墙外、「在门前」的门朝向），留给舞台模型一步。
  */
 const LEDGER = {
   cases: 34,
   floating: [1, 1], // 信（on 女子）悬在半空：携带物没挂到手上（留给 ②：用父子关系）
-  interpenetrating: [21, 5], // 人站进院墙 / 院门 / 彼此（e 类，留给 ②）
+  interpenetrating: [1, 1], // 回归计划里「女子 at 院门（setPiece）」：门是规划器放的布景件，人站在它原点上
   offFloor: [0, 0],
   cameraInside: [0, 0], // 现有避让在渲染真值下也成立——锁住
-  occluded: [30, 6],
+  occluded: [12, 6], // 远景机位绕到院墙外 / 门后；布景件挡在主体前（cafe_table）
   carriedDrift: [1, 1], // 女子走 3.5m，信留在原地
 }
