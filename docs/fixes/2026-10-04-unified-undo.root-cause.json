@@ -17,7 +17,8 @@
     "src/workbench/generationCanvas/agent/proposalUndo.ts",
     "src/workbench/generationCanvas/agent/canvasWriteTarget.ts",
     "src/workbench/timeline/agent/timelineCapabilityTarget.ts",
-    "electron/capabilityCore/dispatcher.ts"
+    "electron/capabilityCore/dispatcher.ts",
+    "tests/agent-runtime/laneL1Scenarios.mts"
   ],
   "entry_points": ["canvas.write transport", "timeline.write transport", "⌘Z canvas shortcut", "Agent undo verb"],
   "external_sources": [],
@@ -54,7 +55,8 @@
       "src/workbench/generationCanvas/agent/proposalUndo.ts",
       "src/workbench/generationCanvas/agent/canvasWriteTarget.ts",
       "src/workbench/timeline/agent/timelineCapabilityTarget.ts",
-      "electron/capabilityCore/dispatcher.ts"
+      "electron/capabilityCore/dispatcher.ts",
+      "tests/agent-runtime/laneL1Scenarios.mts"
     ],
     "preserved_exports": [],
     "behavior_preservation": "Existing canvas compensation and canvasUndoJournal remain the only canvas history owner. Existing MCP timeline callers may continue sending undoToken at the alias boundary; it is normalized to the shared changeId before semantic execution. Cmd+Z keeps using the same canvas journal and timeline revision checks.",
