@@ -393,6 +393,11 @@ export const zhGenerationCommon = {
         reason: '这一镜可能已被服务商收下，结果没法确认',
         hint: '请求发出去之后，Nomi 没拿到服务商的回复，所以不知道它有没有收下这一镜。Nomi 没法自动核对，也不会自动重发。请先到服务商后台看一眼有没有这一笔；确认没有，再重新生成——否则可能重复提交。',
       },
+      // 已生成、取回失败（#975 A2）：只给「去任务面板重新取回」，绝不给重试——重试 = 再生成一份新的。
+      outputRetrievalFailed: {
+        reason: '已经生成，但结果没能取回到本机',
+        hint: '服务商那边这一镜已经做完了，是 Nomi 把结果下载回项目这一步没成（地址不让访问、对方拒绝了下载，或者返回的不是能用的文件）。不要重新生成，那会另做一份新的。到任务面板点「重新取回」，Nomi 只会再查一次、再下载一次。具体原因见下方技术详情。',
+      },
       // 认不出的失败如实说「认不出」：不编原因（不是「服务商临时故障」，更不是「额度」——今天没有价格，猜额度只会把人引去查账）。
       // 服务商给了错误码就带上码（hintWithCode）；原文和完整报文留在「技术详情」里。重试 / 换模型是动作建议，不是对原因的判断。
       unknown: {
@@ -1201,6 +1206,7 @@ export const zhGenerationCommon = {
     },
     status: {
       submissionUnknown: '提交结果不明，Nomi 已停止自动重试',
+      outputRetrievalFailed: '已经生成，但结果没能取回',
       approvalRequired: '继续制作前需要你的确认',
       directionGate: '等你定创意方向',
       sampleGate: '样片好了，等你过目',
@@ -1224,6 +1230,7 @@ export const zhGenerationCommon = {
     },
     description: {
       submissionUnknown: '请求可能已经到达供应商；再次提交可能重复，后续任务已停在安全边界。',
+      outputRetrievalFailed: '服务商那边已经做完了，是下载回项目这一步没成。点「重新取回」只会再查一次、再下载一次，不会重新生成。',
       approvalRequired: '请核对当前制作范围和支出边界；批准前不会继续调用付费模型。',
       directionGate: '方向定了才会拟分镜。这一步不调用模型。',
       sampleGate: '先看这一镜样片：满意就继续剩下的镜头，不满意只亏这一镜的钱。',
@@ -1274,6 +1281,7 @@ export const zhGenerationCommon = {
       'review-rough-cut': '审看粗剪',
       'open-export': '进入导出',
       'resume-run': '从断点继续',
+      'retry-retrieval': '重新取回',
     },
     control: {
       pause: '暂停',
@@ -1942,6 +1950,10 @@ export const enGenerationCommon = {
       submissionUnknown: {
         reason: 'Result unconfirmed: the provider may have received this shot',
         hint: 'The request was sent, but Nomi never got a reply, so it cannot tell whether the provider accepted this shot. Nomi cannot check this itself and will not resend automatically. Look in the provider’s dashboard for this request first; only generate again once you have confirmed it is not there, otherwise it may be submitted twice.',
+      },
+      outputRetrievalFailed: {
+        reason: 'Generated, but the result could not be retrieved',
+        hint: 'The provider finished this shot; the step that failed is Nomi downloading the result into your project (the address was not allowed, the download was refused, or what came back was not a usable file). Do not generate again — that makes a brand-new one. Open the task panel and click “Retrieve again”: Nomi only checks the task and downloads it once more. The technical details below give the exact reason.',
       },
       unknown: {
         reason: 'Generation failed',
@@ -2732,6 +2744,7 @@ export const enGenerationCommon = {
     },
     status: {
       submissionUnknown: 'Submission result is unknown; Nomi stopped automatic retries',
+      outputRetrievalFailed: 'Generated, but the result could not be retrieved',
       approvalRequired: 'Your approval is required before production continues',
       directionGate: 'Waiting on your creative direction',
       sampleGate: 'The sample shot is ready for you',
@@ -2755,6 +2768,7 @@ export const enGenerationCommon = {
     },
     description: {
       submissionUnknown: 'The request may have reached the provider. Retrying could submit it twice, so later work is paused at a safe boundary.',
+      outputRetrievalFailed: 'The provider finished this shot; downloading it into your project failed. “Retrieve again” only checks the task and downloads it once more — it does not generate again.',
       approvalRequired: 'Review the production scope and spending boundary. No paid model will run before approval.',
       directionGate: 'The storyboard is drafted only after the direction is set. This step calls no model.',
       sampleGate: 'Check this one sample shot: approve to continue the rest, or stop and only lose this shot.',
@@ -2804,6 +2818,7 @@ export const enGenerationCommon = {
       'review-rough-cut': 'Review rough cut',
       'open-export': 'Open export',
       'resume-run': 'Resume from checkpoint',
+      'retry-retrieval': 'Retrieve again',
     },
     control: {
       pause: 'Pause',

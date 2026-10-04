@@ -10,7 +10,6 @@ import {
   listAllProjects,
   setProjectNodePrompt,
   type FetchTaskResultFn,
-  type MakeVerifyDeps,
   type RunTaskFn,
 } from './core'
 import { CANVAS_WRITE_OPERATIONS, canvasWriteSemanticInputSchema, type CanvasWriteOperation } from '../shared/agentCapabilities/canvasWrite'
@@ -99,15 +98,9 @@ export type DispatchContext = {
   /**
    * 方案已由协议层 elicitation-first 拿到真人 accept（画布确认，见 mcpProtocol.ts）→ `canvas.write`
    * 的 create_canvas_nodes 预批准方案门、不再弹渲染层卡（免双问）。只作用于建节点那一步的 confirmPlan，
-   * 钱路（confirmSpend）不受影响。
+   * 钱路不经这里（付费生成只走语义生成 → ProductionRun）。
    */
   planConfirmed?: boolean
-  /**
-   * 审片环 deps 工厂（W1，可选）。传输层注入真实现（headless=makeShotVerifyDeps；GUI-RPC 同一份）→
-   * generate 生成成功后跑判分→定向重试→红标。**不注入 = generate 行为逐字节不变**（默认）。
-   * 领域策略住 shotVerifyOrchestrate，传输层只注入 deps，core 只透传 outcome（三层干净，方案 §3/§9）。
-   */
-  makeVerifyDeps?: MakeVerifyDeps
   /** Conversational model-integration session authority. External MCP clients drive begin→…→start here. */
   integrationSessions?: IntegrationSessionService
   /** GUI-owned credential handoff effect. Called after the durable handoff is queued. */
@@ -788,7 +781,7 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
         ...(ctx.integrationSessions ? { sessions: ctx.integrationSessions } : {}),
         ...(ctx.openCredentialsInNomi ? { openCredentialsInNomi: ctx.openCredentialsInNomi } : {}),
         // 试跑走的就是画布那条执行器；这里只是把同一个 runTask 递过去，不另起一条。
-        runTask: ctx.runTask,
+        runTask: ctx.runTask, ...(ctx.fetchTaskResult ? { fetchTaskResult: ctx.fetchTaskResult } : {}),
         // 「该不该问人」由用户的档位决定，不由入口决定：档位原样往下递，判据只有
         // `spendDecidedByPolicy` 一处。宿主没给 = 不猜 = 照旧问人。
         ...(ctx.approvalPolicy ? { approvalPolicy: ctx.approvalPolicy } : {}),

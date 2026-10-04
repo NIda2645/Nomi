@@ -2,7 +2,7 @@
   "//": "生成入口登记表。门岗 scripts/check-generation-entrances.mjs 反向扫全仓能组装或发出供应商生成请求的调用点，逐条与这张表对账。",
   "//2": "每条二选一：entrances = 对等矩阵里要跑的入口 id（electron/parity/generationEntrances.ts）；reason = 为什么它不是一个用户可达的生成入口。",
   "//3": "count 是当前扫到的调用次数，只许减不许增——同一个文件里新长出第二处调用同样要有人裁决。",
-  "matrix": { "entrances": 10, "cases": 7 },
+  "matrix": { "entrances": 9, "cases": 7 },
   "sites": [
     {
       "site": "src/workbench/generationCanvas/runner/catalogTaskActions.ts::runTask",
@@ -15,12 +15,6 @@
       "count": 1,
       "entrances": ["canvas-node", "shot-table-row", "retake"],
       "note": "上面那条的 IPC 落点（带幂等键）。"
-    },
-    {
-      "site": "electron/capabilityCore/core.ts::runTaskFn",
-      "count": 2,
-      "entrances": ["external-mcp-generate"],
-      "note": "两处＝主路一次 + I2V 两跳的首帧那一跳。两处都不做 @ 引用的最终投影（A5）。"
     },
     {
       "site": "electron/capabilityCore/modelOnboarding/tryModel.ts::deps.runTask",
@@ -99,11 +93,6 @@
       "site": "electron/tasks/comfyCandidateTest.ts::dependencies.runTask",
       "count": 1,
       "reason": "ComfyUI 候选工作流自检，不产出用户作品。"
-    },
-    {
-      "site": "electron/capabilityCore/shotVerifyDeps.ts::runTaskFn",
-      "count": 2,
-      "reason": "审片判分（image_to_prompt / 打分），产出的是判词不是作品。"
     },
     {
       "site": "electron/video/deconstructVideo.ts::runTask",

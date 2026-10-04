@@ -9,7 +9,6 @@ import {
   resolveAssetIngestionWithFallback,
   isLocalAssetUrl,
   trustedOriginalUrl,
-  trustedLocalOutputOrigin,
   ORIGINAL_URL_TRUST_MS,
   LITTERBOX_INGESTION,
   TMPFILES_INGESTION,
@@ -816,12 +815,6 @@ describe("sidecar originalUrl 新鲜度门（L2：参考图永不过期）", () 
 describe("comfyui-upload（本地 ComfyUI 首帧上传，S2）", () => {
   const comfyIngestion = (endpoint = "http://127.0.0.1:8188/upload/image"): AssetIngestion => ({ strategy: "comfyui-upload", endpoint, accepts: ["image"] });
   const readFresh = (name = "a.png"): LocalAsset => ({ bytes: PNG_BYTES, contentType: "image/png", fileName: name, originalUrl: "https://pub/" + name, ageMs: 0 });
-
-  it("trustedLocalOutputOrigin：只信任代码所有的 ComfyUI baseUrl 精确 origin", () => {
-    expect(trustedLocalOutputOrigin({ key: "comfyui-local", baseUrlHint: "http://127.0.0.1:8188/api/" })).toBe("http://127.0.0.1:8188");
-    expect(trustedLocalOutputOrigin({ key: "custom-local", baseUrlHint: "http://127.0.0.1:9000" })).toBeNull();
-    expect(trustedLocalOutputOrigin({ key: "comfyui-local", baseUrlHint: "file:///tmp/comfy" })).toBeNull();
-  });
 
   it("resolveAssetIngestionWithFallback：comfyui-local 图片 → comfyui-upload，端点从 baseUrl 派生（默认 + 自定义 + 尾斜杠归一）", () => {
     const def = firstIngestion({ key: "comfyui-local" }, [], () => null, "image");

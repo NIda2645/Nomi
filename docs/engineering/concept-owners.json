@@ -1327,6 +1327,10 @@
         {
           "path": "electron/shared/productionRunCommandId.ts",
           "symbol": "detachShotNodesCommandId"
+        },
+        {
+          "path": "electron/shared/productionRunCommandId.ts",
+          "symbol": "canvasShotClaimCommandId"
         }
       ],
       "forbidden_derivations": [],
@@ -1770,6 +1774,36 @@
       ],
       "since": "2026-09-28",
       "notes": "PR #916（合同 docs/fixes/2026-09-28-mcp-passive-request-cold-launch.root-cause.json）：外部 AI 工具列一下资源就把 Nomi 窗口拉起来。initialize / tools/list / resources/list / resources/templates/list / ping 这类被动发现在没有活实例时只读返回、不冷启动；分流只在 createMcpProtocol，只探测不拉起的调用走 invokeIfOpen。真实工具调用仍可后台拉起（用户拍板）。"
+    },
+    {
+      "name": "MCP 调用怎么找到活 Nomi 并把请求转过去",
+      "subject": "mcp.live-instance-forwarding",
+      "lifecycle": "host",
+      "authority_kind": "writer",
+      "trust_domain": "main",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/mcpLoopbackRpcCall.ts",
+        "symbol": "callMcpLoopbackRpc"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/mcpLoopbackRpcCall.ts",
+          "symbol": "callMcpLoopbackRpc"
+        },
+        {
+          "path": "electron/capabilityCore/mcpNodeLauncher.ts",
+          "symbol": "ensureLiveInstance"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/mcpLoopbackRpcCall.test.ts",
+      "allowed_consumers": [
+        "electron/capabilityCore/mcpStdioServer.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "合同 docs/fixes/2026-10-04-mcp-launcher-relaunch.root-cause.json：两份 MCP 启动器转发给活 Nomi 的请求（planConfirmed / documentConfirmed、超时、取消、错误解析）只在 callMcpLoopbackRpc 构造；裸 Node launcher 的「连现成实例 / 快速失败 / 重新拉起」只在 ensureLiveInstance 判断，按广告 + 自己拉起的子进程状态每轮重判。"
     },
     {
       "name": "后台启动的 Nomi 何时空闲退出",
@@ -2271,6 +2305,10 @@
         {
           "path": "electron/shared/productionShotJobs.ts",
           "symbol": "latestJobForShot"
+        },
+        {
+          "path": "electron/shared/productionShotJobs.ts",
+          "symbol": "currentShotAttempt"
         }
       ],
       "forbidden_derivations": [],
@@ -2707,7 +2745,7 @@
         "electron/catalog/rendererCatalogMutation.ts"
       ],
       "since": "2026-09-29",
-      "notes": "标记是 meta.adapter（认证晋升 / 自检 / 声明卡 / 渲染层新建模型都会写在模型行上）。判据：连接本身带标记 → 归；内置家（有代码种子）只认内置目录模型（seedBuiltins.builtinCatalogModelKeys）上的标记，用户自己加、自己自检的模型只管它自己；非内置家（AI 接入 / 声明卡 / 手接中转）任何一行带标记都归。此前 4 份判据都把「整家任何一行带标记」当成整条连接归认证：报错用户点过「继续验证 → 自检」之后 Agent 生成对整家 APIMart 关门、画布照样出图（A10b）。收口合同 docs/fixes/2026-09-29-connection-certification-ownership-one-owner.root-cause.json。第五份回不来：「meta 上有没有 adapter」这个问法由 certificationOwnership.test.ts 的全仓扫描守着（主人之外出现即红），旧的五个名字由本条 forbidden_derivations 守着，Agent 与画布同源由 parity_test 守着。"
+      "notes": "标记是 meta.adapter（认证晋升 / 自检 / 声明卡 / 渲染层新建模型都会写在模型行上）。判据：连接本身带标记 → 归；内置家（有代码种子）只认内置目录模型（seedBuiltins.builtinCatalogModelKeys）上的标记，用户自己加、自己自检的模型只管它自己；非内置家（AI 接入 / 声明卡 / 手接中转）任何一行带标记都归。此前 4 份判据都把「整家任何一行带标记」当成整条连接归认证：报错用户点过「继续验证 → 自检」之后 Agent 生成对整家 APIMart 关门、画布照样出图（A10b）。收口合同 docs/fixes/2026-09-29-connection-certification-ownership-one-owner.root-cause.json。第五份回不来：「meta 上有没有 adapter」这个问法由 certificationOwnership.test.ts 的全仓扫描守着（主人之外出现即红），旧的五个名字由本条 forbidden_derivations 守着，Agent 与画布同源由 parity_test 守着。2026-10-04（#975）：正式生成那一侧只有内置 direct-key 家消费它（generationProviderBootstrap.hasSafeDirectKeyScope / resolveConnection、apimartGenerationProvider.assertDirectKeyContract）——非 direct-key 家没有代码契约可让，执行器只渲染目录 mapping，此前对它们也让出导致声明卡 / 手加模型的连接在正式生成落到 configured_provider；合同 docs/fixes/2026-10-04-declared-provider-production-handoff.root-cause.json，类测试 generationProviderBootstrapOwnership.test.ts。"
     },
     {
       "name": "设置页改连接（渲染层那扇写门能改什么）",
@@ -4272,6 +4310,36 @@
       ],
       "since": "2026-10-04",
       "notes": "原渲染层定义移动到共享层，保持同一 Zod 形状；渲染层继续消费。"
+    },
+    {
+      "name": "试跑一单后怎么说（已提交算不算失败）",
+      "subject": "onboarding.try-model-outcome",
+      "lifecycle": "spend-authority",
+      "authority_kind": "decision",
+      "trust_domain": "main",
+      "fact_kind": "rule",
+      "migration_status": "converged",
+      "owner": {
+        "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+        "symbol": "tryModel"
+      },
+      "write_api": [
+        {
+          "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+          "symbol": "tryModel"
+        },
+        {
+          "path": "electron/capabilityCore/pollTaskToTerminal.ts",
+          "symbol": "pollTaskToTerminal"
+        }
+      ],
+      "forbidden_derivations": [],
+      "parity_test": "electron/capabilityCore/modelOnboarding/tryModelAsyncQueued.test.ts",
+      "allowed_consumers": [
+        "electron/capabilityCore/modelOnboarding/dispatch.ts"
+      ],
+      "since": "2026-10-04",
+      "notes": "异步供应商提交即收费：非终态不是失败。tryModel 经 pollTaskToTerminal 最多等 40 秒（外部宿主工具超时约 60 秒），等不到返回 still_processing（带任务号、明说不要重试），只有供应商自己报终态失败才是 provider_failed。设计卡 docs/plan/2026-10-04-try-model-async-queued.md，合同 docs/fixes/2026-10-04-try-model-async-queued.root-cause.json。"
     }
   ]
 }
