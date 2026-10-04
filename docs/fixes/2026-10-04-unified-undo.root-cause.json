@@ -33,7 +33,7 @@
     {"kind":"write","path":"src/workbench/generationCanvas/agent/proposalUndo.ts","symbol":"runProposalUndoByChangeId"},
     {"kind":"write","path":"src/workbench/generationCanvas/events/canvasUndoJournal.ts","symbol":"findCanvasChange"},
     {"kind":"read","path":"src/workbench/timeline/agent/timelineCapabilityTarget.ts","symbol":"executeTimelineWriteTarget"},
-    {"kind":"write","path":"electron/capabilityCore/dispatcher.ts","symbol":"dispatch"}
+    {"kind":"write","path":"electron/capabilityCore/dispatcher.ts","symbol":"dispatch canvas.write"}
   ],
   "door_reduction": {"before":4,"after":10,"why_not":"The shared identity, cross-domain dispatcher, and model-facing lane add six explicit boundaries; the MCP dispatcher is a separate applied-result producer and cannot be merged with the renderer target without removing headless support. Canvas event append and Cmd+Z read remain separate journal boundaries, and timeline apply and undo remain separate state transitions."},
   "generality_proof": "All Agent canvas mutations converge through applyProposalBatch and all Agent timeline mutations converge through timelineCapabilityTarget; the shared changeId parser and journal conflict check therefore cover every checked caller.",
@@ -41,7 +41,7 @@
     {"path":"electron/shared/agentCapabilities/changeId.ts","symbol":"makeChangeId","responsibility":"Validate and construct the cross-surface identity."},
     {"path":"src/workbench/generationCanvas/events/canvasUndoJournal.ts","symbol":"findCanvasChange","responsibility":"Read the existing canvas session log and detect later same-object mutations."},
     {"path":"src/workbench/timeline/agent/timelineCapabilityTarget.ts","symbol":"undoPlan","responsibility":"Dispatch timeline or canvas undo and fail closed on stale/conflicting state."},
-    {"path":"electron/capabilityCore/dispatcher.ts","symbol":"dispatch","responsibility":"Mint the shared changeId for headless and MCP applied canvas receipts before result projection."}
+    {"path":"electron/capabilityCore/dispatcher.ts","symbol":"dispatch canvas.write","responsibility":"Mint the shared changeId for headless and MCP applied canvas receipts before result projection."}
   ],
   "structural_evidence": {
     "affected_paths": [
