@@ -5,9 +5,9 @@ import { createDefaultProject } from '../../src/workbench/generationCanvas/nodes
 import {
   distanceForShotSize,
   type AnchorSpec,
-  type EvalShotSize,
   type ShotLadder,
 } from '../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement'
+import type { EvalShotSize } from '../../electron/shared/director/vocab'
 import type {
   DirectorCamera,
   DirectorObject,

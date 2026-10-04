@@ -23,7 +23,7 @@ import { sceneContentEndSeconds } from '../model/timeGrid'
 import { computeAttachCameraMove } from './attachCameraMoveToTarget'
 import { decideCameraMoveRetry, DEFAULT_CAMERA_MOVE_RETRY, type CameraMoveCaptureOutcome } from './cameraMoveCaptureRetry'
 import { frameTimes } from './cameraMoveSchedule'
-import type { CameraMove } from './cameraMoveVocab'
+import type { CameraMove } from '../../../../../../electron/shared/director/vocab'
 import { CAMERA_MOVE_CAPTURE_FPS, readCameraMoveAutoCapture } from './createCameraMoveReferenceNode'
 import { DirectorHeadlessCapture, referenceVideoShortSide, type HeadlessCaptureResult } from './DirectorHeadlessCapture'
 
