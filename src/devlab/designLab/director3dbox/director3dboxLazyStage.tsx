@@ -11,7 +11,6 @@ const Stage = React.lazy(() => import('./director3dboxLabKit').then((module) => 
 
 export function Director3dBoxLazyStage({ locale, fixture, drive = 'none' }: { locale: AppLocale; fixture: Director3dBoxFixture; drive?: LabDrive }): JSX.Element {
   const [release] = React.useState(() => holdDesignLabReady('director-3dbox'))
-  React.useEffect(() => release, [release])
   return (
     <React.Suspense fallback={null}>
       <Stage locale={locale} fixture={fixture} drive={drive} release={release} />

@@ -167,7 +167,7 @@ export async function walkDesignLabScreen(config) {
         await waitForLabReady(page)
         const shot = page.locator(`[data-design-lab-shot="${state.id}"]`)
         const box = await shot.boundingBox()
-        if (!box || box.width < 40 || box.height < 24) {
+        if (state.capture !== 'viewport' && (!box || box.width < 40 || box.height < 24)) {
           record(`${state.id} 舞台没渲染出来（boundingBox=${JSON.stringify(box)}）`)
           return null
         }

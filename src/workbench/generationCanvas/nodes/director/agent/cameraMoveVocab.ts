@@ -6,7 +6,9 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { SHOT_FRAMING, type StagingShot } from './stagingVocab'
-import type { CameraMove } from '../../../../../../electron/shared/director/vocab'
+import { CAMERA_MOVES, type CameraMove } from '../../../../../../electron/shared/director/vocab'
+
+export { CAMERA_MOVES }
 
 export { SHOT_FRAMING }
 export type { StagingShot }

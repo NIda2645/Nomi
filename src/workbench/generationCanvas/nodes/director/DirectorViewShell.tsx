@@ -2,7 +2,7 @@
  * [INPUT]: 依赖 react、react-i18next、./DirectorEditorContext、./model/directorShotSummaries、./panels/viewport/DirectorViewport、
  *          ./panels/topbar/DirectorTopBar 的 Cluster、./panels/shotStrip/{DirectorShotStrip, shotLabels}、../../../../design、../../../../vendor/tablerIcons
  * [OUTPUT]: 对外提供 DirectorViewShell 与 DirectorViewMode：3D-BOX 开关开时的默认面「导演视图」
- * [POS]: 导演视图 = 顶栏三区（左：返回 + 「工程名 · 镜头 N」｜中：导演 / 精修｜右：撤销 / 重做 + 用这段预演出成片 ▾）+ 视口（小窗左下）+ 镜头条。
+ * [POS]: 导演视图 = 顶栏三区（左：返回 + 「工程名 · 镜头 N」｜中：导演 / 精修｜右：撤销 / 重做 + 出成片 ▾）+ 视口（小窗左下）+ 镜头条。
  *        「镜头 N」、小窗标题、镜头条高亮三处都从同一个播放头 derive（directorShotSummaries），不另存「当前镜」。
  *        重置视角不在这里：它属于精修顶栏「视图」簇（一功能一个家，§1.5.2），快捷键照常可用。
  *        进场时自由相机落到 directorOverviewPose 的「看全场」位姿一次，之后随用户转动。
@@ -98,7 +98,7 @@ export function DirectorViewShell({ nodeTitle, scopeRef, placement, boxDraw, can
           <WorkbenchIconButton size="sm" icon={<IconArrowBackUp size={16} stroke={1.9} />} label={t('director.view.undo')} disabled={!canUndo} onClick={undo} />
           <WorkbenchIconButton size="sm" icon={<IconArrowForwardUp size={16} stroke={1.9} />} label={t('director.view.redo')} disabled={!canRedo} onClick={redo} />
         </Cluster>
-        <div className="pointer-events-auto inline-flex shrink-0 rounded-nomi-lg border border-nomi-accent bg-nomi-accent text-body-sm font-semibold text-white shadow-nomi-md disabled:cursor-not-allowed disabled:opacity-60" role="group" aria-label={t('director.view.produce')} data-testid="director-produce-placeholder" title={t('director.view.producePlaceholder')}>
+        <div className="pointer-events-auto inline-flex shrink-0 rounded-nomi-lg border border-nomi-accent bg-nomi-accent text-body-sm font-semibold text-white shadow-nomi-md disabled:cursor-not-allowed disabled:opacity-60" role="group" aria-label={t('director.view.produce')} data-testid="director-produce-placeholder" title={`${t('director.view.produceDescription')} · ${t('director.view.producePlaceholder')}`}>
           <button type="button" className="min-w-0 whitespace-nowrap px-3 py-2" disabled onClick={onProduce}>{t('director.view.produce')}</button>
           <button type="button" className="grid shrink-0 place-items-center border-l border-white/25 px-2" disabled aria-label={t('director.view.produceMenu')}><IconChevronDown size={15} stroke={2} aria-hidden="true" /></button>
         </div>

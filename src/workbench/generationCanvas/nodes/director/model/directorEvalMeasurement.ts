@@ -13,6 +13,8 @@ import { forwardFromAngles, normalize, signedDeg, sub } from './vec3'
 import { CAMERA_MOVES, EVAL_SHOT_SIZES, type CameraMove, type EvalShotSize } from '../../../../../../electron/shared/director/vocab'
 import type { StagingShot } from '../agent/stagingVocab'
 
+export type { EvalShotSize }
+
 /**
  * Shot size is read from `heightRatio` = projected subject height / frame height (unclamped; >1 means the subject
  * runs past the frame edges, which is what medium and close shots are).
