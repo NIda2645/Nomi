@@ -1,5 +1,5 @@
 import type { ProductionJob, ProductionJobStatus, ProductionRun } from "../productionRun/productionRunTypes";
-import { latestJobForShot, shotIncluded } from "./productionShotJobs";
+import { currentShotAttempt, latestJobForShot, shotIncluded } from "./productionShotJobs";
 import { isStoppedRunStatus } from "./productionRunStop";
 import { spendAuthorizationGates } from "./productionSpendAuthority";
 import { draftCardHidden } from "./productionGenerationPresentation";
@@ -81,7 +81,7 @@ export function decideShotClaim(
   // a detached or claimed shot may finish an already-paid attempt, but never starts a new one.
   if (job && NEEDS_RECONCILE.has(job.status)) return decision("production", "needs_reconcile", requester);
   if (job && IN_FLIGHT.has(job.status)) return decision("production", "in_flight", requester);
-  if (claim?.by === "canvas" && claim.attempt === (job?.attempt ?? 1)) {
+  if (claim?.by === "canvas" && claim.attempt === currentShotAttempt(run, shotId)) {
     return decision("canvas", "canvas_claimed", requester);
   }
   if (detached) return decision("canvas", "canvas_detached", requester);
