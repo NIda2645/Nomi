@@ -28,6 +28,20 @@ describe('S1 director compiler', () => {
     const followPlan = { ...S1_ORACLE_PLANS['police-chase'], shots: S1_ORACLE_PLANS['police-chase'].shots.map(shot => shot.id === 'follow' ? { ...shot, transitionIn: 'cut' as const } : shot) }
     const chase = compileDirectorPlan(followPlan); expect(chase.ok).toBe(true); if (chase.ok) { const m = sampleDirectorProject(chase.project, { duration: chase.duration }); expect(['follow', 'track_right', 'track_left', 'pull_out']).toContain(recognizeCameraMotion(m, chase.actorMap.suspect_car, { start: 2, end: 6 }).move) }
   })
+  it('keeps vehicle close shots outside the vehicle footprint and resolves template aliases', () => {
+    const plan = {
+      version: 2 as const,
+      scene: { tags: ['street'], environment: 'day' as const, template: 'street' as const, setPieces: [] },
+      actors: [{ id: 'van', kind: 'vehicle' as const, desc: 'delivery van', placement: { relation: 'at' as const, ref: 's1-street-floor' } }],
+      blocking: [{ actor: 'van', verb: 'drive_along' as const, window: [0, 4] as [number, number] }],
+      shots: [{ id: 'close', window: [0, 4] as [number, number], transitionIn: 'cut' as const, subject: 'van', size: '近景' as const, angle: 'front' as const, height: 'eye' as const, move: { kind: 'follow' as const, speed: 'fast' as const, easing: 'linear' as const } }],
+    }
+    const result = compileDirectorPlan(plan)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.issues.some((issue) => issue.kind === 'unknown-ref')).toBe(false)
+    expect(result.issues.some((issue) => issue.kind === 'measurement' && issue.message.includes('camera enters'))).toBe(false)
+  })
   it('materializes only action-library ids for blocking', () => {
     const result = compileDirectorPlan(S1_ORACLE_PLANS['courtyard-standoff'])
     expect(result.ok).toBe(true)

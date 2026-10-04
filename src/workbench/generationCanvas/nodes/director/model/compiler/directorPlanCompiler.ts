@@ -39,11 +39,28 @@ function actorObject(actor: DirectorPlanActor, position: Vec3, id: string): Dire
   return { id, name: isVehicle ? `${actor.desc}_car` : actor.desc, type: isPerson ? 'character' : isVehicle ? 'cube' : actor.kind === 'product' ? 'cylinder' : 'cube', position, rotation: v(), scale: isPerson ? v(1, 1, 1) : isVehicle ? v(1.8, 1, 4) : actor.kind === 'product' ? v(1.3, 1.3, 1.3) : v(1, 1, 1), visible: true, locked: false, posePreset: isPerson ? 'standing' : undefined }
 }
 
+function resolveTemplateRef(ref: string, pieces: Map<string, Vec3>): Vec3 | undefined {
+  const direct = pieces.get(ref)
+  if (direct) return direct
+  // Models sometimes preserve a human label for a fixed template anchor. Keep
+  // this lossless aliasing at the compiler boundary instead of letting one
+  // spelling strand an otherwise valid actor.
+  const aliases: Record<string, string> = {
+    's1-product_stage-floor': 's1-product-ground',
+    's1-product-stage-floor': 's1-product-ground',
+    's1-product-floor': 's1-product-ground',
+    's1-courtyard-floor': 's1-courtyard-ground',
+    's1-room-ground': 's1-room-floor',
+    's1-street-floor': 's1-street-ground',
+  }
+  return pieces.get(aliases[ref] ?? '')
+}
+
 function positionActors(plan: DirectorPlan, pieces: Map<string, Vec3>): { positions: Map<string, Vec3>; issues: DirectorCompileIssue[] } {
   const positions = new Map<string, Vec3>(), issues: DirectorCompileIssue[] = []
   const occupied = new Set<string>()
   for (const [index, actor] of plan.actors.entries()) {
-    const ref = pieces.get(actor.placement.ref) ?? positions.get(actor.placement.ref)
+    const ref = resolveTemplateRef(actor.placement.ref, pieces) ?? positions.get(actor.placement.ref)
     if (!ref) { issues.push({ kind: 'unknown-ref', objectId: actor.id, message: `unknown placement ref ${actor.placement.ref}` }); continue }
     const relation = actor.placement.relation
     const ring = index + 1
@@ -100,7 +117,9 @@ function solveCamera(shot: DirectorPlanShot, subject: DirectorObject, previous: 
   const closeCharacter = !anchor && subject.type === 'character' && (shot.size === '特写' || shot.size === '大特写')
   const fov = closeCharacter ? 10 : shot.size === '中近景' && subject.type === 'character' ? 30 : 45
   const subjectHeight = anchor?.size.y ?? (subject.type === 'character' ? 1.75 : Math.max(0.4, subject.scale.y))
-  const distance = distanceForShotSize(shot.size as EvalShotSize, subjectHeight, fov, ladder) * (shot.subjects && shot.subjects.length > 1 ? 3 : 1)
+  const framingDistance = distanceForShotSize(shot.size as EvalShotSize, subjectHeight, fov, ladder) * (shot.subjects && shot.subjects.length > 1 ? 3 : 1)
+  const objectRadius = subject.name.endsWith('_car') ? Math.hypot(subject.scale.x, subject.scale.z) / 2 : 0
+  const distance = Math.max(framingDistance, objectRadius + 0.75)
   const azimuth = angleOffset(shot.angle), height = closeCharacter ? subject.position.y + 2.1 : shot.height === 'low' ? 0.65 : shot.height === 'high' ? 2.3 : shot.height === 'overhead' ? 4.2 : subject.position.y + (subject.type === 'character' ? 1.1 : 0.8)
   const subjectStart = positionAt(subject, start), subjectEndPosition = positionAt(subject, end)
   const aimY = subject.type === 'character' && !['远景', '全景'].includes(shot.size) ? 1.5 : 1.2
