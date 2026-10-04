@@ -1,16 +1,15 @@
 import { z } from 'zod'
-import { aiSceneSchema } from '../aiScene'
-import { EVAL_SHOT_SIZES, type EvalShotSize } from '../directorEvalMeasurement'
-import { CAMERA_MOVES, type CameraMove } from '../../agent/cameraMoveVocab'
+import { aiSceneSchema } from './aiSceneSchema'
+import { EVAL_SHOT_SIZES, CAMERA_MOVES, DIRECTOR_SCENE_TEMPLATES } from './vocab'
 
 const finite = z.number().finite()
 const windowSchema = z.tuple([finite.nonnegative(), finite.nonnegative()]).refine(([a, b]) => b > a, 'window end must be greater than start')
 const relation = z.enum(['near', 'in_front_of', 'behind', 'left_of', 'right_of', 'on', 'between', 'along', 'at'])
 const environment = z.enum(['day', 'night', 'studio'])
-const template = z.enum(['street', 'room', 'courtyard', 'product_stage'])
+const template = z.enum(DIRECTOR_SCENE_TEMPLATES)
 const actorKind = z.enum(['person', 'vehicle', 'product', 'prop'])
 const anchorName = z.string().regex(/^[a-z][a-z0-9_]*$/)
-const move = z.enum(CAMERA_MOVES as [CameraMove, ...CameraMove[]])
+const move = z.enum(CAMERA_MOVES)
 const extendedMove = z.union([move, z.enum(['pan', 'tilt', 'whip', 'rack_focus'])])
 
 export const directorPlanSchema = z.object({
@@ -45,7 +44,7 @@ export const directorPlanSchema = z.object({
     transitionIn: z.enum(['cut', 'continuous']),
     subject: z.string().min(1),
     subjects: z.array(z.string().min(1)).optional(),
-    size: z.enum(EVAL_SHOT_SIZES as [EvalShotSize, ...EvalShotSize[]]),
+    size: z.enum(EVAL_SHOT_SIZES),
     angle: z.union([z.enum(['front', 'three_quarter', 'side', 'side_rear', 'back']), z.object({ over_shoulder: z.string().min(1) }), z.object({ pov: z.string().min(1) })]),
     height: z.enum(['eye', 'low', 'high', 'overhead']),
     move: z.object({ kind: z.union([extendedMove, z.literal('follow'), z.literal('static')]), direction: z.enum(['left', 'right', 'up', 'down', 'forward', 'backward']).optional(), amount: finite.positive().optional(), speed: z.enum(['slow', 'medium', 'fast']).default('medium'), easing: z.enum(['linear', 'ease_in', 'ease_out', 'ease_in_out']).default('linear') }),

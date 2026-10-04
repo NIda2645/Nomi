@@ -19,7 +19,7 @@ import {
   type DirectorPlan,
   type DirectorPlanActor,
   type DirectorPlanShot,
-} from '../plan/directorPlanSchema'
+} from '../../../../../../../electron/shared/director/directorPlanSchema'
 import { buildS1TemplateObjects } from './s1SceneTemplates'
 
 const FPS = 30

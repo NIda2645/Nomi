@@ -6,18 +6,13 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import { SHOT_FRAMING, type StagingShot } from './stagingVocab'
+import { CAMERA_MOVES, type CameraMove } from '../../../../../../electron/shared/director/vocab'
 
 export { SHOT_FRAMING }
 export type { StagingShot }
 
-export type CameraMove =
-  | 'orbit_left' | 'orbit_right' | 'push_in' | 'pull_out' | 'crane_up' | 'crane_down'
-  | 'track_left' | 'track_right' | 'arc_left' | 'arc_right' | 'zoom_in' | 'zoom_out' | 'dolly_zoom'
-
-export const CAMERA_MOVES: CameraMove[] = [
-  'orbit_left', 'orbit_right', 'push_in', 'pull_out', 'crane_up', 'crane_down',
-  'track_left', 'track_right', 'arc_left', 'arc_right', 'zoom_in', 'zoom_out', 'dolly_zoom',
-]
+export { CAMERA_MOVES } from '../../../../../../electron/shared/director/vocab'
+export type { CameraMove } from '../../../../../../electron/shared/director/vocab'
 
 // 变焦族（FOV 随段进度渐变）
 export const ZOOM_MOVES = new Set<CameraMove>(['zoom_in', 'zoom_out', 'dolly_zoom'])

@@ -1,4 +1,4 @@
-import type { DirectorPlan } from '../../src/workbench/generationCanvas/nodes/director/model/plan/directorPlanSchema'
+import type { DirectorPlan } from '../../electron/shared/director/directorPlanSchema'
 
 const shot = (id: string, window: [number, number], subject: string, size: DirectorPlan['shots'][number]['size'], angle: DirectorPlan['shots'][number]['angle'], kind: DirectorPlan['shots'][number]['move']['kind'], amount?: number): DirectorPlan['shots'][number] => ({ id, window, transitionIn: 'cut', subject, size, angle, height: 'eye', move: { kind, amount: amount ?? (kind === 'orbit_right' ? 90 : undefined), speed: 'medium', easing: 'linear' } })
 

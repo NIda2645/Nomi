@@ -1,6 +1,6 @@
 import { compileDirectorPlan, type DirectorCompileIssue } from '../../src/workbench/generationCanvas/nodes/director/model/compiler/directorPlanCompiler'
 import { planDirector, type PlannerResult } from '../../src/workbench/generationCanvas/nodes/director/model/plan/directorPlanner'
-import type { DirectorPlan } from '../../src/workbench/generationCanvas/nodes/director/model/plan/directorPlanSchema'
+import type { DirectorPlan } from '../../electron/shared/director/directorPlanSchema'
 
 export type S1AdaptedProject = { project: import('../../src/workbench/generationCanvas/nodes/director/model/directorTypes').DirectorProject; actorMap: Record<string, string>; anchors: Record<string, import('../../src/workbench/generationCanvas/nodes/director/model/directorEvalMeasurement').AnchorSpec>; issues: DirectorCompileIssue[] }
 export type S1AdapterResult = { ok: true; adapted: S1AdaptedProject; planner: Extract<PlannerResult, { ok: true }> } | { ok: false; errors: string[]; planner?: PlannerResult }

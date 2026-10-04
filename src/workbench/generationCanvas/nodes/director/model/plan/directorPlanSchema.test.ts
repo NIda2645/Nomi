@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { collectStructuralFailures, collectVendorCompatibilityFailures, toPublishedJsonSchema } from '../../../../../../../electron/shared/agentCapabilities/modelVisibleJsonSchema'
-import { directorPlanModelSchema, directorPlanSchema, normalizeDirectorPlan, parseDirectorPlan } from './directorPlanSchema'
+import { directorPlanModelSchema, directorPlanSchema, normalizeDirectorPlan, parseDirectorPlan } from '../../../../../../../electron/shared/director/directorPlanSchema'
 
 describe('director plan model projection', () => {
   it('is strict, described, and compatible with the shared model-schema rules', () => {
