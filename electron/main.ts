@@ -53,7 +53,7 @@ import { registerLocalProtocol } from "./protocol/localProtocol";
 import { installMainWindowInteractions } from "./mainWindowInteractions";
 import { getMainWindow, setMainWindow } from "./appWindowRegistry";
 import { createMainWindowGuard } from "./mainWindowPresence";
-import { assertTrustedBootstrapSender, assertTrustedSender, assertTrustedUiSender } from "./ipcSenderGuard";
+import { assertTrustedSender, assertTrustedUiSender } from "./ipcSenderGuard";
 import { registerDirectorMobileIpc } from "./director/mobileBridgeIpc";
 import { registerScreenshotIpc } from "./screenshot/screenshotIpc";
 import { registerVideoIpc } from "./video/videoIpc";
@@ -290,6 +290,7 @@ async function createWindow(
     icon: path.join(__dirname, "../build/icon.png"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      additionalArguments: [`--nomi-director3dbox-proof=${encodeURIComponent(JSON.stringify(director3dBoxProof()))}`],
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -387,25 +388,8 @@ function registerSyncIpc<TArgs extends unknown[], TResult>(
   });
 }
 
-function registerBootstrapSyncIpc<TArgs extends unknown[], TResult>(
-  channel: string,
-  handler: (...args: TArgs) => TResult,
-): void {
-  ipcMain.on(channel, (event, ...args: TArgs) => {
-    try {
-      assertTrustedBootstrapSender(event);
-      event.returnValue = { ok: true, value: handler(...args) };
-    } catch (error) {
-      event.returnValue = {
-        ok: false,
-        error: error instanceof Error ? error.message : String(error),
-      };
-    }
-  });
-}
 function registerIpc(): void {
   const flag = director3dBoxProof();
-  registerBootstrapSyncIpc("nomi:feature-flags:director3dbox", () => flag);
   logInfo("main", "director3dbox-resolved", {
     enabled: flag.enabled,
     source: flag.source,

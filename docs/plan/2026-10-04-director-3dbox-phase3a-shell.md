@@ -51,3 +51,10 @@ CI `Canvas Acceptance (Linux) (1)` 新一轮 [run 37184939085](https://github.co
 - 启动证据：修复前分支 flag-off 走查 61.49s/61.52s/61.68s 均在 Electron 启动超时；干净 `origin/main` 同命令 16.10s/13.37s/13.12s 通过；修复后分支三次 14.59s/13.44s/13.39s 通过。
 - 代码门岗：`pnpm run typecheck`、`check:tokens`、`check:i18n`、`check:mockup-contracts`、`check:root-cause-contracts` 通过。
 - 截图重拍：尚未完成，见证据目录 README 的明确限制；不得把旧图当作第四轮完成收据。
+
+## R5 第五轮（2026-10-04）
+
+- 启动链条已改为单向参数：主进程在 `BrowserWindow.webPreferences.additionalArguments` 编码 feature proof，preload 从 `process.argv` 解码并做 fingerprint 核对；删除 bootstrap IPC 与第二套 sender guard。Context7 的 Electron 官方文档确认 `additionalArguments` 会追加到 renderer `process.argv`，适合向 sandboxed preload 传递少量数据；本应用 `contextIsolation: true`、`sandbox: false` 实测可用。
+- 开关取值：`NOMI_DIRECTOR_3DBOX=false` → `enabled:false, source:env, director3dbox:off:2026-11-15`；`true` → `enabled:true, source:env, director3dbox:on:2026-11-15`。打包配置 `dist-electron/feature-flags.json` 在 false 构建为 false，true 构建为 true。
+- `read-only-reload`：flag-off 三次均通过（约 15.68s、其余两次均 exit 0）；flag-on 三次 15.51s、15.41s、15.43s，均通过。
+- 截图：空态与精修已用最终构建重拍；三镜和 flag-off 旧图仍未全部满足最终 HEAD / 浅色模式要求，证据 README 明确标为未完成。

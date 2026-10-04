@@ -11,18 +11,32 @@ import { runtimeBridge } from "./preload/runtimeBridge";
 type ProductionDeepLinkPayload = { projectId: string; runId?: string; nodeId?: string; artifactId?: string };
 const localDirector3dBox = director3dBoxProof();
 const reportDirector3dBoxWarning = (event: string, fields: Record<string, string>): void => ipcRenderer.send("nomi:log:renderer", { level: "warn", event, fields });
-const director3dBox = (() => {
+const proofArgument = process.argv.find((argument) => argument.startsWith("--nomi-director3dbox-proof="));
+const argumentDirector3dBox = (() => {
+  if (!proofArgument) return null;
   try {
-    const mainProof = invokeSync<typeof localDirector3dBox>('nomi:feature-flags:director3dbox');
-    if (mainProof.fingerprint !== localDirector3dBox.fingerprint) {
-      reportDirector3dBoxWarning("director3dbox-fingerprint-mismatch", { preload: localDirector3dBox.fingerprint, main: mainProof.fingerprint });
-      return { ...mainProof, enabled: false, source: 'default' as const, fingerprint: 'director3dbox:off:2026-11-15' };
-    }
-    return mainProof;
-  } catch (error) {
-    reportDirector3dBoxWarning("director3dbox-main-proof-unavailable", { reason: error instanceof Error ? error.name : "unknown" });
+    return JSON.parse(decodeURIComponent(proofArgument.slice("--nomi-director3dbox-proof=".length))) as typeof localDirector3dBox;
+  } catch {
+    return null;
+  }
+})();
+let pendingDirector3dBoxWarning: { event: string; fields: Record<string, string> } | null = null;
+const reportPendingDirector3dBoxWarning = (): void => {
+  if (!pendingDirector3dBoxWarning) return;
+  reportDirector3dBoxWarning(pendingDirector3dBoxWarning.event, pendingDirector3dBoxWarning.fields);
+  pendingDirector3dBoxWarning = null;
+};
+window.addEventListener("DOMContentLoaded", reportPendingDirector3dBoxWarning, { once: true });
+const director3dBox = (() => {
+  if (!argumentDirector3dBox) {
+    pendingDirector3dBoxWarning = { event: "director3dbox-main-proof-unavailable", fields: { reason: "missing-additional-argument" } };
     return { ...localDirector3dBox, enabled: false, source: 'default' as const, fingerprint: 'director3dbox:off:2026-11-15' };
   }
+  if (argumentDirector3dBox.fingerprint !== localDirector3dBox.fingerprint) {
+    pendingDirector3dBoxWarning = { event: "director3dbox-fingerprint-mismatch", fields: { preload: localDirector3dBox.fingerprint, main: argumentDirector3dBox.fingerprint } };
+    return { ...argumentDirector3dBox, enabled: false, source: 'default' as const, fingerprint: 'director3dbox:off:2026-11-15' };
+  }
+  return argumentDirector3dBox;
 })();
 let queuedProductionDeepLink: ProductionDeepLinkPayload | null = null;
 const productionDeepLinkListeners = new Set<(payload: ProductionDeepLinkPayload) => void>();
