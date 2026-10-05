@@ -140,7 +140,29 @@ node scripts/door-map.mjs pendingSpend listPendingSpendConfirmations registerSpe
   [write] src/workbench/production/productionRunApi.ts          pendingSpend
 ```
 
-改后：实现完成后补在这里（目标：读出价只剩 `readPendingSpend` 一扇写 + `laneDesktopSpend` 一扇读；转接表 0 扇）。
+改后（同一组符号再加新的读口）：
+
+```
+node scripts/door-map.mjs pendingSpend listPendingSpendConfirmations readPendingSpend registerSpendWaiter settleSpendWaiter whenCardCloses watchSpendCardClose
+  渲染层：0 扇（只剩设计实验室里一个叫 pendingSpend 的局部变量，假阳性）
+  [read]  electron/capabilityCore/residentSurfaceLifecycle.ts   readPendingSpend   （唯一读口的定义 + ready 相字段）
+  [read]  electron/agentLane/laneDesktopSpend.ts                readPendingSpend   （唯一消费者：推进对话投影）
+  [write] electron/agentLane/laneDesktopSpend.ts                watchSpendCardClose（定义 whenCardCloses）
+  [read]  electron/agentLane/laneExtendedDesktopPorts.ts        whenCardCloses     （唯一消费者：generate 的等待）
+  （另有 agentPanelSpendConfirmTestUtils.ts 一扇——测试夹具，文件名不带 .test 被扫进来）
+  registerSpendWaiter / settleSpendWaiter / listPendingSpendConfirmations / productionRunApi.pendingSpend：0 扇（已删）
+```
+
+「等用户（付费卡）」的写者只有一个——Run 账本里的出价：
+
+```
+node scripts/door-map.mjs presentGenerationPlan removePresentedShot withdrawGenerationPresentation settlePresentation
+  写入口 4 扇，全部在 productionRunReducer.ts / productionRunRepository.ts（概念 production.spend-card-presentation，本刀未动）
+```
+
+投影只有一条路：账本 → Run 服务事件 tap → `laneDesktopSpend` → `LaneWorkspaceProjection.spend` → 面板（卡 + 输入框状态）。
+
+**没收的那一条**：介入槽的优先链仍是「换档 > 钱 > 工具审批」三选一（`ProjectAgentResidentShell.tsx`）。报告建议收成两选一，但换档卡是渲染层本地的「刚点了全自动」回应、不是宿主事实，钱和工具审批的先后是产品规则（钱撤不回来）；两路数据现在已经同源（同一份推送），把链挪进一个函数只是搬代码，不减少表示，所以不动。
 
 ## 8. 给独立验收线的核对清单
 

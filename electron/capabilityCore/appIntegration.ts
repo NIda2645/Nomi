@@ -66,9 +66,9 @@ import { createLiveGenerationRuntime } from './liveGenerationRuntime'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
 import { createDefaultAuthorities } from './appIntegrationAuthorities'
 import { createProductionActionHooks } from './appIntegrationProductionActions'
-import { installPendingSpendActions, pendingSpendDependencies } from './appIntegrationSpendConfirm'
+import { installPendingSpendActions, pendingSpendDependencies, readInstalledPendingSpend } from './appIntegrationSpendConfirm'
 // 付费确认卡的四个动作住在它自己的模块里（这里只装配）。main.ts 的 IPC 经能力核门面转调，所以门面要露出这四个名字。
-export { listPendingSpendConfirmations, revisePendingSpendConfirmation, discardPendingSpendConfirmation, confirmPendingSpendConfirmation, removePendingSpendShot, confirmRemainingSpendShots } from './appIntegrationSpendConfirm'
+export { revisePendingSpendConfirmation, discardPendingSpendConfirmation, confirmPendingSpendConfirmation, removePendingSpendShot, confirmRemainingSpendShots } from './appIntegrationSpendConfirm'
 import { repairStaleMcpConfigs } from './mcpConfig'
 import { logDevDetail, logError, logInfo, logWarn } from '../logging/logger'
 import { markResidentSurfaceInstallFailed, markResidentSurfaceReady, markResidentSurfaceStarting, markResidentSurfaceStopped, readResidentSurfaceLifecycle } from './residentSurfaceLifecycle'
@@ -487,7 +487,7 @@ export async function startCapabilityCore(
         normalizePatch: (base, patch) => resolvePlanPatch({ baseCandidate: base, userPatch: patch, registry: generationRegistry, videoModelCandidates: deriveUsableVideoModelCandidates() }).normalizedPatch,
       }))
       // 两条面（lane 的生成适配器、面板的付费卡）装齐了才算 ready：它们由同一份相回答。
-      markResidentSurfaceReady(residentGeneration.factory)
+      markResidentSurfaceReady(residentGeneration.factory, readInstalledPendingSpend)
     } catch (error) {
       logError('capability', 'resident-generation-adapter-install-failed', error)
       // 装配失败**不许只留一行日志**（2026-09-12）。这一段一旦抛，付费确认卡在整个会话里

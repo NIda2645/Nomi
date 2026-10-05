@@ -97,10 +97,30 @@
       "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
       "symbol": "listPendingSpendConfirmations / PendingSpendSurfaceUnavailableError / recordPendingSpendInstallFailure",
       "anchor": {
-        "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
-        "symbol": "listPendingSpendConfirmations / PendingSpendSurfaceUnavailableError"
+        "path": "electron/capabilityCore/residentSurfaceLifecycle.ts",
+        "symbol": "readPendingSpend"
       },
-      "reason": "recordPendingSpendInstallFailure 已删除（装配失败改由 installPendingSpendActions 直接抛 PendingSpendSurfaceUnavailableError）；其余两个仍在原文件。"
+      "reason": "2026-10-05 付费卡并进对话投影：读口移到常驻生成面的相（ready 相自带读口，「装好了却没装读口」写不出来）；装配失败 / 投影抛不再是抛给 IPC 的异常，而是推送里的 unreadable 值。listPendingSpendConfirmations、PendingSpendSurfaceUnavailableError 与轮询的 IPC 同批删除。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-12-announced-card-never-rendered.root-cause.json",
+      "path": "src/workbench/ai/v4/missingInterventionCard.ts",
+      "symbol": "missingInterventionCard / missingCardReasonOfReadFailure / assertAnnouncedCardRendered / traceMissingInterventionCard",
+      "anchor": {
+        "path": "src/workbench/ai/v4/missingInterventionCard.ts",
+        "symbol": "missingInterventionCard / missingCardReasonOfUnreadable / assertAnnouncedCardRendered / traceMissingInterventionCard"
+      },
+      "reason": "2026-10-05 付费卡并进对话投影：「读不到」从一次被拒的 IPC 变成推送里的一个值（PendingSpendRead.unreadable），按错误文本猜原因的 missingCardReasonOfReadFailure 换成按原因穷尽映射的 missingCardReasonOfUnreadable；同一文件、同一条不变量（读不到 ≠ 没有，一律出会说话的卡）。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-14-resident-generation-adapter-install.root-cause.json",
+      "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
+      "symbol": "listPendingSpendConfirmations",
+      "anchor": {
+        "path": "electron/capabilityCore/residentSurfaceLifecycle.ts",
+        "symbol": "readPendingSpend"
+      },
+      "reason": "2026-10-05 付费卡并进对话投影：按相回答「有没有待决出价」的读口搬进常驻生成面的相本身（ready 相自带读口），不变量（off ≠ 失败 ≠ 没有）原样保留，现由 readPendingSpend 负责。"
     },
     {
       "contract": "docs/fixes/2026-09-14-media-import-single-owner.root-cause.json",

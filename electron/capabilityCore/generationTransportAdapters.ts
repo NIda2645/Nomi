@@ -519,7 +519,7 @@ export function createPiGenerationTransportAdapter(
         if (capability !== "context" && capability !== "create") operationId(args);
         // ── 「这一笔由档位代答，别把它投影成卡」（T-AG-04）──
         //
-        // 面板每 1.5s 读一次投影，而 `plan()` 一落盘，报价卡就可见了——代答跑在它之后。
+        // Run 一变就把待决出价推给面板，而 `plan()` 一落盘，报价卡就可见了——代答跑在它之后。
         // 所以占位必须**早于草稿落盘**，晚一步用户就会看见那张他刚授权过「不用再问」的卡闪出来。
         //
         // `present`（`generate` 动词，真机上唯一会让卡露面的那条）入参里带着 operationId，直接占。

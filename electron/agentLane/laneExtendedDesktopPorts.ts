@@ -21,7 +21,6 @@ import { createExtendedLaneTools } from './laneExtendedTools'
 import { LaneDomainFailure, type OpenLaneOptions } from './laneRuntimePort'
 import { verbToTransportCall, type VerbTransportCall } from './laneVerbTransport'
 import { taskReferenceSchema } from '../shared/agentCapabilities/taskReference'
-import { registerSpendWaiter, type SpendDecision } from '../capabilityCore/spendDecisionWaiters'
 import { GENERATE_USER_DECISION_KEY, type GenerateUserDecision } from '../shared/agentLane/generateUserDecision'
 import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext'
 import type { LaneComposerContext } from '../shared/agentLane/laneDesktopContracts'
@@ -54,6 +53,11 @@ export interface LaneExtendedDesktopPortsInput {
   /** Main generation owner may become ready after the project opens. */
   generation(): PiGenerationTransportAdapter | undefined
   receipts: Pick<ProjectAgentProposalReceiptService, 'read'>
+  /**
+   * 「这一次出价关了没有」——回合等付费卡时唯一的消息来源，直接看 Run 账本（`laneDesktopSpend.whenCardCloses`）。
+   * 卡上每一镜都决定了、点了 ×、计划被取消……哪条路关的都一样：关了就去问宿主逐镜结局。
+   */
+  spendCard: Readonly<{ whenCardCloses(operationId: string): Readonly<{ closed: Promise<void>; dispose(): void }> }>
   onTaskCreated?(call: RuntimeToolCall, result: unknown): Promise<void>
   context?(): LaneComposerContext
   /**
@@ -218,8 +222,8 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
    * 此前这一步住在 execute 里：报价卡那条路以「错误 + STOP」把回合当场结束（用户点完「生成」之后没有回合接结果），
    * 文稿方案那条路干脆在工具执行里等用户点头，撞 60 秒写类预算——三轮实测一次没成过。
    *
-   * 顺序：先登记「我在等这一笔」→ 再 present（卡出现）→ 卡真的在等人才向闸借一次等待。
-   * 先登记后出卡，是因为卡一落盘面板就读得到：晚一步，用户手快的那一下点击就没人接。
+   * 顺序：present（卡出现）→ 卡真的在等人才向闸借一次等待 → 等到账本里**这一次出价**不再开着。
+   * 用户手快、在借到等待之前就点完了也接得住：结论在账本里，不在一次会错过的递送里（2026-10-05 删掉转接表）。
    * 全自动档由策略当场决完、文稿方案在它自己的确认里等完——这两条路 present 返回时就已经有结局，不借等待。
    */
   async function preflightGenerate(entry: Pending, host: NonNullable<Parameters<NonNullable<OpenLaneOptions['toolLifecycle']>['approved']>[2]>): Promise<RuntimeToolDecision> {
@@ -241,9 +245,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
     }
     const { call: transport } = translate(entry.call)
     const operationId = String((entry.call.args as { operationId?: unknown }).operationId ?? '')
-    let early: SpendDecision | undefined
-    let forward: ((decision: SpendDecision) => void) | undefined
-    const release = registerSpendWaiter(input.binding.projectId, operationId, (decision) => { if (forward) forward(decision); else early = decision })
+    let card: ReturnType<typeof input.spendCard.whenCardCloses> | undefined
     try {
       const presented = await generation.tryExecute(transport, host.signal, entry.generationContext) ?? generationSurfaceUnavailable()
       if (!presented.ok || !awaitsUserOnSpendCard(presented.result)) return presented
@@ -254,15 +256,12 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
         await generation.withdrawPresentation(operationId, 'stopped')
         return { ok: false, code: 'generation_approval_unavailable', message: 'This session has no window where the user could approve the spend, so nothing was generated.' }
       }
-      let outcome: Awaited<ReturnType<typeof host.waitForUser>['outcome']>
-      if (early) outcome = early
-      else {
-        const wait = host.waitForUser()
-        forward = (decision) => { wait.settle(decision) }
-        outcome = await wait.outcome
-      }
-      // 卡关了（每一镜都决定了，或者 × ——那条路上宿主已经把这一次出价关好了）：每一镜的结局只问宿主，这里不替它说。
-      if (outcome.kind === 'confirmed' || outcome.kind === 'declined') {
+      const wait = host.waitForUser()
+      card = input.spendCard.whenCardCloses(operationId)
+      void card.closed.then(() => { wait.settle({ kind: 'card-closed' }) })
+      const outcome = await wait.outcome
+      // 卡关了（每一镜都决定了 / × / 计划被取消——关它的那条路已经把账本写好了）：每一镜的结局只问宿主，这里不替它说。
+      if (outcome.kind === 'card-closed') {
         const shots = await generation.readPresentationOutcome(operationId)
         // 读不到结局就不编：卡上可能已经有镜在生成，照实说「结果要去核对」，而不是「都开始了」或「什么都没发生」。
         if (!shots) return { ok: false, code: 'generation_execution_failed', message: 'generation_execution_failed' }
@@ -281,7 +280,7 @@ export function createLaneExtendedDesktopPorts(input: LaneExtendedDesktopPortsIn
       void generation.withdrawPresentation(operationId, 'stopped').catch(() => undefined)
       return { ok: false, code: 'generation_cancelled', message: 'generation_cancelled', denied: true }
     } finally {
-      release()
+      card?.dispose()
     }
   }
 

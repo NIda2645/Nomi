@@ -7,7 +7,7 @@ import { useAgentPanelSpendConfirm } from '../../../src/workbench/ai/v4/useAgent
 import { useNodeAssetDrop } from '../../../src/workbench/generationCanvas/nodes/useNodeAssetDrop'
 import { resolveNodeArraySlots } from '../../../src/workbench/generationCanvas/model/nodeAssetDrop'
 import type { GenerationCanvasNode } from '../../../src/workbench/generationCanvas/model/generationCanvasTypes'
-import type { PendingSpendConfirm } from '../../../src/desktop/productionRunBridgeTypes'
+import type { PendingSpendConfirm, PendingSpendRead } from '../../../src/desktop/productionRunBridgeTypes'
 import type { NodeWriteAccess } from '../../../src/workbench/generationCanvas/nodes/nodeWriteAccess'
 
 const NodeGenerationComposer = React.lazy(async () => {
@@ -43,7 +43,6 @@ const fixture = { nodes, edges: [], pending, calls, toasts,
   narrow: () => { (pending.shots as unknown[]).splice(0, 1); refresh?.() },
   slotKey: slot.metaKey,
   upload: () => { uploads++; return new Promise(resolve => { releaseUpload = resolve }) },
-  setRefresh: (callback: () => void) => { refresh = callback },
   snapshot: () => ({ slotKind: model.slot?.kind, slotDetail: model.slot?.summary, pendingShots: model.pending?.shots.map(shot => shot.shotId), busy: model.busy, batchRunning: model.batchRunning, title: model.slot?.title, progress: model.slot?.progress?.hint, page: model.page, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
     meta: model.node?.meta, refs: model.node?.meta?.[slot.metaKey], prompt: model.node?.prompt, uploads, completed, feedback, staleNode: stale?.latestNode(staleId)?.id, staleWritable: stale?.canWrite?.() }),
   change: (field: string) => {
@@ -71,8 +70,17 @@ function Drop({ node, access }: { node: GenerationCanvasNode; access: NodeWriteA
     void drop.dropHandlers.onDrop({ preventDefault() {}, stopPropagation() {}, dataTransfer: { getData: () => '', files: [new File(['fixture'], 'reference.png', { type: 'image/png' })] } } as unknown as React.DragEvent<HTMLElement>).finally(() => { completed++ })
   }}>upload</button>
 }
+// 宿主那一份待决出价：生产里它随对话投影推过来（`LaneWorkspaceProjection.spend`），这里由夹具「推」——
+// 每次 `refresh()` 就是主进程推来一份新的。钩子自己不拉、不轮询。
+function hostRead(): PendingSpendRead {
+  const f = fixture as typeof fixture & { hidden?: boolean; readFails?: boolean }
+  if (f.readFails) return { surface: 'unreadable', reason: 'projection-failed' }
+  return { surface: 'ready', rows: f.hidden ? [] : [structuredClone(pending)] }
+}
 function Host() {
-  model = useAgentPanelSpendConfirm()
+  const [read, setRead] = React.useState<PendingSpendRead>(hostRead)
+  React.useLayoutEffect(() => { refresh = () => setRead(hostRead()); return () => { refresh = undefined } }, [])
+  model = useAgentPanelSpendConfirm(read)
   return model.node ? <><Drop node={model.node} access={model.writeAccess} />{location.search.includes('composer=1') && <React.Suspense fallback={<span>Loading shared composer</span>}><NodeWriteAccessProvider value={model.writeAccess}><NodeGenerationComposer node={model.node} host="panel" readOnly={location.search.includes('readonly=1')} visualSize={{ width: 420, height: 300 }} onFeedback={message => feedback.push(message)} /></NodeWriteAccessProvider></React.Suspense>}</> : null
 }
 const root = createRoot(document.getElementById('root')!)

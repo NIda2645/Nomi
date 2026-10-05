@@ -8,9 +8,9 @@ import { chromium } from 'playwright'
 import { createServer } from 'vite'
 let server, browser, page, cacheDir
 const ports = {
+  // 拖文件进卡体那张框（`useNodeAssetDrop`）在当前项目里上传。
   projectCanvasReadSurface: `export const withProjectAction = fn => fn({ binding: { projectId: 'project' }, assertCurrent() {} }); export const isProjectExecutionContextCurrent = () => true; export const isProjectImportCancellation = () => false;`,
-  bridge: `export const getDesktopBridge = () => ({ productionRuns: { pendingSpend() {} } });`,
-  productionRunApi: `export const productionRunApi = { reviseSpend: async input => { window.spendOwnership.calls.push(input); if (window.spendOwnership.revise) return window.spendOwnership.revise(input); return {ok: !window.spendOwnership.failRevision} }, discardSpend: async (...args) => {window.spendOwnership.calls.push({discard: args}); return window.spendOwnership.discardReply ? window.spendOwnership.discardReply(...args) : {ok:!window.spendOwnership.failDiscard}}, confirmSpend: async (...args) => { window.spendOwnership.calls.push({confirm: args}); return window.spendOwnership.confirmReply ? window.spendOwnership.confirmReply(...args) : {ok:!window.spendOwnership.failConfirm} }, confirmSpendRemaining: async (...args) => { window.spendOwnership.calls.push({remaining: args}); return window.spendOwnership.remaining ? window.spendOwnership.remaining(...args) : {ok:true} }, pendingSpend: async () => { const f = window.spendOwnership; if (f.readFails) throw new Error('ipc down'); return { surface: 'ready', rows: f.hidden ? [] : [structuredClone(f.pending)] } } };`,
+  productionRunApi: `export const productionRunApi = { reviseSpend: async input => { const f = window.spendOwnership; f.calls.push(input); const reply = await (f.revise ? f.revise(input) : {ok: !f.failRevision}); return reply?.ok && reply.quoteId && !reply.pending ? { ...reply, pending: structuredClone(f.pending) } : reply }, discardSpend: async (...args) => {window.spendOwnership.calls.push({discard: args}); return window.spendOwnership.discardReply ? window.spendOwnership.discardReply(...args) : {ok:!window.spendOwnership.failDiscard}}, confirmSpend: async (...args) => { window.spendOwnership.calls.push({confirm: args}); return window.spendOwnership.confirmReply ? window.spendOwnership.confirmReply(...args) : {ok:!window.spendOwnership.failConfirm} }, confirmSpendRemaining: async (...args) => { window.spendOwnership.calls.push({remaining: args}); return window.spendOwnership.remaining ? window.spendOwnership.remaining(...args) : {ok:true} } };`,
   toast: `export const toast = (message, kind) => { window.spendOwnership.toasts.push({ message, kind }) }; export const useToastStore = { getState: () => ({ push: (input) => { window.spendOwnership.toasts.push({ message: input.message, kind: input.type, ttl: input.ttl }); return 'toast' } }) };`,
   modelCatalogCache: `export const preloadModelOptions = async () => []; export const MODEL_REFRESH_EVENT = 'fixture-refresh';`,
   generationCanvasStore: `export const useGenerationCanvasStore = Object.assign(selector => selector({ nodes: window.spendOwnership.nodes, edges: window.spendOwnership.edges, updateNode() { throw new Error('canvas write forbidden') } }), { getState: () => ({ nodes: window.spendOwnership.nodes, edges: window.spendOwnership.edges }) });`,
@@ -33,11 +33,6 @@ beforeEach(async () => {
   await page?.close()
   page = await browser.newPage()
   page.on('pageerror', error => console.error(error.message))
-  await page.addInitScript(() => {
-    const original = window.setInterval.bind(window)
-    window.setInterval = (callback, delay, ...args) => delay === 1500
-      ? (window.spendOwnership.setRefresh(callback), 1) : original(callback, delay, ...args)
-  })
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}/tests/ux/fixtures/spend-panel-write-ownership-harness.html`)
   await page.locator('#upload').waitFor({ state: 'visible' })
 })
