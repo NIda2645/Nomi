@@ -442,19 +442,6 @@
       "revisitWhen": "0.24 S4 开工时按 plan 迁移；迁完整体删除"
     },
     {
-      "id": "spend-card-polling",
-      "capability": "付费确认卡每 1.5 秒轮询 Run 账本",
-      "status": "to-replace",
-      "plan": "docs/research/2026-09-29-agent-message-layer-conformance/report.md",
-      "paths": ["src/workbench/ai/v4/useAgentPanelSpendConfirm.ts"],
-      "alternativesChecked": [
-        { "name": "pi 的待决确认是一种表示：按 id 匹配、阻塞到回复、可取消；我们的投影按引用 join、推送完整投影", "source": "node_modules/@earendil-works/pi-coding-agent/docs/rpc.md:1184" },
-        { "name": "事件触发重投影（laneHost 已在 lane 事件上推完整投影）", "source": "electron/shared/agentLane/laneProjection.ts:1" }
-      ],
-      "whyNotIntegrated": "没有领域理由用轮询：卡的内容（可编辑的报价）是领域，但「内容变了就通知」是通用机制。0.24 B 把付费卡并进对话投影，去掉轮询。",
-      "revisitWhen": "0.24 B 落地时删轮询（前置：枚举不走 lane 的待决付费来源）"
-    },
-    {
       "id": "telemetry-pipeline",
       "capability": "用量事件与 Agent 轨迹的出站管线：白名单事件、同意合同、发件箱、自建接收端",
       "status": "justified",
