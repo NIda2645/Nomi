@@ -49,7 +49,7 @@ import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } fro
 import type { ModuleRegistry } from './moduleRegistry'
 import { createLiveGenerationRuntime } from './liveGenerationRuntime'
 import { createGenerationProviderBootstrap } from './generationProviderBootstrap'
-import { markSingleShotAttention, markSingleShotCompleted, markSingleShotRunning } from '../productionRun/singleShotRunLifecycle'
+import { markSingleShotAttention, markSingleShotCompleted } from '../productionRun/singleShotRunLifecycle'
 import { createGenerationOutputMaterializer } from './generationOutputMaterializer'
 import { readAgentApprovalPolicy } from '../settings/agentApprovalPolicySettings'
 import { readCatalog } from '../catalog/catalogStore'
@@ -394,13 +394,8 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
             },
           })
         }
-        const started = await submission.start({ projectId: lease.projectId, operationId: operation.operationId })
-        // Keep the stdio transport on the same durable lifecycle as the GUI:
-        // accepting a provider task is an active Run, not a still-ready draft.
-        if (!operation.shots || operation.shots.length === 0) {
-          markSingleShotRunning(productionRuns.repository, lease.projectId, operation.operationId)
-        }
-        return started
+        // 受理那一刻单镜 Run 已经记成进行中（提交出口和「已受理」同一次落盘，GUI 与 stdio 同一处）。
+        return await submission.start({ projectId: lease.projectId, operationId: operation.operationId })
       },
       reconcile: async (operation, outcome, lease) => {
         const providerBootstrap = readProviderBootstrap()
