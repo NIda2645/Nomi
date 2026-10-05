@@ -9,7 +9,7 @@
 //   node scripts/check-pr-judgement.mjs           CI / push 前（本地无 PR 正文时跳过）
 //   node scripts/check-pr-judgement.mjs --gaps    体检：列出路由表里所有「工具还没建」的缺口
 //
-// 环境变量（给测试用）：PR_JUDGEMENT_BASE_REF 可信 base；PR_JUDGEMENT_REPO_ROOT 覆盖仓库根；NOMI_PR_BODY 指定正文（见 prBody.mjs）。
+// 环境变量（给测试用）：PR_JUDGEMENT_BASE_REF 可信 base；PR_JUDGEMENT_REPO_ROOT 覆盖仓库根；PR_JUDGEMENT_CREATED_AT 覆盖 PR 创建时间；NOMI_PR_BODY 指定正文（见 prBody.mjs）。
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -34,6 +34,7 @@ function ledgerIds(text) {
 }
 
 function prCreatedAt() {
+  if (process.env.PR_JUDGEMENT_CREATED_AT) return process.env.PR_JUDGEMENT_CREATED_AT // 测试用：不去问 gh（CI 里 gh 会取到真 PR 的创建时间）
   const number = String(process.env.NOMI_PR_NUMBER ?? '').trim()
   try {
     return JSON.parse(execFileSync('gh', ['pr', 'view', ...(number ? [number] : []), '--json', 'createdAt'], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })).createdAt || null

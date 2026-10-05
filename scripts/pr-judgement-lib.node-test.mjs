@@ -180,7 +180,7 @@ test('端到端：临时 git 仓库里跑 CI 脚本——没勾分类 / 缺证�
   git(root, 'commit', '-qam', 'change spend and a gate')
   const run = (body, env = {}) => spawnSync(process.execPath, [path.join(here, 'check-pr-judgement.mjs')], {
     encoding: 'utf8',
-    env: { ...process.env, PR_JUDGEMENT_REPO_ROOT: root, PR_JUDGEMENT_BASE_REF: base, NOMI_PR_BODY: body, GITHUB_EVENT_NAME: '', ...env },
+    env: { ...process.env, PR_JUDGEMENT_REPO_ROOT: root, PR_JUDGEMENT_BASE_REF: base, PR_JUDGEMENT_CREATED_AT: '2026-10-08T00:00:00Z', NOMI_PR_BODY: body, GITHUB_EVENT_NAME: '', ...env },
   })
   const red = run('## 设计卡\nx')
   assert.equal(red.status, 1, red.stdout + red.stderr)
