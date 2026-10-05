@@ -39,6 +39,7 @@ import {
   videoRecommendationInput,
 } from "./mcpGenerationVideoResolve";
 import type { ModuleRegistry } from "./moduleRegistry";
+import type { LiveGenerationRuntimeScope } from "./liveGenerationRuntime";
 import type { ProjectLeaseV2 } from "./projectLease";
 import {
   classifyGenerationProviderCapabilities,
@@ -93,6 +94,8 @@ import type { GenerationAuthorizationPreparation, GenerationOperation, Generatio
 
 export type GenerationPlanningHandlerDependencies = {
   registry: Pick<ModuleRegistry, "resolve"> & Partial<Pick<ModuleRegistry, "snapshot">>;
+  /** Capture one immutable catalog registry at the start of a draft_shots call. */
+  createDraftScope?: () => LiveGenerationRuntimeScope;
   operations: GenerationOperationStore;
   now?: () => string;
   resolveStoryboardReferenceUrl?: (projectId: string, reference: PlanCandidate["references"][number]) => string;
@@ -471,14 +474,32 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     }
     const operationId = typeof params.operationId === "string" && params.operationId.trim() ? params.operationId.trim() : `op-${crypto.randomUUID()}`;
     if (input.capability === "create") {
+      // draft_shots is the lifecycle boundary for a multi-shot draft. Capture
+      // the catalog once here and thread this registry explicitly through all
+      // shot resolves; a later draft call creates a new scope and sees catalog
+      // edits without an implicit microtask cache.
+      const draftRegistry = deps.createDraftScope?.().registry ?? deps.registry;
       // P4 S6.5 生产入口: a multi-shot draft is created from `shots` (client gives每镜 plan) or `scriptText`
       // (storyboard planner 拟稿). Both land the same durable draft.shots that S1 patch/preview address and
       // gate_request seals. Neither `shots` nor `scriptText` → single-shot (today, byte-identical).
-      const draftShots = await resolveCreateShots(input.lease.projectId, params);
+      const draftShots = await resolveCreateShots(input.lease.projectId, params, draftRegistry);
       if (draftShots) {
-        const normalizedShots = draftShots.map((shot) => ({ ...shot, candidate: normalizeAuthoredCandidate(shot.candidate, deps.registry, deps.videoModelCandidates) }));
+        const normalizedShots = draftShots.map((shot) => ({ ...shot, candidate: normalizeAuthoredCandidate(shot.candidate, draftRegistry, deps.videoModelCandidates) }));
         // 每一镜的「模型 + 模式」落盘前就对过账：矛盾的镜头当场拒绝，不留到付费卡上点下去才发现（第 9 条）。
-        for (const shot of normalizedShots) admitShotIdentity(shot.candidate, deps.registry, shot.role);
+        for (const [index, shot] of normalizedShots.entries()) {
+          const startedAt = process.env.NOMI_CARD12_TRACE === "1" ? performance.now() : 0;
+          admitShotIdentity(shot.candidate, draftRegistry, shot.role);
+          if (startedAt) {
+            process.stderr.write(`${JSON.stringify({
+              probe: "card12-shot-resolve",
+              shot: index + 1,
+              elapsedMs: Number((performance.now() - startedAt).toFixed(3)),
+              providerId: shot.candidate.providerId,
+              modelId: shot.candidate.modelId,
+              mode: shot.candidate.mode,
+            })}\n`);
+          }
+        }
         // 顶层 candidate = 第一个 shot 的 candidate (reducer seal 硬要顶层 contract 匹配顶层 draft candidate,
         // productionRunReducer.ts generation.seal). 与 S4 e2e setup 同构 (top = shots[0]).
         const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedShots[0].candidate, shots: normalizedShots, now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
@@ -506,7 +527,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
         params,
         candidateFrom,
         ...(deps.defaultModelForTaskKind ? { defaultModelForTaskKind: deps.defaultModelForTaskKind } : {}),
-        ...(deps.registry.snapshot ? { registry: deps.registry } : {}),
+        ...(draftRegistry.snapshot ? { registry: draftRegistry } : {}),
         ...(deps.resolveAssetReferenceIdentity
           ? { resolveAssetReferenceIdentity: (assetId: string) => deps.resolveAssetReferenceIdentity!(singleProjectId, assetId) }
           : {}),
@@ -516,8 +537,8 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
       if (deps.assertReferencesResolvable && singleCandidate.references.length > 0) {
         deps.assertReferencesResolvable(input.lease.projectId, singleCandidate.references);
       }
-      const normalizedSingle = normalizeAuthoredCandidate(singleCandidate, deps.registry, deps.videoModelCandidates);
-      admitShotIdentity(normalizedSingle, deps.registry);
+      const normalizedSingle = normalizeAuthoredCandidate(singleCandidate, draftRegistry, deps.videoModelCandidates);
+      admitShotIdentity(normalizedSingle, draftRegistry);
       const operation = await deps.operations.create({ operationId, projectId: input.lease.projectId, candidate: normalizedSingle, now: now(), origin: input.origin, ...(params.cardHidden === true ? { cardHidden: true } : {}) });
       const savedSingle = await saveDocumentPlan(capturedProjectId, input.origin, operation.operationId,
         [{shotId:normalizedSingle.candidateId,candidate:normalizedSingle,storyboard:params.storyboard as GenerationOperationDraftShot['storyboard']}], input.storyboardTarget);

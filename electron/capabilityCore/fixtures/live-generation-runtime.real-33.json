@@ -1,0 +1,1980 @@
+{
+  "catalog": {
+    "version": 1,
+    "vendors": 20,
+    "models": 154,
+    "mappings": 244
+  },
+  "candidates": [
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "bytedance/seedance-2",
+      "mode": "image_to_video"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "happyhorse",
+      "mode": "image_to_video"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "gpt-image-2-text-to-image",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "gpt-image-2-image-to-image",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "seedream",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "nano-banana",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "kling-3.0",
+      "mode": "image_to_video"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "minimax-h3",
+      "mode": "image_to_video"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "bytedance/seedance-2-5",
+      "mode": "image_to_video"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "wan/3-0-video",
+      "mode": "image_to_video"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "nano-banana-2",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "nano-banana-2-lite",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "seedream/5-pro-text-to-image",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "seedream/5-lite-text-to-image",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "gpt-image-2-5-flare-text-to-image",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "gpt-image-2-5-sunburst-text-to-image",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "google/imagen4-fast",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "google/imagen4-ultra",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "flux-2/pro-text-to-image",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "google/gemini-omni-flash-1-1",
+      "mode": "image_to_video"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "suno-v5.5",
+      "mode": "text_to_audio"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "kie",
+      "modelId": "suno-sounds-v5-5",
+      "mode": "text_to_audio"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "MiniMax-H3-Context-IR",
+      "mode": "prompt_refine"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "doubao-seedream-5-0-pro",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "doubao-seedream-4.5",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "gemini-2.5-flash-image-preview",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "gemini-3.1-flash-image-preview",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "gpt-image-2",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "gpt-image-2.5-flare",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "gpt-image-2.5-sunburst",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "gemini-3-pro-image-preview",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "grok-imagine-2.0-ext",
+      "mode": "text_to_image"
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "providerId": "apimart",
+      "modelId": "qwen-image-2.0",
+      "mode": "text_to_image"
+    }
+  ],
+  "snapshot": [
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "bytedance/seedance-2",
+      "mode": "image_to_video",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "first_frame_url": {
+          "type": "any"
+        },
+        "last_frame_url": {
+          "type": "any"
+        },
+        "reference_image_urls": {
+          "type": "any"
+        },
+        "reference_video_urls": {
+          "type": "any"
+        },
+        "reference_audio_urls": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "duration": {
+          "type": "any"
+        },
+        "generate_audio": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "happyhorse",
+      "mode": "image_to_video",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "first_frame_url": {
+          "type": "any"
+        },
+        "last_frame_url": {
+          "type": "any"
+        },
+        "reference_image_urls": {
+          "type": "any"
+        },
+        "reference_video_urls": {
+          "type": "any"
+        },
+        "reference_audio_urls": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "duration": {
+          "type": "any"
+        },
+        "generate_audio": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        },
+        "reference_image": {
+          "type": "any"
+        },
+        "video_url": {
+          "type": "any"
+        },
+        "seed": {
+          "type": "any"
+        },
+        "audio_setting": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "gpt-image-2-text-to-image",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "gpt-image-2-image-to-image",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "seedream",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "quality": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "nano-banana",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "output_format": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "kling-3.0",
+      "mode": "image_to_video",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "first_frame_url": {
+          "type": "any"
+        },
+        "last_frame_url": {
+          "type": "any"
+        },
+        "reference_image_urls": {
+          "type": "any"
+        },
+        "reference_video_urls": {
+          "type": "any"
+        },
+        "reference_audio_urls": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "duration": {
+          "type": "any"
+        },
+        "generate_audio": {
+          "type": "any"
+        },
+        "mode": {
+          "type": "any"
+        },
+        "sound": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "minimax-h3",
+      "mode": "image_to_video",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "first_frame_url": {
+          "type": "any"
+        },
+        "last_frame_url": {
+          "type": "any"
+        },
+        "reference_image_urls": {
+          "type": "any"
+        },
+        "reference_video_urls": {
+          "type": "any"
+        },
+        "reference_audio_urls": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "duration": {
+          "type": "any"
+        },
+        "generate_audio": {
+          "type": "any"
+        },
+        "image_url": {
+          "type": "any"
+        },
+        "end_image_url": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "bytedance/seedance-2-5",
+      "mode": "image_to_video",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "first_frame_url": {
+          "type": "any"
+        },
+        "last_frame_url": {
+          "type": "any"
+        },
+        "reference_image_urls": {
+          "type": "any"
+        },
+        "reference_video_urls": {
+          "type": "any"
+        },
+        "reference_audio_urls": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "duration": {
+          "type": "any"
+        },
+        "generate_audio": {
+          "type": "any"
+        },
+        "return_last_frame": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "wan/3-0-video",
+      "mode": "image_to_video",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "first_frame_url": {
+          "type": "any"
+        },
+        "last_frame_url": {
+          "type": "any"
+        },
+        "reference_image_urls": {
+          "type": "any"
+        },
+        "reference_video_urls": {
+          "type": "any"
+        },
+        "reference_audio_urls": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "duration": {
+          "type": "any"
+        },
+        "generate_audio": {
+          "type": "any"
+        },
+        "audio": {
+          "type": "any"
+        },
+        "seed": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "nano-banana-2",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "output_format": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "nano-banana-2-lite",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "seedream/5-pro-text-to-image",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "quality": {
+          "type": "any"
+        },
+        "output_format": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "seedream/5-lite-text-to-image",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "quality": {
+          "type": "any"
+        },
+        "output_format": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "gpt-image-2-5-flare-text-to-image",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "background": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "gpt-image-2-5-sunburst-text-to-image",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "background": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "google/imagen4-fast",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        },
+        "negative_prompt": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "google/imagen4-ultra",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        },
+        "negative_prompt": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "flux-2/pro-text-to-image",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "google/gemini-omni-flash-1-1",
+      "mode": "image_to_video",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "first_frame_url": {
+          "type": "any"
+        },
+        "last_frame_url": {
+          "type": "any"
+        },
+        "reference_image_urls": {
+          "type": "any"
+        },
+        "reference_video_urls": {
+          "type": "any"
+        },
+        "reference_audio_urls": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "duration": {
+          "type": "any"
+        },
+        "generate_audio": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        },
+        "audio_ids": {
+          "type": "any"
+        },
+        "video_list": {
+          "type": "any"
+        },
+        "character_ids": {
+          "type": "any"
+        },
+        "seed": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "suno-v5.5",
+      "mode": "text_to_audio",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "customMode": {
+          "type": "any"
+        },
+        "instrumental": {
+          "type": "any"
+        },
+        "style": {
+          "type": "any"
+        },
+        "title": {
+          "type": "any"
+        },
+        "duration": {
+          "type": "any"
+        },
+        "callBackUrl": {
+          "type": "any"
+        },
+        "uploadUrl": {
+          "type": "any"
+        },
+        "defaultParamFlag": {
+          "type": "any"
+        },
+        "continueAt": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "kie",
+      "modelId": "suno-sounds-v5-5",
+      "mode": "text_to_audio",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "sound_loop": {
+          "type": "any"
+        },
+        "sound_tempo": {
+          "type": "any"
+        },
+        "sound_key": {
+          "type": "any"
+        },
+        "sound_type": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "MiniMax-H3-Context-IR",
+      "mode": "prompt_refine",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "duration": {
+          "type": "number"
+        },
+        "aspect_ratio": {
+          "type": "string"
+        },
+        "first_frame_image": {
+          "type": "any"
+        },
+        "last_frame_image": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        },
+        "video_urls": {
+          "type": "any"
+        },
+        "audio_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "doubao-seedream-5-0-pro",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "doubao-seedream-4.5",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "model": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "gemini-2.5-flash-image-preview",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        },
+        "model": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "gemini-3.1-flash-image-preview",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "gpt-image-2",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "aspect_ratio": {
+          "type": "any"
+        },
+        "model": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "gpt-image-2.5-flare",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "quality": {
+          "type": "any"
+        },
+        "background": {
+          "type": "any"
+        },
+        "model": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "gpt-image-2.5-sunburst",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "quality": {
+          "type": "any"
+        },
+        "background": {
+          "type": "any"
+        },
+        "model": {
+          "type": "any"
+        },
+        "input_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "gemini-3-pro-image-preview",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "reference_image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "grok-imagine-2.0-ext",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "size": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    },
+    {
+      "moduleId": "generation.single-shot",
+      "version": "catalog-1",
+      "providerId": "apimart",
+      "modelId": "qwen-image-2.0",
+      "mode": "text_to_image",
+      "inputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "outputKinds": [
+        "video",
+        "image",
+        "audio",
+        "text",
+        "model3d"
+      ],
+      "parameterSchema": {
+        "model": {
+          "type": "any"
+        },
+        "size": {
+          "type": "any"
+        },
+        "resolution": {
+          "type": "any"
+        },
+        "negative_prompt": {
+          "type": "any"
+        },
+        "image_urls": {
+          "type": "any"
+        }
+      },
+      "assetInputSchema": {
+        "references": {
+          "kind": "asset"
+        }
+      },
+      "capabilities": {
+        "submitIdempotency": false,
+        "query": false,
+        "reconcile": false,
+        "cancel": false
+      }
+    }
+  ]
+}
