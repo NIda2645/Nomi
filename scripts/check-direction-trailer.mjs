@@ -9,7 +9,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { gitPaths } from './lib/gitPaths.mjs'
-import { directionMessage, findHotspots, isFixSubject, parseDirectionTrailer, TRAILER_KEY } from './fix-churn.mjs'
+import { directionMessage, findHotspots, isFixSubject, parseDirectionTrailer, stagedNamespaces, TRAILER_KEY } from './fix-churn.mjs'
 
 const MIN_DOC_BYTES = 400
 
@@ -45,7 +45,7 @@ function main() {
     stagedFiles: () => {
       try { return gitPaths(['diff', '--cached', '--name-only', '--no-renames'], { cwd: root }) } catch { return [] }
     },
-    hotspots: (files) => findHotspots(root, files),
+    hotspots: (files) => findHotspots(root, files, { touched: stagedNamespaces(root, files) }),
     docOk: (rel) => docLooksReal(root, rel),
   })
   if (result.ok) return 0
