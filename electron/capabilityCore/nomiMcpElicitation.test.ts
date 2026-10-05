@@ -19,7 +19,7 @@ class ProtocolHarness {
 
   constructor(
     appOpen = false,
-    invokeImpl: (method: string, params: Record<string, unknown>) => Promise<unknown> = async () => {
+    invokeImpl: McpTransport['invoke'] = async () => {
       throw new Error('invoke 不该在 decline / 不支持 路径被调用')
     },
   ) {
@@ -31,7 +31,7 @@ class ProtocolHarness {
         if (waiter) waiter(msg)
         else this.queue.push(msg)
       },
-      invoke: this.invoke,
+      invoke: this.invoke as unknown as McpTransport['invoke'],
       isAppOpen: () => appOpen,
     }
     this.protocol = createMcpProtocol(transport)
