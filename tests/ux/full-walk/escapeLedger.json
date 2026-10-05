@@ -177,10 +177,10 @@
       "ironLaws": ["⑪"],
       "useCases": ["S2"],
       "fullWalkJourneys": ["J01-generate-image", "J04-agent-multishot-spend"],
-      "status": "candidate",
+      "status": "fixed",
       "manualReview": "pending",
       "evidence": ["缺口类 node-bar|aspect_ratio、node-bar|ratio、spend-card|aspect_ratio、spend-card|ratio；去重判据在 src/workbench/generationCanvas/nodes/controls/parameterControlModel.ts 的 dedupeParamControls / controlEquivalentKeys"],
-      "completionCommits": []
+      "completionCommits": ["a16564746"]
     },
     {
       "id": "LAW11-EMPTY-INPUT",
@@ -247,10 +247,10 @@
       "ironLaws": ["⑩"],
       "useCases": ["S1", "S2"],
       "fullWalkJourneys": ["J04-agent-multishot-spend"],
-      "status": "candidate",
+      "status": "fixed",
       "manualReview": "pending",
       "evidence": ["用例 duration-out-of-steps；节点值由 src/workbench/generationCanvas/agent/plannedNodeMeta.ts 的 buildPlannedNodeMeta 丢弃非法值回落默认；草稿与卡走 electron/shared/agentCapabilities/verbs/draftShotsProjection.ts 原样带 duration"],
-      "completionCommits": []
+      "completionCommits": ["bd587cab4"]
     },
     {
       "id": "LAW10-SILENT-DROP",
@@ -261,10 +261,10 @@
       "ironLaws": ["⑩"],
       "useCases": ["S1"],
       "fullWalkJourneys": ["J04-agent-multishot-spend"],
-      "status": "candidate",
+      "status": "fixed",
       "manualReview": "pending",
       "evidence": ["用例 no-duration-param、still-with-duration；草稿 parameters.duration 有值，付费卡投影的 parameters 里没有"],
-      "completionCommits": []
+      "completionCommits": ["bd587cab4"]
     },
     {
       "id": "LAW12-sb-row-more",
@@ -275,10 +275,10 @@
       "ironLaws": ["⑫"],
       "useCases": ["S6"],
       "fullWalkJourneys": ["J06-delete-shot"],
-      "status": "candidate",
+      "status": "fixed",
       "manualReview": "pending",
       "evidence": ["tests/ux/shots/full-walk/law12-zh/pb12-storyboard-click-expectations--base--zh-CN/click-sb-row-more.png"],
-      "completionCommits": []
+      "completionCommits": ["bd9082871"]
     },
     {
       "id": "LAW12-sb-row-checkbox",
