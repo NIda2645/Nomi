@@ -1,0 +1,195 @@
+{
+  "schema_version": 3,
+  "id": "2026-10-05-canvas-paid-into-production-run",
+  "problem_type": "Paid generation leaves through two mouths: canvas single-node entries approve with an in-memory token and dispatch without a durable submission intent, while production Runs own approval, dispatch and accounting",
+  "symptom": "A canvas generation that is written to the provider but loses its receipt (crash, restart, socket reset after write) comes back as an idle or failed node the user can click again, so the same shot can be charged twice; canvas single-node generations also cannot say after a crash whether money was spent. Double-charge fixes between the two engines kept recurring (59 commits since 2026-09-20, 27 of them fixes).",
+  "direct_cause": "generationRunController minted a renderer-requested token (mintSpendGrant) and runtime.runTask consumed it; the only in-flight guards were process-local (submissionLedger, withNodeSubmitExclusive) and the node state was the renderer record.",
+  "class_root": "Approval, dispatch and accounting for canvas single-node generations had no durable owner; the production Run (intent log, outbox, submission_unknown, receipts) owned the same facts for every other entry.",
+  "affected_population": [
+    "Every canvas single-node paid generation: generate, variants, in-place regenerate, error-card retry, storyboard row actions, task-center regenerate, regenerate after an unknown result is released"
+  ],
+  "scope_paths": [
+    "electron/runtime.ts",
+    "electron/tasks/taskSpend.ts",
+    "electron/tasks/taskIpcHandlers.ts",
+    "electron/catalog/customCallDispatch.ts",
+    "electron/productionRun/canvasShotRunIndex.ts",
+    "electron/productionRun/productionRunRepository.ts",
+    "electron/capabilityCore/appIntegrationCanvasShot.ts",
+    "electron/capabilityCore/canvasTransportProvider.ts",
+    "electron/capabilityCore/appIntegration.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+    "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+    "src/workbench/generationCanvas/runner/generationNodeExecutor.ts",
+    "src/workbench/generationCanvas/runner/generationRunController.ts",
+    "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+    "electron/capabilityCore/approvalReceipt.ts"
+  ],
+  "entry_points": [
+    "confirmAndRunNode",
+    "confirmAndRunNodeVariants",
+    "regenerateNodeInPlace (11 call sites: composer, base node, error report, storyboard rows, task center, production status, timeline)",
+    "recoverNodeResult (free re-fetch)"
+  ],
+  "internal_only_reason": "The invariant is the Nomi money ledger itself (ProductionRun intent log, submission outbox and approval receipts); no external specification decides which process owns the approval.",
+  "invariants": [
+    "Every canvas single-node paid dispatch goes through productionGenerationSubmission.start (submission outbox) of its own single-shot Run, after a durably recorded gesture approval",
+    "A node with a canvas Run that may have reached the provider without a known outcome cannot dispatch again until reconciled, across restarts",
+    "Every poll of a Run-backed canvas generation goes through the Run (poll / materialize), so the Run, not the renderer, is the durable state"
+  ],
+  "doors": [
+    {
+      "kind": "write",
+      "path": "electron/tasks/taskIpcHandlers.ts",
+      "symbol": "submitCanvasShot"
+    },
+    {
+      "kind": "write",
+      "path": "electron/capabilityCore/appIntegration.ts",
+      "symbol": "createCanvasShotRuns"
+    },
+    {
+      "kind": "read",
+      "path": "electron/capabilityCore/appIntegrationCanvasShot.ts",
+      "symbol": "createCanvasShotRuns"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "submitCanvasShotRun"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
+      "symbol": "pollCanvasShotRun"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+      "symbol": "pollCanvasShotRun"
+    },
+    {
+      "kind": "write",
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "symbol": "authorizeSingleNode"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/generationNodeExecutor.ts",
+      "symbol": "canvasRun"
+    },
+    {
+      "kind": "read",
+      "path": "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
+      "symbol": "canvasRun"
+    },
+    {
+      "kind": "read",
+      "path": "electron/tasks/taskSpend.ts",
+      "symbol": "RUN_APPROVED_ADMISSION"
+    }
+  ],
+  "door_reduction": {
+    "before": 10,
+    "after": 10,
+    "why_not": "These are one chain, not parallel doors: the renderer submit and poll adapters (catalogTaskActions) and the free re-fetch (recoverTaskActions) are the only renderer callers; the trusted IPC handler is the only main entry; createCanvasShotRuns is the only implementation. The single-node token mints in generationRunController went from 3 to 1 (authorizeSingleNode, only for the registered text / local ComfyUI exceptions)."
+  },
+  "generality_proof": "All 11 single-node entry call sites converge on the three controller functions, which share authorizeSingleNode and runGenerationNode; the executor routes every non-exception run through submitCanvasShotRun, and the main side has one implementation (createCanvasShotRuns) that only dispatches through the submission outbox.",
+  "shared_boundaries": [
+    {
+      "path": "electron/capabilityCore/appIntegrationCanvasShot.ts",
+      "symbol": "createCanvasShotRuns",
+      "responsibility": "Admission (in-flight, 3D-BOX preview, production shot claim), single-shot Run creation, gesture approval, outbox dispatch, Run-mediated polling, orphan hand-off."
+    },
+    {
+      "path": "electron/capabilityCore/canvasTransportProvider.ts",
+      "symbol": "createCanvasTransportProvider",
+      "responsibility": "Wraps the canvas transport behind GenerationProvider without copying it."
+    },
+    {
+      "path": "electron/tasks/taskSpend.ts",
+      "symbol": "RUN_APPROVED_ADMISSION",
+      "responsibility": "The only way runtime.runTask skips the token: used by the canvas transport after the Run approved."
+    }
+  ],
+  "same_class_entry_points": [
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "confirmAndRunNode",
+      "disposition": "enforced",
+      "evidence": "authorizeSingleNode routes to the Run ledger; canvasSingleSubmitCharacterization.test.ts pins the user-visible behavior."
+    },
+    {
+      "path": "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "entry_point": "runGenerationNodesBatch",
+      "disposition": "not-affected",
+      "evidence": "Batch keeps the token path until cut step 3 (plan section 5.3); registered as an expiring exception in concept-owners spend.pending-identity."
+    },
+    {
+      "path": "electron/capabilityCore/modelOnboarding/tryModel.ts",
+      "entry_point": "tryModel",
+      "disposition": "not-affected",
+      "evidence": "Auxiliary paid entries (E13) keep tokens until cut step 4 (decision D, default)."
+    }
+  ],
+  "recurrence": {
+    "classification": "recurring",
+    "reason": "Every canvas single-node click could reach a lost-receipt state; double-charge fixes recurred across both engines.",
+    "same_class_scan": [
+      "node scripts/door-map.mjs confirmAndRunNode confirmAndRunNodeVariants regenerateNodeInPlace mintSpendGrant claimCanvasProductionShot withNodeSubmitExclusive runTaskWithIdempotency",
+      "node scripts/fix-churn.mjs on the files listed in the design card section 1"
+    ]
+  },
+  "prevention": {
+    "kind": "centralized-boundary",
+    "enforcement_path": "electron/capabilityCore/appIntegrationCanvasShot.ts",
+    "invariant": "No canvas single-node paid dispatch without a single-shot Run, a recorded approval and the submission outbox.",
+    "failure_mode": "Unknown outcomes keep the node blocked (needs_reconcile); missing Runs or providers fail before any write.",
+    "exception_policy": "none",
+    "strategy": "Replace the token mint in the three controller functions with the Run ledger; the executor runTask and result query are replaced by the Run IPC; runtime only skips the token through RUN_APPROVED_ADMISSION.",
+    "artifacts": [
+      "electron/capabilityCore/appIntegrationCanvasShot.ts",
+      "electron/capabilityCore/canvasTransportProvider.ts",
+      "electron/tasks/taskSpend.ts",
+      "src/workbench/generationCanvas/runner/generationRunController.ts",
+      "src/workbench/generationCanvas/runner/catalogTaskActions.ts"
+    ]
+  },
+  "regression_tests": [
+    "electron/capabilityCore/appIntegrationCanvasShot.test.ts",
+    "src/workbench/generationCanvas/runner/canvasSingleSubmitCharacterization.test.ts",
+    "electron/capabilityCore/approvalReceiptPrune.test.ts"
+  ],
+  "class_regression_tests": [
+    "electron/capabilityCore/appIntegrationCanvasShot.test.ts",
+    "src/workbench/generationCanvas/runner/canvasSingleSubmitCharacterization.test.ts"
+  ],
+  "legacy_paths": {
+    "status": "removed",
+    "removed_paths": [
+      "src/workbench/generationCanvas/runner/generationRunController.ts"
+    ],
+    "rationale": "The three single-node mintSpendGrant calls are removed in the same change; the renderer 3D-BOX gate is removed from the single-node path (kept only for the batch token path until step 3)."
+  },
+  "dependency_lifecycle": {
+    "decision": "not-applicable",
+    "rationale": "No third-party runtime decides the money ledger.",
+    "exit_criteria": []
+  },
+  "migration": "Old node run records are read-only: recoverNodeResult asks the Run first and falls back to the old task query only when no Run exists. New Runs use the existing schema (origin.host is a string); 0.23 can read them (unverified, real-app acceptance).",
+  "detected_by": "review",
+  "recurrence_check_on": "2026-11-05",
+  "invariant_owner_layer": {
+    "layer": "electron/capabilityCore/appIntegrationCanvasShot.ts",
+    "tests": [
+      "electron/capabilityCore/appIntegrationCanvasShot.test.ts"
+    ],
+    "why": "The main-process command is the single entry that creates, approves and dispatches canvas single-shot Runs."
+  },
+  "residual_risks": [
+    "Batch generation, text nodes, local ComfyUI and auxiliary paid entries still use tokens (expiring exceptions).",
+    "Bound production nodes still claim the production shot before their canvas Run (removed in step 3).",
+    "Real app verification pending (pending-real-app): crash after write, restart, window close, 0.23 rollback.",
+    "Receipt store still holds the last few minutes of approvals and is read, verified and rewritten five times per click (about a third of the measured click-to-dispatch time); batching those writes is a registered follow-up."
+  ]
+}

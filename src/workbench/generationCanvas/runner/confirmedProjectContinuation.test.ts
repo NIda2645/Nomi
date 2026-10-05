@@ -28,6 +28,7 @@ vi.mock('../../api/taskApi', () => ({ mintSpendGrant: calls.mint }))
 vi.mock('./generationNodeExecutor', () => ({ generationNodeExecutor: calls.execute }))
 vi.mock('./assetUploadConsent', async original => ({ ...await original<typeof import('./assetUploadConsent')>(), resolveAssetUploadConsent: async () => ({ allowed: true, needsConfirmation: false }) }))
 
+const COMFY_META = { modelKey: 'workflow', modelVendor: 'comfyui-local', vendor: 'comfyui-local' }
 let session: ProjectSessionTestHarness
 beforeEach(() => {
   calls.disk.clear()
@@ -48,7 +49,8 @@ it.each(['no-switch', 'canvas-switch', 'storyboard-switch'] as const)('approved 
   const foreignNode = { id: 'b-node', kind: 'image' as const, title: 'B', prompt: 'unrelated B', shotIndex: 1, position: { x: 0, y: 0 } }
   const executor = vi.fn<GenerationNodeExecutor>(async (_node, context): Promise<GenerationNodeResult> => {
     expect(context.projectTarget).toEqual(target)
-    expect(context.grantId).toBe('approved-three')
+    // 单镜 Run 路（发动机收敛第一刀）：不铸令牌，每一次运行带自己的运行记录号去主进程建 Run。
+    expect(context.canvasRun?.runRecordId).toMatch(/^run-/)
     if (executor.mock.calls.length === 1 && scenario !== 'no-switch') {
       const state = useGenerationCanvasStore.getState()
       calls.disk.set(target.projectId, structuredClone({ id: target.projectId, name: 'A', version: 1, createdAt: 1, updatedAt: 1,
@@ -62,7 +64,7 @@ it.each(['no-switch', 'canvas-switch', 'storyboard-switch'] as const)('approved 
     ? { initiator: 'user' as const, executor, retry: { maxAttempts: 1 }, assertCurrent: async () => { interaction.assertCurrent() }, assertAuthorCurrent: async () => {} }
     : { initiator: 'user' as const, executor, retry: { maxAttempts: 1 } })
   expect(calls.confirm).toHaveBeenCalledOnce()
-  expect(calls.mint).toHaveBeenCalledExactlyOnceWith([node.id], 3, undefined)
+  expect(calls.mint).not.toHaveBeenCalled()
   expect(executor).toHaveBeenCalledTimes(3)
   if (scenario !== 'no-switch') {
     expect(useGenerationCanvasStore.getState().nodes).toEqual([foreignNode])
@@ -118,6 +120,8 @@ it.each(['first-frame-video', 'batch'] as const)('original plan confirmation con
 it.each(['confirmation', 'minting'] as const)('project switching during %s prevents the first submission', async boundary => {
   await session.open('project-a')
   const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'approved original shot' })
+  // 铸令牌这一格只剩令牌路（本地 ComfyUI 等登记的例外）还有；单镜 Run 路没有这段异步空档。
+  if (boundary === 'minting') useGenerationCanvasStore.getState().updateNode(node.id, { meta: COMFY_META })
   if (boundary === 'confirmation') calls.confirm.mockImplementation(async () => { await session.open('project-b'); return true })
   else calls.mint.mockImplementation(async () => { await session.open('project-b'); return 'grant' })
   await confirmAndRunNodeVariants(node.id, 3, { initiator: 'user' as const, executor: calls.execute })
@@ -190,6 +194,8 @@ it('rejects a manual history selection on a first frame produced by the same app
 it('rerun duplicate edited while mint is pending must not execute unapproved prompt', async () => {
   await session.open('project-a')
   const node = useGenerationCanvasStore.getState().addNode({ kind: 'image', prompt: 'approved original shot' })
+  // 令牌路（本地 ComfyUI）才有「铸令牌在等」这一格。
+  useGenerationCanvasStore.getState().updateNode(node.id, { meta: COMFY_META })
   calls.mint.mockImplementation(async (ids: string[]) => {
     useGenerationCanvasStore.getState().updateNode(ids[0], { prompt: 'changed DURING mint' })
     return 'grant'

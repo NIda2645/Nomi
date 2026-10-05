@@ -93,6 +93,10 @@ export const LAB_SCREENS = {
     registryDir: path.join(REPO_ROOT, 'src/devlab/designLab/director3dbox/states'),
     baselineDir: path.join(BASELINE_ROOT, 'director-3dbox'),
   },
+  'director-refine': {
+    registryDir: path.join(REPO_ROOT, 'src/devlab/designLab/directorRefine/states'),
+    baselineDir: path.join(BASELINE_ROOT, 'director-refine'),
+  },
 }
 
 export const LAB_SCREEN_IDS = Object.keys(LAB_SCREENS)

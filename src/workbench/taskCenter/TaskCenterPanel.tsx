@@ -451,7 +451,7 @@ export function TaskRow({
                 : row.action.kind === 'retry_generation'
               ? t('taskCenter.row.retry')
               : row.action.kind === 'recover_generation'
-                ? t('generationCommon.recoverable.recover')
+                ? t('generationCommon.production.runAction.retry-retrieval')
               : row.cancel === 'free'
                 ? t('taskCenter.row.cancel')
                 : t('taskCenter.row.interrupt')}

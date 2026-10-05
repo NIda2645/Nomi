@@ -40,3 +40,13 @@ it('keeps unsupported first-frame references inactive instead of converting them
   const changed = { ...displayed, meta: { ...displayed.meta, referenceImageUrls: ['nomi-local://asset/new.png'] } }
   expect(referenceInputsFromNode(changed, referenced)).toContainEqual(pendingReferenceInputs(referenced)[0])
 })
+
+it('3D-BOX preview mp4 reference: with the asset-derived kind it fills the video slot; without kind it was an image tile (the broken-image card)', () => {
+  const { node, shot } = fixture('omni')
+  const base = { assetId: 'pre', contentHash: 'h', version: 1, url: 'nomi-local://asset/p/preview.mp4' }
+  const withKind = applySpendReferences(node, pendingReferenceInputs({ ...shot, references: [{ ...base, kind: 'video' }] }))
+  expect(withKind.meta).toMatchObject({ referenceVideoUrls: ['nomi-local://asset/p/preview.mp4'] })
+  expect(withKind.meta?.referenceImageUrls ?? []).toEqual([])
+  const noKind = applySpendReferences(node, pendingReferenceInputs({ ...shot, references: [base] }))
+  expect(noKind.meta).toMatchObject({ referenceImageUrls: ['nomi-local://asset/p/preview.mp4'] })
+})

@@ -23,6 +23,8 @@
  *   pnpm exec tsx scripts/check-model-schema.ts                    校验（棘轮）
  *   pnpm exec tsx scripts/check-model-schema.ts --update-baseline  重算冻结基线
  */
+// 3D-BOX 开关引导模块必须第一个导入：工具注册表在导入期按它装配（CI 的开关开 job 用 NOMI_DESKTOP_DEV=1 NOMI_DIRECTOR_3DBOX=true 跑同一份门岗）。
+import "../electron/shared/featureFlags/director3dbox";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";

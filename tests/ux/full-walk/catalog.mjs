@@ -38,6 +38,11 @@ export const FULL_WALK_PLAYBOOKS = Object.freeze([
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' })]),
   }),
   Object.freeze({
+    id: 'pb11-canvas-single-run', script: 'tests/ux/full-walk/playbooks/pb11-canvas-single-run.walk.mjs', paid: false,
+    title: Object.freeze({ 'zh-CN': '画布上点 ↑：一次点击一个单镜 Run，被拒可再点，结果未知被拦', en: 'Canvas generate: one single-shot Run per click, rejected may retry, unknown is blocked' }),
+    variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' }), Object.freeze({ id: 'en', locale: 'en' })]),
+  }),
+  Object.freeze({
     id: 'pb10-node-display-rules', script: 'tests/ux/full-walk/playbooks/pb10-node-display-rules.walk.mjs', paid: false,
     title: Object.freeze({ 'zh-CN': '节点上显示什么：版本角标、重拍入口、已保存回执、失败标题、草稿标题', en: 'What a node shows: version badge, re-film entry, saved receipt, failure title, draft title' }),
     variants: Object.freeze([Object.freeze({ id: 'base', locale: 'zh-CN' }), Object.freeze({ id: 'en', locale: 'en' })]),
@@ -100,9 +105,9 @@ export const FULL_WALK_JOURNEYS = Object.freeze([
       { id: 'saved-receipt', kind: 'system', visibleText: ['generationCommon.observability.progress.saved'], actions: [], owner: 'src/workbench/observability/generationFeedback.ts#savedFeedbackWindowOpen', deadline: { ref: 'src/workbench/observability/generationFeedback.ts#SAVED_FEEDBACK_WINDOW_MS' } },
       { id: 'success', kind: 'terminal', visibleText: ['generationCommon.resultStack.versionCount'], actions: ['下载', '加入时间轴', '再生成一版'], owner: 'src/workbench/generationCanvas/nodes/NodeResultStack.tsx#NodeResultStack' },
       { id: 'error', kind: 'terminal', visibleText: ['generationCommon.observability.action.retry.main', 'generationCommon.observability.action.switchModel.main', 'generationCommon.node.providerFailed', 'generationCommon.node.switchProvider', 'generationCommon.observability.error.outputUnreadable.reason', 'generationCommon.observability.error.outputUnreadable.hint'], actions: ['重试', '换个模型', '切到另一家'], owner: 'src/workbench/observability/classifyError.ts#classifyGenerationError' },
-      { id: 'recoverable', kind: 'user', visibleText: ['generationCommon.recoverable.title', 'generationCommon.recoverable.recover'], actions: ['重新拉取（免费）', '标记失败'], owner: 'src/workbench/generationCanvas/runner/recoverTaskActions.ts#recoverNodeResult', deadline: USER },
+      { id: 'recoverable', kind: 'user', visibleText: ['generationCommon.recoverable.title', 'generationCommon.production.runAction.retry-retrieval'], actions: ['重新取回（免费）', '标记失败'], owner: 'src/workbench/generationCanvas/runner/recoverTaskActions.ts#recoverNodeResult', deadline: USER },
     ].map(Object.freeze)),
-    scripts: Object.freeze(['tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs', 'tests/ux/full-walk/playbooks/pb06-failure-small-window.walk.mjs', 'tests/ux/full-walk/playbooks/pb07-failure-kinds.walk.mjs', 'tests/ux/full-walk/playbooks/pb10-node-display-rules.walk.mjs', 'tests/ux/node-params-and-version-pill.walk.mjs', 'tests/ux/full-walk/playbooks/pb90-seedream5.paid.mjs']),
+    scripts: Object.freeze(['tests/ux/full-walk/playbooks/pb02-reference-image.walk.mjs', 'tests/ux/full-walk/playbooks/pb06-failure-small-window.walk.mjs', 'tests/ux/full-walk/playbooks/pb07-failure-kinds.walk.mjs', 'tests/ux/full-walk/playbooks/pb10-node-display-rules.walk.mjs', 'tests/ux/full-walk/playbooks/pb11-canvas-single-run.walk.mjs', 'tests/ux/node-params-and-version-pill.walk.mjs', 'tests/ux/full-walk/playbooks/pb90-seedream5.paid.mjs']),
     invariants: Object.freeze([1, 2, 3, 5, 7, 9]),
     metric: Object.freeze({ success: 'generation.completed{result=success}', failure: 'generation.completed{result=failure}', owner: 'src/workbench/api/taskApi.ts' }),
   }),

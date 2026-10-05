@@ -15,6 +15,8 @@ import type { Vendor } from "../catalog/types";
 import { vendorAuthSpec } from "../catalog/vendorAuthSpec";
 import { isRedirectRefusal, networkFailureDetails, redactNetworkMessage, safeNetworkUrl } from "../networkErrorDetails";
 import { tagNomiError } from "../shared/nomiErrorCodes";
+import type { ProviderAnswer } from "../outboundDispatchEvidence";
+import { extractTaskId } from "../ai/requestPipeline";
 import { BoundedResponseError, readBoundedResponseBytes } from "./boundedResponse";
 import { providerDispatcher } from "../providerNetwork";
 import { createFreshConnectionDispatcher } from "../systemProxy";
@@ -75,10 +77,13 @@ export type VendorErrorStructured = {
 
 export class VendorRequestError extends Error {
   readonly structured: VendorErrorStructured;
-  constructor(message: string, structured: VendorErrorStructured) {
+  /** 只在**收到了响应**时才有：「提交有没有被受理」由 `outboundDispatchEvidence.providerExplicitlyRejected` 读它判。 */
+  readonly providerAnswer?: ProviderAnswer;
+  constructor(message: string, structured: VendorErrorStructured, providerAnswer?: ProviderAnswer) {
     super(message);
     this.name = "VendorRequestError";
     this.structured = structured;
+    if (providerAnswer) this.providerAnswer = providerAnswer;
   }
 }
 
@@ -367,7 +372,7 @@ async function requestVendor(
       ...(upstreamCode ? { upstreamCode } : {}),
       category,
       retryable,
-    });
+    }, { httpStatus: response.status, envelopeFailure: logicalCode != null, taskIdReturned: Boolean(extractTaskId(record)) });
   }
   return responseKind === "binary" ? { bytes, contentType } : json;
 }

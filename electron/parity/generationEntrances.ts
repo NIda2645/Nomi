@@ -10,9 +10,11 @@
  *   · `runtime`  ＝ `electron/runtime.ts:309 runTask`；参数由 `extras` 直通，档案声明什么就送什么。
  *   · `provider` ＝ `createGenerationProviderBootstrap()` 造出来的 provider；参数先过
  *                  `executionContract.ts:111 compileParameters` 的闭合白名单。
+ *   · `canvas-run` ＝ 画布单节点 ↑ 收敛后的路（发动机收敛第一刀）：单镜 Run 的冻结合同 → 画布传输执行器
+ *                  （`canvasTransportProvider`）→ 同一个 `runtime.runTask`，只是批准不再是令牌。
  */
 
-export type ParityEngine = "runtime" | "provider";
+export type ParityEngine = "runtime" | "provider" | "canvas-run";
 
 export type GenerationEntrance = {
   id: string;
@@ -49,6 +51,16 @@ export const GENERATION_ENTRANCES: readonly GenerationEntrance[] = [
     engine: "runtime",
     entrySite: "src/workbench/generationCanvas/runner/catalogTaskActions.ts:304-315",
     dispatchSite: "electron/runtime.ts:309 runTask",
+    projectsPromptMentions: true,
+    appendsRetryDirective: false,
+    dispatchProfile: "runtime+projection",
+  },
+  {
+    id: "canvas-node-run",
+    userAction: "在画布节点上按生成（收敛后：经单镜 Run 的提交出口，批准 = 这一下点击）",
+    engine: "canvas-run",
+    entrySite: "electron/capabilityCore/appIntegrationCanvasShot.ts createCanvasShotRuns",
+    dispatchSite: "electron/capabilityCore/canvasTransportProvider.ts: lazyCanvasTransport → runtime runTask（RUN_APPROVED_ADMISSION）",
     projectsPromptMentions: true,
     appendsRetryDirective: false,
     dispatchProfile: "runtime+projection",

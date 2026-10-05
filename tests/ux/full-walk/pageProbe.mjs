@@ -14,14 +14,24 @@ import { UI_LOCALES, uiText } from './invariants.mjs'
 const SAVED_LABEL_KEY = 'generationCommon.observability.progress.saved'
 
 /** 注入页面的函数本体（`win.evaluate(installProbe, options)`）。幂等：已经装过就只回报 already。 */
-function installProbe({ savedTexts }) {
-  const VERSION = 6
+export function installProbe({ savedTexts }) {
+  const VERSION = 7
   if (window.__nomiFullWalk?.version === VERSION) return 'already'
   const state = {
     version: VERSION, installedAt: Date.now(), inputs: [], surfaces: [], current: null,
     spinners: {}, savedLabels: {}, versionPills: {}, toasts: {}, nextId: 1,
   }
   window.__nomiFullWalk = state
+
+  // 9b 的记账：同一节点的回执消失后再出现，是新的一次（重置 firstSeen）；否则一个节点多次成功的剧本必定误报「挂了」。
+  state.trackSaved = (present, at) => {
+    for (const node of present) {
+      const entry = state.savedLabels[node]
+      if (!entry || entry.gone) state.savedLabels[node] = { node, firstSeen: at, lastSeen: at, gone: null }
+      else entry.lastSeen = at
+    }
+    for (const [key, entry] of Object.entries(state.savedLabels)) if (!present.has(key) && !entry.gone) entry.gone = at
+  }
 
   const visible = (el) => {
     if (!el || !el.isConnected) return false
@@ -140,13 +150,9 @@ function installProbe({ savedTexts }) {
       if (!visible(nodeEl)) return
       const text = nodeEl.innerText ?? ''
       if (!savedTexts.some((saved) => text.includes(saved))) return
-      const node = nodeEl.getAttribute('data-node-id')
-      saved.add(node)
-      const entry = state.savedLabels[node] ?? (state.savedLabels[node] = { node, firstSeen: now, lastSeen: now, gone: null })
-      entry.lastSeen = now
-      entry.gone = null
+      saved.add(nodeEl.getAttribute('data-node-id'))
     })
-    for (const [key, entry] of Object.entries(state.savedLabels)) if (!saved.has(key) && !entry.gone) entry.gone = now
+    state.trackSaved(saved, now)
 
     // 7c / 9c：每一条 toast 的文字与「×N」都记下（toast 可能在步骤收尾前就自己关了）。
     const toasts = new Set()

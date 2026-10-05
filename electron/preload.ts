@@ -299,5 +299,7 @@ contextBridge.exposeInMainWorld("nomiDesktop", {
       },
       send: (channel, payload) => ipcRenderer.send(channel, payload),
     },
+    // 3D-BOX：取证白名单只在核对过指纹的开关为开时追加 `director.write` 的两个操作。
+    { director3dbox: director3dBox.enabled },
   ),
 });
