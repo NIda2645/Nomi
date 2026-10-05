@@ -273,6 +273,7 @@
     "Old Agent plans keep anchors whose ids look like shot-N; the Agent cannot revise those cards by id (refused with the real shot list); the user can edit them in the editor.",
     "The per-request plan memory lives in the main process; if the app restarts in the middle of a request, the next draft in that request starts a new plan (the request itself is gone after a restart).",
     "Whether a model splits a 2-shot request into 4 shots is model behaviour; the host now neither invites a second plan nor counts anchors as shots, and the planner skill says to use the user's shot count.",
-    "Real App acceptance with the audit walk (tests/ux/audit-storyboard.walk.mjs, PR #1030, offscreen, zero quota) has not been run in this line: unverified."
+    "Real App acceptance: the audit walk (tests/ux/audit-storyboard.walk.mjs from PR #1030, phases P1 + P10 only, offscreen window, loopback provider, egress guard with no outbound attempt) was run on this branch in zh-CN and en: the agent plan shows rows 1, 2 with anchors anchor-1/anchor-2, 'change shot 1' edits the first shot, and the anchors-then-shots request adds one plan instead of two. The full audit walk (P2-P9, P11) was not rerun.",
+    "When a request's first draft holds only reference cards, the plan is named after the first card (existing title rule: first shot title, else any title); shots appended later do not rename it."
   ]
 }
