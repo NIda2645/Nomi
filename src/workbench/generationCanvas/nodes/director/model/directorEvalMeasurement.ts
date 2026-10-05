@@ -118,12 +118,12 @@ const sceneDuration = (scene: DirectorScene): number => {
 
 // 尺寸 / 原点 / 包围盒一律读 ./directorSpace（渲染真值，three Box3 量出来），这里不再抄表
 function objectSize(object: DirectorObject): Vec3 {
-  const size = scaledBounds(object.type, object.scale).size
+  const size = scaledBounds(object).size
   return { x: Math.max(EPS, size.x), y: Math.max(EPS, size.y), z: Math.max(EPS, size.z) }
 }
 function objectCenter(scene: DirectorScene, object: DirectorObject, frame: SceneFrame): Vec3 {
   // frame 的基底已含 scale，所以这里只取单位 scale 下的包围盒中心
-  const center = scaledBounds(object.type, { x: 1, y: 1, z: 1 }).center
+  const center = scaledBounds({ ...object, scale: { x: 1, y: 1, z: 1 } }).center
   return transformPoint(sceneFrame(scene.sceneConfig), transformPoint(frame, center))
 }
 
@@ -534,7 +534,7 @@ export function measureContinuity(measurements: DirectorMeasurements, scene: Dir
 }
 
 function cameraInsideObject(camera: Vec3, origin: Vec3, object: DirectorObject): boolean {
-  const bounds = scaledBounds(object.type, object.scale),
+  const bounds = scaledBounds(object),
     size = objectSize(object)
   const center = add(origin, bounds.center)
   return (
