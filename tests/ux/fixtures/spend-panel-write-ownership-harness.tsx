@@ -44,7 +44,7 @@ const fixture = { nodes, edges: [], pending, calls, toasts,
   slotKey: slot.metaKey,
   upload: () => { uploads++; return new Promise(resolve => { releaseUpload = resolve }) },
   setRefresh: (callback: () => void) => { refresh = callback },
-  snapshot: () => ({ busy: model.busy, batchRunning: model.batchRunning, title: model.slot?.title, progress: model.slot?.progress?.hint, page: model.page, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
+  snapshot: () => ({ slotKind: model.slot?.kind, slotDetail: model.slot?.summary, pendingShots: model.pending?.shots.map(shot => shot.shotId), busy: model.busy, batchRunning: model.batchRunning, title: model.slot?.title, progress: model.slot?.progress?.hint, page: model.page, quote: model.pending?.quoteId, operation: model.pending?.operationId, candidateRevision: model.pending?.candidateRevision,
     meta: model.node?.meta, refs: model.node?.meta?.[slot.metaKey], prompt: model.node?.prompt, uploads, completed, feedback, staleNode: stale?.latestNode(staleId)?.id, staleWritable: stale?.canWrite?.() }),
   change: (field: string) => {
     if (field === 'page') model.setPage(1)
@@ -54,6 +54,10 @@ const fixture = { nodes, edges: [], pending, calls, toasts,
   // 走的就是这一条——**operationId 不变**，报价指纹换一份、计划进一版。
   rebid: () => { Object.assign(pending, { quoteId: 'quote-rebid', planVersion: pending.planVersion + 1, candidateRevision: pending.candidateRevision + 1 }); refresh?.() },
   back: () => model.setPage(0),
+  // 宿主那一侧此刻怎么说：没有待决（卡关了）/ 读不到 / 又有了。
+  hide: () => { Object.assign(fixture, { hidden: true }); refresh?.() },
+  failRead: () => { Object.assign(fixture, { readFails: true }); refresh?.() },
+  restore: () => { Object.assign(fixture, { hidden: false, readFails: false }); refresh?.() },
   finish: () => releaseUpload?.({ id: 'asset', data: { url: 'nomi-local://asset/reference.png' } }),
   unmount: () => root.unmount(),
   staleWrite: () => stale?.updateNode(staleId, { prompt: 'late mutation' }),
