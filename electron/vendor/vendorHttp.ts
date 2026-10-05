@@ -79,8 +79,10 @@ export class VendorRequestError extends Error {
   readonly structured: VendorErrorStructured;
   /** 只在**收到了响应**时才有：「提交有没有被受理」由 `outboundDispatchEvidence.providerExplicitlyRejected` 读它判。 */
   readonly providerAnswer?: ProviderAnswer;
-  constructor(message: string, structured: VendorErrorStructured, providerAnswer?: ProviderAnswer) {
+  constructor(message: string, structured: VendorErrorStructured, providerAnswer?: ProviderAnswer, options?: { cause?: unknown }) {
     super(message);
+    // 与原生 `new Error(msg, { cause })` 同形（非枚举）；app 工程的 lib 还没有 ErrorOptions 类型，所以手挂。
+    if (options?.cause !== undefined) Object.defineProperty(this, "cause", { value: options.cause, enumerable: false, writable: true, configurable: true });
     this.name = "VendorRequestError";
     this.structured = structured;
     if (providerAnswer) this.providerAnswer = providerAnswer;
@@ -282,7 +284,9 @@ async function requestVendor(
       upstreamMsg,
       category: "network",
       retryable: true,
-    });
+    },
+      // 出站证据（建连前失败 / 写出后失败）只存在于 cause 链里；丢了它，`outboundRequestWasNeverWritten` 永远答「不知道」。
+      undefined, { cause: error });
   }
   // 超时同样覆盖响应体读取（vendor 可能接了连接却 hang 在 body 上）；读完才清 timer。
   let bytes: Buffer;
