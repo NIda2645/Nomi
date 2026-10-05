@@ -33,7 +33,9 @@ import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign, type Anchor
  *      ——后两个分别是 2026-09-12 与 2026-09-17 从 ④ 那类「原地 absolute」收编过来的；
  *      2026-09-21 又收编了 `generationCanvas/components/CanvasControlsHelpPopover.tsx`：它在画布导航竖列里
  *      原地 absolute，被困在竖列 z-8 的层叠上下文里，底部浮着的 Agent 收起坞与批量生成条都盖得住它），
- *      外加设计实验室的 3 处陈列；
+ *      外加设计实验室的 3 处陈列；2026-10-05 又收编了分镜表里四个原地 absolute 的行内浮层
+ *      （行 ⋯ 菜单、「用作…」菜单、提示词片段菜单、参考悬停预览——后者用 `passThrough`）：
+ *      行在表格的 overflow-hidden 里，最后一行的菜单被裁成一条边；
  *   ② Radix —— `src/design/tooltip.tsx`（tooltip 一族）**与 `src/design/menu.tsx`（菜单一族，
  *      2026-09-08 刀 1 起：`timeline/TimelineContextMenu.tsx`、
  *      `generationCanvas/components/NodeContextMenu.tsx`）**。刀 1 没有引进第五套定位库，

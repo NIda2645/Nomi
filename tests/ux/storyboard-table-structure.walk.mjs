@@ -274,8 +274,13 @@ async function walkLocale(locale) {
     await expectOverlayReachable(win.locator(`[data-storyboard-row-menu="${LAST}"]`), '最后一行的行菜单')
   })
   await snap(tag, '04-last-row-menu')
-  await win.keyboard.press('Escape')
-  await win.waitForTimeout(250)
+  // 点别处就关上（逃逸账本 LAW12-sb-row-more：以前点别处之后菜单还开着）。
+  await win.locator('[data-storyboard-editor="true"]:visible header').first().click({ position: { x: 4, y: 4 } })
+  await win.waitForTimeout(300)
+  await check(tag, '点别处之后行菜单还开着', async () => {
+    const open = await win.locator(`[data-storyboard-row-menu="${LAST}"]`).count()
+    if (open > 0) throw new Error(`行菜单还在（${open} 个）`)
+  })
 
   await scrollRowIntoView(LAST)
   await clickOrFail(row(LAST).locator('[data-storyboard-actbar] button[aria-label]').last(), '点最后一行的「用作…」')
