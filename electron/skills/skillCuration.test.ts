@@ -24,7 +24,7 @@ const builtin = async (): Promise<SkillRecord[]> => (await discoverSkillRecords(
 describe("curated Skill and effect intake", () => {
   it("resolves a real media file for every bundled Skill, including legacy knowledge packs", async () => {
     const records = await builtin()
-    expect(records).toHaveLength(88)
+    expect(records).toHaveLength(92)
     for (const record of records) {
       expect(record.manifestError, record.directoryName).toBeUndefined()
       expect(record.curation?.preview, record.directoryName).toBeDefined()
@@ -73,12 +73,12 @@ describe("curated Skill and effect intake", () => {
     });
   }
 
-  it("discovers 48 Skills and projects 40 effects from the same packages", async () => {
+  it("discovers 48 Skills and projects 44 effects from the same packages", async () => {
     const records = await builtin();
     expect(records.filter((record) => record.curation?.kind === "skill")).toHaveLength(48);
     const prompts = getCuratedPrompts(records);
-    expect(prompts).toHaveLength(40);
-    expect(new Set(prompts.map((prompt) => prompt.id)).size).toBe(40);
+    expect(prompts).toHaveLength(44);
+    expect(new Set(prompts.map((prompt) => prompt.id)).size).toBe(44);
     for (const record of records.filter((record) => record.curation)) {
       expect(record.manifestError, record.directoryName).toBeUndefined();
       const item = readSkillCuration(parseSkillFrontmatter(record.body).values)!;
