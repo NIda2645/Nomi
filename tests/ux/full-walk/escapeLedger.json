@@ -237,6 +237,34 @@
       "manualReview": "pending",
       "evidence": ["src/workbench/generationCanvas/agent/storyboardPlanEdits.ts 的 DURATION_OPTIONS_SEC；分镜行可选值来自 composerBarModel.ts 的 shotDurationChoices"],
       "completionCommits": []
+    },
+    {
+      "id": "LAW10-OUT-OF-RANGE-SPLIT",
+      "source": "tests/experience-laws/intentShownEqualsDrafted.test.mjs（2026-10-05 首跑）",
+      "category": "parameter-contract",
+      "problem": "Agent 给只收 6 / 10 秒的模型（海螺 2.3）说 8 秒：宿主照收进草稿，付费卡显示 8 秒、请求也带 8 秒，画布节点却按档案改回默认 6 秒——三处各说各的，也没有一处告诉 Agent「8 秒不在可选档里」",
+      "existingInvariants": [3, 4],
+      "ironLaws": ["⑩"],
+      "useCases": ["S1", "S2"],
+      "fullWalkJourneys": ["J04-agent-multishot-spend"],
+      "status": "candidate",
+      "manualReview": "pending",
+      "evidence": ["用例 duration-out-of-steps；节点值由 src/workbench/generationCanvas/agent/plannedNodeMeta.ts 的 buildPlannedNodeMeta 丢弃非法值回落默认；草稿与卡走 electron/shared/agentCapabilities/verbs/draftShotsProjection.ts 原样带 duration"],
+      "completionCommits": []
+    },
+    {
+      "id": "LAW10-SILENT-DROP",
+      "source": "tests/experience-laws/intentShownEqualsDrafted.test.mjs（2026-10-05 首跑）",
+      "category": "parameter-contract",
+      "problem": "Agent 给没有时长参数的模型说了时长（Veo 3.1 Fast 说 8 秒、GPT Image 2 图片说 4 秒）：草稿里记着这个值，画布节点和付费卡上都看不到、请求也不带，宿主也没告诉 Agent「这个模型不收时长」——意图被悄悄丢掉",
+      "existingInvariants": [3, 4],
+      "ironLaws": ["⑩"],
+      "useCases": ["S1"],
+      "fullWalkJourneys": ["J04-agent-multishot-spend"],
+      "status": "candidate",
+      "manualReview": "pending",
+      "evidence": ["用例 no-duration-param、still-with-duration；草稿 parameters.duration 有值，付费卡投影的 parameters 里没有"],
+      "completionCommits": []
     }
   ]
 }
