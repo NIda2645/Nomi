@@ -252,7 +252,7 @@ describe("Run-owned semantic generation submission", () => {
       nextAction: "poll",
     });
     // 查询带着这笔任务冻结合同里的模型 / 模式（供应商实例是每次新建的，它自己记不住）。
-    expect(query).toHaveBeenCalledWith("provider-task-poll", { modelId: "fixture-model", mode: "text-to-image" });
+    expect(query).toHaveBeenCalledWith("provider-task-poll", { modelId: "fixture-model", mode: "text-to-image", parameters: { aspectRatio: "16:9" } });
     expect(submit).toHaveBeenCalledTimes(1);
     const job = repository.read("project-1", "op-1")?.jobs[0];
     expect(job).toMatchObject({ status: "polling", providerTaskId: "provider-task-poll", providerStatus: "processing" });
@@ -281,7 +281,7 @@ describe("Run-owned semantic generation submission", () => {
     ));
     await expect(createProductionGenerationSubmission({ ...deps, provider: provider(query) }).poll({ projectId: "project-1", operationId: "op-1" }))
       .resolves.toMatchObject({ providerTaskId: "provider-task-late", nextAction: "poll" });
-    expect(query).toHaveBeenCalledWith("provider-task-late", { modelId: "fixture-model", mode: "text-to-image" });
+    expect(query).toHaveBeenCalledWith("provider-task-late", { modelId: "fixture-model", mode: "text-to-image", parameters: { aspectRatio: "16:9" } });
     expect(submit).toHaveBeenCalledTimes(1);
   });
 

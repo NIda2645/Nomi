@@ -569,7 +569,7 @@ function registerIpc(): void {
   registerExportJobIpc({
     getActiveProjectSelection: () => canvasReadSurfaceRuntime.getCommittedProjectSelection(),
   });
-  registerTaskIpcHandlers(loadRuntimeModule);
+  registerTaskIpcHandlers(loadRuntimeModule, loadCapabilityCoreModule);
   // 「接入 AI 编程助手」卡：读接入状态/配置片段 + 一键写入/撤销 ~/.claude.json 的 mcpServers.nomi。
   registerSyncIpc("nomi:capability:mcp-info", () => readMcpInfo(getActiveCapabilityPort()));
   registerSyncIpc("nomi:capability:mcp-install", installMcp);

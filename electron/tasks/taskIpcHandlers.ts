@@ -12,9 +12,13 @@ import { antigravityImageJobs } from "../catalog/antigravityImageOperation";
 import { cancelComfyCandidateTest, failComfyCandidateEnvelope, runComfyCandidateTest } from "./comfyCandidateTest";
 
 type RuntimeLoader = () => Promise<typeof import("../runtime")>;
+type CanvasShotCore = Pick<typeof import("../capabilityCore/appIntegration"), "submitCanvasShot" | "pollCanvasShot" | "releaseCanvasShot" | "releaseCanvasShotSender">;
+type CoreLoader = () => Promise<CanvasShotCore>;
+
+const str = (value: unknown): string => (typeof value === "string" ? value.trim() : "");
 
 /** Register the renderer task boundary, including the spend-grant trust check. */
-export function registerTaskIpcHandlers(loadRuntimeModule: RuntimeLoader): void {
+export function registerTaskIpcHandlers(loadRuntimeModule: RuntimeLoader, loadCore: CoreLoader): void {
   const owners = new Set<number>();
   let exiting = false;
   let drained = false;
@@ -25,6 +29,12 @@ export function registerTaskIpcHandlers(loadRuntimeModule: RuntimeLoader): void 
     exiting = true;
     void antigravityImageJobs.cancelAll().finally(() => { drained = true; app.quit(); });
   });
+  // 发起任务的窗口没了：它的本地任务取消，它在等的画布 Run 交给主进程观察者收完。
+  const trackOwner = (sender: Electron.WebContents): void => {
+    if (owners.has(sender.id)) return;
+    const owner = sender.id; owners.add(owner);
+    sender.once("destroyed", () => { owners.delete(owner); void antigravityImageJobs.cancelOwner(owner); void loadCore().then((core) => core.releaseCanvasShotSender(owner)).catch(() => undefined); });
+  };
   ipcMain.handle("nomi:tasks:quote-spend", (event, inputs: SpendQuoteInput[]) => {
     assertTrustedSender(event);
     if (!Array.isArray(inputs) || inputs.length === 0 || inputs.length > 1000) throw new Error("Invalid quote targets");
@@ -42,16 +52,49 @@ export function registerTaskIpcHandlers(loadRuntimeModule: RuntimeLoader): void 
   // 提交幂等包在 IPC 边界：渲染层每次提交（含控制器重试）都经此，同 idempotencyKey 的提交内核 at-most-once。
   ipcMain.handle("nomi:tasks:run", (event, payload) => {
     assertTrustedSender(event);
-    if (!owners.has(event.sender.id)) {
-      const owner = event.sender.id; owners.add(owner);
-      event.sender.once("destroyed", () => { owners.delete(owner); void antigravityImageJobs.cancelOwner(owner); });
-    }
+    trackOwner(event.sender);
     return runTaskIpcGuard(payload, async () => {
       const { runTask } = await loadRuntimeModule();
       // 同一节点一次只许一笔在途（S1-5 同类）：幂等重放先在 runTaskWithIdempotency 里合并，到不了这道闸。
       const extras = (payload as { request?: { extras?: Record<string, unknown> } } | null)?.request?.extras;
       return withTaskOwner(event.sender.id, () => runTaskWithIdempotency(payload, () => withNodeSubmitExclusive(extras, () => runTask(payload))));
     });
+  });
+
+  // 画布单节点 ↑ 的唯一付费口（发动机收敛第一刀）：这一下 IPC 就是用户的那一下点击，主进程按发起的窗口铸手势收据，
+  // 建单镜 Run，经提交出口交出去。查结果也经 Run（poll → 出片就记进 Run）。错误照旧按结构化标记穿 IPC。
+  ipcMain.handle("nomi:tasks:canvas-submit", (event, payload) => {
+    assertTrustedSender(event);
+    trackOwner(event.sender);
+    const raw = (payload || {}) as { projectId?: unknown; nodeId?: unknown; runRecordId?: unknown; vendor?: unknown; request?: unknown };
+    const request = raw.request as { kind?: unknown; prompt?: unknown; extras?: Record<string, unknown> } | undefined;
+    const projectId = str(raw.projectId);
+    const nodeId = str(raw.nodeId);
+    const runRecordId = str(raw.runRecordId);
+    const vendor = str(raw.vendor);
+    if (!projectId || !nodeId || !runRecordId || !vendor || !request || typeof request.kind !== "string" || typeof request.prompt !== "string") {
+      throw new Error("canvas generation request is invalid");
+    }
+    if (str(request.extras?.projectId) !== projectId || str(request.extras?.nodeId) !== nodeId) throw new Error("TASK_PROJECT_MISMATCH: canvas request identity disagrees");
+    const gesture = { webContentsId: event.sender.id, frameId: event.senderFrame?.routingId ?? 0, origin: event.senderFrame?.origin ?? "" };
+    return runTaskIpcGuard({ request }, async () => withTaskOwner(event.sender.id, async () => (await loadCore()).submitCanvasShot({
+      projectId, nodeId, runRecordId, vendor, request: request as never, gesture, senderId: event.sender.id,
+    })));
+  });
+  ipcMain.handle("nomi:tasks:canvas-poll", (event, payload) => {
+    assertTrustedSender(event);
+    const raw = (payload || {}) as { projectId?: unknown; runRecordId?: unknown };
+    const projectId = str(raw.projectId);
+    const runRecordId = str(raw.runRecordId);
+    if (!projectId || !runRecordId) throw new Error("canvas generation poll is invalid");
+    return runTaskIpcGuard(payload, async () => withTaskOwner(event.sender.id, async () => (await loadCore()).pollCanvasShot({ projectId, runRecordId, senderId: event.sender.id })));
+  });
+  ipcMain.handle("nomi:tasks:canvas-release", async (event, payload) => {
+    assertTrustedSender(event);
+    const raw = (payload || {}) as { projectId?: unknown; runRecordId?: unknown };
+    const projectId = str(raw.projectId);
+    const runRecordId = str(raw.runRecordId);
+    if (projectId && runRecordId) (await loadCore()).releaseCanvasShot({ projectId, runRecordId });
   });
 
   ipcMain.handle("nomi:tasks:result", (event, payload) => {
