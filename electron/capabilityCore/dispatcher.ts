@@ -44,6 +44,7 @@ import {
 import { withCredentialElicitationTicket } from '../integrationCertification/credentialElicitation'
 import { currentCatalogFingerprint, dispatchModelOnboarding } from './modelOnboarding/dispatch'
 import { buildOnboardingKit } from './modelOnboarding/kit'
+import { readTask } from './readTask'
 import { dispatchModelSpec } from './modelSpecRead'
 import { makeChangeId } from '../shared/agentCapabilities/changeId'
 
@@ -771,6 +772,11 @@ export async function dispatch(method: string, params: Record<string, unknown>, 
     // 2026-09-21 实测里 AI 什么都做不了的那道墙。
     case 'model.onboarding.kit':
       return buildOnboardingKit()
+    // 按任务号查一个已提交异步任务的现状（nomi_try_model 的 still_processing 之后用）。只读：只走 fetchTaskResult，不碰 runTask。
+    case 'task.read': {
+      if (typeof params.taskId !== 'string' || !params.taskId.trim()) throw new RpcError('taskId is required for target=task', 400)
+      return readTask({ ...(ctx.fetchTaskResult ? { fetchTaskResult: ctx.fetchTaskResult } : {}) }, params)
+    }
     // 接模型：三个 App 级能力（§4.1）。方法名 = 契约 id，与 tools/list 上那几个名字同源。
     case 'model.onboarding.setup':
     case 'model.onboarding.try':
