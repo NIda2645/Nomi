@@ -11,7 +11,8 @@ import ShotMountBadges from './render/ShotMountBadges'
 import { getBuiltinCategoryById } from '../../project/projectCategories'
 import { NodeCardBody } from './render/NodeCardBody'
 import ImageCropGridOverlay from './render/ImageCropGridOverlay'
-import NodeImageEditToolbar from './NodeImageEditToolbar'
+import { CROP_ONLY } from './render/cropGridGeometry'
+import { ImageQuickActionsToolbarHost } from '../quickActions/ImageQuickActionsToolbarHost'
 import { NodeResultStack } from './NodeResultStack'
 import { useNodeResultHistory, nodeHasResultStack } from './useNodeResultHistory'
 import { EmptyNodeVariantToolbar, FloatingToolbarShell, TOOLBAR_ICON as TBI, ToolbarButton, ToolbarDivider, ToolbarVariantProvenanceActions } from './NodeFloatingToolbar'
@@ -294,14 +295,13 @@ function BaseGenerationNodeImpl({
       !resultStackOpen &&
       node.result?.type === 'image' &&
       node.result.url ? (
-        <NodeImageEditToolbar
+        <ImageQuickActionsToolbarHost
           reportFeedback={reportFeedback}
           node={node}
           editGrid={imageEditing.editGrid}
           imageOpBusy={imageEditing.imageOpBusy}
           {...anchorFreezeToolbarProps(node)}
-          onGridSplit={(g) => imageEditing.openEdit(g)}
-          onCrop={() => imageEditing.openEdit(1)}
+          onGridSplit={(spec) => imageEditing.openEdit(spec)} onCrop={() => imageEditing.openEdit(CROP_ONLY)}
           onTransform={(op) => void imageEditing.handleImageTransform(op)}
           onRemoveBackground={() => void imageEditing.handleRemoveBackground()}
           removeBackgroundBusy={isRemoveBackgroundPending(node)}

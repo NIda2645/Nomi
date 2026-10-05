@@ -3,7 +3,7 @@
 // 真身按主题拆在 `states/`；这里只按固定顺序拼成一条清单，顺序必须与
 // `tests/ux/design-lab/labStates.mjs` 解析 `states/` 的顺序（文件名排序）一致。
 //
-// 这屏的基线**没录**：样张阶段，等用户看过接触表拍板（calibration.json 的 pendingApprovalScreens 有登记）。
+// 这屏的基线**还没录**：Windows 上 design-lab:update 起不来，等 CI 平台录（calibration.json 的 pendingApprovalScreens 有登记）。
 import { QUICK_ACTION_TOOLBAR_STATES } from './states/01-toolbar'
 import { QUICK_ACTION_DERIVE_STATES } from './states/02-derive'
 import type { LabState } from '../labScreen'

@@ -5,19 +5,14 @@ import { ToolbarMenuTrigger } from './NodeFloatingToolbar'
 /**
  * 节点浮条上的分组下拉，壳走 `WorkbenchMenu`（Radix）——**向上**展开、Portal 到 body。
  *
- * 为什么不用同文件那颗手写 `ToolbarMenu`：快捷动作的菜单要三样它没有的东西——有名字的分段
- * （「生成新图 / 本机处理 · 不花钱」）、每项右侧一小段后果（价格）、灰掉的项说原因。手写下拉
- * 再长这三样就是第 25 个手写菜单；而原语早就有（`src/design/menu.tsx`），还顺带解决了手写版
- * 「贴顶被裁、贴左被截」的老毛病（Radix 按真实尺寸避让）。
- *
- * **它是 `ToolbarMenu` 的继任者**：接线那一轮把图片 / 视频浮条上剩下的 裁切▾ 变换▾ 抽帧▾ 拆解▾
- * 一起迁过来，同一提交删掉 `ToolbarMenu`（设计卡 §5 删除清单）。本轮只在实验室里用。
+ * 它取代了 NodeFloatingToolbar 里手写的 `ToolbarMenu`（设计卡 §5 删除清单）：快捷动作的菜单要有名字的分段、
+ * 灰掉的项说原因，手写下拉再长这些就是第 25 个手写菜单；原语还顺带解决了手写版「贴顶被裁、贴左被截」的老毛病。
  *
  * 开合：
  *   · 触发钮自己点开 / 点关。Radix 在触发钮按下那一刻会先判「点在菜单外」把它关掉，
  *     紧接着的 click 又会把它打开——所以按下时记一笔「刚才是开着的」，那一下 click 不再翻转。
  *   · 浮条外壳 `onPointerDown` 会 stopPropagation（防画布平移），Radix 挂在 document 上的
- *     「点外面」收不到浮条上别的按钮——同 `ToolbarMenu` 的做法，捕获阶段自己听一次。
+ *     「点外面」收不到浮条上别的按钮——捕获阶段自己听一次。
  */
 export type ToolbarActionMenuProps = {
   /** 走查锚点与互斥用的名字（同一条浮条里唯一）。 */
@@ -28,9 +23,11 @@ export type ToolbarActionMenuProps = {
   menuLabel: string
   items: readonly WorkbenchMenuNode[]
   disabled?: boolean
+  /** 只画图标 + ▾，不写字（title / aria-label 用 `menuLabel`）。 */
+  iconOnly?: boolean
 }
 
-export function ToolbarActionMenu({ id, icon, label, menuLabel, items, disabled }: ToolbarActionMenuProps): JSX.Element {
+export function ToolbarActionMenu({ id, icon, label, menuLabel, items, disabled, iconOnly }: ToolbarActionMenuProps): JSX.Element {
   const [open, setOpen] = React.useState(false)
   const [point, setPoint] = React.useState({ x: 0, y: 0 })
   const triggerRef = React.useRef<HTMLButtonElement>(null)
@@ -68,6 +65,8 @@ export function ToolbarActionMenu({ id, icon, label, menuLabel, items, disabled 
         ref={triggerRef}
         icon={icon}
         label={label}
+        iconOnly={iconOnly}
+        title={iconOnly ? menuLabel : undefined}
         open={open}
         disabled={disabled}
         onPointerDown={() => { wasOpenAtPointerDown.current = open }}

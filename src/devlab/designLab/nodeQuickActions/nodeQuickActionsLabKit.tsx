@@ -15,10 +15,11 @@ import { useTranslation } from 'react-i18next'
 import { IconPlus } from '@tabler/icons-react'
 import '../../../workbench/generationCanvas/styles/generationCanvas.css'
 import BaseGenerationNode from '../../../workbench/generationCanvas/nodes/BaseGenerationNode'
-import NodeImageEditToolbar from '../../../workbench/generationCanvas/nodes/NodeImageEditToolbar'
 import NodeContextMenu from '../../../workbench/generationCanvas/components/NodeContextMenu'
 import ImageQuickActionsToolbar from '../../../workbench/generationCanvas/quickActions/ImageQuickActionsToolbar'
 import { NodeDeriveMenu } from '../../../workbench/generationCanvas/quickActions/NodeDeriveMenu'
+import { connectionCreateVerdictsForSource } from '../../../workbench/generationCanvas/agent/referenceEdgeCapability'
+import { NODE_DERIVE_KINDS } from '../../../workbench/generationCanvas/quickActions/nodeDeriveMenuModel'
 import { QUICK_ACTION_META_KEY } from '../../../workbench/generationCanvas/quickActions/deriveFromNode'
 import type { GenerationCanvasNode } from '../../../workbench/generationCanvas/model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../../../workbench/generationCanvas/store/generationCanvasStore'
@@ -119,7 +120,7 @@ function Card({ left, top = CARD_TOP, frame, title, toolbar }: { left: number; t
 }
 
 /** 挂载后按一下浮条上某颗下拉的触发钮（真实 click），可选再把指针移到点阵的某一格。下拉开出来才举就绪旗。 */
-function useOpenOnMount(rootRef: React.RefObject<HTMLDivElement | null>, open?: 'presets' | 'refine' | 'grid', hoverCell?: string): void {
+function useOpenOnMount(rootRef: React.RefObject<HTMLDivElement | null>, open?: 'more-effects' | 'refine' | 'grid', hoverCell?: string): void {
   React.useEffect(() => {
     if (!open) return undefined
     const release = holdDesignLabReady(`quick-actions:${open}`)
@@ -147,8 +148,7 @@ function useOpenOnMount(rootRef: React.RefObject<HTMLDivElement | null>, open?: 
 }
 
 export type ToolbarStageProps = {
-  variant: 'proposed' | 'current'
-  open?: 'presets' | 'refine' | 'grid'
+  open?: 'more-effects' | 'refine' | 'grid'
   hoverCell?: string
   /** 这张卡是「多机位九宫格」派生出来的（浮条出「切成 9 张」）。 */
   derivedGrid?: boolean
@@ -158,7 +158,7 @@ export type ToolbarStageProps = {
 
 const noop = (): void => {}
 
-export function QuickToolbarStage({ variant, open, hoverCell, derivedGrid = false, stageWidth }: ToolbarStageProps): JSX.Element {
+export function QuickToolbarStage({ open, hoverCell, derivedGrid = false, stageWidth }: ToolbarStageProps): JSX.Element {
   const { t } = useTranslation()
   const rootRef = React.useRef<HTMLDivElement>(null)
   const node = React.useMemo(() => sourceNode(derivedGrid ? {
@@ -178,16 +178,14 @@ export function QuickToolbarStage({ variant, open, hoverCell, derivedGrid = fals
     reportFeedback: noop, node, editGrid: null, imageOpBusy: false, onCrop: noop, onTransform: noop,
     onRemoveBackground: noop, onPreview: noop, onOpenProvenance: noop,
   }
-  const toolbar = variant === 'current'
-    ? <NodeImageEditToolbar {...shared} onGridSplit={noop} />
-    : (
-      <ImageQuickActionsToolbar
-        {...shared}
-        onGridSplit={noop}
-        quickActionBlocked={blocked}
-        onQuickAction={noop}
-      />
-    )
+  const toolbar = (
+    <ImageQuickActionsToolbar
+      {...shared}
+      onGridSplit={noop}
+      quickActionBlocked={blocked}
+      onQuickAction={noop}
+    />
+  )
   return (
     <Stage width={width}>
       <div ref={rootRef}>{ready ? <Card left={left} frame={node.result?.url ?? STREET_FRAME} title={node.title} toolbar={toolbar} /> : null}</div>
@@ -225,7 +223,7 @@ export function DeriveMenuStage({ sourceKind }: { sourceKind: 'image' | 'video' 
           </span>
         ) : null}
       </div>
-      {point ? <NodeDeriveMenu source={node} point={{ x: point.x + 18, y: point.y - 12 }} onPick={noop} onClose={noop} /> : null}
+      {point ? <NodeDeriveMenu verdicts={connectionCreateVerdictsForSource(node, NODE_DERIVE_KINDS)} point={{ x: point.x + 18, y: point.y - 12 }} onPick={noop} onClose={noop} /> : null}
     </Stage>
   )
 }
@@ -255,7 +253,8 @@ export function ContextMenuStage(): JSX.Element {
  * 派生之后：源节点不变，右侧新节点（连着一条参考线）生成中 / 失败。两张都是现役 `BaseGenerationNode`。
  * 选中仍留在源节点上（grill 第 2 题默认），这一格只看两张卡的状态，所以两张都画成未选中。
  */
-export function DerivedStage({ outcome }: { outcome: 'running' | 'error' }): JSX.Element {
+export function DerivedStage({ failed }: { failed: boolean }): JSX.Element {
+  const outcome = failed ? 'error' : 'running'
   const { t } = useTranslation()
   const derivedId = 'qa-derived'
   const source = React.useMemo(() => sourceNode({ position: { x: 0, y: 0 } }), [])

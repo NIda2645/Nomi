@@ -1,14 +1,11 @@
 import type { TFunction } from 'i18next'
 import type { WorkbenchMenuIcon, WorkbenchMenuNode } from '../../../design/menu'
-import {
-  connectionCreateVerdictsForSource,
-  type ConnectionCreateVerdict,
-} from '../agent/referenceEdgeCapability'
-import type { GenerationCanvasNode, GenerationNodeKind } from '../model/generationCanvasTypes'
+import type { ConnectionCreateVerdict } from '../agent/referenceEdgeCapability'
+import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import { getGenerationNodeIcon } from '../nodes/renderRegistry'
 
 /**
- * 「用这个节点生成…」菜单的项（纯投影）。判据是 `connectionCreateVerdictsForSource`（拖线松手菜单同一份）；
+ * 「用这个节点生成…」菜单的项（纯投影）。判据是 `connectionCreateVerdictsForSource(s)`（拖线松手与点「+」同一份）；
  * 这里只把「能 / 不能 + 原因」翻成菜单项。组件在 `NodeDeriveMenu.tsx`。
  */
 
@@ -42,11 +39,10 @@ function blockedReason(verdict: ConnectionCreateVerdict<NodeDeriveKind>, t: TFun
 
 /** 菜单项（纯投影，给实验室与将来的宿主共用）。 */
 export function buildNodeDeriveMenuItems(
-  source: GenerationCanvasNode,
+  verdicts: readonly ConnectionCreateVerdict<NodeDeriveKind>[],
   t: TFunction,
   onPick: (kind: NodeDeriveKind) => void,
 ): WorkbenchMenuNode[] {
-  const verdicts = connectionCreateVerdictsForSource(source, NODE_DERIVE_KINDS)
   return [{
     kind: 'group',
     id: 'derive',

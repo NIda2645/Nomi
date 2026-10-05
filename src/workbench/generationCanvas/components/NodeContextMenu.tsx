@@ -35,7 +35,7 @@ import { platformModifier } from '../../../design/platformShortcut'
  *   · 禁用项原先要外包一层 `<span title>` 才触发得了 tooltip（`<button disabled>` 自己不触发），
  *     Radix 的 Item 不是 disabled 的 button，`title` 直接挂得上，那层壳没了。
  */
-export type NodeContextMenuAction = 'copy' | 'cut' | 'paste' | 'group' | 'delete'
+export type NodeContextMenuAction = 'copy' | 'cut' | 'paste' | 'group' | 'delete' | 'duplicate-variant'
 
 type NodeContextMenuProps = {
   /** 宿主给的识别类（走查按 `.generation-canvas-v2__node-context-menu` 找它）。 */
@@ -51,7 +51,7 @@ type NodeContextMenuProps = {
    * 「复制为变体」：复制这个节点和它的**上游连线**（不带结果），一个撤销点——就是浮条上那颗
    * 同名图标钮的同一个动作（store 的 `duplicateNodeForRegeneration`），这里只是它的第二个发现入口
    * （§1.5.2：菜单是发现入口，不是第二份实现）。宿主给了回调才出这一项（同 `NodeAddMenu` 的
-   * `onImportFiles`）；2026-10-04 样张阶段生产宿主还没给。
+   * `onImportFiles`）；画布宿主只在恰好选中一个节点时给。
    */
   onDuplicateVariant?: () => void
   onClose: () => void

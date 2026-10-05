@@ -34,8 +34,8 @@ export type QuickActionId =
   | 'upscale'
   | 'outpaint'
 
-/** 菜单里的分组：「预设场景」是派生新画面；「改图」里花钱的那一段也是派生，只是改的是这一张。 */
-export type QuickActionGroup = 'preset' | 'refine'
+/** 分组：`featured` 是浮条上直接放出来的那一个文字钮（先按判断定：最常用的多机位九宫格，以后有使用数据再调）；`more` 是魔棒图标下拉里的其余效果；`refine` 是「改图」里花钱的那一段（也是派生，只是改的是这一张）。 */
+export type QuickActionGroup = 'featured' | 'more' | 'refine'
 
 /** 出图的版式。宫格类记下行列，出图后浮条直接给「切成 N 张」，不用用户再数。 */
 export type QuickActionGrid = Readonly<{ rows: number; cols: number }>
@@ -64,13 +64,13 @@ export type QuickActionDefinition = Readonly<{
 
 const icon = (component: unknown): QuickActionIcon => component as QuickActionIcon
 
-/** 顺序即菜单顺序：按「10 次里用几次」排，高的在上（多机位 / 推演最常用，剧情四宫格垫底）。 */
+/** 顺序即菜单顺序：按常用程度排，高的在上（多机位直接放在浮条上，推演次之，剧情四宫格垫底）。 */
 export const QUICK_ACTIONS: readonly QuickActionDefinition[] = [
-  { id: 'multi-angle-grid', group: 'preset', effectId: 'effect-multi-angle-grid', labelKey: 'generationCommon.quickActions.actions.multiAngleGrid', icon: icon(IconCamera), requires: 'image-edit', grid: { rows: 3, cols: 3 } },
-  { id: 'next-moment', group: 'preset', effectId: 'effect-next-moment', labelKey: 'generationCommon.quickActions.actions.nextMoment', icon: icon(IconPlayerTrackNext), requires: 'image-edit' },
-  { id: 'prev-moment', group: 'preset', effectId: 'effect-prev-moment', labelKey: 'generationCommon.quickActions.actions.prevMoment', icon: icon(IconPlayerTrackPrev), requires: 'image-edit' },
-  { id: 'three-view', group: 'preset', effectId: 'effect-character-three-view', labelKey: 'generationCommon.quickActions.actions.threeView', icon: icon(IconUser), requires: 'image-edit', grid: { rows: 1, cols: 3 } },
-  { id: 'story-four-panel', group: 'preset', effectId: 'effect-story-four-panel', labelKey: 'generationCommon.quickActions.actions.storyFourPanel', icon: icon(IconLayoutBoard), requires: 'image-edit', grid: { rows: 2, cols: 2 } },
+  { id: 'multi-angle-grid', group: 'featured', effectId: 'effect-multi-angle-grid', labelKey: 'generationCommon.quickActions.actions.multiAngleGrid', icon: icon(IconCamera), requires: 'image-edit', grid: { rows: 3, cols: 3 } },
+  { id: 'next-moment', group: 'more', effectId: 'effect-next-moment', labelKey: 'generationCommon.quickActions.actions.nextMoment', icon: icon(IconPlayerTrackNext), requires: 'image-edit' },
+  { id: 'prev-moment', group: 'more', effectId: 'effect-prev-moment', labelKey: 'generationCommon.quickActions.actions.prevMoment', icon: icon(IconPlayerTrackPrev), requires: 'image-edit' },
+  { id: 'three-view', group: 'more', effectId: 'effect-character-three-view', labelKey: 'generationCommon.quickActions.actions.threeView', icon: icon(IconUser), requires: 'image-edit', grid: { rows: 1, cols: 3 } },
+  { id: 'story-four-panel', group: 'more', effectId: 'effect-story-four-panel', labelKey: 'generationCommon.quickActions.actions.storyFourPanel', icon: icon(IconLayoutBoard), requires: 'image-edit', grid: { rows: 2, cols: 2 } },
   { id: 'upscale', group: 'refine', effectId: null, labelKey: 'generationCommon.quickActions.actions.upscale', icon: icon(IconZoomScan), requires: 'upscale' },
   { id: 'outpaint', group: 'refine', effectId: 'effect-fill-outpaint', labelKey: 'generationCommon.quickActions.actions.outpaint', icon: icon(IconViewportWide), requires: 'image-edit' },
 ]

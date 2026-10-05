@@ -13,7 +13,7 @@ import { TOOLBAR_ICON as I, ToolbarMenuTrigger } from './NodeFloatingToolbar'
  * 要多一层悬停，而全仓唯一的子菜单（3D 工具条）正是被点名要拆的那种。
  *
  * 选完交给调用方：它只说「切成几行几列」，切割框、可拖切割线、落成节点并编组都还是
- * `useNodeImageEditing` / `ImageCropGridOverlay` 的事（接线那一轮把 `CropGridSize` 从 1|2|3 换成行列）。
+ * `useNodeImageEditing` / `ImageCropGridOverlay` 的事（`CropGridSize` 就是这里的 {rows, cols}）。
  */
 
 export type GridSplitSpec = Readonly<{ rows: number; cols: number }>

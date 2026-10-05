@@ -5,7 +5,7 @@ import {
   IconAdjustmentsHorizontal,
   IconBrush,
   IconCheck,
-  IconCut,
+  IconCrop,
   IconDownload,
   IconFlipHorizontal,
   IconFlipVertical,
@@ -41,17 +41,20 @@ import { readQuickActionMeta } from './deriveFromNode'
 import { quickActionsInGroup, type QuickActionDefinition, type QuickActionId } from './quickActionCatalog'
 
 /**
- * 图片节点浮条 · 快捷动作版（2026-10-04 批次 1 样张；接线那一轮**取代** `NodeImageEditToolbar.tsx`，同一提交删掉旧文件）。
+ * 图片节点浮条 · 快捷动作版（2026-10-04 批次 1；取代了旧的 `NodeImageEditToolbar.tsx`，同一提交删掉旧文件）。
+ * 纯展示：点多机位九宫格 / 魔棒下拉 / 改图里生成新图的项走 `useQuickActionHost` → `deriveFromNode`（生产宿主 `ImageQuickActionsToolbarHost`）。
  *
  * 一行四颗文字钮，和现在一样多（#969 刚收成一行，1280 窗口 + Agent 面板下英文锚卡已经折两行，
  * 再多一颗普通卡也会折）。左 → 右按创作优先级：
  *
- *   [锁] │ [定妆*] │ [复制为变体] [重拍*] [切成 N 张*] 预设场景▾ 抠图 改图▾ 宫格▾ │ 画板(纯图标) │ [全屏] [下载] [生成记录]
- *          锚卡才有        制作镜头才有   宫格派生才有   └ 派生新东西 ┘ └ 改这张 ┘          交接           看和拿
+ *   [锁] │ [定妆*] │ [复制为变体] [重拍*] [切成 N 张*] · 多机位九宫格 [🪄▾] · 抠图 改图▾ 宫格▾ · 画板(纯图标) · [全屏] [下载] [生成记录]
+ *          锚卡才有        制作镜头才有   宫格派生才有   └ 派生新东西 ┘  └ 改这张 ┘     交接         看和拿
  *
- *   · **预设场景 ▾**：点一项 = 新建下游节点 + 连参考 + 填效果库模板 + 沿用模型 + 直接开跑（`deriveFromNode.ts`）。
+ *   · **多机位九宫格**（文字钮）：最常用的一个效果直接放在浮条上（先按判断定，以后有使用数据再调）。点它 = 新建下游节点
+ *     + 连参考 + 填效果库模板 + 沿用模型，**不生成**（`deriveFromNode.ts`；用户 2026-10-05 拍板：花钱留给用户在新节点上点 ↑）。
+ *   · **🪄▾**（只有图标的下拉，title / aria-label 写清楚）：其余效果（下一刻 / 前一刻 / 三视图 / 剧情四宫格），按常用程度排。
  *     菜单里不写价格、不写价格说明（2026-10-05 用户拍板：官方额度上线、价格真能拿到再做）。
- *   · **改图 ▾**：两段带名字——「生成新图」（高清 / 扩图，花钱，也是派生）与「本机处理 · 不花钱」
+ *   · **改图 ▾**：两段带名字——「生成新图」（高清 / 扩图，也是派生，同样不生成）与「本机处理 · 不花钱」
  *     （裁剪 / 旋转翻转；抠图不在这里，留在一级）。原「变换▾」平铺进第二段，不是再包一层（§1.5.4 反例第 2 行：不许把
  *     已经在二级的东西再降一级——这里点击数不变，都是两下）。
  *   · **宫格 ▾**：等分 4 / 9 / 16 / 25 + 自定义行列点阵。
@@ -115,10 +118,12 @@ export default function ImageQuickActionsToolbar(props: ImageQuickActionsToolbar
   const busy = editGrid !== null || imageOpBusy || removeBackgroundBusy
   const derivedGrid = readQuickActionMeta(node)?.grid
 
-  const presets = quickActionsInGroup('preset')
+  const featured = quickActionsInGroup('featured')[0]
+  const more = quickActionsInGroup('more')
   const refines = quickActionsInGroup('refine')
 
-  const presetItems = quickActionItems(presets, t, quickActionBlocked, onQuickAction)
+  const moreItems = quickActionItems(more, t, quickActionBlocked, onQuickAction)
+  const featuredBlocked = featured ? quickActionBlocked?.[featured.id] : undefined
 
   const transformItems: WorkbenchMenuNode[] = ([
     { op: 'rotate-left' as const, icon: IconRotate2, key: 'generationCommon.imageToolbar.rotateLeft' as const },
@@ -135,7 +140,7 @@ export default function ImageQuickActionsToolbar(props: ImageQuickActionsToolbar
       id: 'refine-local',
       label: t('generationCommon.quickActions.groups.local'),
       items: [
-        { id: 'crop', label: t('generationCommon.imageToolbar.crop'), icon: menuIcon(IconCut), onSelect: onCrop },
+        { id: 'crop', label: t('generationCommon.imageToolbar.crop'), icon: menuIcon(IconCrop), onSelect: onCrop },
         ...transformItems,
       ],
     },
@@ -168,12 +173,22 @@ export default function ImageQuickActionsToolbar(props: ImageQuickActionsToolbar
             onClick={() => onGridSplit(derivedGrid)}
           />
         ) : null}
+        {featured ? (
+          <ToolbarButton
+            icon={<featured.icon size={I.size} stroke={I.stroke} />}
+            label={t(featured.labelKey)}
+            title={featuredBlocked ?? t('generationCommon.quickActions.featuredHint')}
+            disabled={!imageUrl || Boolean(featuredBlocked)}
+            onClick={() => onQuickAction(featured.id)}
+          />
+        ) : null}
         <ToolbarActionMenu
-          id="presets"
+          id="more-effects"
+          iconOnly
           icon={<IconWand size={I.size} stroke={I.stroke} />}
-          label={t('generationCommon.quickActions.presets')}
-          menuLabel={t('generationCommon.quickActions.presetsMenu')}
-          items={presetItems}
+          label={t('generationCommon.quickActions.moreEffects')}
+          menuLabel={t('generationCommon.quickActions.moreEffectsMenu')}
+          items={moreItems}
           disabled={!imageUrl}
         />
         {onRemoveBackground ? (
