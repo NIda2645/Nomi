@@ -1,5 +1,6 @@
 import React from 'react'
 import { FRAME_COLUMN_WIDTH } from './shotFrameGeometry'
+import { COMPOSER_BAR_FLOOR_WIDTH } from './composerBarGeometry'
 import { REFERENCE_COLUMN_WIDTH, REFERENCE_SLOT_BOX } from './shotReferenceStackGeometry'
 
 /**
@@ -27,6 +28,18 @@ import { REFERENCE_COLUMN_WIDTH, REFERENCE_SLOT_BOX } from './shotReferenceStack
  * 判据永远按**宽档的**固定宽算，与当前处在哪一档无关——否则收窄后剩余宽变大、又判回宽档，
  * 两档之间会来回跳。
  *
+ * ## 第二条判据：提示词列要装得下底栏（2026-10-05，审计 B8 / A13）
+ *
+ * 上面那句规则只管「提示词能不能写」，不管**底栏能不能放下**。底栏自己的让位（模型缩到下限、枚举进 ⋯）
+ * 走到底之后仍然装不下的亏空，只能由行来补——所以提示词列的**最低要求**是
+ * `max(参考列宽, 底栏下限)`（`COMPOSER_BAR_FLOOR_WIDTH`，由底栏的让位几何给出）。
+ * 以前只取参考列宽那一半：最小窗口（1100×690）+ Agent 面板展开的行宽 666px 走宽档，
+ * 提示词列 251px 放不下 343px 的底栏，「⋯」和「生成」被表格边界剪掉、人点不到。
+ *
+ * 窄档同时把列距 12→6、左右内边距收 2 / 4px（`ROW_*_NARROW`）：窄档本来就是「让位」那一档，
+ * 收的是纸面空白，不是内容；这 24px 是英文底栏（417px）在 666px 行宽下放得下的最后一截（再少 6px，
+ * 「Generate」就探出提示词框右缘 3px）。
+ *
  * ## 到期条件
  *
  * **T-DS-01 · A-2（全局左侧栏 + 删顶栏）落地时收回这一整档。** A-2 之后编辑器不再被左栏吃掉
@@ -45,6 +58,11 @@ export const ROW_PADDING_RIGHT = 12
 /** 行网格一共几列（把手 / 画面格 / 参考列 / 提示词块）→ 三个间距。 */
 export const ROW_COLUMN_COUNT = 4
 
+/** 窄档：列距 `gap-1.5`、左右内边距 `pl-1` / `pr-2`（见上面「第二条判据」）。 */
+export const ROW_COLUMN_GAP_NARROW = 6
+export const ROW_PADDING_LEFT_NARROW = 4
+export const ROW_PADDING_RIGHT_NARROW = 8
+
 /** 提示词列**拿不到**的那部分：三个固定列 + 三个间距 + 左右内边距。 */
 export const STORYBOARD_ROW_FIXED_WIDTH =
   ROW_GRIP_WIDTH
@@ -55,10 +73,15 @@ export const STORYBOARD_ROW_FIXED_WIDTH =
   + ROW_PADDING_RIGHT
 
 /**
- * 行宽低于这个数就走窄档。= 固定开销 + 参考列宽，
- * 也就是「提示词列刚好和参考列一样宽」的那一点（见上面的判据）。
+ * 提示词列的最低要求：比参考列宽，且装得下底栏（见上面两条判据）。
  */
-export const STORYBOARD_ROW_NARROW_BELOW = STORYBOARD_ROW_FIXED_WIDTH + REFERENCE_COLUMN_WIDTH
+export const STORYBOARD_PROMPT_COLUMN_MIN = Math.max(REFERENCE_COLUMN_WIDTH, COMPOSER_BAR_FLOOR_WIDTH)
+
+/**
+ * 行宽低于这个数就走窄档。= 固定开销 + 提示词列最低要求，
+ * 也就是「提示词列刚好够用」的那一点（判据永远按宽档的固定开销算，不随当前档位变，不会来回跳）。
+ */
+export const STORYBOARD_ROW_NARROW_BELOW = STORYBOARD_ROW_FIXED_WIDTH + STORYBOARD_PROMPT_COLUMN_MIN
 
 /** 窄档下参考列只留一格（固定盒本身的宽），省下的宽度全部给提示词列。 */
 export const NARROW_REFERENCE_COLUMN_WIDTH = REFERENCE_SLOT_BOX.width

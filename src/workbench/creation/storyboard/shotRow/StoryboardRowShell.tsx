@@ -66,7 +66,7 @@ export default function StoryboardRowShell({
         {...dataAttributes}
         ref={rowRef}
         data-storyboard-row-density={narrow ? 'narrow' : 'wide'}
-        className={cn('relative grid items-start gap-3 bg-nomi-paper py-3 pl-1.5 pr-3', className)}
+        className={cn('relative grid items-start bg-nomi-paper py-3', narrow ? 'gap-1.5 pl-1 pr-2' : 'gap-3 pl-1.5 pr-3', className)}
         style={{ gridTemplateColumns: storyboardRowGridTemplate(narrow) }}
       >
         {dropIndicator ? <div className="absolute inset-x-1.5 top-0 h-0.5 rounded-full bg-nomi-accent" aria-hidden /> : null}

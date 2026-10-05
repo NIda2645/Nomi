@@ -73,6 +73,8 @@ export type AnchoredPopoverProps = {
   zIndex?: number
   /** 传了就接管「点外面 / Esc 关闭」。不传则由调用方自己管开合。 */
   onClose?: () => void
+  /** 纯展示浮层（悬停预览）：不接鼠标事件，指针穿过它去碰下面的东西。 */
+  passThrough?: boolean
   children: React.ReactNode
 }
 
@@ -85,6 +87,7 @@ export function AnchoredPopover({
   gap = 4,
   zIndex,
   onClose,
+  passThrough = false,
   children,
 }: AnchoredPopoverProps): JSX.Element {
   const fallbackAnchorRef = React.useRef<HTMLSpanElement>(null)
@@ -177,6 +180,7 @@ export function AnchoredPopover({
         left: placement?.left ?? -9999,
         zIndex: zIndex ?? NOMI_OVERLAY_Z_INDEX.popover,
         visibility: placement ? 'visible' : 'hidden',
+        ...(passThrough ? { pointerEvents: 'none' as const } : {}),
       }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {

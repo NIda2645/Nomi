@@ -16,6 +16,7 @@ import {
   IconTrash,
 } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'
+import { AnchoredPopover } from '../../../../design'
 import type { MentionSuggestionItem, MentionUploadControls } from '../../../assets/AssetMentionSuggestionList'
 import type { PlanAnchor, PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
 import { NO_SCENE_VALUE, type PlanShotPatch } from '../../../generationCanvas/agent/storyboardPlanEdits'
@@ -178,6 +179,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
   } = props
   const orderedVendorKeys = useVendorPreferenceOrder()
   const [actionsOpen, setActionsOpen] = React.useState(false)
+  const menuTriggerRef = React.useRef<HTMLButtonElement>(null)
   const [aspectMenuOpen, setAspectMenuOpen] = React.useState(false)
   const [variantsOpen, setVariantsOpen] = React.useState(false)
   const editorRef = React.useRef<Editor | null>(null)
@@ -245,6 +247,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
         />
       ) : null}
       <button
+        ref={menuTriggerRef}
         type="button"
         onClick={() => setActionsOpen((value) => !value)}
         aria-label={t('storyboardEditor.rowActions.open')}
@@ -256,8 +259,10 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
         <IconDots size={13} stroke={1.8} />
       </button>
       {actionsOpen ? (
+        // Portal 贴锚点：行在表格的 overflow-hidden 里，原地 absolute 的菜单在最后一行会被裁成一条边。
+        <AnchoredPopover anchorRef={menuTriggerRef} onClose={closeMenus}>
         <div
-          className="absolute left-5 top-5 z-30 flex min-w-40 flex-col gap-0.5 rounded-nomi-sm border border-nomi-line bg-nomi-paper p-1 shadow-nomi-md"
+          className="flex min-w-40 flex-col gap-0.5 rounded-nomi-sm border border-nomi-line bg-nomi-paper p-1 shadow-nomi-md"
           data-storyboard-row-menu={shot.index}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -300,6 +305,7 @@ export default function StoryboardShotRow(props: Props): JSX.Element {
           <span className="my-0.5 h-px bg-nomi-line-soft" aria-hidden />
           <MenuItem icon={<IconTrash size={13} stroke={1.8} />} label={t('storyboardEditor.rowMenu.deleteUndoable')} danger onClick={() => { onRemove(); closeMenus() }} />
         </div>
+        </AnchoredPopover>
       ) : null}
     </div>
   )
