@@ -7,7 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, test } from 'node:test'
 import { decideDirectionTrailer, docLooksReal, subjectOf } from './check-direction-trailer.mjs'
-import { churnFor, findHotspots, isFixSubject, isRevertOfFix, parseDirectionTrailer, PRIOR_FIX_THRESHOLD } from './fix-churn.mjs'
+import { churnFor, findHotspots, isFixSubject, isRevertOfFix, namespaceLines, parseDirectionTrailer, parseHunks, PRIOR_FIX_THRESHOLD, ROOT_NS, stagedNamespaces, touchedNamespaces } from './fix-churn.mjs'
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
 
@@ -140,6 +140,104 @@ describe('真 git commit-msg 端到端', () => {
       assert.equal(run('Revert "fix: two"').status, 0)
       assert.equal(run('Merge branch main').status, 0)
       assert.equal(run('feat: other').status, 0)
+    } finally { r.cleanup() }
+  })
+})
+
+describe('词典按功能键（命名空间）计数', () => {
+  const FILE = 'src/i18n/locales/dict.ts'
+  const body = (a, b, c) => [
+    'export const zhDict = {',
+    '  title: \'顶层单句\',',
+    '  alpha: {', `    one: '${a}',`, '  },',
+    '  beta: {', `    two: '${b}',`, `    three: '${c}',`, '  },',
+    '}', '',
+    'export const enDict = {',
+    '  alpha: {', `    one: '${a}-en',`, '  },',
+    '  beta: {', `    two: '${b}-en',`, '  },',
+    '}', '',
+  ].join('\n')
+  const dictRepo = (steps) => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'nomi-churn-ns-'))
+    const git = (...args) => execFileSync('git', args, { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] })
+    git('init', '-q'); git('config', 'user.email', 't@t'); git('config', 'user.name', 't')
+    fs.mkdirSync(path.join(root, 'src/i18n/locales'), { recursive: true })
+    const state = { a: 'a0', b: 'b0', c: 'c0' }
+    steps.forEach(([subject, patch], i) => {
+      Object.assign(state, patch)
+      fs.writeFileSync(path.join(root, FILE), body(state.a, state.b, state.c))
+      git('add', '-A'); git('commit', '-q', '-m', subject || `c${i}`)
+    })
+    return { root, git, cleanup: () => fs.rmSync(root, { recursive: true, force: true }) }
+  }
+
+  test('namespaceLines：缩进 2 格、值是 { 的键是功能键；中英两段同名；其余归 (根)', () => {
+    const map = namespaceLines(body('a', 'b', 'c'))
+    assert.equal(map[1], ROOT_NS) // export 行
+    assert.equal(map[2], ROOT_NS) // 顶层单句
+    assert.equal(map[3], 'alpha')
+    assert.equal(map[4], 'alpha')
+    assert.equal(map[5], 'alpha') // 闭合行
+    assert.equal(map[7], 'beta')
+    assert.equal(map[10], ROOT_NS) // 文件末 }
+    assert.equal(map[14], 'alpha') // 英文段同名
+  })
+
+  test('touchedNamespaces：改动行按旧 / 新源码归属；一个提交改到几个键各计一次', () => {
+    const oldSrc = body('a0', 'b0', 'c0')
+    const newSrc = body('a1', 'b1', 'c0')
+    const hunks = parseHunks('@@ -4 +4 @@\n-x\n+y\n@@ -7 +7 @@\n-x\n+y\n@@ -2 +2 @@\n+z\n')
+    assert.deepEqual([...touchedNamespaces(hunks, oldSrc, newSrc)].sort(), [ROOT_NS, 'alpha', 'beta'].sort())
+  })
+
+  test('同一功能键 2 个 fix 后第 3 刀命中，并写出「文件#键」；别的键不受牵连', () => {
+    const r = dictRepo([['feat: add', {}], ['fix: a1', { a: 'a1' }], ['fix: a2', { a: 'a2' }], ['fix: b1', { b: 'b1' }]])
+    try {
+      const mk = (patch) => {
+        const state = { a: 'a2', b: 'b1', c: 'c0', ...patch }
+        fs.writeFileSync(path.join(r.root, FILE), body(state.a, state.b, state.c))
+        r.git('add', '-A')
+        return findHotspots(r.root, [FILE], { touched: stagedNamespaces(r.root, [FILE]) })
+      }
+      const hotA = mk({ a: 'a3' })
+      assert.equal(hotA.length, 1)
+      assert.match(hotA[0].reasons[0], /dict\.ts#alpha 近 14 天已有 2 个 fix，这一刀是第 3 个/)
+      r.git('reset', '-q', '--hard')
+      assert.equal(mk({ b: 'b2' }).length, 0) // beta 只有 1 个 fix
+      r.git('reset', '-q', '--hard')
+      assert.equal(findHotspots(r.root, [FILE]).length, 1) // 没给改动范围：报文件里已达标的键
+    } finally { r.cleanup() }
+  })
+
+  test('文件级不再响：同一词典文件散在 3 个不同功能键的 fix 不命中', () => {
+    const r = dictRepo([['feat: add', {}], ['fix: a', { a: 'a1' }], ['fix: b', { b: 'b1' }], ['fix: bb', { b: 'b2' }]])
+    try {
+      fs.writeFileSync(path.join(r.root, FILE), body('a2', 'b2', 'c0'))
+      r.git('add', '-A')
+      assert.equal(findHotspots(r.root, [FILE], { touched: stagedNamespaces(r.root, [FILE]) }).length, 0)
+    } finally { r.cleanup() }
+  })
+
+  test('一个提交改到两个键，两个键各计一次', () => {
+    const r = dictRepo([['feat: add', {}], ['fix: both1', { a: 'a1', b: 'b1' }], ['fix: both2', { a: 'a2', b: 'b2' }]])
+    try {
+      const hits = findHotspots(r.root, [FILE])
+      assert.deepEqual(hits[0].reasons.map((x) => x.match(/#(\S+)/)[1]).sort(), ['alpha', 'beta'])
+    } finally { r.cleanup() }
+  })
+
+  test('真 git commit-msg：词典第 3 个同键 fix 无 trailer 被拦，换一个键放行', () => {
+    const r = dictRepo([['feat: add', {}], ['fix: a1', { a: 'a1' }], ['fix: a2', { a: 'a2' }]])
+    try {
+      const msgPath = path.join(r.root, 'MSG')
+      const run = (msg) => { fs.writeFileSync(msgPath, msg); return spawnSync('node', [path.join(SCRIPTS, 'check-direction-trailer.mjs'), msgPath], { cwd: r.root, encoding: 'utf8' }) }
+      fs.writeFileSync(path.join(r.root, FILE), body('a3', 'b0', 'c0')); r.git('add', '-A')
+      const blocked = run('fix: a3')
+      assert.equal(blocked.status, 1)
+      assert.match(blocked.stderr, /dict\.ts#alpha/)
+      r.git('reset', '-q', '--hard')
+      fs.writeFileSync(path.join(r.root, FILE), body('a2', 'b9', 'c0')); r.git('add', '-A')
+      assert.equal(run('fix: b').status, 0)
     } finally { r.cleanup() }
   })
 })
