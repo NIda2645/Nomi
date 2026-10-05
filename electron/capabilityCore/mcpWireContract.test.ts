@@ -45,14 +45,12 @@ type McpWireSignalOf = (params: Record<string, unknown>) => AbortSignal | undefi
 const RUN_ARGS = { projectId: 'project-1', playbook: 'brand.promo', brief: { goal: '一只猫的短片' } }
 const LEGACY_VERSIONS = ['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05'] as const
 
-async function until<T>(read: () => T | undefined, label: string, timeoutMs = 3000): Promise<T> {
-  const deadline = Date.now() + timeoutMs
-  for (;;) {
+async function until<T>(read: () => T | undefined, label: string): Promise<T> {
+  return vi.waitFor(() => {
     const value = read()
-    if (value !== undefined) return value
-    if (Date.now() > deadline) throw new Error(`等待超时：${label}`)
-    await new Promise<void>((resolve) => setTimeout(resolve, 2))
-  }
+    if (value === undefined) throw new Error(`还没等到：${label}`)
+    return value
+  }, { timeout: 3000, interval: 2 })
 }
 
 /** 让在途的微任务、setImmediate 都跑完——用来断言「什么都没发生」。 */
@@ -263,6 +261,17 @@ function defineMcpWireContract(label: string, connector: McpWireConnector, signa
         const result = resultOf(await client.call('nomi_project_create', { name: 'x', surprise: true }))
         expect(result.isError).toBe(true)
         expect(invoke).not.toHaveBeenCalled()
+      })
+
+      it('整包参数被序列化成一段 JSON 文本（#547 真实模型的写法）：容忍钩子在校验前还原，照常派发', async () => {
+        const { host, calls } = fakeHost({ 'document.read': () => { throw new Error('fixture stops after dispatch') } })
+        const client = connect(host)
+        await client.initialize()
+        client.send({ id: 91, method: 'tools/call', params: { name: 'nomi_document_read', arguments: JSON.stringify({ leaseHandle: 'lease-1', scope: 'full' }) } })
+        const frame = await until(() => client.responseTo(91), 'document_read 的响应')
+        expect(frame.error).toBeUndefined()
+        expect(calls.map((call) => call.method)).toEqual(['document.read'])
+        expect(calls[0].params).toMatchObject({ leaseHandle: 'lease-1' })
       })
 
       it('未知工具：协议级 -32602，领域不被调用', async () => {
