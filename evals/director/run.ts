@@ -31,14 +31,14 @@ function report(scheme: Scheme, scores: CardScore[]): string {
     `# Director 3D-BOX report: ${scheme}`,
     '',
     `Cards: ${scores.length}`,
-    `Average total (L0-L4 normalized; L5 unverified): ${averageTotal(scores)}`,
+    `Average total (L0-L4 and P normalized; L5 unverified): ${averageTotal(scores)}`,
     '',
-    '| Card | Tier | Status | L0 | L1 | L2 | L3 | L4 | Correspondence | Total | Reasons |',
-    '|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|',
+    '| Card | Tier | Status | L0 | L1 | L2 | L3 | L4 | P | Correspondence | Total | Reasons |',
+    '|---|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|',
   ]
   for (const score of scores)
     lines.push(
-      `| ${score.cardId} | ${score.tier ?? '-'} | ${score.status ?? 'ok'} | ${score.scores.L0.toFixed(2)} | ${layer(score.scores.L1)} | ${layer(score.scores.L2)} | ${layer(score.scores.L3)} | ${layer(score.scores.L4)} | ${(score.correspondenceRate * 100).toFixed(1)}% | ${score.total.toFixed(3)} | ${score.reasons.join('; ').replaceAll('|', '/')} |`,
+      `| ${score.cardId} | ${score.tier ?? '-'} | ${score.status ?? 'ok'} | ${score.scores.L0.toFixed(2)} | ${layer(score.scores.L1)} | ${layer(score.scores.L2)} | ${layer(score.scores.L3)} | ${layer(score.scores.L4)} | ${layer(score.scores.P)} | ${(score.correspondenceRate * 100).toFixed(1)}% | ${score.total.toFixed(3)} | ${score.reasons.join('; ').replaceAll('|', '/')} |`,
     )
   lines.push(
     '',
@@ -49,6 +49,7 @@ function report(scheme: Scheme, scores: CardScore[]): string {
     `- L2 motion + framing: ${avg(scores, 'L2')}`,
     `- L3 blocking: ${avg(scores, 'L3')}`,
     `- L4 scene: ${avg(scores, 'L4')}`,
+    `- P physical (6 criteria, s1 schemes only): ${avg(scores, 'P')}`,
     `- Correspondence rate: ${((scores.reduce((sum, score) => sum + score.correspondenceRate, 0) / Math.max(1, scores.length)) * 100).toFixed(1)}%`,
     '- L5 overall: unverified (no visual model run)',
   )
@@ -80,7 +81,7 @@ function adapterErrorScore(card: DirectorCard, error: unknown): CardScore {
     cardId: card.id,
     tier: card.tier,
     status: 'adapter_error',
-    scores: { L0: 0, L1: 0, L2: 0, L3: 0, L4: 0, L5: 'unverified' },
+    scores: { L0: 0, L1: 0, L2: 0, L3: 0, L4: 0, P: null, L5: 'unverified' },
     total: 0,
     reasons: [`adapter_error: ${message}`],
     measurements: { fps: 30, duration: card.duration?.total ?? 0, frames: [], cuts: [] },
@@ -106,7 +107,7 @@ async function main() {
     const started = performance.now()
     try {
       const adapted = await adapt(card.prompt, card, scheme)
-      scores.push(scoreCard(card, adapted.project, adapted.actorMap, adapted.anchors))
+      scores.push(scoreCard(card, adapted.project, adapted.actorMap, adapted.anchors, adapted.spatial))
       metadata[card.id] = { elapsedMs: elapsedMs(started), ...adapted.metadata }
     } catch (error) {
       scores.push(adapterErrorScore(card, error))

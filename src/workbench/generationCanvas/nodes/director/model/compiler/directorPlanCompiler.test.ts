@@ -163,6 +163,24 @@ describe('S1 director compiler', () => {
     if (!result.ok) return
     expect(measureContinuity(sampleDirectorProject(result.project, { duration: result.duration, anchors: result.anchors }), result.project.scenes[0])).toEqual([])
   })
+  it('stands on one ground height and never inside a solid: the gate scene', () => {
+    const result = compileDirectorPlan(S1_ORACLE_PLANS['courtyard-standoff'])
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const scene = result.project.scenes[0]
+    const byId = (id: string) => scene.objects.find((object) => object.id === id)!
+    const gate = byId('s1-courtyard-gate'), ground = byId('s1-courtyard-ground')
+    // 地面板顶面 = 0；墙 / 门 / 树的底也在 0（模板按底声明，不再手写中心坐标）
+    expect(ground.position.y).toBeCloseTo(-0.05, 5) // 板厚 5cm，顶面正好在 y 0
+    expect(gate.position.y).toBeCloseTo(0, 5)
+    const gateFront = gate.position.z + gate.scale.z / 2
+    const woman = byId(result.actorMap.woman), guard = byId(result.actorMap.guard)
+    // 守卫「在院门」= 站在门前，不在门体里；女子走向门也停在门前、留在地面高度（以前终点取门原点：悬在 1.2m、钻进门里）
+    expect(guard.position.z).toBeGreaterThan(gateFront)
+    const walkEnd = woman.motionTrajectory!.filter((point) => point.clipId?.startsWith(`${woman.id}-walk_to`)).at(-1)!
+    expect(walkEnd.y).toBe(0)
+    expect(walkEnd.z).toBeGreaterThan(gateFront)
+  })
   it('fills idle gaps and keeps adjacent movement clips continuous in playback', () => {
     const plan = structuredClone(S1_ORACLE_PLANS['courtyard-standoff'])
     plan.blocking = [
