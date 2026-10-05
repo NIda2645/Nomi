@@ -821,7 +821,7 @@ describe('出站被我们自己的安全策略拦下（2026-09-06 真实验收�
     expect(report.reason).not.toContain('NOMI_ERR::')
     expect(report.raw).not.toContain('NOMI_ERR::')
     // 人话里必须同时出现「已付费没丢」与「重新拉取」，否则用户仍会去点那颗要花钱的重试。
-    expect(`${report.reason}${report.hint}`).toContain('重新拉取')
+    expect(`${report.reason}${report.hint}`).toContain('重新取回')
   })
 
   it('不把这条栽赃给服务商：它根本没被请求到，「服务商说：」框必须是空的', () => {
