@@ -8,6 +8,7 @@ import { DeferredNodeVideo } from '../../../generationCanvas/nodes/DeferredNodeM
 import type { PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
 import { effectiveShotDurationSec } from '../../../generationCanvas/agent/storyboardPlan'
 import { translateModelDisplayText } from '../../../../i18n/modelDisplayText'
+import { recoverableHintKey } from '../../../generationCanvas/model/recoverableCopy'
 import type { ShotRowExec } from '../exec/storyboardRowStatus'
 import { FRAME_COLUMN_WIDTH, type FrameMediaBox } from './shotFrameGeometry'
 
@@ -182,7 +183,7 @@ export default function StoryboardShotFrame({
       <div
         className="relative rounded-nomi overflow-hidden border border-nomi-line bg-nomi-paper flex flex-col items-center justify-center gap-1 p-1.5 text-center"
         style={mediaStyle}
-        title={t('storyboardEditor.frame.recoverableHint')}
+        title={t(recoverableHintKey(exec.recoverableNode))}
         data-storyboard-frame-media={aspect || 'default'}
       >
         {indexBadge(true)}

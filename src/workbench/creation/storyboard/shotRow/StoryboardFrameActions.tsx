@@ -10,6 +10,7 @@ import {
 } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'
 import type { PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
+import { recoverableHintKey } from '../../../generationCanvas/model/recoverableCopy'
 import type { ShotRowExec } from '../exec/storyboardRowStatus'
 import { resolveResultTargetShotIndex } from '../storyboardDInteractions'
 import type { ShotVariant } from './shotVariants'
@@ -211,7 +212,7 @@ export default function StoryboardFrameActions({
           type="button"
           onClick={() => { if (recovering) return; setRecovering(true); onRecover() }}
           disabled={recovering}
-          title={t('storyboardEditor.frame.recoverableHint')}
+          title={t(recoverableHintKey(exec.recoverableNode))}
           aria-label={t('storyboardEditor.frame.recoverableRefetch')}
           data-storyboard-recover="true"
           className="h-6 px-2 rounded-nomi-sm border border-nomi-line text-micro text-nomi-ink-80 inline-flex items-center gap-1 hover:border-nomi-accent hover:text-nomi-accent disabled:opacity-50"

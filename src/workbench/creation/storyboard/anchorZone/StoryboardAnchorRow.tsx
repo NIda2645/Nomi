@@ -23,6 +23,7 @@ import { ANCHOR_KINDS, planModelSelection, type PlanAnchorPatch } from '../../..
 import { modelVisibilityFooterAction, useDedupedModelSelect } from '../../../common/useDedupedModelSelect'
 import { useVendorPreferenceOrder } from '../../../common/useVendorPreference'
 import { findModelOptionByIdentifier } from '../../../../config/modelOptionResolvers'
+import { recoverableHintKey } from '../../../generationCanvas/model/recoverableCopy'
 import type { AnchorCardRuntime } from '../exec/storyboardRowStatus'
 import StoryboardRowShell from '../shotRow/StoryboardRowShell'
 import { referenceColumnWidthOf, useStoryboardRowNarrow } from '../shotRow/storyboardRowDensity'
@@ -208,7 +209,7 @@ export default function StoryboardAnchorRow({
         <div
           className="relative flex flex-col items-center justify-center gap-1.5 rounded-nomi border border-nomi-line bg-nomi-paper p-2 text-center"
           style={style}
-          title={t('storyboardEditor.frame.recoverableHint')}
+          title={t(recoverableHintKey(runtime.node))}
           data-anchor-face="recoverable"
         >
           <span className="line-clamp-2 text-micro leading-tight text-nomi-ink-60" title={runtime.errorMessage ?? undefined}>
@@ -218,7 +219,7 @@ export default function StoryboardAnchorRow({
             <button
               type="button"
               onClick={onRecover}
-              title={t('storyboardEditor.frame.recoverableHint')}
+              title={t(recoverableHintKey(runtime.node))}
               className="inline-flex h-6 items-center gap-0.5 rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2 text-micro text-nomi-ink-80 hover:border-nomi-accent hover:text-nomi-accent"
             >
               <IconRefresh size={11} stroke={1.8} />
