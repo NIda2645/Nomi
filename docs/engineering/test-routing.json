@@ -17,8 +17,8 @@
       "fourClass": true,
       "evidence": [
         { "id": "ui-mockup", "when": "pr", "paid": false, "label": "真组件样张（用户已拍板）", "aliases": ["样张", "设计实验室", "mockup"], "tool": "exists", "toolRef": "设计实验室 + ShellStage（docs/design/nomi-design-system.md）" },
-        { "id": "ui-click-census", "when": "pr", "paid": false, "label": "按钮普查：每个可点目标有 userExpectation 和实测对照", "aliases": ["按钮普查", "点击普查", "click-census"], "tool": "missing", "toolRef": "现有：tests/ux/full-walk/catalog.mjs（铁律 ⑫ userExpectation）只覆盖分镜表格。计划接：Playwright 无障碍树枚举可点目标（role/name 定位）+ @axe-core/playwright，全量跑里加跑带种子的 gremlins.js 抓崩溃；不接 Storybook / Cucumber（避免和设计实验室并行两套）" },
-        { "id": "ui-ai-walk", "when": "pr", "paid": true, "label": "AI 用户走查：每步先写预期、做完记感受", "aliases": ["AI 走查", "AI 用户走查", "创作者走查", "ai-walk"], "tool": "missing", "toolRef": "现有：feel observer（tests/ux/_feel-observer.mjs）只看遮挡 / 层叠。计划接：参考 UXAgent 的画像 / 日志 / 指标做法，在 Playwright _electron 上写一层薄跑器，记录「预期 → 实际 → 感受」；不用 BrowserGym、WebArena" },
+        { "id": "ui-click-census", "when": "pr", "paid": false, "label": "按钮普查：每个可点目标按七字段预期表逐项对照（设计来源 / 组件、变体 / 状态、无障碍角色 + 名称、用户动作、预期的界面状态和副作用、测试 ID、证据）", "aliases": ["按钮普查","点击普查","click-census","按钮预期表"], "tool": "playwright-a11y-tree+axe (planned)", "toolRef": "现有：tests/ux/full-walk/catalog.mjs（铁律 ⑫）的预期表只覆盖分镜表格，字段映射见本表 buttonExpectationFields。计划接：Playwright 无障碍树枚举可点目标（getByRole 角色 + 名称定位）+ @axe-core/playwright，全量跑里加带种子的 gremlins.js 抓崩溃；不接 Storybook / Cucumber（避免和设计实验室并行两套）" },
+        { "id": "ui-ai-walk", "when": "pr", "paid": true, "label": "AI 用户走查：每步先写预期、做完记感受", "aliases": ["AI 走查","AI 用户走查","创作者走查","ai-walk"], "tool": "stagehand (planned)", "toolRef": "现有：feel observer（tests/ux/_feel-observer.mjs）只看遮挡 / 层叠。计划：先试 Stagehand（MIT，约 2.5 万 star，observe / act / extract，能直接接 Playwright Page，带 OTel trace）——用 Playwright _electron 拿到 Page 再交给它；只有接不上时才自己写薄跑器记录「预期 → 实际 → 感受」（参考 UXAgent 的画像 / 日志 / 指标）；不用 BrowserGym、WebArena" },
         { "id": "ui-screens", "when": "pr", "paid": false, "label": "中文、英文、窄窗截图", "aliases": ["截图", "中英文截图", "窄窗", "screens"], "tool": "exists", "toolRef": "tests/ux full-walk 走查 + 设计实验室截图" }
       ]
     },
@@ -48,14 +48,14 @@
       "label": "大数据量 / 画布 / 长列表",
       "fourClass": false,
       "evidence": [
-        { "id": "perf-real-scale", "when": "manual-full", "paid": false, "label": "真实规模性能：p95 和最长卡顿，只许变好", "aliases": ["性能", "真实规模", "p95", "perf"], "tool": "missing", "toolRef": "现有：pnpm run test:canvas:performance 是合成规模基准。计划接：Playwright _electron 真实规模场景 + Electron contentTracing + app.getAppMetrics() + User Timing 打点 + React Profiler，预算进 CI；不用 Lighthouse CI" }
+        { "id": "perf-real-scale", "when": "manual-full", "paid": false, "label": "真实规模性能：p95 和最长卡顿，只许变好", "aliases": ["性能", "真实规模", "p95", "perf"], "tool": "playwright-electron+contentTracing (planned)", "toolRef": "现有：pnpm run test:canvas:performance 是合成规模基准。计划接：Playwright _electron 真实规模场景 + Electron contentTracing + app.getAppMetrics() + User Timing 打点 + React Profiler，预算进 CI；不用 Lighthouse CI" }
       ]
     },
     "gen-quality": {
       "label": "生成效果",
       "fourClass": false,
       "evidence": [
-        { "id": "gen-eval-set", "when": "pr", "paid": true, "label": "效果评测题集：跨镜一致、参考有没有用上", "aliases": ["效果评测", "题集", "跨镜一致", "gen-eval"], "tool": "missing", "toolRef": "现有：evals/director 只评导演计划，不评出图 / 出片效果。计划接：照 OpenAI 图片评测 cookbook 的 LLM 成对比较评一致性，照 DreamBench++ 的思路评「参考图有没有用上」；VBench 以后再说" }
+        { "id": "gen-eval-set", "when": "pr", "paid": true, "label": "效果评测题集：跨镜一致、参考有没有用上", "aliases": ["效果评测", "题集", "跨镜一致", "gen-eval"], "tool": "llm-pairwise-eval (planned)", "toolRef": "现有：evals/director 只评导演计划，不评出图 / 出片效果。计划接：照 OpenAI 图片评测 cookbook 的 LLM 成对比较评一致性，照 DreamBench++ 的思路评「参考图有没有用上」；VBench 以后再说" }
       ]
     },
     "data-format": {
@@ -65,6 +65,18 @@
         { "id": "upgrade-path", "when": "pr", "paid": false, "label": "升级路径：老项目能打开、能继续", "aliases": ["升级路径", "老项目", "旧项目", "upgrade"], "tool": "exists", "toolRef": "tests/ux/core-a-old-project.packaged.mjs" }
       ]
     }
+  },
+  "buttonExpectationFields": {
+    "_note": "按钮预期表的字段集（调研：#1035 docs/research/2026-10-06-experience-testing-prior-art.md「Design-to-button expectation table」）。没有公开的跨厂商标准，我们自己的表就是这份字段集，不另造格式。⑫ 的 tests/ux/full-walk/catalog.mjs 预期表映射到这些字段（catalogField）；「新界面 / 改交互」类的 ui-click-census 证据按这个字段集写。catalogField 里 CLICK_TARGET_CONTRACT.optionalFields 列出的是还没填的可选字段，逐步补。",
+    "fields": [
+      { "id": "designSource", "label": "设计来源 / 组件", "catalogField": ["owner", "designRef"] },
+      { "id": "variantState", "label": "变体 / 状态", "catalogField": ["state"] },
+      { "id": "roleName", "label": "无障碍角色 + 名称（getByRole）", "catalogField": ["role", "accessibleName"] },
+      { "id": "userAction", "label": "用户动作", "catalogField": ["action"] },
+      { "id": "expectedState", "label": "预期的界面状态和副作用", "catalogField": ["userExpectation"] },
+      { "id": "testId", "label": "测试 ID（Playwright tag）", "catalogField": ["id"] },
+      { "id": "evidence", "label": "证据（截图 / trace）", "catalogField": ["actualObservation"] }
+    ]
   },
   "pathRules": [
     { "category": "spend", "legacy": "花钱", "pattern": "(?:^|/)(?:spend[^/]*|[^/]*pricing[^/]*|[^/]*variant[^/]*|[^/]*credits[^/]*|[^/]*charge[^/]*|generationScheduler[^/]*)$", "scope": "^(?:src|electron)/" },

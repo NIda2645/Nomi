@@ -17,6 +17,7 @@ import {
   evaluatePrJudgement,
   evidenceLineVerdict,
   inferRoutes,
+  isMissingTool,
   loadRoutingTable,
   requiredEvidence,
   routingEnforced,
@@ -34,9 +35,9 @@ test('路由表自身：每个类别有证据、证据 id 全局唯一、tool �
     for (const item of def.evidence) {
       assert.ok(!ids.has(item.id), `证据 id 重复：${item.id}`)
       ids.add(item.id)
-      assert.ok(['exists', 'missing'].includes(item.tool), `${item.id} 的 tool 必须是 exists / missing`)
+      assert.ok(item.tool === 'exists' || isMissingTool(item.tool), `${item.id} 的 tool 必须是 exists，或写计划接的工具加 (planned)（例：stagehand (planned)）`)
       assert.ok(item.toolRef && item.toolRef.length > 10, `${item.id} 必须写 toolRef（现有工具或计划接什么）`)
-      if (item.tool === 'missing') assert.match(item.toolRef, /计划/, `${item.id} 是 missing，toolRef 必须写「计划接什么」`)
+      if (isMissingTool(item.tool)) assert.match(item.toolRef, /计划/, `${item.id} 是 (planned)，toolRef 必须写「计划接什么」`)
     }
   }
   for (const rule of table.pathRules) assert.ok(table.categories[rule.category], `pathRules 指向不存在的类别 ${rule.category}`)
@@ -289,4 +290,27 @@ test('全量跑：路由表 fullRun.commands 里的每一层都是真实存在�
   // 抛错的层按红处理，不拖垮整轮
   const thrown = await runFull([table.fullRun.commands[0]], async () => { throw new Error('boom') })
   assert.equal(thrown[0].code, 1)
+})
+
+test('AI 用户走查的工具先试 Stagehand（planned）；缺工具的证据仍列缺口（planned 也算没建）', () => {
+  const walk = table.categories.ui.evidence.find((item) => item.id === 'ui-ai-walk')
+  assert.equal(walk.tool, 'stagehand (planned)')
+  assert.match(walk.toolRef, /Stagehand/)
+  assert.match(walk.toolRef, /Playwright _electron/)
+  assert.equal(isMissingTool('stagehand (planned)'), true)
+  assert.equal(isMissingTool('exists'), false)
+  assert.ok(toolGaps(table).some((gap) => gap.id === 'ui-ai-walk'))
+})
+
+test('按钮预期表字段集：七个字段、catalogField 都落在 ⑫ catalog.mjs 的预期表字段（必填 + 可选）里；ui-click-census 证据按这七字段写', async () => {
+  const { CLICK_TARGET_CONTRACT, STORYBOARD_CLICK_TARGETS } = await import('../tests/ux/full-walk/catalog.mjs')
+  const known = new Set([...CLICK_TARGET_CONTRACT.fields, ...CLICK_TARGET_CONTRACT.optionalFields, ...Object.keys(STORYBOARD_CLICK_TARGETS[0])])
+  const fields = table.buttonExpectationFields.fields
+  assert.deepEqual(fields.map((field) => field.id), ['designSource', 'variantState', 'roleName', 'userAction', 'expectedState', 'testId', 'evidence'])
+  for (const field of fields) {
+    assert.ok(field.catalogField.length > 0, field.id)
+    for (const name of field.catalogField) assert.ok(known.has(name), `${field.id} 映射到 catalog 里不存在的字段 ${name}`)
+  }
+  const census = table.categories.ui.evidence.find((item) => item.id === 'ui-click-census')
+  for (const field of fields) assert.ok(census.label.includes(field.label.split(' / ')[0].split('（')[0]), `ui-click-census 的要求里没写到「${field.label}」`)
 })

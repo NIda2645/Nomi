@@ -41,7 +41,7 @@
 
 | 类别 | 必交证据（`## 验收证据` 里每项一行） | 工具现状 / 计划（调研：#1035 `docs/research/2026-10-06-experience-testing-prior-art.md`） |
 |---|---|---|
-| 新界面 / 改交互 | 真组件样张（用户已拍板）· 按钮普查（每个可点目标有 userExpectation 和实测对照）· AI 用户走查 · 中文 / 英文 / 窄窗截图 | 样张、截图已有；**按钮普查 missing**（现有 ⑫ `catalog.mjs` 只覆盖分镜表格；计划接 Playwright 无障碍树 + `@axe-core/playwright`，全量跑里加带种子的 gremlins.js；不接 Storybook / Cucumber）；**AI 走查 missing**（计划参考 UXAgent，在 Playwright `_electron` 上写薄跑器记录「预期 → 实际 → 感受」） |
+| 新界面 / 改交互 | 真组件样张（用户已拍板）· 按钮普查（每个可点目标按七字段预期表逐项对照，见下）· AI 用户走查 · 中文 / 英文 / 窄窗截图 | 样张、截图已有；**按钮普查 `planned`**（现有 ⑫ `catalog.mjs` 只覆盖分镜表格；计划接 Playwright 无障碍树 + `@axe-core/playwright`，全量跑里加带种子的 gremlins.js；不接 Storybook / Cucumber）；**AI 走查 `stagehand (planned)`**（计划先试 Stagehand：MIT、约 2.5 万 star、observe / act / extract、能直接接 Playwright Page、带 OTel trace——用 Playwright `_electron` 拿到 Page 再交给它；只有接不上才自己写薄跑器记录「预期 → 实际 → 感受」，参考 UXAgent） |
 | 花钱 | 最小量真付费抽检 + 三方对账 · 故障注入（断网、供应商报错、超时） | 已有 `_paidRun` harness（发版最小抽检，平时走零额度回环）、`pb07` 故障类走查 |
 | 长跑 / 可打断 | 端到端任务链（关窗、重启、断网后续上，且不重复扣费） | 已有 J05 暂停 / 恢复、pb05 |
 | Agent 行为 | 意图评测（⑩ 说的=摆的、建了几份方案、首次做对率） | 已有 `evals/` + ⑩ 铁律测试 |
@@ -67,3 +67,19 @@
 - **全量入口**：GitHub Actions 的「Full Experience Run」（`.github/workflows/full-experience-run.yml`，只有 `workflow_dispatch`，**没有 `schedule`**）。它调 `pnpm run test:experience:full`（`scripts/experience-full-run.mjs`），把路由表 `fullRun.commands` 里所有零花费层串起来跑，每层独立计结果（一层红了后面照跑），出一份汇总报告（job summary + artifact）；报告末尾列出「没有覆盖的」——付费层和工具还没建的层，免得「没跑」被读成「通过」。本地可 `pnpm run test:experience:full -- --list` 看会跑什么、`--only catalog,laws` 只跑几层。
 - **发版时**：全部层都跑（手动触发一次全量跑），再加真付费抽检（由协调会话亲自跑，先算最小量）和用户亲手用 30 分钟。
 - **不设定时触发**：不加任何 `schedule` 工作流；体验类自动化不会在没人改代码时自己跑。
+
+### 按钮预期表的字段集（路由表 `buttonExpectationFields`）
+
+没有公开的跨厂商标准（调研：#1035 的 Design-to-button expectation table 一节），所以我们自己的表就是这份字段集，不另造格式。「新界面 / 改交互」类的按钮普查证据按这七个字段写；⑫ 的 `tests/ux/full-walk/catalog.mjs` 预期表映射到它们（路由表里每个字段的 `catalogField`，有 node-test 核对映射的字段真的在 catalog 里）：
+
+| 字段 | 内容 | catalog.mjs 里对应的字段 |
+|---|---|---|
+| designSource | 设计来源 / 组件 | `owner`（代码组件）· `designRef`（设计链接，可选，还没填） |
+| variantState | 变体 / 状态 | `state`（可选，还没填） |
+| roleName | 无障碍角色 + 名称（`getByRole`） | `role` · `accessibleName`（可选，还没填） |
+| userAction | 用户动作 | `action`（可选，还没填） |
+| expectedState | 预期的界面状态和副作用 | `userExpectation` |
+| testId | 测试 ID（Playwright tag） | `id` |
+| evidence | 证据（截图 / trace） | `actualObservation` |
+
+`tool` 字段：`exists` = 已有；`<工具名> (planned)`（或 `missing`）= 还没建，写的是计划接什么，PR 对这类证据可以写「未验证：工具未建」，缺口会被列出来。

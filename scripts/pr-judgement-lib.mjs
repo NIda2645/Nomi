@@ -150,6 +150,9 @@ export function evidenceLineVerdict(line) {
  * 必交证据 = 各类别要求的并集，只含 when = "pr" 的（每个 PR 按功能分类跑；paid 的在 PR 上只要求正文交证据、不在 CI 自动跑）。
  * when = "manual-full" 的只在用户手动触发的全量跑里跑，PR 正文不要求（用 manualFullEvidence 列出来）。
  */
+/** 工具还没建：tool 写 missing，或写计划接的工具名加 (planned)（例：stagehand (planned)）。 */
+export const isMissingTool = (tool) => tool === 'missing' || /\(planned\)$/.test(String(tool || ''))
+
 export function requiredEvidence(categoryIds, table = loadRoutingTable()) {
   return collectEvidence(categoryIds, table).filter((item) => item.when !== 'manual-full')
 }
@@ -189,7 +192,7 @@ export function checkRoutingEvidence(body, categoryIds, table = loadRoutingTable
     provided += 1
     if (good.unverified) {
       unverifiedCount += 1
-      if (item.tool === 'missing') gaps.push({ category: item.category, id: item.id, label: item.label, toolRef: item.toolRef })
+      if (isMissingTool(item.tool)) gaps.push({ category: item.category, id: item.id, label: item.label, toolRef: item.toolRef })
     }
   }
   const lines = []
@@ -295,7 +298,7 @@ export function evaluatePrJudgement({ body, files: rawFiles, addedLines = '', ad
 export function toolGaps(table = loadRoutingTable()) {
   const gaps = []
   for (const [category, def] of Object.entries(table.categories)) {
-    for (const item of def.evidence ?? []) if (item.tool === 'missing') gaps.push({ category, id: item.id, label: item.label, toolRef: item.toolRef })
+    for (const item of def.evidence ?? []) if (isMissingTool(item.tool)) gaps.push({ category, id: item.id, label: item.label, toolRef: item.toolRef })
   }
   for (const item of table.layerToolGaps ?? []) gaps.push({ category: '(层)', id: item.id, label: item.label, toolRef: item.toolRef })
   return gaps

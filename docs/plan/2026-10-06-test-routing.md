@@ -22,6 +22,7 @@
 
 - **Playwright 测试标签与按标签过滤**：`tag` 选项 / `@` 标记 + `--grep` 过滤——https://playwright.dev/docs/test-annotations 。对应：路由表里的类别就是测试的标签，测试用例用 Playwright tag 标注自己属于哪一类；功能分类这一层的路由表自写（领域独有），打标签接现成的。
 - **Playwright 的无障碍自动化检查**：官方推荐 `@axe-core/playwright` 做自动扫描，并强调要配合人工和包容性用户测试——https://playwright.dev/docs/accessibility-testing 。对应：按钮普查「枚举可点目标」那一层的计划接法（missing，未建）。
+- **Stagehand（AI 用户走查先试它）**：浏览器代理 SDK，MIT，约 2.5 万 star，observe / act / extract，能直接接 Playwright Page，带 OTel trace——https://github.com/browserbase/stagehand （出处来自 #1035 调研，本次未逐条复核，`unverified`）。对应：路由表里 ui-ai-walk 写 `stagehand (planned)`，用 Playwright `_electron` 拿到 Page 再交给它，接不上才自己写薄跑器。
 - **UXAgent：用 LLM 代理模拟可用性测试**：https://arxiv.org/abs/2504.09407 。对应：AI 用户走查的计划接法（画像、日志、指标），在 Playwright `_electron` 上写薄跑器记录「预期 → 实际 → 感受」。
 - **外包卡 21 的调研汇总**：#1035 的 `docs/research/2026-10-06-experience-testing-prior-art.md`（含性能 contentTracing / getAppMetrics、效果评测 OpenAI cookbook 与 DreamBench++、真付费 `_paidRun`、不接 Kiwi / TestLink / Storybook / Cucumber / Lighthouse CI / BrowserGym 的理由）。该文件在 #1035 里，本次没有逐条复核其中引用的页面，`unverified`；路由表 `toolRef` 的「计划接」照协调会话已定的结论写。
 - **结论**：「按标签分类跑测试」「无障碍树枚举」「LLM 代理走查」都有成熟做法，思路照搬；没有现成工具能读我们的路由表并对着 PR 正文逐项对账，所以这层胶水自写（`pr-judgement-lib`，归 `gate-family`）。
