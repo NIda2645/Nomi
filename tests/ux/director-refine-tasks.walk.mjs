@@ -101,12 +101,9 @@ try {
   // ── T2：medium 机位改 50mm，进机位视角 ──
   await pickRow('T2', 'medium')
   await click('T2', page.getByTestId('director-inspector').getByRole('option', { name: /^50mm/ }), '属性卡·50mm')
-  // 选中机位不会把小窗切过去（小窗跟的是「预览机位」）：要进 medium 的视角，先在小窗的机位下拉里换成 medium——多 2 下，记为发现
+  // 选中机位 = 小窗自动切到它（store.select 写 previewCameraId）：不再需要小窗下拉那 2 下
   const pip = page.getByTestId('director-pip')
-  if (!(await pip.innerText()).includes('medium')) {
-    await click('T2', pip.getByLabel('预览机位'), '小窗·机位下拉')
-    await click('T2', page.getByRole('option', { name: 'medium', exact: true }), '小窗·选 medium')
-  }
+  check('T2·选中 medium 后小窗自动切到 medium', (await pip.getByLabel('预览机位').innerText()).includes('medium'))
   await click('T2', pip.getByRole('button', { name: '进入视角' }), '小窗·进入视角')
   await expectVisible(page.getByTestId('director-pov-hud'), '没进入机位视角')
   check('T2·进的是 medium 的视角', (await page.getByTestId('director-pov-hud').innerText()).includes('medium'))
@@ -120,6 +117,7 @@ try {
   await lab.snap('t2-camera-pov-card-open')
   // 取景框右侧被属性卡盖住（K5 未做，单独排期）：收卡看全框
   await click('T2', page.getByTestId('director-inspector-close'), '属性卡·×（看全取景框）')
+  check('T2·点击数 5（原 7）', clicks.T2 === 5, `${clicks.T2}`)
   await lab.snap('t2-camera-pov-full-frame')
   await clickOrFail(page.getByTestId('director-pov-hud').getByRole('button', { name: '退出机位' }), 'POV 卡·退出（收尾，不计入任务）')
 
