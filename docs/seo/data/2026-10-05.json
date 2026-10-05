@@ -1,0 +1,923 @@
+{
+  "schemaVersion": 1,
+  "observedAt": "2026-10-05T07:24:35.166Z",
+  "baseUrl": "https://nomiaqm.com",
+  "pages": [
+    {
+      "url": "https://nomiaqm.com/en/",
+      "checked": 10,
+      "failures": []
+    },
+    {
+      "url": "https://nomiaqm.com/en/quickstart",
+      "checked": 10,
+      "failures": []
+    }
+  ],
+  "sitemap": {
+    "checked": 5,
+    "entries": [
+      {
+        "url": "https://nomiaqm.com/",
+        "lastmod": "2026-10-03"
+      },
+      {
+        "url": "https://nomiaqm.com/en/",
+        "lastmod": "2026-10-03"
+      },
+      {
+        "url": "https://nomiaqm.com/en/features",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/agnes-image-2-1",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/agnes-video-2-5",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/dop",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/flux-1-krea",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/flux-2-klein",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/flux-2-pro",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/gemini-image-3-pro",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/gemini-omni-1-1-flash",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/gpt-image-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/gpt-image-2-5-flare",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/gpt-image-2-5-sunburst",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/grok-imagine-1-5",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/grok-imagine-image-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/hailuo-2-3",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/happyhorse-1-1",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/imagen-4-fast",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/imagen-4-ultra",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/kling-3-0",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/kling-3-0-turbo",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/minimax-h3",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/minimax-h3-max",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/muse-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/nano-banana-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/nano-banana-2-lite",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/qwen-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/qwen-image-3-0",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/runway-gen-4-5",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/runway-gen-4-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/runway-gen-4-turbo",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/seedance-2-5",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/seedream-5-0-lite",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/seedream-5-0-pro",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/soul-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/soul-cinema",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/veo-3-1",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/vidu-q3",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/wan-3-0",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/z-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/models/z-image-turbo",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/camera",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/character",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/collections/evolink-gpt-image-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/collections/imgedify-gpt4o",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/collections/sora-official",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/collections/sora2-viral",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/collections/youmind-nano-banana-pro",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/composition",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/editing",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/expressions",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/natural-texture",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/scene",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/prompts/storyboard",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/quickstart",
+        "lastmod": "2026-10-03"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/brand-promo",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/creation-edit",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-candle-mood",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-coffee-pour",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-cross-view",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-expression-reference",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-expression-sheet",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-eyewear-light",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-film-storyboard",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-multi-view",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-outpaint",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-product-before-after",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-product-condensation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-product-exploded-view",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-product-turntable",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-product-unboxing",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/curated-restore-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-action",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-art-design",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-cinematography",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-consistency",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-guzhuang",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-keyframe-review",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-performance",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-shot-translation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-sound",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-staging",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-style-otomo-wright",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/director-transitions",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/drama-short",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/model-integration",
+        "lastmod": "2026-10-03"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/release-media-pack",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/skill-author",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/workbench-creation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/workbench-fixation-planner",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/workbench-generation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/workbench-storyboard-planner",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-adaptation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-behavior-psychology",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-dialogue",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-improv",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-incubation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-novel-digester",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-review",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-screenwriter",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-songfangjin",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-structure",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/en/skills/writer-style-schrader",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/features",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/agnes-image-2-1",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/agnes-video-2-5",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/dop",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/flux-1-krea",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/flux-2-klein",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/flux-2-pro",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/gemini-image-3-pro",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/gemini-omni-1-1-flash",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/gpt-image-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/gpt-image-2-5-flare",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/gpt-image-2-5-sunburst",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/grok-imagine-1-5",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/grok-imagine-image-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/hailuo-2-3",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/happyhorse-1-1",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/imagen-4-fast",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/imagen-4-ultra",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/kling-3-0",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/kling-3-0-turbo",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/minimax-h3",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/minimax-h3-max",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/muse-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/nano-banana-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/nano-banana-2-lite",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/qwen-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/qwen-image-3-0",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/runway-gen-4-5",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/runway-gen-4-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/runway-gen-4-turbo",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/seedance-2-5",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/seedream-5-0-lite",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/seedream-5-0-pro",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/soul-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/soul-cinema",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/veo-3-1",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/vidu-q3",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/wan-3-0",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/z-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/models/z-image-turbo",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/camera",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/character",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/collections/evolink-gpt-image-2",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/collections/imgedify-gpt4o",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/collections/sora-official",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/collections/sora2-viral",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/collections/youmind-nano-banana-pro",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/composition",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/editing",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/expressions",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/natural-texture",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/scene",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/prompts/storyboard",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/quickstart",
+        "lastmod": "2026-10-03"
+      },
+      {
+        "url": "https://nomiaqm.com/skills",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/brand-promo",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/creation-edit",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-candle-mood",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-coffee-pour",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-cross-view",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-expression-reference",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-expression-sheet",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-eyewear-light",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-film-storyboard",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-multi-view",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-outpaint",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-product-before-after",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-product-condensation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-product-exploded-view",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-product-turntable",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-product-unboxing",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/curated-restore-image",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-action",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-art-design",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-cinematography",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-consistency",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-guzhuang",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-keyframe-review",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-performance",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-shot-translation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-sound",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-staging",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-style-otomo-wright",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/director-transitions",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/drama-short",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/model-integration",
+        "lastmod": "2026-10-03"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/release-media-pack",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/skill-author",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/workbench-creation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/workbench-fixation-planner",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/workbench-generation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/workbench-storyboard-planner",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-adaptation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-behavior-psychology",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-dialogue",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-improv",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-incubation",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-novel-digester",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-review",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-screenwriter",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-songfangjin",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-structure",
+        "lastmod": "2026-10-02"
+      },
+      {
+        "url": "https://nomiaqm.com/skills/writer-style-schrader",
+        "lastmod": "2026-10-02"
+      }
+    ],
+    "failures": [
+      {
+        "rule": "SITEMAP-MISSING-URL",
+        "severity": "error",
+        "message": "Sitemap is missing https://nomiaqm.com/handbook",
+        "evidence": "https://nomiaqm.com/handbook",
+        "recommendation": "Add the public route to the generated sitemap."
+      }
+    ]
+  },
+  "robots": {
+    "checked": 2,
+    "failures": []
+  },
+  "performance": {
+    "status": "not_configured"
+  },
+  "summary": {
+    "pages": 2,
+    "checks": 27,
+    "failures": 4,
+    "networkFailures": 3,
+    "errors": 4
+  },
+  "failures": [
+    {
+      "rule": "NETWORK-PAGE",
+      "severity": "error",
+      "message": "Could not fetch https://nomiaqm.com/",
+      "evidence": "HTTP 403 for https://nomiaqm.com/",
+      "recommendation": "Retry the scheduled audit and investigate origin availability."
+    },
+    {
+      "rule": "NETWORK-PAGE",
+      "severity": "error",
+      "message": "Could not fetch https://nomiaqm.com/quickstart",
+      "evidence": "HTTP 403 for https://nomiaqm.com/quickstart",
+      "recommendation": "Retry the scheduled audit and investigate origin availability."
+    },
+    {
+      "rule": "NETWORK-PAGE",
+      "severity": "error",
+      "message": "Could not fetch https://nomiaqm.com/handbook",
+      "evidence": "HTTP 403 for https://nomiaqm.com/handbook",
+      "recommendation": "Retry the scheduled audit and investigate origin availability."
+    },
+    {
+      "rule": "SITEMAP-MISSING-URL",
+      "severity": "error",
+      "message": "Sitemap is missing https://nomiaqm.com/handbook",
+      "evidence": "https://nomiaqm.com/handbook",
+      "recommendation": "Add the public route to the generated sitemap."
+    }
+  ]
+}
