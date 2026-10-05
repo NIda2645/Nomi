@@ -90,3 +90,16 @@ lane 系统提示是 `[语言规则, 身份, 项目记忆]`，语言规则只在
 - 调用 `laneFailureText`（带日志的那一条）的位置：`residentShellDisplay.friendlyError`（`catch` 里调）、`NomiStudioApp.tsx:362`（`catch` 里调）。都是一次性事件，没有重算风险。
 - 值得下一轮复核的一处：`src/workbench/generationCanvas/reactFlow/useReactFlowViewportAnimation.ts:62` 的 `healViewport` 在被调用时 `logRendererError('canvas-viewport-non-finite', …)`。它是 `useCallback`，被谁调、多频繁没有追到底；如果由每帧视口变化回调触发，同一个坏视口会重复记。**待核，不在本 PR 改。**
 - 这次的做法可以做成门岗：「纯投影 / 文案函数不许 import `rendererLog`」的 import 边界规则（`check:boundaries`），只列，不在本 PR 做。
+
+## 未验证
+
+- 语言规则首尾各放一次：`tests/agent-runtime/lane-language-rule.test.mts` 走真 lane 和真 HTTP 夹具，但系统提示是测试里照桌面运行时的拼法手拼的；生产里两处传参（`electron/agentLane/laneDesktopRuntime.ts` 单发路径的 `systemPromptClosing: buildLanguageRule()` 与 lane 路径的 `systemPromptClosing: buildLanguageRule,`）只由 `laneDesktopStructure.test.ts` 的源码结构断言钉着。`openWorkspace` / 单发处理是一个依赖 Electron 会话与 IPC 的大闭包，没有可单独调用的「组装函数」，本 PR 不为此拆它。真 App 英文界面端到端未跑（`unverified`）。
+- 「terminated」兜底词：共享嗅探表里只认整串等于 `terminated`（undici 断线原话）；Agent 这一路的主判据是 pi 的可重试表，不依赖它。
+
+## 自写登记 gate-family（本 PR 只删一行死条目）
+
+登记条目 id：`gate-family`（`scripts/check-*` 门岗族，状态 under-review）。本 PR 对它的唯一改动是删掉 `scripts/check-i18n-visible-text.mjs` 豁免名单里指向**已删除文件**（`electron/ai/composeAgentSystemPrompt.ts`）的一行死条目，没有新增判据、没有补规则。
+
+- 为什么现在换不了现成方案：这道门检的是「用户可见文本里不许有硬编码中文」，判据靠本仓自己的豁免名单和棘轮基线（electron 侧 78 处只减不增），现成的 i18n lint（如 eslint-plugin-i18next）没有「按文件逐条豁免 + 棘轮」这层，迁移要同时重录基线，不是顺手能做的，不在本 PR 范围。
+- 哪天换：由登记条目 `gate-family` 的评估结论定（under-review，协调会话负责）；本 PR 不推进也不阻塞它。
+- 方向上本 PR 没有往这张表里加东西，反而减了一行。

@@ -7,8 +7,8 @@ import type { LanePendingApproval, LaneWorkspaceProjection } from '../../../../e
 import { getCommittedProposal, subscribeCommittedProposal } from '../../generationCanvas/agent/proposalUndo'
 import { undoableLaneToolCallId } from '../lane/laneReceiptUndo'
 import { laneClient } from '../lane/laneClient'
-import { providerFailureText, takeUnclassifiedProviderFailures } from '../lane/laneCommandFailure'
-import { logRendererError } from '../../../desktop/rendererLog'
+import { providerFailureText } from '../lane/laneCommandFailure'
+import { useLogUnclassifiedProviderFailures } from './useLogUnclassifiedProviderFailures'
 import { laneInterventionSource, laneViewModel } from '../lane/laneViewModel'
 import { humanizeToolFailure, readableToolName, readableToolSummary } from '../resident/residentToolDisplay'
 import { laneToolFailureDetail, laneToolFailureSummary } from '../lane/laneToolFailureText'
@@ -123,19 +123,6 @@ export type AgentPanelV4Data = Readonly<{
   reloadModels: () => void
   selectModel: (model: ModelCatalogModelDto) => void
 }>
-
-/**
- * 「认不出」的服务商报文留一份诊断日志——**在 effect 里、按条目 id 去重只记一次**。
- * 投影在 `useMemo` 里每个流式快照都重算，副作用放在那里同一条错误曾记了 28 次。
- */
-function useLogUnclassifiedProviderFailures(items: readonly V4FlowItem[]): void {
-  const logged = React.useRef(new Set<string>())
-  React.useEffect(() => {
-    for (const diagnostic of takeUnclassifiedProviderFailures(items, logged.current)) {
-      logRendererError('lane-unclassified-failure', undefined, { code: null, diagnostic })
-    }
-  }, [items])
-}
 
 export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data {
   const { t, i18n } = useTranslation()

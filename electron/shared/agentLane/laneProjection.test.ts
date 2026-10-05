@@ -50,6 +50,13 @@ describe('lane provider failure: transient / recovered', () => {
     expect(failure).toMatchObject({ kind: 'error', recovered: true })
   })
 
+  it('two errors in a row followed by success: both are recovered', () => {
+    const found = errors([user('u', 1), assistant('e1', 2, { stopReason: 'error', errorMessage: 'Connection error.' }),
+      assistant('e2', 3, { stopReason: 'error', errorMessage: 'Request timed out.' }), assistant('ok', 4, { stopReason: 'stop' })])
+    expect(found).toHaveLength(2)
+    for (const failure of found) expect(failure).toMatchObject({ recovered: true })
+  })
+
   it('an error with nothing after it stays an error, and a reply in the NEXT turn does not heal it', () => {
     const [last] = errors([user('u', 1), assistant('e', 2, { stopReason: 'error', errorMessage: 'Connection error.' })])
     expect(last).not.toHaveProperty('recovered')

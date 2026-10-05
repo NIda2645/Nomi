@@ -8,6 +8,7 @@
 // 所以断言写成**任意**未分类英文散句都进不了界面，而不是只断言那一句。
 import { describe, expect, it, vi } from 'vitest'
 import { LaneCommandFailure, laneFailureText, providerFailureText, providerFailureIsUnclassified, takeUnclassifiedProviderFailures, LANE_ERROR_TEXT_KEY } from './laneCommandFailure'
+import { classifyGenerationError } from '../../observability/classifyError'
 import { leaksInternals } from '../resident/residentToolText'
 import { LANE_ERROR_CODES } from '../../../../electron/shared/agentLane/laneErrorCodes'
 import { zhAgentLaneError, enAgentLaneError } from '../../../i18n/locales/agentLaneError'
@@ -154,5 +155,12 @@ describe('服务商报文：断线 / 超时归网络类，不再说「认不出�
     expect(en).not.toContain('：')
     const zh = providerFailureText('Connection error.', translate(zhAgentPanelV4 as unknown as Record<string, string>))
     expect(zh).toMatch(/：Connection error\.$/)
+  })
+
+  it('共享嗅探表的「terminated」只认整串：账号被终止 / 策略终止 / 用户终止不会被说成连不上服务商', () => {
+    for (const raw of ['Content generation terminated due to policy violation', 'Your account has been terminated', 'Process terminated by user']) {
+      expect(classifyGenerationError(raw).kind, raw).not.toBe('network')
+    }
+    expect(classifyGenerationError('terminated').kind).toBe('network')
   })
 })
