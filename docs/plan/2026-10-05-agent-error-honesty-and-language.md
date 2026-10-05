@@ -79,14 +79,14 @@ lane 系统提示是 `[语言规则, 身份, 项目记忆]`，语言规则只在
 | `v4-panel-error-recovered` | 断线后自动重试成功：红卡退场，一行灰字 | `tests/ux/shots/agent-error-honesty/v4-panel-error-recovered.zh.png` | `…/v4-panel-error-recovered.en.png` |
 | `v4-panel-error-network` | 断线且没接上：红卡归网络类 | `…/v4-panel-error-network.zh.png` | `…/v4-panel-error-network.en.png` |
 
-已知差异：红卡文案是「连不上服务商：Connection error.」——分类器的 reason 加服务商原话；原话在中文界面里仍是英文，这是现有行为（服务商原话照旧露出），本 PR 没改。面板红条只显示 reason，不显示分类器的 hint（「请检查网络和代理，再重试」）。实验室里「是不是瞬时」用替身（浏览器不能 import pi 运行时），生产由 `laneHost.mts` 传 pi 的 `isRetryableAssistantError`。
+已知差异：红卡文案是「连不上服务商：Connection error.」（en 为 "Cannot reach the provider: Connection error."，拼接符走 `agentPanelV4.errorWithDetail`，zh 全角、en 半角加空格）——分类器的 reason 加服务商原话；原话在中文界面里仍是英文，这是现有行为（服务商原话照旧露出），本 PR 没改。面板红条只显示 reason，不显示分类器的 hint（「请检查网络和代理，再重试」）。实验室里「是不是瞬时」用替身（浏览器不能 import pi 运行时），生产由 `laneHost.mts` 传 pi 的 `isRetryableAssistantError`。
 
 ## 后续
 
 「副作用藏在 `useMemo` / 投影里」的全仓检查（只列不改）。方法：用 TypeScript 语法树扫 `src/`（不含 `devlab`、测试）里所有 `useMemo(...)` 回调体，找 `log*` / `logRenderer*` / `console.*` 调用；再按文件名找像投影、文案、分类、格式化的纯函数文件里的日志调用。
 
 - 直接写在 `useMemo` 回调体里的日志：**0 处**。本 PR 之前唯一一处是间接的——`useMemo` → `laneViewModel` → `providerFailureText` → `classifiedFailureText` 里的 `logRendererError`，已修。
-- 同一文件里既有 `useMemo` 又有日志调用的 9 个文件，逐个看过，日志都在事件处理 / `catch` / 回调里，不在渲染期：`src/workbench/ai/v4/useAgentPanelSpendConfirm.ts`（`failed` 回调、`.catch`）、`src/workbench/assets/AssetLibraryPanel.tsx`、`src/workbench/generationCanvas/nodes/NodeResultStack.tsx`（删除失败的 `catch`）、`src/workbench/NomiStudioApp.tsx`（项目恢复 / 保存 / 删除的 `catch`）、`src/workbench/taskCenter/TaskCenterPanel.tsx`（动作失败的 `catch`）、`src/workbench/generationCanvas/nodes/model3d/Model3DViewer.tsx`（`componentDidCatch`）、`src/ui/chunkBoundary.tsx`（`componentDidCatch`）。
+- 同一文件里既有 `useMemo` 又有日志调用的 7 个文件，逐个看过，日志都在事件处理 / `catch` / 回调里，不在渲染期：`src/workbench/ai/v4/useAgentPanelSpendConfirm.ts`（`failed` 回调、`.catch`）、`src/workbench/assets/AssetLibraryPanel.tsx`、`src/workbench/generationCanvas/nodes/NodeResultStack.tsx`（删除失败的 `catch`）、`src/workbench/NomiStudioApp.tsx`（项目恢复 / 保存 / 删除的 `catch`）、`src/workbench/taskCenter/TaskCenterPanel.tsx`（动作失败的 `catch`）、`src/workbench/generationCanvas/nodes/model3d/Model3DViewer.tsx`（`componentDidCatch`）、`src/ui/chunkBoundary.tsx`（`componentDidCatch`）。
 - 调用 `laneFailureText`（带日志的那一条）的位置：`residentShellDisplay.friendlyError`（`catch` 里调）、`NomiStudioApp.tsx:362`（`catch` 里调）。都是一次性事件，没有重算风险。
 - 值得下一轮复核的一处：`src/workbench/generationCanvas/reactFlow/useReactFlowViewportAnimation.ts:62` 的 `healViewport` 在被调用时 `logRendererError('canvas-viewport-non-finite', …)`。它是 `useCallback`，被谁调、多频繁没有追到底；如果由每帧视口变化回调触发，同一个坏视口会重复记。**待核，不在本 PR 改。**
 - 这次的做法可以做成门岗：「纯投影 / 文案函数不许 import `rendererLog`」的 import 边界规则（`check:boundaries`），只列，不在本 PR 做。

@@ -11,6 +11,7 @@ import { LaneCommandFailure, laneFailureText, providerFailureText, providerFailu
 import { leaksInternals } from '../resident/residentToolText'
 import { LANE_ERROR_CODES } from '../../../../electron/shared/agentLane/laneErrorCodes'
 import { zhAgentLaneError, enAgentLaneError } from '../../../i18n/locales/agentLaneError'
+import { zhAgentPanelV4, enAgentPanelV4 } from '../../../i18n/locales/agentPanelV4'
 
 const key = (k: string) => k
 
@@ -143,5 +144,15 @@ describe('服务商报文：断线 / 超时归网络类，不再说「认不出�
     const logged: string[] = []
     for (let i = 0; i < 10; i++) logged.push(...takeUnclassifiedProviderFailures(items, seen))
     expect(logged).toEqual(['totally unknown gibberish xyz'])
+  })
+
+  it('原因 + 服务商原话的拼法走 i18n：en 半角冒号加空格，zh 全角冒号', () => {
+    const translate = (table: Record<string, string>): ((k: string, o?: Record<string, unknown>) => string) => (k, o) =>
+      (table[k.replace('agentPanelV4.', '')] ?? k).replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(o?.[name] ?? ''))
+    const en = providerFailureText('Connection error.', translate(enAgentPanelV4 as Record<string, string>))
+    expect(en).toMatch(/: Connection error\.$/)
+    expect(en).not.toContain('：')
+    const zh = providerFailureText('Connection error.', translate(zhAgentPanelV4 as Record<string, string>))
+    expect(zh).toMatch(/：Connection error\.$/)
   })
 })

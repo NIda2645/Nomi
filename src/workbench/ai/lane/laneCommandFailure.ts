@@ -182,5 +182,5 @@ function classifiedFailure(raw: string, t: Translate, fallbackKey: 'agentResiden
   const reason = stripClassificationMarkers(report.reason)
   if (report.kind === 'unknown' && !showableRaw(reason)) return { text: t(fallbackKey), unclassified: true }
   const providerMessage = first.providerMessage ? stripClassificationMarkers(first.providerMessage) : ''
-  return { text: providerMessage && !leaksInternals(providerMessage) ? `${reason}：${providerMessage}` : reason, unclassified: false }
+  return { text: providerMessage && !leaksInternals(providerMessage) ? t('agentPanelV4.errorWithDetail', { reason, detail: providerMessage }) : reason, unclassified: false }
 }
