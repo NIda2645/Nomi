@@ -149,10 +149,10 @@ describe('服务商报文：断线 / 超时归网络类，不再说「认不出�
   it('原因 + 服务商原话的拼法走 i18n：en 半角冒号加空格，zh 全角冒号', () => {
     const translate = (table: Record<string, string>): ((k: string, o?: Record<string, unknown>) => string) => (k, o) =>
       (table[k.replace('agentPanelV4.', '')] ?? k).replace(/\{\{(\w+)\}\}/g, (_m, name: string) => String(o?.[name] ?? ''))
-    const en = providerFailureText('Connection error.', translate(enAgentPanelV4 as Record<string, string>))
+    const en = providerFailureText('Connection error.', translate(enAgentPanelV4 as unknown as Record<string, string>))
     expect(en).toMatch(/: Connection error\.$/)
     expect(en).not.toContain('：')
-    const zh = providerFailureText('Connection error.', translate(zhAgentPanelV4 as Record<string, string>))
+    const zh = providerFailureText('Connection error.', translate(zhAgentPanelV4 as unknown as Record<string, string>))
     expect(zh).toMatch(/：Connection error\.$/)
   })
 })
