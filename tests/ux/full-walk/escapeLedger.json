@@ -265,6 +265,62 @@
       "manualReview": "pending",
       "evidence": ["用例 no-duration-param、still-with-duration；草稿 parameters.duration 有值，付费卡投影的 parameters 里没有"],
       "completionCommits": []
+    },
+    {
+      "id": "LAW12-sb-row-more",
+      "source": "full-walk pb12-storyboard-click-expectations（2026-10-05，base / zh-CN）",
+      "category": "interaction-semantics",
+      "problem": "点「行首的「⋯」」：用户以为弹出这一镜的操作菜单（插入、复制、换画幅、删除……），整块都在窗口里；点别处它就关上；实际弹出了菜单，整块在窗口里；点别处之后还开着",
+      "existingInvariants": [],
+      "ironLaws": ["⑫"],
+      "useCases": ["S6"],
+      "fullWalkJourneys": ["J06-delete-shot"],
+      "status": "candidate",
+      "manualReview": "pending",
+      "evidence": ["tests/ux/shots/full-walk/law12-zh/pb12-storyboard-click-expectations--base--zh-CN/click-sb-row-more.png"],
+      "completionCommits": []
+    },
+    {
+      "id": "LAW12-sb-row-checkbox",
+      "source": "full-walk pb12-storyboard-click-expectations（2026-10-05，base / zh-CN）",
+      "category": "interaction-semantics",
+      "problem": "点「行首的小方框（复选框）」：用户以为勾上就是选中这一镜（像表格勾选），之后可以对勾上的几镜批量操作；这一镜照常显示，不变灰、不被藏起来；实际勾上之后第 3 镜没有选中，整行变淡到 60%，被标成「本次跳过」",
+      "existingInvariants": [],
+      "ironLaws": ["⑫"],
+      "useCases": ["S6"],
+      "fullWalkJourneys": ["J06-delete-shot"],
+      "status": "candidate",
+      "manualReview": "pending",
+      "evidence": ["tests/ux/shots/full-walk/law12-zh/pb12-storyboard-click-expectations--base--zh-CN/click-sb-row-checkbox.png"],
+      "completionCommits": []
+    },
+    {
+      "id": "LAW12-sb-thumbnail-done",
+      "source": "full-walk pb12-storyboard-click-expectations（2026-10-05，base / zh-CN）",
+      "category": "interaction-semantics",
+      "problem": "点「已生成镜头的缩略图」：用户以为点一下就打开这一镜的大图来看；实际单击之后什么也没打开（第 1 镜选中了）",
+      "existingInvariants": [],
+      "ironLaws": ["⑫"],
+      "useCases": ["S6"],
+      "fullWalkJourneys": ["J06-delete-shot"],
+      "status": "candidate",
+      "manualReview": "pending",
+      "evidence": ["tests/ux/shots/full-walk/law12-zh/pb12-storyboard-click-expectations--base--zh-CN/click-sb-thumbnail-done.png"],
+      "completionCommits": []
+    },
+    {
+      "id": "LAW12-spend-card-draft-placeholder",
+      "source": "2026-10-05 协调会话转述的真实测试",
+      "category": "interaction-semantics",
+      "problem": "付费卡等用户确认时，画布上那张草稿节点写着「在下方输入提示词，点击生成」，可提示词其实已经填好了：节点上的引导话让用户以为还要自己写提示词、自己点生成，和「卡上点一下就生成」的真实下一步对不上",
+      "existingInvariants": [4, 9],
+      "ironLaws": ["⑫"],
+      "useCases": ["S1", "S4"],
+      "fullWalkJourneys": ["J04-agent-multishot-spend"],
+      "status": "candidate",
+      "manualReview": "pending",
+      "evidence": ["10-05 real test: draft node showed the empty-prompt hint while the card held a filled prompt"],
+      "completionCommits": []
     }
   ]
 }
