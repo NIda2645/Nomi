@@ -66,5 +66,8 @@
 ## 验证边界
 
 - `pnpm run delivery:preflight`、`pnpm run build:electron` 通过。
+- `pnpm run check:walkthroughs` 通过（46 tests；目录门报告 321 份走查）。
+- `pnpm run check:full-walk-catalog` 通过（10 tests；10 条旅程 / 54 状态 / 14 剧本）。
+- `pnpm run check:walkthrough-tool-args` 通过（105 次调用、370 个键；21 处动态调用如实记账）。
 - 本报告没有修改生产代码、走查断言或校准数据。
 - Design Lab 失败与 Director 未跑清单是当前 Mac 环境的真实结果；不能宣称卡 2 全绿或所有 Director 脚本均已完成。
