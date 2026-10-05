@@ -1,5 +1,6 @@
 import React, { type JSX } from 'react'
 import { createPortal } from 'react-dom'
+import { FocusScope } from '@radix-ui/react-focus-scope'
 import { NOMI_OVERLAY_Z_INDEX, hasOpenDialogAbove, hasOpenPopupAbove, isInsidePopupAbove } from './overlayLayers'
 import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign, type AnchoredPopoverSide } from './anchoredPopoverPlacement'
 
@@ -25,6 +26,8 @@ import { resolveAnchoredPopoverPlacement, type AnchoredPopoverAlign, type Anchor
  *     是节点属性面板。
  * 上一版这里写的是「本组件是全站唯一的浮层定位机制」，那句话从来不是真的（当时就有 8 个反例）；
  * 别再写一句新的「全站唯一」，写清楚**判据**。
+ *
+ * 焦点（打开聚焦 / 浮层内 Tab 循环 / 关闭还焦点）不属于这四套定位：归 Radix `FocusScope`（本组件对带 onClose 的浮层套它）。
  *
  * ## 全仓浮层定位现有四套（2026-09-08 复核）
  *   ① 本组件 —— 生产侧 4 个消费者（`workbench/timeline/TimelineTransitionPicker.tsx`、
@@ -82,10 +85,6 @@ export type AnchoredPopoverProps = {
 
 type Placement = { top: number; left: number }
 
-const TABBABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
-function tabbablesOf(root: HTMLElement): HTMLElement[] {
-  return [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((element) => element.getClientRects().length > 0)
-}
 
 export function AnchoredPopover({
   anchorRef,
@@ -100,8 +99,6 @@ export function AnchoredPopover({
   const fallbackAnchorRef = React.useRef<HTMLSpanElement>(null)
   const popRef = React.useRef<HTMLDivElement>(null)
   const [placement, setPlacement] = React.useState<Placement | null>(null)
-  // 打开前谁有焦点（渲染期读：此时子树的 autoFocus 还没跑，读到的才是触发器而不是浮层里的输入框）。
-  const [returnFocusTo] = React.useState<Element | null>(() => (typeof document === 'undefined' ? null : document.activeElement))
   // 只有「会被关掉的交互浮层」管焦点；悬停预览（passThrough）与自己管开合的浮层（没传 onClose）不碰。
   const managesFocus = Boolean(onClose) && !passThrough
 
@@ -137,26 +134,6 @@ export function AnchoredPopover({
       observer?.disconnect()
     }
   }, [reposition])
-
-  // 焦点进出（WAI-ARIA 非模态弹层）：打开时焦点进浮层（Tab 才走得进来——浮层 Portal 在 body 末尾，
-  // 不在触发器后面的 DOM 顺序里）；关闭时焦点还给触发器（用户没把焦点另外挪走的话）。
-  // 一处管，所有走 AnchoredPopover 的浮层一起得到，各菜单不要自己补。
-  const placed = placement !== null
-  React.useEffect(() => {
-    // 要等放好位置（visibility 变 visible）才能聚焦——隐藏的元素聚焦不上。
-    if (!managesFocus || !placed) return
-    const pop = popRef.current
-    if (pop && !pop.contains(document.activeElement)) (tabbablesOf(pop)[0] ?? pop).focus({ preventScroll: true })
-  }, [managesFocus, placed])
-  React.useEffect(() => {
-    if (!managesFocus) return undefined
-    const pop = popRef.current
-    return () => {
-      const active = document.activeElement
-      const lost = !active || active === document.body || (pop ? pop.contains(active) : false)
-      if (lost && returnFocusTo instanceof HTMLElement && returnFocusTo.isConnected) returnFocusTo.focus({ preventScroll: true })
-    }
-  }, [managesFocus, returnFocusTo])
 
   const dismissOnEscape = React.useCallback((event: KeyboardEvent) => {
     if (!onClose || event.key !== 'Escape') return false
@@ -197,7 +174,7 @@ export function AnchoredPopover({
     }
   }, [anchorRef, dismissOnEscape, onClose])
 
-  const layer = (
+  const body = (
     <div
       ref={popRef}
       // 浮层让位给自己弹出的下拉/菜单时不会 stopPropagation，那一下 Escape 会继续走到
@@ -205,29 +182,18 @@ export function AnchoredPopover({
       // `.nokey` 是 @xyflow/system `isInputDOMNode` 认的排除边界：声明在**自己**的 Portal
       // 根上（不写进调用方锚点的 className，那会被调用方下一次渲染冲掉）。
       className="nokey"
-      tabIndex={managesFocus ? -1 : undefined}
       style={{
         position: 'fixed',
         top: placement?.top ?? -9999,
         left: placement?.left ?? -9999,
         zIndex: zIndex ?? NOMI_OVERLAY_Z_INDEX.popover,
-        visibility: placement ? 'visible' : 'hidden',
+        // 放好位置前用 opacity 0 而不是 visibility:hidden——FocusScope 在挂载时就要聚焦，hidden 的元素聚焦不上。
+        opacity: placement ? 1 : 0,
         outline: 'none',
         ...(passThrough ? { pointerEvents: 'none' as const } : {}),
       }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
-        if (managesFocus && event.key === 'Tab') {
-          // 浮层内循环：Tab 到最后一个回到第一个（Esc 才是出口），不掉到 body 末尾之后的页面外。
-          const items = tabbablesOf(event.currentTarget)
-          if (items.length === 0) { event.preventDefault(); return }
-          const first = items[0]
-          const last = items[items.length - 1]
-          const active = document.activeElement
-          if (event.shiftKey && (active === first || active === event.currentTarget)) { event.preventDefault(); last.focus() }
-          else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus() }
-          return
-        }
         if (!onClose || event.key !== 'Escape' || !event.currentTarget.contains(event.target as Node)) return
         // A child may prevent dismissal without stopping propagation. Keep even that
         // Escape inside this portal; it must not cancel the ancestor node's selection.
@@ -237,6 +203,22 @@ export function AnchoredPopover({
       {children}
     </div>
   )
+  // 焦点归 Radix FocusScope（已在依赖树里，菜单 / tooltip 同一家）：打开时进浮层（子树自己 autoFocus 的输入框不被抢）、
+  // 浮层内 Tab 循环、关闭还给打开前的元素。不自写 tabbable 查询。悬停预览与自己管开合的浮层不套。
+  const layer = managesFocus ? (
+    <FocusScope
+      asChild
+      loop
+      trapped
+      onUnmountAutoFocus={(event) => {
+        // 用户已把焦点挪到别处（点了另一个输入框）就不抢回来；焦点掉到 body（浮层里的元素被卸载）才还给触发器。
+        const active = document.activeElement
+        if (active && active !== document.body) event.preventDefault()
+      }}
+    >
+      {body}
+    </FocusScope>
+  ) : body
 
   return (
     <>

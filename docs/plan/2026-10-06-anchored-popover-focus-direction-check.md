@@ -34,16 +34,16 @@
 
 ### 5. P0：这些是我们独有的吗？现成方案有哪些
 
-不是领域能力。仓库里没有直接依赖的焦点库：`@floating-ui/react`（`FloatingFocusManager`）未安装；Radix 的 `react-focus-scope` 只是 `@radix-ui/react-dropdown-menu` 的传递依赖，不是直接依赖。`AnchoredPopover` 本身（定位、翻边、点外面关）也是自写的通用能力，未登记在 `self-written.json`。
+不是领域能力，**接入现成的，不自写**：Radix `@radix-ui/react-focus-scope`（1.1.16）。它本来就在依赖树里（`@radix-ui/react-dropdown-menu` → react-menu 的依赖，`src/design/menu.tsx`、`tooltip.tsx` 同一家），这次提为直接依赖（锁文件只多一行直接依赖，版本对齐已有那份）。`@floating-ui/react` 未安装；`AnchoredPopover` 的定位（翻边、点外面关）仍是自写通用能力，未登记在 `self-written.json`，是后续换 floating-ui 时一并处理的事。
 
 ### 6. 接入 / 补 / 重写 / 删 对比表 + 推荐
 
 | 选项 | 做什么 | 代价 | 风险 | 推荐 |
 |---|---|---|---|---|
-| 接入现成方案 | 把 `AnchoredPopover` 整个换成 `@floating-ui/react`（定位 + `FloatingFocusManager`） | 新增直接依赖（供应链 pin、包体）、12 个消费者逐个回归 | 面大，不是这个 PR 的范围 | 后续单独做（和定位一起换才划算） |
-| 补 | 在 `AnchoredPopover` 一处加 ~25 行非模态焦点管理：打开聚焦、浮层内 Tab 循环、关闭还给打开前的元素；悬停预览（`passThrough`）和自己管开合的浮层不碰 | 小 | 对其他有 `onClose` 的消费者行为有变（焦点进浮层）；已跑设计层单测与分镜键盘清单，未逐面走查 | **本次采用**：一次修好四处，不让各菜单各补 |
-| 重写（限一个模块） | 同接入 | | | 否 |
-| 删 | 去掉 Portal 退回原地 absolute | 又被表格裁掉 | 回到 879aa9156 之前的 bug | 否 |
+| 接入现成方案（焦点） | `AnchoredPopover` 对带 `onClose` 的浮层套 `<FocusScope asChild loop trapped>`；`onUnmountAutoFocus` 里「焦点已被用户挪走就不抢回」 | 一行直接依赖；放好位置前用 opacity 0 代替 visibility:hidden（FocusScope 挂载即聚焦） | 对其他带 onClose 的消费者行为有变；子树 autoFocus 的输入框不被抢（FocusScope 只在焦点不在内部时才聚焦第一项） | **本次采用** |
+| 接入现成方案（定位也换） | 整个换成 `@floating-ui/react` | 新依赖、12 个消费者回归 | 面大 | 后续单独做 |
+| 补（自写 tabbable 查询 + Tab 循环） | 第一版做过（~25 行） | 小 | 通用能力自写，评审否掉 | 否（已删） |
+| 删 | 去掉 Portal | 又被表格裁掉 | 回到 879aa9156 之前 | 否 |
 
 ### 7. 用户要权衡的核心
 

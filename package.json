@@ -267,6 +267,7 @@
     "@modelcontextprotocol/client": "2.3.0",
     "@modelcontextprotocol/node": "2.1.1",
     "@modelcontextprotocol/server": "2.3.0",
+    "@radix-ui/react-focus-scope": "1.1.16",
     "@xmldom/xmldom": "0.9.12",
     "ai": "^4.3.19",
     "electron-updater": "^6.8.9",
