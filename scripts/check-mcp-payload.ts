@@ -8,7 +8,8 @@ type Frame = { result?: unknown }
 const baselinePath = path.resolve('scripts/mcp-payload-baseline.json')
 const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8')) as { maxBytes?: number }
 const maxBytes = baseline.maxBytes
-if (!Number.isInteger(maxBytes) || maxBytes <= 0) throw new Error(`Invalid MCP payload baseline: ${baselinePath}`)
+if (!Number.isInteger(maxBytes) || (maxBytes as number) <= 0) throw new Error(`Invalid MCP payload baseline: ${baselinePath}`)
+const maxBytesValue = maxBytes as number
 
 /**
  * 抬基线必须逐条记账（2026-09-21）。
@@ -72,8 +73,8 @@ async function run(): Promise<void> {
     console.log(`MCP tools/list payload: ${actualBytes} bytes (zh-CN ${payloadBytesByLocale['zh-CN']}, en ${payloadBytesByLocale.en}; ratchet max ${maxBytes})`)
     assertLedgerExplainsBaseline(new Set((MCP_TOOL_RESOLVER.list() as unknown as { name?: unknown }[])
       .map((tool) => (typeof tool.name === 'string' ? tool.name : ''))))
-    if (actualBytes > maxBytes) {
-      throw new Error(`MCP payload ratchet failed: ${actualBytes} > ${maxBytes}`)
+    if (actualBytes > maxBytesValue) {
+      throw new Error(`MCP payload ratchet failed: ${actualBytes} > ${maxBytesValue}`)
     }
     console.log('MCP payload ratchet passed: baseline may only decrease')
   } finally {
