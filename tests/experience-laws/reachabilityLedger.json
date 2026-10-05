@@ -10,10 +10,6 @@
   "waivers": [],
   "knownGaps": [
     {
-      "class": "node-bar|aspect_ratio|param:select",
-      "ledgerId": "LAW11-ALIAS-DEDUPE"
-    },
-    {
       "class": "node-bar|bpm|param:number",
       "ledgerId": "LAW11-EMPTY-INPUT"
     },
@@ -32,10 +28,6 @@
     {
       "class": "node-bar|num_inference_steps|param:number",
       "ledgerId": "LAW11-EMPTY-INPUT"
-    },
-    {
-      "class": "node-bar|ratio|param:select",
-      "ledgerId": "LAW11-ALIAS-DEDUPE"
     },
     {
       "class": "node-bar|seed|param:number",
@@ -58,16 +50,8 @@
       "ledgerId": "LAW11-EMPTY-INPUT"
     },
     {
-      "class": "spend-card|aspect_ratio|param:select",
-      "ledgerId": "LAW11-ALIAS-DEDUPE"
-    },
-    {
       "class": "spend-card|num_inference_steps|param:number",
       "ledgerId": "LAW11-EMPTY-INPUT"
-    },
-    {
-      "class": "spend-card|ratio|param:select",
-      "ledgerId": "LAW11-ALIAS-DEDUPE"
     },
     {
       "class": "spend-card|seed|param:number",
