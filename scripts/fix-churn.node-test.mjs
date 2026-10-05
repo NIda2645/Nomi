@@ -7,7 +7,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, test } from 'node:test'
 import { decideDirectionTrailer, docLooksReal, subjectOf } from './check-direction-trailer.mjs'
-import { loadUnits, selfWrittenUnits } from './fix-churn-units.mjs'
+import { conceptUnits, CONCEPT_MAX_FILES, loadUnits, selfWrittenUnits } from './fix-churn-units.mjs'
 import { churnFor, directionMessage, findHotspots, isUnitSource, isFixSubject, isRevertOfFix, namespaceLines, parseDirectionTrailer, parseHunks, PRIOR_FIX_THRESHOLD, ROOT_NS, stagedNamespaces, touchedNamespaces } from './fix-churn.mjs'
 
 const SCRIPTS = path.dirname(fileURLToPath(import.meta.url))
@@ -243,7 +243,7 @@ describe('词典按功能键（命名空间）计数', () => {
   })
 })
 
-describe('按概念计数：自写登记条目（30 天 / 第 2 个）（30 天 / 第 2 个）', () => {
+describe('按概念计数：自写登记条目（30 天 / 第 2 个）与 concept-owners 概念（14 天 / 第 3 个）', () => {
   const day = 86400000
   const registry = (entries, genericZones = []) => ({ genericZones, entries })
   const entry = (over = {}) => ({ id: 'mcp-like', status: 'under-review', paths: ['src/mcp/a.ts', 'src/mcp/b.ts', 'src/mcp/c.ts'], ...over })
@@ -314,10 +314,27 @@ describe('按概念计数：自写登记条目（30 天 / 第 2 个）（30 天 
     } finally { r.cleanup() }
   })
 
+  test('概念（owner + write_api 的文件合起来）：14 天内第 3 个 fix 命中；单文件概念不单列；改大成「大概念」则不响', () => {
+    const concepts = (files) => ({ concepts: [{ name: '某概念', owner: { path: files[0] }, write_api: files.map((p) => ({ path: p })) }] })
+    const r = dated([{ subject: 'fix: one', file: 'src/c/a.ts', daysAgo: 6 }, { subject: 'fix: two', file: 'src/c/b.ts', daysAgo: 2 }])
+    try {
+      const units = conceptUnits(concepts(['src/c/a.ts', 'src/c/b.ts', 'src/c/c.ts']))
+      const hits = findHotspots(r.root, ['src/c/c.ts'], { units }).filter((h) => h.unit)
+      assert.equal(hits.length, 1)
+      assert.match(hits[0].reasons[0], /近 14 天已有 2 个 fix，这一刀是第 3 个/)
+      assert.equal(conceptUnits(concepts(['src/c/a.ts'])).length, 0)
+      // 概念大小上限：fix 碰过的不同文件超过上限，不当整体算
+      const many = Array.from({ length: CONCEPT_MAX_FILES + 1 }, (_, i) => `src/c/f${i}.ts`)
+      const r2 = dated(many.slice(0, CONCEPT_MAX_FILES + 1).map((file, i) => ({ subject: `fix: ${i}`, file, daysAgo: 3 })))
+      try { assert.equal(findHotspots(r2.root, [many[0]], { units: conceptUnits(concepts(many)) }).filter((h) => h.unit).length, 0) } finally { r2.cleanup() }
+    } finally { r.cleanup() }
+  })
+
   test('真实登记表读得出单位；词典文件不进单位（按功能键另数）；git 失败 fail-open', () => {
     const units = loadUnits(path.resolve(SCRIPTS, '..'))
     assert.ok(units.some((u) => u.kind === 'self-written' && u.id === 'mcp-protocol'))
-        assert.equal(isUnitSource('src/i18n/locales/zh.ts'), false)
+    assert.ok(units.some((u) => u.kind === 'concept'))
+    assert.equal(isUnitSource('src/i18n/locales/zh.ts'), false)
     assert.equal(isUnitSource('electron/a.test.ts'), false)
     assert.equal(isUnitSource('scripts/check-x.mjs'), true)
     assert.equal(loadUnits('/nonexistent-root').length, 0)
