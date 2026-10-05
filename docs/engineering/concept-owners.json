@@ -142,6 +142,14 @@
         {
           "path": "electron/shared/aspectRatioValue.ts",
           "symbol": "resolveAspectRatioChoice"
+        },
+        {
+          "path": "electron/shared/aspectRatioValue.ts",
+          "symbol": "placeAspectRatio"
+        },
+        {
+          "path": "electron/shared/storyboard/storyboardShotScope.ts",
+          "symbol": "foldRatioIntoSlot"
         }
       ],
       "forbidden_derivations": [
@@ -162,7 +170,7 @@
         "electron/parity/generationParityTestUtils.ts"
       ],
       "since": "2026-09-22",
-      "notes": "2026-09-22 总合并收口（合同 docs/fixes/2026-09-22-parameter-admission-one-owner.root-cause.json）。判据本体 = compileParameters，合法键集三档派生：档案 mode.params（videoCompileOptions / archetypeCompileOptions）→ mapping 的 create op 派生（moduleCatalogBootstrap.modelParameterSchema）→ 都拿不到则放行 + warning。拒绝形状只有 ParameterRejection 一套（droppedFields 账本已删）。「Nomi 自己消费、不上 wire」的意图键表下沉到 electron/capabilityCore/generationPlanningParameters.ts 的 GENERATION_PLANNING_HINTS（键 + 类型，唯一那一张；executionContract 只 re-export）——它是同一个概念的子表，不是第二个 owner。准入那一趟单独有入口 admitPlanCandidate：要校验参数的调用方走它，要整份合同（含提示词 @ 投影）的走 compileExecutionContract。刻意未收：electron/parity/generationParityTestUtils.ts 的对拍 harness 自己编一份（它的职责就是绕开生产装配），已在合同 door_reduction.why_not 点名。 2026-10-05（合同 docs/fixes/2026-10-05-agent-aspect-ratio-semantic.root-cause.json）：GENERATION_PLANNING_HINTS 删掉 aspectRatio（它曾把 Agent 写的比例静默吞掉）；语义比例在写入口由 normalizeAuthoredCandidate → projectSemanticAspectRatio 翻成所选模式的真实键，判据 resolveAspectRatioChoice 住 electron/shared/aspectRatioValue.ts（画布参数面板同读）。三者都是本概念的写接口，不是新主人。"
+      "notes": "2026-09-22 总合并收口（合同 docs/fixes/2026-09-22-parameter-admission-one-owner.root-cause.json）。判据本体 = compileParameters，合法键集三档派生：档案 mode.params（videoCompileOptions / archetypeCompileOptions）→ mapping 的 create op 派生（moduleCatalogBootstrap.modelParameterSchema）→ 都拿不到则放行 + warning。拒绝形状只有 ParameterRejection 一套（droppedFields 账本已删）。「Nomi 自己消费、不上 wire」的意图键表下沉到 electron/capabilityCore/generationPlanningParameters.ts 的 GENERATION_PLANNING_HINTS（键 + 类型，唯一那一张；executionContract 只 re-export）——它是同一个概念的子表，不是第二个 owner。准入那一趟单独有入口 admitPlanCandidate：要校验参数的调用方走它，要整份合同（含提示词 @ 投影）的走 compileExecutionContract。刻意未收：electron/parity/generationParityTestUtils.ts 的对拍 harness 自己编一份（它的职责就是绕开生产装配），已在合同 door_reduction.why_not 点名。 2026-10-05（合同 docs/fixes/2026-10-05-agent-aspect-ratio-semantic.root-cause.json）：GENERATION_PLANNING_HINTS 删掉 aspectRatio（它曾把 Agent 写的比例静默吞掉）；语义比例在写入口由 normalizeAuthoredCandidate → projectSemanticAspectRatio 翻成所选模式的真实键，判据 resolveAspectRatioChoice 住 electron/shared/aspectRatioValue.ts（画布参数面板同读）。三者都是本概念的写接口，不是新主人。 2026-10-05（合同 docs/fixes/2026-10-05-storyboard-ratio-and-merge.root-cause.json）：分镜落画布 / 写回节点 / 批量条三处改调 placeAspectRatio（同一份比例判据）；分镜方案里比例只住 aspect_ratio 槽，foldRatioIntoSlot 收拢。"
     },
     {
       "name": "供应商落家",
@@ -3630,6 +3638,10 @@
         {
           "path": "electron/capabilityCore/appIntegrationSpendConfirm.ts",
           "symbol": "normalizePatch"
+        },
+        {
+          "path": "electron/shared/generationParameterPatch.ts",
+          "symbol": "mergeNamedParameters"
         }
       ],
       "forbidden_derivations": [],
@@ -3641,7 +3653,7 @@
         "electron/capabilityCore/agentPanelSpendConfirmTestUtils.ts"
       ],
       "since": "2026-10-02",
-      "notes": "全功能走查 pb02（合同 docs/fixes/2026-10-02-card-revise-merge-rule.root-cause.json）：付费卡上切到「图生图」只改了模式 id，种类还是文生图，派发按文生图挑供应商的 mapping，带参考图的那一下在出站前被拒。候选补丁只有一条并入规则 resolvePlanPatch：换模型或换生成方式（modeId）时种类跟过去（modeTransportFor，和画布挑桶、视频候选归一同一个函数），按目录里这个模型的拼法写回，再核这一对在目录里真有。Agent 改草稿（mcpGenerationTools patch）和卡上改一下（appIntegrationSpendConfirm.revise，经必填注入的 normalizePatch 槽位）都走它；generation.revise / generation.patch 只把它返回的那一份写进计划（applyGenerationCandidatePatch）。"
+      "notes": "全功能走查 pb02（合同 docs/fixes/2026-10-02-card-revise-merge-rule.root-cause.json）：付费卡上切到「图生图」只改了模式 id，种类还是文生图，派发按文生图挑供应商的 mapping，带参考图的那一下在出站前被拒。候选补丁只有一条并入规则 resolvePlanPatch：换模型或换生成方式（modeId）时种类跟过去（modeTransportFor，和画布挑桶、视频候选归一同一个函数），按目录里这个模型的拼法写回，再核这一对在目录里真有。Agent 改草稿（mcpGenerationTools patch）和卡上改一下（appIntegrationSpendConfirm.revise，经必填注入的 normalizePatch 槽位）都走它；generation.revise / generation.patch 只把它返回的那一份写进计划（applyGenerationCandidatePatch）。 2026-10-05：参数修订按键合并（RFC 7396，null 删键）抽成 electron/shared/generationParameterPatch.ts 的 mergeNamedParameters，宿主改草稿与文稿方案改一镜（storyboardSubjectAdapter.patchStoryboardSubject）共用。"
     },
     {
       "name": "这一镜现在派出去还算不算用户同意过（同意窗口）",

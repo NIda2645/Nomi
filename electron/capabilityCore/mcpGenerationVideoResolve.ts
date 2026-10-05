@@ -304,12 +304,14 @@ export function normalizeAuthoredCandidate(
   candidate: PlanCandidate,
   registry: ParameterSchemaRegistry,
   candidates: readonly VideoModelCandidate[] | undefined,
+  /** 改草稿时这一镜原有的参数（只用来判像素档的「同一档」，见 `projectSemanticAspectRatio`）。 */
+  tierReference?: Readonly<Record<string, unknown>>,
 ): PlanCandidate {
   const normalized = normalizeVideoCandidate(candidate, candidates);
   const accepted = acceptedParameterSchema(normalized, registry, candidates);
   // 目录里认不出这个模型 / 模式：这里不替它编一句「没有比例」——紧接着的身份准入（`admitShotIdentity` /
   // `admitPlanCandidate`）会说出真正的原因；语义键原样留着，到不了线缆（编合同时是未知参数，当场拒）。
-  return accepted ? admitAuthoredDuration(projectSemanticAspectRatio(normalized, accepted), accepted) : normalized;
+  return accepted ? admitAuthoredDuration(projectSemanticAspectRatio(normalized, accepted, tierReference), accepted) : normalized;
 }
 
 /**

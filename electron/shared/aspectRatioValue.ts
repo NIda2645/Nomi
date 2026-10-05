@@ -230,3 +230,61 @@ export function resolveAspectRatioChoice(
   });
   return sameRatio.length === 0 ? notOffered() : pickBySize(sameRatio, drift);
 }
+
+/** 这个模式唯一的比例控件的键；没有、或不止一个 → undefined（不挑一个）。 */
+export function aspectRatioControlKey(controls: readonly AspectRatioControlLike[]): string | undefined {
+  const ratioControls = controls.filter((control) => isRatioControl(control.options));
+  return ratioControls.length === 1 ? ratioControls[0]!.key : undefined;
+}
+
+/**
+ * 「比例意图」住的语义槽：分镜方案的行级 / 整片画幅写在 `aspect_ratio`（`storyboardShotScope` 的 FILM_DEFAULTS），
+ * 模型面与宿主候选的语义键是 `aspectRatio`。它们都**不是**某一家的参数名——Z-Image 叫 `size`、Agnes 叫 `ratio`。
+ */
+const ASPECT_RATIO_INTENT_KEYS = [ASPECT_RATIO_SEMANTIC_KEY, "aspect_ratio"] as const;
+
+/** 一份参数把比例意图落到这个模式上的结果：落上了 / 这个模式没有这个比例（如实缺席）/ 本来就没写比例。 */
+export type AspectRatioPlacement = Readonly<{
+  parameters: Record<string, unknown>;
+  outcome: "placed" | "unsupported" | "none";
+}>;
+
+/**
+ * 分镜 / 画布落地那一层用的：把参数里的比例意图（语义槽）翻成这个模式的真实比例键与选项值。
+ * 判据就是 `resolveAspectRatioChoice`（宿主翻译同一份）：写法与某档同串 → 那一档；像素档按同档挑；
+ * 这个模式没有比例选择或没有这一档 → `unsupported`，语义槽从参数里拿掉（诚实缺席，不发一个供应商不认的键）。
+ * 语义槽恰好就是这个模式的真实键（Nano Banana 2 kie 的 `aspect_ratio`）时，合法值原样留着。
+ */
+export function placeAspectRatio(
+  parameters: Readonly<Record<string, unknown>>,
+  controls: readonly AspectRatioControlLike[],
+): AspectRatioPlacement {
+  const intentKey = ASPECT_RATIO_INTENT_KEYS.find((key) => typeof parameters[key] === "string" && (parameters[key] as string).trim());
+  if (!intentKey) return { parameters: { ...parameters }, outcome: "none" };
+  const requested = (parameters[intentKey] as string).trim();
+  const key = aspectRatioControlKey(controls);
+  const out: Record<string, unknown> = { ...parameters };
+  for (const intent of ASPECT_RATIO_INTENT_KEYS) if (intent !== key) delete out[intent];
+  if (!key) return { parameters: out, outcome: "unsupported" };
+  const control = controls.find((candidate) => candidate.key === key)!;
+  if (control.options.some(({ value }) => Object.is(value, requested))) return { parameters: { ...out, [key]: requested }, outcome: "placed" };
+  const choice = resolveAspectRatioChoice(requested, controls, parameters);
+  if (!choice.ok) {
+    delete out[key];
+    // 真实键原来写着的合法值（不是这次的意图）留着：只拿掉翻不过去的那一个。
+    if (key !== intentKey && parameters[key] !== undefined) out[key] = parameters[key];
+    return { parameters: out, outcome: "unsupported" };
+  }
+  return { parameters: { ...out, [choice.key]: choice.value }, outcome: "placed" };
+}
+
+/** 档案的参数控件（`{ key, options: [{ value, label }], defaultValue }`）→ 本模块的控件形状。 */
+export function aspectRatioControlsOf(
+  controls: readonly Readonly<{ key: string; options?: readonly Readonly<{ value: unknown; label?: string }>[]; defaultValue?: unknown }>[],
+): AspectRatioControlLike[] {
+  return controls.map((control) => ({
+    key: control.key,
+    options: (control.options ?? []).map((option) => ({ value: option.value, ...(option.label !== undefined ? { text: option.label } : {}) })),
+    ...(control.defaultValue !== undefined ? { defaultValue: control.defaultValue } : {}),
+  }));
+}

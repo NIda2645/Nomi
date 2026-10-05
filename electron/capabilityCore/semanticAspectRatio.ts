@@ -25,6 +25,11 @@ const display = (value: unknown): string => (typeof value === "string" ? value :
 export function projectSemanticAspectRatio(
   candidate: PlanCandidate,
   parameterSchema: Readonly<Record<string, ParameterField>>,
+  /**
+   * 改草稿时这一镜**原有**的参数：只拿来判「同一档」（像素档同比例多档时留在原来那一档），
+   * 不参与「两处写的不一样」的冲突判断——改比例本来就是要换掉原来那个值。
+   */
+  tierReference: Readonly<Record<string, unknown>> = {},
 ): PlanCandidate {
   if (!Object.prototype.hasOwnProperty.call(candidate.parameters, ASPECT_RATIO_SEMANTIC_KEY)) return candidate;
   const { [ASPECT_RATIO_SEMANTIC_KEY]: requested, ...rest } = candidate.parameters;
@@ -41,7 +46,7 @@ export function projectSemanticAspectRatio(
     key, options: (field.enum ?? []).map((value) => ({ value })), defaultValue: field.default,
   }));
   // `rest` 里调用方自己写着的真实键是「这一镜当前那一档」：像素档同比例多档时按它挑同档。
-  const choice = resolveAspectRatioChoice(requested, controls, rest);
+  const choice = resolveAspectRatioChoice(requested, controls, { ...tierReference, ...rest });
   if (!choice.ok) {
     if (choice.reason === "several_sizes") {
       throw new ContractCompilationError(
