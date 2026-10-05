@@ -33,10 +33,20 @@ const registry = createModuleRegistry([{
       { modelId: "kling-v3.0-pro", modes: ["text_to_video", "image_to_video"], parameterSchema: {}, capabilities },
       { modelId: "seedance-2.0-global", modes: ["text_to_video"], parameterSchema: {}, capabilities },
     ] },
-    { providerId: "runway", models: [{ modelId: "wan/3-0-video", modes: ["text_to_video"], parameterSchema: {}, capabilities }] },
+    { providerId: "runway", models: [
+      { modelId: "wan/3-0-video", modes: ["text_to_video"], parameterSchema: {}, capabilities },
+      { modelId: "veo3.1_fast", modes: ["text_to_video"], parameterSchema: {}, capabilities },
+      { modelId: "seedance2_fast", modes: ["text_to_video"], parameterSchema: {}, capabilities },
+      { modelId: "gen4_image", modes: ["text_to_image"], parameterSchema: {}, capabilities },
+      { modelId: "gemini_image3_pro", modes: ["text_to_image"], parameterSchema: {}, capabilities },
+      { modelId: "gpt_image_2", modes: ["text_to_image"], parameterSchema: {}, capabilities },
+      { modelId: "seedream5_lite", modes: ["text_to_image"], parameterSchema: {}, capabilities },
+    ] },
     // 没有档案、参数表只在目录里的那种模型（自接 / 中转站）：翻译读的是 registry 那一份。
     { providerId: "relay", models: [
       { modelId: "custom-image", modes: ["text_to_image"], parameterSchema: { aspect_ratio: { type: "enum", enum: ["16:9", "1:1"] }, seed: { type: "number" } }, capabilities },
+      // 像素档、目录里没声明默认值：同一个比例两档分辨率，判不出要哪一档。
+      { modelId: "pixel-image", modes: ["text_to_image"], parameterSchema: { aspect_ratio: { type: "enum", enum: ["1280:720", "1920:1080", "1024:1024"] } }, capabilities },
     ] },
   ],
 }]);
@@ -124,11 +134,6 @@ describe("翻不了就当场拒，带合法值，绝不回落默认", () => {
     expect(rejection(() => translate("runninghub", "kling-v3.0-pro", "image_to_video", { aspectRatio: "16:9" })).code).toBe("unknown_parameter");
   });
 
-  it("像素 W:H 档（Runway 的 Wan 3.0：1280:720 混着 auto_720p）不算比例控件——一个 16:9 对应好几档分辨率，不替用户挑", () => {
-    const error = rejection(() => translate("runway", "wan/3-0-video", "text_to_video", { aspectRatio: "16:9" }));
-    expect(error.code).toBe("unknown_parameter");
-    expect(error.message).toMatch(/aspect_ratio/);
-  });
 
   it("同一件事写两处且不一样：aspectRatio 与 parameters 里的真实键 → 拒；一样 → 放行", () => {
     expect(() => translate("apimart", "z-image-turbo", "text_to_image", { aspectRatio: "16:9", size: "1:1" })).toThrow(/two different ratios/);
@@ -145,6 +150,54 @@ describe("翻不了就当场拒，带合法值，绝不回落默认", () => {
     ));
     expect(error.code).toBe("unknown_parameter");
     expect(error.rejection?.closestKey).toBe("aspect_ratio");
+  });
+});
+
+describe("像素档（Runway 那一层：选项是 1280:720 这种像素串）——比例相等就对上，同比例多档按同一档挑", () => {
+  it("视频、精确比例、两档同比例（Veo 3.1）：取和默认 1280:720 同档的；9:16 同理", () => {
+    expect(translate("runway", "veo3.1_fast", "text_to_video", { aspectRatio: "16:9" })).toEqual({ aspect_ratio: "1280:720" });
+    expect(translate("runway", "veo3.1_fast", "text_to_video", { aspectRatio: "9:16" })).toEqual({ aspect_ratio: "720:1280" });
+  });
+
+  it("这一镜写着的那一档优先于默认：已经是 1920:1080 再说 16:9，留在 1080 档（不算两处冲突）", () => {
+    expect(translate("runway", "veo3.1_fast", "text_to_video", { aspectRatio: "16:9", aspect_ratio: "1920:1080" })).toEqual({ aspect_ratio: "1920:1080" });
+  });
+
+  it("等面积分档（Seedance 2）：1:1 落 960:960、21:9 落 1470:630（都和 1280:720 同档）", () => {
+    expect(translate("runway", "seedance2_fast", "text_to_video", { aspectRatio: "1:1" })).toEqual({ aspect_ratio: "960:960" });
+    expect(translate("runway", "seedance2_fast", "text_to_video", { aspectRatio: "21:9" })).toEqual({ aspect_ratio: "1470:630" });
+  });
+
+  it("按短边分档、带「自动 + 分辨率档」（Wan 3.0）：16:9 → 1280:720，1:1 → 720:720，auto → auto_720p", () => {
+    expect(translate("runway", "wan/3-0-video", "text_to_video", { aspectRatio: "16:9" })).toEqual({ aspect_ratio: "1280:720" });
+    expect(translate("runway", "wan/3-0-video", "text_to_video", { aspectRatio: "1:1" })).toEqual({ aspect_ratio: "720:720" });
+    expect(translate("runway", "wan/3-0-video", "text_to_video", { aspectRatio: "auto" })).toEqual({ aspect_ratio: "auto_720p" });
+  });
+
+  it("图片、同档里有精确与近似两项（gen4）：取比例最贴的 1280:720；1:1 就是默认那一档 1024:1024", () => {
+    expect(translate("runway", "gen4_image", "text_to_image", { aspectRatio: "16:9" })).toEqual({ aspect_ratio: "1280:720" });
+    expect(translate("runway", "gen4_image", "text_to_image", { aspectRatio: "1:1" })).toEqual({ aspect_ratio: "1024:1024" });
+  });
+
+  it("供应商取整的近似比例也算同一个比例（Gemini 图像 3 的 16:9 档是 1344:768）", () => {
+    expect(translate("runway", "gemini_image3_pro", "text_to_image", { aspectRatio: "16:9" })).toEqual({ aspect_ratio: "1344:768" });
+  });
+
+  it("按长边分档的大图（gpt-image-2 默认 1920:1920、Seedream 5 Lite 默认 2048:2048）：取同面积那一档", () => {
+    expect(translate("runway", "gpt_image_2", "text_to_image", { aspectRatio: "16:9" })).toEqual({ aspect_ratio: "2560:1440" });
+    expect(translate("runway", "seedream5_lite", "text_to_image", { aspectRatio: "16:9" })).toEqual({ aspect_ratio: "2848:1600" });
+  });
+
+  it("判不出要哪一档就拒并列出候选（像素档、没有默认值）——不随便挑一个", () => {
+    const error = rejection(() => translate("relay", "pixel-image", "text_to_image", { aspectRatio: "16:9" }));
+    expect(error.code).toBe("parameter_not_in_enum");
+    expect(error.rejection?.allowedValues).toEqual(["1280:720", "1920:1080"]);
+    // 只有一档同比例时不需要参照：1:1 就是 1024:1024。
+    expect(translate("relay", "pixel-image", "text_to_image", { aspectRatio: "1:1" })).toEqual({ aspect_ratio: "1024:1024" });
+  });
+
+  it("像素档里没有这个比例照样拒（Veo 3.1 没有 1:1）", () => {
+    expect(rejection(() => translate("runway", "veo3.1_fast", "text_to_video", { aspectRatio: "1:1" })).code).toBe("parameter_not_in_enum");
   });
 });
 

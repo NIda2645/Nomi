@@ -38,10 +38,18 @@ export function projectSemanticAspectRatio(
     );
   }
   const controls = Object.entries(parameterSchema).map(([key, field]) => ({
-    key, options: (field.enum ?? []).map((value) => ({ value })),
+    key, options: (field.enum ?? []).map((value) => ({ value })), defaultValue: field.default,
   }));
-  const choice = resolveAspectRatioChoice(requested, controls);
+  // `rest` 里调用方自己写着的真实键是「这一镜当前那一档」：像素档同比例多档时按它挑同档。
+  const choice = resolveAspectRatioChoice(requested, controls, rest);
   if (!choice.ok) {
+    if (choice.reason === "several_sizes") {
+      throw new ContractCompilationError(
+        `${model} offers ${requested.trim()} in several sizes (parameter ${choice.key}): ${choice.candidates.map(display).join(", ")}. `
+        + `Nomi cannot tell which size this shot wants; set parameters.${choice.key} to one of them, or ask the user.`,
+        { code: "parameter_not_in_enum", path: `parameters.${choice.key}`, allowedValues: choice.candidates.filter(isPrimitive), allowedKeys },
+      );
+    }
     if (choice.reason === "not_offered") {
       throw new ContractCompilationError(
         `${model} cannot make ${requested.trim()} in this mode. Its ratio choices (parameter ${choice.key}): `

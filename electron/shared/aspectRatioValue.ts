@@ -70,12 +70,11 @@ export function normalizeAspectRatioToWH(value: unknown): string | null {
 
 /**
  * 两个比例值是不是同一档的比对键：「16:9」「16：9」「16 : 9」「16:9 (宽屏)」「landscape_16_9」都是 `16:9`。
- * 不约分——`32:18` 不是 `16:9` 那一档（像素尺寸串约分后会撞上真比例，替用户挑分辨率）。
+ * 不约分——`1920:1080` 不是 `16:9` 这个**串**（像素档按比例对上走下面「像素档」那一段，要过同档判断）。
  */
 function aspectRatioMatchKey(value: unknown): string | null {
-  const wh = normalizeAspectRatioToWH(value);
-  const match = wh?.match(/^(\d+(?:\.\d+)?)\s*[:：]\s*(\d+(?:\.\d+)?)$/);
-  return match ? `${Number(match[1])}:${Number(match[2])}` : null;
+  const size = widthHeightOf(value);
+  return size ? `${size.width}:${size.height}` : null;
 }
 
 export function isAutoOptionValue(value: unknown): boolean {
@@ -95,39 +94,139 @@ export function optionsAreAspectRatios(options: readonly AspectRatioOptionLike[]
     normalizeAspectRatioToWH(value) !== null || normalizeAspectRatioToWH(text ?? "") !== null);
 }
 
-/** 一个参数控件（只要键与选项）。 */
-export type AspectRatioControlLike = Readonly<{ key: string; options: readonly AspectRatioOptionLike[] }>;
+// ── 像素档（2026-10-05 验收补）────────────────────────────────────────────────────────────────
+//
+// Runway 那一层的 Seedance 2 / Veo 3.1 / gen4 / Gemini 图像 3 / gpt-image-2 / Seedream 5 等，比例控件的选项是
+// **像素串**（`1280:720`、`1920:1080`、`1344:768`）：一个选项同时定了比例和分辨率。用户说 16:9 时，它们的比例
+// 就是 16:9（或供应商取整后的近似：Gemini 的 16:9 档是 1344:768，gpt-image-2 的是 1920:1088），应该直接对上。
+// 但同一个比例常有好几档分辨率——挑哪一档就是挑价钱，所以只认「和这一镜当前那一档 / 控件默认那一档同档」的，
+// 判不出来就拒并列出候选，绝不随便挑。
+
+/** 两个比例算「同一个比例」的相对误差上限。供应商取整的近似都在 2% 以内；相邻的常用比例（16:9 与 5:3、4:3 与 5:4）差 6% 以上。 */
+const PIXEL_RATIO_TOLERANCE = 0.03;
+/**
+ * 两档像素尺寸算「同一档」：短边相等（Wan 的 720p 档 = 1280:720 / 960:720 / 720:720），或面积差在 1.25 倍以内
+ * （Seedance 的 720p 档 = 1280:720 / 960:960，等面积）。各家相邻两档至少差 2 倍面积（720p→1080p 是 2.25 倍）。
+ */
+const SAME_TIER_AREA_FACTOR = 1.25;
+/** 短边达到这个数才算像素串（`1:8`、`21:9` 这类比例串的数都很小）。 */
+const PIXEL_MIN_SIDE = 100;
+
+type WidthHeight = Readonly<{ width: number; height: number }>;
+
+function widthHeightOf(value: unknown): WidthHeight | null {
+  const match = normalizeAspectRatioToWH(value)?.match(/^(\d+(?:\.\d+)?)\s*[:：]\s*(\d+(?:\.\d+)?)$/);
+  if (!match) return null;
+  const width = Number(match[1]);
+  const height = Number(match[2]);
+  return width > 0 && height > 0 ? { width, height } : null;
+}
+
+const isPixelSize = (size: WidthHeight): boolean => Math.min(size.width, size.height) >= PIXEL_MIN_SIDE;
+
+/**
+ * 「自动 + 分辨率档」的选项（`auto_720p` / `auto_2k`，Runway 的 Wan 3.0、Seedream 5 Pro、Grok Imagine）。
+ * 它们是自动比例的几个分辨率档，不是比例，也不是普通的「自动」（三个都叫自动就分不清了）。
+ */
+const TIERED_AUTO_PATTERN = /^auto_(\d+)\s*(p|k)$/i;
+
+type SizeTier = Readonly<{ area: number; shortSide?: number }>;
+
+/** 一档的尺寸：像素串直接算；`auto_720p` = 短边 720（面积按 16:9 算），`auto_2k` = 2048 见方的面积。 */
+function tierOf(value: unknown): SizeTier | null {
+  const size = widthHeightOf(value);
+  if (size) return isPixelSize(size) ? { area: size.width * size.height, shortSide: Math.min(size.width, size.height) } : null;
+  const tiered = typeof value === "string" ? value.trim().match(TIERED_AUTO_PATTERN) : null;
+  if (!tiered) return null;
+  const amount = Number(tiered[1]);
+  return tiered[2]!.toLowerCase() === "p" ? { area: (amount * 16 / 9) * amount, shortSide: amount } : { area: (amount * 1024) ** 2 };
+}
+
+function sameTier(candidate: SizeTier, reference: SizeTier): boolean {
+  if (candidate.shortSide !== undefined && candidate.shortSide === reference.shortSide) return true;
+  return Math.max(candidate.area, reference.area) / Math.min(candidate.area, reference.area) <= SAME_TIER_AREA_FACTOR;
+}
+
+/** 比例控件（宿主翻译用）：除自动档与「自动 + 分辨率档」外，每一项都是比例或像素串。 */
+function isRatioControl(options: readonly AspectRatioOptionLike[]): boolean {
+  return optionsAreAspectRatios(options.filter(({ value }) =>
+    !(typeof value === "string" && TIERED_AUTO_PATTERN.test(value.trim()))));
+}
+
+/** 一个参数控件（键、选项、档案声明的默认值）。 */
+export type AspectRatioControlLike = Readonly<{
+  key: string;
+  options: readonly AspectRatioOptionLike[];
+  defaultValue?: unknown;
+}>;
 
 /** 想要的比例落到哪个键、哪个值上；落不了时说清是哪一种落不了。 */
 export type AspectRatioChoice =
   | Readonly<{ ok: true; key: string; value: unknown }>
   | Readonly<{ ok: false; reason: "no_ratio_control" }>
   | Readonly<{ ok: false; reason: "ambiguous"; keys: readonly string[] }>
-  | Readonly<{ ok: false; reason: "not_offered"; key: string; allowedValues: readonly unknown[] }>;
+  | Readonly<{ ok: false; reason: "not_offered"; key: string; allowedValues: readonly unknown[] }>
+  /** 同一个比例有好几档分辨率，而这一镜判不出要哪一档：列出这几档，让调用方挑。 */
+  | Readonly<{ ok: false; reason: "several_sizes"; key: string; candidates: readonly unknown[] }>;
 
 /**
  * 「用户要 16:9」→「这个模式的哪个控件、哪一档」。纯函数，读者给出这个模式的控件表即可。
  *
- * - 比例控件 = `optionsAreAspectRatios` 成立的那个；一个都没有 → `no_ratio_control`（比例跟着输入图走的模式、
- *   或只按像素档给尺寸的模式）；两个以上 → `ambiguous`（今天全目录 0 例，出现了就拒，不挑一个）。
- * - `auto`（或任何自动词）→ 控件自己的自动档值，原样（`auto` / `adaptive`）；没有自动档 → `not_offered`。
- * - 其余按比对键找那一档，返回**选项自己的值**（`landscape_16_9` 那一档就回 `landscape_16_9`）。
+ * - 比例控件 = 除自动档外每一项都是比例或像素串的那个；一个都没有 → `no_ratio_control`（比例跟着输入图走的模式）；
+ *   两个以上 → `ambiguous`（今天全目录 0 例，出现了就拒，不挑一个）。
+ * - `auto` → 控件自己的自动档（`auto` / `adaptive`）；只有「自动 + 分辨率档」的按同档规则挑；都没有 → `not_offered`。
+ * - 写法与某个选项是同一个比例串 → 那一档（`landscape_16_9` 那一档就回 `landscape_16_9`）。
+ * - 否则看像素档：比例相等（误差 ≤ 3%）的那几档里，只有一档 → 它；好几档 → 取和**这一镜当前那一档**
+ *   （`current`，调用方写在参数里的值）或**控件默认那一档**同档的；判不出 → `several_sizes` 带候选。
  */
-export function resolveAspectRatioChoice(requested: string, controls: readonly AspectRatioControlLike[]): AspectRatioChoice {
-  const ratioControls = controls.filter((control) => optionsAreAspectRatios(control.options));
+export function resolveAspectRatioChoice(
+  requested: string,
+  controls: readonly AspectRatioControlLike[],
+  current: Readonly<Record<string, unknown>> = {},
+): AspectRatioChoice {
+  const ratioControls = controls.filter((control) => isRatioControl(control.options));
   if (ratioControls.length === 0) return { ok: false, reason: "no_ratio_control" };
   if (ratioControls.length > 1) return { ok: false, reason: "ambiguous", keys: ratioControls.map((control) => control.key) };
   const control = ratioControls[0]!;
-  const notOffered = (): AspectRatioChoice => ({
-    ok: false, reason: "not_offered", key: control.key, allowedValues: control.options.map((option) => option.value),
-  });
+  const values = control.options.map((option) => option.value);
+  const notOffered = (): AspectRatioChoice => ({ ok: false, reason: "not_offered", key: control.key, allowedValues: values });
+  const chosen = (value: unknown): AspectRatioChoice => ({ ok: true, key: control.key, value });
+  // 同档的参照：这一镜写着的那一档优先，其次档案默认。
+  const referenceValue = tierOf(current[control.key]) ? current[control.key] : tierOf(control.defaultValue) ? control.defaultValue : undefined;
+  const reference = referenceValue === undefined ? null : tierOf(referenceValue);
+  const pickBySize = (candidates: readonly unknown[], closeness: (value: unknown) => number): AspectRatioChoice => {
+    if (candidates.length === 1) return chosen(candidates[0]);
+    // 参照那一档本身就是候选之一（默认 1024:1024，要 1:1）→ 就是它。
+    if (referenceValue !== undefined && candidates.some((value) => Object.is(value, referenceValue))) return chosen(referenceValue);
+    const atTier = reference === null ? [] : candidates.filter((value) => sameTier(tierOf(value)!, reference));
+    if (atTier.length === 0) return { ok: false, reason: "several_sizes", key: control.key, candidates };
+    const ranked = [...atTier].sort((left, right) => closeness(left) - closeness(right));
+    if (ranked.length > 1 && closeness(ranked[0]) === closeness(ranked[1])) {
+      return { ok: false, reason: "several_sizes", key: control.key, candidates: atTier };
+    }
+    return chosen(ranked[0]);
+  };
+
   if (isAutoOptionValue(requested)) {
     const auto = control.options.find(({ value, text }) => isAutoOptionValue(value) || isAutoOptionValue(text ?? ""));
-    return auto ? { ok: true, key: control.key, value: auto.value } : notOffered();
+    if (auto) return chosen(auto.value);
+    const tiered = values.filter((value) => typeof value === "string" && TIERED_AUTO_PATTERN.test(value.trim()));
+    return tiered.length > 0 ? pickBySize(tiered, () => 0) : notOffered();
   }
   const wanted = aspectRatioMatchKey(requested);
   if (wanted === null) return notOffered();
-  const match = control.options.find(({ value, text }) =>
+  const exact = control.options.find(({ value, text }) =>
     aspectRatioMatchKey(value) === wanted || aspectRatioMatchKey(text ?? "") === wanted);
-  return match ? { ok: true, key: control.key, value: match.value } : notOffered();
+  if (exact) return chosen(exact.value);
+  const target = widthHeightOf(wanted)!;
+  const targetRatio = target.width / target.height;
+  const drift = (value: unknown): number => {
+    const size = widthHeightOf(value)!;
+    return Math.abs((size.width / size.height) / targetRatio - 1);
+  };
+  const sameRatio = values.filter((value) => {
+    const size = widthHeightOf(value);
+    return size !== null && isPixelSize(size) && drift(value) <= PIXEL_RATIO_TOLERANCE;
+  });
+  return sameRatio.length === 0 ? notOffered() : pickBySize(sameRatio, drift);
 }

@@ -21,7 +21,9 @@
     "electron/catalog/taskParams.ts",
     "electron/shared/aspectRatioValue.ts",
     "electron/shared/agentCapabilities/",
-    "src/workbench/generationCanvas/nodes/"
+    "src/workbench/generationCanvas/nodes/",
+    "electron/capabilityCore/moduleManifest.ts",
+    "electron/capabilityCore/modelAdmissionSchema.ts"
   ],
   "entry_points": [
     "Agent lane draft_shots -> laneVerbTransport.verbToTransportCall -> draftShotsProjection.semanticsOf -> generation.plan create (multi-shot) -> mcpGenerationTools create branch -> normalizeAuthoredCandidate",
@@ -47,7 +49,8 @@
     "A stored generation candidate never carries the semantic key aspectRatio unless the selected mode's real ratio parameter is itself named aspectRatio.",
     "The ratio a caller asked for either lands on the selected mode's single ratio control with one of that control's own option values, or the write is refused with the legal values; it never falls back to the profile default.",
     "Only electron/shared/aspectRatioValue.ts decides what counts as a ratio value and a ratio control; the canvas parameter panel and the host read the same predicate.",
-    "On the draft_shots model face the ratio has one home (shots[].aspectRatio); parameters.aspectRatio is refused."
+    "On the draft_shots model face the ratio has one home (shots[].aspectRatio); parameters.aspectRatio is refused.",
+    "A requested ratio never selects a pixel size from a different size tier than the shot's current value or the profile default; when the tier cannot be told the write is refused with the same-ratio candidates."
   ],
   "invariant_owner_layer": {
     "layer": "electron/capabilityCore/semanticAspectRatio.ts",
@@ -74,7 +77,7 @@
     "after": 2,
     "why_not": "The two files are the two write entries of a caller-authored candidate: mcpGenerationTools.ts owns create (multi-shot and single-shot branches in one file), generationPlanPatch.ts owns revising a draft. Both already existed and both must keep existing; neither carries its own rule any more, both call the one function normalizeAuthoredCandidate, which is the only caller of projectSemanticAspectRatio."
   },
-  "generality_proof": "The translation reads the selected mode's accepted parameter table (acceptedParameterSchema: profile projection first, registry otherwise, the same order admission uses) and picks the control by its options, not by its key name. A full scan of 376 profile x variant x mode x vendor combinations finds 263 with exactly one ratio control (keys aspect_ratio 143, size 56, ratio 56, aspectRatio 8), none with two, and 113 with none; every one of those populations is covered by a test with a real profile. Removing aspectRatio from GENERATION_PLANNING_HINTS means any semantic ratio that escapes translation is an unknown parameter at contract compile time, so no future caller can reintroduce the silent path.",
+  "generality_proof": "The translation reads the selected mode's accepted parameter table (acceptedParameterSchema: profile projection first, registry otherwise, the same order admission uses) and picks the control by its options, not by its key name. Census over every profile x variant x vendor layer x mode combination (electron/shared/aspectRatioValue.census.test.ts, the same counting rule as acceptance line V-1023): 336 combinations, 231 with a ratio control by the shared predicate plus 13 whose ratio control also carries tiered auto options (244 translatable), 92 with no ratio choice, none with two. The 56 combinations whose options are pixel sizes (Runway) map a requested ratio to the pixel option of equal ratio (3% tolerance) at the same size tier as the shot's current value or the profile default, and refuse with the candidates when the tier cannot be told; the census asserts 16:9 and 9:16 resolve on all 56. Removing aspectRatio from GENERATION_PLANNING_HINTS means any semantic ratio that escapes translation is an unknown parameter at contract compile time, so no future caller can reintroduce the silent path.",
   "shared_boundaries": [
     {
       "path": "electron/capabilityCore/semanticAspectRatio.ts",
@@ -129,7 +132,7 @@
     "reason": "Any model, any external MCP host and any future profile whose ratio key differs from the model's guess reaches the same mechanism; the same shape already recurred for duration (2026-09-18 and 2026-09-21).",
     "same_class_scan": [
       "git grep -n \"aspectRatio\\|aspect_ratio\" electron/capabilityCore electron/shared/agentCapabilities",
-      "scan of MODEL_ARCHETYPES ratio controls by option set (376 combinations, keys aspect_ratio/size/ratio/aspectRatio)",
+      "census of MODEL_ARCHETYPES (electron/shared/aspectRatioValue.census.test.ts): 336 combinations, 231/244 with a ratio control, 56 pixel-size controls, 92 without a ratio choice",
       "node scripts/door-map.mjs normalizeVideoCandidate / semanticCandidateFromParams / normalizeAuthoredCandidate",
       "git grep STORYBOARD_MODEL_GUIDELINES (definition only, dead since afe85411d)"
     ]
@@ -153,10 +156,12 @@
     "electron/capabilityCore/semanticAspectRatio.test.ts",
     "electron/capabilityCore/agentAspectRatioCard.e2e.test.ts",
     "electron/shared/agentCapabilities/verbs/draftShotsProjection.test.ts",
-    "electron/capabilityCore/generationPlanningParameters.test.ts"
+    "electron/capabilityCore/generationPlanningParameters.test.ts",
+    "electron/shared/aspectRatioValue.census.test.ts"
   ],
   "class_regression_tests": [
-    "electron/capabilityCore/semanticAspectRatio.test.ts"
+    "electron/capabilityCore/semanticAspectRatio.test.ts",
+    "electron/shared/aspectRatioValue.census.test.ts"
   ],
   "legacy_paths": {
     "status": "removed",
@@ -175,9 +180,10 @@
   "migration": "No migration. Old drafts that still carry parameters.aspectRatio are cleaned by the existing read-time normalizeStoredDraft (cleared and reported in clearedParameters, as before); new writes never store it.",
   "residual_risks": [
     "Document-plan revisions (patchStoryboardAuthoring) and the storyboard editor's film-level ratio (FILM_DEFAULTS paramKey aspect_ratio, applied by buildPlannedNodeMeta) still match the ratio by the literal key aspect_ratio; a ratio set there on a model whose key is size or ratio is dropped. Follow-up, owner electron/shared/storyboard/storyboardShotScope.ts.",
-    "Models without a profile whose registry table declares the ratio key without options (type any) cannot be translated; the refusal tells the agent to use that key in parameters directly.",
     "A revision that changes only the ratio replaces the whole parameters record (existing host patch semantics, same as durationSec today).",
     "Resolution (clarity) has the same shape and is not handled here.",
-    "Real App and real paid acceptance are unverified in this line; the coordinator runs them."
+    "Real App and real paid acceptance are unverified in this line; the coordinator runs them.",
+    "Models without a profile whose registry table declares the ratio key without options (type any) cannot be translated; the refusal tells the agent to use that key in parameters directly.",
+    "On a revision the shot's current pixel size is not visible to the translation (the patch replaces parameters), so the profile default tier is used until the patch-merge rule is fixed."
   ]
 }

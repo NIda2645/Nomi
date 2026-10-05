@@ -19,9 +19,32 @@
 | ③ | `electron/capabilityCore/executionContract.ts` `compileParameters` | 命中意图键 → 类型对就 `continue`，不进合同。**假接受陷阱**。 |
 | ④ | `electron/capabilityCore/generationPlanPatch.ts` `normalizeStoredDraft` → `stripParametersNotAccepted` | 下一次读草稿时把 `aspectRatio` 当「残留」清掉。卡上看到的是档案默认。 |
 | ⑤ | `src/workbench/generationCanvas/agent/plannedNodeMeta.ts` `buildPlannedNodeMeta` | 落画布只认和控件同名的键，`aspectRatio` 被丢，节点也是默认。 |
-| ⑥ | 全仓档案扫描（本线脚本扫 376 个「档案 × 变体 × 模式 × 供应商」组合） | 有比例控件的 263 个，**每个恰好一个**；键名 `aspect_ratio` 143、`size` 56、`ratio` 56、`aspectRatio` 8。没有比例选择的 113 个（图生视频为主，比例跟着输入图）。 |
+| ⑥ | 全目录普查（数法见 §1.1，可复跑：`electron/shared/aspectRatioValue.census.test.ts`） | 336 个组合；按共享判据 `optionsAreAspectRatios` 有比例控件的 231 个（与验收线 V-1023 一致），**每个恰好一个**；宿主翻译另认 13 个带「自动 + 分辨率档」的（共 244 个可翻）；没有比例选择的 92 个（图生视频为主，比例跟着输入图）。其中选项是像素串的 56 个（§1.2）。 |
 | ⑦ | `electron/capabilityCore/mcpGenerateParams.ts` `buildGenerateParams` | 对外 `nomi_generate` 的「把比例同时铺进三个别名」——**全仓零调用方**（2026-09-01 起），死代码。 |
 | ⑧ | `electron/shared/agentCapabilities/canvasModelShapes.ts` `STORYBOARD_MODEL_GUIDELINES` | 诊断点名的那条旧指引所在的常量**全仓零引用**，不进任何模型面。 |
+
+### 1.1 怎么数的（第一版数错了，已改）
+
+第一版写的 376 / 263 / 113 是本线临时脚本数的，有两处和验收线不一样，都是我数多了：
+① 档案有变体时，我既数了每个变体，又额外数了一份「未特化的基础档案」——它就是默认变体，重复了（多 40 个）；
+② 供应商分层我按「每个模式各自的 vendorParams」数，验收线按「整份档案按某个供应商特化后，每个模式算一个」数（差 3 个，出在只有部分模式声明了 vendorParams 的档案）。
+另外 263 用的是脚本里自己写的一份比例判断，不是共享判据。
+
+现在的口径 = 验收线的口径：档案有变体只数变体、没变体数档案本身 × 供应商分层（通用层 + 任一模式声明过 vendorParams 的每个供应商，整份特化）× 模式。判据用共享的 `optionsAreAspectRatios`。结果 336 / 231，与验收线一致；这几个数写进了普查测试，目录变了测试会红。
+
+### 1.2 像素档（验收补的第 1 项）
+
+Runway 那一层的比例控件选项是像素串（`1280:720`），按 §1.1 的口径共 56 个组合：Seedance 2（3 个变体 × 4 模式）12、Wan 3.0（2 变体 × 4）8、Veo 3.1（3 变体 × 3）9、Gemini Omni 1.1 3、HappyHorse 1、Gen-4.5 2、Gen-4 Turbo 1、gen4 图像 2、gen4 图像 Turbo 1、Muse 图像 2、Grok Imagine 图像 2 3、Gemini 图像 3 Pro 2、Gemini 图像 3.1 Flash 2、gpt-image-2 2、Seedream 5 Lite 2、Nano Banana（runway 层）2、Seedream 5 Pro（runway 层）2。验收线数的是 43 个，差 13 个：我把「选项里出现像素串」的都算上了，含带 `auto_480p` 这类自动档的 Wan 3.0（8）、Seedream 5 Pro（2）与 Grok Imagine 图像（3）——正好 13 个；如果验收线只数「全是像素串」的控件，就是 43。普查测试里列了这 56 个，可以逐个对。
+
+规则（判据在 `electron/shared/aspectRatioValue.ts` 一份里）：
+- 先看有没有和要的比例**同一个串**的选项（普通比例控件走这一步，行为不变）；
+- 再看像素档：比例相等的（容差 3%，吸收供应商取整：Gemini 的 16:9 档是 1344:768、gpt-image-2 的是 1920:1088；相邻常用比例至少差 6%）；
+- 只有一档 → 它；好几档 → 取和**这一镜写着的那一档**（调用方在 parameters 里写了这个键时）或**控件默认那一档**同档的。「同档」= 短边相等（Wan 的 720p 档：1280:720 / 960:720 / 720:720），或面积差在 1.25 倍内（Seedance 的 720p 档：1280:720 / 960:960 等面积）；参照值本身就是候选之一时取它；同档里取比例最贴的；
+- 判不出（没有参照、同档没有、同档里两项一样贴）→ 拒，`parameter_not_in_enum`，`allowedValues` 只列这几个同比例候选，不随便挑；
+- 说 auto：控件有普通自动档就用它；只有 `auto_480p / auto_720p / auto_1080p` 这类的，按同一套同档规则挑。
+- 为了「和默认同档」，宿主的参数字段带上档案声明的默认值（`ParameterField.default`，只有档案投影出来的字段有；准入本身不读它）。
+
+结果：56 个像素档组合说 16:9 / 9:16 全部直接对上（普查测试断言）。改草稿时「这一镜写着的那一档」今天拿不到——改草稿整份替换 parameters（见 §5 已知坑），所以改比例按默认那一档挑；合并规则修好后自然会用上当前那一档。
 
 ## 2. 改成什么样
 
@@ -31,7 +54,7 @@
        └─ 宿主写入口（多镜 create / 单镜 create / 改草稿）统一过 normalizeAuthoredCandidate：
             normalizeVideoCandidate（定模式）→ projectSemanticAspectRatio（按这个模式的参数表）
               · 找「选项除自动档外全是比例」的那个控件（判据 = 搬到 electron/shared 的那一份，渲染层同用）
-              · 值规范化后比对选项 → 落成真实键（Z-Image→size，Nano Banana 2 kie→aspect_ratio，Agnes→ratio）
+              · 值规范化后比对选项 → 落成真实键（Z-Image→size，Nano Banana 2 kie→aspect_ratio，Agnes→ratio）；像素档按比例对上、同比例多档挑同档（§1.2）
               · auto → 该控件自己的自动档值（auto / adaptive）
               · 没有比例控件 / 值不在选项里 / 和 parameters 里真实键写的不一样 → ContractCompilationError（带 allowedValues）
        └─ 落盘的候选里只有真实键 → 付费卡、画布落地、派发读到的是同一个值
@@ -48,7 +71,7 @@
 | ★3 一致与复用 | 照抄时长先例（`durationSec` → `parameters.duration`，描述「只写这里」）；拒绝复用 `ContractCompilationError` + `parameter_not_in_enum` / `unknown_parameter` 现成码（zh/en 文案与恢复动作已在 `mcpToolErrorResults.ts`），不新增错误码；比例判据搬家不复制。名字与格式照 Vercel AI SDK 的 `aspectRatio: "{w}:{h}"`。 | `git grep -n "optionsAreAspectRatios\|normalizeAspectRatioToWH"` 只剩一处定义 |
 | ★4 全状态 | 不新增界面、不改文案。卡上：要的比例 / 「自动」。被拒：Agent 拿到结构化错误（`details.allowedValues`），不出卡、不扣费。旧草稿里残留的 `aspectRatio`：读时照旧清掉并在 `clearedParameters` 里报给 Agent（既有的残留策略）。 | `check:i18n`（无新文案） |
 | 5 中途表 | 见 §4 | 单测 |
-| 6 外部数据与失败 | 外部来源两个：①模型写的比例字符串——认 `16:9` / `16：9` / `16 : 9` / 具名桶（`landscape_16_9`）/ 自动档词；认不出（「竖屏」「wide」）→ 拒并列合法值；②目录档案的控件选项——只有一个比例控件时才翻；两个以上（今天 0 个）→ 拒「有歧义」；认不出档案又没有 registry 参数表 → 拒，告诉 Agent 用 `list_models` 里该模型自己的键写进 `parameters`。像素尺寸选项（`1280:720` + `auto_720p`，Runway 的 Wan 3.0 等）不算比例控件——一个 16:9 对应好几档分辨率，替用户挑一档就是替他花钱，所以拒并点名那个键。 | 本卡 §1 ⑥ 扫描 |
+| 6 外部数据与失败 | 外部来源两个：①模型写的比例字符串——认 `16:9` / `16：9` / `16 : 9` / 具名桶（`landscape_16_9`）/ 自动档词；认不出（「竖屏」「wide」）→ 拒并列合法值；②目录档案的控件选项——只有一个比例控件时才翻；两个以上（今天 0 个）→ 拒「有歧义」；认不出档案又没有 registry 参数表 → 拒，告诉 Agent 用 `list_models` 里该模型自己的键写进 `parameters`。像素档（`1280:720` 这类，Runway 那一层 56 个组合）按 §1.2 对上：比例相等就翻成那一档，同比例多档按「当前那一档 / 默认那一档」挑同档，判不出就拒并只列那几个候选——挑分辨率就是挑价钱，不替用户随便挑。 | 本卡 §1 ⑥ 扫描 |
 | 7 性能预算 | 每镜一次参数表查找 + 一次遍历选项（≤ 30 项），可忽略。 | 不测 |
 | 8 真实条件 | Windows ✓（本机单测与门岗）；真 App / 英文界面 / 真付费 = `unverified`（本线不起真 App、不花钱）。 | 交协调会话：零额度夹具之外的真付费验收 |
 | ★9 验收与回滚 | 验收：另一条线对着本卡核 §2 链路 + 三条真实任务看卡上与请求体比例。回滚：revert 本 PR 的提交（数据无迁移；模型面基线随提交回滚）。 | PR `## 独立验收` |
@@ -106,6 +129,19 @@
 **7. 用户要权衡的核心**：是否把「语义参数」做成一层（比例先做，清晰度、文稿方案画幅随后），而不是每个参数出 bug 时各补一次。推荐：是，按 §5 的后续顺序排。
 
 **特征测试**：`electron/capabilityCore/semanticAspectRatio.test.ts`（三家键名、越界、auto、冲突、无比例控件）、`electron/agentLane/agentAspectRatio.e2e.test.ts`（`draft_shots` → 建草稿 → 付费卡投影）、`writeVerbs` 的 `parameters.aspectRatio` 拒绝。
+
+## 模型面与预算（CI 两道预算门岗，上限一个没动）
+
+模型看到的变化只有两处：`shots[].aspectRatio`（说明「Frame ratio: 16:9 or auto.」，不设长度限制，空串到宿主按类型不对拒）；`parameters` 的说明改成「Profile values except length and ratio; the host clamps and reports each clamp.」——原来那句只点了时长，现在把时长、比例两个「另有家」的并成一句，顺手压短。工具描述里的字段列表不加 aspectRatio。
+
+| 预算（pi 自己的估算器） | 上限 | main（无本字段） | 第一版 | 现在 |
+|---|---|---|---|---|
+| P5 · draft_shots core | 785 | 767 | 810 | 777 |
+| P5 · draft_shots 全量 | 1706 | 1695 | 1739 | 1705 |
+| lane 全部组常驻（3D-BOX 开关开） | 10000 | 9982 | 10025 | 9992 |
+| lane 全部组常驻（开关关） | 10000 | — | 7745 | 7712 |
+
+「parameters.aspectRatio 当场拒」那条拒绝住在 `prepareArguments`（运行时），不占 schema 预算，原样保留。
 
 ## 先查别人
 

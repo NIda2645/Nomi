@@ -45,7 +45,7 @@ export const draftShotSchema = z.object({
   durationSec: z.number().positive().max(600).optional().describe("Clip length in seconds; omit for stills. The only place for length, never parameters."),
   // 2026-10-05：比例同理。各家的键名不一样（size / aspect_ratio / ratio / aspectRatio），模型只能猜；猜驼峰那次
   // 被宿主当意图键静默吞掉，用户付了钱拿到默认画幅。这里只收语义，宿主按所选模式翻成真实键（翻不了就拒）。
-  aspectRatio: z.string().trim().min(1).max(32).optional().describe("Frame ratio like 16:9, or auto. The only place for ratio, never parameters."),
+  aspectRatio: z.string().trim().optional().describe("Frame ratio: 16:9 or auto."),
   modelId: z.string().trim().min(1).optional().describe("Catalog model id from list_models; omit for the user's default."),
   // 2026-09-22：`taskKind` 与 `modeId` 是同一件事实的两种写法。模式定了，种类就定了
   // （`transportTaskKindForModeId` 从档案扫出来），所以说明书直接告诉模型「写了模式就别再写种类」——
@@ -55,7 +55,7 @@ export const draftShotSchema = z.object({
     providerId: z.string().trim().min(1).describe("Provider id from list_models."),
     modelId: z.string().trim().min(1).describe("Model id from list_models."),
   }).optional().describe("Catalog candidate identity when known."),
-  parameters: generationParameters.optional().describe("Values the model's profile declares, except length (durationSec) and ratio (aspectRatio). The host clamps them and reports every clamp."),
+  parameters: generationParameters.optional().describe("Profile values except length and ratio; the host clamps and reports each clamp."),
   // 2026-09-22：这句话原来写着「asset ids …**or shot ids** (from look_at_canvas or this call)」，
   // 而解析这一头（`pinAssetReference`）只认项目素材库里的 assetId——镜头 id 送进来**必然**被拒，
   // 理由还是「不在这个项目的素材库里」（run2 的 A1/A4 各一次，模型照着说明书做的）。
@@ -193,7 +193,7 @@ export function writeVerbs(): VerbDeclaration[] {
       does: "Create or update image, video, audio or 3D shot drafts in the project; document plans are saved without automatic canvas placement.",
       useWhen: "Whenever the user asks to make, draw, render, regenerate, restyle or re-time any media — including a single image — or to split text into shots, or to change a shot's prompt, model, parameters or references. Pass shotId to update an existing draft; omit it to create.",
       notWhen: "New drafts do not request generation or show a spend card — call generate for that, unless the user said not to generate yet. Updating an already-presented draft retains its existing approval policy; use the returned result to determine whether that policy started generation. Not for links, groups or layout (arrange_canvas), not for hand-made artifacts (make_artifact), not for staging or camera references (stage_shot).",
-      params: "shots[] each with prompt, optional title, taskKind, durationSec, aspectRatio, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. For anchor role, include storyboard with kind (character/scene/prop/style) and carrier (visual/text); title names the anchor and prompt describes it. Original shot details (anchorIds, keyframe, referenceBindings) also go in storyboard. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; reuse operationId and shotId from the current draft result. Two shapes: creating a shot needs prompt; revising one (operationId + shotId) carries only the fields you are changing — prompt, model, modeId, aspectRatio, parameters, references — and leaves the rest out, including title and role, which are fixed when the shot is created. The host clamps values to the model's real limits and reports every clamp.",
+      params: "shots[] each with prompt, optional title, taskKind, durationSec, modelId (or candidate with providerId + modelId, never both for one shot), modeId, parameters, references, role. For anchor role, include storyboard with kind (character/scene/prop/style) and carrier (visual/text); title names the anchor and prompt describes it. Original shot details (anchorIds, keyframe, referenceBindings) also go in storyboard. A top-level candidate or taskKind is the default for shots that omit their own. Model and parameter values come from list_models; reuse operationId and shotId from the current draft result. Two shapes: creating a shot needs prompt; revising one (operationId + shotId) carries only the fields you are changing — prompt, model, modeId, parameters, references — and leaves the rest out, including title and role, which are fixed when the shot is created. The host clamps values to the model's real limits and reports every clamp.",
     },
     promptGuidelines: [...READ_GUIDELINES, ...CANVAS_NODE_PROMPT_GUIDELINES],
     schema: z.object({

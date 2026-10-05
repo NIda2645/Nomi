@@ -60,7 +60,10 @@ function harness() {
     command: async (projectId: string, operationId: string, command: Parameters<typeof repository.execute>[2]) => repository.execute(projectId, operationId, command),
   };
   const operations = createProductionGenerationOperationStore(owner as never) as GenerationOperationStore;
-  const handler = createGenerationPlanningHandler({ registry, operations, now });
+  // 用户在设置里存过的默认模型（生产里一定有）：点名的模型目录里没有时，模块身份就从这里来——
+  // 于是候选能一路走到「认不出模型」那一步，而不是更早被「没有配置模型」拦下。
+  const defaultModelForTaskKind = () => ({ moduleId: "generation.single-shot", providerId: "apimart", modelId: "z-image-turbo", mode: "text_to_image" });
+  const handler = createGenerationPlanningHandler({ registry, operations, now, defaultModelForTaskKind });
   const origin = { host: "nomi", actorId: "agent-panel" };
   /** Agent 调一次 `draft_shots`（lane 真翻译），再 `generate` 把它摆到卡上；回卡上每镜的参数。 */
   const cardAfter = async (draftShotsArgs: Record<string, unknown>) => {
@@ -119,5 +122,15 @@ describe("Agent 说的比例 = 付费卡上的比例", () => {
     } })!;
     await expect(handler({ capability: "create", params: translated.call.args as Record<string, unknown>, lease, origin: { host: "nomi", actorId: "agent-panel" } } as never))
       .rejects.toMatchObject({ code: "parameter_not_in_enum", details: { allowedValues: "1:1,4:3,3:4,16:9,9:16,3:2,2:3" } });
+  });
+
+  it("目录里认不出的模型：语义键留在候选里不翻，紧接着的身份准入拒掉——不落草稿、不出卡、到不了花钱那一步", async () => {
+    const { handler, repository } = harness();
+    const translated = verbToTransportCall({ toolCallId: "call-1", toolName: "draft_shots", args: {
+      shots: [{ prompt: "海边日出", taskKind: "text_to_image", aspectRatio: "16:9", candidate: { providerId: "kie", modelId: "ghost-model" } }],
+    } })!;
+    await expect(handler({ capability: "create", params: translated.call.args as Record<string, unknown>, lease, origin: { host: "nomi", actorId: "agent-panel" } } as never))
+      .rejects.toThrow("kie/ghost-model is not in the model catalog");
+    expect(repository.list(PROJECT_ID)).toEqual([]);
   });
 });
