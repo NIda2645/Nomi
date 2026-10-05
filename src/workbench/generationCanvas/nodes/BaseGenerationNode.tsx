@@ -362,7 +362,7 @@ function BaseGenerationNodeImpl({
 
       {/* 可找回态：异步任务超时但上游可能已出片——中性面板 + 一键重新拉取（query 不扣费），不进红色错误桶。 */}
       {status === 'recoverable' ? (
-        <NodeRecoverableReport
+        <NodeRecoverableReport node={node}
           onRecover={() => {
             withProjectAction((project) => { void recoverNodeResult(node.id, project) })
           }}

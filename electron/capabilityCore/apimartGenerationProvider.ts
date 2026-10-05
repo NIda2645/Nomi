@@ -428,7 +428,7 @@ async function readJson(response: Response, vendorKey: string): Promise<JsonReco
   try {
     payload = await response.json();
   } catch {
-    throw new CatalogGenerationProviderError(`${vendorKey} response was not JSON (HTTP ${response.status})`);
+    throw new CatalogGenerationProviderError(`${vendorKey} response was not JSON (HTTP ${response.status})`, { providerAnswer: { httpStatus: response.status, envelopeFailure: false, taskIdReturned: false } });
   }
   return record(payload, vendorKey, "");
 }
@@ -535,7 +535,7 @@ export function createCatalogGenerationProvider(options: CatalogGenerationProvid
       // 信封码：OpenAI 兼容的中转/网关普遍用 HTTP 200 + 信封 `code` 表达失败（APIMart、kie…）。
       // 声明了 code 却不是成功码 = 上游拒了，绝不能当成「受理成功」往下走。没有 code 的家不受影响。
       if (!response.ok || (code !== undefined && code !== 200 && code !== 0)) {
-        throw new CatalogGenerationProviderError(`${vendorKey} ${context} rejected the request: ${providerMessage(payload)}`);
+        throw new CatalogGenerationProviderError(`${vendorKey} ${context} rejected the request: ${providerMessage(payload)}`, { providerAnswer: { httpStatus: response.status, envelopeFailure: code !== undefined && code !== 200 && code !== 0, taskIdReturned: Boolean(extractTaskIdShared(payload)) } });
       }
       return payload;
     } finally {

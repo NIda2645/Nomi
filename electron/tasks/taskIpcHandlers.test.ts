@@ -32,6 +32,9 @@ type Runtime = Awaited<ReturnType<Parameters<typeof registerTaskIpcHandlers>[0]>
 const sender = (id: number): Sender => Object.assign(new EventEmitter(), { id });
 const call = (action: string, owner: Sender, payload?: unknown) => mocks.handlers.get(`nomi:tasks:${action}`)!({ sender: owner }, payload);
 
+
+/** 画布单镜 Run 那一半（能力核）：这里只测本地任务的生命周期，窗口关掉时它被告知一声即可。 */
+const noCanvasCore = async () => ({ releaseCanvasShotSender: vi.fn() }) as never;
 describe("task IPC local operation lifecycle", () => {
   beforeEach(() => { vi.resetAllMocks(); mocks.handlers.clear(); mocks.cancelAll.mockResolvedValue(undefined); });
   it("binds submissions and result queries to the actual sender, not a payload owner", async () => {
@@ -40,7 +43,7 @@ describe("task IPC local operation lifecycle", () => {
       runTask: () => jobs.start("project", async () => "pixels"),
       fetchTaskResult: (id: string) => jobs.query(id, "project", () => ["nomi-local://result"]),
     };
-    registerTaskIpcHandlers(async () => runtime as unknown as Runtime);
+    registerTaskIpcHandlers(async () => runtime as unknown as Runtime, noCanvasCore);
     const owner = sender(31);
     const id = await call("run", owner, { owner: 99 }) as string;
     await jobs.settled(id);
@@ -49,7 +52,7 @@ describe("task IPC local operation lifecycle", () => {
     await expect(call("result", owner, id)).resolves.toMatchObject({ status: "succeeded" });
   });
   it("registers one window-destruction cleanup callback across repeated submissions", async () => {
-    registerTaskIpcHandlers(async () => ({ runTask: vi.fn() }) as unknown as Runtime);
+    registerTaskIpcHandlers(async () => ({ runTask: vi.fn() }) as unknown as Runtime, noCanvasCore);
     const owner = sender(31);
     await call("run", owner); await call("run", owner);
     expect(owner.listenerCount("destroyed")).toBe(1);
@@ -60,7 +63,7 @@ describe("task IPC local operation lifecycle", () => {
     const jobs = new LocalTaskJobs<string>(); const work = vi.fn(async () => "pixels");
     mocks.cancelOwner.mockImplementation((id: number) => jobs.cancelOwner(id));
     let loaded!: (runtime: Runtime) => void;
-    registerTaskIpcHandlers(() => new Promise((resolve) => { loaded = resolve; }));
+    registerTaskIpcHandlers(() => new Promise((resolve) => { loaded = resolve; }), noCanvasCore);
     const owner = sender(31);
     const pending = call("run", owner);
     owner.emit("destroyed");
@@ -69,7 +72,7 @@ describe("task IPC local operation lifecycle", () => {
     expect(work).not.toHaveBeenCalled();
   });
   it("validates cancel IDs and passes only the actual sender identity", async () => {
-    registerTaskIpcHandlers(async () => ({}) as Runtime);
+    registerTaskIpcHandlers(async () => ({}) as Runtime, noCanvasCore);
     const owner = sender(31); const id = "local-11111111-1111-4111-8111-111111111111";
     expect(() => call("cancel", owner, { taskId: id, owner: 99 })).toThrow("LOCAL_TASK_INVALID_ID");
     expect(() => call("cancel", owner, `local-${"-".repeat(36)}`)).toThrow("LOCAL_TASK_INVALID_ID");
@@ -82,7 +85,7 @@ describe("task IPC local operation lifecycle", () => {
     const runtime = { runTask: vi.fn(), fetchTaskResult: vi.fn() };
     mocks.runCandidate.mockResolvedValue({ ok: true, revisionId: "revision-1", active: { vendorKey: "candidate", modelKey: "model" } });
     mocks.cancelCandidate.mockReturnValue({ ok: true });
-    registerTaskIpcHandlers(async () => runtime as unknown as Runtime);
+    registerTaskIpcHandlers(async () => runtime as unknown as Runtime, noCanvasCore);
     const owner = sender(31); const payload = {
       candidate: { revisionId: "revision-1", modelKey: "model", taskKind: "text_to_video" },
       request: { extras: { comfyCertificationRevisionId: "revision-1" } },
@@ -95,7 +98,7 @@ describe("task IPC local operation lifecycle", () => {
   it("returns structured failure and exact cleanup when runtime loading throws before the executor guard", async () => {
     const failure = { ok: false, revisionId: "revision-1", reasonCode: "provider_failed", params: {} };
     mocks.failCandidateEnvelope.mockReturnValue(failure);
-    registerTaskIpcHandlers(async () => { throw new Error("runtime load failed"); });
+    registerTaskIpcHandlers(async () => { throw new Error("runtime load failed"); }, noCanvasCore);
     const owner = sender(31); const payload = {
       candidate: { revisionId: "revision-1", modelKey: "model", taskKind: "text_to_video" },
       request: {},
@@ -114,7 +117,7 @@ describe("task IPC local operation lifecycle", () => {
     let loaded!: (runtime: Runtime) => void;
     const failure = { ok: false, revisionId: "revision-1", reasonCode: "candidate_cancelled", params: {} };
     mocks.failCandidateEnvelope.mockReturnValue(failure);
-    registerTaskIpcHandlers(() => new Promise((resolve) => { loaded = resolve; }));
+    registerTaskIpcHandlers(() => new Promise((resolve) => { loaded = resolve; }), noCanvasCore);
     const owner = sender(31); const payload = {
       candidate: { revisionId: "revision-1", modelKey: "model", taskKind: "text_to_video" },
       request: {},
@@ -131,7 +134,7 @@ describe("task IPC local operation lifecycle", () => {
     let finish!: () => void;
     const cleanup = new Promise<void>((resolve) => { finish = resolve; });
     mocks.cancelAll.mockReturnValue(cleanup);
-    registerTaskIpcHandlers(async () => ({}) as Runtime);
+    registerTaskIpcHandlers(async () => ({}) as Runtime, noCanvasCore);
     const first = { preventDefault: vi.fn() }; const second = { preventDefault: vi.fn() };
     mocks.quitHandler!(first); mocks.quitHandler!(second);
     expect(first.preventDefault).toHaveBeenCalledOnce();
@@ -155,7 +158,7 @@ describe("one paid submit in flight per canvas node", () => {
     let release!: () => void;
     const first = new Promise<string>((resolve) => { release = () => resolve("first-result"); });
     const runTask = vi.fn().mockReturnValueOnce(first).mockResolvedValue("second-result");
-    registerTaskIpcHandlers(async () => ({ runTask }) as unknown as Runtime);
+    registerTaskIpcHandlers(async () => ({ runTask }) as unknown as Runtime, noCanvasCore);
     const owner = sender(41);
     const inFlight = call("run", owner, payload("node-1"));
     await vi.waitFor(() => expect(runTask).toHaveBeenCalledTimes(1));
@@ -170,7 +173,7 @@ describe("one paid submit in flight per canvas node", () => {
 
   it("class: other nodes, the same node id in another project, and requests without a node are not held back", async () => {
     const runTask = vi.fn(() => new Promise(() => undefined));
-    registerTaskIpcHandlers(async () => ({ runTask }) as unknown as Runtime);
+    registerTaskIpcHandlers(async () => ({ runTask }) as unknown as Runtime, noCanvasCore);
     const owner = sender(42);
     void call("run", owner, payload("node-1"));
     void call("run", owner, payload("node-2"));

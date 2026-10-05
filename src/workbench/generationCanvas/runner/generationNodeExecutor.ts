@@ -20,8 +20,10 @@ export type GenerationNodeExecutorContext = {
   promptSuffix?: string
   /** S2 进度透传:catalog 任务各阶段 → 控制器 → setNodeProgress。 */
   onProgress?: CatalogTaskActionOptions['onProgress']
-  /** 付费守卫令牌：透传到 build request 的 extras.grantId。 */
+  /** 付费守卫令牌：透传到 build request 的 extras.grantId（令牌路：批量，第 3 步收走）。 */
   grantId?: string
+  /** 单镜 Run 路（画布单节点 ↑）：交 / 查都经主进程这一次运行的单镜 Run。与 grantId 二选一。 */
+  canvasRun?: { runRecordId: string }
   /** 提交幂等键（= node run.id）：透传到 extras.idempotencyKey，让同一次意图提交在 electron 侧 at-most-once。 */
   idempotencyKey?: string
   /** Renderer consent for a disclosed anonymous temporary-host fallback. */
@@ -44,6 +46,7 @@ export const generationNodeExecutor: GenerationNodeExecutor = async (node, conte
     referenceContext: { nodes: context.nodes, edges: context.edges },
     projectTarget,
     ...(grantId ? { grantId } : {}),
+    ...(context.canvasRun ? { canvasRun: context.canvasRun } : {}),
     ...(context.idempotencyKey ? { idempotencyKey: context.idempotencyKey } : {}),
     ...(context.anonymousAssetHostingConsent ? { anonymousAssetHostingConsent: context.anonymousAssetHostingConsent } : {}),
     ...(context.promptSuffix ? { promptSuffix: context.promptSuffix } : {}),

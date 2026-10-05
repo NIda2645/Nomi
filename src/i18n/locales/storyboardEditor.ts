@@ -43,9 +43,8 @@ export const zhStoryboardEditor = {
     // 可找回态：钱已经花了、上游多半已出片，只是本地没接住。文案不许出现「失败」「重试」——
     // 那会把一次免费的续查说成一次要重新付费的重跑。
     recoverable: '可找回',
-    recoverableRefetch: '重新拉取',
     recoverableRefetching: '正在拉取…',
-    recoverableHint: '这一镜已经提交，上游多半已出片 —— 重新拉取就能取回，不用重新生成。',
+    recoverableHint: '这一镜已经提交，上游多半已出片 —— 点「重新取回」就能取回，不用重新生成。',
     generating: '生成中',
     generatingPercent: '生成中 {{percent}}%',
     durationBadge: '{{seconds}}s',
@@ -403,9 +402,8 @@ export const enStoryboardEditor = {
     retryHint: 'Generate this shot again',
     failed: 'Generation failed',
     recoverable: 'Recoverable',
-    recoverableRefetch: 'Re-fetch result',
     recoverableRefetching: 'Fetching…',
-    recoverableHint: 'This shot was already submitted and the provider most likely finished it — re-fetch it instead of generating again.',
+    recoverableHint: 'This shot was already submitted and the provider most likely finished it — use “Retrieve again” instead of generating again.',
     generating: 'Generating',
     generatingPercent: 'Generating {{percent}}%',
     durationBadge: '{{seconds}}s',

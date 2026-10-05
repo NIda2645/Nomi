@@ -675,6 +675,17 @@ export function classifyGenerationError(message: string): GenerationErrorReport 
       ...narrateGenerationErrorActions('unknown'),
     }
   }
+  // 3D-BOX 预演没好，主进程准入拒了这一次（还没发出去、没花钱）：说的是哪一步没好，不当成供应商失败。
+  if (structured?.code === 'director_preview_blocked') {
+    return {
+      kind: 'unknown',
+      reason: i18n.t(structured.reason === 'failed' ? 'director.agent.spendBlockedFailed' : 'director.agent.spendBlockedRendering'),
+      hint: i18n.t('generationCommon.observability.error.previewBlocked.hint'),
+      vendorSide: false,
+      raw,
+      ...narrateGenerationErrorActions('unknown'),
+    }
+  }
   const claimReason = structured?.code === 'production_shot_claimed' ? structured.reason : undefined
   const copy = shotClaimCopy(claimReason as Parameters<typeof shotClaimCopy>[0])
   if (copy) {

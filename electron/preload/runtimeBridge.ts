@@ -40,6 +40,9 @@ export const runtimeBridge = {
     cancel: (taskId: string) => ipcRenderer.invoke("nomi:tasks:cancel", taskId) as Promise<{ ok: boolean }>,
     run: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:run", payload),
     result: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:result", payload),
+    canvasSubmit: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:canvas-submit", payload),
+    canvasPoll: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:canvas-poll", payload),
+    canvasRelease: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:canvas-release", payload),
     runComfyCandidateTest: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:comfy-candidate-test", payload),
     cancelComfyCandidateTest: (payload: unknown) => ipcRenderer.invoke("nomi:tasks:comfy-candidate-cancel", payload),
     // 付费守卫：真人确认后铸一次性令牌（绑 nodeIds），返回不透明 grantId 随生成请求下传。

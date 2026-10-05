@@ -10,6 +10,7 @@ import {
 } from '../../../../vendor/tablerIcons'
 import { cn } from '../../../../utils/cn'
 import type { PlanShot } from '../../../generationCanvas/agent/storyboardPlan'
+import { recoverableHintKey } from '../../../generationCanvas/model/recoverableCopy'
 import type { ShotRowExec } from '../exec/storyboardRowStatus'
 import { resolveResultTargetShotIndex } from '../storyboardDInteractions'
 import type { ShotVariant } from './shotVariants'
@@ -211,13 +212,13 @@ export default function StoryboardFrameActions({
           type="button"
           onClick={() => { if (recovering) return; setRecovering(true); onRecover() }}
           disabled={recovering}
-          title={t('storyboardEditor.frame.recoverableHint')}
-          aria-label={t('storyboardEditor.frame.recoverableRefetch')}
+          title={t(recoverableHintKey(exec.recoverableNode))}
+          aria-label={t('generationCommon.production.runAction.retry-retrieval')}
           data-storyboard-recover="true"
           className="h-6 px-2 rounded-nomi-sm border border-nomi-line text-micro text-nomi-ink-80 inline-flex items-center gap-1 hover:border-nomi-accent hover:text-nomi-accent disabled:opacity-50"
         >
           <IconRefresh size={12} stroke={1.8} className={cn(recovering && 'animate-spin')} />
-          {recovering ? t('storyboardEditor.frame.recoverableRefetching') : t('storyboardEditor.frame.recoverableRefetch')}
+          {recovering ? t('storyboardEditor.frame.recoverableRefetching') : t('generationCommon.production.runAction.retry-retrieval')}
         </button>
       ) : null}
       {hasResult && !locked ? (

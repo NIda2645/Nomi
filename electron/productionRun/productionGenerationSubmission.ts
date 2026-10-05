@@ -22,7 +22,7 @@ import { createProductionRunIntentLog } from "./productionRunIntentLog";
 import { productionRunPaths } from "./productionRunPaths";
 import { createProductionRunLock } from "./productionRunLock";
 import type { ProductionRunRepository } from "./productionRunRepository";
-import { isTransportLevelFailure, outboundRequestWasNeverWritten } from "../outboundDispatchEvidence";
+import { isTransportLevelFailure, outboundRequestWasNeverWritten, providerExplicitlyRejected } from "../outboundDispatchEvidence";
 import {
   SubmissionNotDispatchedError,
   SubmissionReceiptUnknownError,
@@ -521,6 +521,8 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
             if (outboundRequestWasNeverWritten(error)) {
               throw new SubmissionNotDispatchedError(error instanceof Error ? error.message : String(error));
             }
+            // 供应商当场明确拒绝（收到了 4xx / 失败信封、没有任务号）：确定没受理，信封留在封好的状态，由出口记成确定的失败。
+            if (providerExplicitlyRejected(error)) throw error;
             prepared.envelope.markSubmittedUnknown();
             throw error;
           }
@@ -564,7 +566,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     };
     // 这笔任务的模型 / 模式从冻结合同里读、随查询递下去：供应商实例是每次新建的，
     // 它自己内存里记的「这笔任务用的哪个模型」活不过观察窗重踢 / 重开项目 / 重启（见 GenerationProviderTaskContext）。
-    const result = await adapter.query({ providerId: job.provider, providerTaskId: job.providerTaskId, context: { modelId: contract.modelId, mode: contract.mode } });
+    const result = await adapter.query({ providerId: job.provider, providerTaskId: job.providerTaskId, context: { modelId: contract.modelId, mode: contract.mode, parameters: contract.parameters } });
     const providerStatus = result.providerStatus.trim();
     if (!providerStatus) throw new Error("Provider returned an empty poll status");
     const statusClass = classifyProviderStatus(providerStatus);

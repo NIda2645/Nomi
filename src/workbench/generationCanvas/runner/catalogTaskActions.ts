@@ -5,8 +5,10 @@ import {
   type TaskRequestDto,
   type TaskResultDto,
   fetchWorkbenchTaskResultByVendor,
+  pollCanvasShotRun,
   runWorkbenchTaskByVendor,
   runWorkbenchTextTaskStream,
+  submitCanvasShotRun,
 } from '../../api/taskApi'
 import type {
   GenerationCanvasNode,
@@ -374,6 +376,24 @@ export function buildCatalogTaskRequest(
   }
 }
 
+/** 单镜 Run 路的「交」：与 runWorkbenchTaskByVendor 同形，主进程按这一次运行记录号建 / 认这个 Run。 */
+function canvasRunSubmitter(nodeId: string, runRecordId: string): NonNullable<CatalogTaskRunOptions['runTask']> {
+  return (vendor, request, projectId) => {
+    if (!projectId) throw new Error('canvas generation requires a project')
+    return submitCanvasShotRun({ projectId, nodeId, runRecordId, vendor, request })
+  }
+}
+
+/** 单镜 Run 路的「查」：每一次都经这个 Run（出片那一次主进程把它记进 Run）。 */
+function canvasRunFetcher(runRecordId: string): NonNullable<CatalogTaskRunOptions['fetchTaskResult']> {
+  return async (payload) => {
+    const projectId = asTrimmedString(payload.projectId)
+    const result = projectId ? await pollCanvasShotRun({ projectId, runRecordId }) : null
+    if (!result) throw new Error(`canvas generation run not found: ${runRecordId}`)
+    return { vendor: asTrimmedString(payload.vendor), result }
+  }
+}
+
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => globalThis.setTimeout(resolve, ms))
 }
@@ -399,7 +419,7 @@ async function waitForCatalogTaskResult(
   const softTimeoutMs = options.pollTimeoutMs ?? budget.softMs
   const hardTimeoutMs = options.pollTimeoutMs ?? budget.hardMs
   const startedAt = Date.now()
-  const fetchResult = options.fetchTaskResult || fetchWorkbenchTaskResultByVendor
+  const fetchResult = options.fetchTaskResult || (options.canvasRun ? canvasRunFetcher(options.canvasRun.runRecordId) : fetchWorkbenchTaskResultByVendor)
 
   // ⚠️ 钱安全铁律：到这里 runTask 已成功、付费已发生(initialResult.id 是真任务)。本轮询【只查不提交】，
   // 且查结果失败【绝不】能冒泡出去——否则会落进外层 runGenerationNode 的重试循环重新 runTask 二次扣费
@@ -545,7 +565,7 @@ async function runCatalogGenerationTaskWithFeedback(
     return normalizeCatalogTaskResult(streamed, executableNode, options.onMediaDimensions)
   }
 
-  const runTask = options.runTask || runWorkbenchTaskByVendor
+  const runTask = options.runTask || (options.canvasRun ? canvasRunSubmitter(executableNode.id, options.canvasRun.runRecordId) : runWorkbenchTaskByVendor)
   report('requesting')
   // ComfyUI 新协议允许客户端预生成 prompt UUID。先登记 WS、再 POST /prompt，极快任务的首事件也有归属；
   // 旧服若忽略该 UUID 并返回另一个 id，下方会切换 watcher，history 轮询始终照常兜底。
