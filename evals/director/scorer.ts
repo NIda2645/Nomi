@@ -1,3 +1,4 @@
+import { auditDirectorSpace, SPATIAL_CRITERIA, type SpatialAuditContext } from '../../src/workbench/generationCanvas/nodes/director/model/directorSpatialAudit'
 import type {
   DirectorObject,
   DirectorProject,
@@ -22,6 +23,8 @@ export type LayerScores = {
   L2: number | null
   L3: number | null
   L4: number | null
+  /** 物理层：directorSpatialAudit 六条判据里通过几条（0 违例才算过）；没有计划上下文的方案不量，null。 */
+  P: number | null
   L5: 'unverified'
 }
 export type CardScore = {
@@ -446,6 +449,7 @@ export function scoreCard(
   project: DirectorProject,
   actorMap?: Record<string, string>,
   anchors?: Record<string, AnchorSpec>,
+  spatial?: SpatialAuditContext,
 ): CardScore {
   const scene = project.scenes.find((item) => item.id === project.activeSceneId) ?? project.scenes[0]
   const embeddedAnchors = (project as DirectorProject & { __evalAnchors?: Record<string, AnchorSpec> }).__evalAnchors
@@ -466,12 +470,18 @@ export function scoreCard(
   const l2 = scoreMotionAndFraming(card, measurements, actors, reasons)
   const l3 = scene ? scoreBlocking(card, measurements, scene, actors, reasons) : 0
   const l4 = scene ? scoreScene(card, binding.sceneMap, reasons) : 0
-  const total = l0 === 0 ? 0 : weightedTotal({ L1: l1, L2: l2, L3: l3, L4: l4 }, reasons)
+  const violations = spatial ? auditDirectorSpace(project, spatial) : []
+  const p = spatial ? SPATIAL_CRITERIA.filter((criterion) => !violations.some((item) => item.criterion === criterion)).length / SPATIAL_CRITERIA.length : null
+  for (const criterion of SPATIAL_CRITERIA) {
+    const hits = violations.filter((item) => item.criterion === criterion)
+    if (hits.length) reasons.push(`物理 ${criterion} ×${hits.length}：${hits.slice(0, 2).map((item) => [item.subject, item.other, item.value === undefined ? undefined : item.value.toFixed(2)].filter(Boolean).join(' / ')).join('；')}`)
+  }
+  const total = l0 === 0 ? 0 : weightedTotal({ L1: l1, L2: l2, L3: l3, L4: l4, P: p }, reasons)
   return {
     cardId: card.id,
     tier: card.tier,
     status: 'ok',
-    scores: { L0: l0, L1: l1, L2: l2, L3: l3, L4: l4, L5: 'unverified' },
+    scores: { L0: l0, L1: l1, L2: l2, L3: l3, L4: l4, P: p, L5: 'unverified' },
     total,
     reasons,
     measurements,
@@ -479,8 +489,8 @@ export function scoreCard(
   }
 }
 
-/** Spec weights (L5 visual judge is scored separately): camera+framing 40%, blocking 25%, structure 15%, scene 10%. */
-export const LAYER_WEIGHTS = { L1: 0.15, L2: 0.4, L3: 0.25, L4: 0.1 } as const
+/** Spec weights (L5 visual judge is scored separately): camera+framing 40%, blocking 25%, structure 15%, scene 10%; P physical layer 20% (s1 schemes only, step 3 of the stage-truth work). */
+export const LAYER_WEIGHTS = { L1: 0.15, L2: 0.4, L3: 0.25, L4: 0.1, P: 0.2 } as const
 
 /** Weighted mean over the layers this card actually constrains; an unconstrained layer neither adds free points nor dilutes. */
 function weightedTotal(layers: Record<keyof typeof LAYER_WEIGHTS, number | null>, reasons: string[]): number {
