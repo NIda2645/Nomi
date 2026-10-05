@@ -566,7 +566,7 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
     };
     // 这笔任务的模型 / 模式从冻结合同里读、随查询递下去：供应商实例是每次新建的，
     // 它自己内存里记的「这笔任务用的哪个模型」活不过观察窗重踢 / 重开项目 / 重启（见 GenerationProviderTaskContext）。
-    const result = await adapter.query({ providerId: job.provider, providerTaskId: job.providerTaskId, context: { modelId: contract.modelId, mode: contract.mode } });
+    const result = await adapter.query({ providerId: job.provider, providerTaskId: job.providerTaskId, context: { modelId: contract.modelId, mode: contract.mode, parameters: contract.parameters } });
     const providerStatus = result.providerStatus.trim();
     if (!providerStatus) throw new Error("Provider returned an empty poll status");
     const statusClass = classifyProviderStatus(providerStatus);
