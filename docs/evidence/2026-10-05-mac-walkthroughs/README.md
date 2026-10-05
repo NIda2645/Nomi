@@ -10,6 +10,18 @@
 - 任务卡所指的 `commands/package.json` 在本仓库不存在；走查入口实际为 `tests/ux/*.walk.mjs`，每个脚本的文件头是命令真源。
 - 截图输出目录（本机生成，未把 23MB 的临时截图复制进提交）：`tests/ux/shots/`。失败走查日志保留在本目录 `logs/`，日志中的 `~/...` 路径可直接定位截图。
 
+## 设计卡
+
+改动名：Mac walkthrough 证据清理　线/负责人：`chore/mac-walkthrough-run`　类别：其他
+
+| 格 | 结论 | 证据 |
+|---|---|---|
+| ★1 用户怎么用 | 当 Mac 审核者要确认 Windows 无法运行的走查实际结果时，我想复跑 Design Lab 与 Director/3D-BOX 走查并查看截图，以便按真实结果审核；5 步为读命令、逐条运行、重复一次、保留失败日志、提交结果表；不改产品、不调用付费模型；已知坑是 Director 走查依赖 renderer/API 环境。 | `tests/ux/*.walk.mjs`、本报告结果表 |
+| ★2 谁说了算 | 走查证据与状态归本任务的报告 owner（`chore/mac-walkthrough-run`）；产品状态不在本变更中，协调会话与 PR reviewer 只读消费证据。 | `git diff --name-only origin/main...HEAD`、本报告与 `logs/` |
+| ★3 一致与复用 | 复用仓库现有 walkthrough 脚本、命令和截图目录，不新增第二份走查实现或断言。 | `pnpm run check:prior-art`、`git grep -n "walk.mjs" tests/ux package.json` |
+| ★4 全状态 | 不适用：本 PR 只清理已生成证据，不新增或修改用户界面状态；观察到的通过、失败、未跑状态逐项列在本报告中。 | 本报告结果表、失败日志 |
+| ★9 验收与回滚 | 验收由协调会话复核报告、失败原文、路径与扫描结果；如需回滚，revert 本次证据清理 commit，不触碰产品代码。 | `pnpm run check:prior-art`、`git diff --check`、`pnpm run delivery:preflight` |
+
 ## Design Lab（20 条，均跑两次）
 
 | 脚本 | 第 1 次 | 第 2 次 | 截图 / 备注 |
