@@ -5,15 +5,24 @@
 import React, { type JSX } from 'react'
 import type { AppLocale } from '../../../i18n'
 import { holdDesignLabReady } from '../labReadyHold'
-import type { Director3dBoxFixture, LabDrive } from './director3dboxCell'
+import type { Director3dBoxFixture, LabDrive, LabStep } from './director3dboxCell'
 
 const Stage = React.lazy(() => import('./director3dboxLabKit').then((module) => ({ default: module.Director3dBoxStage })))
 
-export function Director3dBoxLazyStage({ locale, fixture, drive = 'none' }: { locale: AppLocale; fixture: Director3dBoxFixture; drive?: LabDrive }): JSX.Element {
+export type Director3dBoxLazyStageProps = {
+  locale: AppLocale
+  fixture: Director3dBoxFixture
+  drive?: LabDrive
+  steps?: readonly LabStep[]
+  flag?: 'on' | 'off'
+  agentWidth?: number
+}
+
+export function Director3dBoxLazyStage(props: Director3dBoxLazyStageProps): JSX.Element {
   const [release] = React.useState(() => holdDesignLabReady('director-3dbox'))
   return (
     <React.Suspense fallback={null}>
-      <Stage locale={locale} fixture={fixture} drive={drive} release={release} />
+      <Stage {...props} release={release} />
     </React.Suspense>
   )
 }

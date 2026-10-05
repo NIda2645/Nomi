@@ -9,3 +9,17 @@ export const DIRECTOR_3DBOX_CELL_HEIGHT = 933
 export type Director3dBoxFixture = 'empty' | 'courtyard'
 /** 格子要替用户点的真按钮：不点 / 点第 2 张镜头卡 / 点完再切「精修」。 */
 export type LabDrive = 'none' | 'shot-2' | 'shot-2-refine'
+
+/**
+ * 精修「选中才出」样张格要替用户点的真按钮，按顺序执行（每一步都是界面上真实存在的控件，不往 store 塞状态）：
+ *   · click：点一个选择器命中的控件（等它出现）；
+ *   · clickText：在选择器命中的一组控件里点文字等于 text 的那一个（大纲行、菜单项）；
+ *   · pointer：在文字等于 text 的那个元素正中按下再松开指针（时间轴片段是按下就选中、不认 click）；
+ *   · press：按一个键（Esc：先关浮层、再清选中）。
+ */
+export type LabStep =
+  | { click: string }
+  | { pointer: { selector: string; text: string } }
+  | { clickText: { selector: string; text: string } }
+  | { press: 'Escape' }
+

@@ -29,6 +29,7 @@ import { DEPTH_ACTION_CELL_HEIGHT, DEPTH_ACTION_CELL_WIDTH } from './videoDepth/
 import { STAGE_HEIGHT as VENDOR_ORDER_STAGE_HEIGHT, STAGE_WIDTH as VENDOR_ORDER_STAGE_WIDTH } from './vendorOrder/vendorOrderLabKit'
 import { DIRECTOR_3DBOX_STATES } from './director3dbox/director3dboxStates'
 import { DIRECTOR_3DBOX_CELL_HEIGHT, DIRECTOR_3DBOX_CELL_WIDTH } from './director3dbox/director3dboxCell'
+import { DIRECTOR_REFINE_STATES } from './directorRefine/directorRefineStates'
 import type { LabScreen, LabState } from './labScreen'
 
 /**
@@ -159,6 +160,13 @@ export const LAB_SCREENS: readonly LabScreen[] = [
     states: DIRECTOR_3DBOX_STATES,
     // 整屏取景：导演台是 portal 到 body 的 fixed 外壳，右侧是常驻 Agent 面板。
     // 格子尺寸 = 真机走查窗口内容区，实验室图与真机截图同尺寸才能并排对账。
+    cell: { width: DIRECTOR_3DBOX_CELL_WIDTH, height: DIRECTOR_3DBOX_CELL_HEIGHT },
+  },
+  {
+    id: 'director-refine',
+    label: '导演台精修 · 选中才出',
+    states: DIRECTOR_REFINE_STATES,
+    // 与导演视图屏同一个取景台、同一个尺寸（真机走查窗口内容区），新旧精修可以并排比
     cell: { width: DIRECTOR_3DBOX_CELL_WIDTH, height: DIRECTOR_3DBOX_CELL_HEIGHT },
   },
 ]

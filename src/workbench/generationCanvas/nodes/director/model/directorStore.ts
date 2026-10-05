@@ -468,7 +468,9 @@ export function createDirectorStore(options: CreateDirectorStoreOptions): Direct
         } : patch
         const changedOwner = (['objectId', 'cameraId', 'lightId'] as const).some(key => key in next && next[key] !== state.selection[key])
         const cleared = changedOwner ? { clipId: null, clipType: null, activeWaypointId: null, selectedWaypointIds: [], boneKeyframeId: null, boneClipId: null, boneKey: null, ikTarget: null } : {}
-        return { selection: pruneSelection({ ...state.selection, ...cleared, ...next }, activeSceneOf(state.project)) }
+        const selection = pruneSelection({ ...state.selection, ...cleared, ...next }, activeSceneOf(state.project))
+        // 选中机位 = 小窗切到它（previewCameraId 仍是唯一写者；播放中 pipCameraIdOf 仍跟播放头，停下才露出这里的选择）
+        return owner === 'cameraId' && selection.cameraId ? { selection, previewCameraId: selection.cameraId } : { selection }
       }),
       clearSelection: () => set({ selection: emptySelection() }),
       setActiveCamera: (cameraId) => set({ activeCameraId: cameraId }),

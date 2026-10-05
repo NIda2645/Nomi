@@ -396,15 +396,15 @@
       "tol": 0.5
     },
     "scene": {
-      "required": ["quiet_street"],
+      "required": ["gallery"],
       "aliases": {
-        "quiet_street": ["安静街道", "quiet street"]
+        "gallery": ["美术馆", "画廊", "gallery"]
       }
     },
     "actors": [
       {
         "id": "subject",
-        "category": "person",
+        "category": "prop",
         "aliases": ["雕像"]
       }
     ],
@@ -501,7 +501,7 @@
     "actors": [
       {
         "id": "subject",
-        "category": "person",
+        "category": "prop",
         "aliases": ["kettle"]
       }
     ],
@@ -856,7 +856,7 @@
     "actors": [
       {
         "id": "subject",
-        "category": "person",
+        "category": "product",
         "aliases": ["产品", "瓶盖", "product"]
       }
     ],
