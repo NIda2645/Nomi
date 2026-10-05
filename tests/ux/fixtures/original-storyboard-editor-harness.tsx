@@ -24,8 +24,8 @@ Object.assign(window, { nomiDesktop: { modelCatalog: {
 const store = useWorkbenchStore.getState()
 store.hydrateWorkbenchDocuments([{ id: 'doc', title: 'Script', version: 1, updatedAt: 1, contentJson: { type: 'doc', content: [] } }], 'doc')
 // 两份**普通方案**——Agent 产出与手建产出在这里没有区别，本来就是同一种东西。
-const planFor = (id: string) => ({ title: `Plan ${id}`, anchors: [], shots: [{ index: 1, shotId: `shot-${id}`, shotKind: mediaKind as 'image' | 'video',
-  prompt: `Prompt ${id}`, anchorIds: [], durationSec: mediaKind === 'video' ? 5 : 0, modelVendor: 'agent-runtime-loopback',
+const planFor = (id: string) => ({ title: `Plan ${id}`, anchors: [], ...(query.has('segments') ? { profileKey: 'genre.short-drama' } : {}), shots: [{ index: 1, shotId: `shot-${id}`, shotKind: mediaKind as 'image' | 'video',
+  prompt: query.has('segments') ? '远景，Prompt' : `Prompt ${id}`, ...(query.has('segments') ? { promptSegments: [{ key: 'shotSize', start: 0, end: 2 }] } : {}), anchorIds: [], durationSec: mediaKind === 'video' ? 5 : 0, modelVendor: 'agent-runtime-loopback',
   modelKey: mediaKind === 'video' ? 'pf-video' : 'agent-runtime-image',
   params: mediaKind === 'video' ? { duration: 5, resolution: '720p' } : { size: '1024x1024' } }] })
 const designs = Object.fromEntries(['a', 'b'].map(id => [id, store.addStoryboardDesign({ initiator: 'user', documentId: 'doc', source: planFor(id), identity: { id: `design-${id}`, title: `Plan ${id}` } })!]))

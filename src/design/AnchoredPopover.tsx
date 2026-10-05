@@ -82,6 +82,11 @@ export type AnchoredPopoverProps = {
 
 type Placement = { top: number; left: number }
 
+const TABBABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type="hidden"]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'
+function tabbablesOf(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter((element) => element.getClientRects().length > 0)
+}
+
 export function AnchoredPopover({
   anchorRef,
   align = 'start',
@@ -95,6 +100,10 @@ export function AnchoredPopover({
   const fallbackAnchorRef = React.useRef<HTMLSpanElement>(null)
   const popRef = React.useRef<HTMLDivElement>(null)
   const [placement, setPlacement] = React.useState<Placement | null>(null)
+  // 打开前谁有焦点（渲染期读：此时子树的 autoFocus 还没跑，读到的才是触发器而不是浮层里的输入框）。
+  const [returnFocusTo] = React.useState<Element | null>(() => (typeof document === 'undefined' ? null : document.activeElement))
+  // 只有「会被关掉的交互浮层」管焦点；悬停预览（passThrough）与自己管开合的浮层（没传 onClose）不碰。
+  const managesFocus = Boolean(onClose) && !passThrough
 
   const reposition = React.useCallback(() => {
     const anchor = anchorRef?.current ?? fallbackAnchorRef.current
@@ -128,6 +137,26 @@ export function AnchoredPopover({
       observer?.disconnect()
     }
   }, [reposition])
+
+  // 焦点进出（WAI-ARIA 非模态弹层）：打开时焦点进浮层（Tab 才走得进来——浮层 Portal 在 body 末尾，
+  // 不在触发器后面的 DOM 顺序里）；关闭时焦点还给触发器（用户没把焦点另外挪走的话）。
+  // 一处管，所有走 AnchoredPopover 的浮层一起得到，各菜单不要自己补。
+  const placed = placement !== null
+  React.useEffect(() => {
+    // 要等放好位置（visibility 变 visible）才能聚焦——隐藏的元素聚焦不上。
+    if (!managesFocus || !placed) return
+    const pop = popRef.current
+    if (pop && !pop.contains(document.activeElement)) (tabbablesOf(pop)[0] ?? pop).focus({ preventScroll: true })
+  }, [managesFocus, placed])
+  React.useEffect(() => {
+    if (!managesFocus) return undefined
+    const pop = popRef.current
+    return () => {
+      const active = document.activeElement
+      const lost = !active || active === document.body || (pop ? pop.contains(active) : false)
+      if (lost && returnFocusTo instanceof HTMLElement && returnFocusTo.isConnected) returnFocusTo.focus({ preventScroll: true })
+    }
+  }, [managesFocus, returnFocusTo])
 
   const dismissOnEscape = React.useCallback((event: KeyboardEvent) => {
     if (!onClose || event.key !== 'Escape') return false
@@ -176,16 +205,29 @@ export function AnchoredPopover({
       // `.nokey` 是 @xyflow/system `isInputDOMNode` 认的排除边界：声明在**自己**的 Portal
       // 根上（不写进调用方锚点的 className，那会被调用方下一次渲染冲掉）。
       className="nokey"
+      tabIndex={managesFocus ? -1 : undefined}
       style={{
         position: 'fixed',
         top: placement?.top ?? -9999,
         left: placement?.left ?? -9999,
         zIndex: zIndex ?? NOMI_OVERLAY_Z_INDEX.popover,
         visibility: placement ? 'visible' : 'hidden',
+        outline: 'none',
         ...(passThrough ? { pointerEvents: 'none' as const } : {}),
       }}
       onPointerDown={(event) => event.stopPropagation()}
       onKeyDown={(event) => {
+        if (managesFocus && event.key === 'Tab') {
+          // 浮层内循环：Tab 到最后一个回到第一个（Esc 才是出口），不掉到 body 末尾之后的页面外。
+          const items = tabbablesOf(event.currentTarget)
+          if (items.length === 0) { event.preventDefault(); return }
+          const first = items[0]
+          const last = items[items.length - 1]
+          const active = document.activeElement
+          if (event.shiftKey && (active === first || active === event.currentTarget)) { event.preventDefault(); last.focus() }
+          else if (!event.shiftKey && active === last) { event.preventDefault(); first.focus() }
+          return
+        }
         if (!onClose || event.key !== 'Escape' || !event.currentTarget.contains(event.target as Node)) return
         // A child may prevent dismissal without stopping propagation. Keep even that
         // Escape inside this portal; it must not cancel the ancestor node's selection.
