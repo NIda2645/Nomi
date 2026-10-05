@@ -7,6 +7,7 @@ import type { McpConnectionContext } from './mcpConnectionContext'
 import type { McpInvokeOptions } from './mcpProtocol'
 import { createMcpLoopbackRpcRequest } from './mcpLoopbackRpcRequest'
 import { rpcErrorFromPayload } from './mcpRpcError'
+import { outboundRequestWasNeverWritten } from '../outboundDispatchEvidence'
 
 // 传输兜底超时：须 ≥ 服务端最长合法耗时（core.ts 视频轮询 300s）才不误杀真生成；默认 360s，可经 env 调。
 export function mcpRpcTimeoutMs(): number {
@@ -16,6 +17,15 @@ export function mcpRpcTimeoutMs(): number {
 
 export function mcpRpcTimeoutMessage(timeoutMs: number): string {
   return `Nomi 无响应（${Math.round(timeoutMs / 1000)}s 超时）——生成可能仍在后台跑，可稍后用 nomi_read（target=canvas）查结果，先别重复提交。`
+}
+
+/**
+ * 请求已经送到、对方（Nomi）中途断开：请求**可能已经被执行**，这时只报「fetch failed」会让人以为没发生、直接重试，
+ * 重复执行（生成 / 写文稿都不是幂等的）。只有能证明「一个字节都没写出去」的失败（端口拒连、DNS、握手前）才保持原样报错——
+ * 判据和付费提交共用 `outboundDispatchEvidence`，拿不出证据就算「可能已执行」。
+ */
+export function mcpRequestMayHaveRunMessage(detail: string): string {
+  return `Nomi 在收到请求后连接中断了（${detail}）——请求可能已被 Nomi 执行，请先用 nomi_read 查看结果，再决定要不要重试。 / The connection to Nomi dropped after the request was delivered (${detail}) — the request may already have been executed by Nomi. Check the result with nomi_read before deciding whether to retry.`
 }
 
 export type McpLoopbackRpcCallInput = Readonly<{
@@ -54,6 +64,9 @@ export async function callMcpLoopbackRpc(input: McpLoopbackRpcCallInput): Promis
     if (options?.signal?.aborted) throw options.signal.reason instanceof Error ? options.signal.reason : new Error('MCP request cancelled')
     if (error instanceof Error && error.name === 'AbortError') {
       throw new Error(mcpRpcTimeoutMessage(timeoutMs), { cause: error })
+    }
+    if (error instanceof Error && !outboundRequestWasNeverWritten(error)) {
+      throw new Error(mcpRequestMayHaveRunMessage(error.message), { cause: error })
     }
     throw error
   } finally {
