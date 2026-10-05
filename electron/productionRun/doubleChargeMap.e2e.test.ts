@@ -122,7 +122,7 @@ describe("双扣地图：同一镜，画布和制作合起来只花一次钱", (
     const submits: string[] = [];
     let run = read(repository);
     run = repository.execute(PROJECT, RUN, { commandId: "batch-start", expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: now() }).run;
-    run = applyRunControl(repository, PROJECT, RUN, run, { commandId: "user-pause", expectedRevision: run.revision, type: "run.control", payload: { action: "pause" }, issuedAt: now() }).run;
+    applyRunControl(repository, PROJECT, RUN, run, { commandId: "user-pause", expectedRevision: run.revision, type: "run.control", payload: { action: "pause" }, issuedAt: now() });
 
     await canvasGenerates(canvas, "shot-2");
     run = read(repository);

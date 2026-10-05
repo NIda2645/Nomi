@@ -314,7 +314,7 @@ export async function startCapabilityCore(
       buildSchedulerForRun,
     })
     disposeSingleShotObservationLifecycle = runObservation.stop
-    const { settleSingleShotRunning, settleSingleShotCompleted, settleSingleShotAttention, driveScheduler, kickSchedulerForRun, observeSingleShotRun } = runObservation
+    const { settleSingleShotCompleted, settleSingleShotAttention, driveScheduler, kickSchedulerForRun, observeSingleShotRun } = runObservation
     // 画布单节点 ↑ 的唯一付费口（实现住 appIntegrationCanvasShot，这里只接线）。
     const canvasShots = createCanvasShotRuns({
       service: generationService,
@@ -447,8 +447,8 @@ export async function startCapabilityCore(
             driveScheduler(lease.projectId, operation.operationId, scheduler, 'batch scheduler tick')
             return { operationId: operation.operationId, state: operation.state, nextAction: 'observe' }
           }
+          // 受理那一刻 Run 已经记成进行中（提交出口和「已受理」同一次落盘）。
           const started = await submission.start({ projectId: lease.projectId, operationId: operation.operationId })
-          settleSingleShotRunning(lease.projectId, operation.operationId)
           // Single-shot semantic plans keep their candidate at the plan root,
           // but they still belong to the same canvas materialization owner as
           // multi-shot runs. Land the real placeholder after the durable

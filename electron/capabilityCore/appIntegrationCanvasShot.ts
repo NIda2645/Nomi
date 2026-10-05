@@ -34,7 +34,7 @@ import { prepareProductionGenerationAuthorization, type GenerationAuthorizationP
 import type { ProductionGenerationSubmission } from "../productionRun/productionGenerationSubmission";
 import type { ProductionRunService } from "../productionRun/productionRunService";
 import type { AutomationPolicy, ProductionArtifact, ProductionJob, ProductionRun, RunCommand } from "../productionRun/productionRunTypes";
-import { markSingleShotAttention, markSingleShotCompleted, markSingleShotRunning } from "../productionRun/singleShotRunLifecycle";
+import { markSingleShotAttention, markSingleShotCompleted } from "../productionRun/singleShotRunLifecycle";
 import type { ShotPrice } from "../shared/contracts/shotPricingRule";
 import { decideShotClaim } from "../shared/decideShotClaim";
 import { presentationIsOpen, undecidedShotIds } from "../shared/productionGenerationPresentation";
@@ -330,7 +330,6 @@ export function createCanvasShotRuns(deps: CanvasShotDeps) {
         if (after && !blockingReason(after)) settle(projectId, projectRoot, runId, job);
         throw error;
       }
-      markSingleShotRunning(repository(), projectId, runId);
       const receipt = canvasSubmitReceipt(started.providerTaskId)
         ?? { id: started.providerTaskId, kind: request.kind, status: "queued", assets: [], raw: {} };
       // 交的那一刻就有结论（同步出图 / 缓存命中）：渲染层不会再来查，这里当场收进 Run。
