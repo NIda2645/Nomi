@@ -2,7 +2,7 @@
  * [INPUT]: 依赖 ../model/directorStore 的 DirectorStoreState、../model/programCamera 的 programCameraIdAt
  * [OUTPUT]: 对外提供 PipRect 类型、pipCameraIdOf
  * [POS]: director/scene 的画中画选台规则：播放 / 录制中 / 导演视图（followProgram）= 节目机位（无覆盖 → null 黑场）；
- *        停止时 = 手动指定（previewCameraId，选中 / 新建 / 下拉都会写它）→ 播放头处的节目机位 → 正在 POV 的机位 → 选中机位 → 第一台。
+ *        停止时 = 手动指定（previewCameraId，store.select 选中机位 / 新建 / 下拉都会写它；选中角色 / 灯 / 物体不写）→ 播放头处的节目机位 → 正在 POV 的机位 → 选中机位 → 第一台。
  *        PipRenderer 与 DOM 侧 PipViewport 共用，保证画面与外壳看的是同一台。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
