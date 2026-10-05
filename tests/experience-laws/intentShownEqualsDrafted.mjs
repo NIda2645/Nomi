@@ -74,7 +74,7 @@ export async function observeIntent(world, intent) {
     const draftCall = verbToTransportCall({ toolCallId: 'law10-draft', toolName: 'draft_shots', args: { shots } })
     const created = await callTool(transport, draftCall.call.toolName, draftCall.call.args)
     const said = { model: `${intent.providerId}/${intent.modelId}`, count: intent.count, durationSec: intent.durationSec, references: intent.references?.length ?? 0 }
-    if (!created?.ok) return { refused: true, refusal: JSON.stringify(created?.error ?? created).slice(0, 300), said }
+    if (!created?.ok) return { refused: true, refusal: JSON.stringify(created), said }
     await base.canvasLanding.settleCanvasLanding(PROJECT_ID)
     const operation = created.result.operation
     const generateCall = verbToTransportCall({ toolCallId: 'law10-present', toolName: 'generate', args: { operationId: operation.operationId } })

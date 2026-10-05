@@ -24,12 +24,10 @@ const CASES = [
   { id: 'aspect-key-aspect_ratio', family: '比例键名 = aspect_ratio', intent: { providerId: 'apimart', modelId: 'kling-3.0-turbo', count: 1, durationSec: 5 }, expect: 'land' },
   { id: 'pixel-size', family: '像素档尺寸（size = 2048x2048 一类）', intent: { providerId: 'volcengine', modelId: 'doubao-seedream-4-5-251128', count: 3 }, expect: 'land' },
   { id: 'duration-in-steps', family: '时长只收几个档，说中了', intent: { providerId: 'apimart', modelId: 'MiniMax-Hailuo-2.3', count: 1, durationSec: 6 }, expect: 'land' },
-  { id: 'duration-out-of-steps', family: '时长只收几个档，说越界', intent: { providerId: 'apimart', modelId: 'MiniMax-Hailuo-2.3', count: 1, durationSec: 8 }, expect: 'land',
-    knownViolations: { 'node.durationSec:differs(8→6)': 'LAW10-OUT-OF-RANGE-SPLIT' } },
-  { id: 'no-duration-param', family: '模型没有时长参数（视频）', intent: { providerId: 'apimart', modelId: 'veo3.1-fast', count: 1, durationSec: 8 }, expect: 'land',
-    knownViolations: { 'node.durationSec:dropped': 'LAW10-SILENT-DROP', 'card.durationSec:dropped': 'LAW10-SILENT-DROP' } },
-  { id: 'still-with-duration', family: '图片说了时长（说明书写「静帧不填」）', intent: { providerId: 'apimart', modelId: 'gpt-image-2', count: 1, durationSec: 4 }, expect: 'land',
-    knownViolations: { 'node.durationSec:dropped': 'LAW10-SILENT-DROP', 'card.durationSec:dropped': 'LAW10-SILENT-DROP' } },
+  // 下面三条首跑是违反（LAW10-OUT-OF-RANGE-SPLIT / LAW10-SILENT-DROP）：宿主照收、各站各说各的。现在起草那一刻就拒，并说出合法值。
+  { id: 'duration-out-of-steps', family: '时长只收几个档，说越界', intent: { providerId: 'apimart', modelId: 'MiniMax-Hailuo-2.3', count: 1, durationSec: 8 }, expect: 'refuse', refusal: /只支持 6 \/ 10 秒/ },
+  { id: 'no-duration-param', family: '模型没有时长参数（视频）', intent: { providerId: 'apimart', modelId: 'veo3.1-fast', count: 1, durationSec: 8 }, expect: 'refuse', refusal: /没有时长参数/ },
+  { id: 'still-with-duration', family: '图片说了时长（说明书写「静帧不填」）', intent: { providerId: 'apimart', modelId: 'gpt-image-2', count: 1, durationSec: 4 }, expect: 'refuse', refusal: /没有时长参数/ },
   { id: 'references', family: '带一张素材库参考', intent: { providerId: 'apimart', modelId: 'gpt-image-2', count: 1, references: ['asset-hero'] }, expect: 'land' },
   { id: 'count-four', family: '张数：一次四张', intent: { providerId: 'apimart', modelId: 'gpt-image-2', count: 4 }, expect: 'land' },
   { id: 'reference-unknown', family: '参考给了素材库里没有的 id', intent: { providerId: 'apimart', modelId: 'gpt-image-2', count: 1, references: ['shot-2'] }, expect: 'refuse' },
@@ -58,6 +56,7 @@ describe('铁律 ⑩ 说的 = 摆的（宿主矩阵）', () => {
       const observation = await observeIntent(world, { prompt: PROMPT, ...testCase.intent })
       if (testCase.expect === 'refuse') {
         expect(observation.refused, `宿主应当场拒绝并说回给 Agent，实际落了草稿：${JSON.stringify(observation)}`).toBe(true)
+        if (testCase.refusal) expect(observation.refusal, '拒绝的话要说清合法值').toMatch(testCase.refusal)
         return
       }
       expect(observation.refused, `宿主不该拒绝：${observation.refusal ?? ''}`).toBe(false)
