@@ -281,6 +281,16 @@
         "symbol": "buildShotVerifyPrompt"
       },
       "reason": "2026-10-05 主进程那份审片纯核只服务于没有生产调用方的 core.generateOnProject（MCP 单发生成已退役），随它整族删除（docs/plan/2026-10-05-engine-convergence-cut1.md 第 0 步）。「判分提示词带理由语言、评分口径不变」这条不变量现在只有渲染层这一份在承担，合同里它本来就是声明过的另一个主人。"
+    },
+    {
+      "contract": "docs/fixes/2026-09-24-canvas-connection-ring-dead-ends.root-cause.json",
+      "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+      "symbol": "connectionCreateKindsForSource",
+      "anchor": {
+        "path": "src/workbench/generationCanvas/agent/referenceEdgeCapability.ts",
+        "symbol": "connectionCreateVerdictsForSource"
+      },
+      "reason": "节点快捷动作批次 1（#1001）把「这个节点能接给谁」收成一份带原因的判据 connectionCreateVerdictsForSource，旧的只给种类列表的 connectionCreateKindsForSource 由它取代后删除；同一文件，判据不变，只是多带了接不上的原因。"
     }
   ],
   "retirements": [

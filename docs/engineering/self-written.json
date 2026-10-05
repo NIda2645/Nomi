@@ -139,6 +139,7 @@
     {"path":"src/workbench/generationCanvas/agent/","reason":"Agent 对画布的读写落地"},
     {"path":"src/workbench/generationCanvas/fixation/","reason":"画布节点的固定与回放"},
     {"path":"src/workbench/generationCanvas/videoDepth/","reason":"视频深度节点：生成画布上的深度估计节点与结果呈现"},
+    {"path":"src/workbench/generationCanvas/quickActions/","reason":"节点快捷动作：从一个画布节点一键派生下游节点（连参考、引用效果库条目、沿用模型、按镜头花钱走唯一派发口）——画布节点与按镜头花钱语义，Nomi 独有"},
     {"path":"src/workbench/generationCanvas/components/","reason":"画布上的业务组件：批量计划、到达提示等"},
     {"path":"src/workbench/generationCanvas/events/","reason":"画布事件、撤销日志与写边界"},
     {"path":"src/workbench/production/","reason":"制作流程的界面与状态：Run、镜头认领、落地宿主"},
