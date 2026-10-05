@@ -93,10 +93,10 @@
       "ironLaws": ["⑫"],
       "useCases": ["S6"],
       "fullWalkJourneys": ["J06-delete-shot", "J07-switch-model"],
-      "status": "candidate",
+      "status": "fixed",
       "manualReview": "pending",
-      "evidence": [],
-      "completionCommits": []
+      "evidence": ["docs/plan/2026-10-05-storyboard-table-structure.md", "tests/ux/storyboard-table-structure.walk.mjs", "docs/fixes/2026-10-05-storyboard-table-structure.root-cause.json"],
+      "completionCommits": ["879aa9156", "d0220493d"]
     },
     {
       "id": "PLAN-S2-07",
@@ -275,10 +275,10 @@
       "ironLaws": ["⑫"],
       "useCases": ["S6"],
       "fullWalkJourneys": ["J06-delete-shot"],
-      "status": "candidate",
+      "status": "fixed",
       "manualReview": "pending",
-      "evidence": ["tests/ux/shots/full-walk/law12-zh/pb12-storyboard-click-expectations--base--zh-CN/click-sb-row-more.png"],
-      "completionCommits": []
+      "evidence": ["tests/ux/shots/full-walk/law12-zh/pb12-storyboard-click-expectations--base--zh-CN/click-sb-row-more.png", "docs/plan/2026-10-05-storyboard-table-structure.md", "tests/ux/storyboard-table-structure.walk.mjs", "docs/fixes/2026-10-05-storyboard-table-structure.root-cause.json"],
+      "completionCommits": ["879aa9156", "d0220493d"]
     },
     {
       "id": "LAW12-sb-row-checkbox",
@@ -321,6 +321,34 @@
       "manualReview": "pending",
       "evidence": ["10-05 real test: draft node showed the empty-prompt hint while the card held a filled prompt"],
       "completionCommits": []
+    },
+    {
+      "id": "AUD-20261005-12",
+      "source": "本次审计（docs/research/2026-10-05-storyboard-plan-user-audit.md）",
+      "category": "interaction-semantics",
+      "problem": "选中行后的多选浮条看不见：sticky 浮条在 overflow-hidden 的表格容器里失效，滚到最底才可见（账本 PLAN-S2-06「点击选择后反而隐藏」的真实机理）",
+      "existingInvariants": [],
+      "ironLaws": ["⑫"],
+      "useCases": ["S6"],
+      "fullWalkJourneys": [],
+      "status": "fixed",
+      "manualReview": "pending",
+      "evidence": ["docs/research/2026-10-05-storyboard-plan-user-audit.md", "docs/plan/2026-10-05-storyboard-table-structure.md", "tests/ux/storyboard-table-structure.walk.mjs", "docs/fixes/2026-10-05-storyboard-table-structure.root-cause.json", "tests/ux/shots/audit-storyboard/zh-CN/19-selected-row-toolbar-not-visible.png"],
+      "completionCommits": ["879aa9156", "d0220493d"]
+    },
+    {
+      "id": "AUD-20261005-16",
+      "source": "本次审计（docs/research/2026-10-05-storyboard-plan-user-audit.md）",
+      "category": "language-surface",
+      "problem": "最小窗口 1100×690 / 英文：镜头行底栏被裁，「⋯」与每行「生成」按钮看不见；英文 Agent 方案行「Generate」被截断（修复范围：最小窗口 zh/en；英文 735–834px 行宽的残留见根因合同 residual_risks）",
+      "existingInvariants": [],
+      "ironLaws": ["⑫"],
+      "useCases": ["S7"],
+      "fullWalkJourneys": [],
+      "status": "fixed",
+      "manualReview": "pending",
+      "evidence": ["docs/research/2026-10-05-storyboard-plan-user-audit.md", "docs/plan/2026-10-05-storyboard-table-structure.md", "tests/ux/storyboard-table-structure.walk.mjs", "docs/fixes/2026-10-05-storyboard-table-structure.root-cause.json", "tests/ux/shots/audit-storyboard/zh-CN/33-min-window-selected-row.png"],
+      "completionCommits": ["879aa9156", "d0220493d"]
     }
   ]
 }

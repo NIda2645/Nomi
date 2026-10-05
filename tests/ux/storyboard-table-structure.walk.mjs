@@ -281,15 +281,25 @@ async function walkLocale(locale) {
     const open = await win.locator(`[data-storyboard-row-menu="${LAST}"]`).count()
     if (open > 0) throw new Error(`行菜单还在（${open} 个）`)
   })
+  // 不论上面过没过，把状态复位成「没开」（再点一次触发钮 = 收起），免得残留的菜单挡住后面的步骤。
+  if (await win.locator(`[data-storyboard-row-menu="${LAST}"]`).count() > 0) {
+    await row(LAST).locator(`[data-storyboard-row-menu-trigger="${LAST}"]`).click()
+    await win.waitForTimeout(250)
+  }
 
   await scrollRowIntoView(LAST)
-  await clickOrFail(row(LAST).locator('[data-storyboard-actbar] button[aria-label]').last(), '点最后一行的「用作…」')
+  const useAsButton = row(LAST).locator('[data-storyboard-actbar] button[aria-label]').last()
+  await clickOrFail(useAsButton, '点最后一行的「用作…」')
   await check(tag, '最后一行的「用作…」菜单被裁', async () => {
     await expectOverlayReachable(win.locator('[data-storyboard-result-intake-menu]'), '最后一行的「用作…」菜单')
   })
   await snap(tag, '05-last-row-use-as-menu')
   await win.keyboard.press('Escape')
   await win.waitForTimeout(250)
+  if (await win.locator('[data-storyboard-result-intake-menu]').count() > 0) {
+    await useAsButton.click()
+    await win.waitForTimeout(250)
+  }
 
   // 提示词片段菜单（第 1 行；它自己也在表里，行内原地定位的那一族）。
   await scrollRowIntoView(1)
