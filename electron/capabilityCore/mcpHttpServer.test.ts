@@ -114,6 +114,85 @@ describe('本机 HTTP 直连 · HTTP 这一层的边界', () => {
   })
 })
 
+// 设计卡中途表「宿主断线但没发 DELETE」那一行的自动化证据：规范规定断线不等于取消，所以正在等确认的调用
+// 不会因断线立刻收尾；它要靠确认请求的 5 分钟超时结束，而超时必须按「未确认」处理——不派发、不铸收据、不扣钱。
+describe('宿主断线不发 DELETE：等确认的调用 5 分钟超时按未确认收尾', () => {
+  const challenge = {
+    challengeId: 'challenge-dropped', model: 'fixture-model', costScope: 'single-shot', maximumCost: 1, currency: 'CNY',
+    expiresAt: '2099-01-01T00:00:00.000Z', handoff: { challengeToken: 'challenge-token', contractHash: 'contract-hash' },
+  }
+  const cases = [
+    { label: '付费门', name: 'nomi_operation_gate', args: { leaseHandle: 'lease-1', operationId: 'operation-1', phase: 'request' }, before: ['nomi_request_generation_gate'] },
+    { label: '删除节点', name: 'nomi_canvas_maintenance', args: { leaseHandle: 'lease-1', operation: 'delete_canvas_nodes', nodeIds: ['a'], reason: 'tidy' }, before: [] },
+    { label: '文稿改写', name: 'nomi_document_edit', args: { leaseHandle: 'lease-1', content: '新的一段。', where: 'end' }, before: [] },
+  ] as const
+
+  it.each(cases)('$label：断线后推进到超时，领域派发 0 次、没有收据、调用以「未确认」结束', async ({ name, args, before }) => {
+    // 只假 setTimeout：确认请求的 5 分钟计时器在这之后才挂上；shouldAdvanceTime 让 HTTP 本身照常随真实时间走。
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+    const invoked: string[] = []
+    const verifyReceipt = vi.fn(async () => ({ confirmed: true, receiptId: 'receipt-should-never-exist' }))
+    const confirmInNomi = vi.fn(async () => ({ confirmed: true, receiptId: 'receipt-should-never-exist' }))
+    let inFlightAtClose = -1
+    const dropped = await startMcpHttpServer({
+      port: 0,
+      sessionFor: (identity) => {
+        const nomi = createNomiMcpServer({
+          invoke: async (method) => {
+            invoked.push(method)
+            if (method === 'nomi_request_generation_gate') return challenge
+            return { applied: true }
+          },
+          isAppOpen: () => true,
+          getAuthenticatedClient: () => identity.connection.authenticatedClient,
+          verifyClientGenerationConfirmation: verifyReceipt,
+          confirmGenerationInNomi: confirmInNomi,
+        })
+        nomi.onClose((count) => { inFlightAtClose = count })
+        return nomi
+      },
+    })
+    try {
+      const headers = { 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...identity('codex') }
+      const opened = await fetch(dropped.url, {
+        method: 'POST', headers,
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-11-25', capabilities: { elicitation: {} }, clientInfo: { name: 'dropper', version: '1' } } }),
+      })
+      await opened.text()
+      const session = { ...headers, 'mcp-session-id': opened.headers.get('mcp-session-id') ?? '', 'mcp-protocol-version': '2025-11-25' }
+      await (await fetch(dropped.url, { method: 'POST', headers: session, body: JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) })).text()
+
+      // 发起调用，读那次 POST 的 SSE 流，直到确认弹框（elicitation/create）出现——然后宿主「直接断线」：掐断流，不发 DELETE、不回答。
+      const hangUp = new AbortController()
+      const call = await fetch(dropped.url, {
+        method: 'POST', headers: session, signal: hangUp.signal,
+        body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name, arguments: args } }),
+      })
+      const reader = call.body!.getReader()
+      let seen = ''
+      while (!seen.includes('elicitation/create')) {
+        const chunk = await reader.read()
+        if (chunk.done) throw new Error(`确认弹框没出现：${seen}`)
+        seen += new TextDecoder().decode(chunk.value)
+      }
+      hangUp.abort()
+      expect(invoked).toEqual(before)
+
+      await vi.advanceTimersByTimeAsync(300_001)
+      for (let round = 0; round < 20; round += 1) await new Promise<void>((resolve) => setImmediate(resolve))
+
+      expect(invoked, '超时之后不许派发任何领域写 / 付费调用').toEqual(before)
+      expect(verifyReceipt, '没有人确认过，就不许去铸收据').not.toHaveBeenCalled()
+      expect(confirmInNomi, '客户端那一面没确认，不许偷偷换成 Nomi 卡放行').not.toHaveBeenCalled()
+    } finally {
+      await dropped.close()
+      vi.useRealTimers()
+    }
+    // 关服务时这条会话里已经没有在途调用：调用确实在超时时收尾了（以未确认的工具错误结束），不是还挂着。
+    expect(inFlightAtClose).toBe(0)
+  })
+})
+
 describe('端口与地址', () => {
   it('正常实例占默认端口；走查 / 隔离实例不抢，除非显式给端口', () => {
     expect(resolveMcpHttpPort({})).toBe(MCP_HTTP_DEFAULT_PORT)
