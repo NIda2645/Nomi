@@ -42,3 +42,5 @@ metadata:
 ---
 
 One continuous take, no cut, camera follows {主体} through the space
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

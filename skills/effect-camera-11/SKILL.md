@@ -42,3 +42,5 @@ metadata:
 ---
 
 Extreme slow motion on the instant of {impact/shatter}, debris suspended mid-air
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

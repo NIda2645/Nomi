@@ -40,3 +40,5 @@ metadata:
 ---
 
 Long-lens over-the-shoulder, foreground shoulder soft, focus on the far face, shallow depth of field
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

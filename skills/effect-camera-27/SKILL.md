@@ -40,3 +40,5 @@ metadata:
 ---
 
 Carry the next scene's sound in before the picture cuts
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

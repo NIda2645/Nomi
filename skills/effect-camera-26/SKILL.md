@@ -42,3 +42,5 @@ metadata:
 ---
 
 Match cut on a shape/color/motion — a tossed {object} becomes another object/place
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

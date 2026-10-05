@@ -40,3 +40,5 @@ metadata:
 ---
 
 Hard cut to black, hold one beat, resolve on the next scene
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

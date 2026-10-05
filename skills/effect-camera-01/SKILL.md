@@ -42,3 +42,5 @@ metadata:
 ---
 
 Slow drift across an empty {场景}, no subject in frame; hold, then the next shot opens on a matching color/tone
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

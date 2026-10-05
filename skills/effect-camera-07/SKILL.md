@@ -42,3 +42,5 @@ metadata:
 ---
 
 Slow horizontal pan across a wide {场景}, revealing its full scale
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

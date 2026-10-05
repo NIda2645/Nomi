@@ -40,3 +40,5 @@ metadata:
 ---
 
 Fast time-lapse, clouds and shadows racing, light shifting over a near-static frame
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.

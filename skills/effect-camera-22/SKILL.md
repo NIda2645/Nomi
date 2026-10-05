@@ -40,3 +40,5 @@ metadata:
 ---
 
 Rapid 0.5s intercut of charged details — sparks, eyes, blade, a held breath
+
+Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
