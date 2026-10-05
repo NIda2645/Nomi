@@ -1850,6 +1850,36 @@
       ],
       "reason": "3D-BOX 导演节点上挂的预演（参考视频）的生命周期：none 没有预演 / rendering 离屏录制中 / ready 可挂接 / failed 录制失败。它回答「这一镜的预演能不能当参考视频、能不能放行付费生成」，是 3D-BOX 花钱闸（directorPreviewState）的判据。收进 electron/shared/director/directorPreviewStatus.ts 作 as-const 单源，主进程合同 directorWrite、画布读取视图 canvasRead 的 z.enum、渲染端 applyDirectorWrite 的 Preview 与 directorPreviewState 的 DirectorPreviewMeta（Exclude none）都从它取，不各抄一份。不能复用现有 owner：画布节点状态 GENERATION_NODE_STATUSES 说的是一次生成任务的排队 / 成功 / 可找回，预演没有排队与可找回两格，却多一个「没有预演」；并进去会让生成状态表长出与它无关的成员。",
       "site": "electron/shared/director/directorPreviewStatus.ts::variable:DIRECTOR_PREVIEW_STATUSES/as-const"
+    },
+    {
+      "members": [
+        "backdrop",
+        "building",
+        "counter",
+        "gate",
+        "ground",
+        "paper",
+        "pedestal",
+        "road",
+        "seat",
+        "small_item",
+        "table",
+        "tree",
+        "wall"
+      ],
+      "reason": "导演计划编译器舞台模型的「舞台种类」：计划里的名词（布景件 kind、道具 desc，含中英文）指的是舞台上哪一类东西——地面 / 路 / 墙 / 门 / 树 / 楼 / 背景板 / 展台 / 桌 / 座 / 柜台 / 纸张 / 手持小件。它决定这件东西在舞台上的角色（关系词按角色解释）和典型尺寸，并用于「计划里的院门 = 模板院门」的同名合并。住在 electron/shared/director/vocab.ts，与计划词表（景别、运镜、模板、环境词）同一 owner；编译器 directorStage 与模板 s1SceneTemplates 都从它取。不能复用现有 owner：DIRECTOR_ENVIRONMENT_WORDS 说的是「这场戏在哪种地方」（不是舞台上的一件东西），计划 schema 的演员 kind（person / vehicle / product / prop）是演员分类，都回答不了「这件布景是什么、多大」。",
+      "site": "electron/shared/director/vocab.ts::variable:DIRECTOR_STAGE_KINDS/as-const"
+    },
+    {
+      "members": [
+        "furniture",
+        "handheld",
+        "performer",
+        "structure",
+        "surface"
+      ],
+      "reason": "舞台模型里一件东西的舞台角色：surface 可站的面（地面、路）/ structure 结构（墙、门、树、楼，人站在它前面）/ furniture 家具（桌、座、展台，靠里放、可承托）/ performer 演员（人、车、产品，被拍的主体）/ handheld 手持物（挂到人身上跟着走）。关系词（at / near / on / 前后左右）的空间含义按这个角色解释，是编译器摆位、走位、携带物父子与视线排除的唯一判别。只在编译侧 directorStage 使用，不进工程数据、不出计划契约。不能复用现有 owner：舞台种类（DIRECTOR_STAGE_KINDS）是名词分类、成员十几个且会随词表扩，角色是它的上位五分；演员 kind 只覆盖计划演员、没有地面 / 结构 / 家具。",
+      "site": "src/workbench/generationCanvas/nodes/director/model/compiler/directorStage.ts::type:StageRole/type-union"
     }
   ],
   "debt": [

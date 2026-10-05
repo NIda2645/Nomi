@@ -90,7 +90,7 @@ describe('空间事实只有一份：共用包围盒 vs 渲染组件真值', () 
     const one = { x: 1, y: 1, z: 1 }
     const mismatched = PRIMITIVES.filter((type) => {
       const rendered = new THREE.Box3().setFromObject(renderMeshOf(type), true)
-      const shared = scaledBounds(type, one)
+      const shared = scaledBounds({ type, scale: one })
       const size = rendered.getSize(new THREE.Vector3())
       return Math.abs(size.x - shared.size.x) > 1e-6 || Math.abs(size.y - shared.size.y) > 1e-6 || Math.abs(size.z - shared.size.z) > 1e-6 || Math.abs(rendered.min.y - shared.min.y) > 1e-6
     })
@@ -178,6 +178,14 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
     if (process.env.DIRECTOR_INVARIANT_DUMP) console.log(JSON.stringify({ ledger, results: results.filter((r) => r.violations.length).map((r) => ({ id: r.id, violations: r.violations.map((v) => `${v.criterion}: ${v.subject} ${v.other ?? ''} ${v.value ?? ''}`) })) }, null, 2))
     expect(ledger).toEqual(LEDGER)
   })
+
+  // 舞台模型（第二步）的目标：看得见主体、携带物跟手；其余判据不许回升（第 4 步达成，已去掉 .fails）。
+  it('第二步目标：occluded 0、carriedDrift 0，其余判据不高于当前账', () => {
+    expect(count('occluded')).toBe(0)
+    expect(count('carriedDrift')).toBe(0)
+    for (const criterion of ['floating', 'interpenetrating', 'offFloor', 'cameraInside'] as const)
+      expect(count(criterion)).toBeLessThanOrEqual(LEDGER[criterion][0])
+  })
 })
 
 /**
@@ -189,13 +197,20 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
  * ② 站位不进实心物体（clearOfSolids，一条按包围盒的通用规则，不按谁和谁写特例）：初始摆位与 walk_to / chase 的落脚点
  *   都退出实心物体、留落脚间隙；落脚点高度留在出发点的地面高度 → interpenetrating 21→1、occluded 30→12。
  *   剩下的是 e 类（关系词没有空间语义：机位绕到墙外、「在门前」的门朝向），留给舞台模型一步。
+ * 第二步 · 舞台模型（docs/plan/2026-10-05-director-stage-model-step2.md）：
+ *   1 种类与尺寸 + 同名合并（「院门 at 模板院门」不再造第二个盒子、cafe_table 按桌子的典型尺寸、信按纸张大小）：
+ *     interpenetrating 1→0、occluded 12/6→7/5。
+ *   2 关系解析（关系词按舞台角色解析到命名站位与朝向；走到院门 = 走到守门人跟前面对他）：过肩镜头不再被前景人挡（7/5→5/5）；
+ *     t1-05 的柜台按家具靠里放后，环绕机位穿到后墙外（新增 1，留给视线一步）。
+ *   3 携带物父子（人和信挂在同一个携带分组下，编辑器父子关系）：floating 1→0、carriedDrift 1→0。
+ *   4 机位视线（角度相对主体朝向；被挡就对整条路径找看得见、不越轴的候选；上面放着主体的家具算表演区）：occluded 5/5→0。
  */
 const LEDGER = {
   cases: 34,
-  floating: [1, 1], // 信（on 女子）悬在半空：携带物没挂到手上（留给 ②：用父子关系）
-  interpenetrating: [1, 1], // 回归计划里「女子 at 院门（setPiece）」：门是规划器放的布景件，人站在它原点上
+  floating: [0, 0],
+  interpenetrating: [0, 0],
   offFloor: [0, 0],
   cameraInside: [0, 0], // 现有避让在渲染真值下也成立——锁住
-  occluded: [12, 6], // 远景机位绕到院墙外 / 门后；布景件挡在主体前（cafe_table）
-  carriedDrift: [1, 1], // 女子走 3.5m，信留在原地
+  occluded: [0, 0],
+  carriedDrift: [0, 0],
 }

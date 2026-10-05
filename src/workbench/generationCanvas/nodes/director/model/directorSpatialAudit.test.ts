@@ -8,7 +8,7 @@ const v = (x = 0, y = 0, z = 0) => ({ x, y, z })
 const cube = (id: string, position: ReturnType<typeof v>, scale = v(1, 1, 1), extra: Partial<DirectorObject> = {}): DirectorObject => ({
   id, name: id, type: 'cube', position, rotation: v(), scale, visible: true, locked: false, ...extra,
 })
-const floor = cube('floor', v(0, originYForBottom('cube', v(10, 0.05, 10), -0.05), 0), v(10, 0.05, 10))
+const floor = cube('floor', v(0, originYForBottom({ type: 'cube', scale: v(10, 0.05, 10) }, -0.05), 0), v(10, 0.05, 10))
 function project(objects: DirectorObject[], cameras: DirectorCamera[] = []): DirectorProject {
   const p = createDefaultProject('audit')
   p.scenes[0].objects = objects
