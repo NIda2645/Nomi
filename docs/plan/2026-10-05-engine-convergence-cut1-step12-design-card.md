@@ -1,6 +1,6 @@
 # 发动机收敛第一刀 第 1–2 步：设计卡与拍板单
 
-> 状态：📋 **待拍板**（2026-10-05，实现线 L-cut1）。设计卡与特征测试已提交；**生产代码未动**——动手前读代码查出 3 处岔路（F1–F3），其中 F3 是花钱语义，必须先拍；F4–F7 有默认答案，按默认写进卡里。
+> 状态：✅ 已实现未推送（2026-10-05，实现线 L-cut1）。F1–F3 已拍（F3 用户拍板，F1 / F2 协调会话定），按推荐组合实现，见 §9。真 App 那一步 `pending-real-app`（独立验收线）。
 > 上游：[`2026-10-05-engine-convergence-cut1.md`](2026-10-05-engine-convergence-cut1.md)（施工计划正本、方向检查复盘、双扣地图；用户 10-04 拍板岔路 B）。基线：`origin/main@78cc49ad7`（#985 合入后）。
 > 论断都带文件:行或命令；量不了的标 `unverified`。
 
@@ -126,3 +126,29 @@
 ## 自己写了什么、为什么必须
 
 这一轮只写了设计卡和两份特征测试，没有生产代码。拍板后唯一的新生产文件是 `canvasTransportProvider.ts`（接线：把画布那台的传输挂到按镜头花钱的同一个提交出口，领域约束），没有新判据、没有新状态机、不引新库；F3b 的第三档判据住在现有的唯一判据文件里，不另立一份。
+
+## 9. 实施结果（2026-10-05）
+
+拍板：F3 = b（用户）；F1 = a、F2 = b（协调会话）；F4–F7 按默认。
+
+| 步 | 提交 | 做了什么 |
+|---|---|---|
+| 1 | `0377b6042` | 第三档「收到了明确拒绝」：判据 `outboundDispatchEvidence.providerExplicitlyRejected`，两个执行器收到响应才挂证据（`providerAnswer`），提交出口记成 `needs_attention / provider_rejected`、预留安全释放。合同 `docs/fixes/2026-10-05-provider-explicit-rejection.root-cause.json` |
+| 2 | `7c4cad6d6` | `canvasTransportProvider` 把画布那台的传输包成执行器（不复制传输）；`runTask` 的令牌闸改按 admission 选（缺省令牌路，画布单镜 Run 传 `RUN_APPROVED_ADMISSION`）；对拍矩阵加 `canvas-node-run`，7 个用例与画布按生成逐字节相同 |
+| 3 | `e46569609` | 主进程「画布生成这一镜」（`appIntegrationCanvasShot`）：准入 → 单镜 Run → 手势收据批准 → 提交出口；查结果经 Run；渲染层不在交给观察者。控制器三处单节点铸令牌删掉（文本 / 本地 ComfyUI 例外）；3D-BOX 闸挪进主进程准入（单节点路删渲染层那一行，批量令牌路暂留到第 3 步）。合同 `docs/fixes/2026-10-05-canvas-paid-into-production-run.root-cause.json` |
+| 4 | `8cc90106b` | 打开项目只 `listRuns` 一次（以前每个制作 Run 读 4 次）；「没收尾」标记按节点指纹命名、不打开文件；收据库过期已久的拿掉 |
+| 5 | 本提交 | 走查剧本 `tests/ux/full-walk/playbooks/pb11-canvas-single-run.walk.mjs`（零花费回环夹具 + 出网闸），登记进全功能走查目录 J01 |
+
+**门表（改动后）**：11 个单节点调用点不变，全部经三个控制器函数 → `authorizeSingleNode`（只给文本 / 本地 ComfyUI 两类例外铸令牌；控制器里铸令牌从 3 处变 1 处）→ `runGenerationNode(ledger: 'run')` → 执行器 → `submitCanvasShotRun` → 受信 IPC `nomi:tasks:canvas-submit` → `createCanvasShotRuns` → `productionGenerationSubmission.start`（提交出口）。查：`pollCanvasShotRun`（执行器与「重新拉取」两处）→ Run 的 poll / materialize。`node scripts/door-map.mjs submitCanvasShot submitCanvasShotRun createCanvasShotRuns pollCanvasShotRun` → 写 5 · 读 1，一条链。
+
+**性能（本机 Windows、机器有负载、假供应商，60–300 次）**：点 ↑ 到供应商调用前 p50 约 180–245 ms、p95 约 290–390 ms（计划门 p95 ≤ 150 ms，只记录不阻断；界面在 IPC 之前就进「提交中」，不等它）。钱花在：
+- Run 命令约 7 条 × 9–12 ms ≈ 70 ms（约 35%）：每条命令写一条带整份 Run 快照的事件 + 重写 run.json + 仓库锁；
+- 收据库 5 次读写 ≈ 65 ms（约 33%）：整份状态读、验 MAC、原子重写；
+- 提交出口的意向日志 / 运行时信封 / Run 锁 ≈ 25 ms；建草稿与报文准备 ≈ 15 ms。
+- 收据库原先不清理：300 次点击涨到 2.8 MB、每次批准 1.4 秒——已在第 4 步修掉（稳定在最近几分钟）。
+
+**登记为后续（不放进本 PR）**：
+- Run 事件「只追加增量 + 定期快照」：预计每条命令 10 ms → 3–5 ms，每次点击省约 35–45 ms；每个单镜 Run 落盘约 97 KB → 约 20 KB。碰 `productionRunRepository` 读写格式，要独立一刀并做旧数据只读兼容。
+- 收据三连（挑战 → 铸 → 消费）并成一次读写、去掉重复的 verify / consume：预计每次点击再省约 40 ms。两项合计预计 p95 落到 150 ms 以内（`unverified`）。
+
+**给独立验收线的核对清单**：见实现线报告；真 App 一步 `pending-real-app`：pb11 中英各跑一遍、C 之后关掉 App 再开再点 ↑ 仍被拦、0.23 安装包打开带画布 Run 的项目不报错。
