@@ -8,7 +8,7 @@
  *           指针事件先给创建模式 hook，再落到画布拾取；悬浮态写入 hoveredRef / scopeRef；
  *           presentation（导演视图）时编辑辅助物不画、不可点选、小窗改说「正在播哪一镜」
  * [POS]: director/panels/viewport 的视口装配（清单 §2 全部 DOM 侧），three 世界在 scene/DirectorCanvas。
- *        2026-09-09 五簇重排后视口上不再有控件带：创建栏 / 底栏 / 显示模式三条已并进 topbar/DirectorTopBar，
+ *        2026-09-09 五簇重排后视口上不再有控件带：创建栏 / 底栏 / 显示模式三条已并进顶栏（今天是 topbar/RefineTopBar），
  *        这里只剩内容与情境浮层（标签 / HUD / POV / 画中画 / AI 入口）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
