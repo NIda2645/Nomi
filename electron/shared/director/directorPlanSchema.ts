@@ -1,10 +1,10 @@
 import { z } from 'zod'
 import { aiSceneSchema } from './aiSceneSchema'
-import { EVAL_SHOT_SIZES, CAMERA_MOVES, DIRECTOR_SCENE_TEMPLATES } from './vocab'
+import { EVAL_SHOT_SIZES, CAMERA_MOVES, DIRECTOR_PLACEMENT_RELATIONS, DIRECTOR_SCENE_TEMPLATES } from './vocab'
 
 const finite = z.number().finite()
 const windowSchema = z.tuple([finite.nonnegative(), finite.nonnegative()]).refine(([a, b]) => b > a, 'window end must be greater than start')
-const relation = z.enum(['near', 'in_front_of', 'behind', 'left_of', 'right_of', 'on', 'between', 'along', 'at'])
+const relation = z.enum(DIRECTOR_PLACEMENT_RELATIONS)
 const environment = z.enum(['day', 'night', 'studio'])
 const template = z.enum(DIRECTOR_SCENE_TEMPLATES)
 const actorKind = z.enum(['person', 'vehicle', 'product', 'prop'])
