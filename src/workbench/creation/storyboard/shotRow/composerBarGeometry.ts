@@ -257,13 +257,17 @@ export function composerDemotedChipKeys(
  * 取英文宽会把今天在 807px 行宽下三格并排、底栏装得下的中文行也收成一格——那是改版面，不是修裁切。
  * 英文在 735–834px 之间仍会被剪（残留缺口，见 docs/plan/2026-10-05-storyboard-table-structure.md）。
  */
-const CJK_GENERATE_BUTTON_WIDTH = Math.round(20 + estimateLabelWidth('生成'))
-export const COMPOSER_BAR_FLOOR_WIDTH =
-  composerBarRequiredWidth(
-    [
-      { kind: 'model', label: 'x'.repeat(COMPOSER_CHIP_YIELD.model.minLabelChars ?? 8), hasIcon: true },
-      { kind: 'mode', label: '全能参考' },
-      { kind: 'duration', label: '5 秒' },
-    ],
-    { dots: true, generate: true },
-  ) - GENERATE_BUTTON_WIDTH + CJK_GENERATE_BUTTON_WIDTH
+// 不写中文字面量（`check:i18n` 会把它当成漏翻的可见文案）：全角标签直接按「几个全角字」算宽。
+const CANONICAL_MODEL_CHIP = composerChipFloor({ kind: 'model', label: 'x'.repeat(COMPOSER_CHIP_YIELD.model.minLabelChars ?? 8), hasIcon: true })
+/** 模式：4 个全角字（「全能参考」那种长度）。 */
+const CANONICAL_MODE_CHIP = Math.round(4 * LABEL_WIDE_CHAR_PX + CHIP_CHROME_PLAIN)
+/** 时长：「5 秒」= 两个窄字符（数字 + 空格）+ 一个全角字。 */
+const CANONICAL_DURATION_CHIP = Math.round(2 * LABEL_CHAR_PX + LABEL_WIDE_CHAR_PX + CHIP_CHROME_PLAIN)
+/** 「生成」：两个全角字（英文「Generate」那条是 `GENERATE_BUTTON_WIDTH`）。 */
+const CJK_GENERATE_BUTTON_WIDTH = Math.round(20 + 2 * LABEL_WIDE_CHAR_PX)
+const CANONICAL_BOXES = 5 // 模型 / 模式 / 时长 / ⋯ / 生成
+export const COMPOSER_BAR_FLOOR_WIDTH = Math.round(
+  CANONICAL_MODEL_CHIP + CANONICAL_MODE_CHIP + CANONICAL_DURATION_CHIP
+  + OVERFLOW_DOTS_WIDTH + CJK_GENERATE_BUTTON_WIDTH
+  + (CANONICAL_BOXES - 1) * COMPOSER_BAR_GAP + COMPOSER_BAR_PADDING_X,
+)
