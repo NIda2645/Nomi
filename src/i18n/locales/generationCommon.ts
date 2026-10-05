@@ -512,6 +512,7 @@ export const zhGenerationCommon = {
     },
     duplicateVariantHint: '带上游连线，不带结果',
     derivedTitle: '{{action}} · {{source}}',
+    labDerivedPrompt: '这是一张 3×3 机位联系表：同一时刻、同一场景、同一批人物，只换九个机位……',
   },
   shotConversion: {
     shot: '镜头 {{index}}',
@@ -2110,6 +2111,7 @@ export const enGenerationCommon = {
     },
     duplicateVariantHint: 'Keeps incoming links, not results',
     derivedTitle: '{{action}} · {{source}}',
+    labDerivedPrompt: 'A 3×3 contact sheet: same moment, same scene, same people, only the nine camera positions change...',
   },
   shotConversion: {
     shot: 'Shot {{index}}',

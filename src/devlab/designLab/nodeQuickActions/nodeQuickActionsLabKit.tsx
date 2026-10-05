@@ -3,7 +3,7 @@
 // 每一格渲染的都是 `src/` 里的**生产组件本体**：快捷动作浮条（`quickActions/ImageQuickActionsToolbar`）、
 // 浮条下拉（`nodes/ToolbarActionMenu` → `WorkbenchMenu`）、宫格点阵（`nodes/GridSplitPicker` → `AnchoredPopover`）、
 // 「用这个节点生成…」（`quickActions/NodeDeriveMenu`）、节点右键菜单（`components/NodeContextMenu`），
-// 派生中 / 派生失败两格用的是现役 `BaseGenerationNode`。菜单里没有价格（用户 10-05 拍板：官方额度上线后再做）。
+// 派生后（新节点空闲）这一格用的是现役 `BaseGenerationNode`。菜单里没有价格（用户 10-05 拍板：官方额度上线后再做）。
 //
 // 唯一的占位是浮条那几格的**节点卡本身**（同 `videoDepth/videoDepthLabKit.tsx` 的理由：真卡会把
 // 现役浮条一起渲出来，没法把新浮条挂上去）。卡的外壳类名与现役卡逐字相同。
@@ -23,9 +23,9 @@ import { NODE_DERIVE_KINDS } from '../../../workbench/generationCanvas/quickActi
 import { QUICK_ACTION_META_KEY } from '../../../workbench/generationCanvas/quickActions/deriveFromNode'
 import type { GenerationCanvasNode } from '../../../workbench/generationCanvas/model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../../../workbench/generationCanvas/store/generationCanvasStore'
-import { useGenerationQueueStore } from '../../../workbench/generationCanvas/runner/generationQueueStore'
 import { useWorkbenchStore } from '../../../workbench/workbenchStore'
 import { holdDesignLabReady } from '../labReadyHold'
+import { COMPOSER_CHUNK, installCatalogBridge } from '../nodeComposerBar/nodeComposerBarLabKit'
 import { cn } from '../../../utils/cn'
 
 export const QUICK_ACTIONS_CELL_WIDTH = 900
@@ -91,12 +91,12 @@ function useCanvasStores(nodes: readonly GenerationCanvasNode[], edges: { id: st
   return ready
 }
 
-function Stage({ width = QUICK_ACTIONS_CELL_WIDTH, children }: { width?: number; children: React.ReactNode }): JSX.Element {
+function Stage({ width = QUICK_ACTIONS_CELL_WIDTH, height = QUICK_ACTIONS_CELL_HEIGHT, children }: { width?: number; height?: number; children: React.ReactNode }): JSX.Element {
   return (
     <div
       data-design-lab-stage="node-quick-actions"
       className="relative overflow-hidden rounded-nomi border border-nomi-line"
-      style={{ width, height: QUICK_ACTIONS_CELL_HEIGHT }}
+      style={{ width, height }}
     >
       {/* 真画布的舞台类：点阵底色 + 浮条「左右夹住、太窄就折行」的测量都认它。 */}
       <div className="generation-canvas-v2__stage group/canvas">{children}</div>
@@ -250,60 +250,57 @@ export function ContextMenuStage(): JSX.Element {
 }
 
 /**
- * 派生之后：源节点不变，右侧新节点（连着一条参考线）生成中 / 失败。两张都是现役 `BaseGenerationNode`。
- * 选中仍留在源节点上（grill 第 2 题默认），这一格只看两张卡的状态，所以两张都画成未选中。
+ * 派生之后：源节点不变，右侧新节点（连着一条参考线、提示词已填好）**空闲**，等用户点它的 ↑ 才生成。
+ * 两张都是现役 `BaseGenerationNode`；浮框（提示词 + ↑）只在节点被选中时才出，所以这一格把新节点选上来看它——
+ * 真实流程里选中仍留在源节点（单测钉住），用户点开新节点才看到这块。
  */
-export function DerivedStage({ failed }: { failed: boolean }): JSX.Element {
-  const outcome = failed ? 'error' : 'running'
+export function DerivedIdleStage(): JSX.Element {
   const { t } = useTranslation()
   const derivedId = 'qa-derived'
   const source = React.useMemo(() => sourceNode({ position: { x: 0, y: 0 } }), [])
-  const derived = React.useMemo((): GenerationCanvasNode => {
-    const startedAt = Date.now() - 14000
-    const title = `${t('generationCommon.quickActions.actions.multiAngleGrid')} · ${SOURCE_TITLE}`
-    return {
-      id: derivedId,
-      kind: 'image',
-      title,
-      categoryId: 'shots',
-      // 卡由外层定位（与源卡并排、隔 64）；BaseGenerationNode 自己不读 position。
-      position: { x: 0, y: 0 },
-      size: { ...CARD },
-      status: outcome,
-      ...(outcome === 'error' ? { error: 'Request failed with status 429: upstream rate limited' } : {}),
-      meta: { modelKey: 'gpt-image-2', modelVendor: 'apimart', [QUICK_ACTION_META_KEY]: { id: 'multi-angle-grid', sourceNodeId: 'qa-source', grid: { rows: 3, cols: 3 } } },
-      ...(outcome === 'running' ? { progress: { phase: 'generating', updatedAt: startedAt } } : {}),
-      runs: [{ id: 'qa-run', status: outcome, startedAt, updatedAt: startedAt }],
-    } as GenerationCanvasNode
-  }, [outcome, t])
+  const derived = React.useMemo((): GenerationCanvasNode => ({
+    id: derivedId,
+    kind: 'image',
+    title: `${t('generationCommon.quickActions.actions.multiAngleGrid')} · ${SOURCE_TITLE}`,
+    categoryId: 'shots',
+    position: { x: 0, y: 0 },
+    size: { ...CARD },
+    status: 'idle',
+    prompt: t('generationCommon.quickActions.labDerivedPrompt'),
+    meta: { modelKey: 'gpt-image-2', modelVendor: 'apimart', [QUICK_ACTION_META_KEY]: { id: 'multi-angle-grid', sourceNodeId: 'qa-source', grid: { rows: 3, cols: 3 } } },
+  } as GenerationCanvasNode), [t])
   const nodes = React.useMemo(() => [source, derived], [derived, source])
   const edges = React.useMemo(() => [{ id: 'qa-edge', source: 'qa-source', target: derivedId }], [])
-  const ready = useCanvasStores(nodes, edges)
+  React.useMemo(() => {
+    installCatalogBridge()
+    // 目录闸（keepUsableModelRows）要每行带 availability；composer-bar 夹具没带，这里补一层。
+    const catalog = (window as unknown as { nomiDesktop: { modelCatalog: { listModels: (params?: unknown) => Array<Record<string, unknown>> } } }).nomiDesktop.modelCatalog
+    const listModels = catalog.listModels
+    catalog.listModels = (params) => listModels(params).map((row) => ({ ...row, availability: { usable: true } }))
+  }, [])
+  const [chunkReady, setChunkReady] = React.useState(false)
+  React.useEffect(() => { void COMPOSER_CHUNK.then(() => setChunkReady(true)) }, [])
+  const ready = useCanvasStores(nodes, edges) && chunkReady
   React.useLayoutEffect(() => {
-    if (!ready) return
-    useGenerationQueueStore.setState({ entries: [], batches: {} })
-    const queue = useGenerationQueueStore.getState()
-    const batch = queue.enqueueBatch([[derivedId]], 'quick-actions-lab')
-    queue.markRunning(batch, derivedId)
-    if (outcome === 'error') queue.markSettled(batch, derivedId, 'error', { error: derived.error })
-  }, [derived.error, outcome, ready])
+    if (ready) useGenerationCanvasStore.setState({ selectedNodeIds: [derivedId] })
+  }, [ready])
   const live = useGenerationCanvasStore((state) => state.nodes)
   const liveSource = live.find((node) => node.id === 'qa-source')
   const liveDerived = live.find((node) => node.id === derivedId)
   const left = 80
   const gap = 64
   return (
-    <Stage>
+    <Stage width={1100} height={920}>
       {ready && liveSource && liveDerived ? (
         <>
           <svg className="absolute" style={{ left: left + CARD.width, top: CARD_TOP - 200 + CARD.height / 2, width: gap, height: 2 }} aria-hidden>
             <line x1="0" y1="1" x2={gap} y2="1" stroke="var(--nomi-line)" strokeWidth="2" />
           </svg>
           <div className="absolute" style={{ left, top: CARD_TOP - 200, width: CARD.width, height: CARD.height }}>
-            <BaseGenerationNode node={liveSource} selected={false} readOnly />
+            <BaseGenerationNode node={liveSource} selected={false} />
           </div>
           <div className="absolute" style={{ left: left + CARD.width + gap, top: CARD_TOP - 200, width: CARD.width, height: CARD.height }}>
-            <BaseGenerationNode node={liveDerived} selected={false} readOnly />
+            <BaseGenerationNode node={liveDerived} selected />
           </div>
         </>
       ) : null}
