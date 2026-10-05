@@ -223,7 +223,7 @@ export default function StoryboardAnchorRow({
               className="inline-flex h-6 items-center gap-0.5 rounded-nomi-sm border border-nomi-line bg-nomi-paper px-2 text-micro text-nomi-ink-80 hover:border-nomi-accent hover:text-nomi-accent"
             >
               <IconRefresh size={11} stroke={1.8} />
-              {t('storyboardEditor.frame.recoverableRefetch')}
+              {t('generationCommon.production.runAction.retry-retrieval')}
             </button>
           ) : null}
         </div>

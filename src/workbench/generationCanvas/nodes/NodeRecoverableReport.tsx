@@ -72,11 +72,11 @@ export function NodeRecoverableReport({
           <WorkbenchButton
             onClick={handleRecover}
             disabled={pending}
-            aria-label={t('generationCommon.recoverable.recover')}
+            aria-label={t('generationCommon.production.runAction.retry-retrieval')}
             className="bg-nomi-ink text-nomi-paper border-0 hover:bg-nomi-accent disabled:opacity-50"
           >
             <IconRefresh size={13} stroke={1.6} className={cn(pending && 'animate-spin')} />
-            {pending ? t('generationCommon.recoverable.recovering') : t('generationCommon.recoverable.recover')}
+            {pending ? t('generationCommon.recoverable.recovering') : t('generationCommon.production.runAction.retry-retrieval')}
           </WorkbenchButton>
         ) : null}
         <div className="min-w-0 flex-1" />

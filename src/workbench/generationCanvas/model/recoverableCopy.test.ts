@@ -29,4 +29,14 @@ describe('recoverable copy: one sentence for node, shot table and task panel', (
     expect(html).toContain(i18n.t('generationCommon.production.description.outputRetrievalFailed'))
     expect(html).not.toContain(i18n.t('generationCommon.recoverable.description'))
   })
+
+  it.each(['zh-CN', 'en-US'])('the node button carries the task panel button name, and the sentence names the same button (%s)', async (lng) => {
+    await i18n.changeLanguage(lng)
+    const label = i18n.t('generationCommon.production.runAction.retry-retrieval')
+    const html = renderToStaticMarkup(React.createElement(NodeRecoverableReport, { node: unretrievedNode, onRecover: () => undefined }))
+    expect(html).toContain(`aria-label="${label}"`)
+    expect(i18n.t('generationCommon.recoverable.description')).toContain(label)
+    expect(i18n.t('generationCommon.production.description.outputRetrievalFailed').toLowerCase()).toContain(label.toLowerCase())
+    expect(i18n.t('storyboardEditor.frame.recoverableHint').toLowerCase()).toContain(label.toLowerCase())
+  })
 })

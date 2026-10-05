@@ -198,7 +198,7 @@
   },
   "residual_risks": [
     "Real Electron reproduction of path 6 is unverified (reproduced on the real repository/scheduler/outbox with an in-process counting provider, zero spend).",
-    "`explicit-retry:<jobId>` in productionGenerationSubmission.ts: a second 'definitely not sent' retry of the same attempt is swallowed and then refused as needing reconciliation — no money moves, but the user is told to reconcile a submission that provably never left. Not fixed here (outside the id builder module).",
+    "`explicit-retry:<jobId>` in productionGenerationSubmission.ts (investigated 2026-10-05, no code change): `resume(definitelyNotSubmitted)` has no production caller (tests only). A second retry of the same attempt answering needs-reconciliation is the committed-intent gate working as designed (the first retry committed a provider.submit intent that cannot be aborted), not a swallowed replay. Changing the id would hit the illegal job transition needs_attention -> submit_intent_persisted instead. Deleting this dead path belongs to convergence steps 3-4 (docs/plan/2026-10-05-engine-convergence-cut1.md); not deleted here.",
     "The canvas claim door itself remains until the canvas paid path is folded into ProductionRun (docs/plan/2026-10-05-engine-convergence-cut1.md §5)."
   ],
   "detected_by": "review",
