@@ -11,7 +11,7 @@ import { useSpendConfirmStore } from '../spend/spendConfirm'
 import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 import type { WorkbenchProjectRecordV1 } from '../../project/projectRecordSchema'
 import type { TaskRequestDto, TaskResultDto } from '../../api/taskApi'
-import { deriveFromNode, QUICK_ACTION_META_KEY, readQuickActionMeta, type DeriveHost } from './deriveFromNode'
+import { deriveFromNode, isDerivedPromptReady, QUICK_ACTION_META_KEY, readQuickActionMeta, type DeriveHost } from './deriveFromNode'
 
 type SubmitInput = { projectId: string; nodeId: string; runRecordId: string; vendor: string; request: TaskRequestDto }
 
@@ -132,7 +132,7 @@ describe('一键派生 —— 新节点 + 连参考 + 填模板 + 沿用模型�
     expect(derived.title).toContain('雨夜街口')
     expect(store().edges.filter((edge) => edge.target === derived.id).map((edge) => edge.source)).toEqual([source])
     expect(derived.meta).toMatchObject({ modelKey: 'img-model', modelVendor: 'acme' })
-    expect(readQuickActionMeta(derived)).toEqual({ id: 'multi-angle-grid', sourceNodeId: source, grid: { rows: 3, cols: 3 } })
+    expect(readQuickActionMeta(derived)).toEqual({ id: 'multi-angle-grid', sourceNodeId: source, grid: { rows: 3, cols: 3 }, promptReady: true })
     expect((derived.meta as Record<string, unknown>)[QUICK_ACTION_META_KEY]).toBeDefined()
     expect(store().selectedNodeIds).toEqual([source])
     expect(store().groups).toHaveLength(0)
@@ -162,6 +162,18 @@ describe('一键派生 —— 新节点 + 连参考 + 填模板 + 沿用模型�
     expect(nodeOf(derivedId).runs).toHaveLength(1)
     expect(nodeOf(derivedId)).toMatchObject({ status: 'success', result: { url: LOCAL_URL } })
     expect(nodeOf(source).runs ?? []).toHaveLength(0)
+  })
+
+  it('「已备好」只在派生后、点 ↑ 之前成立：派生后是 true，点 ↑ 之后变 false；「+」新建的空节点从来不是', async () => {
+    const source = addSource()
+    const derivedId = derivedIdOf(await derive(source, hostWith()))
+    expect(isDerivedPromptReady(nodeOf(derivedId))).toBe(true)
+    const blank = store().addNode({ kind: 'image', prompt: '', select: false })
+    expect(isDerivedPromptReady(nodeOf(blank.id))).toBe(false)
+
+    await confirmAndRunNode(derivedId, { initiator: 'user' })
+
+    expect(isDerivedPromptReady(nodeOf(derivedId))).toBe(false)
   })
 
   it('一个撤销点：⌘Z 一下，新节点和它的入边一起没了；源节点还在', async () => {

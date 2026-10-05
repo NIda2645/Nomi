@@ -267,7 +267,7 @@ export function DerivedIdleStage(): JSX.Element {
     size: { ...CARD },
     status: 'idle',
     prompt: t('generationCommon.quickActions.labDerivedPrompt'),
-    meta: { modelKey: 'gpt-image-2', modelVendor: 'apimart', [QUICK_ACTION_META_KEY]: { id: 'multi-angle-grid', sourceNodeId: 'qa-source', grid: { rows: 3, cols: 3 } } },
+    meta: { modelKey: 'gpt-image-2', modelVendor: 'apimart', [QUICK_ACTION_META_KEY]: { id: 'multi-angle-grid', sourceNodeId: 'qa-source', grid: { rows: 3, cols: 3 }, promptReady: true } },
   } as GenerationCanvasNode), [t])
   const nodes = React.useMemo(() => [source, derived], [derived, source])
   const edges = React.useMemo(() => [{ id: 'qa-edge', source: 'qa-source', target: derivedId }], [])

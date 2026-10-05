@@ -111,15 +111,16 @@ type ToolbarButtonProps = {
   ariaBusy?: boolean
   title?: string
   ariaLabel?: string
+  className?: string
   onClick?: (event: React.MouseEvent) => void
 }
 
 /** 带文字的工具栏按钮（定妆 / 裁剪 / 下载 / 抽首帧…）。 */
-export function ToolbarButton({ icon, label, accent, disabled, ariaBusy, title, ariaLabel, onClick }: ToolbarButtonProps): JSX.Element {
+export function ToolbarButton({ icon, label, accent, disabled, ariaBusy, title, ariaLabel, className, onClick }: ToolbarButtonProps): JSX.Element {
   return (
     <button
       type="button"
-      className={cn(buttonBase, 'gap-1.5 px-3', accent && 'font-medium', variantClass(accent))}
+      className={cn(buttonBase, 'gap-1.5 px-3', accent && 'font-medium', variantClass(accent), className)}
       title={title}
       aria-label={ariaLabel ?? label}
       aria-busy={ariaBusy || undefined}
@@ -162,6 +163,7 @@ export const ToolbarMenuTrigger = React.forwardRef<HTMLButtonElement, {
   label: string
   /** 只画图标 + ▾（label 仍是 aria-label）。 */
   iconOnly?: boolean
+  className?: string
   title?: string
   open: boolean
   disabled?: boolean
@@ -169,12 +171,12 @@ export const ToolbarMenuTrigger = React.forwardRef<HTMLButtonElement, {
   onClick: () => void
   onPointerDown?: (event: React.PointerEvent<HTMLButtonElement>) => void
   dataAttributes?: Record<`data-${string}`, string>
-}>(function ToolbarMenuTrigger({ icon, label, iconOnly, title, open, disabled, haspopup = 'menu', onClick, onPointerDown, dataAttributes }, ref) {
+}>(function ToolbarMenuTrigger({ icon, label, iconOnly, className, title, open, disabled, haspopup = 'menu', onClick, onPointerDown, dataAttributes }, ref) {
   return (
     <button
       ref={ref}
       type="button"
-      className={cn(buttonBase, 'gap-1', iconOnly ? 'px-2' : 'px-3', variantClass(false), open && 'bg-nomi-ink-05 text-nomi-ink')}
+      className={cn(buttonBase, 'gap-1', iconOnly ? 'px-2' : 'px-3', variantClass(false), open && 'bg-nomi-ink-05 text-nomi-ink', className)}
       aria-haspopup={haspopup}
       aria-expanded={open}
       aria-label={label}

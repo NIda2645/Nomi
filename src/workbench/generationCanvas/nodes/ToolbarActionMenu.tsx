@@ -25,12 +25,18 @@ export type ToolbarActionMenuProps = {
   disabled?: boolean
   /** 只画图标 + ▾，不写字（title / aria-label 用 `menuLabel`）。 */
   iconOnly?: boolean
+  /**
+   * 分体按钮：左块是 `split` 给的主按钮，右块是只有 ▾ 的小按钮（约 24px），中间 1px 竖线，合起来像一个按钮；
+   * 菜单锚在整个分体按钮的左缘，向上展开。
+   */
+  split?: React.ReactNode
 }
 
-export function ToolbarActionMenu({ id, icon, label, menuLabel, items, disabled, iconOnly }: ToolbarActionMenuProps): JSX.Element {
+export function ToolbarActionMenu({ id, icon, label, menuLabel, items, disabled, iconOnly, split }: ToolbarActionMenuProps): JSX.Element {
   const [open, setOpen] = React.useState(false)
   const [point, setPoint] = React.useState({ x: 0, y: 0 })
   const triggerRef = React.useRef<HTMLButtonElement>(null)
+  const groupRef = React.useRef<HTMLSpanElement>(null)
   const wasOpenAtPointerDown = React.useRef(false)
   const contentTestId = `toolbar-action-menu-${id}`
 
@@ -53,26 +59,36 @@ export function ToolbarActionMenu({ id, icon, label, menuLabel, items, disabled,
       setOpen(false)
       return
     }
-    const rect = triggerRef.current?.getBoundingClientRect()
+    const rect = (split ? groupRef.current : triggerRef.current)?.getBoundingClientRect()
     // 菜单底边贴触发钮上沿再留 6px（与手写版 `bottom-[calc(100%+6px)]` 同一个缝）。
     if (rect) setPoint({ x: rect.left, y: rect.top - 6 })
     setOpen(true)
   }
 
+  const trigger = (
+    <ToolbarMenuTrigger
+      ref={triggerRef}
+      icon={icon}
+      label={label}
+      iconOnly={iconOnly}
+      title={iconOnly ? menuLabel : undefined}
+      className={split ? 'w-6 min-w-0 rounded-l-none rounded-r-nomi px-0' : undefined}
+      open={open}
+      disabled={disabled}
+      onPointerDown={() => { wasOpenAtPointerDown.current = open }}
+      onClick={toggle}
+      dataAttributes={{ 'data-toolbar-action-menu': id }}
+    />
+  )
   return (
     <>
-      <ToolbarMenuTrigger
-        ref={triggerRef}
-        icon={icon}
-        label={label}
-        iconOnly={iconOnly}
-        title={iconOnly ? menuLabel : undefined}
-        open={open}
-        disabled={disabled}
-        onPointerDown={() => { wasOpenAtPointerDown.current = open }}
-        onClick={toggle}
-        dataAttributes={{ 'data-toolbar-action-menu': id }}
-      />
+      {split ? (
+        <span ref={groupRef} data-toolbar-split="true" className="inline-flex items-center">
+          {split}
+          <span className="h-4 w-px shrink-0 bg-nomi-line" aria-hidden />
+          {trigger}
+        </span>
+      ) : trigger}
       <WorkbenchMenu
         open={open}
         onOpenChange={(next) => { if (!next) setOpen(false) }}

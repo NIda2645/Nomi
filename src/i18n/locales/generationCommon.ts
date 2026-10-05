@@ -91,6 +91,7 @@ export const zhGenerationCommon = {
     someMissing: '{{count}} 张没加载出来，那几格留了空位',
   },
   nodeEmpty: {
+    derivedReady: { title: '提示词已填好', description: '选中它，点 ↑ 才开始生成' },
     image: { title: '图片节点', description: '在下方输入提示词，点击生成。' },
     video: { title: '视频节点', description: '在下方输入提示词，点击生成视频。' },
     audio: { title: '音频节点', description: '放入声音，为作品添加配乐或旁白。' },
@@ -464,9 +465,9 @@ export const zhGenerationCommon = {
   },
   // 节点快捷动作（2026-10-04 批次 1 样张）：浮条上的「多机位九宫格 / 更多效果 / 改图 / 宫格」与节点右侧「用这个节点生成…」。
   quickActions: {
+    derivedReadyBadge: '已备好 · 未生成',
     featuredHint: '新建一个连着这张图、填好提示词的节点，点它的 ↑ 才生成',
     moreEffects: '更多效果',
-    moreEffectsMenu: '更多效果：点一项就新建好节点，点 ↑ 才生成',
     refine: '改图',
     refineMenu: '改图',
     grid: '宫格',
@@ -1700,6 +1701,7 @@ export const enGenerationCommon = {
     someMissing: '{{count}} images failed to load; those cells were left blank',
   },
   nodeEmpty: {
+    derivedReady: { title: 'Prompt ready', description: 'Select it and press ↑ to generate' },
     image: { title: 'Image node', description: 'Enter a prompt below, then generate.' },
     video: { title: 'Video node', description: 'Enter a prompt below, then generate a video.' },
     audio: { title: 'Audio node', description: 'Add sound for music, effects, or voiceover.' },
@@ -2063,9 +2065,9 @@ export const enGenerationCommon = {
     image: 'Image',
   },
   quickActions: {
+    derivedReadyBadge: 'Ready · not generated',
     featuredHint: 'Create a node linked to this image with the prompt filled in; press its ↑ to generate',
     moreEffects: 'More effects',
-    moreEffectsMenu: 'More effects: pick one to set up a node; press ↑ to generate',
     refine: 'Edit',
     refineMenu: 'Edit image',
     grid: 'Grid',

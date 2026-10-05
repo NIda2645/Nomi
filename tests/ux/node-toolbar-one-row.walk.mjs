@@ -1,5 +1,5 @@
 // 图片/视频节点浮条一行放下走查（用户 10-03 拍板）：选中图片/视频/锚卡，断言浮条只有一行，
-// 并展开 🪄更多效果▾ 改图▾ 宫格▾ 抽帧▾ 截图。零额度：本地 SVG/mp4 夹具。
+// 并展开 更多效果▾ 改图▾ 宫格▾ 抽帧▾ 截图。零额度：本地 SVG/mp4 夹具。
 // 用法：pnpm run build && NOMI_WALK_LOCALE=zh|en node tests/ux/node-toolbar-one-row.walk.mjs
 import { launchNomiApp } from './_launchApp.mjs'
 import { createRequire } from 'node:module'

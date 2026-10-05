@@ -13,7 +13,7 @@ const SOURCE = 'docs/plan/2026-10-04-node-quick-actions-batch1.md §1 ★4 / §4
 export const QUICK_ACTION_TOOLBAR_STATES: readonly LabState[] = [
   {
     id: 'qa-02-toolbar',
-    name: '主样张 · 默认：多机位九宫格 + 🪄▾（图标下拉）/ 抠图 / 改图▾ / 宫格▾ + 画板纯图标（文字钮 4 个；用户 10-05 定）',
+    name: '主样张 · 默认：多机位九宫格｜▾ 分体按钮 / 抠图 / 改图▾ / 宫格▾ + 画板纯图标（文字钮 4 个；用户 10-05 定）',
     source: SOURCE,
     mirrors: 'src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx:297',
     coverage: 'shell',
@@ -21,7 +21,7 @@ export const QUICK_ACTION_TOOLBAR_STATES: readonly LabState[] = [
   },
   {
     id: 'qa-03-more-effects-open',
-    name: '🪄 更多效果展开 · 下一刻 / 前一刻 / 三视图 / 剧情四宫格（常用在上，不写价格）',
+    name: '▾ 更多效果展开 · 下一刻 / 前一刻 / 三视图 / 剧情四宫格（常用在上，不写价格）',
     source: SOURCE,
     mirrors: 'src/workbench/generationCanvas/nodes/BaseGenerationNode.tsx:297',
     coverage: 'shell',

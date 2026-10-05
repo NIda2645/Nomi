@@ -33,6 +33,8 @@ export type QuickActionNodeMeta = Readonly<{
   id: QuickActionId
   sourceNodeId: string
   grid?: QuickActionGrid
+  /** 派生时填进了效果库模板提示词（高清这类没有模板的不带）。「已备好 · 未生成」只认它。 */
+  promptReady?: true
 }>
 
 export type DeriveRequest = Readonly<{
@@ -91,7 +93,12 @@ export function readQuickActionMeta(node: Pick<GenerationCanvasNode, 'meta'>): Q
   const value = raw as Partial<QuickActionNodeMeta>
   if (typeof value.id !== 'string' || typeof value.sourceNodeId !== 'string') return null
   const grid = value.grid && Number.isInteger(value.grid.rows) && Number.isInteger(value.grid.cols) ? value.grid : undefined
-  return { id: value.id as QuickActionId, sourceNodeId: value.sourceNodeId, ...(grid ? { grid } : {}) }
+  return { id: value.id as QuickActionId, sourceNodeId: value.sourceNodeId, ...(grid ? { grid } : {}), ...(value.promptReady === true ? { promptReady: true as const } : {}) }
+}
+
+/** 派生节点「提示词已填好、还没生成」：派生标记 + 空闲 + 没跑过 + 没结果。一点 ↑ 状态就变，条件自然失效。 */
+export function isDerivedPromptReady(node: Pick<GenerationCanvasNode, 'meta' | 'status' | 'runs' | 'result'>): boolean {
+  return readQuickActionMeta(node)?.promptReady === true && node.status === 'idle' && !node.runs?.length && !node.result
 }
 
 export type DeriveHost = Readonly<{
@@ -175,7 +182,7 @@ async function derive(request: DeriveRequest, host: DeriveHost): Promise<DeriveO
     prompt,
     position: plan.position,
     ...(plan.categoryId ? { categoryId: plan.categoryId } : {}),
-    meta: { [QUICK_ACTION_META_KEY]: plan.meta },
+    meta: { [QUICK_ACTION_META_KEY]: { ...plan.meta, ...(template ? { promptReady: true } : {}) } },
     select: false,
   }))
   const connected = inTxn(() => {
