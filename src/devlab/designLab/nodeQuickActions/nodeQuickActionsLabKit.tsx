@@ -3,8 +3,7 @@
 // 每一格渲染的都是 `src/` 里的**生产组件本体**：快捷动作浮条（`quickActions/ImageQuickActionsToolbar`）、
 // 浮条下拉（`nodes/ToolbarActionMenu` → `WorkbenchMenu`）、宫格点阵（`nodes/GridSplitPicker` → `AnchoredPopover`）、
 // 「用这个节点生成…」（`quickActions/NodeDeriveMenu`）、节点右键菜单（`components/NodeContextMenu`），
-// 派生中 / 派生失败两格用的是现役 `BaseGenerationNode`。价格不是手打的字：走 `estimatePlanCost`
-// （付费确认卡同一条算式）对夹具模型的价目算出来，没配价目就是「未知」。
+// 派生中 / 派生失败两格用的是现役 `BaseGenerationNode`。菜单里没有价格（用户 10-05 拍板：官方额度上线后再做）。
 //
 // 唯一的占位是浮条那几格的**节点卡本身**（同 `videoDepth/videoDepthLabKit.tsx` 的理由：真卡会把
 // 现役浮条一起渲出来，没法把新浮条挂上去）。卡的外壳类名与现役卡逐字相同。
@@ -20,11 +19,7 @@ import NodeImageEditToolbar from '../../../workbench/generationCanvas/nodes/Node
 import NodeContextMenu from '../../../workbench/generationCanvas/components/NodeContextMenu'
 import ImageQuickActionsToolbar from '../../../workbench/generationCanvas/quickActions/ImageQuickActionsToolbar'
 import { NodeDeriveMenu } from '../../../workbench/generationCanvas/quickActions/NodeDeriveMenu'
-import { QUICK_ACTIONS, type QuickActionId } from '../../../workbench/generationCanvas/quickActions/quickActionCatalog'
-import { quickActionPriceFromEstimate, type QuickActionPrice } from '../../../workbench/generationCanvas/quickActions/quickActionPrice'
-import { planDerivedNode, QUICK_ACTION_META_KEY } from '../../../workbench/generationCanvas/quickActions/deriveFromNode'
-import { estimatePlanCost } from '../../../workbench/generationCanvas/spend/planCostEstimate'
-import type { ModelOption } from '../../../config/models'
+import { QUICK_ACTION_META_KEY } from '../../../workbench/generationCanvas/quickActions/deriveFromNode'
 import type { GenerationCanvasNode } from '../../../workbench/generationCanvas/model/generationCanvasTypes'
 import { useGenerationCanvasStore } from '../../../workbench/generationCanvas/store/generationCanvasStore'
 import { useGenerationQueueStore } from '../../../workbench/generationCanvas/runner/generationQueueStore'
@@ -81,28 +76,6 @@ function sourceNode(over: Partial<GenerationCanvasNode> = {}): GenerationCanvasN
     result: { id: 'qa-source-r', type: 'image', url: STREET_FRAME, createdAt: 1 },
     ...over,
   } as GenerationCanvasNode
-}
-
-// ── 价格：走真算式 ─────────────────────────────────────────────────────────────
-const PRICED_OPTION: ModelOption = {
-  value: 'gpt-image-2', label: 'GPT Image 2', vendor: 'apimart', modelKey: 'gpt-image-2',
-  pricing: { cost: 4, enabled: true, specCosts: [] },
-}
-const UNPRICED_OPTION: ModelOption = { value: 'gpt-image-2', label: 'GPT Image 2', vendor: 'apimart', modelKey: 'gpt-image-2' }
-
-/**
- * 每个快捷动作「派生出的那个节点」按 `planDerivedNode` 规划，再交给 `estimatePlanCost` 算——
- * 和接线后浮条要走的是同一条路，只是模型目录换成了夹具。
- */
-function quickActionPrices(source: GenerationCanvasNode, priced: boolean): Partial<Record<QuickActionId, QuickActionPrice>> {
-  const option = priced ? PRICED_OPTION : UNPRICED_OPTION
-  const prices: Partial<Record<QuickActionId, QuickActionPrice>> = {}
-  for (const action of QUICK_ACTIONS) {
-    const plan = planDerivedNode(source, { actionId: action.id }, { actionLabel: action.id, formatTitle: (a, s) => `${a} · ${s}` })
-    const planned = { ...source, id: `planned-${action.id}`, meta: plan.model ? { modelKey: plan.model.modelKey, modelVendor: plan.model.vendorKey } : {} } as GenerationCanvasNode
-    prices[action.id] = quickActionPriceFromEstimate(estimatePlanCost([planned], () => option))
-  }
-  return prices
 }
 
 // ── 舞台 ─────────────────────────────────────────────────────────────────────
@@ -174,10 +147,9 @@ function useOpenOnMount(rootRef: React.RefObject<HTMLDivElement | null>, open?: 
 }
 
 export type ToolbarStageProps = {
-  variant: 'proposed-a' | 'proposed-b' | 'current'
+  variant: 'proposed' | 'current'
   open?: 'presets' | 'refine' | 'grid'
   hoverCell?: string
-  priced?: boolean
   /** 这张卡是「多机位九宫格」派生出来的（浮条出「切成 9 张」）。 */
   derivedGrid?: boolean
   /** 窄画布（窗口小 / 右侧面板拉宽）：浮条按舞台宽折行，不裁切。 */
@@ -186,7 +158,7 @@ export type ToolbarStageProps = {
 
 const noop = (): void => {}
 
-export function QuickToolbarStage({ variant, open, hoverCell, priced = false, derivedGrid = false, stageWidth }: ToolbarStageProps): JSX.Element {
+export function QuickToolbarStage({ variant, open, hoverCell, derivedGrid = false, stageWidth }: ToolbarStageProps): JSX.Element {
   const { t } = useTranslation()
   const rootRef = React.useRef<HTMLDivElement>(null)
   const node = React.useMemo(() => sourceNode(derivedGrid ? {
@@ -198,7 +170,6 @@ export function QuickToolbarStage({ variant, open, hoverCell, priced = false, de
   const nodes = React.useMemo(() => [node], [node])
   const ready = useCanvasStores(nodes)
   useOpenOnMount(rootRef, ready ? open : undefined, hoverCell)
-  const prices = React.useMemo(() => quickActionPrices(node, priced), [node, priced])
   // 放大要的是一个「放大」能力的模型；夹具目录里没有 → 这一项灰掉并说原因（与价格无关）。
   const blocked = React.useMemo(() => ({ upscale: t('generationCommon.quickActions.blocked.noUpscaleModel') }), [t])
   const width = stageWidth ?? QUICK_ACTIONS_CELL_WIDTH
@@ -213,10 +184,8 @@ export function QuickToolbarStage({ variant, open, hoverCell, priced = false, de
       <ImageQuickActionsToolbar
         {...shared}
         onGridSplit={noop}
-        quickActionPrices={prices}
         quickActionBlocked={blocked}
         onQuickAction={noop}
-        removeBackgroundPlacement={variant === 'proposed-b' ? 'toolbar' : 'refine-menu'}
       />
     )
   return (

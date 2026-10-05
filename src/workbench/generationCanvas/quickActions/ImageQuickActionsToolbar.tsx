@@ -39,7 +39,6 @@ import WhiteboardModal from '../nodes/whiteboard/WhiteboardModal'
 import { inferWhiteboardAspectRatio, readWhiteboardState } from '../nodes/whiteboard/whiteboardState'
 import { readQuickActionMeta } from './deriveFromNode'
 import { quickActionsInGroup, type QuickActionDefinition, type QuickActionId } from './quickActionCatalog'
-import { quickActionPriceNote, quickActionPriceTrailing, type QuickActionPrice } from './quickActionPrice'
 
 /**
  * 图片节点浮条 · 快捷动作版（2026-10-04 批次 1 样张；接线那一轮**取代** `NodeImageEditToolbar.tsx`，同一提交删掉旧文件）。
@@ -47,19 +46,19 @@ import { quickActionPriceNote, quickActionPriceTrailing, type QuickActionPrice }
  * 一行四颗文字钮，和现在一样多（#969 刚收成一行，1280 窗口 + Agent 面板下英文锚卡已经折两行，
  * 再多一颗普通卡也会折）。左 → 右按创作优先级：
  *
- *   [锁] │ [定妆*] │ [复制为变体] [重拍*] [切成 N 张*] 预设场景▾ 改图▾ 宫格▾ │ 画板 │ [全屏] [下载] [生成记录]
- *          锚卡才有        制作镜头才有   宫格派生才有   └ 派生新东西 ┘ └ 改这张 ┘     交接      看和拿
+ *   [锁] │ [定妆*] │ [复制为变体] [重拍*] [切成 N 张*] 预设场景▾ 抠图 改图▾ 宫格▾ │ 画板(纯图标) │ [全屏] [下载] [生成记录]
+ *          锚卡才有        制作镜头才有   宫格派生才有   └ 派生新东西 ┘ └ 改这张 ┘          交接           看和拿
  *
  *   · **预设场景 ▾**：点一项 = 新建下游节点 + 连参考 + 填效果库模板 + 沿用模型 + 直接开跑（`deriveFromNode.ts`）。
- *     项右侧写价格（已知时）；有任一项价格未知，菜单底部一行「价格以服务商为准」。
+ *     菜单里不写价格、不写价格说明（2026-10-05 用户拍板：官方额度上线、价格真能拿到再做）。
  *   · **改图 ▾**：两段带名字——「生成新图」（高清 / 扩图，花钱，也是派生）与「本机处理 · 不花钱」
- *     （抠图 / 裁剪 / 旋转翻转）。原「变换▾」平铺进第二段，不是再包一层（§1.5.4 反例第 2 行：不许把
+ *     （裁剪 / 旋转翻转；抠图不在这里，留在一级）。原「变换▾」平铺进第二段，不是再包一层（§1.5.4 反例第 2 行：不许把
  *     已经在二级的东西再降一级——这里点击数不变，都是两下）。
  *   · **宫格 ▾**：等分 4 / 9 / 16 / 25 + 自定义行列点阵。
  *   · **切成 N 张**：只出现在宫格类预设派生出来的节点上（它记得自己是几行几列），一下直达切割框。
  *
- * 待拍板（设计卡 §4 第 6 题）：「抠图」进改图 ▾（A，照方案）还是留在一级（B，照设计系统 §1.5.4 反例第 1 行），
- * 两条拍板互相冲突，样张两版都画，`removeBackgroundPlacement` 就是这个分叉——拍板后删掉这个属性只留一种。
+ * 「抠图」留在一级、「画板」改纯图标（2026-10-05 用户在两条拍板冲突时选的：设计系统 §1.5.4 反例第 1 行
+ * 「不把抠图收进 ▾ 凑数」优先于批次方案「抠图并进改图▾」；文字钮仍是 4 颗）。
  */
 
 export type ImageQuickActionsToolbarProps = {
@@ -77,30 +76,23 @@ export type ImageQuickActionsToolbarProps = {
   isAnchor?: boolean
   frozen?: boolean
   onToggleFreeze?: () => void
-  /** 每个快捷动作的价格（由 `estimatePlanCost` 算出，见 `quickActionPrice.ts`）；缺 = 未知。 */
-  quickActionPrices: Partial<Record<QuickActionId, QuickActionPrice>>
   /** 点不了的快捷动作与原因（没有能改图的模型 / 效果库缺条目 …）。 */
   quickActionBlocked?: Partial<Record<QuickActionId, string>>
   onQuickAction: (id: QuickActionId) => void
-  /** 待拍板分叉，见头注。 */
-  removeBackgroundPlacement: 'refine-menu' | 'toolbar'
 }
 
 function quickActionItems(
   actions: readonly QuickActionDefinition[],
   t: TFunction,
-  prices: ImageQuickActionsToolbarProps['quickActionPrices'],
   blocked: ImageQuickActionsToolbarProps['quickActionBlocked'],
   onPick: (id: QuickActionId) => void,
 ): WorkbenchMenuNode[] {
   return actions.map((action) => {
     const reason = blocked?.[action.id]
-    const trailing = reason ? undefined : quickActionPriceTrailing(prices[action.id], t)
     return {
       id: `quick-${action.id}`,
       label: t(action.labelKey),
       icon: action.icon as unknown as WorkbenchMenuIcon,
-      ...(trailing ? { trailing } : {}),
       disabled: Boolean(reason),
       ...(reason ? { description: reason, disabledReason: reason } : {}),
       onSelect: () => onPick(action.id),
@@ -114,7 +106,7 @@ export default function ImageQuickActionsToolbar(props: ImageQuickActionsToolbar
   const {
     reportFeedback, node, editGrid, imageOpBusy, onGridSplit, onCrop, onTransform, onRemoveBackground,
     removeBackgroundBusy = false, onPreview, onOpenProvenance, isAnchor = false, frozen = false, onToggleFreeze,
-    quickActionPrices, quickActionBlocked, onQuickAction, removeBackgroundPlacement,
+    quickActionBlocked, onQuickAction,
   } = props
   const { t } = useTranslation()
   const { downloading, download } = useResultDownload(node, reportFeedback)
@@ -125,13 +117,8 @@ export default function ImageQuickActionsToolbar(props: ImageQuickActionsToolbar
 
   const presets = quickActionsInGroup('preset')
   const refines = quickActionsInGroup('refine')
-  const presetNote = quickActionPriceNote(presets.filter((a) => !quickActionBlocked?.[a.id]).map((a) => quickActionPrices[a.id]), t)
-  const refineNote = quickActionPriceNote(refines.filter((a) => !quickActionBlocked?.[a.id]).map((a) => quickActionPrices[a.id]), t)
 
-  const presetItems: WorkbenchMenuNode[] = [
-    ...quickActionItems(presets, t, quickActionPrices, quickActionBlocked, onQuickAction),
-    ...(presetNote ? [{ kind: 'separator' as const, id: 'preset-note-sep' }, { kind: 'note' as const, id: 'preset-note', text: presetNote }] : []),
-  ]
+  const presetItems = quickActionItems(presets, t, quickActionBlocked, onQuickAction)
 
   const transformItems: WorkbenchMenuNode[] = ([
     { op: 'rotate-left' as const, icon: IconRotate2, key: 'generationCommon.imageToolbar.rotateLeft' as const },
@@ -141,21 +128,17 @@ export default function ImageQuickActionsToolbar(props: ImageQuickActionsToolbar
   ]).map(({ op, icon, key }) => ({ id: `transform-${op}`, label: t(key), icon: menuIcon(icon), onSelect: () => onTransform(op) }))
 
   const refineItems: WorkbenchMenuNode[] = [
-    { kind: 'group', id: 'refine-generate', label: t('generationCommon.quickActions.groups.generate'), items: quickActionItems(refines, t, quickActionPrices, quickActionBlocked, onQuickAction) },
+    { kind: 'group', id: 'refine-generate', label: t('generationCommon.quickActions.groups.generate'), items: quickActionItems(refines, t, quickActionBlocked, onQuickAction) },
     { kind: 'separator', id: 'refine-sep' },
     {
       kind: 'group',
       id: 'refine-local',
       label: t('generationCommon.quickActions.groups.local'),
       items: [
-        ...(removeBackgroundPlacement === 'refine-menu' && onRemoveBackground
-          ? [{ id: 'remove-background', label: t('generationCommon.imageToolbar.removeBackground'), icon: menuIcon(IconScissors), onSelect: onRemoveBackground }]
-          : []),
         { id: 'crop', label: t('generationCommon.imageToolbar.crop'), icon: menuIcon(IconCut), onSelect: onCrop },
         ...transformItems,
       ],
     },
-    ...(refineNote ? [{ kind: 'separator' as const, id: 'refine-note-sep' }, { kind: 'note' as const, id: 'refine-note', text: refineNote }] : []),
   ]
 
   return (
@@ -193,7 +176,7 @@ export default function ImageQuickActionsToolbar(props: ImageQuickActionsToolbar
           items={presetItems}
           disabled={!imageUrl}
         />
-        {removeBackgroundPlacement === 'toolbar' && onRemoveBackground ? (
+        {onRemoveBackground ? (
           <ToolbarButton
             icon={removeBackgroundBusy ? <NomiLoadingMark size={I.size} /> : <IconScissors size={I.size} stroke={I.stroke} />}
             label={removeBackgroundBusy ? t('generationCommon.imageToolbar.removingBackground') : t('generationCommon.imageToolbar.removeBackground')}
@@ -213,23 +196,13 @@ export default function ImageQuickActionsToolbar(props: ImageQuickActionsToolbar
         />
         <GridSplitPicker disabled={busy || !imageUrl} onSplit={onGridSplit} />
         <ToolbarDivider />
-        {removeBackgroundPlacement === 'toolbar' ? (
-          <ToolbarIconButton
-            icon={<IconBrush size={I.size} stroke={I.stroke} />}
-            title={t('generationCommon.imageToolbar.whiteboardHint')}
-            ariaLabel={t('generationCommon.imageToolbar.whiteboard')}
-            disabled={busy || !imageUrl}
-            onClick={() => setWhiteboardOpen(true)}
-          />
-        ) : (
-          <ToolbarButton
-            icon={<IconBrush size={I.size} stroke={I.stroke} />}
-            label={t('generationCommon.imageToolbar.whiteboard')}
-            title={t('generationCommon.imageToolbar.whiteboardHint')}
-            disabled={busy || !imageUrl}
-            onClick={() => setWhiteboardOpen(true)}
-          />
-        )}
+        <ToolbarIconButton
+          icon={<IconBrush size={I.size} stroke={I.stroke} />}
+          title={t('generationCommon.imageToolbar.whiteboardHint')}
+          ariaLabel={t('generationCommon.imageToolbar.whiteboard')}
+          disabled={busy || !imageUrl}
+          onClick={() => setWhiteboardOpen(true)}
+        />
         <ToolbarDivider />
         <ToolbarIconButton
           icon={<IconMaximize size={I.size} stroke={I.stroke} />}

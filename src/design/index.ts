@@ -33,7 +33,6 @@ export type {
   WorkbenchMenuAction,
   WorkbenchMenuCheckbox,
   WorkbenchMenuGroup,
-  WorkbenchMenuNote,
   WorkbenchMenuIcon,
   WorkbenchMenuNode,
   WorkbenchMenuProps,

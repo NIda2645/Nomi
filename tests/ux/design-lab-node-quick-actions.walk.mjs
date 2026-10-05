@@ -4,7 +4,7 @@
 // 产出：`tests/ux/shots/design-lab-node-quick-actions/<state>.png` + `_contact-sheet.png`（拍板用）。
 //
 // 要看的是：浮条加了快捷动作之后还是不是一行四颗文字钮；三个下拉向上展开、不压在图上；
-// 价格已知 / 未知两种写法；接不上的项有没有说原因；派生出的节点状态是不是和手动生成的一样。
+// 菜单里没有价格；接不上的项有没有说原因；派生出的节点状态是不是和手动生成的一样。
 //
 // 用法：node tests/ux/design-lab-node-quick-actions.walk.mjs（ONLY=qa-06-grid-picker 只跑一个）
 import { walkDesignLabScreen } from './design-lab/walkScreen.mjs'

@@ -486,10 +486,6 @@ export const zhGenerationCommon = {
       upscale: '高清',
       outpaint: '扩图',
     },
-    price: {
-      known: '约 {{credits}} 金币',
-      unknown: '价格以服务商为准',
-    },
     blocked: {
       noImageModel: '没有能改图的图片模型，先去设置里添加',
       noUpscaleModel: '还没有能放大的模型',
@@ -2091,10 +2087,6 @@ export const enGenerationCommon = {
       storyFourPanel: 'Four-beat story',
       upscale: 'Upscale',
       outpaint: 'Outpaint',
-    },
-    price: {
-      known: '~{{credits}} credits',
-      unknown: 'Price is set by the provider',
     },
     blocked: {
       noImageModel: 'No image model can edit images yet. Add one in Settings.',

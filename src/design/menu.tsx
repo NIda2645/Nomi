@@ -54,11 +54,6 @@ type WorkbenchMenuItemBase = {
   icon?: WorkbenchMenuIcon
   /** 右对齐的快捷键提示。文案由调用方给——平台适配各家写法不同（清单 C10）。 */
   shortcut?: string
-  /**
-   * 右对齐的一小段**后果**说明（2026-10-04 节点快捷动作：这一项要花多少）。和快捷键同一个位置、
-   * 同一档灰，但不是快捷键——分开一个字段，免得「约 4 金币」被当成键位去做平台适配。
-   */
-  trailing?: string
   /** 项内第二行灰字说明（现役唯一消费者是框菜单的「解散」）。 */
   description?: string
   disabled?: boolean
@@ -97,13 +92,6 @@ export type WorkbenchMenuRadioGroup = {
 
 export type WorkbenchMenuSeparator = { kind: 'separator'; id: string }
 
-/**
- * 不可点的一行说明（2026-10-04：快捷动作菜单底部「价格以服务商为准」）。
- * 为什么不借分组标题来画：分组标题是 `role=group` 的名字，读屏会把它念成下面那几项的组名；
- * 一句说明不属于任何一项，就该是它自己。
- */
-export type WorkbenchMenuNote = { kind: 'note'; id: string; text: string }
-
 /** 有名字的一段（现役靠 `role="group"` + 一行标题实现，如画布「添加节点」的三段）。 */
 export type WorkbenchMenuGroup = {
   kind: 'group'
@@ -117,7 +105,6 @@ export type WorkbenchMenuNode =
   | WorkbenchMenuCheckbox
   | WorkbenchMenuRadioGroup
   | WorkbenchMenuSeparator
-  | WorkbenchMenuNote
   | WorkbenchMenuGroup
 
 export type WorkbenchMenuProps = {
@@ -167,8 +154,6 @@ const ITEM_CLASS = cn(
 const DANGER_ITEM_CLASS = 'text-workbench-danger [&_svg]:text-workbench-danger'
 const SHORTCUT_CLASS = 'text-nomi-ink-40 tabular-nums'
 const SEPARATOR_CLASS = 'h-px my-1 mx-2 bg-nomi-line'
-const NOTE_CLASS = 'px-2 pt-1 pb-0.5 text-micro text-nomi-ink-40 select-none'
-const TRAILING_CLASS = 'pl-4 text-nomi-ink-60 tabular-nums'
 const GROUP_LABEL_CLASS = 'px-2 py-1 text-micro text-workbench-muted select-none'
 /**
  * 分段与单选组的盒子也要是一列 grid，和面板本身同一个间距。项是 `inline-flex`：直接挂在面板（grid）下
@@ -210,9 +195,6 @@ function MenuItemBody({
           ) : null}
         </span>
       </span>
-      {item.trailing ? (
-        <span data-menu-trailing className={TRAILING_CLASS}>{item.trailing}</span>
-      ) : null}
       {item.shortcut ? (
         <span data-menu-shortcut className={cn(SHORTCUT_CLASS, shortcutClassName)}>{item.shortcut}</span>
       ) : null}
@@ -239,9 +221,6 @@ function renderNodes(nodes: readonly WorkbenchMenuNode[], ctx: RenderContext): R
           className={cn(SEPARATOR_CLASS, ctx.separatorClassName)}
         />
       )
-    }
-    if (node.kind === 'note') {
-      return <div key={node.id} data-menu-note={node.id} className={NOTE_CLASS}>{node.text}</div>
     }
     if (node.kind === 'group') {
       return (
