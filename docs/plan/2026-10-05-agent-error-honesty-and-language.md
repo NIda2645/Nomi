@@ -21,6 +21,13 @@
 | 错误去重 / 退场 | pi 重试事件（错误留在转录、不在状态里） | 用转录位置判 `recovered`，不另起状态。 |
 | 回答语言 | 没有现成库；`buildLanguageRule()` 是我们自己的领域文案 | 沿用唯一定义，首尾各放一次。 |
 
+出处（可复核）：
+- pi-ai 0.85 的可重试判据：`node_modules/@earendil-works/pi-ai/dist/utils/retry.js:20`（`RETRYABLE_PROVIDER_ERROR_PATTERN`）、`:167`（`isRetryableAssistantError`，已导出）。
+- pi 自动重试把错误留在转录、从状态删掉：`node_modules/@earendil-works/pi-coding-agent/dist/core/agent-session.js:2286`（`_prepareRetry`）、`:793`（触发点）。
+- Nomi 抄的第二张表：`src/workbench/observability/classifyError.ts:210`（`detectLegacyErrorKind`）——本 PR 降为兜底。
+- 回答语言的唯一定义：`electron/harness/context/agentContext.ts:80`（`buildLanguageRule`）。
+- openai 客户端断线原文：`node_modules/openai/core/error.js:80`（`APIConnectionError` 默认消息 `Connection error.`）。
+
 ## 方向检查（RW，类根因复盘）
 
 触发：`classifyError.ts` 近 14 天已有 11 个 fix（9-30 一天在嗅探表上补了三次），本次是第 12 个。
