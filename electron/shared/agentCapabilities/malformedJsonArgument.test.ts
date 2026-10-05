@@ -66,7 +66,10 @@ describe("一镜把同一件事写了两遍", () => {
     const spec = VERB_DECLARATIONS.find((declaration) => declaration.name === "draft_shots")!;
     const printed = JSON.stringify(spec.schema);
     expect(printed).toContain("The only place for length, never parameters");
-    expect(printed).toContain("except length (use durationSec)");
+    expect(printed).toContain("except length (durationSec)");
+    // 比例同一条规矩（2026-10-05）：只有一个家，parameters 的说明里也只指向它。
+    expect(printed).toContain("The only place for ratio, never parameters.");
+    expect(printed).toContain("and ratio (aspectRatio)");
   });
 });
 

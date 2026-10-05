@@ -4,7 +4,7 @@
 // 为什么单独成文件：`mcpGenerationTools.ts` 贴着 800 行门岗（R9），而这段逻辑本身是一个
 // 完整的单元（两种参数两种待遇那条分界线就住在这里），拆出来比塞在 handler 里更好读、可单测。
 import { admitPlanCandidate, type PlanCandidate } from "./executionContract";
-import { normalizeVideoCandidate, stripParametersNotAccepted, videoCompileOptions } from "./mcpGenerationVideoResolve";
+import { normalizeAuthoredCandidate, stripParametersNotAccepted, videoCompileOptions } from "./mcpGenerationVideoResolve";
 import { admitShotIdentity, declaredModeForModel } from "./semanticGenerationCandidate";
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
@@ -91,7 +91,8 @@ export function resolvePlanPatch(input: {
     ? stripParametersNotAccepted(mergedCandidate, registry, videoModelCandidates)
     : { candidate: mergedCandidate, cleared: [] as string[] };
   const clearedParameters = stripped.cleared;
-  const normalizedCandidate = normalizeVideoCandidate(stripped.candidate, videoModelCandidates);
+  // 调用方写下的参数在这里过语义翻译（比例 → 这个模式的真实键），与 create 两扇门同一个函数。
+  const normalizedCandidate = normalizeAuthoredCandidate(stripped.candidate, registry, videoModelCandidates);
   // 模型或模式变了：和建镜头时同一道账——这一对在目录里必须真有（第 9 条，矛盾的镜头造不出来）。
   if (modelChanged || modeChanged) admitShotIdentity(normalizedCandidate, registry);
   // 判的是**归一之后**的候选：变体别名（`fast-face` → `fast`）要先被认成正名，
@@ -108,7 +109,10 @@ export function resolvePlanPatch(input: {
       ...(nextMode && nextMode !== baseCandidate.mode ? { mode: nextMode } : {}),
       // 清理过就必须**连同清理后的参数一起落盘**。漏掉这一行时清理只是算了一遍、报了一遍，
       // 存的还是旧参数——「不上报 clearedParameters」那个变异当时因此杀不掉（2026-09-22 验收）。
-      ...(clearedParameters.length ? { parameters: stripped.candidate.parameters } : {}),
+      //
+      // 调用方这一次写了参数时，落盘的是**翻译之后**的那份（语义比例已换成真实键）；只落 userPatch 原样，
+      // 下一次读盘归一会把 `aspectRatio` 当残留清掉——用户说的比例就又悄悄没了。
+      ...(clearedParameters.length || userPatch.parameters !== undefined ? { parameters: normalizedCandidate.parameters } : {}),
       ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
       ...(normalizedCandidate.modeId ? { modeId: normalizedCandidate.modeId } : { modeId: undefined }),
     },
