@@ -1,4 +1,4 @@
-file:///Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/_launchApp.mjs:442
+file://~/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/_launchApp.mjs:442
       throw new Error(diagnoseLaunchFailure(`等了 ${timeout}ms 没等到窗口`, name, error, logTail))
             ^
 
@@ -15,10 +15,10 @@ Error:
 （启动器未捕获到主进程输出；这不能证明进程未启动，仍需结合系统进程或采样确认。）
 
 原始错误：electronApplication.firstWindow: Target page, context or browser has been closed
-    at launchNomiApp (file:///Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/_launchApp.mjs:442:13)
+    at launchNomiApp (file://~/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/_launchApp.mjs:442:13)
     at runNextTicks (node:internal/process/task_queues:65:5)
     at process.processImmediate (node:internal/timers:453:9)
     at process.callbackTrampoline (node:internal/async_hooks:130:17)
-    at async file:///Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/director-electron.walk.mjs:68:22
+    at async file://~/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/director-electron.walk.mjs:68:22
 
 Node.js v22.22.0

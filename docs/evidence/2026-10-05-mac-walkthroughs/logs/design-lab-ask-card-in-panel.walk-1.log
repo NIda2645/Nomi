@@ -1,7 +1,7 @@
 # design lab · ask card inside the real panel
 
 result: failed
-shots: /Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-ask-card-in-panel (8 kinds × light/dark × zh/en = 32)
+shots: ~/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-ask-card-in-panel (8 kinds × light/dark × zh/en = 32)
 measured: [
   {
     "locale": "zh",

@@ -8,7 +8,7 @@
 - 起始基线：`origin/main`，PR #1001 已合入（`aacb7f626`）；提交前将再次合并最新 `origin/main`。
 - macOS，Node `v22.22.0`，先执行 `pnpm install`、`pnpm run delivery:preflight`，`pnpm run build:electron` 通过。
 - 任务卡所指的 `commands/package.json` 在本仓库不存在；走查入口实际为 `tests/ux/*.walk.mjs`，每个脚本的文件头是命令真源。
-- 截图输出目录（本机生成，未把 23MB 的临时截图复制进提交）：`tests/ux/shots/`。各日志保留在本目录 `logs/`，日志中的绝对路径可直接定位截图。
+- 截图输出目录（本机生成，未把 23MB 的临时截图复制进提交）：`tests/ux/shots/`。失败走查日志保留在本目录 `logs/`，日志中的 `~/...` 路径可直接定位截图。
 
 ## Design Lab（20 条，均跑两次）
 
