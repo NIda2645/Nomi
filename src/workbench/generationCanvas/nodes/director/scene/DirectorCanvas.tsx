@@ -75,6 +75,7 @@ function ContextRecovery(): null {
   return null
 }
 
+/** 视图立方住右下：右上是精修属性卡出现的地方（2026-10-04「选中才出」），卡一出就把它盖住。 */
 function ViewCube(): JSX.Element {
   const recording = useDirectorStore((state) => Boolean(state.recording))
   const groupRef = React.useRef<THREE.Group>(null)
@@ -83,7 +84,7 @@ function ViewCube(): JSX.Element {
   }, [])
   return (
     <group ref={groupRef}>
-      <GizmoHelper alignment="top-right" margin={[56, 56]}>
+      <GizmoHelper alignment="bottom-right" margin={[56, 56]}>
         <GizmoViewcube color="#2a2d33" hoverColor="#3b82f6" textColor="#e5e7eb" strokeColor="#6b7280" opacity={0.9} font="20px sans-serif" onClick={recording ? (event) => { event.stopPropagation(); return null } : undefined} />
       </GizmoHelper>
     </group>

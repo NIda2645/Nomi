@@ -668,6 +668,22 @@
       "revisitWhen": "vitest 的 github-actions reporter 提供 flaky 注解开关时，删掉这份 reporter"
     },
     {
+      "id": "director-refine-panel-hooks",
+      "capability": "导演台精修两颗小 hook：按需面板（场景设置卡、资产库抽屉）按 Esc 收起并遵守导演台的 Esc 归属链；切视口工具的唯一写法，顶栏工具簇与属性卡头的画线 / 逐点共用",
+      "status": "justified",
+      "paths": [
+        "src/workbench/generationCanvas/nodes/director/panels/context/useDismissOnEscape.ts",
+        "src/workbench/generationCanvas/nodes/director/panels/viewport/useDirectorToolChange.ts"
+      ],
+      "alternativesChecked": [
+        { "name": "@mantine/hooks 的 useHotkeys（只给「按了 Esc 就回调」，不懂导演台「浮层 → 按需面板 → 选中 → 机位视角 → 退出」这条让路链；也未声明为直接依赖）", "source": "https://mantine.dev/hooks/use-hotkeys/" },
+        { "name": "导演台 Popover 原语自己的 Esc 处理：只管浮层，按需面板不是浮层", "source": "src/workbench/generationCanvas/nodes/director/panels/Popover.tsx" },
+        { "name": "在 ViewportToolbar 与属性卡头各写一遍 setTransformMode / setDrawMode（两份工具切换规则会漂）", "source": "src/workbench/generationCanvas/nodes/director/panels/viewport/ViewportToolbar.tsx" }
+      ],
+      "whyNotIntegrated": "Esc 那颗是导演台 Esc 归属协议（DirectorEditor 见到 data-nomi-escape-layer 就让路）里「按需面板」这一层；工具切换那颗是创建模式 / 画路径模式 / gizmo 三者互斥的领域规则。都只有导演台用。",
+      "revisitWhen": "导演台 Esc 归属改由统一的分层快捷键作用域承担时，删掉 useDismissOnEscape"
+    },
+    {
       "id": "director3dbox-build-flag",
       "capability": "3D-BOX 构建期功能开关：进程引导模块 + 共享层只读视图（工具注册表在导入期按它装配）",
       "status": "justified",
