@@ -11,12 +11,12 @@ import { sealAndApproveProductionGeneration } from "./productionGenerationAuthor
 import { createProductionGenerationSubmission } from "./productionGenerationSubmission";
 import { createProductionRunRepository } from "./productionRunRepository";
 import { SubmissionReceiptUnknownError, SubmissionReconciliationRequiredError } from "./submissionOutbox";
+import { jobMayHaveReachedProvider } from "../shared/productionShotJobs";
 
-// 特征测试（发动机收敛第一刀 第 1–2 步动手前钉住，设计卡岔路 F3）：
-// 制作那台今天把「供应商当场明确拒绝」（HTTP 4xx / 信封错误码——真实执行器抛的就是这一类错）
-// 和「写出去之后断了」记成同一档：submission_unknown，这一镜之后再发就被拦（要人去核对）。
-// 画布那台对同一件事是「失败、可以再点 ↑」（canvasSingleSubmitCharacterization.test.ts）。
-// 两台合进一个口子之前，这一格必须拍板；拍板后按结论改这里的断言，不许悄悄变。
+// 提交出口对「供应商当场明确拒绝」的回答（发动机收敛第一刀 F3，2026-10-05 用户拍板）：
+// 收到了响应、4xx 或 2xx + 失败信封、没有任务号 → 确定没受理：job 落确定的 needs_attention（provider_rejected），
+// 预留 provider-safe 释放、不挂 unsettled，记成「没花钱」，可以正常重来。5xx 照旧是「结果未知」、锁住。
+// 动手前这里钉的是旧回答（一律 submission_unknown），拍板后按结论翻转。
 
 const CAPS = { submitIdempotency: false, query: true, reconcile: false, cancel: false, materialize: true } as const;
 const registry = createModuleRegistry([{
@@ -27,32 +27,52 @@ const registry = createModuleRegistry([{
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
 
-function rejectingProvider(submits: string[]): GenerationProvider {
+function answeringProvider(submits: string[], httpStatus: number): GenerationProvider {
   return {
     providerId: "apimart", capabilities: CAPS, buildRequest: (input) => input,
     submit: async (_request, key) => {
       submits.push(key);
-      throw new CatalogGenerationProviderError("apimart create rejected the request: prompt violates content policy");
+      // 真实执行器收到响应之后抛的就是这个形状（providerAnswer 由它挂上）。
+      throw new CatalogGenerationProviderError(`apimart create rejected the request: prompt violates content policy (HTTP ${httpStatus})`, {
+        providerAnswer: { httpStatus, envelopeFailure: false, taskIdReturned: false },
+      });
     },
   };
 }
 
+function setup(httpStatus: number) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-provider-rejection-"));
+  roots.push(root);
+  const now = () => "2026-10-05T00:00:00.000Z";
+  const repository = createProductionRunRepository({ projectDirResolver: (id) => (id === "p" ? root : null), now });
+  const cand: PlanCandidate = { candidateId: "c-1", revision: 1, moduleId: "generation.single-shot", providerId: "apimart", modelId: "img", mode: "text-to-image", prompt: "a red cube", parameters: {}, references: [] };
+  const contract = compileExecutionContract(cand, registry);
+  const candidate = { ...cand, sealedContractHash: contract.contractHash };
+  repository.createGenerationDraft({ operationId: "op-1", projectId: "p", origin: { host: "semantic-mcp" }, candidate, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["img"], maxSpend: null, maxAttemptsPerJob: 3 } });
+  const submits: string[] = [];
+  const provider = answeringProvider(submits, httpStatus);
+  sealAndApproveProductionGeneration({ repository, projectId: "p", operationId: "op-1", immutableProjectUuid: "u", projectGeneration: 1, projectRevision: 0, candidate, contract, providers: [provider], resolveShotPrice: () => ({ known: true, amount: 2 }), now: now() });
+  const submission = createProductionGenerationSubmission({
+    repository, projectRoot: root, immutableProjectUuid: "u", projectGeneration: 1, intentMacKey: "k", provider, beforeDispatch: () => undefined, now,
+  });
+  return { repository, submission, submits };
+}
+
 describe("制作那台：供应商当场明确拒绝", () => {
-  it("今天记成「结果未知」，这一镜不能再发（F3）", async () => {
-    const root = fs.mkdtempSync(path.join(os.tmpdir(), "nomi-provider-rejection-"));
-    roots.push(root);
-    const now = () => "2026-10-05T00:00:00.000Z";
-    const repository = createProductionRunRepository({ projectDirResolver: (id) => (id === "p" ? root : null), now });
-    const cand: PlanCandidate = { candidateId: "c-1", revision: 1, moduleId: "generation.single-shot", providerId: "apimart", modelId: "img", mode: "text-to-image", prompt: "a red cube", parameters: {}, references: [] };
-    const contract = compileExecutionContract(cand, registry);
-    const candidate = { ...cand, sealedContractHash: contract.contractHash };
-    repository.createGenerationDraft({ operationId: "op-1", projectId: "p", origin: { host: "semantic-mcp" }, candidate, policy: { trustedHosts: ["semantic-mcp"], allowedProviders: ["apimart"], allowedModels: ["img"], maxSpend: null, maxAttemptsPerJob: 3 } });
-    const submits: string[] = [];
-    const provider = rejectingProvider(submits);
-    sealAndApproveProductionGeneration({ repository, projectId: "p", operationId: "op-1", immutableProjectUuid: "u", projectGeneration: 1, projectRevision: 0, candidate, contract, providers: [provider], now: now() });
-    const submission = createProductionGenerationSubmission({
-      repository, projectRoot: root, immutableProjectUuid: "u", projectGeneration: 1, intentMacKey: "k", provider, beforeDispatch: () => undefined, now,
-    });
+  it("4xx：确定没受理——失败带原话、预留释放、记成没花钱，供应商只收到 1 次", async () => {
+    const { repository, submission, submits } = setup(400);
+
+    await expect(submission.start({ projectId: "p", operationId: "op-1" })).rejects.toBeInstanceOf(CatalogGenerationProviderError);
+
+    const run = repository.read("p", "op-1")!;
+    expect(run.jobs[0]).toMatchObject({ status: "needs_attention", errorCode: "provider_rejected", errorMessage: expect.stringContaining("content policy") });
+    expect(jobMayHaveReachedProvider(run.jobs[0]!)).toBe(false);
+    expect(run.budget).toMatchObject({ reserved: 0, unsettled: 0 });
+    expect(submits).toHaveLength(1);
+  });
+
+  it("5xx：照旧是结果未知、这一镜再发被拦", async () => {
+    const { repository, submission, submits } = setup(502);
 
     await expect(submission.start({ projectId: "p", operationId: "op-1" })).rejects.toBeInstanceOf(SubmissionReceiptUnknownError);
     expect(repository.read("p", "op-1")?.jobs[0]?.status).toBe("submission_unknown");

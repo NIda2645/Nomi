@@ -2370,6 +2370,10 @@
         {
           "path": "electron/productionRun/submissionOutbox.ts",
           "symbol": "beforeDispatch"
+        },
+        {
+          "path": "electron/productionRun/submissionOutbox.ts",
+          "symbol": "markProviderRejected"
         }
       ],
       "forbidden_derivations": [],
@@ -2399,6 +2403,10 @@
           "symbol": "outboundRequestWasNeverWritten"
         },
         {
+          "path": "electron/outboundDispatchEvidence.ts",
+          "symbol": "providerExplicitlyRejected"
+        },
+        {
           "path": "electron/systemProxy.ts",
           "symbol": "createFreshConnectionDispatcher"
         }
@@ -2408,10 +2416,11 @@
       "allowed_consumers": [
         "electron/productionRun/productionGenerationSubmission.ts",
         "electron/capabilityCore/apimartGenerationProvider.ts",
-        "electron/vendor/vendorHttp.ts"
+        "electron/vendor/vendorHttp.ts",
+        "electron/productionRun/submissionOutbox.ts"
       ],
       "since": "2026-10-02",
-      "notes": "根因合同 docs/fixes/2026-10-02-paid-submit-no-blind-resend.root-cause.json：只有连上之前的失败才算确定没写出去（DNS / 建连 / TLS 握手前），UND_ERR_SOCKET 与连接被重置一律是结果未知；付费 POST 每次用 createFreshConnectionDispatcher 新建的连接，从构造上消掉「复用的旧连接」这一种歧义。重发规则住在 submissionOutbox.submitOnce（属 production.submission-admission 的写口），不在这里。"
+      "notes": "根因合同 docs/fixes/2026-10-02-paid-submit-no-blind-resend.root-cause.json：只有连上之前的失败才算确定没写出去（DNS / 建连 / TLS 握手前），UND_ERR_SOCKET 与连接被重置一律是结果未知；付费 POST 每次用 createFreshConnectionDispatcher 新建的连接，从构造上消掉「复用的旧连接」这一种歧义。重发规则住在 submissionOutbox.submitOnce（属 production.submission-admission 的写口），不在这里。2026-10-05 加第三档 providerExplicitlyRejected（用户拍板 F3，合同 docs/fixes/2026-10-05-provider-explicit-rejection.root-cause.json）：只认收到了响应、4xx 或 2xx + 失败信封、没有任务号；执行器只挂证据（providerAnswer），判在这里，落盘在 submissionOutbox.markProviderRejected。"
     },
     {
       "name": "跨供应商同一模型的身份（canonical 模型 id）",

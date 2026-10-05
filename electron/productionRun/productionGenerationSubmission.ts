@@ -22,7 +22,7 @@ import { createProductionRunIntentLog } from "./productionRunIntentLog";
 import { productionRunPaths } from "./productionRunPaths";
 import { createProductionRunLock } from "./productionRunLock";
 import type { ProductionRunRepository } from "./productionRunRepository";
-import { isTransportLevelFailure, outboundRequestWasNeverWritten } from "../outboundDispatchEvidence";
+import { isTransportLevelFailure, outboundRequestWasNeverWritten, providerExplicitlyRejected } from "../outboundDispatchEvidence";
 import {
   SubmissionNotDispatchedError,
   SubmissionReceiptUnknownError,
@@ -521,6 +521,8 @@ export function createProductionGenerationSubmission(deps: ProductionGenerationS
             if (outboundRequestWasNeverWritten(error)) {
               throw new SubmissionNotDispatchedError(error instanceof Error ? error.message : String(error));
             }
+            // 供应商当场明确拒绝（收到了 4xx / 失败信封、没有任务号）：确定没受理，信封留在封好的状态，由出口记成确定的失败。
+            if (providerExplicitlyRejected(error)) throw error;
             prepared.envelope.markSubmittedUnknown();
             throw error;
           }

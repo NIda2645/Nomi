@@ -1,7 +1,7 @@
 /**
  * 「这次出站请求，到底有没有发出去过？」——**唯一**回答它的地方。
  *
- * 一次付费提交失败只有两种性质完全不同的可能：**一个字节都没写出去**（DNS 解不出、连不上、
+ * 一次付费提交失败有三种性质完全不同的可能（第三种 2026-10-05 用户拍板加入，见文件尾 `providerExplicitlyRejected`）：**一个字节都没写出去**（DNS 解不出、连不上、
  * TLS 握手没完成）——供应商那边什么都没发生；
  * 或者**写出去了但结果不知道**（写完才断、响应头等超时）——可能已经收下并扣费。
  * 两者在 `fetch()` 抛出来时长得一模一样（`TypeError: fetch failed`），真相全在 `error.cause` 里。
@@ -17,6 +17,7 @@
 
 type ErrorLike = {
   code?: unknown;
+  providerAnswer?: unknown;
   syscall?: unknown;
   cause?: unknown;
   message?: unknown;
@@ -117,4 +118,44 @@ export function describeOutboundFailure(error: unknown): string {
       return `${name}${code}${message ? `: ${message}` : ""}`;
     })
     .join(" ← ");
+}
+
+/**
+ * 供应商对这次提交的**回复**。执行器只在**真的收到了响应**之后才把它挂到错误上（两台发动机各一处：
+ * 引擎 A `vendor/vendorHttp.ts` 的 `VendorRequestError`，引擎 B 的 `ApimartGenerationProviderError`）。
+ * 没收到响应的失败永远没有它，于是永远到不了下面那一档。
+ */
+export type ProviderAnswer = {
+  /** 收到的 HTTP 状态码。 */
+  httpStatus: number;
+  /** 响应体是不是「失败信封」（HTTP 200 + 非成功 `code` 这一类）。 */
+  envelopeFailure: boolean;
+  /** 响应里有没有任务号。有任务号就可能已经受理，不算拒绝。 */
+  taskIdReturned: boolean;
+};
+
+function readProviderAnswer(value: unknown): ProviderAnswer | null {
+  if (!value || typeof value !== "object") return null;
+  const answer = value as Partial<ProviderAnswer>;
+  if (typeof answer.httpStatus !== "number" || !Number.isInteger(answer.httpStatus)) return null;
+  if (typeof answer.envelopeFailure !== "boolean" || typeof answer.taskIdReturned !== "boolean") return null;
+  return answer as ProviderAnswer;
+}
+
+/**
+ * 第三档：「供应商当场明确拒绝了这次提交」——**确定没受理、没扣钱**（2026-10-05 用户拍板，发动机收敛第一刀 F3）。
+ *
+ * 只认一种证据：**收到了响应**，状态是 4xx，或是 2xx 但响应体是失败信封，并且响应里没有任务号。
+ * 5xx、没收到响应、读响应读到一半断了，一律不在这里——它们仍是「结果未知」（判错成「拒绝」的代价是
+ * 用户再点一次就是第二笔，所以只认对方亲口说了「不」的那一种）。
+ *
+ * 两台发动机、提交出口都只问这一个函数。设计卡：docs/plan/2026-10-05-engine-convergence-cut1-step12-design-card.md §4 F3。
+ */
+export function providerExplicitlyRejected(error: unknown): boolean {
+  return causeChain(error).some((node) => {
+    const answer = readProviderAnswer(node.providerAnswer);
+    if (!answer || answer.taskIdReturned) return false;
+    if (answer.httpStatus >= 400 && answer.httpStatus < 500) return true;
+    return answer.httpStatus >= 200 && answer.httpStatus < 300 && answer.envelopeFailure;
+  });
 }
