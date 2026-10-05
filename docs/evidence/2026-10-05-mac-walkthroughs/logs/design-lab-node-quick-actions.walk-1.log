@@ -1,0 +1,23 @@
+▶ 生成 tailwind 产物…
+▶  Tailwind CSS building: public/tailwind.generated.css
+
+Rebuilding...
+
+Done in 1936ms.
+▶ 启动 vite dev server…
+  ✓ qa-02-toolbar                      900×740  主样张 · 默认：多机位九宫格｜▾ 分体按钮 / 抠图 / 改图▾ / 宫格▾ + 画板纯图标（文字钮 4 个；用户 10-05 定）
+  ✓ qa-03-more-effects-open            900×740  ▾ 更多效果展开 · 下一刻 / 前一刻 / 三视图 / 剧情四宫格（常用在上，不写价格）
+  ✓ qa-05-refine-open                  900×740  改图展开 · 生成新图（高清灰掉说原因 / 扩图）+ 本机处理不花钱（裁剪 / 旋转翻转）
+  ✓ qa-06-grid-picker                  900×740  宫格展开 · 等分 4/9/16/25 + 自定义点阵（悬停到 2 行 3 列）
+  ✓ qa-07-derived-grid-split           900×740  九宫格派生出的节点 · 浮条直接有「切成 9 张」
+  ✓ qa-09-narrow                       520×740  窄画布（520 宽）· 浮条按舞台宽折两行，不裁切
+  ✓ qa-10-dark-more-effects            900×740  暗色 · 更多效果展开
+  ✓ qa-11-derive-menu-image            900×740  图片节点「+」→ 用这个节点生成…（接不上的灰掉，第二行写原因）
+  ✓ qa-12-derive-menu-video            900×740  视频节点「+」→ 用这个节点生成…（判据与拖线松手同一份）
+  ✓ qa-13-context-duplicate            900×740  右键 · 复制为变体（带上游连线，不带结果）
+  ✓ qa-14-derived-idle                 1100×920  派生后 · 新节点「提示词已填好 / 已备好 · 未生成」、已连好源图、空闲，↑ 可点（点 ↑ 才生成）；浮框只在选中时出，所以这格选上新节点来看，真实流程选中仍留在源节点
+
+▶ 接触表：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-node-quick-actions/_contact-sheet.png
+
+✅ 11 个状态全部渲染并截图：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-node-quick-actions
+RC=0

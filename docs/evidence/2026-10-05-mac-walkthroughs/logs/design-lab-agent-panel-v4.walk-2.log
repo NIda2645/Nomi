@@ -1,0 +1,124 @@
+▶ 生成 tailwind 产物…
+▶  Tailwind CSS building: public/tailwind.generated.css
+
+Rebuilding...
+
+Done in 2181ms.
+▶ 启动 vite dev server…
+  ✓ v4-user-plain                      390×58  ① 用户气泡 · 纯文本
+  ✓ v4-user-attachment                 390×88  ① 用户气泡 · 附件 chip 在气泡内
+  ✓ v4-assistant-streaming             390×43  ② 助手文本 · 流式（末尾方块光标）
+  ✓ v4-assistant-complete              390×69  ② 助手文本 · 完成（hover 出复制/重来）
+  ✓ v4-assistant-interrupted           390×67  ② 助手文本 · 已中断（灰字 + 继续）
+  ✓ v4-assistant-thinking              390×50  ② 助手文本 · 思考行（shimmer + 秒数）
+  ✓ v4-tool-input-streaming            390×50  ③ 收据 · input-streaming（进行中）
+  ✓ v4-tool-input-available            390×50  ③ 收据 · input-available
+  ✓ v4-tool-approval-requested         390×50  ③ 收据 · approval-requested
+  ✓ v4-tool-approval-responded         390×50  ③ 收据 · approval-responded
+  ✓ v4-tool-output-available           390×50  ③ 收据 · 完成（摘要 + 用时 + ›）
+  ✓ v4-tool-expanded                   390×112  ③ 收据 · 展开（输入 / 输出）
+  ✓ v4-tool-group-failed               390×50  ③ 收据 · 同名连调六次折成一行（含失败原因）
+  ✓ v4-process-folded                  390×50  ② 助手文本 · 过程自述收起（只有最终回答摊开）
+  ✓ v4-tool-output-denied              390×50  ③ 收据 · output-denied（你点了不要）
+  ✓ v4-tool-output-error               390×50  ③ 收据 · 失败（原行变红 + 原因）
+  ✓ v4-tool-skill                      390×50  ③ 收据 · 载入技能
+  ✓ v4-tool-attachment                 390×50  ③ 收据 · 读取附件
+  ✓ v4-tool-layout-undo                390×50  ③ 收据 · 布局改动（行尾撤销）
+  ✓ v4-tool-video-failed               390×93  ③ 收据 · 生成失败 + 未扣费条
+  ✓ v4-tool-stopped                    390×50  ③ 收据 · 打断（已停 · 已花）
+  ✓ v4-task-queued                     390×61  ④ 任务卡 · 排队
+  ✓ v4-task-running                    390×127  ④ 任务卡 · 生成中（摘录 + 参数 + 进度）
+  ✓ v4-task-complete                   390×138  ④ 任务卡 · 完成（三候选，采用带角标）
+  ✓ v4-task-failed                     390×104  ④ 任务卡 · 失败（未扣费 + 换模型重试）
+  ✓ v4-task-stopped                    390×61  ④ 任务卡 · 已停止
+  ✓ v4-intervention-irreversible       390×156  ⑤ 介入槽 · 不可逆审批（无「不再问」）
+  ✓ v4-intervention-reversible         390×129  ⑤ 介入槽 · 可撤销（带「不再问 →」）
+  ✓ v4-intervention-reject-reason      390×163  ⑤ 介入槽 · 拒绝原因（渐进披露）
+  ✓ v4-intervention-spend              390×158  ⑤ 介入槽 · 付费（永远逐次问）
+  ✓ v4-intervention-question           390×260  ⑤ 介入槽 · 反问 · 待答（整行选项 + 末行自由作答）
+  ✓ v4-intervention-question-typing    390×260  ⑤ 介入槽 · 反问 · 自己作答中（卡内那一行里有字）
+  ✓ v4-intervention-question-retry     390×245  ⑤ 介入槽 · 反问 · 熔断转提问（同一张卡的第三个生产者）
+  ✓ v4-intervention-question-answered  390×50  ③ 一行收据 · 反问答完（「已回答 · 他的答案」，不红不打 ×）
+  ✓ v4-intervention-question-free      390×161  ⑤ 介入槽 · 反问 · 一个选项都没有（纯自由作答）
+  ✓ v4-intervention-question-two-options 390×232  ⑤ 介入槽 · 反问 · 2 个选项（区间下界）
+  ✓ v4-intervention-question-four-mixed 390×323  ⑤ 介入槽 · 反问 · 4 个选项且长短不一（EN 有一条很长的说明）
+  ✓ v4-intervention-question-labels-only 390×251  ⑤ 介入槽 · 反问 · 只有标签没有说明（模型不写就没有）
+  ✓ v4-intervention-question-three     390×232  ⑤ 介入槽 · 反问 · 多题一张卡（第 1 题，左下 1/3）
+  ✓ v4-intervention-question-multi     390×323  ⑤ 介入槽 · 反问 · 多选（标记是方的，等「继续」不自动前进）
+  ✓ v4-intervention-question-missing-param 390×235  ⑤ 介入槽 · 反问 · 缺参数来源（同一张卡的第二个生产者）
+  ✓ v4-intervention-plan               390×317  ⑤ 介入槽 · 计划（就地勾选表）
+  ✓ v4-intervention-credential         390×129  ⑤ 介入槽 · 缺凭证
+  ✓ v4-intervention-deviation          390×106  ⑤ 介入槽 · 有出入（跳过 / 先生图）
+  ✓ v4-queue-mixed                     390×112  ⑥ 队列 · 进行中 + 排队（插队 / 删）
+  ✓ v4-queue-interrupt                 390×86  ⑥ 队列 · 完成划掉 + 立即中断
+  ✓ v4-dock-logo                       390×66  ⑦ 收起角标 · 顶栏那一格（空闲：什么都不叠）
+  ✓ v4-collapsed-running               390×66  ⑦ 收起角标 · 运行中来了一条新动静（蓝点 8px）
+  ✓ v4-collapsed-needs-confirm         390×66  ⑦ 收起角标 · 待你确认（数字徽标 = 未读条数，含那条待决）
+  ✓ v4-collapsed-done                  390×66  ⑦ 收起角标 · 刚做完，攒了 3 条未读（数字徽标）
+  ✓ v4-collapsed-failed                390×66  ⑦ 收起角标 · 有一步没成（没有新消息也保底冒一颗点，坏消息在 tooltip 里说清）
+  ✓ v4-collapsed-dark                  390×66  ⑦ 收起角标 · 暗色（token 翻转后，蓝点与数字仍要从纸面上跳出来）
+  ✓ v4-context-ring                    390×46  ⑧ Context 环 · 收起
+  ✓ v4-context-window-unknown          390×46  ⑧ Context · 窗口未知时不画环，改说「已用 62.4K」
+  ✓ v4-context-expanded                390×282  ⑧ Context 环 · 展开（真实 token + 花费）
+  ✓ v4-composer-idle                   390×108  composer · 空闲（一行）
+  ✓ v4-composer-awaiting-answer        390×108  composer · 上面有问题待答（降一档：淡 + 换占位，仍可用）
+  ✓ v4-composer-running                390×108  composer · 运行中（■ 停止 + 排队占位）
+  ✓ v4-composer-reference              390×162  composer · 带引用（附件 / 技能 / 片段三种 chip）
+  ✓ v4-composer-model-popover          390×167  composer · 模型弹层（对话 + 图片/视频两类默认 + 单价）
+  ✓ v4-composer-skill-popover          390×337  composer · Skill 弹层（搜索 + 分类 + 列表）
+  ✓ v4-composer-permission-popover     390×116  composer · 权限弹层（三档 segmented）
+  ✓ v4-composer-permission-step        390×108  composer · 权限「每步问」（step / confirm）
+  ✓ v4-composer-permission-safe-auto   390×108  composer · 权限「自动改」（safe-auto / confirm · 默认）
+  ✓ v4-composer-permission-project     390×108  composer · 权限「全自动」（project · 付费仍逐次问）
+  ✓ v4-composer-height-one-line        390×108  高度① 初始一行（面板 620 → 86px）
+  ✓ v4-composer-height-grow            390×160  高度② 逐行长（四行，工具条贴底不动）
+  ✓ v4-composer-height-capped          390×200  高度③ 封顶（面板 620 → 6 行上限，内部滚动）
+  ✓ v4-composer-height-tall-panel      390×200  高度上限 · 面板 900（同一段文本不再被截断）
+  ✓ v4-composer-dock                   560×140  收起坞里的 composer（上限 6 行，压在画面上）
+  ✓ v4-panel-question-light            390×860  ⑤ 反问卡**在真面板里**——和对话流、composer、面板壳一起看
+  ✓ v4-panel-question-multi            390×860  ⑤ 多题反问卡在真面板里（左下页码、右下「跳过」+ 主按钮）
+  ✓ v4-panel-question-answered         390×860  ⑤ 反问卡**已答**——外框回到普通纸面（与同屏 composer 同一条发丝线）
+  ✓ v4-panel-approval-light            390×860  ⑤ 普通确认卡在真面板里（同族第三张）
+  ✓ v4-flow-creation                   390×860  FlowCreation · 读文稿 → 载技能 → 起草分镜 → 计划槽
+  ✓ v4-flow-generation                 390×860  FlowGeneration · 四张参考图任务卡 + 付费槽
+  ✓ v4-flow-preview                    390×860  FlowPreview · 修剪 + 前移 + 三处改动计划
+  ✓ v4-rendering                       390×640  Rendering · 助手文本的 12 种 Markdown 格式
+  ✓ v4-collapsed                       620×360  Collapsed · 结果全屏（顶栏角标 + 下沿 composer / 介入槽）
+  ✓ v4-dark                            390×800  Dark · 同一块面板，token 翻转
+  ✓ v4-wired-thinking-streaming        390×620  接线 · 长思考收起 → 两条收据 → 正文流式
+  ✓ v4-wired-thinking-complete         390×620  接线 · 长思考收起 → 两条收据 → 正文完成
+  ✓ v4-wired-creation                  390×620  接线 · 创作面（真 shell + 真投影）
+  ✓ v4-wired-generation                390×620  接线 · 生成面（真 shell + 真投影）
+  ✓ v4-wired-preview                   390×620  接线 · 预览面（真 shell + 真投影）
+  ✓ v4-wired-running                   390×620  接线 · 运行中 + 队列（composer 变停止）
+  ✓ v4-wired-failure                   390×620  接线 · 失败留在原行（不弹窗）
+  ✓ v4-empty-creation                  390×620  空态 · 创作面（写脚本 / 拆分镜 / 改文稿）
+  ✓ v4-empty-generation                390×620  空态 · 生成面（生成选中 / 拆参考片 / 检查画布；环写「—」不是 0%）
+  ✓ v4-empty-preview                   390×620  空态 · 预览面（检查时间轴 / 修剪片段 / 导出成片）
+  ✓ b2c-process-running                390×620  进行中 · 最新一步
+  ✓ b2c-process-done                   390×620  结束 · 摘要与回答
+  ✓ b2c-process-failed                 390×620  失败 · 独立卡
+  ✓ b2c-model-three-kinds              193×145  模型 · 真实目录三类投影
+  ✓ v4-panel-spend-light               390×860  ⑤ 付费确认卡**在真面板里**（真卡：正文是节点参数条，数据走生产投影）
+  ✓ v4-panel-spend-confirmed           390×860  ⑤ 付费卡**已确认**——外框回到普通纸面
+  ✓ v4-panel-spend-batch               390×860  ⑤ 多镜付费卡在真面板里（逐镜翻页 + 翻页行右端「N 张 · 合计」）
+  ✓ v4-panel-spend-unknown             390×860  ⑤ 未知价付费卡在真面板里（左下整句交代，主按钮照常可点）
+  ✓ v4-spend-params-collapsed          390×333  付费卡 · 上提示词 / 下参数条（4 镜第 1 页 · 翻页器 · 价格算式）
+  ✓ v4-spend-params-collapsed-dark     390×333  付费卡 · 上提示词 / 下参数条（暗色）
+  ✓ v4-spend-params-single             390×307  付费卡 · 单镜（无翻页器、无范围切换，其余一模一样）
+  ✓ v4-spend-params-model-open         390×333  付费卡 · 模型下拉展开（和节点上同一个下拉：同一份目录、同行供应商 chip）
+  ✓ v4-spend-params-panel-open         390×462  付费卡 · ⚙ 就地展开长尾参数（比例/时长/画质已在底栏 chip 上，这里是没上 chip 的那些）
+  ✓ v4-spend-params-repriced           390×371  付费卡 · 这一镜改成 5s（算式退成「逐镜不同」，合计 ¥1.20→¥1.40，钮上的数同步）
+  ✓ v4-spend-params-page2              390×333  付费卡 · 翻到第 2 页（提示词与参数各自独立，翻页只换内容不换位置）
+  ✓ v4-spend-params-price-unknown      390×333  付费卡 · 价格算不出（不印 ¥0；钮退成「仍要生成」，多一句诚实交代）
+  ✓ v4-auto-mode-confirm               390×176  全自动 · 切档二次确认（标题左侧对勾已删）
+  ✓ v4-auto-mode-confirm-dark          390×176  全自动 · 切档二次确认（暗色）
+  ✓ v4-auto-mode-reminder              390×142  全自动 · 常驻提醒（一点回「自动改」，右端 × 可叉掉）
+  ✓ v4-auto-mode-reminder-dark         390×142  全自动 · 常驻提醒（暗色）
+  ✓ v4-consent-first-ask               390×196  首次询问卡 · 两个钮同等大小（没有「稍后再说」、没有隐私长文链接）
+  ✓ v4-feedback-report-idle            390×261  一键反馈 · 待发（一行自动摘要 · 内容默认不勾 · 留言可空 · 无桥时发送禁用并说明）
+
+▶ 接触表：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-agent-panel-v4/_contact-sheet.png
+
+✅ 112 个状态全部渲染并截图：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-agent-panel-v4
+RC=0

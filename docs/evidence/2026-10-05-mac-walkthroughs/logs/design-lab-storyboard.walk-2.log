@@ -1,0 +1,51 @@
+▶ 生成 tailwind 产物…
+▶  Tailwind CSS building: public/tailwind.generated.css
+
+Rebuilding...
+
+Done in 1828ms.
+▶ 启动 vite dev server…
+  ✓ sb-row-01-draft-inherited-aspect   900×161  行 · 待生成（画幅继承整片默认）
+  ✓ sb-row-02-aspect-override-16-9     900×133  行 · 画幅覆盖 16:9（横版第一次有身材）
+  ✓ sb-row-03-aspect-override-1-1      900×134  行 · 画幅覆盖 1:1
+  ✓ sb-row-05-missing-required         900×161  行 · 缺必填参考（红）
+  ✓ sb-row-06-generating               900×205  行 · 生成中 37%
+  ✓ sb-row-07-failed                   900×189  行 · 失败（红边 + 重试）
+  ✓ sb-row-08-done                     900×208  行 · 已生成（动作条在图下方 + @tag + 变体计数）
+  ✓ sb-row-09-locked                   900×208  行 · 已锁定（不进批量）
+  ✓ sb-row-10-skipped                  900×161  行 · 本次跳过（60% + 标签，≠ 锁定）
+  ✓ sb-row-11-ref-changed              900×208  行 · 参考已变（只报事实 + 一键补跑）
+  ✓ sb-row-12-selected-dragover        900×161  行 · 选中 + 拖拽落点线
+  ✓ sb-row-13-row-menu                 900×161  行 · ⋯ 菜单（含「交给 Agent 改这一镜」「这一镜换画幅」）
+  ✓ sb-row-14-variants-drawer          900×469  行 · 历史变体抽屉（显式「采用」才换画面格）
+  ✓ sb-row-15-image-shot               900×161  行 · 图片镜（时长语义 = 停留）
+  ✓ sb-row-16-script-source-original   900×167  行 · 来自剧本未改（F_SEG_B）
+  ✓ sb-row-17-script-source-edited     900×167  行 · 来自剧本已改（回跳 chip）
+  ✓ sb-row-18-composer-switches        900×240  行 · 底栏 ⋯ 开关弹层（生成音频 / 返回尾帧）
+  ✓ sb-row-19-composer-demoted         804×161  行 · 底栏装不下：清晰度进 ⋯，模型停在下限
+  ✓ sb-row-20-composer-demoted-open    804×260  行 · 装不下时点开 ⋯：挪下来的枚举是能改值的控件
+  ✓ sb-slot-01-no-references           900×161  槽矩阵 · 文生视频（该模式不吃参考）
+  ✓ sb-slot-02-first-frame-required    900×161  槽矩阵 · 首帧（1 个红必填格）
+  ✓ sb-slot-03-first-last-frames       900×161  槽矩阵 · 首尾帧（2 个格，各自独立）
+  ✓ sb-slot-04-omni-stacked            900×161  槽矩阵 · 全能参考（图/视频/音频三格，图槽叠放 5/30）
+  ✓ sb-slot-05-mixed-required          900×161  槽矩阵 · 同一 mode 内必填度不同（首帧红 / 尾帧灰）
+  ✓ sb-slot-06-edit-capacity           900×161  槽矩阵 · 改图（已放 1，上限 14）
+  ✓ sb-slot-07-slot-popover            900×161  槽浮层 · 描述 + 「要忽略的特征」（参考列本身不变宽）
+  ✓ sb-zone-01-anchors-collapsed       900×106  锚区 · 收起（紧凑参考条）
+  ✓ sb-zone-02-anchors-expanded        900×471  锚区 · 展开（与镜头行同解剖）
+  ✓ sb-zone-03-anchor-state-matrix     900×106  锚 · 六态同屏（空/生成中/失败/已生成/已锁/文字）
+  ✓ sb-zone-04-bulkbar-project-aspect  900×43  批量条 · 整片默认画幅（+「已覆盖的 N 镜不跟着变」）
+  ✓ sb-zone-05-scene-groups            900×785  场分组 · 组头（合计时长 + 缺必填计数）+ 五镜混排画幅
+  ✓ sb-zone-06-selection-toolbar       900×826  多选浮条 · 纸白胶囊（含「交给 Agent」）
+  ✓ sb-zone-07-insert-line             900×785  行间插入线（键盘可达：focus 也现身，不只 hover）
+  ✓ sb-zone-08-screen-composite        900×948  整屏拼装 · 批量条 + 锚区 + 分镜表
+  ✓ sb-zone-09-playback-playing        900×162  播放本场 · 播放中（镜 i / n + 进度）
+  ✓ sb-zone-10-playback-skipped        900×162  播放全部 · 未生成行灰色跳过
+  ✓ sb-zone-11-playback-empty          900×162  播放全部 · 全部未生成（空态）
+  ✓ sb-zone-12-uniform-16-9            900×781  全 16:9 五行 · 四条线逐行对齐（媒体盒铺满、无黑边）
+  ✓ sb-zone-13-uniform-9-16            900×898  全 9:16 五行 · 竖版同一只盒
+
+▶ 接触表：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-storyboard/_contact-sheet.png
+
+✅ 39 个状态全部渲染并截图：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-storyboard
+RC=0

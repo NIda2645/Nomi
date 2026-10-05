@@ -1,0 +1,20 @@
+▶ 生成 tailwind 产物…
+▶  Tailwind CSS building: public/tailwind.generated.css
+
+Rebuilding...
+
+Done in 2367ms.
+▶ 启动 vite dev server…
+  ✓ pa-01-workbench-button-matrix      480×280  WorkbenchButton · 三变体 × 两尺寸全矩阵
+  ✓ pa-02-workbench-button-busy        480×290  WorkbenchButton · disabled / loading（loading 自动禁用 + aria-busy）
+  ✓ pa-03-workbench-icon-button        480×218  WorkbenchIconButton · 真实形态（几乎总被 className 改写尺寸与配色）
+  ✓ pa-04-action-card                  480×459  ActionCard · primary / default（项目库主入口，全仓仅此 3 张）
+  ✓ pa-05-design-button-variants       480×222  DesignButton · 生产真实用到的四变体（outline 零调用，不摆）
+  ✓ pa-06-design-button-busy           480×155  DesignButton · disabled / loading（生产 loading 恒配 disabled + type=submit）
+  ✓ pa-07-icon-action-button           480×234  IconActionButton · 真实形态（subtle 默认 · className 改尺寸 · aria-label + title 成对）
+  ✓ pa-08-design-button-sizes          480×222  DesignButton · size 三档（2026-09-08 修复前 size 是死的，三档全渲染成 sm）
+
+▶ 接触表：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-primitives-actions/_contact-sheet.png
+
+✅ 8 个状态全部渲染并截图：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-primitives-actions
+RC=0

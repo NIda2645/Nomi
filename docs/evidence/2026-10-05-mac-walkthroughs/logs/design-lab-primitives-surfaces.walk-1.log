@@ -1,0 +1,24 @@
+▶ 生成 tailwind 产物…
+▶  Tailwind CSS building: public/tailwind.generated.css
+
+Rebuilding...
+
+Done in 1936ms.
+▶ 启动 vite dev server…
+  ✓ ps-01-status-badge-tones           480×198  StatusBadge · 五 tone × 三 variant（生产零调用 · 待推广）
+  ✓ ps-02-design-badge                 480×131  DesignBadge · 封闭 tone 词表（生产零调用 · 待推广）
+  ✓ ps-04-progress-skeleton            480×567  DesignProgress / NomiSkeleton · 加载态两件（按真实调用点）
+  ✓ ps-05-empty-state-panel            480×335  DesignEmptyState · density=panel（独立面板空态 · 带行动）
+  ✓ ps-06-empty-state-inline           480×221  DesignEmptyState · density=inline（内嵌空态 · 9/14 是它，是主形态）
+  ✓ ps-07-modal                        900×520  DesignModal · 打开态（size 必传 · 正文与页脚都是手写件）
+  ✓ ps-09-anchored-popover             900×520  AnchoredPopover · 贴锚点展开（onClose 是必需接线，不是可选装饰）
+  ✓ ps-10-tooltip                      900×520  TooltipContent · 图标钮 / 禁用外包 span / 长文案覆写（三种真实形态）
+  ✓ ps-11-confirm-dialog               900×520  confirmDialog · 危险动作确认（danger）
+  ✓ ps-14-identity                     480×355  Nomi 身份族 · 字标 / 品牌 / 标记 / 转圈 / AI 标 / 步进
+  ✓ ps-15-identity-icon                480×180  NomiIdentityIcon · 品牌图层 / 单字母回退 / 无回退（sm=下拉触发、md=下拉行）
+  ✓ ps-16-preview-host                 480×83  NomiPreviewHost · App 之外挂载设计组件的最小 provider
+
+▶ 接触表：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-primitives-surfaces/_contact-sheet.png
+
+✅ 12 个状态全部渲染并截图：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-primitives-surfaces
+RC=0

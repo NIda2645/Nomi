@@ -1,0 +1,20 @@
+▶ 生成 tailwind 产物…
+▶  Tailwind CSS building: public/tailwind.generated.css
+
+Rebuilding...
+
+Done in 2311ms.
+▶ 启动 vite dev server…
+  ✓ pf-01-text-input-four-states       480×515  DesignTextInput · 生产四态（受控 · 外挂标题 · 布尔报错 · 等宽/密码）
+  ✓ pf-02-textarea-number              480×496  DesignTextarea（autosize 开/关）/ DesignNumberInput（无步进器）
+  ✓ pf-03-switch-checkbox              480×328  DesignSwitch · 生产三形（裸开关 / 自带 label / 禁用仍受控）+ DesignCheckbox 唯一真实用法
+  ✓ pf-05-search-input                 480×239  DesignSearchInput · sm / md × 空 / 有值
+  ✓ pf-06-segmented-controls           480×244  DesignSegmentedControl（Mantine）vs NomiSegmented（原生）· 同轴两套并排
+  ✓ pf-07-nomi-select-triggers         480×202  NomiSelect · 触发 pill 的形态矩阵（收起态）
+  ✓ pf-08-nomi-select-open             480×320  NomiSelect · 展开态（供应商 chip 行 / 选中对勾 / 避让减淡行）
+  ✓ pf-09-nomi-select-searchable       480×340  NomiSelect · searchable 展开态（长枚举走搜索 + 长文件名换行）
+
+▶ 接触表：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-primitives-forms/_contact-sheet.png
+
+✅ 8 个状态全部渲染并截图：/Users/aoqimin/.codex/worktrees/5354/Nomi-chore-mac-walkthrough-run/tests/ux/shots/design-lab-primitives-forms
+RC=0
