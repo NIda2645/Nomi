@@ -1,7 +1,7 @@
 import { GENERATION_ARGUMENT_REFUSAL, refuseToModel } from "./transportFailure";
 import { pinAssetReference, type AssetReferenceIdentity } from "./semanticGenerationCandidate";
 import { presentStoryboardAuthoring, patchStoryboardAuthoring, addShotsGuidance } from './mcpGenerationMultiShot';
-import { createDocumentPlanAuthoring } from './mcpGenerationDocumentPlan';
+import { createDocumentPlanAuthoring } from './generationDocumentPlan';
 import { GenerationOperationNotFoundError } from '../productionRun/productionRunErrors';
 import { generationTaskReference } from '../shared/agentCapabilities/taskReference';
 import type { GenerationInvocationContext } from '../shared/agentCapabilities/generationInvocationContext';
@@ -305,7 +305,7 @@ export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerD
     ) as PlanCandidate["references"];
   };
 
-  /** 文稿方案的落地、补镜头与「一次请求一份方案」（`mcpGenerationDocumentPlan.ts`）。 */
+  /** 文稿方案的落地、补镜头与「一次请求一份方案」（`generationDocumentPlan.ts`）。 */
   const documentPlans = createDocumentPlanAuthoring({
     ...(deps.requestRenderer ? { requestRenderer: deps.requestRenderer } : {}),
     ...(deps.resolveStoryboardReferenceUrl ? { resolveStoryboardReferenceUrl: deps.resolveStoryboardReferenceUrl } : {}),
