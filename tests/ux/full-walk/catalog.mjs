@@ -5,12 +5,27 @@
 //   · states：这条旅程会经过的每个状态——用户看到的字（i18n key）、这时能做的动作、代码里谁决定这个状态（文件#符号，
 //     尽量对上 docs/engineering/concept-owners.json）、非终态最长等多久（只引用现有登记处；没有登记就明写 gap——那本身就是发现）；
 //   · scripts：覆盖它的剧本 / 走查；invariants：核对的铁律（invariants.mjs）；metric：它该上报的成功 / 失败事件（没有就写 gap，反馈雷达要用）。
+//   · 每个 state.actions 的可点目标都要能补一行 click target 对照：
+//     { target, userExpectation, actualObservation, useCases, ironLaws }。
+//     userExpectation 是用户点之前合理以为会发生什么；actualObservation 只填真实走查 / 回执看到的结果，不能用实现推测代替。
 //
 // 目录自检（scripts/check-full-walk-catalog.mjs，接在 gates:contracts）：owner 指向的符号真实存在、每条旅程至少一条剧本、
 // 每个非终态都有 deadline（登记处引用 / 等用户 / 明写的 gap 三选一）、visibleText 的 key 在中英两份词典里都在。
 //
 // 加新功能或改了哪块：同一个 PR 里更新对应旅程的状态行和剧本（docs/engineering/full-walk.md）。
 // 注意：这是公开仓库——状态表里只写用户看得见的事实与代码位置，不写私有待办编号、价格或供应商合作信息。
+
+/**
+ * Phase 0 fixes the click-target columns for iron law ⑫「点了=以为的」.
+ * Phase 1 fills one row for every action; observations come from a real walk,
+ * provider receipt, or persisted state, and unknowns stay `unverified`.
+ */
+export const CLICK_TARGET_CONTRACT = Object.freeze({
+  fields: Object.freeze(['target', 'userExpectation', 'actualObservation', 'useCases', 'ironLaws']),
+  actualObservation: '真实 Electron 走查、供应商回执或落盘状态的证据；未知写 unverified，不得从代码推断',
+  candidateLedger: 'tests/ux/full-walk/escapeLedger.json',
+  ironLaw: '⑫ 点了=以为的',
+})
 
 const PHASE = 'src/workbench/generationCanvas/runner/generationPhaseDeadline.ts#GENERATION_PHASE_DEADLINE'
 const USER = Object.freeze({ waitsFor: 'user' })
