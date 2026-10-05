@@ -34,6 +34,7 @@ import type { ProjectSurfaceSession } from '../capabilityCore/canvasReadSurfaceR
 import { parseLaneCommand } from './laneCommandCodec'
 import { readSkillRecords, isSkillSelectableInWorkbench } from '../skills/skillStore'
 import { createDesktopLaneTasks } from './laneDesktopTasks'
+import { createDesktopLaneSpend } from './laneDesktopSpend'
 import { createDesktopLaneAttachments } from './laneDesktopAttachments'
 import { readLaneDeclaredDefaults } from './laneDesktopModelDefaults'
 import { bindLaneProjectSession } from './laneProjectSession'
@@ -146,8 +147,9 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       const receipts = createProjectAgentProposalReceiptService({ projectRoot: projectDir, binding })
       let workspace: LaneWorkspaceHandle | undefined
       const tasks = createDesktopLaneTasks(binding.projectId, () => workspace?.refreshTasks())
+      const spend = createDesktopLaneSpend(binding.projectId, () => workspace?.refreshSpend())
       let ports: ReturnType<typeof createDesktopLaneTools>
-      try { ports = createDesktopLaneTools({ session, binding, surface, context: () => activeInput, receipts, generationFactory,
+      try { ports = createDesktopLaneTools({ session, binding, surface, context: () => activeInput, receipts, generationFactory, spendCard: spend,
         // 与下面 `approval.policy` 同一个来源（`composer`，不是 `activeInput`）：档位是「用户现在
         // 选的那一档」，切完下一次调用就该照它走，而不是等下一条消息把快照带进来。
         approvalPolicy: () => composer.approvalPolicy,
@@ -158,7 +160,7 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
           if (!runId || !tasks.resolve(runId)) return
           await workspace.appendTaskNote({ productionRunId: runId, operationId: call.toolCallId })
         },
-      }) } catch (error) { tasks.dispose(); throw error }
+      }) } catch (error) { tasks.dispose(); spend.dispose(); throw error }
       // 项目记忆与技能库一样是「每一刻都可能变的事实」：用户在记忆折叠里删一条、锁一个节点，
       // 或者 Agent 自己写下一条偏好，都发生在这条 lane 活着的时候。所以这里**不预先算好**——
       // 读放在下面 `systemPrompt` 的函数体里，由宿主在每个回合边界求值一次。
@@ -179,11 +181,12 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
             .filter(Boolean).join('\n\n'),
           tools: ports.tools, toolLifecycle: ports.toolLifecycle, input,
           tasks: tasks.resolve,
+          spend: spend.resolve,
           attachments: createDesktopLaneAttachments(binding.projectId),
           modelDefaults: readLaneDeclaredDefaults,
           approval: { hasUserInterface: true, policy: () => composer.approvalPolicy },
         })
-      } catch (error) { ports.dispose(); tasks.dispose(); throw error }
+      } catch (error) { ports.dispose(); tasks.dispose(); spend.dispose(); throw error }
       const opened = workspace
       const owner = { binding, session, workspace, receipts,
         // 用户切档 → 主进程那份权威值当场跟着变（写口只有这一个）。外部 MCP、全自动调度、
@@ -204,10 +207,10 @@ export function createDesktopLaneDependencies(surface: DesktopCanvasReadRuntime,
       let exposed: LaneWorkspaceHandle
       try {
         exposed = bindLaneProjectSession(opened, canvasReadSurfaceRuntime.registry, session, () => {
-          ports.dispose(); tasks.dispose(); if (current === owner) current = undefined
+          ports.dispose(); tasks.dispose(); spend.dispose(); if (current === owner) current = undefined
         })
       } catch (error) {
-        try { await opened.close() } finally { ports.dispose(); tasks.dispose() }
+        try { await opened.close() } finally { ports.dispose(); tasks.dispose(); spend.dispose() }
         throw error
       }
       owner.workspace = exposed

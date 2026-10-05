@@ -29,7 +29,7 @@ import { createPiSkillReadTransportAdapter } from '../capabilityCore/skillReadTr
 import { createPiSkillWriteTransportAdapter } from '../capabilityCore/skillWriteTransportAdapters'
 import { requestRenderer } from '../capabilityCore/rendererBridge'
 import type { PiGenerationTransportAdapter } from '../capabilityCore/generationTransportAdapters'
-import { createLaneExtendedDesktopPorts } from './laneExtendedDesktopPorts'
+import { createLaneExtendedDesktopPorts, type LaneExtendedDesktopPortsInput } from './laneExtendedDesktopPorts'
 import { toSemanticInput } from '../shared/agentCapabilities/modelFacingTools'
 import { createAskUserLaneTools } from './laneAskUserTool'
 import { specsForCapability } from '../shared/agentCapabilities/modelFacingToolRegistry'
@@ -77,6 +77,8 @@ export function createDesktopLaneTools(input: {
   context(): LaneComposerContext
   receipts: ProjectAgentProposalReceiptService
   generationFactory: () => ResidentGenerationAdapterFactory['factory'] | undefined
+  /** 回合等付费卡时问「这一次出价关了没有」的地方（`laneDesktopSpend.whenCardCloses`，直接看 Run 账本）。 */
+  spendCard: LaneExtendedDesktopPortsInput['spendCard']
   /**
    * 用户此刻选的审批档位。和 `laneHost` 的 `approval.policy` **同一个来源**（宿主持有的
    * `composer.approvalPolicy`），因为它们回答的是同一个问题的两半：工具审批那一半问
@@ -225,7 +227,7 @@ export function createDesktopLaneTools(input: {
   let installedFactory: ResidentGenerationAdapterFactory['factory'] | undefined
   let generation: PiGenerationTransportAdapter | undefined
   const extended = createLaneExtendedDesktopPorts({ binding: input.binding,
-    timelineRead, timelineWrite, canvasWrite, phase4, skillRead, skillWrite, receipts: input.receipts,
+    timelineRead, timelineWrite, canvasWrite, phase4, skillRead, skillWrite, receipts: input.receipts, spendCard: input.spendCard,
     generation: () => {
       const factory = input.generationFactory()
       if (factory !== installedFactory) {

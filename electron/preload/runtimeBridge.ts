@@ -25,8 +25,7 @@ export const runtimeBridge = {
       ipcRenderer.invoke("nomi:production-runs:rework", { projectId, runId, ...(shotId ? { shotId } : {}) }),
     resumeBatch: (projectId: string, runId: string) =>
       ipcRenderer.invoke("nomi:production-runs:resume-batch", { projectId, runId }),
-    // 2026-09-11 Agent 面板付费确认卡：读待确认的那笔 / 卡上改参数 / 丢弃草稿 / 确认并开跑。
-    pendingSpend: (projectId: string) => ipcRenderer.invoke("nomi:production-runs:pending-spend", { projectId }),
+    // 2026-09-11 Agent 面板付费确认卡：卡上改参数 / 丢弃草稿 / 确认并开跑。待决出价本身随对话投影推过来（2026-10-05），这里没有读口。
     reviseSpend: (payload: unknown) => ipcRenderer.invoke("nomi:production-runs:revise-spend", payload),
     discardSpend: (projectId: string, operationId: string, quoteId: string) =>
       ipcRenderer.invoke("nomi:production-runs:discard-spend", { projectId, operationId, quoteId }),

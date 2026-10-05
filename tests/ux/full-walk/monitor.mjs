@@ -14,6 +14,7 @@ import path from 'node:path'
 
 import { expectNoCjkInEnglishDom, waitForVisualQuiescence } from '../_assert.mjs'
 import { readProductionRuns } from '../_paidRun.mjs'
+import { readLaneSpend } from '../_laneSpendProbe.mjs'
 import {
   FIXTURE_API_KEY, FIXTURE_API_KEY_B, FIXTURE_APIMART_API_KEY, FIXTURE_APIMART_VENDOR, FIXTURE_IMAGE_MODEL_B_LABEL,
   FIXTURE_IMAGE_MODEL_LABEL, FIXTURE_IMAGE_VENDOR_B, FIXTURE_TEXT_MODEL_LABEL, FIXTURE_VENDOR,
@@ -250,7 +251,7 @@ export function createInvariantMonitor(options) {
    *   （卡上拿掉只改卡、画布连线不动——那几条线还在，但他看到、点头的是不带它们的那一份）。
    */
   async function consentSpendCard(card, { label, removedCanvasRefs = 0 } = {}) {
-    const read = await win().evaluate((id) => window.nomiDesktop.productionRuns.pendingSpend(id), projectId).catch(() => null)
+    const read = await readLaneSpend(win()).catch(() => null)
     const pending = read?.surface === 'ready' ? read.rows?.[0] ?? null : null
     const dom = await card.evaluate((element) => {
       const text = (selector) => String(element.querySelector(selector)?.textContent ?? '').replace(/\s+/g, ' ').trim()
