@@ -37,6 +37,7 @@ import {
 } from "./productionRunTypes";
 import type { PlanCandidate } from "../capabilityCore/executionContract";
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
+import { isCanvasRunId } from "./canvasShotRunIndex";
 import { buildProductionRunDraftSummary } from "./productionRunDraftSummary";
 
 type SnapshotEnvelope = {
@@ -655,11 +656,15 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
     }
   }
 
+  /**
+   * 制作 Run 的列表。**不列画布单镜 Run**（目录名 `canvas-` 开头）：它们一次 ↑ 一个，由画布队列那一行显示，
+   * 打开项目也不逐个读（只读还没收尾的那几个，见 `canvasShotRunIndex.ts`）。按名字筛，不打开文件。
+   */
   function list(projectId: string): ProductionRunSummary[] {
     const root = productionRunsRoot(projectDir(projectId));
     if (!fs.existsSync(root)) return [];
     return fs.readdirSync(root, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
+      .filter((entry) => entry.isDirectory() && !isCanvasRunId(entry.name))
       .map((entry) => read(projectId, entry.name))
       .filter((run): run is ProductionRun => run !== null)
       .map(summarize)

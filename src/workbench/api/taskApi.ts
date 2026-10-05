@@ -223,6 +223,63 @@ export async function runWorkbenchTaskByVendor(
   }
 }
 
+/**
+ * 画布单节点 ↑ 的唯一付费口（发动机收敛第一刀）：主进程建一个单镜 Run，这一下点击就是批准，经提交出口交出去。
+ * 回话与 `runWorkbenchTaskByVendor` 同形（受理号或同步结果），渲染层的等待循环不变。
+ * `runRecordId` = 节点这一次运行记录号：同一次意图的重试复用它，主进程照 Run 账本回话、绝不交第二次。
+ */
+export async function submitCanvasShotRun(input: {
+  projectId: string
+  nodeId: string
+  runRecordId: string
+  vendor: string
+  request: TaskRequestDto
+}): Promise<TaskResultDto> {
+  const desktop = requireDesktopRuntime('canvas generation')
+  if (!desktop.tasks.canvasSubmit) throw new Error('canvas generation requires a newer desktop runtime')
+  const startedAt = typeof performance !== 'undefined' ? performance.now() : Date.now()
+  const capability = telemetryCapability(input.request.kind)
+  const settleSubmit = trackNodeSubmit(input.nodeId)
+  try {
+    const response = await desktop.tasks.canvasSubmit({
+      projectId: input.projectId,
+      nodeId: input.nodeId,
+      runRecordId: input.runRecordId,
+      vendor: String(input.vendor || '').trim(),
+      request: withTaskProjectIdentity(input.request, input.projectId),
+    }) as TaskResultDto
+    if (capability) {
+      if (isTerminalTaskStatus(response.status)) trackGenerationOutcome(desktop, capability, startedAt, response.status === 'succeeded' ? 'success' : 'failure', response.error)
+      else rememberInFlightGeneration(response.id, capability, startedAt)
+    }
+    return response
+  } catch (error) {
+    if (capability) trackGenerationOutcome(desktop, capability, startedAt, 'failure', error instanceof Error ? error.message : String(error))
+    throw error
+  } finally {
+    settleSubmit()
+  }
+}
+
+/** 查这一次运行的结果：经它的单镜 Run（主进程记下每一次查询，出片就记进 Run）。没有这个 Run 回 null。 */
+export async function pollCanvasShotRun(input: { projectId: string; runRecordId: string }): Promise<TaskResultDto | null> {
+  const desktop = getDesktopBridge()
+  if (!desktop?.tasks?.canvasPoll) return null
+  const result = await desktop.tasks.canvasPoll(input) as TaskResultDto | null
+  if (!result) return null
+  const pending = inFlightGenerations.get(result.id)
+  if (pending && isTerminalTaskStatus(result.status)) {
+    inFlightGenerations.delete(result.id)
+    trackGenerationOutcome(desktop, pending.capability, pending.startedAt, result.status === 'succeeded' ? 'success' : 'failure', result.error)
+  }
+  return result
+}
+
+/** 渲染层不再等这一次（点了停）：主进程把还在路上的交给观察者收完，钱花了的结果照样进项目。 */
+export async function releaseCanvasShotRun(input: { projectId: string; runRecordId: string }): Promise<void> {
+  await getDesktopBridge()?.tasks?.canvasRelease?.(input)
+}
+
 export async function runComfyCandidateTestByVendor(
   vendor: string,
   payload: { candidate: { revisionId: string; modelKey: string; taskKind: TaskKind }; request: TaskRequestDto },

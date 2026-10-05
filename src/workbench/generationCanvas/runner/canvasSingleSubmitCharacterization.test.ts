@@ -1,25 +1,31 @@
-// 特征测试：画布单节点 ↑ 今天的用户可见行为（发动机收敛第一刀 第 1–2 步动手前先钉住）。
-// 设计卡：docs/plan/2026-10-05-engine-convergence-cut1-step12-design-card.md §特征测试。
+// 特征测试：画布单节点 ↑ 的用户可见行为（发动机收敛第一刀 第 1–2 步动手前钉住，收敛后断言不变）。
+// 设计卡：docs/plan/2026-10-05-engine-convergence-cut1-step12-design-card.md §7。
 //
 // 走真实的控制器（confirmAndRunNode / regenerateNodeInPlace）+ 真实的执行器（generationNodeExecutor →
-// runCatalogGenerationTask），只在渲染层 ↔ 主进程那条边上换成假的（taskApi）。收敛以后这条边换成
-// 「单镜 Run」的口子，下面断言的节点状态、结果落地、任务队列、取消的样子都不许变；
-// 标了「今天：」的几条是有意要随拍板改的（设计卡岔路 F3），改的时候改断言、写清为什么。
+// runCatalogGenerationTask），只在渲染层 ↔ 主进程那条边上换成假的（taskApi）。
+// 收敛后这条边从「铸令牌 + runTask + 查任务」换成了单镜 Run 的「交 / 查」（submitCanvasShotRun / pollCanvasShotRun）：
+// 节点状态、结果落地、任务队列、取消的样子一条没改；改的只有边上的调用形状（不再铸令牌，交的时候带这一次运行记录号）。
+// 「写出去之后断了」那一条按 2026-10-05 拍板（F3）翻成「结果没法确认、核对前不许再点」；「当场拒绝」本来就是失败可再点。
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { confirmAndRunNode, regenerateNodeInPlace } from './generationRunController'
 import { useGenerationCanvasStore } from '../store/generationCanvasStore'
 import { useGenerationQueueStore } from './generationQueueStore'
 import { useSpendConfirmStore } from '../spend/spendConfirm'
 import { requestTaskCancel } from './localTaskControl'
+import { classifyGenerationError } from '../../observability/classifyError'
 import { createProjectSessionTestHarness, type ProjectSessionTestHarness } from '../../project/projectSessionTestHarness'
 import type { WorkbenchProjectRecordV1 } from '../../project/projectRecordSchema'
 import type { TaskRequestDto, TaskResultDto } from '../../api/taskApi'
+
+/** 主进程那一侧（单镜 Run）的假样子：交 = (vendor, request)，查 = (taskId, taskKind)。 */
+type SubmitInput = { projectId: string; nodeId: string; runRecordId: string; vendor: string; request: TaskRequestDto }
 
 const calls = vi.hoisted(() => ({
   disk: new Map<string, unknown>(),
   mint: vi.fn(),
   runTask: vi.fn(),
   fetchResult: vi.fn(),
+  release: vi.fn(),
   confirm: vi.fn(),
 }))
 vi.mock('../../library/localProjectStore', () => ({
@@ -33,8 +39,15 @@ vi.mock('../../library/localProjectStore', () => ({
 vi.mock('../../api/taskApi', async (original) => ({
   ...await original<typeof import('../../api/taskApi')>(),
   mintSpendGrant: calls.mint,
-  runWorkbenchTaskByVendor: calls.runTask,
-  fetchWorkbenchTaskResultByVendor: calls.fetchResult,
+  submitCanvasShotRun: (input: SubmitInput) =>
+    calls.runTask(input.vendor, { ...input.request, extras: { ...input.request.extras, runRecordId: input.runRecordId } }, input.projectId),
+  pollCanvasShotRun: async (input: { projectId: string; runRecordId: string }) => {
+    const latest = calls.runTask.mock.results.at(-1)?.value as Promise<TaskResultDto> | undefined
+    const submitted = latest ? await latest.catch(() => undefined) : undefined
+    const response = await calls.fetchResult({ taskId: submitted?.id ?? '', taskKind: submitted?.kind ?? 'text_to_image', vendor: 'acme', projectId: input.projectId, runRecordId: input.runRecordId })
+    return response.result
+  },
+  releaseCanvasShotRun: calls.release,
 }))
 // 目录解析不是这里要钉的东西：拿不到目录 = 信任节点上钉的供应商（catalogTaskResolve 的既有退路）。
 vi.mock('../../api/modelCatalogApi', async (original) => ({
@@ -49,8 +62,13 @@ vi.mock('./assetUploadConsent', async (original) => ({
 const IMAGE_META = { modelKey: 'img-model', modelVendor: 'acme', vendor: 'acme' }
 const LOCAL_URL = 'nomi-local://asset/project-a/out.png'
 
-function succeeded(request: TaskRequestDto, id = 'task-sync'): TaskResultDto {
+function succeeded(request: Pick<TaskRequestDto, 'kind'>, id = 'task-sync'): TaskResultDto {
   return { id, kind: request.kind, status: 'succeeded', assets: [{ type: 'image', url: LOCAL_URL }], raw: {} }
+}
+
+/** 主进程按 IPC 结构化标记送过来的错误（runTaskIpcGuard 的编码）。 */
+function structuredIpcError(structured: Record<string, unknown>, message: string): Error {
+  return new Error(`NOMI_VENDOR_ERR_B64::${Buffer.from(JSON.stringify(structured), 'utf8').toString('base64')}:: ${message}`)
 }
 
 let session: ProjectSessionTestHarness
@@ -59,6 +77,7 @@ beforeEach(async () => {
   calls.mint.mockReset().mockImplementation(async () => `grant-${calls.mint.mock.calls.length}`)
   calls.runTask.mockReset()
   calls.fetchResult.mockReset()
+  calls.release.mockReset().mockResolvedValue(undefined)
   calls.confirm.mockReset().mockResolvedValue(true)
   vi.spyOn(useSpendConfirmStore.getState(), 'requestConfirm').mockImplementation(calls.confirm)
   session = createProjectSessionTestHarness()
@@ -76,8 +95,9 @@ function addImageNode(prompt = 'a red cube') {
 
 const nodeOf = (id: string) => useGenerationCanvasStore.getState().nodes.find((node) => node.id === id)!
 const queueOf = (id: string) => useGenerationQueueStore.getState().entries.filter((entry) => entry.nodeId === id)
+const submitted = (index: number) => calls.runTask.mock.calls[index]?.[1] as TaskRequestDto
 
-describe('画布单节点 ↑ —— 今天用户看得见的样子', () => {
+describe('画布单节点 ↑ —— 用户看得见的样子', () => {
   it('用户点 ↑：不弹卡，只发一笔，结果落在节点上，任务队列记成功', async () => {
     const id = addImageNode()
     calls.runTask.mockImplementation(async (_vendor: string, request: TaskRequestDto) => succeeded(request))
@@ -89,9 +109,13 @@ describe('画布单节点 ↑ —— 今天用户看得见的样子', () => {
     const [vendor, request, projectId] = calls.runTask.mock.calls[0] as [string, TaskRequestDto, string]
     expect(vendor).toBe('acme')
     expect(projectId).toBe('project-a')
-    expect(request.extras).toMatchObject({ nodeId: id, grantId: 'grant-1' })
-    // 同一次意图的幂等键 = 节点这一次的运行记录号（重试不二次下单靠它）。
+    // 收敛后：不再铸令牌——批准就是这一下点击，记在主进程的单镜 Run 里。
+    expect(calls.mint).not.toHaveBeenCalled()
+    expect(request.extras).toMatchObject({ nodeId: id })
+    expect(request.extras?.grantId).toBeUndefined()
+    // 同一次意图 = 节点这一次的运行记录号：幂等键与单镜 Run 号都认它（重试不二次下单靠它）。
     expect(request.extras?.idempotencyKey).toBe(nodeOf(id).runs?.[0]?.id)
+    expect(request.extras?.runRecordId).toBe(nodeOf(id).runs?.[0]?.id)
     const node = nodeOf(id)
     expect(node.status).toBe('success')
     expect(node.result).toMatchObject({ type: 'image', url: LOCAL_URL })
@@ -105,20 +129,21 @@ describe('画布单节点 ↑ —— 今天用户看得见的样子', () => {
     let progressTaskIdWhileWaiting = ''
     calls.fetchResult.mockImplementation(async (input: { taskId: string; taskKind: TaskRequestDto['kind'] }) => {
       progressTaskIdWhileWaiting = nodeOf(id).progress?.taskId ?? ''
-      return { vendor: 'acme', result: succeeded({ kind: input.taskKind } as TaskRequestDto, input.taskId) }
+      return { vendor: 'acme', result: succeeded({ kind: input.taskKind }, input.taskId) }
     })
 
     await confirmAndRunNode(id, { initiator: 'user' })
 
     expect(calls.runTask).toHaveBeenCalledOnce()
     expect(calls.fetchResult).toHaveBeenCalledOnce()
-    expect(calls.fetchResult.mock.calls[0]?.[0]).toMatchObject({ taskId: 'task-async', vendor: 'acme', projectId: 'project-a' })
+    // 收敛后：查也经这一次运行的单镜 Run。
+    expect(calls.fetchResult.mock.calls[0]?.[0]).toMatchObject({ taskId: 'task-async', vendor: 'acme', projectId: 'project-a', runRecordId: nodeOf(id).runs?.[0]?.id })
     expect(progressTaskIdWhileWaiting).toBe('task-async')
     expect(nodeOf(id)).toMatchObject({ status: 'success', result: { url: LOCAL_URL } })
     expect(queueOf(id).map((entry) => entry.state)).toEqual(['success'])
   })
 
-  it('供应商当场拒绝：节点失败带原话，任务队列记失败；用户改了再点 ↑ 能重新发（今天：F3）', async () => {
+  it('供应商当场明确拒绝：节点失败带原话，任务队列记失败；用户改了再点 ↑ 能重新发（F3：没受理、没扣钱）', async () => {
     const id = addImageNode()
     calls.runTask.mockRejectedValueOnce(new Error('acme rejected the request: prompt violates content policy'))
 
@@ -133,26 +158,35 @@ describe('画布单节点 ↑ —— 今天用户看得见的样子', () => {
     useGenerationCanvasStore.getState().updateNode(id, { prompt: 'a blue cube' })
     await confirmAndRunNode(id, { initiator: 'user' })
 
-    expect(calls.mint).toHaveBeenCalledTimes(2)
+    expect(calls.mint).not.toHaveBeenCalled()
     expect(calls.runTask).toHaveBeenCalledTimes(2)
-    const second = calls.runTask.mock.calls[1]?.[1] as TaskRequestDto
-    expect(second.extras?.grantId).toBe('grant-2')
+    // 再点一次 = 新的一次运行、新的单镜 Run。
+    expect(submitted(1).extras?.runRecordId).not.toBe(submitted(0).extras?.runRecordId)
     expect(nodeOf(id)).toMatchObject({ status: 'success', result: { url: LOCAL_URL } })
   })
 
-  it('写出去之后连接断了：今天按「失败」处理、可以再点 ↑（今天：F3；收敛后应是「结果没法确认」）', async () => {
+  it('写出去之后连接断了：结果没法确认（指去核对），这个节点在核对前再点被拒（F3，2026-10-05 拍板）', async () => {
     const id = addImageNode()
-    // 主进程的同键合并器会把同一次意图的重试重放成同一个失败：这里照样回同一个错。
-    calls.runTask.mockRejectedValue(new Error('acme create failed: socket hang up'))
+    // 主进程：这一次的单镜 Run 记成 submission_unknown，同一次意图的重试照 Run 账本回同一个「结果未知」；
+    // 新的一次点击被准入口拒（这一镜在核对前不许再发）。
+    calls.runTask.mockImplementation(async (_vendor: string, request: TaskRequestDto) => {
+      if (request.extras?.runRecordId === submitted(0).extras?.runRecordId) {
+        throw new Error('NOMI_ERR::submission-unknown:: acme create failed: socket hang up')
+      }
+      throw structuredIpcError({ code: 'production_shot_claimed', reason: 'needs_reconcile' }, 'production_shot_claimed: needs_reconcile')
+    })
 
     await confirmAndRunNode(id, { initiator: 'user' })
 
-    // 「socket」算可重试：控制器用同一个幂等键再交两次（主进程合并成同一笔）。
-    const keys = calls.runTask.mock.calls.map((call) => (call[1] as TaskRequestDto).extras?.idempotencyKey)
-    expect(keys).toHaveLength(3)
-    expect(new Set(keys).size).toBe(1)
+    // 同一次意图（同一个运行记录号）：主进程只交过一笔；控制器的重试只是重放。
+    expect(new Set(calls.runTask.mock.calls.map((call) => (call[1] as TaskRequestDto).extras?.runRecordId)).size).toBe(1)
     expect(nodeOf(id).status).toBe('error')
+    expect(classifyGenerationError(nodeOf(id).runs?.[0]?.error ?? '').kind).toBe('submission-unknown')
     expect(queueOf(id).map((entry) => entry.state)).toEqual(['error'])
+
+    calls.runTask.mockClear()
+    await confirmAndRunNode(id, { initiator: 'user' })
+    expect(classifyGenerationError(nodeOf(id).runs?.[0]?.error ?? '').primary).toBe('reconcile')
   })
 
   it('供应商任务在轮询中失败：节点失败，任务队列记失败', async () => {
@@ -174,7 +208,7 @@ describe('画布单节点 ↑ —— 今天用户看得见的样子', () => {
     calls.runTask.mockImplementation(async (_vendor: string, request: TaskRequestDto) => ({ id: 'task-async', kind: request.kind, status: 'queued', assets: [], raw: {} }))
     calls.fetchResult.mockImplementation(async (input: { taskId: string; taskKind: TaskRequestDto['kind'] }) => {
       requestTaskCancel(nodeOf(id), () => undefined)
-      return { vendor: 'acme', result: succeeded({ kind: input.taskKind } as TaskRequestDto, input.taskId) }
+      return { vendor: 'acme', result: succeeded({ kind: input.taskKind }, input.taskId) }
     })
 
     await confirmAndRunNode(id, { initiator: 'user' })
@@ -183,6 +217,8 @@ describe('画布单节点 ↑ —— 今天用户看得见的样子', () => {
     expect(nodeOf(id).status).toBe('idle')
     expect(nodeOf(id).result).toBeUndefined()
     expect(queueOf(id).map((entry) => entry.state)).toEqual(['cancelled'])
+    // 收敛后：渲染层不等了，那一笔交给主进程观察者收完（钱花了的结果照样进项目，节点不落）。
+    expect(calls.release).toHaveBeenCalledWith({ projectId: 'project-a', runRecordId: submitted(0).extras?.runRecordId })
   })
 
   it('提交还在路上时用户点停：节点回空闲，不进轮询，任务队列记取消', async () => {
@@ -208,7 +244,8 @@ describe('画布单节点 ↑ —— 今天用户看得见的样子', () => {
     await expect(regenerateNodeInPlace(id, { initiator: 'user' })).resolves.toBe('started')
 
     expect(calls.confirm).not.toHaveBeenCalled()
-    expect(calls.mint).toHaveBeenLastCalledWith([id], undefined, undefined)
+    expect(calls.mint).not.toHaveBeenCalled()
+    expect(submitted(1).extras?.nodeId).toBe(id)
     expect(useGenerationCanvasStore.getState().nodes).toHaveLength(1)
     const node = nodeOf(id)
     expect(node.result?.id).not.toBe(first?.id)

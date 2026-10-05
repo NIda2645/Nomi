@@ -67,6 +67,11 @@ import { createGenerationProviderBootstrap } from './generationProviderBootstrap
 import { createDefaultAuthorities } from './appIntegrationAuthorities'
 import { createProductionActionHooks } from './appIntegrationProductionActions'
 import { installPendingSpendActions, pendingSpendDependencies } from './appIntegrationSpendConfirm'
+import { canvasLocalArtifactReceipt, createCanvasShotRuns, installCanvasShotRuns } from './appIntegrationCanvasShot'
+import { canvasTransportProviders, isCanvasProviderId, lazyCanvasTransport } from './canvasTransportProvider'
+import { claimCanvasProductionShot } from '../productionRun/canvasShotClaim'
+import { quoteSpendLine } from '../spendQuote'
+export { submitCanvasShot, pollCanvasShot, releaseCanvasShot, releaseCanvasShotSender } from './appIntegrationCanvasShot'
 // 付费确认卡的四个动作住在它自己的模块里（这里只装配）。main.ts 的 IPC 经能力核门面转调，所以门面要露出这四个名字。
 export { listPendingSpendConfirmations, revisePendingSpendConfirmation, discardPendingSpendConfirmation, confirmPendingSpendConfirmation, removePendingSpendShot, confirmRemainingSpendShots } from './appIntegrationSpendConfirm'
 import { repairStaleMcpConfigs } from './mcpConfig'
@@ -202,6 +207,9 @@ export async function startCapabilityCore(
       }),
     })
     const readProviderBootstrap = liveGenerationRuntime.readBootstrap
+    // 提交出口认得的执行器：目录执行器 + 画布那台的传输（按家各一个 `canvas:<key>`，发动机收敛第一刀）。
+    const canvasTransport = lazyCanvasTransport()
+    const submissionProviders = () => [...readProviderBootstrap().providers, ...canvasTransportProviders(readCatalog().vendors.map((vendor) => vendor.key), canvasTransport)]
     // The loopback vendor is a test-only trusted local service. Keep the
     // private-origin exception at this fixture wiring boundary; ordinary
     // provider output downloads retain hardenedFetch's SSRF guard. The fetch
@@ -248,7 +256,10 @@ export async function startCapabilityCore(
       intentMacKey: ensureCapabilitySigningKey('generation-intent'),
       providers: input.providers,
       beforeDispatch: assertProductionShotCanDispatch,
-      materializeOutput: ({ projectId, providerTaskId, output, job }) => outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
+      // 画布那台交回来的产物已经落在项目里：记进 Run，不再下载一次；不是本地地址的走通用物化。
+      materializeOutput: async ({ projectId, providerTaskId, output, job }) => (isCanvasProviderId(job.provider)
+        && canvasLocalArtifactReceipt({ projectId, projectRoot: input.projectRoot, providerTaskId, output }))
+        || outputMaterializer.materialize({ projectId, providerTaskId, output, providerId: job.provider }),
     })
     type SubmittableRun = {
       projectId: string
@@ -267,12 +278,12 @@ export async function startCapabilityCore(
         shots: plan?.shots,
       }
       const jobProviderIds = run.jobs.map((job) => job.provider)
-      const providerBootstrap = readProviderBootstrap()
-      if (!hasGenerationOperationProviderReadiness(operationShape, providerBootstrap.providers, jobProviderIds)) return { ready: false as const, missing: 'provider_missing' as const }
+      const providers = submissionProviders()
+      if (!hasGenerationOperationProviderReadiness(operationShape, providers, jobProviderIds)) return { ready: false as const, missing: 'provider_missing' as const }
       const projectRoot = resolveWorkspaceProjectDir(run.projectId, getWorkspaceRepositoryDeps())
       const record = readWorkspaceProject(run.projectId, getWorkspaceRepositoryDeps())
       if (!projectRoot || !record?.immutableProjectUuid || !record.projectGeneration) return { ready: false as const, missing: 'project_missing' as const }
-      return { ready: true as const, input: { projectRoot, immutableProjectUuid: record.immutableProjectUuid, projectGeneration: record.projectGeneration, providers: providerBootstrap.providers } }
+      return { ready: true as const, input: { projectRoot, immutableProjectUuid: record.immutableProjectUuid, projectGeneration: record.projectGeneration, providers } }
     }
     const buildSubmissionForRun = (run: SubmittableRun) => {
       const readiness = submissionReadinessForRun(run)
@@ -305,6 +316,24 @@ export async function startCapabilityCore(
     })
     disposeSingleShotObservationLifecycle = runObservation.stop
     const { settleSingleShotRunning, settleSingleShotCompleted, settleSingleShotAttention, driveScheduler, kickSchedulerForRun, observeSingleShotRun } = runObservation
+    // 画布单节点 ↑ 的唯一付费口（实现住 appIntegrationCanvasShot，这里只接线）。
+    const canvasShots = createCanvasShotRuns({
+      service: generationService,
+      readProject: (projectId) => readWorkspaceProject(projectId, getWorkspaceRepositoryDeps()),
+      resolveProjectRoot: (projectId) => resolveWorkspaceProjectDir(projectId, getWorkspaceRepositoryDeps()),
+      receipts: defaults.approvalReceiptAuthority!,
+      providers: submissionProviders,
+      buildSubmission,
+      previewBlock: async (projectId, nodeId) => {
+        const reply = await requestRenderer('director.preview-blocks', { projectId, nodeIds: [nodeId] }, 10_000) as { blocks?: Array<{ reason?: unknown }> } | null
+        const reason = reply?.blocks?.[0]?.reason
+        return reason === 'rendering' || reason === 'failed' ? reason : null
+      },
+      claimProductionShot: claimCanvasProductionShot,
+      quote: (input) => { const amount = quoteSpendLine(input).amount; return amount === null ? { known: false } : { known: true, amount } },
+      observe: observeSingleShotRun,
+    })
+    installCanvasShotRuns(canvasShots)
     // P4 §3.2：所有 gate 入口共用 post-decide 重踢。
     registerBatchSchedulerKicker(kickSchedulerForRun)
     const generationPlanning = authorities.generationPlanning
@@ -505,6 +534,8 @@ export async function startCapabilityCore(
       void (async () => {
         // 裁决 C：上一个进程摆出去、还没人答的那几次出价先撤回（回 draft / 未 present，计划留着）。
         // 排在补落画布之前：占位节点照旧补，但那张「没人在等」的卡不该再闪出来一次。
+        // 画布单镜 Run 不在 list 里（一次 ↑ 一个），只看还没收尾的那几个：没人在等的交给观察者。
+        canvasShots.recoverOrphans(projectId)
         try {
           const runs = (typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : [])
             .flatMap((summary) => { try { const run = generationService.repository.read(projectId, summary.runId); return run ? [run] : [] } catch { return [] } })
@@ -681,7 +712,7 @@ export function stopCapabilityCore(): void {
   unsubscribeRunChanges = null
   reworkProductionShotHook = null
   resumeProductionBatchHook = null
-  disposeSingleShotObservationLifecycle?.(); disposeSingleShotObservationLifecycle = null
+  disposeSingleShotObservationLifecycle?.(); disposeSingleShotObservationLifecycle = null; installCanvasShotRuns(null)
   disposeResidentGenerationAdapter?.(); disposeResidentGenerationAdapter = null; installPendingSpendActions(null); markResidentSurfaceStopped()
   installGuiResolveNarrowIpc(null)
 }
