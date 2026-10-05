@@ -69,9 +69,8 @@ import { createProductionActionHooks } from './appIntegrationProductionActions'
 import { installPendingSpendActions, pendingSpendDependencies, readInstalledPendingSpend } from './appIntegrationSpendConfirm'
 import { canvasLocalArtifactReceipt, createCanvasShotRuns, installCanvasShotRuns } from './appIntegrationCanvasShot'
 import { canvasTransportProviders, isCanvasProviderId, lazyCanvasTransport } from './canvasTransportProvider'
-import { claimCanvasProductionShot } from '../productionRun/canvasShotClaim'
 import { quoteSpendLine } from '../spendQuote'
-export { submitCanvasShot, pollCanvasShot, releaseCanvasShot, releaseCanvasShotSender } from './appIntegrationCanvasShot'
+export { consentCanvasShots, submitCanvasShot, pollCanvasShot, releaseCanvasShot, withdrawCanvasShots, releaseCanvasShotSender } from './appIntegrationCanvasShot'
 // 付费确认卡的四个动作住在它自己的模块里（这里只装配）。main.ts 的 IPC 经能力核门面转调，所以门面要露出这四个名字。
 export { revisePendingSpendConfirmation, discardPendingSpendConfirmation, confirmPendingSpendConfirmation, removePendingSpendShot, confirmRemainingSpendShots } from './appIntegrationSpendConfirm'
 import { repairStaleMcpConfigs } from './mcpConfig'
@@ -329,7 +328,6 @@ export async function startCapabilityCore(
         const reason = reply?.blocks?.[0]?.reason
         return reason === 'rendering' || reason === 'failed' ? reason : null
       },
-      claimProductionShot: claimCanvasProductionShot,
       quote: (input) => { const amount = quoteSpendLine(input).amount; return amount === null ? { known: false } : { known: true, amount } },
       observe: observeSingleShotRun,
     })
