@@ -125,12 +125,14 @@ function requireDesktopRuntime(feature: string): DesktopBridge {
   return desktop
 }
 
-/** 付费守卫：真人确认后铸一次性令牌（绑 nodeIds），返回 grantId。仅由确认事件链调用。 */
-export async function mintSpendGrant(nodeIds: string[], maxAttemptsPerNode?: number, quoteId?: string): Promise<string> {
+/**
+ * 付费守卫：真人确认后铸一次性令牌（绑 nodeIds），返回 grantId。画布已不用它（批准住在各自的单镜 Run 上）；
+ * 只剩新手引导的 ComfyUI 试生成这一处登记的例外（到期 2026-11-15，见 concept-owners 的 spend.pending-identity）。
+ */
+export async function mintSpendGrant(nodeIds: string[], maxAttemptsPerNode?: number): Promise<string> {
   const desktop = requireDesktopRuntime('spend authorization')
   const { grantId } = await desktop.tasks.grantSpend({
     nodeIds,
-    ...(quoteId ? { quoteId } : {}),
     ...(maxAttemptsPerNode ? { maxAttemptsPerNode } : {}),
   })
   return grantId

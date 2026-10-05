@@ -16,7 +16,7 @@
 ## 2. 门表
 
 改前（`origin/main@7b81dfcb6`）：`node scripts/door-map.mjs confirmAndRunNode confirmAndRunNodeVariants regenerateNodeInPlace runGenerationNode runGenerationNodesBatch runGenerationNodesByPlan confirmGenerationSpend runWorkbenchTaskByVendor mintSpendGrant runTask claimCanvasProductionShot withNodeSubmitExclusive` → 写 38 · 读 12 · 共 50。
-改后（第 3 步之后）：同一条命令 → 写 34 · 读 11 · 共 45。消失的：`claimCanvasProductionShot`（`runtime.ts` 写 + `appIntegration.ts` 读）、`withNodeSubmitExclusive`（`taskIpcHandlers.ts`）、画布两处 `mintSpendGrant`（`generationRunController.ts`、`spendConfirm.ts`）。剩下的 `mintSpendGrant` / `runTask` 门全部是附属付费口（登记例外）或不花钱的本地 / 文本路（`catalogTaskActions.ts` 的 `runWorkbenchTaskByVendor`）。
+改后（第 3 步之后；第 4 步之后同一条命令仍是这个数——第 4 步删的是制作那一侧的旧写手与死路，不在这 12 个符号里）：同一条命令 → 写 34 · 读 11 · 共 45。消失的：`claimCanvasProductionShot`（`runtime.ts` 写 + `appIntegration.ts` 读）、`withNodeSubmitExclusive`（`taskIpcHandlers.ts`）、画布两处 `mintSpendGrant`（`generationRunController.ts`、`spendConfirm.ts`）。剩下的 `mintSpendGrant` / `runTask` 门全部是附属付费口（登记例外）或不花钱的本地 / 文本路（`catalogTaskActions.ts` 的 `runWorkbenchTaskByVendor`）。
 画布 Run 这条链：`node scripts/door-map.mjs submitCanvasShot submitCanvasShotRun consentCanvasShots withdrawCanvasShots createCanvasShotRuns pollCanvasShotRun` → 改前 6 扇、改后 13 扇（多出来的是批量卡的「开出价 / 收回」：卡确认、队列取消、波次结束各一处调用，一个 IPC、一个实现）。
 
 ## 3. 动手前查出来的（计划里没有）
@@ -54,7 +54,7 @@
 
 ### G4 性能尾巴怎么修：一次落盘多条命令（不改盘上格式），而不是事件只存增量
 
-「事件只追加增量」会让 0.23 读不懂最新那条事件——0.23 写 Run 时从最新事件里取整份 Run（`executeUnlocked` 的 `runFromEvent(journal.latest())`），回滚后任何一条命令都会失败（违反施工计划 §5.6 的回滚承诺）。改成：同一把锁里的几条命令事件一次追加、一次 fsync、快照写一次（`repository.executeBatch`），每条事件仍带整份快照、仍一行一条，旧版本照样读写；收据「挑战 → 签证 → 铸 → 验 → 用掉」五次整份读写并成一次（`issueGestureReceipt`）。数字见 §7 格 7。
+「事件只追加增量」会让 0.23 读不懂最新那条事件——0.23 写 Run 时从最新事件里取整份 Run（`executeUnlocked` 的 `runFromEvent(journal.latest())`），回滚后任何一条命令都会失败（违反施工计划 §5.6 的回滚承诺）。改成：同一把锁里的几条命令事件一次追加、一次 fsync、快照写一次（`repository.executeBatch`），每条事件仍带整份快照、仍一行一条，旧版本照样读写；收据「挑战 → 签证 → 铸 → 验 → 用掉」五次整份读写并成一次（`issueGestureReceipt`）。第 4 步再并两处：执行绑定随「预留 → 提交意向 → 提交中」那一批落盘（信封先封；崩在两者之间，重来沿用信封里那份绑定）；供应商受理之后「已受理 → 计划已交 → 单镜 Run 进行中」三次落盘并成一次，而且「进行中」只由提交出口写（GUI、stdio、画布原来各自补一笔，删掉）。数字见 §7。
 
 ## 5. 九格（花钱 + 长跑 + 可打断）
 
@@ -107,13 +107,27 @@
 
 ## 7. 性能
 
-见实现线报告与本卡 §9 实施结果（第 4 步提交后补）。
+探针：`NOMI_PERF=1 pnpm exec vitest run electron/capabilityCore/canvasShotLatency.perf.test.ts --silent=false`（真仓库、真收据、真提交出口、真 fsync；供应商是进程内假的；本机 Windows 11 + NVMe，数随机器和杀毒扫描浮动，取三次）。
+
+| 量的是什么 | 改前（`origin/main@7b81dfcb6`，同口径探针） | 改后 | 目标 |
+|---|---|---|---|
+| 单节点 ↑：主进程收到「交」→ 供应商请求发出 | p50 355 ms / p95 465 ms | p50 159–166 ms / p95 180–213 ms | p95 ≤ 150 ms：**没达到** |
+| 同上，关掉 fsync 的底（`NOMI_PERF_EPHEMERAL=1`） | — | p50 86 ms / p95 100–170 ms | — |
+| 批量卡 10 镜：点确认 → 10 份出价落盘 | —（旧路不落盘，只铸内存令牌） | 140–158 ms | — |
+| 批量卡 10 镜：点确认 → 第 10 镜请求发出（画布默认并发 6） | 未量（旧路每镜还要多两次 IPC 与一次报价） | 1.8–1.9 s（最慢 2.1 s） | — |
+| 打开一个已有 500 个收尾画布 Run 的项目（recoverOrphans + listRuns） | — | 9–13 ms | — |
+
+没达到目标的原因（实测，CPU 剖面 + 逐文件计数）：一次 ↑ 在供应商之前要过约 16 道落盘屏障（建 Run 2、收据 1、封 + 批那一批约 5、提交锁纪元 1、执行信封 1、提交前那一批 4、意向日志 2），本机每道 3–5 ms；不算 fsync 的底还有约 86 ms，大头是约 10 次「重新读一遍最新 Run」（每次读事件日志 + 快照两份文件，Windows 上每次打开文件约 1 ms）和每道写的建目录 / 开文件 / 改名。每一次重读都在一个 await 之后、守的是「这一刻盘上是什么」（锁内重读、派发闸、提交前那一批的修订号），不能随手删。再往下压只有两条路，都超出「不改盘上格式」这一刀：见 §8 第 4 条。
 
 ## 8. 待拍板（交协调会话）
 
 - **G2-b：文稿方案的 `generate` 改用对话里的逐镜付费卡**（推荐：做，但单独一刀、先出样张）。代价：约 1 周；碰付费卡最热的四个文件；需要「确认时冻不住下游」的设计（卡上「生成这张」= 同意，轮到它再冻，和本刀批量卡同一个模型）。不做的代价：文稿方案仍是「全部 / 取消」，不能逐镜去掉。
 - **G1 的取舍是否接受**（推荐：接受 b）：「一张卡一份授权」落在「卡上那几镜各自开着的出价」上，而不是一道门盖住所有镜。若坚持 a（一批一个多镜 Run），需要先把提交锁改成按镜，或接受同步出图的批量变串行。
 - **N13（文本改写可能一直被付费闸拒）**：是否另派一条线实测 + 修（推荐：派，S）。
+- **性能目标 p95 ≤ 150 ms 没达到（§7）**：现在 p95 约 180–213 ms（改前 465 ms）。三个选项：
+  - a 接受现状，这一刀收（推荐）：已经快了一倍多；用户点 ↑ 到节点进入「生成中」本来还要等供应商回话（几百毫秒到几秒），这 30–60 ms 差距用户分不出来。代价：数字不达标、登记在合同残余风险里。
+  - b 仓库加一层「按事件日志字节数校验」的进程内读缓存：每次重读从两次开文件变成一次 stat，预计省 20–25 ms。代价：钱路径的唯一写入口加缓存，跨进程（MCP stdio 进程也写同一个项目）只靠「日志只追加、字节数必变」保证不读旧；要单独一张设计卡 + 对抗评审，S–M。
+  - c 改盘上格式（事件只存增量、或把批准与提交前那一批并成一次落盘）：能到 100 ms 以内。代价：0.23 回滚后读不懂新 Run（违反施工计划 §5.6），要等回滚窗口过了、单独一刀。
 
 ## 自己写了什么、为什么必须
 
@@ -121,4 +135,11 @@
 
 ## 9. 实施结果
 
-（第 4 步提交后补。）
+- 第 3 步（`2f3194214`）：批量卡进 Run，画布令牌路 / 认领包装 / 在途锁整段删（明细见提交说明）。
+- 第 4 步：
+  - 旧剧本那台生成写手（driver 向渲染层派 `production.generate-node`、样片门、逐镜门、冻结检查）整段删；旧版本留下的、还挂着「已授权 / 提交中」生成任务的剧本 Run，打开后停成「需要处理」（`legacy_generation_writer_retired`），不派、不花钱。渲染层只服务它的 `production.check-frozen` 分支一起删。
+  - `resume(definitelyNotSubmitted)` 整条死路删（`productionRunResume.ts`、信封的 `markDefinitelyNotSubmitted`、意向日志的 `allowRetryAfterAbort`）：被中止的那一次尝试只能在新的批准下以新尝试重来。
+  - `spend.pending-identity` pending → converged：PendingSpendConfirm 只剩 Run 投影一个生产者；四个报价 / 令牌函数只剩登记的附属付费口例外（试跑、认证、视频拆解、提示词提取、新手 ComfyUI 试生成；到期 2026-11-15，清单在 `docs/engineering/concept-owners.json` 该条 notes）。基线里这一概念冻结的 10 扇旧写门随收口删除。
+  - 性能尾巴：见 §4 G4 与 §7。
+- 门表：§2（12 个旧符号 50 → 45）。根因合同：`docs/fixes/2026-10-05-canvas-paid-into-production-run.root-cause.json`（第 4 步补了范围、两条不变量、三个回归测试、删掉的路径）。
+- 没验的（`pending-real-app`，交独立验收线）：真 App 里写出去后崩溃 / 重启 / 关窗 / 批量中途 ×、真付费一镜、0.23 回滚后打开新 Run、旧剧本 Run 在新版本里打开停成「需要处理」的样子。

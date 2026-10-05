@@ -46,8 +46,7 @@
       "authority_kind": "schema",
       "trust_domain": "shared",
       "fact_kind": "value-object",
-      "migration_status": "pending",
-      "migration_strategy": "durable 身份的目标是 ProductionRun / ProductionGenerationPlan.operationId（projectId + operationId），quoteId 只作报价版本指纹。由 Phase 0 施工卡 P0-5（docs/audit/2026-09-26-phase-zero-construction-cards.md）收口；直接画布那条 nodeId + quoteId 的旧路随 Phase 2 的 direct canvas paid → ProductionRun 试点迁走。收口判据：PendingSpendConfirm 只剩 ProductionRun 投影这一个生产者，forbidden_derivations 里的四个报价 / 令牌函数不再有生产调用处。",
+      "migration_status": "converged",
       "owner": {
         "path": "electron/shared/contracts/pendingSpendConfirm.ts",
         "symbol": "PendingSpendConfirm"
@@ -66,22 +65,22 @@
         {
           "symbol": "prepareSpendQuote",
           "kind": "reference",
-          "why": "直接画布按 quoteId 出价——与 operationId 竞争「这一笔」身份的旧路（Phase 0 冻结决策：迁移前不新增消费者）"
+          "why": "按 quoteId 出价——与 operationId 竞争「这一笔」身份的旧路；画布已迁走（第一刀第 3–4 步），只剩登记的附属付费口例外（到期 2026-11-15）"
         },
         {
           "symbol": "takeSpendQuote",
           "kind": "reference",
-          "why": "直接画布按 quoteId 取回报价——同一条旧路，迁移前不新增消费者"
+          "why": "按 quoteId 取回报价——同一条旧路，只剩登记的附属付费口例外（到期 2026-11-15）"
         },
         {
           "symbol": "mintSpendGrant",
           "kind": "reference",
-          "why": "直接画布按 nodeId + quoteId 铸花钱令牌——同一条旧路，迁移前不新增调用处"
+          "why": "按 nodeId + quoteId 铸花钱令牌——同一条旧路，画布已不铸；只剩登记的附属付费口例外（到期 2026-11-15）"
         },
         {
           "symbol": "assertAndConsumeQuotedSpend",
           "kind": "reference",
-          "why": "直接画布按 quoteId 核销令牌——同一条旧路，迁移前不新增调用处"
+          "why": "按令牌核销——同一条旧路，只剩登记的附属付费口例外经 TOKEN_ADMISSION 走（到期 2026-11-15）"
         }
       ],
       "allowed_consumers": [
@@ -102,12 +101,10 @@
         "electron/integrationCertification/integrationSessionRuntimeInstall.ts",
         "electron/capabilityCore/modelOnboarding/tryModel.ts",
         "electron/parity/generationParityTestUtils.ts",
-        "src/ui/onboarding/workflowPage/runTestGeneration.ts",
-        "src/workbench/generationCanvas/runner/generationRunController.ts",
-        "src/workbench/generationCanvas/spend/spendConfirm.ts"
+        "src/ui/onboarding/workflowPage/runTestGeneration.ts"
       ],
       "since": "2026-09-22",
-      "notes": "pending：DTO 不是 durable owner，只是跨进程投影契约。durable identity 目标是 ProductionRun/ProductionGenerationPlan.operationId（projectId + operationId）；quoteId 只表示报价/版本指纹。当前消费者包括 electron/productionRun/productionPendingSpend.ts、src/workbench/ai/v4/spendCardDraft.ts 以及对应 Agent projection（2026-10-05 起待决出价随对话投影推给面板，渲染层拉取它的 IPC 与进程内转接表 spendDecisionWaiters 已删）；现有消费者允许继续读，新写消费者在 owner promotion 前禁止。直接画布 electron/spendQuote.ts + electron/spendGrant.ts 使用 nodeId + quoteId，是另一个 bounded context，记录为迁移候选，不得冒充全局待决身份。 2026-10-05 第一刀第 1–2 步：直接画布的单节点入口不再铸令牌（generationRunController.authorizeSingleNode 只给文本与本地 ComfyUI 两类登记例外铸，到期：第二刀传输合一）；批准写进各自的单镜 Run（主进程手势收据）。批量（confirmAndMintGrant）与附属付费口（试跑、认证、视频拆解、新手试生成、提示词提取）仍用令牌，到期：第一刀第 3–4 步。"
+      "notes": "converged（2026-10-05 发动机收敛第一刀第 4 步）：「这一笔」的身份只有 ProductionRun / ProductionGenerationPlan.operationId（projectId + operationId）；PendingSpendConfirm 只剩 Run 投影 projectPendingSpendConfirm 这一个生产者（withSpendReferencePreviews 只给投影补参考图预览）。画布（单节点 ↑、批量卡、分镜整批、任务中心重试、Agent 文稿方案的 generate）不再出报价号、不再铸令牌：批准住在各自单镜 Run 的门上（主进程手势收据），批量卡上每一镜一份出价（consentCanvasShots）。 登记的例外（协调会话 2026-10-05 定：不落画布、不争镜头，这一刀不搬；到期 2026-11-15，到期前迁进 Run 或删）：① 试跑 electron/capabilityCore/modelOnboarding/tryModel.ts；② 认证 electron/integrationCertification/integrationSession.ts + integrationSessionRuntimeInstall.ts；③ 视频拆解与提示词提取 electron/spendConfirmGrant.ts（prepareSpendQuote → mintSpendGrant 一次批总价，调用方 electron/video/deconstructSpend.ts、electron/browser/settings/browserPromptExtractionSettings.ts）；④ 新手 ComfyUI 试生成 src/ui/onboarding/workflowPage/runTestGeneration.ts（经 nomi:tasks:grant-spend → electron/tasks/taskIpcHandlers.ts）。这些例外的令牌只在 electron/tasks/taskSpend.ts 的 TOKEN_ADMISSION 与 electron/spendGrant.ts 里核销；electron/spendQuote.ts / spendGrant.ts 是那条旧路本身。 读者：Agent 面板（spendCardDraft / agentPanelSpendCard / spendCardEstimate / useAgentPanelSpendConfirm）与 devlab 样张只读投影。"
     },
     {
       "name": "参数准入",

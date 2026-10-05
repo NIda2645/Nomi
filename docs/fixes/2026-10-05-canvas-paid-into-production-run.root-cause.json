@@ -38,7 +38,19 @@
     "src/workbench/creation/storyboard/exec/storyboardRowActions.ts",
     "src/workbench/capability/storyboardPresent.ts",
     "electron/productionRun/canvasShotClaim.ts",
-    "electron/tasks/nodeSubmitInFlight.ts"
+    "electron/tasks/nodeSubmitInFlight.ts",
+    "electron/productionRun/productionRunDriverOps.ts",
+    "electron/productionRun/productionGenerationSubmission.ts",
+    "electron/productionRun/submissionOutbox.ts",
+    "electron/productionRun/productionRunIntentLog.ts",
+    "electron/productionRun/productionRunRuntimeEnvelope.ts",
+    "electron/productionRun/singleShotRunLifecycle.ts",
+    "electron/productionRun/productionRunResume.ts",
+    "electron/capabilityCore/appIntegrationRunObservation.ts",
+    "electron/capabilityCore/mcpStdioServer.ts",
+    "src/workbench/capability/capabilityApplyHandler.ts",
+    "scripts/check-batch-machines.mjs",
+    "docs/engineering/concept-owners.json"
   ],
   "entry_points": [
     "confirmAndRunNode / confirmAndRunNodeVariants / regenerateNodeInPlace (11 single-node call sites)",
@@ -52,7 +64,9 @@
     "A batch card is one authorization covering exactly the paid nodes it listed: each listed node has an open presentation in its own Run from the moment the card is confirmed, and a node whose presentation was withdrawn or removed can never dispatch",
     "A node with a canvas Run that may have reached the provider without a known outcome cannot dispatch again until reconciled, across restarts",
     "Every poll of a Run-backed canvas generation goes through the Run (poll / materialize), so the Run, not the renderer, is the durable state",
-    "Canvas never mints a spend token; the only canvas claim of a production shot is decided by decideShotClaim inside the canvas admission"
+    "Canvas never mints a spend token; the only canvas claim of a production shot is decided by decideShotClaim inside the canvas admission",
+    "No production Run dispatches a paid generation through the renderer: the old script-driven writer (production.generate-node) is retired; a legacy Run that still holds an authorized job stops at needs_attention (legacy_generation_writer_retired) instead of submitting",
+    "The only way a generation attempt that was aborted before dispatch gets a provider request is a new attempt under a new approval; there is no resume(definitelyNotSubmitted) back door"
   ],
   "doors": [
     {
@@ -421,7 +435,10 @@
     "electron/productionRun/doubleChargeMap.e2e.test.ts",
     "electron/productionRun/canvasShotClaimAttempt.test.ts",
     "src/workbench/generationCanvas/runner/canvasSingleSubmitCharacterization.test.ts",
-    "src/workbench/generationCanvas/runner/confirmedProjectContinuation.test.ts"
+    "src/workbench/generationCanvas/runner/confirmedProjectContinuation.test.ts",
+    "electron/productionRun/productionRunDriver.test.ts",
+    "electron/productionRun/productionGenerationSubmission.test.ts",
+    "electron/productionRun/submissionOutbox.test.ts"
   ],
   "class_regression_tests": [
     "electron/capabilityCore/appIntegrationCanvasShot.test.ts",
@@ -431,9 +448,10 @@
     "status": "removed",
     "removed_paths": [
       "electron/productionRun/canvasShotClaim.ts",
-      "electron/tasks/nodeSubmitInFlight.ts"
+      "electron/tasks/nodeSubmitInFlight.ts",
+      "electron/productionRun/productionRunResume.ts"
     ],
-    "rationale": "Step 3 removes the whole canvas token path in the same change: confirmAndMintGrant, the canvas mintSpendGrant / quote-spend usage, the claim inside runtime.runTask (canvasShotClaim.ts) and the per-node in-flight lock on nomi:tasks:run (nodeSubmitInFlight.ts). Local ComfyUI runs without a token (it spends nothing); text never consumed one."
+    "rationale": "Step 3 removes the whole canvas token path in the same change: confirmAndMintGrant, the canvas mintSpendGrant / quote-spend usage, the claim inside runtime.runTask (canvasShotClaim.ts) and the per-node in-flight lock on nomi:tasks:run (nodeSubmitInFlight.ts). Local ComfyUI runs without a token (it spends nothing); text never consumed one. Step 4 removes the script-driven production.generate-node dispatch branch in productionRunDriverOps.ts (and the renderer production.check-frozen case that only it used), the dead resume(definitelyNotSubmitted) path (productionRunResume.ts, markDefinitelyNotSubmitted, allowRetryAfterAbort), and the per-caller \"mark running after start\" writes in appIntegration / mcpStdioServer / canvas (the submission owner now records running in the acceptance write). spend.pending-identity is converged: PendingSpendConfirm has one producer (the Run projection); the token functions remain only for the registered auxiliary exceptions expiring 2026-11-15."
   },
   "dependency_lifecycle": {
     "decision": "not-applicable",
@@ -453,6 +471,7 @@
   "residual_risks": [
     "Text nodes, local ComfyUI and auxiliary paid entries do not go through a Run (registered exceptions; auxiliary paid entries expire 2026-11-15).",
     "The Agent generate on a document-sourced plan still asks on the renderer card (all or nothing), not on the per-shot panel card; moving it is a product decision (step 3-4 design card section 8).",
-    "Real app verification pending (pending-real-app): crash after write, restart, window close, batch x mid-way, 0.23 rollback."
+    "Real app verification pending (pending-real-app): crash after write, restart, window close, batch x mid-way, 0.23 rollback, a legacy script Run with an authorized generate job opened by this build.",
+    "Click-to-provider latency on the Windows dev box is p50 ~160 ms / p95 ~180-215 ms with real fsync (target p95 <= 150 ms not met); the remaining cost is about 16 durable barriers and ~10 fresh reads per submit, reducing it further needs an on-disk format change or a read cache (design card section 7)."
   ]
 }
