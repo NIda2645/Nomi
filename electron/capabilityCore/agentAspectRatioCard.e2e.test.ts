@@ -99,19 +99,31 @@ describe("Agent 说的比例 = 付费卡上的比例", () => {
     expect(shots).toEqual([{ aspect_ratio: "1:1" }, { aspect_ratio: "1:1" }]);
   });
 
-  it("改草稿「把第 2 镜改成 9:16」：卡上那一镜跟着变，读盘归一不会把它当残留清掉", async () => {
+  it("改草稿「把第 2 镜改成 9:16」：卡上那一镜跟着变、清晰度不动，读盘归一不会把它当残留清掉", async () => {
     const { handler, cardAfter, origin, repository } = harness();
     const { operationId } = await cardAfter({
       candidate: { providerId: "kie", modelId: "nano-banana-2" }, taskKind: "text_to_image",
-      shots: [{ shotId: "shot-1", prompt: "第一镜", aspectRatio: "16:9" }, { shotId: "shot-2", prompt: "第二镜", aspectRatio: "16:9" }],
+      shots: [
+        { shotId: "shot-1", prompt: "第一镜", aspectRatio: "16:9", parameters: { resolution: "4K" } },
+        { shotId: "shot-2", prompt: "第二镜", aspectRatio: "16:9", parameters: { resolution: "4K" } },
+      ],
     });
     const revision = verbToTransportCall({ toolCallId: "call-2", toolName: "draft_shots", args: { operationId, shots: [{ shotId: "shot-2", aspectRatio: "9:16" }] } })!;
-    await handler({ capability: "plan", params: revision.call.args as Record<string, unknown>, lease, origin } as never);
+    const revised = await handler({ capability: "plan", params: revision.call.args as Record<string, unknown>, lease, origin } as never) as { changeset?: unknown };
+    // 回给 Agent 的结果里说清这一次改了什么：只有比例，清晰度没动。
+    expect(revised.changeset).toMatchObject({ changedParameters: [{ key: "aspect_ratio", before: "16:9", after: "9:16" }] });
     // 再读一次（预览）：所有读都先经读盘归一——没翻译就落盘的 `aspectRatio` 会在这里被当残留清掉。
     await handler({ capability: "preview", params: { operationId }, lease, origin } as never);
     const shots = repository.read(PROJECT_ID, operationId)!.generationPlan!.shots!;
     expect(shots.map((shot) => [shot.shotId, shot.candidate.parameters])).toEqual([
-      ["shot-1", { aspect_ratio: "16:9" }], ["shot-2", { aspect_ratio: "9:16" }],
+      // 只改比例：4K 留着（整份替换那一版这里会掉回档案默认的 1K）。
+      ["shot-1", { aspect_ratio: "16:9", resolution: "4K" }], ["shot-2", { aspect_ratio: "9:16", resolution: "4K" }],
+    ]);
+    // 付费卡上印的就是合并后要发出去的那一份。
+    await handler({ capability: "present", params: { operationId }, lease, origin } as never);
+    const card = projectPendingSpendConfirm(repository.read(PROJECT_ID, operationId)!, () => undefined)!;
+    expect(card.shots.map((shot) => shot.parameters)).toEqual([
+      { aspect_ratio: "16:9", resolution: "4K" }, { aspect_ratio: "9:16", resolution: "4K" },
     ]);
   });
 
