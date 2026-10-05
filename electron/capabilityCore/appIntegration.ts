@@ -39,7 +39,7 @@ import {
 } from '../productionRun/prepareProductionGenerationAuthorization'
 import { createMultiShotBatchScheduler } from '../productionRun/multiShotBatchScheduler'
 import { registerBatchSchedulerKicker } from '../productionRun/batchSchedulerKick'
-import type { ProductionShotActionResult } from '../productionRun/productionRunTypes'
+import type { ProductionRun, ProductionShotActionResult } from '../productionRun/productionRunTypes'
 import { createCanvasLandingHost } from '../productionRun/canvasLandingHost'
 import { createCatalogModelPricingResolver, createCatalogShotPriceResolver } from '../productionRun/catalogPricingResolver'
 import type { ModuleRegistry } from './moduleRegistry'
@@ -536,25 +536,28 @@ export async function startCapabilityCore(
         // 排在补落画布之前：占位节点照旧补，但那张「没人在等」的卡不该再闪出来一次。
         // 画布单镜 Run 不在 list 里（一次 ↑ 一个），只看还没收尾的那几个：没人在等的交给观察者。
         canvasShots.recoverOrphans(projectId)
+        // 列一次、读一次：下面两段共用这一份（以前 list 两遍、再各读一遍，每个 Run 读四次）。
+        let runs: ProductionRun[] = []
+        let withdrawnIds = new Set<string>()
         try {
-          const runs = (typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : [])
-            .flatMap((summary) => { try { const run = generationService.repository.read(projectId, summary.runId); return run ? [run] : [] } catch { return [] } })
+          runs = generationService.repository.listRuns(projectId)
           const withdrawn = await withdrawStalePresentations({
             listRuns: () => runs,
             // 关的原因要一路带到账上（「被停」），回执据此说「没决定是因为上一次被停了」——少传一个参数就会变成「用户关了卡」。
             withdraw: (owner, operationId, now, reason) => operationStore.withdraw(owner, operationId, now, reason),
             onError: (operationId, error) => logWarn('production-run', 'withdraw-stale-presentation-failed', { operationId }, error),
           }, projectId)
+          withdrawnIds = new Set(withdrawn)
           if (withdrawn.length > 0) logInfo('production-run', 'withdrew-stale-presentations', { projectId, operationIds: withdrawn.join(',') })
         } catch (error) {
           logWarn('production-run', 'stale-presentation-sweep-failed', undefined, error)
         }
         try {
-          const summaries = typeof generationService.repository.list === 'function' ? generationService.repository.list(projectId) : []
-          for (const summary of summaries) {
-            let run
+          for (const listed of runs) {
+            let run: ProductionRun | null = listed
+            // 上一段撤回过出价的那几个才重读一次，其余用同一份。
             try {
-              run = generationService.repository.read(projectId, summary.runId)
+              if (withdrawnIds.has(listed.runId)) run = generationService.repository.read(projectId, listed.runId)
             } catch {
               continue
             }

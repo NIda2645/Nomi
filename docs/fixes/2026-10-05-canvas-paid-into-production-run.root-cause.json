@@ -22,7 +22,8 @@
     "src/workbench/generationCanvas/runner/catalogTaskResolve.ts",
     "src/workbench/generationCanvas/runner/generationNodeExecutor.ts",
     "src/workbench/generationCanvas/runner/generationRunController.ts",
-    "src/workbench/generationCanvas/runner/recoverTaskActions.ts"
+    "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+    "electron/capabilityCore/approvalReceipt.ts"
   ],
   "entry_points": [
     "confirmAndRunNode",
@@ -156,7 +157,8 @@
   },
   "regression_tests": [
     "electron/capabilityCore/appIntegrationCanvasShot.test.ts",
-    "src/workbench/generationCanvas/runner/canvasSingleSubmitCharacterization.test.ts"
+    "src/workbench/generationCanvas/runner/canvasSingleSubmitCharacterization.test.ts",
+    "electron/capabilityCore/approvalReceiptPrune.test.ts"
   ],
   "class_regression_tests": [
     "electron/capabilityCore/appIntegrationCanvasShot.test.ts",
@@ -187,6 +189,7 @@
   "residual_risks": [
     "Batch generation, text nodes, local ComfyUI and auxiliary paid entries still use tokens (expiring exceptions).",
     "Bound production nodes still claim the production shot before their canvas Run (removed in step 3).",
-    "Real app verification pending (pending-real-app): crash after write, restart, window close, 0.23 rollback."
+    "Real app verification pending (pending-real-app): crash after write, restart, window close, 0.23 rollback.",
+    "Receipt store still holds the last few minutes of approvals and is read, verified and rewritten five times per click (about a third of the measured click-to-dispatch time); batching those writes is a registered follow-up."
   ]
 }

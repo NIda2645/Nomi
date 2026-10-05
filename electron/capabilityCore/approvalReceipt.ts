@@ -309,6 +309,9 @@ function assertNotExpired(value: { expiresAt: string }, now: string): void {
   if (!Number.isFinite(Date.parse(value.expiresAt)) || Date.parse(now) >= Date.parse(value.expiresAt)) throw new ReceiptExpiredError();
 }
 
+/** 过期之后在库里再留多久（令牌早已验不过，只为排查留一小段）。 */
+const EXPIRED_RETENTION_MS = 60_000;
+
 function emptyState(keyId: string): ApprovalReceiptState {
   const value = { schemaVersion: 1 as const, revision: 0, keyId, challenges: {}, receipts: {} };
   return { ...value, checksum: digest(value), mac: "" };
@@ -346,12 +349,32 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
     writeJsonFileAtomic(deps.filePath, { ...withChecksum, mac: sign({ ...value, checksum: withChecksum.checksum }, storeMacKey) });
   }
 
+  /**
+   * 过期已久的挑战与收据从库里拿掉。它们的令牌自带过期时间、验签时先判过期（`assertNotExpired`），
+   * 留在库里不再能批准任何东西，只会让这份库随每一次批准变大：画布单节点 ↑ 每点一次铸一张收据之后
+   * （发动机收敛第一刀），不清理的库 300 次点击就涨到 2.8 MB，每次批准要整份读、验、写五遍（实测 1.4 秒）。
+   * 批准的耐久记录在 Run 的 approvals 里，不在这里。
+   */
+  function pruneExpired(state: ApprovalReceiptState): boolean {
+    const cutoff = Date.parse(now()) - EXPIRED_RETENTION_MS;
+    if (!Number.isFinite(cutoff)) return false;
+    let pruned = false;
+    for (const [key, record] of Object.entries(state.challenges)) {
+      if (Date.parse(record.challenge.expiresAt) < cutoff) { delete state.challenges[key]; pruned = true; }
+    }
+    for (const [key, record] of Object.entries(state.receipts)) {
+      if (Date.parse(record.receipt.expiresAt) < cutoff) { delete state.receipts[key]; pruned = true; }
+    }
+    return pruned;
+  }
+
   function mutate<T>(callback: (state: ApprovalReceiptState) => { result: T; changed: boolean }): T {
     const held = deps.lock?.acquire();
     try {
       const state = readState();
       const result = callback(state);
       if (result.changed) {
+        pruneExpired(state);
         state.revision += 1;
         writeState(state);
       }
