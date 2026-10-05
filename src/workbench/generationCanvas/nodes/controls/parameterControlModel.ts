@@ -521,7 +521,7 @@ export function buildDynamicControls(input: {
     ...control,
     binding: 'parameter',
   }))
-  const usedKeys = new Set(controls.flatMap((control) => parameterEquivalentKeys(control)))
+  const usedKeys = new Set(paramControls.flatMap((control) => parameterEquivalentKeys(control)))
   const catalogControls = input.isImageLike
     ? [
         ...explicitImageCatalogControls(input.imageCatalogConfig),
