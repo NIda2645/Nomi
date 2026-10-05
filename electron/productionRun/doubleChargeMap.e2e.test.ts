@@ -90,14 +90,19 @@ function setup(options: { approved: boolean }) {
   return { root, repository, canvas };
 }
 
-function scheduler(root: string, repository: Repository, provider: GenerationProvider, options: { maxShotsPerRun?: number; pollHorizonMs?: number } = {}) {
-  const submission = createProductionGenerationSubmission({
+/** 制作那一侧的提交出口（含真实派发闸）。调度器经它交；「绕开调度器」的测试直接调它。 */
+function productionSubmission(root: string, repository: Repository, provider: GenerationProvider) {
+  return createProductionGenerationSubmission({
     repository,
     beforeDispatch: createProductionShotDispatchGuard({ readRun: (projectId, runId) => repository.read(projectId, runId) ?? undefined }),
     projectRoot: root, immutableProjectUuid: "project-uuid-1", projectGeneration: 1, intentMacKey: "test-intent-key", provider,
     materializeOutput: async ({ providerTaskId }) => ({ artifactId: `artifact-${providerTaskId}`, kind: "video", contentHash: `hash-${providerTaskId}`, projectRelativePath: `.nomi/out/${providerTaskId}.mp4` }),
     now,
   });
+}
+
+function scheduler(root: string, repository: Repository, provider: GenerationProvider, options: { maxShotsPerRun?: number; pollHorizonMs?: number } = {}) {
+  const submission = productionSubmission(root, repository, provider);
   return createMultiShotBatchScheduler({ repository, submission, projectId: PROJECT, runId: RUN, now, options, sleep: async () => undefined });
 }
 
@@ -132,6 +137,27 @@ describe("双扣地图：同一镜，画布和制作合起来只花一次钱", (
     expect(canvasSendsFor(canvas, "shot-2")).toBe(1);
     expect(productionSubmitsFor(repository, "shot-2")).toBe(0);
     expect(productionSubmitsFor(repository, "shot-1")).toBe(1);
+  });
+
+  // 派发闸（productionShotDispatchGuard）是交出去之前最后一道「按盘上最新的 Run 再判一次」：调度器挑中这一镜之后、
+  // 交之前，他点了停（急停 / 暂停）——调度器的过滤已经过去了，只剩派发闸挡着。上面几条都先被调度器的过滤或
+  // 任务状态（画布接手的镜已是 detached）挡住，派发闸改成「永不拒」它们照样绿；这一条绕开调度器、直接从提交出口交，
+  // 派发闸必须拒，而且拒在任何耐久写之前（没有预留、没有提交意向、供应商一次都没收到）。
+  it("派发闸：调度器挑中 shot-2 之后他点了停，直接从提交出口交 shot-2——派发闸拒，一个字节不发", async () => {
+    const { root, repository } = setup({ approved: true });
+    let run = read(repository);
+    run = repository.execute(PROJECT, RUN, { commandId: "batch-start", expectedRevision: run.revision, type: "run.status", payload: { status: "running" }, issuedAt: now() }).run;
+    applyRunControl(repository, PROJECT, RUN, run, { commandId: "user-pause", expectedRevision: run.revision, type: "run.control", payload: { action: "pause" }, issuedAt: now() });
+    const shotTwo = () => read(repository).jobs.find((job) => job.metadata?.shotId === "shot-2");
+    const statusBefore = shotTwo()?.status;
+
+    const submits: string[] = [];
+    await expect(productionSubmission(root, repository, productionProvider(submits)).start({ projectId: PROJECT, operationId: RUN, shotId: "shot-2" }))
+      .rejects.toMatchObject({ code: "production_shot_claimed", reason: "run_stopped" });
+
+    expect(submits).toEqual([]);
+    expect(shotTwo()?.status).toBe(statusBefore);
+    expect(repository.readBudgetLedger(PROJECT, RUN).reservations).toEqual({});
   });
 
   it("路径 2：付费卡还摆着等他点头时在画布上生成这一镜——画布被拒，一个字节不发", async () => {
