@@ -59,7 +59,7 @@ import { installCatalogRowLookup } from './modelSpecRead'
 import type { McpConnectionContext } from './mcpConnectionContext'
 import { createMcpStdioProjectSessionRouter } from './mcpStdioProjectSessionRouter'
 import { createProductionMcpStdioProjectSessionBinding } from './mcpStdioProjectSessionBinding'
-import { callMcpLoopbackRpc } from './mcpLoopbackRpcCall'
+import { callMcpLoopbackRpc, createLoopbackGenerationConfirmation } from './mcpLoopbackRpcCall'
 import { createHeadlessCanvasReadExecutionRuntime, type CanvasReadExecutionRuntime } from './canvasReadExecutionRuntime'
 import { createMcpCanvasReadTransportAdapter } from './canvasReadTransportAdapters'
 import type { VerifiedProjectSessionBinding } from './projectSessionRuntime'
@@ -474,6 +474,13 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     projectSession(),
     canvasReadExecutionRuntime,
   )
+  const generationConfirmation = createLoopbackGenerationConfirmation({
+    rpcIfOpen: (method, params) => {
+      const instance = readLiveInstance(currentLibrary())
+      return instance ? callViaRpc(instance, method, params, projectSession().connection) : undefined
+    },
+    authenticatedClient: () => projectSession().connection.authenticatedClient,
+  })
   const mcp = createNomiMcpServer({
     invoke: invokeRequest,
     // This protocol instance is itself a live Nomi host. Its direct route does
@@ -482,29 +489,9 @@ export async function startMcpStdioServer(authorities: McpStdioServerOptions = {
     isAppOpen: () => Boolean(readLiveInstance(currentLibrary())),
     getAuthenticatedClient: () => projectSession().connection.authenticatedClient,
     onClientDetected: (name) => { recordDetectedMcpClient(name) },
-    confirmGenerationInNomi: async (challenge) => {
-      const challengeToken = challenge.handoff && typeof challenge.handoff.challengeToken === 'string'
-        ? challenge.handoff.challengeToken
-        : ''
-      const instance = readLiveInstance(currentLibrary())
-      if (!challengeToken || !instance) return { confirmed: false }
-      const result = await callViaRpc(instance, 'nomi_confirm_generation_gate', { challengeToken }, projectSession().connection)
-      const typed = result as { confirmed?: boolean; receiptId?: string; receiptToken?: string }
-      return { confirmed: typed.confirmed === true, ...(typed.receiptId ? { receiptId: typed.receiptId } : {}), ...(typed.receiptToken ? { receiptToken: typed.receiptToken } : {}) }
-    },
-    // Electron stdio 态：client_elicitation 路径——客户端在调用方 accept 后，通过 loopback RPC 让主进程铸收据。
-    // 此函数是 mcpGateConfirmation.ts 中 verifyClientGenerationConfirmation 的装配点。
-    verifyClientGenerationConfirmation: async (challenge) => {
-      const challengeToken = challenge.handoff && typeof challenge.handoff.challengeToken === 'string'
-        ? challenge.handoff.challengeToken
-        : ''
-      const instance = readLiveInstance(currentLibrary())
-      const authenticatedClient = projectSession().connection.authenticatedClient
-      if (!challengeToken || !instance || !authenticatedClient) return { confirmed: false }
-      const result = await callViaRpc(instance, 'nomi_verify_client_generation_gate', { challengeToken, authenticatedClient }, projectSession().connection)
-      const typed = result as { confirmed?: boolean; receiptId?: string; receiptToken?: string }
-      return { confirmed: typed.confirmed === true, ...(typed.receiptId ? { receiptId: typed.receiptId } : {}), ...(typed.receiptToken ? { receiptToken: typed.receiptToken } : {}) }
-    },
+    // 两条付费确认经回环 RPC 交给 GUI 主进程（弹兜底卡 / 验证客户端同意并铸收据）；实现三个装配点共用一份。
+    confirmGenerationInNomi: generationConfirmation.confirmGenerationInNomi,
+    verifyClientGenerationConfirmation: generationConfirmation.verifyClientGenerationConfirmation,
     getLocale: () => getDesktopLocale(),
   })
 
