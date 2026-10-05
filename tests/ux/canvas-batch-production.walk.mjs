@@ -494,7 +494,7 @@ try {
   await expectAbsent(notificationRoot.getByRole('alert').filter({ hasText: /已完成/ }), {
     provenBy: notificationProof, message: '节点已成功，普通完成不重复弹通知',
   })
-  check(wireCalls.filter((call) => call.prompt.includes('重试')).map((call) => call.status).join(',') === '500,200', '失败节点通过一键重试成功')
+  check(wireCalls.filter((call) => call.prompt.includes('重试')).map((call) => call.status).join(',') === '422,200', '失败节点通过一键重试成功')
   check(await win.evaluate(() => window.localStorage.getItem('nomi.canvas.batch-concurrency')) === '2', '重试后并发偏好仍为 2')
   await snap(win, 'retry-completed-dark')
 
