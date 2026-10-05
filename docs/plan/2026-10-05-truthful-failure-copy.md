@@ -7,3 +7,7 @@
 9. 验收：`recoverableCopy.test.ts`（键与渲染，zh/en）、`mcpLoopbackRpcCall.test.ts`（断开 vs 拒连）。
 
 `explicit-retry` 命令号一项：调查后未改，见交货报告（该路径无生产调用方，且另有已提交意图闸）。
+
+## #986 遗留风险（`explicit-retry:<jobId>`）的结论
+`resume(definitelyNotSubmitted)` 没有生产调用方（只有测试在调）；第二次重试回「需要对账」是已提交意图闸的设计答案（第一次重试提交的 provider.submit 意图取消不了），不是被吞；强行换号会撞上非法状态转换 `needs_attention -> submit_intent_persisted`。删除这条死路径归收敛第 3–4 步（`docs/plan/2026-10-05-engine-convergence-cut1.md`），这次不删。
+不写进 #986 合同本身：根因合同门禁把任何被改动的合同当作新合同，要求其 removed_legacy_paths / regression_tests 等全部出现在同一 diff 里。
