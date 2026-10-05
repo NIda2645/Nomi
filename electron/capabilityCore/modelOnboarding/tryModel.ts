@@ -178,7 +178,7 @@ export async function tryModel(
         message: `The provider accepted this test generation${taskId ? ` (task ${taskId})` : ""} and it is still processing (status=${result.status || "queued"}). The charge for it has already been made. This is NOT a failure.`,
         ...(taskId ? { taskId } : {}),
         evidence: { bodyExcerpt: sanitizedAdapterJson(result.raw).slice(0, 512) },
-        nextAction: `Do NOT retry and do NOT call nomi_try_model again for this model now: that would submit and charge a second job. Tell the user the test is submitted and still running${taskId ? `, with task id ${taskId}` : ""}; they can check that job in the provider's own console. Only try again later if the user asks.`,
+        nextAction: `Do NOT retry and do NOT call nomi_try_model again for this model now: that would submit and charge a second job. Tell the user the test is submitted and still running${taskId ? `, with task id ${taskId}` : ""}, then check it with nomi_read target=task taskId=${taskId || "(the task id)"}: that only looks, it never submits or charges. Only try again later if the user asks.`,
       };
     }
   }
