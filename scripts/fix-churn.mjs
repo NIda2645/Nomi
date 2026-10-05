@@ -8,6 +8,10 @@
 //   · 目录：同上，但只认「概念大小」的目录——近 14 天 fix 提交碰过的不同源码文件 ≤ DIR_MAX_FILES。
 //     忙碌的大目录（几十个文件、每天都有无关 fix）不当整体算，否则每个 fix 都命中、规则变噪音（2026-10-04 回测：
 //     origin/main 最近 15 个合并里，不设上限时 38 个 fix 提交几乎全命中）。
+// 例外：locale 词典（src/i18n/locales/*.ts）什么功能都要改它，按「文件」数一碰就响（2026-10-05 generationCommon.ts 近 14 天 30 个 fix），
+//   真正重复的那类反而被淹掉。词典文件改按「文件#顶层功能键」各数各的（中英两段同名键算同一个；一个提交改到几个键各计一次；
+//   落在键之外的行——文件头、export 行、顶层单句——归「文件#(根)」），阈值和窗口不变，且不再投目录那一票（词典目录不是一个概念）。
+//   盲区：同一类错（例如「界面谈钱」）若散在不同功能键里，这里数不到一起——由 check:i18n 的文案扫描补。
 // 另外三条触发（评测分数回滚、同线第 3 轮修补、第三个特例分支）没有 git 上的可算信号，靠派工书 / 复盘模板人工判。
 //
 // 用法：
@@ -43,6 +47,113 @@ export function isWatchedSource(rel) {
 
 export const isFixSubject = (s) => FIX_SUBJECT.test(String(s || '').trim())
 export const isRevertOfFix = (s) => REVERT_OF_FIX.test(String(s || '').trim())
+
+const LOCALE_DICT = /^src\/i18n\/locales\/[^/]+\.ts$/
+export const isLocaleDict = (rel) => LOCALE_DICT.test(norm(rel))
+export const ROOT_NS = '(根)'
+const NS_OPEN = /^  (?:([A-Za-z0-9_$]+)|'([^']+)'|"([^"]+)")\s*:\s*[{[]\s*(?:\/\/.*)?$/
+const NS_CLOSE = /^  [}\]][,)]*\s*(?:\/\/.*)?$/
+
+/** 词典源码 → 每一行（1 起算）所属的顶层功能键。顶层 = 缩进 2 格、值是 { 或 [ 的键；其余（文件头、export 行、顶层单句、闭合后的空隙）= (根)。 */
+export function namespaceLines(source) {
+  const lines = String(source || '').split(/\r?\n/)
+  const out = [null]
+  let cur = ROOT_NS
+  for (const line of lines) {
+    if (cur === ROOT_NS) {
+      const m = NS_OPEN.exec(line)
+      if (m) cur = m[1] || m[2] || m[3]
+      out.push(cur)
+    } else {
+      out.push(cur)
+      if (NS_CLOSE.test(line)) cur = ROOT_NS
+    }
+  }
+  return out
+}
+
+/** 解析 git diff -U0 的 hunk 头，返回 [{ oldStart, oldCount, newStart, newCount }]。 */
+export function parseHunks(diffText) {
+  const hunks = []
+  for (const m of String(diffText || '').matchAll(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/gm)) {
+    hunks.push({ oldStart: +m[1], oldCount: m[2] === undefined ? 1 : +m[2], newStart: +m[3], newCount: m[4] === undefined ? 1 : +m[4] })
+  }
+  return hunks
+}
+
+/** 一次改动（hunks + 旧 / 新源码）碰到的功能键集合：删掉 / 改掉的行按旧源码归属，新增 / 改后的行按新源码归属。 */
+export function touchedNamespaces(hunks, oldSource, newSource) {
+  const oldMap = namespaceLines(oldSource)
+  const newMap = namespaceLines(newSource)
+  const out = new Set()
+  for (const h of hunks) {
+    for (let i = 0; i < h.oldCount; i++) out.add(oldMap[h.oldStart + i] || ROOT_NS)
+    for (let i = 0; i < h.newCount; i++) out.add(newMap[h.newStart + i] || ROOT_NS)
+  }
+  return out
+}
+
+/** 词典计数上下文：按 提交 + 文件 缓存「这个提交改到了哪些功能键」。git 失败 = 空集（fail-open）。 */
+export function makeNsCtx(root, git = defaultGit) {
+  const cache = new Map()
+  const show = (spec) => { try { return git(root, ['show', spec]) } catch { return '' } }
+  return {
+    touched: new Map(),
+    nsOf(commit, file) {
+      const key = `${commit.sha}#${file}`
+      if (!cache.has(key)) {
+        let diff = ''
+        try { diff = git(root, ['show', '-U0', '--no-renames', '--format=', commit.sha, '--', file]) } catch { diff = '' }
+        cache.set(key, touchedNamespaces(parseHunks(diff), show(`${commit.sha}^:${file}`), show(`${commit.sha}:${file}`)))
+      }
+      return cache.get(key)
+    },
+  }
+}
+
+/** 暂存区对词典文件的改动 → Map(文件 → 功能键集合)，给 commit-msg 校验用。 */
+export function stagedNamespaces(root, files, git = defaultGit) {
+  const map = new Map()
+  for (const f of files.map(norm).filter(isLocaleDict)) {
+    const show = (spec) => { try { return git(root, ['show', spec]) } catch { return '' } }
+    let diff = ''
+    try { diff = git(root, ['diff', '--cached', '-U0', '--no-renames', '--', f]) } catch { diff = '' }
+    map.set(f, touchedNamespaces(parseHunks(diff), show(`HEAD:${f}`), show(`:${f}`)))
+  }
+  return map
+}
+
+/** 在更老的提交里（14 天窗口内）数「文件#功能键」各自被 fix / revert-fix 碰过几次。返回 Map(ns → {fixes, reverts})。 */
+export function tallyNamespaces(history, afterIndex, nowMs, file, ctx) {
+  const cutoff = nowMs - FIX_WINDOW_DAYS * 86400000
+  const counts = new Map()
+  for (let i = afterIndex + 1; i < history.length; i++) {
+    const c = history[i]
+    if (c.ms < cutoff || !c.files.includes(file)) continue
+    const fix = isFixSubject(c.subject)
+    if (!fix && !isRevertOfFix(c.subject)) continue
+    for (const ns of ctx.nsOf(c, file)) {
+      const e = counts.get(ns) || { fixes: 0, reverts: 0 }
+      if (fix) e.fixes++; else e.reverts++
+      counts.set(ns, e)
+    }
+  }
+  return counts
+}
+
+/** 判一个词典文件：只看被这一刀碰到的功能键（touched 未知 = 报告该文件里所有已达阈值的功能键）。 */
+function evaluateLocale(history, afterIndex, nowMs, file, ctx, touched) {
+  const counts = tallyNamespaces(history, afterIndex, nowMs, file, ctx)
+  const base = path.posix.basename(file)
+  const names = touched ? [...touched] : [...counts.keys()]
+  const reasons = []
+  for (const ns of names) {
+    const e = counts.get(ns) || { fixes: 0, reverts: 0 }
+    if (e.fixes >= PRIOR_FIX_THRESHOLD) reasons.push(`${base}#${ns} 近 ${FIX_WINDOW_DAYS} 天已有 ${e.fixes} 个 fix，这一刀是第 ${e.fixes + 1} 个（词典按功能键计数）`)
+    if (e.reverts >= 1) reasons.push(`${base}#${ns} 近 ${FIX_WINDOW_DAYS} 天出现过 ${e.reverts} 次 revert fix`)
+  }
+  return { path: file, dir: path.posix.dirname(file), file: { fixes: 0, reverts: 0, fixFiles: 0 }, dirCounts: { fixes: 0, reverts: 0, fixFiles: 0 }, namespaces: Object.fromEntries(counts), hot: reasons.length > 0, reasons }
+}
 
 function defaultGit(root, args) {
   return execFileSync('git', args, { cwd: root, encoding: 'utf8', timeout: 20000, maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true })
@@ -82,8 +193,13 @@ export function tally(history, afterIndex, nowMs, scope) {
 }
 
 /** 判一个文件：文件 + 所在目录各一票，返回命中原因。 */
-export function evaluate(history, afterIndex, nowMs, rel) {
+export function evaluate(history, afterIndex, nowMs, rel, nsCtx) {
   const file = norm(rel)
+  if (isLocaleDict(file) && nsCtx) {
+    // 历史里的提交：取它自己改到的功能键；实时（暂存区 / 只给路径）：用 nsCtx.touched 里登记的，没有就报全部达标的键
+    const own = afterIndex >= 0 ? nsCtx.nsOf(history[afterIndex], file) : nsCtx.touched.get(file)
+    return evaluateLocale(history, afterIndex, nowMs, file, nsCtx, own)
+  }
   const dir = path.posix.dirname(file)
   const f = tally(history, afterIndex, nowMs, file)
   const d = dir && dir !== '.' ? tally(history, afterIndex, nowMs, dir) : { fixes: 0, reverts: 0, fixFiles: 0 }
@@ -106,7 +222,7 @@ export function countRecentFixes(root, rel, opts = {}) {
 export function churnFor(root, rel, opts = {}) {
   const file = norm(rel)
   const dir = path.posix.dirname(file)
-  return evaluate(loadHistory(root, { ...opts, pathspecs: [dir === '.' ? file : dir] }), -1, Date.now(), file)
+  return evaluate(loadHistory(root, { ...opts, pathspecs: [dir === '.' ? file : dir] }), -1, Date.now(), file, makeNsCtx(root, opts.git))
 }
 
 /** 批量：只看 src/ electron/ 的源码（测试、生成物、文档不算）；只读一遍日志。 */
@@ -116,7 +232,9 @@ export function findHotspots(root, paths, opts = {}) {
   const dirs = [...new Set(files.map((f) => path.posix.dirname(f)))]
   const history = loadHistory(root, { ...opts, pathspecs: dirs })
   const now = Date.now()
-  return files.map((f) => evaluate(history, -1, now, f)).filter((e) => e.hot)
+  const nsCtx = makeNsCtx(root, opts.git)
+  if (opts.touched) for (const [f, set] of opts.touched) nsCtx.touched.set(f, set)
+  return files.map((f) => evaluate(history, -1, now, f, nsCtx)).filter((e) => e.hot)
 }
 
 export const directionMessage = (hits) => [
@@ -145,9 +263,10 @@ export function rangeReport(root, range, git = defaultGit) {
   const oldest = Math.min(...[...inRange].map((sha) => Date.parse(git(root, ['log', '-1', '--format=%cI', sha]).trim())))
   const history = loadHistory(root, { ref: head, since: new Date(oldest - FIX_WINDOW_DAYS * 86400000).toISOString(), git })
   const rows = []
+  const nsCtx = makeNsCtx(root, git)
   history.forEach((c, idx) => {
     if (!inRange.has(c.sha) || !isFixSubject(c.subject)) return
-    const hits = [...new Set(c.files)].filter(isWatchedSource).map((f) => evaluate(history, idx, c.ms, f)).filter((e) => e.hot)
+    const hits = [...new Set(c.files)].filter(isWatchedSource).map((f) => evaluate(history, idx, c.ms, f, nsCtx)).filter((e) => e.hot)
     if (!hits.length) return
     const trailer = parseDirectionTrailer(git(root, ['log', '-1', '--format=%B', c.sha]))
     let docOk = false
