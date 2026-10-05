@@ -7,10 +7,13 @@
 // 有意改变的行为不在这里钉旧值，而是钉**两边都必须成立的不变量**（例如「不支持的协议版本绝不被原样协商成功」），
 // 改了什么写在设计卡「行为差异」一节。
 import crypto from 'node:crypto'
+import { PassThrough } from 'node:stream'
+
+import { StdioServerTransport } from '@modelcontextprotocol/server/stdio'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { MCP_APP_MIME_TYPE, NOMI_LIVE_DRAFT_UI_URI } from './mcpAppWidget'
-import { createMcpProtocol, MCP_REQUEST_SIGNAL, type McpTransport } from './mcpProtocol'
+import { createMcpProtocol, createNomiMcpServer, MCP_REQUEST_SIGNAL, type McpHost } from './mcpProtocol'
 import { MCP_TOOL_RESOLVER } from './mcpToolCatalog'
 import { registerProductionPlaybook } from '../productionRun/productionPlaybooks'
 import { measureMcpToolsListPayloadByLocale } from '../../scripts/mcp-payload.mjs'
@@ -539,16 +542,41 @@ function defineMcpWireContract(label: string, connector: McpWireConnector, signa
 
 const signalOf: McpWireSignalOf = (params) => (params as Record<PropertyKey, unknown>)[MCP_REQUEST_SIGNAL] as AbortSignal | undefined
 
-/** 进程内直连协议层（与 stdio 同一份帧，只是不经管道）。 */
+/** 进程内：SDK Server 经 SDK 的内存传输帧进帧出（单测与门岗脚本用的那条）。 */
 const inProcess: McpWireConnector = (host, emit) => {
-  const protocol = createMcpProtocol({ ...(host as unknown as Omit<McpTransport, 'send'>), send: (frame) => emit(frame as WireFrame) })
+  const protocol = createMcpProtocol({ ...(host as unknown as McpHost), send: (frame) => emit(frame as WireFrame) })
   return {
     deliver: (frame) => protocol.handleIncoming(frame),
+    close: async () => { await protocol.cancelAllInFlight('wire contract disconnect') },
+  }
+}
+
+/** 真 stdio 管道：两个生产入口用的同一个 StdioServerTransport，接在一对内存流上（换行分帧、stdin 结束即断连）。 */
+const stdioPipe: McpWireConnector = (host, emit) => {
+  const stdin = new PassThrough()
+  const stdout = new PassThrough()
+  let buffered = ''
+  stdout.setEncoding('utf8')
+  stdout.on('data', (chunk: string) => {
+    buffered += chunk
+    for (let newline = buffered.indexOf('\n'); newline >= 0; newline = buffered.indexOf('\n')) {
+      const line = buffered.slice(0, newline)
+      buffered = buffered.slice(newline + 1)
+      if (line.trim()) emit(JSON.parse(line) as WireFrame)
+    }
+  })
+  const mcp = createNomiMcpServer(host as unknown as McpHost)
+  const closed = new Promise<void>((resolve) => mcp.onClose(() => resolve()))
+  const connected = mcp.connect(new StdioServerTransport(stdin, stdout))
+  return {
+    deliver: (frame) => { void connected.then(() => stdin.write(`${JSON.stringify(frame)}\n`)) },
     close: async () => {
-      protocol.cancelAllInFlight('wire contract disconnect')
-      protocol.dispose()
+      await connected
+      stdin.end()
+      await closed
     },
   }
 }
 
 defineMcpWireContract('进程内', inProcess, signalOf)
+defineMcpWireContract('stdio 管道', stdioPipe, signalOf)
