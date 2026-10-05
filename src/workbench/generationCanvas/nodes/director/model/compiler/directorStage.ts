@@ -139,8 +139,10 @@ export function buildStage(plan: DirectorPlan): Stage {
     const ref = anchor ?? ground
     const stage: Stage = { things, marks: template?.marks ?? [], interior: template?.interior, refs, objects, issues }
     const slot = things.filter((thing) => thing.objectId.startsWith('setPiece:')).length
+    // 上面放着演员（主体放在柜台 / 展台上）的家具就是表演区：站到演员站位，不靠里放
+    const carriesPerformer = plan.actors.some((actor) => actor.placement.relation === 'on' && actor.placement.ref === piece.id)
     const placement = ref
-      ? resolvePlacement(stage, object, body.role, ref === anchor ? piece.relation!.type : 'at', ref, slot, [])
+      ? resolvePlacement(stage, object, carriesPerformer ? 'performer' : body.role, ref === anchor ? piece.relation!.type : 'at', ref, slot, [])
       : { position: v(((index % 3) - 1) * 2.5, originYForBottom(body.type, body.scale, 0), Math.floor(index / 3) * 2), facing: 0 }
     object.position = placement.position
     const thing: StageThing = { objectId: id, planId: piece.id, kind: kind ?? 'prop', role: body.role, object, sizeSource: kind ? 'typical' : 'unknown', facing: placement.facing }

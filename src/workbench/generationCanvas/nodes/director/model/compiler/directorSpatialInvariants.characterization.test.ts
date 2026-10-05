@@ -179,8 +179,8 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
     expect(ledger).toEqual(LEDGER)
   })
 
-  // 舞台模型（第二步）的目标：看得见主体、携带物跟手；其余判据不许回升。达成前是「预期失败」，达成后去掉 .fails。
-  it.fails('第二步目标：occluded 0、carriedDrift 0，其余判据不高于当前账', () => {
+  // 舞台模型（第二步）的目标：看得见主体、携带物跟手；其余判据不许回升（第 4 步达成，已去掉 .fails）。
+  it('第二步目标：occluded 0、carriedDrift 0，其余判据不高于当前账', () => {
     expect(count('occluded')).toBe(0)
     expect(count('carriedDrift')).toBe(0)
     for (const criterion of ['floating', 'interpenetrating', 'offFloor', 'cameraInside'] as const)
@@ -203,6 +203,7 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
  *   2 关系解析（关系词按舞台角色解析到命名站位与朝向；走到院门 = 走到守门人跟前面对他）：过肩镜头不再被前景人挡（7/5→5/5）；
  *     t1-05 的柜台按家具靠里放后，环绕机位穿到后墙外（新增 1，留给视线一步）。
  *   3 携带物父子（人和信挂在同一个携带分组下，编辑器父子关系）：floating 1→0、carriedDrift 1→0。
+ *   4 机位视线（角度相对主体朝向；被挡就对整条路径找看得见、不越轴的候选；上面放着主体的家具算表演区）：occluded 5/5→0。
  */
 const LEDGER = {
   cases: 34,
@@ -210,6 +211,6 @@ const LEDGER = {
   interpenetrating: [0, 0],
   offFloor: [0, 0],
   cameraInside: [0, 0], // 现有避让在渲染真值下也成立——锁住
-  occluded: [5, 5], // 远景 / 跟拍机位绕到院墙外；警车挡住前车；环绕机位穿到后墙外
+  occluded: [0, 0],
   carriedDrift: [0, 0],
 }

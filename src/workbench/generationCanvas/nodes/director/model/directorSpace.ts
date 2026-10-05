@@ -1,7 +1,8 @@
 /**
  * [INPUT]: 依赖 three 的几何类与 Box3（只量包围盒，不渲染）、./directorTypes 的 DirectorObjectType / DirectorPrimitiveType / Vec3
  * [OUTPUT]: 对外提供 CHARACTER_HEIGHT / CHARACTER_FOOTPRINT、PRIMITIVE_GEOMETRY（图元几何表，渲染与量尺共用）、localBounds / scaledBounds（物体相对原点的包围盒）、
- *          originYForBottom / originYForCenter（唯一的「底 / 中心 ↔ 原点」换算）、worldBox（带姿态的世界包围盒）
+ *          originYForBottom / originYForCenter（唯一的「底 / 中心 ↔ 原点」换算）、worldBox（带姿态的世界包围盒）、
+ *          segmentBlocked（视线线段是否在到达终点前穿过一个包围盒：three 的 Ray.intersectBox）
  * [POS]: director/model 的空间事实唯一 owner：这个东西多大、原点在哪、底在哪。渲染组件 PrimitiveEntity 按 PRIMITIVE_GEOMETRY 画，
  *        编译器 / 测量 / 相机避让 / AI 搭场景都从这里量，不各抄一份。除 model 里的 THREE 禁令外，这是唯一 import three 的文件（只用几何类与 Box3，无 WebGL）。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -121,4 +122,22 @@ export function worldBox(type: DirectorObjectType, pose: { position: Vec3; rotat
     new THREE.Vector3(pose.scale.x, pose.scale.y, pose.scale.z),
   )
   return localBounds(type).applyMatrix4(matrix)
+}
+
+const ray = new THREE.Ray()
+const hitPoint = new THREE.Vector3()
+const scratchBox = new THREE.Box3()
+/**
+ * 视线 from → to 在到达 to 之前（留 margin 米）是否穿过盒子；from 在盒子里也算挡住。用 three 的 Ray.intersectBox，不自写求交。
+ * 舞台上的东西都是图元 / 角色 / 已量的模型包围盒，盒级就是真值；网格级射线（three-mesh-bvh）等真网格遮挡成为需求再接。
+ */
+export function segmentBlocked(from: Vec3, to: Vec3, box: { min: Vec3; max: Vec3 }, margin = 0.05): boolean {
+  const length = Math.hypot(to.x - from.x, to.y - from.y, to.z - from.z)
+  if (length < 1e-6) return false
+  ray.origin.set(from.x, from.y, from.z)
+  ray.direction.set((to.x - from.x) / length, (to.y - from.y) / length, (to.z - from.z) / length)
+  scratchBox.min.set(box.min.x, box.min.y, box.min.z)
+  scratchBox.max.set(box.max.x, box.max.y, box.max.z)
+  const hit = ray.intersectBox(scratchBox, hitPoint)
+  return !!hit && hit.distanceTo(ray.origin) < length - margin
 }

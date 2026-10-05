@@ -22,6 +22,7 @@ import {
   type DirectorPlanShot,
 } from '../../../../../../../electron/shared/director/directorPlanSchema'
 import { actorBody, buildStage, resolveRef, type Stage } from './directorStage'
+import { chooseClearView, sightBlockers, type SightContext } from './stageSightline'
 import { carryGroups, clearOfSolids, destinationFor, resolvePlacement, yawToward, yawVector, type Placed } from './stageRelations'
 
 const FPS = 30
@@ -85,7 +86,7 @@ function motionCarrier(objects: readonly DirectorObject[], object: DirectorObjec
 }
 
 export type DirectorCompileIssue = {
-  kind: 'unknown-ref' | 'overlap' | 'measurement' | 'missing_asset' | 'nominal-size'
+  kind: 'unknown-ref' | 'overlap' | 'measurement' | 'missing_asset' | 'nominal-size' | 'occluded'
   message: string
   time?: number
   objectId?: string
@@ -252,6 +253,13 @@ function ensureCharacterActionCoverage(objects: DirectorObject[], duration: numb
   }
 }
 
+/** 镜头瞄准主体的哪一点（主体局部偏移）：锚点，或人物的胸口 / 腰（远景、全景），或物体的几何中心。机位求解、轨迹烘焙、视线检查共用这一处。 */
+function aimOffsetFor(shot: DirectorPlanShot, subject: DirectorObject, anchor: AnchorSpec | undefined): Vec3 {
+  if (anchor) return anchor.offset
+  if (subject.type === 'character') return v(0, ['远景', '全景'].includes(shot.size) ? 1.2 : 1.5, 0)
+  return v(0, scaledBounds(subject.type, subject.scale).center.y, 0)
+}
+
 function angleOffset(angle: DirectorPlanShot['angle']): number {
   if (typeof angle === 'string')
     return ({ front: 0, three_quarter: 45, side: 90, side_rear: 135, back: 180 } as Record<string, number>)[angle]
@@ -277,27 +285,26 @@ function solveCamera(
     distanceForShotSize(shot.size as EvalShotSize, subjectHeight, fov, ladder) *
     (shot.subjects && shot.subjects.length > 1 ? 3 : 1)
   const safeObjectRadius = ladder === 'object' ? Math.hypot(bounds.size.x, bounds.size.z) / 2 + 0.2 : 0
-  const azimuth = angleOffset(shot.angle),
+  const subjectStart = positionAt(objects, subject, start),
+    subjectEndPosition = positionAt(objects, subject, end)
+  // 机位角度（正面 / 侧面 / 背面……）相对主体自己的朝向，不相对世界 +Z
+  const azimuth = poseAt(objects, subject, start).yaw + angleOffset(shot.angle),
     requestedHeight = closeCharacter
-      ? subject.position.y + 2.1
+      ? subjectStart.y + 2.1
       : shot.height === 'low'
         ? 0.65
         : shot.height === 'high'
           ? 2.3
           : shot.height === 'overhead'
             ? 4.2
-            : subject.position.y + (subject.type === 'character' ? 1.1 : 0.8)
+            : subjectStart.y + (subject.type === 'character' ? 1.1 : 0.8)
   const height = requestedHeight
-  const subjectStart = positionAt(objects, subject, start),
-    subjectEndPosition = positionAt(objects, subject, end)
-  const aimY = subject.type === 'character' && !['远景', '全景'].includes(shot.size) ? 1.5 : 1.2
-  const aimOffset =
-    anchor ??
-    (subject.type === 'character'
-      ? { offset: v(0, aimY, 0), size: bounds.size }
-      : { offset: v(0, bounds.center.y, 0), size: bounds.size })
-  const target = aimAt(objects, subject, start, aimOffset.offset)
-  const subjectEndTarget = aimAt(objects, subject, end, aimOffset.offset)
+  const aimOffset = aimOffsetFor(shot, subject, anchor)
+  const target = aimAt(objects, subject, start, aimOffset)
+  const subjectEndTarget = aimAt(objects, subject, end, aimOffset)
+  // 画面右方（横移 / 摇镜的方向跟着机位转）
+  const right = v(Math.cos((azimuth * Math.PI) / 180), 0, -Math.sin((azimuth * Math.PI) / 180))
+  const sideways = (amount: number) => v(right.x * amount, 0, right.z * amount)
   const endAngle =
     shot.move.kind === 'orbit_left' || shot.move.kind === 'arc_left'
       ? azimuth - (shot.move.amount ?? (shot.move.kind.startsWith('arc') ? 45 : 90))
@@ -330,7 +337,7 @@ function solveCamera(
     endPosition.y = height + (shot.move.kind === 'crane_up' ? amount : -amount)
   const trackAmount = Math.min(amount, distance * 0.25)
   if (shot.move.kind === 'track_left' || shot.move.kind === 'track_right')
-    endPosition = add(endPosition, v(shot.move.kind === 'track_left' ? -trackAmount : trackAmount, 0, 0))
+    endPosition = add(endPosition, sideways(shot.move.kind === 'track_left' ? -trackAmount : trackAmount))
   let targetEnd = target
   if (shot.move.kind === 'follow' && motionCarrier(objects, subject).motionTrajectory?.length) {
     const delta = sub(subjectEndPosition, subjectStart)
@@ -339,14 +346,14 @@ function solveCamera(
   }
   if (shot.move.kind === 'pan' || shot.move.kind === 'whip') {
     const direction = shot.move.direction === 'left' ? 1 : -1
-    targetEnd = add(target, v(direction * (shot.move.amount ?? 2), 0, 0))
+    targetEnd = add(target, sideways(direction * (shot.move.amount ?? 2)))
   } else if (shot.move.kind === 'tilt') {
     const direction = shot.move.direction === 'down' ? -1 : 1
     targetEnd = add(target, v(0, direction * (shot.move.amount ?? 0.5), 0))
   }
   if (shot.move.kind === 'track_left' || shot.move.kind === 'track_right') {
     const direction = shot.move.kind === 'track_left' ? -1 : 1
-    targetEnd = add(target, v(direction * trackAmount, 0, 0))
+    targetEnd = add(target, sideways(direction * trackAmount))
   }
   const endFov =
     shot.move.kind === 'zoom_in'
@@ -391,9 +398,7 @@ function constrainCameraPath(
   desiredSign: { value: number },
 ): void {
   const characters = objects.filter((object) => object.type === 'character').slice(0, 2)
-  const aimOffset = anchor?.offset ?? (subject.type === 'character'
-    ? v(0, ['远景', '全景'].includes(shot.size) ? 1.2 : 1.5, 0)
-    : v(0, scaledBounds(subject.type, subject.scale).center.y, 0))
+  const aimOffset = aimOffsetFor(shot, subject, anchor)
   const frameCount = Math.max(1, Math.ceil((shot.window[1] - shot.window[0]) * FPS))
   const baked = Array.from({ length: frameCount + 1 }, (_, frame) => {
     const time = shot.window[0] + (shot.window[1] - shot.window[0]) * frame / frameCount
@@ -492,7 +497,26 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
       `shot:${shot.id}/camera`,
       anchor,
     )
+    // 机位视线：被墙 / 布景 / 别的人挡住主体，就对整条路径找一个看得见的候选（接续上一镜的连续镜头不挪起点）
+    const characters = scene.objects.filter((object) => object.type === 'character').slice(0, 2)
+    const sight: SightContext = {
+      objects: scene.objects,
+      subjectId: subject.id,
+      aim: (time) => aimAt(scene.objects, subject, time, aimOffsetFor(shot, subject, anchor)),
+      window: shot.window,
+      ignore: new Set(placed.holds.keys()),
+      keepStart: shot.transitionIn === 'continuous' && !!previous,
+      follows: shot.move.kind === 'follow',
+      sameSide: (point, time) => {
+        if (!axisSign.value || characters.length < 2) return true
+        const a = positionAt(scene.objects, characters[0], time), b = positionAt(scene.objects, characters[1], time)
+        return Math.sign((b.x - a.x) * (point.z - a.z) - (b.z - a.z) * (point.x - a.x)) !== -axisSign.value
+      },
+    }
+    chooseClearView(camera, sight)
     constrainCameraPath(camera, shot, subject, scene.objects, anchor, axisSign)
+    const hidden = sightBlockers(sight, camera)
+    if (hidden.length) issues.push({ kind: 'occluded', objectId: camera.id, message: `shot ${shot.id}: ${subject.id} is hidden behind ${hidden.join(', ')} from every candidate camera` })
     camera.trajectoryClips = (camera.trajectoryClips ?? []).map((clipItem) => ({
       ...clipItem,
       endTime: Math.max(clipItem.startTime, clipItem.endTime - 1e-4),
