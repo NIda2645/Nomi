@@ -21,6 +21,7 @@ import { createProductionGenerationOperationStore } from "../productionRun/produ
 import { createProductionGenerationSubmission } from "../productionRun/productionGenerationSubmission";
 import { prepareProductionGenerationAuthorization } from "../productionRun/prepareProductionGenerationAuthorization";
 import { createProductionRunRepository } from "../productionRun/productionRunRepository";
+import { watchSpendCardClose } from "../agentLane/laneSpendCardClose";
 import type { ModelPricing } from "../productionRun/shotPricing";
 
 // 「确认 → 真的开始生成」的端到端夹具（P1.1a · 2026-09-11）。
@@ -380,6 +381,43 @@ export async function imageDraft(base: ReturnType<typeof harness>, handler: Retu
 /** 供应商收到了哪几镜：loopback 记下的是幂等键，哪一镜由键里的 shotId 认。 */
 export function shotsSent(submits: readonly string[]): readonly string[] {
   return submits.map((key) => /shot-\d+/.exec(key)?.[0] ?? key);
+}
+
+/** 夹具账本的变更订阅（生产里是 Run 服务的事件 tap）：每次写入之后通知一次。 */
+const ledgerListeners = new WeakMap<object, Set<() => void>>();
+function ledgerChanges(base: ReturnType<typeof harness>): Set<() => void> {
+  const existing = ledgerListeners.get(base);
+  if (existing) return existing;
+  const created = new Set<() => void>();
+  ledgerListeners.set(base, created);
+  const execute = base.repository.execute.bind(base.repository);
+  base.repository.execute = ((...args: Parameters<typeof execute>) => {
+    const result = execute(...args);
+    for (const listener of [...created]) listener();
+    return result;
+  }) as typeof execute;
+  return created;
+}
+
+/**
+ * 回合那一侧怎么知道卡关了（生产里 = `laneDesktopSpend.whenCardCloses`）：同一个纯函数，看的是夹具账本。
+ * `closed()` 在兑现后的那个微任务里变真，断言前 `await settleMicrotasks()`。
+ */
+export function watchCardForTurn(base: ReturnType<typeof harness>, onClosed?: () => void, operationId: string = OPERATION_ID) {
+  const listeners = ledgerChanges(base);
+  const read = () => base.repository.read(PROJECT_ID, operationId)?.generationPlan;
+  const watch = watchSpendCardClose({ read, subscribe: (listener) => {
+    const notify = () => listener(read());
+    listeners.add(notify);
+    return () => { listeners.delete(notify); };
+  } });
+  let closed = false;
+  void watch.closed.then(() => { closed = true; onClosed?.(); });
+  return { closed: () => closed, dispose: watch.dispose };
+}
+
+export async function settleMicrotasks(): Promise<void> {
+  for (let index = 0; index < 5; index += 1) await Promise.resolve();
 }
 
 export function resetSpendFixture() {

@@ -44,6 +44,7 @@ import { BRAIN, CHEAP_VIDEO_TERMS, VIDEO, cheapVideoProblems, probeLandedMedia }
 import { findCanvasBlankPoint, findNodeHitPoint } from './_canvasHit.mjs'
 import { repoRoot } from './_launchApp.mjs'
 import { openPaidWalk, readProductionRuns } from './_paidRun.mjs'
+import { readLaneSpend } from './_laneSpendProbe.mjs'
 import { stationTimeout } from './_station-budget.mjs'
 import {
   APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_PERMISSION, INTERVENTION_CONFIRM, PERMISSION_POPOVER,
@@ -195,7 +196,7 @@ function createContext({ id, win, walk, projectId, projectRoot }) {
 
   /** 主进程此刻那张付费卡（宿主投影，卡上摆的正是它）。 */
   async function pendingSpend() {
-    const read = await win.evaluate((pid) => window.nomiDesktop.productionRuns.pendingSpend(pid), projectId)
+    const read = await readLaneSpend(win)
     return read?.surface === 'ready' ? read.rows?.[0] ?? null : null
   }
 

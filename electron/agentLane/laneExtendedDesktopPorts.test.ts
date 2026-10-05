@@ -7,14 +7,25 @@ import type { PreparedSkillWrite } from '../capabilityCore/skillWriteTransportAd
 import type { RuntimeToolCall } from '../shared/agentCapabilities/transportContracts'
 import type { ProjectAgentProposalReceiptView } from '../shared/projectAgentProposalReceipt'
 import { createLaneApprovalGate } from './laneApprovalGate'
-import { settleSpendWaiter, spendDecisionAwaited } from '../capabilityCore/spendDecisionWaiters'
 
 const binding = { projectId: 'project-1', immutableProjectUuid: '00000000-0000-4000-8000-000000000001', projectGeneration: 1 }
 const signal = new AbortController().signal
 const plan = { baseRevision: 'revision-1', summary: 'Move clip', operations: [{ kind: 'move', clipId: 'clip-1', startFrame: 0 }] }
 const call = (toolName: string, args: unknown = plan): RuntimeToolCall => ({ toolName, args, toolCallId: 'call-1' })
 
+/** 「这一次出价关了没有」的替身：测试手动把卡关掉（生产里是 Run 账本写下的那一笔，见 `laneDesktopSpend.watchSpendCardClose`）。 */
+function fakeSpendCard() {
+  let close: () => void = () => undefined
+  const watched: string[] = []
+  const dispose = vi.fn()
+  return {
+    watched, dispose, close: () => close(),
+    port: { whenCardCloses: (operationId: string) => { watched.push(operationId); return { closed: new Promise<void>((resolve) => { close = resolve }), dispose } } },
+  }
+}
+
 function setup() {
+  const card = fakeSpendCard()
   const records: Array<Record<string, string | number>> = []
   const order: string[] = []
   let receipt: ProjectAgentProposalReceiptView | null = null
@@ -32,12 +43,13 @@ function setup() {
     skillRead: { tryExecute: vi.fn(async () => ({ ok: true as const, result: {} })), dispose: vi.fn() },
     skillWrite: { prepare: vi.fn(async value => prepared(value) as unknown as PreparedSkillWrite), execute: vi.fn(async () => ({ ok: true as const, result: {} })), dispose: vi.fn() },
     generation: vi.fn(() => undefined), receipts: { read: vi.fn(() => receipt) }, onTaskCreated: vi.fn(async () => undefined),
+    spendCard: card.port,
   }
   const assembly = createLaneExtendedDesktopPorts(input)
   const record = vi.fn(async (_type: string, data: Record<string, string | number>) => { order.push('record'); records.push(data) })
   const execute = (value: RuntimeToolCall, abortSignal = signal) => assembly.tools.find(tool => tool.name === value.toolName)!.execute(value.args, { toolCallId: value.toolCallId, signal: abortSignal })
   const prepareAndApprove = async (value: RuntimeToolCall) => { await assembly.toolLifecycle.prepare(value, signal); await assembly.toolLifecycle.approved(value, record) }
-  return { input, assembly, record, records, order, execute, prepareAndApprove,
+  return { input, assembly, record, records, order, execute, prepareAndApprove, card,
     setReceipt(value: ProjectAgentProposalReceiptView) { receipt = value } }
 }
 
@@ -191,7 +203,8 @@ describe('generate：等用户住在预检期，结局以成功形状交给 exec
     const approving = f.assembly.toolLifecycle.approved(generateCall, f.record, host)
     await untilHolding(gate)
     expect(gate.pending(), '这次等待不投影成闸卡——那张报价卡已经有人画了').toBeUndefined()
-    expect(settleSpendWaiter('project-1', 'op-1', { kind: 'confirmed' })).toBe(true)
+    expect(f.card.watched, '回合看的就是这一笔出价').toEqual(['op-1'])
+    f.card.close()
     await approving
     const outcome = await f.execute(generateCall) as { ok: boolean; details?: { userDecision?: unknown } }
     expect(outcome.ok).toBe(true)
@@ -199,7 +212,19 @@ describe('generate：等用户住在预检期，结局以成功形状交给 exec
     expect(generation.readPresentationOutcome).toHaveBeenCalledWith('op-1')
     expect(generation.tryExecute, '整条链上领域只被碰一次（present）').toHaveBeenCalledTimes(1)
     expect(generation.withdrawPresentation).not.toHaveBeenCalled()
-    expect(spendDecisionAwaited('project-1', 'op-1')).toBe(false)
+    expect(f.card.dispose, '看完就退订').toHaveBeenCalled()
+  })
+
+  it('卡在回合借到等待之前就关了（用户手快）：结论在账本里，回合照样拿到逐镜结局，不会挂住', async () => {
+    const f = setup()
+    const generation = { tryExecute: vi.fn(async () => presentedCard), withdrawPresentation: vi.fn(async () => undefined), readPresentationOutcome: vi.fn(async () => resolvedOutcome), dispose: vi.fn() }
+    const { host } = withGate(f, generation)
+    const assembly = createLaneExtendedDesktopPorts({ ...f.input, spendCard: { whenCardCloses: () => ({ closed: Promise.resolve(), dispose: vi.fn() }) } })
+    await assembly.toolLifecycle.prepare(generateCall, signal)
+    await assembly.toolLifecycle.approved(generateCall, f.record, host)
+    const outcome = await assembly.tools.find(tool => tool.name === 'generate')!.execute(generateCall.args, { toolCallId: generateCall.toolCallId, signal }) as { ok: boolean; details?: { userDecision?: unknown } }
+    expect(outcome.ok).toBe(true)
+    expect(outcome.details?.userDecision).toEqual({ outcome: 'card_closed', shots: resolvedOutcome })
   })
 
   it('× → card_closed（没决定的镜记「用户关了卡」）：成功形状；那条 IPC 已经把这一次出价关好了，这里不再动它', async () => {
@@ -209,7 +234,7 @@ describe('generate：等用户住在预检期，结局以成功形状交给 exec
     await f.assembly.toolLifecycle.prepare(generateCall, signal)
     const approving = f.assembly.toolLifecycle.approved(generateCall, f.record, host)
     await untilHolding(gate)
-    settleSpendWaiter('project-1', 'op-1', { kind: 'declined' })
+    f.card.close()
     await approving
     const outcome = await f.execute(generateCall) as { ok: boolean; details?: { userDecision?: unknown } }
     expect(outcome.ok, '「用户没同意」不是错误——不重试、不进熔断').toBe(true)
@@ -244,7 +269,7 @@ describe('generate：等用户住在预检期，结局以成功形状交给 exec
     gate.cancelAll('window-closed')
     await approving
     expect(generation.withdrawPresentation).toHaveBeenCalledWith('op-1', 'stopped')
-    expect(spendDecisionAwaited('project-1', 'op-1')).toBe(false)
+    expect(f.card.dispose, '回合不再看这张卡').toHaveBeenCalled()
     expect(await f.execute(generateCall)).toMatchObject({ ok: false })
   })
 

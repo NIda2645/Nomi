@@ -126,10 +126,11 @@ export default function ProjectAgentResidentShell({ surface }: { surface: Reside
     onAction: (index: number, action: string) => index < data.queue.length ? actions.queueAction(index, action) : recoveryAction(index, false),
     onDestructiveAction: (index: number) => index < data.queue.length ? actions.queueInterrupt(index) : recoveryAction(index, true),
   }
-  // 付费确认卡（2026-09-11 P1）。它是介入槽的**第二个数据源**：lane 的工具审批答的是
-  // 「要不要让我做这件事」，这一张答的是「要不要花这笔钱」——后者住在 ProductionRun 域里，
-  // `LanePendingApproval` 上根本没有报价字段。两者同时在时钱优先：钱撤不回来。
-  const spend = useAgentPanelSpendConfirm()
+  // 付费确认卡（2026-09-11 P1）。lane 的工具审批答的是「要不要让我做这件事」，这一张答的是
+  // 「要不要花这笔钱」——后者住在 ProductionRun 域里，`LanePendingApproval` 上根本没有报价字段。
+  // 两张卡读的是**同一份推过来的投影**（2026-10-05 起付费卡不再轮询：`data.snapshot.spend`）。
+  // 两者同时在时钱优先：钱撤不回来。
+  const spend = useAgentPanelSpendConfirm(data.snapshot.spend)
   // 卡体是画布节点那张生成框**整件**，但写入面换成卡自己的账本（`spend.writeAccess`）：
   // 用户还没答应花这笔钱，画布上那个草稿节点就不该被改；改动在按下「生成」那一刻
   // 才由主进程落进候选、再投影回画布（单向，没有拉锯）。见 nodeWriteAccess 顶部注释。

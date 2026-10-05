@@ -288,8 +288,8 @@ test('阳性对照 · waiting in the domain preflight (the priced card) does not
       approved: async (call, _record, host) => {
         if (call.toolName !== 'held_in_preflight' || !host) return;
         const wait = host.waitForUser();
-        setTimeout(() => { wait.settle({ kind: 'confirmed' }); }, 500);
-        assert.deepEqual(await wait.outcome, { kind: 'confirmed' });
+        setTimeout(() => { wait.settle({ kind: 'card-closed' }); }, 500);
+        assert.deepEqual(await wait.outcome, { kind: 'card-closed' });
         waitedInPreflight = true;
       },
       settled: () => {},

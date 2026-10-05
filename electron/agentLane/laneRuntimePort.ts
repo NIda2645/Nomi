@@ -24,6 +24,7 @@ import type { AgentModelEntry } from '../shared/agentCapabilities/availableModel
 import type { ModelAvailabilityFacts } from '../shared/agentCapabilities/modelSpecProjection'
 import type { SkillRecord } from '../skills/skillStore'
 import type { LaneDeclaredDefaults } from './laneModelContext'
+import type { PendingSpendRead } from '../shared/contracts/pendingSpendConfirm'
 
 export type { LaneHandle, LaneProjection }
 export type { LaneToolEffect, LaneToolFailureShape, LaneToolNextAction, LaneToolSpec }
@@ -248,6 +249,8 @@ export type OpenLane = (options: OpenLaneOptions) => Promise<LaneHandle>
 
 export type OpenDesktopLaneWorkspace = (options: Omit<OpenLaneOptions, 'model'> & {
   model?: NomiModelConfig
+  /** 项目级的待决出价读口（见 `LaneWorkspaceProjection.spend`）。给函数不给快照，理由同 `tasks`。 */
+  spend?: () => PendingSpendRead
   approval: LaneApprovalOptions
   toolLifecycle: NonNullable<OpenLaneOptions['toolLifecycle']>
 }) => Promise<LaneWorkspaceHandle>

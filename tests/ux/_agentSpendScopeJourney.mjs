@@ -1,6 +1,7 @@
 // Extend the original spend walk: real Agent tools and original single-slot UI.
 // This supplier has no durable execution adapter. No confirmation or media claim here.
 import { clickOrFail, expect, expectAbsent, proveProbe } from './_assert.mjs'
+import { readLaneSpend } from './_laneSpendProbe.mjs'
 import { FIXTURE_IMAGE_MODEL, FIXTURE_VENDOR, flattenRequestText } from './agent-runtime-fixture.mjs'
 import { APPROVAL_CARD, CANVAS_PANEL, COMPOSER, COMPOSER_PERMISSION, INTERVENTION_REJECT,
   createRuntimeWalk, hasToolResult, openCanvas, permissionTier, readProject, recorded, sendCanvas,
@@ -30,8 +31,9 @@ export async function checkSpendScopeJourney(walk, win) {
   const runs = () => win.evaluate(id => window.nomiDesktop.productionRuns.list(id), projectId)
   const readRun = operationId => win.evaluate(({ projectId, operationId }) => window.nomiDesktop.productionRuns.read(projectId, operationId), { projectId, operationId })
   const pending = async () => {
-    const read = await win.evaluate(id => window.nomiDesktop.productionRuns.pendingSpend(id), projectId)
-    expect(read.surface).toBe('ready')
+    // 宿主那一份待决出价，读的是推给面板的对话投影（唯一来路）。
+    const read = await readLaneSpend(win)
+    expect(read?.surface).toBe('ready')
     return read.rows
   }
   let turn = 0
