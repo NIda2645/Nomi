@@ -4399,7 +4399,8 @@
         "src/workbench/api/taskApi.ts",
         "src/workbench/generationCanvas/runner/catalogTaskActions.ts",
         "src/workbench/generationCanvas/runner/generationRunController.ts",
-        "src/workbench/generationCanvas/runner/recoverTaskActions.ts"
+        "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
+        "electron/parity/generationParityTestUtils.ts"
       ],
       "since": "2026-10-05",
       "notes": "设计卡 docs/plan/2026-10-05-engine-convergence-cut1-step12-design-card.md。准入（建 Run 前什么都不写）：同节点在途、3D-BOX 预演闸（主进程问渲染层判据 directorPreviewSpendBlock）、绑定制作镜头的认领（decideShotClaim）。批准 = 发起 IPC 的那个窗口铸的主进程手势收据（不弹卡，09-25 拍板不变）。等结果由渲染层驱动、每一次查都经 Run 的 poll / materialize；渲染层不在（关窗 / 崩溃 / 点停 / 重启）交给单镜观察者。画布 Run 目录名以 canvas- 开头，repository.list 不列（任务中心制作那一栏不显示，F5），打开项目只读「没收尾」标记那几个。"
