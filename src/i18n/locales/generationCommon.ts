@@ -360,7 +360,7 @@ export const zhGenerationCommon = {
       },
       outboundBlocked: {
         reason: '取片被 Nomi 自己的安全策略拦下了',
-        hint: '这不是服务商的故障，也不是你的生成失败了——任务多半已经在服务商那边跑完了，产物还在。是 Nomi 在下载产物时把目标地址判成了内网并拒绝下载。最常见的原因是你开着 Clash / Surge / sing-box 的 TUN（fake-ip）模式：所有域名都会被解析成 198.18.x 这类合成地址。请到「模型接入 → 网络」看那一行有没有写「检测到本地代理」；确认后回到这里用「重新拉取结果」把它取回来；不要重新生成，重新生成会另做一份新的。具体是哪个地址，见下方技术详情。',
+        hint: '这不是服务商的故障，也不是你的生成失败了——任务多半已经在服务商那边跑完了，产物还在。是 Nomi 在下载产物时把目标地址判成了内网并拒绝下载。最常见的原因是你开着 Clash / Surge / sing-box 的 TUN（fake-ip）模式：所有域名都会被解析成 198.18.x 这类合成地址。请到「模型接入 → 网络」看那一行有没有写「检测到本地代理」；确认后回到这里用「重新取回」把它取回来；不要重新生成，重新生成会另做一份新的。具体是哪个地址，见下方技术详情。',
       },
       outboundBlockedSubmit: {
         reason: '这次生成没发出去，Nomi 自己的安全策略先拦下了',
@@ -1527,10 +1527,9 @@ export const zhGenerationCommon = {
     dismiss: '收起这条报错',
   },
   recoverable: {
-    aria: '任务可能已在上游完成，可重新拉取结果',
+    aria: '任务可能已在上游完成，可重新取回结果',
     title: '任务可能已在上游完成',
-    description: '等待已超上限，但上游可能仍出了片。点下面直接拉回，不用去服务商后台下载。',
-    recover: '重新拉取',
+    description: '等待已超上限，但上游可能仍出了片。点下面的「重新取回」直接拉回，不用去服务商后台下载。',
     recovering: '正在拉取…',
     dismiss: '标记失败',
     missingTask: '无法找回：缺少任务标识（taskId）或模型信息，请重新生成。',
@@ -1917,7 +1916,7 @@ export const enGenerationCommon = {
       },
       outboundBlocked: {
         reason: "Nomi's own network policy blocked the download",
-        hint: 'This is not a provider outage and your generation did not fail — it most likely finished upstream, and the result is still there. Nomi classified the download address as a private network and refused to fetch it. The usual cause is Clash / Surge / sing-box running in TUN (fake-IP) mode, where every domain resolves to a synthetic address like 198.18.x. Check Model Access > Network for a "Local proxy detected" line, then come back and use "Re-fetch result" to retrieve it. Do NOT regenerate — that would make a brand-new one. The technical details below name the address.',
+        hint: 'This is not a provider outage and your generation did not fail — it most likely finished upstream, and the result is still there. Nomi classified the download address as a private network and refused to fetch it. The usual cause is Clash / Surge / sing-box running in TUN (fake-IP) mode, where every domain resolves to a synthetic address like 198.18.x. Check Model Access > Network for a "Local proxy detected" line, then come back and use "Retrieve again" to retrieve it. Do NOT regenerate — that would make a brand-new one. The technical details below name the address.',
       },
       outboundBlockedSubmit: {
         reason: "This generation was never sent - Nomi's own network policy stopped it first",
@@ -3069,8 +3068,7 @@ export const enGenerationCommon = {
     aria: 'The upstream task may have completed; retrieve the result again',
     title: 'The upstream task may have completed',
     description:
-      'The wait timed out, but the provider may still have produced the result. Retrieve it here without downloading it from the provider dashboard.',
-    recover: 'Retrieve result',
+      'The wait timed out, but the provider may still have produced the result. Click “Retrieve again” to get it back without downloading it from the provider dashboard.',
     recovering: 'Retrieving…',
     dismiss: 'Mark Failed',
     missingTask: 'Cannot retrieve this result because its task ID or model information is missing. Generate it again.',

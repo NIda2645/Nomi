@@ -5,7 +5,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createMcpConnectionContext } from './mcpConnectionContext'
-import { callMcpLoopbackRpc, mcpRpcTimeoutMessage } from './mcpLoopbackRpcCall'
+import { callMcpLoopbackRpc, mcpRpcTimeoutMessage, mcpRequestMayHaveRunMessage } from './mcpLoopbackRpcCall'
 import { CAPABILITY_DIR_ENV, ensureToken, signMcpClient } from './security'
 
 const roots: string[] = []
@@ -83,5 +83,28 @@ describe('shared MCP loopback RPC call (both launchers go through it)', () => {
       expect(source, file).not.toContain('createMcpLoopbackRpcRequest(')
       expect(source, file).not.toMatch(/\b(?:await\s+)?(?:appFetch|fetch)\(`http:\/\/127\.0\.0\.1/)
     }
+  })
+
+  const failing = (cause: Record<string, unknown>): typeof fetch => (async () => {
+    throw new TypeError("fetch failed", { cause: Object.assign(new Error(String(cause.message ?? "socket")), cause) })
+  }) as typeof fetch
+  const callWith = (fetchImpl: typeof fetch) => {
+    const identity = connection()
+    return callMcpLoopbackRpc({
+      instance: { port: 4242, token: "tok" }, fetchImpl, clientProof: identity.proof, connection: identity.connection,
+      method: "canvas.write", params: {},
+    })
+  }
+
+  it("says the request may already have run when Nomi drops the connection after delivery", async () => {
+    const error = await callWith(failing({ code: "UND_ERR_SOCKET", message: "other side closed" })).catch((e: Error) => e)
+    expect((error as Error).message).toBe(mcpRequestMayHaveRunMessage("fetch failed"))
+    expect((error as Error).message).toContain("nomi_read")
+    expect((error as Error).message).toContain("可能已被 Nomi 执行")
+  })
+
+  it("keeps the plain error when the request provably never left (port refused)", async () => {
+    const error = await callWith(failing({ code: "ECONNREFUSED", syscall: "connect" })).catch((e: Error) => e)
+    expect((error as Error).message).toBe("fetch failed")
   })
 })
