@@ -59,7 +59,18 @@
 | `director-fields.walk.mjs` | FAIL：走查异常 | 未跑 |
 | `director-j1-three-person-scene.walk.mjs` | FAIL：撤销重命名状态未到达 | 未跑 |
 | `director-j2-walk-to-b.walk.mjs` | FAIL：页面在中断时关闭 | 未跑 |
-| 其余带 `director` / `3dbox` 名称的脚本 | 未跑 | 未跑 |
+| `director-j3-three-cameras.walk.mjs` | 未跑 | 未跑 |
+| `director-j4-kneel-stand-look.walk.mjs` | 未跑 | 未跑 |
+| `director-j5-splat-valley.walk.mjs` | 未跑 | 未跑 |
+| `director-j6-outputs.walk.mjs` | 未跑 | 未跑 |
+| `director-j7-skeleton.walk.mjs` | 未跑 | 未跑 |
+| `director-j8-project-interactions.walk.mjs` | 未跑 | 未跑 |
+| `director-mobile.walk.mjs` | 未跑 | 未跑 |
+| `director-model-import.walk.mjs` | 未跑 | 未跑 |
+| `director-refine-tasks.walk.mjs` | 未跑 | 未跑 |
+| `director-timeline-pointer.walk.mjs` | 未跑 | 未跑 |
+| `director-waypoint-aim.walk.mjs` | 未跑 | 未跑 |
+| `director-windowbar.walk.mjs` | 未跑 | 未跑 |
 
 3D-BOX shell 的正确入口要求先起 Vite renderer，并设置 `NOMI_WALK_RENDERER_URL`；3b-agent 还需要 API key。为避免伪造通过或产生付费调用，本轮仅记录环境失败，不改脚本和断言。日志位于 `logs/`。
 
