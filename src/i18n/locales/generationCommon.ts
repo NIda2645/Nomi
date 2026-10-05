@@ -473,7 +473,7 @@ export const zhGenerationCommon = {
     grid: '宫格',
     groups: {
       generate: '生成新图',
-      local: '本机处理 · 不花钱',
+      local: '本机处理',
     },
     actions: {
       multiAngleGrid: '多机位九宫格',
@@ -2073,7 +2073,7 @@ export const enGenerationCommon = {
     grid: 'Grid',
     groups: {
       generate: 'Generate a new image',
-      local: 'On this device · free',
+      local: 'On this device',
     },
     actions: {
       multiAngleGrid: 'Multi-angle grid',
