@@ -98,6 +98,8 @@
       "enforcement": [
         "hook:completion-check",
         "gate:test:core-smoke",
+        "gate:check:full-walk-catalog",
+        "template:tests/ux/full-walk/escapeLedger.json",
         "hook:self-check(报完成块)"
       ],
       "evidence": "completion-check 在 Stop 时拦无眼见证据的完成宣告",
@@ -113,6 +115,8 @@
       "disease": "没想清楚就写，返工与连带面漏掉",
       "enforcement": [
         "template:docs/engineering/design-card.md",
+        "template:docs/engineering/design-card.md(★1/★9 指标与分档)",
+        "template:tests/ux/full-walk/catalog.mjs(⑫ click target 对照)",
         "hook:self-check(设计卡块)",
         "template:docs/design/nomi-design-flow-howto.md"
       ],
