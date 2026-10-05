@@ -43,6 +43,9 @@ export const draftShotSchema = z.object({
   taskKind: z.enum(["text_to_image", "image_edit", "text_to_video", "image_to_video"]).optional().describe("What to make. Omit when modelId or modeId decides it; otherwise required."),
   role: z.enum(["anchor", "shot"]).optional().describe("anchor = a character/scene/style reference card reused by other shots; shot (default) = a numbered shot."),
   durationSec: z.number().positive().max(600).optional().describe("Clip length in seconds; omit for stills. The only place for length, never parameters."),
+  // 2026-10-05：比例同理。各家的键名不一样（size / aspect_ratio / ratio / aspectRatio），模型只能猜；猜驼峰那次
+  // 被宿主当意图键静默吞掉，用户付了钱拿到默认画幅。这里只收语义，宿主按所选模式翻成真实键（翻不了就拒）。
+  aspectRatio: z.string().trim().optional().describe("Frame ratio: 16:9 or auto."),
   modelId: z.string().trim().min(1).optional().describe("Catalog model id from list_models; omit for the user's default."),
   // 2026-09-22：`taskKind` 与 `modeId` 是同一件事实的两种写法。模式定了，种类就定了
   // （`transportTaskKindForModeId` 从档案扫出来），所以说明书直接告诉模型「写了模式就别再写种类」——
@@ -52,7 +55,7 @@ export const draftShotSchema = z.object({
     providerId: z.string().trim().min(1).describe("Provider id from list_models."),
     modelId: z.string().trim().min(1).describe("Model id from list_models."),
   }).optional().describe("Catalog candidate identity when known."),
-  parameters: generationParameters.optional().describe("Values the model's profile declares, except length (use durationSec). The host clamps them and reports every clamp."),
+  parameters: generationParameters.optional().describe("Profile values except length and ratio; the host clamps and reports each clamp."),
   // 2026-09-22：这句话原来写着「asset ids …**or shot ids** (from look_at_canvas or this call)」，
   // 而解析这一头（`pinAssetReference`）只认项目素材库里的 assetId——镜头 id 送进来**必然**被拒，
   // 理由还是「不在这个项目的素材库里」（run2 的 A1/A4 各一次，模型照着说明书做的）。
@@ -114,7 +117,10 @@ const prepareWriteScriptArguments = (() => {
  *
  * 两条判据同一个形状，所以住同一个函数（它们不是两个功能，是一条规则的两格）：
  *   · 模型身份：`modelId` 与 `candidate.modelId`；
- *   · 时长：`durationSec` 与 `parameters.duration`。
+ *   · 时长：`durationSec` 与 `parameters.duration`；
+ *   · 比例：`parameters.aspectRatio` **一律**拒（2026-10-05）。它不是「两处写同一个数就放行」那一格：
+ *     `aspectRatio` 在宿主那边是语义载体键（投影把 `shots[].aspectRatio` 放进去），模型直接写它
+ *     就是在宿主的位置上替宿主做翻译，而它写的又恰好是最常猜错的那个名字。
  *
  * 时长这一条是 2026-09-21 实测加的：A3 那一镜同时写了 `durationSec: 43.7` 与
  * `parameters.duration: 5`（投影里 `durationSec` 赢，于是用户会拿到一段 43.7 秒的片子）。
@@ -133,13 +139,19 @@ function rejectDuplicateShotIdentity(args: unknown): Record<string, unknown> {
     if (!shot || typeof shot !== "object") continue;
     const { modelId, candidate, durationSec, parameters } = shot as {
       modelId?: unknown; candidate?: { modelId?: unknown };
-      durationSec?: unknown; parameters?: { duration?: unknown };
+      durationSec?: unknown; parameters?: { duration?: unknown; aspectRatio?: unknown };
     };
     const declared = candidate && typeof candidate === "object" ? candidate.modelId : undefined;
     if (typeof modelId === "string" && typeof declared === "string" && modelId.trim() && declared.trim()
       && modelId.trim() !== declared.trim()) {
       refuse(`A shot names two different models: modelId="${modelId.trim()}" and candidate.modelId="${declared.trim()}". `
         + "Both come from list_models and mean the same thing; pass only one so the shot has a single model identity.");
+    }
+    // 比例只有一个家：模型面上的 `aspectRatio`。`parameters.aspectRatio` 正是 2026-10-05 那次被静默吞掉的写法，
+    // 现在当场说清，而不是替它挪过去——挪过去就又成了「同一件事写两处、宿主替它挑一个」。
+    if (parameters && typeof parameters === "object" && Object.prototype.hasOwnProperty.call(parameters, "aspectRatio")) {
+      refuse("A shot puts its frame ratio in parameters.aspectRatio. Ratio has one home: set aspectRatio on the shot "
+        + "(for example \"aspectRatio\": \"16:9\") and leave it out of parameters; the host maps it to this model's own key.");
     }
     const nestedDuration = parameters && typeof parameters === "object" ? parameters.duration : undefined;
     if (typeof durationSec === "number" && typeof nestedDuration === "number" && durationSec !== nestedDuration) {
@@ -214,7 +226,7 @@ export function writeVerbs(): VerbDeclaration[] {
         const empty = value.shots.findIndex((shot) => Object.keys(shot).filter((key) => key !== "shotId").length === 0);
         if (empty >= 0) {
           context.addIssue({ code: z.ZodIssueCode.custom, path: ["shots", empty],
-            message: "this revision changes nothing — include at least one of prompt, modelId/candidate, modeId, parameters, references, durationSec" });
+            message: "this revision changes nothing — include at least one of prompt, modelId/candidate, modeId, parameters, references, durationSec, aspectRatio" });
         }
       }
       const stray = value.shots.findIndex((shot) => shot.shotId !== undefined);

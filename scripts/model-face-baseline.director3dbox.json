@@ -570,6 +570,10 @@
             "items": {
               "additionalProperties": false,
               "properties": {
+                "aspectRatio": {
+                  "description": "Frame ratio: 16:9 or auto.",
+                  "type": "string"
+                },
                 "candidate": {
                   "additionalProperties": true,
                   "description": "Catalog candidate identity when known.",
@@ -615,7 +619,7 @@
                       "boolean"
                     ]
                   },
-                  "description": "Values the model's profile declares, except length (use durationSec). The host clamps them and reports every clamp.",
+                  "description": "Profile values except length and ratio; the host clamps and reports each clamp.",
                   "type": "object"
                 },
                 "prompt": {
