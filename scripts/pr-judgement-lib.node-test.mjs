@@ -150,7 +150,7 @@ test('规则与门岗改动范围：移到判据库后行为不变；旧 PR 也�
 
 test('体检：路由表里的缺工具清单（tool: missing 的证据 + 层级缺口）', () => {
   const ids = toolGaps(table).map((gap) => gap.id)
-  for (const expected of ['ui-click-census', 'ui-ai-walk', 'perf-real-scale', 'gen-eval-set', 'nightly-ci']) assert.ok(ids.includes(expected), expected)
+  for (const expected of ['ui-click-census', 'ui-ai-walk', 'perf-real-scale', 'gen-eval-set', 'layer-health']) assert.ok(ids.includes(expected), expected)
   const run = spawnSync(process.execPath, [path.join(here, 'check-pr-judgement.mjs'), '--gaps'], { encoding: 'utf8' })
   assert.equal(run.status, 0)
   assert.match(run.stdout, /工具缺口/)
@@ -236,4 +236,57 @@ test('可打断：AbortController 只在非测试文件的新增行里认；只�
   assert.equal(judged.inferred.fourClass, false)
   // 旧用法（没有逐文件新增行、只给整段文本）保持不变
   assert.ok(inferRoutes([M('src/utils/format.ts')], '+const c = new AbortController()', table).classes.includes('可打断'))
+})
+
+test('when / paid：每项证据 when 只有 pr | manual-full；manual-full 不进 PR 必交，只在报告里提示由手动全量覆盖', () => {
+  for (const def of Object.values(table.categories)) {
+    for (const item of def.evidence) {
+      assert.ok(['pr', 'manual-full'].includes(item.when), `${item.id} 的 when 只能是 pr / manual-full`)
+      assert.equal(typeof item.paid, 'boolean', `${item.id} 必须写 paid（真付费 / 真模型 = true：PR 上只要求正文交证据，不在 CI 自动跑）`)
+      if (item.paid) assert.equal(item.when, 'pr', `${item.id} 是付费层，不进手动全量跑`)
+    }
+  }
+  assert.ok(!requiredEvidence(['scale'], table).some((item) => item.id === 'perf-real-scale'))
+  const result = checkRoutingEvidence('随便', ['scale'], table)
+  assert.equal(result.ok, true)
+  assert.match(result.lines.join('\n'), /手动全量跑覆盖.*perf-real-scale/)
+  // 付费的仍要求正文交证据
+  assert.ok(requiredEvidence(['spend'], table).some((item) => item.id === 'spend-paid-sample' && item.paid))
+})
+
+test('不设定时触发：路由表与文档里没有「每晚 / nightly」，全量跑 workflow 只有 workflow_dispatch、没有 schedule', () => {
+  const read = (rel) => fs.readFileSync(path.join(here, '..', rel), 'utf8')
+  const workflow = read('.github/workflows/full-experience-run.yml')
+  assert.match(workflow, /^on:\s*\n\s+workflow_dispatch:/m)
+  assert.doesNotMatch(workflow.replace(/^\s*#.*$/gm, ''), /schedule\s*:|cron\s*:/)
+  assert.equal(table.fullRun.trigger, 'workflow_dispatch')
+  for (const rel of ['docs/engineering/test-routing.json', 'docs/engineering/experience-system.md', 'docs/plan/2026-10-06-test-routing.md']) {
+    assert.doesNotMatch(read(rel), /每晚|nightly/i, rel)
+  }
+})
+
+test('全量跑：路由表 fullRun.commands 里的每一层都是真实存在的 package.json 脚本，id 唯一，一层红了后面照跑，报告列出没覆盖的', async () => {
+  const { selectCommands, runFull, renderReport } = await import('./experience-full-run.mjs')
+  const scripts = JSON.parse(fs.readFileSync(path.join(here, '..', 'package.json'), 'utf8')).scripts
+  const ids = new Set()
+  for (const item of table.fullRun.commands) {
+    assert.ok(scripts[item.script], `${item.id}：package.json 里没有脚本 ${item.script}`)
+    assert.ok(!ids.has(item.id), `层 id 重复：${item.id}`)
+    ids.add(item.id)
+  }
+  assert.ok(scripts['test:experience:full'])
+  assert.throws(() => selectCommands(table, ['no-such-layer']), /不存在的层/)
+  assert.deepEqual(selectCommands(table, ['laws']).map((item) => item.id), ['laws'])
+  const calls = []
+  const results = await runFull(table.fullRun.commands.slice(0, 3), async (item) => { calls.push(item.id); return { code: item.id === 'laws' ? 1 : 0, output: `${item.id} out\nline2` } })
+  assert.deepEqual(calls, ['catalog', 'laws', 'feel'], '中间一层红了，后面照跑')
+  const report = renderReport(results, table, { when: 'T' })
+  assert.match(report, /3 层，2 过，1 红/)
+  assert.match(report, /## laws 失败输出/)
+  assert.match(report, /没有覆盖的/)
+  assert.match(report, /spend-paid-sample/)
+  assert.match(report, /ui-click-census/)
+  // 抛错的层按红处理，不拖垮整轮
+  const thrown = await runFull([table.fullRun.commands[0]], async () => { throw new Error('boom') })
+  assert.equal(thrown[0].code, 1)
 })

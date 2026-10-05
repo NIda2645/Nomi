@@ -188,6 +188,8 @@
     "check:framework-surface": "node --test ./scripts/check-framework-surface.node-test.mjs ./scripts/framework-registry-scopes.node-test.mjs && node ./scripts/check-framework-surface.mjs",
     "check:prior-art": "node --test ./scripts/check-prior-art.node-test.mjs ./scripts/pr-body-gates.node-test.mjs && node ./scripts/check-prior-art.mjs",
     "audit:self-written": "node ./scripts/self-written-review.mjs",
+    "test:experience-laws": "vitest run tests/experience-laws",
+    "test:experience:full": "node ./scripts/experience-full-run.mjs",
     "check:pr-judgement": "node --test ./scripts/pr-judgement-lib.node-test.mjs && node ./scripts/check-pr-judgement.mjs",
     "check:escape-ledger": "node --test ./scripts/check-escape-ledger.node-test.mjs && node ./scripts/check-escape-ledger.mjs",
     "check:self-written": "node --test ./scripts/check-self-written.node-test.mjs && node ./scripts/check-self-written.mjs",

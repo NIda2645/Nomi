@@ -146,8 +146,19 @@ export function evidenceLineVerdict(line) {
   return { ok: false }
 }
 
-/** 必交证据 = 各类别要求的并集。 */
+/**
+ * 必交证据 = 各类别要求的并集，只含 when = "pr" 的（每个 PR 按功能分类跑；paid 的在 PR 上只要求正文交证据、不在 CI 自动跑）。
+ * when = "manual-full" 的只在用户手动触发的全量跑里跑，PR 正文不要求（用 manualFullEvidence 列出来）。
+ */
 export function requiredEvidence(categoryIds, table = loadRoutingTable()) {
+  return collectEvidence(categoryIds, table).filter((item) => item.when !== 'manual-full')
+}
+
+export function manualFullEvidence(categoryIds, table = loadRoutingTable()) {
+  return collectEvidence(categoryIds, table).filter((item) => item.when === 'manual-full')
+}
+
+function collectEvidence(categoryIds, table) {
   const seen = new Map()
   for (const id of categoryIds) {
     for (const item of table.categories[id]?.evidence ?? []) if (!seen.has(item.id)) seen.set(item.id, { ...item, category: id })
@@ -158,7 +169,9 @@ export function requiredEvidence(categoryIds, table = loadRoutingTable()) {
 /** `## 验收证据`：逐项对账。返回 { ok, lines, gaps }；gaps = 被「未验证」带过、且工具还没建的缺口。 */
 export function checkRoutingEvidence(body, categoryIds, table = loadRoutingTable()) {
   const required = requiredEvidence(categoryIds, table)
-  if (required.length === 0) return { ok: true, lines: ['· 验收证据：没有类别要求证据'], gaps: [] }
+  const manualFull = manualFullEvidence(categoryIds, table)
+  const manualNote = manualFull.length ? [`· 手动全量跑覆盖（PR 正文不要求）：${manualFull.map((item) => item.id).join('、')}`] : []
+  if (required.length === 0) return { ok: true, lines: ['· 验收证据：没有类别要求证据', ...manualNote], gaps: [] }
   const section = extractSection(body, EVIDENCE_SECTION)
   const sectionLines = (section ?? '').split('\n').filter((line) => line.trim())
   const missing = []
@@ -190,6 +203,7 @@ export function checkRoutingEvidence(body, categoryIds, table = loadRoutingTable
     lines.push(`✅ 验收证据：${required.length} 项都有条目（实证 ${provided - unverifiedCount}，未验证 ${unverifiedCount}）`)
   }
   for (const gap of gaps) lines.push(`⚠ 缺工具：${gap.id}（${gap.label}）——${gap.toolRef}`)
+  lines.push(...manualNote)
   return { ok, lines, gaps }
 }
 
@@ -214,7 +228,7 @@ export const PROTECTED_PATHS = [
   /^(?:CLAUDE|AGENTS)\.md$/,
   /^docs\/engineering-rules\.md$/,
   /^docs\/engineering\/(?:rules\.json|rules\.md|experience-system\.md|design-card\.md|test-routing\.json|self-written\.json|concept-owners\.json)$/,
-  /^scripts\/(?:check-[^/]+|run-gates[^/]*|merge-preflight[^/]*|validation-policy[^/]*|git-delivery[^/]*|[^/]+-lib\.mjs|[^/]*baseline[^/]*\.json)$/,
+  /^scripts\/(?:check-[^/]+|run-gates[^/]*|merge-preflight[^/]*|experience-full-run[^/]*|validation-policy[^/]*|git-delivery[^/]*|[^/]+-lib\.mjs|[^/]*baseline[^/]*\.json)$/,
   /^scripts\/claude-hooks\//,
   /^\.github\/workflows\//,
   /^\.claude\/settings[^/]*\.json$/,

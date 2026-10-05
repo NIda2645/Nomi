@@ -12,7 +12,7 @@
 
 | 格 | 结论 | 证据 |
 |---|---|---|
-| ★1 用户怎么用 | 用户 = 实现线和协调会话。开 PR 时设计卡里勾 `### 功能分类`（可多选），PR 正文 `## 验收证据` 逐项给报告链接 / 运行号 / 截图路径，或写「未验证：原因」；漏勾路径推出的类别、缺证据条目，CI 与合并前扫描都红。不做：不实现七层里还没有的工具（按钮普查推广、真实规模性能跑器、AI 用户走查跑器、效果评测题集、每晚 CI）；它们在路由表里标 `tool: missing` 并写计划接什么。已知坑：路径推类别是启发式（宁可多报，写「未验证：原因」可过）；生效日之前开的 PR 只警告。真实任务：拿 #1029 #1030 #1033 #1034 实跑（PR 正文）。 | `node scripts/merge-preflight.mjs <PR 号> --enforce` |
+| ★1 用户怎么用 | 用户 = 实现线和协调会话。开 PR 时设计卡里勾 `### 功能分类`（可多选），PR 正文 `## 验收证据` 逐项给报告链接 / 运行号 / 截图路径，或写「未验证：原因」；漏勾路径推出的类别、缺证据条目，CI 与合并前扫描都红。不做：不实现七层里还没有的工具（按钮普查推广、真实规模性能跑器、AI 用户走查跑器、效果评测题集、全量跑里的体检）；它们在路由表里标 `tool: missing` 并写计划接什么。已知坑：路径推类别是启发式（宁可多报，写「未验证：原因」可过）；生效日之前开的 PR 只警告。真实任务：拿 #1029 #1030 #1033 #1034 实跑（PR 正文）。 | `node scripts/merge-preflight.mjs <PR 号> --enforce` |
 | ★2 谁说了算 | 路由表唯一一份 = `docs/engineering/test-routing.json`；判据唯一实现 = `scripts/pr-judgement-lib.mjs`（路径推类别、设计卡功能分类、验收证据、规则与门岗改动范围）；`merge-preflight.mjs` 与 `check:pr-judgement` 都调它，四类判定也从表里读，不另起一套；#1033 的「规则与门岗改动范围」从 merge-preflight 挪进这份。 | `node scripts/door-map.mjs checkProtectedScope` |
 | ★3 一致与复用 | 复用 `prBody.mjs` 的唯一取正文法（CI 现取、取不到 = 红）、`check-pr-body-gates` 的 push 前早报、现有 `gates:contracts` 链、#1031 的账本 / 铁律、#1033 的 `PROTECTED_PATHS`。测试路由表自写（领域独有：Nomi 的功能分类和每类必交证据），不接 Kiwi / TestLink，打标签用 Playwright 自带 tag / annotation。 | 本文「先查别人」 |
 | ★4 全状态 | 不适用：没有用户界面。命令行状态：推不出类别（跳过）/ 推出但没勾（红）/ 勾全证据齐（绿）/ 证据写「未验证：工具未建」（接受并列缺口）/ 生效日之前的 PR（警告）/ 正文取不到（CI 红，本地跳过）/ 拿不到 base（红）。 | `scripts/pr-judgement-lib.node-test.mjs` |
@@ -33,3 +33,7 @@
 3. CI：`pnpm run check:pr-judgement`（进 Contracts，push 前 `check-pr-body-gates` 也跑），`--gaps` 列出工具缺口。
 4. `merge-preflight.mjs` 改为调用同一份判据（四类也从表里读），加 `--enforce` 回放参数。
 5. 设计卡模板加「功能分类」一节，`experience-system.md` 写路由表可读视图和各层工具决定，`rules.json` 的 P5 执行点同步；CLAUDE.md 不动。
+
+## 补：测试节奏（用户 10-06 定）
+
+不要定时自动跑；每次代码改动都跑这些测试，全量由用户手动触发。路由表每层的 `when` 只有两种：`pr`（每个 PR 按功能分类跑；零花费且能在 CI 跑的 CI 自动跑，`paid: true` 的——真付费、真模型——PR 上只要求正文交证据）、`manual-full`（只在手动全量跑里跑，PR 不要求）。全量入口 = `.github/workflows/full-experience-run.yml`（只有 `workflow_dispatch`，没有 `schedule`）→ `pnpm run test:experience:full`（`scripts/experience-full-run.mjs`）：把路由表 `fullRun.commands` 里所有零花费层串起来跑，每层独立计结果，出汇总报告并列出没覆盖的层。发版时全部层都跑，加真付费抽检和用户亲手用 30 分钟。
