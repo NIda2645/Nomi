@@ -96,3 +96,21 @@ describe("付费卡手改：每次带的是这一镜的完整参数集，合并�
     expect(normalizedPatch.parameters).toEqual(cardPatch);
   });
 });
+
+// 设计卡 docs/plan/2026-10-05-storyboard-ratio-and-merge.md §3：参数以外那几格的修订语义（钉住现状与理由）。
+describe("参数以外那几格：本来就是「只改点名的」，参考是整列表", () => {
+  const ref = (assetId: string) => ({ assetId, contentHash: assetId.repeat(8).slice(0, 64).padEnd(64, "0"), version: 1, kind: "image" as const });
+
+  it("参考素材：点名就是整列表替换（模型面给的是完整列表；RFC 7396 对数组也是整体替换），不点名不动", () => {
+    const withRefs = { ...nanoBanana({ aspect_ratio: "16:9" }), references: [ref("a"), ref("b")] };
+    expect(revise(withRefs, { references: [ref("c")] }).normalizedPatch.references).toEqual([ref("c")]);
+    expect(revise(withRefs, { prompt: "夜景" }).normalizedPatch).not.toHaveProperty("references");
+  });
+
+  it("只点名 prompt：模型、模式、变体、参数都不进补丁", () => {
+    const { normalizedPatch } = revise(nanoBanana({ aspect_ratio: "16:9" }), { prompt: "夜景" });
+    expect(normalizedPatch).not.toHaveProperty("modelId");
+    expect(normalizedPatch).not.toHaveProperty("providerId");
+    expect(normalizedPatch).not.toHaveProperty("mode");
+  });
+});
