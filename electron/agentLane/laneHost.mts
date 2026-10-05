@@ -34,7 +34,7 @@ import { draftInputFromMessage, isLaneInputMessage } from '../shared/agentLane/l
 import type { LaneInputMessage } from '../shared/agentLane/laneDesktopContracts.js';
 import { AgentHarness, reduceLaneSnapshot, type AgentLane, type LaneSnapshot } from '@earendil-works/pi-agent-core';
 import { BACKGROUND_CONTEXT, awaitWithContext, type Context } from '@earendil-works/pi-agent-core/harness/context';
-import { createModels, getSupportedThinkingLevels } from '@earendil-works/pi-ai';
+import { createModels, getSupportedThinkingLevels, isRetryableAssistantError } from '@earendil-works/pi-ai';
 import { createNomiProvider } from './laneModelProvider.mjs';
 import {
   LANE_APPROVAL_NOTE_TYPE, LANE_TASK_NOTE_TYPE, LANE_UI_NOTE_PREFIX, laneNoteEntersModelContext,
@@ -206,6 +206,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
   // 是浏览器也 import 的中立层，在那里 import 一个 pi 的函数就等于把整个 SDK 拖进渲染 bundle。
   const modelFacts: LaneModelFacts = { pricing: pricingBasis,
     supportedThinkingLevels: getSupportedThinkingLevels(model) as readonly LaneThinkingLevel[],
+    isTransientError: isRetryableAssistantError,
     ...(options.model.contextWindow === undefined ? {} : { contextWindow: options.model.contextWindow }) };
   const models = createModels({ credentials });
   models.setProvider(provider);

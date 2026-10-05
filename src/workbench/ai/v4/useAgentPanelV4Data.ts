@@ -7,7 +7,8 @@ import type { LanePendingApproval, LaneWorkspaceProjection } from '../../../../e
 import { getCommittedProposal, subscribeCommittedProposal } from '../../generationCanvas/agent/proposalUndo'
 import { undoableLaneToolCallId } from '../lane/laneReceiptUndo'
 import { laneClient } from '../lane/laneClient'
-import { providerFailureText } from '../lane/laneCommandFailure'
+import { providerFailureText, takeUnclassifiedProviderFailures } from '../lane/laneCommandFailure'
+import { logRendererError } from '../../../desktop/rendererLog'
 import { laneInterventionSource, laneViewModel } from '../lane/laneViewModel'
 import { humanizeToolFailure, readableToolName, readableToolSummary } from '../resident/residentToolDisplay'
 import { laneToolFailureDetail, laneToolFailureSummary } from '../lane/laneToolFailureText'
@@ -123,6 +124,19 @@ export type AgentPanelV4Data = Readonly<{
   selectModel: (model: ModelCatalogModelDto) => void
 }>
 
+/**
+ * 「认不出」的服务商报文留一份诊断日志——**在 effect 里、按条目 id 去重只记一次**。
+ * 投影在 `useMemo` 里每个流式快照都重算，副作用放在那里同一条错误曾记了 28 次。
+ */
+function useLogUnclassifiedProviderFailures(items: readonly V4FlowItem[]): void {
+  const logged = React.useRef(new Set<string>())
+  React.useEffect(() => {
+    for (const diagnostic of takeUnclassifiedProviderFailures(items, logged.current)) {
+      logRendererError('lane-unclassified-failure', undefined, { code: null, diagnostic })
+    }
+  }, [items])
+}
+
 export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data {
   const { t, i18n } = useTranslation()
   const labels = useV4Labels()
@@ -236,7 +250,8 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
     // **两条路都不再 `?? text`**——那个兜底正是把模型收到的英文散文印给用户的那一行。
     toolFailure: (text, failure) => (failure ? laneToolFailureSummary(t, failure) : humanizeToolFailure(t, text)),
     toolFailureDetail: (failure) => laneToolFailureDetail(t, failure),
-    assistantFailure: (text) => providerFailureText(text, t),
+    assistantFailure: (text, transient) => providerFailureText(text, t, { transient }),
+    assistantRecovered: t('agentPanelV4.errorRecovered'),
     thinkingLabel: t('agentPanelV4.thinkingLabel'),
     formatTokens: formatV4Tokens,
     formatCost: (amount) => t('agentPanelV4.costUsd', { amount: amount.toFixed(2) }),
@@ -257,6 +272,7 @@ export function useAgentPanelV4Data(surface: ResidentSurface): AgentPanelV4Data 
       return found ? { cover: found.cover, preview: found.preview } : undefined
     },
   }, undoableToolCallId), [snapshot.active, i18n.language, skills, skillLabel, t, toolDisplayCache, undoableToolCallId])
+  useLogUnclassifiedProviderFailures(view.items)
   const flow = React.useMemo(() => {
     const items = [...view.items]
     const last = items.at(-1)

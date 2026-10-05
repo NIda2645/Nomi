@@ -119,6 +119,7 @@ function labViewModelLabels(fx: ReturnType<typeof useV4Fixtures>, toolLabel: str
     toolFailure: () => undefined,
     toolFailureDetail: (failure) => failure.code,
     assistantFailure: (text) => text,
+    assistantRecovered: fx.t('agentPanelV4.errorRecovered'),
     thinkingLabel: fx.t('agentPanelV4.thinkingLabel'),
     formatTokens: (value) => String(value),
     formatCost: (usd) => `$${usd.toFixed(2)}`,
