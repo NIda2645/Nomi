@@ -165,13 +165,10 @@ try {
     r.modeOptions = await visibleOptions()
     await snap('06-shot-mode-menu')
     // 切到带参考槽的模式（最后一项 = 全能参考）
-    await win().locator('[role=listbox] [role=option]').last().click()
+    await win().getByRole('option', { name: r.modeOptions.at(-1), exact: true }).first().click()
     await settle(700)
     r.refZoneAfterOmni = (await row(1).locator('[data-storyboard-refzone]').innerText()).replace(/\n+/g, ' | ')
     await snap('07-shot1-omni-mode')
-    await row(1).locator('button[aria-label]').filter({ hasText: '' }).evaluateAll((bs) => bs.length)
-    const overflow = row(1).locator('[aria-label]').filter({ has: win().locator('svg') })
-    void overflow
     const dots = row(1).getByRole('button', { name: /开关|收起来的设置|Switches for this shot|Settings tucked away/ }).first()
     await dots.click()
     await settle(500)
