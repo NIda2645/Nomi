@@ -113,7 +113,7 @@ export function normalizeAiScene(spec: AiSceneSpec, fallbackSceneName: string): 
       // 模型按提示词写的是「几何中心」；渲染以对象原点（脚底）摆——全仓唯一的「中心 → 原点」换算在 directorSpace，
       // AI 搭场景与规划器 dressing 都经过这里，所以谁也不会再悬空半个身高。
       const position = toVec3(element.position, 0)
-      position.y = round2(originYForCenter(type, scale, position.y))
+      position.y = round2(originYForCenter({ type, scale }, position.y))
       return {
         name: (element.name ?? '').trim() || `${type} ${index + 1}`,
         type,
