@@ -91,7 +91,10 @@ export async function startPlaybook({ id, seed = null, needs, locale = 'zh-CN', 
       locale: effectiveLocale,
       syntheticCredentialStorage: true,
       extras: {
-        mainRequire: egress.mainRequire,
+        // NOMI_FULL_WALK_OFFSCREEN=1：窗口挪到屏幕外、不抢焦点（用户的 Nomi 开着、桌面上有人在用时跑走查用）。
+        mainRequire: process.env.NOMI_FULL_WALK_OFFSCREEN === '1'
+          ? [...egress.mainRequire, path.join(repoRoot, 'tests', 'ux', '_offscreenWindows.cjs')]
+          : egress.mainRequire,
         env: { ...egress.env, ...relay.env },
         needsOptions: { fixture: { usage: 'measured', ...fixtureOptions } },
       },
