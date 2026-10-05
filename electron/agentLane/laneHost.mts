@@ -256,13 +256,16 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
    * 粒度是回合不是请求：一个回合最多 `LANE_MAX_MODEL_REQUESTS` 次模型请求，按请求刷等于
    * 把技能库全量重扫乘 24，而且回合内会改口——那恰恰是评审裁决明确不要的行为。
    */
+  const composeClosing = (): string => typeof options.systemPromptClosing === 'function' ? options.systemPromptClosing() : options.systemPromptClosing ?? '';
   let promptRunId: string | undefined;
   let promptForRun = composeSystemPrompt();
+  let closingForRun = composeClosing();
   const systemPromptForRun = async (runId: string): Promise<string> => {
     if (runId === promptRunId) return promptForRun;
     promptRunId = runId;
     await native?.skillIndex.refresh();
     promptForRun = composeSystemPrompt();
+    closingForRun = composeClosing();
     return promptForRun;
   };
   const systemPrompt = promptForRun;
@@ -412,7 +415,7 @@ export const openLane: OpenLane = async (options: OpenLaneOptions): Promise<Lane
           toolCallId: '', toolName: tool.name, args: value ? { operation: value } : {},
         })}`);
       }).join('\n') : '';
-    const systemPrompt = [await systemPromptForRun(event.runId), catalogInput ? formatLaneModelIndex(catalogInput.context, options.modelDefaults?.()) : '', input?.context.systemPrompt, input?.context.skillPrompt, quote, authority].filter(Boolean).join('\n\n');
+    const systemPrompt = [await systemPromptForRun(event.runId), catalogInput ? formatLaneModelIndex(catalogInput.context, options.modelDefaults?.()) : '', input?.context.systemPrompt, input?.context.skillPrompt, quote, authority, closingForRun].filter(Boolean).join('\n\n');
     return { systemPrompt };
   });
 

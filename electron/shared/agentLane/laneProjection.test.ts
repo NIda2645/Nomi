@@ -27,9 +27,10 @@ describe('lane provider failure visibility', () => {
 
 describe('lane provider failure: transient / recovered', () => {
   const facts = { pricing: 'unpriced' as const, supportedThinkingLevels: ['off' as const], isTransientError: isRetryableAssistantError }
-  const assistant = (id: string, seq: number, extra: Record<string, unknown>) => ({ id, parentId: null, seq, timestamp: seq, type: 'message' as const, message: {
-    role: 'assistant' as const, content: [], api: 'openai-completions', provider: 'fixture', model: 'fixture', usage, timestamp: seq, ...extra } })
-  const user = (id: string, seq: number) => ({ id, parentId: null, seq, timestamp: seq, type: 'message' as const, message: { role: 'user' as const, content: 'hi', timestamp: seq } })
+  type Entry = LaneSnapshot['transcript'][number]
+  const assistant = (id: string, seq: number, extra: Record<string, unknown>): Entry => ({ id, parentId: null, seq, timestamp: seq, type: 'message' as const, message: {
+    role: 'assistant' as const, content: [], api: 'openai-completions', provider: 'fixture', model: 'fixture', usage, timestamp: seq, ...extra } } as unknown as Entry)
+  const user = (id: string, seq: number): Entry => ({ id, parentId: null, seq, timestamp: seq, type: 'message' as const, message: { role: 'user' as const, content: 'hi', timestamp: seq } } as Entry)
   const lane = (transcript: LaneSnapshot['transcript']): LaneSnapshot => ({
     lane: 'main', tipId: 'tip', operation: null, queues: [], faulted: false,
     configuration: { model: { provider: 'fixture', modelId: 'fixture' }, thinkingLevel: 'off', activeToolNames: [] },
@@ -65,7 +66,7 @@ describe('lane provider failure: transient / recovered', () => {
 
   it('a streaming retry in flight counts as recovered', () => {
     const snapshot = lane([user('u', 1), assistant('e', 2, { stopReason: 'error', errorMessage: 'Connection error.' })])
-    const streaming = { ...snapshot, operation: { status: 'open', runningTools: [], streamingMessage: assistant('s', 3, { stopReason: 'stop' }).message } } as unknown as LaneSnapshot
+    const streaming = { ...snapshot, operation: { status: 'open', runningTools: [], streamingMessage: (assistant('s', 3, { stopReason: 'stop' }) as { message: unknown }).message } } as unknown as LaneSnapshot
     const [failure] = projectLaneSnapshot(streaming, facts).parts.filter((part) => part.kind === 'error')
     expect(failure).toMatchObject({ recovered: true })
   })
