@@ -16,7 +16,7 @@ describe('舞台模型：种类、尺寸、同名合并', () => {
     expect(stage.refs.get('courtyard_gate')?.objectId).toBe('s1-courtyard-gate')
     const kept = stage.objects.find((object) => object.id === 'setPiece:courtyard_gate')!
     expect(kept).toMatchObject({ type: 'group', isAuxiliary: true })
-    expect(stage.objects.filter((object) => !object.isAuxiliary && object.name !== 'ground' && scaledBounds(object.type, object.scale).size.y > 2).map((object) => object.id).sort())
+    expect(stage.objects.filter((object) => !object.isAuxiliary && object.name !== 'ground' && scaledBounds(object).size.y > 2).map((object) => object.id).sort())
       .toEqual(['s1-courtyard-gate', 's1-courtyard-wall-east', 's1-courtyard-wall-north', 's1-courtyard-tree'].sort())
   })
 
@@ -32,14 +32,14 @@ describe('舞台模型：种类、尺寸、同名合并', () => {
     ], [{ id: 'a', kind: 'person', desc: 'a', placement: { relation: 'at', ref: 's1-room-floor' } }]))
     const table = stage.refs.get('cafe_table')!
     expect(table).toMatchObject({ kind: 'table', role: 'furniture', sizeSource: 'typical' })
-    expect(scaledBounds(table.object.type, table.object.scale).size.y).toBeCloseTo(0.75)
+    expect(scaledBounds(table.object).size.y).toBeCloseTo(0.75)
     expect(stage.refs.get('thing')).toMatchObject({ sizeSource: 'unknown' })
     expect(stage.issues).toEqual([expect.objectContaining({ kind: 'nominal-size', objectId: 'setPiece:thing' })])
   })
 
   it.each(DIRECTOR_SCENE_TEMPLATES)('模板 %s 的每个站位都在可站区域里，演员站上去不进任何实心件（站位是作者验证过的点）', (template) => {
     const spec = buildS1Template(template)
-    const solids = spec.parts.filter((item) => scaledBounds(item.object.type, item.object.scale).size.y > 0.3)
+    const solids = spec.parts.filter((item) => scaledBounds(item.object).size.y > 0.3)
     for (const mark of spec.marks) {
       expect(mark.at.x, mark.id).toBeGreaterThanOrEqual(spec.interior.minX)
       expect(mark.at.x, mark.id).toBeLessThanOrEqual(spec.interior.maxX)
@@ -48,7 +48,7 @@ describe('舞台模型：种类、尺寸、同名合并', () => {
       expect(spec.parts.some((item) => item.object.id === mark.thingId), mark.id).toBe(true)
       if (mark.use !== 'stand') continue
       for (const solid of solids) {
-        const box = scaledBounds(solid.object.type, solid.object.scale), p = solid.object.position
+        const box = scaledBounds(solid.object), p = solid.object.position
         const inside = mark.at.x > p.x + box.min.x - 0.3 && mark.at.x < p.x + box.max.x + 0.3 && mark.at.z > p.z + box.min.z - 0.2 && mark.at.z < p.z + box.max.z + 0.2
         expect(inside, `${mark.id} in ${solid.object.id}`).toBe(false)
       }

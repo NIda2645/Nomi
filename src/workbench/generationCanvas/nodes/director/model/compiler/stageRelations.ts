@@ -24,14 +24,14 @@ export const yawToward = (from: { x: number; z: number }, to: { x: number; z: nu
 
 /** 物体沿水平方向 dir 从中心到边缘有多远（轴对齐包围盒的支撑函数）。 */
 function halfAlong(object: Pick<DirectorObject, 'type' | 'scale'>, dir: { x: number; z: number }): number {
-  const size = scaledBounds(object.type, object.scale).size
+  const size = scaledBounds(object).size
   return (Math.abs(dir.x) * size.x) / 2 + (Math.abs(dir.z) * size.z) / 2
 }
 const centerOf = (object: DirectorObject, position = object.position) => {
-  const box = scaledBounds(object.type, object.scale)
+  const box = scaledBounds(object)
   return { x: position.x + box.center.x, z: position.z + box.center.z }
 }
-const topOf = (object: DirectorObject, position = object.position) => position.y + scaledBounds(object.type, object.scale).max.y
+const topOf = (object: DirectorObject, position = object.position) => position.y + scaledBounds(object).max.y
 const isPerson = (thing: Pick<StageThing, 'kind'>) => thing.kind === 'person'
 
 function interiorCenter(stage: Stage) {
@@ -70,9 +70,9 @@ export function resolvePlacement(stage: Stage, body: DirectorObject, role: Stage
   const c = centerOf(ref.object, refPosition)
   // 手持物和人「在一起」（on / at / near 一个人）= 拿在他手里；任何东西 on 一个人也一样
   if (isPerson(ref) && (space.frame === 'support' || (role === 'handheld' && space.frame === 'mark')))
-    return { position: v(refPosition.x, originYForCenter(body.type, body.scale, HELD_CENTER_HEIGHT), refPosition.z), facing: ref.facing, heldBy: ref.objectId, adjusted: false }
+    return { position: v(refPosition.x, originYForCenter(body, HELD_CENTER_HEIGHT), refPosition.z), facing: ref.facing, heldBy: ref.objectId, adjusted: false }
   if (space.frame === 'support')
-    return { position: v(c.x, originYForBottom(body.type, body.scale, topOf(ref.object, refPosition)), c.z), facing: ref.facing, adjusted: false }
+    return { position: v(c.x, originYForBottom(body, topOf(ref.object, refPosition)), c.z), facing: ref.facing, adjusted: false }
   let at: { x: number; z: number }
   let facing = ref.facing
   if (space.frame === 'mark' && ref.role !== 'performer') {
@@ -91,14 +91,14 @@ export function resolvePlacement(stage: Stage, body: DirectorObject, role: Stage
     }
   } else {
     const angle = space.frame === 'facing' ? ref.facing + (space.direction ?? 0) : space.frame === 'screen' ? (space.direction ?? 90) : space.frame === 'axis'
-      ? (scaledBounds(ref.object.type, ref.object.scale).size.x >= scaledBounds(ref.object.type, ref.object.scale).size.z ? 90 : 0)
+      ? (scaledBounds(ref.object).size.x >= scaledBounds(ref.object).size.z ? 90 : 0)
       : (slot % 2 ? -90 : 90) // mark 关系但参照是演员：在他左右（画面左右）
     const dir = yawVector(angle)
     const distance = space.frame === 'axis' ? space.spacing * (slot + 1) : Math.max(space.spacing, halfAlong(ref.object, dir) + halfAlong(body, dir) + GAP)
     at = { x: c.x + dir.x * distance, z: c.z + dir.z * distance }
     if (space.faceRef && isPerson(ref)) facing = yawToward(at, c, ref.facing)
   }
-  const position = v(at.x, originYForBottom(body.type, body.scale, 0), at.z)
+  const position = v(at.x, originYForBottom(body, 0), at.z)
   const settled = settle(stage, body, position, placed, interiorCenter(stage))
   return { position: settled, facing, adjusted: settled.x !== position.x || settled.z !== position.z }
 }
@@ -108,7 +108,7 @@ function settle(stage: Stage, body: DirectorObject, position: Vec3, placed: Plac
   const p = { ...position }
   const area = stage.interior
   if (area) {
-    const half = scaledBounds(body.type, body.scale).size
+    const half = scaledBounds(body).size
     p.x = Math.min(area.maxX - half.x / 2, Math.max(area.minX + half.x / 2, p.x))
     p.z = Math.min(area.maxZ - half.z / 2, Math.max(area.minZ + half.z / 2, p.z))
   }
@@ -122,14 +122,14 @@ const blocks = (object: DirectorObject) => object.visible && !object.isAuxiliary
  * 只看和自己身高有竖直交集、且不是地面 / 路面这类薄板的东西。全场只有这一条规则（用 directorSpace 的包围盒）。
  */
 export function clearOfSolids(point: Vec3, body: DirectorObject, obstacles: Placed[], retreat: (box: { min: Vec3; max: Vec3 }) => Vec3): Vec3 {
-  const bounds = scaledBounds(body.type, body.scale)
+  const bounds = scaledBounds(body)
   const half = { x: bounds.size.x / 2, z: bounds.size.z / 2 }
   const p = { ...point }
   for (let pass = 0; pass < 8; pass += 1) {
     const hit = obstacles
       .filter(({ object }) => object.id !== body.id && blocks(object))
       .map(({ object, position }) => {
-        const box = scaledBounds(object.type, object.scale)
+        const box = scaledBounds(object)
         return { min: v(position.x + box.min.x, position.y + box.min.y, position.z + box.min.z), max: v(position.x + box.max.x, position.y + box.max.y, position.z + box.max.z) }
       })
       .find((box) =>
@@ -206,7 +206,7 @@ export function carryGroups(objects: DirectorObject[], holds: ReadonlyMap<string
       const item = objects.find((object) => object.id === itemId)
       if (!item || owner !== holderId) continue
       item.parentId = group.id
-      item.position = v(HAND.x, originYForCenter(item.type, item.scale, HELD_CENTER_HEIGHT), HAND.z)
+      item.position = v(HAND.x, originYForCenter(item, HELD_CENTER_HEIGHT), HAND.z)
       item.rotation = v()
       delete item.motionTrajectory
       delete item.trajectoryClips

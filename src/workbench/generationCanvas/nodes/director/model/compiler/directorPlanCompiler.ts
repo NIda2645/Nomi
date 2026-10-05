@@ -257,7 +257,7 @@ function ensureCharacterActionCoverage(objects: DirectorObject[], duration: numb
 function aimOffsetFor(shot: DirectorPlanShot, subject: DirectorObject, anchor: AnchorSpec | undefined): Vec3 {
   if (anchor) return anchor.offset
   if (subject.type === 'character') return v(0, ['远景', '全景'].includes(shot.size) ? 1.2 : 1.5, 0)
-  return v(0, scaledBounds(subject.type, subject.scale).center.y, 0)
+  return v(0, scaledBounds(subject).center.y, 0)
 }
 
 function angleOffset(angle: DirectorPlanShot['angle']): number {
@@ -279,7 +279,7 @@ function solveCamera(
     ladder: ShotLadder = anchor || subject.type !== 'character' ? 'object' : 'figure'
   const closeCharacter = !anchor && subject.type === 'character' && (shot.size === '特写' || shot.size === '大特写')
   const fov = closeCharacter ? 10 : shot.size === '中近景' && subject.type === 'character' ? 30 : 45
-  const bounds = scaledBounds(subject.type, subject.scale)
+  const bounds = scaledBounds(subject)
   const subjectHeight = anchor?.size.y ?? (subject.type === 'character' ? bounds.size.y : Math.max(0.4, bounds.size.y))
   const distance =
     distanceForShotSize(shot.size as EvalShotSize, subjectHeight, fov, ladder) *
@@ -415,7 +415,7 @@ function constrainCameraPath(
     for (const object of objects) {
       if (!object.visible || object.isAuxiliary || object.type === 'plane') continue
       const origin = positionAt(objects, object, time)
-      const box = scaledBounds(object.type, object.scale)
+      const box = scaledBounds(object)
       const center = add(origin, box.center)
       const half = v(box.size.x / 2 + 0.08, box.size.y / 2 + 0.08, box.size.z / 2 + 0.08)
       if (Math.abs(point.x - center.x) > half.x || Math.abs(point.y - center.y) > half.y || Math.abs(point.z - center.z) > half.z) continue

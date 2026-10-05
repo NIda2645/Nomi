@@ -8,7 +8,7 @@
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import type { DirectorObject, DirectorObjectType, Vec3 } from '../directorTypes'
-import { originYForBottom } from '../directorSpace'
+import { boundsSource, originYForBottom } from '../directorSpace'
 import { normalizeAiScene } from '../aiScene'
 import { isEnvironmentWord, stageKindOf, type DirectorStageKind } from '../../../../../../../electron/shared/director/vocab'
 import type { DirectorPlan, DirectorPlanActor } from '../../../../../../../electron/shared/director/directorPlanSchema'
@@ -143,7 +143,7 @@ export function buildStage(plan: DirectorPlan): Stage {
     const carriesPerformer = plan.actors.some((actor) => actor.placement.relation === 'on' && actor.placement.ref === piece.id)
     const placement = ref
       ? resolvePlacement(stage, object, carriesPerformer ? 'performer' : body.role, ref === anchor ? piece.relation!.type : 'at', ref, slot, [])
-      : { position: v(((index % 3) - 1) * 2.5, originYForBottom(body.type, body.scale, 0), Math.floor(index / 3) * 2), facing: 0 }
+      : { position: v(((index % 3) - 1) * 2.5, originYForBottom(body, 0), Math.floor(index / 3) * 2), facing: 0 }
     object.position = placement.position
     const thing: StageThing = { objectId: id, planId: piece.id, kind: kind ?? 'prop', role: body.role, object, sizeSource: kind ? 'typical' : 'unknown', facing: placement.facing }
     if (!kind) issues.push({ kind: 'nominal-size', objectId: id, message: `set piece ${piece.id} (${piece.kind}) has no known stage kind; placed as a nominal block` })
@@ -157,6 +157,10 @@ export function buildStage(plan: DirectorPlan): Stage {
     things.push({ objectId: object.id, kind: kind ?? 'prop', role: kind ? KIND_BODY[kind].role : 'furniture', object, sizeSource: 'render', facing: 0 })
     objects.push(object)
   }
+  // 尺寸是兜底值的东西（模型没量过包围盒）明着报出来：摆位、视线都按 1 米方盒算，不可信
+  for (const thing of things)
+    if (boundsSource(thing.object) === 'nominal' && thing.object.type === 'model')
+      issues.push({ kind: 'nominal-size', objectId: thing.objectId, message: `model ${thing.objectId} has no measured bounds yet; using a nominal 1m box` })
   return { things, marks: template?.marks ?? [], interior: template?.interior, refs, objects, issues }
 }
 

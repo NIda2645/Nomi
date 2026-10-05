@@ -90,7 +90,7 @@ describe('空间事实只有一份：共用包围盒 vs 渲染组件真值', () 
     const one = { x: 1, y: 1, z: 1 }
     const mismatched = PRIMITIVES.filter((type) => {
       const rendered = new THREE.Box3().setFromObject(renderMeshOf(type), true)
-      const shared = scaledBounds(type, one)
+      const shared = scaledBounds({ type, scale: one })
       const size = rendered.getSize(new THREE.Vector3())
       return Math.abs(size.x - shared.size.x) > 1e-6 || Math.abs(size.y - shared.size.y) > 1e-6 || Math.abs(size.z - shared.size.z) > 1e-6 || Math.abs(rendered.min.y - shared.min.y) > 1e-6
     })

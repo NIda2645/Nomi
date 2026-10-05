@@ -37,7 +37,7 @@ const solid = (object: DirectorObject) => object.visible && !object.isAuxiliary 
 function worldBox(objects: readonly DirectorObject[], object: DirectorObject, time: number): Box | undefined {
   const pose = evaluateSceneObjectPose(objects, object.id, time)
   if (!pose) return undefined
-  const local = scaledBounds(object.type, { x: 1, y: 1, z: 1 })
+  const local = scaledBounds({ ...object, scale: { x: 1, y: 1, z: 1 } })
   const b = pose.frame.basis
   const min = { x: Infinity, y: Infinity, z: Infinity }, max = { x: -Infinity, y: -Infinity, z: -Infinity }
   for (const x of [local.min.x, local.max.x])

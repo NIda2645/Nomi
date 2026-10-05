@@ -49,7 +49,7 @@ describe('关系词 → 站位与朝向（一类东西一条规则）', () => {
       { id: 'suspect', kind: 'vehicle', desc: 'suspect', placement: { relation: 'in_front_of', ref: 'police' } },
     ], blocking: [] })
     const police = scene.objects.find((o) => o.id === 'actor:police')!, suspect = scene.objects.find((o) => o.id === 'actor:suspect')!
-    const length = scaledBounds(police.type, police.scale).size.z
+    const length = scaledBounds(police).size.z
     expect(suspect.position.z - police.position.z).toBeGreaterThanOrEqual(length)
   })
 
@@ -67,7 +67,7 @@ describe('关系词 → 站位与朝向（一类东西一条规则）', () => {
   })
 
   it('全部语料（oracle + 真实规划器回归计划）：演员全程站在模板的可站区域里（院墙外 / 楼里不算）', () => {
-    const plans = [...Object.values(S1_ORACLE_PLANS), ...(regressions as { plan: DirectorPlan }[]).map((item) => item.plan)]
+    const plans = [...Object.values(S1_ORACLE_PLANS), ...(regressions as unknown as { plan: DirectorPlan }[]).map((item) => item.plan)]
     const outside: string[] = []
     for (const plan of plans) {
       const result = compileDirectorPlan(plan)
@@ -84,7 +84,7 @@ describe('关系词 → 站位与朝向（一类东西一条规则）', () => {
   })
 
   it('拿在手里 = 人和东西挂在同一个携带分组下（编辑器父子关系），东西全程跟手；经编辑器规整往返父子关系不丢', () => {
-    const plan = (regressions as { source: string; plan: DirectorPlan }[]).find((item) => item.plan.actors.some((actor) => actor.placement.relation === 'on' && actor.placement.ref === 'qingyi_woman'))!.plan
+    const plan = (regressions as unknown as { source: string; plan: DirectorPlan }[]).find((item) => item.plan.actors.some((actor) => actor.placement.relation === 'on' && actor.placement.ref === 'qingyi_woman'))!.plan
     const result = compileDirectorPlan(plan)
     if (!result.ok) throw new Error(result.errors.join('; '))
     const roundTrip = normalizeDirectorProject(JSON.parse(JSON.stringify(result.project)))

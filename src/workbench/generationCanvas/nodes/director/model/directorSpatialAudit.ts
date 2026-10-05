@@ -41,7 +41,7 @@ function worldBoxes(scene: DirectorScene, time: number): Map<string, Box> {
     if (object.type === 'group') continue
     const pose = evaluateSceneObjectPose(scene.objects, object.id, time)
     if (!pose) continue
-    const local = scaledBounds(object.type, { x: 1, y: 1, z: 1 })
+    const local = scaledBounds({ ...object, scale: { x: 1, y: 1, z: 1 } })
     const b = pose.frame.basis
     const min = { x: Infinity, y: Infinity, z: Infinity }
     const max = { x: -Infinity, y: -Infinity, z: -Infinity }

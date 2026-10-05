@@ -310,7 +310,7 @@ function anchorFor(subject: SubjectRef | undefined, actor: DirectorObject): Anch
 }
 function subjectHeight(actor: DirectorObject, anchor: AnchorSpec | undefined): number {
   if (anchor) return anchor.size.y
-  return scaledBounds(actor.type, actor.scale).size.y
+  return scaledBounds(actor).size.y
 }
 function targetPosition(actor: DirectorObject, anchor: AnchorSpec | undefined): Vec3 {
   if (anchor)
