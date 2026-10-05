@@ -85,6 +85,7 @@ async function exerciseClient(label, transport, projectsDir) {
   check(created.isError !== true, `${label}: 不花钱的工具（建项目）调用成功`)
   check(projectNames(projectsDir).includes(projectName), `${label}: 项目真的落到了隔离的项目目录`)
   let unknownCode = null
+  // unknown-tool-probe：故意调不存在的工具验 -32602，不是忘了跟进面收敛（见 check:mcp-tool-refs）。
   try { await client.callTool({ name: 'nomi_not_a_real_tool', arguments: {} }) } catch (error) { unknownCode = error?.code }
   check(unknownCode === -32602, `${label}: 未知工具回协议级 -32602`)
   return client
