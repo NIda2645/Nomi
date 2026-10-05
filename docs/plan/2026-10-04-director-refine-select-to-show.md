@@ -98,3 +98,13 @@
 - **K4「吸附」改名**：没做（不影响布局）。
 - **Electron 走查**（director-electron / mobile / windowbar / windows-freeze-sweep / 3dbox-shell）：选择器已同步，没跑——用户在用电脑，`pending-real-app`。
 - **视觉基线**：`director-refine` 屏的逐像素基线要在 darwin 上录，登记在 `tests/ux/design-lab/calibration.json` 待录。
+
+## 追加：选中机位，左下小窗自动切过去（2026-10-05，用户拍板，T2 的待拍板项）
+
+| 格 | 结论 |
+|---|---|
+| ★1 用户怎么用 | 创作者在精修里点一个机位（3D 里点、大纲里点、时间轴机位轨点都算），左下小窗立刻播这个机位的画面，直接点小窗「进入视角」，不再先去小窗下拉里换一次。T2 点击 7 → 5（省掉小窗下拉 + 选项两下）。选中角色 / 灯 / 物体 / 片段，小窗不动；取消选中，小窗停在最后那台，不跳回。**不做**：不改导演视图（它永远跟播放头，见下）、不加「钉住小窗」开关。 |
+| ★2 谁说了算 | 「小窗显示哪个机位」的唯一状态仍是 `directorStore.previewCameraId`，唯一读口仍是 `scene/pipCamera.ts` 的 `pipCameraIdOf`。唯一新写口：`store.select`（`directorStore.ts` select）在选中机位时顺带写它，所有选中机位的入口（3D 点击、大纲、时间轴、进入视角、新建机位）自动同一行为，没有第二份状态、没有各处补写。小窗下拉仍可手动覆盖（写同一个字段）。 |
+| ★3 一致与复用 | 复用已有字段与选台函数，零新概念、零新组件、零依赖；导演视图本来就只跟播放头（`followProgram`），不读 `previewCameraId`，所以不会和这次互相打架（单测断言）。 |
+| ★4 全状态 | 播放 / 录制中：`pipCameraIdOf` 先判播放，小窗跟播放头的节目机位，此时选中机位只写 `previewCameraId`、不抢画面；停下后小窗露出最后选中的那台。**理由**：播放时小窗是「正在播哪一镜」的监视器，被选中抢走会让创作者误以为那一镜在播那台机位；停下后「我正在改的那台」才是他要看的。导演视图：不动。选中的机位被删：沿用 `directorStore` 既有的 `previewCameraId` 回落（第一台）。重复点同一台：仍会把小窗拉回它（下拉改过之后）。 |
+| ★9 验收与回滚 | 验收：`scene/pipCamera.test.ts` 4 条（选机位切 / 选角色不动 / 播放与停止优先级 / 导演视图不跟）；无头走查 `tests/ux/director-refine-tasks.walk.mjs` T2 断言小窗为 medium 且点击数 = 5；实验室格 `d3a-camera-follow-zh/en`，截图 `docs/evidence/2026-10-05-refine-preview-follows-camera/`。回滚：revert 本提交（`select` 里一行）。 |
