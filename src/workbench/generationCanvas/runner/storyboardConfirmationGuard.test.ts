@@ -8,7 +8,8 @@ vi.mock('../spend/spendConfirm', async original => ({ ...await original<typeof i
 vi.mock('./assetUploadConsent', async original => ({ ...await original<typeof import('./assetUploadConsent')>(), resolveAssetUploadConsent: async () => ({allowed:true, needsConfirmation:false}) }))
 beforeEach(() => {
   calls.current = true; calls.mint.mockReset().mockResolvedValue('grant'); calls.confirm.mockReset().mockImplementation(async () => { calls.current=false; return true })
-  useGenerationCanvasStore.getState().restoreSnapshot({nodes:[{id:'node',kind:'image',title:'Image',position:{x:0,y:0},prompt:'old'}],edges:[],groups:[],selectedNodeIds:[]})
+  // 令牌路（本地 ComfyUI 等登记的例外）才有「确认之后、铸令牌这段异步空档」；单镜 Run 路的批准在主进程同一次调用里。
+  useGenerationCanvasStore.getState().restoreSnapshot({nodes:[{id:'node',kind:'image',title:'Image',position:{x:0,y:0},prompt:'old',meta:{modelKey:'workflow',modelVendor:'comfyui-local',vendor:'comfyui-local'}}],edges:[],groups:[],selectedNodeIds:[]})
 })
 const assertCurrent = async () => { if (!calls.current) throw new Error('storyboard_content_conflict') }
 it.each(['single','variants','regenerate'])('rejects changed author target after human confirmation before minting on %s', async kind => {

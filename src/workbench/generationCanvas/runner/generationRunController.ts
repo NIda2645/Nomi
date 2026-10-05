@@ -11,7 +11,7 @@ import { isNodeGenerationOwnedByProduction } from '../../production/productionSh
 import { directorPreviewSpendBlock } from '../nodes/director/model/directorPreviewState'
 import { reportCanvasFeedback } from '../components/canvasFeedback'
 import { isProjectExecutionContextCurrent, withProjectAction } from '../../project/projectCanvasReadSurface'
-import { mintSpendGrant } from '../../api/taskApi'
+import { mintSpendGrant, releaseCanvasShotRun } from '../../api/taskApi'
 import { confirmGenerationSpend, describeGenerationCost, generationCostContextForNode, type GenerationCostKind, type SpendInitiator } from '../spend/spendConfirm'
 import { isRetryableGenerationError, normalizeRetryAttempts, normalizeBaseDelayMs, waitForRetry } from './generationRetryPolicy'
 import { generationNodeExecutor, type GenerationNodeExecutor } from './generationNodeExecutor'
@@ -47,7 +47,8 @@ import {
   nodeUnmetReferenceDependency,
   type UnmetReferenceDependency,
 } from '../nodes/controls/referenceDependency'
-import { dispatchedAttempt, resolveTaskArchetype } from './catalogTaskResolve'
+import { dispatchedAttempt, resolveTaskArchetype, selectedVendor } from './catalogTaskResolve'
+import { isComfyuiVendorKey } from '../model/comfyuiVendor'
 import type { GenerationNodeKind } from '../model/generationCanvasTypes'
 import i18n from '../../../i18n'
 import {
@@ -120,8 +121,10 @@ export type RunGenerationNodeOptions = {
     maxAttempts?: number
     baseDelayMs?: number
   }
-  /** 付费守卫令牌：真人确认后铸的 grantId，透传到 executor → request.extras 供主进程核验。 */
+  /** 付费守卫令牌：真人确认后铸的 grantId，透传到 executor → request.extras 供主进程核验（令牌路：批量，第 3 步收走）。 */
   grantId?: string
+  /** 'run' = 单镜 Run 路：这一次运行的批准、派发、记账都在主进程的单镜 Run 里（singleNodeLedger 定）。 */
+  ledger?: 'run'
   /** One-shot correction appended to the provider prompt for a bounded QA retry. */
   promptSuffix?: string
   /** 队列批次 id（任务中心的调度真相源，见 generationQueueStore）。不传 = 单发，内部自建 1 节点批次。 */
@@ -234,8 +237,8 @@ export async function runGenerationNode(
   const initialState = await readRunGraph(target)
   const initialNode = initialState?.nodes.find((node) => node.id === id)
   if (!initialState || !initialNode) throw new Error('node not found')
-  // 3D-BOX 花钱闸（方案 §8）：这一镜挂着的参考预演还在渲染 / 渲染失败 → 不放行，不发出一次没有参考的付费生成。
-  const previewBlock = directorPreviewSpendBlock(id, initialState.nodes)
+  // 3D-BOX 花钱闸（方案 §8）：单镜 Run 路由主进程准入问它（appIntegrationCanvasShot）；令牌路（批量）暂留这一道，第 3 步进 Run 时删。
+  const previewBlock = options.ledger === 'run' ? null : directorPreviewSpendBlock(id, initialState.nodes)
   if (previewBlock) {
     throw new Error(i18n.t(previewBlock.reason === 'rendering' ? 'director.agent.spendBlockedRendering' : 'director.agent.spendBlockedFailed'))
   }
@@ -324,6 +327,7 @@ export async function runGenerationNode(
           edges: state.edges,
           projectTarget: target,
           ...(options.grantId ? { grantId: options.grantId } : {}),
+          ...(options.ledger === 'run' ? { canvasRun: { runRecordId: run.id } } : {}),
           ...(options.promptSuffix || dialoguePromptSuffix
             ? { promptSuffix: [options.promptSuffix, dialoguePromptSuffix].filter(Boolean).join('\n\n') }
             : {}),
@@ -379,6 +383,8 @@ export async function runGenerationNode(
     runFailure = error
     // Both explicit cancellation and its polling race return to idle without penalizing model health.
     if (isLocalTaskCancelledError(error) || isTaskCancelRequested(id)) {
+      // 单镜 Run 路：只是渲染层不等了——还在路上的交给主进程观察者收完，钱花了的结果照样进项目。
+      if (options.ledger === 'run') void releaseCanvasShotRun({ projectId: target.projectId, runRecordId: run.id }).catch(() => undefined)
       await deliverRunOutcome(target, id, { kind: 'status', status: 'idle' })
       // 用户主动停的：不进刹车计数（模型没挂，是人喊停的）。
       useGenerationQueueStore.getState().markSettled(batchId, id, 'cancelled', { countsTowardBrake: false })
@@ -513,7 +519,21 @@ export async function runGenerationNodesBatch(
 }
 
 /**
- * 单节点生成/重试/生成变体的轻确认 + 铸令牌 + 跑（付费守卫，务实纵深 A1）。
+ * 单节点入口走哪条付费口（发动机收敛第一刀）：单镜 Run（批准 = 这一下点击，主进程记账）；
+ * 文本节点与本地 ComfyUI 仍走令牌路——登记的例外（concept-owners `spend.pending-identity`，到期：第二刀传输合一）。
+ */
+function singleNodeLedger(node: GenerationCanvasNode | undefined): 'run' | 'grant' {
+  if (!node || getGenerationNodeExecutionKind(node.kind) === 'text') return 'grant'
+  return isComfyuiVendorKey(selectedVendor(node)) ? 'grant' : 'run'
+}
+
+/** 令牌路才铸令牌；单镜 Run 路的批准在主进程（同一下点击的手势收据）。 */
+async function authorizeSingleNode(node: GenerationCanvasNode | undefined, nodeIds: string[], count: number | undefined, quoteId: string | undefined): Promise<Pick<RunGenerationNodeOptions, 'grantId' | 'ledger'>> {
+  return singleNodeLedger(node) === 'run' ? { ledger: 'run' } : { grantId: await mintSpendGrant(nodeIds, count, quoteId) }
+}
+
+/**
+ * 单节点生成/重试/生成变体的轻确认 + 批准 + 跑（单镜 Run 路；文本 / 本地 ComfyUI 仍铸令牌）。
  * rerun=true 是「基于此生成变体」：先复制出新节点再绑令牌跑；普通重新生成走 regenerateNodeInPlace。
  */
 export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean } & GenerationConfirmationGuards): Promise<GenerationRunOutcome> {
@@ -554,9 +574,9 @@ export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean 
     assertApprovedInputs = captureApprovedGenerationInputs([runId])
     // 副本落在屏外时由画布边缘提示指路；不再替用户把画布挪过去（2026-09-25「程序不再主动平移画布」）。
   }
-  let grantId: string
+  let authority: Pick<RunGenerationNodeOptions, 'grantId' | 'ledger'>
   try {
-    grantId = await mintSpendGrant([runId], undefined, quoteId)
+    authority = await authorizeSingleNode(node, [runId], undefined, quoteId)
   } catch (error) {
     reportAuthorizationFailure(error, projectId, runId)
     return 'unavailable'
@@ -564,7 +584,7 @@ export async function confirmAndRunNode(nodeId: string, opts: { rerun?: boolean 
   await opts.assertCurrent?.()
   if (!isProjectExecutionContextCurrent(project)) return 'unavailable'
   try {
-    await runGenerationNode(runId, { assertAuthorCurrent: opts.assertAuthorCurrent, assertApprovedInputs, grantId, assetUploadConsent: 'allow', target: project.binding })
+    await runGenerationNode(runId, { assertAuthorCurrent: opts.assertAuthorCurrent, assertApprovedInputs, ...authority, assetUploadConsent: 'allow', target: project.binding })
   } catch {
     // 原任务队列保留失败原因；原项目身份有效时，节点也显示错误。
   }
@@ -603,12 +623,12 @@ export async function confirmAndRunNodeVariants(
     if (!ok) return
     await options.assertCurrent?.()
     if (!isProjectExecutionContextCurrent(project)) return
-    const grantId = await mintSpendGrant([id], total, quoteId)
+    const authority = await authorizeSingleNode(node, [id], total, quoteId)
     await options.assertCurrent?.()
     if (!isProjectExecutionContextCurrent(project)) return
     for (let index = 0; index < total; index += 1) {
       try {
-        const result = await runGenerationNode(id, { ...options, assertAuthorCurrent: options.assertAuthorCurrent, assertApprovedInputs, grantId, assetUploadConsent: 'allow', target: project.binding })
+        const result = await runGenerationNode(id, { ...options, assertAuthorCurrent: options.assertAuthorCurrent, assertApprovedInputs, ...authority, assetUploadConsent: 'allow', target: project.binding })
         whenRunTargetLoaded(project.binding, () => useWorkbenchStore.getState().reconcileTimelineForUpdatedNodes(id, result))
       } catch {
         return // 原任务队列保留失败；停发剩余变体。
@@ -652,9 +672,9 @@ export async function regenerateNodeInPlace(
   if (!ok) return 'declined'
   await opts.assertCurrent?.()
   if (!isProjectExecutionContextCurrent(project)) return 'unavailable'
-  let grantId: string
+  let authority: Pick<RunGenerationNodeOptions, 'grantId' | 'ledger'>
   try {
-    grantId = await mintSpendGrant([id], undefined, quoteId)
+    authority = await authorizeSingleNode(node, [id], undefined, quoteId)
   } catch (error) {
     reportAuthorizationFailure(error, projectId, id)
     return 'unavailable'
@@ -662,7 +682,7 @@ export async function regenerateNodeInPlace(
   await opts.assertCurrent?.()
   if (!isProjectExecutionContextCurrent(project)) return 'unavailable'
   try {
-    const result = await runGenerationNode(id, { assertAuthorCurrent: opts.assertAuthorCurrent, assertApprovedInputs, grantId, assetUploadConsent: 'allow', target: project.binding })
+    const result = await runGenerationNode(id, { assertAuthorCurrent: opts.assertAuthorCurrent, assertApprovedInputs, ...authority, assetUploadConsent: 'allow', target: project.binding })
     whenRunTargetLoaded(project.binding, () => useWorkbenchStore.getState().reconcileTimelineForUpdatedNodes(id, result))
   } catch {
     // 原任务队列保留失败原因；身份被替换时不向新项目写错误。

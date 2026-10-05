@@ -67,8 +67,9 @@ export type GenerationProviderMaterializationResult = {
  * 观察窗（5 分钟）到期后的重踢、重开项目、重启 App 拿到的都是新实例，那张表是空的，于是每一次查询都报
  * 「不知道这笔任务是用哪个模型交的」、被吞成「还在跑」。视频在供应商那边早就出好了，Run 永远停在 polling。
  * 供应商实现早就留了「调用方明说」这条路（apimartGenerationProvider.queryTargetFor ①），只是这一层从来没把它递下去。
+ * `parameters` 同理：画布传输（canvasTransportProvider）查结果要知道是哪家、哪个项目，它们冻在合同参数里。
  */
-export type GenerationProviderTaskContext = Partial<Pick<GenerationProviderRequestInputV1, "modelId" | "mode">>;
+export type GenerationProviderTaskContext = Partial<Pick<GenerationProviderRequestInputV1, "modelId" | "mode" | "parameters">>;
 
 export type GenerationProvider = {
   providerId: string;

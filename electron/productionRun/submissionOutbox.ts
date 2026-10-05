@@ -1,4 +1,5 @@
 import { dedupeSubmission } from "../submissionLedger";
+import { providerExplicitlyRejected } from "../outboundDispatchEvidence";
 import { matchNomiErrorCode, tagNomiError } from "../shared/nomiErrorCodes";
 import { authorizeSubmission } from "./approvalPolicy";
 import type { ProductionRunRepository } from "./productionRunRepository";
@@ -142,6 +143,34 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
         billingEntryId: `${reservationId}:mark-unsettled`,
         kind: "mark_unsettled",
         reservationId,
+        occurredAt: now(),
+      });
+    }
+    return run;
+  }
+
+  /**
+   * 「供应商当场明确拒绝了这次提交」——和「没写出去」同属**确定**态：对方亲口说了不收，没有任务号，
+   * 所以预留 provider-safe 地释放、job 落确定的 `needs_attention`（errorCode `provider_rejected`），可以正常重来，
+   * 不交给人去供应商核对（2026-10-05 用户拍板，F3）。判据只在 `outboundDispatchEvidence.providerExplicitlyRejected`。
+   */
+  function markProviderRejected(request: SubmissionOutboxRequest, reason: string): ProductionRun {
+    let run = requiredRun(deps.repository, request.projectId, request.runId);
+    const job = requiredJob(run, request.jobId);
+    if (job.status === "submitting" || job.status === "submit_intent_persisted") {
+      run = jobCommand(request, "provider-rejected", "needs_attention", {
+        errorCode: "provider_rejected",
+        errorMessage: reason.slice(0, 512),
+      });
+    }
+    const reservationId = `${request.runId}:${request.jobId}:${job.attempt}`;
+    const ledger = deps.repository.readBudgetLedger(request.projectId, request.runId);
+    if (ledger.reservations[reservationId]?.status === "reserved") {
+      run = budgetCommand(request, "release-provider-rejected", {
+        billingEntryId: `${reservationId}:release-provider-rejected`,
+        kind: "release",
+        reservationId,
+        providerSafe: true,
         occurredAt: now(),
       });
     }
@@ -318,6 +347,11 @@ export function createSubmissionOutbox(deps: SubmissionOutboxDependencies) {
       // 提交把这一镜永久冻在人工对账里（2026-09-18 C9 间歇红的根因第二层）。
       if (error instanceof SubmissionNotDispatchedError) {
         markNotDispatched(request, error.message);
+        throw error;
+      }
+      // 只有**最后一次**尝试是明确拒绝、而且之前没有哪一次可能已被收下，才算确定没受理。
+      if (!anyAttemptMayHaveReached && providerExplicitlyRejected(error)) {
+        markProviderRejected(request, error instanceof Error ? error.message : String(error));
         throw error;
       }
       markSubmissionUnknown(request);
