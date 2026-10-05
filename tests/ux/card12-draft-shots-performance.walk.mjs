@@ -71,17 +71,18 @@ try {
   await chooseAssistantModel(win, FIXTURE_TEXT_MODEL_LABEL, CANVAS_PANEL)
 
   let operationId
+  const draftShots = Array.from({ length: SHOT_COUNT }, (_, index) => ({
+    title: `真实目录镜 ${index + 1}`,
+    prompt: `CARD12 real catalog shot ${index + 1}`,
+    taskKind: 'text_to_image',
+    candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL },
+  }))
   const planner = walk.fixture.expectText({
     label: 'the real 33-shot zero-credit draft request',
     match: (body) => flattenRequestText(body).includes(MARKER),
     reply: {
       type: 'tool', id: PLAN_CALL, name: 'draft_shots', args: {
-        shots: Array.from({ length: SHOT_COUNT }, (_, index) => ({
-          title: `真实目录镜 ${index + 1}`,
-          prompt: `CARD12 real catalog shot ${index + 1}`,
-          taskKind: 'text_to_image',
-          candidate: { providerId: FIXTURE_APIMART_VENDOR, modelId: FIXTURE_APIMART_MODEL },
-        })),
+        shots: draftShots,
       },
     },
   })
