@@ -167,6 +167,8 @@ describe("画布单节点 ↑ 经单镜 Run", () => {
     await expect(submit("node-a", "run-node-a-1")).rejects.toBeInstanceOf(SubmissionReceiptUnknownError);
     expect(runOf(repository, "run-node-a-1")!.jobs[0]?.status).toBe("submission_unknown");
     await expect(submit("node-a", "run-node-a-2")).rejects.toMatchObject({ code: "production_shot_claimed", reason: "needs_reconcile" });
+    // 节点上指去核对：这一笔进任务中心「要你处理」（制作列表里只多它一个；收尾了的画布 Run 不进）。
+    expect(repository.list(PROJECT).map((run) => run.runId)).toEqual([canvasRunIdFor("run-node-a-1")]);
 
     const restarted = setup({ root });
     await expect(restarted.submit("node-a", "run-node-a-3")).rejects.toMatchObject({ code: "production_shot_claimed", reason: "needs_reconcile" });

@@ -37,7 +37,7 @@ import {
 } from "./productionRunTypes";
 import type { PlanCandidate } from "../capabilityCore/executionContract";
 import { generationShotEnvelopeOf } from "../shared/generationShotEnvelope";
-import { isCanvasRunId } from "./canvasShotRunIndex";
+import { isCanvasRunId, openCanvasRuns } from "./canvasShotRunIndex";
 import { buildProductionRunDraftSummary } from "./productionRunDraftSummary";
 
 type SnapshotEnvelope = {
@@ -659,15 +659,23 @@ export function createProductionRunRepository(deps: ProductionRunRepositoryDeps 
   /**
    * 制作 Run 的列表。**不列画布单镜 Run**（目录名 `canvas-` 开头）：它们一次 ↑ 一个，由画布队列那一行显示，
    * 打开项目也不逐个读（只读还没收尾的那几个，见 `canvasShotRunIndex.ts`）。按名字筛，不打开文件。
+   * 例外只有一种：结果未知、等人核对的那几笔（见 listRuns）。
    */
   function listRuns(projectId: string): ProductionRun[] {
-    const root = productionRunsRoot(projectDir(projectId));
+    const dir = projectDir(projectId);
+    const root = productionRunsRoot(dir);
     if (!fs.existsSync(root)) return [];
-    return fs.readdirSync(root, { withFileTypes: true })
+    const runs = fs.readdirSync(root, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !isCanvasRunId(entry.name))
       .map((entry) => read(projectId, entry.name))
-      .filter((run): run is ProductionRun => run !== null)
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      .filter((run): run is ProductionRun => run !== null);
+    // 画布单镜 Run 里**等人核对**的那几笔（结果未知）要进任务中心「要你处理」：节点上指去核对，核对 / 放行的入口在那里。
+    // 只看还挂着「没收尾」标记的（通常 0–几个），不打开别的画布 Run。
+    for (const open of openCanvasRuns(dir)) {
+      const run = read(projectId, open.runId);
+      if (run?.jobs.some((job) => job.status === "submission_unknown" || job.status === "reconciling")) runs.push(run);
+    }
+    return runs.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
   }
 
   function list(projectId: string): ProductionRunSummary[] {
