@@ -39,7 +39,23 @@ export function extractSection(body, heading) {
   return out.join('\n').replace(/<!--[\s\S]*?-->/g, '').trim()
 }
 
-/** 路径 + diff 新增行 → 类别（下限）与四类。files: [{ path, status }]，status 'A' 表示新增。 */
+/** unified diff 文本 → Map(文件路径 → 该文件的新增行文本)。AbortController 这类「看内容」的判据要按文件排除测试，不能整个 diff 一起扫。 */
+export function addedLinesByFile(diffText) {
+  const out = new Map()
+  for (const block of String(diffText || '').split(/^diff --git /m).slice(1)) {
+    const lines = block.split(/\r?\n/)
+    const header = /^a\/(.+?) b\/(.+)$/.exec(lines[0] ?? '')
+    if (!header) continue
+    out.set(header[2], lines.filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n'))
+  }
+  return out
+}
+
+/**
+ * 路径 + diff 新增行 → 类别（下限）与四类。files: [{ path, status, added? }]，status 'A' 表示新增；
+ * added = 该文件的新增行文本（见 addedLinesByFile）。AbortController 只在**非测试文件**的新增行里认——
+ * 测试里为了造取消场景写 new AbortController 不是「可打断」功能（#1038 误判）。files 都没带 added 时，退回整段 addedLines（旧用法）。
+ */
 export function inferRoutes(files, addedLines = '', table = loadRoutingTable()) {
   const hits = []
   const byCategory = new Map()
@@ -64,7 +80,11 @@ export function inferRoutes(files, addedLines = '', table = loadRoutingTable()) 
     }
   }
   const abort = table.abortSignal
-  if (abort && new RegExp(abort.pattern).test(addedLines)) add(abort.category, abort.legacy, '(diff 新增 AbortController)')
+  const perFile = files.some((file) => typeof file.added === 'string')
+  const scanned = perFile
+    ? files.filter((file) => typeof file.added === 'string' && !TEST_FILE.test(norm(file.path))).map((file) => file.added).join('\n')
+    : addedLines
+  if (abort && new RegExp(abort.pattern).test(scanned)) add(abort.category, abort.legacy, '(diff 新增 AbortController)')
   const classes = [...new Set(hits.map((hit) => hit.cls))]
   const categories = [...byCategory.entries()].map(([id, paths]) => ({ id, label: table.categories[id]?.label ?? id, paths: [...new Set(paths)] }))
   return { fourClass: classes.length > 0, classes, hits, categories }
@@ -241,7 +261,8 @@ export function checkProtectedScope(body, files, { packageRemovedLines = [], led
  * CI 与合并前扫描共用的整体判据（路由 + 规则与门岗范围）。
  * 路由部分受 effectiveFrom 宽限（旧 PR 只警告）；规则与门岗范围不吃宽限——#1032 这种回退正是旧分支带出来的。
  */
-export function evaluatePrJudgement({ body, files, addedLines = '', packageRemovedLines = [], ledgerRemovedIds = [], createdAt = null, table = loadRoutingTable() }) {
+export function evaluatePrJudgement({ body, files: rawFiles, addedLines = '', addedByFile = null, packageRemovedLines = [], ledgerRemovedIds = [], createdAt = null, table = loadRoutingTable() }) {
+  const files = addedByFile ? rawFiles.map((file) => ({ ...file, added: addedByFile.get(file.path) ?? '' })) : rawFiles
   const inferred = inferRoutes(files, addedLines, table)
   const routing = checkRouting(body, inferred, table)
   const enforced = routingEnforced(createdAt, table)

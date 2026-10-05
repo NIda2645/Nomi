@@ -16,7 +16,7 @@ import { fileURLToPath } from 'node:url'
 
 import { ESCAPE_LEDGER_FILE } from './escape-ledger-lib.mjs'
 import { resolvePullRequestBody } from './lib/prBody.mjs'
-import { evaluatePrJudgement, loadRoutingTable, toolGaps } from './pr-judgement-lib.mjs'
+import { addedLinesByFile, evaluatePrJudgement, loadRoutingTable, toolGaps } from './pr-judgement-lib.mjs'
 
 const repoRoot = process.env.PR_JUDGEMENT_REPO_ROOT || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const git = (args) => execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] })
@@ -64,8 +64,8 @@ function main() {
   const nameStatus = git(['diff', '--name-status', '--no-renames', '-z', base, 'HEAD']).split('\0').filter(Boolean)
   const files = []
   for (let i = 0; i + 1 < nameStatus.length; i += 2) files.push({ path: nameStatus[i + 1], status: nameStatus[i][0] })
-  const addedLines = git(['diff', '-U0', '--no-renames', base, 'HEAD', '--', 'src', 'electron'])
-    .split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n')
+  // 新增行按文件取（AbortController 只在非测试文件里认，#1038）
+  const addedByFile = addedLinesByFile(git(['diff', '-U0', '--no-renames', base, 'HEAD', '--', 'src', 'electron']))
   let packageRemovedLines = []
   if (files.some((file) => file.path === 'package.json')) {
     packageRemovedLines = git(['diff', '-U0', base, 'HEAD', '--', 'package.json']).split('\n').filter((line) => line.startsWith('-') && !line.startsWith('---')).map((line) => line.slice(1))
@@ -80,7 +80,7 @@ function main() {
     const after = new Set(ledgerIds(headText) ?? [])
     ledgerRemovedIds = before.filter((id) => !after.has(id))
   }
-  const result = evaluatePrJudgement({ body: pr.body, files, addedLines, packageRemovedLines, ledgerRemovedIds, createdAt: prCreatedAt() })
+  const result = evaluatePrJudgement({ body: pr.body, files, addedByFile, packageRemovedLines, ledgerRemovedIds, createdAt: prCreatedAt() })
   const categories = result.inferred.categories.map((category) => category.label)
   console.log(`PR 正文判据（正文取自 ${pr.source}）：路径推出的类别 = ${categories.length ? categories.join('、') : '（无）'}`)
   for (const line of [...result.routing.lines, ...result.scope.lines]) console.log(line)

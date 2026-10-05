@@ -9,6 +9,7 @@ import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 
 import {
+  addedLinesByFile,
   checkProtectedScope,
   checkRouting,
   checkRoutingCard,
@@ -207,4 +208,32 @@ test('端到端：临时 git 仓库里跑 CI 脚本——没勾分类 / 缺证�
 test('exclude：设计实验室（src/devlab）的 tsx 不算「改交互」；真界面照算', () => {
   assert.deepEqual(inferRoutes([M('src/devlab/designLab/Kit.tsx')], '', table).categories, [])
   assert.deepEqual(inferRoutes([M('src/workbench/Panel.tsx')], '', table).categories.map((c) => c.id), ['ui'])
+})
+
+test('可打断：AbortController 只在非测试文件的新增行里认；只出现在测试里不算四类（#1038 误判）', () => {
+  const diff = [
+    'diff --git a/electron/foo.test.ts b/electron/foo.test.ts',
+    '--- a/electron/foo.test.ts', '+++ b/electron/foo.test.ts', '@@ -0,0 +1 @@',
+    '+const signal = new AbortController().signal',
+    'diff --git a/tests/ux/loop.walk.mjs b/tests/ux/loop.walk.mjs',
+    '--- a/tests/ux/loop.walk.mjs', '+++ b/tests/ux/loop.walk.mjs', '@@ -0,0 +1 @@',
+    '+const c = new AbortController()',
+    'diff --git a/src/utils/format.ts b/src/utils/format.ts',
+    '--- a/src/utils/format.ts', '+++ b/src/utils/format.ts', '@@ -0,0 +1 @@',
+    '+export const f = 1',
+  ].join('\n')
+  const byFile = addedLinesByFile(diff)
+  assert.match(byFile.get('electron/foo.test.ts'), /AbortController/)
+  const files = [M('electron/foo.test.ts'), M('tests/ux/loop.walk.mjs'), M('src/utils/format.ts')].map((file) => ({ ...file, added: byFile.get(file.path) ?? '' }))
+  const onlyTests = inferRoutes(files, '', table)
+  assert.equal(onlyTests.fourClass, false)
+  assert.ok(!onlyTests.classes.includes('可打断'))
+  // 生产文件里新增 → 照样算
+  const prod = [...files, { ...M('src/workbench/ai/stream.ts'), added: '+const c = new AbortController()' }]
+  assert.ok(inferRoutes(prod, '', table).classes.includes('可打断'))
+  // 经整体判据入口（merge-preflight / CI 走的路径）同样不算
+  const judged = evaluatePrJudgement({ body: '随便', files: [M('electron/foo.test.ts'), M('src/utils/format.ts')], addedByFile: byFile, createdAt: '2026-10-08T00:00:00Z', table })
+  assert.equal(judged.inferred.fourClass, false)
+  // 旧用法（没有逐文件新增行、只给整段文本）保持不变
+  assert.ok(inferRoutes([M('src/utils/format.ts')], '+const c = new AbortController()', table).classes.includes('可打断'))
 })

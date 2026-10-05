@@ -18,6 +18,7 @@ import {
   checkProtectedScope,
   evaluatePrJudgement,
   extractSection,
+  addedLinesByFile,
   inferRoutes,
 } from './pr-judgement-lib.mjs'
 
@@ -195,7 +196,8 @@ export function main(argv = process.argv.slice(2)) {
     diff = ''
   }
   const addedLines = diff.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n')
-  const classification = classifyChange(files, addedLines)
+  const addedByFile = addedLinesByFile(diff)
+  const classification = classifyChange(files.map((file) => ({ ...file, added: addedByFile.get(file.path) ?? '' })), addedLines)
   const body = view.body ?? ''
 
   const slug = repo ?? (view.headRepositoryOwner?.login && view.headRepository?.name ? `${view.headRepositoryOwner.login}/${view.headRepository.name}` : null)
@@ -243,6 +245,7 @@ export function main(argv = process.argv.slice(2)) {
     body,
     files: statusFiles.map((file) => ({ path: file.path, status: file.status === 'added' ? 'A' : file.status })),
     addedLines,
+    addedByFile,
     packageRemovedLines,
     ledgerRemovedIds: ledger.removed,
     createdAt: argv.includes('--enforce') ? null : view.createdAt, // --enforce：假设路由规则已生效，看这个 PR 会不会红（回放用）
