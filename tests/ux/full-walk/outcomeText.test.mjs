@@ -129,30 +129,5 @@ describe('不谈钱：没花钱 / 免费 / 不计费 这类断言', () => {
     ]) expect(findLeaks(text).filter((leak) => leak.kind === 'price-wording'), text).toEqual([])
   })
 
-  // 付费确认卡 / 上传通道提示 / 付费验证说明归付费卡那条线：它们的文案「这一步会花钱 / 这家没有免费端点」是披露，不是断言，
-  // 等那条线改完再从这张表里拿掉（拿掉之后词典里再出现就红）。表里每一条都必须真的还命中——不命中说明它已经改好了，该删这一行。
-  const OWNED_BY_SPEND_CARD_LANE = Object.freeze([
-    'onboardingProviders.drawer.home.kieHint',
-    'onboardingProviders.keyOnly.probeCostPaid', 'onboardingProviders.keyOnly.probeCostPaidUnpriced', 'onboardingProviders.keyOnly.probeCostUnknown',
-    'generationCommon.production.checkpoint.subtitleWithReuse', 'generationCommon.production.checkpoint.note', 'generationCommon.production.checkpoint.noteWithBudget',
-    'runtime.capability.credentialProbeMessage',
-  ])
-  const flatOf = (node, prefix = '') => Object.entries(node).flatMap(([key, value]) => (typeof value === 'string' ? [[`${prefix}${key}`, value]] : value && typeof value === 'object' ? flatOf(value, `${prefix}${key}.`) : []))
-  // 设计实验室的样例串（fixture*）只在 devlab 里渲染，用户界面不出现（同上面「整本词典」那条的豁免）。
-  // 另一类豁免：词本身不是钱——导演模式画幅选项叫「Free / 自由」。
-  const NOT_MONEY = Object.freeze(['director.aspect.free'])
-  const isFixture = (key) => /(^|\.)fixture[A-Z]/.test(key) || NOT_MONEY.includes(key)
-
-  it.each(['zh-CN', 'en'])('%s：整本词典里除了登记在案的付费卡线文案，没有任何谈钱的断言', (locale) => {
-    const dictionaries = loadDictionaries()
-    const hits = flatOf(dictionaries[locale]).filter(([key]) => !isFixture(key) && !OWNED_BY_SPEND_CARD_LANE.includes(key))
-      .filter(([, value]) => NO_COST_CLAIMS[locale].test(value)).map(([key, value]) => `${key}: ${value.slice(0, 60)}`)
-    expect(hits, `${locale} 词典里还有谈钱的断言`).toEqual([])
-  })
-
-  it('登记表没有烂掉：表里每一条在词典里都还命中（改好了就该从表里删掉）', () => {
-    const dictionaries = loadDictionaries()
-    const stillHit = new Set(['zh-CN', 'en'].flatMap((locale) => flatOf(dictionaries[locale]).filter(([, value]) => NO_COST_CLAIMS[locale].test(value)).map(([key]) => key)))
-    for (const key of OWNED_BY_SPEND_CARD_LANE) expect(stillHit.has(key), `${key} 已经不命中了，从登记表里删掉`).toBe(true)
-  })
+  // 整本词典的扫描、白名单与「白名单没烂掉」已前移到 scripts/check-i18n-no-cost-claims.mjs（check:i18n 链里，本地 gates / pre-push 会跑）。
 })
