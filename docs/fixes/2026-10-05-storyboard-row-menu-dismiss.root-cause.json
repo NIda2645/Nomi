@@ -70,7 +70,7 @@
     "kind": "centralized-boundary",
     "enforcement_path": "src/workbench/creation/storyboard/shotRow/StoryboardShotRow.tsx",
     "invariant": "锚点浮层点外 / Esc 关闭",
-    "failure_mode": "pb12 的 ⑫ 检查记违反并写逃逸账本",
+    "failure_mode": "tests/ux/full-walk/catalog.mjs 里 sb-row-more 的用户预期（userExpectation）由 pb12 的 ⑫ 检查逐次对照，违反记逃逸账本",
     "exception_policy": "none",
     "strategy": "收编到现有浮层原语，不另写监听",
     "artifacts": [
