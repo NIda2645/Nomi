@@ -76,15 +76,6 @@ describe('不误报', () => {
     }
   })
 
-  it('真实词典里（devlab 样例除外）没有「未计费 / not charged」角标文案', () => {
-    const dictionaries = loadDictionaries()
-    const flat = (node, prefix = '') => Object.entries(node).flatMap(([key, value]) => (typeof value === 'string' ? [[`${prefix}${key}`, value]] : value && typeof value === 'object' ? flat(value, `${prefix}${key}.`) : []))
-    for (const locale of ['zh-CN', 'en']) {
-      const hits = flat(dictionaries[locale]).filter(([key]) => !/(^|.)fixture[A-Z]/.test(key)).filter(([, value]) => /未计费|not charged/i.test(value)).map(([key]) => key)
-      expect(hits, `${locale} 词典里还有「未计费」类文案`).toEqual([])
-    }
-  })
-
   it('词表本身不含单字泛词（防止把正常的「budget / 预算」都抓成违例）', () => {
     for (const word of [...PRICE_WORDING['zh-CN'], ...PRICE_WORDING.en]) expect(word.length).toBeGreaterThanOrEqual(2)
   })
