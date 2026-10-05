@@ -5,6 +5,7 @@ import crypto from 'node:crypto'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { makeIsolatedDirs, spawnMcpStdioClient, parseToolResult } from './_mcpJourney.mjs'
 import { measureMcpToolsListPayload, measureMcpToolsListPayloadByLocale } from '../../scripts/mcp-payload.mjs'
 
@@ -15,7 +16,7 @@ import { measureMcpToolsListPayload, measureMcpToolsListPayloadByLocale } from '
 // 三个锚全部派生自真相源（手抄版三次被有意扩容撞红：#337 波、#360 slice-3；教训见
 // docs/fixes/2026-09-02-stale-hand-copied-surface-baseline.root-cause.json）：
 // 名单 ← 源码目录 MCP_TOOL_NAMES；只读表 ← catalog annotations.readOnlyHint；载荷 ← 棘轮 json（check:mcp-payload 单一真相）。
-const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..')
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
 const BASELINE_PAYLOAD_BYTES = JSON.parse(fs.readFileSync(path.join(repoRoot, 'scripts', 'mcp-payload-baseline.json'), 'utf8')).maxBytes
 const { MCP_TOOL_NAMES } = tsxRequire('../../electron/capabilityCore/mcpProtocol.ts', import.meta.url)
 const { MCP_TOOL_RESOLVER } = tsxRequire('../../electron/capabilityCore/mcpToolCatalog.ts', import.meta.url)
@@ -140,11 +141,16 @@ async function main() {
     mcp.child.stdin.write('not-json' + String.fromCharCode(10))
     const afterGarbage = await mcp.rpc('ping', {}, 10_000)
     check(afterGarbage.result !== undefined && !mcp.childExited(), 'C5 a malformed line is skipped and the stdio server keeps answering')
+    // 超限后服务端按设计关连接、进程退出，我们这一侧再往它的 stdin 写就会收到 EPIPE——那正是「连接已关」的证据，
+    // 不是测试失败；不接住它，Node 会把这个流错误当未处理异常把整个走查进程打死（2026-10-05 CI 首跑就是这么红的）。
+    let stdinClosedByServer = false
+    mcp.child.stdin.on('error', (error) => { if (error?.code === 'EPIPE') stdinClosedByServer = true; else throw error })
     mcp.child.stdin.write('x'.repeat(11 * 1024 * 1024))
-    await new Promise((resolve) => setTimeout(resolve, 1_000))
+    for (let waited = 0; waited < 10_000 && !mcp.childExited(); waited += 100) await new Promise((resolve) => setTimeout(resolve, 100))
     // stderr 是**宿主协议面**（stdout 整条给了 JSON-RPC），所以断言连前缀一起钉。
     const errorLine = mcp.stderrText().split(String.fromCharCode(10)).find((line) => line.includes(MCP_TRANSPORT_ERROR_EVENT)) || ''
-    check(errorLine.includes('[nomi:mcp]'), 'C5 an oversized read buffer is reported on stderr and the connection is closed')
+    check(errorLine.includes('[nomi:mcp]'), 'C5 an oversized read buffer is reported on stderr')
+    check(Boolean(mcp.childExited()), `C5 the stdio server closes the connection and exits instead of buffering without bound (stdin EPIPE seen: ${stdinClosedByServer})`)
 
     console.log('MCP-L1 PASS: C1/C2/C3/C4/C5 green; C6 declaration green (change-source notification is covered by the A1 unit contract).')
   } finally {
