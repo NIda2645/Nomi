@@ -16,6 +16,8 @@ import { writeVerbs } from '../../../../electron/shared/agentCapabilities/verbs/
 import type { StoryboardRequestTarget } from '../../../../electron/shared/agentCapabilities/generationInvocationContext'
 import type { ProjectLeaseV2 } from '../../../../electron/capabilityCore/projectLease'
 import type { StoryboardPlan } from '../../generationCanvas/agent/storyboardPlan'
+import { addAnchor, addShot, updateShotPrompt } from '../../generationCanvas/agent/storyboardPlanEdits'
+import { patchStoryboardSubject } from '../../../../electron/shared/storyboard/storyboardSubjectAdapter'
 
 vi.mock('../../project/projectCanvasReadSurface', () => ({
   withProjectAction: (action: (value: unknown) => unknown) => action({
@@ -193,5 +195,73 @@ for (const { lang, t } of LANGS) {
       expect(planOf(designId).anchors[0]).toMatchObject({ description: t('红雨衣', 'Red raincoat') })
       expect(planOf(designId).shots[0].prompt).toBe(t('追逐', 'Chase'))
     })
+  })
+}
+
+// ── 类级矩阵：门表清单里每一扇「往方案里加行」的门，造出同一份「2 张参考卡 + 2 镜」的方案 ──
+// 门表（`node scripts/door-map.mjs nextStoryboardSubjectIds appendStoryboardSubjects ...`，根因合同 doors）：
+// Agent 一次起草、Agent 同一请求分两次起草、Agent 下一轮带 operationId 补、手建编辑器加锚加镜。
+// 对每一扇门核同三条不变量：镜号只数镜头（1..N）、锚的 id 不在镜号段里、「第 1 镜」（shot-1）落到第一个镜头。
+type Entrance = { id: string; build: (lang: (typeof LANGS)[number]) => Promise<string> }
+const ENTRANCES: Entrance[] = [
+  { id: 'agent-one-call', build: async ({ t }) => {
+    await lane().request('m-1')({ shots: [
+      { role: 'anchor', title: t('甲', 'A'), prompt: t('角色甲', 'Character A'), taskKind: 'text_to_image', candidate: img, storyboard: { kind: 'character', carrier: 'visual' } },
+      { role: 'anchor', title: t('乙', 'B'), prompt: t('场景乙', 'Scene B'), taskKind: 'text_to_image', candidate: img, storyboard: { kind: 'scene', carrier: 'visual' } },
+      { title: t('一', 'One'), prompt: t('第一镜', 'First shot'), taskKind: 'text_to_image', candidate: img },
+      { title: t('二', 'Two'), prompt: t('第二镜', 'Second shot'), taskKind: 'text_to_image', candidate: img },
+    ] })
+    return designs()[0].id
+  } },
+  { id: 'agent-same-request-two-calls', build: async ({ t }) => {
+    const turn = lane().request('m-2')
+    await turn({ shots: [
+      { role: 'anchor', title: t('甲', 'A'), prompt: t('角色甲', 'Character A'), taskKind: 'text_to_image', candidate: img, storyboard: { kind: 'character', carrier: 'visual' } },
+      { role: 'anchor', title: t('乙', 'B'), prompt: t('场景乙', 'Scene B'), taskKind: 'text_to_image', candidate: img, storyboard: { kind: 'scene', carrier: 'visual' } },
+    ] })
+    await turn({ shots: [
+      { title: t('一', 'One'), prompt: t('第一镜', 'First shot'), taskKind: 'text_to_image', candidate: img },
+      { title: t('二', 'Two'), prompt: t('第二镜', 'Second shot'), taskKind: 'text_to_image', candidate: img },
+    ] })
+    return designs()[0].id
+  } },
+  { id: 'agent-next-request-append', build: async ({ t }) => {
+    const { request } = lane()
+    await request('m-3')({ shots: [
+      { role: 'anchor', title: t('甲', 'A'), prompt: t('角色甲', 'Character A'), taskKind: 'text_to_image', candidate: img, storyboard: { kind: 'character', carrier: 'visual' } },
+      { role: 'anchor', title: t('乙', 'B'), prompt: t('场景乙', 'Scene B'), taskKind: 'text_to_image', candidate: img, storyboard: { kind: 'scene', carrier: 'visual' } },
+    ] })
+    const designId = designs()[0].id
+    await request('m-4')({ operationId: designId, shots: [
+      { title: t('一', 'One'), prompt: t('第一镜', 'First shot'), taskKind: 'text_to_image', candidate: img },
+      { title: t('二', 'Two'), prompt: t('第二镜', 'Second shot'), taskKind: 'text_to_image', candidate: img },
+    ] })
+    return designId
+  } },
+  { id: 'hand-made-editor', build: async ({ t }) => {
+    let value: StoryboardPlan = { title: 'hand', anchors: [], shots: [] }
+    value = addAnchor(addAnchor(value, 'character'), 'scene')
+    value = updateShotPrompt(addShot(value), 0, t('第一镜', 'First shot'))
+    value = updateShotPrompt(addShot(value), 1, t('第二镜', 'Second shot'))
+    const saved = useWorkbenchStore.getState().setStoryboardPlan(value, 'doc', undefined, true, 'user')!
+    return saved.id
+  } },
+]
+
+for (const lang of LANGS) {
+  describe(`[${lang.lang}] 矩阵：门表清单里每一扇门都守同三条不变量`, () => {
+    for (const entrance of ENTRANCES) {
+      it(`${entrance.id}：一份方案、镜号 1..2、锚不占号、shot-1 是第一个镜头`, async () => {
+        const designId = await entrance.build(lang)
+        expect(designs()).toHaveLength(1)
+        const value = planOf(designId)
+        expect(value.shots.map(shot => shot.index)).toEqual([1, 2])
+        expect(value.anchors).toHaveLength(2)
+        expect(value.anchors.every(anchor => !/^shot-\d+$/.test(anchor.id))).toBe(true)
+        const target = patchStoryboardSubject(value, 'shot-1', { prompt: 'x' })
+        expect('description' in target).toBe(false)
+        expect((target as { index: number }).index).toBe(1)
+      })
+    }
   })
 }
