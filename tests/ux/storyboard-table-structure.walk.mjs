@@ -255,6 +255,12 @@ async function walkLocale(locale) {
     const reach = await expectReachable(toolbar, '多选浮条')
     record(tag, 'toolbarReach', reach)
   })
+  await check(tag, '浮条里每个按钮都点得到、浮条没有横向滚动（英文「Delete」不被截成「Dele」）', async () => {
+    const overflow = await toolbar.evaluate((element) => element.scrollWidth - element.clientWidth)
+    record(tag, 'toolbarHorizontalOverflowPx', overflow)
+    if (overflow > 0) throw new Error(`浮条横向溢出 ${overflow}px`)
+    await expectReachable(toolbar.getByRole('button', { name: /删除|Delete/ }).first(), '浮条里的「删除已选」')
+  })
   record(tag, 'scrollTopAfterSelect', await scroller().evaluate((element) => Math.round(element.scrollTop)))
   await snap(tag, '03-selected-toolbar-visible')
   // 滚到中间再看一眼：sticky 的意思是「一直跟着」，不是「只在底部出现」。
@@ -296,6 +302,10 @@ async function walkLocale(locale) {
   await snap(tag, '05-last-row-use-as-menu')
   await win.keyboard.press('Escape')
   await win.waitForTimeout(250)
+  await check(tag, '「用作…」菜单按 Esc 没有关上', async () => {
+    const open = await win.locator('[data-storyboard-result-intake-menu]').count()
+    if (open > 0) throw new Error(`菜单还在（${open} 个）`)
+  })
   if (await win.locator('[data-storyboard-result-intake-menu]').count() > 0) {
     await useAsButton.click()
     await win.waitForTimeout(250)
@@ -311,6 +321,11 @@ async function walkLocale(locale) {
     })
     await snap(tag, '06-segment-menu')
     await win.keyboard.press('Escape')
+    await win.waitForTimeout(250)
+    await check(tag, '提示词片段菜单按 Esc 没有关上', async () => {
+      const open = await win.locator('[data-storyboard-prompt-menu]').count()
+      if (open > 0) throw new Error(`菜单还在（${open} 个）`)
+    })
   } else {
     failures.push(`${tag}：第 1 行没渲染出提示词片段（走查夹具失效，片段菜单没验到）`)
   }
