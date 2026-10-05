@@ -143,10 +143,19 @@ function readProviderAnswer(value: unknown): ProviderAnswer | null {
 }
 
 /**
+ * 「当场明确拒绝」的状态码名单——**只写这一处**。名单里每个码都是「对方看完请求、亲口说不、没建任务」：
+ * - 400 参数不对 / 内容审核不过；401 密钥无效；402 余额不足；403 无权限 / 被风控拒；404 模型或路径不存在；
+ * - 422 语义校验不过；429 限流（请求在入口被挡，没进队列、不扣费）。
+ * **刻意不在名单里**：408（上游可能收下之后才超时）、409（常见于「同一幂等键已受理」，即已经有一笔）、
+ * 425（Too Early，重放语义不明）以及其他 4xx——判错的代价是重复扣钱，一律按「结果未知」锁住。
+ */
+export const REJECTION_STATUS_CODES: ReadonlySet<number> = new Set([400, 401, 402, 403, 404, 422, 429]);
+
+/**
  * 第三档：「供应商当场明确拒绝了这次提交」——**确定没受理、没扣钱**（2026-10-05 用户拍板，发动机收敛第一刀 F3）。
  *
- * 只认一种证据：**收到了响应**，状态是 4xx，或是 2xx 但响应体是失败信封，并且响应里没有任务号。
- * 5xx、没收到响应、读响应读到一半断了，一律不在这里——它们仍是「结果未知」（判错成「拒绝」的代价是
+ * 只认一种证据：**收到了响应**，状态在 `REJECTION_STATUS_CODES` 名单里，或是 2xx 但响应体是失败信封，并且响应里没有任务号。
+ * 5xx、名单外的 4xx（408 / 409 / 425 等）、没收到响应、读响应读到一半断了，一律不在这里——它们仍是「结果未知」（判错成「拒绝」的代价是
  * 用户再点一次就是第二笔，所以只认对方亲口说了「不」的那一种）。
  *
  * 两台发动机、提交出口都只问这一个函数。设计卡：docs/plan/2026-10-05-engine-convergence-cut1-step12-design-card.md §4 F3。
@@ -155,7 +164,7 @@ export function providerExplicitlyRejected(error: unknown): boolean {
   return causeChain(error).some((node) => {
     const answer = readProviderAnswer(node.providerAnswer);
     if (!answer || answer.taskIdReturned) return false;
-    if (answer.httpStatus >= 400 && answer.httpStatus < 500) return true;
+    if (REJECTION_STATUS_CODES.has(answer.httpStatus)) return true;
     return answer.httpStatus >= 200 && answer.httpStatus < 300 && answer.envelopeFailure;
   });
 }

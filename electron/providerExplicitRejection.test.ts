@@ -19,8 +19,12 @@ describe("providerExplicitlyRejected：唯一判据", () => {
   const answered = (httpStatus: number, envelopeFailure = false, taskIdReturned = false) =>
     Object.assign(new Error("provider answered"), { providerAnswer: { httpStatus, envelopeFailure, taskIdReturned } });
 
-  it("4xx、没有任务号 → 明确拒绝", () => {
-    for (const status of [400, 401, 402, 403, 404, 409, 422, 429]) expect(providerExplicitlyRejected(answered(status)), String(status)).toBe(true);
+  it("名单内的 4xx（400/401/402/403/404/422/429）、没有任务号 → 明确拒绝，可再点", () => {
+    for (const status of [400, 401, 402, 403, 404, 422, 429]) expect(providerExplicitlyRejected(answered(status)), String(status)).toBe(true);
+  });
+
+  it("408 / 409 / 425 及其他 4xx → 结果未知（可能已受理 / 已有同键的一笔），不能当拒绝", () => {
+    for (const status of [408, 409, 410, 413, 418, 425, 451]) expect(providerExplicitlyRejected(answered(status)), String(status)).toBe(false);
   });
 
   it("2xx + 失败信封、没有任务号 → 明确拒绝；2xx 没有失败信封 → 不是", () => {
@@ -97,6 +101,11 @@ describe("引擎 A：真实 socket 上的 requestJson", () => {
     expect(providerExplicitlyRejected(error)).toBe(true);
   });
 
+  it("HTTP 409 / 408（真 socket）→ 结果未知，不是拒绝", async () => {
+    expect(providerExplicitlyRejected(await submitError(await vendorAnswering(json(409, { error: { message: "duplicate request" } }))))).toBe(false);
+    expect(providerExplicitlyRejected(await submitError(await vendorAnswering(json(408, { error: { message: "timeout" } }))))).toBe(false);
+  });
+
   it("HTTP 500 → 仍是结果未知", async () => {
     const error = await submitError(await vendorAnswering(json(500, { error: { message: "internal" } })));
     expect(providerExplicitlyRejected(error)).toBe(false);
@@ -143,6 +152,11 @@ describe("引擎 B：目录执行器", () => {
   it("HTTP 400 → 明确拒绝；HTTP 200 + 失败信封 → 明确拒绝", async () => {
     expect(providerExplicitlyRejected(await submitError(400, { error: { message: "bad prompt" } }))).toBe(true);
     expect(providerExplicitlyRejected(await submitError(200, { code: 1001, msg: "bad prompt" }))).toBe(true);
+  });
+
+  it("HTTP 409 / 408 → 结果未知，不是拒绝", async () => {
+    expect(providerExplicitlyRejected(await submitError(409, { error: { message: "already accepted" } }))).toBe(false);
+    expect(providerExplicitlyRejected(await submitError(408, { error: { message: "timeout" } }))).toBe(false);
   });
 
   it("HTTP 503 → 仍是结果未知；带了任务号的拒绝也不算", async () => {

@@ -324,6 +324,10 @@ export function createApprovalReceiptAuthority(deps: ApprovalReceiptAuthorityDep
   const randomId = deps.randomId ?? (() => crypto.randomUUID());
   const defaultTtlMs = deps.defaultTtlMs ?? 5 * 60_000;
   const receiptTtlMs = deps.receiptTtlMs ?? defaultTtlMs;
+  // 防御：收据比挑战先过期，同一次手势理论上能在挑战还活着时铸出第二张收据。生产两者同为 5 分钟走不到这里，但配置错了就直接拒绝。
+  if (!(receiptTtlMs >= defaultTtlMs)) {
+    throw new ReceiptScopeError("receiptTtlMs must be >= the challenge TTL (defaultTtlMs)");
+  }
 
   function readState(): ApprovalReceiptState {
     if (!fs.existsSync(deps.filePath)) return emptyState(keyId);
