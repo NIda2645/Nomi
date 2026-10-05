@@ -7,6 +7,7 @@ import { buildS1Template } from './s1SceneTemplates'
 import { scaledBounds } from '../directorSpace'
 import { evaluateSceneObjectPose } from '../evaluatedSceneObject'
 import type { DirectorScene } from '../directorTypes'
+import { normalizeDirectorProject } from '../directorProject'
 
 const shot = (subject: string): DirectorPlan['shots'][number] => ({ id: 's', window: [0, 4], transitionIn: 'cut', subject, size: '中景', angle: 'front', height: 'eye', move: { kind: 'static', speed: 'medium', easing: 'linear' } })
 const compile = (plan: Omit<DirectorPlan, 'version' | 'shots'> & { shots?: DirectorPlan['shots'] }) => {
@@ -80,5 +81,34 @@ describe('关系词 → 站位与朝向（一类东西一条规则）', () => {
         }
     }
     expect(outside).toEqual([])
+  })
+
+  it('拿在手里 = 人和东西挂在同一个携带分组下（编辑器父子关系），东西全程跟手；经编辑器规整往返父子关系不丢', () => {
+    const plan = (regressions as { source: string; plan: DirectorPlan }[]).find((item) => item.plan.actors.some((actor) => actor.placement.relation === 'on' && actor.placement.ref === 'qingyi_woman'))!.plan
+    const result = compileDirectorPlan(plan)
+    if (!result.ok) throw new Error(result.errors.join('; '))
+    const roundTrip = normalizeDirectorProject(JSON.parse(JSON.stringify(result.project)))
+    for (const project of [result.project, roundTrip]) {
+      const scene = project.scenes[0]
+      const letter = scene.objects.find((o) => o.id === 'actor:letter')!, woman = scene.objects.find((o) => o.id === 'actor:qingyi_woman')!
+      expect(letter.parentId).toBe('carry:actor:qingyi_woman')
+      expect(woman.parentId).toBe('carry:actor:qingyi_woman')
+      expect(scene.objects.find((o) => o.id === letter.parentId)?.type).toBe('group')
+      const gaps = [0, 3, 6, 9, 12].map((time) => {
+        const a = pose(scene, letter.id, time).position, b = pose(scene, woman.id, time).position
+        return Math.hypot(a.x - b.x, a.z - b.z)
+      })
+      expect(Math.max(...gaps) - Math.min(...gaps)).toBeLessThan(1e-6)
+      expect(Math.hypot(pose(scene, woman.id, 12).position.z - pose(scene, woman.id, 0).position.z)).toBeGreaterThan(1) // 她确实走了
+    }
+    expect(result.spatial.carried).toEqual([['actor:letter', 'carry:actor:qingyi_woman']])
+  })
+
+  it('手持物 near 一个人 = 他拿着（不是掉在他脚边的地上）', () => {
+    const scene = compile({ scene: { tags: [], environment: 'day', template: 'courtyard', setPieces: [] }, actors: [
+      { id: 'woman', kind: 'person', desc: 'woman', placement: { relation: 'at', ref: 's1-courtyard-ground' } },
+      { id: 'letter', kind: 'prop', desc: 'letter', placement: { relation: 'near', ref: 'woman' } },
+    ], blocking: [] })
+    expect(scene.objects.find((o) => o.id === 'actor:letter')?.parentId).toBe('carry:actor:woman')
   })
 })

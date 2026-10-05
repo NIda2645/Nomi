@@ -12,6 +12,7 @@ import {
 import type { DirectorCamera, DirectorObject, DirectorProject, Vec3, Waypoint } from '../directorTypes'
 import type { EvalShotSize } from '../../../../../../../electron/shared/director/vocab'
 import { evaluateEntityTransform } from '../trajectoryEval'
+import { evaluateSceneObjectPose } from '../evaluatedSceneObject'
 import { findActionEntry } from '../actionLibrary'
 import { lookAtAngles } from '../vec3'
 import {
@@ -21,7 +22,7 @@ import {
   type DirectorPlanShot,
 } from '../../../../../../../electron/shared/director/directorPlanSchema'
 import { actorBody, buildStage, resolveRef, type Stage } from './directorStage'
-import { clearOfSolids, destinationFor, resolvePlacement, yawToward, yawVector, type Placed } from './stageRelations'
+import { carryGroups, clearOfSolids, destinationFor, resolvePlacement, yawToward, yawVector, type Placed } from './stageRelations'
 
 const FPS = 30
 const v = (x = 0, y = 0, z = 0): Vec3 => ({ x, y, z })
@@ -60,14 +61,27 @@ function reflectAcrossAxis(point: Vec3, a: Vec3, b: Vec3): Vec3 {
   const projection = { x: a.x + t * dx, y: point.y, z: a.z + t * dz }
   return v(2 * projection.x - point.x, point.y, 2 * projection.z - point.z)
 }
-function positionAt(object: DirectorObject, time: number): Vec3 {
-  return evaluateEntityTransform(object, time).position
+/** 世界姿态（含父链：被拿着的东西、拿着东西的人都挂在携带分组下）。 */
+function poseAt(objects: readonly DirectorObject[], object: DirectorObject, time: number): { position: Vec3; yaw: number } {
+  const pose = evaluateSceneObjectPose(objects, object.id, time)
+  if (pose) return { position: pose.position, yaw: pose.yaw }
+  const local = evaluateEntityTransform(object, time)
+  return { position: local.position, yaw: local.rotation.y }
+}
+function positionAt(objects: readonly DirectorObject[], object: DirectorObject, time: number): Vec3 {
+  return poseAt(objects, object, time).position
 }
 /** 主体身上的瞄准点：锚点是主体的局部偏移（计划契约：相对演员），随主体朝向转——和测量按对象姿态求锚点同一个约定。 */
-function aimAt(subject: DirectorObject, time: number, offset: Vec3): Vec3 {
-  const pose = evaluateEntityTransform(subject, time)
-  const yaw = (pose.rotation.y * Math.PI) / 180
+function aimAt(objects: readonly DirectorObject[], subject: DirectorObject, time: number, offset: Vec3): Vec3 {
+  const pose = poseAt(objects, subject, time)
+  const yaw = (pose.yaw * Math.PI) / 180
   return v(pose.position.x + offset.x * Math.cos(yaw) + offset.z * Math.sin(yaw), pose.position.y + offset.y, pose.position.z - offset.x * Math.sin(yaw) + offset.z * Math.cos(yaw))
+}
+/** 带着这个东西走的那一层（携带分组，或它自己）：运动轨迹住在这里。 */
+function motionCarrier(objects: readonly DirectorObject[], object: DirectorObject): DirectorObject {
+  let current = object
+  for (let depth = 0; current.parentId && depth < 8; depth += 1) current = objects.find((item) => item.id === current.parentId) ?? current
+  return current
 }
 
 export type DirectorCompileIssue = {
@@ -107,10 +121,11 @@ function actorObject(actor: DirectorPlanActor, plan: DirectorPlan, position: Vec
 }
 
 /** 演员按关系词落到舞台站位（关系解析住 stageRelations）；落好就登记进舞台，后面的演员和走位都能以他为参照。 */
-function placeActors(plan: DirectorPlan, stage: Stage): { objects: DirectorObject[]; issues: DirectorCompileIssue[] } {
+function placeActors(plan: DirectorPlan, stage: Stage): { objects: DirectorObject[]; issues: DirectorCompileIssue[]; holds: Map<string, string> } {
   const issues: DirectorCompileIssue[] = [],
     objects: DirectorObject[] = [],
-    placed: Placed[] = []
+    placed: Placed[] = [],
+    holds = new Map<string, string>()
   const slots = new Map<string, number>()
   for (const actor of plan.actors) {
     const body = actorBody(actor, plan)
@@ -124,6 +139,7 @@ function placeActors(plan: DirectorPlan, stage: Stage): { objects: DirectorObjec
       const placement = resolvePlacement(stage, object, body.role, actor.placement.relation, ref, slot, placed)
       object.position = placement.position
       facing = placement.facing
+      if (placement.heldBy) holds.set(object.id, placement.heldBy)
       if (placement.adjusted) issues.push({ kind: 'overlap', objectId: actor.id, message: `moved ${actor.id} out of a solid` })
     }
     object.rotation = v(0, facing, 0)
@@ -133,7 +149,7 @@ function placeActors(plan: DirectorPlan, stage: Stage): { objects: DirectorObjec
     stage.refs.set(actor.id, thing)
     objects.push(object)
   }
-  return { objects, issues }
+  return { objects, issues, holds }
 }
 
 function applyBlocking(
@@ -149,10 +165,10 @@ function applyBlocking(
     const start = action.window[0],
       end = Math.min(duration, action.window[1]),
       target = resolveRef(stage, action.target)
-    const from = positionAt(actor, start)
+    const from = positionAt(objects, actor, start)
     const facing = evaluateEntityTransform(actor, start).rotation.y
-    const others = objects.filter((item) => item.id !== actor.id).map((item) => ({ object: item, position: positionAt(item, end) }))
-    const targetAt = target ? positionAt(target.object, end) : undefined
+    const others = objects.filter((item) => item.id !== actor.id).map((item) => ({ object: item, position: positionAt(objects, item, end) }))
+    const targetAt = target ? positionAt(objects, target.object, end) : undefined
     // 走位终点由舞台解析：走到目标的站位，站位上有人就停在那人跟前（面对他）；落脚点留在出发点的地面高度
     let to = from,
       startYaw = facing,
@@ -243,6 +259,7 @@ function angleOffset(angle: DirectorPlanShot['angle']): number {
 }
 
 function solveCamera(
+  objects: readonly DirectorObject[],
   shot: DirectorPlanShot,
   subject: DirectorObject,
   previous: Vec3 | undefined,
@@ -271,16 +288,16 @@ function solveCamera(
             ? 4.2
             : subject.position.y + (subject.type === 'character' ? 1.1 : 0.8)
   const height = requestedHeight
-  const subjectStart = positionAt(subject, start),
-    subjectEndPosition = positionAt(subject, end)
+  const subjectStart = positionAt(objects, subject, start),
+    subjectEndPosition = positionAt(objects, subject, end)
   const aimY = subject.type === 'character' && !['远景', '全景'].includes(shot.size) ? 1.5 : 1.2
   const aimOffset =
     anchor ??
     (subject.type === 'character'
       ? { offset: v(0, aimY, 0), size: bounds.size }
       : { offset: v(0, bounds.center.y, 0), size: bounds.size })
-  const target = aimAt(subject, start, aimOffset.offset)
-  const subjectEndTarget = aimAt(subject, end, aimOffset.offset)
+  const target = aimAt(objects, subject, start, aimOffset.offset)
+  const subjectEndTarget = aimAt(objects, subject, end, aimOffset.offset)
   const endAngle =
     shot.move.kind === 'orbit_left' || shot.move.kind === 'arc_left'
       ? azimuth - (shot.move.amount ?? (shot.move.kind.startsWith('arc') ? 45 : 90))
@@ -315,7 +332,7 @@ function solveCamera(
   if (shot.move.kind === 'track_left' || shot.move.kind === 'track_right')
     endPosition = add(endPosition, v(shot.move.kind === 'track_left' ? -trackAmount : trackAmount, 0, 0))
   let targetEnd = target
-  if (shot.move.kind === 'follow' && subject.motionTrajectory?.length) {
+  if (shot.move.kind === 'follow' && motionCarrier(objects, subject).motionTrajectory?.length) {
     const delta = sub(subjectEndPosition, subjectStart)
     endPosition = add(endPosition, delta)
     targetEnd = subjectEndTarget
@@ -383,8 +400,8 @@ function constrainCameraPath(
     const pose = evaluateEntityTransform(camera, time)
     let point = { ...pose.position }
     const original = { ...point }
-    const a = characters[0] && positionAt(characters[0], time)
-    const b = characters[1] && positionAt(characters[1], time)
+    const a = characters[0] && positionAt(objects, characters[0], time)
+    const b = characters[1] && positionAt(objects, characters[1], time)
     const axisSide = (candidate: Vec3) => a && b
       ? (b.x - a.x) * (candidate.z - a.z) - (b.z - a.z) * (candidate.x - a.x) : 0
     const sign = Math.sign(axisSide(point))
@@ -392,7 +409,7 @@ function constrainCameraPath(
     if (a && b && sign && desiredSign.value !== sign) point = reflectAcrossAxis(point, a, b)
     for (const object of objects) {
       if (!object.visible || object.isAuxiliary || object.type === 'plane') continue
-      const origin = positionAt(object, time)
+      const origin = positionAt(objects, object, time)
       const box = scaledBounds(object.type, object.scale)
       const center = add(origin, box.center)
       const half = v(box.size.x / 2 + 0.08, box.size.y / 2 + 0.08, box.size.z / 2 + 0.08)
@@ -405,7 +422,7 @@ function constrainCameraPath(
     }
     const changed = Math.hypot(point.x - original.x, point.y - original.y, point.z - original.z) > 1e-6
     return {
-      ...wp(`${camera.id}/frame:${frame}`, point, aimAt(subject, time, aimOffset), time, pose.fov ?? camera.fov),
+      ...wp(`${camera.id}/frame:${frame}`, point, aimAt(objects, subject, time, aimOffset), time, pose.fov ?? camera.fov),
       ...(changed ? {} : { yaw: pose.rotation.y, pitch: pose.rotation.x, roll: pose.rotation.z }),
       clipId: camera.trajectoryClips?.[0]?.id,
     }
@@ -443,6 +460,8 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
   const issues: DirectorCompileIssue[] = [...stage.issues, ...placed.issues]
   applyBlocking(plan, stage, scene.objects, duration, issues)
   ensureCharacterActionCoverage(scene.objects, duration)
+  // 拿在手里的东西挂到人身上：编辑器现成的父子关系（父级只能是分组），人和东西一起挂在携带分组下，轨迹由分组承载
+  scene.objects.push(...carryGroups(scene.objects, placed.holds))
   const cameras: DirectorCamera[] = []
   let previous: Vec3 | undefined
   const axisSign = { value: 0 }
@@ -450,14 +469,15 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
     const root = shot.subject.split('.')[0],
       subject = actorObjects.find((o) => o.id === actorMap[root])
     if (!subject) continue
-    if (shot.move.kind === 'follow' && !subject.motionTrajectory?.length) {
+    const mover = motionCarrier(scene.objects, subject)
+    if (shot.move.kind === 'follow' && !mover.motionTrajectory?.length) {
       const start = shot.window[0],
         end = shot.window[1]
-      subject.motionTrajectory = [
-        entityWp(`${subject.id}-follow-start`, subject.position, start),
-        entityWp(`${subject.id}-follow-end`, add(subject.position, v(2, 0, 0)), end),
+      mover.motionTrajectory = [
+        entityWp(`${mover.id}-follow-start`, mover.position, start, mover.rotation.y),
+        entityWp(`${mover.id}-follow-end`, add(mover.position, v(2, 0, 0)), end, mover.rotation.y),
       ]
-      subject.trajectoryClips = [...(subject.trajectoryClips ?? []), clip(`${subject.id}-follow`, start, end)]
+      mover.trajectoryClips = [...(mover.trajectoryClips ?? []), clip(`${mover.id}-follow`, start, end)]
     }
     const part = shot.subject.split('.')[1]
     const anchorValue = part ? plan.actors.find((actor) => actor.id === root)?.anchors?.[part] : undefined
@@ -465,6 +485,7 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
       ? { offset: v(anchorValue.x ?? 0, anchorValue.y ?? 0.9, anchorValue.z ?? 0), size: v(0.18, 0.18, 0.18) }
       : undefined
     const camera = solveCamera(
+      scene.objects,
       shot,
       subject,
       shot.transitionIn === 'continuous' ? previous : undefined,
@@ -503,9 +524,8 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
         ? [{ cameraId: `shot:${shot.id}/camera`, subjectId, window: shot.window as [number, number] }]
         : []
     }),
-    carried: plan.actors
-      .filter((actor) => actor.placement.relation === 'on' && actorMap[actor.placement.ref])
-      .map((actor) => [actorMap[actor.id], actorMap[actor.placement.ref]] as [string, string]),
+    // 携带物 → 带着它走的那一层（携带分组）：物理判据量「东西和带它的人是否一起走」
+    carried: [...placed.holds].map(([item]) => [item, motionCarrier(scene.objects, scene.objects.find((object) => object.id === item)!).id] as [string, string]),
   }
   return { ok: true, project, actorMap, anchors, issues, duration, spatial }
 }

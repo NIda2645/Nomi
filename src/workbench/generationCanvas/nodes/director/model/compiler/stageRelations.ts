@@ -2,7 +2,7 @@
  * [INPUT]: directorStage 的 Stage / StageThing（舞台：种类、角色、站位、可站区域）、vocab 的 DIRECTOR_RELATION_SPACE（关系词的空间含义）、
  *          directorSpace（包围盒、「底 / 中心 → 原点」换算）
  * [OUTPUT]: 对外提供 resolvePlacement（一个东西按关系词落到哪、朝哪）、destinationFor（走位终点：走到站位 / 走到某人跟前）、
- *          clearOfSolids（落脚点不进实心物体）、yawToward / yawVector（朝向换算）
+ *          clearOfSolids（落脚点不进实心物体）、carryGroups（拿在手里 = 人和东西挂在同一个携带分组下）、yawToward / yawVector（朝向换算）
  * [POS]: 舞台模型的关系解析：关系词按参照物的舞台角色一次性解析成站位与朝向。全部规则按「一类东西」写（地面 / 结构 / 家具 / 演员 / 手持物），
  *        不按「谁和谁」写特例；新组合（人-门、人-桌、车-车）走同一条公式。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
@@ -68,10 +68,11 @@ export function resolvePlacement(stage: Stage, body: DirectorObject, role: Stage
   const space = DIRECTOR_RELATION_SPACE[relation]
   const refPosition = placed.find((item) => item.object.id === ref.objectId)?.position ?? ref.object.position
   const c = centerOf(ref.object, refPosition)
-  if (space.frame === 'support') {
-    if (isPerson(ref)) return { position: v(refPosition.x, originYForCenter(body.type, body.scale, HELD_CENTER_HEIGHT), refPosition.z), facing: ref.facing, heldBy: ref.objectId, adjusted: false }
+  // 手持物和人「在一起」（on / at / near 一个人）= 拿在他手里；任何东西 on 一个人也一样
+  if (isPerson(ref) && (space.frame === 'support' || (role === 'handheld' && space.frame === 'mark')))
+    return { position: v(refPosition.x, originYForCenter(body.type, body.scale, HELD_CENTER_HEIGHT), refPosition.z), facing: ref.facing, heldBy: ref.objectId, adjusted: false }
+  if (space.frame === 'support')
     return { position: v(c.x, originYForBottom(body.type, body.scale, topOf(ref.object, refPosition)), c.z), facing: ref.facing, adjusted: false }
-  }
   let at: { x: number; z: number }
   let facing = ref.facing
   if (space.frame === 'mark' && ref.role !== 'performer') {
@@ -178,4 +179,39 @@ export function destinationFor(stage: Stage, mover: DirectorObject, from: Vec3, 
   const point = v(c.x + dir.x * distance, from.y, c.z + dir.z * distance)
   const position = settle(stage, mover, point, others, { x: from.x, z: from.z })
   return { position, facing: yawToward(position, c) }
+}
+
+// 手的位置（持有者局部坐标，米）：身前偏右、离地 1m——和计划里常写的 hand 锚点同一处
+const HAND = { x: 0.3, z: 0.25 }
+/**
+ * 拿在手里：用编辑器现成的父子关系。编辑器的不变量是「父级只能是分组」（normalizeDirectorProject 会剥掉非分组父级），
+ * 所以人和东西一起挂到一个携带分组下：分组承载人的落点、朝向与走位轨迹，人在分组原点，东西在手的位置——东西跟着人走，不另写跟随轨迹。
+ * holds：携带物对象 id → 持有者对象 id。返回新建的分组（调用方放进工程）。
+ */
+export function carryGroups(objects: DirectorObject[], holds: ReadonlyMap<string, string>): DirectorObject[] {
+  const groups: DirectorObject[] = []
+  for (const holderId of new Set(holds.values())) {
+    const holder = objects.find((object) => object.id === holderId)
+    if (!holder || holder.parentId) continue
+    const group: DirectorObject = {
+      id: `carry:${holder.id}`, name: holder.name, type: 'group', position: { ...holder.position }, rotation: { ...holder.rotation }, scale: v(1, 1, 1),
+      visible: true, locked: false, isAuxiliary: false, motionTrajectory: holder.motionTrajectory, trajectoryClips: holder.trajectoryClips,
+    }
+    holder.parentId = group.id
+    holder.position = v(0, holder.position.y, 0)
+    holder.rotation = v()
+    delete holder.motionTrajectory
+    delete holder.trajectoryClips
+    for (const [itemId, owner] of holds) {
+      const item = objects.find((object) => object.id === itemId)
+      if (!item || owner !== holderId) continue
+      item.parentId = group.id
+      item.position = v(HAND.x, originYForCenter(item.type, item.scale, HELD_CENTER_HEIGHT), HAND.z)
+      item.rotation = v()
+      delete item.motionTrajectory
+      delete item.trajectoryClips
+    }
+    groups.push(group)
+  }
+  return groups
 }
