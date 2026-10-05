@@ -255,7 +255,7 @@ describe("MCP semantic generation planning journey", () => {
     await harness.call(3, "tools/call", { name: "nomi_operation_plan", arguments: { leaseHandle: lease, operationId, patch: { mode: "image-to-image", references: [{ assetId: "asset-1", contentHash: "hash-1", version: 1 }], parameters: { aspectRatio: "16:9", seed: 9 } } } });
     const preview = await harness.call(4, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
     expect(preview.result).toBeTruthy();
-    expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "image-to-image" } });
+    expect(repository.read("project-1", operationId!)!.generationPlan).toMatchObject({ state: "draft", candidate: { revision: 2, mode: "image-to-image" } });
     expect(runTask).not.toHaveBeenCalled();
     // 面收敛：nomi_operation_preview 工具在 catalog 层路由到原内部 method 字面量 nomi_preview_execution（handler 不变）。
     expect(harness.invoke).toHaveBeenCalledWith("nomi_preview_execution", expect.objectContaining({ operationId }));
@@ -293,12 +293,12 @@ describe("MCP semantic generation planning journey", () => {
       await harness.call(13 + index * 2, "tools/call", { name: "nomi_operation_plan", arguments: { leaseHandle: lease, operationId, patch } });
       const preview = await harness.call(14 + index * 2, "tools/call", { name: "nomi_operation_preview", arguments: { leaseHandle: lease, operationId } });
       expect(preview.result).toBeTruthy();
-      expect(repository.read("project-1", operationId!).generationPlan).toMatchObject({ state: "draft", candidate: patch });
+      expect(repository.read("project-1", operationId!)!.generationPlan).toMatchObject({ state: "draft", candidate: patch });
       const previewText = (preview.result as { content?: Array<{ text?: string }> }).content?.[0]?.text;
       const previewPayload = JSON.parse(previewText ?? "{}");
       expect(previewPayload.contract).toMatchObject({ providerId: patch.providerId, mode: patch.mode, contractHash: expect.any(String) });
     }
-    expect(repository.read("project-1", operationId!).generationPlan?.candidate.revision).toBe(3);
+    expect(repository.read("project-1", operationId!)!.generationPlan?.candidate.revision).toBe(3);
     expect(context.runTask).not.toHaveBeenCalled();
   });
 
@@ -446,7 +446,7 @@ describe("MCP semantic generation planning journey", () => {
     const seedanceContext = contextPayload.videoModels?.find((model) => model.modelId === "doubao-seedance-2.0");
     expect(seedanceContext).toMatchObject({ modelId: "doubao-seedance-2.0", archetypeId: "seedance-2-apimart" });
     expect(seedanceContext?.variants.map((variant) => variant.id)).toEqual(expect.arrayContaining(["standard", "fast", "mini"]));
-    const resolutionOptions = (modes: Array<{ parameters: Array<{ key: string; options?: Array<{ value: unknown }> }> }>) => modes.find((mode) => mode.id === "omni")?.parameters.find((parameter) => parameter.key === "resolution")?.options?.map((option) => option.value);
+    const resolutionOptions = (modes: Array<{ id: string; parameters: Array<{ key: string; options?: Array<{ value: unknown }> }> }>) => modes.find((mode) => mode.id === "omni")?.parameters.find((parameter) => parameter.key === "resolution")?.options?.map((option) => option.value);
     // 顶层模式 = 不传 variantId 时真正会跑的那个变体（默认 Fast）的参数面。2026-09-26 之前这里是 standard 的
     // （目录基础行被反推成 standard），而卡上显示 Fast——模型读到的参数表与实际派发的不是同一档。
     expect(resolutionOptions(seedanceContext?.modes ?? [])).toEqual(["480p", "720p"]);
