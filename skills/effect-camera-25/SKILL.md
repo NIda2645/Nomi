@@ -41,4 +41,4 @@ metadata:
 
 Hard cut to black, hold one beat, resolve on the next scene
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep any recurring subject’s identity, appearance, and clothing consistent across the transition. Allow the setting, time, and lighting to change in the next scene as described; change only the cut-to-black transition.

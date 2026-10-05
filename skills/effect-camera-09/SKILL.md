@@ -43,4 +43,4 @@ metadata:
 
 Hard backlight, {主体} rendered as a near-black silhouette, bright rim only
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep the subject’s identity, clothing, pose, setting, composition, and color palette unchanged. Deliberately change the lighting into the hard backlight and near-black silhouette described here.

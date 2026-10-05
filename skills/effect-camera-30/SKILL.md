@@ -43,4 +43,4 @@ metadata:
 
 Top-down overhead on a pattern/maze, {主体} tiny within it
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep the pattern or maze geometry, the subject’s identity and placement, lighting, color, and continuity unchanged. Change only the top-down overhead viewpoint and scale described here.

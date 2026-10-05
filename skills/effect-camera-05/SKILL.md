@@ -43,4 +43,4 @@ metadata:
 
 Low angle looking up at the standing {主体} against the sky, slow tilt up
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep the standing subject’s identity, appearance, clothing, sky setting, lighting, color, and continuity unchanged. Change only the low-angle view and slow tilt described here.

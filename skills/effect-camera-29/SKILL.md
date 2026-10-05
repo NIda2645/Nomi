@@ -43,4 +43,4 @@ metadata:
 
 Detached locked-off observer, no involvement, {主体} framed coldly
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep the framed subject’s identity, appearance, clothing, setting, lighting, color, and continuity unchanged. Change only the locked-off observer framing described here; do not add camera involvement.

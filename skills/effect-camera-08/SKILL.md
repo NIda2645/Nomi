@@ -41,4 +41,4 @@ metadata:
 
 Tilt-shift, a shallow band of focus across a wide scene, top and bottom blurred
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep every subject’s identity, appearance, clothing, setting, composition, lighting, color, and continuity unchanged. Change only the tilt-shift focus band and blur described here.

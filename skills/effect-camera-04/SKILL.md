@@ -43,4 +43,4 @@ metadata:
 
 Smooth dolly tracking behind the walking {主体}, steady, matching pace
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep the walking subject’s identity, appearance, clothing, setting, lighting, color, and continuity unchanged. Change only the tracking path and matching pace described here.

@@ -43,4 +43,4 @@ metadata:
 
 High overhead looking straight down, {主体} small within a larger pattern
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep the subject’s identity, appearance, clothing, the larger pattern, lighting, color, and continuity unchanged. Change only the overhead viewpoint and scale described here.

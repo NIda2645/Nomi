@@ -4948,7 +4948,7 @@
       },
       "repositoryPath": "skills/effect-camera-01",
       "nomiTools": [],
-      "body": "Slow drift across an empty {场景}, no subject in frame; hold, then the next shot opens on a matching color/tone\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Slow drift across an empty {场景}, no subject in frame; hold, then the next shot opens on a matching color/tone\n\nKeep the frame empty and preserve the scene identity, color/tone, and continuity; do not add a person or subject. Change only the drift, hold, and matching transition described here."
     },
     {
       "name": "effect-camera-02",
@@ -4986,7 +4986,7 @@
       },
       "repositoryPath": "skills/effect-camera-02",
       "nomiTools": [],
-      "body": "Long-lens over-the-shoulder, foreground shoulder soft, focus on the far face, shallow depth of field\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Long-lens over-the-shoulder, foreground shoulder soft, focus on the far face, shallow depth of field\n\nKeep every person’s identity, appearance, clothing, setting, lighting, color, and continuity unchanged. Change only the over-the-shoulder framing, lens, and focus described here."
     },
     {
       "name": "effect-camera-03",
@@ -5029,7 +5029,7 @@
       },
       "repositoryPath": "skills/effect-camera-03",
       "nomiTools": [],
-      "body": "Extreme close-up on {hands/eyes}, micro-movement only, a tremor / a tightening grip\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Extreme close-up on {hands/eyes}, micro-movement only, a tremor / a tightening grip\n\nKeep the referenced hands or eyes, their identity and appearance, the setting, lighting, color, and continuity unchanged. Change only the extreme close-up and the tiny tremor or grip movement described here."
     },
     {
       "name": "effect-camera-04",
@@ -5072,7 +5072,7 @@
       },
       "repositoryPath": "skills/effect-camera-04",
       "nomiTools": [],
-      "body": "Smooth dolly tracking behind the walking {主体}, steady, matching pace\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Smooth dolly tracking behind the walking {主体}, steady, matching pace\n\nKeep the walking subject’s identity, appearance, clothing, setting, lighting, color, and continuity unchanged. Change only the tracking path and matching pace described here."
     },
     {
       "name": "effect-camera-05",
@@ -5115,7 +5115,7 @@
       },
       "repositoryPath": "skills/effect-camera-05",
       "nomiTools": [],
-      "body": "Low angle looking up at the standing {主体} against the sky, slow tilt up\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Low angle looking up at the standing {主体} against the sky, slow tilt up\n\nKeep the standing subject’s identity, appearance, clothing, sky setting, lighting, color, and continuity unchanged. Change only the low-angle view and slow tilt described here."
     },
     {
       "name": "effect-camera-06",
@@ -5158,7 +5158,7 @@
       },
       "repositoryPath": "skills/effect-camera-06",
       "nomiTools": [],
-      "body": "High overhead looking straight down, {主体} small within a larger pattern\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "High overhead looking straight down, {主体} small within a larger pattern\n\nKeep the subject’s identity, appearance, clothing, the larger pattern, lighting, color, and continuity unchanged. Change only the overhead viewpoint and scale described here."
     },
     {
       "name": "effect-camera-07",
@@ -5201,7 +5201,7 @@
       },
       "repositoryPath": "skills/effect-camera-07",
       "nomiTools": [],
-      "body": "Slow horizontal pan across a wide {场景}, revealing its full scale\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Slow horizontal pan across a wide {场景}, revealing its full scale\n\nKeep the scene identity, spatial layout, lighting, color, and continuity unchanged. Change only the horizontal pan and the portion of the scene revealed described here."
     },
     {
       "name": "effect-camera-08",
@@ -5239,7 +5239,7 @@
       },
       "repositoryPath": "skills/effect-camera-08",
       "nomiTools": [],
-      "body": "Tilt-shift, a shallow band of focus across a wide scene, top and bottom blurred\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Tilt-shift, a shallow band of focus across a wide scene, top and bottom blurred\n\nKeep every subject’s identity, appearance, clothing, setting, composition, lighting, color, and continuity unchanged. Change only the tilt-shift focus band and blur described here."
     },
     {
       "name": "effect-camera-09",
@@ -5282,7 +5282,7 @@
       },
       "repositoryPath": "skills/effect-camera-09",
       "nomiTools": [],
-      "body": "Hard backlight, {主体} rendered as a near-black silhouette, bright rim only\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Hard backlight, {主体} rendered as a near-black silhouette, bright rim only\n\nKeep the subject’s identity, clothing, pose, setting, composition, and color palette unchanged. Deliberately change the lighting into the hard backlight and near-black silhouette described here."
     },
     {
       "name": "effect-camera-10",
@@ -5325,7 +5325,7 @@
       },
       "repositoryPath": "skills/effect-camera-10",
       "nomiTools": [],
-      "body": "Tight handheld POV behind the running {主体}, frame jolting, lagging half a step\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Tight handheld POV behind the running {主体}, frame jolting, lagging half a step\n\nKeep the running subject’s identity, appearance, clothing, setting, lighting, color, and continuity unchanged. Change only the handheld POV, jolts, and half-step lag described here."
     },
     {
       "name": "effect-camera-11",
@@ -5368,7 +5368,7 @@
       },
       "repositoryPath": "skills/effect-camera-11",
       "nomiTools": [],
-      "body": "Extreme slow motion on the instant of {impact/shatter}, debris suspended mid-air\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Extreme slow motion on the instant of {impact/shatter}, debris suspended mid-air\n\nKeep the subjects, impact or shatter event, setting, lighting, color, and continuity unchanged. Change only the playback speed and suspended-debris timing described here."
     },
     {
       "name": "effect-camera-12",
@@ -5406,7 +5406,7 @@
       },
       "repositoryPath": "skills/effect-camera-12",
       "nomiTools": [],
-      "body": "Fast time-lapse, clouds and shadows racing, light shifting over a near-static frame\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Fast time-lapse, clouds and shadows racing, light shifting over a near-static frame\n\nKeep the scene identity, composition, subject placement, color palette, and continuity unchanged. Allow the clouds, shadows, and light to shift only as the time-lapse described here."
     },
     {
       "name": "effect-camera-13",
@@ -5449,7 +5449,7 @@
       },
       "repositoryPath": "skills/effect-camera-13",
       "nomiTools": [],
-      "body": "Rack focus from the foreground {object} to the figure behind it\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Rack focus from the foreground {object} to the figure behind it\n\nKeep the foreground object and background figure, their identity and appearance, setting, lighting, color, and continuity unchanged. Change only which depth plane is in focus as described here."
     },
     {
       "name": "effect-camera-14",
@@ -5793,7 +5793,7 @@
       },
       "repositoryPath": "skills/effect-camera-21",
       "nomiTools": [],
-      "body": "One continuous take, no cut, camera follows {主体} through the space\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "One continuous take, no cut, camera follows {主体} through the space\n\nKeep every subject’s identity, appearance, clothing, setting, lighting, color, and continuity unchanged. Change only the continuous camera path; do not add a cut."
     },
     {
       "name": "effect-camera-22",
@@ -5831,7 +5831,7 @@
       },
       "repositoryPath": "skills/effect-camera-22",
       "nomiTools": [],
-      "body": "Rapid 0.5s intercut of charged details — sparks, eyes, blade, a held breath\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Rapid 0.5s intercut of charged details — sparks, eyes, blade, a held breath\n\nKeep the identities, props, setting, lighting, color, and continuity consistent across the details. Change only the 0.5s intercut rhythm and the charged detail order described here."
     },
     {
       "name": "effect-camera-23",
@@ -5869,7 +5869,7 @@
       },
       "repositoryPath": "skills/effect-camera-23",
       "nomiTools": [],
-      "body": "Slow cross-dissolve, two faces/scenes overlapping before one resolves\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Slow cross-dissolve, two faces/scenes overlapping before one resolves\n\nKeep each shot’s subjects and internal composition consistent, and preserve the identity and clothing of any recurring person. Allow the setting or time to change between shots as described by the dissolve; change only the dissolve transition."
     },
     {
       "name": "effect-camera-24",
@@ -5907,7 +5907,7 @@
       },
       "repositoryPath": "skills/effect-camera-24",
       "nomiTools": [],
-      "body": "Hard flash to white, then resolve on a new time/place\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Hard flash to white, then resolve on a new time/place\n\nKeep any recurring subject’s identity, appearance, and clothing consistent across the transition. Allow the setting, time, and lighting to change in the new shot as described; change only the flash-to-white transition."
     },
     {
       "name": "effect-camera-25",
@@ -5945,7 +5945,7 @@
       },
       "repositoryPath": "skills/effect-camera-25",
       "nomiTools": [],
-      "body": "Hard cut to black, hold one beat, resolve on the next scene\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Hard cut to black, hold one beat, resolve on the next scene\n\nKeep any recurring subject’s identity, appearance, and clothing consistent across the transition. Allow the setting, time, and lighting to change in the next scene as described; change only the cut-to-black transition."
     },
     {
       "name": "effect-camera-26",
@@ -5988,7 +5988,7 @@
       },
       "repositoryPath": "skills/effect-camera-26",
       "nomiTools": [],
-      "body": "Match cut on a shape/color/motion — a tossed {object} becomes another object/place\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Match cut on a shape/color/motion — a tossed {object} becomes another object/place\n\nKeep the shape, color, and motion bridge legible, and preserve any recurring subject’s identity and clothing. Allow the object or place to change as described; change only the match-cut transition."
     },
     {
       "name": "effect-camera-27",
@@ -6026,7 +6026,7 @@
       },
       "repositoryPath": "skills/effect-camera-27",
       "nomiTools": [],
-      "body": "Carry the next scene's sound in before the picture cuts\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Carry the next scene's sound in before the picture cuts\n\nKeep the picture’s subjects, composition, lighting, color, and continuity consistent within each shot, and preserve any recurring subject’s identity and clothing. Allow the next scene’s setting, time, and sound to change as described; change only the sound bridge."
     },
     {
       "name": "effect-camera-28",
@@ -6069,7 +6069,7 @@
       },
       "repositoryPath": "skills/effect-camera-28",
       "nomiTools": [],
-      "body": "First-person POV, the camera is {主体}'s eyes, frame sways with gait and breath\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "First-person POV, the camera is {主体}'s eyes, frame sways with gait and breath\n\nKeep the first-person subject’s identity, viewpoint, setting, lighting, color, and continuity unchanged. Change only the eye-level sway with gait and breath described here; do not add an external observer."
     },
     {
       "name": "effect-camera-29",
@@ -6112,7 +6112,7 @@
       },
       "repositoryPath": "skills/effect-camera-29",
       "nomiTools": [],
-      "body": "Detached locked-off observer, no involvement, {主体} framed coldly\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Detached locked-off observer, no involvement, {主体} framed coldly\n\nKeep the framed subject’s identity, appearance, clothing, setting, lighting, color, and continuity unchanged. Change only the locked-off observer framing described here; do not add camera involvement."
     },
     {
       "name": "effect-camera-30",
@@ -6155,7 +6155,7 @@
       },
       "repositoryPath": "skills/effect-camera-30",
       "nomiTools": [],
-      "body": "Top-down overhead on a pattern/maze, {主体} tiny within it\n\nKeep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here."
+      "body": "Top-down overhead on a pattern/maze, {主体} tiny within it\n\nKeep the pattern or maze geometry, the subject’s identity and placement, lighting, color, and continuity unchanged. Change only the top-down overhead viewpoint and scale described here."
     },
     {
       "name": "effect-character-three-view",

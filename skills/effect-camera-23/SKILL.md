@@ -41,4 +41,4 @@ metadata:
 
 Slow cross-dissolve, two faces/scenes overlapping before one resolves
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep each shot’s subjects and internal composition consistent, and preserve the identity and clothing of any recurring person. Allow the setting or time to change between shots as described by the dissolve; change only the dissolve transition.

@@ -43,4 +43,4 @@ metadata:
 
 Extreme close-up on {hands/eyes}, micro-movement only, a tremor / a tightening grip
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep the referenced hands or eyes, their identity and appearance, the setting, lighting, color, and continuity unchanged. Change only the extreme close-up and the tiny tremor or grip movement described here.

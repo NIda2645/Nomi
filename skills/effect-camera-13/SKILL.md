@@ -43,4 +43,4 @@ metadata:
 
 Rack focus from the foreground {object} to the figure behind it
 
-Keep every person’s identity, appearance, clothing, the setting, lighting, color, and continuity unchanged; change only the camera movement or transition described here.
+Keep the foreground object and background figure, their identity and appearance, setting, lighting, color, and continuity unchanged. Change only which depth plane is in focus as described here.
