@@ -4350,10 +4350,6 @@
         {
           "path": "electron/tasks/taskSpend.ts",
           "symbol": "RUN_APPROVED_ADMISSION"
-        },
-        {
-          "path": "src/workbench/generationCanvas/runner/nodeSubmitInFlight.ts",
-          "symbol": "trackNodeSubmit"
         }
       ],
       "forbidden_derivations": [],
@@ -4369,11 +4365,36 @@
         "src/workbench/generationCanvas/runner/recoverTaskActions.ts",
         "electron/parity/generationParityTestUtils.ts",
         "electron/capabilityCore/canvasShotTestUtils.ts",
-        "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts",
         "src/workbench/observability/classifyError.ts"
       ],
       "since": "2026-10-05",
-      "notes": "设计卡 docs/plan/2026-10-05-engine-convergence-cut1-step12-design-card.md、docs/plan/2026-10-05-engine-convergence-cut1-step34-design-card.md。 画布上要花钱的每一次生成都是一个单镜 Run：单节点 ↑（变体、原地重生成、重试、分镜行操作同一条）交的那一刻建 Run，批准 = 发起 IPC 的那个窗口铸的主进程手势收据（不弹卡，09-25 拍板不变）； 批量卡（「生成全部」、分镜整批、框选生成，第 3 步）点了确认，卡上列出的每一个要花钱的节点各建一个单镜 Run、出价开着（consentCanvasShots）= 这一镜他同意了，轮到它时才冻住请求、批、交；排队里去掉 / 整批 × / 窗口没了 / 重开项目没人会再交，出价收回（withdrawCanvasShots），主进程拒交（canvas_generation_withdrawn）。 一镜一个 Run 而不是一批一个多镜 Run：提交出口按 Run 加锁、交的那一下在锁里，一批放进一个 Run 会把今天并行的批量变成一镜一镜地交。 准入（批之前什么都不写）：同节点在途（进程内 + canvasShotRunIndex 的「没收尾」标记，重启后照样拦，结果未知的拦成 needs_reconcile；批量卡上同意了还没交的不算在途）、3D-BOX 预演闸（主进程问渲染层判据 directorPreviewSpendBlock）、绑定制作镜头的认领（decideShotClaim → reducer shot.claim，canvasShotClaim.ts 已删，认领只住这一处准入）。 等结果由渲染层驱动、每一次查都经 Run 的 poll / materialize；渲染层不在（关窗 / 崩溃 / 点停 / 重启）交给单镜观察者。画布 Run 目录名以 canvas- 开头，repository.list 不列（结果未知的除外），打开项目只读「没收尾」标记那几个。 渲染层 trackNodeSubmit 是同一批在途 IPC 调用在这个窗口里的记录（进程寿命，只给装载收敛 convergeStuckMidFlightNode 用：切项目再切回来，在途的节点照旧是「生成中」、不进「生成全部」）。原概念 canvas.node-submit-in-flight（主进程 withNodeSubmitExclusive）随第 3 步删除。 不进 Run 的：文本节点（走流式口）与本地 ComfyUI（不花钱，不要授权），登记的例外，到期：第二刀传输合一。"
+      "notes": "设计卡 docs/plan/2026-10-05-engine-convergence-cut1-step12-design-card.md、docs/plan/2026-10-05-engine-convergence-cut1-step34-design-card.md。 画布上要花钱的每一次生成都是一个单镜 Run：单节点 ↑（变体、原地重生成、重试、分镜行操作同一条）交的那一刻建 Run，批准 = 发起 IPC 的那个窗口铸的主进程手势收据（不弹卡，09-25 拍板不变）； 批量卡（「生成全部」、分镜整批、框选生成，第 3 步）点了确认，卡上列出的每一个要花钱的节点各建一个单镜 Run、出价开着（consentCanvasShots）= 这一镜他同意了，轮到它时才冻住请求、批、交；排队里去掉 / 整批 × / 窗口没了 / 重开项目没人会再交，出价收回（withdrawCanvasShots），主进程拒交（canvas_generation_withdrawn）。 一镜一个 Run 而不是一批一个多镜 Run：提交出口按 Run 加锁、交的那一下在锁里，一批放进一个 Run 会把今天并行的批量变成一镜一镜地交。 准入（批之前什么都不写）：同节点在途（进程内 + canvasShotRunIndex 的「没收尾」标记，重启后照样拦，结果未知的拦成 needs_reconcile；批量卡上同意了还没交的不算在途）、3D-BOX 预演闸（主进程问渲染层判据 directorPreviewSpendBlock）、绑定制作镜头的认领（decideShotClaim → reducer shot.claim，canvasShotClaim.ts 已删，认领只住这一处准入）。 等结果由渲染层驱动、每一次查都经 Run 的 poll / materialize；渲染层不在（关窗 / 崩溃 / 点停 / 重启）交给单镜观察者。画布 Run 目录名以 canvas- 开头，repository.list 不列（结果未知的除外），打开项目只读「没收尾」标记那几个。 渲染层「这一笔还在等主进程回话」的窗口内记录不是这个概念（它不写 Run、不管钱），单独登记为 canvas.submit-awaiting-reply。原概念 canvas.node-submit-in-flight（主进程 withNodeSubmitExclusive）随第 3 步删除。 不进 Run 的：文本节点（走流式口）与本地 ComfyUI（不花钱，不要授权），登记的例外，到期：第二刀传输合一。"
+    },
+    {
+      "name": "画布提交等回话（窗口内提示）",
+      "subject": "canvas.submit-awaiting-reply",
+      "lifecycle": "session",
+      "authority_kind": "writer",
+      "trust_domain": "renderer",
+      "fact_kind": "state-machine",
+      "migration_status": "converged",
+      "owner": {
+        "path": "src/workbench/generationCanvas/runner/nodeSubmitInFlight.ts",
+        "symbol": "trackNodeSubmit"
+      },
+      "write_api": [
+        {
+          "path": "src/workbench/generationCanvas/runner/nodeSubmitInFlight.ts",
+          "symbol": "trackNodeSubmit"
+        }
+      ],
+      "forbidden_derivations": [],
+      "allowed_consumers": [
+        "src/workbench/api/taskApi.ts",
+        "src/workbench/generationCanvas/store/canvasSnapshotNormalizer.ts"
+      ],
+      "since": "2026-10-05",
+      "notes": "这个窗口发出去、主进程还没回话的画布生成请求（按节点 id，进程寿命，不落盘）。只服务装载收敛 convergeStuckMidFlightNode：切项目再切回来，还在路上的节点照旧显示生成中、不被收成空闲、不进「生成全部」。不管钱、不决定能不能再交：付费画布生成的同节点在途拒绝在主进程 appIntegrationCanvasShot（assertNodeIdle：进程内在途 + canvasShotRunIndex「没收尾」标记），Run 是真相。写口只有 taskApi 的两个提交口（submitCanvasShotRun、runWorkbenchTaskByVendor）在 await 前登记、回话后注销。2026-10-05 发动机收敛第一刀第 3 步删掉主进程那道 withNodeSubmitExclusive 之后从 canvas.shot-run 的写接口里拆出来单独登记（独立验收 V-1012 问题 1）。"
     }
   ]
 }
