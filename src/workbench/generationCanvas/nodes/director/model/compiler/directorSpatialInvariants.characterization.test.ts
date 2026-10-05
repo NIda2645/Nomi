@@ -178,6 +178,14 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
     if (process.env.DIRECTOR_INVARIANT_DUMP) console.log(JSON.stringify({ ledger, results: results.filter((r) => r.violations.length).map((r) => ({ id: r.id, violations: r.violations.map((v) => `${v.criterion}: ${v.subject} ${v.other ?? ''} ${v.value ?? ''}`) })) }, null, 2))
     expect(ledger).toEqual(LEDGER)
   })
+
+  // 舞台模型（第二步）的目标：看得见主体、携带物跟手；其余判据不许回升。达成前是「预期失败」，达成后去掉 .fails。
+  it.fails('第二步目标：occluded 0、carriedDrift 0，其余判据不高于当前账', () => {
+    expect(count('occluded')).toBe(0)
+    expect(count('carriedDrift')).toBe(0)
+    for (const criterion of ['floating', 'interpenetrating', 'offFloor', 'cameraInside'] as const)
+      expect(count(criterion)).toBeLessThanOrEqual(LEDGER[criterion][0])
+  })
 })
 
 /**
