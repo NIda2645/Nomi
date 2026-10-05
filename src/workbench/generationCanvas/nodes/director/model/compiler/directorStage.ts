@@ -1,17 +1,19 @@
 /**
  * [INPUT]: 计划（DirectorPlan）、s1SceneTemplates（模板件 + 命名站位 + 可站区域）、vocab 的 stageKindOf / isEnvironmentWord（名词 → 舞台种类）、
  *          directorSpace（包围盒与「底 → 原点」换算）、aiScene 的 normalizeAiScene（dressing 物化）
- * [OUTPUT]: 对外提供 Stage / StageThing / StageRole、buildStage（计划 → 舞台：每个东西带种类、角色、真尺寸来源、朝向）、actorBody（演员的渲染图元与尺寸）
+ * [OUTPUT]: 对外提供 Stage / StageThing / StageRole、buildStage（计划 → 舞台：每个东西带种类、角色、真尺寸来源、朝向；布景件按关系词落到站位）、
+ *          actorBody（演员的渲染图元与尺寸）、resolveRef（计划里的引用名 → 舞台上的东西）
  * [POS]: 编译器的「舞台模型」层：计划进、舞台出，编译器后面的摆位 / 走位 / 机位只读舞台，不再从名字、scale、坐标里反推「这是什么、多大」。
  *        不改计划契约：稳定 id 仍是 s1-* / setPiece:* / actor:*；同名合并的布景件留一个辅助分组保住它的 id。
  * [PROTOCOL]: 变更时更新此头部，然后检查 CLAUDE.md
  */
 import type { DirectorObject, DirectorObjectType, Vec3 } from '../directorTypes'
-import { originYForBottom, scaledBounds } from '../directorSpace'
+import { originYForBottom } from '../directorSpace'
 import { normalizeAiScene } from '../aiScene'
 import { isEnvironmentWord, stageKindOf, type DirectorStageKind } from '../../../../../../../electron/shared/director/vocab'
 import type { DirectorPlan, DirectorPlanActor } from '../../../../../../../electron/shared/director/directorPlanSchema'
 import { buildS1Template, type StageArea, type TemplateMark } from './s1SceneTemplates'
+import { resolvePlacement, yawToward } from './stageRelations'
 
 /** 舞台角色：关系词的空间含义按它解释（站在地面上 / 站到结构前 / 家具靠里放 / 演员 / 拿在手里）。 */
 export type StageRole = 'surface' | 'structure' | 'furniture' | 'performer' | 'handheld'
@@ -24,6 +26,8 @@ export type StageThing = {
   role: StageRole
   object: DirectorObject
   sizeSource: SizeSource
+  /** 朝向（yaw 度，0 = +Z 朝观众）：结构朝场景内侧，演员由关系解析定。 */
+  facing: number
 }
 export type StageMark = TemplateMark
 export type StageIssue = { kind: 'nominal-size'; objectId: string; message: string }
@@ -82,12 +86,26 @@ export function actorBody(actor: DirectorPlanActor, plan: DirectorPlan): Body & 
   return { ...UNKNOWN_PROP, kind: 'prop', sizeSource: 'unknown' }
 }
 
-const top = (object: DirectorObject) => object.position.y + scaledBounds(object.type, object.scale).max.y
+/** 计划里的引用名 → 舞台上的东西：先认名字（模板件 id、布景件 id、演员 id、别名），认不到再按名词的舞台种类认（「gate」= 场上唯一的门）。 */
+export function resolveRef(stage: Stage, ref: string | undefined): StageThing | undefined {
+  if (!ref) return undefined
+  const named = stage.refs.get(ref)
+  if (named) return named
+  const kind = stageKindOf(ref)
+  const sameKind = kind ? stage.things.filter((thing) => thing.kind === kind) : []
+  return sameKind.length === 1 ? sameKind[0] : undefined
+}
 
 /** 计划 → 舞台（模板件、布景件、dressing；演员的位置由关系解析决定，这里只登记他们的身体）。 */
 export function buildStage(plan: DirectorPlan): Stage {
   const template = plan.scene.template ? buildS1Template(plan.scene.template) : undefined
-  const things: StageThing[] = (template?.parts ?? []).map((item) => ({ objectId: item.object.id, planId: item.object.id, kind: item.kind, role: KIND_BODY[item.kind].role, object: item.object, sizeSource: 'render' }))
+  const inward = template ? { x: (template.interior.minX + template.interior.maxX) / 2, z: (template.interior.minZ + template.interior.maxZ) / 2 } : { x: 0, z: 0 }
+  const things: StageThing[] = (template?.parts ?? []).map((item) => {
+    const role = KIND_BODY[item.kind].role
+    // 结构朝场景内侧（「院门前」= 院门朝院里那一面的前方）；地面与家具朝观众
+    const facing = role === 'structure' ? yawToward(item.object.position, inward) : 0
+    return { objectId: item.object.id, planId: item.object.id, kind: item.kind, role, object: item.object, sizeSource: 'render' as const, facing }
+  })
   const refs = new Map<string, StageThing>(things.map((thing) => [thing.objectId, thing]))
   for (const [alias, id] of Object.entries(TEMPLATE_ALIASES)) if (refs.has(id)) refs.set(alias, refs.get(id)!)
   const objects = things.map((thing) => thing.object)
@@ -102,7 +120,7 @@ export function buildStage(plan: DirectorPlan): Stage {
     if (isEnvironmentWord(piece.kind)) {
       const aux = auxiliary(id, piece.kind, ground?.object.position ?? v())
       objects.push(aux)
-      refs.set(piece.id, ground ?? { objectId: id, planId: piece.id, kind: 'ground', role: 'surface', object: aux, sizeSource: 'render' })
+      refs.set(piece.id, ground ?? { objectId: id, planId: piece.id, kind: 'ground', role: 'surface', object: aux, sizeSource: 'render', facing: 0 })
       continue
     }
     const kind = stageKindOf(piece.kind)
@@ -116,13 +134,16 @@ export function buildStage(plan: DirectorPlan): Stage {
       continue
     }
     const body = kind ? KIND_BODY[kind] : UNKNOWN_PIECE
-    const count = (template?.parts.length ?? 0) + index
-    const at = anchor ? v(anchor.object.position.x, 0, anchor.object.position.z + 2 + count * 0.2) : v(((count % 3) - 1) * 2.5, 0, Math.floor(count / 3) * 2)
-    const object: DirectorObject = {
-      id, name: piece.kind, type: body.type, scale: body.scale, rotation: v(), visible: true, locked: true, isAuxiliary: false,
-      position: v(at.x, originYForBottom(body.type, body.scale, piece.relation?.type === 'on' && anchor ? top(anchor.object) : 0), at.z),
-    }
-    const thing: StageThing = { objectId: id, planId: piece.id, kind: kind ?? 'prop', role: body.role, object, sizeSource: kind ? 'typical' : 'unknown' }
+    const object: DirectorObject = { id, name: piece.kind, type: body.type, scale: body.scale, position: v(), rotation: v(), visible: true, locked: true, isAuxiliary: false }
+    // 布景件和演员走同一套关系解析：家具 at 地面 = 地面的布景站位（靠里，不挡镜头一侧）；没写关系的按 at 地面
+    const ref = anchor ?? ground
+    const stage: Stage = { things, marks: template?.marks ?? [], interior: template?.interior, refs, objects, issues }
+    const slot = things.filter((thing) => thing.objectId.startsWith('setPiece:')).length
+    const placement = ref
+      ? resolvePlacement(stage, object, body.role, ref === anchor ? piece.relation!.type : 'at', ref, slot, [])
+      : { position: v(((index % 3) - 1) * 2.5, originYForBottom(body.type, body.scale, 0), Math.floor(index / 3) * 2), facing: 0 }
+    object.position = placement.position
+    const thing: StageThing = { objectId: id, planId: piece.id, kind: kind ?? 'prop', role: body.role, object, sizeSource: kind ? 'typical' : 'unknown', facing: placement.facing }
     if (!kind) issues.push({ kind: 'nominal-size', objectId: id, message: `set piece ${piece.id} (${piece.kind}) has no known stage kind; placed as a nominal block` })
     things.push(thing)
     refs.set(piece.id, thing)
@@ -131,7 +152,7 @@ export function buildStage(plan: DirectorPlan): Stage {
 
   for (const object of materializeDressing(plan)) {
     const kind = stageKindOf(object.name)
-    things.push({ objectId: object.id, kind: kind ?? 'prop', role: kind ? KIND_BODY[kind].role : 'furniture', object, sizeSource: 'render' })
+    things.push({ objectId: object.id, kind: kind ?? 'prop', role: kind ? KIND_BODY[kind].role : 'furniture', object, sizeSource: 'render', facing: 0 })
     objects.push(object)
   }
   return { things, marks: template?.marks ?? [], interior: template?.interior, refs, objects, issues }

@@ -22,7 +22,30 @@ export const DIRECTOR_ENVIRONMENT_WORDS = [
   'gallery', 'museum', 'cafe', 'kitchen', 'station', 'rooftop', 'shop', 'office', 'library', 'park',
   '房间', '室内', '室外', '街道', '庭院', '地面', '走廊', '美术馆', '画廊', '咖啡馆', '厨房', '车站', '屋顶', '商店', '办公室', '图书馆', '公园',
 ] as const
-const nounKey = (noun: string) => noun.trim().toLowerCase().replace(/[\s-]+/g, '_')
+/** 计划里的摆位关系词（schema 的 relation 枚举从这里取，成员不变）。 */
+export const DIRECTOR_PLACEMENT_RELATIONS = ['near', 'in_front_of', 'behind', 'left_of', 'right_of', 'on', 'between', 'along', 'at'] as const
+export type DirectorPlacementRelation = (typeof DIRECTOR_PLACEMENT_RELATIONS)[number]
+/**
+ * 关系词的空间含义——编译器的舞台模型按它解析到站位，不再「取参照原点再推到最近空位」。
+ *   frame：mark = 落到参照的命名站位（地面 / 结构 / 家具）；support = 落在参照上（顶面，或参照是人 = 拿在手里）；
+ *          facing = 在参照自己的朝向里取方向（前 0°、后 180°）；screen = 在画面左右取方向（观众在 +Z 一侧）；axis = 沿参照长边。
+ *   spacing：中心距离的下限（米）。实际距离 = max(下限, 两者沿该方向的半宽之和 + 30cm)——一条公式管人、车、家具，不写两两特例。
+ *   lateral：在站位基础上横向错开（near 一类，多个东西挨着同一个参照时左右交替）。
+ *   faceRef：摆好后面向参照（「站在某人面前」= 面对他）。
+ */
+export const DIRECTOR_RELATION_SPACE: Record<DirectorPlacementRelation, { frame: 'mark' | 'support' | 'facing' | 'screen' | 'axis'; direction?: number; spacing: number; lateral?: boolean; faceRef?: boolean }> = {
+  at: { frame: 'mark', spacing: 0 },
+  near: { frame: 'mark', spacing: 1.2, lateral: true },
+  between: { frame: 'mark', spacing: 1.2, lateral: true },
+  on: { frame: 'support', spacing: 0 },
+  in_front_of: { frame: 'facing', direction: 0, spacing: 1.8, faceRef: true },
+  behind: { frame: 'facing', direction: 180, spacing: 1.8 },
+  left_of: { frame: 'screen', direction: -90, spacing: 1.8 },
+  right_of: { frame: 'screen', direction: 90, spacing: 1.8 },
+  along: { frame: 'axis', spacing: 1.5 },
+}
+
+const nounKey =(noun: string) => noun.trim().toLowerCase().replace(/[\s-]+/g, '_')
 export const isEnvironmentWord = (kind: string): boolean => (DIRECTOR_ENVIRONMENT_WORDS as readonly string[]).includes(nounKey(kind))
 
 /**

@@ -1,5 +1,5 @@
 import { createDefaultProject } from '../directorProject'
-import { originYForBottom, originYForCenter, scaledBounds } from '../directorSpace'
+import { scaledBounds } from '../directorSpace'
 import type { SpatialAuditContext } from '../directorSpatialAudit'
 import { syncInTimeline } from '../timeGrid'
 import {
@@ -20,7 +20,8 @@ import {
   type DirectorPlanActor,
   type DirectorPlanShot,
 } from '../../../../../../../electron/shared/director/directorPlanSchema'
-import { actorBody, buildStage, type Stage } from './directorStage'
+import { actorBody, buildStage, resolveRef, type Stage } from './directorStage'
+import { clearOfSolids, destinationFor, resolvePlacement, yawToward, yawVector, type Placed } from './stageRelations'
 
 const FPS = 30
 const v = (x = 0, y = 0, z = 0): Vec3 => ({ x, y, z })
@@ -62,6 +63,12 @@ function reflectAcrossAxis(point: Vec3, a: Vec3, b: Vec3): Vec3 {
 function positionAt(object: DirectorObject, time: number): Vec3 {
   return evaluateEntityTransform(object, time).position
 }
+/** 主体身上的瞄准点：锚点是主体的局部偏移（计划契约：相对演员），随主体朝向转——和测量按对象姿态求锚点同一个约定。 */
+function aimAt(subject: DirectorObject, time: number, offset: Vec3): Vec3 {
+  const pose = evaluateEntityTransform(subject, time)
+  const yaw = (pose.rotation.y * Math.PI) / 180
+  return v(pose.position.x + offset.x * Math.cos(yaw) + offset.z * Math.sin(yaw), pose.position.y + offset.y, pose.position.z - offset.x * Math.sin(yaw) + offset.z * Math.cos(yaw))
+}
 
 export type DirectorCompileIssue = {
   kind: 'unknown-ref' | 'overlap' | 'measurement' | 'missing_asset' | 'nominal-size'
@@ -99,178 +106,73 @@ function actorObject(actor: DirectorPlanActor, plan: DirectorPlan, position: Vec
   }
 }
 
-/** 摆位参照物：原点（水平位置）+ 顶面高度（上面能放东西）。 */
-type Piece = { origin: Vec3; top: number }
-const pieceOf = (object: DirectorObject): Piece => ({
-  origin: object.position,
-  top: object.position.y + scaledBounds(object.type, object.scale).max.y,
-})
-
-// ── 站位不进实心物体：全场只有这一条规则（用 directorSpace 的包围盒），不按「谁和谁」写特例 ──
-const isStandable = (object: DirectorObject) => object.visible && !object.isAuxiliary && object.type !== 'plane' && object.type !== 'group'
-function solidBox(object: DirectorObject, position: Vec3) {
-  const box = scaledBounds(object.type, object.scale)
-  return { min: add(position, box.min), max: add(position, box.max) }
-}
-/**
- * 把落脚点沿 `retreat`（水平单位向量）推到所有挡路实心物体（外扩演员半宽）之外。
- * 只看和演员身高有竖直交集、且不是地面 / 路面这类薄板的东西。
- */
-function clearOfSolids(point: Vec3, actor: DirectorObject, obstacles: { object: DirectorObject; position: Vec3 }[], retreat: (box: { min: Vec3; max: Vec3 }) => Vec3): Vec3 {
-  const body = scaledBounds(actor.type, actor.scale)
-  const half = { x: body.size.x / 2, z: body.size.z / 2 }
-  const p = { ...point }
-  for (let pass = 0; pass < 8; pass += 1) {
-    const hit = obstacles
-      .filter(({ object }) => object.id !== actor.id && isStandable(object))
-      .map(({ object, position }) => solidBox(object, position))
-      .find((box) =>
-        box.max.y - box.min.y > 0.3 &&
-        box.min.y < p.y + body.max.y - 0.02 && box.max.y > p.y + 0.02 &&
-        p.x > box.min.x - half.x && p.x < box.max.x + half.x && p.z > box.min.z - half.z && p.z < box.max.z + half.z)
-    if (!hit) break
-    const direction = retreat(hit)
-    const length = Math.hypot(direction.x, direction.z)
-    // 没有明确的退路方向（在场景中心）就朝 +z（面向观众那一侧）退
-    const d = length > 1e-6 ? { x: direction.x / length, z: direction.z / length } : { x: 0, z: 1 }
-    const exits = [
-      d.x > 1e-6 ? (hit.max.x + half.x - p.x) / d.x : d.x < -1e-6 ? (hit.min.x - half.x - p.x) / d.x : Infinity,
-      d.z > 1e-6 ? (hit.max.z + half.z - p.z) / d.z : d.z < -1e-6 ? (hit.min.z - half.z - p.z) / d.z : Infinity,
-    ]
-    const t = Math.min(...exits)
-    if (!Number.isFinite(t)) break
-    // 留出落脚间隙：人 30cm，车按车身半长（跟车距离），机位才有地方进去
-    const gap = Math.max(0.3, half.z)
-    p.x += d.x * (t + gap)
-    p.z += d.z * (t + gap)
+/** 演员按关系词落到舞台站位（关系解析住 stageRelations）；落好就登记进舞台，后面的演员和走位都能以他为参照。 */
+function placeActors(plan: DirectorPlan, stage: Stage): { objects: DirectorObject[]; issues: DirectorCompileIssue[] } {
+  const issues: DirectorCompileIssue[] = [],
+    objects: DirectorObject[] = [],
+    placed: Placed[] = []
+  const slots = new Map<string, number>()
+  for (const actor of plan.actors) {
+    const body = actorBody(actor, plan)
+    const object = actorObject(actor, plan, v(), `actor:${actor.id}`)
+    const ref = resolveRef(stage, actor.placement.ref)
+    let facing = 0
+    if (!ref) issues.push({ kind: 'unknown-ref', objectId: actor.id, message: `unknown placement ref ${actor.placement.ref}` })
+    else {
+      const slot = slots.get(ref.objectId) ?? 0
+      slots.set(ref.objectId, slot + 1)
+      const placement = resolvePlacement(stage, object, body.role, actor.placement.relation, ref, slot, placed)
+      object.position = placement.position
+      facing = placement.facing
+      if (placement.adjusted) issues.push({ kind: 'overlap', objectId: actor.id, message: `moved ${actor.id} out of a solid` })
+    }
+    object.rotation = v(0, facing, 0)
+    placed.push({ object, position: object.position })
+    const thing = { objectId: object.id, planId: actor.id, kind: body.kind, role: body.role, object, sizeSource: body.sizeSource, facing }
+    stage.things.push(thing)
+    stage.refs.set(actor.id, thing)
+    objects.push(object)
   }
-  return p
-}
-
-// 手里拿着的东西：几何中心离地的高度（米）。「携带」只定初始高度；不挂父子关系（留给舞台模型一步）。
-const HELD_CENTER_HEIGHT = 1
-
-function positionActors(
-  plan: DirectorPlan,
-  stage: Stage,
-): { positions: Map<string, Vec3>; issues: DirectorCompileIssue[] } {
-  const staticSolids = stage.things.map((thing) => thing.object)
-  const positions = new Map<string, Vec3>(),
-    issues: DirectorCompileIssue[] = []
-  const occupied = new Set<string>()
-  const placed = new Map<string, Piece>()
-  const placedObjects = new Map<string, DirectorObject>()
-  const actorKinds = new Map(plan.actors.map((actor) => [actor.id, actor.kind]))
-  for (const [index, actor] of plan.actors.entries()) {
-    const refThing = stage.refs.get(actor.placement.ref)
-    const ref = (refThing ? pieceOf(refThing.object) : undefined) ?? placed.get(actor.placement.ref)
-    if (!ref) {
-      issues.push({ kind: 'unknown-ref', objectId: actor.id, message: `unknown placement ref ${actor.placement.ref}` })
-      continue
-    }
-    const relation = actor.placement.relation
-    const ring = index + 1
-    const offset =
-      relation === 'left_of'
-        ? v(-1.8, 0, 0)
-        : relation === 'right_of'
-          ? v(1.8, 0, 0)
-          : relation === 'in_front_of'
-            ? v(0, 0, 1.8)
-            : relation === 'behind'
-              ? v(0, 0, -1.8)
-              : relation === 'near'
-                ? v((ring % 2 ? 1 : -1) * 1.2, 0, 1.2)
-                : relation === 'along'
-                  ? v(ring * 1.5, 0, 0)
-                  : v(0, 0, 0)
-    const p = add(ref.origin, offset)
-    // 垂直方向只有一个换算点：底落在哪（directorSpace.originYForBottom）。
-    // 放在某件东西「上面」= 底落在它的顶面；手持（承托者是人）= 几何中心在手的高度；其余一律站在地面（y 0）。
-    const probe = actorObject(actor, plan, p, `actor:${actor.id}`)
-    const heldByPerson = relation === 'on' && actorKinds.get(actor.placement.ref) === 'person'
-    p.y = heldByPerson
-      ? originYForCenter(probe.type, probe.scale, HELD_CENTER_HEIGHT)
-      : originYForBottom(probe.type, probe.scale, relation === 'on' ? ref.top : 0)
-    if (relation !== 'on') {
-      // 站进墙 / 门 / 先到的人里面就往场景中心退出来（模板都以原点为中心，里面在中心那一侧）
-      const solids = [...staticSolids.map((object) => ({ object, position: object.position })), ...[...positions].map(([id, position]) => ({ object: placedObjects.get(id)!, position }))]
-      const cleared = clearOfSolids(p, probe, solids, (box) => ({ x: -(box.min.x + box.max.x) / 2, y: 0, z: -(box.min.z + box.max.z) / 2 }))
-      if (cleared.x !== p.x || cleared.z !== p.z) issues.push({ kind: 'overlap', objectId: actor.id, message: `moved ${actor.id} out of a solid` })
-      p.x = cleared.x
-      p.z = cleared.z
-    }
-    const key = `${Math.round(p.x * 10)}:${Math.round(p.y * 10)}:${Math.round(p.z * 10)}`
-    if (occupied.has(key) && relation !== 'on') {
-      p.x += 0.8
-      p.z += 0.8
-      issues.push({ kind: 'overlap', objectId: actor.id, message: `resolved placement overlap for ${actor.id}` })
-    }
-    occupied.add(key)
-    positions.set(actor.id, p)
-    placedObjects.set(actor.id, { ...probe, position: p })
-    placed.set(actor.id, pieceOf({ ...probe, position: p }))
-  }
-  return { positions, issues }
+  return { objects, issues }
 }
 
 function applyBlocking(
   plan: DirectorPlan,
+  stage: Stage,
   objects: DirectorObject[],
-  actorMap: Record<string, string>,
   duration: number,
   issues: DirectorCompileIssue[],
 ): void {
-  const byPlanId = (id?: string) =>
-    id
-      ? objects.find(
-          (o) =>
-            o.id === actorMap[id] ||
-            o.id === `setPiece:${id}` ||
-            o.id === id ||
-            o.name.toLowerCase() === id.toLowerCase() ||
-            o.name.toLowerCase().includes(id.toLowerCase()),
-        )
-      : undefined
   for (const action of [...plan.blocking].sort((a, b) => a.window[0] - b.window[0])) {
-    const actor = byPlanId(action.actor)
-    if (!actor) continue
+    const actor = stage.refs.get(action.actor)?.object
+    if (!actor || !objects.includes(actor)) continue
     const start = action.window[0],
       end = Math.min(duration, action.window[1]),
-      target = byPlanId(action.target)
+      target = resolveRef(stage, action.target)
     const from = positionAt(actor, start)
-    // 落脚点：留在出发点的地面高度（不照抄目标原点的高度），并且不进任何实心物体——
-    // 向「出发点」那一侧退出来，也就是停在目标跟前，而不是钻进目标里
-    const reach = (point: Vec3): Vec3 => {
-      const level = { ...point, y: from.y }
-      const solids = objects.filter((item) => item.id !== actor.id).map((item) => ({ object: item, position: positionAt(item, end) }))
-      return clearOfSolids(level, actor, solids, () => ({ x: from.x - level.x, y: 0, z: from.z - level.z }))
-    }
-    const to = target ? reach(positionAt(target, end)) : from
-    const points: Waypoint[] = [entityWp(`${actor.id}-${action.verb}-start`, from, start)]
-    if (action.verb === 'walk_to' || action.verb === 'run_to')
-      points.push(entityWp(`${actor.id}-${action.verb}-end`, to, end))
-    else if (action.verb === 'drive_along')
-      points.push(entityWp(`${actor.id}-${action.verb}-end`, add(from, v(0, 0, 4)), end))
-    else if (action.verb === 'chase')
-      points.push(entityWp(`${actor.id}-${action.verb}-end`, reach(add(to, v(0, 0, 0.8))), end))
-    else if (action.verb === 'sidestep')
-      points.push(
-        entityWp(
-          `${actor.id}-sidestep-end`,
-          add(from, v(target && to.x < from.x ? -1 : 1, 0, 0)),
-          end,
-        ),
-      )
-    else
-      points.push(
-        entityWp(
-          `${actor.id}-${action.verb}-end`,
-          from,
-          end,
-          action.verb === 'turn_to' && target ? (Math.atan2(to.x - from.x, to.z - from.z) * 180) / Math.PI : 0,
-        ),
-      )
+    const facing = evaluateEntityTransform(actor, start).rotation.y
+    const others = objects.filter((item) => item.id !== actor.id).map((item) => ({ object: item, position: positionAt(item, end) }))
+    const targetAt = target ? positionAt(target.object, end) : undefined
+    // 走位终点由舞台解析：走到目标的站位，站位上有人就停在那人跟前（面对他）；落脚点留在出发点的地面高度
+    let to = from,
+      startYaw = facing,
+      endYaw = facing
+    if (target && targetAt && (action.verb === 'walk_to' || action.verb === 'run_to' || action.verb === 'chase')) {
+      const destination = destinationFor(stage, actor, from, target, targetAt, others)
+      to = destination.position
+      startYaw = yawToward(from, to, facing) // 走动时朝行进方向，到了面对目标
+      endYaw = destination.facing
+    } else if (action.verb === 'drive_along') {
+      const ahead = yawVector(facing)
+      to = add(from, v(ahead.x * 4, 0, ahead.z * 4))
+    } else if (action.verb === 'sidestep') {
+      // 横移一步：朝向的左右，往目标那一侧
+      const side = yawVector(facing + 90)
+      const sign = targetAt && (targetAt.x - from.x) * side.x + (targetAt.z - from.z) * side.z < 0 ? -1 : 1
+      const step = add(from, v(side.x * sign, 0, side.z * sign))
+      to = clearOfSolids(step, actor, others, () => v(from.x - step.x, 0, from.z - step.z))
+    } else if (action.verb === 'turn_to' && targetAt) endYaw = yawToward(from, targetAt, facing)
+    const points: Waypoint[] = [entityWp(`${actor.id}-${action.verb}-start`, from, start, startYaw), entityWp(`${actor.id}-${action.verb}-end`, to, end, endYaw)]
     const trajectoryClip = clip(`${actor.id}-${action.verb}-${start}`, start, end)
     // Explicit ownership preserves the shared start waypoint of adjacent clips.
     // Without it, playback assigns that point to the previous clip and jumps
@@ -377,8 +279,8 @@ function solveCamera(
     (subject.type === 'character'
       ? { offset: v(0, aimY, 0), size: bounds.size }
       : { offset: v(0, bounds.center.y, 0), size: bounds.size })
-  const target = add(subjectStart, aimOffset.offset)
-  const subjectEndTarget = add(subjectEndPosition, aimOffset.offset)
+  const target = aimAt(subject, start, aimOffset.offset)
+  const subjectEndTarget = aimAt(subject, end, aimOffset.offset)
   const endAngle =
     shot.move.kind === 'orbit_left' || shot.move.kind === 'arc_left'
       ? azimuth - (shot.move.amount ?? (shot.move.kind.startsWith('arc') ? 45 : 90))
@@ -503,7 +405,7 @@ function constrainCameraPath(
     }
     const changed = Math.hypot(point.x - original.x, point.y - original.y, point.z - original.z) > 1e-6
     return {
-      ...wp(`${camera.id}/frame:${frame}`, point, add(positionAt(subject, time), aimOffset), time, pose.fov ?? camera.fov),
+      ...wp(`${camera.id}/frame:${frame}`, point, aimAt(subject, time, aimOffset), time, pose.fov ?? camera.fov),
       ...(changed ? {} : { yaw: pose.rotation.y, pitch: pose.rotation.x, roll: pose.rotation.z }),
       clipId: camera.trajectoryClips?.[0]?.id,
     }
@@ -523,16 +425,13 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
   project.activeSceneId = scene.id
   scene.name = plan.scene.environment
   const stage = buildStage(plan)
-  const placed = positionActors(plan, stage),
+  const placed = placeActors(plan, stage),
     actorMap: Record<string, string> = {},
     anchors: Record<string, AnchorSpec> = {},
-    actorObjects: DirectorObject[] = []
+    actorObjects = placed.objects
   for (const actor of plan.actors) {
     const id = `actor:${actor.id}`
     actorMap[actor.id] = id
-    const position = placed.positions.get(actor.id) ?? v()
-    const obj = actorObject(actor, plan, position, id)
-    actorObjects.push(obj)
     for (const [name, offset] of Object.entries(actor.anchors ?? {}))
       anchors[`${id}.${name}`] = {
         offset: { x: offset?.x ?? 0, y: offset?.y ?? 0.9, z: offset?.z ?? 0 },
@@ -542,7 +441,7 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
   scene.objects = [...stage.objects, ...actorObjects]
   const duration = Math.max(...plan.shots.map((s) => s.window[1]), ...plan.blocking.map((b) => b.window[1]), 0)
   const issues: DirectorCompileIssue[] = [...stage.issues, ...placed.issues]
-  applyBlocking(plan, scene.objects, actorMap, duration, issues)
+  applyBlocking(plan, stage, scene.objects, duration, issues)
   ensureCharacterActionCoverage(scene.objects, duration)
   const cameras: DirectorCamera[] = []
   let previous: Vec3 | undefined

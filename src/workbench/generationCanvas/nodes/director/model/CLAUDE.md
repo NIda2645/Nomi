@@ -40,6 +40,8 @@
 > storeOutputActions.ts: 产物动作：截图 / 视频增删（只存资产句柄）、录制进度瞬态
 > directorSpace.ts: 空间事实唯一 owner：图元几何表（渲染 PrimitiveEntity 与量尺共读）、three Box3 量出的包围盒（localBounds / scaledBounds）、唯一的「底 / 中心 → 原点」换算（originYForBottom / originYForCenter）、角色身高与脚印；编译器 / 测量 / AI 搭场景都从这里量，不各抄一份
 > directorSpatialAudit.ts: 编译产物的物理六判据（不悬空 / 不互穿 / 只有一个地面高度 / 机位不在物体里 / 看得见主体 / 携带物跟人走），评测打分的 P 层；包围盒只读 directorSpace
+> compiler/directorStage.ts: 编译器的舞台模型（计划 → 舞台）：每件东西带舞台种类 / 角色 / 尺寸来源 / 朝向，模板命名站位与可站区域，布景件同名合并（辅助分组保住 setPiece id）；摆位、走位、机位只读舞台，不从名字和 scale 反推
+> compiler/stageRelations.ts: 关系词 → 站位与朝向（按舞台角色解释，一条距离公式管人 / 车 / 家具）、走位终点（走到站位，站位有人就停在他跟前面对他）、落脚点不进实心物体的唯一规则 clearOfSolids
 > aiScene.ts: AI 搭场景纯层：zod 契约（sceneName / sceneConfig / groups[elements]）、容错解析（剥围栏抓 JSON）、类型名 → 八种几何体、旋转弧度启发式（全部 |r| ≤ 2π）、提示词模板、固定夹具「街角咖啡馆」
 > storeAiSceneActions.ts: AI 场景物化：当前图层固定为请求发起层并校验仍存在，或创建/激活新图层；几何分组与可选资产句柄在同一工程事务落下，一次撤销
 > assetKinds.ts: 资产类型判定单一真相（后缀 / MIME → model / splat / panorama / scene）+ 上传 accept 串，资产库与连线引用共用
