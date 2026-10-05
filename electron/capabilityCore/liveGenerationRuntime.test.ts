@@ -58,4 +58,89 @@ describe("live generation runtime", () => {
     expect(runtime.readBootstrap().readinessByProvider.apimart?.providerReady).toBe(true);
     expect(planningRegistry.resolve({ moduleId: "generation.single-shot", providerId: "apimart", modelId: "fixture-model", mode: "text-to-image" }).capabilities.query).toBe(true);
   });
+
+  it("scopes one catalog snapshot to one draft lifecycle and refreshes the next one", () => {
+    let current = catalog("empty");
+    let catalogReads = 0;
+    let registryBuilds = 0;
+    const runtime = createLiveGenerationRuntime({
+      catalogReader: () => {
+        catalogReads += 1;
+        return current;
+      },
+      bootstrap: fakeBootstrap,
+      registry: (_state, readiness) => {
+        registryBuilds += 1;
+        return {
+          resolve: () => ({
+            moduleId: "generation.single-shot",
+            version: "fixture",
+            providerId: "apimart",
+            modelId: "fixture-model",
+            mode: "text-to-image",
+            inputKinds: ["image"],
+            outputKinds: ["image"],
+            parameterSchema: {},
+            assetInputSchema: { references: { kind: "asset" } },
+            capabilities: readiness.apimart?.capabilities ?? { submitIdempotency: false, query: false, reconcile: false, cancel: false },
+          }),
+          snapshot: () => [],
+        };
+      },
+    });
+
+    const first = runtime.createDraftScope();
+    first.registry.resolve({ moduleId: "generation.single-shot", providerId: "apimart", modelId: "fixture-model", mode: "text-to-image" });
+    first.registry.resolve({ moduleId: "generation.single-shot", providerId: "apimart", modelId: "fixture-model", mode: "text-to-image" });
+    expect(catalogReads).toBe(1);
+    expect(registryBuilds).toBe(1);
+
+    current = catalog("connected");
+    const second = runtime.createDraftScope();
+    expect(second.registry).not.toBe(first.registry);
+    expect(second.readBootstrap().readinessByProvider.apimart?.providerReady).toBe(true);
+    expect(catalogReads).toBe(2);
+    expect(registryBuilds).toBe(2);
+  });
+
+  it("drops the implicit turn snapshot at the async boundary", async () => {
+    let current = catalog("empty");
+    let catalogReads = 0;
+    let registryBuilds = 0;
+    const runtime = createLiveGenerationRuntime({
+      catalogReader: () => {
+        catalogReads += 1;
+        return current;
+      },
+      bootstrap: fakeBootstrap,
+      registry: (_state, readiness) => {
+        registryBuilds += 1;
+        return {
+          resolve: () => ({
+            moduleId: "generation.single-shot",
+            version: "fixture",
+            providerId: "apimart",
+            modelId: "fixture-model",
+            mode: "text-to-image",
+            inputKinds: ["image"],
+            outputKinds: ["image"],
+            parameterSchema: {},
+            assetInputSchema: { references: { kind: "asset" } },
+            capabilities: readiness.apimart?.capabilities ?? { submitIdempotency: false, query: false, reconcile: false, cancel: false },
+          }),
+        };
+      },
+    });
+
+    runtime.registry.resolve({ moduleId: "generation.single-shot", providerId: "apimart", modelId: "fixture-model", mode: "text-to-image" });
+    runtime.registry.resolve({ moduleId: "generation.single-shot", providerId: "apimart", modelId: "fixture-model", mode: "text-to-image" });
+    expect(catalogReads).toBe(1);
+    expect(registryBuilds).toBe(1);
+
+    current = catalog("connected");
+    await Promise.resolve();
+    runtime.registry.resolve({ moduleId: "generation.single-shot", providerId: "apimart", modelId: "fixture-model", mode: "text-to-image" });
+    expect(catalogReads).toBe(2);
+    expect(registryBuilds).toBe(2);
+  });
 });
