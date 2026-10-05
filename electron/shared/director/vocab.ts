@@ -22,5 +22,40 @@ export const DIRECTOR_ENVIRONMENT_WORDS = [
   'gallery', 'museum', 'cafe', 'kitchen', 'station', 'rooftop', 'shop', 'office', 'library', 'park',
   '房间', '室内', '室外', '街道', '庭院', '地面', '走廊', '美术馆', '画廊', '咖啡馆', '厨房', '车站', '屋顶', '商店', '办公室', '图书馆', '公园',
 ] as const
-export const isEnvironmentWord = (kind: string): boolean =>
-  (DIRECTOR_ENVIRONMENT_WORDS as readonly string[]).includes(kind.trim().toLowerCase().replace(/[\s-]+/g, '_'))
+const nounKey = (noun: string) => noun.trim().toLowerCase().replace(/[\s-]+/g, '_')
+export const isEnvironmentWord = (kind: string): boolean => (DIRECTOR_ENVIRONMENT_WORDS as readonly string[]).includes(nounKey(kind))
+
+/**
+ * 舞台种类：计划里的名词（布景件 kind、演员 desc / id）指的是舞台上哪一类东西。种类决定它在舞台上的角色
+ *（地面 / 结构 / 家具 / 手持物）和典型尺寸——尺寸住在编译侧的舞台模型，这里只管「词 → 种类」。
+ * 认不出的名词不归类（编译器按兜底方盒处理并报问题），不猜。
+ */
+export const DIRECTOR_STAGE_KINDS = ['ground', 'road', 'wall', 'gate', 'tree', 'building', 'backdrop', 'pedestal', 'table', 'seat', 'counter', 'paper', 'small_item'] as const
+export type DirectorStageKind = (typeof DIRECTOR_STAGE_KINDS)[number]
+const STAGE_KIND_NOUNS: Record<DirectorStageKind, readonly string[]> = {
+  ground: ['ground', 'floor', 'stage_floor', '地面', '地板'],
+  road: ['road', 'lane', 'sidewalk', '马路', '道路', '人行道'],
+  wall: ['wall', 'fence', 'wall_enclosure', '墙', '院墙', '围墙', '墙壁'],
+  gate: ['gate', 'door', 'doorway', 'entrance', '门', '院门', '大门', '门口', '房门'],
+  tree: ['tree', '树', '大树'],
+  building: ['building', 'buildings', 'house', '楼', '房子', '建筑'],
+  backdrop: ['backdrop', 'background_wall', '背景墙', '背景板'],
+  pedestal: ['pedestal', 'display_stand', 'stand', 'plinth', '展台', '底座', '台座'],
+  table: ['table', 'desk', '桌', '桌子', '餐桌', '咖啡桌', '书桌'],
+  seat: ['chair', 'bench', 'stool', 'sofa', '椅子', '长椅', '凳子', '沙发'],
+  counter: ['counter', 'bar', '柜台', '吧台'],
+  paper: ['letter', 'envelope', 'note', 'document', 'photo', 'ticket', 'map', '信', '信封', '纸条', '文件', '照片', '车票', '地图'],
+  small_item: ['cap', 'lid', 'key', 'phone', 'cup', 'ring', 'wallet', 'knife', '瓶盖', '盖子', '钥匙', '手机', '杯子', '戒指', '钱包', '刀'],
+}
+const CJK = /[㐀-鿿]/
+/** 名词 → 舞台种类：整词相等，或作为下划线分隔的词出现（cafe_table → table），中文按包含（圆形展台 → 展台）；多个命中取最长的那个词。 */
+export function stageKindOf(noun: string): DirectorStageKind | undefined {
+  const key = nounKey(noun)
+  let best: { kind: DirectorStageKind; length: number } | undefined
+  for (const kind of DIRECTOR_STAGE_KINDS)
+    for (const word of STAGE_KIND_NOUNS[kind]) {
+      const hit = key === word || key.split('_').includes(word) || key.startsWith(`${word}_`) || key.endsWith(`_${word}`) || (CJK.test(word) && key.includes(word))
+      if (hit && (!best || word.length > best.length)) best = { kind, length: word.length }
+    }
+  return best?.kind
+}

@@ -1,4 +1,3 @@
-import { normalizeAiScene } from '../aiScene'
 import { createDefaultProject } from '../directorProject'
 import { originYForBottom, originYForCenter, scaledBounds } from '../directorSpace'
 import type { SpatialAuditContext } from '../directorSpatialAudit'
@@ -11,7 +10,7 @@ import {
   type ShotLadder,
 } from '../directorEvalMeasurement'
 import type { DirectorCamera, DirectorObject, DirectorProject, Vec3, Waypoint } from '../directorTypes'
-import { isEnvironmentWord, type EvalShotSize } from '../../../../../../../electron/shared/director/vocab'
+import type { EvalShotSize } from '../../../../../../../electron/shared/director/vocab'
 import { evaluateEntityTransform } from '../trajectoryEval'
 import { findActionEntry } from '../actionLibrary'
 import { lookAtAngles } from '../vec3'
@@ -21,7 +20,7 @@ import {
   type DirectorPlanActor,
   type DirectorPlanShot,
 } from '../../../../../../../electron/shared/director/directorPlanSchema'
-import { buildS1TemplateObjects } from './s1SceneTemplates'
+import { actorBody, buildStage, type Stage } from './directorStage'
 
 const FPS = 30
 const v = (x = 0, y = 0, z = 0): Vec3 => ({ x, y, z })
@@ -65,7 +64,7 @@ function positionAt(object: DirectorObject, time: number): Vec3 {
 }
 
 export type DirectorCompileIssue = {
-  kind: 'unknown-ref' | 'overlap' | 'measurement' | 'missing_asset'
+  kind: 'unknown-ref' | 'overlap' | 'measurement' | 'missing_asset' | 'nominal-size'
   message: string
   time?: number
   objectId?: string
@@ -85,19 +84,18 @@ export type DirectorCompileResult =
     }
   | { ok: false; errors: string[] }
 
-function actorObject(actor: DirectorPlanActor, position: Vec3, id: string): DirectorObject {
-  const isPerson = actor.kind === 'person'
-  const isVehicle = actor.kind === 'vehicle'
+function actorObject(actor: DirectorPlanActor, plan: DirectorPlan, position: Vec3, id: string): DirectorObject {
+  const body = actorBody(actor, plan)
   return {
     id,
-    name: isVehicle ? `${actor.desc}_car` : actor.desc,
-    type: isPerson ? 'character' : isVehicle ? 'cube' : actor.kind === 'product' ? 'cylinder' : 'cube',
+    name: actor.kind === 'vehicle' ? `${actor.desc}_car` : actor.desc,
+    type: body.type,
     position,
     rotation: v(),
-    scale: isPerson ? v(1, 1, 1) : isVehicle ? v(1.8, 1, 4) : actor.kind === 'product' ? v(1.3, 1.3, 1.3) : v(1, 1, 1),
+    scale: body.scale,
     visible: true,
     locked: false,
-    posePreset: isPerson ? 'standing' : undefined,
+    posePreset: actor.kind === 'person' ? 'standing' : undefined,
   }
 }
 
@@ -149,31 +147,14 @@ function clearOfSolids(point: Vec3, actor: DirectorObject, obstacles: { object: 
   return p
 }
 
-function resolveTemplateRef(ref: string, pieces: Map<string, Piece>): Piece | undefined {
-  const direct = pieces.get(ref)
-  if (direct) return direct
-  // Models sometimes preserve a human label for a fixed template anchor. Keep
-  // this lossless aliasing at the compiler boundary instead of letting one
-  // spelling strand an otherwise valid actor.
-  const aliases: Record<string, string> = {
-    's1-product_stage-floor': 's1-product-ground',
-    's1-product-stage-floor': 's1-product-ground',
-    's1-product-floor': 's1-product-ground',
-    's1-courtyard-floor': 's1-courtyard-ground',
-    's1-room-ground': 's1-room-floor',
-    's1-street-floor': 's1-street-ground',
-  }
-  return pieces.get(aliases[ref] ?? '')
-}
-
 // 手里拿着的东西：几何中心离地的高度（米）。「携带」只定初始高度；不挂父子关系（留给舞台模型一步）。
 const HELD_CENTER_HEIGHT = 1
 
 function positionActors(
   plan: DirectorPlan,
-  pieces: Map<string, Piece>,
-  staticSolids: DirectorObject[],
+  stage: Stage,
 ): { positions: Map<string, Vec3>; issues: DirectorCompileIssue[] } {
+  const staticSolids = stage.things.map((thing) => thing.object)
   const positions = new Map<string, Vec3>(),
     issues: DirectorCompileIssue[] = []
   const occupied = new Set<string>()
@@ -181,7 +162,8 @@ function positionActors(
   const placedObjects = new Map<string, DirectorObject>()
   const actorKinds = new Map(plan.actors.map((actor) => [actor.id, actor.kind]))
   for (const [index, actor] of plan.actors.entries()) {
-    const ref = resolveTemplateRef(actor.placement.ref, pieces) ?? placed.get(actor.placement.ref)
+    const refThing = stage.refs.get(actor.placement.ref)
+    const ref = (refThing ? pieceOf(refThing.object) : undefined) ?? placed.get(actor.placement.ref)
     if (!ref) {
       issues.push({ kind: 'unknown-ref', objectId: actor.id, message: `unknown placement ref ${actor.placement.ref}` })
       continue
@@ -205,7 +187,7 @@ function positionActors(
     const p = add(ref.origin, offset)
     // 垂直方向只有一个换算点：底落在哪（directorSpace.originYForBottom）。
     // 放在某件东西「上面」= 底落在它的顶面；手持（承托者是人）= 几何中心在手的高度；其余一律站在地面（y 0）。
-    const probe = actorObject(actor, p, `actor:${actor.id}`)
+    const probe = actorObject(actor, plan, p, `actor:${actor.id}`)
     const heldByPerson = relation === 'on' && actorKinds.get(actor.placement.ref) === 'person'
     p.y = heldByPerson
       ? originYForCenter(probe.type, probe.scale, HELD_CENTER_HEIGHT)
@@ -230,30 +212,6 @@ function positionActors(
     placed.set(actor.id, pieceOf({ ...probe, position: p }))
   }
   return { positions, issues }
-}
-
-function materializeDressing(plan: DirectorPlan): DirectorObject[] {
-  if (!plan.scene.dressing) return []
-  const normalized = normalizeAiScene(plan.scene.dressing, `${plan.scene.tags.join('-') || 's1'} dressing`)
-  return normalized.groups.flatMap((group, gi) =>
-    group.elements.map((element, ei) => ({
-      id: `dressing:${gi}:${ei}`,
-      name: element.name,
-      type: element.type,
-      position: element.position,
-      rotation: element.rotation,
-      scale: element.scale,
-      color: element.color,
-      roughness: element.roughness,
-      metalness: element.metalness,
-      opacity: element.opacity,
-      wireframe: element.wireframe,
-      flatShading: element.flatShading,
-      visible: true,
-      locked: true,
-      isAuxiliary: false,
-    })),
-  )
 }
 
 function applyBlocking(
@@ -564,39 +522,8 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
   scene.id = 'scene:director'
   project.activeSceneId = scene.id
   scene.name = plan.scene.environment
-  const templateObjects = plan.scene.template ? buildS1TemplateObjects(plan.scene.template) : []
-  const pieces = new Map<string, Piece>(templateObjects.map((o) => [o.id, pieceOf(o)]))
-  const groundPiece = templateObjects[0] ? pieceOf(templateObjects[0]) : { origin: v(), top: 0 }
-  for (const piece of plan.scene.setPieces) {
-    const id = `setPiece:${piece.id}`
-    // 环境词（room / interior / 街道……）由场景模板承担，不是舞台上的一件东西：
-    // 留一个不渲染的辅助分组做名字对应，引用它的摆位落到模板地面，绝不做成挡镜头的灰盒。
-    if (isEnvironmentWord(piece.kind)) {
-      templateObjects.push({ id, name: piece.kind, type: 'group', position: v(groundPiece.origin.x, 0, groundPiece.origin.z), rotation: v(), scale: v(1, 1, 1), visible: true, locked: true, isAuxiliary: true })
-      pieces.set(piece.id, groundPiece)
-      continue
-    }
-    const anchor = piece.relation?.ref ? resolveTemplateRef(piece.relation.ref, pieces) : undefined
-    const scale = v(1.4, 1, 1.4)
-    const at = anchor
-      ? v(anchor.origin.x, 0, anchor.origin.z + 2 + pieces.size * 0.2)
-      : v(((pieces.size % 3) - 1) * 2.5, 0, Math.floor(pieces.size / 3) * 2)
-    const object: DirectorObject = {
-      id,
-      name: piece.kind,
-      type: 'cube',
-      position: v(at.x, originYForBottom('cube', scale, piece.relation?.type === 'on' && anchor ? anchor.top : 0), at.z),
-      rotation: v(),
-      scale,
-      visible: true,
-      locked: true,
-      isAuxiliary: false,
-    }
-    templateObjects.push(object)
-    pieces.set(piece.id, pieceOf(object))
-  }
-  const dressing = materializeDressing(plan)
-  const placed = positionActors(plan, pieces, [...templateObjects, ...dressing]),
+  const stage = buildStage(plan)
+  const placed = positionActors(plan, stage),
     actorMap: Record<string, string> = {},
     anchors: Record<string, AnchorSpec> = {},
     actorObjects: DirectorObject[] = []
@@ -604,7 +531,7 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
     const id = `actor:${actor.id}`
     actorMap[actor.id] = id
     const position = placed.positions.get(actor.id) ?? v()
-    const obj = actorObject(actor, position, id)
+    const obj = actorObject(actor, plan, position, id)
     actorObjects.push(obj)
     for (const [name, offset] of Object.entries(actor.anchors ?? {}))
       anchors[`${id}.${name}`] = {
@@ -612,9 +539,9 @@ export function compileDirectorPlan(input: unknown): DirectorCompileResult {
         size: v(0.18, 0.18, 0.18),
       }
   }
-  scene.objects = [...templateObjects, ...dressing, ...actorObjects]
+  scene.objects = [...stage.objects, ...actorObjects]
   const duration = Math.max(...plan.shots.map((s) => s.window[1]), ...plan.blocking.map((b) => b.window[1]), 0)
-  const issues: DirectorCompileIssue[] = [...placed.issues]
+  const issues: DirectorCompileIssue[] = [...stage.issues, ...placed.issues]
   applyBlocking(plan, scene.objects, actorMap, duration, issues)
   ensureCharacterActionCoverage(scene.objects, duration)
   const cameras: DirectorCamera[] = []

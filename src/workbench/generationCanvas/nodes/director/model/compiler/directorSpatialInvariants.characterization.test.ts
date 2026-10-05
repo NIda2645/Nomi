@@ -197,13 +197,16 @@ describe('编译器产物的物理不变量（棘轮账：只许变少）', () =
  * ② 站位不进实心物体（clearOfSolids，一条按包围盒的通用规则，不按谁和谁写特例）：初始摆位与 walk_to / chase 的落脚点
  *   都退出实心物体、留落脚间隙；落脚点高度留在出发点的地面高度 → interpenetrating 21→1、occluded 30→12。
  *   剩下的是 e 类（关系词没有空间语义：机位绕到墙外、「在门前」的门朝向），留给舞台模型一步。
+ * 第二步 · 舞台模型（docs/plan/2026-10-05-director-stage-model-step2.md）：
+ *   1 种类与尺寸 + 同名合并（「院门 at 模板院门」不再造第二个盒子、cafe_table 按桌子的典型尺寸、信按纸张大小）：
+ *     interpenetrating 1→0、occluded 12/6→7/5。
  */
 const LEDGER = {
   cases: 34,
   floating: [1, 1], // 信（on 女子）悬在半空：携带物没挂到手上（留给 ②：用父子关系）
-  interpenetrating: [1, 1], // 回归计划里「女子 at 院门（setPiece）」：门是规划器放的布景件，人站在它原点上
+  interpenetrating: [0, 0],
   offFloor: [0, 0],
   cameraInside: [0, 0], // 现有避让在渲染真值下也成立——锁住
-  occluded: [12, 6], // 远景机位绕到院墙外 / 门后；布景件挡在主体前（cafe_table）
-  carriedDrift: [1, 1], // 女子走 3.5m，信留在原地
+  occluded: [7, 5], // 远景机位绕到院墙外 / 门后；过肩镜头被前景人挡住；警车挡住前车
+  carriedDrift: [1, 1], // 女子走过去，信留在原地
 }
