@@ -46,6 +46,19 @@
   "registered": [
     {
       "members": [
+        "failed",
+        "not_tracked",
+        "processing",
+        "query_failed",
+        "queued",
+        "succeeded",
+        "unknown_task"
+      ],
+      "reason": "nomi_read 任务目标（按任务号只读查一次）对外回答的状态：queued / processing / succeeded / failed 是供应商任务的阶段，unknown_task / not_tracked / query_failed 是「Nomi 这边能不能回答」的三种说真话分支（号不认识、进程内已不跟踪、这次没查通）；它们必须和 GENERATION_NODE_STATUSES 分开：那是画布节点的阶段，这里是一次只读查询的答案，不持久化、不驱动任何写入。2026-10-05 加。",
+      "site": "electron/capabilityCore/readTask.ts::type:ReadTaskState/type-union"
+    },
+    {
+      "members": [
         "completed",
         "prepared",
         "verified"
