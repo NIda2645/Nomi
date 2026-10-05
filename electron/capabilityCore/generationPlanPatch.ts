@@ -78,21 +78,33 @@ export function resolvePlanPatch(input: {
     ? declaredModeForModel(registry, nextProviderId, nextModelId, baseCandidate.mode)
     : undefined;
   const nextMode = modeFromModeId !== undefined && !sameTaskKind(modeFromModeId, baseCandidate.mode) ? modeFromModeId : followedMode;
-  const mergedCandidate = {
+  // 身份那一半先并（模型 / 模式 / 变体），参数先留着原来那份：原有参数要按**新的**身份清残留。
+  const identityCandidate = {
     ...baseCandidate,
     ...userPatch,
     ...(nextMode ? { mode: nextMode } : {}),
     ...(modelChanged && userPatch.variantId === undefined ? { variantId: undefined } : {}),
     ...((modelChanged || modeChanged) && userPatch.modeId === undefined ? { modeId: undefined } : {}),
-    parameters: userPatch.parameters ?? baseCandidate.parameters,
+    parameters: baseCandidate.parameters,
     references: userPatch.references ?? baseCandidate.references,
   } as PlanCandidate;
-  const stripped = userPatch.parameters === undefined
-    ? stripParametersNotAccepted(mergedCandidate, registry, videoModelCandidates)
-    : { candidate: mergedCandidate, cleared: [] as string[] };
+  // 原有参数里新身份不接受的（换模型带来的残留）清掉并上报；这一次点名的参数不走这里，在下面准入时当场判。
+  const stripped = stripParametersNotAccepted(identityCandidate, registry, videoModelCandidates);
+  const kept = stripped.candidate.parameters;
+  // ── 改草稿 = 只改被点名的参数，其余不动（2026-10-05 协调会话定的规则）──
+  // 以前这里是 `userPatch.parameters ?? base`：整份替换。Agent 写 `{resolution: "4K"}` 是想改清晰度，
+  // 结果比例被清回默认；只改比例时 4K 掉回 1K（验收线实测）。现在点名的键合并进原有参数；
+  // 要清掉一个键必须显式写 `null`。付费卡每次带的是这一镜的完整参数集，合并与替换结果相同。
+  const named = userPatch.parameters ?? {};
+  const removed = Object.keys(named).filter((key) => named[key] === null);
+  const written = Object.fromEntries(Object.entries(named).filter(([, value]) => value !== null));
+  // 点名的参数单独过语义翻译（比例 → 这个模式的真实键），与 create 两扇门同一个函数；原有参数只当「同一档」的参照。
+  const normalizedIdentity = normalizeAuthoredCandidate({ ...stripped.candidate, parameters: written }, registry, videoModelCandidates, kept);
+  const mergedParameters = { ...kept, ...normalizedIdentity.parameters };
+  for (const key of removed) delete mergedParameters[key];
+  const normalizedCandidate = { ...normalizedIdentity, parameters: mergedParameters } as PlanCandidate;
   const clearedParameters = stripped.cleared;
-  // 调用方写下的参数在这里过语义翻译（比例 → 这个模式的真实键），与 create 两扇门同一个函数。
-  const normalizedCandidate = normalizeAuthoredCandidate(stripped.candidate, registry, videoModelCandidates);
+  const changedParameters = parameterChanges(baseCandidate.parameters, mergedParameters);
   // 模型或模式变了：和建镜头时同一道账——这一对在目录里必须真有（第 9 条，矛盾的镜头造不出来）。
   if (modelChanged || modeChanged) admitShotIdentity(normalizedCandidate, registry);
   // 判的是**归一之后**的候选：变体别名（`fast-face` → `fast`）要先被认成正名，
@@ -112,13 +124,15 @@ export function resolvePlanPatch(input: {
       //
       // 调用方这一次写了参数时，落盘的是**翻译之后**的那份（语义比例已换成真实键）；只落 userPatch 原样，
       // 下一次读盘归一会把 `aspectRatio` 当残留清掉——用户说的比例就又悄悄没了。
-      ...(clearedParameters.length || userPatch.parameters !== undefined ? { parameters: normalizedCandidate.parameters } : {}),
+      ...(clearedParameters.length || userPatch.parameters !== undefined ? { parameters: mergedParameters } : {}),
       ...(normalizedCandidate.variantId ? { variantId: normalizedCandidate.variantId } : { variantId: undefined }),
       ...(normalizedCandidate.modeId ? { modeId: normalizedCandidate.modeId } : { modeId: undefined }),
     },
-    ...(modelChanged || modeChanged ? {
+    ...(modelChanged || modeChanged || changedParameters.length ? {
       changeset: {
         modelChanged, modeChanged,
+        // 这一次实际改了哪几个键（改前 → 改后；不在 = 这一镜原来没有 / 现在没有）。Agent 照它向用户说改了什么。
+        ...(changedParameters.length ? { changedParameters } : {}),
         ...(modelChanged && userPatch.variantId === undefined && baseCandidate.variantId ? { clearedVariantId: baseCandidate.variantId } : {}),
         ...((modelChanged || modeChanged) && userPatch.modeId === undefined && baseCandidate.modeId ? { clearedModeId: baseCandidate.modeId } : {}),
         ...(clearedParameters.length ? { clearedParameters } : {}),
@@ -127,6 +141,19 @@ export function resolvePlanPatch(input: {
       },
     } : {}),
   };
+}
+
+/** 参数改前 → 改后（只列变了的键，字典序）。`before` / `after` 缺省 = 那一侧没有这个键。 */
+export type ParameterChange = Readonly<{ key: string; before?: unknown; after?: unknown }>;
+
+function parameterChanges(before: Readonly<Record<string, unknown>>, after: Readonly<Record<string, unknown>>): ParameterChange[] {
+  return [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()
+    .filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]))
+    .map((key) => ({
+      key,
+      ...(Object.prototype.hasOwnProperty.call(before, key) ? { before: before[key] } : {}),
+      ...(Object.prototype.hasOwnProperty.call(after, key) ? { after: after[key] } : {}),
+    }));
 }
 
 /**
