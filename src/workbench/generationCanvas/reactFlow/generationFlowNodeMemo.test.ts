@@ -45,4 +45,10 @@ describe('canvas node shell does not re-render while it is only being moved', ()
       expect(body.includes(key)).toBe(false)
     }
   })
+
+  it('resize handles exist only on the single selected card, never on every card of a multi-selection', () => {
+    const source = fs.readFileSync(path.join(here, 'GenerationCanvasReactFlowNodes.tsx'), 'utf8')
+    const resizer = source.slice(source.indexOf('<NodeResizer'), source.indexOf('<NodeResizer') + 200)
+    expect(resizer).toMatch(/isVisible=\{data\.primarySelection && /)
+  })
 })
