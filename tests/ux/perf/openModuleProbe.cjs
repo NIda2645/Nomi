@@ -22,12 +22,13 @@ globalThis.__nomiOpenModuleProbe = {
     state.armed = false
     const loaded = state.loaded
     state.loaded = []
-    const packageOf = (url) => decodeURIComponent(url).match(/node_modules[\/](?:\.pnpm[\/][^\/]+[\/]node_modules[\/])?((?:@[^\/]+[\/])?[^\/]+)/)?.[1]?.replace(/\/g, '/') ?? 'app'
+    // file: URL 里的分隔符永远是 /（Windows 也一样），只按 / 切。
+    const packageOf = (url) => decodeURIComponent(url).match(/node_modules\/(?:\.pnpm\/[^/]+\/node_modules\/)?((?:@[^/]+\/)?[^/]+)/)?.[1] ?? 'app'
     const byPackage = {}
     for (const url of loaded) { const name = packageOf(url); byPackage[name] = (byPackage[name] || 0) + 1 }
     return {
       count: loaded.length,
-      piCodingAgentEntry: loaded.some((url) => /pi-coding-agent[\/]dist[\/]index\.js$/.test(decodeURIComponent(url))),
+      piCodingAgentEntry: loaded.some((url) => /pi-coding-agent\/dist\/index\.js$/.test(decodeURIComponent(url))),
       byPackage,
     }
   },

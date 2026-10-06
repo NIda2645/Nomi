@@ -9,7 +9,7 @@ import { LEGACY_PI_SESSION_VERSION } from '../../electron/shared/agentLane/legac
 // 打开项目走的两扇门：迁移旧对话（laneLegacyMigration）与打开 lane 工作区（laneWorkspace，只读历史）。
 // 用 Node 官方的 module.registerHooks 的 load 钩子数真装载的文件；在子进程里数，才不受本进程已装模块的影响。
 const OPEN_PATH = ['../../electron/agentLane/laneLegacyMigration.mjs', '../../electron/agentLane/laneWorkspace.mjs'];
-const ENTRY = /pi-coding-agent[\/]dist[\/]index\.js$/;
+const ENTRY = /pi-coding-agent\/dist\/index\.js$/; // file: URL 的分隔符永远是 /
 
 function loadedBy(specifiers: readonly string[]): { entry: boolean; count: number } {
   const urls = specifiers.map((specifier) => new URL(specifier, import.meta.url).href);
