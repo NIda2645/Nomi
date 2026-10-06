@@ -243,3 +243,31 @@ export function composerDemotedChipKeys(
     kept = [...kept]
   }
 }
+
+/**
+ * 行级让位那一档（`storyboardRowDensity`）问底栏要的**那一个数**：一条底栏在所有让位都走到底之后
+ * 至少要多宽——模型胶囊在下限（≥ 8 个字符 + 身份图标）、一枚模式、一枚时长、行尾 ⋯、「生成」。
+ *
+ * 为什么住在这里：底栏自己的让位（缩模型 → 枚举进 ⋯）走完之后，剩下的亏空只能由**行**去补
+ *（把参考列收成一格）。行那一档以前只问「提示词列比参考列还窄吗」，从不问「提示词列装得下底栏吗」，
+ * 于是 626–760px 的行宽（最小窗口 + Agent 面板展开就是 666）里底栏被右缘剪掉：「⋯」和「生成」整个看不见。
+ * 两层让位各算各的、中间漏一截——这个数就是把中间那一截接上的那一个常数，行那一档读它，不再另写一份。
+ *
+ * 取全角（中文）标签的宽：模式 4 字、时长「5 秒」、「生成」2 字。英文标签更长（真机量到 417 vs 中文 343），
+ * 取英文宽会把今天在 807px 行宽下三格并排、底栏装得下的中文行也收成一格——那是改版面，不是修裁切。
+ * 英文在 735–834px 之间仍会被剪（残留缺口，见 docs/plan/2026-10-05-storyboard-table-structure.md）。
+ */
+// 不写中文字面量（`check:i18n` 会把它当成漏翻的可见文案）：全角标签直接按「几个全角字」算宽。
+const CANONICAL_MODEL_CHIP = composerChipFloor({ kind: 'model', label: 'x'.repeat(COMPOSER_CHIP_YIELD.model.minLabelChars ?? 8), hasIcon: true })
+/** 模式：4 个全角字（「全能参考」那种长度）。 */
+const CANONICAL_MODE_CHIP = Math.round(4 * LABEL_WIDE_CHAR_PX + CHIP_CHROME_PLAIN)
+/** 时长：「5 秒」= 两个窄字符（数字 + 空格）+ 一个全角字。 */
+const CANONICAL_DURATION_CHIP = Math.round(2 * LABEL_CHAR_PX + LABEL_WIDE_CHAR_PX + CHIP_CHROME_PLAIN)
+/** 「生成」：两个全角字（英文「Generate」那条是 `GENERATE_BUTTON_WIDTH`）。 */
+const CJK_GENERATE_BUTTON_WIDTH = Math.round(20 + 2 * LABEL_WIDE_CHAR_PX)
+const CANONICAL_BOXES = 5 // 模型 / 模式 / 时长 / ⋯ / 生成
+export const COMPOSER_BAR_FLOOR_WIDTH = Math.round(
+  CANONICAL_MODEL_CHIP + CANONICAL_MODE_CHIP + CANONICAL_DURATION_CHIP
+  + OVERFLOW_DOTS_WIDTH + CJK_GENERATE_BUTTON_WIDTH
+  + (CANONICAL_BOXES - 1) * COMPOSER_BAR_GAP + COMPOSER_BAR_PADDING_X,
+)
