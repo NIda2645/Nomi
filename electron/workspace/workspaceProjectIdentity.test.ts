@@ -372,6 +372,28 @@ describe("workspace project identity", () => {
     expect(fs.readdirSync(path.dirname(workspaceProjectFile(root))).sort()).toEqual(nomiDirBefore);
   });
 
+  // 身份完整但清单结构不合法：无锁快读不能替加锁路径答话（加锁路径会按原规则报错 / 修复）。
+  it.each([
+    ["main has an unknown version", { version: 3 }, {}],
+    ["main lost its name", { name: undefined }, {}],
+    ["backup has an unknown version", {}, { version: 3 }],
+    ["backup lost its name", {}, { name: undefined }],
+  ])("does not answer from a structurally invalid manifest even when identity is complete (%s)", async (_label, mainOverrides, backupOverrides) => {
+    const root = makeTempDir();
+    const settled = { immutableProjectUuid: "11111111-1111-4111-8111-111111111111", projectGeneration: 2 };
+    writeRawManifest(root, legacyManifest({ ...settled, ...mainOverrides }));
+    writeRawBackup(root, legacyManifest({ ...settled, ...backupOverrides }));
+    const held = tryAcquireWorkspaceManifestLock(root, { ownerId: "long-running-writer", randomId: () => "writer-nonce" });
+    try {
+      // 快读若答了话就会 resolve；没答 → 落到加锁路径 → 锁被占 → project_identity_unavailable。
+      await expect(
+        ensureWorkspaceProjectIdentity(root, { lockOptions: { retryDelayMs: 1, waitTimeoutMs: 5 } }),
+      ).rejects.toMatchObject({ code: "project_identity_unavailable" });
+    } finally {
+      releaseWorkspaceManifestLock(held);
+    }
+  });
+
   it("still takes the locked path whenever the identity is not settled in both files", async () => {
     const root = makeTempDir();
     const settled = { immutableProjectUuid: "11111111-1111-4111-8111-111111111111", projectGeneration: 2 };

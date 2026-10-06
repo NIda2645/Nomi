@@ -2,14 +2,19 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { FRAME_COLUMN_WIDTH } from './shotFrameGeometry'
+import { COMPOSER_BAR_FLOOR_WIDTH } from './composerBarGeometry'
 import { REFERENCE_COLUMN_WIDTH, REFERENCE_SLOT_BOX } from './shotReferenceStackGeometry'
 import {
   NARROW_REFERENCE_COLUMN_WIDTH,
   ROW_COLUMN_GAP,
   ROW_COLUMN_COUNT,
   ROW_GRIP_WIDTH,
+  ROW_COLUMN_GAP_NARROW,
   ROW_PADDING_LEFT,
+  ROW_PADDING_LEFT_NARROW,
   ROW_PADDING_RIGHT,
+  ROW_PADDING_RIGHT_NARROW,
+  STORYBOARD_PROMPT_COLUMN_MIN,
   STORYBOARD_ROW_FIXED_WIDTH,
   STORYBOARD_ROW_NARROW_BELOW,
   referenceColumnWidthOf,
@@ -35,19 +40,39 @@ describe('行密度档：判据是算出来的，不是一个断点数字', () =
     )
   })
 
-  /** 判据那句话：「提示词列比参考列还窄，就让参考列先收」。 */
-  it('窄档门槛 = 固定开销 + 参考列宽（= 提示词列刚好等于参考列的那一点）', () => {
-    expect(STORYBOARD_ROW_NARROW_BELOW).toBe(STORYBOARD_ROW_FIXED_WIDTH + REFERENCE_COLUMN_WIDTH)
+  /** 判据那句话：「提示词列比参考列还窄、或装不下底栏，就让参考列先收」。 */
+  it('窄档门槛 = 固定开销 + max(参考列宽, 底栏下限)（= 提示词列刚好够用的那一点）', () => {
+    expect(STORYBOARD_PROMPT_COLUMN_MIN).toBe(Math.max(REFERENCE_COLUMN_WIDTH, COMPOSER_BAR_FLOOR_WIDTH))
+    expect(STORYBOARD_ROW_NARROW_BELOW).toBe(STORYBOARD_ROW_FIXED_WIDTH + STORYBOARD_PROMPT_COLUMN_MIN)
+  })
+
+  /**
+   * 2026-10-05 审计 A13：最小窗口 1100×690 + Agent 面板展开，行宽 666px。判据只取「参考列宽」那一半时它走宽档，
+   * 提示词列 251px 放不下底栏（中文 343px / 英文 417px），「⋯」和「生成」被剪掉。
+   * 这条把现场的行宽钉成必须走窄档——窄档下提示词列才装得下（中文余量 ≥ 70px）。
+   */
+  it('最小窗口的行宽（666）走窄档，且窄档下提示词列装得下中文底栏', () => {
+    expect(storyboardRowIsNarrow(666)).toBe(true)
+    const narrowChrome = ROW_GRIP_WIDTH + FRAME_COLUMN_WIDTH + NARROW_REFERENCE_COLUMN_WIDTH
+      + ROW_COLUMN_GAP_NARROW * (ROW_COLUMN_COUNT - 1) + ROW_PADDING_LEFT_NARROW + ROW_PADDING_RIGHT_NARROW
+    expect(666 - narrowChrome).toBeGreaterThan(COMPOSER_BAR_FLOOR_WIDTH + 50)
+  })
+
+  /** 底栏下限是「底栏让位走到底」的结果，不是第二份手写数字：改了胶囊开销它自己跟着变。 */
+  it('底栏下限来自底栏让位几何，数量级对得上真机量到的中文底栏（343px）', () => {
+    expect(COMPOSER_BAR_FLOOR_WIDTH).toBeGreaterThanOrEqual(343)
+    expect(COMPOSER_BAR_FLOOR_WIDTH).toBeLessThanOrEqual(343 + 30)
   })
 
   /**
    * 真机量到的两态（样张第 1 节）：左栏收起行宽 807、左栏展开行宽 551。
    * 门槛必须把这两个**分在两边**，而且两边都要留余量——贴着门槛的判据等于没有判据。
    */
-  it('左栏收起（807）走宽档、左栏展开（551）走窄档，两边各留 100px 以上余量', () => {
+  it('左栏收起（807）走宽档、左栏展开（551）走窄档，两边各留余量', () => {
     expect(storyboardRowIsNarrow(807)).toBe(false)
     expect(storyboardRowIsNarrow(551)).toBe(true)
-    expect(807 - STORYBOARD_ROW_NARROW_BELOW).toBeGreaterThan(100)
+    // 门槛因底栏下限从 626 抬到 ~770（审计 B8）：807 的余量从 180 收到 ~35。三格并排的样张态（807）不许翻。
+    expect(807 - STORYBOARD_ROW_NARROW_BELOW).toBeGreaterThan(30)
     expect(STORYBOARD_ROW_NARROW_BELOW - 551).toBeGreaterThan(50)
   })
 
@@ -97,6 +122,11 @@ describe('常数与 Tailwind 类名不许各说各的', () => {
     expect(ROW_PADDING_LEFT).toBe(6)
     expect(shell).toContain('pr-3')
     expect(ROW_PADDING_RIGHT).toBe(12)
+    // 窄档那一组：列距 gap-1.5 = 6、左右内边距 pl-1 = 4 / pr-2 = 8。
+    expect(shell).toContain("narrow ? 'gap-1.5 pl-1 pr-2'")
+    expect(ROW_COLUMN_GAP_NARROW).toBe(6)
+    expect(ROW_PADDING_LEFT_NARROW).toBe(4)
+    expect(ROW_PADDING_RIGHT_NARROW).toBe(8)
   })
 
   it('外壳把档位量在自己身上，并往下发（参考列拿不到外壳的局部变量）', () => {
