@@ -697,11 +697,12 @@
       "ironLaws": [],
       "useCases": ["S8"],
       "fullWalkJourneys": [],
-      "status": "reviewed",
+      "status": "fixed",
       "manualReview": "reviewed",
       "evidence": ["Windows 打包版 5 次：节点挂上 → 第一张图 821 → 549ms（中位数），冷开点卡到第一张图 2597/2718 → 2206/2616ms", "类级检查 src/workbench/generationCanvas/nodes/mediaPlaceholderShimmer.test.ts 普查样式表与占位渲染点；变异：扫光规则去掉 loading 限定即红"],
       "completionCommits": ["bdc40247a"],
       "rootCauseContract": "docs/fixes/2026-10-06-open-render-media-shimmer.root-cause.json",
+      "fixedInPr": 1045,
       "classCheck": { "kind": "matrix", "file": "src/workbench/generationCanvas/nodes/mediaPlaceholderShimmer.test.ts" }
     }
   ]
