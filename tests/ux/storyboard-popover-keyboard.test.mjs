@@ -36,6 +36,9 @@ const POPOVERS = [
   {
     name: '底栏「⋯」弹层',
     query: 'media=video',
+    // 「⋯」是底栏让位的结果（装不下的枚举才进 ⋯），出不出现取决于字体 / 宽度——840 在 Windows 字体下会出，
+    // 在 Linux CI 上整条装得下、没有 ⋯。夹具宽度钉在一定会让位的窄值，别指望某个字体恰好装不下。
+    width: 560,
     focusOpener: (page) => page.locator('[data-storyboard-composer-switches="1"]').focus(),
     activate: (page) => page.keyboard.press('Enter'),
     menu: '[data-storyboard-composer-switch-panel="1"]',
@@ -54,7 +57,7 @@ for (const item of POPOVERS) test(`分镜 Portal 弹层键盘合同：${item.nam
     await page.addStyleTag({ url: '/tailwind.generated.css' })
     await page.addStyleTag({ url: '/src/styles/index.css' })
     await expect(page.locator('[data-storyboard-editor]')).toBeVisible()
-    await page.locator('[data-storyboard-editor]').evaluate((element) => { element.parentElement.style.width = '840px' })
+    await page.locator('[data-storyboard-editor]').evaluate((element, width) => { element.parentElement.style.width = `${width}px` }, item.width ?? 840)
     const expand = page.locator('[data-storyboard-editor]').getByRole('button', { name: 'Expand all', exact: true })
     if (await expand.isVisible()) await expand.click()
 
