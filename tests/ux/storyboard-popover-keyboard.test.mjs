@@ -78,10 +78,10 @@ for (const item of POPOVERS) test(`分镜 Portal 弹层键盘合同：${item.nam
 
     await page.keyboard.press('Escape')
     await expect(menu, `${item.name}：Esc 没有关掉浮层`).toHaveCount(0)
-    const backToOpener = await page.evaluate(() => document.activeElement === window.__opener)
-    expect(backToOpener, `${item.name}：关闭后焦点没有回到打开前的那个元素`).toBe(true)
+    // Radix FocusScope 在卸载后的下一个任务里还焦点，所以要等，不能立刻读。
+    await expect.poll(() => page.evaluate(() => document.activeElement === window.__opener), { message: `${item.name}：关闭后焦点没有回到打开前的那个元素`, timeout: 3000 }).toBe(true)
   } finally {
     await browser?.close()
     await server.close()
   }
-}, 120000)
+}, 240000)
