@@ -10,6 +10,7 @@ import type { ModuleRegistry } from "./moduleRegistry";
 import type { VideoModelCandidate } from "../shared/videoCapabilities/recommendation";
 import { resolveArchetypeForModel } from "../shared/modelArchetypes";
 import { modeTransportFor } from "../shared/videoCapabilities/modeTransport";
+import { mergeNamedParameters, parameterChanges } from "../shared/generationParameterPatch";
 
 /** 读盘归一只需要草稿的这几样（避免把 handler 的大类型拖进来）。 */
 type GenerationOperationLike = {
@@ -95,13 +96,11 @@ export function resolvePlanPatch(input: {
   // 以前这里是 `userPatch.parameters ?? base`：整份替换。Agent 写 `{resolution: "4K"}` 是想改清晰度，
   // 结果比例被清回默认；只改比例时 4K 掉回 1K（验收线实测）。现在点名的键合并进原有参数；
   // 要清掉一个键必须显式写 `null`。付费卡每次带的是这一镜的完整参数集，合并与替换结果相同。
-  const named = userPatch.parameters ?? {};
-  const removed = Object.keys(named).filter((key) => named[key] === null);
-  const written = Object.fromEntries(Object.entries(named).filter(([, value]) => value !== null));
   // 点名的参数单独过语义翻译（比例 → 这个模式的真实键），与 create 两扇门同一个函数；原有参数只当「同一档」的参照。
-  const normalizedIdentity = normalizeAuthoredCandidate({ ...stripped.candidate, parameters: written }, registry, videoModelCandidates, kept);
-  const mergedParameters = { ...kept, ...normalizedIdentity.parameters };
-  for (const key of removed) delete mergedParameters[key];
+  // 合并规则（点名的键覆盖、null 删键）与文稿方案改一镜是同一个函数（`mergeNamedParameters`）。
+  const normalizedIdentity = normalizeAuthoredCandidate({ ...stripped.candidate, parameters: {} }, registry, videoModelCandidates);
+  const mergedParameters = mergeNamedParameters(kept, userPatch.parameters, (written) =>
+    normalizeAuthoredCandidate({ ...stripped.candidate, parameters: written }, registry, videoModelCandidates, kept).parameters);
   const normalizedCandidate = { ...normalizedIdentity, parameters: mergedParameters } as PlanCandidate;
   const clearedParameters = stripped.cleared;
   const changedParameters = parameterChanges(baseCandidate.parameters, mergedParameters);
@@ -141,19 +140,6 @@ export function resolvePlanPatch(input: {
       },
     } : {}),
   };
-}
-
-/** 参数改前 → 改后（只列变了的键，字典序）。`before` / `after` 缺省 = 那一侧没有这个键。 */
-export type ParameterChange = Readonly<{ key: string; before?: unknown; after?: unknown }>;
-
-function parameterChanges(before: Readonly<Record<string, unknown>>, after: Readonly<Record<string, unknown>>): ParameterChange[] {
-  return [...new Set([...Object.keys(before), ...Object.keys(after)])].sort()
-    .filter((key) => JSON.stringify(before[key]) !== JSON.stringify(after[key]))
-    .map((key) => ({
-      key,
-      ...(Object.prototype.hasOwnProperty.call(before, key) ? { before: before[key] } : {}),
-      ...(Object.prototype.hasOwnProperty.call(after, key) ? { after: after[key] } : {}),
-    }));
 }
 
 /**
