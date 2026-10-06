@@ -33,7 +33,8 @@
   ],
   "invariants": [
     "打开项目（迁移旧对话 + 打开 lane 工作区只读历史）的模块图里没有 pi-coding-agent 入口",
-    "本机能力在真开带模型的 lane 时才装，装配失败走原收尾"
+    "本机能力在真开带模型的 lane 时才装，装配失败走原收尾",
+    "Agent 岛的每个入口都在 laneNativeLoader.entries.json 登记阶段；open 阶段入口的模块图不含 pi-coding-agent 入口"
   ],
   "doors": [
     {
@@ -100,10 +101,11 @@
     "invariant": "打开路径模块图不含 pi-coding-agent 入口",
     "failure_mode": "新的静态引入让 lane-open-graph.test 变红；真 App 跑器 --assert-no-cli-entry 退出码非零",
     "exception_policy": "none",
-    "strategy": "本机能力的唯一装配点按需 import；结构测试在子进程里数真装载",
+    "strategy": "本机能力的唯一装配点按需 import；岛的唯一入口桥 laneNativeLoader.cts 的每个 import 都在 laneNativeLoader.entries.json 登记阶段（open / use）。类级检查 tests/agent-runtime/lane-open-graph.test.mts 从登记表取清单遍历：每个 open 入口在子进程里数真装载、不许出现 pi-coding-agent 入口；登记表与 loader 源码双向比对、并确认主进程没有第二座桥（新增入口忘登记即红）",
     "artifacts": [
       "electron/agentLane/laneHost.mts",
-      "electron/shared/agentLane/legacyPiSnapshot.mts"
+      "electron/shared/agentLane/legacyPiSnapshot.mts",
+      "electron/agentLane/laneNativeLoader.entries.json"
     ]
   },
   "regression_tests": [
