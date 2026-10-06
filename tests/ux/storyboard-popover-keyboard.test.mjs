@@ -39,6 +39,7 @@ const POPOVERS = [
     // 「⋯」是底栏让位的结果（装不下的枚举才进 ⋯），出不出现取决于字体 / 宽度——840 在 Windows 字体下会出，
     // 在 Linux CI 上整条装得下、没有 ⋯。夹具宽度钉在一定会让位的窄值，别指望某个字体恰好装不下。
     width: 560,
+    opener: '[data-storyboard-composer-switches="1"]',
     focusOpener: (page) => page.locator('[data-storyboard-composer-switches="1"]').focus(),
     activate: (page) => page.keyboard.press('Enter'),
     menu: '[data-storyboard-composer-switch-panel="1"]',
@@ -61,6 +62,29 @@ for (const item of POPOVERS) test(`分镜 Portal 弹层键盘合同：${item.nam
     const expand = page.locator('[data-storyboard-editor]').getByRole('button', { name: 'Expand all', exact: true })
     if (await expand.isVisible()) await expand.click()
 
+    // 触发器找不到时让失败自己说话（Linux CI 上「底栏 ⋯」找不到，而本地有）：把底栏长什么样、视口多大写进断言消息。
+    if (item.opener) {
+      const found = await page.locator(item.opener).first().waitFor({ state: 'attached', timeout: 8000 }).then(() => true, () => false)
+      if (!found) {
+        const diagnostics = await page.evaluate(() => {
+          const bars = [...document.querySelectorAll('[data-storyboard-composer-bar]')]
+          return {
+            viewport: { w: innerWidth, h: innerHeight },
+            editorWidth: document.querySelector('[data-storyboard-editor]')?.getBoundingClientRect().width,
+            rowDensity: document.querySelector('[data-storyboard-row="1"]')?.getAttribute('data-storyboard-row-density'),
+            bars: bars.map((bar) => ({
+              width: Math.round(bar.getBoundingClientRect().width),
+              scrollWidth: bar.scrollWidth,
+              text: bar.innerText.replace(/s+/g, ' ').trim(),
+              demoted: bar.getAttribute('data-storyboard-composer-demoted'),
+              attrs: [...bar.querySelectorAll('*')].flatMap((node) => [...node.attributes].filter((a) => a.name.startsWith('data-storyboard')).map((a) => `${node.tagName.toLowerCase()}[${a.name}=${a.value}]`)),
+              controls: [...bar.querySelectorAll('button,[role=combobox],input')].map((node) => node.getAttribute('aria-label') || node.textContent?.trim() || node.tagName),
+            })),
+          }
+        })
+        throw new Error(`${item.name}：找不到触发器 ${item.opener}。底栏诊断：${JSON.stringify(diagnostics)}`)
+      }
+    }
     await item.focusOpener(page)
     await page.evaluate(() => { window.__opener = document.activeElement })
     await item.activate(page)
