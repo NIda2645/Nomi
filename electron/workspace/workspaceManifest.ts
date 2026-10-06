@@ -557,6 +557,26 @@ export function readWorkspaceManifest(rootPath: string): WorkspaceProjectRecordV
  * fully valid, already-localized manifest; callers fall back to the transactional
  * reader when migration/slimming or identity repair is required.
  */
+/**
+ * 身份已经落定时的无锁读：主清单和备份**都**带着完整且一致的身份（同一个 sameCompleteIdentity 判据）。
+ * 身份只在两份都缺时生成、生成后永不再改（见 initializeWorkspace 与 ensureWorkspaceProjectIdentity 的加锁路径），
+ * 所以这时读到的就是最终答案，不用拿清单写锁。任何不确定（缺备份、半缺、不一致、id 不同、读 / 解析失败）一律 null，
+ * 由调用方回到加锁路径按原规则补齐或报错。
+ */
+export function readSettledWorkspaceIdentity(canonicalRootPath: string): { id: string; immutableProjectUuid: string; projectGeneration: number } | null {
+  try {
+    const main = toProjectRecordObject(readJsonFile(workspaceProjectFile(canonicalRootPath)));
+    const backup = toProjectRecordObject(readJsonFile(workspaceProjectBackupFile(canonicalRootPath)));
+    if (!main || !backup || typeof main.id !== "string" || !main.id || main.id !== backup.id) return null;
+    const mainIdentity = manifestIdentity(main);
+    const backupIdentity = manifestIdentity(backup);
+    if (mainIdentity.state !== "complete" || backupIdentity.state !== "complete" || !sameCompleteIdentity(mainIdentity, backupIdentity)) return null;
+    return { id: main.id, immutableProjectUuid: mainIdentity.immutableProjectUuid, projectGeneration: mainIdentity.projectGeneration };
+  } catch {
+    return null;
+  }
+}
+
 export function readWorkspaceManifestSnapshot(rootPath: string): WorkspaceProjectRecordV2 | null {
   try {
     const canonicalRootPath = fs.realpathSync(rootPath);

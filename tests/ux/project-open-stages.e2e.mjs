@@ -18,6 +18,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { launchNomiApp, closeNomiApp } from './_launchApp.mjs'
+import { stationTimeout } from './_station-budget.mjs'
 import { createCanvasPerformanceFixture } from './fixtures/canvas-performance-fixture.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -86,7 +87,7 @@ async function pollUntil(page, predicate, arg, timeoutMs) {
 
 async function openOnce(app, page, kind) {
   const card = page.locator(`[data-project-card][data-project-id="${fixture.record.id}"]`).first()
-  await card.waitFor({ timeout: 30_000 })
+  await card.waitFor({ timeout: stationTimeout({ operations: 2 }) })
   await new Promise((resolve) => setTimeout(resolve, 1_000))
   await page.evaluate(() => {
     window.__openLongTasks = []

@@ -14,7 +14,8 @@
     "electron/workspace/workspaceProjectIdentity.ts",
     "electron/agentLane/laneLegacyMigration.mts",
     "electron/agentLane/laneTrace.mts",
-    "electron/projects/projectsIpc.ts"
+    "electron/projects/projectsIpc.ts",
+    "electron/workspace/workspaceManifest.ts"
   ],
   "entry_points": [
     "渲染层 hydrateProject → nomi:surface:commitCanvasRead → canvasReadSurfaceRuntime.resolveProjectIdentity → ensureWorkspaceProjectIdentity",
@@ -103,19 +104,34 @@
       "kind": "read",
       "path": "electron/projects/projectsIpc.ts",
       "symbol": "readProject"
+    },
+    {
+      "kind": "read",
+      "path": "electron/workspace/workspaceProjectIdentity.ts",
+      "symbol": "readSettledWorkspaceIdentity"
+    },
+    {
+      "kind": "write",
+      "path": "electron/workspace/workspaceManifest.ts",
+      "symbol": "sameCompleteIdentity"
     }
   ],
   "door_reduction": {
-    "before": 15,
-    "after": 15,
+    "before": 17,
+    "after": 17,
     "why_not": "这次修的是每扇门进去之后的 owner（三个共享边界），不是门的数量：8 扇身份门是 8 个不同功能（打开画布读面、Agent、素材写入、执行读面、项目会话、诊断、导出、MCP 读）各自需要身份；2 扇迁移门是加载器转发 + 唯一调用点；2 扇轨迹门是打开时刷新 + 实时记录器。所有门都经同一个 owner 函数，无锁直答在 owner 内部生效，门无需合并；另记三扇 owner 内部的门：身份加锁事务（withWorkspaceManifestMutation，只在未落定时进）、迁移锁（withLegacyMigrationLock，只在非终态时进）、打开时读项目的 IPC（projectsIpc 的 nomi:projects:read-async，本 PR 只在其外包一层默认关闭的计时，读语义不变）"
   },
   "generality_proof": "无锁直答放在三个 owner 函数内部（不是调用方），8 + 2 + 2 扇门全部经过它们，所以任何调用方、任何供应商、任何平台、任何已落定的旧项目都同样受益；判据只看持久化状态本身（身份字段 / 迁移清单 phase / 文件内容），不看调用方是谁；状态不确定时原样回落到加锁路径，不新增特例分支",
   "shared_boundaries": [
     {
+      "path": "electron/workspace/workspaceManifest.ts",
+      "symbol": "readSettledWorkspaceIdentity",
+      "responsibility": "用加锁路径同一个 sameCompleteIdentity 判据无锁判定「主清单与备份身份已落定」；不确定一律 null"
+    },
+    {
       "path": "electron/workspace/workspaceProjectIdentity.ts",
       "symbol": "ensureWorkspaceProjectIdentity",
-      "responsibility": "身份已在主清单与备份中落定时无锁直答（readSettledWorkspaceProjectIdentity），否则走原加锁事务"
+      "responsibility": "身份已落定（readSettledWorkspaceIdentity 非空）时无锁直答，否则走原加锁事务"
     },
     {
       "path": "electron/agentLane/laneLegacyMigration.mts",
@@ -173,7 +189,8 @@
     "artifacts": [
       "electron/workspace/workspaceProjectIdentity.ts",
       "electron/agentLane/laneLegacyMigration.mts",
-      "electron/agentLane/laneTrace.mts"
+      "electron/agentLane/laneTrace.mts",
+      "electron/workspace/workspaceManifest.ts"
     ]
   },
   "regression_tests": [
