@@ -42,10 +42,6 @@ import {
 import type { ModuleRegistry } from "./moduleRegistry";
 import type { LiveGenerationRuntimeScope } from "./liveGenerationRuntime";
 import type { ProjectLeaseV2 } from "./projectLease";
-import {
-  classifyGenerationProviderCapabilities,
-  type GenerationProviderCapabilityProfile,
-} from "./generationProviderCapabilities";
 import { GenerationProviderCapabilityError } from "./generationRuntimeAdapter";
 import type {
   VideoGenerationRecommendationInput,
@@ -60,6 +56,7 @@ import type { GenerationDefaultTaskKind } from "../settings/generationModelDefau
 import { DECLARED_DEFAULT_DEVIATION_NOTE, admitShotIdentity, declaredDefaultDeviations, semanticCandidateFromParams } from "./semanticGenerationCandidate";
 import { projectGenerationOperationPreview } from "./mcpGenerationPreview";
 import { generationCandidateSchema } from "../shared/agentCapabilities/generationPlanSchemas";
+import { resolveProviderReadiness } from "./mcpGenerationProviderReadiness";
 
 // J06 — 诚实 ETA：冷启动给区间（low/high），不再硬编 40/180s 点值。
 // 历史 P50/P90 落盘后可切 etaBasis='historical'；当前全部为 coldstart。
@@ -213,43 +210,6 @@ function pinReference(
   resolve: ((projectId: string, assetId: string) => AssetReferenceIdentity | undefined) | undefined,
 ): unknown {
   return pinAssetReference(value, resolve ? (assetId: string) => resolve(projectId, assetId) : undefined);
-}
-
-const RECOVERY_CAPABILITIES = ["submitIdempotency", "query", "reconcile", "cancel"] as const;
-
-type ProviderReadiness = {
-  providerReady: boolean;
-  providerCapabilityProfile: GenerationProviderCapabilityProfile;
-  recoveryNotice: string;
-  providerCapabilitiesMissing: string[];
-  missingForSubmit: string[];
-};
-
-function recoveryNotice(profile: GenerationProviderCapabilityProfile): string {
-  if (profile === "full_recovery") return "可正常生成；异常时 Nomi 可以继续查询并恢复。";
-  if (profile === "observe_only") return "可正常生成；如果提交结果不确定，需要到供应商核对任务，Nomi 不会自动重提。";
-  return "可正常生成；如果提交结果不确定，需要你到供应商核对后再决定，Nomi 不会自动重提。";
-}
-
-function resolveProviderReadiness(
-  deps: Pick<GenerationPlanningHandlerDependencies, "registry" | "providerReadiness">,
-  candidate: PlanCandidate,
-): ProviderReadiness {
-  const resolved = deps.registry.resolve({ moduleId: candidate.moduleId, providerId: candidate.providerId, modelId: candidate.modelId, mode: candidate.mode });
-  const providerCapabilitiesMissing = RECOVERY_CAPABILITIES.filter((capability) => !resolved.capabilities[capability]);
-  const adapterReadiness = deps.providerReadiness?.({
-    providerId: resolved.providerId,
-    modelId: resolved.modelId,
-    moduleId: resolved.moduleId,
-    mode: resolved.mode,
-  }) ?? { providerReady: true };
-  return {
-    providerReady: adapterReadiness.providerReady,
-    providerCapabilityProfile: classifyGenerationProviderCapabilities(resolved.capabilities),
-    recoveryNotice: recoveryNotice(classifyGenerationProviderCapabilities(resolved.capabilities)),
-    providerCapabilitiesMissing,
-    missingForSubmit: adapterReadiness.missingForSubmit ?? [],
-  };
 }
 
 export function createGenerationPlanningHandler(deps: GenerationPlanningHandlerDependencies) {
