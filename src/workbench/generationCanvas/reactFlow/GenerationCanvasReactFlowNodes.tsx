@@ -32,6 +32,7 @@ import type { GenerationFlowEdge, GenerationFlowNode } from './generationCanvasR
 import { selectFlowZoom } from './canvasViewportScale'
 import { GenerationFlowNodeScope } from './generationFlowNodeContext'
 import { readGroupPort } from '../model/groupPort'
+import { sameGenerationFlowNodeRender } from '../nodes/flowNodeRenderGate'
 import { resolveGenerationFlowConnectionAffordance, type GenerationFlowConnectionAffordance } from './generationCanvasReactFlowVisualContract'
 import { edgeLabelTransform, useCanvasLiveZoom } from './canvasViewportScale'
 import type { CanvasPluginNodeState } from '../plugins/canvasPluginTypes'
@@ -475,5 +476,5 @@ export function GenerationFlowEdgeView({ id, sourceX, sourceY, targetX, targetY,
   )
 }
 
-export const nodeTypes = { generation: GenerationFlowNodeView }
+export const nodeTypes = { generation: React.memo(GenerationFlowNodeView, sameGenerationFlowNodeRender) }
 export const edgeTypes = { generation: GenerationFlowEdgeView }
