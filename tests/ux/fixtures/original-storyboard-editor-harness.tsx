@@ -12,7 +12,7 @@ const query = new URLSearchParams(location.search)
 const mediaKind = query.get('media') === 'video' ? 'video' : 'image'
 const catalogModels: ModelCatalogModelDto[] = [
   { modelKey: 'agent-runtime-image', vendorKey: 'agent-runtime-loopback', labelZh: 'Fixture 图片', kind: 'image', meta: { archetypeId: 'agnes-image' }, enabled: true, published: true, publishedModes: ['text_to_image', 'image_edit'], availability: { usable: true }, createdAt: 'now', updatedAt: 'now' },
-  { modelKey: 'pf-video', vendorKey: 'agent-runtime-loopback', labelZh: 'Fixture 视频', kind: 'video', meta: { archetypeId: 'wan-2.7' }, enabled: true, published: true, publishedModes: ['image_to_video'], availability: { usable: true }, createdAt: 'now', updatedAt: 'now' },
+  { modelKey: 'pf-video', vendorKey: 'agent-runtime-loopback', labelZh: 'Fixture 视频', kind: 'video', meta: { archetypeId: query.has('switch') ? 'rh-kling-3.0' : 'wan-2.7' }, enabled: true, published: true, publishedModes: query.has('switch') ? ['text_to_video', 'image_to_video'] : ['image_to_video'], availability: { usable: true }, createdAt: 'now', updatedAt: 'now' },
 ]
 const catalogVendors: ModelCatalogVendorDto[] = [{ key: 'agent-runtime-loopback', name: 'Fixture', enabled: true, authType: 'none', createdAt: 'now', updatedAt: 'now' }]
 const catalogHealth: ModelCatalogHealthDto = { ok: true, counts: { vendors: 1, enabledVendors: 1, models: 2, enabledModels: 2, mappings: 3, enabledMappings: 3, enabledApiKeys: 0 }, byKind: [], issues: [] }

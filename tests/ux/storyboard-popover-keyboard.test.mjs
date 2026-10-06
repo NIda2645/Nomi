@@ -35,10 +35,9 @@ const POPOVERS = [
   },
   {
     name: '底栏「⋯」弹层',
-    query: 'media=video',
-    // 「⋯」是底栏让位的结果（装不下的枚举才进 ⋯），出不出现取决于字体 / 宽度——840 在 Windows 字体下会出，
-    // 在 Linux CI 上整条装得下、没有 ⋯。夹具宽度钉在一定会让位的窄值，别指望某个字体恰好装不下。
-    width: 560,
+    // 夹具模型用档案里带开关（boolean）参数的 rh-kling-3.0：开关一律住在行尾 ⋯ 里，出不出 ⋯ 不取决于字体 / 宽度
+    //（之前靠「枚举装不下被挪进 ⋯」，Windows 出、Linux CI 字体下整条装得下就不出）。
+    query: 'media=video&switch',
     opener: '[data-storyboard-composer-switches="1"]',
     focusOpener: (page) => page.locator('[data-storyboard-composer-switches="1"]').focus(),
     activate: (page) => page.keyboard.press('Enter'),
