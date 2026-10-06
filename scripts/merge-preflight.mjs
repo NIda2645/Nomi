@@ -6,55 +6,37 @@
 //   ③ 本 PR 把逃逸账本条目转成 fixed 时，有没有带 detected_by 的根因合同（判据看账本状态转换，不看正文用词）。
 // 判四类的字符串规则与设计卡模板末尾那段一致（docs/engineering/design-card.md），宁可多报；误报由协调会话人工划掉。
 //
-// 用法：node scripts/merge-preflight.mjs <PR 号> [--repo owner/name]
+// 用法：node scripts/merge-preflight.mjs <PR 号> [--repo owner/name] [--enforce]
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import { ESCAPE_LEDGER_FILE, fixedTransitions } from './escape-ledger-lib.mjs'
+import {
+  PROTECTED_PATHS,
+  SCOPE_SECTION,
+  checkProtectedScope,
+  evaluatePrJudgement,
+  extractSection,
+  addedLinesByFile,
+  inferRoutes,
+} from './pr-judgement-lib.mjs'
+
+// 四类判定、路由（功能分类 / 验收证据）、规则与门岗的改动范围：判据都在 scripts/pr-judgement-lib.mjs（CI 的
+// check:pr-judgement 调同一份），路由表在 docs/engineering/test-routing.json。这里只留设计卡 / 独立验收 / 逃逸合同和 gh 取数。
+export { PROTECTED_PATHS, SCOPE_SECTION, checkProtectedScope, extractSection }
+
+/** 四类（花钱 / 长跑 / 可打断 / 新界面）——路由表里 pathRules.legacy 的那部分；files: [{ path, status }]，status 'A' = 新增。 */
+export function classifyChange(files, addedLines = '') {
+  const { fourClass, classes, hits } = inferRoutes(files, addedLines)
+  return { fourClass, classes, hits }
+}
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
 export const STAR_CELLS = [1, 2, 3, 4, 9]
 export const ALL_CELLS = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
-const FOUR_CLASS_RULES = [
-  { name: '花钱', pattern: /(?:^|\/)(?:spend[^/]*|[^/]*pricing[^/]*|[^/]*variant[^/]*|[^/]*credits[^/]*|[^/]*charge[^/]*|generationScheduler[^/]*)$/i, scope: /^(?:src|electron)\// },
-  { name: '长跑', pattern: /(?:^|\/)[^/]*(?:task|queue|production|retriev|export|import)[^/]*$/i, scope: /^(?:src|electron)\// },
-  { name: '可打断', pattern: /(?:^|\/)[^/]*(?:cancel|resume|stop|abort)[^/]*$/i, scope: /^(?:src|electron)\// },
-]
-
-const TEST_FILE = /\.(?:test|spec)\.[^.]+$|\.node-test\.[cm]?js$|(?:^|\/)(?:tests?|__tests__)\//
-
-/** files: [{ path, status }]；addedLines: diff 里新增行的文本（用来认 AbortController）。 */
-export function classifyChange(files, addedLines = '') {
-  const hits = []
-  for (const file of files) {
-    const p = file.path
-    if (TEST_FILE.test(p) || p.endsWith('.md') || p.endsWith('.json')) continue
-    for (const rule of FOUR_CLASS_RULES) {
-      if (rule.scope.test(p) && rule.pattern.test(p)) hits.push({ cls: rule.name, path: p })
-    }
-    if (/^src\/design\//.test(p)) hits.push({ cls: '新界面', path: p })
-    if (/^src\/.*\.tsx$/.test(p) && file.status === 'A') hits.push({ cls: '新界面', path: p })
-  }
-  if (/\bnew\s+AbortController\b|\bAbortSignal\b/.test(addedLines)) hits.push({ cls: '可打断', path: '(diff 新增 AbortController)' })
-  const classes = [...new Set(hits.map((hit) => hit.cls))]
-  return { fourClass: classes.length > 0, classes, hits }
-}
-
-/** 取 `## 标题` 到下一个同级标题之间的正文；没有这一节返回 null。 */
-export function extractSection(body, heading) {
-  const lines = String(body || '').split(/\r?\n/)
-  const start = lines.findIndex((line) => new RegExp(`^##\\s+${heading}\\s*$`).test(line.trim()))
-  if (start < 0) return null
-  const out = []
-  for (const line of lines.slice(start + 1)) {
-    if (/^##\s+/.test(line)) break
-    out.push(line)
-  }
-  return out.join('\n').replace(/<!--[\s\S]*?-->/g, '').trim()
-}
 
 const PLACEHOLDER = /^(?:待填|待定|tbd|todo|\.{2,}|…+|-+|n\/a)$/i
 
@@ -157,13 +139,14 @@ export function checkEscapeContract(body, contracts, transitions = [], ledgerIds
  * 只给警告、不判红。参考 PR 还没合并 = 规则尚未生效，所有开着的 PR 都只警告。
  */
 export const RULES_INTRODUCED_BY_PR = 961
+
 export function isGrandfathered({ createdAt, effectiveAt }) {
   if (!effectiveAt) return true
   if (!createdAt) return false
   return new Date(createdAt) < new Date(effectiveAt)
 }
 
-export function renderReport({ pr, classification, design, acceptance, escape, grandfathered = false }) {
+export function renderReport({ pr, classification, design, acceptance, escape, scope = { ok: true, lines: [] }, routing = { blocking: false, lines: [], ok: true }, grandfathered = false }) {
   const lines = [`合并前扫描 · PR #${pr}`]
   lines.push(classification.fourClass
     ? `· 四类：命中（${classification.classes.join('、')}）——${classification.hits.slice(0, 5).map((hit) => hit.path).join('、')}${classification.hits.length > 5 ? ' …' : ''}`
@@ -172,8 +155,12 @@ export function renderReport({ pr, classification, design, acceptance, escape, g
   lines.push(...soften(design.lines))
   if (classification.fourClass) lines.push(...soften(acceptance.lines))
   lines.push(...soften(escape.lines))
+  // 路由（功能分类 / 验收证据）：生效日之前开的 PR 已在 routing.lines 里降成警告
+  lines.push(...routing.lines)
+  // 规则与门岗的改动范围不吃「规则生效前开的 PR」那条宽限：#1032 这种回退正是旧分支带出来的。
+  lines.push(...scope.lines)
   if (grandfathered) lines.push('· 这是规则生效（#961 合并）之前开的 PR：缺项只给警告，不判红')
-  const blocked = !grandfathered && (!design.ok || (classification.fourClass && !acceptance.ok) || !escape.ok)
+  const blocked = !scope.ok || routing.blocking || (!grandfathered && (!design.ok || (classification.fourClass && !acceptance.ok) || !escape.ok))
   lines.push(blocked ? '结论：✖ 有项没过，先别合（脚本只打印结论，不合并）' : '结论：✅ 扫描干净（脚本只打印结论，不合并；其余合并条件仍看 CI 与收据）')
   return { text: lines.join('\n'), blocked }
 }
@@ -209,7 +196,8 @@ export function main(argv = process.argv.slice(2)) {
     diff = ''
   }
   const addedLines = diff.split('\n').filter((line) => line.startsWith('+') && !line.startsWith('+++')).join('\n')
-  const classification = classifyChange(files, addedLines)
+  const addedByFile = addedLinesByFile(diff)
+  const classification = classifyChange(files.map((file) => ({ ...file, added: addedByFile.get(file.path) ?? '' })), addedLines)
   const body = view.body ?? ''
 
   const slug = repo ?? (view.headRepositoryOwner?.login && view.headRepository?.name ? `${view.headRepositoryOwner.login}/${view.headRepository.name}` : null)
@@ -224,14 +212,28 @@ export function main(argv = process.argv.slice(2)) {
   }
 
   // 逃逸账本的状态转换：只有本 PR 改了账本才去取两版（base 取当前基线分支末端）
-  const ledger = { transitions: [], ids: [] }
+  const ledger = { transitions: [], ids: [], removed: [] }
   if (slug && files.some((file) => file.path === ESCAPE_LEDGER_FILE)) {
     const parse = (text) => { try { return text ? JSON.parse(text) : null } catch { return null } }
     const head = parse(ghApiFile(slug, ESCAPE_LEDGER_FILE, view.headRefOid))
     const base = parse(ghApiFile(slug, ESCAPE_LEDGER_FILE, view.baseRefName || 'main'))
     ledger.transitions = fixedTransitions(base, head)
     ledger.ids = (head?.entries ?? []).map((entry) => entry.id)
+    const headIds = new Set(ledger.ids)
+    ledger.removed = (base?.entries ?? []).map((entry) => entry.id).filter((id) => !headIds.has(id))
   }
+
+  // 规则与门岗的改动范围：要真实的文件状态（removed / modified），gh pr view 的 files 只给增删行数
+  let statusFiles = files.map((file) => ({ path: file.path, status: 'modified' }))
+  const baseSlug = repo ?? slug
+  if (baseSlug) {
+    try {
+      statusFiles = gh(['api', `repos/${baseSlug}/pulls/${prArg}/files`, '--paginate', '--jq', '.[] | [.filename, .status] | @tsv'])
+        .split('\n').filter(Boolean).map((row) => { const [path, status] = row.split('\t'); return { path, status } })
+    } catch { /* 取不到状态就按 modified 算：漏判整文件删除，但点名要求照旧 */ }
+  }
+  const packageBlock = diff.split(/^diff --git /m).find((block) => block.startsWith('a/package.json b/package.json')) ?? ''
+  const packageRemovedLines = packageBlock.split('\n').filter((line) => line.startsWith('-') && !line.startsWith('---')).map((line) => line.slice(1))
 
   let effectiveAt = null
   try {
@@ -239,6 +241,15 @@ export function main(argv = process.argv.slice(2)) {
   } catch {
     effectiveAt = null
   }
+  const judgement = evaluatePrJudgement({
+    body,
+    files: statusFiles.map((file) => ({ path: file.path, status: file.status === 'added' ? 'A' : file.status })),
+    addedLines,
+    addedByFile,
+    packageRemovedLines,
+    ledgerRemovedIds: ledger.removed,
+    createdAt: argv.includes('--enforce') ? null : view.createdAt, // --enforce：假设路由规则已生效，看这个 PR 会不会红（回放用）
+  })
   const report = renderReport({
     pr: prArg,
     grandfathered: Number(prArg) !== RULES_INTRODUCED_BY_PR && isGrandfathered({ createdAt: view.createdAt, effectiveAt }),
@@ -246,6 +257,8 @@ export function main(argv = process.argv.slice(2)) {
     design: checkDesignCard(body, classification),
     acceptance: checkIndependentAcceptance(body),
     escape: checkEscapeContract(body, contracts, ledger.transitions, ledger.ids),
+    scope: judgement.scope,
+    routing: judgement.routing,
   })
   console.log(report.text)
   return report.blocked ? 1 : 0
