@@ -199,3 +199,30 @@ test('first import selects the first source conversation, preserving an existing
       : { laneName: manifest.targets[0].laneName, sessionId: manifest.targets[0].sessionId });
   });
 });
+
+test('opening a project with nothing (left) to migrate is a pure read: no lock file, no write, even while another opener holds the lock', async t => {
+  const options = await fixture(t);
+  const nomi = join(options.projectDir, '.nomi');
+  const lock = join(nomi, 'lane-legacy-migration.lock');
+  const listing = () => fs.readdirSync(nomi, { recursive: true }).map(String).sort();
+  // 1) 迁完之后再打开：清单是 completed，答案只从清单读。
+  const migrated = await migrateLaneLegacy(options);
+  // 一把活着的锁（本进程 pid）：加锁流程会立刻 legacy-migration-busy；无锁终态检查不该碰它。
+  fs.writeFileSync(lock, JSON.stringify({ pid: process.pid }));
+  const before = listing();
+  assert.deepEqual(await migrateLaneLegacy(options), migrated);
+  assert.deepEqual(listing(), before);
+  fs.unlinkSync(lock);
+  // 2) 从来没有旧版对话的项目：没有清单、没有源文件。
+  const fresh = await fixture(t);
+  fs.unlinkSync(fresh.source);
+  const freshNomi = join(fresh.projectDir, '.nomi');
+  fs.writeFileSync(join(freshNomi, 'lane-legacy-migration.lock'), JSON.stringify({ pid: process.pid }));
+  const freshBefore = fs.readdirSync(freshNomi).sort();
+  assert.deepEqual(await migrateLaneLegacy(fresh), { projects: 0, sourceFiles: 0, conversations: 0, sourceItems: 0, parts: 0, archivedOnlyConversations: 0 });
+  assert.deepEqual(fs.readdirSync(freshNomi).sort(), freshBefore);
+  // 3) 有源文件还没迁：仍然走加锁流程（这把活锁把它拦成 busy，证明没被无锁检查放过去）。
+  const pending = await fixture(t);
+  fs.writeFileSync(join(pending.projectDir, '.nomi', 'lane-legacy-migration.lock'), JSON.stringify({ pid: process.pid }));
+  await assert.rejects(() => migrateLaneLegacy(pending), /legacy-migration-busy/);
+});
