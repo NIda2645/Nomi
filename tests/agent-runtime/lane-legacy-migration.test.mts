@@ -177,7 +177,12 @@ test('old archives require exact bound preparation, completion and hash, never d
     if (change === 'hash') fs.writeFileSync(prior.archive, 'changed');
     if (change === 'timestamp') { raw.startedAt = '2026-09-02T12:34:56.000Z'; fs.writeFileSync(file, JSON.stringify(raw)); }
     if (change === 'empty') fs.writeFileSync(prior.archive, '');
-    if (change === 'symlink') { fs.unlinkSync(prior.archive); fs.symlinkSync(options.receipt, prior.archive); }
+    if (change === 'symlink') {
+      fs.unlinkSync(prior.archive);
+      // Windows without symlink privilege cannot create the fixture; the identity rule itself is pinned in electron/fileIdentity.test.ts.
+      try { fs.symlinkSync(options.receipt, prior.archive); }
+      catch (error) { if (process.platform === 'win32' && (error as NodeJS.ErrnoException).code === 'EPERM') return st.skip('symlink privilege'); throw error; }
+    }
     await assert.rejects(() => migrateLaneLegacy(options), /legacy-prior-archive-evidence-mismatch/);
     assert.equal(fs.existsSync(join(prior.nomi, 'lane-legacy-migration.json')), false);
     assert.equal(fs.readFileSync(options.receipt, 'utf8'), 'G5 sentinel');
