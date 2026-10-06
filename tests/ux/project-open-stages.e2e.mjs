@@ -33,6 +33,9 @@ const executablePath = argValue('--exe')
 const onscreen = args.includes('--onscreen')
 const assertReadOnly = args.includes('--assert-read-only')
 const assertNoCliEntry = args.includes('--assert-no-cli-entry')
+// 第一次在 Agent 面板发消息时主进程要装的那张图（本机能力：bash / 沙箱 / pi-coding-agent 入口）。不发真消息（零花费）：
+// 项目打开之后，在真 App 的主进程里装同一个模块（laneHost.loadLaneNativeDesktop 装的就是它），计时并数新装文件。
+const measureFirstSendLoad = args.includes('--first-send-load')
 const OPEN_TIMEOUT_MS = 90_000
 const SETTLE_AFTER_MEDIA_MS = 3_000
 
@@ -188,6 +191,19 @@ try {
       await backToLibrary(win)
       const reopen = await openOnce(app, win, 'reopen')
       if (index >= warmup) results.samples.push(cold, reopen)
+      if (measureFirstSendLoad) {
+        const firstSend = await app.evaluate(async ({ app: electronApp }) => {
+          const nodePath = process.mainModule.require('node:path')
+          const target = nodePath.join(electronApp.getAppPath(), 'dist-electron', 'agentLane', 'laneNativeDesktop.mjs')
+          globalThis.__nomiOpenModuleProbe.arm()
+          const startedAt = performance.now()
+          process.mainModule.require(target)
+          const ms = performance.now() - startedAt
+          return { ms, modules: globalThis.__nomiOpenModuleProbe.take() }
+        })
+        if (index >= warmup) results.firstSend = [...(results.firstSend || []), firstSend]
+        console.log(`  首发装载：${Math.round(firstSend.ms)}ms，新装模块 ${firstSend.modules.count}${firstSend.modules.piCodingAgentEntry ? '（含 pi-coding-agent 入口）' : ''}`)
+      }
       console.log(`run ${index + 1}/${warmup + runs}${index < warmup ? '（预热，不计）' : ''}: cold ${cold.clickToMediaMs}ms（写盘 ${cold.writes.total}，fsync ${cold.writes.fsync}，新装模块 ${cold.modules.count}${cold.modules.piCodingAgentEntry ? '，含 pi-coding-agent 入口' : ''}） · reopen ${reopen.clickToMediaMs}ms（写盘 ${reopen.writes.total}，fsync ${reopen.writes.fsync}，新装模块 ${reopen.modules.count}）`)
     } finally {
       await closeNomiApp(app)
@@ -197,6 +213,11 @@ try {
   fs.rmSync(root, { recursive: true, force: true })
 }
 
+if (results.firstSend?.length) {
+  const values = results.firstSend.map((entry) => entry.ms).sort((a, b) => a - b)
+  results.firstSendSummary = { n: values.length, median: percentile(values, 0.5), p95: percentile(values, 0.95), modules: results.firstSend[0].modules.count }
+  console.log(`首发装载（${values.length} 次）：中位数 ${results.firstSendSummary.median}ms，p95 ${results.firstSendSummary.p95}ms，新装模块 ${results.firstSendSummary.modules}`)
+}
 results.summary = {
   cold: summarize(results.samples.filter((sample) => sample.kind === 'cold')),
   reopen: summarize(results.samples.filter((sample) => sample.kind === 'reopen')),
