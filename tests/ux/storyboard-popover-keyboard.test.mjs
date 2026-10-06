@@ -74,7 +74,7 @@ for (const item of POPOVERS) test(`分镜 Portal 弹层键盘合同：${item.nam
             bars: bars.map((bar) => ({
               width: Math.round(bar.getBoundingClientRect().width),
               scrollWidth: bar.scrollWidth,
-              text: bar.innerText.replace(/s+/g, ' ').trim(),
+              text: bar.innerText.replace(/\s+/g, ' ').trim(),
               demoted: bar.getAttribute('data-storyboard-composer-demoted'),
               attrs: [...bar.querySelectorAll('*')].flatMap((node) => [...node.attributes].filter((a) => a.name.startsWith('data-storyboard')).map((a) => `${node.tagName.toLowerCase()}[${a.name}=${a.value}]`)),
               controls: [...bar.querySelectorAll('button,[role=combobox],input')].map((node) => node.getAttribute('aria-label') || node.textContent?.trim() || node.tagName),
