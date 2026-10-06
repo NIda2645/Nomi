@@ -568,6 +568,8 @@ export function readSettledWorkspaceIdentity(canonicalRootPath: string): { id: s
     const main = toProjectRecordObject(readJsonFile(workspaceProjectFile(canonicalRootPath)));
     const backup = toProjectRecordObject(readJsonFile(workspaceProjectBackupFile(canonicalRootPath)));
     if (!main || !backup || typeof main.id !== "string" || !main.id || main.id !== backup.id) return null;
+    // 结构也要合法（与 readWorkspaceManifestSnapshot 同一份 schema）：身份完整但清单坏了，答案交给加锁路径按原规则处理。
+    if (!workspaceProjectRecordSchema.safeParse(main).success || !workspaceProjectRecordSchema.safeParse(backup).success) return null;
     const mainIdentity = manifestIdentity(main);
     const backupIdentity = manifestIdentity(backup);
     if (mainIdentity.state !== "complete" || backupIdentity.state !== "complete" || !sameCompleteIdentity(mainIdentity, backupIdentity)) return null;
