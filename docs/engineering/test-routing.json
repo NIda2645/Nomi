@@ -90,7 +90,7 @@
     { "category": "gen-quality", "pattern": "^(?:electron/shared/storyboard/|src/workbench/generationCanvas/nodes/director/|electron/capabilityCore/semanticGeneration|evals/director/)" },
     { "category": "data-format", "pattern": "(?:^|/)[^/]*(?:schema|migrat|persist|projectFile|projectStore|projectVersion)[^/]*\\.(?:ts|tsx|mts|cts|mjs)$", "scope": "^(?:src|electron)/" }
   ],
-  "abortSignal": { "category": "long-run", "legacy": "可打断", "pattern": "\\bnew\\s+AbortController\\b|\\bAbortSignal\\b" },
+  "abortSignal": { "category": "long-run", "legacy": "可打断", "pattern": "\\bnew\\s+AbortController\\b|\\bAbortSignal\\b", "scope": "^(?:src|electron)/" },
   "fullRun": {
     "trigger": "workflow_dispatch",
     "workflow": ".github/workflows/full-experience-run.yml",

@@ -239,6 +239,15 @@ test('可打断：AbortController 只在非测试文件的新增行里认；只�
   assert.ok(inferRoutes([M('src/utils/format.ts')], '+const c = new AbortController()', table).classes.includes('可打断'))
 })
 
+test('可打断：AbortController 只在产品代码（src / electron）里认；门岗脚本、文档里提到它不算（#1037 自己被误判）', () => {
+  const tooling = [
+    { ...M('scripts/pr-judgement-lib.mjs'), added: '+ * 测试里为了造取消场景写 new AbortController 不是「可打断」功能' },
+    { ...M('docs/plan/x.md'), added: '+new AbortController 的说明' },
+  ]
+  assert.ok(!inferRoutes(tooling, '', table).classes.includes('可打断'))
+  assert.ok(inferRoutes([...tooling, { ...M('electron/agentLane/run.ts'), added: '+const c = new AbortController()' }], '', table).classes.includes('可打断'))
+})
+
 test('when / paid：每项证据 when 只有 pr | manual-full；manual-full 不进 PR 必交，只在报告里提示由手动全量覆盖', () => {
   for (const def of Object.values(table.categories)) {
     for (const item of def.evidence) {

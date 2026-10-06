@@ -80,9 +80,11 @@ export function inferRoutes(files, addedLines = '', table = loadRoutingTable()) 
     }
   }
   const abort = table.abortSignal
+  // 和路径判据同一个范围：只认产品代码里的新增（门岗脚本 / 文档里「提到」AbortController 不是可打断功能）
+  const abortScope = abort?.scope ? new RegExp(abort.scope) : null
   const perFile = files.some((file) => typeof file.added === 'string')
   const scanned = perFile
-    ? files.filter((file) => typeof file.added === 'string' && !TEST_FILE.test(norm(file.path))).map((file) => file.added).join('\n')
+    ? files.filter((file) => typeof file.added === 'string' && !TEST_FILE.test(norm(file.path)) && (!abortScope || abortScope.test(norm(file.path)))).map((file) => file.added).join('\n')
     : addedLines
   if (abort && new RegExp(abort.pattern).test(scanned)) add(abort.category, abort.legacy, '(diff 新增 AbortController)')
   const classes = [...new Set(hits.map((hit) => hit.cls))]
