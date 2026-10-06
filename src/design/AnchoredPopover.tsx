@@ -99,6 +99,9 @@ export function AnchoredPopover({
   const fallbackAnchorRef = React.useRef<HTMLSpanElement>(null)
   const popRef = React.useRef<HTMLDivElement>(null)
   const [placement, setPlacement] = React.useState<Placement | null>(null)
+  // 打开前谁有焦点。渲染期读：此时子树的 autoFocus 还没跑，读到的才是触发器；
+  // FocusScope 自己在挂载 effect 里记「之前的焦点」，那时子树里的输入框已经 autoFocus 了，记到的是输入框（关闭后它被卸载，焦点落空）。
+  const [openerBeforeOpen] = React.useState<Element | null>(() => (typeof document === 'undefined' ? null : document.activeElement))
   // 只有「会被关掉的交互浮层」管焦点；悬停预览（passThrough）与自己管开合的浮层（没传 onClose）不碰。
   const managesFocus = Boolean(onClose) && !passThrough
 
@@ -209,11 +212,13 @@ export function AnchoredPopover({
     <FocusScope
       asChild
       loop
-      trapped
       onUnmountAutoFocus={(event) => {
-        // 用户已把焦点挪到别处（点了另一个输入框）就不抢回来；焦点掉到 body（浮层里的元素被卸载）才还给触发器。
+        // 还给「打开前」的元素（见上），不用 FocusScope 默认记的那个；用户已把焦点挪到别处（点了另一个输入框）就不抢回来。
+        event.preventDefault()
         const active = document.activeElement
-        if (active && active !== document.body) event.preventDefault()
+        if ((!active || active === document.body) && openerBeforeOpen instanceof HTMLElement && openerBeforeOpen.isConnected) {
+          openerBeforeOpen.focus({ preventScroll: true })
+        }
       }}
     >
       {body}

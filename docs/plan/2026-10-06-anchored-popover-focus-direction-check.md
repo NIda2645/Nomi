@@ -40,7 +40,7 @@
 
 | 选项 | 做什么 | 代价 | 风险 | 推荐 |
 |---|---|---|---|---|
-| 接入现成方案（焦点） | `AnchoredPopover` 对带 `onClose` 的浮层套 `<FocusScope asChild loop trapped>`；`onUnmountAutoFocus` 里「焦点已被用户挪走就不抢回」 | 一行直接依赖；放好位置前用 opacity 0 代替 visibility:hidden（FocusScope 挂载即聚焦） | 对其他带 onClose 的消费者行为有变；子树 autoFocus 的输入框不被抢（FocusScope 只在焦点不在内部时才聚焦第一项） | **本次采用** |
+| 接入现成方案（焦点） | `AnchoredPopover` 对带 `onClose` 的浮层套 `<FocusScope asChild loop>`（不加 `trapped`：非模态，trap 会把关闭时同步还给触发器的焦点又拽回浮层，见 composerLifecycle）；`onUnmountAutoFocus` 里「焦点已被用户挪走就不抢回」 | 一行直接依赖；放好位置前用 opacity 0 代替 visibility:hidden（FocusScope 挂载即聚焦） | 对其他带 onClose 的消费者行为有变；子树 autoFocus 的输入框不被抢（FocusScope 只在焦点不在内部时才聚焦第一项） | **本次采用** |
 | 接入现成方案（定位也换） | 整个换成 `@floating-ui/react` | 新依赖、12 个消费者回归 | 面大 | 后续单独做 |
 | 补（自写 tabbable 查询 + Tab 循环） | 第一版做过（~25 行） | 小 | 通用能力自写，评审否掉 | 否（已删） |
 | 删 | 去掉 Portal | 又被表格裁掉 | 回到 879aa9156 之前 | 否 |
